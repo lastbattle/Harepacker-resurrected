@@ -294,6 +294,8 @@ namespace HaCreator.MapSimulator.Character.Skills
         public bool IsSummon { get; set; }
         public bool IsMovement { get; set; }
         public bool IsPrepareSkill { get; set; }
+        public bool IsKeydownSkill { get; set; }
+        public bool IsRapidAttack { get; set; }
         public bool Invisible { get; set; }          // Hidden skill
         public bool MasterOnly { get; set; }         // Only usable at max level
 
@@ -318,6 +320,13 @@ namespace HaCreator.MapSimulator.Character.Skills
 
         // Action
         public string ActionName { get; set; }       // Animation action to play
+        public string PrepareActionName { get; set; }
+        public string KeydownActionName { get; set; }
+        public string KeydownEndActionName { get; set; }
+        public int PrepareDurationMs { get; set; }
+        public int KeydownDurationMs { get; set; }
+        public int KeydownEndDurationMs { get; set; }
+        public int KeydownRepeatIntervalMs { get; set; }
 
         /// <summary>
         /// Get data for a specific level
@@ -599,6 +608,10 @@ namespace HaCreator.MapSimulator.Character.Skills
         public int Duration { get; set; }
         public SkillData SkillData { get; set; }
         public SkillLevelData LevelData { get; set; }
+        public bool IsKeydownSkill { get; set; }
+        public bool IsHolding { get; set; }
+        public int HoldStartTime { get; set; }
+        public int LastRepeatTime { get; set; }
 
         public int Elapsed(int currentTime) => Math.Max(0, currentTime - StartTime);
 

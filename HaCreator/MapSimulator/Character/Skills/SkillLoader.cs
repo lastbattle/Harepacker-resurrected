@@ -196,6 +196,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 // Hidden skill
                 skill.Invisible = GetInt(infoNode, "invisible") == 1;
                 skill.MasterOnly = GetInt(infoNode, "masterOnly") == 1;
+                skill.IsRapidAttack = GetInt(infoNode, "rapidAttack") == 1;
             }
 
             // Check common nodes
@@ -403,6 +404,30 @@ namespace HaCreator.MapSimulator.Character.Skills
 
         private void ParseSkillAnimations(SkillData skill, WzImageProperty skillNode)
         {
+            var prepareNode = skillNode["prepare"];
+            if (prepareNode != null)
+            {
+                skill.PrepareActionName = GetString(prepareNode, "action");
+                skill.PrepareDurationMs = ResolveAnimationDuration(prepareNode);
+            }
+
+            var keydownNode = skillNode["keydown"] ?? skillNode["keyDown"];
+            if (keydownNode != null)
+            {
+                skill.KeydownActionName = GetString(keydownNode, "action");
+                skill.KeydownDurationMs = ResolveAnimationDuration(keydownNode);
+                skill.KeydownRepeatIntervalMs = ResolveKeydownRepeatInterval(keydownNode);
+            }
+
+            var keydownEndNode = skillNode["keydownend"] ?? skillNode["keyDownEnd"];
+            if (keydownEndNode != null)
+            {
+                skill.KeydownEndActionName = GetString(keydownEndNode, "action");
+                skill.KeydownEndDurationMs = ResolveAnimationDuration(keydownEndNode);
+            }
+
+            skill.IsKeydownSkill = keydownNode != null || keydownEndNode != null || skill.IsRapidAttack;
+
             // Load effect animation
             var effectNode = skillNode["effect"];
             if (effectNode != null)
@@ -495,6 +520,59 @@ namespace HaCreator.MapSimulator.Character.Skills
             animation.ZOrder = GetInt(node, "z");
 
             return animation;
+        }
+
+        private static int ResolveAnimationDuration(WzImageProperty node)
+        {
+            if (node == null)
+                return 0;
+
+            int explicitDuration = GetInt(node, "time");
+            if (explicitDuration > 0)
+                return explicitDuration;
+
+            int duration = 0;
+            foreach (var child in node.WzProperties)
+            {
+                if (!int.TryParse(child.Name, out _))
+                    continue;
+
+                int frameDelay = GetInt(child, "delay");
+                duration += frameDelay > 0 ? frameDelay : 100;
+            }
+
+            return duration;
+        }
+
+        private static int ResolveKeydownRepeatInterval(WzImageProperty node)
+        {
+            if (node == null)
+                return 90;
+
+            int bestDelay = int.MaxValue;
+            int frameCount = 0;
+
+            foreach (var child in node.WzProperties)
+            {
+                if (!int.TryParse(child.Name, out _))
+                    continue;
+
+                frameCount++;
+                int frameDelay = GetInt(child, "delay");
+                if (frameDelay > 0)
+                {
+                    bestDelay = Math.Min(bestDelay, frameDelay);
+                }
+            }
+
+            if (bestDelay != int.MaxValue)
+                return bestDelay;
+
+            int duration = ResolveAnimationDuration(node);
+            if (duration > 0 && frameCount > 0)
+                return Math.Max(1, duration / frameCount);
+
+            return 90;
         }
 
         private void LoadSummonAnimations(SkillData skill, WzImageProperty summonNode)

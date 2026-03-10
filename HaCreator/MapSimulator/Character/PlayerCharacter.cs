@@ -1381,6 +1381,11 @@ namespace HaCreator.MapSimulator.Character
             }
         }
 
+        public bool HasSkillAvatarTransform(int skillId)
+        {
+            return _activeSkillAvatarTransform != null && _activeSkillAvatarTransform.SkillId == skillId;
+        }
+
         /// <summary>
         /// Apply damage to player with knockback
         /// </summary>

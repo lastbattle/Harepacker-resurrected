@@ -430,6 +430,26 @@ namespace HaCreator.MapSimulator.Character.Skills
             return TryCastSkill(skillId, currentTime);
         }
 
+        public void ReleaseHotkeyIfActive(int keyIndex, int currentTime)
+        {
+            if (_preparedSkill?.IsKeydownSkill != true)
+                return;
+
+            int skillId = GetHotkeySkill(keyIndex);
+            if (skillId > 0 && skillId == _preparedSkill.SkillId)
+            {
+                ReleasePreparedSkill(currentTime);
+            }
+        }
+
+        public void ReleaseActiveKeydownSkill(int currentTime)
+        {
+            if (_preparedSkill?.IsKeydownSkill == true)
+            {
+                ReleasePreparedSkill(currentTime);
+            }
+        }
+
         /// <summary>
         /// Check if skill can be cast
         /// </summary>
@@ -459,11 +479,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             if (levelData == null)
                 return false;
 
-            if (_player.MP < levelData.MpCon)
-                return false;
-
-            // Check HP (some skills consume HP)
-            if (_player.HP <= levelData.HpCon)
+            if (!CanAffordSkillCost(levelData))
                 return false;
 
             // Check if already casting
@@ -538,11 +554,20 @@ namespace HaCreator.MapSimulator.Character.Skills
                 FacingRight = _player.FacingRight
             };
 
-            ConsumeSkillResources(skill, levelData, currentTime);
+            ApplySkillCooldown(skill, levelData, currentTime);
             ApplySkillMount(skill, levelData);
-            TriggerSkillAnimation(skill);
+            TriggerSkillAnimation(skill, skill.IsKeydownSkill ? GetPrepareActionName(skill) : null);
             PlayCastSound(skill);
             OnSkillCast?.Invoke(_currentCast);
+
+            if (skill.IsKeydownSkill)
+            {
+                BeginPreparedSkill(skill, level, currentTime);
+                return;
+            }
+
+            if (!TryConsumeSkillResources(levelData))
+                return;
 
             if (skill.IsPrepareSkill)
             {
@@ -553,8 +578,19 @@ namespace HaCreator.MapSimulator.Character.Skills
             ExecuteSkillPayload(skill, level, currentTime);
         }
 
-        private void ConsumeSkillResources(SkillData skill, SkillLevelData levelData, int currentTime)
+        private void ApplySkillCooldown(SkillData skill, SkillLevelData levelData, int currentTime)
         {
+            if (levelData.Cooldown > 0)
+            {
+                _cooldowns[skill.SkillId] = currentTime;
+            }
+        }
+
+        private bool TryConsumeSkillResources(SkillLevelData levelData)
+        {
+            if (levelData == null || !CanAffordSkillCost(levelData))
+                return false;
+
             _player.MP = Math.Max(0, _player.MP - levelData.MpCon);
 
             if (levelData.HpCon > 0)
@@ -562,25 +598,42 @@ namespace HaCreator.MapSimulator.Character.Skills
                 _player.HP = Math.Max(1, _player.HP - levelData.HpCon);
             }
 
-            if (levelData.Cooldown > 0)
-            {
-                _cooldowns[skill.SkillId] = currentTime;
-            }
+            return true;
         }
 
-        private void TriggerSkillAnimation(SkillData skill)
+        private bool CanAffordSkillCost(SkillLevelData levelData)
         {
-            string actionName = string.IsNullOrWhiteSpace(skill.ActionName)
-                ? skill.AttackType switch
-                {
-                    SkillAttackType.Ranged => "shoot1",
-                    SkillAttackType.Magic => "swingO1",
-                    _ => "attack1"
-                }
-                : skill.ActionName;
+            if (levelData == null)
+                return false;
+
+            if (_player.MP < levelData.MpCon)
+                return false;
+
+            return _player.HP > levelData.HpCon;
+        }
+
+        private void TriggerSkillAnimation(SkillData skill, string actionNameOverride = null)
+        {
+            string actionName = ResolveSkillActionName(skill, actionNameOverride);
 
             _player.ApplySkillAvatarTransform(skill.SkillId, actionName);
             _player.TriggerSkillAnimation(actionName);
+        }
+
+        private static string ResolveSkillActionName(SkillData skill, string actionNameOverride = null)
+        {
+            if (!string.IsNullOrWhiteSpace(actionNameOverride))
+                return actionNameOverride;
+
+            if (!string.IsNullOrWhiteSpace(skill?.ActionName))
+                return skill.ActionName;
+
+            return skill?.AttackType switch
+            {
+                SkillAttackType.Ranged => "shoot1",
+                SkillAttackType.Magic => "swingO1",
+                _ => "attack1"
+            };
         }
 
         private void ApplySkillMount(SkillData skill, SkillLevelData levelData)
@@ -701,7 +754,8 @@ namespace HaCreator.MapSimulator.Character.Skills
                 StartTime = currentTime,
                 Duration = durationMs,
                 SkillData = skill,
-                LevelData = levelData
+                LevelData = levelData,
+                IsKeydownSkill = skill.IsKeydownSkill
             };
 
             OnPreparedSkillStarted?.Invoke(_preparedSkill);
@@ -709,6 +763,9 @@ namespace HaCreator.MapSimulator.Character.Skills
 
         private int GetPrepareDuration(SkillData skill, SkillLevelData levelData)
         {
+            if (skill?.PrepareDurationMs > 0)
+                return skill.PrepareDurationMs;
+
             if (levelData == null)
                 return 750;
 
@@ -732,9 +789,104 @@ namespace HaCreator.MapSimulator.Character.Skills
             PreparedSkill prepared = _preparedSkill;
             _preparedSkill = null;
 
+            if (prepared.IsKeydownSkill)
+            {
+                bool hadTransform = _player.HasSkillAvatarTransform(prepared.SkillId);
+                _player.ClearSkillAvatarTransform(prepared.SkillId);
+
+                string endActionName = GetKeydownEndActionName(prepared.SkillData);
+                if (!hadTransform
+                    && !string.IsNullOrWhiteSpace(endActionName)
+                    && _player.IsAlive)
+                {
+                    _player.TriggerSkillAnimation(endActionName);
+                }
+
+                OnPreparedSkillReleased?.Invoke(prepared);
+                return;
+            }
+
             ExecuteSkillPayload(prepared.SkillData, prepared.Level, currentTime);
             _player.ClearSkillAvatarTransform(prepared.SkillId);
             OnPreparedSkillReleased?.Invoke(prepared);
+        }
+
+        private void UpdateKeydownSkill(int currentTime)
+        {
+            if (_preparedSkill?.IsKeydownSkill != true)
+                return;
+
+            PreparedSkill prepared = _preparedSkill;
+            if (!prepared.IsHolding)
+            {
+                if (prepared.Duration > 0 && prepared.Elapsed(currentTime) < prepared.Duration)
+                    return;
+
+                prepared.IsHolding = true;
+                prepared.HoldStartTime = currentTime;
+                prepared.LastRepeatTime = currentTime - GetKeydownRepeatInterval(prepared.SkillData);
+            }
+
+            if (!_player.IsAlive || !_player.CanAttack)
+            {
+                ReleasePreparedSkill(currentTime);
+                return;
+            }
+
+            if (_fieldSkillRestrictionEvaluator != null && !_fieldSkillRestrictionEvaluator(prepared.SkillData))
+            {
+                ReleasePreparedSkill(currentTime);
+                return;
+            }
+
+            int repeatInterval = GetKeydownRepeatInterval(prepared.SkillData);
+            while (_preparedSkill != null && currentTime - prepared.LastRepeatTime >= repeatInterval)
+            {
+                if (!TryConsumeSkillResources(prepared.LevelData))
+                {
+                    ReleasePreparedSkill(currentTime);
+                    return;
+                }
+
+                TriggerSkillAnimation(prepared.SkillData, GetKeydownActionName(prepared.SkillData));
+                ExecuteSkillPayload(prepared.SkillData, prepared.Level, currentTime);
+                prepared.LastRepeatTime += repeatInterval;
+            }
+        }
+
+        private static string GetPrepareActionName(SkillData skill)
+        {
+            if (!string.IsNullOrWhiteSpace(skill?.PrepareActionName))
+                return skill.PrepareActionName;
+
+            return GetKeydownActionName(skill);
+        }
+
+        private static string GetKeydownActionName(SkillData skill)
+        {
+            if (!string.IsNullOrWhiteSpace(skill?.KeydownActionName))
+                return skill.KeydownActionName;
+
+            return ResolveSkillActionName(skill);
+        }
+
+        private static string GetKeydownEndActionName(SkillData skill)
+        {
+            if (!string.IsNullOrWhiteSpace(skill?.KeydownEndActionName))
+                return skill.KeydownEndActionName;
+
+            return null;
+        }
+
+        private static int GetKeydownRepeatInterval(SkillData skill)
+        {
+            if (skill?.KeydownRepeatIntervalMs > 0)
+                return skill.KeydownRepeatIntervalMs;
+
+            if (skill?.KeydownDurationMs > 0)
+                return skill.KeydownDurationMs;
+
+            return 90;
         }
 
         private void ExecuteMovementSkill(SkillData skill, int level)
@@ -2240,7 +2392,11 @@ namespace HaCreator.MapSimulator.Character.Skills
                 }
             }
 
-            if (_preparedSkill != null && _preparedSkill.Progress(currentTime) >= 1f)
+            if (_preparedSkill?.IsKeydownSkill == true)
+            {
+                UpdateKeydownSkill(currentTime);
+            }
+            else if (_preparedSkill != null && _preparedSkill.Progress(currentTime) >= 1f)
             {
                 ReleasePreparedSkill(currentTime);
             }

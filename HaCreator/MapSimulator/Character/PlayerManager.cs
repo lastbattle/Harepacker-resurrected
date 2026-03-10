@@ -460,6 +460,7 @@ namespace HaCreator.MapSimulator.Character
             // If player is dead, skip all input processing and combat
             if (!Player.IsAlive)
             {
+                Skills?.ReleaseActiveKeydownSkill(currentTime);
                 Player.ClearInput();
                 return;
             }
@@ -507,6 +508,11 @@ namespace HaCreator.MapSimulator.Character
                         {
                             Skills.TryCastHotkey(i, currentTime);
                         }
+
+                        if (inputState.SkillsReleased[i])
+                        {
+                            Skills.ReleaseHotkeyIfActive(i, currentTime);
+                        }
                     }
 
                     // Function key hotkeys (F1-F12, slots 8-19)
@@ -515,6 +521,11 @@ namespace HaCreator.MapSimulator.Character
                         if (inputState.FunctionSlots[i])
                         {
                             Skills.TryCastHotkey(SkillManager.FUNCTION_SLOT_OFFSET + i, currentTime);
+                        }
+
+                        if (inputState.FunctionSlotsReleased[i])
+                        {
+                            Skills.ReleaseHotkeyIfActive(SkillManager.FUNCTION_SLOT_OFFSET + i, currentTime);
                         }
                     }
 
@@ -525,11 +536,17 @@ namespace HaCreator.MapSimulator.Character
                         {
                             Skills.TryCastHotkey(SkillManager.CTRL_SLOT_OFFSET + i, currentTime);
                         }
+
+                        if (inputState.CtrlSlotsReleased[i])
+                        {
+                            Skills.ReleaseHotkeyIfActive(SkillManager.CTRL_SLOT_OFFSET + i, currentTime);
+                        }
                     }
                 }
             }
             else
             {
+                Skills?.ReleaseActiveKeydownSkill(currentTime);
                 Player.ClearInput();
             }
 

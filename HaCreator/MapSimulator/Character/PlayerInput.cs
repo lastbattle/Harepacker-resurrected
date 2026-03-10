@@ -115,15 +115,18 @@ namespace HaCreator.MapSimulator.Character
 
         // Skill hotkeys (8 primary slots)
         public bool[] Skills;
+        public bool[] SkillsReleased;
 
         // Quick slots for items (8 slots)
         public bool[] QuickSlots;
 
         // Function key slots (12 slots - F1-F12)
         public bool[] FunctionSlots;
+        public bool[] FunctionSlotsReleased;
 
         // Ctrl+Number slots (8 secondary skill slots)
         public bool[] CtrlSlots;
+        public bool[] CtrlSlotsReleased;
 
         public bool InventoryPressed;
         public bool EquipPressed;
@@ -303,9 +306,12 @@ namespace HaCreator.MapSimulator.Character
                 InteractPressed = IsPressed(InputAction.Interact),
 
                 Skills = new bool[8],
+                SkillsReleased = new bool[8],
                 QuickSlots = new bool[8],
                 FunctionSlots = new bool[12],
+                FunctionSlotsReleased = new bool[12],
                 CtrlSlots = new bool[8],
+                CtrlSlotsReleased = new bool[8],
 
                 InventoryPressed = IsPressed(InputAction.ToggleInventory),
                 EquipPressed = IsPressed(InputAction.ToggleEquip),
@@ -322,6 +328,7 @@ namespace HaCreator.MapSimulator.Character
             for (int i = 0; i < 8; i++)
             {
                 state.Skills[i] = IsPressed(InputAction.Skill1 + i);
+                state.SkillsReleased[i] = IsReleased(InputAction.Skill1 + i);
             }
 
             // Quick slots for items (8 slots)
@@ -334,11 +341,13 @@ namespace HaCreator.MapSimulator.Character
             for (int i = 0; i < 12; i++)
             {
                 state.FunctionSlots[i] = IsPressed(InputAction.FunctionSlot1 + i);
+                state.FunctionSlotsReleased[i] = IsReleased(InputAction.FunctionSlot1 + i);
             }
 
             // Ctrl+Number secondary skill slots (8 slots)
             // These check for Ctrl modifier + number key
             bool ctrlHeld = _currentKeyboard.IsKeyDown(Keys.LeftControl) || _currentKeyboard.IsKeyDown(Keys.RightControl);
+            bool prevCtrlHeld = _previousKeyboard.IsKeyDown(Keys.LeftControl) || _previousKeyboard.IsKeyDown(Keys.RightControl);
             if (ctrlHeld)
             {
                 Keys[] ctrlKeys = { Keys.D1, Keys.D2, Keys.D3, Keys.D4, Keys.D5, Keys.D6, Keys.D7, Keys.D8 };
@@ -346,6 +355,14 @@ namespace HaCreator.MapSimulator.Character
                 {
                     state.CtrlSlots[i] = _currentKeyboard.IsKeyDown(ctrlKeys[i]) && !_previousKeyboard.IsKeyDown(ctrlKeys[i]);
                 }
+            }
+
+            Keys[] ctrlReleaseKeys = { Keys.D1, Keys.D2, Keys.D3, Keys.D4, Keys.D5, Keys.D6, Keys.D7, Keys.D8 };
+            for (int i = 0; i < 8; i++)
+            {
+                bool currentComboHeld = ctrlHeld && _currentKeyboard.IsKeyDown(ctrlReleaseKeys[i]);
+                bool previousComboHeld = prevCtrlHeld && _previousKeyboard.IsKeyDown(ctrlReleaseKeys[i]);
+                state.CtrlSlotsReleased[i] = !currentComboHeld && previousComboHeld;
             }
 
             return state;
