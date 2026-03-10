@@ -187,12 +187,25 @@ namespace HaCreator.MapSimulator.Fields
                 return foothold;
             }
 
-            foothold.FirstDot.X = (int)MathF.Round(leftX);
-            foothold.FirstDot.Y = (int)MathF.Round(y);
-            foothold.SecondDot.X = (int)MathF.Round(rightX);
-            foothold.SecondDot.Y = (int)MathF.Round(y);
+            MoveSyntheticAnchor(foothold.FirstDot, leftX, y);
+            MoveSyntheticAnchor(foothold.SecondDot, rightX, y);
             foothold.num = cacheKey;
             return foothold;
+        }
+
+        private static void MoveSyntheticAnchor(MapleDot dot, float x, float y)
+        {
+            int roundedX = (int)MathF.Round(x);
+            int roundedY = (int)MathF.Round(y);
+
+            if (dot.Board == null)
+            {
+                dot.MoveSilent(roundedX, roundedY);
+                return;
+            }
+
+            dot.X = roundedX;
+            dot.Y = roundedY;
         }
 
         private static void DetachSyntheticFoothold(CVecCtrl physics)
