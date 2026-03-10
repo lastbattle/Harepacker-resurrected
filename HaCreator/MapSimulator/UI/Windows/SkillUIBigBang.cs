@@ -786,10 +786,12 @@ namespace HaCreator.MapSimulator.UI
 
             int tooltipX = _lastMousePosition.X + TOOLTIP_OFFSET_X;
             int tooltipY = _lastMousePosition.Y + 20;
+            int tooltipFrameIndex = 1;
 
             if (tooltipX + tooltipWidth > renderWidth - TOOLTIP_PADDING)
             {
                 tooltipX = _lastMousePosition.X - tooltipWidth - TOOLTIP_OFFSET_X;
+                tooltipFrameIndex = 0;
             }
 
             if (tooltipX < TOOLTIP_PADDING)
@@ -798,10 +800,11 @@ namespace HaCreator.MapSimulator.UI
             if (tooltipY + tooltipHeight > renderHeight - TOOLTIP_PADDING)
             {
                 tooltipY = Math.Max(TOOLTIP_PADDING, _lastMousePosition.Y - tooltipHeight + TOOLTIP_OFFSET_Y);
+                tooltipFrameIndex = 2;
             }
 
             Rectangle backgroundRect = new Rectangle(tooltipX, tooltipY, tooltipWidth, tooltipHeight);
-            DrawTooltipBackground(sprite, backgroundRect);
+            DrawTooltipBackground(sprite, backgroundRect, tooltipFrameIndex);
 
             int titleX = tooltipX + TOOLTIP_PADDING;
             int titleY = tooltipY + TOOLTIP_PADDING;
@@ -875,11 +878,22 @@ namespace HaCreator.MapSimulator.UI
 
         private int ResolveTooltipWidth()
         {
-            return TOOLTIP_FALLBACK_WIDTH;
+            int textureWidth = _tooltipFrames[1]?.Width ?? 0;
+            return textureWidth > 0 ? textureWidth : TOOLTIP_FALLBACK_WIDTH;
         }
 
-        private void DrawTooltipBackground(SpriteBatch sprite, Rectangle rect)
+        private void DrawTooltipBackground(SpriteBatch sprite, Rectangle rect, int tooltipFrameIndex)
         {
+            Texture2D tooltipFrame = tooltipFrameIndex >= 0 && tooltipFrameIndex < _tooltipFrames.Length
+                ? _tooltipFrames[tooltipFrameIndex]
+                : null;
+
+            if (tooltipFrame != null)
+            {
+                sprite.Draw(tooltipFrame, rect, Color.White);
+                return;
+            }
+
             sprite.Draw(_debugPlaceholder, rect, TOOLTIP_BACKGROUND_COLOR);
             DrawTooltipBorder(sprite, rect);
         }
