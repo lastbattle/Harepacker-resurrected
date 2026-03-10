@@ -30,6 +30,7 @@ namespace HaCreator.MapSimulator.UI
         private const int TOOLTIP_SECTION_GAP = 6;
         private const int TOOLTIP_OFFSET_X = 12;
         private const int TOOLTIP_OFFSET_Y = -4;
+        private const float COOLDOWN_TEXT_SCALE = 0.7f;
 
         // Bar types for switching between different hotkey groups
         public const int BAR_PRIMARY = 0;    // Skill1-8 (slots 0-7)
@@ -265,26 +266,18 @@ namespace HaCreator.MapSimulator.UI
                     }
 
                     // Draw cooldown overlay if on cooldown
-                    if (_skillManager.IsOnCooldown(skillId, TickCount))
+                    if (TryGetCooldownVisualState(skillId, TickCount, out int cooldownFrameIndex, out string remainingText))
                     {
-                        int remaining = _skillManager.GetCooldownRemaining(skillId, TickCount);
-                        var skill = _skillLoader?.LoadSkill(skillId);
-                        int level = _skillManager.GetSkillLevel(skillId);
-                        int total = skill?.GetLevel(level)?.Cooldown ?? 1000;
+                        DrawCooldownMask(sprite, slotX, slotY, cooldownFrameIndex);
 
-                        // Calculate cooldown progress (0-1)
-                        float progress = Math.Clamp(remaining / (float)total, 0f, 1f);
-                        DrawCooldownMask(sprite, slotX, slotY, progress);
-
-                        if (_font != null)
+                        if (_font != null && !string.IsNullOrWhiteSpace(remainingText))
                         {
-                            string remainingText = Math.Max(1, (int)Math.Ceiling(remaining / 1000f)).ToString();
-                            Vector2 textSize = _font.MeasureString(remainingText);
+                            Vector2 textSize = _font.MeasureString(remainingText) * COOLDOWN_TEXT_SCALE;
                             Vector2 textPosition = new Vector2(
-                                slotX + (SLOT_SIZE - textSize.X) * 0.5f,
-                                slotY + (SLOT_SIZE - textSize.Y) * 0.5f);
+                                slotX + SLOT_SIZE - textSize.X - 2f,
+                                slotY + SLOT_SIZE - textSize.Y - 1f);
 
-                            DrawTextWithShadow(sprite, remainingText, textPosition, Color.White, Color.Black);
+                            DrawTextWithShadow(sprite, remainingText, textPosition, Color.White, Color.Black, COOLDOWN_TEXT_SCALE);
                         }
                     }
                 }
@@ -358,10 +351,10 @@ namespace HaCreator.MapSimulator.UI
             return null;
         }
 
-        private void DrawTextWithShadow(SpriteBatch sprite, string text, Vector2 position, Color color, Color shadowColor)
+        private void DrawTextWithShadow(SpriteBatch sprite, string text, Vector2 position, Color color, Color shadowColor, float scale = 1.0f)
         {
-            sprite.DrawString(_font, text, position + new Vector2(1, 1), shadowColor);
-            sprite.DrawString(_font, text, position, color);
+            sprite.DrawString(_font, text, position + Vector2.One, shadowColor, 0f, Vector2.Zero, scale, SpriteEffects.None, 0f);
+            sprite.DrawString(_font, text, position, color, 0f, Vector2.Zero, scale, SpriteEffects.None, 0f);
         }
 
         private void DrawHoveredSkillTooltip(SpriteBatch sprite, int renderWidth, int renderHeight)
@@ -460,11 +453,44 @@ namespace HaCreator.MapSimulator.UI
             }
         }
 
-        private void DrawCooldownMask(SpriteBatch sprite, int slotX, int slotY, float remainingProgress)
+        private bool TryGetCooldownVisualState(int skillId, int currentTime, out int frameIndex, out string remainingText)
+        {
+            frameIndex = 15;
+            remainingText = string.Empty;
+
+            if (_skillManager == null || !_skillManager.IsOnCooldown(skillId, currentTime))
+            {
+                return false;
+            }
+
+            int remainingMs = Math.Max(0, _skillManager.GetCooldownRemaining(skillId, currentTime));
+            if (remainingMs <= 0)
+            {
+                return false;
+            }
+
+            SkillData skill = _skillLoader?.LoadSkill(skillId);
+            int level = _skillManager.GetSkillLevel(skillId);
+            int totalMs = Math.Max(0, skill?.GetLevel(level)?.Cooldown ?? 0);
+            if (totalMs <= 0)
+            {
+                return false;
+            }
+
+            // The client advances the quick-slot CoolTime masks in 15 stepped states (0..14)
+            // and uses frame 15 as the cleared surface when nothing is cooling down.
+            int totalSeconds = Math.Max(1, (int)Math.Ceiling(totalMs / 1000f));
+            int remainingSeconds = Math.Max(0, remainingMs / 1000);
+            int elapsedSeconds = Math.Clamp(totalSeconds - remainingSeconds, 0, totalSeconds);
+            frameIndex = Math.Clamp((14 * elapsedSeconds) / totalSeconds, 0, 14);
+            remainingText = Math.Max(1, (int)Math.Ceiling(remainingMs / 1000f)).ToString();
+            return true;
+        }
+
+        private void DrawCooldownMask(SpriteBatch sprite, int slotX, int slotY, int frameIndex)
         {
             if (_cooldownMaskTextures.Length > 0)
             {
-                int frameIndex = (int)Math.Round((1f - remainingProgress) * (_cooldownMaskTextures.Length - 1));
                 frameIndex = Math.Clamp(frameIndex, 0, _cooldownMaskTextures.Length - 1);
                 Texture2D maskTexture = _cooldownMaskTextures[frameIndex];
                 if (maskTexture != null)
@@ -474,6 +500,12 @@ namespace HaCreator.MapSimulator.UI
                 }
             }
 
+            if (frameIndex >= 15)
+            {
+                return;
+            }
+
+            float remainingProgress = 1f - (frameIndex / 14f);
             int overlayHeight = (int)(SLOT_SIZE * remainingProgress);
             sprite.Draw(_cooldownOverlayTexture,
                 new Rectangle(slotX, slotY + SLOT_SIZE - overlayHeight, SLOT_SIZE, overlayHeight),
