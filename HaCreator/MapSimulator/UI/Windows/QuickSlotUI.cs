@@ -246,6 +246,17 @@ namespace HaCreator.MapSimulator.UI
                         sprite.Draw(_cooldownOverlayTexture,
                             new Rectangle(slotX, slotY + SLOT_SIZE - overlayHeight, SLOT_SIZE, overlayHeight),
                             Color.White);
+
+                        if (_font != null)
+                        {
+                            string remainingText = Math.Max(1, (int)Math.Ceiling(remaining / 1000f)).ToString();
+                            Vector2 textSize = _font.MeasureString(remainingText);
+                            Vector2 textPosition = new Vector2(
+                                slotX + (SLOT_SIZE - textSize.X) * 0.5f,
+                                slotY + (SLOT_SIZE - textSize.Y) * 0.5f);
+
+                            DrawTextWithShadow(sprite, remainingText, textPosition, Color.White, Color.Black);
+                        }
                     }
                 }
 
@@ -307,6 +318,12 @@ namespace HaCreator.MapSimulator.UI
             }
 
             return null;
+        }
+
+        private void DrawTextWithShadow(SpriteBatch sprite, string text, Vector2 position, Color color, Color shadowColor)
+        {
+            sprite.DrawString(_font, text, position + new Vector2(1, 1), shadowColor);
+            sprite.DrawString(_font, text, position, color);
         }
         #endregion
 
