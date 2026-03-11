@@ -1,5 +1,6 @@
 using HaCreator.MapSimulator.Fields;
 using MapleLib.WzLib.WzStructure;
+using MapleLib.WzLib.WzStructure.Data;
 
 namespace UnitTest_MapSimulator
 {
@@ -15,7 +16,9 @@ namespace UnitTest_MapSimulator
                 decInterval = 15000,
                 allowedItem = new List<int> { 2022539, 2022540, 2022541 },
                 protectItem = new List<int> { 1102109 },
-                lvLimit = 30
+                lvLimit = 30,
+                fieldLimit = (1L << (int)FieldLimitType.Unable_To_Migrate)
+                             | (1L << (int)FieldLimitType.Unable_To_Use_Mystic_Door)
             };
 
             FieldRuleRuntime runtime = new FieldRuleRuntime(mapInfo);
@@ -25,6 +28,8 @@ namespace UnitTest_MapSimulator
             Assert.Contains(messages, message => message.Contains("Field timer started: 1:30."));
             Assert.Contains(messages, message => message.Contains("Environmental damage: 50 HP every 15s."));
             Assert.Contains(messages, message => message.Contains("Allowed-item rule active (3 item(s))"));
+            Assert.Contains(messages, message => message.Contains("This map forbids map transfer."));
+            Assert.Contains(messages, message => message.Contains("Mystic Door is disabled in this map."));
             Assert.Contains(messages, message => message.Contains("lvLimit=30"));
         }
 

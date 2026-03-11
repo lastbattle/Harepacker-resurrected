@@ -16,6 +16,7 @@ namespace HaCreator.MapSimulator.Fields
         private readonly int _transferMapId;
         private readonly int _decHp;
         private readonly int _decIntervalMs;
+        private readonly long _fieldLimit;
         private readonly List<int> _allowedItems;
         private readonly List<int> _protectItems;
         private readonly int? _levelLimit;
@@ -36,6 +37,7 @@ namespace HaCreator.MapSimulator.Fields
             _transferMapId = ResolveTransferMapId(mapInfo);
             _decHp = Math.Max(0, mapInfo?.decHP ?? 0);
             _decIntervalMs = NormalizeDecIntervalMs(mapInfo?.decInterval);
+            _fieldLimit = mapInfo?.fieldLimit ?? 0;
             _allowedItems = mapInfo?.allowedItem != null ? new List<int>(mapInfo.allowedItem) : new List<int>();
             _protectItems = mapInfo?.protectItem != null ? new List<int>(mapInfo.protectItem) : new List<int>();
             _levelLimit = mapInfo?.lvLimit;
@@ -50,6 +52,8 @@ namespace HaCreator.MapSimulator.Fields
             _decHp > 0 ||
             _allowedItems.Count > 0 ||
             _levelLimit.HasValue ||
+            FieldInteractionRestrictionEvaluator.GetTransferRestrictionMessage(_fieldLimit) != null ||
+            FieldSkillRestrictionEvaluator.HasFieldEntryNotice(_fieldLimit) ||
             _moveLimit.HasValue ||
             _partyOnly ||
             _expeditionOnly ||
@@ -151,6 +155,18 @@ namespace HaCreator.MapSimulator.Fields
             if (_allowedItems.Count > 0)
             {
                 messages.Add($"Allowed-item rule active ({_allowedItems.Count} item(s)): {FormatItemPreview(_allowedItems)}.");
+            }
+
+            string transferRestrictionNotice = FieldInteractionRestrictionEvaluator.GetTransferRestrictionMessage(_fieldLimit);
+            if (!string.IsNullOrWhiteSpace(transferRestrictionNotice))
+            {
+                messages.Add(transferRestrictionNotice.Replace("field", "map"));
+            }
+
+            string skillRestrictionNotice = FieldSkillRestrictionEvaluator.GetFieldEntryNotice(_fieldLimit);
+            if (!string.IsNullOrWhiteSpace(skillRestrictionNotice))
+            {
+                messages.Add(skillRestrictionNotice);
             }
 
             string partialRestrictionNotice = BuildPartialRestrictionNotice();

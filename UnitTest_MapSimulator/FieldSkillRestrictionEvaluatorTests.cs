@@ -59,5 +59,16 @@ namespace UnitTest_MapSimulator
 
             Assert.Equal("Only movement skills can be used in this field.", message);
         }
+
+        [Fact]
+        public void GetRestrictionMessage_ReturnsMysticDoorMessageWhenFieldBlocksDoor()
+        {
+            long fieldLimit = 1L << (int)FieldLimitType.Unable_To_Use_Mystic_Door;
+            var skill = new SkillData { SkillId = 2311002, Name = "Mystic Door" };
+
+            string message = FieldSkillRestrictionEvaluator.GetRestrictionMessage(fieldLimit, skill);
+
+            Assert.Equal("Mystic Door cannot be used in this field.", message);
+        }
     }
 }

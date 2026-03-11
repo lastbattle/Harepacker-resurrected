@@ -4044,6 +4044,7 @@ namespace HaCreator.MapSimulator
             var playerPos = _playerManager.GetPlayerPosition();
             float playerX = playerPos.X;
             float playerY = playerPos.Y;
+            long fieldLimit = _mapBoard?.MapInfo?.fieldLimit ?? 0;
 
             if (_gameState.IsPortalOnCooldown(currentTime))
                 return false;
@@ -4051,6 +4052,16 @@ namespace HaCreator.MapSimulator
             if (_temporaryPortalField != null
                 && _temporaryPortalField.TryUseLinkedPortal(_mapBoard.MapInfo.id, playerX, playerY, out var temporaryPortalDestination))
             {
+                if (temporaryPortalDestination.MapId != _mapBoard.MapInfo.id)
+                {
+                    string transferRestrictionMessage = FieldInteractionRestrictionEvaluator.GetTransferRestrictionMessage(fieldLimit);
+                    if (!string.IsNullOrWhiteSpace(transferRestrictionMessage))
+                    {
+                        ShowFieldRestrictionMessage(transferRestrictionMessage);
+                        return true;
+                    }
+                }
+
                 PlayPortalSE();
                 _playerManager?.ForceStand();
 
@@ -4108,6 +4119,13 @@ namespace HaCreator.MapSimulator
             // If a visible portal is found, teleport to it
             if (nearestPortal != null)
             {
+                string transferRestrictionMessage = FieldInteractionRestrictionEvaluator.GetTransferRestrictionMessage(fieldLimit);
+                if (!string.IsNullOrWhiteSpace(transferRestrictionMessage))
+                {
+                    ShowFieldRestrictionMessage(transferRestrictionMessage);
+                    return true;
+                }
+
                 PlayPortalSE();
                 _playerManager?.ForceStand();
                 _gameState.PendingMapChange = true;
@@ -4147,6 +4165,13 @@ namespace HaCreator.MapSimulator
             // If a hidden portal is found, teleport to it
             if (nearestHiddenPortal != null)
             {
+                string transferRestrictionMessage = FieldInteractionRestrictionEvaluator.GetTransferRestrictionMessage(fieldLimit);
+                if (!string.IsNullOrWhiteSpace(transferRestrictionMessage))
+                {
+                    ShowFieldRestrictionMessage(transferRestrictionMessage);
+                    return true;
+                }
+
                 PlayPortalSE();
                 _playerManager?.ForceStand();
                 _gameState.PendingMapChange = true;
@@ -5051,6 +5076,11 @@ namespace HaCreator.MapSimulator
         }
 
         private void HandleFieldSkillCastRejected(SkillData skill, string message)
+        {
+            ShowFieldRestrictionMessage(message);
+        }
+
+        private void ShowFieldRestrictionMessage(string message)
         {
             if (string.IsNullOrWhiteSpace(message))
                 return;

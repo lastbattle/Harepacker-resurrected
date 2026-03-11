@@ -18,6 +18,9 @@ namespace HaCreator.MapSimulator.Fields
             if (skill == null)
                 return "Skill data is unavailable.";
 
+            if (FieldLimitType.Unable_To_Use_Mystic_Door.Check(fieldLimit) && IsMysticDoorSkill(skill))
+                return "Mystic Door cannot be used in this field.";
+
             if (FieldLimitType.Unable_To_Use_Skill.Check(fieldLimit))
                 return "This field forbids skill usage.";
 
@@ -25,6 +28,33 @@ namespace HaCreator.MapSimulator.Fields
                 return "Only movement skills can be used in this field.";
 
             return null;
+        }
+
+        public static bool HasFieldEntryNotice(long fieldLimit)
+        {
+            return FieldLimitType.Unable_To_Use_Skill.Check(fieldLimit)
+                   || FieldLimitType.Move_Skill_Only.Check(fieldLimit)
+                   || FieldLimitType.Unable_To_Use_Mystic_Door.Check(fieldLimit);
+        }
+
+        public static string GetFieldEntryNotice(long fieldLimit)
+        {
+            if (FieldLimitType.Unable_To_Use_Skill.Check(fieldLimit))
+                return "All skill usage is disabled in this map.";
+
+            if (FieldLimitType.Move_Skill_Only.Check(fieldLimit))
+                return "Only movement skills can be used in this map.";
+
+            if (FieldLimitType.Unable_To_Use_Mystic_Door.Check(fieldLimit))
+                return "Mystic Door is disabled in this map.";
+
+            return null;
+        }
+
+        private static bool IsMysticDoorSkill(SkillData skill)
+        {
+            return skill?.SkillId == 2311002
+                   || string.Equals(skill?.Name, "Mystic Door", System.StringComparison.OrdinalIgnoreCase);
         }
     }
 }
