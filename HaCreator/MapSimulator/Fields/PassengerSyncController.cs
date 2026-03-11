@@ -81,19 +81,12 @@ namespace HaCreator.MapSimulator.Fields
                 return false;
             }
 
-            int platformId = dynamicFootholds.GetPlatformAtPoint(player.X, player.Y, tolerance: 12f);
-            if (platformId < 0)
+            if (!TryResolveDynamicPlatform(dynamicFootholds, player.Physics.CurrentFoothold, player.X, player.Y, tolerance: 12f, out DynamicPlatform platform))
             {
                 return false;
             }
 
-            DynamicPlatform platform = dynamicFootholds.GetPlatform(platformId);
-            if (platform == null || !platform.IsActive || !platform.IsVisible)
-            {
-                return false;
-            }
-
-            FootholdLine foothold = GetOrCreateSyntheticFoothold(_dynamicPlatformFootholds, SyntheticFootholdBaseId - platformId, platform.X, platform.X + platform.Width, platform.Y);
+            FootholdLine foothold = GetOrCreateSyntheticFoothold(_dynamicPlatformFootholds, SyntheticFootholdBaseId - platform.Id, platform.X, platform.X + platform.Width, platform.Y);
             player.SetPosition(player.X + platform.DeltaX, platform.Y);
             player.Physics.LandOnFoothold(foothold);
             player.Physics.VelocityY = 0;
@@ -112,7 +105,8 @@ namespace HaCreator.MapSimulator.Fields
                 return false;
             }
 
-            if (!transportField.IsOnShipDeck(player.X, player.Y, deckY, deckRight - deckLeft))
+            var shipDelta = transportField.GetShipDelta();
+            if (!IsPassengerOnTransportDeck(player.Physics.CurrentFoothold, player.X, player.Y, shipDelta.X, shipDelta.Y, transportField, deckY, deckRight - deckLeft))
             {
                 return false;
             }
@@ -125,7 +119,6 @@ namespace HaCreator.MapSimulator.Fields
                 y: deckY,
                 existing: _transportDeckFoothold);
 
-            var shipDelta = transportField.GetShipDelta();
             player.SetPosition(player.X + shipDelta.X, deckY);
             player.Physics.LandOnFoothold(_transportDeckFoothold);
             player.Physics.VelocityY = 0;
@@ -139,19 +132,12 @@ namespace HaCreator.MapSimulator.Fields
                 return false;
             }
 
-            int platformId = dynamicFootholds.GetPlatformAtPoint(movement.X, movement.Y, tolerance: 10f);
-            if (platformId < 0)
+            if (!TryResolveDynamicPlatform(dynamicFootholds, movement.CurrentFoothold, movement.X, movement.Y, tolerance: 10f, out DynamicPlatform platform))
             {
                 return false;
             }
 
-            DynamicPlatform platform = dynamicFootholds.GetPlatform(platformId);
-            if (platform == null || !platform.IsActive || !platform.IsVisible)
-            {
-                return false;
-            }
-
-            FootholdLine foothold = GetOrCreateSyntheticFoothold(_dynamicPlatformFootholds, SyntheticFootholdBaseId - platformId, platform.X, platform.X + platform.Width, platform.Y);
+            FootholdLine foothold = GetOrCreateSyntheticFoothold(_dynamicPlatformFootholds, SyntheticFootholdBaseId - platform.Id, platform.X, platform.X + platform.Width, platform.Y);
             movement.X += platform.DeltaX;
             movement.Y = platform.Y;
             movement.CurrentFoothold = foothold;
@@ -178,7 +164,8 @@ namespace HaCreator.MapSimulator.Fields
                 return false;
             }
 
-            if (!transportField.IsOnShipDeck(movement.X, movement.Y, deckY, deckRight - deckLeft))
+            var shipDelta = transportField.GetShipDelta();
+            if (!IsPassengerOnTransportDeck(movement.CurrentFoothold, movement.X, movement.Y, shipDelta.X, shipDelta.Y, transportField, deckY, deckRight - deckLeft))
             {
                 return false;
             }
@@ -191,7 +178,6 @@ namespace HaCreator.MapSimulator.Fields
                 y: deckY,
                 existing: _transportDeckFoothold);
 
-            var shipDelta = transportField.GetShipDelta();
             movement.X += shipDelta.X;
             movement.Y = deckY;
             movement.CurrentFoothold = _transportDeckFoothold;
@@ -220,6 +206,85 @@ namespace HaCreator.MapSimulator.Fields
             return movement != null
                    && movement.MoveType != MobMoveType.Fly
                    && movement.VelocityY >= -20f;
+        }
+
+        private static bool TryResolveDynamicPlatform(
+            DynamicFootholdSystem dynamicFootholds,
+            FootholdLine currentFoothold,
+            float x,
+            float y,
+            float tolerance,
+            out DynamicPlatform platform)
+        {
+            platform = null;
+
+            if (TryGetDynamicPlatformId(currentFoothold, out int attachedPlatformId))
+            {
+                platform = dynamicFootholds.GetPlatform(attachedPlatformId);
+                if (IsValidPlatform(platform)
+                    && IsPointOnPlatform(x + platform.DeltaX, y + platform.DeltaY, platform, tolerance))
+                {
+                    return true;
+                }
+            }
+
+            int platformId = dynamicFootholds.GetPlatformAtPoint(x, y, tolerance);
+            if (platformId < 0)
+            {
+                return false;
+            }
+
+            platform = dynamicFootholds.GetPlatform(platformId);
+            return IsValidPlatform(platform);
+        }
+
+        private static bool IsValidPlatform(DynamicPlatform platform)
+        {
+            return platform != null && platform.IsActive && platform.IsVisible;
+        }
+
+        private static bool IsPointOnPlatform(float x, float y, DynamicPlatform platform, float tolerance)
+        {
+            float platformLeft = platform.X;
+            float platformRight = platform.X + platform.Width;
+            return x >= platformLeft && x <= platformRight
+                   && y >= platform.Y - tolerance && y <= platform.Y + tolerance;
+        }
+
+        private static bool TryGetDynamicPlatformId(FootholdLine foothold, out int platformId)
+        {
+            platformId = -1;
+            if (foothold == null)
+            {
+                return false;
+            }
+
+            int cacheKey = foothold.num;
+            if (cacheKey > SyntheticFootholdBaseId || cacheKey == TransportDeckFootholdId)
+            {
+                return false;
+            }
+
+            platformId = SyntheticFootholdBaseId - cacheKey;
+            return platformId >= 0;
+        }
+
+        private static bool IsPassengerOnTransportDeck(
+            FootholdLine currentFoothold,
+            float x,
+            float y,
+            float deltaX,
+            float deltaY,
+            TransportationField transportField,
+            float deckY,
+            float deckWidth)
+        {
+            if (currentFoothold?.num == TransportDeckFootholdId)
+            {
+                return transportField.IsOnShipDeck(x + deltaX, y + deltaY, deckY, deckWidth);
+            }
+
+            return transportField.IsOnShipDeck(x, y, deckY, deckWidth);
         }
 
         private static FootholdLine GetOrCreateSyntheticFoothold(
