@@ -65,6 +65,12 @@ It does three things that the old notes did not do well:
 - `CUser::UpdateMoreWildEffect` at `0x8fb4c0`
 - `CUser::PetAutoSpeaking` at `0x8deb10`
 - `CVecCtrl::CollisionDetectFloat` at `0x994740`
+- `CMovePath::IsTimeForFlush` at `0x666870`
+- `CMovePath::MakeMovePath` at `0x667c90`
+- `CMovePath::Flush` at `0x668160`
+- `CMovePath::Encode` at `0x666e20`
+- `CMovePath::Decode` at `0x667920`
+- `CMovePath::OnMovePacket` at `0x6683f0`
 - `CPortalList::FindPortal_Hidden` at `0x6ab5d0`
 - `CMob::DoAttack` at `0x6504d0`
 - `CMob::OnNextAttack` at `0x6528a0`
@@ -131,12 +137,18 @@ Notes:
 ### 3. Physics and movement parity
 
 - `CVecCtrl::CollisionDetectFloat` at `0x994740`
+- `CMovePath::IsTimeForFlush` at `0x666870`
+- `CMovePath::MakeMovePath` at `0x667c90`
+- `CMovePath::Flush` at `0x668160`
+- `CMovePath::Encode` at `0x666e20`
+- `CMovePath::Decode` at `0x667920`
+- `CMovePath::OnMovePacket` at `0x6683f0`
 - `CUser::SetMoveAction` at `0x8df540`
 - `CUserLocal::SetMoveAction` at `0x903ce0`
 - `CUserLocal::Update` at `0x937330`
 
 Notes:
-`CVecCtrl::CollisionDetectFloat` is the strongest resolved client seam for current float/swim/fly collision parity work. `CUserLocal::Update` also shows direct branching for flying-skill action state and rush/fall/teleport follow-up behavior.
+`CVecCtrl::CollisionDetectFloat` is the strongest resolved client seam for float/swim/fly collision parity work. The `CMovePath::*` seams now anchor gather-duration thresholds, grounded flush gating, tail-duration stamping, local encode/decode, and playback timing, while `CUserLocal::Update` still shows the higher-level action-state branches that feed those movement packets.
 
 ### 4. Mob combat and encounter parity
 
@@ -268,7 +280,7 @@ This is no longer a blank area, but a refinement area.
 | Implemented | Ladder / rope lookup | `CVecCtrl` now owns the ladder/rope lookup seam and resolves ladder metadata for grab/re-grab paths instead of exposing a stub helper | Core climb behavior now routes through the same vector-controller seam the client uses | `CVecCtrl.cs`, `PlayerCharacter.SetLadderLookup` (`CUserLocal::SetMoveAction`, `CUser::SetMoveAction`) |
 | Implemented | Float collision | `CVecCtrl::CollisionDetectFloat` now uses the configured foothold lookup plus saved float-state crossing checks to land on footholds during swim/fly motion instead of carrying a TODO block | Swim/fly landing and platform-contact behavior now runs inside the vector controller instead of a partial fallback path | `CVecCtrl.cs` (`CVecCtrl::CollisionDetectFloat`) |
 | Implemented | Floating-map parity | The player runtime now carries both `fly` and `needSkillForFly` map attributes through map init/reconnect, preserves the skill gate on buff start/end, and keeps flying maps on a true no-sink float branch instead of reusing swim-style idle drift | Free-fly maps now hover like the client while skill-gated flying maps only enter float control when the active flight buff is actually live | `MapSimulator.cs`, `PlayerManager.cs`, `PlayerCharacter`, `CVecCtrl`, `SkillManager.cs` (`CUserLocal::Update`, `info/fly`, `info/needSkillForFly`) |
-| Partial | Movement path parity | The player runtime now seeds and timestamps `CMovePath`-style elements from the live game clock, preserves duration/facing in queued path entries, and exposes passive-position plus flushed move-path snapshots from `PlayerCharacter`, but encode/decode and broader client-faithful movement replay are still missing | The simulator now has a concrete movement-sync surface instead of dormant controller-only helpers, but it is still not a full client networking model | `PlayerCharacter.cs`, `CVecCtrl.cs`, broader movement serialization layer |
+| Implemented | Movement path parity | The player runtime now accumulates `CMovePath`-style gather durations from the live clock, uses client-style `200/500/1000` ms flush windows with grounded gating, stamps tail durations on snapshot/flush, and exposes encode/decode plus deterministic playback sampling for passive-position and move-path sync snapshots | Movement sync now follows the same cadence and replay surface the client expects instead of acting like a dormant controller helper | `PlayerCharacter.cs`, `CVecCtrl.cs`, broader movement serialization layer (`CMovePath::*`) |
 | Partial | Dynamic foothold passenger sync | Moving platforms and the transport deck now feed synthetic footholds back into the player and grounded-mob movement seams, but transport heuristics and fuller map-specific passenger cases are still incomplete | Passengers now stay attached to moving foothold surfaces through the normal physics path, but full transport/platform parity still needs refinement | `PassengerSyncController.cs`, `DynamicFoothold.cs`, `TransportationField.cs`, `MapSimulator.cs` |
 
 ### 4. Mob combat and encounter parity

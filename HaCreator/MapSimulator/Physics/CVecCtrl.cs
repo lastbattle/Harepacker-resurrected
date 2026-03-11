@@ -420,6 +420,12 @@ namespace HaCreator.MapSimulator.Physics
         public bool IsRecordingPath { get; set; }
 
         /// <summary>
+        /// Total time currently gathered in the active move-path batch.
+        /// Mirrors the client-side gather-duration gate used before flush.
+        /// </summary>
+        private int _pathGatherDurationMs;
+
+        /// <summary>
         /// Last time path was flushed (for network sync timing)
         /// </summary>
         private int _lastPathFlushTime;
@@ -1592,6 +1598,78 @@ namespace HaCreator.MapSimulator.Physics
             };
         }
 
+        private static short ClampPathDuration(int durationMs)
+        {
+            return (short)Math.Min(short.MaxValue, Math.Max(0, durationMs));
+        }
+
+        private static bool HasGroundedFoothold(List<MovePathElement> path)
+        {
+            for (int i = path.Count - 1; i >= 0; i--)
+            {
+                if (path[i].FootholdId > 0)
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static bool IsShortMovePathAction(MoveAction action)
+        {
+            return action == MoveAction.Jump
+                || action == MoveAction.Fall
+                || action == MoveAction.Ladder
+                || action == MoveAction.Rope
+                || action == MoveAction.Swim
+                || action == MoveAction.Fly;
+        }
+
+        private bool IsShortMovePathUpdate(bool isFlying, bool hasDynamicFoothold)
+        {
+            if (isFlying || hasDynamicFoothold || IsOnLadderOrRope || IsShortMovePathAction(CurrentAction))
+            {
+                return true;
+            }
+
+            MovePathElement tail = _movePath[_movePath.Count - 1];
+            return IsShortMovePathAction(tail.Action);
+        }
+
+        private int GetCurrentGatherDuration(int currentTimeMs)
+        {
+            if (_movePath.Count == 0)
+            {
+                return 0;
+            }
+
+            MovePathElement tail = _movePath[_movePath.Count - 1];
+            return _pathGatherDurationMs + Math.Max(0, currentTimeMs - tail.TimeStamp);
+        }
+
+        private List<MovePathElement> BuildMovePathSnapshot(int currentTimeMs, bool appendLatestState)
+        {
+            if (_movePath.Count == 0)
+            {
+                return MakeMovePath(currentTimeMs);
+            }
+
+            var path = new List<MovePathElement>(_movePath);
+            int lastIndex = path.Count - 1;
+            MovePathElement tail = path[lastIndex];
+            int tailDurationMs = Math.Max(0, currentTimeMs - tail.TimeStamp);
+            tail.Duration = ClampPathDuration(tailDurationMs);
+            path[lastIndex] = tail;
+
+            if (appendLatestState && tailDurationMs > 0)
+            {
+                path.Add(MakeNewMovePathElem(currentTimeMs));
+            }
+
+            return path;
+        }
+
         /// <summary>
         /// Make movement path from current state.
         /// Client: CMovePath::MakeMovePath
@@ -1610,25 +1688,7 @@ namespace HaCreator.MapSimulator.Physics
         public List<MovePathElement> GetMovePathSnapshot(int? timeStampMs = null)
         {
             int currentTimeMs = timeStampMs ?? Environment.TickCount;
-            if (_movePath.Count == 0)
-                return MakeMovePath(currentTimeMs);
-
-            var path = new List<MovePathElement>(_movePath);
-            var latest = MakeNewMovePathElem(currentTimeMs);
-            int lastIndex = path.Count - 1;
-
-            if (path[lastIndex].TimeStamp == latest.TimeStamp)
-            {
-                latest.Duration = path[lastIndex].Duration;
-                path[lastIndex] = latest;
-                return path;
-            }
-
-            var previous = path[lastIndex];
-            previous.Duration = (short)Math.Min(short.MaxValue, Math.Max(0, currentTimeMs - previous.TimeStamp));
-            path[lastIndex] = previous;
-            path.Add(latest);
-            return path;
+            return BuildMovePathSnapshot(currentTimeMs, appendLatestState: true);
         }
 
         /// <summary>
@@ -1653,8 +1713,10 @@ namespace HaCreator.MapSimulator.Physics
             {
                 int lastIndex = _movePath.Count - 1;
                 MovePathElement previous = _movePath[lastIndex];
-                previous.Duration = (short)Math.Min(short.MaxValue, Math.Max(0, currentTimeMs - previous.TimeStamp));
+                int durationMs = Math.Max(0, currentTimeMs - previous.TimeStamp);
+                previous.Duration = ClampPathDuration(durationMs);
                 _movePath[lastIndex] = previous;
+                _pathGatherDurationMs += durationMs;
                 _movePath.Add(MakeNewMovePathElem(currentTimeMs));
                 _lastPathFlushTime = currentTimeMs;
 
@@ -1670,10 +1732,12 @@ namespace HaCreator.MapSimulator.Physics
         /// Get and clear the current movement path.
         /// Client: CMovePath::Flush
         /// </summary>
-        public List<MovePathElement> FlushMovePath()
+        public List<MovePathElement> FlushMovePath(int? timeStampMs = null)
         {
-            var path = new List<MovePathElement>(_movePath);
+            int currentTimeMs = timeStampMs ?? Environment.TickCount;
+            var path = BuildMovePathSnapshot(currentTimeMs, appendLatestState: false);
             _movePath.Clear();
+            _pathGatherDurationMs = 0;
             return path;
         }
 
@@ -1681,9 +1745,25 @@ namespace HaCreator.MapSimulator.Physics
         /// Check if it's time to flush the movement path.
         /// Client: CMovePath::IsTimeForFlush
         /// </summary>
-        public bool IsTimeForFlush(int currentTimeMs)
+        public bool IsTimeForFlush(int currentTimeMs, bool isFlying = false, bool hasDynamicFoothold = false)
         {
-            return currentTimeMs - _lastPathFlushTime >= PathFlushInterval;
+            if (_movePath.Count == 0)
+            {
+                return false;
+            }
+
+            bool shortUpdate = IsShortMovePathUpdate(isFlying, hasDynamicFoothold);
+
+            int thresholdMs = shortUpdate
+                ? (hasDynamicFoothold ? 200 : 500)
+                : 1000;
+
+            if (GetCurrentGatherDuration(currentTimeMs) < thresholdMs)
+            {
+                return false;
+            }
+
+            return shortUpdate || isFlying || HasGroundedFoothold(_movePath);
         }
 
         /// <summary>
@@ -1693,6 +1773,7 @@ namespace HaCreator.MapSimulator.Physics
         {
             IsRecordingPath = true;
             _movePath.Clear();
+            _pathGatherDurationMs = 0;
             _lastPathFlushTime = currentTimeMs;
             _movePath.Add(MakeNewMovePathElem(currentTimeMs));
         }
@@ -1712,6 +1793,7 @@ namespace HaCreator.MapSimulator.Physics
         {
             IsRecordingPath = false;
             _movePath.Clear();
+            _pathGatherDurationMs = 0;
         }
 
         /// <summary>
@@ -1805,6 +1887,7 @@ namespace HaCreator.MapSimulator.Physics
             // Movement path
             _movePath.Clear();
             IsRecordingPath = false;
+            _pathGatherDurationMs = 0;
             _lastPathFlushTime = 0;
         }
 

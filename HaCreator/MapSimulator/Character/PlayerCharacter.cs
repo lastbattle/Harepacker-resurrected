@@ -6,6 +6,7 @@ using HaCreator.MapSimulator.Pools;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using Spine;
+using System.IO;
 
 namespace HaCreator.MapSimulator.Character
 {
@@ -1267,7 +1268,7 @@ namespace HaCreator.MapSimulator.Character
 
             PassivePositionSnapshot passivePosition = Physics.MakePassivePositionSnapshot(currentTime);
             var movePath = flushPath
-                ? Physics.FlushMovePath()
+                ? Physics.FlushMovePath(currentTime)
                 : Physics.GetMovePathSnapshot(currentTime);
 
             if (movePath.Count == 0)
@@ -1963,5 +1964,186 @@ namespace HaCreator.MapSimulator.Character
 
         public PassivePositionSnapshot PassivePosition { get; }
         public System.Collections.Generic.List<MovePathElement> MovePath { get; }
+
+        public byte[] Encode()
+        {
+            using var stream = new MemoryStream();
+            using var writer = new BinaryWriter(stream);
+
+            writer.Write((byte)1);
+            WriteSnapshot(writer, PassivePosition);
+            writer.Write(MovePath.Count);
+
+            for (int i = 0; i < MovePath.Count; i++)
+            {
+                WriteElement(writer, MovePath[i]);
+            }
+
+            writer.Flush();
+            return stream.ToArray();
+        }
+
+        public static PlayerMovementSyncSnapshot Decode(byte[] data)
+        {
+            if (data == null)
+            {
+                throw new ArgumentNullException(nameof(data));
+            }
+
+            using var stream = new MemoryStream(data, writable: false);
+            using var reader = new BinaryReader(stream);
+
+            byte version = reader.ReadByte();
+            if (version != 1)
+            {
+                throw new InvalidDataException($"Unsupported movement snapshot version: {version}");
+            }
+
+            PassivePositionSnapshot passivePosition = ReadSnapshot(reader);
+            int count = reader.ReadInt32();
+            var movePath = new System.Collections.Generic.List<MovePathElement>(count);
+
+            for (int i = 0; i < count; i++)
+            {
+                movePath.Add(ReadElement(reader));
+            }
+
+            return new PlayerMovementSyncSnapshot(passivePosition, movePath);
+        }
+
+        public PassivePositionSnapshot SampleAtTime(int currentTime)
+        {
+            if (MovePath.Count == 0 || currentTime >= PassivePosition.TimeStamp)
+            {
+                return PassivePosition;
+            }
+
+            if (currentTime <= MovePath[0].TimeStamp)
+            {
+                return ToPassivePosition(MovePath[0]);
+            }
+
+            for (int i = 0; i < MovePath.Count; i++)
+            {
+                MovePathElement start = MovePath[i];
+                int segmentStart = start.TimeStamp;
+                int segmentEnd = i + 1 < MovePath.Count
+                    ? MovePath[i + 1].TimeStamp
+                    : Math.Max(start.TimeStamp + start.Duration, PassivePosition.TimeStamp);
+
+                if (currentTime > segmentEnd)
+                {
+                    continue;
+                }
+
+                if (i + 1 >= MovePath.Count || segmentEnd <= segmentStart)
+                {
+                    return currentTime >= PassivePosition.TimeStamp
+                        ? PassivePosition
+                        : ToPassivePosition(start);
+                }
+
+                MovePathElement end = MovePath[i + 1];
+                float t = (float)(currentTime - segmentStart) / (segmentEnd - segmentStart);
+                t = Math.Clamp(t, 0f, 1f);
+
+                return new PassivePositionSnapshot
+                {
+                    X = LerpInt(start.X, end.X, t),
+                    Y = LerpInt(start.Y, end.Y, t),
+                    VelocityX = LerpShort(start.VelocityX, end.VelocityX, t),
+                    VelocityY = LerpShort(start.VelocityY, end.VelocityY, t),
+                    Action = t < 1f ? start.Action : end.Action,
+                    FootholdId = t < 1f ? start.FootholdId : end.FootholdId,
+                    TimeStamp = currentTime,
+                    FacingRight = t < 0.5f ? start.FacingRight : end.FacingRight
+                };
+            }
+
+            return PassivePosition;
+        }
+
+        private static void WriteSnapshot(BinaryWriter writer, PassivePositionSnapshot snapshot)
+        {
+            writer.Write(snapshot.X);
+            writer.Write(snapshot.Y);
+            writer.Write(snapshot.VelocityX);
+            writer.Write(snapshot.VelocityY);
+            writer.Write((byte)snapshot.Action);
+            writer.Write(snapshot.FootholdId);
+            writer.Write(snapshot.TimeStamp);
+            writer.Write(snapshot.FacingRight);
+        }
+
+        private static PassivePositionSnapshot ReadSnapshot(BinaryReader reader)
+        {
+            return new PassivePositionSnapshot
+            {
+                X = reader.ReadInt32(),
+                Y = reader.ReadInt32(),
+                VelocityX = reader.ReadInt16(),
+                VelocityY = reader.ReadInt16(),
+                Action = (MoveAction)reader.ReadByte(),
+                FootholdId = reader.ReadInt32(),
+                TimeStamp = reader.ReadInt32(),
+                FacingRight = reader.ReadBoolean()
+            };
+        }
+
+        private static void WriteElement(BinaryWriter writer, MovePathElement element)
+        {
+            writer.Write(element.X);
+            writer.Write(element.Y);
+            writer.Write(element.VelocityX);
+            writer.Write(element.VelocityY);
+            writer.Write((byte)element.Action);
+            writer.Write(element.FootholdId);
+            writer.Write(element.TimeStamp);
+            writer.Write(element.Duration);
+            writer.Write(element.FacingRight);
+            writer.Write(element.StatChanged);
+        }
+
+        private static MovePathElement ReadElement(BinaryReader reader)
+        {
+            return new MovePathElement
+            {
+                X = reader.ReadInt32(),
+                Y = reader.ReadInt32(),
+                VelocityX = reader.ReadInt16(),
+                VelocityY = reader.ReadInt16(),
+                Action = (MoveAction)reader.ReadByte(),
+                FootholdId = reader.ReadInt32(),
+                TimeStamp = reader.ReadInt32(),
+                Duration = reader.ReadInt16(),
+                FacingRight = reader.ReadBoolean(),
+                StatChanged = reader.ReadBoolean()
+            };
+        }
+
+        private static PassivePositionSnapshot ToPassivePosition(MovePathElement element)
+        {
+            return new PassivePositionSnapshot
+            {
+                X = element.X,
+                Y = element.Y,
+                VelocityX = element.VelocityX,
+                VelocityY = element.VelocityY,
+                Action = element.Action,
+                FootholdId = element.FootholdId,
+                TimeStamp = element.TimeStamp,
+                FacingRight = element.FacingRight
+            };
+        }
+
+        private static int LerpInt(int start, int end, float t)
+        {
+            return (int)Math.Round(start + ((end - start) * t));
+        }
+
+        private static short LerpShort(short start, short end, float t)
+        {
+            return (short)Math.Round(start + ((end - start) * t));
+        }
     }
 }

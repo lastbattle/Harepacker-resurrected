@@ -504,6 +504,120 @@ namespace UnitTest_MapSimulator
         }
 
         [Fact]
+        public void IsTimeForFlush_UsesClientGatherWindowsAndGroundedGate()
+        {
+            var physics = new CVecCtrl
+            {
+                CurrentAction = MoveAction.Stand
+            };
+
+            physics.SetPosition(100, 200);
+            physics.StartPathRecording(1000);
+
+            physics.SetPosition(120, 200);
+            physics.MakeContinuousMovePath(1400);
+            Assert.False(physics.IsTimeForFlush(1500));
+
+            physics.CurrentAction = MoveAction.Jump;
+            Assert.True(physics.IsTimeForFlush(1500));
+
+            var dynamicPhysics = new CVecCtrl
+            {
+                CurrentAction = MoveAction.Stand
+            };
+
+            dynamicPhysics.SetPosition(100, 200);
+            dynamicPhysics.StartPathRecording(1000);
+            dynamicPhysics.SetPosition(110, 200);
+            dynamicPhysics.MakeContinuousMovePath(1100);
+            Assert.False(dynamicPhysics.IsTimeForFlush(1199, hasDynamicFoothold: true));
+            Assert.True(dynamicPhysics.IsTimeForFlush(1200, hasDynamicFoothold: true));
+
+            physics.CurrentAction = MoveAction.Stand;
+            var foothold = CreateFoothold(7, 0, 200, 200);
+            foothold.num = 1;
+            physics.CurrentFoothold = foothold;
+            physics.SetPosition(140, 200);
+            physics.MakeContinuousMovePath(2000);
+
+            Assert.True(physics.IsTimeForFlush(2000));
+        }
+
+        [Fact]
+        public void FlushMovePath_StampsTailDurationAtFlushTime()
+        {
+            var physics = new CVecCtrl
+            {
+                CurrentAction = MoveAction.Walk
+            };
+
+            physics.SetPosition(100, 200);
+            physics.StartPathRecording(1000);
+            physics.SetPosition(150, 200);
+            physics.MakeContinuousMovePath(1125);
+
+            var path = physics.FlushMovePath(1185);
+
+            Assert.Equal(2, path.Count);
+            Assert.Equal(125, path[0].Duration);
+            Assert.Equal(60, path[1].Duration);
+        }
+
+        [Fact]
+        public void PlayerMovementSyncSnapshot_EncodeDecodeRoundTripsAndSamplesPlayback()
+        {
+            var snapshot = new PlayerMovementSyncSnapshot(
+                passivePosition: new PassivePositionSnapshot
+                {
+                    X = 220,
+                    Y = 30,
+                    VelocityX = 0,
+                    VelocityY = 0,
+                    Action = MoveAction.Jump,
+                    FootholdId = 0,
+                    TimeStamp = 1120,
+                    FacingRight = true
+                },
+                movePath: new List<MovePathElement>
+                {
+                    new MovePathElement
+                    {
+                        X = 120,
+                        Y = 30,
+                        VelocityX = 400,
+                        VelocityY = 0,
+                        Action = MoveAction.Jump,
+                        FootholdId = 0,
+                        TimeStamp = 1000,
+                        Duration = 120,
+                        FacingRight = true
+                    },
+                    new MovePathElement
+                    {
+                        X = 220,
+                        Y = 30,
+                        VelocityX = 0,
+                        VelocityY = 0,
+                        Action = MoveAction.Jump,
+                        FootholdId = 0,
+                        TimeStamp = 1120,
+                        Duration = 0,
+                        FacingRight = true
+                    }
+                });
+
+            byte[] encoded = snapshot.Encode();
+            PlayerMovementSyncSnapshot decoded = PlayerMovementSyncSnapshot.Decode(encoded);
+            PassivePositionSnapshot sampled = decoded.SampleAtTime(1060);
+
+            Assert.Equal(snapshot.PassivePosition.X, decoded.PassivePosition.X);
+            Assert.Equal(snapshot.MovePath.Count, decoded.MovePath.Count);
+            Assert.InRange(sampled.X, 169, 171);
+            Assert.Equal(30, sampled.Y);
+            Assert.Equal(MoveAction.Jump, sampled.Action);
+        }
+
+        [Fact]
         public void PassengerSyncController_SyncPlayerToDynamicPlatform_LandsOnSyntheticFoothold()
         {
             var player = new PlayerCharacter(device: null, texturePool: null, build: null);
