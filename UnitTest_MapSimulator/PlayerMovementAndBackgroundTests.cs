@@ -383,6 +383,71 @@ namespace UnitTest_MapSimulator
         }
 
         [Fact]
+        public void FlyingMap_IdleFloatMaintainsAltitudeWithoutSwimStyleSink()
+        {
+            var player = new PlayerCharacter(device: null, texturePool: null, build: null);
+            player.SetPosition(100, 80);
+            player.Physics.IsFlyingMap = true;
+            player.SetInput(left: false, right: false, up: false, down: false, jump: false, attack: false, pickup: false);
+
+            player.Update(1000, 0.016f);
+            float initialY = player.Y;
+
+            for (int i = 1; i <= 10; i++)
+            {
+                player.Update(1000 + (i * 16), 0.016f);
+            }
+
+            Assert.Equal(PlayerState.Flying, player.State);
+            Assert.InRange(player.Physics.VelocityY, -1f, 1f);
+            Assert.InRange(player.Y, initialY - 0.1f, initialY + 0.1f);
+        }
+
+        [Fact]
+        public void SkillGatedFlyingMap_OnlyEntersFloatMovementWhileFlightBuffIsActive()
+        {
+            var loader = (SkillLoader)RuntimeHelpers.GetUninitializedObject(typeof(SkillLoader));
+            var player = new PlayerCharacter(device: null, texturePool: null, build: null);
+            player.SetPosition(100, 80);
+            player.Physics.IsFlyingMap = true;
+            player.Physics.RequiresFlyingSkillForMap = true;
+
+            var manager = new SkillManager(loader, player);
+            var applyBuff = typeof(SkillManager).GetMethod("ApplyBuff", BindingFlags.Instance | BindingFlags.NonPublic);
+            var updateBuffs = typeof(SkillManager).GetMethod("UpdateBuffs", BindingFlags.Instance | BindingFlags.NonPublic);
+
+            var skill = new SkillData
+            {
+                SkillId = 9100000,
+                Name = "Test Flight",
+                IsBuff = true,
+                ActionName = "fly",
+                MaxLevel = 1
+            };
+            skill.Levels[1] = new SkillLevelData
+            {
+                Level = 1,
+                Time = 1
+            };
+
+            player.Update(1000, 0.016f);
+            Assert.NotEqual(PlayerState.Flying, player.State);
+            Assert.False(player.Physics.IsUserFlying());
+
+            applyBuff!.Invoke(manager, new object[] { skill, 1, 1100 });
+            player.Update(1120, 0.016f);
+
+            Assert.True(player.Physics.IsUserFlying());
+            Assert.Equal(PlayerState.Flying, player.State);
+
+            updateBuffs!.Invoke(manager, new object[] { 2200 });
+            player.Update(2220, 0.016f);
+
+            Assert.False(player.Physics.IsUserFlying());
+            Assert.NotEqual(PlayerState.Flying, player.State);
+        }
+
+        [Fact]
         public void StartPathRecording_SeedsInitialElementAndContinuousPathTracksDuration()
         {
             var physics = new CVecCtrl

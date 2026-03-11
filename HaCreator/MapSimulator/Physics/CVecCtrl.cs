@@ -1287,7 +1287,7 @@ namespace HaCreator.MapSimulator.Physics
         /// <param name="force">Float force</param>
         /// <param name="drag">Float drag</param>
         /// <param name="mass">Entity mass</param>
-        /// <param name="gravityFactor">Gravity multiplier (0 for flying, 0.5 for swimming)</param>
+        /// <param name="gravityFactor">Passive downward drift multiplier (0 for flying, 0.3 for swim-style float)</param>
         /// <param name="tSec">Time in seconds</param>
         public void CalcFloat(int inputX, int inputY, double maxSpeed, double force, double drag,
             double mass, double gravityFactor, double tSec)
@@ -1321,33 +1321,54 @@ namespace HaCreator.MapSimulator.Physics
                 }
             }
 
-            // Vertical movement for swimming - simple and direct
-            // Max speeds: 30% up, 150% down
-            double maxUpSpeed = maxSpeed * 0.3;   // ~132 for swim
-            double maxDownSpeed = maxSpeed * 1.5; // ~660 for swim
-            double accel = maxSpeed * 3.0 * tSec; // Acceleration per frame
-
-            if (inputY == 0)
+            if (gravityFactor <= 0.0)
             {
-                // No input - sink due to gravity, apply drag
-                vy += accel * 0.3; // Gentle sink acceleration
-                // Apply drag to slow down
-                if (vy > 0) vy *= (1.0 - tSec * 2.0);
-                if (vy < 0) vy *= (1.0 - tSec * 2.0);
-                // Clamp sink speed
-                if (vy > maxSpeed * 0.3) vy = maxSpeed * 0.3;
-            }
-            else if (inputY > 0)
-            {
-                // Pressing DOWN - accelerate downward
-                vy += accel;
-                if (vy > maxDownSpeed) vy = maxDownSpeed;
+                // Flying maps use a symmetric vertical vector control with no passive sink.
+                if (inputY == 0)
+                {
+                    DecSpeed(ref vy, drag, mass, 0, tSec);
+                }
+                else if (inputY > 0)
+                {
+                    AccSpeed(ref vy, force, mass, maxSpeed, tSec);
+                }
+                else
+                {
+                    AccSpeed(ref vy, -force, mass, maxSpeed, tSec);
+                }
             }
             else
             {
-                // Pressing UP - accelerate upward
-                vy -= accel;
-                if (vy < -maxUpSpeed) vy = -maxUpSpeed;
+                // Swimming keeps the client-style asymmetric up/down limits plus passive drift.
+                double maxUpSpeed = maxSpeed * 0.3;
+                double maxDownSpeed = maxSpeed * 1.5;
+                double accel = maxSpeed * 3.0 * tSec;
+
+                if (inputY == 0)
+                {
+                    vy += accel * gravityFactor;
+
+                    double dragFactor = Math.Max(0.0, 1.0 - (tSec * 2.0));
+                    if (vy > 0.0 || vy < 0.0)
+                    {
+                        vy *= dragFactor;
+                    }
+
+                    if (vy > maxSpeed * gravityFactor)
+                    {
+                        vy = maxSpeed * gravityFactor;
+                    }
+                }
+                else if (inputY > 0)
+                {
+                    vy += accel;
+                    if (vy > maxDownSpeed) vy = maxDownSpeed;
+                }
+                else
+                {
+                    vy -= accel;
+                    if (vy < -maxUpSpeed) vy = -maxUpSpeed;
+                }
             }
 
             VelocityX = vx;

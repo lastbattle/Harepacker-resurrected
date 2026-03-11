@@ -691,7 +691,7 @@ namespace HaCreator.MapSimulator.Character
                 maxSpeed = PhysicsConstants.Instance.SwimSpeed;
                 floatForce = PhysicsConstants.Instance.SwimForce;
                 floatDrag = PhysicsConstants.Instance.FloatDrag2;
-                gravityFactor = 0.0;
+                gravityFactor = 0.3;
 
                 State = PlayerState.Swimming;
                 Physics.CurrentAction = MoveAction.Swim;
