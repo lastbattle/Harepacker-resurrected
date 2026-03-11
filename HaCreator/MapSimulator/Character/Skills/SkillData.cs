@@ -317,6 +317,12 @@ namespace HaCreator.MapSimulator.Character.Skills
         public SkillAnimation SummonSpawnAnimation { get; set; } // Initial summon spawn sequence
         public SkillAnimation SummonAnimation { get; set; }  // Summon body/effect
         public SkillAnimation SummonAttackAnimation { get; set; } // Summon attack sequence
+        public SkillAnimation AvatarOverlayEffect { get; set; } // Avatar-bound looping overlay
+        public SkillAnimation AvatarUnderFaceEffect { get; set; } // Avatar-bound layer below face/hair
+        public SkillAnimation AvatarLadderEffect { get; set; } // Ladder/rope override for avatar overlay
+        public SkillAnimation AvatarOverlayFinishEffect { get; set; } // One-shot cleanup overlay
+        public SkillAnimation AvatarUnderFaceFinishEffect { get; set; } // One-shot cleanup below face
+        public SkillAnimation AvatarLadderFinishEffect { get; set; } // Ladder/rope cleanup override
         public int SummonMoveAbility { get; set; }
         public SummonMovementStyle SummonMovementStyle { get; set; } = SummonMovementStyle.Stationary;
         public float SummonSpawnDistanceX { get; set; } = 50f;
@@ -333,6 +339,14 @@ namespace HaCreator.MapSimulator.Character.Skills
         public int KeydownDurationMs { get; set; }
         public int KeydownEndDurationMs { get; set; }
         public int KeydownRepeatIntervalMs { get; set; }
+
+        public bool HasPersistentAvatarEffect =>
+            AvatarOverlayEffect != null
+            || AvatarUnderFaceEffect != null
+            || AvatarLadderEffect != null
+            || AvatarOverlayFinishEffect != null
+            || AvatarUnderFaceFinishEffect != null
+            || AvatarLadderFinishEffect != null;
 
         /// <summary>
         /// Get data for a specific level

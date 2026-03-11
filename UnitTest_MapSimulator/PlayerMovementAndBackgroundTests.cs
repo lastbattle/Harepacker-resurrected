@@ -19,6 +19,25 @@ namespace UnitTest_MapSimulator
 {
     public class PlayerMovementAndBackgroundTests
     {
+        private static SkillAnimation CreateSkillAnimation(string name, params int[] frameDelays)
+        {
+            var animation = new SkillAnimation
+            {
+                Name = name
+            };
+
+            foreach (int frameDelay in frameDelays)
+            {
+                animation.Frames.Add(new SkillFrame
+                {
+                    Delay = frameDelay
+                });
+            }
+
+            animation.CalculateDuration();
+            return animation;
+        }
+
         private static FootholdLine CreateFoothold(int x1, int y1, int x2, int y2)
         {
             var first = new FootholdAnchor(board: null, x: x1, y: y1, layer: 0, zm: 0, user: true);
@@ -1032,6 +1051,51 @@ namespace UnitTest_MapSimulator
             Assert.Equal("siege_after", player.CurrentActionName);
             player.Update(Environment.TickCount + 450, 0.016f);
             Assert.Equal("stand1", player.CurrentActionName);
+        }
+
+        [Fact]
+        public void SkillManager_AvatarEffectBuffs_PlayFinishLayersUntilCleanupCompletes()
+        {
+            var player = new PlayerCharacter(device: null, texturePool: null, build: null);
+            var foothold = CreateFoothold(0, 100, 200, 100);
+            var skillManager = new SkillManager(new SkillLoader(skillWz: null, device: null, texturePool: null), player);
+            var applyBuff = typeof(SkillManager).GetMethod("ApplyBuff", BindingFlags.Instance | BindingFlags.NonPublic);
+            var updateBuffs = typeof(SkillManager).GetMethod("UpdateBuffs", BindingFlags.Instance | BindingFlags.NonPublic);
+
+            Assert.NotNull(applyBuff);
+            Assert.NotNull(updateBuffs);
+
+            player.SetPosition(100, 100);
+            player.Physics.LandOnFoothold(foothold);
+            player.SetFootholdLookup(CreateFootholdLookup(foothold));
+
+            var skill = new SkillData
+            {
+                SkillId = 33121006,
+                MaxLevel = 1,
+                IsBuff = true,
+                AvatarOverlayEffect = CreateSkillAnimation("special", 60, 60),
+                AvatarUnderFaceEffect = CreateSkillAnimation("special0", 60, 60),
+                AvatarOverlayFinishEffect = CreateSkillAnimation("finish", 90, 90),
+                AvatarUnderFaceFinishEffect = CreateSkillAnimation("finish0", 90, 90)
+            };
+            skill.Levels[1] = new SkillLevelData
+            {
+                Level = 1,
+                Time = 1
+            };
+
+            applyBuff!.Invoke(skillManager, new object[] { skill, 1, 1000 });
+            Assert.True(player.HasSkillAvatarEffect(skill.SkillId));
+
+            updateBuffs!.Invoke(skillManager, new object[] { 2001 });
+            Assert.True(player.HasSkillAvatarEffect(skill.SkillId));
+
+            player.Update(2001, 0.016f);
+            Assert.True(player.HasSkillAvatarEffect(skill.SkillId));
+
+            player.Update(2200, 0.016f);
+            Assert.False(player.HasSkillAvatarEffect(skill.SkillId));
         }
 
         [Fact]

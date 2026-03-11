@@ -79,5 +79,13 @@ namespace UnitTest_MapSimulator
 
             Assert.Null(branch);
         }
+
+        [Fact]
+        public void HasPersistentAvatarEffectBranches_RecognizesClientManagedAvatarLayerFamilies()
+        {
+            Assert.True(SkillLoader.HasPersistentAvatarEffectBranches(new[] { "effect", "special0" }, suddenDeath: false));
+            Assert.True(SkillLoader.HasPersistentAvatarEffectBranches(new[] { "effect", "repeat" }, suddenDeath: true));
+            Assert.False(SkillLoader.HasPersistentAvatarEffectBranches(new[] { "effect", "repeat" }, suddenDeath: false));
+        }
     }
 }

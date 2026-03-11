@@ -45,6 +45,16 @@ namespace HaCreator.MapSimulator.Character.Skills
             "attack0"
         };
 
+        private static readonly string[] PersistentAvatarEffectBranches =
+        {
+            "special",
+            "special0",
+            "finish",
+            "finish0",
+            "back",
+            "back_finish"
+        };
+
         private readonly WzFile _skillWz;
         private readonly GraphicsDevice _device;
         private readonly TexturePool _texturePool;
@@ -258,6 +268,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         private void DetermineSkillType(SkillData skill, WzImageProperty skillNode)
         {
             // Check for various type indicators
+            var infoNode = skillNode["info"];
             bool hasBall = skillNode["ball"] != null;
             bool hasHit = skillNode["hit"] != null;
             bool hasAffected = skillNode["affected"] != null;
@@ -266,6 +277,10 @@ namespace HaCreator.MapSimulator.Character.Skills
             bool hasAction = !string.IsNullOrWhiteSpace(skill.ActionName);
             bool looksLikeMovement = MatchesAction(skill.ActionName, "teleport", "rush", "dash", "flash", "jump", "step", "fly");
             bool looksLikePrepare = hasPrepare || MatchesAction(skill.ActionName, "prepare", "charge", "keydown", "keyDown");
+            bool isSuddenDeathSkill = GetInt(infoNode, "suddenDeath") == 1;
+            bool hasPersistentAvatarEffect = HasPersistentAvatarEffectBranches(
+                skillNode.WzProperties.Select(child => child.Name),
+                isSuddenDeathSkill);
 
             var commonNode = skillNode["common"];
             int commonDamage = GetInt(commonNode, "damage");
@@ -386,7 +401,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 }
             }
 
-            skill.IsBuff |= hasTime && (hasPad || hasMad || hasAffected);
+            skill.IsBuff |= hasTime && (hasPad || hasMad || hasAffected || hasPersistentAvatarEffect);
             skill.IsHeal |= hasHp && !hasDamage;
         }
 
@@ -500,6 +515,8 @@ namespace HaCreator.MapSimulator.Character.Skills
                 skill.AffectedEffect = LoadSkillAnimation(affectedNode, "affected");
             }
 
+            LoadPersistentAvatarEffects(skill, skillNode);
+
             var summonNode = skillNode["summon"];
             if (summonNode != null)
             {
@@ -512,6 +529,77 @@ namespace HaCreator.MapSimulator.Character.Skills
             {
                 skill.Projectile = LoadProjectile(skill.SkillId, ballNode, skillNode);
             }
+        }
+
+        private void LoadPersistentAvatarEffects(SkillData skill, WzImageProperty skillNode)
+        {
+            if (skill == null || skillNode == null)
+            {
+                return;
+            }
+
+            skill.AvatarOverlayEffect = LoadAvatarEffectAnimation(skillNode, "special")
+                                        ?? LoadSuddenDeathRepeatAnimation(skill, skillNode);
+            skill.AvatarUnderFaceEffect = LoadAvatarEffectAnimation(skillNode, "special0");
+            skill.AvatarLadderEffect = LoadAvatarEffectAnimation(skillNode, "back");
+            skill.AvatarOverlayFinishEffect = LoadAvatarEffectAnimation(skillNode, "finish");
+            skill.AvatarUnderFaceFinishEffect = LoadAvatarEffectAnimation(skillNode, "finish0");
+            skill.AvatarLadderFinishEffect = LoadAvatarEffectAnimation(skillNode, "back_finish");
+        }
+
+        private SkillAnimation LoadAvatarEffectAnimation(WzImageProperty skillNode, string branchName)
+        {
+            if (skillNode == null || string.IsNullOrWhiteSpace(branchName))
+            {
+                return null;
+            }
+
+            WzImageProperty branch = skillNode[branchName];
+            if (branch == null)
+            {
+                return null;
+            }
+
+            SkillAnimation animation = LoadSkillAnimation(branch, branchName);
+            if (animation.Frames.Count == 0)
+            {
+                return null;
+            }
+
+            if (!branchName.Contains("finish", StringComparison.OrdinalIgnoreCase))
+            {
+                animation.Loop = true;
+            }
+
+            return animation;
+        }
+
+        private SkillAnimation LoadSuddenDeathRepeatAnimation(SkillData skill, WzImageProperty skillNode)
+        {
+            if (skill == null || skillNode == null)
+            {
+                return null;
+            }
+
+            if (GetInt(skillNode["info"], "suddenDeath") != 1)
+            {
+                return null;
+            }
+
+            WzImageProperty repeatNode = skillNode["repeat"];
+            if (repeatNode == null)
+            {
+                return null;
+            }
+
+            SkillAnimation animation = LoadSkillAnimation(repeatNode, "repeat");
+            if (animation.Frames.Count == 0)
+            {
+                return null;
+            }
+
+            animation.Loop = true;
+            return animation;
         }
 
         private SkillAnimation LoadSkillAnimation(WzImageProperty node, string name)
@@ -753,6 +841,28 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
 
             return null;
+        }
+
+        public static bool HasPersistentAvatarEffectBranches(IEnumerable<string> branchNames, bool suddenDeath)
+        {
+            if (branchNames == null)
+            {
+                return false;
+            }
+
+            var availableBranches = new HashSet<string>(
+                branchNames.Where(name => !string.IsNullOrWhiteSpace(name)),
+                StringComparer.OrdinalIgnoreCase);
+
+            foreach (string branchName in PersistentAvatarEffectBranches)
+            {
+                if (availableBranches.Contains(branchName))
+                {
+                    return true;
+                }
+            }
+
+            return suddenDeath && availableBranches.Contains("repeat");
         }
 
         private static string SelectPreferredSummonBranch(IEnumerable<string> branchNames, IEnumerable<string> preferredBranches)

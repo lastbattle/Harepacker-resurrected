@@ -1,6 +1,8 @@
 using System;
+using System.Collections.Generic;
 using HaCreator.MapEditor.Instance.Shapes;
 using HaCreator.MapSimulator.Core;
+using HaCreator.MapSimulator.Character.Skills;
 using HaCreator.MapSimulator.Physics;
 using HaCreator.MapSimulator.Pools;
 using Microsoft.Xna.Framework;
@@ -60,6 +62,55 @@ namespace HaCreator.MapSimulator.Character
             public string FloatActionName { get; init; }
             public string HitActionName { get; init; }
             public string ExitActionName { get; init; }
+        }
+
+        private enum SkillAvatarEffectMode
+        {
+            Ground,
+            LadderOrRope
+        }
+
+        private enum SkillAvatarEffectPlane
+        {
+            BehindCharacter,
+            UnderFace,
+            OverCharacter
+        }
+
+        private sealed class SkillAvatarEffectState
+        {
+            public int SkillId { get; init; }
+            public SkillAnimation GroundOverlayAnimation { get; init; }
+            public SkillAnimation GroundUnderFaceAnimation { get; init; }
+            public SkillAnimation LadderOverlayAnimation { get; init; }
+            public SkillAnimation GroundOverlayFinishAnimation { get; init; }
+            public SkillAnimation GroundUnderFaceFinishAnimation { get; init; }
+            public SkillAnimation LadderOverlayFinishAnimation { get; init; }
+            public int AnimationStartTime { get; set; }
+            public bool IsFinishing { get; set; }
+            public SkillAvatarEffectMode Mode { get; set; }
+
+            public bool HasLoopAnimation =>
+                GroundOverlayAnimation != null
+                || GroundUnderFaceAnimation != null
+                || LadderOverlayAnimation != null;
+
+            public bool HasFinishAnimation =>
+                GroundOverlayFinishAnimation != null
+                || GroundUnderFaceFinishAnimation != null
+                || LadderOverlayFinishAnimation != null;
+        }
+
+        private readonly struct AvatarEffectRenderable
+        {
+            public AvatarEffectRenderable(SkillFrame frame, SkillAvatarEffectPlane plane)
+            {
+                Frame = frame;
+                Plane = plane;
+            }
+
+            public SkillFrame Frame { get; }
+            public SkillAvatarEffectPlane Plane { get; }
         }
 
         #region Constants
@@ -149,6 +200,7 @@ namespace HaCreator.MapSimulator.Character
         private string _forcedActionName;
         private bool _sustainedSkillAnimation;
         private SkillAvatarTransformState _activeSkillAvatarTransform;
+        private readonly System.Collections.Generic.List<SkillAvatarEffectState> _activeSkillAvatarEffects = new();
         private readonly Random _faceExpressionRandom = new(Environment.TickCount);
         private int _nextBlinkTime = Environment.TickCount + FACE_BLINK_MIN_INTERVAL_MS;
         private int _blinkExpressionEndTime;
@@ -356,6 +408,7 @@ namespace HaCreator.MapSimulator.Character
             {
                 UpdateGmFlyMode(deltaTime);
                 UpdateAnimation(currentTime);
+                UpdateAvatarEffects(currentTime);
                 UpdateFaceExpression(currentTime);
                 RecordMovementSync(currentTime);
                 return;
@@ -393,6 +446,7 @@ namespace HaCreator.MapSimulator.Character
 
             // Update animation
             UpdateAnimation(currentTime);
+            UpdateAvatarEffects(currentTime);
             UpdateFaceExpression(currentTime);
             RecordMovementSync(currentTime);
 
@@ -1450,6 +1504,267 @@ namespace HaCreator.MapSimulator.Character
             return _activeSkillAvatarTransform != null && _activeSkillAvatarTransform.SkillId == skillId;
         }
 
+        public bool ApplySkillAvatarEffect(int skillId, SkillData skill, int currentTime)
+        {
+            if (!TryCreateSkillAvatarEffect(skillId, skill, out SkillAvatarEffectState effectState))
+            {
+                return false;
+            }
+
+            ClearSkillAvatarEffect(skillId, currentTime, playFinish: false);
+
+            effectState.Mode = GetCurrentSkillAvatarEffectMode();
+            effectState.AnimationStartTime = currentTime;
+            _activeSkillAvatarEffects.Add(effectState);
+            return true;
+        }
+
+        public void ClearSkillAvatarEffect(int skillId, int currentTime)
+        {
+            ClearSkillAvatarEffect(skillId, currentTime, playFinish: true);
+        }
+
+        public bool HasSkillAvatarEffect(int skillId)
+        {
+            return _activeSkillAvatarEffects.Exists(effectState => effectState.SkillId == skillId);
+        }
+
+        public void ClearAllSkillAvatarEffects(bool playFinish, int currentTime)
+        {
+            for (int i = _activeSkillAvatarEffects.Count - 1; i >= 0; i--)
+            {
+                SkillAvatarEffectState effectState = _activeSkillAvatarEffects[i];
+                if (playFinish && TryBeginSkillAvatarEffectFinish(effectState, currentTime))
+                {
+                    continue;
+                }
+
+                _activeSkillAvatarEffects.RemoveAt(i);
+            }
+        }
+
+        public void ClearSkillAvatarEffect(int skillId, int currentTime, bool playFinish)
+        {
+            for (int i = _activeSkillAvatarEffects.Count - 1; i >= 0; i--)
+            {
+                SkillAvatarEffectState effectState = _activeSkillAvatarEffects[i];
+                if (effectState.SkillId != skillId)
+                {
+                    continue;
+                }
+
+                if (playFinish && TryBeginSkillAvatarEffectFinish(effectState, currentTime))
+                {
+                    continue;
+                }
+
+                _activeSkillAvatarEffects.RemoveAt(i);
+            }
+        }
+
+        private void UpdateAvatarEffects(int currentTime)
+        {
+            if (_activeSkillAvatarEffects.Count == 0)
+            {
+                return;
+            }
+
+            SkillAvatarEffectMode currentMode = GetCurrentSkillAvatarEffectMode();
+            for (int i = _activeSkillAvatarEffects.Count - 1; i >= 0; i--)
+            {
+                SkillAvatarEffectState effectState = _activeSkillAvatarEffects[i];
+                if (effectState.IsFinishing)
+                {
+                    if (IsSkillAvatarEffectAnimationComplete(effectState, currentTime))
+                    {
+                        _activeSkillAvatarEffects.RemoveAt(i);
+                    }
+
+                    continue;
+                }
+
+                if (effectState.Mode == currentMode)
+                {
+                    continue;
+                }
+
+                bool hasCurrentModeAnimation = HasSkillAvatarEffectAnimationForMode(effectState, currentMode);
+                bool hasPreviousModeAnimation = HasSkillAvatarEffectAnimationForMode(effectState, effectState.Mode);
+                effectState.Mode = currentMode;
+
+                if (hasCurrentModeAnimation || hasPreviousModeAnimation)
+                {
+                    effectState.AnimationStartTime = currentTime;
+                }
+            }
+        }
+
+        private SkillAvatarEffectMode GetCurrentSkillAvatarEffectMode()
+        {
+            return Physics.IsOnLadderOrRope || State == PlayerState.Ladder || State == PlayerState.Rope
+                ? SkillAvatarEffectMode.LadderOrRope
+                : SkillAvatarEffectMode.Ground;
+        }
+
+        private static bool HasSkillAvatarEffectAnimationForMode(SkillAvatarEffectState effectState, SkillAvatarEffectMode mode)
+        {
+            if (effectState == null)
+            {
+                return false;
+            }
+
+            if (mode == SkillAvatarEffectMode.LadderOrRope)
+            {
+                return effectState.LadderOverlayAnimation != null
+                       || effectState.GroundOverlayAnimation != null
+                       || effectState.GroundUnderFaceAnimation != null;
+            }
+
+            return effectState.GroundOverlayAnimation != null
+                   || effectState.GroundUnderFaceAnimation != null;
+        }
+
+        private static bool TryCreateSkillAvatarEffect(int skillId, SkillData skill, out SkillAvatarEffectState effectState)
+        {
+            effectState = null;
+            if (skill?.HasPersistentAvatarEffect != true)
+            {
+                return false;
+            }
+
+            effectState = new SkillAvatarEffectState
+            {
+                SkillId = skillId,
+                GroundOverlayAnimation = skill.AvatarOverlayEffect,
+                GroundUnderFaceAnimation = skill.AvatarUnderFaceEffect,
+                LadderOverlayAnimation = skill.AvatarLadderEffect,
+                GroundOverlayFinishAnimation = skill.AvatarOverlayFinishEffect,
+                GroundUnderFaceFinishAnimation = skill.AvatarUnderFaceFinishEffect,
+                LadderOverlayFinishAnimation = skill.AvatarLadderFinishEffect
+            };
+
+            return effectState.HasLoopAnimation || effectState.HasFinishAnimation;
+        }
+
+        private bool TryBeginSkillAvatarEffectFinish(SkillAvatarEffectState effectState, int currentTime)
+        {
+            if (effectState == null || effectState.IsFinishing)
+            {
+                return false;
+            }
+
+            SkillAvatarEffectMode finishMode = GetCurrentSkillAvatarEffectMode();
+            if (!HasSkillAvatarEffectFinishForMode(effectState, finishMode))
+            {
+                finishMode = effectState.Mode;
+            }
+
+            if (!HasSkillAvatarEffectFinishForMode(effectState, finishMode))
+            {
+                return false;
+            }
+
+            effectState.Mode = finishMode;
+            effectState.IsFinishing = true;
+            effectState.AnimationStartTime = currentTime;
+            return true;
+        }
+
+        private static bool HasSkillAvatarEffectFinishForMode(SkillAvatarEffectState effectState, SkillAvatarEffectMode mode)
+        {
+            if (effectState == null)
+            {
+                return false;
+            }
+
+            if (mode == SkillAvatarEffectMode.LadderOrRope)
+            {
+                return effectState.LadderOverlayFinishAnimation != null
+                       || effectState.GroundOverlayFinishAnimation != null
+                       || effectState.GroundUnderFaceFinishAnimation != null;
+            }
+
+            return effectState.GroundOverlayFinishAnimation != null
+                   || effectState.GroundUnderFaceFinishAnimation != null;
+        }
+
+        private static bool IsSkillAvatarEffectAnimationComplete(SkillAvatarEffectState effectState, int currentTime)
+        {
+            if (effectState == null || !effectState.IsFinishing)
+            {
+                return true;
+            }
+
+            int elapsedTime = Math.Max(0, currentTime - effectState.AnimationStartTime);
+            bool anyAnimation = false;
+
+            foreach (SkillAnimation animation in GetSkillAvatarEffectAnimations(effectState))
+            {
+                if (animation == null)
+                {
+                    continue;
+                }
+
+                anyAnimation = true;
+                if (!animation.IsComplete(elapsedTime))
+                {
+                    return false;
+                }
+            }
+
+            return anyAnimation;
+        }
+
+        private static IEnumerable<SkillAnimation> GetSkillAvatarEffectAnimations(SkillAvatarEffectState effectState)
+        {
+            if (effectState == null)
+            {
+                yield break;
+            }
+
+            if (effectState.IsFinishing)
+            {
+                if (effectState.Mode == SkillAvatarEffectMode.LadderOrRope)
+                {
+                    if (effectState.LadderOverlayFinishAnimation != null)
+                    {
+                        yield return effectState.LadderOverlayFinishAnimation;
+                        yield break;
+                    }
+                }
+
+                if (effectState.GroundOverlayFinishAnimation != null)
+                {
+                    yield return effectState.GroundOverlayFinishAnimation;
+                }
+
+                if (effectState.Mode != SkillAvatarEffectMode.LadderOrRope
+                    && effectState.GroundUnderFaceFinishAnimation != null)
+                {
+                    yield return effectState.GroundUnderFaceFinishAnimation;
+                }
+
+                yield break;
+            }
+
+            if (effectState.Mode == SkillAvatarEffectMode.LadderOrRope && effectState.LadderOverlayAnimation != null)
+            {
+                yield return effectState.LadderOverlayAnimation;
+                yield break;
+            }
+
+            if (effectState.GroundOverlayAnimation != null)
+            {
+                yield return effectState.GroundOverlayAnimation;
+            }
+
+            if (effectState.Mode != SkillAvatarEffectMode.LadderOrRope
+                && effectState.GroundUnderFaceAnimation != null)
+            {
+                yield return effectState.GroundUnderFaceAnimation;
+            }
+        }
+
         /// <summary>
         /// Apply damage to player with knockback
         /// </summary>
@@ -1609,6 +1924,7 @@ namespace HaCreator.MapSimulator.Character
             CurrentActionName = CharacterPart.GetActionString(CharacterAction.Dead);
             ClearForcedActionName();
             ClearSkillAvatarTransform();
+            ClearAllSkillAvatarEffects(playFinish: false, Environment.TickCount);
             _blinkExpressionEndTime = 0;
             _hitExpressionEndTime = 0;
             CurrentFaceExpressionName = "default";
@@ -1648,6 +1964,7 @@ namespace HaCreator.MapSimulator.Character
             CurrentActionName = CharacterPart.GetActionString(CharacterAction.Stand1);
             ClearForcedActionName();
             ClearSkillAvatarTransform();
+            ClearAllSkillAvatarEffects(playFinish: false, Environment.TickCount);
             _blinkExpressionEndTime = 0;
             _hitExpressionEndTime = 0;
             CurrentFaceExpressionName = "default";
@@ -1711,8 +2028,7 @@ namespace HaCreator.MapSimulator.Character
                     tint = Color.Lerp(Color.White, Color.Red, flash);
                 }
 
-                // MapleStory sprites face LEFT by default, flip when facing right
-                frame.Draw(spriteBatch, skeletonRenderer, screenX, screenY, FacingRight, tint);
+                DrawFrameWithAvatarEffects(spriteBatch, skeletonRenderer, frame, screenX, screenY, tint, currentTime);
             }
             else
             {
@@ -1760,6 +2076,204 @@ namespace HaCreator.MapSimulator.Character
         }
 
         #endregion
+
+        private void DrawFrameWithAvatarEffects(
+            SpriteBatch spriteBatch,
+            SkeletonMeshRenderer skeletonRenderer,
+            AssembledFrame frame,
+            int screenX,
+            int screenY,
+            Color tint,
+            int currentTime)
+        {
+            if (frame == null)
+            {
+                return;
+            }
+
+            List<AvatarEffectRenderable> avatarEffects = GetCurrentAvatarEffectRenderables(currentTime);
+            int adjustedY = screenY - frame.FeetOffset;
+
+            DrawAvatarEffectPlane(spriteBatch, skeletonRenderer, avatarEffects, SkillAvatarEffectPlane.BehindCharacter, screenX, screenY, tint);
+
+            int underFaceInsertionIndex = GetUnderFaceInsertionIndex(frame.Parts);
+            bool underFaceDrawn = avatarEffects.Count == 0;
+
+            for (int i = 0; i < frame.Parts.Count; i++)
+            {
+                if (!underFaceDrawn && i == underFaceInsertionIndex)
+                {
+                    DrawAvatarEffectPlane(spriteBatch, skeletonRenderer, avatarEffects, SkillAvatarEffectPlane.UnderFace, screenX, screenY, tint);
+                    underFaceDrawn = true;
+                }
+
+                DrawAssembledPart(spriteBatch, skeletonRenderer, frame.Parts[i], screenX, adjustedY, FacingRight, tint);
+            }
+
+            if (!underFaceDrawn)
+            {
+                DrawAvatarEffectPlane(spriteBatch, skeletonRenderer, avatarEffects, SkillAvatarEffectPlane.UnderFace, screenX, screenY, tint);
+            }
+
+            DrawAvatarEffectPlane(spriteBatch, skeletonRenderer, avatarEffects, SkillAvatarEffectPlane.OverCharacter, screenX, screenY, tint);
+        }
+
+        private static void DrawAssembledPart(
+            SpriteBatch spriteBatch,
+            SkeletonMeshRenderer skeletonRenderer,
+            AssembledPart part,
+            int screenX,
+            int adjustedY,
+            bool flip,
+            Color tint)
+        {
+            if (part?.Texture == null || !part.IsVisible)
+            {
+                return;
+            }
+
+            int partX;
+            int partY = adjustedY + part.OffsetY;
+            partX = flip
+                ? screenX - part.OffsetX - part.Texture.Width
+                : screenX + part.OffsetX;
+
+            Color partColor = part.Tint != Color.White ? part.Tint : tint;
+            part.Texture.DrawBackground(spriteBatch, skeletonRenderer, null, partX, partY, partColor, flip, null);
+        }
+
+        private void DrawAvatarEffectPlane(
+            SpriteBatch spriteBatch,
+            SkeletonMeshRenderer skeletonRenderer,
+            List<AvatarEffectRenderable> avatarEffects,
+            SkillAvatarEffectPlane plane,
+            int screenX,
+            int screenY,
+            Color tint)
+        {
+            if (avatarEffects == null || avatarEffects.Count == 0)
+            {
+                return;
+            }
+
+            for (int i = 0; i < avatarEffects.Count; i++)
+            {
+                AvatarEffectRenderable effect = avatarEffects[i];
+                if (effect.Plane != plane || effect.Frame?.Texture == null)
+                {
+                    continue;
+                }
+
+                bool shouldFlip = FacingRight ^ effect.Frame.Flip;
+                int drawX = shouldFlip
+                    ? screenX - (effect.Frame.Texture.Width - effect.Frame.Origin.X)
+                    : screenX - effect.Frame.Origin.X;
+                int drawY = screenY - effect.Frame.Origin.Y;
+
+                effect.Frame.Texture.DrawBackground(spriteBatch, skeletonRenderer, null, drawX, drawY, tint, shouldFlip, null);
+            }
+        }
+
+        private List<AvatarEffectRenderable> GetCurrentAvatarEffectRenderables(int currentTime)
+        {
+            var renderables = new List<AvatarEffectRenderable>();
+            if (_activeSkillAvatarEffects.Count == 0)
+            {
+                return renderables;
+            }
+
+            int elapsedTime;
+            for (int i = 0; i < _activeSkillAvatarEffects.Count; i++)
+            {
+                SkillAvatarEffectState effectState = _activeSkillAvatarEffects[i];
+                elapsedTime = Math.Max(0, currentTime - effectState.AnimationStartTime);
+
+                if (effectState.IsFinishing)
+                {
+                    SkillAnimation finishOverlay = effectState.Mode == SkillAvatarEffectMode.LadderOrRope
+                        ? effectState.LadderOverlayFinishAnimation ?? effectState.GroundOverlayFinishAnimation
+                        : effectState.GroundOverlayFinishAnimation;
+                    SkillAnimation finishUnderFace = effectState.Mode == SkillAvatarEffectMode.LadderOrRope
+                        ? null
+                        : effectState.GroundUnderFaceFinishAnimation;
+
+                    AddAvatarEffectRenderable(renderables, finishOverlay, SkillAvatarEffectPlane.OverCharacter, elapsedTime);
+                    AddAvatarEffectRenderable(renderables, finishUnderFace, SkillAvatarEffectPlane.UnderFace, elapsedTime);
+                    continue;
+                }
+
+                SkillAnimation overlayAnimation = effectState.Mode == SkillAvatarEffectMode.LadderOrRope
+                    ? effectState.LadderOverlayAnimation ?? effectState.GroundOverlayAnimation
+                    : effectState.GroundOverlayAnimation;
+                SkillAnimation underFaceAnimation = effectState.Mode == SkillAvatarEffectMode.LadderOrRope
+                    ? null
+                    : effectState.GroundUnderFaceAnimation;
+                SkillAvatarEffectPlane overlayPlane = effectState.Mode == SkillAvatarEffectMode.LadderOrRope
+                    && effectState.LadderOverlayAnimation != null
+                    ? SkillAvatarEffectPlane.BehindCharacter
+                    : SkillAvatarEffectPlane.OverCharacter;
+
+                AddAvatarEffectRenderable(renderables, overlayAnimation, overlayPlane, elapsedTime);
+                AddAvatarEffectRenderable(renderables, underFaceAnimation, SkillAvatarEffectPlane.UnderFace, elapsedTime);
+            }
+
+            return renderables;
+        }
+
+        private static void AddAvatarEffectRenderable(
+            List<AvatarEffectRenderable> renderables,
+            SkillAnimation animation,
+            SkillAvatarEffectPlane plane,
+            int elapsedTime)
+        {
+            if (renderables == null || animation == null)
+            {
+                return;
+            }
+
+            SkillFrame frame = animation.GetFrameAtTime(elapsedTime);
+            if (frame?.Texture == null)
+            {
+                return;
+            }
+
+            renderables.Add(new AvatarEffectRenderable(frame, plane));
+        }
+
+        private static int GetUnderFaceInsertionIndex(List<AssembledPart> parts)
+        {
+            if (parts == null || parts.Count == 0)
+            {
+                return 0;
+            }
+
+            int fallbackIndex = parts.Count;
+            for (int i = 0; i < parts.Count; i++)
+            {
+                CharacterPartType partType = parts[i].PartType;
+                if (partType == CharacterPartType.Head)
+                {
+                    fallbackIndex = i + 1;
+                    continue;
+                }
+
+                if (partType == CharacterPartType.Face
+                    || partType == CharacterPartType.Hair
+                    || partType == CharacterPartType.Cap
+                    || partType == CharacterPartType.CapOverHair
+                    || partType == CharacterPartType.CapBelowAccessory
+                    || partType == CharacterPartType.Accessory
+                    || partType == CharacterPartType.AccessoryOverHair
+                    || partType == CharacterPartType.Face_Accessory
+                    || partType == CharacterPartType.Eye_Accessory
+                    || partType == CharacterPartType.Earrings)
+                {
+                    return i;
+                }
+            }
+
+            return fallbackIndex;
+        }
 
         #region Utility
 

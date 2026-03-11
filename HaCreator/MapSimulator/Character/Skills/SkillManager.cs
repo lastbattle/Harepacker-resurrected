@@ -2231,6 +2231,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 {
                     ApplyBuffStats(_buffs[i], false);
                     _player.ClearSkillAvatarTransform(_buffs[i].SkillId);
+                    _player.ClearSkillAvatarEffect(_buffs[i].SkillId, currentTime, playFinish: false);
                     ClearSkillMount(_buffs[i].SkillId);
                     OnBuffExpired?.Invoke(_buffs[i]);
                     _buffs.RemoveAt(i);
@@ -2248,6 +2249,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             };
 
             _buffs.Add(buff);
+            _player.ApplySkillAvatarEffect(skill.SkillId, skill, currentTime);
             OnBuffApplied?.Invoke(buff);
 
             // Apply buff effects to player stats
@@ -2284,6 +2286,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                     // Remove buff effects
                     ApplyBuffStats(buff, false);
                     _player.ClearSkillAvatarTransform(buff.SkillId);
+                    _player.ClearSkillAvatarEffect(buff.SkillId, currentTime);
                     ClearSkillMount(buff.SkillId);
                     _buffs.RemoveAt(i);
                     RefreshBuffControlledFlyingAbility();
@@ -2310,6 +2313,7 @@ namespace HaCreator.MapSimulator.Character.Skills
 
                 ApplyBuffStats(buff, false);
                 _player.ClearSkillAvatarTransform(buff.SkillId);
+                _player.ClearSkillAvatarEffect(buff.SkillId, Environment.TickCount);
                 ClearSkillMount(buff.SkillId);
                 _buffs.RemoveAt(i);
                 OnBuffExpired?.Invoke(buff);
@@ -2949,6 +2953,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             {
                 ApplyBuffStats(buff, false);
                 _player.ClearSkillAvatarTransform(buff.SkillId);
+                _player.ClearSkillAvatarEffect(buff.SkillId, Environment.TickCount, playFinish: false);
                 ClearSkillMount(buff.SkillId);
             }
             _buffs.Clear();
@@ -2960,6 +2965,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             _skillHotkeys.Clear();
             _availableSkills.Clear();
             _player.ClearSkillAvatarTransformAndPlayExitAction();
+            _player.ClearAllSkillAvatarEffects(playFinish: false, Environment.TickCount);
             ClearSkillMount();
         }
 
@@ -2985,11 +2991,13 @@ namespace HaCreator.MapSimulator.Character.Skills
             {
                 ApplyBuffStats(buff, false);
                 _player.ClearSkillAvatarTransform(buff.SkillId);
+                _player.ClearSkillAvatarEffect(buff.SkillId, Environment.TickCount, playFinish: false);
                 ClearSkillMount(buff.SkillId);
             }
             _buffs.Clear();
             RefreshBuffControlledFlyingAbility();
             _player.ClearSkillAvatarTransformAndPlayExitAction();
+            _player.ClearAllSkillAvatarEffects(playFinish: false, Environment.TickCount);
             ClearSkillMount();
 
             foreach (var summon in _summons)
@@ -3028,11 +3036,13 @@ namespace HaCreator.MapSimulator.Character.Skills
             {
                 ApplyBuffStats(buff, false);
                 _player.ClearSkillAvatarTransform(buff.SkillId);
+                _player.ClearSkillAvatarEffect(buff.SkillId, Environment.TickCount, playFinish: false);
                 ClearSkillMount(buff.SkillId);
             }
             _buffs.Clear();
             RefreshBuffControlledFlyingAbility();
             _player.ClearSkillAvatarTransformAndPlayExitAction();
+            _player.ClearAllSkillAvatarEffects(playFinish: false, Environment.TickCount);
             ClearSkillMount();
         }
 
