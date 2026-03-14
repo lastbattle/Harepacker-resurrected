@@ -38,6 +38,23 @@ namespace HaCreator.MapSimulator.Character.Skills
             public bool FacingRight { get; init; }
         }
 
+        private sealed class DeferredSkillPayload
+        {
+            public SkillData Skill { get; init; }
+            public int Level { get; init; }
+            public int ExecuteTime { get; init; }
+            public bool QueueFollowUps { get; init; }
+            public int? PreferredTargetMobId { get; init; }
+        }
+
+        private sealed class RocketBoosterState
+        {
+            public SkillData Skill { get; init; }
+            public int Level { get; init; }
+            public bool HasLeftGround { get; set; }
+            public int LandingAttackTime { get; set; } = int.MinValue;
+        }
+
         private sealed class ClientSkillTimer
         {
             public int SkillId { get; init; }
@@ -423,10 +440,15 @@ namespace HaCreator.MapSimulator.Character.Skills
         // Skill queue for macro execution
         private readonly Queue<int> _skillQueue = new();
         private readonly Queue<QueuedFollowUpAttack> _queuedFollowUpAttacks = new();
+        private readonly Queue<DeferredSkillPayload> _deferredSkillPayloads = new();
         private readonly List<ClientSkillTimer> _clientSkillTimers = new();
         private int _lastQueuedSkillTime = 0;
         private const int SKILL_QUEUE_DELAY = 100; // ms between queued skill attempts
         private const int FOLLOW_UP_ATTACK_DELAY = 90;
+        private const int ROCKET_BOOSTER_SKILL_ID = 35101004;
+        private const int ROCKET_BOOSTER_LANDING_RECOVERY_MS = 500;
+
+        private RocketBoosterState _rocketBoosterState;
 
         /// <summary>
         /// Queue a skill for execution (used by skill macros)
@@ -830,8 +852,14 @@ namespace HaCreator.MapSimulator.Character.Skills
             int level,
             int currentTime,
             bool queueFollowUps = true,
-            int? preferredTargetMobId = null)
+            int? preferredTargetMobId = null,
+            bool allowDeferredExecution = true)
         {
+            if (allowDeferredExecution && TryScheduleDeferredSkillPayload(skill, level, currentTime, queueFollowUps, preferredTargetMobId))
+            {
+                return;
+            }
+
             if (skill.IsMovement)
             {
                 ExecuteMovementSkill(skill, level);
@@ -868,6 +896,48 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
 
             ProcessMeleeAttack(skill, level, currentTime, queueFollowUps, preferredTargetMobId);
+        }
+
+        private bool TryScheduleDeferredSkillPayload(
+            SkillData skill,
+            int level,
+            int currentTime,
+            bool queueFollowUps,
+            int? preferredTargetMobId)
+        {
+            if (skill == null)
+            {
+                return false;
+            }
+
+            if (IsRocketBoosterSkill(skill))
+            {
+                _rocketBoosterState = null;
+                _deferredSkillPayloads.Enqueue(new DeferredSkillPayload
+                {
+                    Skill = skill,
+                    Level = level,
+                    ExecuteTime = currentTime + GetRocketBoosterLaunchDelayMs(skill),
+                    QueueFollowUps = false,
+                    PreferredTargetMobId = preferredTargetMobId
+                });
+                return true;
+            }
+
+            if (!ShouldUseSmoothingMovingShoot(skill))
+            {
+                return false;
+            }
+
+            _deferredSkillPayloads.Enqueue(new DeferredSkillPayload
+            {
+                Skill = skill,
+                Level = level,
+                ExecuteTime = currentTime + GetMovingShootDelayMs(skill),
+                QueueFollowUps = queueFollowUps,
+                PreferredTargetMobId = preferredTargetMobId
+            });
+            return true;
         }
 
         private void BeginPreparedSkill(SkillData skill, int level, int currentTime)
@@ -1100,6 +1170,181 @@ namespace HaCreator.MapSimulator.Character.Skills
 
             float verticalSpeed = isFlyingRush ? -60f : (float)_player.Physics.VelocityY;
             _player.Physics.SetVelocity(rushSpeed * direction, verticalSpeed);
+        }
+
+        private void ExecuteRocketBoosterLaunch(SkillData skill, int level)
+        {
+            SkillLevelData levelData = skill?.GetLevel(level);
+            if (levelData == null)
+            {
+                return;
+            }
+
+            int horizontalRange = Math.Max(
+                Math.Max(levelData.RangeR, levelData.RangeL),
+                Math.Max(levelData.Range, Math.Max(levelData.X, levelData.Y)));
+
+            if (horizontalRange <= 0)
+            {
+                horizontalRange = 160;
+            }
+
+            float direction = _player.FacingRight ? 1f : -1f;
+            float rushSpeed = Math.Max(320f, horizontalRange * 2.4f);
+            float verticalSpeed = Math.Max(260f, Math.Abs(levelData.RangeTop) * 3f);
+
+            _player.Physics.Jump();
+            _player.Physics.SetVelocity(rushSpeed * direction, -verticalSpeed);
+            _rocketBoosterState = new RocketBoosterState
+            {
+                Skill = skill,
+                Level = level
+            };
+        }
+
+        private void ProcessDeferredSkillPayloads(int currentTime)
+        {
+            while (_deferredSkillPayloads.Count > 0)
+            {
+                DeferredSkillPayload pending = _deferredSkillPayloads.Peek();
+                if (pending.ExecuteTime > currentTime)
+                {
+                    return;
+                }
+
+                _deferredSkillPayloads.Dequeue();
+                if (pending.Skill == null)
+                {
+                    continue;
+                }
+
+                if (IsRocketBoosterSkill(pending.Skill))
+                {
+                    ExecuteRocketBoosterLaunch(pending.Skill, pending.Level);
+                    continue;
+                }
+
+                ExecuteSkillPayload(
+                    pending.Skill,
+                    pending.Level,
+                    currentTime,
+                    pending.QueueFollowUps,
+                    pending.PreferredTargetMobId,
+                    allowDeferredExecution: false);
+            }
+        }
+
+        private void UpdateRocketBooster(int currentTime)
+        {
+            if (_rocketBoosterState == null)
+            {
+                return;
+            }
+
+            bool onFoothold = _player.Physics?.IsOnFoothold() == true;
+            if (!onFoothold)
+            {
+                _rocketBoosterState.HasLeftGround = true;
+                return;
+            }
+
+            if (!_rocketBoosterState.HasLeftGround)
+            {
+                return;
+            }
+
+            if (_rocketBoosterState.LandingAttackTime == int.MinValue)
+            {
+                SkillLevelData levelData = _rocketBoosterState.Skill.GetLevel(_rocketBoosterState.Level);
+                bool canLandAttack = levelData == null || levelData.MpCon <= 0 || TryConsumeSkillResources(levelData);
+
+                SpawnHitEffect(_rocketBoosterState.Skill, _player.X, _player.Y, currentTime);
+                if (canLandAttack)
+                {
+                    ProcessMeleeAttack(
+                        _rocketBoosterState.Skill,
+                        _rocketBoosterState.Level,
+                        currentTime,
+                        queueFollowUps: false,
+                        preferredTargetMobId: null);
+                }
+
+                _rocketBoosterState.LandingAttackTime = currentTime;
+                return;
+            }
+
+            if (currentTime - _rocketBoosterState.LandingAttackTime >= ROCKET_BOOSTER_LANDING_RECOVERY_MS)
+            {
+                _rocketBoosterState = null;
+            }
+        }
+
+        private int GetRocketBoosterLaunchDelayMs(SkillData skill)
+        {
+            return Math.Max(120, GetActionAnimationDurationMs(skill));
+        }
+
+        private int GetMovingShootDelayMs(SkillData skill)
+        {
+            int delay = skill?.Effect?.Frames?.Count > 0
+                ? skill.Effect.Frames[0].Delay
+                : GetActionAnimationLeadDelayMs(skill);
+
+            return Math.Clamp(delay <= 0 ? 90 : delay, 60, 180);
+        }
+
+        private int GetActionAnimationLeadDelayMs(SkillData skill)
+        {
+            if (_player.Assembler == null)
+            {
+                return 0;
+            }
+
+            string actionName = ResolveSkillActionName(skill);
+            var animation = _player.Assembler.GetAnimation(actionName);
+            if (animation == null || animation.Length == 0)
+            {
+                return 0;
+            }
+
+            return animation[0].Duration;
+        }
+
+        private int GetActionAnimationDurationMs(SkillData skill)
+        {
+            if (_player.Assembler == null)
+            {
+                return 0;
+            }
+
+            string actionName = ResolveSkillActionName(skill);
+            var animation = _player.Assembler.GetAnimation(actionName);
+            if (animation == null || animation.Length == 0)
+            {
+                return 0;
+            }
+
+            int duration = 0;
+            foreach (var frame in animation)
+            {
+                duration += frame.Duration;
+            }
+
+            return duration;
+        }
+
+        private static bool IsRocketBoosterSkill(SkillData skill)
+        {
+            return skill?.SkillId == ROCKET_BOOSTER_SKILL_ID;
+        }
+
+        private static bool ShouldUseSmoothingMovingShoot(SkillData skill)
+        {
+            return skill?.CasterMove == true
+                   && skill.IsAttack
+                   && !skill.IsMovement
+                   && !IsRocketBoosterSkill(skill)
+                   && (skill.Projectile != null || skill.AttackType == SkillAttackType.Ranged);
         }
 
         private static bool SkillTextContains(SkillData skill, string value)
@@ -2675,7 +2920,13 @@ namespace HaCreator.MapSimulator.Character.Skills
             {
                 UpdateKeydownSkill(currentTime);
             }
+            else if (_preparedSkill != null && _preparedSkill.Progress(currentTime) >= 1f)
+            {
+                ReleasePreparedSkill(currentTime);
+            }
 
+            ProcessDeferredSkillPayloads(currentTime);
+            UpdateRocketBooster(currentTime);
             ProcessQueuedFollowUpAttacks(currentTime);
 
             // Process skill queue (for macros)
@@ -3183,7 +3434,9 @@ namespace HaCreator.MapSimulator.Character.Skills
         {
             _projectiles.Clear();
             _queuedFollowUpAttacks.Clear();
+            _deferredSkillPayloads.Clear();
             _clientSkillTimers.Clear();
+            _rocketBoosterState = null;
             ClearSummonPuppets();
             _summons.Clear();
             _hitEffects.Clear();
@@ -3224,7 +3477,9 @@ namespace HaCreator.MapSimulator.Character.Skills
         {
             _projectiles.Clear();
             _queuedFollowUpAttacks.Clear();
+            _deferredSkillPayloads.Clear();
             _clientSkillTimers.Clear();
+            _rocketBoosterState = null;
             ClearSummonPuppets();
             _hitEffects.Clear();
             _currentCast = null;
@@ -3267,7 +3522,9 @@ namespace HaCreator.MapSimulator.Character.Skills
         {
             _projectiles.Clear();
             _queuedFollowUpAttacks.Clear();
+            _deferredSkillPayloads.Clear();
             _clientSkillTimers.Clear();
+            _rocketBoosterState = null;
             ClearSummonPuppets();
             _summons.Clear();
             _hitEffects.Clear();

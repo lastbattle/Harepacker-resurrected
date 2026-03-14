@@ -339,6 +339,9 @@ namespace HaCreator.MapSimulator.Character.Skills
         public int KeydownDurationMs { get; set; }
         public int KeydownEndDurationMs { get; set; }
         public int KeydownRepeatIntervalMs { get; set; }
+        public bool CasterMove { get; set; }
+        public bool AreaAttack { get; set; }
+        public string LandingEffectName { get; set; }
         public Dictionary<int, HashSet<int>> FinalAttackTriggers { get; set; } = new();
 
         public bool HasPersistentAvatarEffect =>

@@ -240,6 +240,9 @@ namespace HaCreator.MapSimulator.Character.Skills
                 skill.Invisible = GetInt(infoNode, "invisible") == 1;
                 skill.MasterOnly = GetInt(infoNode, "masterOnly") == 1;
                 skill.IsRapidAttack = GetInt(infoNode, "rapidAttack") == 1;
+                skill.CasterMove = GetInt(infoNode, "casterMove") == 1;
+                skill.AreaAttack = GetInt(infoNode, "areaAttack") == 1;
+                skill.LandingEffectName = GetString(infoNode, "landingEffect");
             }
 
             // Check common nodes
