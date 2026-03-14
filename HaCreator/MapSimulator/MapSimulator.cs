@@ -1,4 +1,4 @@
-using HaCreator.MapEditor;
+﻿using HaCreator.MapEditor;
 using HaCreator.MapEditor.Info;
 using HaCreator.MapEditor.Instance;
 using HaCreator.MapEditor.Instance.Misc;
@@ -2199,14 +2199,11 @@ namespace HaCreator.MapSimulator
                     HandleNpcOverlayPrimaryAction();
                 }
 
-                if (!npcOverlayResult.Consumed)
-                {
-                    // Avoid leaking the overlay-dismissal click into world interactions while
-                    // direction mode is transitioning through its delayed release window.
-                    CheckNpcHover(newMouseState);
-                    HandleNpcTalkClick(newMouseState);
-                    HandlePortalDoubleClick(newMouseState);
-                }
+                // Check if mouse is hovering over an NPC
+                CheckNpcHover(newMouseState);
+                HandleNpcTalkClick(newMouseState);
+
+                // Handle portal double-click for teleportation
                 HandlePortalDoubleClick(newMouseState);
             }
 
