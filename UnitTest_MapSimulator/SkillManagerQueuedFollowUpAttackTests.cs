@@ -57,6 +57,27 @@ namespace UnitTest_MapSimulator
             Assert.Equal(0, GetQueuedFollowUpAttackCount(manager));
         }
 
+        [Fact]
+        public void Update_CancelsQueuedFollowUpAttackWhenWeaponChangesBeforeExecution()
+        {
+            var triggerSkill = CreateTriggerSkill();
+            var followUpSkill = CreateFollowUpSkill();
+            var manager = CreateSkillManager(1302000, triggerSkill, followUpSkill);
+            manager.SetSkillLevel(triggerSkill.SkillId, 1);
+            manager.SetSkillLevel(followUpSkill.SkillId, 1);
+
+            int? castSkillId = null;
+            manager.OnSkillCast = cast => castSkillId = cast?.SkillId;
+
+            InvokeQueueFollowUpAttack(manager, triggerSkill, 1000, 77, true);
+            EquipWeapon(manager, 1312000);
+
+            manager.Update(1090, 0.016f);
+
+            Assert.Null(castSkillId);
+            Assert.Equal(0, GetQueuedFollowUpAttackCount(manager));
+        }
+
         private static SkillData CreateTriggerSkill()
         {
             return new SkillData
@@ -124,6 +145,21 @@ namespace UnitTest_MapSimulator
             var queue = field!.GetValue(manager) as System.Collections.ICollection;
             Assert.NotNull(queue);
             return queue!.Count;
+        }
+
+        private static void EquipWeapon(SkillManager manager, int weaponItemId)
+        {
+            FieldInfo field = typeof(SkillManager).GetField("_player", BindingFlags.Instance | BindingFlags.NonPublic);
+            Assert.NotNull(field);
+            var player = field!.GetValue(manager) as PlayerCharacter;
+            Assert.NotNull(player);
+
+            player!.Build.Equip(new WeaponPart
+            {
+                ItemId = weaponItemId,
+                Slot = EquipSlot.Weapon,
+                Type = CharacterPartType.Weapon
+            });
         }
     }
 }

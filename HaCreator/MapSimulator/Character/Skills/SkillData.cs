@@ -327,6 +327,8 @@ namespace HaCreator.MapSimulator.Character.Skills
         public int SummonMoveAbility { get; set; }
         public SummonMovementStyle SummonMovementStyle { get; set; } = SummonMovementStyle.Stationary;
         public float SummonSpawnDistanceX { get; set; } = 50f;
+        public string MinionAbility { get; set; }
+        public string SummonCondition { get; set; }
         public ProjectileData Projectile { get; set; }       // Ball/projectile
         public string CastSoundKey { get; set; }             // Registered simulator sound key for cast SFX
         public string RepeatSoundKey { get; set; }           // Registered simulator sound key for repeated hits/shots
@@ -606,6 +608,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         public SkillData SkillData { get; set; }
         public SkillLevelData LevelData { get; set; }
         public SkillAnimation EffectAnimation { get; set; }
+        public bool SuppressEffectAnimation { get; set; }
 
         public int CastTime { get; set; }
         public int CasterId { get; set; }
@@ -634,6 +637,10 @@ namespace HaCreator.MapSimulator.Character.Skills
         public int Level { get; set; }
         public int StartTime { get; set; }
         public int Duration { get; set; }
+        public int MaxHoldDurationMs { get; set; }
+        public int HudGaugeDurationMs { get; set; }
+        public string HudSkinKey { get; set; } = "KeyDownBar";
+        public bool ShowHudBar { get; set; } = true;
         public SkillData SkillData { get; set; }
         public SkillLevelData LevelData { get; set; }
         public bool IsKeydownSkill { get; set; }

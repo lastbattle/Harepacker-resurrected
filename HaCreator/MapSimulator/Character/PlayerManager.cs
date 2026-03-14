@@ -888,7 +888,7 @@ namespace HaCreator.MapSimulator.Character
                 foreach (var mob in _mobPool.ActiveMobs)
                 {
                     if (hitCount >= 3) break;
-                    if (mob?.AI == null || mob.AI.State == MobAIState.Death || mob.IsProtectedFromPlayerDamage) continue;
+                    if (mob?.AI == null || mob.AI.State == MobAIState.Death) continue;
 
                     var mobHitbox = new Rectangle(
                         (int)(mob.MovementInfo?.X ?? 0) - 20,
@@ -957,7 +957,7 @@ namespace HaCreator.MapSimulator.Character
 
                 foreach (var mob in _mobPool.ActiveMobs)
                 {
-                    if (mob?.AI == null || mob.AI.State == MobAIState.Death || mob.IsProtectedFromPlayerDamage) continue;
+                    if (mob?.AI == null || mob.AI.State == MobAIState.Death) continue;
 
                     var mobHitbox = new Rectangle(
                         (int)(mob.MovementInfo?.X ?? 0) - 20,

@@ -1099,6 +1099,45 @@ namespace UnitTest_MapSimulator
         }
 
         [Fact]
+        public void SkillManager_DoubleJumpSkills_AttachTransientUnderFaceAvatarEffects()
+        {
+            var player = new PlayerCharacter(device: null, texturePool: null, build: null);
+            var skillManager = new SkillManager(new SkillLoader(skillWz: null, device: null, texturePool: null), player);
+            var startCast = typeof(SkillManager).GetMethod("StartCast", BindingFlags.Instance | BindingFlags.NonPublic);
+            var currentCastField = typeof(SkillManager).GetField("_currentCast", BindingFlags.Instance | BindingFlags.NonPublic);
+
+            Assert.NotNull(startCast);
+            Assert.NotNull(currentCastField);
+
+            var skill = new SkillData
+            {
+                SkillId = 33001002,
+                MaxLevel = 1,
+                ActionName = "doubleJump",
+                IsMovement = true,
+                Effect = CreateSkillAnimation("effect", 60, 60)
+            };
+            skill.Levels[1] = new SkillLevelData
+            {
+                Level = 1,
+                X = 120
+            };
+
+            startCast!.Invoke(skillManager, new object[] { skill, 1, 1000 });
+
+            Assert.True(player.HasTransientSkillAvatarEffect(skill.SkillId));
+
+            var currentCast = Assert.IsType<SkillCastInfo>(currentCastField!.GetValue(skillManager));
+            Assert.True(currentCast.SuppressEffectAnimation);
+
+            player.Update(1119, 0.016f);
+            Assert.True(player.HasTransientSkillAvatarEffect(skill.SkillId));
+
+            player.Update(1120, 0.016f);
+            Assert.False(player.HasTransientSkillAvatarEffect(skill.SkillId));
+        }
+
+        [Fact]
         public void SkillManager_PreparedSkillTransforms_PlayExitActionsOnRelease()
         {
             var player = new PlayerCharacter(device: null, texturePool: null, build: null);
@@ -1199,6 +1238,99 @@ namespace UnitTest_MapSimulator
 
             skillManager.Update(3201, 0.016f);
             Assert.Same(originalMount, build.Equipment[EquipSlot.TamingMob]);
+        }
+
+        [Fact]
+        public void SkillManager_MechanicVehicleSkills_EquipSharedRidePartAndPreserveReturnOwner()
+        {
+            var build = new CharacterBuild
+            {
+                Body = new BodyPart(),
+                Head = new BodyPart()
+            };
+            var player = new PlayerCharacter(device: null, texturePool: null, build);
+            var foothold = CreateFoothold(0, 100, 200, 100);
+            var skillManager = new SkillManager(new SkillLoader(skillWz: null, device: null, texturePool: null), player);
+            var startCast = typeof(SkillManager).GetMethod("StartCast", BindingFlags.Instance | BindingFlags.NonPublic);
+            var expireRepeatSkillSustain = typeof(SkillManager).GetMethod("ExpireRepeatSkillSustain", BindingFlags.Instance | BindingFlags.NonPublic);
+
+            Assert.NotNull(startCast);
+            Assert.NotNull(expireRepeatSkillSustain);
+
+            var originalMount = new CharacterPart
+            {
+                ItemId = 1902000,
+                Type = CharacterPartType.TamingMob,
+                Slot = EquipSlot.TamingMob
+            };
+            var mechanicMount = new CharacterPart
+            {
+                ItemId = 1932016,
+                Type = CharacterPartType.TamingMob,
+                Slot = EquipSlot.TamingMob
+            };
+
+            build.Equip(originalMount);
+            skillManager.SetTamingMobLoader(itemId => itemId == mechanicMount.ItemId ? mechanicMount : null);
+
+            player.SetPosition(100, 100);
+            player.Physics.LandOnFoothold(foothold);
+            player.SetFootholdLookup(CreateFootholdLookup(foothold));
+
+            var tankSkill = new SkillData
+            {
+                SkillId = 35121005,
+                MaxLevel = 1,
+                ActionName = "tank_pre",
+                Levels =
+                {
+                    [1] = new SkillLevelData { Level = 1 }
+                }
+            };
+            var siegeSkill = new SkillData
+            {
+                SkillId = 35121013,
+                MaxLevel = 1,
+                ActionName = "tank_siegepre",
+                IsBuff = true,
+                Levels =
+                {
+                    [1] = new SkillLevelData
+                    {
+                        Level = 1,
+                        Time = 1
+                    }
+                }
+            };
+
+            startCast!.Invoke(skillManager, new object[] { tankSkill, 1, 1000 });
+            Assert.Same(mechanicMount, build.Equipment[EquipSlot.TamingMob]);
+
+            startCast.Invoke(skillManager, new object[] { siegeSkill, 1, 1200 });
+            Assert.Same(mechanicMount, build.Equipment[EquipSlot.TamingMob]);
+
+            expireRepeatSkillSustain!.Invoke(skillManager, new object[] { 2200 });
+            Assert.Same(mechanicMount, build.Equipment[EquipSlot.TamingMob]);
+
+            skillManager.ClearMapState();
+            Assert.Same(originalMount, build.Equipment[EquipSlot.TamingMob]);
+        }
+
+        [Theory]
+        [InlineData(1902000)]
+        [InlineData(1932016)]
+        [InlineData(1983000)]
+        public void CharacterLoader_TamingMobEquipmentRanges_MapToRideSlot(int itemId)
+        {
+            var loader = (CharacterLoader)RuntimeHelpers.GetUninitializedObject(typeof(CharacterLoader));
+            var getEquipmentFolder = typeof(CharacterLoader).GetMethod("GetEquipmentFolder", BindingFlags.Instance | BindingFlags.NonPublic);
+            var getEquipSlot = typeof(CharacterLoader).GetMethod("GetEquipSlot", BindingFlags.Instance | BindingFlags.NonPublic);
+
+            Assert.NotNull(getEquipmentFolder);
+            Assert.NotNull(getEquipSlot);
+
+            Assert.Equal("TamingMob", getEquipmentFolder!.Invoke(loader, new object[] { itemId }));
+            Assert.Equal(EquipSlot.TamingMob, getEquipSlot!.Invoke(loader, new object[] { itemId }));
         }
 
         [Fact]

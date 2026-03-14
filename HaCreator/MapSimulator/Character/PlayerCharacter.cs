@@ -62,6 +62,7 @@ namespace HaCreator.MapSimulator.Character
             public string FloatActionName { get; init; }
             public string HitActionName { get; init; }
             public string ExitActionName { get; init; }
+            public bool LocksMovement { get; init; }
         }
 
         private enum SkillAvatarEffectMode
@@ -99,6 +100,14 @@ namespace HaCreator.MapSimulator.Character
                 GroundOverlayFinishAnimation != null
                 || GroundUnderFaceFinishAnimation != null
                 || LadderOverlayFinishAnimation != null;
+        }
+
+        private sealed class TransientSkillAvatarEffectState
+        {
+            public int SkillId { get; init; }
+            public SkillAnimation Animation { get; init; }
+            public int AnimationStartTime { get; set; }
+            public SkillAvatarEffectPlane Plane { get; init; }
         }
 
         private readonly struct AvatarEffectRenderable
@@ -162,11 +171,15 @@ namespace HaCreator.MapSimulator.Character
         public string CurrentFaceExpressionName { get; private set; } = "default";
         public bool FacingRight { get; set; } = true;
         public bool IsAlive => State != PlayerState.Dead;
-        public bool CanMove => State != PlayerState.Dead && State != PlayerState.Hit && State != PlayerState.Attacking;
+        public bool CanMove => !IsMovementLockedBySkillTransform
+                               && State != PlayerState.Dead
+                               && State != PlayerState.Hit
+                               && State != PlayerState.Attacking;
         public bool CanAttack => State != PlayerState.Dead && State != PlayerState.Hit &&
                                   State != PlayerState.Ladder && State != PlayerState.Rope &&
                                   State != PlayerState.Swimming; // Can't attack while swimming (official behavior)
         public bool IsRecordingMovementPath => Physics?.IsRecordingPath == true;
+        public bool IsMovementLockedBySkillTransform => _activeSkillAvatarTransform?.LocksMovement == true;
 
         /// <summary>
         /// GM Fly Mode - allows free flying around the map ignoring physics
@@ -201,6 +214,7 @@ namespace HaCreator.MapSimulator.Character
         private bool _sustainedSkillAnimation;
         private SkillAvatarTransformState _activeSkillAvatarTransform;
         private readonly System.Collections.Generic.List<SkillAvatarEffectState> _activeSkillAvatarEffects = new();
+        private readonly System.Collections.Generic.List<TransientSkillAvatarEffectState> _transientSkillAvatarEffects = new();
         private readonly Random _faceExpressionRandom = new(Environment.TickCount);
         private int _nextBlinkTime = Environment.TickCount + FACE_BLINK_MIN_INTERVAL_MS;
         private int _blinkExpressionEndTime;
@@ -499,7 +513,8 @@ namespace HaCreator.MapSimulator.Character
 
         private void ProcessInput(int currentTime, float deltaTime)
         {
-            if (!CanMove && State != PlayerState.Attacking)
+            bool movementLockedBySkillTransform = IsMovementLockedBySkillTransform;
+            if (!CanMove && State != PlayerState.Attacking && !movementLockedBySkillTransform)
                 return;
 
             // deltaTime is already in seconds (same as tSec in official client)
@@ -510,6 +525,12 @@ namespace HaCreator.MapSimulator.Character
             {
                 StartAttack(currentTime);
                 return; // Attack takes priority
+            }
+
+            if (movementLockedBySkillTransform)
+            {
+                Physics.VelocityX = 0;
+                return;
             }
 
             // Ladder/rope interaction - UP to grab from below
@@ -1529,6 +1550,29 @@ namespace HaCreator.MapSimulator.Character
             return _activeSkillAvatarEffects.Exists(effectState => effectState.SkillId == skillId);
         }
 
+        public bool ApplyTransientUnderFaceSkillAvatarEffect(int skillId, SkillAnimation animation, int currentTime)
+        {
+            if (skillId <= 0 || animation?.Frames == null || animation.Frames.Count == 0)
+            {
+                return false;
+            }
+
+            ClearTransientSkillAvatarEffect(skillId);
+            _transientSkillAvatarEffects.Add(new TransientSkillAvatarEffectState
+            {
+                SkillId = skillId,
+                Animation = animation,
+                AnimationStartTime = currentTime,
+                Plane = SkillAvatarEffectPlane.UnderFace
+            });
+            return true;
+        }
+
+        public bool HasTransientSkillAvatarEffect(int skillId)
+        {
+            return _transientSkillAvatarEffects.Exists(effectState => effectState.SkillId == skillId);
+        }
+
         public void ClearAllSkillAvatarEffects(bool playFinish, int currentTime)
         {
             for (int i = _activeSkillAvatarEffects.Count - 1; i >= 0; i--)
@@ -1564,6 +1608,22 @@ namespace HaCreator.MapSimulator.Character
 
         private void UpdateAvatarEffects(int currentTime)
         {
+            for (int i = _transientSkillAvatarEffects.Count - 1; i >= 0; i--)
+            {
+                TransientSkillAvatarEffectState transientEffect = _transientSkillAvatarEffects[i];
+                if (transientEffect?.Animation == null)
+                {
+                    _transientSkillAvatarEffects.RemoveAt(i);
+                    continue;
+                }
+
+                int elapsedTime = Math.Max(0, currentTime - transientEffect.AnimationStartTime);
+                if (transientEffect.Animation.IsComplete(elapsedTime))
+                {
+                    _transientSkillAvatarEffects.RemoveAt(i);
+                }
+            }
+
             if (_activeSkillAvatarEffects.Count == 0)
             {
                 return;
@@ -1925,6 +1985,7 @@ namespace HaCreator.MapSimulator.Character
             ClearForcedActionName();
             ClearSkillAvatarTransform();
             ClearAllSkillAvatarEffects(playFinish: false, Environment.TickCount);
+            ClearAllTransientSkillAvatarEffects();
             _blinkExpressionEndTime = 0;
             _hitExpressionEndTime = 0;
             CurrentFaceExpressionName = "default";
@@ -1965,6 +2026,7 @@ namespace HaCreator.MapSimulator.Character
             ClearForcedActionName();
             ClearSkillAvatarTransform();
             ClearAllSkillAvatarEffects(playFinish: false, Environment.TickCount);
+            ClearAllTransientSkillAvatarEffects();
             _blinkExpressionEndTime = 0;
             _hitExpressionEndTime = 0;
             CurrentFaceExpressionName = "default";
@@ -2177,7 +2239,7 @@ namespace HaCreator.MapSimulator.Character
         private List<AvatarEffectRenderable> GetCurrentAvatarEffectRenderables(int currentTime)
         {
             var renderables = new List<AvatarEffectRenderable>();
-            if (_activeSkillAvatarEffects.Count == 0)
+            if (_activeSkillAvatarEffects.Count == 0 && _transientSkillAvatarEffects.Count == 0)
             {
                 return renderables;
             }
@@ -2217,7 +2279,35 @@ namespace HaCreator.MapSimulator.Character
                 AddAvatarEffectRenderable(renderables, underFaceAnimation, SkillAvatarEffectPlane.UnderFace, elapsedTime);
             }
 
+            for (int i = 0; i < _transientSkillAvatarEffects.Count; i++)
+            {
+                TransientSkillAvatarEffectState effectState = _transientSkillAvatarEffects[i];
+                if (effectState?.Animation == null)
+                {
+                    continue;
+                }
+
+                elapsedTime = Math.Max(0, currentTime - effectState.AnimationStartTime);
+                AddAvatarEffectRenderable(renderables, effectState.Animation, effectState.Plane, elapsedTime);
+            }
+
             return renderables;
+        }
+
+        private void ClearTransientSkillAvatarEffect(int skillId)
+        {
+            for (int i = _transientSkillAvatarEffects.Count - 1; i >= 0; i--)
+            {
+                if (_transientSkillAvatarEffects[i].SkillId == skillId)
+                {
+                    _transientSkillAvatarEffects.RemoveAt(i);
+                }
+            }
+        }
+
+        public void ClearAllTransientSkillAvatarEffects()
+        {
+            _transientSkillAvatarEffects.Clear();
         }
 
         private static void AddAvatarEffectRenderable(
@@ -2340,6 +2430,9 @@ namespace HaCreator.MapSimulator.Character
 
             switch (skillId)
             {
+                case 32121003:
+                    transform = CreateSingleActionTransform(skillId, "cyclone", "cyclone_after");
+                    return true;
                 case 35001001:
                     transform = CreateMechanicTransform(skillId, "flamethrower", "flamethrower", "flamethrower", "flamethrower", "flamethrower_after");
                     return true;
@@ -2350,16 +2443,22 @@ namespace HaCreator.MapSimulator.Character
                     transform = CreateMechanicTransform(skillId, "tank_stand", "tank_walk", "tank", "tank_prone", "tank_after");
                     return true;
                 case 35111004:
-                    transform = CreateMechanicTransform(skillId, "siege_stand", "siege_stand", "siege", "siege_stand", "siege_after");
+                    transform = CreateMechanicTransform(skillId, "siege_stand", "siege_stand", "siege", "siege_stand", "siege_after", locksMovement: true);
                     return true;
                 case 35121013:
-                    transform = CreateMechanicTransform(skillId, "tank_siegestand", "tank_siegestand", "tank_siegeattack", "tank_siegestand", "tank_siegeafter");
+                    transform = CreateMechanicTransform(skillId, "tank_siegestand", "tank_siegestand", "tank_siegeattack", "tank_siegestand", "tank_siegeafter", locksMovement: true);
                     return true;
             }
 
             if (string.Equals(normalizedAction, "flamethrower", StringComparison.OrdinalIgnoreCase))
             {
                 transform = CreateMechanicTransform(skillId, "flamethrower", "flamethrower", "flamethrower", "flamethrower", "flamethrower_after");
+                return true;
+            }
+
+            if (string.Equals(normalizedAction, "cyclone_pre", StringComparison.OrdinalIgnoreCase))
+            {
+                transform = CreateSingleActionTransform(skillId, "cyclone", "cyclone_after");
                 return true;
             }
 
@@ -2377,20 +2476,26 @@ namespace HaCreator.MapSimulator.Character
 
             if (string.Equals(normalizedAction, "siege_pre", StringComparison.OrdinalIgnoreCase))
             {
-                transform = CreateMechanicTransform(skillId, "siege_stand", "siege_stand", "siege", "siege_stand", "siege_after");
+                transform = CreateMechanicTransform(skillId, "siege_stand", "siege_stand", "siege", "siege_stand", "siege_after", locksMovement: true);
                 return true;
             }
 
             if (string.Equals(normalizedAction, "tank_siegepre", StringComparison.OrdinalIgnoreCase))
             {
-                transform = CreateMechanicTransform(skillId, "tank_siegestand", "tank_siegestand", "tank_siegeattack", "tank_siegestand", "tank_siegeafter");
+                transform = CreateMechanicTransform(skillId, "tank_siegestand", "tank_siegestand", "tank_siegeattack", "tank_siegestand", "tank_siegeafter", locksMovement: true);
+                return true;
+            }
+
+            if (string.Equals(normalizedAction, "rbooster", StringComparison.OrdinalIgnoreCase))
+            {
+                transform = CreateSingleActionTransform(skillId, "rbooster", "rbooster_after");
                 return true;
             }
 
             return false;
         }
 
-        private static SkillAvatarTransformState CreateMechanicTransform(int skillId, string standActionName, string walkActionName, string attackActionName, string proneActionName, string exitActionName)
+        private static SkillAvatarTransformState CreateMechanicTransform(int skillId, string standActionName, string walkActionName, string attackActionName, string proneActionName, string exitActionName, bool locksMovement = false)
         {
             return new SkillAvatarTransformState
             {
@@ -2403,6 +2508,24 @@ namespace HaCreator.MapSimulator.Character
                 ClimbActionName = standActionName,
                 FloatActionName = standActionName,
                 HitActionName = standActionName,
+                ExitActionName = exitActionName,
+                LocksMovement = locksMovement
+            };
+        }
+
+        private static SkillAvatarTransformState CreateSingleActionTransform(int skillId, string actionName, string exitActionName)
+        {
+            return new SkillAvatarTransformState
+            {
+                SkillId = skillId,
+                StandActionName = actionName,
+                WalkActionName = actionName,
+                JumpActionName = actionName,
+                ProneActionName = actionName,
+                AttackActionName = actionName,
+                ClimbActionName = actionName,
+                FloatActionName = actionName,
+                HitActionName = actionName,
                 ExitActionName = exitActionName
             };
         }

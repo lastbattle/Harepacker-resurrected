@@ -898,6 +898,7 @@ namespace HaCreator.MapSimulator.Character
                 111 => "Ring",
                 >= 130 and < 170 => "Weapon",
                 180 => "TamingMob",
+                >= 190 and < 200 => "TamingMob",
                 _ => null
             };
         }
@@ -920,6 +921,7 @@ namespace HaCreator.MapSimulator.Character
                 110 => EquipSlot.Cape,
                 >= 130 and < 170 => EquipSlot.Weapon,
                 180 => EquipSlot.TamingMob,
+                >= 190 and < 200 => EquipSlot.TamingMob,
                 _ => EquipSlot.None
             };
         }
