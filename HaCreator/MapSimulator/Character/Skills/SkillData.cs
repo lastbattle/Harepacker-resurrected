@@ -296,6 +296,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         public bool IsMovement { get; set; }
         public bool IsPrepareSkill { get; set; }
         public bool IsKeydownSkill { get; set; }
+        public bool IsMesoExplosion { get; set; }
         public bool IsRapidAttack { get; set; }
         public bool Invisible { get; set; }          // Hidden skill
         public bool MasterOnly { get; set; }         // Only usable at max level

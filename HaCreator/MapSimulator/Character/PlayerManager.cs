@@ -293,6 +293,7 @@ namespace HaCreator.MapSimulator.Character
             {
                 Skills = new SkillManager(SkillLoader, Player);
                 Skills.SetMobPool(_mobPool);
+                Skills.SetDropPool(_dropPool);
                 Skills.SetCombatEffects(_combatEffects);
                 Skills.SetSoundManager(_soundManager);
                 Skills.SetTamingMobLoader(Loader.LoadEquipment);
@@ -887,7 +888,7 @@ namespace HaCreator.MapSimulator.Character
                 foreach (var mob in _mobPool.ActiveMobs)
                 {
                     if (hitCount >= 3) break;
-                    if (mob?.AI == null || mob.AI.State == MobAIState.Death) continue;
+                    if (mob?.AI == null || mob.AI.State == MobAIState.Death || mob.IsProtectedFromPlayerDamage) continue;
 
                     var mobHitbox = new Rectangle(
                         (int)(mob.MovementInfo?.X ?? 0) - 20,
@@ -956,7 +957,7 @@ namespace HaCreator.MapSimulator.Character
 
                 foreach (var mob in _mobPool.ActiveMobs)
                 {
-                    if (mob?.AI == null || mob.AI.State == MobAIState.Death) continue;
+                    if (mob?.AI == null || mob.AI.State == MobAIState.Death || mob.IsProtectedFromPlayerDamage) continue;
 
                     var mobHitbox = new Rectangle(
                         (int)(mob.MovementInfo?.X ?? 0) - 20,
@@ -1092,6 +1093,7 @@ namespace HaCreator.MapSimulator.Character
 
             // Reconnect skill manager references
             Skills?.SetMobPool(mobPool);
+            Skills?.SetDropPool(dropPool);
             Skills?.SetCombatEffects(combatEffects);
             Skills?.SetSoundManager(_soundManager);
         }

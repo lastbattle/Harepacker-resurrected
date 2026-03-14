@@ -241,6 +241,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 skill.MasterOnly = GetInt(infoNode, "masterOnly") == 1;
                 skill.IsRapidAttack = GetInt(infoNode, "rapidAttack") == 1;
                 skill.CasterMove = GetInt(infoNode, "casterMove") == 1;
+                skill.IsMesoExplosion = GetInt(infoNode, "mesoExplosion") == 1;
                 skill.AreaAttack = GetInt(infoNode, "areaAttack") == 1;
                 skill.LandingEffectName = GetString(infoNode, "landingEffect");
             }
