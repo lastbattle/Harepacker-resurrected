@@ -1434,7 +1434,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return;
 
             WzImageProperty finalAttackNode = skillNode["finalAttack"] ?? skillNode["info"]?["finalAttack"];
-            if (finalAttackNode == null)
+            if (finalAttackNode == null || finalAttackNode.WzProperties == null)
                 return;
 
             foreach (WzImageProperty followUpNode in finalAttackNode.WzProperties)
