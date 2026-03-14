@@ -32,6 +32,8 @@ namespace HaCreator.MapSimulator.Entities
         private int _actionCycleCounter = 0;
         private const int ACTION_CYCLE_INTERVAL = 1000; // Cycle to random action every ~1000 frames
         private static readonly Random _random = new Random();
+        private string _temporaryAction;
+        private int _temporaryActionRemainingMs;
 
         // Movement system
         public NpcMovementInfo MovementInfo { get; private set; }
@@ -148,6 +150,8 @@ namespace HaCreator.MapSimulator.Entities
         /// <param name="deltaTimeMs">Time elapsed since last update in milliseconds</param>
         public void Update(int deltaTimeMs)
         {
+            UpdateTemporaryAction(deltaTimeMs);
+
             // Update movement
             if (MovementEnabled && MovementInfo != null && MovementInfo.CanMove)
             {
@@ -166,15 +170,37 @@ namespace HaCreator.MapSimulator.Entities
                 }
                 else
                 {
+                    if (HasTemporaryActionOverride)
+                    {
+                        return;
+                    }
+
                     // Standing - cycle through idle actions
                     UpdateActionCycle();
                 }
             }
             else
             {
+                if (HasTemporaryActionOverride)
+                {
+                    return;
+                }
+
                 // No movement - just cycle through actions
                 UpdateActionCycle();
             }
+        }
+
+        public void SetTemporaryAction(string action, int durationMs)
+        {
+            if (durationMs <= 0 || string.IsNullOrWhiteSpace(action) || _animationSet == null || !_animationSet.HasAnimation(action))
+            {
+                return;
+            }
+
+            _temporaryAction = action;
+            _temporaryActionRemainingMs = durationMs;
+            SetAction(action);
         }
 
         /// <summary>
@@ -210,6 +236,30 @@ namespace HaCreator.MapSimulator.Entities
                 {
                     SetAction(newAction);
                 }
+            }
+        }
+
+        private bool HasTemporaryActionOverride =>
+            _temporaryActionRemainingMs > 0 && !string.IsNullOrWhiteSpace(_temporaryAction);
+
+        private void UpdateTemporaryAction(int deltaTimeMs)
+        {
+            if (!HasTemporaryActionOverride)
+            {
+                return;
+            }
+
+            _temporaryActionRemainingMs = Math.Max(0, _temporaryActionRemainingMs - Math.Max(0, deltaTimeMs));
+            if (_temporaryActionRemainingMs > 0)
+            {
+                return;
+            }
+
+            string actionToClear = _temporaryAction;
+            _temporaryAction = null;
+            if (string.Equals(CurrentAction, actionToClear, StringComparison.OrdinalIgnoreCase))
+            {
+                SetAction(AnimationKeys.Stand);
             }
         }
 

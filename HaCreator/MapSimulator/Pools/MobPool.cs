@@ -464,6 +464,25 @@ namespace HaCreator.MapSimulator.Pools
             _onMobSpawned?.Invoke(newMob);
             return newMob;
         }
+
+        public MobItem AddTemporaryMob(MobItem mob, int currentTick)
+        {
+            if (mob == null)
+            {
+                return null;
+            }
+
+            _lastUpdateTick = currentTick;
+
+            int mobId = _nextMobId++;
+            mob.PoolId = mobId;
+            _mobById[mobId] = mob;
+            _activeMobs.Add(mob);
+            mob.StartSpawnFadeIn(currentTick);
+
+            _onMobSpawned?.Invoke(mob);
+            return mob;
+        }
         #endregion
 
         #region Update
@@ -752,7 +771,7 @@ namespace HaCreator.MapSimulator.Pools
                 {
                     // Update mob's target to puppet position
                     // The AI will now chase the puppet instead of the player
-                    mob.AI.ForceAggro(puppetX, puppetY, _lastUpdateTick);
+                    mob.AI.ForceAggro(puppetX, puppetY, _lastUpdateTick, puppetId, MobTargetType.Summoned);
                     mob.AI.SetAggroRange((int)aggroRange);
                     count++;
                 }
@@ -767,6 +786,37 @@ namespace HaCreator.MapSimulator.Pools
         public void UpdatePuppets(int currentTick)
         {
             _activePuppets.RemoveAll(p => !p.IsActive || (p.ExpirationTime > 0 && currentTick >= p.ExpirationTime));
+        }
+
+        public void SyncPuppetTargets(int currentTick)
+        {
+            if (_activeMobs.Count == 0)
+            {
+                return;
+            }
+
+            var puppetsById = _activePuppets.ToDictionary(p => p.ObjectId);
+
+            foreach (MobItem mob in _activeMobs)
+            {
+                if (mob?.AI == null || !mob.AI.IsTargetingSummoned)
+                {
+                    continue;
+                }
+
+                if (!puppetsById.TryGetValue(mob.AI.Target.TargetId, out PuppetInfo puppet))
+                {
+                    mob.AI.ClearExternalTarget(currentTick);
+                    continue;
+                }
+
+                mob.AI.UpdateExternalTargetPosition(
+                    puppet.ObjectId,
+                    MobTargetType.Summoned,
+                    puppet.X,
+                    puppet.Y,
+                    currentTick);
+            }
         }
 
         /// <summary>

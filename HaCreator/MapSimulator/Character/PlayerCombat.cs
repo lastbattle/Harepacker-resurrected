@@ -115,7 +115,7 @@ namespace HaCreator.MapSimulator.Character
 
         private bool IsMobInHitbox(MobItem mob, Rectangle hitbox)
         {
-            if (mob?.MovementInfo == null)
+            if (mob?.MovementInfo == null || mob.IsProtectedFromPlayerDamage)
                 return false;
 
             // Get mob hitbox
@@ -317,7 +317,10 @@ namespace HaCreator.MapSimulator.Character
 
             // Calculate damage from mob
             var currentAttack = attackOverride ?? mob.AI?.GetCurrentAttack();
-            int mobAttack = currentAttack?.Damage ?? GetFallbackMobSkillDamage(mob);
+            int baseMobAttack = currentAttack?.Damage ?? GetFallbackMobSkillDamage(mob);
+            int mobAttack = mob.AI?.CalculateOutgoingDamage(
+                baseMobAttack,
+                isSkillAttack ? MobDamageType.Magical : MobDamageType.Physical) ?? baseMobAttack;
             int playerDefense = _player.Build?.Defense ?? 0;
 
             int damage = Math.Max(1, mobAttack - playerDefense / 2);
@@ -422,7 +425,8 @@ namespace HaCreator.MapSimulator.Character
             // Touch damage is typically lower than attack damage (body collision)
             // Use a portion of the mob's attack damage or a default
             var attack = mob.AI?.GetCurrentAttack();
-            int touchDamage = (attack?.Damage ?? 10) / 2; // Half of attack damage
+            int baseTouchDamage = (attack?.Damage ?? 10) / 2; // Half of attack damage
+            int touchDamage = mob.AI?.CalculateOutgoingDamage(baseTouchDamage, MobDamageType.Physical) ?? baseTouchDamage;
             touchDamage = Math.Max(5, touchDamage); // Minimum 5 damage
             int playerDefense = _player.Build?.Defense ?? 0;
 

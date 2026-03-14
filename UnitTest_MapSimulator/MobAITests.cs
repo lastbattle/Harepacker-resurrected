@@ -245,6 +245,58 @@ namespace UnitTest_MapSimulator
         }
 
         [Fact]
+        public void FreezeStatus_KeepsMobInHitStateUntilExpiry()
+        {
+            var ai = CreateDefaultMobAI();
+
+            ai.ApplyStatusEffect(MobStatusEffect.Freeze, durationMs: 1000, currentTick: 100);
+            ai.Update(500, 0, 0, 20, 0);
+
+            Assert.Equal(MobAIState.Hit, ai.State);
+            Assert.Equal(0f, ai.GetSpeedMultiplier());
+
+            ai.Update(1200, 0, 0, 20, 0);
+
+            Assert.False(ai.HasStatusEffect(MobStatusEffect.Freeze));
+            Assert.NotEqual(MobAIState.Hit, ai.State);
+        }
+
+        [Fact]
+        public void StatusDamageModifiers_AdjustIncomingAndOutgoingDamage()
+        {
+            var ai = CreateDefaultMobAI();
+
+            ai.ApplyStatusEffect(MobStatusEffect.PDamage, durationMs: 2000, currentTick: 0, value: 20);
+            ai.ApplyStatusEffect(MobStatusEffect.HardSkin, durationMs: 2000, currentTick: 0, value: 10);
+            ai.ApplyStatusEffect(MobStatusEffect.Showdown, durationMs: 2000, currentTick: 0, value: 15);
+
+            bool died = ai.TakeDamage(100, 1000);
+
+            Assert.False(died);
+            Assert.Equal(15, ai.CurrentHp);
+
+            ai.ApplyStatusEffect(MobStatusEffect.PADamage, durationMs: 2000, currentTick: 1000, value: 25);
+            ai.ApplyStatusEffect(MobStatusEffect.PowerUp, durationMs: 2000, currentTick: 1000, value: 15);
+
+            Assert.Equal(42, ai.CalculateOutgoingDamage(30, MobDamageType.Physical));
+        }
+
+        [Fact]
+        public void SpeedAndSlowStatuses_ModifyChaseSpeedMultiplier()
+        {
+            var ai = CreateDefaultMobAI();
+            ai.ForceAggro(120, 0, 0);
+
+            Assert.Equal(2.0f, ai.GetSpeedMultiplier());
+
+            ai.ApplyStatusEffect(MobStatusEffect.Speed, durationMs: 2000, currentTick: 0, value: 50);
+            Assert.Equal(3.0f, ai.GetSpeedMultiplier());
+
+            ai.ApplyStatusEffect(MobStatusEffect.Web, durationMs: 2000, currentTick: 0, value: 30);
+            Assert.Equal(2.4f, ai.GetSpeedMultiplier());
+        }
+
+        [Fact]
         public void Update_SelfDestructionThresholdStartsConfiguredActionAndBombsOnCompletion()
         {
             var ai = new MobAI();
@@ -292,6 +344,21 @@ namespace UnitTest_MapSimulator
             Assert.False(ai.IsAggroed);
             Assert.False(ai.IsAggressive);
             Assert.True(ai.IsEscortMob);
+        }
+
+        [Fact]
+        public void Update_PreservesSummonedTargetWhenPlayerPositionIsAvailable()
+        {
+            var ai = CreateDefaultMobAI();
+
+            ai.ForceAggro(300, 120, 1000, targetId: 42, targetType: MobTargetType.Summoned);
+            ai.Update(1100, 100, 100, 160, 100);
+
+            Assert.True(ai.Target.IsValid);
+            Assert.Equal(MobTargetType.Summoned, ai.Target.TargetType);
+            Assert.Equal(42, ai.Target.TargetId);
+            Assert.Equal(300f, ai.Target.TargetX);
+            Assert.Equal(120f, ai.Target.TargetY);
         }
     }
 }

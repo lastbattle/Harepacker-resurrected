@@ -4,6 +4,7 @@ using System.Linq;
 using HaCreator.MapEditor.Instance;
 using HaCreator.MapSimulator.Character;
 using HaCreator.MapSimulator.Entities;
+using HaCreator.MapSimulator.Pools;
 using MapleLib.WzLib;
 using MapleLib.WzLib.WzProperties;
 using MapleLib.WzLib.WzStructure.Data.QuestStructure;
@@ -86,6 +87,7 @@ namespace HaCreator.MapSimulator.Interaction
 
         private readonly Dictionary<int, QuestDefinition> _definitions = new();
         private readonly Dictionary<int, QuestProgress> _progress = new();
+        private readonly Dictionary<int, int> _trackedItems = new();
         private bool _definitionsLoaded;
 
         public void RecordMobKill(MobInstance mobInstance)
@@ -118,9 +120,34 @@ namespace HaCreator.MapSimulator.Interaction
             }
         }
 
+        public void RecordDropPickup(DropItem drop)
+        {
+            if (drop == null)
+            {
+                return;
+            }
+
+            switch (drop.Type)
+            {
+                case DropType.Item:
+                case DropType.QuestItem:
+                case DropType.InstallItem:
+                    if (int.TryParse(drop.ItemId, out int itemId))
+                    {
+                        AdjustTrackedItemCount(itemId, Math.Max(1, drop.Quantity));
+                    }
+                    break;
+            }
+        }
+
         public QuestStateType GetCurrentState(int questId)
         {
             return GetQuestState(questId);
+        }
+
+        internal int GetTrackedItemCount(int itemId)
+        {
+            return _trackedItems.TryGetValue(itemId, out int count) ? count : 0;
         }
 
         public NpcInteractionState BuildInteractionState(NpcItem npc, CharacterBuild build, int? preferredQuestId = null)
@@ -451,7 +478,8 @@ namespace HaCreator.MapSimulator.Interaction
             for (int i = 0; i < definition.EndItemRequirements.Count; i++)
             {
                 QuestItemRequirement requirement = definition.EndItemRequirements[i];
-                details.Add($"Item: {GetItemName(requirement.ItemId)} 0/{requirement.RequiredCount} (inventory not modeled)");
+                int currentCount = GetTrackedItemCount(requirement.ItemId);
+                details.Add($"Item: {GetItemName(requirement.ItemId)} {Math.Min(currentCount, requirement.RequiredCount)}/{requirement.RequiredCount}");
             }
         }
 
@@ -501,7 +529,11 @@ namespace HaCreator.MapSimulator.Interaction
             for (int i = 0; i < definition.EndItemRequirements.Count; i++)
             {
                 QuestItemRequirement requirement = definition.EndItemRequirements[i];
-                issues.Add($"Inventory tracking for {GetItemName(requirement.ItemId)} x{requirement.RequiredCount} is not implemented yet.");
+                int currentCount = GetTrackedItemCount(requirement.ItemId);
+                if (currentCount < requirement.RequiredCount)
+                {
+                    issues.Add($"Collect {GetItemName(requirement.ItemId)} x{requirement.RequiredCount - currentCount} more.");
+                }
             }
 
             if (build != null && definition.MaxLevel.HasValue && build.Level > definition.MaxLevel.Value)
@@ -556,7 +588,15 @@ namespace HaCreator.MapSimulator.Interaction
             for (int i = 0; i < actions.RewardItems.Count; i++)
             {
                 QuestRewardItem item = actions.RewardItems[i];
-                messages.Add($"Item reward: {GetItemName(item.ItemId)} x{Math.Abs(item.Count)} (inventory not tracked)");
+                AdjustTrackedItemCount(item.ItemId, item.Count);
+                if (item.Count > 0)
+                {
+                    messages.Add($"Item reward: {GetItemName(item.ItemId)} x{item.Count}");
+                }
+                else if (item.Count < 0)
+                {
+                    messages.Add($"Consumed item: {GetItemName(item.ItemId)} x{Math.Abs(item.Count)}");
+                }
             }
 
             for (int i = 0; i < actions.Messages.Count; i++)
@@ -600,6 +640,24 @@ namespace HaCreator.MapSimulator.Interaction
             return _progress.TryGetValue(questId, out QuestProgress progress)
                 ? progress.State
                 : QuestStateType.Not_Started;
+        }
+
+        private void AdjustTrackedItemCount(int itemId, int delta)
+        {
+            if (itemId <= 0 || delta == 0)
+            {
+                return;
+            }
+
+            _trackedItems.TryGetValue(itemId, out int currentCount);
+            int updatedCount = Math.Max(0, currentCount + delta);
+            if (updatedCount == 0)
+            {
+                _trackedItems.Remove(itemId);
+                return;
+            }
+
+            _trackedItems[itemId] = updatedCount;
         }
 
         private void EnsureDefinitionsLoaded()

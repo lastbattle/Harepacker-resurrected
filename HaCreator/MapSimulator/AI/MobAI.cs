@@ -89,6 +89,13 @@ namespace HaCreator.MapSimulator.AI
         public bool IsActive { get; set; } = true;
     }
 
+    public enum MobTargetType
+    {
+        Player = 0,
+        Summoned = 1,
+        Mob = 3
+    }
+
     /// <summary>
     /// Mob death type - from CMobPool::Update switch statement
     /// </summary>
@@ -188,11 +195,26 @@ namespace HaCreator.MapSimulator.AI
     public class MobTargetInfo
     {
         public int TargetId { get; set; }           // Target object ID
+        public MobTargetType TargetType { get; set; } = MobTargetType.Player;
         public float TargetX { get; set; }          // Target X position
         public float TargetY { get; set; }          // Target Y position
         public float Distance { get; set; }         // Distance to target
         public bool IsValid { get; set; }           // Target still exists
         public int LastSeenTime { get; set; }       // Last time target was in range
+
+        public MobTargetInfo Clone()
+        {
+            return new MobTargetInfo
+            {
+                TargetId = TargetId,
+                TargetType = TargetType,
+                TargetX = TargetX,
+                TargetY = TargetY,
+                Distance = Distance,
+                IsValid = IsValid,
+                LastSeenTime = LastSeenTime
+            };
+        }
     }
 
     /// <summary>
@@ -218,6 +240,12 @@ namespace HaCreator.MapSimulator.AI
         public int Value { get; set; }
         public int TickIntervalMs { get; set; }
         public int NextTickTime { get; set; }
+    }
+
+    public enum MobDamageType
+    {
+        Physical,
+        Magical
     }
 
     /// <summary>
@@ -317,6 +345,7 @@ namespace HaCreator.MapSimulator.AI
         public IReadOnlyDictionary<MobStatusEffect, MobStatusEntry> StatusEntries => _statusEntries;
         public bool IsEscortMob => _isEscortMob;
         public bool CanTargetPlayer => _canTargetPlayer;
+        public bool IsTargetingSummoned => _target.IsValid && _target.TargetType == MobTargetType.Summoned;
 
         // Status effect properties
         public MobStatusEffect StatusEffects => _statusEffects;
@@ -571,6 +600,15 @@ namespace HaCreator.MapSimulator.AI
                 return;
             }
 
+            if (_target.IsValid && _target.TargetType != MobTargetType.Player)
+            {
+                float externalDx = _target.TargetX - mobX;
+                float externalDy = _target.TargetY - mobY;
+                _target.Distance = MathF.Sqrt(externalDx * externalDx + externalDy * externalDy);
+                _target.LastSeenTime = currentTick;
+                return;
+            }
+
             if (!playerX.HasValue || !playerY.HasValue)
             {
                 // If aggroed, keep tracking the last known target position
@@ -597,6 +635,8 @@ namespace HaCreator.MapSimulator.AI
             _target.TargetY = playerY.Value;
             _target.Distance = distance;
             _target.IsValid = true;
+            _target.TargetId = 0;
+            _target.TargetType = MobTargetType.Player;
             _target.LastSeenTime = currentTick;
         }
         #endregion
@@ -751,6 +791,11 @@ namespace HaCreator.MapSimulator.AI
 
         private void UpdateHitState(int currentTick)
         {
+            if (IsFrozen || IsStunned)
+            {
+                return;
+            }
+
             // Stun duration over
             if (StateElapsed(currentTick) > HIT_STUN_DURATION)
             {
@@ -804,6 +849,7 @@ namespace HaCreator.MapSimulator.AI
             if (IsDead)
                 return false;
 
+            damage = CalculateIncomingDamage(damage, MobDamageType.Physical);
             _currentHp -= damage;
 
             // Add damage display
@@ -816,6 +862,8 @@ namespace HaCreator.MapSimulator.AI
                 _target.TargetX = attackerX.Value;
                 _target.TargetY = attackerY.Value;
                 _target.IsValid = true;
+                _target.TargetId = 0;
+                _target.TargetType = MobTargetType.Player;
                 _target.LastSeenTime = currentTick;
 
                 // Force aggro state - mob will chase after hit stun ends
@@ -858,7 +906,12 @@ namespace HaCreator.MapSimulator.AI
         /// <summary>
         /// Force aggro on this mob towards a position
         /// </summary>
-        public void ForceAggro(float targetX, float targetY, int currentTick)
+        public void ForceAggro(
+            float targetX,
+            float targetY,
+            int currentTick,
+            int targetId = 0,
+            MobTargetType targetType = MobTargetType.Player)
         {
             if (IsDead)
                 return;
@@ -873,6 +926,8 @@ namespace HaCreator.MapSimulator.AI
             _target.TargetX = targetX;
             _target.TargetY = targetY;
             _target.IsValid = true;
+            _target.TargetId = targetId;
+            _target.TargetType = targetType;
             _target.LastSeenTime = currentTick;
             _isAggroed = true;
 
@@ -981,6 +1036,64 @@ namespace HaCreator.MapSimulator.AI
             return elapsed >= triggerDelay && elapsed < triggerDelay + 50;
         }
 
+        public int CalculateOutgoingDamage(int baseDamage, MobDamageType damageType)
+        {
+            int damage = Math.Max(1, baseDamage);
+            int percentBonus = 0;
+
+            if (damageType == MobDamageType.Magical)
+            {
+                percentBonus += GetStatusPercent(MobStatusEffect.MADamage);
+                percentBonus += GetStatusPercent(MobStatusEffect.MagicUp);
+            }
+            else
+            {
+                percentBonus += GetStatusPercent(MobStatusEffect.PADamage);
+                percentBonus += GetStatusPercent(MobStatusEffect.PowerUp);
+            }
+
+            return ApplyPercentModifier(damage, percentBonus);
+        }
+
+        public int CalculateIncomingDamage(int baseDamage, MobDamageType damageType)
+        {
+            int damage = Math.Max(1, baseDamage);
+
+            if (damageType == MobDamageType.Magical)
+            {
+                if (HasStatusEffect(MobStatusEffect.MImmune))
+                {
+                    return 1;
+                }
+
+                int reductionPercent = GetStatusPercent(MobStatusEffect.MDamage) +
+                                       GetStatusPercent(MobStatusEffect.MGuardUp) +
+                                       GetStatusPercent(MobStatusEffect.HardSkin);
+                int bonusPercent = GetStatusPercent(MobStatusEffect.Ambush) +
+                                   GetStatusPercent(MobStatusEffect.Showdown) +
+                                   GetStatusPercent(MobStatusEffect.Neutralise) +
+                                   GetStatusPercent(MobStatusEffect.Weakness);
+                damage = ApplyPercentModifier(damage, bonusPercent - reductionPercent);
+            }
+            else
+            {
+                if (HasStatusEffect(MobStatusEffect.PImmune))
+                {
+                    return 1;
+                }
+
+                int reductionPercent = GetStatusPercent(MobStatusEffect.PDamage) +
+                                       GetStatusPercent(MobStatusEffect.PGuardUp) +
+                                       GetStatusPercent(MobStatusEffect.HardSkin);
+                int bonusPercent = GetStatusPercent(MobStatusEffect.Ambush) +
+                                   GetStatusPercent(MobStatusEffect.Showdown) +
+                                   GetStatusPercent(MobStatusEffect.Weakness);
+                damage = ApplyPercentModifier(damage, bonusPercent - reductionPercent);
+            }
+
+            return Math.Max(1, damage);
+        }
+
         private void AddDamageDisplay(int damage, int currentTick, bool isCritical)
         {
             // Limit max displays
@@ -1043,7 +1156,27 @@ namespace HaCreator.MapSimulator.AI
         /// </summary>
         public float GetSpeedMultiplier()
         {
-            return _state == MobAIState.Chase ? _chaseSpeedMultiplier : 1.0f;
+            if (IsFrozen || IsStunned)
+            {
+                return 0f;
+            }
+
+            float baseMultiplier = _state == MobAIState.Chase ? _chaseSpeedMultiplier : 1.0f;
+            int speedPercent = GetStatusPercent(MobStatusEffect.Speed);
+            int slowPercent = 0;
+
+            if (HasStatusEffect(MobStatusEffect.Web))
+            {
+                slowPercent += GetStatusPercentOrDefault(MobStatusEffect.Web, 50);
+            }
+
+            if (HasStatusEffect(MobStatusEffect.Weakness))
+            {
+                slowPercent += GetStatusPercentOrDefault(MobStatusEffect.Weakness, 20);
+            }
+
+            float statusMultiplier = 1f + (speedPercent - slowPercent) / 100f;
+            return Math.Max(0f, baseMultiplier * Math.Max(0f, statusMultiplier));
         }
 
         /// <summary>
@@ -1155,8 +1288,8 @@ namespace HaCreator.MapSimulator.AI
             // Special handling for certain effects
             if (effect == MobStatusEffect.Stun || effect == MobStatusEffect.Freeze)
             {
-                // Stun/freeze interrupts current action
-                if (_state == MobAIState.Attack || _state == MobAIState.Skill || _state == MobAIState.Chase)
+                // Stun/freeze forces the mob into its incapacitated hit state.
+                if (!IsDead)
                 {
                     SetState(MobAIState.Hit, currentTick);
                 }
@@ -1165,6 +1298,40 @@ namespace HaCreator.MapSimulator.AI
             if (!wasActive)
             {
                 OnStatusSet?.Invoke(effect);
+            }
+        }
+
+        public void UpdateExternalTargetPosition(int targetId, MobTargetType targetType, float targetX, float targetY, int currentTick)
+        {
+            if (IsDead || targetType == MobTargetType.Player)
+            {
+                return;
+            }
+
+            _target.TargetId = targetId;
+            _target.TargetType = targetType;
+            _target.TargetX = targetX;
+            _target.TargetY = targetY;
+            _target.IsValid = true;
+            _target.LastSeenTime = currentTick;
+        }
+
+        public void ClearExternalTarget(int currentTick)
+        {
+            if (_target.TargetType == MobTargetType.Player)
+            {
+                return;
+            }
+
+            _target = new MobTargetInfo();
+            _isAggroed = false;
+
+            if (_state == MobAIState.Alert ||
+                _state == MobAIState.Chase ||
+                _state == MobAIState.Attack ||
+                _state == MobAIState.Skill)
+            {
+                SetState(MobAIState.Patrol, currentTick);
             }
         }
 
@@ -1453,6 +1620,28 @@ namespace HaCreator.MapSimulator.AI
             return effect == MobStatusEffect.Poison ||
                    effect == MobStatusEffect.Venom ||
                    effect == MobStatusEffect.Burned;
+        }
+
+        private int GetStatusPercent(MobStatusEffect effect)
+        {
+            return _statusEntries.TryGetValue(effect, out MobStatusEntry entry) ? Math.Max(0, entry.Value) : 0;
+        }
+
+        private int GetStatusPercentOrDefault(MobStatusEffect effect, int defaultValue)
+        {
+            int value = GetStatusPercent(effect);
+            return value > 0 ? value : defaultValue;
+        }
+
+        private static int ApplyPercentModifier(int baseValue, int percent)
+        {
+            if (percent == 0)
+            {
+                return Math.Max(1, baseValue);
+            }
+
+            float scaled = baseValue * (1f + percent / 100f);
+            return Math.Max(1, (int)MathF.Round(scaled));
         }
 
         private void UpdateSpecialInteractions(int currentTick)

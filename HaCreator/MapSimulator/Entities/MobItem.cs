@@ -31,6 +31,8 @@ namespace HaCreator.MapSimulator.Entities
         private readonly MobAnimationSet _animationSet;
         private readonly AnimationController _animationController;
         private bool _isPlayingOneShot = false; // Track if playing a one-shot animation (jump, death, hit)
+        private bool _escortFollowActive;
+        private bool _baseUsePlatformBounds;
 
         // Cached mirror boundary (optimization - avoid recalculating every frame)
         private readonly CachedBoundaryChecker _boundaryChecker = new CachedBoundaryChecker();
@@ -51,6 +53,12 @@ namespace HaCreator.MapSimulator.Entities
         /// Whether movement is enabled for this mob in the simulator
         /// </summary>
         public bool MovementEnabled { get; set; } = true;
+
+        /// <summary>
+        /// Mobs with Mob.wz info/damagedByMob are encounter actors the client routes through mob-vs-mob damage.
+        /// They should not be targetable by player attacks.
+        /// </summary>
+        public bool IsProtectedFromPlayerDamage => _mobInstance?.MobInfo?.MobData?.Friendly == true;
 
         /// <summary>
         /// Whether AI is enabled for this mob
@@ -227,6 +235,9 @@ namespace HaCreator.MapSimulator.Entities
         public bool ApplyDamage(int damage, int currentTick, bool isCritical, float? attackerX, float? attackerY)
         {
             if (AI == null)
+                return false;
+
+            if (IsProtectedFromPlayerDamage && attackerX.HasValue && attackerY.HasValue)
                 return false;
 
             bool died = AI.TakeDamage(damage, currentTick, isCritical, attackerX, attackerY);
@@ -558,6 +569,7 @@ namespace HaCreator.MapSimulator.Entities
 
                 InitializeAttackEntries(mobData, isBoss);
                 InitializeSkillEntries(mobData, isBoss);
+                _baseUsePlatformBounds = MovementInfo?.UsePlatformBounds ?? false;
             }
             else
             {
@@ -567,6 +579,15 @@ namespace HaCreator.MapSimulator.Entities
                 {
                     AI.AddAttack(1, "attack1", 10, 60, 1500);
                 }
+            }
+        }
+
+        public void SetEscortFollowActive(bool active)
+        {
+            _escortFollowActive = active;
+            if (MovementInfo != null)
+            {
+                MovementInfo.UsePlatformBounds = _baseUsePlatformBounds || active;
             }
         }
 
@@ -1054,6 +1075,16 @@ namespace HaCreator.MapSimulator.Entities
                 }
             }
 
+            if (AIEnabled
+                && AI?.IsEscortMob == true
+                && _escortFollowActive
+                && playerX.HasValue
+                && playerY.HasValue
+                && TryApplyEscortFollow(deltaTimeMs, currentFrameIndex, frameCount, playerX.Value, playerY.Value))
+            {
+                return;
+            }
+
             MovementInfo.UpdateMovement(deltaTimeMs);
 
             // Update flip state based on movement direction
@@ -1067,6 +1098,38 @@ namespace HaCreator.MapSimulator.Entities
 
             // Update animation action based on AI state or movement state
             UpdateAnimationAction();
+        }
+
+        private bool TryApplyEscortFollow(int deltaTimeMs, int currentFrameIndex, int frameCount, float targetX, float targetY)
+        {
+            if (MovementInfo == null || MovementInfo.IsInKnockback || MovementInfo.MoveType == MobMoveType.Fly)
+            {
+                return false;
+            }
+
+            const float StopDistanceX = 24f;
+            const float StopDistanceY = 45f;
+
+            float dx = targetX - MovementInfo.X;
+            float dy = Math.Abs(targetY - MovementInfo.Y);
+
+            if (Math.Abs(dx) <= StopDistanceX && dy <= StopDistanceY)
+            {
+                MovementInfo.Stop();
+                UpdateAnimationAction();
+                return true;
+            }
+
+            MovementInfo.ForceDirection(
+                dx >= 0f ? MobMoveDirection.Right : MobMoveDirection.Left,
+                currentFrameIndex,
+                frameCount);
+            MovementInfo.SetSpeedMultiplier(1.1f);
+            MovementInfo.Resume();
+            MovementInfo.UpdateMovement(deltaTimeMs);
+            this.flip = MovementInfo.FlipX;
+            UpdateAnimationAction();
+            return true;
         }
 
         /// <summary>

@@ -54,6 +54,7 @@ namespace UnitTest_MapSimulator
             spawnPoint.IsActive = false;
             spawnPoint.CurrentMob = null;
             spawnPoint.NextSpawnTime = 4000;
+            GetActiveMobs(pool).Remove(initialMob);
 
             pool.Update(3000, _ => respawnedMob);
             Assert.Equal(0, spawnCount);
@@ -135,10 +136,47 @@ namespace UnitTest_MapSimulator
             Assert.Equal(-1, spawnPoint.RespawnTimeMs);
         }
 
+        [Fact]
+        public void SyncPuppetTargets_RefreshesSummonedTargetPositionAndClearsMissingTarget()
+        {
+            var mob = CreateMob(mobTimeSeconds: 10);
+            var pool = new MobPool();
+
+            pool.Initialize(new[] { mob });
+            mob.AI.ForceAggro(140, 210, 1000, targetId: 77, targetType: MobTargetType.Summoned);
+
+            pool.RegisterPuppet(new PuppetInfo
+            {
+                ObjectId = 77,
+                X = 220,
+                Y = 260,
+                IsActive = true
+            });
+
+            pool.SyncPuppetTargets(1200);
+
+            Assert.Equal(MobTargetType.Summoned, mob.AI.Target.TargetType);
+            Assert.Equal(220f, mob.AI.Target.TargetX);
+            Assert.Equal(260f, mob.AI.Target.TargetY);
+
+            pool.RemovePuppet(77);
+            pool.SyncPuppetTargets(1400);
+
+            Assert.False(mob.AI.Target.IsValid);
+            Assert.Equal(MobAIState.Patrol, mob.AI.State);
+        }
+
         private static List<MobSpawnPoint> GetSpawnPoints(MobPool pool)
         {
             return (List<MobSpawnPoint>)typeof(MobPool)
                 .GetField("_spawnPoints", BindingFlags.Instance | BindingFlags.NonPublic)!
+                .GetValue(pool)!;
+        }
+
+        private static List<MobItem> GetActiveMobs(MobPool pool)
+        {
+            return (List<MobItem>)typeof(MobPool)
+                .GetField("_activeMobs", BindingFlags.Instance | BindingFlags.NonPublic)!
                 .GetValue(pool)!;
         }
 

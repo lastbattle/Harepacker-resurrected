@@ -1,4 +1,4 @@
-﻿using HaCreator.MapEditor;
+using HaCreator.MapEditor;
 using HaCreator.MapEditor.Info;
 using HaCreator.MapEditor.Instance;
 using HaCreator.MapEditor.Instance.Misc;
@@ -57,6 +57,7 @@ namespace HaCreator.MapSimulator
     {
         private const int DefaultLowHpWarningThresholdPercent = 20;
         private const int DefaultLowMpWarningThresholdPercent = 20;
+        private const int ReactorCollisionCheckIntervalMs = 1000;
         public int mapShiftX = 0;
         public int mapShiftY = 0;
         public Point minimapPos;
@@ -199,10 +200,11 @@ namespace HaCreator.MapSimulator
         private Texture2D _npcQuestAvailableIcon;
         private Texture2D _npcQuestInProgressIcon;
         private Texture2D _npcQuestCompletableIcon;
-        private const int NPC_QUEST_FEEDBACK_BALLOON_DURATION_MS = 3200;
-        private int _npcQuestFeedbackNpcId;
-        private string _npcQuestFeedbackText;
-        private int _npcQuestFeedbackExpiresAt;
+        private readonly NpcFeedbackBalloonQueue _npcQuestFeedback = new();
+        private int _lastReactorCollisionCheckTick = -ReactorCollisionCheckIntervalMs;
+        private readonly Dictionary<(int skillId, int level), MobSummonSkillInfo> _mobSummonSkillCache = new();
+        private readonly Dictionary<long, int> _appliedMobSkillEffects = new();
+        private readonly Random _mobSkillRandom = new Random();
 
         // Consolidated effect management
         private readonly EffectManager _effectManager = new EffectManager();
@@ -216,6 +218,7 @@ namespace HaCreator.MapSimulator
         private readonly DynamicFootholdSystem _dynamicFootholds = new DynamicFootholdSystem();
         private readonly TransportationField _transportField = new TransportationField();
         private readonly PassengerSyncController _passengerSync = new PassengerSyncController();
+        private readonly EscortFollowController _escortFollow = new EscortFollowController();
         private readonly LimitedViewField _limitedViewField = new LimitedViewField();
         private TemporaryPortalField _temporaryPortalField;
         private FieldRuleRuntime _fieldRuleRuntime;
@@ -255,6 +258,14 @@ namespace HaCreator.MapSimulator
 
         // Debug
         private Texture2D _debugBoundaryTexture;
+
+        private sealed class MobSummonSkillInfo
+        {
+            public List<string> MobIds { get; } = new List<string>();
+            public int Limit { get; set; }
+            public Point? Lt { get; set; }
+            public Point? Rb { get; set; }
+        }
 
         // Frame counter for visibility culling (increments each frame)
         private int _frameNumber = 0;
@@ -459,6 +470,18 @@ namespace HaCreator.MapSimulator
 
                 return bestFoothold != null ? Board.CalculateYOnFoothold(bestFoothold, x) : (float?)null;
             });
+            _mobAttackSystem.SetPuppetTargeting(
+                () => _mobPool?.ActivePuppets,
+                (puppet, _, __, currentTick) =>
+                {
+                    if (puppet != null)
+                    {
+                        puppet.IsActive = false;
+                    }
+
+                    _mobPool?.UpdatePuppets(currentTick);
+                    _mobPool?.SyncPuppetTargets(currentTick);
+                });
         }
 
         #region Loading and unloading
@@ -1183,6 +1206,7 @@ namespace HaCreator.MapSimulator
             // Prepare player manager for map change (preserves character, caches, skill levels)
             _playerManager?.PrepareForMapChange();
             _passengerSync.Clear();
+            _escortFollow.Clear();
             _fieldRuleRuntime = null;
             _lastFieldRestrictionMessageTime = int.MinValue;
             _lastFieldRestrictionMessage = null;
@@ -1261,9 +1285,7 @@ namespace HaCreator.MapSimulator
             _npcInteractionOverlay?.Close();
             _activeNpcInteractionNpc = null;
             _activeNpcInteractionNpcId = 0;
-            _npcQuestFeedbackNpcId = 0;
-            _npcQuestFeedbackText = null;
-            _npcQuestFeedbackExpiresAt = 0;
+            _npcQuestFeedback.Clear();
             _gameState.ExitDirectionModeImmediate();
             _scriptedDirectionModeOwnerActive = false;
         }
@@ -2199,12 +2221,14 @@ namespace HaCreator.MapSimulator
                     HandleNpcOverlayPrimaryAction();
                 }
 
-                // Check if mouse is hovering over an NPC
+                if (!npcOverlayResult.Consumed)
+                {
+                    // Avoid leaking the overlay-dismissal click into world interactions while
+                    // direction mode is transitioning through its delayed release window.
                 CheckNpcHover(newMouseState);
                 HandleNpcTalkClick(newMouseState);
-
-                // Handle portal double-click for teleportation
                 HandlePortalDoubleClick(newMouseState);
+            }
             }
 
             UpdateDirectionModeState(currTickCount);
@@ -2717,7 +2741,7 @@ namespace HaCreator.MapSimulator
                 if (_gameState.IsPlayerInputEnabled && _playerManager.IsPlayerActive)
                 {
                     Vector2 updatedPlayerPosition = _playerManager.GetPlayerPosition();
-                    CheckReactorTouch(updatedPlayerPosition.X, updatedPlayerPosition.Y);
+                    CheckReactorTouch(updatedPlayerPosition.X, updatedPlayerPosition.Y, currentTick: currTickCount);
                 }
 
                 // Update camera controller based on player/camera mode
@@ -3140,6 +3164,8 @@ namespace HaCreator.MapSimulator
             int deltaTimeMs = (int)gameTime.ElapsedGameTime.TotalMilliseconds;
             int tickCount = Environment.TickCount;
             float deltaSecondsLocal = (float)gameTime.ElapsedGameTime.TotalSeconds;
+            _mobPool?.UpdatePuppets(tickCount);
+            _mobPool?.SyncPuppetTargets(tickCount);
 
             // Get actual player position from PlayerManager (not camera position)
             float? playerX = null;
@@ -3152,6 +3178,9 @@ namespace HaCreator.MapSimulator
                 playerIsAlive = _playerManager.Player.IsAlive;
             }
 
+            CleanupAppliedMobSkillEffects(tickCount);
+            List<MobItem> skillEffectMobs = null;
+
             for (int i = 0; i < _mobsArray.Length; i++)
             {
                 MobItem mobItem = _mobsArray[i];
@@ -3159,6 +3188,9 @@ namespace HaCreator.MapSimulator
                     continue;
 
                 mobItem.MovementEnabled = _gameState.MobMovementEnabled;
+                bool escortFollowActive = mobItem.AI?.IsEscortMob == true
+                    && _escortFollow.UpdateEscortFollow(_playerManager?.Player, mobItem.MovementInfo);
+                mobItem.SetEscortFollowActive(escortFollowActive);
 
                 // Boss mobs continue tracking player even when dead
                 // Regular mobs lose target when player dies
@@ -3174,6 +3206,19 @@ namespace HaCreator.MapSimulator
                 }
 
                 _mobAttackSystem.QueueMobAttackActions(mobItem, tickCount, playerX, playerY);
+                if (ShouldApplyMobSkillEffect(mobItem, tickCount))
+                {
+                    skillEffectMobs ??= new List<MobItem>();
+                    skillEffectMobs.Add(mobItem);
+                }
+            }
+
+            if (skillEffectMobs != null)
+            {
+                for (int i = 0; i < skillEffectMobs.Count; i++)
+                {
+                    ApplyMobSkillEffect(skillEffectMobs[i], tickCount);
+                }
             }
 
             _mobAttackSystem.Update(
@@ -3200,6 +3245,215 @@ namespace HaCreator.MapSimulator
 
             // Update pickup notice UI animations
             _pickupNoticeUI?.Update(tickCount, deltaSecondsLocal);
+        }
+
+        private bool ShouldApplyMobSkillEffect(MobItem mobItem, int currentTick)
+        {
+            if (mobItem?.AI == null || !mobItem.AI.ShouldApplySkillEffect(currentTick))
+            {
+                return false;
+            }
+
+            MobSkillEntry skill = mobItem.AI.GetCurrentSkill();
+            if (skill == null)
+            {
+                return false;
+            }
+
+            long key = GetMobSkillEffectKey(mobItem, currentTick);
+            if (_appliedMobSkillEffects.ContainsKey(key))
+            {
+                return false;
+            }
+
+            _appliedMobSkillEffects[key] = currentTick + Math.Max(Math.Max(skill.SkillAfter, skill.EffectAfter), 2000);
+            return true;
+        }
+
+        private void CleanupAppliedMobSkillEffects(int currentTick)
+        {
+            if (_appliedMobSkillEffects.Count == 0)
+            {
+                return;
+            }
+
+            List<long> expiredKeys = null;
+            foreach (KeyValuePair<long, int> entry in _appliedMobSkillEffects)
+            {
+                if (currentTick < entry.Value)
+                {
+                    continue;
+                }
+
+                expiredKeys ??= new List<long>();
+                expiredKeys.Add(entry.Key);
+            }
+
+            if (expiredKeys == null)
+            {
+                return;
+            }
+
+            for (int i = 0; i < expiredKeys.Count; i++)
+            {
+                _appliedMobSkillEffects.Remove(expiredKeys[i]);
+            }
+        }
+
+        private void ApplyMobSkillEffect(MobItem mobItem, int currentTick)
+        {
+            MobSkillEntry skill = mobItem?.AI?.GetCurrentSkill();
+            if (skill == null)
+            {
+                return;
+            }
+
+            switch (skill.SkillId)
+            {
+                case 200:
+                    ApplyMobSummonSkill(mobItem, skill, currentTick);
+                    break;
+            }
+        }
+
+        private void ApplyMobSummonSkill(MobItem mobItem, MobSkillEntry skill, int currentTick)
+        {
+            MobSummonSkillInfo summonInfo = ResolveMobSummonSkillInfo(skill.SkillId, skill.Level);
+            if (summonInfo == null || summonInfo.MobIds.Count == 0 || _mobPool == null)
+            {
+                return;
+            }
+
+            int activeSummons = 0;
+            for (int i = 0; i < summonInfo.MobIds.Count; i++)
+            {
+                activeSummons += _mobPool.GetMobsByType(summonInfo.MobIds[i]).Count();
+            }
+
+            int remainingCapacity = summonInfo.Limit > 0
+                ? summonInfo.Limit - activeSummons
+                : summonInfo.MobIds.Count;
+            if (remainingCapacity <= 0)
+            {
+                return;
+            }
+
+            int spawnCount = Math.Min(remainingCapacity, summonInfo.MobIds.Count);
+            for (int i = 0; i < spawnCount; i++)
+            {
+                MobSpawnPoint summonSpawn = CreateSummonedMobSpawnPoint(mobItem, summonInfo, summonInfo.MobIds[i], i);
+                MobItem summonedMob = CreateMobFromSpawnPoint(summonSpawn);
+                if (summonedMob == null)
+                {
+                    continue;
+                }
+
+                if (mobItem.AI.Target?.IsValid == true)
+                {
+                    summonedMob.AI?.ForceAggro(mobItem.AI.Target.TargetX, mobItem.AI.Target.TargetY, currentTick);
+                }
+
+                _mobPool.AddTemporaryMob(summonedMob, currentTick);
+            }
+        }
+
+        private MobSpawnPoint CreateSummonedMobSpawnPoint(MobItem sourceMob, MobSummonSkillInfo summonInfo, string mobId, int spawnIndex)
+        {
+            Point relativeOffset = ResolveSummonSpawnOffset(summonInfo, spawnIndex);
+            float spawnX = sourceMob.CurrentX + relativeOffset.X;
+            float spawnY = sourceMob.CurrentY + relativeOffset.Y;
+
+            return new MobSpawnPoint
+            {
+                MobId = mobId,
+                X = spawnX,
+                Y = spawnY,
+                Flip = sourceMob.MovementInfo?.FlipX ?? false,
+                RespawnTimeMs = -1,
+                IsBoss = false
+            };
+        }
+
+        private Point ResolveSummonSpawnOffset(MobSummonSkillInfo summonInfo, int spawnIndex)
+        {
+            if (summonInfo?.Lt is Point lt && summonInfo.Rb is Point rb)
+            {
+                int left = Math.Min(lt.X, rb.X);
+                int right = Math.Max(lt.X, rb.X);
+                int top = Math.Min(lt.Y, rb.Y);
+                int bottom = Math.Max(lt.Y, rb.Y);
+                int x = _mobSkillRandom.Next(left, right + 1);
+                int y = _mobSkillRandom.Next(top, bottom + 1);
+                return new Point(x, y);
+            }
+
+            int direction = spawnIndex % 2 == 0 ? 1 : -1;
+            int distance = 35 + (spawnIndex / 2) * 40;
+            return new Point(direction * distance, 0);
+        }
+
+        private MobSummonSkillInfo ResolveMobSummonSkillInfo(int skillId, int level)
+        {
+            var cacheKey = (skillId, level);
+            if (_mobSummonSkillCache.TryGetValue(cacheKey, out MobSummonSkillInfo cachedInfo))
+            {
+                return cachedInfo;
+            }
+
+            WzImage mobSkillImage = Program.FindImage("Skill", "MobSkill");
+            if (mobSkillImage != null && !mobSkillImage.Parsed)
+            {
+                mobSkillImage.ParseImage();
+            }
+            WzSubProperty skillNode = mobSkillImage?[skillId.ToString()] as WzSubProperty;
+            WzSubProperty levelNode = skillNode?["level"] as WzSubProperty;
+            WzSubProperty selectedLevel = levelNode?[level.ToString()] as WzSubProperty ?? levelNode?["1"] as WzSubProperty;
+            if (selectedLevel == null)
+            {
+                return null;
+            }
+
+            var summonInfo = new MobSummonSkillInfo
+            {
+                Limit = MapleLib.WzLib.WzStructure.InfoTool.GetInt(selectedLevel["limit"], 0)
+            };
+
+            WzVectorProperty lt = selectedLevel["lt"] as WzVectorProperty;
+            if (lt != null)
+            {
+                summonInfo.Lt = new Point(lt.X.Value, lt.Y.Value);
+            }
+
+            WzVectorProperty rb = selectedLevel["rb"] as WzVectorProperty;
+            if (rb != null)
+            {
+                summonInfo.Rb = new Point(rb.X.Value, rb.Y.Value);
+            }
+
+            foreach (WzImageProperty child in selectedLevel.WzProperties)
+            {
+                if (!int.TryParse(child.Name, out _))
+                {
+                    continue;
+                }
+
+                int summonedMobId = MapleLib.WzLib.WzStructure.InfoTool.GetInt(child, 0);
+                if (summonedMobId <= 0)
+                {
+                    continue;
+                }
+
+                summonInfo.MobIds.Add(summonedMobId.ToString());
+            }
+
+            _mobSummonSkillCache[cacheKey] = summonInfo;
+            return summonInfo;
+        }
+
+        private static long GetMobSkillEffectKey(MobItem mobItem, int currentTick)
+        {
+            int stateStartTime = currentTick - mobItem.AI.StateElapsed(currentTick);
+            return ((long)(mobItem.PoolId & 0xFFFFFF) << 24) | (uint)stateStartTime;
         }
 
         /// <summary>
@@ -3248,7 +3502,7 @@ namespace HaCreator.MapSimulator
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void HandleNpcTalkClick(MouseState mouseState)
         {
-            if (_npcsArray == null || _npcsArray.Length == 0)
+            if (!_gameState.IsPlayerInputEnabled || _npcsArray == null || _npcsArray.Length == 0)
                 return;
 
             bool isLeftClick = mouseState.LeftButton == ButtonState.Released && _oldMouseState.LeftButton == ButtonState.Pressed;
@@ -3314,33 +3568,42 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
-            string feedbackText = result.Messages.FirstOrDefault(message => !string.IsNullOrWhiteSpace(message));
-            if (string.IsNullOrWhiteSpace(feedbackText))
+            if (!_npcQuestFeedback.Enqueue(_activeNpcInteractionNpcId, result.Messages, currentTickCount))
             {
                 return;
             }
 
-            int newlineIndex = feedbackText.IndexOf('\n');
-            if (newlineIndex >= 0)
-            {
-                feedbackText = feedbackText.Substring(0, newlineIndex);
-            }
-
-            _npcQuestFeedbackNpcId = _activeNpcInteractionNpcId;
-            _npcQuestFeedbackText = feedbackText.Trim();
-            _npcQuestFeedbackExpiresAt = currentTickCount + NPC_QUEST_FEEDBACK_BALLOON_DURATION_MS;
+            ApplyNpcQuestFeedbackAnimation(currentTickCount);
         }
 
         private void UpdateNpcQuestFeedbackState(int currentTickCount)
         {
-            if (_npcQuestFeedbackNpcId == 0 || currentTickCount < _npcQuestFeedbackExpiresAt)
+            if (!_npcQuestFeedback.Update(currentTickCount))
             {
                 return;
             }
 
-            _npcQuestFeedbackNpcId = 0;
-            _npcQuestFeedbackText = null;
-            _npcQuestFeedbackExpiresAt = 0;
+            ApplyNpcQuestFeedbackAnimation(currentTickCount);
+        }
+
+        private void ApplyNpcQuestFeedbackAnimation(int currentTickCount)
+        {
+            if (_npcQuestFeedback.ActiveNpcId == 0 || _npcsArray == null)
+        {
+                return;
+            }
+
+            NpcItem npc = _npcsArray.FirstOrDefault(candidate =>
+                candidate?.NpcInstance?.NpcInfo != null &&
+                int.TryParse(candidate.NpcInstance.NpcInfo.ID, out int npcId) &&
+                npcId == _npcQuestFeedback.ActiveNpcId);
+            if (npc == null)
+            {
+                return;
+            }
+
+            int remainingDurationMs = Math.Max(0, _npcQuestFeedback.ActiveExpiresAt - currentTickCount);
+            npc.SetTemporaryAction(AnimationKeys.Speak, remainingDurationMs);
         }
 
         private void LoadNpcQuestAlertIcons(WzImage uiWindow1Image, WzImage uiWindow2Image)
@@ -3421,8 +3684,8 @@ namespace HaCreator.MapSimulator
 
         private void DrawNpcQuestFeedback(in Managers.RenderContext renderContext)
         {
-            if (_npcQuestFeedbackNpcId == 0 ||
-                string.IsNullOrWhiteSpace(_npcQuestFeedbackText) ||
+            if (_npcQuestFeedback.ActiveNpcId == 0 ||
+                string.IsNullOrWhiteSpace(_npcQuestFeedback.ActiveText) ||
                 _fontChat == null ||
                 _debugBoundaryTexture == null ||
                 _npcsArray == null)
@@ -3433,7 +3696,7 @@ namespace HaCreator.MapSimulator
             NpcItem npc = _npcsArray.FirstOrDefault(candidate =>
                 candidate?.NpcInstance?.NpcInfo != null &&
                 int.TryParse(candidate.NpcInstance.NpcInfo.ID, out int npcId) &&
-                npcId == _npcQuestFeedbackNpcId);
+                npcId == _npcQuestFeedback.ActiveNpcId);
             if (npc == null)
             {
                 return;
@@ -3441,7 +3704,7 @@ namespace HaCreator.MapSimulator
 
             IDXObject currentFrame = npc.GetCurrentFrame();
             int npcTop = npc.CurrentY - (currentFrame?.Height ?? npc.NpcInstance.Height);
-            Vector2 textSize = _fontChat.MeasureString(_npcQuestFeedbackText);
+            Vector2 textSize = _fontChat.MeasureString(_npcQuestFeedback.ActiveText);
             int boxWidth = (int)Math.Ceiling(textSize.X) + 18;
             int boxHeight = (int)Math.Ceiling(textSize.Y) + 12;
             int boxX = npc.CurrentX - renderContext.MapShiftX + renderContext.MapCenterX - (boxWidth / 2);
@@ -3455,7 +3718,7 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
-            float remainingAlpha = MathHelper.Clamp((_npcQuestFeedbackExpiresAt - renderContext.TickCount) / 400f, 0f, 1f);
+            float remainingAlpha = MathHelper.Clamp((_npcQuestFeedback.ActiveExpiresAt - renderContext.TickCount) / 400f, 0f, 1f);
             Color backgroundColor = new Color(24, 34, 28) * (0.88f * remainingAlpha);
             Color borderColor = new Color(243, 229, 170) * remainingAlpha;
             Color textColor = new Color(255, 246, 214) * remainingAlpha;
@@ -3465,7 +3728,7 @@ namespace HaCreator.MapSimulator
             _spriteBatch.Draw(_debugBoundaryTexture, new Rectangle(boxX, boxY + boxHeight - 2, boxWidth, 2), borderColor);
             _spriteBatch.Draw(_debugBoundaryTexture, new Rectangle(boxX, boxY, 2, boxHeight), borderColor);
             _spriteBatch.Draw(_debugBoundaryTexture, new Rectangle(boxX + boxWidth - 2, boxY, 2, boxHeight), borderColor);
-            _spriteBatch.DrawString(_fontChat, _npcQuestFeedbackText, new Vector2(boxX + 9, boxY + 6), textColor);
+            _spriteBatch.DrawString(_fontChat, _npcQuestFeedback.ActiveText, new Vector2(boxX + 9, boxY + 6), textColor);
         }
 
         private Texture2D GetNpcQuestAlertTexture(NpcInteractionEntryKind? alertKind)
@@ -3498,7 +3761,7 @@ namespace HaCreator.MapSimulator
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private bool CanTalkToNpc(NpcItem npc)
         {
-            if (npc == null || _playerManager?.Player == null)
+            if (!_gameState.IsPlayerInputEnabled || npc == null || _playerManager?.Player == null)
                 return false;
 
             float deltaX = Math.Abs(_playerManager.Player.X - npc.CurrentX);
@@ -3515,8 +3778,8 @@ namespace HaCreator.MapSimulator
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void HandlePortalDoubleClick(MouseState mouseState)
         {
-            // Skip if map change is already pending
-            if (_gameState.PendingMapChange)
+            // Skip if player input is blocked or a map change is already pending
+            if (!_gameState.IsPlayerInputEnabled || _gameState.PendingMapChange)
                 return;
 
             // Check for left mouse button click (transition from pressed to released)
@@ -3730,13 +3993,21 @@ namespace HaCreator.MapSimulator
         /// <param name="playerY">Player Y position</param>
         /// <param name="playerId">Player ID</param>
         /// <returns>List of touched reactors</returns>
-        public List<ReactorItem> CheckReactorTouch(float playerX, float playerY, int playerId = 0)
+        public List<ReactorItem> CheckReactorTouch(float playerX, float playerY, int playerId = 0, int currentTick = int.MinValue)
         {
             if (_reactorPool == null)
                 return new List<ReactorItem>();
 
+            if (currentTick == int.MinValue)
+                currentTick = Environment.TickCount;
+
+            // Match CUserLocal::CheckReactor_Collision, which only refreshes
+            // local touch-reactor overlap once per second.
+            if (unchecked(currentTick - _lastReactorCollisionCheckTick) < ReactorCollisionCheckIntervalMs)
+                return new List<ReactorItem>();
+
+            _lastReactorCollisionCheckTick = currentTick;
             var touchedReactors = _reactorPool.FindTouchReactorAroundLocalUser(playerX, playerY);
-            int currentTick = Environment.TickCount;
 
             foreach (var (reactor, index) in touchedReactors)
             {
@@ -4349,6 +4620,7 @@ namespace HaCreator.MapSimulator
             _dropPool.SetOnDropPickedUp(drop =>
             {
                 PlayPickUpItemSE();
+                _questRuntime.RecordDropPickup(drop);
 
                 // Add pickup notice message
                 int currentTime = Environment.TickCount;
@@ -5361,20 +5633,26 @@ namespace HaCreator.MapSimulator
                 return null;
             }
 
+            if (!preparedSkill.ShowHudBar)
+            {
+                return null;
+            }
+
             return new StatusBarPreparedSkillRenderData
             {
                 SkillId = preparedSkill.SkillId,
                 SkillName = preparedSkill.SkillData?.Name,
-                SkinKey = GetPreparedSkillBarSkin(preparedSkill),
+                SkinKey = preparedSkill.HudSkinKey,
                 RemainingMs = Math.Max(0, preparedSkill.Duration - preparedSkill.Elapsed(currentTime)),
                 DurationMs = preparedSkill.Duration,
+                GaugeDurationMs = preparedSkill.HudGaugeDurationMs,
                 Progress = preparedSkill.Progress(currentTime)
             };
         }
 
         private static string GetPreparedSkillBarSkin(PreparedSkill preparedSkill)
         {
-            return preparedSkill?.SkillId == 35121003 ? "KeyDownBar4" : "KeyDownBar";
+            return preparedSkill?.HudSkinKey ?? "KeyDownBar";
         }
 
         /// <summary>

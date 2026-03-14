@@ -19,6 +19,7 @@ namespace HaCreator.MapSimulator.Combat
         {
             public MobItem SourceMob { get; set; }
             public MobAttackEntry Attack { get; set; }
+            public MobTargetInfo TargetInfo { get; set; }
             public List<IDXObject> Frames { get; set; }
             public Vector2 Position { get; set; }
             public Vector2 Velocity { get; set; }
@@ -38,6 +39,7 @@ namespace HaCreator.MapSimulator.Combat
         {
             public MobItem SourceMob { get; set; }
             public MobAttackEntry Attack { get; set; }
+            public MobTargetInfo TargetInfo { get; set; }
             public List<IDXObject> WarningFrames { get; set; }
             public Rectangle Area { get; set; }
             public Vector2 EffectPosition { get; set; }
@@ -51,6 +53,7 @@ namespace HaCreator.MapSimulator.Combat
         {
             public MobItem SourceMob { get; set; }
             public MobAttackEntry Attack { get; set; }
+            public MobTargetInfo TargetInfo { get; set; }
             public int TriggerTime { get; set; }
             public int ExpireTime { get; set; }
             public bool Triggered { get; set; }
@@ -71,10 +74,20 @@ namespace HaCreator.MapSimulator.Combat
         private readonly List<ScheduledMobVisualEffect> _scheduledMobVisualEffects = new List<ScheduledMobVisualEffect>();
         private readonly Dictionary<long, int> _scheduledMobActions = new Dictionary<long, int>();
         private Func<float, float, float?> _groundResolver;
+        private Func<IReadOnlyList<PuppetInfo>> _puppetAccessor;
+        private Action<PuppetInfo, MobItem, MobAttackEntry, int> _onPuppetHit;
 
         public void SetGroundResolver(Func<float, float, float?> groundResolver)
         {
             _groundResolver = groundResolver;
+        }
+
+        public void SetPuppetTargeting(
+            Func<IReadOnlyList<PuppetInfo>> puppetAccessor,
+            Action<PuppetInfo, MobItem, MobAttackEntry, int> onPuppetHit)
+        {
+            _puppetAccessor = puppetAccessor;
+            _onPuppetHit = onPuppetHit;
         }
 
         public void Clear()
@@ -106,21 +119,24 @@ namespace HaCreator.MapSimulator.Combat
             }
 
             _scheduledMobActions[actionKey] = currentTime + Math.Max(attack.Cooldown, 2500);
-            ScheduleSourceAttackEffects(mobItem, attack, currentTime, playerX);
+            MobTargetInfo targetInfo = ResolveAttackTarget(mobItem, playerX, playerY);
+            float? targetX = targetInfo?.TargetX;
+            float? targetY = targetInfo?.TargetY;
+            ScheduleSourceAttackEffects(mobItem, attack, currentTime, targetX);
 
             if (attack.IsAreaOfEffect)
             {
-                QueueGroundAttack(mobItem, attack, playerX, playerY, currentTime);
+                QueueGroundAttack(mobItem, attack, targetInfo, targetX, targetY, currentTime);
                 return;
             }
 
             if (!attack.IsRanged)
             {
-                QueueDirectAttack(mobItem, attack, currentTime);
+                QueueDirectAttack(mobItem, attack, targetInfo, currentTime);
                 return;
             }
 
-            QueueProjectileAttack(mobItem, attack, playerX, playerY, currentTime);
+            QueueProjectileAttack(mobItem, attack, targetInfo, targetX, targetY, currentTime);
         }
 
         public void Update(int currentTime, float deltaSeconds, PlayerManager playerManager, AnimationEffects animationEffects, Action<int> onBossGroundImpact)
@@ -208,7 +224,13 @@ namespace HaCreator.MapSimulator.Combat
             }
         }
 
-        private void QueueProjectileAttack(MobItem mobItem, MobAttackEntry attack, float? playerX, float? playerY, int currentTime)
+        private void QueueProjectileAttack(
+            MobItem mobItem,
+            MobAttackEntry attack,
+            MobTargetInfo targetInfo,
+            float? targetX,
+            float? targetY,
+            int currentTime)
         {
             Vector2 spawn = new Vector2(
                 mobItem.CurrentX,
@@ -218,11 +240,11 @@ namespace HaCreator.MapSimulator.Combat
             for (int i = 0; i < projectileCount; i++)
             {
                 float spread = projectileCount == 1 ? 0f : (i - (projectileCount - 1) / 2f) * 45f;
-                float targetX = playerX ?? (mobItem.CurrentX + (mobItem.MovementInfo.FlipX ? attack.Range : -attack.Range));
-                float targetY = playerY ?? mobItem.CurrentY - 20f;
-                targetX += spread;
+                float resolvedTargetX = targetX ?? (mobItem.CurrentX + (mobItem.MovementInfo.FlipX ? attack.Range : -attack.Range));
+                float resolvedTargetY = targetY ?? mobItem.CurrentY - 20f;
+                resolvedTargetX += spread;
 
-                Vector2 target = new Vector2(targetX, targetY);
+                Vector2 target = new Vector2(resolvedTargetX, resolvedTargetY);
                 Vector2 direction = target - spawn;
                 if (direction.LengthSquared() < 1f)
                 {
@@ -241,6 +263,7 @@ namespace HaCreator.MapSimulator.Combat
                 {
                     SourceMob = mobItem,
                     Attack = attack,
+                    TargetInfo = targetInfo?.Clone(),
                     Frames = mobItem.GetAttackProjectileFrames(attack.AnimationName),
                     Position = spawn,
                     Velocity = direction * speed,
@@ -253,7 +276,7 @@ namespace HaCreator.MapSimulator.Combat
             }
         }
 
-        private void QueueDirectAttack(MobItem mobItem, MobAttackEntry attack, int currentTime)
+        private void QueueDirectAttack(MobItem mobItem, MobAttackEntry attack, MobTargetInfo targetInfo, int currentTime)
         {
             Rectangle attackArea = BuildDirectAttackArea(mobItem, attack);
             if (attackArea.IsEmpty)
@@ -265,14 +288,21 @@ namespace HaCreator.MapSimulator.Combat
             {
                 SourceMob = mobItem,
                 Attack = attack,
+                TargetInfo = targetInfo?.Clone(),
                 TriggerTime = currentTime + GetDirectAttackTriggerDelay(attack),
                 ExpireTime = currentTime + Math.Max(attack.Cooldown, 350),
             });
         }
 
-        private void QueueGroundAttack(MobItem mobItem, MobAttackEntry attack, float? playerX, float? playerY, int currentTime)
+        private void QueueGroundAttack(
+            MobItem mobItem,
+            MobAttackEntry attack,
+            MobTargetInfo targetInfo,
+            float? targetX,
+            float? targetY,
+            int currentTime)
         {
-            List<Vector2> targets = BuildGroundTargets(mobItem, attack, playerX, playerY);
+            List<Vector2> targets = BuildGroundTargets(mobItem, attack, targetX, targetY);
             if (targets.Count == 0)
             {
                 return;
@@ -291,6 +321,7 @@ namespace HaCreator.MapSimulator.Combat
                 {
                     SourceMob = mobItem,
                     Attack = attack,
+                    TargetInfo = targetInfo?.Clone(),
                     WarningFrames = warningFrames,
                     Area = CreateGroundArea(target, areaWidth, areaHeight),
                     EffectPosition = target,
@@ -301,7 +332,14 @@ namespace HaCreator.MapSimulator.Combat
             }
         }
 
-        private void QueueGroundAttack(MobItem mobItem, MobAttackEntry attack, float targetX, float targetY, int currentTime, bool immediate)
+        private void QueueGroundAttack(
+            MobItem mobItem,
+            MobAttackEntry attack,
+            MobTargetInfo targetInfo,
+            float targetX,
+            float targetY,
+            int currentTime,
+            bool immediate)
         {
             Vector2 groundedTarget = ResolveGroundPoint(targetX, targetY);
             List<IDXObject> warningFrames = mobItem.GetAttackWarningFrames(attack.AnimationName);
@@ -313,6 +351,7 @@ namespace HaCreator.MapSimulator.Combat
             {
                 SourceMob = mobItem,
                 Attack = attack,
+                TargetInfo = targetInfo?.Clone(),
                 WarningFrames = warningFrames,
                 Area = CreateGroundArea(groundedTarget, areaWidth, areaHeight),
                 EffectPosition = groundedTarget,
@@ -350,9 +389,12 @@ namespace HaCreator.MapSimulator.Combat
 
                 projectile.Position += projectile.Velocity * deltaSeconds;
 
-                if (playerManager?.Combat != null &&
+                bool targetedSummoned = projectile.TargetInfo?.TargetType == MobTargetType.Summoned;
+                if (TryApplyPuppetHit(projectile.SourceMob, projectile.Attack, projectile.TargetInfo, projectile.GetHitbox(), currentTime) ||
+                    (!targetedSummoned &&
+                     playerManager?.Combat != null &&
                     playerManager.IsPlayerActive &&
-                    playerManager.Combat.TryApplyMobHit(projectile.SourceMob, projectile.GetHitbox(), currentTime, projectile.Attack))
+                     playerManager.Combat.TryApplyMobHit(projectile.SourceMob, projectile.GetHitbox(), currentTime, projectile.Attack)))
                 {
                     SpawnMobWorldEffects(projectile.SourceMob, projectile.Attack, projectile.Position, currentTime, animationEffects);
                     _activeMobProjectiles.RemoveAt(i);
@@ -369,6 +411,7 @@ namespace HaCreator.MapSimulator.Combat
                     QueueGroundAttack(
                         projectile.SourceMob,
                         projectile.Attack,
+                        projectile.TargetInfo,
                         projectile.Target.X,
                         projectile.Target.Y,
                         currentTime,
@@ -398,7 +441,11 @@ namespace HaCreator.MapSimulator.Combat
                 {
                     groundAttack.Triggered = true;
 
-                    if (playerManager?.Combat != null && playerManager.IsPlayerActive)
+                    bool targetedSummoned = groundAttack.TargetInfo?.TargetType == MobTargetType.Summoned;
+                    if (!TryApplyPuppetHit(groundAttack.SourceMob, groundAttack.Attack, groundAttack.TargetInfo, groundAttack.Area, currentTime) &&
+                        !targetedSummoned &&
+                        playerManager?.Combat != null &&
+                        playerManager.IsPlayerActive)
                     {
                         playerManager.Combat.TryApplyMobHit(
                             groundAttack.SourceMob,
@@ -441,7 +488,10 @@ namespace HaCreator.MapSimulator.Combat
                         attackArea.X + attackArea.Width / 2f,
                         attackArea.Y + attackArea.Height);
 
-                    if (playerManager?.Combat != null &&
+                    bool targetedSummoned = directAttack.TargetInfo?.TargetType == MobTargetType.Summoned;
+                    if (!TryApplyPuppetHit(directAttack.SourceMob, directAttack.Attack, directAttack.TargetInfo, attackArea, currentTime) &&
+                        !targetedSummoned &&
+                        playerManager?.Combat != null &&
                         playerManager.IsPlayerActive &&
                         !attackArea.IsEmpty)
                     {
@@ -805,6 +855,80 @@ namespace HaCreator.MapSimulator.Combat
         {
             float groundedY = _groundResolver?.Invoke(x, preferredY) ?? preferredY;
             return new Vector2(x, groundedY);
+        }
+
+        private MobTargetInfo ResolveAttackTarget(MobItem mobItem, float? playerX, float? playerY)
+        {
+            MobTargetInfo target = mobItem?.AI?.Target;
+            if (target?.IsValid == true)
+            {
+                return target.Clone();
+            }
+
+            if (playerX.HasValue && playerY.HasValue)
+            {
+                return new MobTargetInfo
+                {
+                    TargetType = MobTargetType.Player,
+                    TargetX = playerX.Value,
+                    TargetY = playerY.Value,
+                    IsValid = true
+                };
+            }
+
+            return null;
+        }
+
+        private bool TryApplyPuppetHit(
+            MobItem sourceMob,
+            MobAttackEntry attack,
+            MobTargetInfo targetInfo,
+            Rectangle hitbox,
+            int currentTime)
+        {
+            if (hitbox.IsEmpty || targetInfo?.TargetType != MobTargetType.Summoned)
+            {
+                return false;
+            }
+
+            PuppetInfo puppet = FindTargetPuppet(targetInfo);
+            if (puppet == null || !CreatePuppetHitbox(puppet).Intersects(hitbox))
+            {
+                return false;
+            }
+
+            _onPuppetHit?.Invoke(puppet, sourceMob, attack, currentTime);
+            return true;
+        }
+
+        private PuppetInfo FindTargetPuppet(MobTargetInfo targetInfo)
+        {
+            IReadOnlyList<PuppetInfo> puppets = _puppetAccessor?.Invoke();
+            if (puppets == null)
+            {
+                return null;
+            }
+
+            foreach (PuppetInfo puppet in puppets)
+            {
+                if (puppet != null && puppet.IsActive && puppet.ObjectId == targetInfo.TargetId)
+                {
+                    return puppet;
+                }
+            }
+
+            return null;
+        }
+
+        private static Rectangle CreatePuppetHitbox(PuppetInfo puppet)
+        {
+            const int width = 48;
+            const int height = 60;
+            return new Rectangle(
+                (int)(puppet.X - width / 2f),
+                (int)(puppet.Y - height),
+                width,
+                height);
         }
 
         private static float GetRangeCenterX(MobItem mobItem, MobAttackEntry attack)

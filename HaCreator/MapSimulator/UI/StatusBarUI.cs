@@ -47,6 +47,7 @@ namespace HaCreator.MapSimulator.UI {
         public string SkinKey { get; set; } = "KeyDownBar";
         public int RemainingMs { get; set; }
         public int DurationMs { get; set; }
+        public int GaugeDurationMs { get; set; }
         public float Progress { get; set; }
     }
 
@@ -1125,28 +1126,7 @@ namespace HaCreator.MapSimulator.UI {
                 return PreparedSkillHudProfile.Default;
             }
 
-            return preparedSkill.SkillId switch
-            {
-                35121003 => new PreparedSkillHudProfile("KeyDownBar4", 2000),
-                4341002 => new PreparedSkillHudProfile("KeyDownBar1", 600),
-                5101004 => new PreparedSkillHudProfile("KeyDownBar1", 1000),
-                15101003 => new PreparedSkillHudProfile("KeyDownBar1", 1000),
-                2121001 => new PreparedSkillHudProfile(preparedSkill.SkinKey, 1000),
-                2221001 => new PreparedSkillHudProfile(preparedSkill.SkinKey, 1000),
-                2321001 => new PreparedSkillHudProfile(preparedSkill.SkinKey, 1000),
-                3121004 => new PreparedSkillHudProfile(preparedSkill.SkinKey, 2000),
-                3221001 => new PreparedSkillHudProfile(preparedSkill.SkinKey, 900),
-                4341003 => new PreparedSkillHudProfile(preparedSkill.SkinKey, 1200),
-                5201002 => new PreparedSkillHudProfile(preparedSkill.SkinKey, 1000),
-                13111002 => new PreparedSkillHudProfile(preparedSkill.SkinKey, 1000),
-                22121000 => new PreparedSkillHudProfile(preparedSkill.SkinKey, 500),
-                22151001 => new PreparedSkillHudProfile(preparedSkill.SkinKey, 500),
-                33101005 => new PreparedSkillHudProfile(preparedSkill.SkinKey, 900),
-                33121009 => new PreparedSkillHudProfile(preparedSkill.SkinKey, 2000),
-                35001001 => new PreparedSkillHudProfile(preparedSkill.SkinKey, 2000),
-                35101009 => new PreparedSkillHudProfile(preparedSkill.SkinKey, 2000),
-                _ => new PreparedSkillHudProfile(preparedSkill.SkinKey, 0)
-            };
+            return new PreparedSkillHudProfile(preparedSkill.SkinKey, preparedSkill.GaugeDurationMs);
         }
 
         private Point GetTooltipPosition(Rectangle anchorRect, int tooltipWidth, int tooltipHeight, int renderWidth, int renderHeight)
