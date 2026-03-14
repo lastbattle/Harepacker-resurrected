@@ -38,6 +38,14 @@ namespace HaCreator.MapSimulator.Character.Skills
             public bool FacingRight { get; init; }
         }
 
+        private sealed class ClientSkillTimer
+        {
+            public int SkillId { get; init; }
+            public string Source { get; init; }
+            public int ExpireTime { get; init; }
+            public Action<int> OnExpired { get; init; }
+        }
+
         private const string GenericBuffIconKey = "united/buff";
 
         #region Constants
@@ -97,6 +105,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         public Action<ActiveBuff> OnBuffExpired;
         public Action<PreparedSkill> OnPreparedSkillStarted;
         public Action<PreparedSkill> OnPreparedSkillReleased;
+        public Action<int, string> OnClientSkillTimerExpired;
 
         // References
         private MobPool _mobPool;
@@ -414,6 +423,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         // Skill queue for macro execution
         private readonly Queue<int> _skillQueue = new();
         private readonly Queue<QueuedFollowUpAttack> _queuedFollowUpAttacks = new();
+        private readonly List<ClientSkillTimer> _clientSkillTimers = new();
         private int _lastQueuedSkillTime = 0;
         private const int SKILL_QUEUE_DELAY = 100; // ms between queued skill attempts
         private const int FOLLOW_UP_ATTACK_DELAY = 90;
@@ -876,6 +886,15 @@ namespace HaCreator.MapSimulator.Character.Skills
                 IsKeydownSkill = skill.IsKeydownSkill
             };
 
+            if (!_preparedSkill.IsKeydownSkill && _preparedSkill.Duration > 0)
+            {
+                RegisterClientSkillTimer(
+                    _preparedSkill.SkillId,
+                    "prepared-release",
+                    currentTime + _preparedSkill.Duration,
+                    ReleasePreparedSkill);
+            }
+
             OnPreparedSkillStarted?.Invoke(_preparedSkill);
         }
 
@@ -906,6 +925,7 @@ namespace HaCreator.MapSimulator.Character.Skills
 
             PreparedSkill prepared = _preparedSkill;
             _preparedSkill = null;
+            CancelClientSkillTimers(prepared.SkillId, "prepared-release");
 
             if (prepared.IsKeydownSkill)
             {
@@ -2292,19 +2312,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             if (levelData == null || levelData.Time <= 0)
                 return;
 
-            // Check for existing buff of same skill
-            for (int i = _buffs.Count - 1; i >= 0; i--)
-            {
-                if (_buffs[i].SkillId == skill.SkillId)
-                {
-                    ApplyBuffStats(_buffs[i], false);
-                    _player.ClearSkillAvatarTransform(_buffs[i].SkillId);
-                    _player.ClearSkillAvatarEffect(_buffs[i].SkillId, currentTime, playFinish: false);
-                    ClearSkillMount(_buffs[i].SkillId);
-                    OnBuffExpired?.Invoke(_buffs[i]);
-                    _buffs.RemoveAt(i);
-                }
-            }
+            CancelActiveBuff(skill.SkillId, currentTime, playFinish: false);
 
             var buff = new ActiveBuff
             {
@@ -2319,6 +2327,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             _buffs.Add(buff);
             _player.ApplySkillAvatarEffect(skill.SkillId, skill, currentTime);
             OnBuffApplied?.Invoke(buff);
+            RegisterClientSkillTimer(skill.SkillId, "buff-expire", currentTime + buff.Duration, ExpireBuffFromClientTimer);
 
             // Apply buff effects to player stats
             ApplyBuffStats(buff, true);
@@ -2343,33 +2352,12 @@ namespace HaCreator.MapSimulator.Character.Skills
             _player.Build.JumpPower += levelData.Jump * modifier;
         }
 
-        private void UpdateBuffs(int currentTime)
+        public bool CancelActiveBuff(int skillId)
         {
-            bool removedBuff = false;
-            for (int i = _buffs.Count - 1; i >= 0; i--)
-            {
-                var buff = _buffs[i];
-                if (buff.IsExpired(currentTime))
-                {
-                    // Remove buff effects
-                    ApplyBuffStats(buff, false);
-                    _player.ClearSkillAvatarTransform(buff.SkillId);
-                    _player.ClearSkillAvatarEffect(buff.SkillId, currentTime);
-                    ClearSkillMount(buff.SkillId);
-                    _buffs.RemoveAt(i);
-                    RefreshBuffControlledFlyingAbility();
-                    OnBuffExpired?.Invoke(buff);
-                    removedBuff = true;
-                }
-            }
-
-            if (removedBuff)
-            {
-                RefreshBuffControlledFlyingAbility();
-            }
+            return CancelActiveBuff(skillId, Environment.TickCount, playFinish: true);
         }
 
-        public bool CancelActiveBuff(int skillId)
+        private bool CancelActiveBuff(int skillId, int currentTime, bool playFinish)
         {
             for (int i = _buffs.Count - 1; i >= 0; i--)
             {
@@ -2379,16 +2367,42 @@ namespace HaCreator.MapSimulator.Character.Skills
                     continue;
                 }
 
-                ApplyBuffStats(buff, false);
-                _player.ClearSkillAvatarTransform(buff.SkillId);
-                _player.ClearSkillAvatarEffect(buff.SkillId, Environment.TickCount);
-                ClearSkillMount(buff.SkillId);
-                _buffs.RemoveAt(i);
-                OnBuffExpired?.Invoke(buff);
+                RemoveBuffAt(i, currentTime, playFinish);
                 return true;
             }
 
             return false;
+        }
+
+        private void RemoveBuffAt(int index, int currentTime, bool playFinish)
+        {
+            var buff = _buffs[index];
+            ApplyBuffStats(buff, false);
+            _player.ClearSkillAvatarTransform(buff.SkillId);
+            _player.ClearSkillAvatarEffect(buff.SkillId, currentTime, playFinish);
+            ClearSkillMount(buff.SkillId);
+            _buffs.RemoveAt(index);
+            CancelClientSkillTimers(buff.SkillId, "buff-expire");
+            RefreshBuffControlledFlyingAbility();
+            OnBuffExpired?.Invoke(buff);
+        }
+
+        private void ExpireBuffFromClientTimer(int currentTime)
+        {
+            bool removedBuff = false;
+            for (int i = _buffs.Count - 1; i >= 0; i--)
+            {
+                if (_buffs[i].IsExpired(currentTime))
+                {
+                    RemoveBuffAt(i, currentTime, playFinish: true);
+                    removedBuff = true;
+                }
+            }
+
+            if (removedBuff)
+            {
+                RefreshBuffControlledFlyingAbility();
+            }
         }
 
         private void RefreshBuffControlledFlyingAbility()
@@ -2633,6 +2647,8 @@ namespace HaCreator.MapSimulator.Character.Skills
 
         public void Update(int currentTime, float deltaTime)
         {
+            UpdateClientSkillTimers(currentTime);
+
             // Update current cast
             if (_currentCast != null)
             {
@@ -2659,10 +2675,6 @@ namespace HaCreator.MapSimulator.Character.Skills
             {
                 UpdateKeydownSkill(currentTime);
             }
-            else if (_preparedSkill != null && _preparedSkill.Progress(currentTime) >= 1f)
-            {
-                ReleasePreparedSkill(currentTime);
-            }
 
             ProcessQueuedFollowUpAttacks(currentTime);
 
@@ -2675,11 +2687,72 @@ namespace HaCreator.MapSimulator.Character.Skills
             // Update summons
             UpdateSummons(currentTime, deltaTime);
 
-            // Update buffs
-            UpdateBuffs(currentTime);
-
             // Update hit effects (remove expired)
             UpdateHitEffects(currentTime);
+        }
+
+        private void RegisterClientSkillTimer(int skillId, string source, int expireTime, Action<int> onExpired, bool replaceExisting = true)
+        {
+            if (skillId <= 0 || string.IsNullOrWhiteSpace(source) || onExpired == null)
+                return;
+
+            if (replaceExisting)
+            {
+                CancelClientSkillTimers(skillId, source);
+            }
+
+            _clientSkillTimers.Add(new ClientSkillTimer
+            {
+                SkillId = skillId,
+                Source = source,
+                ExpireTime = expireTime,
+                OnExpired = onExpired
+            });
+        }
+
+        private void CancelClientSkillTimers(int skillId, string source = null)
+        {
+            for (int i = _clientSkillTimers.Count - 1; i >= 0; i--)
+            {
+                ClientSkillTimer timer = _clientSkillTimers[i];
+                if (timer.SkillId != skillId)
+                    continue;
+
+                if (!string.IsNullOrWhiteSpace(source)
+                    && !string.Equals(timer.Source, source, StringComparison.Ordinal))
+                {
+                    continue;
+                }
+
+                _clientSkillTimers.RemoveAt(i);
+            }
+        }
+
+        private void UpdateClientSkillTimers(int currentTime)
+        {
+            if (_clientSkillTimers.Count == 0)
+                return;
+
+            List<ClientSkillTimer> expiredTimers = null;
+            for (int i = _clientSkillTimers.Count - 1; i >= 0; i--)
+            {
+                ClientSkillTimer timer = _clientSkillTimers[i];
+                if (timer.ExpireTime > currentTime)
+                    continue;
+
+                expiredTimers ??= new List<ClientSkillTimer>();
+                expiredTimers.Add(timer);
+                _clientSkillTimers.RemoveAt(i);
+            }
+
+            if (expiredTimers == null)
+                return;
+
+            foreach (ClientSkillTimer timer in expiredTimers.OrderBy(timer => timer.ExpireTime))
+            {
+                OnClientSkillTimerExpired?.Invoke(timer.SkillId, timer.Source);
+                timer.OnExpired(currentTime);
+            }
         }
 
         private void UpdateHitEffects(int currentTime)
@@ -3110,6 +3183,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         {
             _projectiles.Clear();
             _queuedFollowUpAttacks.Clear();
+            _clientSkillTimers.Clear();
             ClearSummonPuppets();
             _summons.Clear();
             _hitEffects.Clear();
@@ -3150,6 +3224,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         {
             _projectiles.Clear();
             _queuedFollowUpAttacks.Clear();
+            _clientSkillTimers.Clear();
             ClearSummonPuppets();
             _hitEffects.Clear();
             _currentCast = null;
@@ -3192,6 +3267,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         {
             _projectiles.Clear();
             _queuedFollowUpAttacks.Clear();
+            _clientSkillTimers.Clear();
             ClearSummonPuppets();
             _summons.Clear();
             _hitEffects.Clear();
