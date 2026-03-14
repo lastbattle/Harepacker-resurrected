@@ -339,6 +339,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         public int KeydownDurationMs { get; set; }
         public int KeydownEndDurationMs { get; set; }
         public int KeydownRepeatIntervalMs { get; set; }
+        public Dictionary<int, HashSet<int>> FinalAttackTriggers { get; set; } = new();
 
         public bool HasPersistentAvatarEffect =>
             AvatarOverlayEffect != null
@@ -507,6 +508,8 @@ namespace HaCreator.MapSimulator.Character.Skills
         public int OwnerId { get; set; }
         public float OwnerX { get; set; }            // For homing reference
         public float OwnerY { get; set; }
+        public int? PreferredTargetMobId { get; set; }
+        public bool AllowFollowUpQueue { get; set; } = true;
 
         public void Update(float deltaTime, int currentTime)
         {

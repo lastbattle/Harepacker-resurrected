@@ -29,6 +29,15 @@ namespace HaCreator.MapSimulator.Character.Skills
             Projectile
         }
 
+        private sealed class QueuedFollowUpAttack
+        {
+            public int SkillId { get; init; }
+            public int Level { get; init; }
+            public int ExecuteTime { get; init; }
+            public int? TargetMobId { get; init; }
+            public bool FacingRight { get; init; }
+        }
+
         private const string GenericBuffIconKey = "united/buff";
 
         #region Constants
@@ -404,8 +413,10 @@ namespace HaCreator.MapSimulator.Character.Skills
 
         // Skill queue for macro execution
         private readonly Queue<int> _skillQueue = new();
+        private readonly Queue<QueuedFollowUpAttack> _queuedFollowUpAttacks = new();
         private int _lastQueuedSkillTime = 0;
         private const int SKILL_QUEUE_DELAY = 100; // ms between queued skill attempts
+        private const int FOLLOW_UP_ATTACK_DELAY = 90;
 
         /// <summary>
         /// Queue a skill for execution (used by skill macros)
@@ -804,7 +815,12 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
         }
 
-        private void ExecuteSkillPayload(SkillData skill, int level, int currentTime)
+        private void ExecuteSkillPayload(
+            SkillData skill,
+            int level,
+            int currentTime,
+            bool queueFollowUps = true,
+            int? preferredTargetMobId = null)
         {
             if (skill.IsMovement)
             {
@@ -831,17 +847,17 @@ namespace HaCreator.MapSimulator.Character.Skills
 
             if (skill.Projectile != null)
             {
-                SpawnProjectile(skill, level, currentTime);
+                SpawnProjectile(skill, level, currentTime, queueFollowUps, preferredTargetMobId);
                 return;
             }
 
             if (skill.AttackType == SkillAttackType.Magic)
             {
-                ProcessMagicAttack(skill, level, currentTime);
+                ProcessMagicAttack(skill, level, currentTime, queueFollowUps, preferredTargetMobId);
                 return;
             }
 
-            ProcessMeleeAttack(skill, level, currentTime);
+            ProcessMeleeAttack(skill, level, currentTime, queueFollowUps, preferredTargetMobId);
         }
 
         private void BeginPreparedSkill(SkillData skill, int level, int currentTime)
@@ -1381,17 +1397,33 @@ namespace HaCreator.MapSimulator.Character.Skills
 
         #region Attack Processing
 
-        private void ProcessMeleeAttack(SkillData skill, int level, int currentTime)
+        private void ProcessMeleeAttack(
+            SkillData skill,
+            int level,
+            int currentTime,
+            bool queueFollowUps = true,
+            int? preferredTargetMobId = null)
         {
-            ProcessDirectionalAttack(skill, level, currentTime, AttackResolutionMode.Melee);
+            ProcessDirectionalAttack(skill, level, currentTime, AttackResolutionMode.Melee, queueFollowUps, preferredTargetMobId);
         }
 
-        private void ProcessMagicAttack(SkillData skill, int level, int currentTime)
+        private void ProcessMagicAttack(
+            SkillData skill,
+            int level,
+            int currentTime,
+            bool queueFollowUps = true,
+            int? preferredTargetMobId = null)
         {
-            ProcessDirectionalAttack(skill, level, currentTime, AttackResolutionMode.Magic);
+            ProcessDirectionalAttack(skill, level, currentTime, AttackResolutionMode.Magic, queueFollowUps, preferredTargetMobId);
         }
 
-        private void ProcessDirectionalAttack(SkillData skill, int level, int currentTime, AttackResolutionMode mode)
+        private void ProcessDirectionalAttack(
+            SkillData skill,
+            int level,
+            int currentTime,
+            AttackResolutionMode mode,
+            bool queueFollowUps,
+            int? preferredTargetMobId)
         {
             if (_mobPool == null)
                 return;
@@ -1403,9 +1435,14 @@ namespace HaCreator.MapSimulator.Character.Skills
             Rectangle worldHitbox = GetWorldAttackHitbox(skill, level, levelData, mode);
             int maxTargets = Math.Max(1, levelData.MobCount);
             int attackCount = Math.Max(1, levelData.AttackCount);
-            List<MobItem> targets = ResolveTargetsInHitbox(worldHitbox, currentTime, maxTargets, mode);
+            List<MobItem> targets = ResolveTargetsInHitbox(worldHitbox, currentTime, maxTargets, mode, preferredTargetMobId);
             if (targets.Count == 0)
                 return;
+
+            if (queueFollowUps)
+            {
+                TryQueueFollowUpAttack(skill, currentTime, targets[0].PoolId, _player.FacingRight);
+            }
 
             var mobsToKill = new List<MobItem>();
             foreach (MobItem mob in targets)
@@ -1450,7 +1487,12 @@ namespace HaCreator.MapSimulator.Character.Skills
                 Math.Max(1, hitbox.Height));
         }
 
-        private List<MobItem> ResolveTargetsInHitbox(Rectangle worldHitbox, int currentTime, int maxTargets, AttackResolutionMode mode)
+        private List<MobItem> ResolveTargetsInHitbox(
+            Rectangle worldHitbox,
+            int currentTime,
+            int maxTargets,
+            AttackResolutionMode mode,
+            int? preferredTargetMobId)
         {
             if (_mobPool == null || maxTargets <= 0)
                 return new List<MobItem>();
@@ -1477,12 +1519,14 @@ namespace HaCreator.MapSimulator.Character.Skills
                     return new
                     {
                         entry.Mob,
+                        Preferred = preferredTargetMobId.HasValue && entry.Mob.PoolId == preferredTargetMobId.Value ? 0 : 1,
                         Primary = mode == AttackResolutionMode.Magic ? areaDistance : forwardPenalty,
                         Secondary = mode == AttackResolutionMode.Magic ? forwardPenalty : areaDistance,
                         Tertiary = verticalDistance
                     };
                 })
-                .OrderBy(entry => entry.Primary)
+                .OrderBy(entry => entry.Preferred)
+                .ThenBy(entry => entry.Primary)
                 .ThenBy(entry => entry.Secondary)
                 .ThenBy(entry => entry.Tertiary)
                 .Take(maxTargets)
@@ -1691,7 +1735,12 @@ namespace HaCreator.MapSimulator.Character.Skills
 
         #region Projectile System
 
-        private void SpawnProjectile(SkillData skill, int level, int currentTime)
+        private void SpawnProjectile(
+            SkillData skill,
+            int level,
+            int currentTime,
+            bool queueFollowUps = true,
+            int? preferredTargetMobId = null)
         {
             var levelData = skill.GetLevel(level);
             int bulletCount = levelData?.BulletCount ?? 1;
@@ -1712,7 +1761,9 @@ namespace HaCreator.MapSimulator.Character.Skills
                     SpawnTime = currentTime,
                     OwnerId = 0,
                     OwnerX = _player.X,
-                    OwnerY = _player.Y
+                    OwnerY = _player.Y,
+                    PreferredTargetMobId = preferredTargetMobId,
+                    AllowFollowUpQueue = queueFollowUps
                 };
 
                 // Set velocity
@@ -1796,6 +1847,15 @@ namespace HaCreator.MapSimulator.Character.Skills
         private MobItem FindHomingProjectileTarget(ActiveProjectile proj, int currentTime)
         {
             int maxHits = GetEffectiveProjectileHitLimit(proj);
+            if (proj?.PreferredTargetMobId is int preferredMobId)
+            {
+                MobItem preferredTarget = FindAttackableMobByPoolId(preferredMobId, currentTime);
+                if (preferredTarget != null && proj.CanHitMob(preferredTarget.PoolId, maxHits))
+                {
+                    return preferredTarget;
+                }
+            }
+
             return _mobPool.ActiveMobs
                 .Where(IsMobAttackable)
                 .Where(mob => proj.CanHitMob(mob.PoolId, maxHits))
@@ -1853,6 +1913,12 @@ namespace HaCreator.MapSimulator.Character.Skills
                     proj.Data.HitAnimation ?? skill.HitEffect,
                     proj.FacingRight);
 
+                if (proj.AllowFollowUpQueue)
+                {
+                    TryQueueFollowUpAttack(skill, currentTime, mob.PoolId, proj.FacingRight);
+                    proj.AllowFollowUpQueue = false;
+                }
+
                 if (died && !mobsToKill.Contains(mob))
                 {
                     mobsToKill.Add(mob);
@@ -1901,12 +1967,14 @@ namespace HaCreator.MapSimulator.Character.Skills
                     return new
                     {
                         entry.Mob,
+                        Preferred = proj.PreferredTargetMobId.HasValue && entry.Mob.PoolId == proj.PreferredTargetMobId.Value ? 0 : 1,
                         ProgressPenalty = progressPenalty,
                         LateralOffset = lateralOffset,
                         DistanceSq = distanceSq
                     };
                 })
-                .OrderBy(entry => entry.ProgressPenalty)
+                .OrderBy(entry => entry.Preferred)
+                .ThenBy(entry => entry.ProgressPenalty)
                 .ThenBy(entry => entry.LateralOffset)
                 .ThenBy(entry => entry.DistanceSq)
                 .Take(maxTargets)
@@ -2596,6 +2664,8 @@ namespace HaCreator.MapSimulator.Character.Skills
                 ReleasePreparedSkill(currentTime);
             }
 
+            ProcessQueuedFollowUpAttacks(currentTime);
+
             // Process skill queue (for macros)
             ProcessSkillQueue(currentTime);
 
@@ -2621,6 +2691,51 @@ namespace HaCreator.MapSimulator.Character.Skills
                     _hitEffects.RemoveAt(i);
                 }
             }
+        }
+
+        private void ProcessQueuedFollowUpAttacks(int currentTime)
+        {
+            while (_queuedFollowUpAttacks.Count > 0)
+            {
+                if (_queuedFollowUpAttacks.Peek().ExecuteTime > currentTime)
+                    return;
+
+                if ((_currentCast != null && !_currentCast.IsComplete) || _preparedSkill != null)
+                    return;
+
+                ExecuteQueuedFollowUpAttack(_queuedFollowUpAttacks.Dequeue(), currentTime);
+            }
+        }
+
+        private void ExecuteQueuedFollowUpAttack(QueuedFollowUpAttack queuedAttack, int currentTime)
+        {
+            if (queuedAttack == null)
+                return;
+
+            SkillData skill = GetSkillData(queuedAttack.SkillId);
+            int level = queuedAttack.Level > 0 ? queuedAttack.Level : GetSkillLevel(queuedAttack.SkillId);
+            SkillLevelData levelData = skill?.GetLevel(level);
+            if (skill == null || levelData == null)
+                return;
+
+            _currentCast = new SkillCastInfo
+            {
+                SkillId = skill.SkillId,
+                Level = level,
+                SkillData = skill,
+                LevelData = levelData,
+                EffectAnimation = skill.Effect,
+                CastTime = currentTime,
+                CasterId = 0,
+                CasterX = _player.X,
+                CasterY = _player.Y,
+                FacingRight = queuedAttack.FacingRight
+            };
+
+            TriggerSkillAnimation(skill);
+            PlayCastSound(skill);
+            OnSkillCast?.Invoke(_currentCast);
+            ExecuteSkillPayload(skill, level, currentTime, queueFollowUps: false, preferredTargetMobId: queuedAttack.TargetMobId);
         }
 
         #endregion
@@ -2845,7 +2960,62 @@ namespace HaCreator.MapSimulator.Character.Skills
 
         private SkillData GetSkillData(int skillId)
         {
-            return _loader.LoadSkill(skillId);
+            return FindKnownSkillData(skillId);
+        }
+
+        private void TryQueueFollowUpAttack(SkillData triggerSkill, int currentTime, int? targetMobId, bool facingRight)
+        {
+            if (triggerSkill?.FinalAttackTriggers == null || triggerSkill.FinalAttackTriggers.Count == 0)
+                return;
+
+            int equippedWeaponCode = GetEquippedWeaponCode();
+            if (equippedWeaponCode <= 0)
+                return;
+
+            foreach ((int followUpSkillId, HashSet<int> allowedWeaponCodes) in triggerSkill.FinalAttackTriggers)
+            {
+                if (allowedWeaponCodes == null || !allowedWeaponCodes.Contains(equippedWeaponCode))
+                    continue;
+
+                int followUpLevel = GetSkillLevel(followUpSkillId);
+                if (followUpLevel <= 0)
+                    continue;
+
+                SkillData followUpSkill = GetSkillData(followUpSkillId);
+                SkillLevelData followUpLevelData = followUpSkill?.GetLevel(followUpLevel);
+                if (followUpLevelData == null || followUpLevelData.Prop <= 0)
+                    continue;
+
+                if (Random.Next(100) >= Math.Clamp(followUpLevelData.Prop, 0, 100))
+                    continue;
+
+                _queuedFollowUpAttacks.Enqueue(new QueuedFollowUpAttack
+                {
+                    SkillId = followUpSkillId,
+                    Level = followUpLevel,
+                    ExecuteTime = currentTime + FOLLOW_UP_ATTACK_DELAY,
+                    TargetMobId = targetMobId,
+                    FacingRight = facingRight
+                });
+            }
+        }
+
+        private int GetEquippedWeaponCode()
+        {
+            int itemId = _player.Build?.GetWeapon()?.ItemId ?? 0;
+            return itemId > 0 ? Math.Abs(itemId / 10000) % 100 : 0;
+        }
+
+        private MobItem FindAttackableMobByPoolId(int poolId, int currentTime)
+        {
+            if (_mobPool == null || poolId <= 0)
+                return null;
+
+            MobItem mob = _mobPool.ActiveMobs.FirstOrDefault(candidate => candidate?.PoolId == poolId && IsMobAttackable(candidate));
+            if (mob == null)
+                return null;
+
+            return GetMobHitbox(mob, currentTime).IsEmpty ? null : mob;
         }
 
         private static int GetFrameDrawX(int anchorX, SkillFrame frame, bool shouldFlip)
@@ -2939,6 +3109,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         public void Clear()
         {
             _projectiles.Clear();
+            _queuedFollowUpAttacks.Clear();
             ClearSummonPuppets();
             _summons.Clear();
             _hitEffects.Clear();
@@ -2978,6 +3149,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         public void ClearMapState()
         {
             _projectiles.Clear();
+            _queuedFollowUpAttacks.Clear();
             ClearSummonPuppets();
             _hitEffects.Clear();
             _currentCast = null;
@@ -3019,6 +3191,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         private void ClearActiveSkillState(bool clearBuffs)
         {
             _projectiles.Clear();
+            _queuedFollowUpAttacks.Clear();
             ClearSummonPuppets();
             _summons.Clear();
             _hitEffects.Clear();

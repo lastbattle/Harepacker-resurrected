@@ -230,6 +230,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         private void ParseSkillInfo(SkillData skill, WzImageProperty skillNode)
         {
             skill.ActionName = GetPrimaryActionName(skillNode);
+            ParseFinalAttackTriggers(skill, skillNode);
 
             // Basic properties from info node
             var infoNode = skillNode["info"];
@@ -1422,6 +1423,44 @@ namespace HaCreator.MapSimulator.Character.Skills
             levelData.RequiredLevel = GetInt(node, "reqLevel", 0, level);
 
             return levelData;
+        }
+
+        private static void ParseFinalAttackTriggers(SkillData skill, WzImageProperty skillNode)
+        {
+            if (skill == null || skillNode == null)
+                return;
+
+            WzImageProperty finalAttackNode = skillNode["finalAttack"] ?? skillNode["info"]?["finalAttack"];
+            if (finalAttackNode == null)
+                return;
+
+            foreach (WzImageProperty followUpNode in finalAttackNode.WzProperties)
+            {
+                if (!int.TryParse(followUpNode.Name, out int followUpSkillId))
+                    continue;
+
+                HashSet<int> allowedWeaponCodes = new();
+                foreach (WzImageProperty weaponNode in followUpNode.WzProperties)
+                {
+                    int weaponCode = weaponNode switch
+                    {
+                        WzIntProperty intProp => intProp.Value,
+                        WzShortProperty shortProp => shortProp.Value,
+                        WzLongProperty longProp => (int)longProp.Value,
+                        _ => 0
+                    };
+
+                    if (weaponCode > 0)
+                    {
+                        allowedWeaponCodes.Add(weaponCode);
+                    }
+                }
+
+                if (allowedWeaponCodes.Count > 0)
+                {
+                    skill.FinalAttackTriggers[followUpSkillId] = allowedWeaponCodes;
+                }
+            }
         }
 
         private static int GetInt(WzImageProperty node, string name, int defaultValue = 0, int formulaX = 1)
