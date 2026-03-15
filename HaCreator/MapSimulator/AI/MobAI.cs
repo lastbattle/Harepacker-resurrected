@@ -83,6 +83,7 @@ namespace HaCreator.MapSimulator.AI
         public int ObjectId { get; set; }
         public float X { get; set; }
         public float Y { get; set; }
+        public Rectangle Hitbox { get; set; }
         public int OwnerId { get; set; }
         public int AggroValue { get; set; }
         public int ExpirationTime { get; set; }
@@ -308,6 +309,7 @@ namespace HaCreator.MapSimulator.AI
         private int _selfDestructHpThreshold = -1;
         private int _selfDestructAction = -1;
         private int _selfDestructRemoveAfterMs = -1;
+        private int _removeAfterMs = -1;
         private int _specialSpawnTime = int.MinValue;
         private bool _selfDestructTriggered = false;
         private bool _selfDestructPending = false;
@@ -394,6 +396,7 @@ namespace HaCreator.MapSimulator.AI
             _selfDestructHpThreshold = -1;
             _selfDestructAction = -1;
             _selfDestructRemoveAfterMs = -1;
+            _removeAfterMs = -1;
             _specialSpawnTime = int.MinValue;
             _selfDestructTriggered = false;
             _selfDestructPending = false;
@@ -412,13 +415,15 @@ namespace HaCreator.MapSimulator.AI
             bool isEscortMob,
             int selfDestructHpThreshold = -1,
             int selfDestructAction = -1,
-            int selfDestructRemoveAfterMs = -1)
+            int selfDestructRemoveAfterMs = -1,
+            int removeAfterMs = -1)
         {
             _canTargetPlayer = canTargetPlayer;
             _isEscortMob = isEscortMob;
             _selfDestructHpThreshold = selfDestructHpThreshold;
             _selfDestructAction = selfDestructAction;
             _selfDestructRemoveAfterMs = selfDestructRemoveAfterMs;
+            _removeAfterMs = removeAfterMs;
             _specialSpawnTime = int.MinValue;
             _selfDestructTriggered = false;
             _selfDestructPending = false;
@@ -1280,7 +1285,7 @@ namespace HaCreator.MapSimulator.AI
             {
                 Effect = effect,
                 ExpirationTime = currentTick + durationMs,
-                Value = Math.Max(0, value),
+                Value = NormalizeStatusValue(effect, value),
                 TickIntervalMs = Math.Max(1, tickIntervalMs),
                 NextTickTime = currentTick + Math.Max(1, tickIntervalMs)
             };
@@ -1686,13 +1691,18 @@ namespace HaCreator.MapSimulator.AI
 
         private int GetStatusPercent(MobStatusEffect effect)
         {
-            return _statusEntries.TryGetValue(effect, out MobStatusEntry entry) ? Math.Max(0, entry.Value) : 0;
+            return _statusEntries.TryGetValue(effect, out MobStatusEntry entry) ? entry.Value : 0;
         }
 
         private int GetStatusPercentOrDefault(MobStatusEffect effect, int defaultValue)
         {
             int value = GetStatusPercent(effect);
-            return value > 0 ? value : defaultValue;
+            return value != 0 ? Math.Abs(value) : defaultValue;
+        }
+
+        private static int NormalizeStatusValue(MobStatusEffect effect, int value)
+        {
+            return IsDotEffect(effect) ? Math.Max(0, value) : value;
         }
 
         private static int ApplyPercentModifier(int baseValue, int percent)
@@ -1727,6 +1737,12 @@ namespace HaCreator.MapSimulator.AI
             if (_selfDestructRemoveAfterMs > 0 && currentTick - _specialSpawnTime >= _selfDestructRemoveAfterMs)
             {
                 TriggerSelfDestruction(currentTick);
+                return;
+            }
+
+            if (_removeAfterMs > 0 && currentTick - _specialSpawnTime >= _removeAfterMs)
+            {
+                Kill(currentTick, MobDeathType.Timeout);
             }
         }
 

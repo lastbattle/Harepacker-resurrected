@@ -305,6 +305,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         public bool CanNotMoveInState { get; set; }
         public bool OnlyNormalAttackInState { get; set; }
         public bool SpecialNormalAttackInState { get; set; }
+        public int MorphId { get; set; }
 
         // Level data
         public Dictionary<int, SkillLevelData> Levels { get; set; } = new();
@@ -317,6 +318,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         public SkillAnimation Effect { get; set; }           // Effect on caster
         public SkillAnimation PrepareEffect { get; set; }    // Startup effect for prepare/keydown skills
         public SkillAnimation KeydownEffect { get; set; }    // Looping effect while keydown skill is held
+        public SkillAnimation RepeatEffect { get; set; }     // Dedicated repeated hold-loop effect for charge/keydown skills
         public SkillAnimation KeydownEndEffect { get; set; } // Exit effect when keydown skill ends
         public SkillAnimation HitEffect { get; set; }        // Effect on target
         public SkillAnimation AffectedEffect { get; set; }   // Effect while buff active
@@ -332,14 +334,27 @@ namespace HaCreator.MapSimulator.Character.Skills
         public int SummonMoveAbility { get; set; }
         public SummonMovementStyle SummonMovementStyle { get; set; } = SummonMovementStyle.Stationary;
         public float SummonSpawnDistanceX { get; set; } = 50f;
+        public int SummonAttackIntervalMs { get; set; } = 1000;
+        public int SummonAttackCountOverride { get; set; }
+        public int SummonMobCountOverride { get; set; }
+        public Point? SummonAttackCenterOffset { get; set; }
+        public int SummonAttackRadius { get; set; }
+        public int SummonAttackRangeLeft { get; set; }
+        public int SummonAttackRangeRight { get; set; }
+        public int SummonAttackRangeTop { get; set; }
+        public int SummonAttackRangeBottom { get; set; }
         public string MinionAbility { get; set; }
         public string SummonCondition { get; set; }
+        public string TriggerCondition { get; set; }
         public ProjectileData Projectile { get; set; }       // Ball/projectile
         public string CastSoundKey { get; set; }             // Registered simulator sound key for cast SFX
         public string RepeatSoundKey { get; set; }           // Registered simulator sound key for repeated hits/shots
         public string ZoneType { get; set; }
         public bool IsMassSpell { get; set; }
         public SkillAnimation ZoneAnimation { get; set; }
+        public int AffectedSkillId { get; set; }
+        public string AffectedSkillEffect { get; set; }
+        public bool IsMagicDamageSkill { get; set; }
 
         // Action
         public string ActionName { get; set; }       // Animation action to play
@@ -348,11 +363,14 @@ namespace HaCreator.MapSimulator.Character.Skills
         public string KeydownEndActionName { get; set; }
         public int PrepareDurationMs { get; set; }
         public int KeydownDurationMs { get; set; }
+        public int RepeatDurationMs { get; set; }
         public int KeydownEndDurationMs { get; set; }
         public int KeydownRepeatIntervalMs { get; set; }
         public bool CasterMove { get; set; }
         public bool AreaAttack { get; set; }
         public bool RectBasedOnTarget { get; set; }
+        public bool ChainAttack { get; set; }
+        public bool ChainAttackPenalty { get; set; }
         public string LandingEffectName { get; set; }
         public Dictionary<int, HashSet<int>> FinalAttackTriggers { get; set; } = new();
 
@@ -363,6 +381,11 @@ namespace HaCreator.MapSimulator.Character.Skills
             || AvatarOverlayFinishEffect != null
             || AvatarUnderFaceFinishEffect != null
             || AvatarLadderFinishEffect != null;
+
+        public bool UsesAffectedSkillBodyAttack =>
+            AffectedSkillId > 0
+            && !string.IsNullOrWhiteSpace(AffectedSkillEffect)
+            && AffectedSkillEffect.IndexOf("bodyAttack", StringComparison.OrdinalIgnoreCase) >= 0;
 
         /// <summary>
         /// Get data for a specific level
@@ -453,6 +476,51 @@ namespace HaCreator.MapSimulator.Character.Skills
                 -height / 2,
                 Math.Max(1, rangeX),
                 Math.Max(1, height));
+        }
+
+        public Rectangle GetSummonAttackRange(bool facingRight)
+        {
+            bool hasExplicitRect = SummonAttackRangeLeft > 0
+                || SummonAttackRangeRight > 0
+                || SummonAttackRangeTop != 0
+                || SummonAttackRangeBottom != 0;
+            if (hasExplicitRect)
+            {
+                int left = -SummonAttackRangeLeft;
+                int right = SummonAttackRangeRight;
+                if (!facingRight)
+                {
+                    (left, right) = (-right, -left);
+                }
+
+                int top = SummonAttackRangeTop;
+                int bottom = SummonAttackRangeBottom;
+                if (bottom <= top)
+                {
+                    bottom = top + 60;
+                }
+
+                return new Rectangle(
+                    left,
+                    top,
+                    Math.Max(1, right - left),
+                    Math.Max(1, bottom - top));
+            }
+
+            return Rectangle.Empty;
+        }
+
+        public Point GetSummonAttackCircleCenterOffset(bool facingRight)
+        {
+            if (!SummonAttackCenterOffset.HasValue)
+            {
+                return Point.Zero;
+            }
+
+            Point center = SummonAttackCenterOffset.Value;
+            return facingRight
+                ? center
+                : new Point(-center.X, center.Y);
         }
     }
 

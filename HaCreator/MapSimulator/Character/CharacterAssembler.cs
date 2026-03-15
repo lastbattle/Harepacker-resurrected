@@ -422,6 +422,17 @@ namespace HaCreator.MapSimulator.Character
                 : null;
         }
 
+        internal static bool ShouldSuppressBaseAvatarForState(CharacterBuild build, string actionName)
+        {
+            if (build?.Equipment == null
+                || !build.Equipment.TryGetValue(EquipSlot.TamingMob, out CharacterPart tamingMobPart))
+            {
+                return false;
+            }
+
+            return ShouldSuppressBaseAvatarForTamingMob(tamingMobPart, actionName);
+        }
+
         private static bool ShouldSuppressBaseAvatarForTamingMob(CharacterPart tamingMobPart, string actionName)
         {
             return tamingMobPart?.Type == CharacterPartType.TamingMob

@@ -244,11 +244,18 @@ namespace HaCreator.MapSimulator.Character.Skills
                 skill.CasterMove = GetInt(infoNode, "casterMove") == 1;
                 skill.AreaAttack = GetInt(infoNode, "areaAttack") == 1;
                 skill.RectBasedOnTarget = GetInt(infoNode, "rectBasedOnTarget") == 1;
+                skill.ChainAttack = GetInt(infoNode, "chainAttack") == 1;
+                skill.ChainAttackPenalty = GetInt(infoNode, "chainattackPenalty") == 1;
                 skill.LandingEffectName = GetString(infoNode, "landingEffect");
                 skill.MinionAbility = GetString(infoNode, "minionAbility");
-                skill.SummonCondition = GetString(infoNode, "condition");
+                string condition = GetString(infoNode, "condition");
+                skill.SummonCondition = condition;
+                skill.TriggerCondition = condition;
                 skill.ZoneType = GetString(infoNode, "zoneType");
                 skill.IsMassSpell = GetInt(infoNode, "massSpell") == 1;
+                skill.AffectedSkillId = GetInt(infoNode, "affectedSkill");
+                skill.AffectedSkillEffect = GetString(infoNode, "affectedSkillEffect");
+                skill.IsMagicDamageSkill = GetInt(infoNode, "magicDamage") == 1;
                 skill.FixedState = GetInt(infoNode, "fixedState") == 1;
                 skill.CanNotMoveInState = GetInt(infoNode, "canNotMoveInState") == 1;
                 skill.OnlyNormalAttackInState = GetInt(infoNode, "onlyNormalAttack") == 1;
@@ -260,6 +267,12 @@ namespace HaCreator.MapSimulator.Character.Skills
             if (commonNode != null)
             {
                 skill.MaxLevel = GetInt(commonNode, "maxLevel", 1);
+                skill.MorphId = GetInt(commonNode, "morph");
+            }
+
+            if (skill.MorphId <= 0 && infoNode != null)
+            {
+                skill.MorphId = GetInt(infoNode, "morph");
             }
 
             // Parse level nodes to find max level
@@ -281,8 +294,18 @@ namespace HaCreator.MapSimulator.Character.Skills
 
         private void DetermineSkillType(SkillData skill, WzImageProperty skillNode)
         {
+            if (skill.UsesAffectedSkillBodyAttack)
+            {
+                skill.Type = SkillType.Passive;
+                skill.IsPassive = true;
+                skill.IsAttack = true;
+                skill.AttackType = skill.IsMagicDamageSkill ? SkillAttackType.Magic : SkillAttackType.Melee;
+                return;
+            }
+
             // Check for various type indicators
             var infoNode = skillNode["info"];
+            SkillAttackType? clientAttackType = ResolveClientAttackType(GetInt(infoNode, "type"));
             bool hasBall = skillNode["ball"] != null;
             bool hasHit = skillNode["hit"] != null;
             bool hasAffected = skillNode["affected"] != null;
@@ -342,7 +365,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 }
                 else if (hasDamage || hasMobCount || skill.IsPrepareSkill || skill.IsMovement)
                 {
-                    skill.Type = hasBall ? SkillType.Magic : (skill.IsMovement ? SkillType.Movement : SkillType.Attack);
+                    skill.Type = ResolveAttackSkillType(clientAttackType, hasBall, skill.IsMovement);
                     skill.IsAttack = hasDamage || hasMobCount || skill.IsPrepareSkill;
                 }
                 else if (!hasDamage && !hasTime && !hasAction)
@@ -355,8 +378,10 @@ namespace HaCreator.MapSimulator.Character.Skills
             {
                 skill.Type = hasSummon
                     ? SkillType.Summon
-                    : hasBall
+                    : clientAttackType == SkillAttackType.Magic
                         ? SkillType.Magic
+                        : hasBall
+                            ? SkillType.Magic
                         : skill.IsMovement
                             ? SkillType.Movement
                             : SkillType.Attack;
@@ -386,6 +411,10 @@ namespace HaCreator.MapSimulator.Character.Skills
             else if (hasBall)
             {
                 skill.AttackType = SkillAttackType.Ranged;
+            }
+            else if (clientAttackType.HasValue)
+            {
+                skill.AttackType = clientAttackType.Value;
             }
             else if (skill.Type == SkillType.Magic)
             {
@@ -417,6 +446,32 @@ namespace HaCreator.MapSimulator.Character.Skills
 
             skill.IsBuff |= hasTime && (hasPad || hasMad || hasAffected || hasPersistentAvatarEffect);
             skill.IsHeal |= hasHp && !hasDamage;
+        }
+
+        private static SkillType ResolveAttackSkillType(SkillAttackType? clientAttackType, bool hasBall, bool isMovement)
+        {
+            if (isMovement)
+            {
+                return SkillType.Movement;
+            }
+
+            if (clientAttackType == SkillAttackType.Magic || hasBall)
+            {
+                return SkillType.Magic;
+            }
+
+            return SkillType.Attack;
+        }
+
+        private static SkillAttackType? ResolveClientAttackType(int infoType)
+        {
+            return infoType switch
+            {
+                1 => SkillAttackType.Melee,
+                2 => SkillAttackType.Ranged,
+                10 => SkillAttackType.Magic,
+                _ => null
+            };
         }
 
         private void ParseSkillLevels(SkillData skill, WzImageProperty skillNode)
@@ -503,6 +558,19 @@ namespace HaCreator.MapSimulator.Character.Skills
                 if (keydownEndAnimation.Frames.Count > 0)
                 {
                     skill.KeydownEndEffect = keydownEndAnimation;
+                }
+            }
+
+            var repeatNode = skillNode["repeat"];
+            if (repeatNode != null)
+            {
+                skill.RepeatDurationMs = ResolveAnimationDuration(repeatNode);
+
+                var repeatAnimation = LoadSkillAnimation(repeatNode, "repeat");
+                if (repeatAnimation.Frames.Count > 0)
+                {
+                    repeatAnimation.Loop = true;
+                    skill.RepeatEffect = repeatAnimation;
                 }
             }
 
@@ -856,10 +924,68 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return;
             }
 
+            PopulateSummonAttackMetadata(skill, attackBranch);
+
             var attackAnimation = LoadSkillAnimation(attackBranch, attackBranchName);
             if (attackAnimation.Frames.Count > 0)
             {
                 skill.SummonAttackAnimation = attackAnimation;
+            }
+        }
+
+        private static void PopulateSummonAttackMetadata(SkillData skill, WzImageProperty attackBranch)
+        {
+            if (skill == null || attackBranch == null)
+            {
+                return;
+            }
+
+            WzImageProperty infoNode = attackBranch["info"];
+            if (infoNode == null)
+            {
+                return;
+            }
+
+            int attackAfter = GetInt(infoNode, "attackAfter");
+            if (attackAfter > 0)
+            {
+                skill.SummonAttackIntervalMs = attackAfter;
+            }
+
+            int attackCount = GetInt(infoNode, "attackCount");
+            if (attackCount > 0)
+            {
+                skill.SummonAttackCountOverride = attackCount;
+            }
+
+            int mobCount = GetInt(infoNode, "mobCount");
+            if (mobCount > 0)
+            {
+                skill.SummonMobCountOverride = mobCount;
+            }
+
+            WzImageProperty rangeNode = infoNode["range"];
+            if (rangeNode == null)
+            {
+                return;
+            }
+
+            Point? lt = GetVector(rangeNode, "lt");
+            Point? rb = GetVector(rangeNode, "rb");
+            if (lt.HasValue || rb.HasValue)
+            {
+                skill.SummonAttackRangeLeft = Math.Abs(lt?.X ?? 0);
+                skill.SummonAttackRangeRight = rb?.X ?? 0;
+                skill.SummonAttackRangeTop = lt?.Y ?? 0;
+                skill.SummonAttackRangeBottom = rb?.Y ?? 0;
+            }
+
+            Point? center = GetVector(rangeNode, "sp");
+            int radius = GetInt(rangeNode, "r");
+            if (center.HasValue && radius > 0)
+            {
+                skill.SummonAttackCenterOffset = center.Value;
+                skill.SummonAttackRadius = radius;
             }
         }
 

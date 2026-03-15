@@ -128,7 +128,7 @@ namespace HaCreator.MapSimulator.Character
         Shoes = 8,
         Glove = 9,
         Shield = 10,
-        Cape = 11,
+        Cape = 20, // temporary
         Ring1 = 12,
         Ring2 = 13,
         Ring3 = 14,
@@ -333,6 +333,9 @@ namespace HaCreator.MapSimulator.Character
         public string VSlot { get; set; }           // Visible slot conflicts
         public string ISlot { get; set; }           // Item slot priority
         public bool IsCash { get; set; }            // Cash shop item (overrides defaults)
+        public DateTime? ExpirationDateUtc { get; set; }
+        public int? Durability { get; set; }
+        public int? MaxDurability { get; set; }
 
         // Icon for UI
         public IDXObject Icon { get; set; }
@@ -576,6 +579,8 @@ namespace HaCreator.MapSimulator.Character
     /// </summary>
     public class CharacterBuild
     {
+        public const int MaxPrimaryStat = 999;
+
         public int Id { get; set; }
         public string Name { get; set; }
         public CharacterGender Gender { get; set; }
@@ -606,7 +611,11 @@ namespace HaCreator.MapSimulator.Character
 
         // Job info
         public int Job { get; set; } = 0;   // Job ID (0 = Beginner)
+        public int SubJob { get; set; } = 0;
         public string JobName { get; set; } = "Beginner";
+        public string GuildName { get; set; } = string.Empty;
+        public int Fame { get; set; } = 0;
+        public bool HasMonsterRiding { get; set; }
 
         // Experience
         public long Exp { get; set; } = 0;
@@ -619,8 +628,33 @@ namespace HaCreator.MapSimulator.Character
         public int MagicDefense { get; set; } = 5;
         public int Accuracy { get; set; } = 0;
         public int Avoidability { get; set; } = 0;
+        public int Hands { get; set; } = 0;
+        public int CriticalRate { get; set; } = 0;
         public float Speed { get; set; } = 100;         // Movement speed %
         public float JumpPower { get; set; } = 100;     // Jump height %
+
+        public string GuildDisplayText => string.IsNullOrWhiteSpace(GuildName) ? "-" : GuildName;
+
+        public int ExpPercent
+        {
+            get
+            {
+                if (ExpToNextLevel <= 0)
+                {
+                    return 0;
+                }
+
+                long percent = (Exp * 100L) / ExpToNextLevel;
+                return (int)Math.Clamp(percent, 0L, 100L);
+            }
+        }
+
+        public string ExpDisplayText => $"{ExpPercent}%";
+
+        public bool CanIncreasePrimaryStat(int currentValue)
+        {
+            return AP > 0 && currentValue < MaxPrimaryStat;
+        }
 
         /// <summary>
         /// Get all parts in z-order for rendering
@@ -755,7 +789,11 @@ namespace HaCreator.MapSimulator.Character
                 LUK = LUK,
                 AP = AP,
                 Job = Job,
+                SubJob = SubJob,
                 JobName = JobName,
+                GuildName = GuildName,
+                Fame = Fame,
+                HasMonsterRiding = HasMonsterRiding,
                 Exp = Exp,
                 ExpToNextLevel = ExpToNextLevel,
                 Attack = Attack,
@@ -764,6 +802,8 @@ namespace HaCreator.MapSimulator.Character
                 MagicDefense = MagicDefense,
                 Accuracy = Accuracy,
                 Avoidability = Avoidability,
+                Hands = Hands,
+                CriticalRate = CriticalRate,
                 Speed = Speed,
                 JumpPower = JumpPower
             };

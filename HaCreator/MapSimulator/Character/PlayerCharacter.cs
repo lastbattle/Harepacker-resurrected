@@ -216,6 +216,7 @@ namespace HaCreator.MapSimulator.Character
         private SkillAvatarTransformState _activeSkillAvatarTransform;
         private readonly System.Collections.Generic.List<SkillAvatarEffectState> _activeSkillAvatarEffects = new();
         private readonly System.Collections.Generic.List<TransientSkillAvatarEffectState> _transientSkillAvatarEffects = new();
+        private readonly HashSet<int> _skillAvatarEffectRenderSuppressionSkillIds = new();
         private readonly Random _faceExpressionRandom = new(Environment.TickCount);
         private int _nextBlinkTime = Environment.TickCount + FACE_BLINK_MIN_INTERVAL_MS;
         private int _blinkExpressionEndTime;
@@ -1591,6 +1592,23 @@ namespace HaCreator.MapSimulator.Character
             return _transientSkillAvatarEffects.Exists(effectState => effectState.SkillId == skillId);
         }
 
+        public void SetSkillAvatarEffectRenderSuppressed(int skillId, bool suppressed)
+        {
+            if (skillId <= 0)
+            {
+                return;
+            }
+
+            if (suppressed)
+            {
+                _skillAvatarEffectRenderSuppressionSkillIds.Add(skillId);
+            }
+            else
+            {
+                _skillAvatarEffectRenderSuppressionSkillIds.Remove(skillId);
+            }
+        }
+
         public void ClearAllSkillAvatarEffects(bool playFinish, int currentTime)
         {
             for (int i = _activeSkillAvatarEffects.Count - 1; i >= 0; i--)
@@ -2262,6 +2280,11 @@ namespace HaCreator.MapSimulator.Character
                 return renderables;
             }
 
+            if (ShouldSuppressSkillAvatarEffectRendering())
+            {
+                return renderables;
+            }
+
             int elapsedTime;
             for (int i = 0; i < _activeSkillAvatarEffects.Count; i++)
             {
@@ -2310,6 +2333,12 @@ namespace HaCreator.MapSimulator.Character
             }
 
             return renderables;
+        }
+
+        private bool ShouldSuppressSkillAvatarEffectRendering()
+        {
+            return _skillAvatarEffectRenderSuppressionSkillIds.Count > 0
+                   || CharacterAssembler.ShouldSuppressBaseAvatarForState(Build, CurrentActionName);
         }
 
         private void ClearTransientSkillAvatarEffect(int skillId)
@@ -2532,6 +2561,9 @@ namespace HaCreator.MapSimulator.Character
                 case 32121003:
                     transform = CreateSingleActionTransform(skillId, "cyclone", "cyclone_after");
                     return true;
+                case 5311002:
+                    transform = CreateSingleActionTransform(skillId, "noiseWave_ing", "noiseWave");
+                    return true;
                 case 35001001:
                     transform = CreateMechanicTransform(skillId, "flamethrower", "flamethrower", "flamethrower", "flamethrower", "flamethrower_after");
                     return true;
@@ -2561,6 +2593,13 @@ namespace HaCreator.MapSimulator.Character
             if (string.Equals(normalizedAction, "cyclone_pre", StringComparison.OrdinalIgnoreCase))
             {
                 transform = CreateSingleActionTransform(skillId, "cyclone", "cyclone_after");
+                return true;
+            }
+
+            if (string.Equals(normalizedAction, "noiseWave_pre", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(normalizedAction, "noiseWave_ing", StringComparison.OrdinalIgnoreCase))
+            {
+                transform = CreateSingleActionTransform(skillId, "noiseWave_ing", "noiseWave");
                 return true;
             }
 

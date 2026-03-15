@@ -62,6 +62,7 @@ namespace HaCreator.MapSimulator.Character
         private CombatEffects _combatEffects;
         private MobSkillEffectLoader _mobSkillEffectLoader;
         private SoundManager _soundManager;
+        private Action<Rectangle, int, int, int> _reactorAttackAreaHandler;
 
         // Sound callbacks
         private Action _onJumpSound;
@@ -204,6 +205,15 @@ namespace HaCreator.MapSimulator.Character
             }
         }
 
+        public void SetReactorAttackAreaHandler(Action<Rectangle, int, int, int> reactorAttackAreaHandler)
+        {
+            _reactorAttackAreaHandler = reactorAttackAreaHandler;
+            if (Skills != null)
+            {
+                Skills.OnAttackAreaResolved = reactorAttackAreaHandler;
+            }
+        }
+
         public MobSkillEffectData LoadMobSkillEffect(int skillId, int skillLevel = 1)
         {
             return _mobSkillEffectLoader?.LoadMobSkillEffect(skillId, skillLevel);
@@ -330,6 +340,7 @@ namespace HaCreator.MapSimulator.Character
                 Skills.SetSoundManager(_soundManager);
                 Skills.SetFootholdLookup(_findFoothold);
                 Skills.SetTamingMobLoader(Loader.LoadEquipment);
+                Skills.OnAttackAreaResolved = _reactorAttackAreaHandler;
 
                 // Keep only the player's current job path resident at startup.
                 Skills.LoadSkillsForJob(build.Job);
@@ -925,6 +936,7 @@ namespace HaCreator.MapSimulator.Character
                     (int)Player.Y - hitHeight - 10,
                     hitWidth,
                     hitHeight);
+                _reactorAttackAreaHandler?.Invoke(worldHitbox, currentTime, 0, 1);
 
                 int hitCount = 0;
                 foreach (var mob in _mobPool.ActiveMobs)
@@ -993,6 +1005,7 @@ namespace HaCreator.MapSimulator.Character
                     (int)Player.Y - hitHeight - 10,
                     hitWidth,
                     hitHeight);
+                _reactorAttackAreaHandler?.Invoke(worldHitbox, currentTime, 0, 1);
 
                 MobItem closestMob = null;
                 float closestDist = float.MaxValue;

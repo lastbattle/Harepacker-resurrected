@@ -408,7 +408,7 @@ namespace HaCreator.MapSimulator.Character
                 return 0.95f;
 
             float hitChance = 0.95f;
-            hitChance += Math.Min(0.35f, Math.Max(0, mobAI.GetStatusEffectValue(MobStatusEffect.ACC)) / 100f);
+            hitChance += Math.Clamp(mobAI.GetStatusEffectValue(MobStatusEffect.ACC) / 100f, -0.35f, 0.35f);
 
             if (mobAI.HasStatusEffect(MobStatusEffect.Darkness))
             {

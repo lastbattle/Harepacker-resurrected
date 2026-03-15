@@ -610,6 +610,12 @@ namespace HaCreator.MapSimulator.Combat
                 return;
             }
 
+            if (effectNode.EffectType == 2)
+            {
+                ScheduleTimedRangeEffectNode(mobItem, attack, effectNode, impactPosition, baseTime, flip);
+                return;
+            }
+
             int triggerTime = baseTime + Math.Max(0, effectNode.Delay);
             List<Vector2> positions = BuildEffectNodePositions(mobItem, attack, effectNode, impactPosition);
 
@@ -626,6 +632,46 @@ namespace HaCreator.MapSimulator.Combat
                     Frames = frames,
                     Position = positions[i],
                     TriggerTime = triggerTime,
+                    Flip = flip
+                });
+            }
+        }
+
+        private void ScheduleTimedRangeEffectNode(
+            MobItem mobItem,
+            MobAttackEntry attack,
+            MobAnimationSet.AttackEffectNode effectNode,
+            Vector2 impactPosition,
+            int baseTime,
+            bool flip)
+        {
+            int spawnCount = ResolveTimedRangeSpawnCount(effectNode);
+            if (spawnCount <= 0)
+            {
+                return;
+            }
+
+            int interval = ResolveTimedRangeInterval(effectNode, spawnCount);
+            int triggerTime = baseTime + Math.Max(0, effectNode.Delay) + Math.Max(0, effectNode.Start);
+            List<Vector2> positions = BuildTimedRangeEffectPositions(mobItem, attack, effectNode, impactPosition, spawnCount);
+            if (positions.Count == 0)
+            {
+                return;
+            }
+
+            for (int i = 0; i < spawnCount; i++)
+            {
+                List<IDXObject> frames = effectNode.Sequences[i % effectNode.Sequences.Count];
+                if (frames == null || frames.Count == 0)
+                {
+                    continue;
+                }
+
+                _scheduledMobVisualEffects.Add(new ScheduledMobVisualEffect
+                {
+                    Frames = frames,
+                    Position = positions[Math.Min(i, positions.Count - 1)],
+                    TriggerTime = triggerTime + (interval * i),
                     Flip = flip
                 });
             }
@@ -690,6 +736,66 @@ namespace HaCreator.MapSimulator.Combat
             }
 
             return new List<Vector2> { ResolveGroundPoint(impactPosition.X, impactPosition.Y) };
+        }
+
+        private List<Vector2> BuildTimedRangeEffectPositions(
+            MobItem mobItem,
+            MobAttackEntry attack,
+            MobAnimationSet.AttackEffectNode effectNode,
+            Vector2 impactPosition,
+            int spawnCount)
+        {
+            float left = GetRelativeLeft(mobItem, effectNode.HasRangeBounds, effectNode.RangeBounds.Left, effectNode.RangeBounds.Right);
+            float right = GetRelativeRight(mobItem, effectNode.HasRangeBounds, effectNode.RangeBounds.Left, effectNode.RangeBounds.Right);
+            float baseY = GetRelativeBottom(mobItem, effectNode.HasRangeBounds, effectNode.RangeBounds.Bottom, impactPosition.Y);
+
+            if (!effectNode.HasRangeBounds)
+            {
+                left = impactPosition.X;
+                right = impactPosition.X;
+            }
+
+            return BuildRangePositions(left, right, spawnCount, effectNode.RandomPos || spawnCount > effectNode.Sequences.Count, baseY);
+        }
+
+        private static int ResolveTimedRangeSpawnCount(MobAnimationSet.AttackEffectNode effectNode)
+        {
+            if (effectNode == null)
+            {
+                return 0;
+            }
+
+            if (effectNode.Count > 0)
+            {
+                return effectNode.Count;
+            }
+
+            if (effectNode.Duration > 0 && effectNode.Interval > 0)
+            {
+                return Math.Max(1, (effectNode.Duration / effectNode.Interval) + 1);
+            }
+
+            return Math.Max(1, effectNode.Sequences.Count);
+        }
+
+        private static int ResolveTimedRangeInterval(MobAnimationSet.AttackEffectNode effectNode, int spawnCount)
+        {
+            if (effectNode == null)
+            {
+                return 0;
+            }
+
+            if (effectNode.Interval > 0)
+            {
+                return effectNode.Interval;
+            }
+
+            if (effectNode.Duration > 0 && spawnCount > 1)
+            {
+                return Math.Max(1, effectNode.Duration / (spawnCount - 1));
+            }
+
+            return 0;
         }
 
         private List<Vector2> BuildRangeSlotPositions(MobItem mobItem, MobAttackEntry attack, int slotCount, float? playerX, float? playerY)
@@ -981,6 +1087,11 @@ namespace HaCreator.MapSimulator.Combat
 
         private static Rectangle CreatePuppetHitbox(PuppetInfo puppet)
         {
+            if (puppet != null && !puppet.Hitbox.IsEmpty)
+            {
+                return puppet.Hitbox;
+            }
+
             const int width = 48;
             const int height = 60;
             return new Rectangle(
