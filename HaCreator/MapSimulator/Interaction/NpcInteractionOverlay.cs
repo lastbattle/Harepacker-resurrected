@@ -16,14 +16,29 @@ namespace HaCreator.MapSimulator.Interaction
         private const int ButtonHeight = 28;
         private const int ButtonGap = 10;
         private const int EntryListWidth = 172;
+        private const int ChoiceButtonWidth = 94;
 
         private readonly Texture2D _pixel;
         private readonly List<NpcInteractionEntry> _entries = new();
+        private readonly Stack<PageContext> _pageContextStack = new();
 
         private SpriteFont _font;
         private string _npcName = "NPC";
         private int _selectedEntryIndex;
         private int _currentPage;
+        private IReadOnlyList<NpcInteractionPage> _currentPages = Array.Empty<NpcInteractionPage>();
+
+        private readonly struct PageContext
+        {
+            public PageContext(IReadOnlyList<NpcInteractionPage> pages, int pageIndex)
+            {
+                Pages = pages;
+                PageIndex = pageIndex;
+            }
+
+            public IReadOnlyList<NpcInteractionPage> Pages { get; }
+            public int PageIndex { get; }
+        }
 
         public NpcInteractionOverlay(GraphicsDevice device)
         {
@@ -64,7 +79,13 @@ namespace HaCreator.MapSimulator.Interaction
                     EntryId = 0,
                     Kind = NpcInteractionEntryKind.Talk,
                     Title = "Talk",
-                    Pages = new[] { "The NPC does not have dialogue text in the loaded data." }
+                    Pages = new[]
+                    {
+                        new NpcInteractionPage
+                        {
+                            Text = "The NPC does not have dialogue text in the loaded data."
+                        }
+                    }
                 });
             }
 
@@ -81,7 +102,7 @@ namespace HaCreator.MapSimulator.Interaction
                 }
             }
 
-            _currentPage = 0;
+            ResetCurrentPages();
             IsVisible = true;
         }
 
@@ -135,14 +156,44 @@ namespace HaCreator.MapSimulator.Interaction
                     }
 
                     _selectedEntryIndex = i;
-                    _currentPage = 0;
+                    ResetCurrentPages();
                     return new NpcInteractionOverlayResult(true, false);
                 }
             }
 
-            if (GetPrevButtonRectangle(windowRect).Contains(mousePoint) && _currentPage > 0)
+            Rectangle[] choiceRects = GetChoiceButtonRectangles(windowRect, GetCurrentChoices().Count);
+            for (int i = 0; i < choiceRects.Length; i++)
             {
-                _currentPage--;
+                if (!choiceRects[i].Contains(mousePoint))
+                {
+                    continue;
+                }
+
+                NpcInteractionChoice choice = GetCurrentChoices()[i];
+                if (choice.Pages.Count == 0)
+                {
+                    continue;
+                }
+
+                _pageContextStack.Push(new PageContext(_currentPages, _currentPage));
+                _currentPages = choice.Pages;
+                _currentPage = 0;
+                return new NpcInteractionOverlayResult(true, false);
+            }
+
+            if (GetPrevButtonRectangle(windowRect).Contains(mousePoint))
+            {
+                if (_currentPage > 0)
+                {
+                    _currentPage--;
+                }
+                else if (_pageContextStack.Count > 0)
+                {
+                    PageContext context = _pageContextStack.Pop();
+                    _currentPages = context.Pages;
+                    _currentPage = context.PageIndex;
+                }
+
                 return new NpcInteractionOverlayResult(true, false);
             }
 
@@ -207,7 +258,14 @@ namespace HaCreator.MapSimulator.Interaction
             Rectangle nextRect = GetNextButtonRectangle(windowRect);
             Rectangle primaryRect = GetPrimaryButtonRectangle(windowRect);
 
-            DrawButton(spriteBatch, prevRect, "Prev", _currentPage > 0);
+            IReadOnlyList<NpcInteractionChoice> choices = GetCurrentChoices();
+            Rectangle[] choiceRects = GetChoiceButtonRectangles(windowRect, choices.Count);
+            for (int i = 0; i < choiceRects.Length; i++)
+            {
+                DrawButton(spriteBatch, choiceRects[i], choices[i].Label, true);
+            }
+
+            DrawButton(spriteBatch, prevRect, "Prev", _currentPage > 0 || _pageContextStack.Count > 0);
             DrawButton(spriteBatch, nextRect, _currentPage < GetCurrentPages().Count - 1 ? "Next" : "Close", true);
 
             string primaryButtonText = GetPrimaryButtonText();
@@ -217,20 +275,38 @@ namespace HaCreator.MapSimulator.Interaction
             }
         }
 
-        private IReadOnlyList<string> GetCurrentPages()
+        private void ResetCurrentPages()
         {
-            return SelectedEntry?.Pages ?? Array.Empty<string>();
+            _pageContextStack.Clear();
+            _currentPages = SelectedEntry?.Pages ?? Array.Empty<NpcInteractionPage>();
+            _currentPage = 0;
+        }
+
+        private IReadOnlyList<NpcInteractionPage> GetCurrentPages()
+        {
+            return _currentPages;
         }
 
         private string GetCurrentPageText()
         {
-            IReadOnlyList<string> pages = GetCurrentPages();
+            IReadOnlyList<NpcInteractionPage> pages = GetCurrentPages();
             if (_currentPage < 0 || _currentPage >= pages.Count)
             {
                 return string.Empty;
             }
 
-            return pages[_currentPage];
+            return pages[_currentPage].Text;
+        }
+
+        private IReadOnlyList<NpcInteractionChoice> GetCurrentChoices()
+        {
+            IReadOnlyList<NpcInteractionPage> pages = GetCurrentPages();
+            if (_currentPage < 0 || _currentPage >= pages.Count)
+            {
+                return Array.Empty<NpcInteractionChoice>();
+            }
+
+            return pages[_currentPage].Choices ?? Array.Empty<NpcInteractionChoice>();
         }
 
         private string GetPrimaryButtonText()
@@ -439,6 +515,27 @@ namespace HaCreator.MapSimulator.Interaction
         {
             Rectangle prevRect = GetPrevButtonRectangle(windowRect);
             return new Rectangle(windowRect.X + Padding, prevRect.Y, ButtonWidth + 12, ButtonHeight);
+        }
+
+        private static Rectangle[] GetChoiceButtonRectangles(Rectangle windowRect, int count)
+        {
+            if (count <= 0)
+            {
+                return Array.Empty<Rectangle>();
+            }
+
+            int clampedCount = Math.Min(3, count);
+            int totalWidth = (ChoiceButtonWidth * clampedCount) + (ButtonGap * (clampedCount - 1));
+            int startX = windowRect.X + ((windowRect.Width - totalWidth) / 2);
+            int y = windowRect.Bottom - (ButtonHeight * 2) - 26;
+
+            var rects = new Rectangle[clampedCount];
+            for (int i = 0; i < clampedCount; i++)
+            {
+                rects[i] = new Rectangle(startX + i * (ChoiceButtonWidth + ButtonGap), y, ChoiceButtonWidth, ButtonHeight);
+            }
+
+            return rects;
         }
     }
 }

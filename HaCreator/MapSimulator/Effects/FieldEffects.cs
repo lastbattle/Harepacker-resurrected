@@ -386,6 +386,20 @@ namespace HaCreator.MapSimulator.Effects
             return false;
         }
 
+        /// <summary>
+        /// Clear a published obstacle-backed object toggle so tagged objects fall back
+        /// to their authored map state until another runtime update arrives.
+        /// </summary>
+        public bool ClearObstacleState(string obstacleName)
+        {
+            if (string.IsNullOrWhiteSpace(obstacleName))
+            {
+                return false;
+            }
+
+            return _obstacles.Remove(obstacleName);
+        }
+
         #endregion
 
         #region Screen Effects

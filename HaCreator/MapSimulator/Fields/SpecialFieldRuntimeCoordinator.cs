@@ -84,6 +84,7 @@ namespace HaCreator.MapSimulator.Fields
         public SpecialFieldBacklogArea? ActiveArea { get; private set; }
         public SpecialEffectFields SpecialEffects => _specialEffects;
         public MinigameFields Minigames => _minigames;
+        public bool HasBlockingScriptedSequence => _specialEffects.HasBlockingScriptedSequence;
 
         public void Initialize(GraphicsDevice graphicsDevice)
         {

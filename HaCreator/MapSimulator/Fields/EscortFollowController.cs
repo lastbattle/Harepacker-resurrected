@@ -18,6 +18,7 @@ namespace HaCreator.MapSimulator.Fields
         internal const float AttachVerticalRange = 30f;
         internal const float ReleaseHorizontalRange = 140f;
         internal const float ReleaseVerticalRange = 60f;
+        private const float AirborneFootholdCarryTolerance = 24f;
         private const int MaxConnectedFootholds = 512;
         private const float MaxTraversableFootholdHeightDelta = 120f;
 
@@ -30,16 +31,17 @@ namespace HaCreator.MapSimulator.Fields
                 return false;
             }
 
-            FootholdLine playerFoothold = ResolvePlayerFoothold(player);
+            bool attached = _attachedFollowers.Contains(movement);
+            FootholdLine playerFoothold = ResolvePlayerFoothold(player, attached);
             if (!CanEvaluate(player, playerFoothold, movement))
             {
                 _attachedFollowers.Remove(movement);
                 return false;
             }
 
+            float playerFollowY = ResolvePlayerFollowY(player, playerFoothold, attached);
             float dx = MathF.Abs(player.X - movement.X);
-            float dy = MathF.Abs(player.Y - movement.Y);
-            bool attached = _attachedFollowers.Contains(movement);
+            float dy = MathF.Abs(playerFollowY - movement.Y);
 
             bool withinWindow = attached
                 ? dx <= ReleaseHorizontalRange && dy <= ReleaseVerticalRange
@@ -73,14 +75,69 @@ namespace HaCreator.MapSimulator.Fields
                    && !movement.IsInKnockback;
         }
 
-        private static FootholdLine ResolvePlayerFoothold(PlayerCharacter player)
+        private static FootholdLine ResolvePlayerFoothold(PlayerCharacter player, bool allowAirborneCarry)
         {
             if (player?.Physics == null)
             {
                 return null;
             }
 
-            return player.Physics.CurrentFoothold ?? player.Physics.FallStartFoothold;
+            if (player.Physics.CurrentFoothold != null)
+            {
+                return player.Physics.CurrentFoothold;
+            }
+
+            if (!allowAirborneCarry)
+            {
+                return null;
+            }
+
+            FootholdLine fallStartFoothold = player.Physics.FallStartFoothold;
+            return IsWithinFootholdCarryWindow(fallStartFoothold, player.X)
+                ? fallStartFoothold
+                : null;
+        }
+
+        private static float ResolvePlayerFollowY(PlayerCharacter player, FootholdLine playerFoothold, bool allowAirborneCarry)
+        {
+            if (player?.Physics == null
+                || playerFoothold == null
+                || player.Physics.CurrentFoothold != null
+                || !allowAirborneCarry)
+            {
+                return player?.Y ?? 0f;
+            }
+
+            return CalculateYOnFoothold(playerFoothold, player.X);
+        }
+
+        private static bool IsWithinFootholdCarryWindow(FootholdLine foothold, float x)
+        {
+            if (foothold == null)
+            {
+                return false;
+            }
+
+            float minX = MathF.Min(foothold.FirstDot.X, foothold.SecondDot.X) - AirborneFootholdCarryTolerance;
+            float maxX = MathF.Max(foothold.FirstDot.X, foothold.SecondDot.X) + AirborneFootholdCarryTolerance;
+            return x >= minX && x <= maxX;
+        }
+
+        private static float CalculateYOnFoothold(FootholdLine foothold, float x)
+        {
+            float x1 = foothold.FirstDot.X;
+            float y1 = foothold.FirstDot.Y;
+            float x2 = foothold.SecondDot.X;
+            float y2 = foothold.SecondDot.Y;
+
+            if (MathF.Abs(x2 - x1) <= float.Epsilon)
+            {
+                return (y1 + y2) * 0.5f;
+            }
+
+            float t = (x - x1) / (x2 - x1);
+            t = Math.Clamp(t, 0f, 1f);
+            return y1 + ((y2 - y1) * t);
         }
 
         public static bool CanTraverseBetween(FootholdLine start, FootholdLine target)

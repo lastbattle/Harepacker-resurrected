@@ -19,9 +19,21 @@ namespace HaCreator.MapSimulator.Interaction
         public NpcInteractionEntryKind Kind { get; init; }
         public string Title { get; init; } = string.Empty;
         public string Subtitle { get; init; } = string.Empty;
-        public IReadOnlyList<string> Pages { get; init; } = Array.Empty<string>();
+        public IReadOnlyList<NpcInteractionPage> Pages { get; init; } = Array.Empty<NpcInteractionPage>();
         public string PrimaryActionLabel { get; init; } = string.Empty;
         public bool PrimaryActionEnabled { get; init; }
+    }
+
+    internal sealed class NpcInteractionPage
+    {
+        public string Text { get; init; } = string.Empty;
+        public IReadOnlyList<NpcInteractionChoice> Choices { get; init; } = Array.Empty<NpcInteractionChoice>();
+    }
+
+    internal sealed class NpcInteractionChoice
+    {
+        public string Label { get; init; } = string.Empty;
+        public IReadOnlyList<NpcInteractionPage> Pages { get; init; } = Array.Empty<NpcInteractionPage>();
     }
 
     internal sealed class NpcInteractionState

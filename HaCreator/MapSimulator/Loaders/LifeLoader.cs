@@ -112,7 +112,14 @@ namespace HaCreator.MapSimulator.Loaders
                                     }
 
                                     WzImageProperty effectNode = infoNode?["effect"];
-                                    if (effectNode != null)
+                                    bool effectHandledAsStructuredNode = false;
+                                    if (TryBuildAttackEffectNode(texturePool, effectNode, device, usedProps, out var primaryStructuredEffectNode))
+                                    {
+                                        animationSet.AddAttackExtraEffect(actionName, primaryStructuredEffectNode);
+                                        effectHandledAsStructuredNode = true;
+                                    }
+
+                                    if (!effectHandledAsStructuredNode && effectNode != null)
                                     {
                                         List<IDXObject> effectFrames = MapSimulatorLoader.LoadFrames(texturePool, effectNode, 0, 0, device, usedProps);
                                         if (effectFrames.Count > 0)
@@ -315,13 +322,13 @@ namespace HaCreator.MapSimulator.Loaders
             }
 
             string suffix = infoChild.Name.Substring("effect".Length);
-            if (!int.TryParse(suffix, out _))
+            if (suffix.Length > 0 && !int.TryParse(suffix, out _))
             {
                 return false;
             }
 
             WzSubProperty effectProperty = infoChild as WzSubProperty;
-            if (effectProperty == null)
+            if (effectProperty == null || !HasStructuredAttackEffectMetadata(effectProperty))
             {
                 return false;
             }
@@ -332,7 +339,11 @@ namespace HaCreator.MapSimulator.Loaders
                 EffectType = InfoTool.GetInt(effectProperty["effectType"], 0),
                 EffectDistance = InfoTool.GetInt(effectProperty["effectDistance"], 0),
                 RandomPos = InfoTool.GetInt(effectProperty["randomPos"], 0) > 0,
-                Delay = InfoTool.GetInt(effectProperty["delay"], 0)
+                Delay = InfoTool.GetInt(effectProperty["delay"], 0),
+                Start = InfoTool.GetInt(effectProperty["start"], 0),
+                Interval = InfoTool.GetInt(effectProperty["interval"], 0),
+                Count = InfoTool.GetInt(effectProperty["count"], 0),
+                Duration = InfoTool.GetInt(effectProperty["duration"], 0)
             };
 
             WzVectorProperty lt = effectProperty["lt"] as WzVectorProperty;
@@ -363,6 +374,23 @@ namespace HaCreator.MapSimulator.Loaders
             }
 
             return effectNode.Sequences.Count > 0;
+        }
+
+        private static bool HasStructuredAttackEffectMetadata(WzSubProperty effectProperty)
+        {
+            return effectProperty != null &&
+                   (effectProperty["effectType"] != null ||
+                    effectProperty["effectDistance"] != null ||
+                    effectProperty["randomPos"] != null ||
+                    effectProperty["lt"] != null ||
+                    effectProperty["rb"] != null ||
+                    effectProperty["start"] != null ||
+                    effectProperty["interval"] != null ||
+                    effectProperty["count"] != null ||
+                    effectProperty["duration"] != null ||
+                    effectProperty["fall"] != null ||
+                    effectProperty["x"] != null ||
+                    effectProperty["y"] != null);
         }
         #endregion
 

@@ -31,6 +31,7 @@ namespace HaCreator.MapSimulator.Effects
         public WitchtowerField Witchtower => _witchtower;
         public GuildBossField GuildBoss => _guildBoss;
         public MassacreField Massacre => _massacre;
+        public bool HasBlockingScriptedSequence => _wedding.HasActiveScriptedDialog;
         #endregion
 
         #region Initialization
@@ -187,6 +188,7 @@ namespace HaCreator.MapSimulator.Effects
         public bool IsActive => _isActive;
         public int CurrentStep => _currentStep;
         public bool IsBlessEffectActive => _blessEffectActive;
+        public bool HasActiveScriptedDialog => _currentDialog != null || _dialogQueue.Count > 0;
         #endregion
 
         #region Initialization

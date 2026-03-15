@@ -404,6 +404,46 @@ namespace HaCreator.MapSimulator.Pools
         }
 
         /// <summary>
+        /// Find skill or hit reactors intersecting a world-space attack area.
+        /// </summary>
+        public List<(ReactorItem reactor, int index)> FindSkillReactorsInBounds(Rectangle attackBounds, int skillId = 0)
+        {
+            var results = new List<(ReactorItem reactor, int index)>();
+
+            if (_reactors == null || attackBounds.Width <= 0 || attackBounds.Height <= 0)
+                return results;
+
+            for (int i = 0; i < _reactors.Length; i++)
+            {
+                var reactor = _reactors[i];
+                if (reactor?.ReactorInstance == null)
+                    continue;
+
+                ReactorRuntimeData data = GetReactorData(i);
+                if (data == null
+                    || data.State == ReactorState.Destroyed
+                    || data.State == ReactorState.Respawning)
+                {
+                    continue;
+                }
+
+                if (data.ActivationType != ReactorActivationType.Skill
+                    && data.ActivationType != ReactorActivationType.Hit)
+                {
+                    continue;
+                }
+
+                Rectangle reactorBounds = GetReactorBounds(reactor.ReactorInstance);
+                if (reactorBounds.Intersects(attackBounds))
+                {
+                    results.Add((reactor, i));
+                }
+            }
+
+            return results;
+        }
+
+        /// <summary>
         /// Trigger reactors that react to skill or attack interaction inside the supplied range.
         /// </summary>
         public List<ReactorItem> TriggerSkillReactors(
@@ -418,6 +458,45 @@ namespace HaCreator.MapSimulator.Pools
             var triggeredReactors = new List<ReactorItem>();
 
             foreach (var (reactor, index) in FindSkillReactor(skillX, skillY, skillRange, skillId))
+            {
+                ReactorRuntimeData data = GetReactorData(index);
+                if (data == null)
+                    continue;
+
+                switch (data.ActivationType)
+                {
+                    case ReactorActivationType.Hit:
+                        if (HitReactor(index, playerId, currentTick, damage))
+                        {
+                            triggeredReactors.Add(reactor);
+                        }
+                        break;
+                    case ReactorActivationType.Skill:
+                        if (data.State == ReactorState.Idle)
+                        {
+                            ActivateReactor(index, playerId, currentTick, ReactorActivationType.Skill);
+                            triggeredReactors.Add(reactor);
+                        }
+                        break;
+                }
+            }
+
+            return triggeredReactors;
+        }
+
+        /// <summary>
+        /// Trigger reactors that react to skill or attack interaction inside the supplied world bounds.
+        /// </summary>
+        public List<ReactorItem> TriggerSkillReactorsInBounds(
+            Rectangle attackBounds,
+            int playerId,
+            int currentTick,
+            int skillId = 0,
+            int damage = 1)
+        {
+            var triggeredReactors = new List<ReactorItem>();
+
+            foreach (var (reactor, index) in FindSkillReactorsInBounds(attackBounds, skillId))
             {
                 ReactorRuntimeData data = GetReactorData(index);
                 if (data == null)
@@ -865,6 +944,19 @@ namespace HaCreator.MapSimulator.Pools
                 return intValue;
 
             return int.TryParse(value.ToString(), out int parsedValue) ? parsedValue : null;
+        }
+
+        private static Rectangle GetReactorBounds(ReactorInstance instance)
+        {
+            int width = Math.Max(1, instance?.Width ?? 1);
+            int height = Math.Max(1, instance?.Height ?? 1);
+            System.Drawing.Point origin = instance?.Origin ?? System.Drawing.Point.Empty;
+
+            return new Rectangle(
+                (instance?.X ?? 0) - origin.X,
+                (instance?.Y ?? 0) - origin.Y,
+                width,
+                height);
         }
         #endregion
     }

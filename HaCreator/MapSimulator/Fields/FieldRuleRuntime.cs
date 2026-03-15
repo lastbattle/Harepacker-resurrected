@@ -17,6 +17,7 @@ namespace HaCreator.MapSimulator.Fields
         private readonly int _decHp;
         private readonly int _decIntervalMs;
         private readonly long _fieldLimit;
+        private readonly WeatherType _ambientWeather;
         private readonly List<int> _allowedItems;
         private readonly List<int> _protectItems;
         private readonly int? _levelLimit;
@@ -38,6 +39,7 @@ namespace HaCreator.MapSimulator.Fields
             _decHp = Math.Max(0, mapInfo?.decHP ?? 0);
             _decIntervalMs = NormalizeDecIntervalMs(mapInfo?.decInterval);
             _fieldLimit = mapInfo?.fieldLimit ?? 0;
+            _ambientWeather = FieldEnvironmentEffectEvaluator.ResolveAmbientWeather(mapInfo);
             _allowedItems = mapInfo?.allowedItem != null ? new List<int>(mapInfo.allowedItem) : new List<int>();
             _protectItems = mapInfo?.protectItem != null ? new List<int>(mapInfo.protectItem) : new List<int>();
             _levelLimit = mapInfo?.lvLimit;
@@ -50,6 +52,7 @@ namespace HaCreator.MapSimulator.Fields
         public bool IsActive =>
             _timeLimitSeconds > 0 ||
             _decHp > 0 ||
+            _ambientWeather != WeatherType.None ||
             _allowedItems.Count > 0 ||
             _levelLimit.HasValue ||
             FieldInteractionRestrictionEvaluator.GetJumpRestrictionMessage(_fieldLimit) != null ||
@@ -151,6 +154,17 @@ namespace HaCreator.MapSimulator.Fields
                 {
                     messages.Add($"Environmental damage: {_decHp} HP every {intervalText}.");
                 }
+            }
+
+            string ambientWeatherNotice = _ambientWeather switch
+            {
+                WeatherType.Rain => "Ambient field weather: rain.",
+                WeatherType.Snow => "Ambient field weather: snow.",
+                _ => null
+            };
+            if (!string.IsNullOrWhiteSpace(ambientWeatherNotice))
+            {
+                messages.Add(ambientWeatherNotice);
             }
 
             if (_allowedItems.Count > 0)

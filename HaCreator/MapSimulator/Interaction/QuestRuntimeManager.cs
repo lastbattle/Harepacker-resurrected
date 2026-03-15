@@ -8,9 +8,47 @@ using HaCreator.MapSimulator.Pools;
 using MapleLib.WzLib;
 using MapleLib.WzLib.WzProperties;
 using MapleLib.WzLib.WzStructure.Data.QuestStructure;
+using System.Text;
+using Microsoft.Xna.Framework;
 
 namespace HaCreator.MapSimulator.Interaction
 {
+    internal enum QuestLogTabType
+    {
+        InProgress = 0,
+        Completed = 1,
+        Available = 2
+    }
+
+    internal sealed class QuestLogLineSnapshot
+    {
+        public string Label { get; init; } = string.Empty;
+        public string Text { get; init; } = string.Empty;
+        public bool IsComplete { get; init; }
+    }
+
+    internal sealed class QuestLogEntrySnapshot
+    {
+        public int QuestId { get; init; }
+        public string Name { get; init; } = string.Empty;
+        public QuestStateType State { get; init; }
+        public string StatusText { get; init; } = string.Empty;
+        public string SummaryText { get; init; } = string.Empty;
+        public string StageText { get; init; } = string.Empty;
+        public string NpcText { get; init; } = string.Empty;
+        public float ProgressRatio { get; init; }
+        public bool CanStart { get; init; }
+        public bool CanComplete { get; init; }
+        public IReadOnlyList<QuestLogLineSnapshot> RequirementLines { get; init; } = Array.Empty<QuestLogLineSnapshot>();
+        public IReadOnlyList<QuestLogLineSnapshot> RewardLines { get; init; } = Array.Empty<QuestLogLineSnapshot>();
+        public IReadOnlyList<string> IssueLines { get; init; } = Array.Empty<string>();
+    }
+
+    internal sealed class QuestLogSnapshot
+    {
+        public IReadOnlyList<QuestLogEntrySnapshot> Entries { get; init; } = Array.Empty<QuestLogEntrySnapshot>();
+    }
+
     internal sealed class QuestRuntimeManager
     {
         private sealed class QuestStateRequirement
@@ -73,8 +111,8 @@ namespace HaCreator.MapSimulator.Interaction
             public IReadOnlyList<QuestStateRequirement> EndQuestRequirements { get; init; } = Array.Empty<QuestStateRequirement>();
             public IReadOnlyList<QuestMobRequirement> EndMobRequirements { get; init; } = Array.Empty<QuestMobRequirement>();
             public IReadOnlyList<QuestItemRequirement> EndItemRequirements { get; init; } = Array.Empty<QuestItemRequirement>();
-            public IReadOnlyList<string> StartSayPages { get; init; } = Array.Empty<string>();
-            public IReadOnlyList<string> EndSayPages { get; init; } = Array.Empty<string>();
+            public IReadOnlyList<NpcInteractionPage> StartSayPages { get; init; } = Array.Empty<NpcInteractionPage>();
+            public IReadOnlyList<NpcInteractionPage> EndSayPages { get; init; } = Array.Empty<NpcInteractionPage>();
             public QuestActionBundle StartActions { get; init; } = new();
             public QuestActionBundle EndActions { get; init; } = new();
         }
@@ -93,6 +131,16 @@ namespace HaCreator.MapSimulator.Interaction
         public void RecordMobKill(MobInstance mobInstance)
         {
             if (mobInstance?.MobInfo == null || !int.TryParse(mobInstance.MobInfo.ID, out int mobId))
+            {
+                return;
+            }
+
+            RecordMobKill(mobId);
+        }
+
+        internal void RecordMobKill(int mobId)
+        {
+            if (mobId <= 0)
             {
                 return;
             }
@@ -143,6 +191,231 @@ namespace HaCreator.MapSimulator.Interaction
         public QuestStateType GetCurrentState(int questId)
         {
             return GetQuestState(questId);
+        }
+
+        public IReadOnlyList<QuestWindowListEntry> GetQuestWindowEntries(CharacterBuild build)
+        {
+            EnsureDefinitionsLoaded();
+
+            var entries = new List<QuestWindowListEntry>(_definitions.Count);
+            foreach (QuestDefinition definition in _definitions.Values.OrderBy(q => q.QuestId))
+            {
+                QuestStateType state = GetQuestState(definition.QuestId);
+                if (state == QuestStateType.Not_Started)
+                {
+                    List<string> issues = EvaluateStartIssues(definition, build);
+                    if (issues.Count > 0)
+                    {
+                        continue;
+                    }
+                }
+
+                QuestProgress progress = GetOrCreateProgress(definition.QuestId);
+                int currentProgress = 0;
+                int totalProgress = 0;
+                CalculateProgress(definition, progress, out currentProgress, out totalProgress);
+
+                string summary = state switch
+                {
+                    QuestStateType.Not_Started => FirstNonEmpty(definition.Summary, definition.StartDescription, definition.DemandSummary),
+                    QuestStateType.Started => FirstNonEmpty(definition.ProgressDescription, definition.DemandSummary, definition.Summary),
+                    QuestStateType.Completed => FirstNonEmpty(definition.CompletionDescription, definition.RewardSummary, definition.Summary),
+                    _ => definition.Summary
+                };
+
+                entries.Add(new QuestWindowListEntry
+                {
+                    QuestId = definition.QuestId,
+                    Title = definition.Name,
+                    Summary = NpcDialogueTextFormatter.Format(summary),
+                    State = state,
+                    CurrentProgress = currentProgress,
+                    TotalProgress = totalProgress
+                });
+            }
+
+            return entries;
+        }
+
+        public QuestWindowDetailState GetQuestWindowDetailState(int questId, CharacterBuild build)
+        {
+            EnsureDefinitionsLoaded();
+            if (!_definitions.TryGetValue(questId, out QuestDefinition definition))
+            {
+                return null;
+            }
+
+            QuestStateType state = GetQuestState(questId);
+            QuestProgress progress = GetOrCreateProgress(questId);
+            List<string> startIssues = EvaluateStartIssues(definition, build);
+            List<string> completionIssues = EvaluateCompletionIssues(definition, build);
+            CalculateProgress(definition, progress, out int currentProgress, out int totalProgress);
+
+            string summaryText = state switch
+            {
+                QuestStateType.Not_Started => JoinQuestSections(definition.Summary, definition.StartDescription, definition.DemandSummary),
+                QuestStateType.Started => JoinQuestSections(definition.Summary, definition.ProgressDescription, definition.CompletionDescription),
+                QuestStateType.Completed => JoinQuestSections(definition.Summary, definition.CompletionDescription),
+                _ => definition.Summary
+            };
+
+            string requirementText = state switch
+            {
+                QuestStateType.Not_Started => BuildStartRequirementText(definition, startIssues),
+                QuestStateType.Started => BuildProgressRequirementText(definition, completionIssues),
+                QuestStateType.Completed => "This quest has already been completed.",
+                _ => string.Empty
+            };
+
+            string rewardText = BuildRewardText(definition);
+            string hintText = BuildHintText(definition, state, startIssues, completionIssues);
+            string npcText = BuildNpcText(definition);
+            (QuestWindowActionKind primaryAction, bool primaryEnabled, string primaryLabel) = GetPrimaryAction(definition, state, startIssues, completionIssues);
+            (QuestWindowActionKind secondaryAction, bool secondaryEnabled, string secondaryLabel) = GetSecondaryAction(state);
+
+            return new QuestWindowDetailState
+            {
+                QuestId = definition.QuestId,
+                Title = definition.Name,
+                State = state,
+                SummaryText = NpcDialogueTextFormatter.Format(summaryText),
+                RequirementText = requirementText,
+                RewardText = rewardText,
+                HintText = hintText,
+                NpcText = npcText,
+                CurrentProgress = currentProgress,
+                TotalProgress = totalProgress,
+                PrimaryAction = primaryAction,
+                PrimaryActionEnabled = primaryEnabled,
+                PrimaryActionLabel = primaryLabel,
+                SecondaryAction = secondaryAction,
+                SecondaryActionEnabled = secondaryEnabled,
+                SecondaryActionLabel = secondaryLabel
+            };
+        }
+
+        public QuestWindowActionResult TryAcceptFromQuestWindow(int questId, CharacterBuild build)
+        {
+            EnsureDefinitionsLoaded();
+            if (!_definitions.TryGetValue(questId, out QuestDefinition definition))
+            {
+                return new QuestWindowActionResult
+                {
+                    QuestId = questId,
+                    Messages = new[] { $"Quest #{questId} is not available in the loaded quest data." }
+                };
+            }
+
+            if (GetQuestState(questId) != QuestStateType.Not_Started)
+            {
+                return new QuestWindowActionResult
+                {
+                    QuestId = questId,
+                    Messages = new[] { $"{definition.Name} is already active." }
+                };
+            }
+
+            List<string> issues = EvaluateStartIssues(definition, build);
+            if (issues.Count > 0)
+            {
+                return new QuestWindowActionResult
+                {
+                    QuestId = questId,
+                    Messages = issues
+                };
+            }
+
+            QuestProgress progress = GetOrCreateProgress(questId);
+            progress.State = QuestStateType.Started;
+            progress.MobKills.Clear();
+
+            var messages = new List<string>
+            {
+                $"Accepted quest: {definition.Name}"
+            };
+            ApplyActions(definition.StartActions, build, messages);
+
+            return new QuestWindowActionResult
+            {
+                StateChanged = true,
+                QuestId = questId,
+                Messages = messages
+            };
+        }
+
+        public QuestWindowActionResult TryGiveUpFromQuestWindow(int questId)
+        {
+            EnsureDefinitionsLoaded();
+            if (!_definitions.TryGetValue(questId, out QuestDefinition definition))
+            {
+                return new QuestWindowActionResult
+                {
+                    QuestId = questId,
+                    Messages = new[] { $"Quest #{questId} is not available in the loaded quest data." }
+                };
+            }
+
+            if (GetQuestState(questId) != QuestStateType.Started)
+            {
+                return new QuestWindowActionResult
+                {
+                    QuestId = questId,
+                    Messages = new[] { $"{definition.Name} is not currently in progress." }
+                };
+            }
+
+            QuestProgress progress = GetOrCreateProgress(questId);
+            progress.State = QuestStateType.Not_Started;
+            progress.MobKills.Clear();
+
+            return new QuestWindowActionResult
+            {
+                StateChanged = true,
+                QuestId = questId,
+                Messages = new[] { $"Gave up quest: {definition.Name}" }
+            };
+        }
+
+        public QuestLogSnapshot BuildQuestLogSnapshot(QuestLogTabType tab, CharacterBuild build, bool showAllLevels)
+        {
+            EnsureDefinitionsLoaded();
+
+            var entries = new List<QuestLogEntrySnapshot>();
+            foreach (QuestDefinition definition in _definitions.Values)
+            {
+                QuestStateType state = GetQuestState(definition.QuestId);
+                if (!MatchesQuestLogTab(tab, state))
+                {
+                    continue;
+                }
+
+                if (tab == QuestLogTabType.Available && !showAllLevels && !MatchesLevelFilter(definition, build))
+                {
+                    continue;
+                }
+
+                entries.Add(BuildQuestLogEntry(definition, build, state));
+            }
+
+            IOrderedEnumerable<QuestLogEntrySnapshot> orderedEntries = tab switch
+            {
+                QuestLogTabType.Available => entries
+                    .OrderBy(entry => entry.CanStart ? 0 : 1)
+                    .ThenBy(entry => entry.Name, StringComparer.OrdinalIgnoreCase)
+                    .ThenBy(entry => entry.QuestId),
+                QuestLogTabType.InProgress => entries
+                    .OrderBy(entry => entry.CanComplete ? 0 : 1)
+                    .ThenBy(entry => entry.Name, StringComparer.OrdinalIgnoreCase)
+                    .ThenBy(entry => entry.QuestId),
+                _ => entries
+                    .OrderByDescending(entry => entry.QuestId)
+                    .ThenBy(entry => entry.Name, StringComparer.OrdinalIgnoreCase)
+            };
+
+            return new QuestLogSnapshot
+            {
+                Entries = orderedEntries.ToList()
+            };
         }
 
         internal int GetTrackedItemCount(int itemId)
@@ -401,13 +674,54 @@ namespace HaCreator.MapSimulator.Interaction
             return null;
         }
 
-        private IReadOnlyList<string> BuildQuestPages(
+        private QuestLogEntrySnapshot BuildQuestLogEntry(QuestDefinition definition, CharacterBuild build, QuestStateType state)
+        {
+            List<string> issues = state switch
+            {
+                QuestStateType.Not_Started => EvaluateStartIssues(definition, build),
+                QuestStateType.Started => EvaluateCompletionIssues(definition, build),
+                _ => new List<string>()
+            };
+
+            return new QuestLogEntrySnapshot
+            {
+                QuestId = definition.QuestId,
+                Name = definition.Name,
+                State = state,
+                StatusText = state switch
+                {
+                    QuestStateType.Not_Started when issues.Count == 0 => "Can accept",
+                    QuestStateType.Not_Started => "Locked",
+                    QuestStateType.Started when issues.Count == 0 => "Ready to complete",
+                    QuestStateType.Started => "In progress",
+                    QuestStateType.Completed => "Completed",
+                    _ => state.ToString()
+                },
+                SummaryText = FirstNonEmpty(definition.Summary, definition.DemandSummary, definition.StartDescription, definition.ProgressDescription),
+                StageText = state switch
+                {
+                    QuestStateType.Not_Started => FirstNonEmpty(definition.StartDescription, definition.DemandSummary),
+                    QuestStateType.Started => FirstNonEmpty(definition.ProgressDescription, definition.CompletionDescription, definition.DemandSummary),
+                    QuestStateType.Completed => FirstNonEmpty(definition.CompletionDescription, definition.RewardSummary),
+                    _ => string.Empty
+                },
+                NpcText = BuildNpcText(definition, state),
+                ProgressRatio = CalculateProgressRatio(definition, state),
+                CanStart = state == QuestStateType.Not_Started && issues.Count == 0,
+                CanComplete = state == QuestStateType.Started && issues.Count == 0,
+                RequirementLines = BuildRequirementLines(definition, build, state),
+                RewardLines = BuildRewardLines(definition),
+                IssueLines = issues
+            };
+        }
+
+        private IReadOnlyList<NpcInteractionPage> BuildQuestPages(
             QuestDefinition definition,
             IReadOnlyList<string> issues,
             QuestStateType state,
             bool includeProgress)
         {
-            var pages = new List<string>();
+            var pages = new List<NpcInteractionPage>();
 
             string summary = definition.Name;
             if (!string.IsNullOrWhiteSpace(definition.Summary))
@@ -415,7 +729,7 @@ namespace HaCreator.MapSimulator.Interaction
                 summary = $"{summary}\n\n{definition.Summary}";
             }
 
-            IReadOnlyList<string> conversationPages = state == QuestStateType.Not_Started
+            IReadOnlyList<NpcInteractionPage> conversationPages = state == QuestStateType.Not_Started
                 ? definition.StartSayPages
                 : definition.EndSayPages;
             string fallbackStageText = state == QuestStateType.Not_Started
@@ -427,7 +741,10 @@ namespace HaCreator.MapSimulator.Interaction
                 summary = $"{summary}\n\n{fallbackStageText}";
             }
 
-            pages.Add(summary.Trim());
+            pages.Add(new NpcInteractionPage
+            {
+                Text = NpcDialogueTextFormatter.Format(summary)
+            });
             AppendConversationPages(conversationPages, pages);
 
             var details = new List<string>();
@@ -454,24 +771,27 @@ namespace HaCreator.MapSimulator.Interaction
 
             if (details.Count > 0)
             {
-                pages.Add(string.Join("\n", details));
+                pages.Add(new NpcInteractionPage
+                {
+                    Text = NpcDialogueTextFormatter.Format(string.Join("\n", details))
+                });
             }
 
             return pages;
         }
 
-        private static void AppendConversationPages(IEnumerable<string> sourcePages, ICollection<string> pages)
+        private static void AppendConversationPages(IEnumerable<NpcInteractionPage> sourcePages, ICollection<NpcInteractionPage> pages)
         {
             if (sourcePages == null)
             {
                 return;
             }
 
-            foreach (string page in sourcePages)
+            foreach (NpcInteractionPage page in sourcePages)
             {
-                if (!string.IsNullOrWhiteSpace(page))
+                if (page != null && !string.IsNullOrWhiteSpace(page.Text))
                 {
-                    pages.Add(page.Trim());
+                    pages.Add(page);
                 }
             }
         }
@@ -516,6 +836,161 @@ namespace HaCreator.MapSimulator.Interaction
                 int currentCount = GetTrackedItemCount(requirement.ItemId);
                 details.Add($"Item: {GetItemName(requirement.ItemId)} {Math.Min(currentCount, requirement.RequiredCount)}/{requirement.RequiredCount}");
             }
+        }
+
+        private List<QuestLogLineSnapshot> BuildRequirementLines(QuestDefinition definition, CharacterBuild build, QuestStateType state)
+        {
+            var lines = new List<QuestLogLineSnapshot>();
+            if (state == QuestStateType.Not_Started)
+            {
+                AppendStartRequirementLines(definition, build, lines);
+                return lines;
+            }
+
+            if (state == QuestStateType.Started)
+            {
+                AppendProgressRequirementLines(definition, lines);
+            }
+
+            return lines;
+        }
+
+        private void AppendStartRequirementLines(QuestDefinition definition, CharacterBuild build, ICollection<QuestLogLineSnapshot> lines)
+        {
+            if (definition.MinLevel.HasValue || definition.MaxLevel.HasValue)
+            {
+                bool passesMin = !definition.MinLevel.HasValue || (build?.Level ?? int.MaxValue) >= definition.MinLevel.Value;
+                bool passesMax = !definition.MaxLevel.HasValue || (build?.Level ?? int.MinValue) <= definition.MaxLevel.Value;
+                lines.Add(new QuestLogLineSnapshot
+                {
+                    Label = "Req",
+                    Text = definition.MinLevel.HasValue && definition.MaxLevel.HasValue
+                        ? $"Level {definition.MinLevel.Value}-{definition.MaxLevel.Value}"
+                        : definition.MinLevel.HasValue
+                            ? $"Level {definition.MinLevel.Value}+"
+                            : $"Level up to {definition.MaxLevel.Value}",
+                    IsComplete = passesMin && passesMax
+                });
+            }
+
+            if (definition.AllowedJobs.Count > 0)
+            {
+                bool matchesJob = build != null && definition.AllowedJobs.Contains(build.Job);
+                lines.Add(new QuestLogLineSnapshot
+                {
+                    Label = "Req",
+                    Text = $"Job: {string.Join(", ", definition.AllowedJobs.Select(FormatJobName))}",
+                    IsComplete = matchesJob
+                });
+            }
+
+            for (int i = 0; i < definition.StartQuestRequirements.Count; i++)
+            {
+                QuestStateRequirement requirement = definition.StartQuestRequirements[i];
+                QuestStateType currentState = GetQuestState(requirement.QuestId);
+                string questName = _definitions.TryGetValue(requirement.QuestId, out QuestDefinition requirementDefinition)
+                    ? requirementDefinition.Name
+                    : $"Quest #{requirement.QuestId}";
+                lines.Add(new QuestLogLineSnapshot
+                {
+                    Label = "Req",
+                    Text = $"{questName}: {FormatQuestState(requirement.State)}",
+                    IsComplete = currentState == requirement.State
+                });
+            }
+        }
+
+        private void AppendProgressRequirementLines(QuestDefinition definition, ICollection<QuestLogLineSnapshot> lines)
+        {
+            QuestProgress progress = GetOrCreateProgress(definition.QuestId);
+
+            for (int i = 0; i < definition.EndQuestRequirements.Count; i++)
+            {
+                QuestStateRequirement requirement = definition.EndQuestRequirements[i];
+                QuestStateType currentState = GetQuestState(requirement.QuestId);
+                string questName = _definitions.TryGetValue(requirement.QuestId, out QuestDefinition requirementDefinition)
+                    ? requirementDefinition.Name
+                    : $"Quest #{requirement.QuestId}";
+                lines.Add(new QuestLogLineSnapshot
+                {
+                    Label = "Req",
+                    Text = $"{questName}: {FormatQuestState(requirement.State)}",
+                    IsComplete = currentState == requirement.State
+                });
+            }
+
+            for (int i = 0; i < definition.EndMobRequirements.Count; i++)
+            {
+                QuestMobRequirement requirement = definition.EndMobRequirements[i];
+                progress.MobKills.TryGetValue(requirement.MobId, out int currentCount);
+                int visibleCount = Math.Min(currentCount, requirement.RequiredCount);
+                lines.Add(new QuestLogLineSnapshot
+                {
+                    Label = "Mob",
+                    Text = $"{GetMobName(requirement.MobId)} {visibleCount}/{requirement.RequiredCount}",
+                    IsComplete = visibleCount >= requirement.RequiredCount
+                });
+            }
+
+            for (int i = 0; i < definition.EndItemRequirements.Count; i++)
+            {
+                QuestItemRequirement requirement = definition.EndItemRequirements[i];
+                int currentCount = Math.Min(GetTrackedItemCount(requirement.ItemId), requirement.RequiredCount);
+                lines.Add(new QuestLogLineSnapshot
+                {
+                    Label = "Item",
+                    Text = $"{GetItemName(requirement.ItemId)} {currentCount}/{requirement.RequiredCount}",
+                    IsComplete = currentCount >= requirement.RequiredCount
+                });
+            }
+        }
+
+        private static List<QuestLogLineSnapshot> BuildRewardLines(QuestDefinition definition)
+        {
+            var lines = new List<QuestLogLineSnapshot>();
+
+            if (definition.EndActions.ExpReward > 0)
+            {
+                lines.Add(new QuestLogLineSnapshot { Label = "EXP", Text = $"+{definition.EndActions.ExpReward}", IsComplete = true });
+            }
+
+            if (definition.EndActions.MesoReward > 0)
+            {
+                lines.Add(new QuestLogLineSnapshot { Label = "Meso", Text = $"+{definition.EndActions.MesoReward}", IsComplete = true });
+            }
+
+            if (definition.EndActions.FameReward > 0)
+            {
+                lines.Add(new QuestLogLineSnapshot { Label = "Fame", Text = $"+{definition.EndActions.FameReward}", IsComplete = true });
+            }
+
+            for (int i = 0; i < definition.EndActions.RewardItems.Count; i++)
+            {
+                QuestRewardItem item = definition.EndActions.RewardItems[i];
+                if (item.Count <= 0)
+                {
+                    continue;
+                }
+
+                lines.Add(new QuestLogLineSnapshot
+                {
+                    Label = "Item",
+                    Text = $"{GetItemName(item.ItemId)} x{item.Count}",
+                    IsComplete = true
+                });
+            }
+
+            if (lines.Count == 0 && !string.IsNullOrWhiteSpace(definition.RewardSummary))
+            {
+                lines.Add(new QuestLogLineSnapshot
+                {
+                    Label = "Info",
+                    Text = definition.RewardSummary,
+                    IsComplete = true
+                });
+            }
+
+            return lines;
         }
 
         private List<string> EvaluateStartIssues(QuestDefinition definition, CharacterBuild build)
@@ -643,17 +1118,120 @@ namespace HaCreator.MapSimulator.Interaction
             {
                 QuestStateMutation mutation = actions.QuestMutations[i];
                 QuestProgress progress = GetOrCreateProgress(mutation.QuestId);
+                QuestStateType previousState = progress.State;
+                bool hadTrackedMobProgress = progress.MobKills.Count > 0;
+
                 progress.State = mutation.State;
-                if (mutation.State == QuestStateType.Not_Started)
+                progress.MobKills.Clear();
+
+                if (previousState != mutation.State || hadTrackedMobProgress)
                 {
-                    progress.MobKills.Clear();
+                    messages.Add($"Quest state updated: {GetQuestName(mutation.QuestId)} -> {FormatQuestState(mutation.State)}.");
                 }
             }
 
-            if (actions.NextQuestId.HasValue && _definitions.TryGetValue(actions.NextQuestId.Value, out QuestDefinition nextQuest))
+            if (actions.NextQuestId.HasValue)
             {
-                messages.Add($"Next quest unlocked: {nextQuest.Name}");
+                messages.Add($"Next quest unlocked: {GetQuestName(actions.NextQuestId.Value)}");
             }
+        }
+
+        private static bool MatchesQuestLogTab(QuestLogTabType tab, QuestStateType state)
+        {
+            return tab switch
+            {
+                QuestLogTabType.InProgress => state == QuestStateType.Started,
+                QuestLogTabType.Completed => state == QuestStateType.Completed,
+                QuestLogTabType.Available => state == QuestStateType.Not_Started,
+                _ => false
+            };
+        }
+
+        private static bool MatchesLevelFilter(QuestDefinition definition, CharacterBuild build)
+        {
+            if (build == null)
+            {
+                return true;
+            }
+
+            if (definition.MinLevel.HasValue && build.Level < definition.MinLevel.Value)
+            {
+                return false;
+            }
+
+            if (definition.MaxLevel.HasValue && build.Level > definition.MaxLevel.Value)
+            {
+                return false;
+            }
+
+            return true;
+        }
+
+        private float CalculateProgressRatio(QuestDefinition definition, QuestStateType state)
+        {
+            if (state == QuestStateType.Completed)
+            {
+                return 1f;
+            }
+
+            if (state != QuestStateType.Started)
+            {
+                return 0f;
+            }
+
+            int totalSegments = 0;
+            float progress = 0f;
+            QuestProgress questProgress = GetOrCreateProgress(definition.QuestId);
+
+            for (int i = 0; i < definition.EndQuestRequirements.Count; i++)
+            {
+                totalSegments++;
+                QuestStateRequirement requirement = definition.EndQuestRequirements[i];
+                if (GetQuestState(requirement.QuestId) == requirement.State)
+                {
+                    progress += 1f;
+                }
+            }
+
+            for (int i = 0; i < definition.EndMobRequirements.Count; i++)
+            {
+                totalSegments++;
+                QuestMobRequirement requirement = definition.EndMobRequirements[i];
+                questProgress.MobKills.TryGetValue(requirement.MobId, out int currentCount);
+                progress += MathHelper.Clamp((float)currentCount / requirement.RequiredCount, 0f, 1f);
+            }
+
+            for (int i = 0; i < definition.EndItemRequirements.Count; i++)
+            {
+                totalSegments++;
+                QuestItemRequirement requirement = definition.EndItemRequirements[i];
+                int currentCount = GetTrackedItemCount(requirement.ItemId);
+                progress += MathHelper.Clamp((float)currentCount / requirement.RequiredCount, 0f, 1f);
+            }
+
+            return totalSegments == 0
+                ? 0f
+                : MathHelper.Clamp(progress / totalSegments, 0f, 1f);
+        }
+
+        private static string BuildNpcText(QuestDefinition definition, QuestStateType state)
+        {
+            int? npcId = state == QuestStateType.Not_Started
+                ? definition.StartNpcId
+                : definition.EndNpcId;
+            if (!npcId.HasValue)
+            {
+                return string.Empty;
+            }
+
+            string key = npcId.Value.ToString();
+            if (Program.InfoManager.NpcNameCache.TryGetValue(key, out Tuple<string, string> npcInfo) &&
+                !string.IsNullOrWhiteSpace(npcInfo?.Item1))
+            {
+                return npcInfo.Item1;
+            }
+
+            return $"NPC #{npcId.Value}";
         }
 
         private QuestProgress GetOrCreateProgress(int questId)
@@ -965,14 +1543,14 @@ namespace HaCreator.MapSimulator.Interaction
             return actions;
         }
 
-        private static IReadOnlyList<string> ParseConversationPages(WzImageProperty property)
+        internal static IReadOnlyList<NpcInteractionPage> ParseConversationPages(WzImageProperty property)
         {
             if (property == null)
             {
-                return Array.Empty<string>();
+                return Array.Empty<NpcInteractionPage>();
             }
 
-            var pages = new List<string>();
+            var pages = new List<NpcInteractionPage>();
             if (property.WzProperties != null)
             {
                 for (int i = 0; i < property.WzProperties.Count; i++)
@@ -995,19 +1573,29 @@ namespace HaCreator.MapSimulator.Interaction
             return pages;
         }
 
-        private static void AppendConversationPage(WzImageProperty property, ICollection<string> pages)
+        private static void AppendConversationPage(WzImageProperty property, ICollection<NpcInteractionPage> pages)
         {
-            string text = ExtractConversationText(property);
-            if (!string.IsNullOrWhiteSpace(text))
+            NpcInteractionPage page = CreateConversationPage(property);
+            if (page != null)
             {
-                pages.Add(text.Trim());
+                pages.Add(page);
+            }
+        }
+
+        private static NpcInteractionPage CreateConversationPage(WzImageProperty property)
+        {
+            string text = NpcDialogueTextFormatter.Format(ExtractConversationText(property));
+            IReadOnlyList<NpcInteractionChoice> choices = ExtractConversationChoices(property);
+            if (string.IsNullOrWhiteSpace(text) && choices.Count == 0)
+            {
+                return null;
             }
 
-            string branchSummary = ExtractConversationBranchSummary(property);
-            if (!string.IsNullOrWhiteSpace(branchSummary))
+            return new NpcInteractionPage
             {
-                pages.Add(branchSummary);
-            }
+                Text = text,
+                Choices = choices
+            };
         }
 
         private static string ExtractConversationText(WzImageProperty property)
@@ -1049,86 +1637,66 @@ namespace HaCreator.MapSimulator.Interaction
             return null;
         }
 
-        private static string ExtractConversationBranchSummary(WzImageProperty property)
+        private static IReadOnlyList<NpcInteractionChoice> ExtractConversationChoices(WzImageProperty property)
         {
             if (property?.WzProperties == null)
             {
-                return null;
+                return Array.Empty<NpcInteractionChoice>();
             }
 
-            var sections = new List<string>();
+            var choices = new List<NpcInteractionChoice>();
 
-            string yesResponses = ExtractConversationResponseList(property["yes"]);
-            if (!string.IsNullOrWhiteSpace(yesResponses))
-            {
-                sections.Add($"Yes:\n{yesResponses}");
-            }
+            AppendConversationChoice(property["yes"], "Yes", choices);
+            AppendConversationChoice(property["no"], "No", choices);
+            AppendConversationChoice(property["stop"], "Stop", choices);
 
-            string noResponses = ExtractConversationResponseList(property["no"]);
-            if (!string.IsNullOrWhiteSpace(noResponses))
-            {
-                sections.Add($"No:\n{noResponses}");
-            }
-
-            string stopResponses = ExtractStopConversationSummary(property["stop"]);
-            if (!string.IsNullOrWhiteSpace(stopResponses))
-            {
-                sections.Add(stopResponses);
-            }
-
-            if (sections.Count == 0)
-            {
-                return null;
-            }
-
-            return string.Join("\n\n", sections);
+            return choices;
         }
 
-        private static string ExtractConversationResponseList(WzImageProperty property)
+        private static void AppendConversationChoice(WzImageProperty property, string label, ICollection<NpcInteractionChoice> choices)
         {
-            if (property?.WzProperties == null)
+            IReadOnlyList<NpcInteractionPage> branchPages = ParseBranchPages(property);
+            if (branchPages.Count == 0)
             {
-                return null;
+                return;
             }
 
-            var responses = new List<string>();
-            for (int i = 0; i < property.WzProperties.Count; i++)
+            choices.Add(new NpcInteractionChoice
             {
-                string text = ExtractConversationText(property.WzProperties[i]);
-                if (!string.IsNullOrWhiteSpace(text))
-                {
-                    responses.Add($"- {text.Trim()}");
-                }
-            }
-
-            return responses.Count > 0
-                ? string.Join("\n", responses)
-                : null;
+                Label = label,
+                Pages = branchPages
+            });
         }
 
-        private static string ExtractStopConversationSummary(WzImageProperty property)
+        private static IReadOnlyList<NpcInteractionPage> ParseBranchPages(WzImageProperty property)
         {
-            if (property?.WzProperties == null)
+            if (property == null)
             {
-                return null;
+                return Array.Empty<NpcInteractionPage>();
             }
 
-            var groups = new List<string>();
+            var pages = new List<NpcInteractionPage>();
+            if (property is WzStringProperty)
+            {
+                AppendConversationPage(property, pages);
+                return pages;
+            }
+
+            if (property.WzProperties == null)
+            {
+                return Array.Empty<NpcInteractionPage>();
+            }
+
             for (int i = 0; i < property.WzProperties.Count; i++)
             {
                 WzImageProperty child = property.WzProperties[i];
-                string responses = ExtractConversationResponseList(child);
-                if (string.IsNullOrWhiteSpace(responses))
+                if (child is WzStringProperty || int.TryParse(child.Name, out _))
                 {
-                    continue;
+                    AppendConversationPage(child, pages);
                 }
-
-                groups.Add($"{child.Name}:\n{responses}");
             }
 
-            return groups.Count > 0
-                ? $"Stop responses:\n{string.Join("\n\n", groups)}"
-                : null;
+            return pages;
         }
 
         private static string FirstNonEmpty(params string[] values)
@@ -1177,6 +1745,13 @@ namespace HaCreator.MapSimulator.Interaction
                 : $"Mob #{mobId}";
         }
 
+        private string GetQuestName(int questId)
+        {
+            return _definitions.TryGetValue(questId, out QuestDefinition definition) && !string.IsNullOrWhiteSpace(definition.Name)
+                ? definition.Name
+                : $"Quest #{questId}";
+        }
+
         private static string GetItemName(int itemId)
         {
             return Program.InfoManager.ItemNameCache.TryGetValue(itemId, out Tuple<string, string, string> itemInfo) &&
@@ -1195,6 +1770,208 @@ namespace HaCreator.MapSimulator.Interaction
                 NpcInteractionEntryKind.LockedQuest => 3,
                 _ => 4
             };
+        }
+
+        private static string JoinQuestSections(params string[] sections)
+        {
+            var builder = new StringBuilder();
+            for (int i = 0; i < sections.Length; i++)
+            {
+                string formatted = NpcDialogueTextFormatter.Format(sections[i]);
+                if (string.IsNullOrWhiteSpace(formatted))
+                {
+                    continue;
+                }
+
+                if (builder.Length > 0)
+                {
+                    builder.Append("\n\n");
+                }
+
+                builder.Append(formatted.Trim());
+            }
+
+            return builder.ToString();
+        }
+
+        private void CalculateProgress(QuestDefinition definition, QuestProgress progress, out int currentProgress, out int totalProgress)
+        {
+            currentProgress = 0;
+            totalProgress = 0;
+
+            for (int i = 0; i < definition.EndMobRequirements.Count; i++)
+            {
+                QuestMobRequirement requirement = definition.EndMobRequirements[i];
+                progress.MobKills.TryGetValue(requirement.MobId, out int count);
+                currentProgress += Math.Min(count, requirement.RequiredCount);
+                totalProgress += requirement.RequiredCount;
+            }
+
+            for (int i = 0; i < definition.EndItemRequirements.Count; i++)
+            {
+                QuestItemRequirement requirement = definition.EndItemRequirements[i];
+                int count = GetTrackedItemCount(requirement.ItemId);
+                currentProgress += Math.Min(count, requirement.RequiredCount);
+                totalProgress += requirement.RequiredCount;
+            }
+        }
+
+        private string BuildStartRequirementText(QuestDefinition definition, IReadOnlyList<string> issues)
+        {
+            var lines = new List<string>();
+            AppendRequirementSummary(definition, lines);
+
+            if (!string.IsNullOrWhiteSpace(definition.DemandSummary))
+            {
+                lines.Add(NpcDialogueTextFormatter.Format(definition.DemandSummary));
+            }
+
+            if (issues != null && issues.Count > 0)
+            {
+                lines.Add("Outstanding requirements:");
+                lines.AddRange(issues);
+            }
+
+            return string.Join("\n", lines.Where(line => !string.IsNullOrWhiteSpace(line)));
+        }
+
+        private string BuildProgressRequirementText(QuestDefinition definition, IReadOnlyList<string> issues)
+        {
+            var lines = new List<string>();
+            QuestProgress progress = GetOrCreateProgress(definition.QuestId);
+
+            for (int i = 0; i < definition.EndMobRequirements.Count; i++)
+            {
+                QuestMobRequirement requirement = definition.EndMobRequirements[i];
+                progress.MobKills.TryGetValue(requirement.MobId, out int currentCount);
+                lines.Add($"Mob: {GetMobName(requirement.MobId)} {Math.Min(currentCount, requirement.RequiredCount)}/{requirement.RequiredCount}");
+            }
+
+            for (int i = 0; i < definition.EndItemRequirements.Count; i++)
+            {
+                QuestItemRequirement requirement = definition.EndItemRequirements[i];
+                int currentCount = GetTrackedItemCount(requirement.ItemId);
+                lines.Add($"Item: {GetItemName(requirement.ItemId)} {Math.Min(currentCount, requirement.RequiredCount)}/{requirement.RequiredCount}");
+            }
+
+            if (!string.IsNullOrWhiteSpace(definition.DemandSummary))
+            {
+                lines.Add(NpcDialogueTextFormatter.Format(definition.DemandSummary));
+            }
+
+            if (issues != null && issues.Count > 0)
+            {
+                lines.Add("Outstanding requirements:");
+                lines.AddRange(issues);
+            }
+
+            return string.Join("\n", lines.Where(line => !string.IsNullOrWhiteSpace(line)));
+        }
+
+        private static string BuildRewardText(QuestDefinition definition)
+        {
+            var rewards = new List<string>();
+            if (!string.IsNullOrWhiteSpace(definition.RewardSummary))
+            {
+                rewards.Add(NpcDialogueTextFormatter.Format(definition.RewardSummary));
+            }
+
+            if (definition.EndActions.ExpReward > 0)
+            {
+                rewards.Add($"EXP +{definition.EndActions.ExpReward}");
+            }
+
+            if (definition.EndActions.MesoReward > 0)
+            {
+                rewards.Add($"Meso +{definition.EndActions.MesoReward}");
+            }
+
+            if (definition.EndActions.FameReward != 0)
+            {
+                rewards.Add($"Fame {definition.EndActions.FameReward:+#;-#;0}");
+            }
+
+            for (int i = 0; i < definition.EndActions.RewardItems.Count; i++)
+            {
+                QuestRewardItem reward = definition.EndActions.RewardItems[i];
+                if (reward.Count > 0)
+                {
+                    rewards.Add($"{GetItemName(reward.ItemId)} x{reward.Count}");
+                }
+            }
+
+            return rewards.Count == 0
+                ? "No explicit rewards are registered for this quest in the loaded data."
+                : string.Join("\n", rewards);
+        }
+
+        private static string BuildHintText(
+            QuestDefinition definition,
+            QuestStateType state,
+            IReadOnlyList<string> startIssues,
+            IReadOnlyList<string> completionIssues)
+        {
+            return state switch
+            {
+                QuestStateType.Not_Started when definition.StartNpcId.HasValue =>
+                    $"Starter NPC: {ResolveNpcName(definition.StartNpcId.Value)}",
+                QuestStateType.Started when definition.EndNpcId.HasValue && (completionIssues == null || completionIssues.Count == 0) =>
+                    $"Return to {ResolveNpcName(definition.EndNpcId.Value)} to complete this quest.",
+                QuestStateType.Started when definition.EndNpcId.HasValue =>
+                    $"Completion NPC: {ResolveNpcName(definition.EndNpcId.Value)}",
+                QuestStateType.Not_Started when startIssues != null && startIssues.Count > 0 =>
+                    "You do not meet the current start requirements.",
+                _ => string.Empty
+            };
+        }
+
+        private static string BuildNpcText(QuestDefinition definition)
+        {
+            var parts = new List<string>();
+            if (definition.StartNpcId.HasValue)
+            {
+                parts.Add($"Start: {ResolveNpcName(definition.StartNpcId.Value)}");
+            }
+
+            if (definition.EndNpcId.HasValue)
+            {
+                parts.Add($"Complete: {ResolveNpcName(definition.EndNpcId.Value)}");
+            }
+
+            return string.Join(" | ", parts);
+        }
+
+        private static (QuestWindowActionKind action, bool enabled, string label) GetPrimaryAction(
+            QuestDefinition definition,
+            QuestStateType state,
+            IReadOnlyList<string> startIssues,
+            IReadOnlyList<string> completionIssues)
+        {
+            return state switch
+            {
+                QuestStateType.Not_Started => (QuestWindowActionKind.Accept, startIssues == null || startIssues.Count == 0, "Accept"),
+                QuestStateType.Started when definition.EndNpcId.HasValue && (completionIssues == null || completionIssues.Count == 0) =>
+                    (QuestWindowActionKind.Complete, false, "Complete"),
+                QuestStateType.Started => (QuestWindowActionKind.Track, true, "Track"),
+                _ => (QuestWindowActionKind.None, false, string.Empty)
+            };
+        }
+
+        private static (QuestWindowActionKind action, bool enabled, string label) GetSecondaryAction(QuestStateType state)
+        {
+            return state == QuestStateType.Started
+                ? (QuestWindowActionKind.GiveUp, true, "Give Up")
+                : (QuestWindowActionKind.None, false, string.Empty);
+        }
+
+        private static string ResolveNpcName(int npcId)
+        {
+            string key = npcId.ToString();
+            return Program.InfoManager?.NpcNameCache != null &&
+                   Program.InfoManager.NpcNameCache.TryGetValue(key, out var info) &&
+                   !string.IsNullOrWhiteSpace(info?.Item1)
+                ? info.Item1
+                : $"NPC #{npcId}";
         }
     }
 }
