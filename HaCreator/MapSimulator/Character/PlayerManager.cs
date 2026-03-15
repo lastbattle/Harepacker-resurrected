@@ -33,6 +33,7 @@ namespace HaCreator.MapSimulator.Character
         public SkillManager Skills { get; private set; }
         public SkillLoader SkillLoader { get; private set; }
         public PetController Pets { get; }
+        public CompanionEquipmentController CompanionEquipment { get; }
 
         public bool IsPlayerActive => Player != null && Player.IsAlive;
         public bool IsPlayerControlEnabled { get; set; } = true;
@@ -81,6 +82,7 @@ namespace HaCreator.MapSimulator.Character
             Input = new PlayerInput();
             Config = new CharacterConfigManager();
             Pets = new PetController(device);
+            CompanionEquipment = new CompanionEquipmentController(device);
         }
 
         /// <summary>
@@ -290,6 +292,7 @@ namespace HaCreator.MapSimulator.Character
         {
             Player = new PlayerCharacter(build);
             Combat = new PlayerCombat(Player);
+            CompanionEquipment.EnsureDefaults(Loader, build);
 
             // Wire up attack hit effect callback
             Combat.OnAttackHitPlayer = (x, y, hitFrames) =>
@@ -665,6 +668,11 @@ namespace HaCreator.MapSimulator.Character
             int screenY = (int)Player.Y - mapShiftY + centerY;
 
             Player.DrawStatusBars(spriteBatch, screenX, screenY);
+        }
+
+        public bool TryExecutePetCommand(string message, int currentTime)
+        {
+            return Pets.TryExecuteCommand(message, currentTime);
         }
 
         #endregion

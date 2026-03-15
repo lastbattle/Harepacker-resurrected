@@ -9,9 +9,11 @@ using Microsoft.Xna.Framework.Input;
 using Spine;
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using CharacterBuild = HaCreator.MapSimulator.Character.CharacterBuild;
 using CharacterEquipSlot = HaCreator.MapSimulator.Character.EquipSlot;
 using CharacterPart = HaCreator.MapSimulator.Character.CharacterPart;
+using WeaponPart = HaCreator.MapSimulator.Character.WeaponPart;
 using EquipSlotStateResolver = HaCreator.MapSimulator.Character.EquipSlotStateResolver;
 using EquipSlotVisualState = HaCreator.MapSimulator.Character.EquipSlotVisualState;
 
@@ -118,6 +120,8 @@ namespace HaCreator.MapSimulator.UI
         private readonly Dictionary<int, CompanionPaneLayout> _companionLayouts;
         private readonly Point[] _petSlotPositions;
         private readonly Point[] _petSkillSlotPositions;
+        private readonly Dictionary<DragonEquipSlot, Point> _dragonSlotPositions;
+        private readonly Dictionary<AndroidEquipSlot, Point> _androidSlotPositions;
 
         // Graphics device
         private GraphicsDevice _device;
@@ -127,8 +131,12 @@ namespace HaCreator.MapSimulator.UI
         private SpriteFont _font;
         private CharacterBuild _characterBuild;
         private PetController _petController;
+        private DragonEquipmentController _dragonEquipmentController;
+        private AndroidEquipmentController _androidEquipmentController;
         private EquipSlot? _hoveredSlot;
         private int? _hoveredPetIndex;
+        private DragonEquipSlot? _hoveredDragonSlot;
+        private AndroidEquipSlot? _hoveredAndroidSlot;
         private Point _lastMousePosition;
         #endregion
 
@@ -223,6 +231,23 @@ namespace HaCreator.MapSimulator.UI
                 new Point(11, 93),
                 new Point(44, 93),
                 new Point(77, 93)
+            };
+            _dragonSlotPositions = new Dictionary<DragonEquipSlot, Point>
+            {
+                { DragonEquipSlot.Mask, new Point(10, 55) },
+                { DragonEquipSlot.Wings, new Point(76, 55) },
+                { DragonEquipSlot.Pendant, new Point(43, 88) },
+                { DragonEquipSlot.Tail, new Point(109, 88) }
+            };
+            _androidSlotPositions = new Dictionary<AndroidEquipSlot, Point>
+            {
+                { AndroidEquipSlot.Cap, new Point(12, 28) },
+                { AndroidEquipSlot.FaceAccessory, new Point(44, 60) },
+                { AndroidEquipSlot.Clothes, new Point(12, 92) },
+                { AndroidEquipSlot.Glove, new Point(44, 92) },
+                { AndroidEquipSlot.Cape, new Point(76, 92) },
+                { AndroidEquipSlot.Pants, new Point(12, 124) },
+                { AndroidEquipSlot.Shoes, new Point(44, 124) }
             };
             _debugPlaceholder = new Texture2D(device, 1, 1);
             _debugPlaceholder.SetData(new[] { Color.White });
@@ -326,6 +351,16 @@ namespace HaCreator.MapSimulator.UI
         {
             _petController = petController;
         }
+
+        public void SetDragonEquipmentController(DragonEquipmentController dragonEquipmentController)
+        {
+            _dragonEquipmentController = dragonEquipmentController;
+        }
+
+        public void SetAndroidEquipmentController(AndroidEquipmentController androidEquipmentController)
+        {
+            _androidEquipmentController = androidEquipmentController;
+        }
         #endregion
 
         #region Drawing
@@ -374,7 +409,7 @@ namespace HaCreator.MapSimulator.UI
                 EquipSlotVisualState visualState = EquipSlotStateResolver.ResolveVisualState(_characterBuild, characterSlot.Value);
                 if (visualState.IsDisabled)
                 {
-                    //DrawDisabledOverlay(sprite, slotX, slotY, visualState);
+                    DrawDisabledOverlay(sprite, slotX, slotY, visualState);
                 }
             }
 
@@ -442,6 +477,8 @@ namespace HaCreator.MapSimulator.UI
             _lastMousePosition = new Point(mouseState.X, mouseState.Y);
             _hoveredSlot = GetSlotAtPosition(mouseState.X, mouseState.Y);
             _hoveredPetIndex = GetHoveredPetIndex(mouseState.X, mouseState.Y);
+            _hoveredDragonSlot = GetHoveredDragonSlot(mouseState.X, mouseState.Y);
+            _hoveredAndroidSlot = GetHoveredAndroidSlot(mouseState.X, mouseState.Y);
         }
         #endregion
 
@@ -472,12 +509,10 @@ namespace HaCreator.MapSimulator.UI
                     DrawPetPaneContents(sprite, panePosition);
                     break;
                 case TAB_DRAGON:
-                    DrawCompanionEmptyState(sprite, layout.Frame, panePosition,
-                        "Dragon equipment slots are loaded from UI.wz, but dragon equip runtime is still missing.");
+                    DrawDragonPaneContents(sprite, panePosition);
                     break;
                 case TAB_ANDROID:
-                    DrawCompanionEmptyState(sprite, layout.Frame, panePosition,
-                        "Android equip slots are present, but android-specific gear runtime is still not wired.");
+                    DrawAndroidPaneContents(sprite, panePosition);
                     break;
                 case TAB_MECHANIC:
                     DrawCompanionEmptyState(sprite, layout.Frame, panePosition,
@@ -534,6 +569,50 @@ namespace HaCreator.MapSimulator.UI
             }
         }
 
+        private void DrawDragonPaneContents(SpriteBatch sprite, Point panePosition)
+        {
+            bool hasAnyItems = false;
+            foreach ((DragonEquipSlot slot, Point slotPosition) in _dragonSlotPositions)
+            {
+                if (_dragonEquipmentController == null || !_dragonEquipmentController.TryGetItem(slot, out CompanionEquipItem item))
+                {
+                    continue;
+                }
+
+                hasAnyItems = true;
+                DrawCompanionItemIcon(sprite, item, panePosition.X + slotPosition.X, panePosition.Y + slotPosition.Y);
+            }
+
+            if (!hasAnyItems)
+            {
+                _companionLayouts.TryGetValue(TAB_DRAGON, out CompanionPaneLayout layout);
+                DrawCompanionEmptyState(sprite, layout?.Frame, panePosition,
+                    "Dragon equipment runtime is available, but no dragon items are equipped for this session.");
+            }
+        }
+
+        private void DrawAndroidPaneContents(SpriteBatch sprite, Point panePosition)
+        {
+            bool hasAnyItems = false;
+            foreach ((AndroidEquipSlot slot, Point slotPosition) in _androidSlotPositions)
+            {
+                if (_androidEquipmentController == null || !_androidEquipmentController.TryGetItem(slot, out CompanionEquipItem item))
+                {
+                    continue;
+                }
+
+                hasAnyItems = true;
+                DrawCompanionItemIcon(sprite, item, panePosition.X + slotPosition.X, panePosition.Y + slotPosition.Y);
+            }
+
+            if (!hasAnyItems)
+            {
+                _companionLayouts.TryGetValue(TAB_ANDROID, out CompanionPaneLayout layout);
+                DrawCompanionEmptyState(sprite, layout?.Frame, panePosition,
+                    "Android equipment runtime is available, but no android gear is equipped for this session.");
+            }
+        }
+
         private void DrawCompanionEmptyState(SpriteBatch sprite, IDXObject paneFrame, Point panePosition, string message)
         {
             if (_font == null || paneFrame == null || string.IsNullOrWhiteSpace(message))
@@ -576,14 +655,49 @@ namespace HaCreator.MapSimulator.UI
             }
         }
 
+        private void DrawCompanionItemIcon(SpriteBatch sprite, CompanionEquipItem item, int slotX, int slotY)
+        {
+            IDXObject icon = item?.IconRaw ?? item?.Icon ?? item?.CharacterPart?.IconRaw ?? item?.CharacterPart?.Icon;
+            if (icon != null)
+            {
+                icon.DrawBackground(sprite, null, null, slotX, slotY, Color.White, false, null);
+            }
+        }
+
+        private void DrawDisabledOverlay(SpriteBatch sprite, int slotX, int slotY, EquipSlotVisualState visualState)
+        {
+            Color overlay = visualState.IsExpired
+                ? new Color(110, 30, 30, 180)
+                : visualState.IsBroken
+                    ? new Color(90, 60, 20, 180)
+                    : new Color(20, 20, 20, 145);
+            sprite.Draw(_slotOverlayTexture, new Rectangle(slotX, slotY, SLOT_SIZE, SLOT_SIZE), overlay);
+            sprite.Draw(_slotOverlayTexture, new Rectangle(slotX, slotY, SLOT_SIZE, 2), Color.Black);
+            sprite.Draw(_slotOverlayTexture, new Rectangle(slotX, slotY + SLOT_SIZE - 2, SLOT_SIZE, 2), Color.Black);
+            sprite.Draw(_slotOverlayTexture, new Rectangle(slotX, slotY, 2, SLOT_SIZE), Color.Black);
+            sprite.Draw(_slotOverlayTexture, new Rectangle(slotX + SLOT_SIZE - 2, slotY, 2, SLOT_SIZE), Color.Black);
+        }
+
         private void DrawHoveredEquipmentTooltip(SpriteBatch sprite, int renderWidth, int renderHeight)
         {
             if (_font == null)
                 return;
 
-            if (_currentTab == TAB_PET && TryBuildPetTooltip(out string petTitle, out string petLine1, out string petLine2, out IDXObject petIcon))
+            if (_currentTab == TAB_PET && TryBuildPetTooltip(out string petTitle, out string petLine1, out string petLine2, out string petDescription, out IDXObject petIcon))
             {
-                DrawItemTooltip(sprite, petTitle, petLine1, petLine2, null, petIcon, renderWidth, renderHeight);
+                DrawItemTooltip(sprite, petTitle, petLine1, petLine2, petDescription, null, petIcon, renderWidth, renderHeight);
+                return;
+            }
+
+            if (_currentTab == TAB_DRAGON && TryBuildDragonTooltip(out string dragonTitle, out string dragonLine1, out string dragonLine2, out string dragonDescription, out IDXObject dragonIcon))
+            {
+                DrawItemTooltip(sprite, dragonTitle, dragonLine1, dragonLine2, dragonDescription, null, dragonIcon, renderWidth, renderHeight);
+                return;
+            }
+
+            if (_currentTab == TAB_ANDROID && TryBuildAndroidTooltip(out string androidTitle, out string androidLine1, out string androidLine2, out string androidDescription, out IDXObject androidIcon))
+            {
+                DrawItemTooltip(sprite, androidTitle, androidLine1, androidLine2, androidDescription, null, androidIcon, renderWidth, renderHeight);
                 return;
             }
 
@@ -600,6 +714,7 @@ namespace HaCreator.MapSimulator.UI
                         fallbackData.ItemName,
                         $"Item ID: {fallbackData.ItemId}",
                         $"Slot: {hoveredSlot}",
+                        null,
                         fallbackData.ItemTexture,
                         fallbackData.ItemIcon,
                         renderWidth,
@@ -621,26 +736,25 @@ namespace HaCreator.MapSimulator.UI
                     $"Slot: {ResolveSlotLabel(hoveredSlot)}",
                     null,
                     null,
+                    null,
                     renderWidth,
                     renderHeight);
                 return;
             }
 
-            string itemName = string.IsNullOrWhiteSpace(part.Name) ? $"Equip {part.ItemId}" : part.Name;
-            string line1 = $"Item ID: {part.ItemId}";
-            string line2 = $"Slot: {ResolveSlotLabel(hoveredSlot)}";
-            if (part.IsCash)
-            {
-                line2 += "  Cash";
-            }
-
             CharacterEquipSlot? characterSlot = MapToCharacterEquipSlot(hoveredSlot);
+            string itemName = string.IsNullOrWhiteSpace(part.Name) ? $"Equip {part.ItemId}" : part.Name;
+            string line1 = BuildEquipmentSummaryLine(part);
+            string line2 = BuildEquipmentRequirementLine(part, hoveredSlot);
+            string description = BuildEquipmentDescription(part);
             if (characterSlot.HasValue)
             {
                 EquipSlotVisualState visualState = EquipSlotStateResolver.ResolveVisualState(_characterBuild, characterSlot.Value);
                 if (!string.IsNullOrWhiteSpace(visualState.Message))
                 {
-                    line2 += $"  {visualState.Message}";
+                    line2 = string.IsNullOrWhiteSpace(line2)
+                        ? visualState.Message
+                        : $"{line2}  {visualState.Message}";
                 }
             }
 
@@ -648,17 +762,19 @@ namespace HaCreator.MapSimulator.UI
                 itemName,
                 line1,
                 line2,
+                description,
                 null,
                 part.IconRaw ?? part.Icon,
                 renderWidth,
                 renderHeight);
         }
 
-        private bool TryBuildPetTooltip(out string title, out string line1, out string line2, out IDXObject icon)
+        private bool TryBuildPetTooltip(out string title, out string line1, out string line2, out string description, out IDXObject icon)
         {
             title = null;
             line1 = null;
             line2 = null;
+            description = null;
             icon = null;
 
             if (_hoveredPetIndex == null)
@@ -677,8 +793,205 @@ namespace HaCreator.MapSimulator.UI
             title = string.IsNullOrWhiteSpace(pet.Name) ? $"Pet {pet.ItemId}" : pet.Name;
             line1 = $"Item ID: {pet.ItemId}";
             line2 = $"Slot: Pet {petIndex + 1}  Auto Loot: {(pet.AutoLootEnabled ? "On" : "Off")}";
+            description = ResolveItemDescription(pet.ItemId, "Pet");
             icon = pet.Definition?.IconRaw ?? pet.Definition?.Icon;
             return true;
+        }
+
+        private bool TryBuildDragonTooltip(out string title, out string line1, out string line2, out string description, out IDXObject icon)
+        {
+            title = null;
+            line1 = null;
+            line2 = null;
+            description = null;
+            icon = null;
+
+            if (_hoveredDragonSlot == null || _dragonEquipmentController == null
+                || !_dragonEquipmentController.TryGetItem(_hoveredDragonSlot.Value, out CompanionEquipItem item))
+            {
+                return false;
+            }
+
+            title = string.IsNullOrWhiteSpace(item.Name) ? $"Dragon Equip {item.ItemId}" : item.Name;
+            line1 = $"Item ID: {item.ItemId}";
+            line2 = $"Slot: {ResolveDragonSlotLabel(_hoveredDragonSlot.Value)}";
+            description = item.Description;
+            icon = item.IconRaw ?? item.Icon ?? item.CharacterPart?.IconRaw ?? item.CharacterPart?.Icon;
+            return true;
+        }
+
+        private bool TryBuildAndroidTooltip(out string title, out string line1, out string line2, out string description, out IDXObject icon)
+        {
+            title = null;
+            line1 = null;
+            line2 = null;
+            description = null;
+            icon = null;
+
+            if (_hoveredAndroidSlot == null || _androidEquipmentController == null
+                || !_androidEquipmentController.TryGetItem(_hoveredAndroidSlot.Value, out CompanionEquipItem item))
+            {
+                return false;
+            }
+
+            title = string.IsNullOrWhiteSpace(item.Name) ? $"Android Equip {item.ItemId}" : item.Name;
+            line1 = BuildCompanionEquipmentSummaryLine(item);
+            line2 = $"Slot: {ResolveAndroidSlotLabel(_hoveredAndroidSlot.Value)}";
+            description = BuildCompanionEquipmentDescription(item);
+            icon = item.IconRaw ?? item.Icon ?? item.CharacterPart?.IconRaw ?? item.CharacterPart?.Icon;
+            return true;
+        }
+
+        private static string ResolveItemDescription(int itemId, string fallbackCategory = null)
+        {
+            if (HaCreator.Program.InfoManager?.ItemNameCache != null
+                && HaCreator.Program.InfoManager.ItemNameCache.TryGetValue(itemId, out Tuple<string, string, string> itemInfo))
+            {
+                return !string.IsNullOrWhiteSpace(itemInfo.Item3)
+                    ? itemInfo.Item3
+                    : itemInfo.Item1;
+            }
+
+            return fallbackCategory ?? string.Empty;
+        }
+
+        private static string BuildEquipmentSummaryLine(CharacterPart part)
+        {
+            var segments = new List<string>();
+            if (part.ItemId > 0)
+            {
+                segments.Add($"Item ID: {part.ItemId}");
+            }
+
+            if (!string.IsNullOrWhiteSpace(part.ItemCategory))
+            {
+                segments.Add(part.ItemCategory);
+            }
+
+            AppendStatSegment(segments, "STR", part.BonusSTR);
+            AppendStatSegment(segments, "DEX", part.BonusDEX);
+            AppendStatSegment(segments, "INT", part.BonusINT);
+            AppendStatSegment(segments, "LUK", part.BonusLUK);
+            AppendStatSegment(segments, "HP", part.BonusHP);
+            AppendStatSegment(segments, "MP", part.BonusMP);
+            AppendStatSegment(segments, "ATT", part.BonusWeaponAttack);
+            AppendStatSegment(segments, "M.ATT", part.BonusMagicAttack);
+            AppendStatSegment(segments, "DEF", part.BonusWeaponDefense);
+            AppendStatSegment(segments, "M.DEF", part.BonusMagicDefense);
+            AppendStatSegment(segments, "ACC", part.BonusAccuracy);
+            AppendStatSegment(segments, "AVOID", part.BonusAvoidability);
+            AppendStatSegment(segments, "Speed", part.BonusSpeed);
+            AppendStatSegment(segments, "Jump", part.BonusJump);
+
+            if (part.UpgradeSlots > 0)
+            {
+                segments.Add($"Slots +{part.UpgradeSlots}");
+            }
+
+            if (part is WeaponPart weapon && weapon.AttackSpeed > 0)
+            {
+                segments.Add($"Speed {weapon.AttackSpeed}");
+            }
+
+            return string.Join("  ", segments);
+        }
+
+        private static string BuildEquipmentRequirementLine(CharacterPart part, EquipSlot hoveredSlot)
+        {
+            var segments = new List<string>
+            {
+                $"Slot: {ResolveSlotLabel(hoveredSlot)}"
+            };
+
+            if (part.RequiredLevel > 0)
+            {
+                segments.Add($"Req Lv {part.RequiredLevel}");
+            }
+
+            AppendRequirementSegment(segments, "STR", part.RequiredSTR);
+            AppendRequirementSegment(segments, "DEX", part.RequiredDEX);
+            AppendRequirementSegment(segments, "INT", part.RequiredINT);
+            AppendRequirementSegment(segments, "LUK", part.RequiredLUK);
+
+            if (part.IsCash)
+            {
+                segments.Add("Cash");
+            }
+
+            if (part.Durability.HasValue)
+            {
+                if (part.MaxDurability.HasValue && part.MaxDurability.Value > 0)
+                {
+                    segments.Add($"Durability {Math.Max(0, part.Durability.Value)}/{part.MaxDurability.Value}");
+                }
+                else
+                {
+                    segments.Add($"Durability {Math.Max(0, part.Durability.Value)}");
+                }
+            }
+
+            if (part.ExpirationDateUtc.HasValue)
+            {
+                segments.Add($"Expires {part.ExpirationDateUtc.Value.ToLocalTime().ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)}");
+            }
+
+            return string.Join("  ", segments);
+        }
+
+        private static string BuildEquipmentDescription(CharacterPart part)
+        {
+            if (!string.IsNullOrWhiteSpace(part.Description))
+            {
+                return part.Description;
+            }
+
+            if (part is WeaponPart weapon && !string.IsNullOrWhiteSpace(weapon.WeaponType))
+            {
+                return weapon.WeaponType;
+            }
+
+            return string.Empty;
+        }
+
+        private static string BuildCompanionEquipmentSummaryLine(CompanionEquipItem item)
+        {
+            if (item?.CharacterPart != null)
+            {
+                return BuildEquipmentSummaryLine(item.CharacterPart);
+            }
+
+            return item != null ? $"Item ID: {item.ItemId}" : string.Empty;
+        }
+
+        private static string BuildCompanionEquipmentDescription(CompanionEquipItem item)
+        {
+            if (!string.IsNullOrWhiteSpace(item?.Description))
+            {
+                return item.Description;
+            }
+
+            if (item?.CharacterPart != null)
+            {
+                return BuildEquipmentDescription(item.CharacterPart);
+            }
+
+            return string.Empty;
+        }
+
+        private static void AppendStatSegment(List<string> segments, string label, int value)
+        {
+            if (value > 0)
+            {
+                segments.Add($"{label} +{value}");
+            }
+        }
+
+        private static void AppendRequirementSegment(List<string> segments, string label, int value)
+        {
+            if (value > 0)
+            {
+                segments.Add($"{label} {value}");
+            }
         }
 
         private void DrawItemTooltip(
@@ -686,6 +999,7 @@ namespace HaCreator.MapSimulator.UI
             string title,
             string line1,
             string line2,
+            string description,
             Texture2D itemTexture,
             IDXObject itemIcon,
             int renderWidth,
@@ -698,12 +1012,16 @@ namespace HaCreator.MapSimulator.UI
             string[] wrappedTitle = WrapTooltipText(title, titleWidth);
             string[] wrappedLine1 = WrapTooltipText(line1, sectionWidth);
             string[] wrappedLine2 = WrapTooltipText(line2, sectionWidth);
+            string[] wrappedDescription = WrapTooltipText(description, sectionWidth);
             float titleHeight = MeasureLinesHeight(wrappedTitle);
             float line1Height = MeasureLinesHeight(wrappedLine1);
             float line2Height = MeasureLinesHeight(wrappedLine2);
+            float descriptionHeight = MeasureLinesHeight(wrappedDescription);
             float contentHeight = line1Height;
             if (line2Height > 0f)
                 contentHeight += (contentHeight > 0f ? TOOLTIP_SECTION_GAP : 0f) + line2Height;
+            if (descriptionHeight > 0f)
+                contentHeight += (contentHeight > 0f ? TOOLTIP_SECTION_GAP : 0f) + descriptionHeight;
 
             float iconBlockHeight = Math.Max(SLOT_SIZE, contentHeight);
             int tooltipHeight = (int)Math.Ceiling((TOOLTIP_PADDING * 2) + titleHeight + TOOLTIP_TITLE_GAP + iconBlockHeight);
@@ -750,6 +1068,13 @@ namespace HaCreator.MapSimulator.UI
             if (line1Height > 0f)
                 sectionY += line1Height + (line2Height > 0f ? TOOLTIP_SECTION_GAP : 0f);
             DrawTooltipLines(sprite, wrappedLine2, textX, sectionY, Color.White);
+            if (line2Height > 0f)
+                sectionY += line2Height;
+            if (descriptionHeight > 0f)
+            {
+                sectionY += ((line1Height > 0f || line2Height > 0f) ? TOOLTIP_SECTION_GAP : 0f);
+                DrawTooltipLines(sprite, wrappedDescription, textX, sectionY, new Color(216, 216, 216));
+            }
         }
 
         private EquipSlot? GetSlotAtPosition(int mouseX, int mouseY)
@@ -787,6 +1112,64 @@ namespace HaCreator.MapSimulator.UI
                 if (slotRect.Contains(mouseX, mouseY))
                 {
                     return i;
+                }
+            }
+
+            return null;
+        }
+
+        private DragonEquipSlot? GetHoveredDragonSlot(int mouseX, int mouseY)
+        {
+            if (_currentTab != TAB_DRAGON || !_companionLayouts.TryGetValue(TAB_DRAGON, out CompanionPaneLayout layout))
+            {
+                return null;
+            }
+
+            Point panePosition = GetCompanionPanePosition(layout, Position.X, Position.Y);
+            foreach ((DragonEquipSlot slot, Point slotPosition) in _dragonSlotPositions)
+            {
+                if (_dragonEquipmentController == null || !_dragonEquipmentController.TryGetItem(slot, out _))
+                {
+                    continue;
+                }
+
+                Rectangle slotRect = new Rectangle(
+                    panePosition.X + slotPosition.X,
+                    panePosition.Y + slotPosition.Y,
+                    SLOT_SIZE,
+                    SLOT_SIZE);
+                if (slotRect.Contains(mouseX, mouseY))
+                {
+                    return slot;
+                }
+            }
+
+            return null;
+        }
+
+        private AndroidEquipSlot? GetHoveredAndroidSlot(int mouseX, int mouseY)
+        {
+            if (_currentTab != TAB_ANDROID || !_companionLayouts.TryGetValue(TAB_ANDROID, out CompanionPaneLayout layout))
+            {
+                return null;
+            }
+
+            Point panePosition = GetCompanionPanePosition(layout, Position.X, Position.Y);
+            foreach ((AndroidEquipSlot slot, Point slotPosition) in _androidSlotPositions)
+            {
+                if (_androidEquipmentController == null || !_androidEquipmentController.TryGetItem(slot, out _))
+                {
+                    continue;
+                }
+
+                Rectangle slotRect = new Rectangle(
+                    panePosition.X + slotPosition.X,
+                    panePosition.Y + slotPosition.Y,
+                    SLOT_SIZE,
+                    SLOT_SIZE);
+                if (slotRect.Contains(mouseX, mouseY))
+                {
+                    return slot;
                 }
             }
 
@@ -846,6 +1229,30 @@ namespace HaCreator.MapSimulator.UI
                 EquipSlot.EyeAccessory => "Eye Accessory",
                 EquipSlot.Pendant1 => "Pendant",
                 EquipSlot.Pendant2 => "Pendant",
+                _ => slot.ToString()
+            };
+        }
+
+        private static string ResolveDragonSlotLabel(DragonEquipSlot slot)
+        {
+            return slot switch
+            {
+                DragonEquipSlot.Mask => "Cap",
+                DragonEquipSlot.Wings => "Wing Accessory",
+                DragonEquipSlot.Pendant => "Pendant",
+                DragonEquipSlot.Tail => "Tail Accessory",
+                _ => slot.ToString()
+            };
+        }
+
+        private static string ResolveAndroidSlotLabel(AndroidEquipSlot slot)
+        {
+            return slot switch
+            {
+                AndroidEquipSlot.FaceAccessory => "Face Accessory",
+                AndroidEquipSlot.Clothes => "Clothes",
+                AndroidEquipSlot.Glove => "Gloves",
+                AndroidEquipSlot.Cape => "Mantle",
                 _ => slot.ToString()
             };
         }

@@ -16,6 +16,19 @@ namespace HaCreator.MapSimulator.UI
     /// </summary>
     public class StatusBarChatUI : BaseDXDrawableItem, IUIObjectEvents
     {
+        public sealed class StatusBarPointNotificationAnimation
+        {
+            public Texture2D[] Frames { get; set; } = Array.Empty<Texture2D>();
+            public Point[] Origins { get; set; } = Array.Empty<Point>();
+            public int[] FrameDelaysMs { get; set; } = Array.Empty<int>();
+        }
+
+        public sealed class StatusBarPointNotificationState
+        {
+            public bool ShowAbilityPointNotification { get; set; }
+            public bool ShowSkillPointNotification { get; set; }
+        }
+
         private sealed class WrappedChatLine
         {
             public string Text { get; set; }
@@ -28,9 +41,12 @@ namespace HaCreator.MapSimulator.UI
             new Dictionary<MapSimulatorChatTargetType, Texture2D>();
 
         private Func<MapSimulatorChatRenderState> _chatStateProvider;
+        private Func<StatusBarPointNotificationState> _pointNotificationStateProvider;
         private SpriteFont _font;
         private Texture2D _pixelTexture;
         private Texture2D _chatEnterTexture;
+        private StatusBarPointNotificationAnimation _abilityPointNotificationAnimation = new StatusBarPointNotificationAnimation();
+        private StatusBarPointNotificationAnimation _skillPointNotificationAnimation = new StatusBarPointNotificationAnimation();
         private int _scrollOffset;
         private int _lastWrappedLineCount;
         private int _lastManualScrollTick = int.MinValue;
@@ -43,6 +59,7 @@ namespace HaCreator.MapSimulator.UI
         private const int ChatLogWidth = 452;
         private const int ChatWrapIndentSpaces = 5;
         private const int ChatScrollRecentThresholdMs = 5000;
+        private static readonly Point PointNotificationAnchor = new Point(512, 60);
         private static readonly Vector2 ChatTargetLabelPos = new Vector2(17, 7);
         private static readonly Vector2 ChatInputPos = new Vector2(74, 5);
         private static readonly Vector2 ChatWhisperPromptPos = new Vector2(74, -13);
@@ -108,6 +125,19 @@ namespace HaCreator.MapSimulator.UI
         public void SetChatRenderProvider(Func<MapSimulatorChatRenderState> chatStateProvider)
         {
             _chatStateProvider = chatStateProvider;
+        }
+
+        public void SetPointNotificationRenderProvider(Func<StatusBarPointNotificationState> pointNotificationStateProvider)
+        {
+            _pointNotificationStateProvider = pointNotificationStateProvider;
+        }
+
+        public void SetPointNotificationAnimations(
+            StatusBarPointNotificationAnimation abilityPointAnimation,
+            StatusBarPointNotificationAnimation skillPointAnimation)
+        {
+            _abilityPointNotificationAnimation = abilityPointAnimation ?? new StatusBarPointNotificationAnimation();
+            _skillPointNotificationAnimation = skillPointAnimation ?? new StatusBarPointNotificationAnimation();
         }
 
         public void BindControls(UIObject chatTargetButton, UIObject chatToggleButton, UIObject scrollUpButton, UIObject scrollDownButton, UIObject characterInfoButton = null)
@@ -184,6 +214,7 @@ namespace HaCreator.MapSimulator.UI
             }
 
             DrawChatOverlay(sprite, TickCount);
+            DrawPointNotifications(sprite, TickCount);
         }
 
         private void DrawChatOverlay(SpriteBatch sprite, int tickCount)
@@ -205,6 +236,108 @@ namespace HaCreator.MapSimulator.UI
             {
                 DrawChatInput(sprite, chatState, tickCount);
             }
+        }
+
+        private void DrawPointNotifications(SpriteBatch sprite, int tickCount)
+        {
+            if (_pointNotificationStateProvider == null)
+            {
+                return;
+            }
+
+            StatusBarPointNotificationState notificationState = _pointNotificationStateProvider();
+            if (notificationState == null)
+            {
+                return;
+            }
+
+            if (notificationState.ShowAbilityPointNotification)
+            {
+                DrawPointNotification(sprite, _abilityPointNotificationAnimation, tickCount);
+            }
+
+            if (notificationState.ShowSkillPointNotification)
+            {
+                DrawPointNotification(sprite, _skillPointNotificationAnimation, tickCount);
+            }
+        }
+
+        private void DrawPointNotification(
+            SpriteBatch sprite,
+            StatusBarPointNotificationAnimation animation,
+            int tickCount)
+        {
+            Texture2D frame = ResolvePointNotificationFrame(animation, tickCount, out Point origin);
+            if (frame == null)
+            {
+                return;
+            }
+
+            Vector2 drawPosition = new Vector2(
+                this.Position.X + PointNotificationAnchor.X - origin.X,
+                this.Position.Y + PointNotificationAnchor.Y - origin.Y);
+            sprite.Draw(frame, drawPosition, Color.White);
+        }
+
+        private static Texture2D ResolvePointNotificationFrame(
+            StatusBarPointNotificationAnimation animation,
+            int tickCount,
+            out Point origin)
+        {
+            origin = Point.Zero;
+            if (animation?.Frames == null || animation.Frames.Length == 0)
+            {
+                return null;
+            }
+
+            int totalDuration = 0;
+            for (int i = 0; i < animation.Frames.Length; i++)
+            {
+                totalDuration += ResolveFrameDelay(animation, i);
+            }
+
+            if (totalDuration <= 0)
+            {
+                origin = ResolveAnimationOrigin(animation, 0);
+                return animation.Frames[0];
+            }
+
+            int animationTick = Math.Abs(tickCount % totalDuration);
+            int elapsed = 0;
+            for (int i = 0; i < animation.Frames.Length; i++)
+            {
+                int frameDelay = ResolveFrameDelay(animation, i);
+                elapsed += frameDelay;
+                if (animationTick < elapsed)
+                {
+                    origin = ResolveAnimationOrigin(animation, i);
+                    return animation.Frames[i];
+                }
+            }
+
+            int lastFrameIndex = animation.Frames.Length - 1;
+            origin = ResolveAnimationOrigin(animation, lastFrameIndex);
+            return animation.Frames[lastFrameIndex];
+        }
+
+        private static Point ResolveAnimationOrigin(StatusBarPointNotificationAnimation animation, int frameIndex)
+        {
+            if (animation?.Origins == null || frameIndex < 0 || frameIndex >= animation.Origins.Length)
+            {
+                return Point.Zero;
+            }
+
+            return animation.Origins[frameIndex];
+        }
+
+        private static int ResolveFrameDelay(StatusBarPointNotificationAnimation animation, int frameIndex)
+        {
+            if (animation?.FrameDelaysMs == null || frameIndex < 0 || frameIndex >= animation.FrameDelaysMs.Length)
+            {
+                return 120;
+            }
+
+            return Math.Max(1, animation.FrameDelaysMs[frameIndex]);
         }
 
         private void DrawChatTargetLabel(SpriteBatch sprite, MapSimulatorChatTargetType targetType)

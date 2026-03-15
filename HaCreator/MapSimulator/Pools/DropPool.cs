@@ -59,6 +59,23 @@ namespace HaCreator.MapSimulator.Pools
         InstallItem     // Installation item (chair, etc)
     }
 
+    public enum DropPickupFailureReason
+    {
+        None = 0,
+        NoDropInRange,
+        OwnershipRestricted,
+        InventoryFull,
+        Unavailable
+    }
+
+    public sealed class DropPickupAttemptResult
+    {
+        public DropItem Drop { get; init; }
+        public DropPickupFailureReason FailureReason { get; init; }
+
+        public bool Success => Drop != null && FailureReason == DropPickupFailureReason.None;
+    }
+
     /// <summary>
     /// Drop state for animation
     /// </summary>
@@ -643,6 +660,7 @@ namespace HaCreator.MapSimulator.Pools
                 return false;
 
             drop.StartPickup(currentTime);
+            RecordRecentPickupItem(drop, playerId, false, currentTime);
             _onDropPickedUp?.Invoke(drop);
             return true;
         }
@@ -652,10 +670,82 @@ namespace HaCreator.MapSimulator.Pools
         /// </summary>
         public DropItem TryPickupClosest(float x, float y, int playerId, int currentTime, float range = 40f)
         {
-            var drop = GetClosestDrop(x, y, range, playerId);
-            if (drop != null && TryPickup(drop, playerId, currentTime))
-                return drop;
-            return null;
+            return TryPickupClosestDetailed(x, y, playerId, currentTime, range).Drop;
+        }
+
+        public DropPickupAttemptResult TryPickupClosestDetailed(
+            float x,
+            float y,
+            int playerId,
+            int currentTime,
+            float range = 40f,
+            Func<DropItem, DropPickupFailureReason> pickupValidator = null)
+        {
+            float rangeSq = range * range;
+            DropItem closestAvailable = null;
+            float closestAvailableDistSq = float.MaxValue;
+            DropPickupFailureReason closestFailureReason = DropPickupFailureReason.NoDropInRange;
+            float closestFailureDistSq = float.MaxValue;
+
+            foreach (var drop in _activeDrops)
+            {
+                if (drop.State != DropState.Idle || !drop.CanPickup)
+                {
+                    continue;
+                }
+
+                float dx = drop.X - x;
+                float dy = drop.Y - y;
+                float distSq = dx * dx + dy * dy;
+                if (distSq > rangeSq)
+                {
+                    continue;
+                }
+
+                if (drop.OwnerId > 0 && drop.OwnerId != playerId && currentTime < drop.OwnerExpireTime)
+                {
+                    if (distSq < closestFailureDistSq)
+                    {
+                        closestFailureDistSq = distSq;
+                        closestFailureReason = DropPickupFailureReason.OwnershipRestricted;
+                    }
+
+                    continue;
+                }
+
+                DropPickupFailureReason validatorReason = pickupValidator?.Invoke(drop) ?? DropPickupFailureReason.None;
+                if (validatorReason != DropPickupFailureReason.None)
+                {
+                    if (distSq < closestFailureDistSq)
+                    {
+                        closestFailureDistSq = distSq;
+                        closestFailureReason = validatorReason;
+                    }
+
+                    continue;
+                }
+
+                if (distSq < closestAvailableDistSq)
+                {
+                    closestAvailableDistSq = distSq;
+                    closestAvailable = drop;
+                }
+            }
+
+            if (closestAvailable != null && TryPickup(closestAvailable, playerId, currentTime))
+            {
+                return new DropPickupAttemptResult
+                {
+                    Drop = closestAvailable,
+                    FailureReason = DropPickupFailureReason.None
+                };
+            }
+
+            return new DropPickupAttemptResult
+            {
+                Drop = null,
+                FailureReason = closestFailureReason
+            };
         }
         #endregion
 

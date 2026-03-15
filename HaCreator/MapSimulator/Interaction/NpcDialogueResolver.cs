@@ -20,6 +20,25 @@ namespace HaCreator.MapSimulator.Interaction
                 });
             }
 
+            IReadOnlyList<string> idleSpeechLines = npc?.GetIdleSpeechLines();
+            if (idleSpeechLines != null)
+            {
+                for (int i = 0; i < idleSpeechLines.Count; i++)
+                {
+                    string line = NpcDialogueTextFormatter.Format(idleSpeechLines[i]);
+                    if (string.IsNullOrWhiteSpace(line) ||
+                        (!string.IsNullOrWhiteSpace(npcDescription) && string.Equals(line, NpcDialogueTextFormatter.Format(npcDescription), System.StringComparison.Ordinal)))
+                    {
+                        continue;
+                    }
+
+                    pages.Add(new NpcInteractionPage
+                    {
+                        Text = line
+                    });
+                }
+            }
+
             if (pages.Count == 0)
             {
                 pages.Add(new NpcInteractionPage

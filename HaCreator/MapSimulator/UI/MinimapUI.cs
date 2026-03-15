@@ -15,10 +15,24 @@ namespace HaCreator.MapSimulator.UI
     /// </summary>
     public class MinimapUI : BaseDXDrawableItem, IUIObjectEvents
     {
+        public enum DirectionArrow
+        {
+            NorthWest,
+            North,
+            NorthEast,
+            West,
+            East,
+            SouthWest,
+            South,
+            SouthEast
+        }
+
         private readonly BaseDXDrawableItem _pixelDot;
         private readonly BaseDXDrawableItem _collapsedFrame;
         private readonly BaseDXDrawableItem _npcMarker;
+        private readonly BaseDXDrawableItem _portalMarker;
         private readonly BaseDXDrawableItem _npcListPanel;
+        private readonly IReadOnlyDictionary<DirectionArrow, BaseDXDrawableItem> _directionMarkers;
         private readonly List<UIObject> uiButtons = new List<UIObject>();
 
         private UIObject _btnMin;
@@ -31,6 +45,7 @@ namespace HaCreator.MapSimulator.UI
         private readonly int _minimapImageWidth;
         private readonly int _minimapImageHeight;
         private IReadOnlyList<NpcItem> _npcMarkers = Array.Empty<NpcItem>();
+        private IReadOnlyList<PortalItem> _portalMarkers = Array.Empty<PortalItem>();
         private bool _showNpcMarkers;
 
         private int _lastMinimapToggleTime = 0;
@@ -76,7 +91,9 @@ namespace HaCreator.MapSimulator.UI
             int minimapImageWidth,
             int minimapImageHeight,
             BaseDXDrawableItem npcMarker = null,
-            BaseDXDrawableItem npcListPanel = null)
+            BaseDXDrawableItem npcListPanel = null,
+            BaseDXDrawableItem portalMarker = null,
+            IReadOnlyDictionary<DirectionArrow, BaseDXDrawableItem> directionMarkers = null)
             : base(frame, false)
         {
             this._pixelDot = _pixelDot;
@@ -85,6 +102,8 @@ namespace HaCreator.MapSimulator.UI
             _minimapImageHeight = minimapImageHeight;
             _npcMarker = npcMarker;
             _npcListPanel = npcListPanel;
+            _portalMarker = portalMarker;
+            _directionMarkers = directionMarkers ?? new Dictionary<DirectionArrow, BaseDXDrawableItem>();
         }
 
         /// <summary>
@@ -136,6 +155,11 @@ namespace HaCreator.MapSimulator.UI
             _btnNpc.SetButtonState(_showNpcMarkers ? UIObjectState.Disabled : UIObjectState.Normal);
         }
 
+        public void SetPortalMarkers(IReadOnlyList<PortalItem> portalMarkers)
+        {
+            _portalMarkers = portalMarkers ?? Array.Empty<PortalItem>();
+        }
+
         public override void Draw(SpriteBatch sprite, SkeletonMeshRenderer skeletonMeshRenderer, GameTime gameTime,
             int mapShiftX, int mapShiftY, int centerX, int centerY,
             ReflectionDrawableBoundary drawReflectionInfo,
@@ -174,8 +198,10 @@ namespace HaCreator.MapSimulator.UI
                     renderParameters,
                     TickCount);
 
+                DrawPortalMarkers(sprite, skeletonMeshRenderer, gameTime, drawReflectionInfo, renderParameters, TickCount);
                 DrawNpcMarkers(sprite, skeletonMeshRenderer, gameTime, drawReflectionInfo, renderParameters, TickCount);
                 DrawNpcListPanel(sprite, skeletonMeshRenderer, gameTime, centerX, centerY, renderParameters, TickCount);
+                DrawDirectionOverlays(sprite, skeletonMeshRenderer, gameTime, drawReflectionInfo, renderParameters, TickCount);
             }
 
             // draw minimap buttons
@@ -439,6 +465,103 @@ namespace HaCreator.MapSimulator.UI
             }
         }
 
+        private void DrawPortalMarkers(
+            SpriteBatch sprite,
+            SkeletonMeshRenderer skeletonMeshRenderer,
+            GameTime gameTime,
+            ReflectionDrawableBoundary drawReflectionInfo,
+            RenderParameters renderParameters,
+            int tickCount)
+        {
+            if (_bIsCollapsedState || _portalMarker == null || _portalMarkers.Count == 0)
+                return;
+
+            foreach (PortalItem portal in _portalMarkers)
+            {
+                if (portal?.PortalInstance == null)
+                    continue;
+
+                Point minimapPoint = WorldToMinimap(portal.PortalInstance.X, portal.PortalInstance.Y);
+                if (!IsWithinMinimapImage(minimapPoint))
+                    continue;
+
+                _portalMarker.Draw(sprite, skeletonMeshRenderer, gameTime,
+                    -Position.X, -Position.Y, minimapPoint.X, minimapPoint.Y,
+                    drawReflectionInfo,
+                    renderParameters,
+                    tickCount);
+            }
+        }
+
+        private void DrawDirectionOverlays(
+            SpriteBatch sprite,
+            SkeletonMeshRenderer skeletonMeshRenderer,
+            GameTime gameTime,
+            ReflectionDrawableBoundary drawReflectionInfo,
+            RenderParameters renderParameters,
+            int tickCount)
+        {
+            if (_bIsCollapsedState || _directionMarkers.Count == 0)
+                return;
+
+            foreach (PortalItem portal in _portalMarkers)
+            {
+                if (portal?.PortalInstance == null)
+                    continue;
+
+                DrawDirectionOverlayForPoint(
+                    WorldToMinimap(portal.PortalInstance.X, portal.PortalInstance.Y),
+                    sprite,
+                    skeletonMeshRenderer,
+                    gameTime,
+                    drawReflectionInfo,
+                    renderParameters,
+                    tickCount);
+            }
+
+            if (!_showNpcMarkers)
+                return;
+
+            foreach (NpcItem npc in _npcMarkers)
+            {
+                if (npc?.NpcInstance == null)
+                    continue;
+
+                DrawDirectionOverlayForPoint(
+                    WorldToMinimap(npc.CurrentX, npc.CurrentY),
+                    sprite,
+                    skeletonMeshRenderer,
+                    gameTime,
+                    drawReflectionInfo,
+                    renderParameters,
+                    tickCount);
+            }
+        }
+
+        private void DrawDirectionOverlayForPoint(
+            Point minimapPoint,
+            SpriteBatch sprite,
+            SkeletonMeshRenderer skeletonMeshRenderer,
+            GameTime gameTime,
+            ReflectionDrawableBoundary drawReflectionInfo,
+            RenderParameters renderParameters,
+            int tickCount)
+        {
+            if (IsWithinMinimapImage(minimapPoint))
+                return;
+
+            DirectionArrow direction = ResolveDirectionArrow(minimapPoint);
+            if (!_directionMarkers.TryGetValue(direction, out BaseDXDrawableItem arrow) || arrow == null)
+                return;
+
+            Point drawPoint = ClampDirectionArrowPoint(minimapPoint);
+            arrow.Draw(sprite, skeletonMeshRenderer, gameTime,
+                -Position.X, -Position.Y, drawPoint.X, drawPoint.Y,
+                drawReflectionInfo,
+                renderParameters,
+                tickCount);
+        }
+
         private Point WorldToMinimap(int worldX, int worldY)
         {
             return new Point(
@@ -477,6 +600,38 @@ namespace HaCreator.MapSimulator.UI
                    minimapPoint.Y >= 0 &&
                    minimapPoint.X < _minimapImageWidth &&
                    minimapPoint.Y < _minimapImageHeight;
+        }
+
+        private DirectionArrow ResolveDirectionArrow(Point minimapPoint)
+        {
+            bool isLeft = minimapPoint.X < 0;
+            bool isRight = minimapPoint.X >= _minimapImageWidth;
+            bool isAbove = minimapPoint.Y < 0;
+            bool isBelow = minimapPoint.Y >= _minimapImageHeight;
+
+            if (isAbove && isLeft)
+                return DirectionArrow.NorthWest;
+            if (isAbove && isRight)
+                return DirectionArrow.NorthEast;
+            if (isBelow && isLeft)
+                return DirectionArrow.SouthWest;
+            if (isBelow && isRight)
+                return DirectionArrow.SouthEast;
+            if (isAbove)
+                return DirectionArrow.North;
+            if (isBelow)
+                return DirectionArrow.South;
+            if (isLeft)
+                return DirectionArrow.West;
+            return DirectionArrow.East;
+        }
+
+        private Point ClampDirectionArrowPoint(Point minimapPoint)
+        {
+            const int padding = 4;
+            int x = Math.Clamp(minimapPoint.X, padding, Math.Max(padding, _minimapImageWidth - padding));
+            int y = Math.Clamp(minimapPoint.Y, padding, Math.Max(padding, _minimapImageHeight - padding));
+            return new Point(x, y);
         }
         #endregion
     }

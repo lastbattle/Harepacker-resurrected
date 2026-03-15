@@ -251,8 +251,8 @@ namespace HaCreator.MapSimulator.UI
             DrawStatRow(sprite, windowX, windowY, jobY, _characterBuild.JobName ?? "Beginner");
             DrawStatRow(sprite, windowX, windowY, levelY, _characterBuild.Level.ToString());
             DrawStatRow(sprite, windowX, windowY, guildY, _characterBuild.GuildDisplayText);
-            DrawStatRow(sprite, windowX, windowY, hpY, $"{_characterBuild.HP}/{_characterBuild.MaxHP}");
-            DrawStatRow(sprite, windowX, windowY, mpY, $"{_characterBuild.MP}/{_characterBuild.MaxMP}");
+            DrawStatRow(sprite, windowX, windowY, hpY, $"{_characterBuild.TotalHP}/{_characterBuild.TotalMaxHP}");
+            DrawStatRow(sprite, windowX, windowY, mpY, $"{_characterBuild.TotalMP}/{_characterBuild.TotalMaxMP}");
             DrawStatRow(sprite, windowX, windowY, expY, _characterBuild.ExpDisplayText);
             DrawStatRow(sprite, windowX, windowY, fameY, _characterBuild.Fame.ToString());
 
@@ -263,10 +263,10 @@ namespace HaCreator.MapSimulator.UI
                 apColor, 0f, Vector2.Zero, TEXT_SCALE, SpriteEffects.None, 0f);
 
             // Draw primary stats (STR, DEX, INT, LUK)
-            DrawStatRow(sprite, windowX, windowY, strY, _characterBuild.STR.ToString());
-            DrawStatRow(sprite, windowX, windowY, dexY, _characterBuild.DEX.ToString());
-            DrawStatRow(sprite, windowX, windowY, intY, _characterBuild.INT.ToString());
-            DrawStatRow(sprite, windowX, windowY, lukY, _characterBuild.LUK.ToString());
+            DrawStatRow(sprite, windowX, windowY, strY, _characterBuild.TotalSTR.ToString());
+            DrawStatRow(sprite, windowX, windowY, dexY, _characterBuild.TotalDEX.ToString());
+            DrawStatRow(sprite, windowX, windowY, intY, _characterBuild.TotalINT.ToString());
+            DrawStatRow(sprite, windowX, windowY, lukY, _characterBuild.TotalLUK.ToString());
 
             // If in detail mode, draw detail background and extended stats
             if (_isDetailMode && _detailBackground != null)
@@ -307,16 +307,16 @@ namespace HaCreator.MapSimulator.UI
             int startY = 7;
             int lineHeight = 18;
 
-            DrawDetailStatRow(sprite, panelX, panelY, startY, _characterBuild.Attack.ToString());
-            DrawDetailStatRow(sprite, panelX, panelY, startY + lineHeight, _characterBuild.Defense.ToString());
-            DrawDetailStatRow(sprite, panelX, panelY, startY + lineHeight * 2, _characterBuild.MagicAttack.ToString());
-            DrawDetailStatRow(sprite, panelX, panelY, startY + lineHeight * 3, _characterBuild.MagicDefense.ToString());
-            DrawDetailStatRow(sprite, panelX, panelY, startY + lineHeight * 4, _characterBuild.Accuracy.ToString());
-            DrawDetailStatRow(sprite, panelX, panelY, startY + lineHeight * 5, _characterBuild.Avoidability.ToString());
-            DrawDetailStatRow(sprite, panelX, panelY, startY + lineHeight * 6, _characterBuild.Hands.ToString());
-            DrawDetailStatRow(sprite, panelX, panelY, startY + lineHeight * 7, $"{_characterBuild.CriticalRate}%");
-            DrawDetailStatRow(sprite, panelX, panelY, startY + lineHeight * 8, $"{_characterBuild.Speed:F0}%");
-            DrawDetailStatRow(sprite, panelX, panelY, startY + lineHeight * 9, $"{_characterBuild.JumpPower:F0}%");
+            DrawDetailStatRow(sprite, panelX, panelY, startY, _characterBuild.TotalAttack.ToString());
+            DrawDetailStatRow(sprite, panelX, panelY, startY + lineHeight, _characterBuild.TotalDefense.ToString());
+            DrawDetailStatRow(sprite, panelX, panelY, startY + lineHeight * 2, _characterBuild.TotalMagicAttack.ToString());
+            DrawDetailStatRow(sprite, panelX, panelY, startY + lineHeight * 3, _characterBuild.TotalMagicDefense.ToString());
+            DrawDetailStatRow(sprite, panelX, panelY, startY + lineHeight * 4, _characterBuild.TotalAccuracy.ToString());
+            DrawDetailStatRow(sprite, panelX, panelY, startY + lineHeight * 5, _characterBuild.TotalAvoidability.ToString());
+            DrawDetailStatRow(sprite, panelX, panelY, startY + lineHeight * 6, _characterBuild.TotalHands.ToString());
+            DrawDetailStatRow(sprite, panelX, panelY, startY + lineHeight * 7, $"{_characterBuild.TotalCriticalRate}%");
+            DrawDetailStatRow(sprite, panelX, panelY, startY + lineHeight * 8, $"{_characterBuild.TotalSpeed:F0}%");
+            DrawDetailStatRow(sprite, panelX, panelY, startY + lineHeight * 9, $"{_characterBuild.TotalJumpPower:F0}%");
         }
 
         /// <summary>

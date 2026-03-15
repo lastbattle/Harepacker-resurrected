@@ -25,6 +25,7 @@ namespace HaCreator.MapSimulator.Fields
         private readonly bool _partyOnly;
         private readonly bool _expeditionOnly;
         private readonly bool _consumeItemCoolTime;
+        private readonly Func<int, bool> _hasItem;
 
         private readonly HashSet<int> _announcedThresholds = new HashSet<int>();
         private int _enteredAt;
@@ -32,7 +33,7 @@ namespace HaCreator.MapSimulator.Fields
         private bool _initialized;
         private bool _timeExpired;
 
-        public FieldRuleRuntime(MapInfo mapInfo)
+        public FieldRuleRuntime(MapInfo mapInfo, Func<int, bool> hasItem = null)
         {
             _timeLimitSeconds = Math.Max(0, mapInfo?.timeLimit ?? 0);
             _transferMapId = ResolveTransferMapId(mapInfo);
@@ -47,6 +48,7 @@ namespace HaCreator.MapSimulator.Fields
             _partyOnly = mapInfo?.partyOnly == true;
             _expeditionOnly = mapInfo?.expeditionOnly == true;
             _consumeItemCoolTime = mapInfo?.consumeItemCoolTime == true;
+            _hasItem = hasItem;
         }
 
         public bool IsActive =>
@@ -121,8 +123,11 @@ namespace HaCreator.MapSimulator.Fields
 
             if (_decHp > 0 && playerAlive && !pendingMapChange && currentTimeMs >= _nextDamageAt)
             {
-                result.EnvironmentalDamage = _decHp;
-                result.TriggerDamageMist = true;
+                if (!HasProtectItemEquipped())
+                {
+                    result.EnvironmentalDamage = _decHp;
+                    result.TriggerDamageMist = true;
+                }
 
                 do
                 {
@@ -148,7 +153,8 @@ namespace HaCreator.MapSimulator.Fields
                 string intervalText = FormatInterval(_decIntervalMs);
                 if (_protectItems.Count > 0)
                 {
-                    messages.Add($"Environmental damage: {_decHp} HP every {intervalText}. Protect item IDs exist ({FormatItemPreview(_protectItems)}), but inventory protection is not modeled.");
+                    messages.Add(
+                        $"Environmental damage: {_decHp} HP every {intervalText}. Protect item IDs ({FormatItemPreview(_protectItems)}) suppress this damage while held.");
                 }
                 else
                 {
@@ -282,6 +288,24 @@ namespace HaCreator.MapSimulator.Fields
             List<int> ids = itemIds.Take(4).ToList();
             string suffix = itemIds.Skip(4).Any() ? ", ..." : string.Empty;
             return string.Join(", ", ids) + suffix;
+        }
+
+        private bool HasProtectItemEquipped()
+        {
+            if (_hasItem == null || _protectItems.Count == 0)
+            {
+                return false;
+            }
+
+            for (int i = 0; i < _protectItems.Count; i++)
+            {
+                if (_hasItem(_protectItems[i]))
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
     }
 

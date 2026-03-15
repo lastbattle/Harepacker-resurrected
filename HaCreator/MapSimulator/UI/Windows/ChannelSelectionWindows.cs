@@ -9,6 +9,68 @@ using System.Linq;
 
 namespace HaCreator.MapSimulator.UI
 {
+    public enum SelectorAvailability
+    {
+        Available = 0,
+        Busy = 1,
+        Full = 2,
+        Disabled = 3,
+    }
+
+    public sealed class WorldSelectionState
+    {
+        public WorldSelectionState(int worldId, int activeChannels, int totalChannels, int occupancyPercent, bool isSelectable)
+        {
+            WorldId = worldId;
+            ActiveChannels = Math.Max(0, activeChannels);
+            TotalChannels = Math.Max(0, totalChannels);
+            OccupancyPercent = Math.Clamp(occupancyPercent, 0, 100);
+            IsSelectable = isSelectable;
+        }
+
+        public int WorldId { get; }
+        public int ActiveChannels { get; }
+        public int TotalChannels { get; }
+        public int OccupancyPercent { get; }
+        public bool IsSelectable { get; }
+
+        public SelectorAvailability Availability => !IsSelectable
+            ? SelectorAvailability.Disabled
+            : OccupancyPercent >= 95
+                ? SelectorAvailability.Full
+                : OccupancyPercent >= 70
+                    ? SelectorAvailability.Busy
+                    : SelectorAvailability.Available;
+    }
+
+    public sealed class ChannelSelectionState
+    {
+        public ChannelSelectionState(int channelIndex, int userCount, int capacity, bool isSelectable)
+        {
+            ChannelIndex = Math.Max(0, channelIndex);
+            UserCount = Math.Max(0, userCount);
+            Capacity = Math.Max(0, capacity);
+            IsSelectable = isSelectable;
+        }
+
+        public int ChannelIndex { get; }
+        public int UserCount { get; }
+        public int Capacity { get; }
+        public bool IsSelectable { get; }
+
+        public int OccupancyPercent => Capacity <= 0
+            ? 0
+            : Math.Clamp((int)Math.Round((double)UserCount * 100d / Capacity), 0, 100);
+
+        public SelectorAvailability Availability => !IsSelectable
+            ? SelectorAvailability.Disabled
+            : OccupancyPercent >= 95
+                ? SelectorAvailability.Full
+                : OccupancyPercent >= 70
+                    ? SelectorAvailability.Busy
+                    : SelectorAvailability.Available;
+    }
+
     public sealed class WorldSelectWindow : UIWindowBase
     {
         private sealed class WorldButtonEntry
@@ -26,6 +88,7 @@ namespace HaCreator.MapSimulator.UI
         }
 
         private readonly List<WorldButtonEntry> _worldButtons = new List<WorldButtonEntry>();
+        private readonly Dictionary<int, WorldSelectionState> _worldStates = new Dictionary<int, WorldSelectionState>();
         private readonly Texture2D _highlightTexture;
         private SpriteFont _font;
         private int _currentWorldId;
@@ -61,15 +124,29 @@ namespace HaCreator.MapSimulator.UI
 
         public event Action<int> WorldSelected;
 
+        public IReadOnlyList<int> WorldIds => _worldButtons.Select(entry => entry.WorldId).ToArray();
+
         public override void SetFont(SpriteFont font)
         {
             _font = font;
         }
 
-        public void SetCurrentWorld(int worldId)
+        public void Configure(IReadOnlyDictionary<int, WorldSelectionState> worldStates, int currentWorldId)
         {
-            _currentWorldId = worldId;
-            _selectedWorldId = worldId;
+            _worldStates.Clear();
+            if (worldStates != null)
+            {
+                foreach (KeyValuePair<int, WorldSelectionState> pair in worldStates)
+                {
+                    if (pair.Value != null)
+                    {
+                        _worldStates[pair.Key] = pair.Value;
+                    }
+                }
+            }
+
+            _currentWorldId = currentWorldId;
+            _selectedWorldId = currentWorldId;
             UpdateButtonStates();
         }
 
@@ -93,11 +170,7 @@ namespace HaCreator.MapSimulator.UI
                     entry.Button.CanvasSnapshotWidth + 12,
                     entry.Button.CanvasSnapshotHeight + 8);
 
-                Color fillColor = entry.WorldId == _selectedWorldId
-                    ? new Color(88, 126, 210, 180)
-                    : entry.WorldId == _currentWorldId
-                        ? new Color(70, 88, 120, 150)
-                        : new Color(28, 34, 46, 120);
+                Color fillColor = GetWorldFillColor(entry.WorldId);
                 sprite.Draw(_highlightTexture, rect, fillColor);
             }
 
@@ -112,25 +185,82 @@ namespace HaCreator.MapSimulator.UI
                 "Select World",
                 new Vector2(Position.X + 18, Position.Y + 14),
                 Color.White);
+
+            if (_worldStates.TryGetValue(_selectedWorldId, out WorldSelectionState selectedState))
+            {
+                SelectorWindowDrawing.DrawShadowedText(
+                    sprite,
+                    _font,
+                    $"Available channels: {selectedState.ActiveChannels}/{selectedState.TotalChannels}",
+                    new Vector2(Position.X + 18, Position.Y + 142),
+                    new Color(220, 220, 220));
+                SelectorWindowDrawing.DrawShadowedText(
+                    sprite,
+                    _font,
+                    $"Load: {selectedState.OccupancyPercent}% ({selectedState.Availability})",
+                    new Vector2(Position.X + 18, Position.Y + 158),
+                    SelectorWindowDrawing.GetAvailabilityColor(selectedState.Availability));
+            }
+
             SelectorWindowDrawing.DrawShadowedText(
                 sprite,
                 _font,
                 $"Current world: {_currentWorldId}",
-                new Vector2(Position.X + 18, Position.Y + 174),
+                new Vector2(Position.X + 18, Position.Y + 126),
                 new Color(220, 220, 220));
         }
 
         private void SelectWorld(int worldId)
         {
+            if (_worldStates.TryGetValue(worldId, out WorldSelectionState state) && !state.IsSelectable)
+            {
+                return;
+            }
+
             _selectedWorldId = worldId;
             UpdateButtonStates();
             WorldSelected?.Invoke(worldId);
+        }
+
+        private Color GetWorldFillColor(int worldId)
+        {
+            SelectorAvailability availability = _worldStates.TryGetValue(worldId, out WorldSelectionState state)
+                ? state.Availability
+                : SelectorAvailability.Disabled;
+
+            if (worldId == _selectedWorldId)
+            {
+                return availability switch
+                {
+                    SelectorAvailability.Disabled => new Color(92, 92, 92, 170),
+                    SelectorAvailability.Full => new Color(170, 76, 76, 180),
+                    SelectorAvailability.Busy => new Color(176, 134, 66, 180),
+                    _ => new Color(88, 126, 210, 180),
+                };
+            }
+
+            if (worldId == _currentWorldId)
+            {
+                return availability == SelectorAvailability.Disabled
+                    ? new Color(82, 82, 82, 150)
+                    : new Color(70, 88, 120, 150);
+            }
+
+            return availability switch
+            {
+                SelectorAvailability.Disabled => new Color(38, 38, 38, 100),
+                SelectorAvailability.Full => new Color(82, 48, 48, 120),
+                SelectorAvailability.Busy => new Color(82, 70, 44, 120),
+                _ => new Color(28, 34, 46, 120),
+            };
         }
 
         private void UpdateButtonStates()
         {
             foreach (WorldButtonEntry entry in _worldButtons)
             {
+                bool isSelectable = !_worldStates.TryGetValue(entry.WorldId, out WorldSelectionState state) || state.IsSelectable;
+                entry.Button.SetEnabled(isSelectable);
                 entry.Button.SetButtonState(entry.WorldId == _selectedWorldId
                     ? UIObjectState.Pressed
                     : UIObjectState.Normal);
@@ -162,6 +292,7 @@ namespace HaCreator.MapSimulator.UI
         private readonly UIObject _changeButton;
         private readonly UIObject _cancelButton;
         private readonly List<ChannelButtonEntry> _channelButtons = new List<ChannelButtonEntry>();
+        private readonly Dictionary<int, ChannelSelectionState> _channelStates = new Dictionary<int, ChannelSelectionState>();
         private readonly Dictionary<int, Texture2D> _worldBadges;
         private SpriteFont _font;
         private int _selectedWorldId;
@@ -169,6 +300,7 @@ namespace HaCreator.MapSimulator.UI
         private int _currentChannelIndex;
         private int _selectedChannelIndex;
         private int _channelCount;
+        private bool _requestAllowed = true;
 
         public ChannelSelectWindow(
             IDXObject frame,
@@ -233,16 +365,34 @@ namespace HaCreator.MapSimulator.UI
             _font = font;
         }
 
-        public void Configure(int selectedWorldId, int currentWorldId, int currentChannelIndex, int channelCount)
+        public void Configure(
+            int selectedWorldId,
+            int currentWorldId,
+            int currentChannelIndex,
+            IReadOnlyList<ChannelSelectionState> channelStates,
+            bool requestAllowed = true)
         {
+            _channelStates.Clear();
+            if (channelStates != null)
+            {
+                foreach (ChannelSelectionState state in channelStates)
+                {
+                    if (state != null && !_channelStates.ContainsKey(state.ChannelIndex))
+                    {
+                        _channelStates.Add(state.ChannelIndex, state);
+                    }
+                }
+            }
+
             _selectedWorldId = selectedWorldId;
             _currentWorldId = currentWorldId;
             _currentChannelIndex = Math.Max(0, currentChannelIndex);
-            _channelCount = Math.Max(0, Math.Min(channelCount, _channelButtons.Count));
+            _channelCount = Math.Max(0, Math.Min(_channelStates.Count, _channelButtons.Count));
+            _requestAllowed = requestAllowed;
 
             _selectedChannelIndex = _selectedWorldId == _currentWorldId
                 ? Math.Min(_currentChannelIndex, Math.Max(0, _channelCount - 1))
-                : 0;
+                : FindFirstSelectableChannel();
 
             UpdateButtonStates();
         }
@@ -321,6 +471,43 @@ namespace HaCreator.MapSimulator.UI
                 $"Current: Channel {_currentChannelIndex + 1}",
                 new Vector2(Position.X + 104, Position.Y + 42),
                 new Color(220, 220, 220));
+
+            if (_channelStates.TryGetValue(_selectedChannelIndex, out ChannelSelectionState selectedState))
+            {
+                SelectorWindowDrawing.DrawShadowedText(
+                    sprite,
+                    _font,
+                    $"Users: {selectedState.UserCount}/{selectedState.Capacity}",
+                    new Vector2(Position.X + 104, Position.Y + 58),
+                    new Color(220, 220, 220));
+                SelectorWindowDrawing.DrawShadowedText(
+                    sprite,
+                    _font,
+                    $"Load: {selectedState.OccupancyPercent}% ({selectedState.Availability})",
+                    new Vector2(Position.X + 104, Position.Y + 74),
+                    SelectorWindowDrawing.GetAvailabilityColor(selectedState.Availability));
+            }
+
+            foreach (ChannelButtonEntry entry in _channelButtons)
+            {
+                if (!entry.Button.ButtonVisible || !_channelStates.TryGetValue(entry.ChannelIndex, out ChannelSelectionState state))
+                {
+                    continue;
+                }
+
+                Rectangle gaugeBounds = new Rectangle(
+                    Position.X + entry.Button.X + 30,
+                    Position.Y + entry.Button.Y + 8,
+                    28,
+                    4);
+                sprite.Draw(_highlightTexture, gaugeBounds, new Color(28, 34, 46, 180));
+
+                int fillWidth = Math.Max(1, (int)Math.Round(gaugeBounds.Width * (state.OccupancyPercent / 100f)));
+                sprite.Draw(
+                    _highlightTexture,
+                    new Rectangle(gaugeBounds.X, gaugeBounds.Y, fillWidth, gaugeBounds.Height),
+                    SelectorWindowDrawing.GetAvailabilityColor(state.Availability));
+            }
         }
 
         protected override void DrawOverlay(
@@ -361,19 +548,50 @@ namespace HaCreator.MapSimulator.UI
                         new Vector2(Position.X + entry.Button.X + 32, Position.Y + entry.Button.Y + 2),
                         new Color(255, 228, 151));
                 }
+                else if (_channelStates.TryGetValue(entry.ChannelIndex, out ChannelSelectionState state) &&
+                         state.Availability != SelectorAvailability.Available)
+                {
+                    SelectorWindowDrawing.DrawShadowedText(
+                        sprite,
+                        _font,
+                        state.Availability.ToString(),
+                        new Vector2(Position.X + entry.Button.X + 29, Position.Y + entry.Button.Y + 1),
+                        SelectorWindowDrawing.GetAvailabilityColor(state.Availability));
+                }
             }
         }
 
         private void SelectChannel(int channelIndex)
         {
+            if (_channelStates.TryGetValue(channelIndex, out ChannelSelectionState state) && !state.IsSelectable)
+            {
+                return;
+            }
+
             _selectedChannelIndex = channelIndex;
             UpdateButtonStates();
         }
 
+        private int FindFirstSelectableChannel()
+        {
+            foreach (ChannelButtonEntry entry in _channelButtons.OrderBy(button => button.ChannelIndex))
+            {
+                if (_channelStates.TryGetValue(entry.ChannelIndex, out ChannelSelectionState state) && state.IsSelectable)
+                {
+                    return entry.ChannelIndex;
+                }
+            }
+
+            return 0;
+        }
+
         private bool CanApplySelection()
         {
-            return _selectedChannelIndex >= 0 &&
+            return _requestAllowed &&
+                   _selectedChannelIndex >= 0 &&
                    _selectedChannelIndex < _channelCount &&
+                   _channelStates.TryGetValue(_selectedChannelIndex, out ChannelSelectionState state) &&
+                   state.IsSelectable &&
                    (_selectedWorldId != _currentWorldId || _selectedChannelIndex != _currentChannelIndex);
         }
 
@@ -381,9 +599,11 @@ namespace HaCreator.MapSimulator.UI
         {
             foreach (ChannelButtonEntry entry in _channelButtons)
             {
-                bool visible = entry.ChannelIndex < _channelCount;
+                bool hasState = _channelStates.TryGetValue(entry.ChannelIndex, out ChannelSelectionState state);
+                bool visible = hasState && state.Capacity > 0;
+                bool isSelectable = visible && state.IsSelectable;
                 entry.Button.SetVisible(visible);
-                entry.Button.SetEnabled(visible);
+                entry.Button.SetEnabled(isSelectable);
                 entry.Button.SetButtonState(entry.ChannelIndex == _selectedChannelIndex
                     ? UIObjectState.Pressed
                     : UIObjectState.Normal);
@@ -517,6 +737,17 @@ namespace HaCreator.MapSimulator.UI
 
             sprite.DrawString(font, text, position + Vector2.One, Color.Black);
             sprite.DrawString(font, text, position, color);
+        }
+
+        public static Color GetAvailabilityColor(SelectorAvailability availability)
+        {
+            return availability switch
+            {
+                SelectorAvailability.Disabled => new Color(140, 140, 140),
+                SelectorAvailability.Full => new Color(236, 105, 105),
+                SelectorAvailability.Busy => new Color(255, 204, 107),
+                _ => new Color(145, 232, 145),
+            };
         }
     }
 }

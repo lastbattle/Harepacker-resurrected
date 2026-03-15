@@ -33,6 +33,9 @@ namespace HaCreator.MapSimulator.Entities
         private bool _isPlayingOneShot = false; // Track if playing a one-shot animation (jump, death, hit)
         private bool _escortFollowActive;
         private bool _baseUsePlatformBounds;
+        private int _lastAngerChargeCount = -1;
+        private int _angerGaugeLoopStartTick;
+        private int _angerGaugeEffectStartTick = int.MinValue;
 
         // Cached mirror boundary (optimization - avoid recalculating every frame)
         private readonly CachedBoundaryChecker _boundaryChecker = new CachedBoundaryChecker();
@@ -548,6 +551,7 @@ namespace HaCreator.MapSimulator.Entities
                     mobData.SelfDestruction?.Action ?? -1,
                     mobData.SelfDestruction?.RemoveAfter > 0 ? mobData.SelfDestruction.RemoveAfter * 1000 : -1,
                     mobData.RemoveAfter > 0 ? mobData.RemoveAfter * 1000 : -1);
+                AI.ConfigureAngerGauge(mobData.HasAngerGauge, mobData.ChargeCount);
 
                 // Set aggro range based on mob level/boss status
                 if (isBoss)
@@ -683,7 +687,8 @@ namespace HaCreator.MapSimulator.Entities
                     StartOffset = attackInfo?.StartOffset ?? 0,
                     IsRushAttack = isRushAttack,
                     IsJumpAttack = isJumpAttack,
-                    Tremble = tremble
+                    Tremble = tremble,
+                    IsAngerAttack = attackInfo?.IsAngerAttack == true
                 });
             }
 
@@ -981,6 +986,7 @@ namespace HaCreator.MapSimulator.Entities
             if (AIEnabled && AI != null)
             {
                 AI.Update(tickCount, MovementInfo.X, MovementInfo.Y, playerX, playerY);
+                UpdateAngerGaugeVisualState(tickCount);
 
                 bool isPerformingAction = AI.State == MobAIState.Attack || AI.State == MobAIState.Skill;
 
@@ -1290,7 +1296,144 @@ namespace HaCreator.MapSimulator.Entities
                 return new Color(220, 220, 220) * pulse;
             }
 
+            if (AI.HasStatusEffect(MobStatusEffect.Showdown) || AI.HasStatusEffect(MobStatusEffect.SealSkill))
+            {
+                return new Color(255, 235, 150) * pulse;
+            }
+
             return Color.White;
+        }
+
+        private void UpdateAngerGaugeVisualState(int tickCount)
+        {
+            if (AI?.HasAngerGauge != true)
+            {
+                _lastAngerChargeCount = -1;
+                _angerGaugeEffectStartTick = int.MinValue;
+                return;
+            }
+
+            int currentChargeCount = AI.AngerChargeCount;
+            if (currentChargeCount == _lastAngerChargeCount)
+            {
+                return;
+            }
+
+            _angerGaugeLoopStartTick = tickCount;
+            if (currentChargeCount >= AI.AngerChargeTarget &&
+                _lastAngerChargeCount >= 0 &&
+                currentChargeCount > _lastAngerChargeCount)
+            {
+                _angerGaugeEffectStartTick = tickCount;
+            }
+
+            _lastAngerChargeCount = currentChargeCount;
+        }
+
+        private static IDXObject GetTimedAnimationFrame(IReadOnlyList<IDXObject> frames, int tickCount, int startTick, bool loop)
+        {
+            if (frames == null || frames.Count == 0)
+            {
+                return null;
+            }
+
+            if (frames.Count == 1)
+            {
+                return frames[0];
+            }
+
+            int elapsed = Math.Max(0, unchecked(tickCount - startTick));
+            int totalDuration = 0;
+            for (int i = 0; i < frames.Count; i++)
+            {
+                totalDuration += Math.Max(10, frames[i]?.Delay ?? 100);
+            }
+
+            if (totalDuration <= 0)
+            {
+                return frames[0];
+            }
+
+            if (loop)
+            {
+                elapsed %= totalDuration;
+            }
+            else if (elapsed >= totalDuration)
+            {
+                return null;
+            }
+
+            int cursor = 0;
+            for (int i = 0; i < frames.Count; i++)
+            {
+                cursor += Math.Max(10, frames[i]?.Delay ?? 100);
+                if (elapsed < cursor)
+                {
+                    return frames[i];
+                }
+            }
+
+            return loop ? frames[frames.Count - 1] : null;
+        }
+
+        private IDXObject GetCurrentAngerGaugeAnimationFrame(int tickCount)
+        {
+            if (AI?.HasAngerGauge != true || AI.AngerChargeCount <= 0)
+            {
+                return null;
+            }
+
+            int stageIndex = Math.Clamp(AI.AngerChargeCount - 1, 0, Math.Max(0, AI.AngerChargeTarget - 1));
+            List<IDXObject> frames = _animationSet.GetAngerGaugeAnimation(stageIndex);
+            return GetTimedAnimationFrame(frames, tickCount, _angerGaugeLoopStartTick, loop: true);
+        }
+
+        private IDXObject GetCurrentAngerGaugeEffectFrame(int tickCount)
+        {
+            if (_angerGaugeEffectStartTick == int.MinValue)
+            {
+                return null;
+            }
+
+            IDXObject frame = GetTimedAnimationFrame(_animationSet.GetAngerGaugeEffect(), tickCount, _angerGaugeEffectStartTick, loop: false);
+            if (frame == null)
+            {
+                _angerGaugeEffectStartTick = int.MinValue;
+            }
+
+            return frame;
+        }
+
+        private static void DrawOverlayFrame(
+            IDXObject frame,
+            SpriteBatch sprite,
+            SkeletonMeshRenderer skeletonMeshRenderer,
+            GameTime gameTime,
+            int adjustedShiftX,
+            int shiftCenteredY,
+            bool flip,
+            float alpha)
+        {
+            if (frame == null)
+            {
+                return;
+            }
+
+            if (alpha < 1f)
+            {
+                frame.DrawBackground(
+                    sprite,
+                    skeletonMeshRenderer,
+                    gameTime,
+                    frame.X - adjustedShiftX,
+                    frame.Y - shiftCenteredY,
+                    Color.White * alpha,
+                    flip,
+                    null);
+                return;
+            }
+
+            frame.DrawObject(sprite, skeletonMeshRenderer, gameTime, adjustedShiftX, shiftCenteredY, flip, null);
         }
 
         public override void Draw(SpriteBatch sprite, SkeletonMeshRenderer skeletonMeshRenderer, GameTime gameTime,
@@ -1365,6 +1508,12 @@ namespace HaCreator.MapSimulator.Entities
                             flip,
                             drawReflectionInfo);
                     }
+
+                    IDXObject angerGaugeFrame = GetCurrentAngerGaugeAnimationFrame(TickCount);
+                    DrawOverlayFrame(angerGaugeFrame, sprite, skeletonMeshRenderer, gameTime, adjustedShiftX, shiftCenteredY, flip, spawnAlpha);
+
+                    IDXObject angerEffectFrame = GetCurrentAngerGaugeEffectFrame(TickCount);
+                    DrawOverlayFrame(angerEffectFrame, sprite, skeletonMeshRenderer, gameTime, adjustedShiftX, shiftCenteredY, flip, spawnAlpha);
                 }
             }
 

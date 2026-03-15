@@ -54,6 +54,7 @@ namespace HaCreator.MapSimulator.UI
         private const int BONUS_X = 65;
         private const int ROW_BG_X = 10;
         private const int ROW_BG_Y_OFFSET = -19;
+        private const int RECOMMEND_X = 47;
         private const int LINE_X = 10;
         private const int LINE_Y_OFFSET = 18;
         private const int SP_UP_BUTTON_X = 135;
@@ -155,6 +156,8 @@ namespace HaCreator.MapSimulator.UI
 
         // Macro button
         private UIObject _btnMacro;
+        private readonly UIObject[] _aranGuideButtons = new UIObject[4];
+        private int _aranGuideUnlockedGrade;
 
         /// <summary>
         /// Gets the macro button for external event wiring
@@ -199,6 +202,7 @@ namespace HaCreator.MapSimulator.UI
         public Action<int> OnSkillInvoked { get; set; }
         public Action<SkillDisplayData> OnSkillSelected { get; set; }
         public Func<SkillDisplayData, bool> OnSkillLevelUpRequested { get; set; }
+        public Action<int> OnSkillGuideRequested { get; set; }
         public bool IsDraggingSkill => _isDraggingSkill;
         public int DraggedSkillId => _isDraggingSkill ? _dragSkillId : 0;
         public Vector2 DragPosition => _dragPosition;
@@ -466,6 +470,42 @@ namespace HaCreator.MapSimulator.UI
             }
         }
 
+        public void InitializeAranGuideButtons(UIObject[] buttons)
+        {
+            if (buttons == null)
+                return;
+
+            for (int i = 0; i < _aranGuideButtons.Length && i < buttons.Length; i++)
+            {
+                UIObject button = buttons[i];
+                _aranGuideButtons[i] = button;
+                if (button == null)
+                    continue;
+
+                int grade = i + 1;
+                button.ButtonClickReleased += sender => OnSkillGuideRequested?.Invoke(grade);
+                AddButton(button);
+            }
+
+            ConfigureAranGuideButtons(0);
+        }
+
+        public void ConfigureAranGuideButtons(int unlockedGrade)
+        {
+            _aranGuideUnlockedGrade = Math.Clamp(unlockedGrade, 0, _aranGuideButtons.Length);
+            bool anyVisible = _aranGuideUnlockedGrade > 0;
+
+            for (int i = 0; i < _aranGuideButtons.Length; i++)
+            {
+                UIObject button = _aranGuideButtons[i];
+                if (button == null)
+                    continue;
+
+                button.SetVisible(anyVisible);
+                button.SetEnabled(anyVisible && i < _aranGuideUnlockedGrade);
+            }
+        }
+
         /// <summary>
         /// Set the font for rendering skill names and levels
         /// </summary>
@@ -640,7 +680,7 @@ namespace HaCreator.MapSimulator.UI
 
             if (isRecommended && _recommendTexture != null)
             {
-                sprite.Draw(_recommendTexture, new Vector2(windowX + ROW_BG_X, windowY + nTop + ROW_BG_Y_OFFSET), Color.White);
+                sprite.Draw(_recommendTexture, new Vector2(windowX + RECOMMEND_X, windowY + nTop + ROW_BG_Y_OFFSET), Color.White);
             }
 
             if (isSelected)
@@ -1267,8 +1307,7 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
-            int splitIndex = jobName.LastIndexOf(' ');
-            if (splitIndex <= 0 || splitIndex >= jobName.Length - 1)
+            if (!TryResolveBookNameSplit(jobName, out string firstLine, out string secondLine))
             {
                 sprite.DrawString(
                     _font,
@@ -1280,14 +1319,49 @@ namespace HaCreator.MapSimulator.UI
 
             sprite.DrawString(
                 _font,
-                jobName.Substring(0, splitIndex),
+                firstLine,
                 new Vector2(windowX + BOOK_NAME_MULTI_LINE_X, windowY + BOOK_NAME_MULTI_LINE_FIRST_Y),
                 Color.Black);
             sprite.DrawString(
                 _font,
-                jobName.Substring(splitIndex + 1),
-                    new Vector2(windowX + BOOK_NAME_MULTI_LINE_X, windowY + BOOK_NAME_MULTI_LINE_SECOND_Y),
-                    Color.Black);
+                secondLine,
+                new Vector2(windowX + BOOK_NAME_MULTI_LINE_X, windowY + BOOK_NAME_MULTI_LINE_SECOND_Y),
+                Color.Black);
+        }
+
+        private bool TryResolveBookNameSplit(string jobName, out string firstLine, out string secondLine)
+        {
+            firstLine = string.Empty;
+            secondLine = string.Empty;
+
+            if (string.IsNullOrWhiteSpace(jobName))
+                return false;
+
+            int splitIndex = jobName.IndexOf(' ', Math.Min(10, Math.Max(0, jobName.Length - 1)));
+            if (splitIndex <= 0 || splitIndex >= jobName.Length - 1)
+            {
+                splitIndex = jobName.LastIndexOf(' ');
+            }
+
+            if (splitIndex <= 0 || splitIndex >= jobName.Length - 1)
+                return false;
+
+            while (splitIndex > 0 && splitIndex < jobName.Length - 1)
+            {
+                string candidateSecondLine = jobName.Substring(splitIndex + 1);
+                if (_font.MeasureString(candidateSecondLine).X <= BOOK_NAME_MAX_WIDTH)
+                    break;
+
+                int nextSplit = jobName.IndexOf(' ', splitIndex + 1);
+                if (nextSplit <= splitIndex || nextSplit >= jobName.Length - 1)
+                    break;
+
+                splitIndex = nextSplit;
+            }
+
+            firstLine = jobName.Substring(0, splitIndex);
+            secondLine = jobName.Substring(splitIndex + 1);
+            return !string.IsNullOrWhiteSpace(firstLine) && !string.IsNullOrWhiteSpace(secondLine);
         }
 
         private static string SanitizeFontText(string text)
@@ -1520,6 +1594,19 @@ namespace HaCreator.MapSimulator.UI
             if (skillPointsByTab.TryGetValue(_currentTab, out int points))
                 return points;
             return 0;
+        }
+
+        public bool HasAvailableSkillPoints()
+        {
+            foreach (KeyValuePair<int, int> entry in skillPointsByTab)
+            {
+                if (entry.Value > 0)
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         private bool CanLevelUp(SkillDisplayData skill, int availableSp)

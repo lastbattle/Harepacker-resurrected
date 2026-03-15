@@ -17,9 +17,10 @@ namespace HaCreator.MapSimulator.UI
     {
         private const int QUEST_ENTRY_HEIGHT = 24;
         private const int VISIBLE_QUESTS = 7;
-        private const int TAB_IN_PROGRESS = 0;
-        private const int TAB_COMPLETED = 1;
-        private const int TAB_AVAILABLE = 2;
+        private const int TAB_AVAILABLE = 0;
+        private const int TAB_IN_PROGRESS = 1;
+        private const int TAB_COMPLETED = 2;
+        private const int TAB_RECOMMENDED = 3;
         private const float TEXT_SCALE = 0.58f;
         private const float SMALL_TEXT_SCALE = 0.5f;
 
@@ -34,9 +35,12 @@ namespace HaCreator.MapSimulator.UI
         private int _scrollOffset;
         private int _selectedQuestId = -1;
         private bool _showAllLevels;
+        private UIObject _tabAvailable;
         private UIObject _tabInProgress;
         private UIObject _tabCompleted;
-        private UIObject _tabAvailable;
+        private UIObject _tabRecommended;
+        private UIObject _myLevelButton;
+        private UIObject _allLevelButton;
         private readonly Dictionary<int, List<QuestDisplayData>> _questsByTab;
         private Texture2D _selectionHighlight;
         private Texture2D _iconAvailable;
@@ -56,7 +60,7 @@ namespace HaCreator.MapSimulator.UI
             get => _currentTab;
             set
             {
-                if (value < TAB_IN_PROGRESS || value > TAB_AVAILABLE)
+                if (value < TAB_AVAILABLE || value > TAB_RECOMMENDED)
                 {
                     return;
                 }
@@ -75,9 +79,10 @@ namespace HaCreator.MapSimulator.UI
         {
             _questsByTab = new Dictionary<int, List<QuestDisplayData>>
             {
+                { TAB_AVAILABLE, new List<QuestDisplayData>() },
                 { TAB_IN_PROGRESS, new List<QuestDisplayData>() },
                 { TAB_COMPLETED, new List<QuestDisplayData>() },
-                { TAB_AVAILABLE, new List<QuestDisplayData>() }
+                { TAB_RECOMMENDED, new List<QuestDisplayData>() }
             };
 
             _selectionHighlight = new Texture2D(device, 1, 1);
@@ -87,11 +92,18 @@ namespace HaCreator.MapSimulator.UI
             _pixel.SetData(new[] { Color.White });
         }
 
-        public void InitializeTabs(UIObject inProgressTab, UIObject completedTab, UIObject availableTab)
+        public void InitializeTabs(UIObject availableTab, UIObject inProgressTab, UIObject completedTab, UIObject recommendedTab)
         {
+            _tabAvailable = availableTab;
             _tabInProgress = inProgressTab;
             _tabCompleted = completedTab;
-            _tabAvailable = availableTab;
+            _tabRecommended = recommendedTab;
+
+            if (availableTab != null)
+            {
+                AddButton(availableTab);
+                availableTab.ButtonClickReleased += sender => CurrentTab = TAB_AVAILABLE;
+            }
 
             if (inProgressTab != null)
             {
@@ -105,10 +117,40 @@ namespace HaCreator.MapSimulator.UI
                 completedTab.ButtonClickReleased += sender => CurrentTab = TAB_COMPLETED;
             }
 
-            if (availableTab != null)
+            if (recommendedTab != null)
             {
-                AddButton(availableTab);
-                availableTab.ButtonClickReleased += sender => CurrentTab = TAB_AVAILABLE;
+                AddButton(recommendedTab);
+                recommendedTab.ButtonClickReleased += sender => CurrentTab = TAB_RECOMMENDED;
+            }
+
+            UpdateTabStates();
+        }
+
+        public void InitializeLevelFilterButtons(UIObject myLevelButton, UIObject allLevelButton)
+        {
+            _myLevelButton = myLevelButton;
+            _allLevelButton = allLevelButton;
+
+            if (myLevelButton != null)
+            {
+                AddButton(myLevelButton);
+                myLevelButton.ButtonClickReleased += _ =>
+                {
+                    _showAllLevels = false;
+                    _scrollOffset = 0;
+                    _selectedQuestId = -1;
+                };
+            }
+
+            if (allLevelButton != null)
+            {
+                AddButton(allLevelButton);
+                allLevelButton.ButtonClickReleased += _ =>
+                {
+                    _showAllLevels = true;
+                    _scrollOffset = 0;
+                    _selectedQuestId = -1;
+                };
             }
 
             UpdateTabStates();
@@ -169,9 +211,23 @@ namespace HaCreator.MapSimulator.UI
 
         private void UpdateTabStates()
         {
+            _tabAvailable?.SetButtonState(_currentTab == TAB_AVAILABLE ? UIObjectState.Pressed : UIObjectState.Normal);
             _tabInProgress?.SetButtonState(_currentTab == TAB_IN_PROGRESS ? UIObjectState.Pressed : UIObjectState.Normal);
             _tabCompleted?.SetButtonState(_currentTab == TAB_COMPLETED ? UIObjectState.Pressed : UIObjectState.Normal);
-            _tabAvailable?.SetButtonState(_currentTab == TAB_AVAILABLE ? UIObjectState.Pressed : UIObjectState.Normal);
+            _tabRecommended?.SetButtonState(_currentTab == TAB_RECOMMENDED ? UIObjectState.Pressed : UIObjectState.Normal);
+
+            bool showLevelButtons = _currentTab == TAB_AVAILABLE;
+            if (_myLevelButton != null)
+            {
+                _myLevelButton.SetVisible(showLevelButtons);
+                _myLevelButton.SetButtonState(!_showAllLevels ? UIObjectState.Pressed : UIObjectState.Normal);
+            }
+
+            if (_allLevelButton != null)
+            {
+                _allLevelButton.SetVisible(showLevelButtons);
+                _allLevelButton.SetButtonState(_showAllLevels ? UIObjectState.Pressed : UIObjectState.Normal);
+            }
         }
 
         protected override void DrawContents(SpriteBatch sprite, SkeletonMeshRenderer skeletonMeshRenderer, GameTime gameTime,
@@ -199,9 +255,14 @@ namespace HaCreator.MapSimulator.UI
 
         private void DrawTabs(SpriteBatch sprite, Rectangle tabRect)
         {
-            string[] labels = { "In Progress", "Completed", "Available" };
-            int tabWidth = (tabRect.Width - 8) / 3;
-            for (int i = 0; i < 3; i++)
+            if (HasClientTabButtons())
+            {
+                return;
+            }
+
+            string[] labels = { "Available", "In Progress", "Completed", "Recommended" };
+            int tabWidth = (tabRect.Width - 12) / 4;
+            for (int i = 0; i < 4; i++)
             {
                 Rectangle rect = new Rectangle(tabRect.X + (i * tabWidth), tabRect.Y, tabWidth - 2, tabRect.Height);
                 Color fill = i == _currentTab ? new Color(59, 105, 160, 210) : new Color(42, 55, 74, 190);
@@ -209,7 +270,7 @@ namespace HaCreator.MapSimulator.UI
                 DrawText(sprite, labels[i], new Vector2(rect.X + 6, rect.Y + 4), Color.White, SMALL_TEXT_SCALE);
             }
 
-            if (_currentTab != TAB_AVAILABLE)
+            if (_currentTab != TAB_AVAILABLE || HasClientLevelButtons())
             {
                 return;
             }
@@ -431,18 +492,21 @@ namespace HaCreator.MapSimulator.UI
         private void HandleClick(int mouseX, int mouseY, QuestLogSnapshot snapshot)
         {
             Rectangle tabRect = GetTabArea();
-            int tabWidth = (tabRect.Width - 8) / 3;
-            for (int i = 0; i < 3; i++)
+            if (!HasClientTabButtons())
             {
-                Rectangle rect = new Rectangle(tabRect.X + (i * tabWidth), tabRect.Y, tabWidth - 2, tabRect.Height);
-                if (rect.Contains(mouseX, mouseY))
+                int tabWidth = (tabRect.Width - 12) / 4;
+                for (int i = 0; i < 4; i++)
                 {
-                    CurrentTab = i;
-                    return;
+                    Rectangle rect = new Rectangle(tabRect.X + (i * tabWidth), tabRect.Y, tabWidth - 2, tabRect.Height);
+                    if (rect.Contains(mouseX, mouseY))
+                    {
+                        CurrentTab = i;
+                        return;
+                    }
                 }
             }
 
-            if (_currentTab == TAB_AVAILABLE)
+            if (_currentTab == TAB_AVAILABLE && !HasClientLevelButtons())
             {
                 Rectangle myLevelRect = GetMyLevelButtonArea(tabRect);
                 Rectangle allLevelRect = GetAllLevelButtonArea(tabRect);
@@ -497,6 +561,16 @@ namespace HaCreator.MapSimulator.UI
         {
             int top = Position.Y + (_currentTab == TAB_AVAILABLE ? 66 : 48);
             return new Rectangle(Position.X + 8, top, (CurrentFrame?.Width ?? 240) - 16, VISIBLE_QUESTS * QUEST_ENTRY_HEIGHT + 8);
+        }
+
+        private bool HasClientTabButtons()
+        {
+            return _tabAvailable != null || _tabInProgress != null || _tabCompleted != null || _tabRecommended != null;
+        }
+
+        private bool HasClientLevelButtons()
+        {
+            return _myLevelButton != null || _allLevelButton != null;
         }
 
         private Rectangle GetDetailArea(Rectangle listRect)

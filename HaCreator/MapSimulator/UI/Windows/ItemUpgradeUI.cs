@@ -1,6 +1,7 @@
 using HaCreator.MapSimulator.Character;
 using HaSharedLibrary.Render;
 using HaSharedLibrary.Render.DX;
+using MapleLib.WzLib.WzStructure.Data.ItemStructure;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using Spine;
@@ -28,12 +29,14 @@ namespace HaCreator.MapSimulator.UI
         private const int CancelButtonX = 104;
         private const int CancelButtonY = 180;
         private const int StatusTextX = 15;
-        private const int StatusTextY = 134;
+        private const int StatusTextY = 157;
         private const int DetailTextX = 16;
         private const int DetailTextY = 97;
         private const int DetailLineGap = 15;
         private const int GaugeInsetX = 8;
         private const int GaugeInsetY = 4;
+        private const int EquipEnhancementScrollId = 2049301;
+        private const int AdvancedEnhancementScrollId = 2049300;
 
         private readonly Random _random = new Random();
         private readonly Dictionary<EquipSlot, UpgradeState> _upgradeStates = new Dictionary<EquipSlot, UpgradeState>();
@@ -51,6 +54,7 @@ namespace HaCreator.MapSimulator.UI
         private UIObject _prevButton;
         private UIObject _nextButton;
         private CharacterBuild _characterBuild;
+        private IInventoryRuntime _inventory;
         private int _selectedIndex;
         private string _statusMessage = "Select equipment and begin enhancement.";
         private bool? _lastUpgradeSucceeded;
@@ -75,6 +79,12 @@ namespace HaCreator.MapSimulator.UI
         public override void SetFont(SpriteFont font)
         {
             _font = font;
+        }
+
+        public void SetInventory(IInventoryRuntime inventory)
+        {
+            _inventory = inventory;
+            UpdateButtonStates();
         }
 
         public void SetDecorations(Texture2D backgroundOverlay, Point backgroundOverlayOffset, Texture2D headerOverlay, Point headerOverlayOffset)
@@ -176,14 +186,15 @@ namespace HaCreator.MapSimulator.UI
             IReadOnlyList<KeyValuePair<EquipSlot, CharacterPart>> candidates = GetCandidates();
             if (candidates.Count == 0)
             {
-                DrawShadowedText(sprite, "No equipped items available.", new Vector2(windowX + DetailTextX, windowY + DetailTextY), Color.White);
-                DrawShadowedText(sprite, "Equip gear in the equipment window first.", new Vector2(windowX + DetailTextX, windowY + DetailTextY + DetailLineGap), new Color(210, 210, 210));
+                DrawShadowedText(sprite, "No eligible equips available.", new Vector2(windowX + DetailTextX, windowY + DetailTextY), Color.White);
+                DrawShadowedText(sprite, "Equip non-cash gear in the equipment window first.", new Vector2(windowX + DetailTextX, windowY + DetailTextY + DetailLineGap), new Color(210, 210, 210));
                 return;
             }
 
             KeyValuePair<EquipSlot, CharacterPart> selection = candidates[_selectedIndex];
             CharacterPart selectedPart = selection.Value;
             UpgradeState state = GetOrCreateState(selection.Key, selectedPart);
+            EnhancementConsumable consumable = ResolveConsumable(state);
 
             DrawSelectedItem(sprite, windowX + ItemIconX, windowY + ItemIconY, selectedPart);
 
@@ -195,6 +206,10 @@ namespace HaCreator.MapSimulator.UI
             DrawShadowedText(sprite, $"Slots: {state.RemainingSlots}/{state.TotalSlots}", new Vector2(windowX + DetailTextX, windowY + DetailTextY), statColor);
             DrawShadowedText(sprite, $"Success: {state.SuccessCount}   Fail: {state.FailCount}", new Vector2(windowX + DetailTextX, windowY + DetailTextY + DetailLineGap), Color.White);
             DrawShadowedText(sprite, $"Bonus: ATT +{state.AttackBonus}  DEF +{state.DefenseBonus}", new Vector2(windowX + DetailTextX, windowY + DetailTextY + (DetailLineGap * 2)), new Color(181, 224, 255));
+            string scrollText = consumable != null
+                ? $"Scroll: {consumable.Name} x{GetConsumableCount(consumable.ItemId)}"
+                : $"Scroll: None  (ESS {GetConsumableCount(EquipEnhancementScrollId)} / Adv {GetConsumableCount(AdvancedEnhancementScrollId)})";
+            DrawShadowedText(sprite, scrollText, new Vector2(windowX + DetailTextX, windowY + DetailTextY + (DetailLineGap * 3)), new Color(255, 232, 173));
 
             Color statusColor = _lastUpgradeSucceeded switch
             {
@@ -270,6 +285,13 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
+            if (_inventory == null)
+            {
+                _statusMessage = "Inventory runtime is unavailable.";
+                _lastUpgradeSucceeded = false;
+                return;
+            }
+
             KeyValuePair<EquipSlot, CharacterPart> selection = candidates[_selectedIndex];
             CharacterPart selectedPart = selection.Value;
             UpgradeState state = GetOrCreateState(selection.Key, selectedPart);
@@ -280,23 +302,39 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
+            EnhancementConsumable consumable = ResolveConsumable(state);
+            if (consumable == null)
+            {
+                _statusMessage = "No enhancement scrolls are available in inventory.";
+                _lastUpgradeSucceeded = false;
+                return;
+            }
+
+            if (!_inventory.TryConsumeItem(InventoryType.USE, consumable.ItemId, 1))
+            {
+                _statusMessage = $"{consumable.Name} could not be consumed.";
+                _lastUpgradeSucceeded = false;
+                return;
+            }
+
             state.RemainingSlots--;
             state.Attempts++;
 
-            bool success = _random.NextDouble() < ResolveSuccessRate(selection.Key, selectedPart, state);
+            bool success = _random.NextDouble() < ResolveSuccessRate(consumable.ItemId, state);
             if (success)
             {
                 state.SuccessCount++;
                 ApplyUpgradeBonus(selection.Key, state);
-                _statusMessage = $"{ResolveItemName(selectedPart)} upgraded successfully.";
+                _statusMessage = $"{ResolveItemName(selectedPart)} enhanced successfully with {consumable.Name}.";
             }
             else
             {
                 state.FailCount++;
-                _statusMessage = $"{ResolveItemName(selectedPart)} enhancement failed.";
+                DestroySelectedItem(selection.Key, selectedPart, state, consumable.Name);
             }
 
             _lastUpgradeSucceeded = success;
+            ClampSelection();
         }
 
         private void ApplyUpgradeBonus(EquipSlot slot, UpgradeState state)
@@ -323,20 +361,38 @@ namespace HaCreator.MapSimulator.UI
             }
         }
 
-        private float ResolveSuccessRate(EquipSlot slot, CharacterPart selectedPart, UpgradeState state)
+        private float ResolveSuccessRate(int consumableItemId, UpgradeState state)
         {
-            float baseRate = slot == EquipSlot.Weapon ? 0.65f : 0.7f;
-            if (selectedPart?.IsCash == true)
+            int nextSuccessCount = state.SuccessCount + 1;
+            if (consumableItemId == AdvancedEnhancementScrollId)
             {
-                baseRate -= 0.15f;
+                return nextSuccessCount switch
+                {
+                    <= 1 => 1.0f,
+                    2 => 0.9f,
+                    3 => 0.8f,
+                    4 => 0.7f,
+                    5 => 0.6f,
+                    6 => 0.5f,
+                    7 => 0.4f,
+                    8 => 0.3f,
+                    9 => 0.2f,
+                    _ => 0.1f
+                };
             }
 
-            if (state.SuccessCount >= Math.Max(1, state.TotalSlots / 2))
+            return nextSuccessCount switch
             {
-                baseRate -= 0.05f;
-            }
-
-            return MathHelper.Clamp(baseRate, 0.25f, 0.9f);
+                <= 1 => 0.8f,
+                2 => 0.7f,
+                3 => 0.6f,
+                4 => 0.5f,
+                5 => 0.4f,
+                6 => 0.3f,
+                7 => 0.2f,
+                8 => 0.1f,
+                _ => 0.05f
+            };
         }
 
         private void MoveSelection(int delta)
@@ -393,7 +449,7 @@ namespace HaCreator.MapSimulator.UI
 
             KeyValuePair<EquipSlot, CharacterPart> selection = candidates[_selectedIndex];
             UpgradeState state = GetOrCreateState(selection.Key, selection.Value);
-            _startButton?.SetEnabled(state.RemainingSlots > 0);
+            _startButton?.SetEnabled(state.RemainingSlots > 0 && ResolveConsumable(state) != null);
         }
 
         private IReadOnlyList<KeyValuePair<EquipSlot, CharacterPart>> GetCandidates()
@@ -404,9 +460,62 @@ namespace HaCreator.MapSimulator.UI
             }
 
             return _characterBuild.Equipment
-                .Where(entry => entry.Value != null && entry.Key != EquipSlot.None)
+                .Where(entry => entry.Value != null && entry.Key != EquipSlot.None && !entry.Value.IsCash)
                 .OrderBy(entry => entry.Key)
                 .ToArray();
+        }
+
+        private EnhancementConsumable ResolveConsumable(UpgradeState state)
+        {
+            if (_inventory == null)
+            {
+                return null;
+            }
+
+            int normalCount = GetConsumableCount(EquipEnhancementScrollId);
+            int advancedCount = GetConsumableCount(AdvancedEnhancementScrollId);
+            if (advancedCount > 0 && (state.SuccessCount >= 5 || normalCount == 0))
+            {
+                return new EnhancementConsumable(AdvancedEnhancementScrollId, ResolveConsumableName(AdvancedEnhancementScrollId));
+            }
+
+            if (normalCount > 0)
+            {
+                return new EnhancementConsumable(EquipEnhancementScrollId, ResolveConsumableName(EquipEnhancementScrollId));
+            }
+
+            if (advancedCount > 0)
+            {
+                return new EnhancementConsumable(AdvancedEnhancementScrollId, ResolveConsumableName(AdvancedEnhancementScrollId));
+            }
+
+            return null;
+        }
+
+        private int GetConsumableCount(int itemId)
+        {
+            return _inventory?.GetItemCount(InventoryType.USE, itemId) ?? 0;
+        }
+
+        private static string ResolveConsumableName(int itemId)
+        {
+            return HaCreator.Program.InfoManager.ItemNameCache.TryGetValue(itemId, out Tuple<string, string, string> itemInfo) &&
+                   !string.IsNullOrWhiteSpace(itemInfo?.Item2)
+                ? itemInfo.Item2
+                : $"Item #{itemId}";
+        }
+
+        private void DestroySelectedItem(EquipSlot slot, CharacterPart selectedPart, UpgradeState state, string consumableName)
+        {
+            _characterBuild?.Equipment.Remove(slot);
+            if (_characterBuild != null)
+            {
+                _characterBuild.Attack = Math.Max(0, _characterBuild.Attack - state.AttackBonus);
+                _characterBuild.Defense = Math.Max(0, _characterBuild.Defense - state.DefenseBonus);
+            }
+
+            _upgradeStates.Remove(slot);
+            _statusMessage = $"{ResolveItemName(selectedPart)} was destroyed by {consumableName}.";
         }
 
         private UpgradeState GetOrCreateState(EquipSlot slot, CharacterPart part)
@@ -492,6 +601,18 @@ namespace HaCreator.MapSimulator.UI
             public int FailCount { get; set; }
             public int AttackBonus { get; set; }
             public int DefenseBonus { get; set; }
+        }
+
+        private sealed class EnhancementConsumable
+        {
+            public EnhancementConsumable(int itemId, string name)
+            {
+                ItemId = itemId;
+                Name = name;
+            }
+
+            public int ItemId { get; }
+            public string Name { get; }
         }
     }
 }

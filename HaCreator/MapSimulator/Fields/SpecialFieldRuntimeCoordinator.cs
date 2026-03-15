@@ -1,7 +1,10 @@
 using HaCreator.MapSimulator.Effects;
+using HaCreator.MapEditor;
 using HaSharedLibrary.Render.DX;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
+using MapleLib.WzLib.WzStructure;
+using MapleLib.WzLib.WzStructure.Data;
 using Spine;
 using System;
 using System.Collections.Generic;
@@ -39,7 +42,7 @@ namespace HaCreator.MapSimulator.Fields
             SpecialFieldBacklogArea area,
             SpecialFieldBacklogStatus status,
             string primarySeam,
-            Func<int, bool> mapDetector = null)
+            Func<MapInfo, bool> mapDetector = null)
         {
             Area = area;
             Status = status;
@@ -50,7 +53,7 @@ namespace HaCreator.MapSimulator.Fields
         public SpecialFieldBacklogArea Area { get; }
         public SpecialFieldBacklogStatus Status { get; }
         public string PrimarySeam { get; }
-        public Func<int, bool> MapDetector { get; }
+        public Func<MapInfo, bool> MapDetector { get; }
     }
 
     /// <summary>
@@ -91,21 +94,33 @@ namespace HaCreator.MapSimulator.Fields
             _specialEffects.Initialize(graphicsDevice);
         }
 
-        public void BindMap(int mapId)
+        public void BindMap(Board board)
         {
             Reset();
 
-            _specialEffects.DetectFieldType(mapId);
+            MapInfo mapInfo = board?.MapInfo;
+            if (mapInfo == null)
+            {
+                return;
+            }
+
+            _specialEffects.DetectFieldType(mapInfo.id, mapInfo.fieldType);
+            _specialEffects.ConfigureMap(board);
 
             for (int i = 0; i < _catalog.Count; i++)
             {
                 SpecialFieldBacklogEntry entry = _catalog[i];
-                if (entry.MapDetector != null && entry.MapDetector(mapId))
+                if (entry.MapDetector != null && entry.MapDetector(mapInfo))
                 {
                     ActiveArea = entry.Area;
                     return;
                 }
             }
+        }
+
+        public void SetWeddingPlayerState(int? localCharacterId, Vector2? localWorldPosition)
+        {
+            _specialEffects.SetWeddingPlayerState(localCharacterId, localWorldPosition);
         }
 
         public void Update(GameTime gameTime, int currentTimeMs)
@@ -158,25 +173,51 @@ namespace HaCreator.MapSimulator.Fields
             _minigames.ResetAll();
         }
 
-        private static bool IsWeddingMap(int mapId)
+        private static bool IsWeddingMap(MapInfo mapInfo)
         {
-            return mapId == 680000110 || mapId == 680000210;
+            if (mapInfo == null)
+            {
+                return false;
+            }
+
+            return mapInfo.fieldType == FieldType.FIELDTYPE_WEDDING
+                || mapInfo.id == 680000110
+                || mapInfo.id == 680000210;
         }
 
-        private static bool IsWitchtowerMap(int mapId)
+        private static bool IsWitchtowerMap(MapInfo mapInfo)
         {
-            return mapId >= 922000000 && mapId <= 922000099;
+            if (mapInfo == null)
+            {
+                return false;
+            }
+
+            return mapInfo.fieldType == FieldType.FIELDTYPE_WITCHTOWER
+                || (mapInfo.id >= 922000000 && mapInfo.id <= 922000099);
         }
 
-        private static bool IsGuildBossMap(int mapId)
+        private static bool IsGuildBossMap(MapInfo mapInfo)
         {
-            return (mapId >= 610030000 && mapId <= 610030099)
-                || (mapId >= 673000000 && mapId <= 673000099);
+            if (mapInfo == null)
+            {
+                return false;
+            }
+
+            return mapInfo.fieldType == FieldType.FIELDTYPE_GUILDBOSS
+                || (mapInfo.id >= 610030000 && mapInfo.id <= 610030099)
+                || (mapInfo.id >= 673000000 && mapInfo.id <= 673000099);
         }
 
-        private static bool IsMassacreMap(int mapId)
+        private static bool IsMassacreMap(MapInfo mapInfo)
         {
-            return mapId >= 910000000 && mapId <= 910000099;
+            if (mapInfo == null)
+            {
+                return false;
+            }
+
+            return mapInfo.fieldType == FieldType.FIELDTYPE_MASSACRE
+                || mapInfo.fieldType == FieldType.FIELDTYPE_MASSACRE_RESULT
+                || (mapInfo.id >= 910000000 && mapInfo.id <= 910000099);
         }
     }
 }

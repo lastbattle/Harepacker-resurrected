@@ -6,6 +6,8 @@ using HaCreator.MapEditor.Instance.Shapes;
 using HaCreator.MapSimulator.Entities;
 using HaCreator.MapSimulator.AI;
 using HaCreator.MapSimulator.Pools;
+using HaCreator.MapSimulator.UI;
+using MapleLib.WzLib.WzStructure.Data.ItemStructure;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using HaCreator.MapSimulator.Effects;
@@ -194,6 +196,9 @@ namespace HaCreator.MapSimulator.Character.Skills
         // 8-19: Function key slots (F1-F12)
         // 20-27: Ctrl+Number slots (Ctrl+1-8)
         private readonly Dictionary<int, int> _skillHotkeys = new(); // slotIndex -> skillId
+        private readonly Dictionary<int, int> _macroHotkeys = new(); // slotIndex -> macro index
+        private readonly Dictionary<int, ItemHotkeyBinding> _itemHotkeys = new(); // slotIndex -> item binding
+        private IInventoryRuntime _inventoryRuntime;
 
         // Counters
         private int _nextProjectileId = 1;
@@ -212,12 +217,14 @@ namespace HaCreator.MapSimulator.Character.Skills
         public Action<int, string> OnClientSkillTimerExpired;
         public Action<int, int> OnClientSkillEffectRequested;
         public Action<Rectangle, int, int, int> OnAttackAreaResolved;
+        public Action<string> OnMacroPartyNotifyRequested;
 
         // References
         private MobPool _mobPool;
         private DropPool _dropPool;
         private CombatEffects _combatEffects;
         private SoundManager _soundManager;
+        private Func<int, SkillMacro> _macroResolver;
 
         #endregion
 
@@ -237,6 +244,12 @@ namespace HaCreator.MapSimulator.Character.Skills
         public void SetFieldSkillRestrictionEvaluator(Func<SkillData, bool> evaluator) => _fieldSkillRestrictionEvaluator = evaluator;
         public void SetFieldSkillRestrictionMessageProvider(Func<SkillData, string> provider) => _fieldSkillRestrictionMessageProvider = provider;
         public void SetTamingMobLoader(Func<int, CharacterPart> loader) => _tamingMobLoader = loader;
+        public void SetMacroResolver(Func<int, SkillMacro> macroResolver) => _macroResolver = macroResolver;
+        public void SetInventoryRuntime(IInventoryRuntime inventoryRuntime)
+        {
+            _inventoryRuntime = inventoryRuntime;
+            RevalidateHotkeys();
+        }
 
         /// <summary>
         /// Load skills for player's job
@@ -264,6 +277,14 @@ namespace HaCreator.MapSimulator.Character.Skills
                          .ToList())
             {
                 _skillHotkeys.Remove(hotkeySlot);
+            }
+
+            foreach (int hotkeySlot in _macroHotkeys.Keys.ToList())
+            {
+                if (IsValidMacroHotkeyBinding(_macroHotkeys[hotkeySlot]))
+                    continue;
+
+                _macroHotkeys.Remove(hotkeySlot);
             }
 
             foreach (int cooldownSkillId in _cooldowns.Keys.Where(skillId => !validSkillIds.Contains(skillId)).ToList())
@@ -353,13 +374,65 @@ namespace HaCreator.MapSimulator.Character.Skills
             if (skillId <= 0)
             {
                 _skillHotkeys.Remove(slotIndex);
+                _macroHotkeys.Remove(slotIndex);
+                _itemHotkeys.Remove(slotIndex);
                 return true;
             }
 
             if (!CanAssignHotkeySkill(skillId))
                 return false;
 
+            _macroHotkeys.Remove(slotIndex);
+            _itemHotkeys.Remove(slotIndex);
             _skillHotkeys[slotIndex] = skillId;
+            return true;
+        }
+
+        public bool TrySetMacroHotkey(int slotIndex, int macroIndex)
+        {
+            if (slotIndex < 0 || slotIndex >= TOTAL_SLOT_COUNT)
+                return false;
+
+            if (macroIndex < 0)
+            {
+                _macroHotkeys.Remove(slotIndex);
+                return true;
+            }
+
+            if (!IsValidMacroHotkeyBinding(macroIndex))
+                return false;
+
+            _skillHotkeys.Remove(slotIndex);
+            _itemHotkeys.Remove(slotIndex);
+            _macroHotkeys[slotIndex] = macroIndex;
+            return true;
+        }
+
+        /// <summary>
+        /// Try to set an item hotkey by absolute slot index (0-27).
+        /// Only consumable and cash inventory entries with a live stack can occupy quick slots.
+        /// </summary>
+        public bool TrySetItemHotkey(int slotIndex, int itemId, InventoryType inventoryType = InventoryType.NONE)
+        {
+            if (slotIndex < 0 || slotIndex >= TOTAL_SLOT_COUNT)
+                return false;
+
+            if (itemId <= 0)
+            {
+                _itemHotkeys.Remove(slotIndex);
+                return true;
+            }
+
+            if (!TryResolveAssignableHotkeyItem(itemId, inventoryType, out InventoryType resolvedInventoryType))
+                return false;
+
+            _skillHotkeys.Remove(slotIndex);
+            _macroHotkeys.Remove(slotIndex);
+            _itemHotkeys[slotIndex] = new ItemHotkeyBinding
+            {
+                ItemId = itemId,
+                InventoryType = resolvedInventoryType
+            };
             return true;
         }
 
@@ -376,6 +449,44 @@ namespace HaCreator.MapSimulator.Character.Skills
 
             _skillHotkeys.Remove(slotIndex);
             return 0;
+        }
+
+        public int GetHotkeyItem(int slotIndex)
+        {
+            ItemHotkeyBinding binding = GetHotkeyItemBinding(slotIndex);
+            return binding?.ItemId ?? 0;
+        }
+
+        public InventoryType GetHotkeyItemInventoryType(int slotIndex)
+        {
+            ItemHotkeyBinding binding = GetHotkeyItemBinding(slotIndex);
+            return binding?.InventoryType ?? InventoryType.NONE;
+        }
+
+        public int GetHotkeyItemCount(int slotIndex)
+        {
+            ItemHotkeyBinding binding = GetHotkeyItemBinding(slotIndex);
+            if (binding == null)
+                return 0;
+
+            return _inventoryRuntime?.GetItemCount(binding.InventoryType, binding.ItemId) ?? 0;
+        }
+
+        public int GetHotkeyMacroIndex(int slotIndex)
+        {
+            if (!_macroHotkeys.TryGetValue(slotIndex, out int macroIndex))
+                return -1;
+
+            if (IsValidMacroHotkeyBinding(macroIndex))
+                return macroIndex;
+
+            _macroHotkeys.Remove(slotIndex);
+            return -1;
+        }
+
+        public bool HasMacroHotkey(int slotIndex)
+        {
+            return GetHotkeyMacroIndex(slotIndex) >= 0;
         }
 
         /// <summary>
@@ -435,6 +546,8 @@ namespace HaCreator.MapSimulator.Character.Skills
         public void ClearHotkey(int slotIndex)
         {
             _skillHotkeys.Remove(slotIndex);
+            _macroHotkeys.Remove(slotIndex);
+            _itemHotkeys.Remove(slotIndex);
         }
 
         /// <summary>
@@ -462,6 +575,24 @@ namespace HaCreator.MapSimulator.Character.Skills
             return new Dictionary<int, int>(_skillHotkeys);
         }
 
+        public Dictionary<int, ItemHotkeyBinding> GetAllItemHotkeys()
+        {
+            RevalidateHotkeys();
+            Dictionary<int, ItemHotkeyBinding> copy = new();
+            foreach (var kv in _itemHotkeys)
+            {
+                copy[kv.Key] = kv.Value?.Clone();
+            }
+
+            return copy;
+        }
+
+        public Dictionary<int, int> GetAllMacroHotkeys()
+        {
+            RevalidateHotkeys();
+            return new Dictionary<int, int>(_macroHotkeys);
+        }
+
         /// <summary>
         /// Load all hotkey configurations
         /// </summary>
@@ -473,6 +604,33 @@ namespace HaCreator.MapSimulator.Character.Skills
             foreach (var kv in hotkeys)
             {
                 TrySetHotkey(kv.Key, kv.Value);
+            }
+        }
+
+        public void LoadMacroHotkeys(Dictionary<int, int> hotkeys)
+        {
+            _macroHotkeys.Clear();
+            if (hotkeys == null)
+                return;
+
+            foreach (var kv in hotkeys)
+            {
+                TrySetMacroHotkey(kv.Key, kv.Value);
+            }
+        }
+
+        public void LoadItemHotkeys(Dictionary<int, ItemHotkeyBinding> hotkeys)
+        {
+            _itemHotkeys.Clear();
+            if (hotkeys == null)
+                return;
+
+            foreach (var kv in hotkeys)
+            {
+                if (kv.Value == null)
+                    continue;
+
+                TrySetItemHotkey(kv.Key, kv.Value.ItemId, kv.Value.InventoryType);
             }
         }
 
@@ -509,6 +667,24 @@ namespace HaCreator.MapSimulator.Character.Skills
                 removed++;
             }
 
+            foreach (int slotIndex in _itemHotkeys.Keys.ToList())
+            {
+                if (IsValidHotkeyItemBinding(_itemHotkeys[slotIndex]))
+                    continue;
+
+                _itemHotkeys.Remove(slotIndex);
+                removed++;
+            }
+
+            foreach (int slotIndex in _macroHotkeys.Keys.ToList())
+            {
+                if (IsValidMacroHotkeyBinding(_macroHotkeys[slotIndex]))
+                    continue;
+
+                _macroHotkeys.Remove(slotIndex);
+                removed++;
+            }
+
             return removed;
         }
 
@@ -518,6 +694,8 @@ namespace HaCreator.MapSimulator.Character.Skills
         public void ClearAllHotkeys()
         {
             _skillHotkeys.Clear();
+            _macroHotkeys.Clear();
+            _itemHotkeys.Clear();
         }
 
         private SkillData FindKnownSkillData(int skillId)
@@ -531,12 +709,54 @@ namespace HaCreator.MapSimulator.Character.Skills
             return _loader?.LoadSkill(skillId);
         }
 
+        private bool TryResolveAssignableHotkeyItem(int itemId, InventoryType inventoryType, out InventoryType resolvedInventoryType)
+        {
+            resolvedInventoryType = inventoryType != InventoryType.NONE
+                ? inventoryType
+                : InventoryTypeExtensions.GetByType((byte)(itemId / 1000000)) ?? InventoryType.NONE;
+
+            if (resolvedInventoryType != InventoryType.USE && resolvedInventoryType != InventoryType.CASH)
+                return false;
+
+            return (_inventoryRuntime?.GetItemCount(resolvedInventoryType, itemId) ?? 0) > 0;
+        }
+
+        private bool IsValidHotkeyItemBinding(ItemHotkeyBinding binding)
+        {
+            return binding != null &&
+                   TryResolveAssignableHotkeyItem(binding.ItemId, binding.InventoryType, out _);
+        }
+
+        private ItemHotkeyBinding GetHotkeyItemBinding(int slotIndex)
+        {
+            if (!_itemHotkeys.TryGetValue(slotIndex, out ItemHotkeyBinding binding))
+                return null;
+
+            if (IsValidHotkeyItemBinding(binding))
+                return binding;
+
+            _itemHotkeys.Remove(slotIndex);
+            return null;
+        }
+
+        private bool IsValidMacroHotkeyBinding(int macroIndex)
+        {
+            SkillMacro macro = _macroResolver?.Invoke(macroIndex);
+            return macroIndex >= 0 && macro != null && macro.IsEnabled;
+        }
+
         #endregion
 
         #region Skill Casting
 
+        private sealed class QueuedSkillRequest
+        {
+            public int SkillId { get; init; }
+            public int EarliestExecuteTime { get; init; }
+        }
+
         // Skill queue for macro execution
-        private readonly Queue<int> _skillQueue = new();
+        private readonly Queue<QueuedSkillRequest> _skillQueue = new();
         private readonly Queue<QueuedFollowUpAttack> _queuedFollowUpAttacks = new();
         private readonly Queue<DeferredSkillPayload> _deferredSkillPayloads = new();
         private QueuedSparkAttack _queuedSparkAttack;
@@ -567,11 +787,15 @@ namespace HaCreator.MapSimulator.Character.Skills
         /// <summary>
         /// Queue a skill for execution (used by skill macros)
         /// </summary>
-        public void QueueSkill(int skillId)
+        public void QueueSkill(int skillId, int earliestExecuteTime = 0)
         {
             if (skillId > 0)
             {
-                _skillQueue.Enqueue(skillId);
+                _skillQueue.Enqueue(new QueuedSkillRequest
+                {
+                    SkillId = skillId,
+                    EarliestExecuteTime = earliestExecuteTime
+                });
             }
         }
 
@@ -591,6 +815,9 @@ namespace HaCreator.MapSimulator.Character.Skills
             if (_skillQueue.Count == 0)
                 return;
 
+            if (_currentCast?.IsComplete == false || _preparedSkill != null)
+                return;
+
             // Rate limit queue processing
             if (currentTime - _lastQueuedSkillTime < SKILL_QUEUE_DELAY)
                 return;
@@ -598,7 +825,11 @@ namespace HaCreator.MapSimulator.Character.Skills
             // Try to cast the next queued skill
             while (_skillQueue.Count > 0)
             {
-                int skillId = _skillQueue.Peek();
+                QueuedSkillRequest queuedSkill = _skillQueue.Peek();
+                if (currentTime < queuedSkill.EarliestExecuteTime)
+                    return;
+
+                int skillId = queuedSkill.SkillId;
 
                 if (TryCastSkill(skillId, currentTime))
                 {
@@ -675,6 +906,10 @@ namespace HaCreator.MapSimulator.Character.Skills
         /// </summary>
         public bool TryCastHotkey(int keyIndex, int currentTime)
         {
+            int macroIndex = GetHotkeyMacroIndex(keyIndex);
+            if (macroIndex >= 0)
+                return TryExecuteMacro(macroIndex, currentTime);
+
             int skillId = GetHotkeySkill(keyIndex);
             if (skillId <= 0)
                 return false;
@@ -687,11 +922,43 @@ namespace HaCreator.MapSimulator.Character.Skills
             if (_preparedSkill?.IsKeydownSkill != true)
                 return;
 
+            if (GetHotkeyMacroIndex(keyIndex) >= 0 || GetHotkeyItem(keyIndex) > 0)
+                return;
+
             int skillId = GetHotkeySkill(keyIndex);
             if (skillId > 0 && skillId == _preparedSkill.SkillId)
             {
                 ReleasePreparedSkill(currentTime);
             }
+        }
+
+        public bool TryExecuteMacro(int macroIndex, int currentTime)
+        {
+            SkillMacro macro = _macroResolver?.Invoke(macroIndex);
+            if (macro == null || !macro.IsEnabled)
+                return false;
+
+            ClearSkillQueue();
+
+            int skillCount = 0;
+            foreach (int skillId in macro.SkillIds ?? Array.Empty<int>())
+            {
+                if (skillId <= 0 || !CanAssignHotkeySkill(skillId))
+                    continue;
+
+                QueueSkill(skillId, currentTime + (skillCount * SKILL_QUEUE_DELAY));
+                skillCount++;
+            }
+
+            if (skillCount == 0)
+                return false;
+
+            if (macro.NotifyParty && !string.IsNullOrWhiteSpace(macro.Name))
+            {
+                OnMacroPartyNotifyRequested?.Invoke(macro.Name);
+            }
+
+            return true;
         }
 
         public void ReleaseActiveKeydownSkill(int currentTime)
@@ -2820,6 +3087,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return;
 
             string searchText = BuildSkillSearchText(skill);
+            string debuffToken = skill.DebuffMessageToken ?? string.Empty;
             int durationMs = Math.Max(1, ResolveStatusDurationMs(levelData));
             int propPercent = levelData.Prop > 0 ? Math.Min(100, levelData.Prop) : 100;
 
@@ -2876,7 +3144,8 @@ namespace HaCreator.MapSimulator.Character.Skills
                 TryApplyInferredMobStatus(mob.AI, MobStatusEffect.Weakness, durationMs, currentTime, weaknessPercent, tickIntervalMs: 1000, propPercent);
             }
 
-            ApplyStatDrivenMobDebuffs(skill, levelData, mob.AI, searchText, durationMs, currentTime, propPercent);
+            ApplyExplicitMobDebuffMetadata(skill, levelData, mob.AI, debuffToken, durationMs, currentTime, propPercent);
+            ApplyStatDrivenMobDebuffs(skill, levelData, mob.AI, searchText, debuffToken, durationMs, currentTime, propPercent);
         }
 
         private void TryApplyInferredMobStatus(
@@ -2902,11 +3171,12 @@ namespace HaCreator.MapSimulator.Character.Skills
             SkillLevelData levelData,
             MobAI mobAI,
             string searchText,
+            string debuffToken,
             int durationMs,
             int currentTime,
             int propPercent)
         {
-            if (mobAI == null || levelData == null || !IsMobDebuffSkill(skill))
+            if (mobAI == null || levelData == null || !IsMobDebuffSkill(skill, debuffToken, searchText))
                 return;
 
             int attackReduction = ResolveAttackDebuffMagnitude(levelData, searchText);
@@ -2940,7 +3210,8 @@ namespace HaCreator.MapSimulator.Character.Skills
             return string.Join(" ",
                 skill?.Name ?? string.Empty,
                 skill?.Description ?? string.Empty,
-                skill?.ActionName ?? string.Empty);
+                skill?.ActionName ?? string.Empty,
+                skill?.DebuffMessageToken ?? string.Empty);
         }
 
         private static bool MatchesMobStatusKeywords(string searchText, params string[] keywords)
@@ -2960,9 +3231,87 @@ namespace HaCreator.MapSimulator.Character.Skills
             return false;
         }
 
-        private static bool IsMobDebuffSkill(SkillData skill)
+        private void ApplyExplicitMobDebuffMetadata(
+            SkillData skill,
+            SkillLevelData levelData,
+            MobAI mobAI,
+            string debuffToken,
+            int durationMs,
+            int currentTime,
+            int propPercent)
         {
-            return skill != null && skill.Type == SkillType.Debuff;
+            if (mobAI == null || levelData == null || string.IsNullOrWhiteSpace(debuffToken))
+                return;
+
+            if (debuffToken.IndexOf("buffLimit", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                CancelMobBuffStatuses(mobAI);
+                TryApplyInferredMobStatus(mobAI, MobStatusEffect.SealSkill, durationMs, currentTime, 1, tickIntervalMs: 1000, propPercent);
+            }
+
+            if (debuffToken.IndexOf("restrict", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                TryApplyInferredMobStatus(mobAI, MobStatusEffect.Web, durationMs, currentTime, 100, tickIntervalMs: 1000, propPercent);
+            }
+
+            if (debuffToken.IndexOf("attackLimit", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                TryApplyInferredMobStatus(mobAI, MobStatusEffect.Stun, durationMs, currentTime, 1, tickIntervalMs: 1000, propPercent);
+            }
+
+            if (debuffToken.IndexOf("incTargetPDP", StringComparison.OrdinalIgnoreCase) >= 0 &&
+                debuffToken.IndexOf("incTargetMDP", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                int defenseIncrease = ResolveStatusMagnitude(levelData, fallback: 10);
+                TryApplyInferredMobStatus(mobAI, MobStatusEffect.PDamage, durationMs, currentTime, defenseIncrease, tickIntervalMs: 1000, propPercent);
+                TryApplyInferredMobStatus(mobAI, MobStatusEffect.MDamage, durationMs, currentTime, defenseIncrease, tickIntervalMs: 1000, propPercent);
+
+                if (debuffToken.IndexOf("incTargetEXP", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                    debuffToken.IndexOf("incTargetReward", StringComparison.OrdinalIgnoreCase) >= 0)
+                {
+                    TryApplyInferredMobStatus(mobAI, MobStatusEffect.Showdown, durationMs, currentTime, defenseIncrease, tickIntervalMs: 1000, propPercent);
+                }
+            }
+        }
+
+        private static bool IsMobDebuffSkill(SkillData skill, string debuffToken, string searchText)
+        {
+            if (skill == null)
+                return false;
+
+            return skill.Type == SkillType.Debuff
+                || !string.IsNullOrWhiteSpace(debuffToken)
+                || MatchesMobStatusKeywords(searchText,
+                    "reduce target",
+                    "enemy",
+                    "monster",
+                    "bind",
+                    "buff block",
+                    "showdown");
+        }
+
+        private static void CancelMobBuffStatuses(MobAI mobAI)
+        {
+            if (mobAI == null)
+                return;
+
+            MobStatusEffect[] removableEffects =
+            {
+                MobStatusEffect.PowerUp,
+                MobStatusEffect.MagicUp,
+                MobStatusEffect.PGuardUp,
+                MobStatusEffect.MGuardUp,
+                MobStatusEffect.Speed,
+                MobStatusEffect.PImmune,
+                MobStatusEffect.MImmune,
+                MobStatusEffect.HardSkin,
+                MobStatusEffect.Reflect
+            };
+
+            foreach (MobStatusEffect effect in removableEffects)
+            {
+                mobAI.RemoveStatusEffect(effect);
+            }
         }
 
         private static int ResolveStatusDurationMs(SkillLevelData levelData)
@@ -4131,6 +4480,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 X = summonPosition.X,
                 Y = summonPosition.Y,
                 Hitbox = GetSummonHitbox(summon, currentTime),
+                IsGrounded = IsSummonGroundedForMobJumpAttack(summon),
                 OwnerId = 0,
                 AggroValue = 1,
                 ExpirationTime = expirationTime,
@@ -4275,6 +4625,17 @@ namespace HaCreator.MapSimulator.Character.Skills
                 drawY,
                 Math.Max(1, frame.Texture.Width),
                 Math.Max(1, frame.Texture.Height));
+        }
+
+        private static bool IsSummonGroundedForMobJumpAttack(ActiveSummon summon)
+        {
+            if (summon == null)
+            {
+                return false;
+            }
+
+            return summon.MovementStyle == SummonMovementStyle.Stationary
+                || summon.MovementStyle == SummonMovementStyle.GroundFollow;
         }
 
         private Vector2 SettleSummonOnFoothold(SummonMovementStyle movementStyle, Vector2 targetPosition)
@@ -5808,6 +6169,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             _currentCast = null;
             _skillLevels.Clear();
             _skillHotkeys.Clear();
+            _itemHotkeys.Clear();
             _availableSkills.Clear();
             _player.ClearSkillAvatarTransformAndPlayExitAction();
             _player.ClearAllSkillAvatarEffects(playFinish: false, Environment.TickCount);
@@ -5872,6 +6234,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             // Note: We intentionally do NOT clear:
             // - _skillLevels (learned skills persist)
             // - _skillHotkeys (hotkey bindings persist)
+            // - _itemHotkeys (item hotkey bindings persist)
             // - _availableSkills (job skills persist)
             // - _cooldowns (debatable - could reset or persist)
         }

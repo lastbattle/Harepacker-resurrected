@@ -7,19 +7,46 @@ using Microsoft.Xna.Framework.Graphics;
 using Spine;
 using System;
 using System.Collections.Generic;
+using System.Linq;
 
 namespace HaCreator.MapSimulator.Companions
 {
+    public enum PetAutoSpeechEvent
+    {
+        LevelUp = 0,
+        PreLevelUp = 1,
+        Rest = 2,
+        HpAlert = 3,
+        NoHpPotion = 4,
+        NoMpPotion = 5
+    }
+
     public sealed class PetRuntime
     {
         private const float FollowSpeed = 220f;
         private const float FollowSpacing = 28f;
         private const float MultiPetSpacing = 18f;
         private const float SnapDistance = 220f;
+        private const int AutoSpeechIntervalMs = 1800000;
+        private const int IdleActionStartMs = 5000;
+        private const int IdleSleepActionMs = 120000;
+        private const int IdleActionRetryMs = 5000;
+        private const int SpeechDurationMs = 5000;
+        private const int TemporaryActionDurationMs = 2200;
+
+        private static readonly Random SharedRandom = new();
 
         private readonly AnimationController _animation;
-        private readonly string[] _idleAutoSpeechLines;
-        private int _nextIdleAutoSpeechIndex;
+        private readonly IReadOnlyDictionary<PetAutoSpeechEvent, string[]> _eventSpeechLines;
+        private readonly Dictionary<PetAutoSpeechEvent, int> _nextEventSpeechIndices = new();
+
+        private int _nextAutoSpeechTick;
+        private int _idleSinceTick = -1;
+        private int _nextIdleActionTick;
+        private string _temporaryActionName;
+        private int _temporaryActionExpiresAt;
+        private string _activeSpeechText;
+        private int _activeSpeechExpiresAt;
 
         internal PetRuntime(int runtimeId, int slotIndex, PetDefinition definition)
         {
@@ -27,7 +54,7 @@ namespace HaCreator.MapSimulator.Companions
             SlotIndex = slotIndex;
             Definition = definition ?? throw new ArgumentNullException(nameof(definition));
             _animation = new AnimationController(definition.Animations, "stand1");
-            _idleAutoSpeechLines = definition.IdleAutoSpeechLines ?? Array.Empty<string>();
+            _eventSpeechLines = definition.EventSpeechLines ?? new Dictionary<PetAutoSpeechEvent, string[]>();
         }
 
         public int RuntimeId { get; }
@@ -41,7 +68,10 @@ namespace HaCreator.MapSimulator.Companions
         public int ItemId => Definition.ItemId;
         public string Name => Definition.Name;
         public int ChatBalloonStyle => Definition.ChatBalloonStyle;
-        public bool HasIdleAutoSpeech => _idleAutoSpeechLines.Length > 0;
+        public bool HasIdleAutoSpeech => HasAutoSpeechEvent(PetAutoSpeechEvent.Rest);
+        public bool HasActiveSpeech => !string.IsNullOrWhiteSpace(_activeSpeechText);
+        public string ActiveSpeechText => _activeSpeechText;
+        public int ActiveSpeechExpiresAt => _activeSpeechExpiresAt;
 
         internal void SetPosition(float x, float y, bool facingRight)
         {
@@ -50,15 +80,24 @@ namespace HaCreator.MapSimulator.Companions
             FacingRight = facingRight;
         }
 
-        public string GetNextIdleAutoSpeechLine()
+        public bool HasAutoSpeechEvent(PetAutoSpeechEvent eventType)
         {
-            if (_idleAutoSpeechLines.Length == 0)
+            return _eventSpeechLines.TryGetValue(eventType, out string[] lines) &&
+                   lines != null &&
+                   lines.Length > 0;
+        }
+
+        public string GetNextAutoSpeechLine(PetAutoSpeechEvent eventType)
+        {
+            if (!HasAutoSpeechEvent(eventType))
             {
                 return null;
             }
 
-            string line = _idleAutoSpeechLines[_nextIdleAutoSpeechIndex];
-            _nextIdleAutoSpeechIndex = (_nextIdleAutoSpeechIndex + 1) % _idleAutoSpeechLines.Length;
+            string[] lines = _eventSpeechLines[eventType];
+            _nextEventSpeechIndices.TryGetValue(eventType, out int nextIndex);
+            string line = lines[nextIndex];
+            _nextEventSpeechIndices[eventType] = (nextIndex + 1) % lines.Length;
             return line;
         }
 
@@ -67,11 +106,45 @@ namespace HaCreator.MapSimulator.Companions
             return _animation.GetCurrentFrame();
         }
 
+        public bool TryTriggerAutoSpeechEvent(PetAutoSpeechEvent eventType, int currentTime)
+        {
+            string line = GetNextAutoSpeechLine(eventType);
+            if (string.IsNullOrWhiteSpace(line))
+            {
+                return false;
+            }
+
+            SetSpeech(line, currentTime + SpeechDurationMs);
+            if (Definition.Animations.GetAvailableActions().Any(action =>
+                    string.Equals(action, "chat", StringComparison.OrdinalIgnoreCase)))
+            {
+                SetTemporaryAction("chat", currentTime + TemporaryActionDurationMs);
+            }
+
+            return true;
+        }
+
         internal void Update(PlayerCharacter owner, DropPool dropPool, int ownerId, bool pickupAllowed, int currentTime, float deltaTime)
         {
             if (owner == null)
             {
                 return;
+            }
+
+            if (_nextAutoSpeechTick == 0)
+            {
+                _nextAutoSpeechTick = currentTime + AutoSpeechIntervalMs;
+            }
+
+            if (HasActiveSpeech && currentTime >= _activeSpeechExpiresAt)
+            {
+                ClearSpeech();
+            }
+
+            if (!string.IsNullOrEmpty(_temporaryActionName) && currentTime >= _temporaryActionExpiresAt)
+            {
+                _temporaryActionName = null;
+                _temporaryActionExpiresAt = 0;
             }
 
             FacingRight = owner.FacingRight;
@@ -110,8 +183,32 @@ namespace HaCreator.MapSimulator.Companions
             }
 
             MoveTowards(desiredTarget, moveSpeed, deltaTime, followTarget);
-            UpdateAction(owner, chasingDrop, desiredTarget);
+
+            bool idleEligible = IsIdleEligible(owner, chasingDrop, followTarget, desiredTarget);
+            UpdateIdleFeedback(currentTime, idleEligible);
+            UpdateAutoSpeech(currentTime);
+            UpdateAction(owner, chasingDrop, desiredTarget, idleEligible);
             _animation.UpdateFrame(currentTime);
+        }
+
+        public bool TryExecuteCommand(string message, int currentTime)
+        {
+            string normalizedMessage = NormalizeTrigger(message);
+            if (string.IsNullOrEmpty(normalizedMessage) || Definition.Commands.Length == 0)
+            {
+                return false;
+            }
+
+            PetCommandDefinition command = Definition.Commands.FirstOrDefault(candidate =>
+                candidate.Triggers.Any(trigger => string.Equals(NormalizeTrigger(trigger), normalizedMessage, StringComparison.OrdinalIgnoreCase)));
+            if (command == null)
+            {
+                return false;
+            }
+
+            bool isSuccess = SharedRandom.Next(100) < command.SuccessProbability;
+            ApplyReaction(isSuccess ? command.SuccessReaction : command.FailureReaction, currentTime);
+            return true;
         }
 
         public void Draw(SpriteBatch spriteBatch, SkeletonMeshRenderer skeletonRenderer,
@@ -164,7 +261,111 @@ namespace HaCreator.MapSimulator.Companions
             Y += step.Y;
         }
 
-        private void UpdateAction(PlayerCharacter owner, bool chasingDrop, Vector2 desiredTarget)
+        private bool IsIdleEligible(PlayerCharacter owner, bool chasingDrop, Vector2 followTarget, Vector2 desiredTarget)
+        {
+            if (owner.State != PlayerState.Standing || chasingDrop)
+            {
+                return false;
+            }
+
+            float deltaX = desiredTarget.X - X;
+            float deltaY = desiredTarget.Y - Y;
+            float followDeltaX = followTarget.X - X;
+            float followDeltaY = followTarget.Y - Y;
+            return Math.Abs(deltaX) <= 6f &&
+                   Math.Abs(deltaY) <= 12f &&
+                   Math.Abs(followDeltaX) <= 6f &&
+                   Math.Abs(followDeltaY) <= 12f;
+        }
+
+        private void UpdateIdleFeedback(int currentTime, bool idleEligible)
+        {
+            if (!idleEligible)
+            {
+                _idleSinceTick = -1;
+                _nextIdleActionTick = 0;
+                _temporaryActionName = null;
+                _temporaryActionExpiresAt = 0;
+                return;
+            }
+
+            if (_idleSinceTick < 0)
+            {
+                _idleSinceTick = currentTime;
+                _nextIdleActionTick = currentTime + IdleActionStartMs;
+                return;
+            }
+
+            int idleDuration = currentTime - _idleSinceTick;
+            if (idleDuration >= IdleSleepActionMs && Definition.Animations.GetAvailableActions().Any(action =>
+                    string.Equals(action, "rest0", StringComparison.OrdinalIgnoreCase)))
+            {
+                SetTemporaryAction("rest0", currentTime + TemporaryActionDurationMs);
+                return;
+            }
+
+            if (currentTime < _nextIdleActionTick || Definition.RandomIdleActions.Length == 0)
+            {
+                return;
+            }
+
+            _nextIdleActionTick = currentTime + IdleActionRetryMs;
+            if ((SharedRandom.Next() & 1) == 0)
+            {
+                return;
+            }
+
+            string actionName = Definition.RandomIdleActions[SharedRandom.Next(Definition.RandomIdleActions.Length)];
+            SetTemporaryAction(actionName, currentTime + TemporaryActionDurationMs);
+        }
+
+        private void UpdateAutoSpeech(int currentTime)
+        {
+            if (_nextAutoSpeechTick == 0 || currentTime < _nextAutoSpeechTick || !HasAutoSpeechEvent(PetAutoSpeechEvent.Rest))
+            {
+                return;
+            }
+
+            _nextAutoSpeechTick = currentTime + AutoSpeechIntervalMs;
+            string line = GetNextAutoSpeechLine(PetAutoSpeechEvent.Rest);
+            if (string.IsNullOrWhiteSpace(line))
+            {
+                return;
+            }
+
+            SetSpeech(line, currentTime + SpeechDurationMs);
+            if (Definition.Animations.GetAvailableActions().Any(action =>
+                    string.Equals(action, "chat", StringComparison.OrdinalIgnoreCase)))
+            {
+                SetTemporaryAction("chat", currentTime + TemporaryActionDurationMs);
+            }
+        }
+
+        private void ApplyReaction(PetReactionDefinition reaction, int currentTime)
+        {
+            if (reaction == null)
+            {
+                return;
+            }
+
+            if (!string.IsNullOrWhiteSpace(reaction.ActionName) &&
+                Definition.Animations.GetAvailableActions().Any(action =>
+                    string.Equals(action, reaction.ActionName, StringComparison.OrdinalIgnoreCase)))
+            {
+                SetTemporaryAction(reaction.ActionName, currentTime + TemporaryActionDurationMs);
+            }
+
+            if (reaction.SpeechLines.Length > 0)
+            {
+                string line = reaction.SpeechLines[SharedRandom.Next(reaction.SpeechLines.Length)];
+                if (!string.IsNullOrWhiteSpace(line))
+                {
+                    SetSpeech(line, currentTime + SpeechDurationMs);
+                }
+            }
+        }
+
+        private void UpdateAction(PlayerCharacter owner, bool chasingDrop, Vector2 desiredTarget, bool idleEligible)
         {
             string action = "stand1";
             float deltaX = desiredTarget.X - X;
@@ -182,8 +383,42 @@ namespace HaCreator.MapSimulator.Companions
             {
                 action = "move";
             }
+            else if (idleEligible && !string.IsNullOrWhiteSpace(_temporaryActionName))
+            {
+                action = _temporaryActionName;
+            }
 
             _animation.SetAction(action);
+        }
+
+        private void SetTemporaryAction(string actionName, int expiresAt)
+        {
+            if (string.IsNullOrWhiteSpace(actionName))
+            {
+                return;
+            }
+
+            _temporaryActionName = actionName;
+            _temporaryActionExpiresAt = expiresAt;
+        }
+
+        private void SetSpeech(string text, int expiresAt)
+        {
+            _activeSpeechText = text?.Trim();
+            _activeSpeechExpiresAt = expiresAt;
+        }
+
+        private void ClearSpeech()
+        {
+            _activeSpeechText = null;
+            _activeSpeechExpiresAt = 0;
+        }
+
+        private static string NormalizeTrigger(string trigger)
+        {
+            return string.IsNullOrWhiteSpace(trigger)
+                ? string.Empty
+                : trigger.Trim().Replace(" ", string.Empty);
         }
     }
 
@@ -268,6 +503,24 @@ namespace HaCreator.MapSimulator.Companions
             }
 
             _activePets[slotIndex].AutoLootEnabled = enabled;
+        }
+
+        public bool TryExecuteCommand(string message, int currentTime)
+        {
+            for (int i = 0; i < _activePets.Count; i++)
+            {
+                if (_activePets[i].TryExecuteCommand(message, currentTime))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        public IEnumerable<PetRuntime> GetSpeakingPets(int currentTime)
+        {
+            return _activePets.Where(pet => pet.HasActiveSpeech && pet.ActiveSpeechExpiresAt > currentTime);
         }
 
         public void Update(PlayerCharacter owner, DropPool dropPool, int currentTime, float deltaTime)

@@ -67,15 +67,28 @@ namespace HaCreator.MapSimulator.Combat
             public bool Flip { get; set; }
         }
 
+        private sealed class ScheduledMobFallingEffect
+        {
+            public List<IDXObject> Frames { get; set; }
+            public Vector2 StartPosition { get; set; }
+            public float EndY { get; set; }
+            public float FallSpeed { get; set; }
+            public float HorizontalDrift { get; set; }
+            public int TriggerTime { get; set; }
+            public bool Rotation { get; set; }
+        }
+
         private readonly Random _random = new Random();
         private readonly List<ActiveMobProjectile> _activeMobProjectiles = new List<ActiveMobProjectile>();
         private readonly List<ActiveMobGroundAttack> _activeMobGroundAttacks = new List<ActiveMobGroundAttack>();
         private readonly List<ActiveMobDirectAttack> _activeMobDirectAttacks = new List<ActiveMobDirectAttack>();
         private readonly List<ScheduledMobVisualEffect> _scheduledMobVisualEffects = new List<ScheduledMobVisualEffect>();
+        private readonly List<ScheduledMobFallingEffect> _scheduledMobFallingEffects = new List<ScheduledMobFallingEffect>();
         private readonly Dictionary<long, int> _scheduledMobActions = new Dictionary<long, int>();
         private Func<float, float, float?> _groundResolver;
         private Func<IReadOnlyList<PuppetInfo>> _puppetAccessor;
         private Func<int, MobItem> _mobAccessor;
+        private Func<bool> _playerGroundedAccessor;
         private Action<PuppetInfo, MobItem, MobAttackEntry, int> _onPuppetHit;
 
         public void SetGroundResolver(Func<float, float, float?> groundResolver)
@@ -96,12 +109,18 @@ namespace HaCreator.MapSimulator.Combat
             _mobAccessor = mobAccessor;
         }
 
+        public void SetPlayerGroundedAccessor(Func<bool> playerGroundedAccessor)
+        {
+            _playerGroundedAccessor = playerGroundedAccessor;
+        }
+
         public void Clear()
         {
             _activeMobProjectiles.Clear();
             _activeMobGroundAttacks.Clear();
             _activeMobDirectAttacks.Clear();
             _scheduledMobVisualEffects.Clear();
+            _scheduledMobFallingEffects.Clear();
             _scheduledMobActions.Clear();
         }
 
@@ -147,6 +166,7 @@ namespace HaCreator.MapSimulator.Combat
 
         public void Update(int currentTime, float deltaSeconds, PlayerManager playerManager, AnimationEffects animationEffects, Action<int> onBossGroundImpact)
         {
+            UpdateScheduledMobFallingEffects(currentTime, animationEffects);
             UpdateScheduledMobVisualEffects(currentTime, animationEffects);
             UpdateMobProjectiles(currentTime, deltaSeconds, playerManager, animationEffects);
             UpdateMobGroundAttacks(currentTime, playerManager, animationEffects, onBossGroundImpact);
@@ -382,6 +402,29 @@ namespace HaCreator.MapSimulator.Combat
             }
         }
 
+        private void UpdateScheduledMobFallingEffects(int currentTime, AnimationEffects animationEffects)
+        {
+            for (int i = _scheduledMobFallingEffects.Count - 1; i >= 0; i--)
+            {
+                ScheduledMobFallingEffect effect = _scheduledMobFallingEffects[i];
+                if (currentTime < effect.TriggerTime)
+                {
+                    continue;
+                }
+
+                animationEffects?.AddFalling(
+                    effect.Frames,
+                    effect.StartPosition.X,
+                    effect.StartPosition.Y,
+                    effect.EndY,
+                    effect.FallSpeed,
+                    effect.HorizontalDrift,
+                    effect.Rotation,
+                    currentTime);
+                _scheduledMobFallingEffects.RemoveAt(i);
+            }
+        }
+
         private void UpdateMobProjectiles(int currentTime, float deltaSeconds, PlayerManager playerManager, AnimationEffects animationEffects)
         {
             for (int i = _activeMobProjectiles.Count - 1; i >= 0; i--)
@@ -455,7 +498,8 @@ namespace HaCreator.MapSimulator.Combat
                         !targetedSummoned &&
                         groundAttack.TargetInfo?.TargetType != MobTargetType.Mob &&
                         playerManager?.Combat != null &&
-                        playerManager.IsPlayerActive)
+                        playerManager.IsPlayerActive &&
+                        CanHitPlayerTarget(groundAttack.Attack))
                     {
                         playerManager.Combat.TryApplyMobHit(
                             groundAttack.SourceMob,
@@ -505,6 +549,7 @@ namespace HaCreator.MapSimulator.Combat
                         directAttack.TargetInfo?.TargetType != MobTargetType.Mob &&
                         playerManager?.Combat != null &&
                         playerManager.IsPlayerActive &&
+                        CanHitPlayerTarget(directAttack.Attack) &&
                         !attackArea.IsEmpty)
                     {
                         playerManager.Combat.TryApplyMobHit(
@@ -610,6 +655,12 @@ namespace HaCreator.MapSimulator.Combat
                 return;
             }
 
+            if (IsFallingEffectNode(effectNode))
+            {
+                ScheduleFallingEffectNode(mobItem, attack, effectNode, impactPosition, baseTime, flip);
+                return;
+            }
+
             if (effectNode.EffectType == 2)
             {
                 ScheduleTimedRangeEffectNode(mobItem, attack, effectNode, impactPosition, baseTime, flip);
@@ -618,6 +669,7 @@ namespace HaCreator.MapSimulator.Combat
 
             int triggerTime = baseTime + Math.Max(0, effectNode.Delay);
             List<Vector2> positions = BuildEffectNodePositions(mobItem, attack, effectNode, impactPosition);
+            int interval = ResolveEffectNodeInterval(effectNode, positions.Count);
 
             for (int i = 0; i < positions.Count; i++)
             {
@@ -630,8 +682,8 @@ namespace HaCreator.MapSimulator.Combat
                 _scheduledMobVisualEffects.Add(new ScheduledMobVisualEffect
                 {
                     Frames = frames,
-                    Position = positions[i],
-                    TriggerTime = triggerTime,
+                    Position = ResolveEffectNodePosition(positions[i], effectNode, flip),
+                    TriggerTime = triggerTime + (interval * i),
                     Flip = flip
                 });
             }
@@ -670,9 +722,71 @@ namespace HaCreator.MapSimulator.Combat
                 _scheduledMobVisualEffects.Add(new ScheduledMobVisualEffect
                 {
                     Frames = frames,
-                    Position = positions[Math.Min(i, positions.Count - 1)],
+                    Position = ResolveEffectNodePosition(positions[Math.Min(i, positions.Count - 1)], effectNode, flip),
                     TriggerTime = triggerTime + (interval * i),
                     Flip = flip
+                });
+            }
+        }
+
+        private void ScheduleFallingEffectNode(
+            MobItem mobItem,
+            MobAttackEntry attack,
+            MobAnimationSet.AttackEffectNode effectNode,
+            Vector2 impactPosition,
+            int baseTime,
+            bool flip)
+        {
+            int spawnCount = effectNode.EffectType == 2
+                ? ResolveTimedRangeSpawnCount(effectNode)
+                : Math.Max(1, effectNode.Sequences.Count);
+            if (spawnCount <= 0)
+            {
+                return;
+            }
+
+            List<Vector2> positions = effectNode.EffectType == 2
+                ? BuildTimedRangeEffectPositions(mobItem, attack, effectNode, impactPosition, spawnCount)
+                : BuildEffectNodePositions(mobItem, attack, effectNode, impactPosition);
+            if (positions.Count == 0)
+            {
+                return;
+            }
+
+            int interval = effectNode.EffectType == 2
+                ? ResolveTimedRangeInterval(effectNode, spawnCount)
+                : 0;
+            int triggerTime = baseTime + Math.Max(0, effectNode.Delay) + Math.Max(0, effectNode.Start);
+
+            for (int i = 0; i < spawnCount; i++)
+            {
+                List<IDXObject> frames = effectNode.Sequences[i % effectNode.Sequences.Count];
+                if (frames == null || frames.Count == 0)
+                {
+                    continue;
+                }
+
+                Vector2 basePosition = positions[Math.Min(i, positions.Count - 1)];
+                float endY = basePosition.Y - effectNode.OffsetY;
+                float fallDistance = Math.Max(1f, effectNode.Fall > 0 ? effectNode.Fall : 120f);
+                float startY = endY - fallDistance;
+                float horizontalOffset = ResolveEffectNodeHorizontalOffset(effectNode, flip);
+                float startX = basePosition.X + horizontalOffset;
+                float durationMs = Math.Max(120, ResolveSequenceDuration(frames));
+                float fallSpeed = fallDistance * 1000f / durationMs;
+                float horizontalDrift = horizontalOffset == 0f
+                    ? 0f
+                    : Math.Clamp((-2f * horizontalOffset) / Math.Max(fallDistance, 1f), -1f, 1f);
+
+                _scheduledMobFallingEffects.Add(new ScheduledMobFallingEffect
+                {
+                    Frames = frames,
+                    StartPosition = new Vector2(startX, startY),
+                    EndY = endY,
+                    FallSpeed = Math.Max(120f, fallSpeed),
+                    HorizontalDrift = horizontalDrift,
+                    TriggerTime = triggerTime + (interval * i),
+                    Rotation = true
                 });
             }
         }
@@ -879,6 +993,59 @@ namespace HaCreator.MapSimulator.Combat
             return positions;
         }
 
+        private static bool IsFallingEffectNode(MobAnimationSet.AttackEffectNode effectNode)
+        {
+            return effectNode != null && effectNode.Fall > 0;
+        }
+
+        private static Vector2 ResolveEffectNodePosition(Vector2 basePosition, MobAnimationSet.AttackEffectNode effectNode, bool flip)
+        {
+            if (effectNode == null)
+            {
+                return basePosition;
+            }
+
+            return new Vector2(
+                basePosition.X + ResolveEffectNodeHorizontalOffset(effectNode, flip),
+                basePosition.Y - effectNode.OffsetY);
+        }
+
+        private static float ResolveEffectNodeHorizontalOffset(MobAnimationSet.AttackEffectNode effectNode, bool flip)
+        {
+            if (effectNode == null || effectNode.OffsetX == 0)
+            {
+                return 0f;
+            }
+
+            return flip ? effectNode.OffsetX : -effectNode.OffsetX;
+        }
+
+        private static int ResolveSequenceDuration(List<IDXObject> frames)
+        {
+            if (frames == null || frames.Count == 0)
+            {
+                return 0;
+            }
+
+            int total = 0;
+            for (int i = 0; i < frames.Count; i++)
+            {
+                total += Math.Max(frames[i].Delay, 1);
+            }
+
+            return total;
+        }
+
+        private static int ResolveEffectNodeInterval(MobAnimationSet.AttackEffectNode effectNode, int spawnCount)
+        {
+            if (effectNode == null || spawnCount <= 1 || effectNode.Duration <= 0)
+            {
+                return 0;
+            }
+
+            return Math.Max(1, effectNode.Duration / (spawnCount - 1));
+        }
+
         private Rectangle CreateGroundArea(Vector2 target, int width, int height)
         {
             return new Rectangle(
@@ -1010,13 +1177,23 @@ namespace HaCreator.MapSimulator.Combat
             }
 
             PuppetInfo puppet = FindTargetPuppet(targetInfo);
-            if (puppet == null || !CreatePuppetHitbox(puppet).Intersects(hitbox))
+            if (puppet == null || !CanHitPuppetTarget(attack, puppet) || !CreatePuppetHitbox(puppet).Intersects(hitbox))
             {
                 return false;
             }
 
             _onPuppetHit?.Invoke(puppet, sourceMob, attack, currentTime);
             return true;
+        }
+
+        private bool CanHitPlayerTarget(MobAttackEntry attack)
+        {
+            return attack?.IsJumpAttack != true || (_playerGroundedAccessor?.Invoke() ?? true);
+        }
+
+        private static bool CanHitPuppetTarget(MobAttackEntry attack, PuppetInfo puppet)
+        {
+            return attack?.IsJumpAttack != true || puppet?.IsGrounded == true;
         }
 
         private bool TryApplyTargetMobHit(

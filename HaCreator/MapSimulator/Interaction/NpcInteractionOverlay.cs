@@ -524,15 +524,25 @@ namespace HaCreator.MapSimulator.Interaction
                 return Array.Empty<Rectangle>();
             }
 
-            int clampedCount = Math.Min(3, count);
-            int totalWidth = (ChoiceButtonWidth * clampedCount) + (ButtonGap * (clampedCount - 1));
-            int startX = windowRect.X + ((windowRect.Width - totalWidth) / 2);
-            int y = windowRect.Bottom - (ButtonHeight * 2) - 26;
+            const int columns = 3;
+            int rows = (int)Math.Ceiling(count / (double)columns);
+            int totalHeight = (rows * ButtonHeight) + ((rows - 1) * ButtonGap);
+            int y = windowRect.Bottom - ButtonHeight - 30 - totalHeight;
 
-            var rects = new Rectangle[clampedCount];
-            for (int i = 0; i < clampedCount; i++)
+            var rects = new Rectangle[count];
+            for (int i = 0; i < count; i++)
             {
-                rects[i] = new Rectangle(startX + i * (ChoiceButtonWidth + ButtonGap), y, ChoiceButtonWidth, ButtonHeight);
+                int row = i / columns;
+                int column = i % columns;
+                int itemsInRow = Math.Min(columns, count - (row * columns));
+                int totalWidth = (ChoiceButtonWidth * itemsInRow) + (ButtonGap * (itemsInRow - 1));
+                int startX = windowRect.X + ((windowRect.Width - totalWidth) / 2);
+
+                rects[i] = new Rectangle(
+                    startX + column * (ChoiceButtonWidth + ButtonGap),
+                    y + row * (ButtonHeight + ButtonGap),
+                    ChoiceButtonWidth,
+                    ButtonHeight);
             }
 
             return rects;

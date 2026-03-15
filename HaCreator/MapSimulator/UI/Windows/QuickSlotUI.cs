@@ -2,6 +2,7 @@ using HaCreator.MapSimulator.Character.Skills;
 using HaCreator.MapSimulator.UI.Controls;
 using HaSharedLibrary.Render;
 using HaSharedLibrary.Render.DX;
+using MapleLib.WzLib.WzStructure.Data.ItemStructure;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using Microsoft.Xna.Framework.Input;
@@ -59,9 +60,15 @@ namespace HaCreator.MapSimulator.UI
 
         // Drag and drop
         private int _dragSourceSlot = -1;
+        private InventoryType _dragItemInventoryType = InventoryType.NONE;
+        private int _dragItemId = 0;
+        private int _dragMacroIndex = -1;
         private int _dragSkillId = 0;
+        private DragBindingType _dragType = DragBindingType.None;
         private bool _isDragging = false;
         private Vector2 _dragPosition;
+        private IInventoryRuntime _inventoryRuntime;
+        private Func<int, SkillMacro> _macroProvider;
 
         // Skill icon cache (IDXObject from SkillData.Icon)
         private readonly Dictionary<int, IDXObject> _skillIconCache = new();
@@ -76,6 +83,14 @@ namespace HaCreator.MapSimulator.UI
             // Ctrl bar (Ctrl+1-8)
             new[] { "^1", "^2", "^3", "^4", "^5", "^6", "^7", "^8" }
         };
+
+        private enum DragBindingType
+        {
+            None,
+            Skill,
+            Macro,
+            Item
+        }
         #endregion
 
         #region Properties
@@ -195,6 +210,16 @@ namespace HaCreator.MapSimulator.UI
             _skillLoader = skillLoader;
         }
 
+        public void SetInventoryRuntime(IInventoryRuntime inventoryRuntime)
+        {
+            _inventoryRuntime = inventoryRuntime;
+        }
+
+        public void SetMacroProvider(Func<int, SkillMacro> macroProvider)
+        {
+            _macroProvider = macroProvider;
+        }
+
         /// <summary>
         /// Set the font for text rendering
         /// </summary>
@@ -254,8 +279,9 @@ namespace HaCreator.MapSimulator.UI
                 // Draw slot background
                 sprite.Draw(_emptySlotTexture, new Rectangle(slotX, slotY, SLOT_SIZE, SLOT_SIZE), Color.White);
 
-                // Draw skill icon if assigned
-                int skillId = _skillManager.GetHotkeySkill(absoluteSlotIndex);
+                int macroIndex = _skillManager.GetHotkeyMacroIndex(absoluteSlotIndex);
+                SkillMacro macro = macroIndex >= 0 ? _macroProvider?.Invoke(macroIndex) : null;
+                int skillId = macro != null ? GetMacroDisplaySkillId(macro) : _skillManager.GetHotkeySkill(absoluteSlotIndex);
                 if (skillId > 0)
                 {
                     var icon = GetSkillIcon(skillId);
@@ -278,6 +304,35 @@ namespace HaCreator.MapSimulator.UI
                                 slotY + SLOT_SIZE - textSize.Y - 1f);
 
                             DrawTextWithShadow(sprite, remainingText, textPosition, Color.White, Color.Black, COOLDOWN_TEXT_SCALE);
+                        }
+                    }
+
+                    if (macro != null && _font != null)
+                    {
+                        DrawTextWithShadow(sprite, $"M{macroIndex + 1}",
+                            new Vector2(slotX + 2, slotY + 1),
+                            Color.Yellow, Color.Black, 0.75f);
+                    }
+                }
+                else
+                {
+                    int itemId = _skillManager.GetHotkeyItem(absoluteSlotIndex);
+                    if (itemId > 0)
+                    {
+                        InventoryType inventoryType = _skillManager.GetHotkeyItemInventoryType(absoluteSlotIndex);
+                        Texture2D itemTexture = _inventoryRuntime?.GetItemTexture(inventoryType, itemId);
+                        if (itemTexture != null)
+                        {
+                            sprite.Draw(itemTexture, new Rectangle(slotX, slotY, SLOT_SIZE, SLOT_SIZE), Color.White);
+                        }
+
+                        if (_font != null)
+                        {
+                            int itemCount = _skillManager.GetHotkeyItemCount(absoluteSlotIndex);
+                            if (itemCount > 1)
+                            {
+                                InventoryRenderUtil.DrawSlotQuantity(sprite, _font, itemCount, slotX, slotY, SLOT_SIZE);
+                            }
                         }
                     }
                 }
@@ -313,15 +368,50 @@ namespace HaCreator.MapSimulator.UI
             }
 
             // Draw dragged skill icon
-            if (_isDragging && _dragSkillId > 0)
+            if (_isDragging)
             {
-                var dragIcon = GetSkillIcon(_dragSkillId);
-                if (dragIcon != null)
+                if (_dragType == DragBindingType.Skill && _dragSkillId > 0)
                 {
-                    // Use DrawBackground with semi-transparency for drag visual
+                    var dragIcon = GetSkillIcon(_dragSkillId);
+                    if (dragIcon != null)
+                    {
+                        int dragX = (int)_dragPosition.X - SLOT_SIZE / 2;
+                        int dragY = (int)_dragPosition.Y - SLOT_SIZE / 2;
+                        dragIcon.DrawBackground(sprite, null, null, dragX, dragY, Color.White * 0.7f, false, null);
+                    }
+                }
+                else if (_dragType == DragBindingType.Item && _dragItemId > 0)
+                {
+                    Texture2D itemTexture = _inventoryRuntime?.GetItemTexture(_dragItemInventoryType, _dragItemId);
+                    if (itemTexture != null)
+                    {
+                        int dragX = (int)_dragPosition.X - SLOT_SIZE / 2;
+                        int dragY = (int)_dragPosition.Y - SLOT_SIZE / 2;
+                        sprite.Draw(itemTexture, new Rectangle(dragX, dragY, SLOT_SIZE, SLOT_SIZE), Color.White * 0.7f);
+                    }
+                }
+                else if (_dragType == DragBindingType.Macro && _dragMacroIndex >= 0)
+                {
+                    SkillMacro macro = _macroProvider?.Invoke(_dragMacroIndex);
+                    int macroSkillId = GetMacroDisplaySkillId(macro);
                     int dragX = (int)_dragPosition.X - SLOT_SIZE / 2;
                     int dragY = (int)_dragPosition.Y - SLOT_SIZE / 2;
-                    dragIcon.DrawBackground(sprite, null, null, dragX, dragY, Color.White * 0.7f, false, null);
+                    IDXObject dragIcon = macroSkillId > 0 ? GetSkillIcon(macroSkillId) : null;
+                    if (dragIcon != null)
+                    {
+                        dragIcon.DrawBackground(sprite, null, null, dragX, dragY, Color.White * 0.7f, false, null);
+                    }
+                    else
+                    {
+                        sprite.Draw(_emptySlotTexture, new Rectangle(dragX, dragY, SLOT_SIZE, SLOT_SIZE), Color.White);
+                    }
+
+                    if (_font != null)
+                    {
+                        DrawTextWithShadow(sprite, $"M{_dragMacroIndex + 1}",
+                            new Vector2(dragX, dragY - 12),
+                            Color.Yellow, Color.Black, 0.75f);
+                    }
                 }
             }
         }
@@ -362,9 +452,20 @@ namespace HaCreator.MapSimulator.UI
             if (_font == null || _isDragging || _hoveredSlot < 0)
                 return;
 
-            int skillId = _skillManager?.GetHotkeySkill(SlotOffset + _hoveredSlot) ?? 0;
-            if (skillId <= 0)
+            int absoluteSlotIndex = SlotOffset + _hoveredSlot;
+            int macroIndex = _skillManager?.GetHotkeyMacroIndex(absoluteSlotIndex) ?? -1;
+            if (macroIndex >= 0)
+            {
+                DrawHoveredMacroTooltip(sprite, renderWidth, renderHeight, macroIndex);
                 return;
+            }
+
+            int skillId = _skillManager?.GetHotkeySkill(absoluteSlotIndex) ?? 0;
+            if (skillId <= 0)
+            {
+                DrawHoveredItemTooltip(sprite, renderWidth, renderHeight, absoluteSlotIndex);
+                return;
+            }
 
             SkillData skill = _skillLoader?.LoadSkill(skillId);
             if (skill == null)
@@ -483,6 +584,108 @@ namespace HaCreator.MapSimulator.UI
             frameIndex = Math.Clamp((14 * elapsedSeconds) / totalSeconds, 0, 14);
             remainingText = Math.Max(1, (int)Math.Ceiling(remainingMs / 1000f)).ToString();
             return true;
+        }
+
+        private void DrawHoveredItemTooltip(SpriteBatch sprite, int renderWidth, int renderHeight, int absoluteSlotIndex)
+        {
+            int itemId = _skillManager?.GetHotkeyItem(absoluteSlotIndex) ?? 0;
+            if (itemId <= 0)
+                return;
+
+            int itemCount = _skillManager.GetHotkeyItemCount(absoluteSlotIndex);
+            string itemName = ResolveItemName(itemId);
+            string countLine = itemCount > 0 ? $"Quantity: {itemCount}" : string.Empty;
+
+            int tooltipWidth = ResolveTooltipWidth();
+            string[] wrappedTitle = WrapTooltipText(SanitizeFontText(itemName), tooltipWidth - (TOOLTIP_PADDING * 2));
+            string[] wrappedCount = WrapTooltipText(countLine, tooltipWidth - (TOOLTIP_PADDING * 2));
+            float titleHeight = MeasureLinesHeight(wrappedTitle);
+            float countHeight = MeasureLinesHeight(wrappedCount);
+            int tooltipHeight = (int)Math.Ceiling((TOOLTIP_PADDING * 2) + titleHeight + (countHeight > 0f ? TOOLTIP_SECTION_GAP + countHeight : 0f));
+
+            int tooltipX = _lastMousePosition.X + TOOLTIP_OFFSET_X;
+            int tooltipY = _lastMousePosition.Y + 20;
+            int tooltipFrameIndex = 1;
+            if (tooltipX + tooltipWidth > renderWidth - TOOLTIP_PADDING)
+            {
+                tooltipX = _lastMousePosition.X - tooltipWidth - TOOLTIP_OFFSET_X;
+                tooltipFrameIndex = 0;
+            }
+
+            if (tooltipX < TOOLTIP_PADDING)
+                tooltipX = TOOLTIP_PADDING;
+
+            if (tooltipY + tooltipHeight > renderHeight - TOOLTIP_PADDING)
+            {
+                tooltipY = Math.Max(TOOLTIP_PADDING, _lastMousePosition.Y - tooltipHeight + TOOLTIP_OFFSET_Y);
+                tooltipFrameIndex = 2;
+            }
+
+            Rectangle backgroundRect = new Rectangle(tooltipX, tooltipY, tooltipWidth, tooltipHeight);
+            DrawTooltipBackground(sprite, backgroundRect, tooltipFrameIndex);
+
+            int textX = tooltipX + TOOLTIP_PADDING;
+            int textY = tooltipY + TOOLTIP_PADDING;
+            DrawTooltipLines(sprite, wrappedTitle, textX, textY, new Color(255, 220, 120));
+            if (countHeight > 0f)
+            {
+                DrawTooltipLines(sprite, wrappedCount, textX, textY + titleHeight + TOOLTIP_SECTION_GAP, Color.White);
+            }
+        }
+
+        private void DrawHoveredMacroTooltip(SpriteBatch sprite, int renderWidth, int renderHeight, int macroIndex)
+        {
+            SkillMacro macro = _macroProvider?.Invoke(macroIndex);
+            if (macro == null)
+                return;
+
+            int tooltipWidth = ResolveTooltipWidth();
+            string[] wrappedTitle = WrapTooltipText(SanitizeFontText(macro.Name), tooltipWidth - (TOOLTIP_PADDING * 2));
+            string[] wrappedNotify = WrapTooltipText(macro.NotifyParty ? "Party notice: On" : "Party notice: Off",
+                tooltipWidth - (TOOLTIP_PADDING * 2));
+            string[] skillLines = BuildMacroSkillLines(macro);
+            float titleHeight = MeasureLinesHeight(wrappedTitle);
+            float notifyHeight = MeasureLinesHeight(wrappedNotify);
+            float skillHeight = skillLines.Length * _font.LineSpacing;
+            int tooltipHeight = (int)Math.Ceiling((TOOLTIP_PADDING * 2) + titleHeight + TOOLTIP_TITLE_GAP + notifyHeight +
+                (skillHeight > 0f ? TOOLTIP_SECTION_GAP + skillHeight : 0f));
+
+            int tooltipX = _lastMousePosition.X + TOOLTIP_OFFSET_X;
+            int tooltipY = _lastMousePosition.Y + 20;
+            int tooltipFrameIndex = 1;
+            if (tooltipX + tooltipWidth > renderWidth - TOOLTIP_PADDING)
+            {
+                tooltipX = _lastMousePosition.X - tooltipWidth - TOOLTIP_OFFSET_X;
+                tooltipFrameIndex = 0;
+            }
+
+            if (tooltipX < TOOLTIP_PADDING)
+                tooltipX = TOOLTIP_PADDING;
+
+            if (tooltipY + tooltipHeight > renderHeight - TOOLTIP_PADDING)
+            {
+                tooltipY = Math.Max(TOOLTIP_PADDING, _lastMousePosition.Y - tooltipHeight + TOOLTIP_OFFSET_Y);
+                tooltipFrameIndex = 2;
+            }
+
+            Rectangle backgroundRect = new Rectangle(tooltipX, tooltipY, tooltipWidth, tooltipHeight);
+            DrawTooltipBackground(sprite, backgroundRect, tooltipFrameIndex);
+
+            int textX = tooltipX + TOOLTIP_PADDING;
+            float sectionY = tooltipY + TOOLTIP_PADDING;
+            DrawTooltipLines(sprite, wrappedTitle, textX, sectionY, new Color(255, 220, 120));
+            sectionY += titleHeight + TOOLTIP_TITLE_GAP;
+            DrawTooltipLines(sprite, wrappedNotify, textX, sectionY, new Color(180, 255, 210));
+            sectionY += notifyHeight;
+
+            if (skillLines.Length > 0)
+            {
+                sectionY += TOOLTIP_SECTION_GAP;
+                for (int i = 0; i < skillLines.Length; i++)
+                {
+                    DrawTooltipText(sprite, skillLines[i], new Vector2(textX, sectionY + (i * _font.LineSpacing)), Color.White);
+                }
+            }
         }
 
         private string GetTooltipCostLine(int skillId, SkillLevelData levelData, int currentTime)
@@ -717,6 +920,38 @@ namespace HaCreator.MapSimulator.UI
                     _isDragging = true;
                     _dragSourceSlot = absoluteSlot;
                     _dragSkillId = skillId;
+                    _dragMacroIndex = -1;
+                    _dragItemId = 0;
+                    _dragItemInventoryType = InventoryType.NONE;
+                    _dragType = DragBindingType.Skill;
+                    _dragPosition = new Vector2(mouseX, mouseY);
+                    return;
+                }
+
+                int macroIndex = _skillManager?.GetHotkeyMacroIndex(absoluteSlot) ?? -1;
+                if (macroIndex >= 0)
+                {
+                    _isDragging = true;
+                    _dragSourceSlot = absoluteSlot;
+                    _dragSkillId = 0;
+                    _dragMacroIndex = macroIndex;
+                    _dragItemId = 0;
+                    _dragItemInventoryType = InventoryType.NONE;
+                    _dragType = DragBindingType.Macro;
+                    _dragPosition = new Vector2(mouseX, mouseY);
+                    return;
+                }
+
+                int itemId = _skillManager?.GetHotkeyItem(absoluteSlot) ?? 0;
+                if (itemId > 0)
+                {
+                    _isDragging = true;
+                    _dragSourceSlot = absoluteSlot;
+                    _dragSkillId = 0;
+                    _dragMacroIndex = -1;
+                    _dragItemId = itemId;
+                    _dragItemInventoryType = _skillManager.GetHotkeyItemInventoryType(absoluteSlot);
+                    _dragType = DragBindingType.Item;
                     _dragPosition = new Vector2(mouseX, mouseY);
                 }
             }
@@ -738,9 +973,13 @@ namespace HaCreator.MapSimulator.UI
                     if (_dragSourceSlot >= 0 && _dragSourceSlot != absoluteTarget)
                     {
                         int targetSkill = _skillManager?.GetHotkeySkill(absoluteTarget) ?? 0;
-                        if (_skillManager?.TrySetHotkey(absoluteTarget, _dragSkillId) == true)
+                        int targetMacro = _skillManager?.GetHotkeyMacroIndex(absoluteTarget) ?? -1;
+                        int targetItemId = _skillManager?.GetHotkeyItem(absoluteTarget) ?? 0;
+                        InventoryType targetItemInventoryType = _skillManager?.GetHotkeyItemInventoryType(absoluteTarget) ?? InventoryType.NONE;
+
+                        if (TryAssignDraggedBinding(absoluteTarget))
                         {
-                            _skillManager.SetHotkey(_dragSourceSlot, targetSkill);
+                            RestoreBinding(_dragSourceSlot, targetSkill, targetMacro, targetItemId, targetItemInventoryType);
                         }
                     }
                 }
@@ -748,6 +987,10 @@ namespace HaCreator.MapSimulator.UI
                 _isDragging = false;
                 _dragSourceSlot = -1;
                 _dragSkillId = 0;
+                _dragMacroIndex = -1;
+                _dragItemId = 0;
+                _dragItemInventoryType = InventoryType.NONE;
+                _dragType = DragBindingType.None;
             }
         }
 
@@ -756,6 +999,10 @@ namespace HaCreator.MapSimulator.UI
             _isDragging = false;
             _dragSourceSlot = -1;
             _dragSkillId = 0;
+            _dragMacroIndex = -1;
+            _dragItemId = 0;
+            _dragItemInventoryType = InventoryType.NONE;
+            _dragType = DragBindingType.None;
         }
 
         /// <summary>
@@ -773,6 +1020,16 @@ namespace HaCreator.MapSimulator.UI
             OnSkillDropped?.Invoke(absoluteSlot, skillId);
             return true;
         }
+
+        public bool AcceptMacroDrop(int macroIndex, int mouseX, int mouseY)
+        {
+            int slot = GetSlotAtPosition(mouseX, mouseY);
+            if (slot < 0)
+                return false;
+
+            int absoluteSlot = SlotOffset + slot;
+            return _skillManager?.TrySetMacroHotkey(absoluteSlot, macroIndex) == true;
+        }
         #endregion
 
         #region Update
@@ -782,7 +1039,7 @@ namespace HaCreator.MapSimulator.UI
 
             _skillManager?.RevalidateHotkeys();
 
-            if (_isDragging && _skillManager?.GetHotkeySkill(_dragSourceSlot) != _dragSkillId)
+            if (_isDragging && !IsCurrentDragBindingStillValid())
             {
                 CancelDrag();
             }
@@ -818,6 +1075,99 @@ namespace HaCreator.MapSimulator.UI
         public void ClearIconCache()
         {
             _skillIconCache.Clear();
+        }
+
+        private bool TryAssignDraggedBinding(int targetSlot)
+        {
+            return _dragType switch
+            {
+                DragBindingType.Skill => _skillManager?.TrySetHotkey(targetSlot, _dragSkillId) == true,
+                DragBindingType.Macro => _skillManager?.TrySetMacroHotkey(targetSlot, _dragMacroIndex) == true,
+                DragBindingType.Item => _skillManager?.TrySetItemHotkey(targetSlot, _dragItemId, _dragItemInventoryType) == true,
+                _ => false
+            };
+        }
+
+        private void RestoreBinding(int slotIndex, int skillId, int macroIndex, int itemId, InventoryType inventoryType)
+        {
+            if (skillId > 0)
+            {
+                _skillManager?.TrySetHotkey(slotIndex, skillId);
+                return;
+            }
+
+            if (macroIndex >= 0)
+            {
+                _skillManager?.TrySetMacroHotkey(slotIndex, macroIndex);
+                return;
+            }
+
+            if (itemId > 0)
+            {
+                _skillManager?.TrySetItemHotkey(slotIndex, itemId, inventoryType);
+                return;
+            }
+
+            _skillManager?.ClearHotkey(slotIndex);
+        }
+
+        private bool IsCurrentDragBindingStillValid()
+        {
+            if (_dragSourceSlot < 0 || _skillManager == null)
+                return false;
+
+            return _dragType switch
+            {
+                DragBindingType.Skill => _skillManager.GetHotkeySkill(_dragSourceSlot) == _dragSkillId,
+                DragBindingType.Macro => _skillManager.GetHotkeyMacroIndex(_dragSourceSlot) == _dragMacroIndex,
+                DragBindingType.Item => _skillManager.GetHotkeyItem(_dragSourceSlot) == _dragItemId,
+                _ => false
+            };
+        }
+
+        private int GetMacroDisplaySkillId(SkillMacro macro)
+        {
+            if (macro?.SkillIds == null)
+                return 0;
+
+            for (int i = 0; i < macro.SkillIds.Length; i++)
+            {
+                if (macro.SkillIds[i] > 0)
+                    return macro.SkillIds[i];
+            }
+
+            return 0;
+        }
+
+        private string[] BuildMacroSkillLines(SkillMacro macro)
+        {
+            if (macro?.SkillIds == null)
+                return Array.Empty<string>();
+
+            List<string> lines = new();
+            for (int i = 0; i < macro.SkillIds.Length; i++)
+            {
+                int skillId = macro.SkillIds[i];
+                if (skillId <= 0)
+                    continue;
+
+                SkillData skill = _skillLoader?.LoadSkill(skillId);
+                string skillName = !string.IsNullOrWhiteSpace(skill?.Name)
+                    ? SanitizeFontText(skill.Name)
+                    : $"Skill {skillId}";
+                lines.Add($"{i + 1}. {skillName}");
+            }
+
+            return lines.ToArray();
+        }
+
+        private static string ResolveItemName(int itemId)
+        {
+            return HaCreator.Program.InfoManager?.ItemNameCache != null &&
+                   HaCreator.Program.InfoManager.ItemNameCache.TryGetValue(itemId, out Tuple<string, string, string> itemInfo) &&
+                   !string.IsNullOrWhiteSpace(itemInfo.Item2)
+                ? itemInfo.Item2
+                : $"Item {itemId}";
         }
         #endregion
     }

@@ -44,6 +44,7 @@ namespace HaCreator.MapSimulator.Character
         // Slots 8-19: Function key hotkeys (F1-F12)
         // Slots 20-27: Ctrl+Number hotkeys (Ctrl+1-8)
         public Dictionary<int, int> SkillHotkeys { get; set; } = new();
+        public Dictionary<int, Skills.ItemHotkeyBinding> ItemHotkeys { get; set; } = new();
 
         // Learned skill levels
         // Key: skill ID, Value: skill level
@@ -136,6 +137,7 @@ namespace HaCreator.MapSimulator.Character
 
             // Copy hotkey assignments
             SkillHotkeys = skillManager.GetAllHotkeys();
+            ItemHotkeys = skillManager.GetAllItemHotkeys();
 
             // Copy learned skill levels
             SkillLevels.Clear();
@@ -165,12 +167,16 @@ namespace HaCreator.MapSimulator.Character
             // Restore hotkeys after levels so preset load uses the same validation
             // path as live quick-slot assignment.
             skillManager.LoadHotkeys(SkillHotkeys);
+            skillManager.LoadItemHotkeys(ItemHotkeys);
         }
 
         /// <summary>
         /// Check if this preset has any skill configuration
         /// </summary>
-        public bool HasSkillConfiguration => (SkillHotkeys?.Count ?? 0) > 0 || (SkillLevels?.Count ?? 0) > 0;
+        public bool HasSkillConfiguration =>
+            (SkillHotkeys?.Count ?? 0) > 0 ||
+            (ItemHotkeys?.Count ?? 0) > 0 ||
+            (SkillLevels?.Count ?? 0) > 0;
     }
 
     /// <summary>

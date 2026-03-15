@@ -877,6 +877,38 @@ namespace HaCreator.MapSimulator.Character
             part.VSlot = GetStringValue(info["vslot"]);
             part.ISlot = GetStringValue(info["islot"]);
             part.IsCash = GetIntValue(info["cash"]) == 1;
+            part.RequiredLevel = GetIntValue(info["reqLevel"]) ?? 0;
+            part.RequiredSTR = GetIntValue(info["reqSTR"]) ?? 0;
+            part.RequiredDEX = GetIntValue(info["reqDEX"]) ?? 0;
+            part.RequiredINT = GetIntValue(info["reqINT"]) ?? 0;
+            part.RequiredLUK = GetIntValue(info["reqLUK"]) ?? 0;
+            part.BonusSTR = GetIntValue(info["incSTR"]) ?? 0;
+            part.BonusDEX = GetIntValue(info["incDEX"]) ?? 0;
+            part.BonusINT = GetIntValue(info["incINT"]) ?? 0;
+            part.BonusLUK = GetIntValue(info["incLUK"]) ?? 0;
+            part.BonusHP = GetIntValue(info["incMHP"]) ?? 0;
+            part.BonusMP = GetIntValue(info["incMMP"]) ?? 0;
+            part.BonusWeaponAttack = GetIntValue(info["incPAD"]) ?? 0;
+            part.BonusMagicAttack = GetIntValue(info["incMAD"]) ?? 0;
+            part.BonusWeaponDefense = GetIntValue(info["incPDD"]) ?? 0;
+            part.BonusMagicDefense = GetIntValue(info["incMDD"]) ?? 0;
+            part.BonusAccuracy = GetIntValue(info["incACC"]) ?? 0;
+            part.BonusAvoidability = GetIntValue(info["incEVA"]) ?? 0;
+            part.BonusSpeed = GetIntValue(info["incSpeed"]) ?? 0;
+            part.BonusJump = GetIntValue(info["incJump"]) ?? 0;
+            part.UpgradeSlots = GetIntValue(info["tuc"]) ?? 0;
+
+            if (Program.InfoManager?.ItemNameCache != null
+                && Program.InfoManager.ItemNameCache.TryGetValue(part.ItemId, out Tuple<string, string, string> itemInfo))
+            {
+                part.ItemCategory = itemInfo.Item1;
+                if (!string.IsNullOrWhiteSpace(itemInfo.Item2))
+                {
+                    part.Name = itemInfo.Item2;
+                }
+
+                part.Description = itemInfo.Item3;
+            }
 
             // Load icon
             var iconNode = info["icon"];

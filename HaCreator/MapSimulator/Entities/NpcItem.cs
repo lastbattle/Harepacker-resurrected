@@ -232,6 +232,11 @@ namespace HaCreator.MapSimulator.Entities
             return line;
         }
 
+        public IReadOnlyList<string> GetIdleSpeechLines()
+        {
+            return _idleSpeechLines;
+        }
+
         /// <summary>
         /// Update action cycling - only when standing still
         /// Based on MapleNecrocer's NPC action cycling

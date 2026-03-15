@@ -19,7 +19,7 @@ namespace HaCreator.MapSimulator.UI
             public bool CanDelete { get; init; }
         }
 
-        private const int MaxVisibleRows = 15;
+        private const int MaxVisibleRows = 5;
         private const int RowHeight = 17;
         private const int RowStartX = 19;
         private const int RowStartY = 39;
@@ -36,6 +36,7 @@ namespace HaCreator.MapSimulator.UI
         private readonly UIObject _deleteButton;
         private readonly UIObject _moveButton;
         private readonly UIObject _mapButton;
+        private readonly int _maxSavedDestinations;
 
         private SpriteFont _font;
         private string _currentMapName = string.Empty;
@@ -53,6 +54,7 @@ namespace HaCreator.MapSimulator.UI
             UIObject deleteButton,
             UIObject moveButton,
             UIObject mapButton,
+            int maxSavedDestinations,
             GraphicsDevice device)
             : base(frame)
         {
@@ -63,6 +65,7 @@ namespace HaCreator.MapSimulator.UI
             _deleteButton = deleteButton;
             _moveButton = moveButton;
             _mapButton = mapButton;
+            _maxSavedDestinations = Math.Max(MaxVisibleRows, maxSavedDestinations);
 
             InitializeCloseAndActionButtons(registerButton, deleteButton, moveButton, mapButton);
             InitializeRowButtons(device);
@@ -70,6 +73,7 @@ namespace HaCreator.MapSimulator.UI
         }
 
         public override string WindowName => MapSimulatorWindowNames.MapTransfer;
+        public int MaxSavedDestinations => _maxSavedDestinations;
 
         public Action RegisterCurrentMapRequested { get; set; }
         public Action<DestinationEntry> DeleteDestinationRequested { get; set; }

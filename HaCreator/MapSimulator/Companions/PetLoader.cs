@@ -16,8 +16,27 @@ namespace HaCreator.MapSimulator.Companions
         public int ChatBalloonStyle { get; init; }
         public IDXObject Icon { get; init; }
         public IDXObject IconRaw { get; init; }
-        internal string[] IdleAutoSpeechLines { get; init; } = Array.Empty<string>();
+        internal IReadOnlyDictionary<PetAutoSpeechEvent, string[]> EventSpeechLines { get; init; } =
+            new Dictionary<PetAutoSpeechEvent, string[]>();
+        internal string[] RandomIdleActions { get; set; } = Array.Empty<string>();
+        internal PetCommandDefinition[] Commands { get; init; } = Array.Empty<PetCommandDefinition>();
         internal PetAnimationSet Animations { get; } = new PetAnimationSet();
+    }
+
+    internal sealed class PetReactionDefinition
+    {
+        public string ActionName { get; init; }
+        public string[] SpeechLines { get; init; } = Array.Empty<string>();
+    }
+
+    internal sealed class PetCommandDefinition
+    {
+        public string[] Triggers { get; init; } = Array.Empty<string>();
+        public int SuccessProbability { get; init; }
+        public int LevelMin { get; init; }
+        public int LevelMax { get; init; }
+        public PetReactionDefinition SuccessReaction { get; init; }
+        public PetReactionDefinition FailureReaction { get; init; }
     }
 
     internal sealed class PetLoader
@@ -30,8 +49,36 @@ namespace HaCreator.MapSimulator.Companions
             "jump",
             "hang",
             "fly",
+            "rest0",
+            "chat",
+            "angry",
+            "cry",
+            "alert",
+            "stretch",
+            "prone",
+            "hungry",
+            "poor"
+        };
+
+        private static readonly string[] RandomIdleActionCandidates =
+        {
+            "chat",
+            "alert",
+            "stretch",
+            "prone",
             "rest0"
         };
+
+        private static readonly IReadOnlyDictionary<PetAutoSpeechEvent, string> StructuredEventPropertyNames =
+            new Dictionary<PetAutoSpeechEvent, string>
+            {
+                [PetAutoSpeechEvent.LevelUp] = "e_levelup",
+                [PetAutoSpeechEvent.PreLevelUp] = "e_prelevelup",
+                [PetAutoSpeechEvent.Rest] = "e_rest",
+                [PetAutoSpeechEvent.HpAlert] = "e_HPAlert",
+                [PetAutoSpeechEvent.NoHpPotion] = "e_NOHPPotion",
+                [PetAutoSpeechEvent.NoMpPotion] = "e_NOMPPotion"
+            };
 
         private readonly GraphicsDevice _device;
         private readonly Dictionary<int, PetDefinition> _cache = new();
@@ -55,6 +102,7 @@ namespace HaCreator.MapSimulator.Companions
             }
 
             petImage.ParseImage();
+            Dictionary<string, string> dialogStrings = LoadPetDialogStrings(petItemId);
 
             var definition = new PetDefinition
             {
@@ -63,7 +111,8 @@ namespace HaCreator.MapSimulator.Companions
                 ChatBalloonStyle = GetIntValue(petImage["info"]?["chatBalloon"]) ?? 0,
                 Icon = LoadInfoIcon(petImage, "icon"),
                 IconRaw = LoadInfoIcon(petImage, "iconRaw"),
-                IdleAutoSpeechLines = LoadIdleAutoSpeechLines(petItemId)
+                EventSpeechLines = LoadEventSpeechLines(dialogStrings),
+                Commands = LoadInteractCommands(petImage, dialogStrings)
             };
 
             foreach (string action in SupportedActions)
@@ -82,6 +131,11 @@ namespace HaCreator.MapSimulator.Companions
             {
                 return null;
             }
+
+            definition.RandomIdleActions = RandomIdleActionCandidates
+                .Where(candidate => definition.Animations.GetAvailableActions()
+                    .Any(action => string.Equals(action, candidate, StringComparison.OrdinalIgnoreCase)))
+                .ToArray();
 
             _cache[petItemId] = definition;
             return definition;
@@ -104,37 +158,83 @@ namespace HaCreator.MapSimulator.Companions
             return (petString["name"] as WzStringProperty)?.Value;
         }
 
-        private static string[] LoadIdleAutoSpeechLines(int petItemId)
+        private static Dictionary<string, string> LoadPetDialogStrings(int petItemId)
         {
             WzImage petDialogImage = global::HaCreator.Program.FindImage("String", "PetDialog.img");
             if (petDialogImage == null)
             {
-                return Array.Empty<string>();
+                return new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
             }
 
             petDialogImage.ParseImage();
             if (petDialogImage[petItemId.ToString()] is not WzSubProperty petDialogProperty)
             {
+                return new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            }
+
+            return petDialogProperty.WzProperties
+                .OfType<WzStringProperty>()
+                .Where(property => !string.IsNullOrWhiteSpace(property.Name))
+                .GroupBy(property => property.Name, StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(
+                    group => group.Key,
+                    group => group.Last().Value?.Trim() ?? string.Empty,
+                    StringComparer.OrdinalIgnoreCase);
+        }
+
+        private static IReadOnlyDictionary<PetAutoSpeechEvent, string[]> LoadEventSpeechLines(
+            IReadOnlyDictionary<string, string> dialogStrings)
+        {
+            var eventLines = new Dictionary<PetAutoSpeechEvent, string[]>();
+            foreach ((PetAutoSpeechEvent eventType, string propertyName) in StructuredEventPropertyNames)
+            {
+                string[] lines = ExtractStructuredEventSpeechLines(propertyName, dialogStrings);
+                if (lines.Length > 0)
+                {
+                    eventLines[eventType] = lines;
+                }
+            }
+
+            if (!eventLines.ContainsKey(PetAutoSpeechEvent.Rest))
+            {
+                string[] idleFallbackLines = LoadLegacyIdleSpeechLines(dialogStrings);
+                if (idleFallbackLines.Length > 0)
+                {
+                    eventLines[PetAutoSpeechEvent.Rest] = idleFallbackLines;
+                }
+            }
+
+            return eventLines;
+        }
+
+        private static string[] ExtractStructuredEventSpeechLines(string propertyName, IReadOnlyDictionary<string, string> dialogStrings)
+        {
+            if (dialogStrings == null ||
+                !dialogStrings.TryGetValue(propertyName, out string value) ||
+                string.IsNullOrWhiteSpace(value))
+            {
                 return Array.Empty<string>();
             }
 
-            if (petDialogProperty["autoSpeaking"] is WzImageProperty autoSpeakingProperty)
+            return value
+                .Split(new[] { '\n' }, StringSplitOptions.RemoveEmptyEntries)
+                .Select(line => line.Trim())
+                .Where(line => !string.IsNullOrWhiteSpace(line))
+                .Distinct(StringComparer.Ordinal)
+                .ToArray();
+        }
+
+        private static string[] LoadLegacyIdleSpeechLines(IReadOnlyDictionary<string, string> dialogStrings)
+        {
+            if (dialogStrings == null || dialogStrings.Count == 0)
             {
-                return ExtractSpeechLines(autoSpeakingProperty)
-                    .Where(line => !string.IsNullOrWhiteSpace(line))
-                    .Distinct(StringComparer.Ordinal)
-                    .ToArray();
+                return Array.Empty<string>();
             }
 
             var fallbackLines = new List<string>();
-            foreach (WzImageProperty child in petDialogProperty.WzProperties)
+            foreach ((string key, string value) in dialogStrings)
             {
-                if (child is not WzStringProperty eventNameProperty)
-                {
-                    continue;
-                }
-
-                string eventNames = eventNameProperty.Value?.Trim();
+                string eventNames = value?.Trim();
                 if (string.IsNullOrWhiteSpace(eventNames) ||
                     eventNames.IndexOf("talk", StringComparison.OrdinalIgnoreCase) < 0 &&
                     eventNames.IndexOf("chat", StringComparison.OrdinalIgnoreCase) < 0 &&
@@ -143,14 +243,13 @@ namespace HaCreator.MapSimulator.Companions
                     continue;
                 }
 
-                string prefix = child.Name + "_s";
-                foreach (WzImageProperty sibling in petDialogProperty.WzProperties)
+                string prefix = key + "_s";
+                foreach ((string siblingKey, string siblingValue) in dialogStrings)
                 {
-                    if (sibling is WzStringProperty lineProperty &&
-                        sibling.Name.StartsWith(prefix, StringComparison.OrdinalIgnoreCase) &&
-                        !string.IsNullOrWhiteSpace(lineProperty.Value))
+                    if (siblingKey.StartsWith(prefix, StringComparison.OrdinalIgnoreCase) &&
+                        !string.IsNullOrWhiteSpace(siblingValue))
                     {
-                        fallbackLines.Add(lineProperty.Value.Trim());
+                        fallbackLines.Add(siblingValue.Trim());
                     }
                 }
             }
@@ -158,6 +257,92 @@ namespace HaCreator.MapSimulator.Companions
             return fallbackLines
                 .Distinct(StringComparer.Ordinal)
                 .ToArray();
+        }
+
+        private static PetCommandDefinition[] LoadInteractCommands(WzImage petImage, IReadOnlyDictionary<string, string> dialogStrings)
+        {
+            if (petImage?["interact"] is not WzSubProperty interactProperty)
+            {
+                return Array.Empty<PetCommandDefinition>();
+            }
+
+            var commands = new List<PetCommandDefinition>();
+            foreach (WzSubProperty interactEntry in interactProperty.WzProperties.OfType<WzSubProperty>().OrderBy(GetFrameOrder))
+            {
+                string commandKey = (interactEntry["command"] as WzStringProperty)?.Value?.Trim();
+                if (string.IsNullOrWhiteSpace(commandKey))
+                {
+                    continue;
+                }
+
+                string[] triggers = ResolveCommandTriggers(commandKey, dialogStrings);
+                if (triggers.Length == 0)
+                {
+                    continue;
+                }
+
+                commands.Add(new PetCommandDefinition
+                {
+                    Triggers = triggers,
+                    SuccessProbability = Math.Clamp(GetIntValue(interactEntry["prob"]) ?? 100, 0, 100),
+                    LevelMin = GetIntValue(interactEntry["l0"]) ?? 0,
+                    LevelMax = GetIntValue(interactEntry["l1"]) ?? 250,
+                    SuccessReaction = LoadReaction(interactEntry["success"], dialogStrings),
+                    FailureReaction = LoadReaction(interactEntry["fail"], dialogStrings)
+                });
+            }
+
+            return commands.ToArray();
+        }
+
+        private static string[] ResolveCommandTriggers(string commandKey, IReadOnlyDictionary<string, string> dialogStrings)
+        {
+            if (dialogStrings == null ||
+                !dialogStrings.TryGetValue(commandKey, out string triggerText) ||
+                string.IsNullOrWhiteSpace(triggerText))
+            {
+                return Array.Empty<string>();
+            }
+
+            return triggerText
+                .Split(new[] { '|' }, StringSplitOptions.RemoveEmptyEntries)
+                .Select(trigger => trigger.Trim())
+                .Where(trigger => !string.IsNullOrWhiteSpace(trigger))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+        }
+
+        private static PetReactionDefinition LoadReaction(WzImageProperty property, IReadOnlyDictionary<string, string> dialogStrings)
+        {
+            if (property is not WzSubProperty reactionProperty)
+            {
+                return null;
+            }
+
+            WzSubProperty firstReaction = reactionProperty.WzProperties.OfType<WzSubProperty>().OrderBy(GetFrameOrder).FirstOrDefault();
+            if (firstReaction == null)
+            {
+                return null;
+            }
+
+            string actionName = (firstReaction["act"] as WzStringProperty)?.Value?.Trim();
+            string[] speechLines = firstReaction.WzProperties
+                .Where(child => child.Name != "act")
+                .OrderBy(GetFrameOrder)
+                .Select(child => (child as WzStringProperty)?.Value?.Trim())
+                .Where(key => !string.IsNullOrWhiteSpace(key))
+                .Select(key => dialogStrings != null && dialogStrings.TryGetValue(key, out string resolvedLine)
+                    ? resolvedLine?.Trim()
+                    : null)
+                .Where(line => !string.IsNullOrWhiteSpace(line))
+                .Distinct(StringComparer.Ordinal)
+                .ToArray();
+
+            return new PetReactionDefinition
+            {
+                ActionName = actionName,
+                SpeechLines = speechLines
+            };
         }
 
         private List<IDXObject> LoadActionFrames(WzSubProperty actionNode)
@@ -200,37 +385,6 @@ namespace HaCreator.MapSimulator.Companions
             }
 
             return LoadTexture(canvas);
-        }
-
-        private static IEnumerable<string> ExtractSpeechLines(WzImageProperty property)
-        {
-            if (property == null)
-            {
-                yield break;
-            }
-
-            if (property is WzStringProperty stringProperty)
-            {
-                if (!string.IsNullOrWhiteSpace(stringProperty.Value))
-                {
-                    yield return stringProperty.Value.Trim();
-                }
-
-                yield break;
-            }
-
-            if (property.WzProperties == null)
-            {
-                yield break;
-            }
-
-            foreach (WzImageProperty child in property.WzProperties.OrderBy(GetFrameOrder))
-            {
-                foreach (string line in ExtractSpeechLines(child))
-                {
-                    yield return line;
-                }
-            }
         }
 
         private IDXObject LoadTexture(WzCanvasProperty canvas)

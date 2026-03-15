@@ -2,6 +2,12 @@ using HaCreator.MapSimulator.AI;
 
 namespace HaCreator.MapSimulator.Combat
 {
+    internal enum MobSkillOperation
+    {
+        ApplyStatus,
+        Heal
+    }
+
     internal enum MobSkillStatusTargetMode
     {
         Self,
@@ -10,6 +16,7 @@ namespace HaCreator.MapSimulator.Combat
 
     internal readonly record struct MobSkillStatusDefinition(
         int SkillId,
+        MobSkillOperation Operation,
         MobStatusEffect Effect,
         MobSkillStatusTargetMode TargetMode);
 
@@ -20,31 +27,34 @@ namespace HaCreator.MapSimulator.Combat
             switch (skillId)
             {
                 case 100:
-                    definition = new MobSkillStatusDefinition(skillId, MobStatusEffect.PowerUp, MobSkillStatusTargetMode.Self);
+                    definition = new MobSkillStatusDefinition(skillId, MobSkillOperation.ApplyStatus, MobStatusEffect.PowerUp, MobSkillStatusTargetMode.Self);
                     return true;
                 case 101:
-                    definition = new MobSkillStatusDefinition(skillId, MobStatusEffect.MagicUp, MobSkillStatusTargetMode.Self);
+                    definition = new MobSkillStatusDefinition(skillId, MobSkillOperation.ApplyStatus, MobStatusEffect.MagicUp, MobSkillStatusTargetMode.Self);
                     return true;
                 case 102:
-                    definition = new MobSkillStatusDefinition(skillId, MobStatusEffect.PGuardUp, MobSkillStatusTargetMode.Self);
+                    definition = new MobSkillStatusDefinition(skillId, MobSkillOperation.ApplyStatus, MobStatusEffect.PGuardUp, MobSkillStatusTargetMode.Self);
                     return true;
                 case 103:
-                    definition = new MobSkillStatusDefinition(skillId, MobStatusEffect.MGuardUp, MobSkillStatusTargetMode.Self);
+                    definition = new MobSkillStatusDefinition(skillId, MobSkillOperation.ApplyStatus, MobStatusEffect.MGuardUp, MobSkillStatusTargetMode.Self);
                     return true;
                 case 110:
-                    definition = new MobSkillStatusDefinition(skillId, MobStatusEffect.PowerUp, MobSkillStatusTargetMode.NearbyMobs);
+                    definition = new MobSkillStatusDefinition(skillId, MobSkillOperation.ApplyStatus, MobStatusEffect.PowerUp, MobSkillStatusTargetMode.NearbyMobs);
                     return true;
                 case 111:
-                    definition = new MobSkillStatusDefinition(skillId, MobStatusEffect.MagicUp, MobSkillStatusTargetMode.NearbyMobs);
+                    definition = new MobSkillStatusDefinition(skillId, MobSkillOperation.ApplyStatus, MobStatusEffect.MagicUp, MobSkillStatusTargetMode.NearbyMobs);
                     return true;
                 case 112:
-                    definition = new MobSkillStatusDefinition(skillId, MobStatusEffect.PGuardUp, MobSkillStatusTargetMode.NearbyMobs);
+                    definition = new MobSkillStatusDefinition(skillId, MobSkillOperation.ApplyStatus, MobStatusEffect.PGuardUp, MobSkillStatusTargetMode.NearbyMobs);
                     return true;
                 case 113:
-                    definition = new MobSkillStatusDefinition(skillId, MobStatusEffect.MGuardUp, MobSkillStatusTargetMode.NearbyMobs);
+                    definition = new MobSkillStatusDefinition(skillId, MobSkillOperation.ApplyStatus, MobStatusEffect.MGuardUp, MobSkillStatusTargetMode.NearbyMobs);
+                    return true;
+                case 114:
+                    definition = new MobSkillStatusDefinition(skillId, MobSkillOperation.Heal, MobStatusEffect.None, MobSkillStatusTargetMode.NearbyMobs);
                     return true;
                 case 115:
-                    definition = new MobSkillStatusDefinition(skillId, MobStatusEffect.Speed, MobSkillStatusTargetMode.NearbyMobs);
+                    definition = new MobSkillStatusDefinition(skillId, MobSkillOperation.ApplyStatus, MobStatusEffect.Speed, MobSkillStatusTargetMode.NearbyMobs);
                     return true;
                 default:
                     definition = default;

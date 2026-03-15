@@ -60,9 +60,8 @@ namespace HaCreator.MapSimulator
         private const int DefaultLowHpWarningThresholdPercent = 20;
         private const int DefaultLowMpWarningThresholdPercent = 20;
         private const int ReactorCollisionCheckIntervalMs = 1000;
-        private const int PetAutoSpeechIdleThresholdMs = 600000;
-        private const int PetAutoSpeechIdleCooldownMs = 120000;
-        private const int PetAutoSpeechBalloonDurationMs = 5000;
+        private const int PetAutoSpeechPreLevelReminderCooldownMs = 420000;
+        private const int PetAutoSpeechLowHpAlertCooldownMs = 60000;
         public int mapShiftX = 0;
         public int mapShiftY = 0;
         public Point minimapPos;
@@ -96,6 +95,7 @@ namespace HaCreator.MapSimulator
         // Arrays for faster iteration (converted from Lists after loading)
         private BaseDXDrawableItem[][] _mapObjectsArray;
         private readonly Dictionary<BaseDXDrawableItem, QuestGatedMapObjectState> _questGatedMapObjects = new();
+        private readonly Dictionary<string, bool> _authoredDynamicObjectTagStates = new(StringComparer.OrdinalIgnoreCase);
         private NpcItem[] _npcsArray;
         private MobItem[] _mobsArray;
         private ReactorItem[] _reactorsArray;
@@ -211,11 +211,10 @@ namespace HaCreator.MapSimulator
         private readonly Random _npcIdleSpeechRandom = new();
         private int _nextNpcIdleSpeechTick;
         private readonly Random _petIdleSpeechRandom = new();
-        private int _petStandingSinceTick = -1;
-        private int _nextPetIdleSpeechTick;
-        private int _activePetSpeechRuntimeId;
-        private string _activePetSpeechText;
-        private int _activePetSpeechExpiresAt;
+        private int _lastObservedPetSpeechLevel = -1;
+        private int _nextPetPreLevelSpeechTick;
+        private int _lastPetHpAlertTick = int.MinValue;
+        private bool _petHpAlertArmed = true;
         private int _lastReactorCollisionCheckTick = -ReactorCollisionCheckIntervalMs;
         private readonly Dictionary<(int skillId, int level), MobSummonSkillInfo> _mobSummonSkillCache = new();
         private readonly Dictionary<(int skillId, int level), MobSkillRuntimeData> _mobSkillRuntimeCache = new();
@@ -354,6 +353,8 @@ namespace HaCreator.MapSimulator
         private const int DefaultSimulatorWorldId = 0;
         private const int DefaultSimulatorChannelIndex = 0;
         private const int DefaultSimulatorChannelCount = 20;
+        private const int DefaultSimulatorChannelCapacity = 1000;
+        private const int DefaultLoginCharacterFieldMapId = 100000000;
         private bool _sameMapTeleportPending = false;
         private int _sameMapTeleportStartTime = 0;
         private int _sameMapTeleportDelay = 0;
@@ -366,8 +367,11 @@ namespace HaCreator.MapSimulator
         private string _lastFieldRestrictionMessage = null;
         private int _simulatorWorldId = DefaultSimulatorWorldId;
         private int _simulatorChannelIndex = DefaultSimulatorChannelIndex;
+        private readonly Dictionary<int, List<ChannelSelectionState>> _simulatorChannelStatesByWorld = new();
         private readonly List<SavedMapTransferDestination> _savedMapTransferDestinations = new();
         private readonly Dictionary<int, string> _mapTransferTitleCache = new();
+        private readonly LoginCharacterRosterManager _loginCharacterRoster = new();
+        private string _loginCharacterStatusMessage = "Dispatch SelectWorldResult to populate the character roster.";
 
         // Seamless map transition support (state managed by _gameState)
         private Func<int, Tuple<Board, string>> _loadMapCallback = null; // Callback to load new map
@@ -406,9 +410,16 @@ namespace HaCreator.MapSimulator
         {
             List<MapTransferUI.DestinationEntry> destinations = new();
             HashSet<string> seenKeys = new(StringComparer.OrdinalIgnoreCase);
+            int savedCapacity = GetMapTransferSavedSlotCapacity();
+            int savedCount = 0;
 
             foreach (SavedMapTransferDestination saved in _savedMapTransferDestinations)
             {
+                if (savedCount >= savedCapacity)
+                {
+                    break;
+                }
+
                 string displayName = ResolveMapTransferDisplayName(saved.MapId, saved.DisplayName);
                 if (!seenKeys.Add($"saved:{saved.MapId}"))
                 {
@@ -422,6 +433,7 @@ namespace HaCreator.MapSimulator
                     DetailText = $"{saved.MapId}",
                     CanDelete = true
                 });
+                savedCount++;
             }
 
             AddSystemMapTransferDestination(destinations, seenKeys, _mapBoard?.MapInfo?.returnMap, "Return");
@@ -505,6 +517,13 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
+            int savedCapacity = GetMapTransferSavedSlotCapacity();
+            if (_savedMapTransferDestinations.Count >= savedCapacity)
+            {
+                RefreshMapTransferWindow();
+                return;
+            }
+
             _savedMapTransferDestinations.Add(new SavedMapTransferDestination
             {
                 MapId = mapId,
@@ -531,10 +550,10 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
-            string restrictionMessage = FieldInteractionRestrictionEvaluator.GetTransferRestrictionMessage(_mapBoard?.MapInfo?.fieldLimit ?? 0);
-            if (!string.IsNullOrWhiteSpace(restrictionMessage))
+            string mapTransferRestrictionMessage = FieldInteractionRestrictionEvaluator.GetMapTransferRestrictionMessage(_mapBoard?.MapInfo?.fieldLimit ?? 0);
+            if (!string.IsNullOrWhiteSpace(mapTransferRestrictionMessage))
             {
-                ShowFieldRestrictionMessage(restrictionMessage);
+                ShowFieldRestrictionMessage(mapTransferRestrictionMessage);
                 return;
             }
 
@@ -590,13 +609,26 @@ namespace HaCreator.MapSimulator
                 return "Map loading is unavailable in this session.";
             }
 
-            string restrictionMessage = FieldInteractionRestrictionEvaluator.GetTransferRestrictionMessage(_mapBoard?.MapInfo?.fieldLimit ?? 0);
+            string restrictionMessage = FieldInteractionRestrictionEvaluator.GetMapTransferRestrictionMessage(_mapBoard?.MapInfo?.fieldLimit ?? 0);
             if (!string.IsNullOrWhiteSpace(restrictionMessage))
             {
                 return restrictionMessage;
             }
 
-            return "Register the current map or choose a listed route.";
+            int savedCapacity = GetMapTransferSavedSlotCapacity();
+            if (_savedMapTransferDestinations.Count >= savedCapacity)
+            {
+                return $"Saved slots full ({savedCapacity}/{savedCapacity}). Delete one before registering another map.";
+            }
+
+            return $"Register the current map or choose a listed route ({Math.Min(_savedMapTransferDestinations.Count, savedCapacity)}/{savedCapacity} saved).";
+        }
+
+        private int GetMapTransferSavedSlotCapacity()
+        {
+            return uiWindowManager?.GetWindow(MapSimulatorWindowNames.MapTransfer) is MapTransferUI mapTransferWindow
+                ? mapTransferWindow.MaxSavedDestinations
+                : 10;
         }
 
         private string ResolveMapTransferDisplayName(int mapId, string fallbackDisplayName = null)
@@ -688,8 +720,8 @@ namespace HaCreator.MapSimulator
                     uiWindowManager?.HideWindow(MapSimulatorWindowNames.CashShop);
                     uiWindowManager?.ShowWindow(MapSimulatorWindowNames.Mts);
                 };
-                statusBarUi.MenuRequested = () => uiWindowManager?.ShowWindow(MapSimulatorWindowNames.Menu);
-                statusBarUi.SystemRequested = () => uiWindowManager?.ShowWindow(MapSimulatorWindowNames.System);
+                statusBarUi.MenuRequested = () => ToggleStatusBarPopupWindow(MapSimulatorWindowNames.Menu, MapSimulatorWindowNames.System);
+                statusBarUi.SystemRequested = () => ToggleStatusBarPopupWindow(MapSimulatorWindowNames.System, MapSimulatorWindowNames.Menu);
                 statusBarUi.ChannelRequested = ShowWorldSelectWindow;
             }
 
@@ -699,13 +731,112 @@ namespace HaCreator.MapSimulator
             }
 
             WireWorldChannelSelectorWindows();
+            WireStatusBarPopupUtilityWindows();
+        }
+
+        private void RegisterStatusBarPopupUtilityWindows(WzImage uiStatus2BarImage, WzImage uiBasicImage, WzImage soundUIImage)
+        {
+            if (uiWindowManager == null || uiStatus2BarImage == null)
+            {
+                return;
+            }
+
+            if (uiWindowManager.GetWindow(MapSimulatorWindowNames.Menu) == null)
+            {
+                StatusBarPopupMenuWindow menuWindow = UILoader.CreateStatusBarPopupMenuWindow(
+                    uiStatus2BarImage,
+                    uiBasicImage,
+                    soundUIImage,
+                    GraphicsDevice,
+                    MapSimulatorWindowNames.Menu,
+                    new Point(Math.Max(16, _renderParams.RenderWidth - 96), Math.Max(16, _renderParams.RenderHeight - 300)));
+                if (menuWindow != null)
+                {
+                    uiWindowManager.RegisterCustomWindow(menuWindow);
+                }
+            }
+
+            if (uiWindowManager.GetWindow(MapSimulatorWindowNames.System) == null)
+            {
+                StatusBarPopupMenuWindow systemWindow = UILoader.CreateStatusBarPopupMenuWindow(
+                    uiStatus2BarImage,
+                    uiBasicImage,
+                    soundUIImage,
+                    GraphicsDevice,
+                    MapSimulatorWindowNames.System,
+                    new Point(Math.Max(16, _renderParams.RenderWidth - 96), Math.Max(16, _renderParams.RenderHeight - 244)));
+                if (systemWindow != null)
+                {
+                    uiWindowManager.RegisterCustomWindow(systemWindow);
+                }
+            }
+        }
+
+        private void WireStatusBarPopupUtilityWindows()
+        {
+            if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.Menu) is StatusBarPopupMenuWindow menuWindow)
+            {
+                menuWindow.BindEntryAction("BtItem", () => uiWindowManager?.ShowWindow(MapSimulatorWindowNames.Inventory));
+                menuWindow.BindEntryAction("BtEquip", () => uiWindowManager?.ShowWindow(MapSimulatorWindowNames.Equipment));
+                menuWindow.BindEntryAction("BtStat", () => uiWindowManager?.ShowWindow(MapSimulatorWindowNames.Ability));
+                menuWindow.BindEntryAction("BtSkill", () => uiWindowManager?.ShowWindow(MapSimulatorWindowNames.Skills));
+                menuWindow.BindEntryAction("BtQuest", () => uiWindowManager?.ShowWindow(MapSimulatorWindowNames.Quest));
+                menuWindow.BindEntryAction("BtCommunity", () => uiWindowManager?.ShowWindow(MapSimulatorWindowNames.CharacterInfo));
+                menuWindow.BindEntryAction("BtMSN", () => ShowUtilityFeedbackMessage("Messenger tools are not implemented in MapSimulator yet."));
+                menuWindow.BindEntryAction("BtRank", () => ShowUtilityFeedbackMessage("Ranking tools are not implemented in MapSimulator yet."));
+                menuWindow.BindEntryAction("BtEvent", () => ShowUtilityFeedbackMessage("Event tools are not implemented in MapSimulator yet."));
+            }
+
+            if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.System) is StatusBarPopupMenuWindow systemWindow)
+            {
+                systemWindow.BindEntryAction("BtChannel", ShowWorldSelectWindow);
+                systemWindow.BindEntryAction("BtKeySetting", () => ShowUtilityFeedbackMessage("Key settings are not implemented in MapSimulator yet."));
+                systemWindow.BindEntryAction("BtGameOption", () => ShowUtilityFeedbackMessage("Game options are not implemented in MapSimulator yet."));
+                systemWindow.BindEntryAction("BtSystemOption", () => ShowUtilityFeedbackMessage("System options are not implemented in MapSimulator yet."));
+                systemWindow.BindEntryAction("BtGameQuit", () => ShowUtilityFeedbackMessage("Close the MapSimulator window to end the current session."));
+                systemWindow.BindEntryAction("BtJoyPad", () => ShowUtilityFeedbackMessage("Joypad configuration is not implemented in MapSimulator yet."));
+                systemWindow.BindEntryAction("BtOption", () => ShowUtilityFeedbackMessage("Additional options are not implemented in MapSimulator yet."));
+            }
+        }
+
+        private void ToggleStatusBarPopupWindow(string windowName, string siblingWindowName)
+        {
+            if (uiWindowManager == null)
+            {
+                return;
+            }
+
+            uiWindowManager.HideWindow(siblingWindowName);
+            UIWindowBase window = uiWindowManager.GetWindow(windowName);
+            if (window == null)
+            {
+                return;
+            }
+
+            if (window.IsVisible)
+            {
+                uiWindowManager.HideWindow(windowName);
+            }
+            else
+            {
+                uiWindowManager.ShowWindow(windowName);
+            }
+        }
+
+        private void ShowUtilityFeedbackMessage(string message)
+        {
+            if (!string.IsNullOrWhiteSpace(message))
+            {
+                _chat?.AddMessage(message, new Color(255, 228, 151), Environment.TickCount);
+            }
         }
 
         private void WireWorldChannelSelectorWindows()
         {
             if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.WorldSelect) is WorldSelectWindow worldSelectWindow)
             {
-                worldSelectWindow.SetCurrentWorld(_simulatorWorldId);
+                EnsureWorldChannelSelectorState(worldSelectWindow.WorldIds);
+                worldSelectWindow.Configure(BuildWorldSelectionStates(), _simulatorWorldId);
                 worldSelectWindow.WorldSelected -= HandleWorldSelected;
                 worldSelectWindow.WorldSelected += HandleWorldSelected;
             }
@@ -714,8 +845,29 @@ namespace HaCreator.MapSimulator
             {
                 channelSelectWindow.ChangeRequested -= HandleChannelChangeRequested;
                 channelSelectWindow.ChangeRequested += HandleChannelChangeRequested;
-                channelSelectWindow.Configure(_simulatorWorldId, _simulatorWorldId, _simulatorChannelIndex, DefaultSimulatorChannelCount);
+                channelSelectWindow.Configure(
+                    _simulatorWorldId,
+                    _simulatorWorldId,
+                    _simulatorChannelIndex,
+                    GetChannelSelectionStates(_simulatorWorldId));
             }
+        }
+
+        private void WireLoginCharacterSelectWindow()
+        {
+            if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.CharacterSelect) is not CharacterSelectWindow characterSelectWindow)
+            {
+                return;
+            }
+
+            characterSelectWindow.CharacterSelected -= HandleLoginCharacterSelected;
+            characterSelectWindow.CharacterSelected += HandleLoginCharacterSelected;
+            characterSelectWindow.EnterRequested -= HandleLoginCharacterEnterRequested;
+            characterSelectWindow.EnterRequested += HandleLoginCharacterEnterRequested;
+            characterSelectWindow.NewCharacterRequested -= HandleLoginNewCharacterRequested;
+            characterSelectWindow.NewCharacterRequested += HandleLoginNewCharacterRequested;
+            characterSelectWindow.DeleteRequested -= HandleLoginCharacterDeleteRequested;
+            characterSelectWindow.DeleteRequested += HandleLoginCharacterDeleteRequested;
         }
 
         private void ShowWorldSelectWindow()
@@ -730,7 +882,8 @@ namespace HaCreator.MapSimulator
 
             if (uiWindowManager.GetWindow(MapSimulatorWindowNames.WorldSelect) is WorldSelectWindow worldSelectWindow)
             {
-                worldSelectWindow.SetCurrentWorld(_simulatorWorldId);
+                EnsureWorldChannelSelectorState(worldSelectWindow.WorldIds);
+                worldSelectWindow.Configure(BuildWorldSelectionStates(), _simulatorWorldId);
                 worldSelectWindow.Show();
                 uiWindowManager.BringToFront(worldSelectWindow);
                 return;
@@ -746,7 +899,11 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
-            channelSelectWindow.Configure(worldId, _simulatorWorldId, _simulatorChannelIndex, DefaultSimulatorChannelCount);
+            channelSelectWindow.Configure(
+                worldId,
+                _simulatorWorldId,
+                _simulatorChannelIndex,
+                GetChannelSelectionStates(worldId));
             channelSelectWindow.Show();
             uiWindowManager.BringToFront(channelSelectWindow);
         }
@@ -773,6 +930,229 @@ namespace HaCreator.MapSimulator
                 $"Changed to world {_simulatorWorldId}, channel {_simulatorChannelIndex + 1}.",
                 new Color(255, 228, 151),
                 Environment.TickCount);
+        }
+
+        private void InitializeLoginCharacterRoster()
+        {
+            int targetMapId = ResolveLoginCharacterTargetMapId();
+            List<LoginCharacterRosterEntry> entries = new();
+
+            CharacterBuild currentBuild = _playerManager?.Player?.Build?.Clone();
+            if (currentBuild != null)
+            {
+                currentBuild.Name = string.IsNullOrWhiteSpace(currentBuild.Name) ? "ExplorerGM" : currentBuild.Name;
+                currentBuild.Level = Math.Max(currentBuild.Level, 30);
+                currentBuild.GuildName = string.IsNullOrWhiteSpace(currentBuild.GuildName) ? "Maple GM" : currentBuild.GuildName;
+                entries.Add(new LoginCharacterRosterEntry(currentBuild, targetMapId, canDelete: false));
+            }
+
+            CharacterBuild femaleBuild = _playerManager?.Loader?.LoadDefaultFemale();
+            if (femaleBuild != null)
+            {
+                femaleBuild.Name = "Rondo";
+                femaleBuild.Level = 18;
+                femaleBuild.GuildName = "Lith Harbor";
+                entries.Add(new LoginCharacterRosterEntry(femaleBuild, targetMapId));
+            }
+
+            CharacterBuild randomBuild = _playerManager?.Loader?.LoadRandom();
+            if (randomBuild != null)
+            {
+                randomBuild.Name = "Rin";
+                randomBuild.Level = 24;
+                randomBuild.GuildName = "Sleepywood";
+                entries.Add(new LoginCharacterRosterEntry(randomBuild, targetMapId));
+            }
+
+            _loginCharacterRoster.SetEntries(entries);
+            _loginCharacterStatusMessage = entries.Count > 0
+                ? "Choose a character and press Enter to request field entry."
+                : "Unable to populate the simulator character roster.";
+
+            WireLoginCharacterSelectWindow();
+            SyncLoginCharacterSelectWindow();
+        }
+
+        private int ResolveLoginCharacterTargetMapId()
+        {
+            if (_mapBoard?.MapInfo?.returnMap is int returnMapId &&
+                returnMapId > 0 &&
+                returnMapId != MapConstants.MaxMap)
+            {
+                return returnMapId;
+            }
+
+            if (_mapBoard?.MapInfo?.forcedReturn is int forcedReturnId &&
+                forcedReturnId > 0 &&
+                forcedReturnId != MapConstants.MaxMap)
+            {
+                return forcedReturnId;
+            }
+
+            return DefaultLoginCharacterFieldMapId;
+        }
+
+        private void SyncLoginCharacterSelectWindow()
+        {
+            if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.CharacterSelect) is not CharacterSelectWindow characterSelectWindow)
+            {
+                return;
+            }
+
+            bool shouldShow = IsLoginRuntimeSceneActive &&
+                              (_loginRuntime.CurrentStep == LoginStep.CharacterSelect ||
+                               _loginRuntime.CurrentStep == LoginStep.ViewAllCharacters);
+            if (!shouldShow)
+            {
+                characterSelectWindow.Hide();
+                return;
+            }
+
+            bool canEnter = _loginCharacterRoster.CanRequestSelection(_loginRuntime, out string validationMessage);
+            bool canDelete = _loginCharacterRoster.SelectedEntry?.CanDelete == true &&
+                             (_loginRuntime.CurrentStep == LoginStep.CharacterSelect ||
+                              _loginRuntime.CurrentStep == LoginStep.ViewAllCharacters);
+            characterSelectWindow.SetRoster(
+                _loginCharacterRoster.Entries,
+                _loginCharacterRoster.SelectedIndex,
+                string.IsNullOrWhiteSpace(_loginCharacterStatusMessage) ? validationMessage : _loginCharacterStatusMessage,
+                canEnter,
+                canDelete);
+            characterSelectWindow.Show();
+            uiWindowManager.BringToFront(characterSelectWindow);
+        }
+
+        private void HandleLoginCharacterSelected(int rowIndex)
+        {
+            if (!_loginCharacterRoster.Select(rowIndex))
+            {
+                return;
+            }
+
+            LoginCharacterRosterEntry entry = _loginCharacterRoster.SelectedEntry;
+            _loginCharacterStatusMessage = entry == null
+                ? "Select a character first."
+                : $"Selected {entry.Build.Name} Lv.{entry.Build.Level} {entry.Build.JobName}.";
+            SyncLoginCharacterSelectWindow();
+        }
+
+        private void HandleLoginCharacterEnterRequested()
+        {
+            if (!_loginCharacterRoster.CanRequestSelection(_loginRuntime, out string validationMessage))
+            {
+                _loginCharacterStatusMessage = validationMessage;
+                SyncLoginCharacterSelectWindow();
+                return;
+            }
+
+            LoginCharacterRosterEntry entry = _loginCharacterRoster.SelectedEntry;
+            if (entry?.Build == null)
+            {
+                _loginCharacterStatusMessage = "Selected character data is unavailable.";
+                SyncLoginCharacterSelectWindow();
+                return;
+            }
+
+            _playerManager?.CreatePlayerFromBuild(entry.Build.Clone());
+            RefreshSkillWindowForJob(entry.Build.Job);
+
+            if (_loadMapCallback == null || !QueueMapTransfer(entry.FieldMapId, null))
+            {
+                _loginCharacterStatusMessage = $"Selected {entry.Build.Name}, but map loading is unavailable.";
+                SyncLoginCharacterSelectWindow();
+                return;
+            }
+
+            _loginRuntime.TryDispatchPacket(LoginPacketType.SelectCharacterResult, currTickCount, out string runtimeMessage);
+            _loginCharacterStatusMessage = $"Entering field with {entry.Build.Name}. {runtimeMessage}";
+            SyncLoginCharacterSelectWindow();
+        }
+
+        private void HandleLoginNewCharacterRequested()
+        {
+            _loginCharacterStatusMessage = "New character creation is not implemented yet.";
+            SyncLoginCharacterSelectWindow();
+        }
+
+        private void HandleLoginCharacterDeleteRequested()
+        {
+            if (!_loginCharacterRoster.DeleteSelected(out LoginCharacterRosterEntry deletedEntry))
+            {
+                _loginCharacterStatusMessage = "The selected character cannot be deleted.";
+                SyncLoginCharacterSelectWindow();
+                return;
+            }
+
+            _loginCharacterStatusMessage = deletedEntry == null
+                ? "Character deleted from the simulator roster."
+                : $"Deleted {deletedEntry.Build.Name} from the simulator roster.";
+            SyncLoginCharacterSelectWindow();
+        }
+
+        private void EnsureWorldChannelSelectorState(IEnumerable<int> worldIds)
+        {
+            if (worldIds == null)
+            {
+                return;
+            }
+
+            foreach (int worldId in worldIds.Distinct().OrderBy(id => id))
+            {
+                if (_simulatorChannelStatesByWorld.ContainsKey(worldId))
+                {
+                    continue;
+                }
+
+                int availableChannels = 10 + ((worldId * 3) % 11);
+                List<ChannelSelectionState> channels = new List<ChannelSelectionState>(DefaultSimulatorChannelCount);
+                for (int channelIndex = 0; channelIndex < DefaultSimulatorChannelCount; channelIndex++)
+                {
+                    bool isVisible = channelIndex < availableChannels;
+                    bool isCurrentSelection = worldId == _simulatorWorldId && channelIndex == _simulatorChannelIndex;
+                    int occupancySeed = ((worldId + 1) * 97 + (channelIndex + 3) * 61) % 101;
+                    int userCount = Math.Clamp((int)Math.Round(DefaultSimulatorChannelCapacity * (occupancySeed / 100d)), 0, DefaultSimulatorChannelCapacity);
+                    int capacity = isVisible ? DefaultSimulatorChannelCapacity : 0;
+                    bool isSelectable = isVisible && (userCount < DefaultSimulatorChannelCapacity || isCurrentSelection);
+
+                    channels.Add(new ChannelSelectionState(channelIndex, userCount, capacity, isSelectable));
+                }
+
+                _simulatorChannelStatesByWorld[worldId] = channels;
+            }
+        }
+
+        private Dictionary<int, WorldSelectionState> BuildWorldSelectionStates()
+        {
+            Dictionary<int, WorldSelectionState> states = new();
+            foreach ((int worldId, List<ChannelSelectionState> channels) in _simulatorChannelStatesByWorld)
+            {
+                int totalChannels = channels.Count(channel => channel.Capacity > 0);
+                int activeChannels = channels.Count(channel => channel.IsSelectable);
+                int occupancyPercent = channels.Count == 0
+                    ? 0
+                    : (int)Math.Round(channels.Where(channel => channel.Capacity > 0).DefaultIfEmpty().Average(channel => channel?.OccupancyPercent ?? 0));
+                bool isSelectable = worldId == _simulatorWorldId || activeChannels > 0;
+
+                states[worldId] = new WorldSelectionState(
+                    worldId,
+                    activeChannels,
+                    totalChannels,
+                    occupancyPercent,
+                    isSelectable);
+            }
+
+            return states;
+        }
+
+        private IReadOnlyList<ChannelSelectionState> GetChannelSelectionStates(int worldId)
+        {
+            if (!_simulatorChannelStatesByWorld.TryGetValue(worldId, out List<ChannelSelectionState> channels))
+            {
+                EnsureWorldChannelSelectorState(new[] { worldId });
+                _simulatorChannelStatesByWorld.TryGetValue(worldId, out channels);
+            }
+
+            return channels?.ToArray() ?? Array.Empty<ChannelSelectionState>();
         }
 
 
@@ -840,6 +1220,7 @@ namespace HaCreator.MapSimulator
             Content.RootDirectory = "Content";
 
             Window.ClientSizeChanged += Window_ClientSizeChanged;
+            _chat.MessageSubmitted = HandleChatMessageSubmitted;
 
             _DxDeviceManager = new GraphicsDeviceManager(this)
             {
@@ -918,6 +1299,7 @@ namespace HaCreator.MapSimulator
                     _mobPool?.SyncPuppetTargets(currentTick);
                 });
             _mobAttackSystem.SetMobTargeting(mobId => _mobPool?.GetMob(mobId));
+            _mobAttackSystem.SetPlayerGroundedAccessor(() => _playerManager?.IsPlayerOnGround() ?? true);
         }
 
         #region Loading and unloading
@@ -1298,7 +1680,24 @@ namespace HaCreator.MapSimulator
 
             // UI Windows (Inventory, Equipment, Skills, Quest)
             Task t_uiWindows = Task.Run(() => {
-                if (!_gameState.IsLoginMap && !_gameState.IsCashShopMap) {
+                if (_gameState.IsCashShopMap)
+                {
+                    return;
+                }
+
+                if (_gameState.IsLoginMap)
+                {
+                    uiWindowManager ??= new UIWindowManager();
+                    UIWindowLoader.RegisterLoginCharacterSelectWindow(
+                        uiWindowManager,
+                        uiBasicImage,
+                        soundUIImage,
+                        GraphicsDevice,
+                        _renderParams.RenderWidth,
+                        _renderParams.RenderHeight);
+                }
+                else
+                {
                     uiWindowManager = UIWindowLoader.CreateUIWindowManager(
                         uiWindow1Image, uiWindow2Image, uiBasicImage, soundUIImage,
                         skillWzFile, stringWzFile,
@@ -1314,10 +1713,17 @@ namespace HaCreator.MapSimulator
 
             ReplaceQuestGatedMapObjects(questGatedMapObjects);
 
+            RegisterStatusBarPopupUtilityWindows(uiStatus2BarImage, uiBasicImage, soundUIImage);
+
             // Set fonts on UI windows after all tasks complete
             uiWindowManager?.SetFonts(_fontChat);
+            WireLoginCharacterSelectWindow();
             WireQuestLogWindowData();
             WireProgressionUtilityWindowLaunchers();
+            if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.ItemMaker) is ItemMakerUI itemMakerWindow)
+            {
+                itemMakerWindow.SetCraftingState(_playerManager?.Player?.Level ?? 1, 0);
+            }
             RefreshMapTransferWindow();
             LoadNpcQuestAlertIcons(uiWindow1Image, uiWindow2Image);
 
@@ -1355,16 +1761,19 @@ namespace HaCreator.MapSimulator
             _mapCenterY = _mapBoard.CenterPoint.Y;
             // Spawn at portal spawn point (spawnX, spawnY set above from StartPoint portal)
             ResetLoginRuntimeForCurrentMap(currTickCount);
+            InitializeAuthoredDynamicObjectTagStates();
+
+            InitializePlayerManager(spawnX, spawnY);
             if (!_gameState.IsLoginMap)
             {
-                InitializePlayerManager(spawnX, spawnY);
                 InitializeFieldRuleRuntime(currTickCount);
             }
             else
             {
                 _gameState.PlayerControlEnabled = false;
+                InitializeLoginCharacterRoster();
             }
-            _specialFieldRuntime.BindMap(_mapBoard.MapInfo.id);
+            _specialFieldRuntime.BindMap(_mapBoard);
 
             // Initialize camera controller
             _cameraController.Initialize(
@@ -1502,6 +1911,7 @@ namespace HaCreator.MapSimulator
                 statusBarChatUI.SetFont(_fontChat);
                 statusBarChatUI.SetPixelTexture(_DxDeviceManager.GraphicsDevice);
                 statusBarChatUI.SetChatRenderProvider(_chat.GetRenderState);
+                statusBarChatUI.SetPointNotificationRenderProvider(GetStatusBarPointNotificationState);
                 statusBarChatUI.ToggleChatRequested = () => _chat.ToggleActive(Environment.TickCount);
                 statusBarChatUI.CycleChatTargetRequested = delta => _chat.CycleTarget(delta);
             }
@@ -1518,6 +1928,10 @@ namespace HaCreator.MapSimulator
                 UIWindowBase characterInfoWindow = uiWindowManager.GetWindow(MapSimulatorWindowNames.CharacterInfo);
                 characterInfoWindow.CharacterBuild = _playerManager.Player.Build;
                 characterInfoWindow.SetFont(_fontDebugValues);
+                if (characterInfoWindow is UserInfoUI userInfoWindow)
+                {
+                    userInfoWindow.SetPetController(_playerManager.Pets);
+                }
             }
             if (uiWindowManager?.EquipWindow != null && _playerManager?.Player?.Build != null)
             {
@@ -1526,6 +1940,8 @@ namespace HaCreator.MapSimulator
                 if (uiWindowManager.EquipWindow is EquipUIBigBang equipBigBang)
                 {
                     equipBigBang.SetPetController(_playerManager.Pets);
+                    equipBigBang.SetDragonEquipmentController(_playerManager.CompanionEquipment?.Dragon);
+                    equipBigBang.SetAndroidEquipmentController(_playerManager.CompanionEquipment?.Android);
                 }
             }
             if (uiWindowManager?.SkillWindow != null)
@@ -1687,6 +2103,7 @@ namespace HaCreator.MapSimulator
             // Clear arrays
             _mapObjectsArray = null;
             _questGatedMapObjects.Clear();
+            _authoredDynamicObjectTagStates.Clear();
             _npcsArray = null;
             _mobsArray = null;
             _reactorsArray = null;
@@ -1759,7 +2176,7 @@ namespace HaCreator.MapSimulator
             _activeNpcInteractionNpc = null;
             _activeNpcInteractionNpcId = 0;
             _npcQuestFeedback.Clear();
-            ClearPetIdleSpeechState(resetStandingTimer: true);
+            ResetPetSpeechEventState();
             _gameState.ExitDirectionModeImmediate();
             _scriptedDirectionModeOwnerActive = false;
         }
@@ -1988,7 +2405,23 @@ namespace HaCreator.MapSimulator
             // This preserves skill data, hotkey assignments, and other UI state
             Task t_uiWindows = Task.Run(() =>
             {
-                if (!_gameState.IsLoginMap && !_gameState.IsCashShopMap && uiWindowManager == null)
+                if (_gameState.IsCashShopMap)
+                {
+                    return;
+                }
+
+                if (_gameState.IsLoginMap)
+                {
+                    uiWindowManager ??= new UIWindowManager();
+                    UIWindowLoader.RegisterLoginCharacterSelectWindow(
+                        uiWindowManager,
+                        uiBasicImage,
+                        soundUIImage,
+                        GraphicsDevice,
+                        _renderParams.RenderWidth,
+                        _renderParams.RenderHeight);
+                }
+                else if (uiWindowManager == null || uiWindowManager.InventoryWindow == null)
                 {
                     uiWindowManager = UIWindowLoader.CreateUIWindowManager(
                         uiWindow1Image, uiWindow2Image, uiBasicImage, soundUIImage,
@@ -2013,6 +2446,7 @@ namespace HaCreator.MapSimulator
 
             // Set fonts on UI windows after all tasks complete
             uiWindowManager?.SetFonts(_fontChat);
+            WireLoginCharacterSelectWindow();
             WireQuestLogWindowData();
             WireProgressionUtilityWindowLaunchers();
             RefreshMapTransferWindow();
@@ -2049,6 +2483,10 @@ namespace HaCreator.MapSimulator
                 UIWindowBase characterInfoWindow = uiWindowManager.GetWindow(MapSimulatorWindowNames.CharacterInfo);
                 characterInfoWindow.CharacterBuild = _playerManager.Player.Build;
                 characterInfoWindow.SetFont(_fontDebugValues);
+                if (characterInfoWindow is UserInfoUI userInfoWindow)
+                {
+                    userInfoWindow.SetPetController(_playerManager.Pets);
+                }
             }
             if (uiWindowManager?.EquipWindow != null && _playerManager?.Player?.Build != null)
             {
@@ -2057,6 +2495,8 @@ namespace HaCreator.MapSimulator
                 if (uiWindowManager.EquipWindow is EquipUIBigBang equipBigBang)
                 {
                     equipBigBang.SetPetController(_playerManager.Pets);
+                    equipBigBang.SetDragonEquipmentController(_playerManager.CompanionEquipment?.Dragon);
+                    equipBigBang.SetAndroidEquipmentController(_playerManager.CompanionEquipment?.Android);
                 }
             }
 
@@ -2093,6 +2533,7 @@ namespace HaCreator.MapSimulator
             // spawnX/spawnY are set above from target portal or start point
             // For map changes, reconnect existing player instead of creating new one
             ResetLoginRuntimeForCurrentMap(currTickCount);
+            InitializeAuthoredDynamicObjectTagStates();
             if (!_gameState.IsLoginMap)
             {
                 if (_playerManager != null && _playerManager.Player != null)
@@ -2109,8 +2550,14 @@ namespace HaCreator.MapSimulator
             else
             {
                 _gameState.PlayerControlEnabled = false;
+                if (_playerManager == null || _playerManager.Player == null)
+                {
+                    InitializePlayerManager(spawnX, spawnY);
+                }
+
+                InitializeLoginCharacterRoster();
             }
-            _specialFieldRuntime.BindMap(_mapBoard.MapInfo.id);
+            _specialFieldRuntime.BindMap(_mapBoard);
 
             // Initialize camera controller for smooth scrolling
             _cameraController.Initialize(
@@ -2720,6 +3167,12 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
+            // Advance scripted field state before mouse/world interaction handlers so
+            // newly opened timed dialogs can claim direction mode on the same frame.
+            _specialFieldRuntime.SetWeddingPlayerState(_playerManager?.Player?.Build?.Id, _playerManager?.Player?.Position);
+            _specialFieldRuntime.Update(gameTime, currTickCount);
+            UpdateDirectionModeState(currTickCount);
+
             if (isWindowActive)
             {
                 NpcInteractionOverlayResult npcOverlayResult = _npcInteractionOverlay != null
@@ -2734,15 +3187,15 @@ namespace HaCreator.MapSimulator
                 {
                     // Avoid leaking the overlay-dismissal click into world interactions while
                     // direction mode is transitioning through its delayed release window.
-                CheckNpcHover(newMouseState);
-                HandleNpcTalkClick(newMouseState);
-                HandlePortalDoubleClick(newMouseState);
-            }
+                    CheckNpcHover(newMouseState);
+                    HandleNpcTalkClick(newMouseState);
+                    HandlePortalDoubleClick(newMouseState);
+                }
             }
 
-            UpdateDirectionModeState(currTickCount);
             UpdateNpcQuestFeedbackState(currTickCount);
             UpdateNpcIdleSpeechState(currTickCount);
+            UpdatePetEventSpeechState(currTickCount);
             UpdatePetIdleSpeechState(currTickCount);
 
             // Handle portal UP key interaction (player presses UP near portal)
@@ -2752,7 +3205,6 @@ namespace HaCreator.MapSimulator
             }
 
             _temporaryPortalField?.Update(currTickCount);
-            _specialFieldRuntime.Update(gameTime, currTickCount);
 
             // Handle same-map portal teleport with delay (no fade, just wait for delay)
             if (_sameMapTeleportPending)
@@ -2764,109 +3216,19 @@ namespace HaCreator.MapSimulator
                 }
             }
 
-            // Handle pending map change with fade effect (matching official client behavior)
-            // Flow for different map: Portal activated → Fade Out (600ms) → Map Change → Fade In (600ms)
-            // Flow for same map: Portal activated → Delay → Teleport (no fade)
-            if (_gameState.PendingMapChange && _loadMapCallback != null)
+            if (HandlePendingMapChange())
             {
-                // Check if teleporting within the same map - use delay instead of fade
-                if (_gameState.PendingMapId == _mapBoard.MapInfo.id && !string.IsNullOrEmpty(_gameState.PendingPortalName))
-                {
-                    var targetPortal = _mapBoard.BoardItems.Portals.FirstOrDefault(portal => portal.pn == _gameState.PendingPortalName);
-                    if (targetPortal != null && !_sameMapTeleportPending)
-                    {
-                        StartSameMapTeleport(
-                            targetPortal.X,
-                            targetPortal.Y,
-                            targetPortal.delay ?? SAME_MAP_PORTAL_DEFAULT_DELAY_MS,
-                            currTickCount);
-                    }
-
-                    // Clear pending map change state (same-map teleport is now handled separately)
-                    _gameState.PendingMapChange = false;
-                    _gameState.PendingMapId = -1;
-                    _gameState.PendingPortalName = null;
-                }
-                else
-                {
-                    // Different map - use fade effect
-                    // Start fade-out if not already fading
-                    if (_portalFadeState == PortalFadeState.None)
-                    {
-                        _portalFadeState = PortalFadeState.FadingOut;
-                        _screenEffects.FadeOut(PORTAL_FADE_DURATION_MS, currTickCount);
-                    }
-
-                    // Wait for fade-out to complete before processing map change
-                    if (_portalFadeState == PortalFadeState.FadingOut)
-                    {
-                        // Update screen effects to progress the fade animation
-                        // (needed because we return early, skipping the normal update location)
-                        _screenEffects.UpdateFade(currTickCount);
-
-                        // Check if fade-out is complete (screen is fully black)
-                        if (_screenEffects.IsFadeOutComplete || !_screenEffects.IsFadeActive)
-                        {
-                            // Fade-out complete, now process the map change
-                            _gameState.PendingMapChange = false;
-
-                            // Different map - perform full reload
-                            var result = _loadMapCallback(_gameState.PendingMapId);
-                            if (result != null && result.Item1 != null)
-                            {
-                                // Save current map state before unloading
-                                int currentMapId = _mapBoard?.MapInfo?.id ?? -1;
-                                if (currentMapId >= 0 && _mobsArray != null)
-                                {
-                                    _mapStateCache.SaveMapState(currentMapId, _mobsArray, currTickCount);
-                                }
-
-                                // Perform seamless map transition
-                                UnloadMapContent();
-                                LoadMapContent(result.Item1, result.Item2, _gameState.PendingPortalName);
-
-                                // Restore map state if previously visited
-                                int newMapId = _mapBoard?.MapInfo?.id ?? -1;
-                                if (newMapId >= 0 && _mobsArray != null)
-                                {
-                                    _mapStateCache.RestoreMapState(newMapId, _mobsArray, currTickCount);
-                                }
-
-                                // Sync input state immediately so held Up key won't trigger portal on next frame
-                                _playerManager?.Input?.SyncState();
-                            }
-
-                            // Clear pending state
-                            _gameState.PendingMapId = -1;
-                            _gameState.PendingPortalName = null;
-
-                            // Start fade-in after map change
-                            _portalFadeState = PortalFadeState.FadingIn;
-                            _screenEffects.FadeIn(PORTAL_FADE_DURATION_MS, currTickCount);
-                        }
-                        return; // Skip the rest of this frame while fading
-                    }
-                }
-            }
-
-            // Handle fade-in completion
-            if (_portalFadeState == PortalFadeState.FadingIn)
-            {
-                if (_screenEffects.IsFadeInComplete || !_screenEffects.IsFadeActive)
-                {
-                    _portalFadeState = PortalFadeState.None;
-                    // Sync input state so held keys don't trigger "just pressed" detection
-                    // This prevents immediate re-entry if player is still holding Up
-                    _playerManager?.Input?.SyncState();
-                }
+                return;
             }
 
             // Handle chat input (returns true if chat consumed the input)
+            bool uiCapturesKeyboard = uiWindowManager?.CapturesKeyboardInput == true;
             bool chatConsumedInput = isWindowActive &&
+                                     !uiCapturesKeyboard &&
                                      _chat.HandleInput(newKeyboardState, _oldKeyboardState, currTickCount);
 
             // Skip navigation and other key handlers if chat is active
-            if (isWindowActive && !chatConsumedInput && !_chat.IsActive)
+            if (isWindowActive && !chatConsumedInput && !_chat.IsActive && !uiCapturesKeyboard)
             {
                 // Navigate around the rendered object
                 bool bIsShiftPressed = newKeyboardState.IsKeyDown(Keys.LeftShift) || newKeyboardState.IsKeyDown(Keys.RightShift);
@@ -3248,7 +3610,7 @@ namespace HaCreator.MapSimulator
             if (_playerManager != null)
             {
                 _playerManager.IsPlayerControlEnabled = _gameState.IsPlayerInputEnabled;
-                _playerManager.Update(currTickCount, deltaSeconds, _chat.IsActive, isWindowActive);
+                _playerManager.Update(currTickCount, deltaSeconds, _chat.IsActive || uiCapturesKeyboard, isWindowActive);
 
                 if (_gameState.IsPlayerInputEnabled && _playerManager.IsPlayerActive)
                 {
@@ -3850,6 +4212,27 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
+            if (definition.Operation == MobSkillOperation.Heal)
+            {
+                int healAmount = Math.Max(0, runtimeData.X);
+                if (healAmount <= 0)
+                {
+                    return;
+                }
+
+                foreach (MobItem targetMob in ResolveMobSkillStatusTargets(sourceMob, definition, runtimeData, currentTick))
+                {
+                    if (targetMob?.AI == null || targetMob.AI.IsDead)
+                    {
+                        continue;
+                    }
+
+                    targetMob.AI.Heal(healAmount);
+                }
+
+                return;
+            }
+
             int value = MobSkillStatusMapper.ResolveStatusValue(
                 definition.Effect,
                 runtimeData.X,
@@ -4433,66 +4816,77 @@ namespace HaCreator.MapSimulator
 
         private void UpdatePetIdleSpeechState(int currentTickCount)
         {
-            if (_activePetSpeechRuntimeId != 0 && currentTickCount >= _activePetSpeechExpiresAt)
-            {
-                ClearPetIdleSpeechState(resetStandingTimer: false);
-            }
-
-            if (_playerManager?.Player == null || _playerManager.Pets?.ActivePets == null || _playerManager.Pets.ActivePets.Count == 0)
-            {
-                ClearPetIdleSpeechState(resetStandingTimer: true);
-                return;
-            }
-
-            if (_playerManager.Player.State != PlayerState.Standing ||
-                _npcInteractionOverlay?.IsVisible == true ||
-                _gameState.DirectionModeActive)
-            {
-                ClearPetIdleSpeechState(resetStandingTimer: true);
-                return;
-            }
-
-            if (_petStandingSinceTick < 0)
-            {
-                _petStandingSinceTick = currentTickCount;
-                return;
-            }
-
-            if (currentTickCount - _petStandingSinceTick < PetAutoSpeechIdleThresholdMs ||
-                _activePetSpeechRuntimeId != 0)
+            if (_npcInteractionOverlay?.IsVisible == true || _gameState.DirectionModeActive)
             {
                 return;
             }
-
-            if (_nextPetIdleSpeechTick == 0)
-            {
-                _nextPetIdleSpeechTick = currentTickCount;
-            }
-
-            if (currentTickCount < _nextPetIdleSpeechTick)
-            {
-                return;
-            }
-
-            PetRuntime pet = SelectPetForIdleSpeech();
-            _nextPetIdleSpeechTick = currentTickCount + PetAutoSpeechIdleCooldownMs;
-            if (pet == null)
-            {
-                return;
-            }
-
-            string speechLine = pet.GetNextIdleAutoSpeechLine();
-            if (string.IsNullOrWhiteSpace(speechLine))
-            {
-                return;
-            }
-
-            _activePetSpeechRuntimeId = pet.RuntimeId;
-            _activePetSpeechText = speechLine.Trim();
-            _activePetSpeechExpiresAt = currentTickCount + PetAutoSpeechBalloonDurationMs;
         }
 
-        private PetRuntime SelectPetForIdleSpeech()
+        private void UpdatePetEventSpeechState(int currentTickCount)
+        {
+            if (_playerManager?.Player == null || _playerManager.Pets?.ActivePets == null || _playerManager.Pets.ActivePets.Count == 0)
+            {
+                ResetPetSpeechEventState();
+                return;
+            }
+
+            if (_npcInteractionOverlay?.IsVisible == true ||
+                _gameState.DirectionModeActive ||
+                _playerManager.Pets.GetSpeakingPets(currentTickCount).Any())
+            {
+                return;
+            }
+
+            PlayerCharacter player = _playerManager.Player;
+            CharacterBuild build = player.Build;
+            if (build == null || !player.IsAlive)
+            {
+                return;
+            }
+
+            int playerLevel = Math.Max(1, player.Level);
+            if (_lastObservedPetSpeechLevel < 0)
+            {
+                _lastObservedPetSpeechLevel = playerLevel;
+            }
+            else if (playerLevel > _lastObservedPetSpeechLevel && TryTriggerPetSpeechEvent(PetAutoSpeechEvent.LevelUp, currentTickCount))
+            {
+                _lastObservedPetSpeechLevel = playerLevel;
+                return;
+            }
+
+            _lastObservedPetSpeechLevel = playerLevel;
+
+            long expToNextLevel = Math.Max(0L, build.ExpToNextLevel);
+            long preLevelThreshold = expToNextLevel > 0 ? (long)Math.Ceiling(expToNextLevel * 0.9d) : long.MaxValue;
+            if (expToNextLevel > 0 &&
+                build.Exp >= preLevelThreshold &&
+                currentTickCount >= _nextPetPreLevelSpeechTick &&
+                TryTriggerPetSpeechEvent(PetAutoSpeechEvent.PreLevelUp, currentTickCount))
+            {
+                _nextPetPreLevelSpeechTick = currentTickCount + PetAutoSpeechPreLevelReminderCooldownMs;
+                return;
+            }
+
+            int hpAlertThresholdPercent = Math.Clamp(_statusBarHpWarningThresholdPercent, 1, 99);
+            int hpThreshold = Math.Max(1, (int)Math.Ceiling(player.MaxHP * (hpAlertThresholdPercent / 100f)));
+            bool isLowHp = player.HP > 0 && player.HP <= hpThreshold;
+            if (!isLowHp)
+            {
+                _petHpAlertArmed = true;
+                return;
+            }
+
+            if (_petHpAlertArmed &&
+                currentTickCount - _lastPetHpAlertTick >= PetAutoSpeechLowHpAlertCooldownMs &&
+                TryTriggerPetSpeechEvent(PetAutoSpeechEvent.HpAlert, currentTickCount))
+            {
+                _lastPetHpAlertTick = currentTickCount;
+                _petHpAlertArmed = false;
+            }
+        }
+
+        private PetRuntime SelectPetForSpeechEvent(PetAutoSpeechEvent eventType)
         {
             IReadOnlyList<PetRuntime> activePets = _playerManager?.Pets?.ActivePets;
             if (activePets == null || activePets.Count == 0)
@@ -4504,7 +4898,7 @@ namespace HaCreator.MapSimulator
             for (int i = 0; i < activePets.Count; i++)
             {
                 PetRuntime pet = activePets[i];
-                if (pet != null && pet.HasIdleAutoSpeech)
+                if (pet != null && pet.HasAutoSpeechEvent(eventType))
                 {
                     eligiblePets.Add(pet);
                 }
@@ -4518,17 +4912,18 @@ namespace HaCreator.MapSimulator
             return eligiblePets[_petIdleSpeechRandom.Next(eligiblePets.Count)];
         }
 
-        private void ClearPetIdleSpeechState(bool resetStandingTimer)
+        private bool TryTriggerPetSpeechEvent(PetAutoSpeechEvent eventType, int currentTickCount)
         {
-            _activePetSpeechRuntimeId = 0;
-            _activePetSpeechText = null;
-            _activePetSpeechExpiresAt = 0;
+            PetRuntime pet = SelectPetForSpeechEvent(eventType);
+            return pet != null && pet.TryTriggerAutoSpeechEvent(eventType, currentTickCount);
+        }
 
-            if (resetStandingTimer)
-            {
-                _petStandingSinceTick = -1;
-                _nextPetIdleSpeechTick = 0;
-            }
+        private void ResetPetSpeechEventState()
+        {
+            _lastObservedPetSpeechLevel = -1;
+            _nextPetPreLevelSpeechTick = 0;
+            _lastPetHpAlertTick = int.MinValue;
+            _petHpAlertArmed = true;
         }
 
         private void LoadNpcQuestAlertIcons(WzImage uiWindow1Image, WzImage uiWindow2Image)
@@ -4574,9 +4969,9 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
-            if (uiWindowManager.InventoryWindow is InventoryUI inventoryWindow)
+            if (uiWindowManager.InventoryWindow is IInventoryRuntime inventoryWindow)
             {
-                inventoryWindow.MesoCount += amount;
+                inventoryWindow.AddMeso(amount);
             }
         }
 
@@ -4590,7 +4985,7 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
-            InventoryType inventoryType = ResolveInventoryType(itemId);
+            InventoryType inventoryType = InventoryItemMetadataResolver.ResolveInventoryType(itemId);
             if (inventoryType == InventoryType.NONE)
             {
                 return;
@@ -4602,7 +4997,8 @@ namespace HaCreator.MapSimulator
                 ItemId = itemId,
                 ItemTexture = itemTexture,
                 Quantity = Math.Max(1, quantity),
-                GradeFrameIndex = inventoryType == InventoryType.EQUIP ? 0 : null
+                GradeFrameIndex = inventoryType == InventoryType.EQUIP ? 0 : null,
+                MaxStackSize = ResolveInventoryItemMaxStack(itemId, inventoryType)
             };
 
             if (uiWindowManager.InventoryWindow is InventoryUI inventoryWindow)
@@ -4611,59 +5007,129 @@ namespace HaCreator.MapSimulator
             }
         }
 
-        private InventoryType ResolveInventoryType(int itemId)
+        private bool CanAcceptPickedUpItem(DropItem drop)
         {
-            int typeBucket = itemId / 1000000;
-            return typeBucket switch
+            if (drop == null || drop.Type == Pools.DropType.Meso)
             {
-                1 => InventoryType.EQUIP,
-                2 => InventoryType.USE,
-                3 => InventoryType.SETUP,
-                4 => InventoryType.ETC,
-                5 => InventoryType.CASH,
-                _ => InventoryType.NONE
-            };
+                return true;
+            }
+
+            if (uiWindowManager?.InventoryWindow is not UI.IInventoryRuntime inventory
+                || string.IsNullOrWhiteSpace(drop.ItemId)
+                || !int.TryParse(drop.ItemId, out int itemId))
+            {
+                return true;
+            }
+
+            InventoryType inventoryType = InventoryItemMetadataResolver.ResolveInventoryType(itemId);
+            if (inventoryType == InventoryType.NONE)
+            {
+                return true;
+            }
+
+            return inventory.CanAcceptItem(inventoryType, itemId, Math.Max(1, drop.Quantity));
+        }
+
+        private Pools.DropPickupFailureReason EvaluatePickupAvailability(DropItem drop)
+        {
+            if (drop == null)
+            {
+                return Pools.DropPickupFailureReason.Unavailable;
+            }
+
+            return CanAcceptPickedUpItem(drop)
+                ? Pools.DropPickupFailureReason.None
+                : Pools.DropPickupFailureReason.InventoryFull;
+        }
+
+        private void HandlePickupAttemptFailed(Pools.DropPickupAttemptResult result)
+        {
+            if (result == null)
+            {
+                return;
+            }
+
+            int currentTime = Environment.TickCount;
+            switch (result.FailureReason)
+            {
+                case Pools.DropPickupFailureReason.InventoryFull:
+                    _pickupNoticeUI.AddInventoryFullMessage(currentTime);
+                    break;
+                case Pools.DropPickupFailureReason.OwnershipRestricted:
+                    _pickupNoticeUI.AddCantPickupMessage("You may not loot this item yet.", currentTime);
+                    break;
+                case Pools.DropPickupFailureReason.Unavailable:
+                    _pickupNoticeUI.AddCantPickupMessage("Unable to pick up item.", currentTime);
+                    break;
+            }
         }
 
         private Texture2D LoadInventoryItemIcon(int itemId)
         {
-            string itemText = itemId.ToString("D7");
-            (string folder, string imageName) = ResolveItemFolderAndImage(itemId);
-            if (string.IsNullOrEmpty(folder) || string.IsNullOrEmpty(imageName))
-            {
-                return null;
-            }
-
-            if (Program.FindWzObject("Item", folder) is not WzObject directory)
-            {
-                return null;
-            }
-
-            if (directory[imageName] is not WzImage itemImage)
-            {
-                return null;
-            }
-
-            WzSubProperty itemProperty = itemImage[itemText] as WzSubProperty;
-            WzSubProperty infoProperty = itemProperty?["info"] as WzSubProperty;
+            WzSubProperty infoProperty = LoadInventoryItemInfoProperty(itemId);
             WzCanvasProperty iconCanvas = infoProperty?["iconRaw"] as WzCanvasProperty
                                           ?? infoProperty?["icon"] as WzCanvasProperty;
             return iconCanvas?.GetLinkedWzCanvasBitmap()?.ToTexture2DAndDispose(GraphicsDevice);
         }
 
-        private (string folder, string imageName) ResolveItemFolderAndImage(int itemId)
+        private int ResolveInventoryItemMaxStack(int itemId, InventoryType inventoryType)
         {
-            int group = itemId / 10000;
-            int typeBucket = itemId / 1000000;
-
-            return typeBucket switch
+            WzSubProperty infoProperty = LoadInventoryItemInfoProperty(itemId);
+            int? slotMax = infoProperty?["slotMax"] switch
             {
-                1 => (null, null),
-                2 => ("Consume", $"{group:D4}.img"),
-                3 => ("Install", $"{group:D4}.img"),
-                4 => ("Etc", $"{group:D4}.img"),
-                5 => ("Cash", $"{group:D4}.img"),
-                _ => (null, null)
+                WzIntProperty intProperty => intProperty.Value,
+                WzShortProperty shortProperty => shortProperty.Value,
+                _ => null
+            };
+
+            return InventoryItemMetadataResolver.ResolveMaxStack(inventoryType, slotMax);
+        }
+
+        private WzSubProperty LoadInventoryItemInfoProperty(int itemId)
+        {
+            if (!InventoryItemMetadataResolver.TryResolveImageSource(itemId, out string category, out string imagePath))
+            {
+                return null;
+            }
+
+            WzImage itemImage = Program.FindImage(category, imagePath);
+            if (itemImage == null)
+            {
+                return null;
+            }
+
+            itemImage.ParseImage();
+            string itemText = category == "Character" ? itemId.ToString("D8") : itemId.ToString("D7");
+            WzSubProperty itemProperty = itemImage[itemText] as WzSubProperty;
+            return itemProperty?["info"] as WzSubProperty;
+        }
+
+        private static string ResolvePickupItemName(int itemId)
+        {
+            return Program.InfoManager?.ItemNameCache != null
+                   && Program.InfoManager.ItemNameCache.TryGetValue(itemId, out Tuple<string, string, string> itemInfo)
+                   && !string.IsNullOrWhiteSpace(itemInfo.Item2)
+                ? itemInfo.Item2
+                : $"Item #{itemId}";
+        }
+
+        private static string ResolvePickupItemTypeName(int itemId, InventoryType inventoryType)
+        {
+            if (Program.InfoManager?.ItemNameCache != null
+                && Program.InfoManager.ItemNameCache.TryGetValue(itemId, out Tuple<string, string, string> itemInfo)
+                && !string.IsNullOrWhiteSpace(itemInfo.Item1))
+            {
+                return itemInfo.Item1;
+            }
+
+            return inventoryType switch
+            {
+                InventoryType.EQUIP => "equipment item",
+                InventoryType.USE => "use item",
+                InventoryType.SETUP => "setup item",
+                InventoryType.ETC => "etc item",
+                InventoryType.CASH => "cash item",
+                _ => "item"
             };
         }
 
@@ -4758,23 +5224,37 @@ namespace HaCreator.MapSimulator
 
         private void DrawPetIdleSpeechFeedback(in Managers.RenderContext renderContext)
         {
-            if (_activePetSpeechRuntimeId == 0 ||
-                string.IsNullOrWhiteSpace(_activePetSpeechText) ||
+            if (_fontChat == null ||
+                _debugBoundaryTexture == null)
+            {
+                return;
+            }
+
+            IEnumerable<PetRuntime> speakingPets = _playerManager?.Pets?.GetSpeakingPets(renderContext.TickCount);
+            if (speakingPets == null)
+            {
+                return;
+            }
+
+            foreach (PetRuntime pet in speakingPets)
+            {
+                DrawPetSpeechBalloon(pet, renderContext);
+            }
+        }
+
+        private void DrawPetSpeechBalloon(PetRuntime pet, in Managers.RenderContext renderContext)
+        {
+            if (pet == null ||
+                !pet.HasActiveSpeech ||
                 _fontChat == null ||
                 _debugBoundaryTexture == null)
             {
                 return;
             }
 
-            PetRuntime pet = _playerManager?.Pets?.ActivePets?.FirstOrDefault(candidate => candidate?.RuntimeId == _activePetSpeechRuntimeId);
-            if (pet == null)
-            {
-                return;
-            }
-
             IDXObject currentFrame = pet.GetCurrentFrame();
             int petTop = (int)pet.Y - (currentFrame?.Height ?? 40);
-            Vector2 textSize = _fontChat.MeasureString(_activePetSpeechText);
+            Vector2 textSize = _fontChat.MeasureString(pet.ActiveSpeechText);
             int boxWidth = (int)Math.Ceiling(textSize.X) + 18;
             int boxHeight = (int)Math.Ceiling(textSize.Y) + 12;
             int boxX = (int)pet.X - renderContext.MapShiftX + renderContext.MapCenterX - (boxWidth / 2);
@@ -4788,7 +5268,7 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
-            float remainingAlpha = MathHelper.Clamp((_activePetSpeechExpiresAt - renderContext.TickCount) / 400f, 0f, 1f);
+            float remainingAlpha = MathHelper.Clamp((pet.ActiveSpeechExpiresAt - renderContext.TickCount) / 400f, 0f, 1f);
             Color backgroundColor = new Color(30, 31, 45) * (0.88f * remainingAlpha);
             Color borderColor = new Color(176, 223, 255) * remainingAlpha;
             Color textColor = new Color(242, 249, 255) * remainingAlpha;
@@ -4798,7 +5278,7 @@ namespace HaCreator.MapSimulator
             _spriteBatch.Draw(_debugBoundaryTexture, new Rectangle(boxX, boxY + boxHeight - 2, boxWidth, 2), borderColor);
             _spriteBatch.Draw(_debugBoundaryTexture, new Rectangle(boxX, boxY, 2, boxHeight), borderColor);
             _spriteBatch.Draw(_debugBoundaryTexture, new Rectangle(boxX + boxWidth - 2, boxY, 2, boxHeight), borderColor);
-            _spriteBatch.DrawString(_fontChat, _activePetSpeechText, new Vector2(boxX + 9, boxY + 6), textColor);
+            _spriteBatch.DrawString(_fontChat, pet.ActiveSpeechText, new Vector2(boxX + 9, boxY + 6), textColor);
         }
 
         private Texture2D GetNpcQuestAlertTexture(NpcInteractionEntryKind? alertKind)
@@ -5716,14 +6196,22 @@ namespace HaCreator.MapSimulator
                 }
                 else if (drop.Type == Pools.DropType.Item || drop.Type == Pools.DropType.InstallItem)
                 {
-                    string itemName = !string.IsNullOrEmpty(drop.ItemId) ? $"Item #{drop.ItemId}" : "Unknown Item";
-                    _pickupNoticeUI.AddItemPickup(itemName, drop.Quantity, currentTime);
+                    int itemId = int.TryParse(drop.ItemId, out int parsedItemId) ? parsedItemId : 0;
+                    InventoryType inventoryType = itemId > 0
+                        ? InventoryItemMetadataResolver.ResolveInventoryType(itemId)
+                        : InventoryType.NONE;
+                    string itemName = itemId > 0 ? ResolvePickupItemName(itemId) : "Unknown Item";
+                    string itemTypeName = itemId > 0 ? ResolvePickupItemTypeName(itemId, inventoryType) : null;
+                    Texture2D itemIcon = itemId > 0 ? LoadInventoryItemIcon(itemId) : null;
+                    _pickupNoticeUI.AddItemPickup(itemName, drop.Quantity, currentTime, itemIcon, drop.IsRare, itemTypeName);
                     AddItemToInventoryWindow(drop.ItemId, drop.Quantity);
                 }
                 else if (drop.Type == Pools.DropType.QuestItem)
                 {
-                    string itemName = !string.IsNullOrEmpty(drop.ItemId) ? $"Quest Item #{drop.ItemId}" : "Quest Item";
-                    _pickupNoticeUI.AddQuestItemPickup(itemName, currentTime);
+                    int itemId = int.TryParse(drop.ItemId, out int parsedItemId) ? parsedItemId : 0;
+                    string itemName = itemId > 0 ? ResolvePickupItemName(itemId) : "Quest Item";
+                    Texture2D itemIcon = itemId > 0 ? LoadInventoryItemIcon(itemId) : null;
+                    _pickupNoticeUI.AddQuestItemPickup(itemName, currentTime, itemIcon);
                 }
             });
 
@@ -5915,7 +6403,14 @@ namespace HaCreator.MapSimulator
                 return null;
             }
 
-            return _fieldEffects.TryIsObstacleOn(tag, out bool isOn) ? isOn : null;
+            if (_fieldEffects.TryIsObstacleOn(tag, out bool isOn))
+            {
+                return isOn;
+            }
+
+            return _authoredDynamicObjectTagStates.TryGetValue(tag, out bool authoredState)
+                ? authoredState
+                : null;
         }
 
         public bool SetDynamicObjectTagState(string tag, bool? isEnabled, int transitionTimeMs = 0, int? currentTimeMs = null)
@@ -5944,6 +6439,18 @@ namespace HaCreator.MapSimulator
 
             return tags
                 .Split(new[] { ',', ';' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        }
+
+        private void InitializeAuthoredDynamicObjectTagStates()
+        {
+            _authoredDynamicObjectTagStates.Clear();
+
+            IReadOnlyDictionary<string, bool> authoredStates =
+                FieldObjectTagStateDefaultsLoader.Load(_mapBoard?.MapInfo);
+            foreach ((string tag, bool state) in authoredStates)
+            {
+                _authoredDynamicObjectTagStates[tag] = state;
+            }
         }
 
         /// <summary>
@@ -6120,6 +6627,8 @@ namespace HaCreator.MapSimulator
             _playerManager.SetDropPool(_dropPool);
             _playerManager.SetCombatEffects(_combatEffects);
             _playerManager.SetSoundManager(_soundManager);
+            //_playerManager.Combat.OnPickupAttemptFailed = HandlePickupAttemptFailed;
+            //_playerManager.Combat.EvaluatePickupAvailability = EvaluatePickupAvailability;
             _playerManager.SetCurrentMapIdProvider(() => _mapBoard?.MapInfo?.id ?? -1);
             _playerManager.SetReactorAttackAreaHandler(TriggerAttackReactors);
 
@@ -6425,8 +6934,24 @@ namespace HaCreator.MapSimulator
 
             if (uiWindowManager.QuickSlotWindow != null)
             {
+                _playerManager.Skills.SetInventoryRuntime(uiWindowManager.InventoryWindow as IInventoryRuntime);
                 uiWindowManager.QuickSlotWindow.SetSkillManager(_playerManager.Skills);
                 uiWindowManager.QuickSlotWindow.SetSkillLoader(_playerManager.SkillLoader);
+                uiWindowManager.QuickSlotWindow.SetInventoryRuntime(uiWindowManager.InventoryWindow as IInventoryRuntime);
+                uiWindowManager.QuickSlotWindow.SetMacroProvider(index => uiWindowManager.SkillMacroWindow?.GetMacro(index));
+            }
+
+            if (uiWindowManager.SkillMacroWindow != null)
+            {
+                uiWindowManager.SkillMacroWindow.SetSkillManager(_playerManager.Skills);
+                uiWindowManager.SkillMacroWindow.SetSkillLoader(_playerManager.SkillLoader);
+                _playerManager.Skills.SetMacroResolver(index => uiWindowManager.SkillMacroWindow.GetMacro(index));
+                _playerManager.Skills.OnMacroPartyNotifyRequested = macroName =>
+                {
+                    //string speaker = _playerManager.Player?.Name ?? "Player";
+                    string speaker = "Player";
+                    _chat.AddMessage($"[Party] {speaker}: {macroName}", new Color(124, 255, 172), currTickCount);
+                };
             }
 
             if (uiWindowManager.SkillWindow is SkillUI skillWindowClassic)
@@ -6484,6 +7009,13 @@ namespace HaCreator.MapSimulator
                 uiWindowManager.QuestDetailWindow.ActionRequested += HandleQuestDetailAction;
             }
 
+            if (uiWindowManager.GetWindow(MapSimulatorWindowNames.QuestAlarm) is QuestAlarmWindow questAlarmWindow)
+            {
+                questAlarmWindow.SetFont(_fontChat);
+                questAlarmWindow.SetSnapshotProvider(() => _questRuntime.BuildQuestAlarmSnapshot(_playerManager?.Player?.Build));
+                questAlarmWindow.QuestRequested += OpenQuestFromAlarmWindow;
+            }
+
             _questUiBindingsConfigured = true;
         }
 
@@ -6506,6 +7038,18 @@ namespace HaCreator.MapSimulator
             UpdateQuestDetailWindow();
             uiWindowManager.QuestDetailWindow.Show();
             uiWindowManager.BringToFront(uiWindowManager.QuestDetailWindow);
+        }
+
+        private void OpenQuestFromAlarmWindow(int questId)
+        {
+            if (questId <= 0 || uiWindowManager == null)
+            {
+                return;
+            }
+
+            uiWindowManager.ShowWindow(MapSimulatorWindowNames.Quest);
+            SelectQuestInActiveWindow(questId);
+            OpenQuestDetailWindow(questId);
         }
 
         private void UpdateQuestDetailWindow()
@@ -6602,16 +7146,8 @@ namespace HaCreator.MapSimulator
             {
                 QuestWindowActionKind.Accept => _questRuntime.TryAcceptFromQuestWindow(_activeQuestDetailQuestId, _playerManager?.Player?.Build),
                 QuestWindowActionKind.GiveUp => _questRuntime.TryGiveUpFromQuestWindow(_activeQuestDetailQuestId),
-                QuestWindowActionKind.Complete => new QuestWindowActionResult
-                {
-                    QuestId = _activeQuestDetailQuestId,
-                    Messages = new[] { "Return to the completion NPC to turn in this quest." }
-                },
-                QuestWindowActionKind.Track => new QuestWindowActionResult
-                {
-                    QuestId = _activeQuestDetailQuestId,
-                    Messages = new[] { "Quest tracking surface is not implemented yet; use the detail summary and NPC hint for now." }
-                },
+                QuestWindowActionKind.Complete => _questRuntime.TryCompleteFromQuestWindow(_activeQuestDetailQuestId, _playerManager?.Player?.Build),
+                QuestWindowActionKind.Track => TrackQuestInAlarmWindow(_activeQuestDetailQuestId),
                 _ => null
             };
 
@@ -6632,6 +7168,28 @@ namespace HaCreator.MapSimulator
                 SelectQuestInActiveWindow(_activeQuestDetailQuestId);
                 UpdateQuestDetailWindow();
             }
+        }
+
+        private QuestWindowActionResult TrackQuestInAlarmWindow(int questId)
+        {
+            if (questId <= 0 || uiWindowManager?.GetWindow(MapSimulatorWindowNames.QuestAlarm) is not QuestAlarmWindow questAlarmWindow)
+            {
+                return new QuestWindowActionResult
+                {
+                    QuestId = questId,
+                    Messages = new[] { "Quest alarm window is not available in this UI build." }
+                };
+            }
+
+            questAlarmWindow.TrackQuest(questId);
+            questAlarmWindow.Show();
+            uiWindowManager.BringToFront(questAlarmWindow);
+
+            return new QuestWindowActionResult
+            {
+                QuestId = questId,
+                Messages = new[] { "Tracking quest in the quest alarm window." }
+            };
         }
 
         private bool TryHandleSkillUiLevelUp(SkillDisplayData skill)
@@ -6695,7 +7253,7 @@ namespace HaCreator.MapSimulator
 
         private void InitializeFieldRuleRuntime(int currentTime)
         {
-            _fieldRuleRuntime = new FieldRuleRuntime(_mapBoard?.MapInfo);
+            _fieldRuleRuntime = new FieldRuleRuntime(_mapBoard?.MapInfo, HasInventoryItem);
             ApplyAmbientFieldWeather(currentTime);
 
             if (_fieldRuleRuntime == null || !_fieldRuleRuntime.IsActive)
@@ -6842,6 +7400,26 @@ namespace HaCreator.MapSimulator
                    && string.Equals(castInfo.SkillData.Name, "Mystic Door", StringComparison.OrdinalIgnoreCase);
         }
 
+        private bool HasInventoryItem(int itemId)
+        {
+            if (itemId <= 0 || uiWindowManager?.InventoryWindow is not UI.IInventoryRuntime inventory)
+            {
+                return false;
+            }
+
+            InventoryType inventoryType = InventoryItemMetadataResolver.ResolveInventoryType(itemId);
+            if (inventoryType != InventoryType.NONE)
+            {
+                return inventory.GetItemCount(inventoryType, itemId) > 0;
+            }
+
+            return inventory.GetItemCount(InventoryType.EQUIP, itemId) > 0
+                   || inventory.GetItemCount(InventoryType.USE, itemId) > 0
+                   || inventory.GetItemCount(InventoryType.SETUP, itemId) > 0
+                   || inventory.GetItemCount(InventoryType.ETC, itemId) > 0
+                   || inventory.GetItemCount(InventoryType.CASH, itemId) > 0;
+        }
+
         private bool TrySetPlayerJob(int jobId)
         {
             var build = _playerManager?.Player?.Build;
@@ -6929,6 +7507,23 @@ namespace HaCreator.MapSimulator
             }
 
             return renderData;
+        }
+
+        private StatusBarChatUI.StatusBarPointNotificationState GetStatusBarPointNotificationState()
+        {
+            bool hasAbilityPoints = _playerManager?.Player?.Build?.AP > 0;
+            bool hasSkillPoints = uiWindowManager?.SkillWindow is SkillUIBigBang skillWindow && skillWindow.HasAvailableSkillPoints();
+
+            if (!hasAbilityPoints && !hasSkillPoints)
+            {
+                return null;
+            }
+
+            return new StatusBarChatUI.StatusBarPointNotificationState
+            {
+                ShowAbilityPointNotification = hasAbilityPoints,
+                ShowSkillPointNotification = hasSkillPoints
+            };
         }
 
         private IReadOnlyList<StatusBarCooldownRenderData> GetStatusBarCooldownData(int currentTime)
@@ -7805,6 +8400,31 @@ namespace HaCreator.MapSimulator
                     return ChatCommandHandler.CommandResult.Info($"Camera: X={mapShiftX}, Y={mapShiftY}");
                 });
 
+            _chat.CommandHandler.RegisterCommand(
+                "witchscore",
+                "Inspect or update the Witchtower scoreboard score",
+                "/witchscore [score]",
+                args =>
+                {
+                    if (!_specialFieldRuntime.SpecialEffects.Witchtower.IsActive)
+                    {
+                        return ChatCommandHandler.CommandResult.Error("Witchtower scoreboard is only active on Witchtower maps");
+                    }
+
+                    if (args.Length == 0)
+                    {
+                        return ChatCommandHandler.CommandResult.Info(_specialFieldRuntime.SpecialEffects.Witchtower.DescribeStatus());
+                    }
+
+                    if (!int.TryParse(args[0], out int score))
+                    {
+                        return ChatCommandHandler.CommandResult.Error($"Invalid Witchtower score: {args[0]}");
+                    }
+
+                    _specialFieldRuntime.SpecialEffects.Witchtower.OnScoreUpdate(score, currTickCount);
+                    return ChatCommandHandler.CommandResult.Ok(_specialFieldRuntime.SpecialEffects.Witchtower.DescribeStatus());
+                });
+
             // /goto <x> <y> - Move camera to position
             _chat.CommandHandler.RegisterCommand(
                 "goto",
@@ -7910,6 +8530,50 @@ namespace HaCreator.MapSimulator
                 });
 
             _chat.CommandHandler.RegisterCommand(
+                "quickslotitem",
+                "Assign or clear an inventory-backed quick-slot item",
+                "/quickslotitem <slot 1-28> <itemId|clear>",
+                args =>
+                {
+                    if (_playerManager?.Skills == null)
+                    {
+                        return ChatCommandHandler.CommandResult.Error("Player skills are not available");
+                    }
+
+                    if (args.Length < 2)
+                    {
+                        return ChatCommandHandler.CommandResult.Error("Usage: /quickslotitem <slot 1-28> <itemId|clear>");
+                    }
+
+                    if (!int.TryParse(args[0], out int oneBasedSlot) || oneBasedSlot < 1 || oneBasedSlot > SkillManager.TOTAL_SLOT_COUNT)
+                    {
+                        return ChatCommandHandler.CommandResult.Error("Slot must be between 1 and 28");
+                    }
+
+                    int slotIndex = oneBasedSlot - 1;
+                    if (string.Equals(args[1], "clear", StringComparison.OrdinalIgnoreCase))
+                    {
+                        _playerManager.Skills.ClearHotkey(slotIndex);
+                        return ChatCommandHandler.CommandResult.Ok($"Cleared quick-slot {oneBasedSlot}.");
+                    }
+
+                    if (!int.TryParse(args[1], out int itemId) || itemId <= 0)
+                    {
+                        return ChatCommandHandler.CommandResult.Error($"Invalid item ID: {args[1]}");
+                    }
+
+                    if (!_playerManager.Skills.TrySetItemHotkey(slotIndex, itemId))
+                    {
+                        return ChatCommandHandler.CommandResult.Error(
+                            $"Unable to assign item {itemId} to quick-slot {oneBasedSlot}. Only owned USE/CASH entries can be quick-slotted.");
+                    }
+
+                    int itemCount = _playerManager.Skills.GetHotkeyItemCount(slotIndex);
+                    return ChatCommandHandler.CommandResult.Ok(
+                        $"Assigned item {itemId} to quick-slot {oneBasedSlot} (count {itemCount}).");
+                });
+
+            _chat.CommandHandler.RegisterCommand(
                 "objtag",
                 "Publish or clear a dynamic object-tag state",
                 "/objtag <tag> <on|off|clear> [transitionMs]",
@@ -7987,6 +8651,11 @@ namespace HaCreator.MapSimulator
             return true;
         }
 
+        private void HandleChatMessageSubmitted(string message, int tickCount)
+        {
+            _playerManager?.TryExecutePetCommand(message, tickCount);
+        }
+
         private bool IsLoginRuntimeSceneActive => _gameState.IsLoginMap;
 
         private void ResetLoginRuntimeForCurrentMap(int currentTickCount)
@@ -8004,6 +8673,15 @@ namespace HaCreator.MapSimulator
         private void UpdateLoginRuntimeFrame(GameTime gameTime, KeyboardState newKeyboardState, MouseState newMouseState, bool isWindowActive)
         {
             _loginRuntime.Update(currTickCount);
+            SyncLoginCharacterSelectWindow();
+
+            if (HandlePendingMapChange())
+            {
+                _frameNumber++;
+                UpdateObjectVisibility();
+                FinalizeFrameInputState(newKeyboardState, newMouseState, gameTime);
+                return;
+            }
 
             bool chatConsumedInput = isWindowActive &&
                                      _chat.HandleInput(newKeyboardState, _oldKeyboardState, currTickCount);
@@ -8019,6 +8697,86 @@ namespace HaCreator.MapSimulator
             _frameNumber++;
             UpdateObjectVisibility();
             FinalizeFrameInputState(newKeyboardState, newMouseState, gameTime);
+        }
+
+        private bool HandlePendingMapChange()
+        {
+            if (_gameState.PendingMapChange && _loadMapCallback != null)
+            {
+                if (_gameState.PendingMapId == _mapBoard.MapInfo.id && !string.IsNullOrEmpty(_gameState.PendingPortalName))
+                {
+                    PortalInstance targetPortal = _mapBoard.BoardItems.Portals.FirstOrDefault(portal => portal.pn == _gameState.PendingPortalName);
+                    if (targetPortal != null && !_sameMapTeleportPending)
+                    {
+                        StartSameMapTeleport(
+                            targetPortal.X,
+                            targetPortal.Y,
+                            targetPortal.delay ?? SAME_MAP_PORTAL_DEFAULT_DELAY_MS,
+                            currTickCount);
+                    }
+
+                    _gameState.PendingMapChange = false;
+                    _gameState.PendingMapId = -1;
+                    _gameState.PendingPortalName = null;
+                }
+                else
+                {
+                    if (_portalFadeState == PortalFadeState.None)
+                    {
+                        _portalFadeState = PortalFadeState.FadingOut;
+                        _screenEffects.FadeOut(PORTAL_FADE_DURATION_MS, currTickCount);
+                    }
+
+                    if (_portalFadeState == PortalFadeState.FadingOut)
+                    {
+                        _screenEffects.UpdateFade(currTickCount);
+                        if (_screenEffects.IsFadeOutComplete || !_screenEffects.IsFadeActive)
+                        {
+                            _gameState.PendingMapChange = false;
+
+                            Tuple<Board, string> result = _loadMapCallback(_gameState.PendingMapId);
+                            if (result != null && result.Item1 != null)
+                            {
+                                int currentMapId = _mapBoard?.MapInfo?.id ?? -1;
+                                if (currentMapId >= 0 && _mobsArray != null)
+                                {
+                                    _mapStateCache.SaveMapState(currentMapId, _mobsArray, currTickCount);
+                                }
+
+                                UnloadMapContent();
+                                LoadMapContent(result.Item1, result.Item2, _gameState.PendingPortalName);
+
+                                int newMapId = _mapBoard?.MapInfo?.id ?? -1;
+                                if (newMapId >= 0 && _mobsArray != null)
+                                {
+                                    _mapStateCache.RestoreMapState(newMapId, _mobsArray, currTickCount);
+                                }
+
+                                _playerManager?.Input?.SyncState();
+                            }
+
+                            _gameState.PendingMapId = -1;
+                            _gameState.PendingPortalName = null;
+
+                            _portalFadeState = PortalFadeState.FadingIn;
+                            _screenEffects.FadeIn(PORTAL_FADE_DURATION_MS, currTickCount);
+                        }
+
+                        return true;
+                    }
+                }
+            }
+
+            if (_portalFadeState == PortalFadeState.FadingIn)
+            {
+                if (_screenEffects.IsFadeInComplete || !_screenEffects.IsFadeActive)
+                {
+                    _portalFadeState = PortalFadeState.None;
+                    _playerManager?.Input?.SyncState();
+                }
+            }
+
+            return false;
         }
 
         private void FinalizeFrameInputState(KeyboardState newKeyboardState, MouseState newMouseState, GameTime gameTime)

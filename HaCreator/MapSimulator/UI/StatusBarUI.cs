@@ -1136,6 +1136,12 @@ namespace HaCreator.MapSimulator.UI {
                 return 0f;
             }
 
+            if (preparedSkill.IsHolding && preparedSkill.MaxHoldDurationMs > 0)
+            {
+                float holdRemaining = 1f - (preparedSkill.HoldElapsedMs / (float)preparedSkill.MaxHoldDurationMs);
+                return Math.Clamp(holdRemaining, 0f, 1f);
+            }
+
             if (hudProfile.GaugeDurationMs > 0)
             {
                 int elapsedMs = Math.Max(0, preparedSkill.DurationMs - preparedSkill.RemainingMs);

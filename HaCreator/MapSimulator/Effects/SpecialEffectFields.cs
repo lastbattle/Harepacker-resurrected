@@ -1,10 +1,16 @@
 using HaSharedLibrary.Render.DX;
+using MapleLib.WzLib;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
+using MapleLib.WzLib.WzStructure.Data;
 using Spine;
 using System;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
+using System.Linq;
+using HaCreator.MapEditor;
+using HaCreator.MapEditor.Info;
+using HaCreator.MapEditor.Instance.Misc;
 
 namespace HaCreator.MapSimulator.Effects
 {
@@ -32,6 +38,11 @@ namespace HaCreator.MapSimulator.Effects
         public GuildBossField GuildBoss => _guildBoss;
         public MassacreField Massacre => _massacre;
         public bool HasBlockingScriptedSequence => _wedding.HasActiveScriptedDialog;
+
+        public void SetWeddingPlayerState(int? localCharacterId, Vector2? localWorldPosition)
+        {
+            _wedding.SetLocalPlayerState(localCharacterId, localWorldPosition);
+        }
         #endregion
 
         #region Initialization
@@ -46,52 +57,64 @@ namespace HaCreator.MapSimulator.Effects
         /// <summary>
         /// Detect and enable appropriate field type based on map ID
         /// </summary>
-        public void DetectFieldType(int mapId)
+        public void DetectFieldType(int mapId, FieldType? fieldType = null)
         {
             // Wedding maps: 680000110 (Cathedral), 680000210 (Chapel)
-            if (mapId == 680000110 || mapId == 680000210)
+            if (fieldType == FieldType.FIELDTYPE_WEDDING || mapId == 680000110 || mapId == 680000210)
             {
                 _wedding.Enable(mapId);
                 System.Diagnostics.Debug.WriteLine($"[SpecialEffectFields] Wedding field detected: {mapId}");
             }
             // Witchtower maps (would be in 900000000 range typically)
-            else if (IsWitchtowerMap(mapId))
+            else if (IsWitchtowerMap(mapId, fieldType))
             {
                 _witchtower.Enable();
                 System.Diagnostics.Debug.WriteLine($"[SpecialEffectFields] Witchtower field detected: {mapId}");
             }
             // Guild boss maps (e.g., Ergoth, Shao maps)
-            else if (IsGuildBossMap(mapId))
+            else if (IsGuildBossMap(mapId, fieldType))
             {
                 _guildBoss.Enable();
                 System.Diagnostics.Debug.WriteLine($"[SpecialEffectFields] GuildBoss field detected: {mapId}");
             }
             // Massacre maps (special event PQ maps)
-            else if (IsMassacreMap(mapId))
+            else if (IsMassacreMap(mapId, fieldType))
             {
                 _massacre.Enable();
                 System.Diagnostics.Debug.WriteLine($"[SpecialEffectFields] Massacre field detected: {mapId}");
             }
         }
 
-        private static bool IsWitchtowerMap(int mapId)
+        public void ConfigureMap(Board board)
         {
-            // Witchtower maps - typically special event maps
-            return mapId >= 922000000 && mapId <= 922000099;
+            if (_guildBoss.IsActive)
+            {
+                //_guildBoss.ConfigureFromBoard(board);
+            }
         }
 
-        private static bool IsGuildBossMap(int mapId)
+        private static bool IsWitchtowerMap(int mapId, FieldType? fieldType)
+        {
+            // Witchtower maps - typically special event maps
+            return fieldType == FieldType.FIELDTYPE_WITCHTOWER
+                || (mapId >= 922000000 && mapId <= 922000099);
+        }
+
+        private static bool IsGuildBossMap(int mapId, FieldType? fieldType)
         {
             // Guild boss maps (Ergoth, Shao, etc.)
             // Examples: 610030000 series, 673000000 series
-            return (mapId >= 610030000 && mapId <= 610030099) ||
-                   (mapId >= 673000000 && mapId <= 673000099);
+            return fieldType == FieldType.FIELDTYPE_GUILDBOSS
+                || (mapId >= 610030000 && mapId <= 610030099)
+                || (mapId >= 673000000 && mapId <= 673000099);
         }
 
-        private static bool IsMassacreMap(int mapId)
+        private static bool IsMassacreMap(int mapId, FieldType? fieldType)
         {
             // Massacre/hunting event maps
-            return mapId >= 910000000 && mapId <= 910000099;
+            return fieldType == FieldType.FIELDTYPE_MASSACRE
+                || fieldType == FieldType.FIELDTYPE_MASSACRE_RESULT
+                || (mapId >= 910000000 && mapId <= 910000099);
         }
         #endregion
 
@@ -156,10 +179,38 @@ namespace HaCreator.MapSimulator.Effects
     /// </summary>
     public class WeddingField
     {
+        private const int CathedralWeddingMapId = 680000110;
+        private const int ChapelWeddingMapId = 680000210;
+        private const int CathedralNpcId = 9201011;
+        private const int ChapelNpcId = 9201002;
+        private const int DialogDurationMs = 5000;
+        private const string ChapelGuestBlessPromptText = "Would you like to give your blessing to the couple?";
+
+        private static readonly Dictionary<int, Dictionary<int, string>> WeddingDialogFallbacks = new()
+        {
+            [ChapelNpcId] = new Dictionary<int, string>
+            {
+                [0] = "Dearly beloved, we are gathered here today to celebrate the marriage of these two fine, upstanding people. One can clearly see the love between you two, and it's a sight I'll never tire of. You have proved your love and received your Parent's Blessing. Do you wish to seal your love in the eternal embrace of marriage?",
+                [1] = "Very well. Guests may now Bless the couple if they choose...",
+                [3] = "By the power vested in me through the mighty Maple tree, I now pronounce you Husband and Wife. You may kiss the bride!",
+                [4] = "With the Blessing of the Maple tree, I wish both of you a long and safe marriage."
+            },
+            [CathedralNpcId] = new Dictionary<int, string>
+            {
+                [0] = "We are gathered here today to celebrate the union of these two love birds. I've never seen a better-looking couple in all my years of running this Chapel. So, do you want to travel the world and spend the rest of your life with your chosen spouse?",
+                [1] = "Very well! I pronounce you Husband and Wife. You may kiss the bride!",
+                [2] = "You two truly are a sight to behold...you may leave the Chapel now, and may the blessing of the Maple tree be with you."
+            }
+        };
+
         #region State
         private bool _isActive = false;
         private int _mapId;
         private int _npcId;
+        private int? _localCharacterId;
+        private Vector2? _localPlayerPosition;
+        private Vector2? _groomPosition;
+        private Vector2? _bridePosition;
 
         // Wedding step (from OnWeddingProgress)
         private int _currentStep = 0;
@@ -189,6 +240,11 @@ namespace HaCreator.MapSimulator.Effects
         public int CurrentStep => _currentStep;
         public bool IsBlessEffectActive => _blessEffectActive;
         public bool HasActiveScriptedDialog => _currentDialog != null || _dialogQueue.Count > 0;
+        public WeddingParticipantRole LocalParticipantRole { get; private set; } = WeddingParticipantRole.Guest;
+        public string CurrentDialogMessage => _currentDialog?.Message;
+        public WeddingDialogMode CurrentDialogMode => _currentDialog?.Mode ?? WeddingDialogMode.Text;
+        public bool IsGuestBlessPromptActive => _currentDialog?.Mode == WeddingDialogMode.YesNo;
+        public Vector2? BlessEffectWorldCenter => TryGetBlessEffectWorldCenter();
         #endregion
 
         #region Initialization
@@ -204,7 +260,12 @@ namespace HaCreator.MapSimulator.Effects
             _currentStep = 0;
 
             // Set NPC based on map (from client: 680000110 = 9201011, 680000210 = 9201002)
-            _npcId = mapId == 680000110 ? 9201011 : 9201002;
+            _npcId = mapId == CathedralWeddingMapId ? CathedralNpcId : ChapelNpcId;
+            _groomId = 0;
+            _brideId = 0;
+            _groomPosition = null;
+            _bridePosition = null;
+            LocalParticipantRole = WeddingParticipantRole.Guest;
 
             System.Diagnostics.Debug.WriteLine($"[WeddingField] Enabled for map {mapId}, NPC {_npcId}");
         }
@@ -212,6 +273,13 @@ namespace HaCreator.MapSimulator.Effects
         public void SetBlessFrames(List<IDXObject> frames)
         {
             _blessFrames = frames;
+        }
+
+        public void SetLocalPlayerState(int? localCharacterId, Vector2? localWorldPosition)
+        {
+            _localCharacterId = localCharacterId;
+            _localPlayerPosition = localWorldPosition;
+            UpdateParticipantState();
         }
         #endregion
 
@@ -228,10 +296,12 @@ namespace HaCreator.MapSimulator.Effects
             _currentStep = step;
             _groomId = groomId;
             _brideId = brideId;
+            UpdateParticipantState();
 
             // Step 0: Start ceremony - play wedding BGM
             if (step == 0)
             {
+                SetBlessEffect(false, currentTimeMs);
                 // Would trigger: CSoundMan::PlayBGM for wedding music
                 // Cathedral: 0x108E, Chapel: 0x108F from StringPool
             }
@@ -268,11 +338,11 @@ namespace HaCreator.MapSimulator.Effects
                 {
                     _sparkles.Add(new WeddingSparkle
                     {
-                        X = 0.5f + (float)(_random.NextDouble() - 0.5) * 0.3f,
-                        Y = 0.5f + (float)(_random.NextDouble() - 0.5) * 0.2f,
+                        X = (float)(_random.NextDouble() - 0.5f) * 80f,
+                        Y = (float)(_random.NextDouble() - 0.5f) * 40f,
                         Scale = 0.5f + (float)_random.NextDouble() * 0.5f,
                         Alpha = 0f,
-                        Velocity = new Vector2((float)(_random.NextDouble() - 0.5f) * 0.02f, (float)_random.NextDouble() * 0.01f),
+                        Velocity = new Vector2((float)(_random.NextDouble() - 0.5f) * 12f, (float)(_random.NextDouble() - 0.25f) * 10f),
                         LifeTime = 2000 + _random.Next(3000),
                         SpawnDelay = i * 100
                     });
@@ -287,22 +357,134 @@ namespace HaCreator.MapSimulator.Effects
 
         private void ShowWeddingDialog(int step, int currentTimeMs)
         {
-            // Wedding dialog text would be loaded from String.wz/Npc.img/{npcId}/wedding{step}
-            string dialogText = step switch
-            {
-                0 => "Welcome to the wedding ceremony!",
-                1 => "Do you take this person as your beloved partner?",
-                2 => "You may now kiss the bride!",
-                _ => $"Wedding step {step}"
-            };
+            _currentDialog = CreateDialogForStep(step, currentTimeMs);
+        }
 
-            _currentDialog = new WeddingDialog
+        private WeddingDialog CreateDialogForStep(int step, int currentTimeMs)
+        {
+            if (_mapId == ChapelWeddingMapId && step == 2)
+            {
+                if (LocalParticipantRole == WeddingParticipantRole.Guest)
+                {
+                    return new WeddingDialog
+                    {
+                        Message = ChapelGuestBlessPromptText,
+                        NpcId = _npcId,
+                        StartTime = currentTimeMs,
+                        Duration = DialogDurationMs,
+                        Mode = WeddingDialogMode.YesNo
+                    };
+                }
+
+                return null;
+            }
+
+            string dialogText = ResolveWeddingDialogText(_npcId, step);
+            if (string.IsNullOrWhiteSpace(dialogText))
+            {
+                return null;
+            }
+
+            return new WeddingDialog
             {
                 Message = dialogText,
                 NpcId = _npcId,
                 StartTime = currentTimeMs,
-                Duration = 5000
+                Duration = DialogDurationMs,
+                Mode = WeddingDialogMode.Text
             };
+        }
+
+        private string ResolveWeddingDialogText(int npcId, int step)
+        {
+            string propertyName = $"wedding{step}";
+            try
+            {
+                WzImage npcImage = global::HaCreator.Program.FindImage("String", "Npc.img");
+                string liveValue = npcImage?[npcId.ToString()]?[propertyName]?.GetString();
+                if (!string.IsNullOrWhiteSpace(liveValue))
+                {
+                    return liveValue.Trim();
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[WeddingField] Failed to load {propertyName} for NPC {npcId}: {ex.Message}");
+            }
+
+            if (WeddingDialogFallbacks.TryGetValue(npcId, out Dictionary<int, string> dialogSet)
+                && dialogSet.TryGetValue(step, out string fallback))
+            {
+                return fallback;
+            }
+
+            return null;
+        }
+
+        private void UpdateParticipantState()
+        {
+            LocalParticipantRole = WeddingParticipantRole.Guest;
+            if (_localCharacterId.HasValue)
+            {
+                if (_localCharacterId.Value == _groomId)
+                {
+                    LocalParticipantRole = WeddingParticipantRole.Groom;
+                }
+                else if (_localCharacterId.Value == _brideId)
+                {
+                    LocalParticipantRole = WeddingParticipantRole.Bride;
+                }
+            }
+
+            if (_localPlayerPosition.HasValue)
+            {
+                if (LocalParticipantRole == WeddingParticipantRole.Groom)
+                {
+                    _groomPosition = _localPlayerPosition;
+                }
+                else if (LocalParticipantRole == WeddingParticipantRole.Bride)
+                {
+                    _bridePosition = _localPlayerPosition;
+                }
+            }
+        }
+
+        private Vector2? TryGetBlessEffectWorldCenter()
+        {
+            Vector2? groom = _groomPosition;
+            Vector2? bride = _bridePosition;
+
+            if (!groom.HasValue && !bride.HasValue)
+            {
+                return null;
+            }
+
+            if (!groom.HasValue && bride.HasValue)
+            {
+                groom = new Vector2(bride.Value.X - 40f, bride.Value.Y);
+            }
+
+            if (!bride.HasValue && groom.HasValue)
+            {
+                bride = new Vector2(groom.Value.X + 40f, groom.Value.Y);
+            }
+
+            return new Vector2(
+                (groom!.Value.X + bride!.Value.X) * 0.5f,
+                ((groom.Value.Y + bride.Value.Y) * 0.5f) - 20f);
+        }
+
+        private Vector2 GetBlessEffectScreenCenter(int mapShiftX, int mapShiftY, int centerX, int centerY, int screenWidth, int screenHeight)
+        {
+            Vector2? worldCenter = TryGetBlessEffectWorldCenter();
+            if (worldCenter.HasValue)
+            {
+                return new Vector2(
+                    worldCenter.Value.X - mapShiftX + centerX,
+                    worldCenter.Value.Y - mapShiftY + centerY);
+            }
+
+            return new Vector2(screenWidth * 0.5f, screenHeight * 0.5f - 20f);
         }
         #endregion
 
@@ -395,13 +577,14 @@ namespace HaCreator.MapSimulator.Effects
             {
                 int screenWidth = spriteBatch.GraphicsDevice.Viewport.Width;
                 int screenHeight = spriteBatch.GraphicsDevice.Viewport.Height;
+                Vector2 blessCenter = GetBlessEffectScreenCenter(mapShiftX, mapShiftY, centerX, centerY, screenWidth, screenHeight);
 
                 foreach (var sparkle in _sparkles)
                 {
                     if (sparkle.Alpha <= 0) continue;
 
-                    int x = (int)(sparkle.X * screenWidth);
-                    int y = (int)(sparkle.Y * screenHeight);
+                    int x = (int)(blessCenter.X + sparkle.X);
+                    int y = (int)(blessCenter.Y + sparkle.Y);
                     int size = (int)(8 * sparkle.Scale);
                     byte alpha = (byte)(sparkle.Alpha * _blessEffectAlpha * 255);
 
@@ -415,18 +598,18 @@ namespace HaCreator.MapSimulator.Effects
             // Draw current dialog
             if (_currentDialog != null && font != null)
             {
-                DrawDialog(spriteBatch, pixelTexture, font);
+                DrawDialog(spriteBatch, pixelTexture, font, tickCount);
             }
 
             // Debug info
             if (font != null)
             {
-                string info = $"Wedding: Step {_currentStep} | Bless: {_blessEffectActive}";
+                string info = $"Wedding: Step {_currentStep} | Role: {LocalParticipantRole} | Bless: {_blessEffectActive}";
                 spriteBatch.DrawString(font, info, new Vector2(10, 10), Color.Pink);
             }
         }
 
-        private void DrawDialog(SpriteBatch spriteBatch, Texture2D pixelTexture, SpriteFont font)
+        private void DrawDialog(SpriteBatch spriteBatch, Texture2D pixelTexture, SpriteFont font, int currentTimeMs)
         {
             if (_currentDialog == null) return;
 
@@ -438,7 +621,7 @@ namespace HaCreator.MapSimulator.Effects
             int boxY = 100;
 
             // Calculate alpha based on time
-            int elapsed = Environment.TickCount - _currentDialog.StartTime;
+            int elapsed = currentTimeMs - _currentDialog.StartTime;
             float alpha = 1f;
             if (elapsed < 300)
                 alpha = elapsed / 300f;
@@ -453,6 +636,12 @@ namespace HaCreator.MapSimulator.Effects
 
             // Draw text
             spriteBatch.DrawString(font, _currentDialog.Message, new Vector2(boxX + 20, boxY + 10), textColor);
+
+            if (_currentDialog.Mode == WeddingDialogMode.YesNo)
+            {
+                Vector2 promptPosition = new Vector2(boxX + 20, boxY + boxHeight - 28);
+                spriteBatch.DrawString(font, "[Yes]     [No]", promptPosition, new Color(255, 235, 180, (int)(255 * alpha)));
+            }
         }
         #endregion
 
@@ -465,8 +654,26 @@ namespace HaCreator.MapSimulator.Effects
             _sparkles.Clear();
             _currentDialog = null;
             _dialogQueue.Clear();
+            _groomId = 0;
+            _brideId = 0;
+            _groomPosition = null;
+            _bridePosition = null;
+            LocalParticipantRole = WeddingParticipantRole.Guest;
         }
         #endregion
+    }
+
+    public enum WeddingParticipantRole
+    {
+        Guest,
+        Groom,
+        Bride
+    }
+
+    public enum WeddingDialogMode
+    {
+        Text,
+        YesNo
     }
 
     public class WeddingSparkle
@@ -485,6 +692,7 @@ namespace HaCreator.MapSimulator.Effects
         public int NpcId;
         public int StartTime;
         public int Duration;
+        public WeddingDialogMode Mode;
     }
     #endregion
 
@@ -492,34 +700,34 @@ namespace HaCreator.MapSimulator.Effects
     /// <summary>
     /// Witchtower Field - Score tracking for witchtower event.
     ///
-    /// - OnScoreUpdate (packet 358): Update score display
-    /// - CScoreboard_Witchtower: UI widget at position (-57, 92, 115, 36)
+    /// Client evidence:
+    /// - CField_Witchtower::OnScoreUpdate (0x564ad0): lazy-creates a scoreboard window, stores a Decode1 score, invalidates it
+    /// - CScoreboard_Witchtower::OnCreate (0x564e50): loads dedicated background, key, and score-font assets
+    /// - CScoreboard_Witchtower::Draw (0x564bd0): draws a 115x36 center-top widget, overlays the key art at (7, 0),
+    ///   then renders a zero-padded score at (67, 4)
     /// </summary>
     public class WitchtowerField
     {
         #region State
         private bool _isActive = false;
         private int _score = 0;
-        private int _targetScore = 100; // Goal score
         #endregion
 
         #region Scoreboard Position (from client: CWnd::CreateWnd position)
-        private const int SCOREBOARD_X = 10;  // Adjusted from -57 (relative positioning)
+        private const int SCOREBOARD_OFFSET_X = -57;
         private const int SCOREBOARD_Y = 92;
         private const int SCOREBOARD_WIDTH = 115;
         private const int SCOREBOARD_HEIGHT = 36;
         #endregion
 
-        #region Animation
-        private float _scoreDisplayValue = 0f;
-        private int _lastScoreUpdateTime = 0;
-        private bool _scoreAnimating = false;
+        #region Focus Pulse
+        private const int SCORE_PULSE_DURATION_MS = 650;
+        private int _lastScoreUpdateTime = int.MinValue;
         #endregion
 
         #region Public Properties
         public bool IsActive => _isActive;
         public int Score => _score;
-        public float ScoreProgress => Math.Clamp((float)_score / _targetScore, 0f, 1f);
         #endregion
 
         #region Initialization
@@ -531,12 +739,7 @@ namespace HaCreator.MapSimulator.Effects
         {
             _isActive = true;
             _score = 0;
-            _scoreDisplayValue = 0f;
-        }
-
-        public void SetTargetScore(int target)
-        {
-            _targetScore = Math.Max(1, target);
+            _lastScoreUpdateTime = int.MinValue;
         }
         #endregion
 
@@ -548,10 +751,10 @@ namespace HaCreator.MapSimulator.Effects
         /// </summary>
         public void OnScoreUpdate(int newScore, int currentTimeMs)
         {
-            System.Diagnostics.Debug.WriteLine($"[WitchtowerField] OnScoreUpdate: {_score} -> {newScore}");
-            _score = newScore;
+            int clampedScore = Math.Clamp(newScore, 0, byte.MaxValue);
+            System.Diagnostics.Debug.WriteLine($"[WitchtowerField] OnScoreUpdate: {_score} -> {clampedScore}");
+            _score = clampedScore;
             _lastScoreUpdateTime = currentTimeMs;
-            _scoreAnimating = true;
         }
         #endregion
 
@@ -559,22 +762,6 @@ namespace HaCreator.MapSimulator.Effects
         public void Update(int currentTimeMs, float deltaSeconds)
         {
             if (!_isActive) return;
-
-            // Animate score display
-            if (_scoreAnimating)
-            {
-                float targetValue = _score;
-                float diff = targetValue - _scoreDisplayValue;
-                if (Math.Abs(diff) < 0.5f)
-                {
-                    _scoreDisplayValue = targetValue;
-                    _scoreAnimating = false;
-                }
-                else
-                {
-                    _scoreDisplayValue += diff * 5f * deltaSeconds;
-                }
-            }
         }
         #endregion
 
@@ -583,33 +770,38 @@ namespace HaCreator.MapSimulator.Effects
         {
             if (!_isActive || pixelTexture == null) return;
 
-            // Draw scoreboard background
-            Color bgColor = new Color(40, 40, 60, 200);
-            Color borderColor = new Color(100, 100, 150, 255);
-            Color progressBgColor = new Color(30, 30, 40, 200);
-            Color progressColor = new Color(100, 200, 100, 255);
+            Rectangle widgetBounds = GetScoreboardBounds(spriteBatch.GraphicsDevice.Viewport);
+            Rectangle innerBounds = new Rectangle(widgetBounds.X + 1, widgetBounds.Y + 1, widgetBounds.Width - 2, widgetBounds.Height - 2);
+            Rectangle panelBounds = new Rectangle(widgetBounds.X + 24, widgetBounds.Y + 4, 85, 28);
+            Rectangle keyBounds = new Rectangle(widgetBounds.X + 7, widgetBounds.Y, 22, 22);
 
-            // Background
-            spriteBatch.Draw(pixelTexture, new Rectangle(SCOREBOARD_X, SCOREBOARD_Y, SCOREBOARD_WIDTH, SCOREBOARD_HEIGHT), bgColor);
+            float pulseStrength = GetPulseStrength();
+            Color outerBorder = Color.Lerp(new Color(88, 71, 44), new Color(240, 218, 120), pulseStrength);
+            Color innerFill = Color.Lerp(new Color(56, 41, 18, 228), new Color(104, 78, 30, 244), pulseStrength * 0.45f);
+            Color panelFill = Color.Lerp(new Color(28, 24, 18, 220), new Color(77, 54, 18, 236), pulseStrength * 0.30f);
+            Color panelHighlight = Color.Lerp(new Color(134, 109, 61), new Color(255, 234, 154), pulseStrength);
+            Color keyColor = Color.Lerp(new Color(197, 168, 93), new Color(255, 234, 148), pulseStrength);
+            Color pulseOverlay = new Color(255, 234, 154) * (pulseStrength * 0.28f);
 
-            // Border
-            spriteBatch.Draw(pixelTexture, new Rectangle(SCOREBOARD_X, SCOREBOARD_Y, SCOREBOARD_WIDTH, 2), borderColor);
-            spriteBatch.Draw(pixelTexture, new Rectangle(SCOREBOARD_X, SCOREBOARD_Y + SCOREBOARD_HEIGHT - 2, SCOREBOARD_WIDTH, 2), borderColor);
-            spriteBatch.Draw(pixelTexture, new Rectangle(SCOREBOARD_X, SCOREBOARD_Y, 2, SCOREBOARD_HEIGHT), borderColor);
-            spriteBatch.Draw(pixelTexture, new Rectangle(SCOREBOARD_X + SCOREBOARD_WIDTH - 2, SCOREBOARD_Y, 2, SCOREBOARD_HEIGHT), borderColor);
+            spriteBatch.Draw(pixelTexture, widgetBounds, outerBorder);
+            spriteBatch.Draw(pixelTexture, innerBounds, innerFill);
+            spriteBatch.Draw(pixelTexture, panelBounds, panelFill);
+            spriteBatch.Draw(pixelTexture, new Rectangle(panelBounds.X, panelBounds.Y, panelBounds.Width, 1), panelHighlight);
+            spriteBatch.Draw(pixelTexture, new Rectangle(panelBounds.X, panelBounds.Bottom - 1, panelBounds.Width, 1), new Color(38, 28, 16, 255));
+            spriteBatch.Draw(pixelTexture, new Rectangle(panelBounds.X, panelBounds.Y, 1, panelBounds.Height), panelHighlight * 0.75f);
+            spriteBatch.Draw(pixelTexture, new Rectangle(panelBounds.Right - 1, panelBounds.Y, 1, panelBounds.Height), new Color(25, 19, 12, 255));
 
-            // Progress bar
-            int progressY = SCOREBOARD_Y + SCOREBOARD_HEIGHT - 10;
-            int progressWidth = SCOREBOARD_WIDTH - 10;
-            spriteBatch.Draw(pixelTexture, new Rectangle(SCOREBOARD_X + 5, progressY, progressWidth, 6), progressBgColor);
-            int filledWidth = (int)(progressWidth * ScoreProgress);
-            spriteBatch.Draw(pixelTexture, new Rectangle(SCOREBOARD_X + 5, progressY, filledWidth, 6), progressColor);
+            DrawKeyGlyph(spriteBatch, pixelTexture, keyBounds, keyColor);
 
-            // Score text
+            if (pulseStrength > 0f)
+            {
+                spriteBatch.Draw(pixelTexture, innerBounds, pulseOverlay);
+            }
+
             if (font != null)
             {
-                string scoreText = $"Score: {(int)_scoreDisplayValue}";
-                Vector2 textPos = new Vector2(SCOREBOARD_X + 8, SCOREBOARD_Y + 5);
+                string scoreText = _score.ToString("00");
+                Vector2 textPos = new Vector2(widgetBounds.X + 67, widgetBounds.Y + 4);
                 spriteBatch.DrawString(font, scoreText, textPos + new Vector2(1, 1), Color.Black);
                 spriteBatch.DrawString(font, scoreText, textPos, Color.White);
             }
@@ -621,7 +813,54 @@ namespace HaCreator.MapSimulator.Effects
         {
             _isActive = false;
             _score = 0;
-            _scoreDisplayValue = 0f;
+            _lastScoreUpdateTime = int.MinValue;
+        }
+        #endregion
+
+        #region Debug Helpers
+        public string DescribeStatus()
+        {
+            if (!_isActive)
+            {
+                return "Witchtower scoreboard inactive";
+            }
+
+            return $"Witchtower scoreboard active, score={_score:00}";
+        }
+        #endregion
+
+        #region Private Helpers
+        private static Rectangle GetScoreboardBounds(Viewport viewport)
+        {
+            int x = viewport.Width / 2 + SCOREBOARD_OFFSET_X;
+            return new Rectangle(x, SCOREBOARD_Y, SCOREBOARD_WIDTH, SCOREBOARD_HEIGHT);
+        }
+
+        private float GetPulseStrength()
+        {
+            if (_lastScoreUpdateTime == int.MinValue)
+            {
+                return 0f;
+            }
+
+            int elapsed = Environment.TickCount - _lastScoreUpdateTime;
+            if (elapsed < 0 || elapsed >= SCORE_PULSE_DURATION_MS)
+            {
+                return 0f;
+            }
+
+            float normalized = 1f - (elapsed / (float)SCORE_PULSE_DURATION_MS);
+            return normalized * normalized;
+        }
+
+        private static void DrawKeyGlyph(SpriteBatch spriteBatch, Texture2D pixelTexture, Rectangle keyBounds, Color keyColor)
+        {
+            spriteBatch.Draw(pixelTexture, new Rectangle(keyBounds.X + 4, keyBounds.Y + 3, 10, 10), keyColor);
+            spriteBatch.Draw(pixelTexture, new Rectangle(keyBounds.X + 6, keyBounds.Y + 5, 6, 6), new Color(72, 52, 24, 255));
+            spriteBatch.Draw(pixelTexture, new Rectangle(keyBounds.X + 12, keyBounds.Y + 7, 8, 4), keyColor);
+            spriteBatch.Draw(pixelTexture, new Rectangle(keyBounds.X + 17, keyBounds.Y + 7, 2, 7), keyColor);
+            spriteBatch.Draw(pixelTexture, new Rectangle(keyBounds.X + 14, keyBounds.Y + 11, 2, 5), keyColor);
+            spriteBatch.Draw(pixelTexture, new Rectangle(keyBounds.X + 18, keyBounds.Y + 11, 2, 3), new Color(116, 88, 42, 255));
         }
         #endregion
     }

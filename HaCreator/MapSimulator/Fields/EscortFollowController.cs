@@ -14,6 +14,8 @@ namespace HaCreator.MapSimulator.Fields
     /// </summary>
     public sealed class EscortFollowController
     {
+        // CUserLocal::TryAutoRequestFollowCharacter checks |dx| <= 80 and |dy| <= 30
+        // before issuing the follow request.
         internal const float AttachHorizontalRange = 80f;
         internal const float AttachVerticalRange = 30f;
         internal const float ReleaseHorizontalRange = 140f;

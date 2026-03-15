@@ -277,8 +277,8 @@ namespace HaCreator.MapSimulator.UI
             DrawStatRow(sprite, windowX, windowY, GUILD_Y, _characterBuild.GuildDisplayText);
 
             // Draw HP/MP
-            DrawStatRow(sprite, windowX, windowY, HP_Y, $"{_characterBuild.HP}/{_characterBuild.MaxHP}");
-            DrawStatRow(sprite, windowX, windowY, MP_Y, $"{_characterBuild.MP}/{_characterBuild.MaxMP}");
+            DrawStatRow(sprite, windowX, windowY, HP_Y, $"{_characterBuild.TotalHP}/{_characterBuild.TotalMaxHP}");
+            DrawStatRow(sprite, windowX, windowY, MP_Y, $"{_characterBuild.TotalMP}/{_characterBuild.TotalMaxMP}");
 
             // Draw AP
             Color apColor = _characterBuild.AP > 0 ? APAvailableColor : TextColorDark;
@@ -287,10 +287,10 @@ namespace HaCreator.MapSimulator.UI
                 apColor, 0f, Vector2.Zero, TEXT_SCALE, SpriteEffects.None, 0f);
 
             // Draw primary stats
-            DrawStatRow(sprite, windowX, windowY, STR_Y, _characterBuild.STR.ToString());
-            DrawStatRow(sprite, windowX, windowY, DEX_Y, _characterBuild.DEX.ToString());
-            DrawStatRow(sprite, windowX, windowY, INT_Y, _characterBuild.INT.ToString());
-            DrawStatRow(sprite, windowX, windowY, LUK_Y, _characterBuild.LUK.ToString());
+            DrawStatRow(sprite, windowX, windowY, STR_Y, _characterBuild.TotalSTR.ToString());
+            DrawStatRow(sprite, windowX, windowY, DEX_Y, _characterBuild.TotalDEX.ToString());
+            DrawStatRow(sprite, windowX, windowY, INT_Y, _characterBuild.TotalINT.ToString());
+            DrawStatRow(sprite, windowX, windowY, LUK_Y, _characterBuild.TotalLUK.ToString());
 
             // Draw detail panel if open
             if (_isDetailMode && _detailBackground != null)
@@ -326,16 +326,16 @@ namespace HaCreator.MapSimulator.UI
             int startY = 56;  // Down by 2 rows (2 * 18 = 36) from original 20
             int lineHeight = 18;
 
-            DrawDetailStatRow(sprite, panelX, panelY, startY, _characterBuild.Attack.ToString());
-            DrawDetailStatRow(sprite, panelX, panelY, startY + lineHeight, _characterBuild.Defense.ToString());
-            DrawDetailStatRow(sprite, panelX, panelY, startY + lineHeight * 2, _characterBuild.MagicAttack.ToString());
-            DrawDetailStatRow(sprite, panelX, panelY, startY + lineHeight * 3, _characterBuild.MagicDefense.ToString());
-            DrawDetailStatRow(sprite, panelX, panelY, startY + lineHeight * 4, _characterBuild.Accuracy.ToString());
-            DrawDetailStatRow(sprite, panelX, panelY, startY + lineHeight * 5, _characterBuild.Avoidability.ToString());
-            DrawDetailStatRow(sprite, panelX, panelY, startY + lineHeight * 6, _characterBuild.Hands.ToString());
-            DrawDetailStatRow(sprite, panelX, panelY, startY + lineHeight * 7, $"{_characterBuild.CriticalRate}%");
-            DrawDetailStatRow(sprite, panelX, panelY, startY + lineHeight * 8, $"{_characterBuild.Speed:F0}%");
-            DrawDetailStatRow(sprite, panelX, panelY, startY + lineHeight * 9, $"{_characterBuild.JumpPower:F0}%");
+            DrawDetailStatRow(sprite, panelX, panelY, startY, _characterBuild.TotalAttack.ToString());
+            DrawDetailStatRow(sprite, panelX, panelY, startY + lineHeight, _characterBuild.TotalDefense.ToString());
+            DrawDetailStatRow(sprite, panelX, panelY, startY + lineHeight * 2, _characterBuild.TotalMagicAttack.ToString());
+            DrawDetailStatRow(sprite, panelX, panelY, startY + lineHeight * 3, _characterBuild.TotalMagicDefense.ToString());
+            DrawDetailStatRow(sprite, panelX, panelY, startY + lineHeight * 4, _characterBuild.TotalAccuracy.ToString());
+            DrawDetailStatRow(sprite, panelX, panelY, startY + lineHeight * 5, _characterBuild.TotalAvoidability.ToString());
+            DrawDetailStatRow(sprite, panelX, panelY, startY + lineHeight * 6, _characterBuild.TotalHands.ToString());
+            DrawDetailStatRow(sprite, panelX, panelY, startY + lineHeight * 7, $"{_characterBuild.TotalCriticalRate}%");
+            DrawDetailStatRow(sprite, panelX, panelY, startY + lineHeight * 8, $"{_characterBuild.TotalSpeed:F0}%");
+            DrawDetailStatRow(sprite, panelX, panelY, startY + lineHeight * 9, $"{_characterBuild.TotalJumpPower:F0}%");
         }
 
         private void DrawDetailStatRow(SpriteBatch sprite, int panelX, int panelY, int y, string value)
@@ -350,22 +350,12 @@ namespace HaCreator.MapSimulator.UI
         #region Stat Modification
         public void IncreaseHP()
         {
-            if (_characterBuild != null && _characterBuild.AP > 0)
-            {
-                _characterBuild.MaxHP += 20;  // Big Bang: HP increase per AP
-                _characterBuild.HP += 20;
-                _characterBuild.AP--;
-            }
+            _characterBuild?.IncreaseMaxHp();
         }
 
         public void IncreaseMP()
         {
-            if (_characterBuild != null && _characterBuild.AP > 0)
-            {
-                _characterBuild.MaxMP += 20;  // Big Bang: MP increase per AP
-                _characterBuild.MP += 20;
-                _characterBuild.AP--;
-            }
+            _characterBuild?.IncreaseMaxMp();
         }
 
         public bool IncreaseSTR()
@@ -545,8 +535,8 @@ namespace HaCreator.MapSimulator.UI
             base.Update(gameTime);
 
             bool hasAP = _characterBuild != null && _characterBuild.AP > 0;
-            _btnIncHP?.SetEnabled(hasAP);
-            _btnIncMP?.SetEnabled(hasAP);
+            _btnIncHP?.SetEnabled(_characterBuild != null && _characterBuild.CanIncreaseMaxHp());
+            _btnIncMP?.SetEnabled(_characterBuild != null && _characterBuild.CanIncreaseMaxMp());
             _btnIncSTR?.SetEnabled(_characterBuild != null && _characterBuild.CanIncreasePrimaryStat(_characterBuild.STR));
             _btnIncDEX?.SetEnabled(_characterBuild != null && _characterBuild.CanIncreasePrimaryStat(_characterBuild.DEX));
             _btnIncINT?.SetEnabled(_characterBuild != null && _characterBuild.CanIncreasePrimaryStat(_characterBuild.INT));

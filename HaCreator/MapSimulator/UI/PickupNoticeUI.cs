@@ -61,6 +61,8 @@ namespace HaCreator.MapSimulator.UI
         private const int RIGHT_MARGIN = 10;                    // Margin from right edge
         private const int BOTTOM_MARGIN = 60;                   // Margin from bottom (above status bar)
         private const int TEXT_WIDTH = 290;                     // Max text width from client (290 - textWidth)
+        private const int ICON_SIZE = 16;
+        private const int ICON_TEXT_SPACING = 4;
         #endregion
 
         #region Fields
@@ -318,14 +320,30 @@ namespace HaCreator.MapSimulator.UI
 
                 // Measure text to right-align
                 Vector2 textSize = _font.MeasureString(notice.Message);
+                float totalWidth = textSize.X;
+                if (notice.ItemIcon != null)
+                {
+                    totalWidth += ICON_SIZE + ICON_TEXT_SPACING;
+                }
 
                 // Position (right-aligned, stacked from bottom)
-                float x = baseX - textSize.X;
+                float x = baseX - totalWidth;
                 float y = baseY - notice.YOffset - MESSAGE_HEIGHT;
 
                 // Apply alpha
                 Color textColor = notice.TextColor * notice.Alpha;
                 Color outlineColor = notice.OutlineColor * notice.Alpha;
+
+                if (notice.ItemIcon != null)
+                {
+                    Rectangle iconRect = new Rectangle(
+                        (int)Math.Round(x),
+                        (int)Math.Round(y + Math.Max(0f, (MESSAGE_HEIGHT - ICON_SIZE) * 0.5f)),
+                        ICON_SIZE,
+                        ICON_SIZE);
+                    spriteBatch.Draw(notice.ItemIcon, iconRect, Color.White * notice.Alpha);
+                    x += ICON_SIZE + ICON_TEXT_SPACING;
+                }
 
                 // Draw outline (offset by 1 pixel in all directions for bold outline effect)
                 DrawTextWithOutline(spriteBatch, notice.Message, new Vector2(x, y), textColor, outlineColor);

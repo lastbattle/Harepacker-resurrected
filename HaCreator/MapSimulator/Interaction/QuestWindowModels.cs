@@ -33,6 +33,8 @@ namespace HaCreator.MapSimulator.Interaction
         public string RewardText { get; init; } = string.Empty;
         public string HintText { get; init; } = string.Empty;
         public string NpcText { get; init; } = string.Empty;
+        public IReadOnlyList<QuestLogLineSnapshot> RequirementLines { get; init; } = Array.Empty<QuestLogLineSnapshot>();
+        public IReadOnlyList<QuestLogLineSnapshot> RewardLines { get; init; } = Array.Empty<QuestLogLineSnapshot>();
         public int CurrentProgress { get; init; }
         public int TotalProgress { get; init; }
         public QuestWindowActionKind PrimaryAction { get; init; }
@@ -48,5 +50,23 @@ namespace HaCreator.MapSimulator.Interaction
         public bool StateChanged { get; init; }
         public int? QuestId { get; init; }
         public IReadOnlyList<string> Messages { get; init; } = Array.Empty<string>();
+    }
+
+    internal sealed class QuestAlarmEntrySnapshot
+    {
+        public int QuestId { get; init; }
+        public string Title { get; init; } = string.Empty;
+        public string StatusText { get; init; } = string.Empty;
+        public int CurrentProgress { get; init; }
+        public int TotalProgress { get; init; }
+        public bool IsReadyToComplete { get; init; }
+        public IReadOnlyList<QuestLogLineSnapshot> RequirementLines { get; init; } = Array.Empty<QuestLogLineSnapshot>();
+        public IReadOnlyList<string> IssueLines { get; init; } = Array.Empty<string>();
+        public string DemandText { get; init; } = string.Empty;
+    }
+
+    internal sealed class QuestAlarmSnapshot
+    {
+        public IReadOnlyList<QuestAlarmEntrySnapshot> Entries { get; init; } = Array.Empty<QuestAlarmEntrySnapshot>();
     }
 }

@@ -6,8 +6,12 @@ namespace HaCreator.MapSimulator.UI
     public interface IInventoryRuntime
     {
         int GetItemCount(InventoryType type, int itemId);
+        bool CanAcceptItem(InventoryType type, int itemId, int quantity = 1);
         bool TryConsumeItem(InventoryType type, int itemId, int quantity);
         void AddItem(InventoryType type, int itemId, Texture2D texture, int quantity = 1);
         Texture2D GetItemTexture(InventoryType type, int itemId);
+        long GetMesoCount();
+        void AddMeso(long amount);
+        bool TryConsumeMeso(long amount);
     }
 }

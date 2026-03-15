@@ -47,6 +47,7 @@ namespace HaCreator.MapSimulator.Animation
             public bool IsRushAttack { get; set; }
             public bool IsJumpAttack { get; set; }
             public bool Tremble { get; set; }
+            public bool IsAngerAttack { get; set; }
         }
 
         public sealed class AttackEffectNode
@@ -60,6 +61,9 @@ namespace HaCreator.MapSimulator.Animation
             public int Interval { get; set; }
             public int Count { get; set; }
             public int Duration { get; set; }
+            public int Fall { get; set; }
+            public int OffsetX { get; set; }
+            public int OffsetY { get; set; }
             public bool HasRangeBounds { get; set; }
             public Rectangle RangeBounds { get; set; }
             public List<List<IDXObject>> Sequences { get; } = new List<List<IDXObject>>();
@@ -72,6 +76,8 @@ namespace HaCreator.MapSimulator.Animation
         private readonly Dictionary<string, List<IDXObject>> _attackWarningEffects = new();
         private readonly Dictionary<string, List<AttackEffectNode>> _attackExtraEffects = new();
         private readonly Dictionary<string, AttackInfoMetadata> _attackMetadata = new();
+        private readonly Dictionary<int, List<IDXObject>> _angerGaugeAnimations = new();
+        private List<IDXObject> _angerGaugeEffect;
 
         /// <summary>
         /// Add hit effect frames for a specific attack action.
@@ -229,6 +235,34 @@ namespace HaCreator.MapSimulator.Animation
                 return metadata;
 
             return null;
+        }
+
+        public void SetAngerGaugeAnimation(int stage, List<IDXObject> frames)
+        {
+            if (stage < 0 || frames == null || frames.Count == 0)
+                return;
+
+            _angerGaugeAnimations[stage] = frames;
+        }
+
+        public List<IDXObject> GetAngerGaugeAnimation(int stage)
+        {
+            return stage >= 0 && _angerGaugeAnimations.TryGetValue(stage, out var frames)
+                ? frames
+                : null;
+        }
+
+        public void SetAngerGaugeEffect(List<IDXObject> frames)
+        {
+            if (frames == null || frames.Count == 0)
+                return;
+
+            _angerGaugeEffect = frames;
+        }
+
+        public List<IDXObject> GetAngerGaugeEffect()
+        {
+            return _angerGaugeEffect;
         }
         /// <summary>
         /// Provides mob-specific fallback logic for movement animations.

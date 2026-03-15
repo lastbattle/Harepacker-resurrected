@@ -53,6 +53,8 @@ namespace HaCreator.MapSimulator.Character
         public Action<PlayerCharacter, int, MobItem> OnDamageReceived;
         public Action<MobItem> OnMobKilled;
         public Action<float, float, int> OnMobAttackMissPlayer;
+        public Action<DropPickupAttemptResult> OnPickupAttemptFailed;
+        public Func<DropItem, DropPickupFailureReason> EvaluatePickupAvailability;
         /// <summary>
         /// Callback when player is hit by a mob skill attack.
         /// Parameters: playerX, playerY, mobSkillId, skillLevel
@@ -598,11 +600,18 @@ namespace HaCreator.MapSimulator.Character
             if (dropPool == null || !_player.IsAlive)
                 return null;
 
-            var drop = dropPool.TryPickupClosest(_player.X, _player.Y, 0, currentTime, pickupRange);
-            if (drop != null)
+            DropPickupAttemptResult result = dropPool.TryPickupClosestDetailed(
+                _player.X,
+                _player.Y,
+                0,
+                currentTime,
+                pickupRange,
+                EvaluatePickupAvailability);
+
+            if (result.Drop != null)
             {
                 // Apply drop effects
-                if (drop.Type == DropType.Meso)
+                if (result.Drop.Type == DropType.Meso)
                 {
                     // Add mesos to player (would need inventory system)
                     // For now, just consume the drop
@@ -612,8 +621,13 @@ namespace HaCreator.MapSimulator.Character
                     // Add item to inventory (would need inventory system)
                 }
             }
+            else if (result.FailureReason != DropPickupFailureReason.None
+                     && result.FailureReason != DropPickupFailureReason.NoDropInRange)
+            {
+                OnPickupAttemptFailed?.Invoke(result);
+            }
 
-            return drop;
+            return result.Drop;
         }
 
         /// <summary>

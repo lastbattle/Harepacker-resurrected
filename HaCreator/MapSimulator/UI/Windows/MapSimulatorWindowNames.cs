@@ -23,10 +23,12 @@ namespace HaCreator.MapSimulator.UI
         public const string WorldSelect = "WorldSelect";
         public const string ChannelSelect = "ChannelSelect";
         public const string ChannelShift = "ChannelShift";
+        public const string CharacterSelect = "CharacterSelect";
         public const string ItemMaker = "ItemMaker";
         public const string ItemUpgrade = "ItemUpgrade";
         public const string CharacterInfo = "CharacterInfo";
         public const string QuestDetail = "QuestDetail";
         public const string QuestAlarm = "QuestAlarm";
+        public const string AranSkillGuide = "AranSkillGuide";
     }
 }

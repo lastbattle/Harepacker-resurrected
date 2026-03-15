@@ -55,6 +55,34 @@ namespace HaCreator.MapSimulator.Loaders
                         case "info": // info/speak/0 WzStringProperty - skip info node
                             break;
 
+                        case "angergaugeeffect":
+                            {
+                                List<IDXObject> effectFrames = MapSimulatorLoader.LoadFrames(texturePool, mobStateProperty, 0, 0, device, usedProps);
+                                if (effectFrames.Count > 0)
+                                {
+                                    animationSet.SetAngerGaugeEffect(effectFrames);
+                                }
+                                break;
+                            }
+
+                        case "angergaugeanimation":
+                            {
+                                foreach (WzImageProperty gaugeStageProperty in mobStateProperty.WzProperties)
+                                {
+                                    if (!int.TryParse(gaugeStageProperty.Name, out int stageIndex))
+                                    {
+                                        continue;
+                                    }
+
+                                    List<IDXObject> gaugeFrames = MapSimulatorLoader.LoadFrames(texturePool, gaugeStageProperty, 0, 0, device, usedProps);
+                                    if (gaugeFrames.Count > 0)
+                                    {
+                                        animationSet.SetAngerGaugeAnimation(stageIndex, gaugeFrames);
+                                    }
+                                }
+                                break;
+                            }
+
                         case "stand":
                         case "move":
                         case "walk":
@@ -282,7 +310,8 @@ namespace HaCreator.MapSimulator.Loaders
                 HasAreaWarning = infoNode["areaWarning"] != null,
                 IsRushAttack = InfoTool.GetInt(infoNode["rush"], 0) > 0,
                 IsJumpAttack = InfoTool.GetInt(infoNode["jumpAttack"], 0) > 0,
-                Tremble = InfoTool.GetInt(infoNode["tremble"], 0) > 0
+                Tremble = InfoTool.GetInt(infoNode["tremble"], 0) > 0,
+                IsAngerAttack = InfoTool.GetInt(infoNode["AngerAttack"], 0) > 0
             };
 
             WzSubProperty rangeNode = infoNode["range"] as WzSubProperty;
@@ -343,7 +372,10 @@ namespace HaCreator.MapSimulator.Loaders
                 Start = InfoTool.GetInt(effectProperty["start"], 0),
                 Interval = InfoTool.GetInt(effectProperty["interval"], 0),
                 Count = InfoTool.GetInt(effectProperty["count"], 0),
-                Duration = InfoTool.GetInt(effectProperty["duration"], 0)
+                Duration = InfoTool.GetInt(effectProperty["duration"], 0),
+                Fall = InfoTool.GetInt(effectProperty["fall"], 0),
+                OffsetX = InfoTool.GetInt(effectProperty["x"], 0),
+                OffsetY = InfoTool.GetInt(effectProperty["y"], 0)
             };
 
             WzVectorProperty lt = effectProperty["lt"] as WzVectorProperty;

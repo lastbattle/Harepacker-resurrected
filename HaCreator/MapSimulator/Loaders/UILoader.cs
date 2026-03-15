@@ -73,8 +73,19 @@ namespace HaCreator.MapSimulator.Loaders
                     });
 
                     System.Drawing.Bitmap bitmap_lvBacktrnd = ((WzCanvasProperty)mainBarProperties?["lvBacktrnd"])?.GetLinkedWzCanvasBitmap();
+                    System.Drawing.Bitmap bitmap_lvCover = ((WzCanvasProperty)mainBarProperties?["lvCover"])?.GetLinkedWzCanvasBitmap();
 
-                    stackPanel_charStats.AddRenderable(new HaUIImage(new HaUIInfo() { Bitmap = bitmap_lvBacktrnd }));
+                    HaUIGrid grid_charInfo = new HaUIGrid(1, 1);
+                    if (bitmap_lvBacktrnd != null)
+                    {
+                        grid_charInfo.AddRenderable(0, 0, new HaUIImage(new HaUIInfo() { Bitmap = bitmap_lvBacktrnd }));
+                    }
+                    if (bitmap_lvCover != null)
+                    {
+                        grid_charInfo.AddRenderable(0, 0, new HaUIImage(new HaUIInfo() { Bitmap = bitmap_lvCover }));
+                    }
+
+                    stackPanel_charStats.AddRenderable(grid_charInfo);
 
                     // Draw HP, MP, EXP area
                     System.Drawing.Bitmap bitmap_gaugeBackgrd = ((WzCanvasProperty)mainBarProperties?["gaugeBackgrd"])?.GetLinkedWzCanvasBitmap();
@@ -543,6 +554,9 @@ namespace HaCreator.MapSimulator.Loaders
                     chatUI.InitializeButtons();
                     chatUI.SetChatEnterTexture(LoadCanvasTexture(mainBarProperties?["chatEnter"] as WzCanvasProperty, device));
                     chatUI.SetChatTargetTextures(LoadChatTargetTextures(subProperty_chatTarget, device));
+                    chatUI.SetPointNotificationAnimations(
+                        LoadPointNotificationAnimation(mainBarProperties?["ApNotify"] as WzSubProperty, device),
+                        LoadPointNotificationAnimation(mainBarProperties?["SpNotify"] as WzSubProperty, device));
                     chatUI.BindControls(obj_Ui_chatTarget, obj_Ui_chatOpen, obj_Ui_scrollUp, obj_Ui_scrollDown, obj_Ui_BtCharacter);
 
                     return new Tuple<StatusBarUI, StatusBarChatUI>(statusBar, chatUI);
@@ -941,6 +955,60 @@ namespace HaCreator.MapSimulator.Loaders
             AddChatTargetTexture(textures, chatTargetProperty, "association", MapSimulatorChatTargetType.Association, device);
             AddChatTargetTexture(textures, chatTargetProperty, "expedition", MapSimulatorChatTargetType.Expedition, device);
             return textures;
+        }
+
+        private static StatusBarChatUI.StatusBarPointNotificationAnimation LoadPointNotificationAnimation(
+            WzSubProperty notificationProperty,
+            GraphicsDevice device)
+        {
+            var animation = new StatusBarChatUI.StatusBarPointNotificationAnimation();
+            if (notificationProperty == null || device == null)
+            {
+                return animation;
+            }
+
+            var frames = new List<Texture2D>();
+            var origins = new List<Point>();
+            var frameDelays = new List<int>();
+
+            static Point GetCanvasOrigin(WzCanvasProperty canvas)
+            {
+                if (!(canvas?["origin"] is WzVectorProperty origin))
+                {
+                    return Point.Zero;
+                }
+
+                return new Point(origin.X.Value, origin.Y.Value);
+            }
+
+            for (int frameIndex = 0; ; frameIndex++)
+            {
+                if (!(notificationProperty[frameIndex.ToString()] is WzCanvasProperty notificationCanvas))
+                {
+                    break;
+                }
+
+                Texture2D frameTexture = LoadCanvasTexture(notificationCanvas, device);
+                if (frameTexture == null)
+                {
+                    continue;
+                }
+
+                frames.Add(frameTexture);
+                origins.Add(GetCanvasOrigin(notificationCanvas));
+                int delayMs = 120;
+                if (notificationCanvas["delay"] is WzIntProperty delayProperty && delayProperty.Value > 0)
+                {
+                    delayMs = delayProperty.Value;
+                }
+
+                frameDelays.Add(delayMs);
+            }
+
+            animation.Frames = frames.ToArray();
+            animation.Origins = origins.ToArray();
+            animation.FrameDelaysMs = frameDelays.ToArray();
+            return animation;
         }
 
         private static void AddChatTargetTexture(
@@ -1383,6 +1451,106 @@ namespace HaCreator.MapSimulator.Loaders
         }
         #endregion
 
+        public static StatusBarPopupMenuWindow CreateStatusBarPopupMenuWindow(
+            WzImage uiStatusBar2,
+            WzImage basicImage,
+            WzImage soundUIImage,
+            GraphicsDevice device,
+            string windowName,
+            Point position)
+        {
+            if (uiStatusBar2 == null || device == null || string.IsNullOrWhiteSpace(windowName))
+            {
+                return null;
+            }
+
+            bool isMenu = string.Equals(windowName, MapSimulatorWindowNames.Menu, StringComparison.OrdinalIgnoreCase);
+            WzSubProperty sourceProperty = uiStatusBar2["mainBar"]?[isMenu ? "Menu" : "System"] as WzSubProperty;
+            if (sourceProperty == null)
+            {
+                return null;
+            }
+
+            string[] buttonNames = isMenu
+                ? new[] { "BtItem", "BtEquip", "BtStat", "BtSkill", "BtCommunity", "BtQuest", "BtMSN", "BtRank", "BtEvent" }
+                : new[] { "BtChannel", "BtKeySetting", "BtGameOption", "BtSystemOption", "BtGameQuit", "BtJoyPad", "BtOption" };
+
+            WzBinaryProperty clickSound = soundUIImage?["BtMouseClick"] as WzBinaryProperty;
+            WzBinaryProperty overSound = soundUIImage?["BtMouseOver"] as WzBinaryProperty;
+            List<(string EntryName, UIObject Button)> buttons = new List<(string, UIObject)>();
+            foreach (string buttonName in buttonNames)
+            {
+                WzSubProperty buttonProperty = sourceProperty[buttonName] as WzSubProperty;
+                if (buttonProperty == null)
+                {
+                    continue;
+                }
+
+                UIObject button = new UIObject(buttonProperty, clickSound, overSound, false, Point.Zero, device);
+                buttons.Add((buttonName, button));
+            }
+
+            if (buttons.Count == 0)
+            {
+                return null;
+            }
+
+            Texture2D frameTexture = CreateStatusBarPopupFrameTexture(sourceProperty["backgrnd"] as WzSubProperty, buttons.Count, device);
+            if (frameTexture == null)
+            {
+                return null;
+            }
+
+            StatusBarPopupMenuWindow popupWindow = new StatusBarPopupMenuWindow(new DXObject(0, 0, frameTexture, 0), windowName, position);
+            const int sidePadding = 8;
+            const int topPadding = 5;
+
+            int y = topPadding;
+            foreach ((string entryName, UIObject button) in buttons)
+            {
+                button.X = sidePadding;
+                button.Y = y;
+                y += button.CanvasSnapshotHeight;
+                popupWindow.AddEntry(entryName, button);
+            }
+
+            return popupWindow;
+        }
+
+        private static Texture2D CreateStatusBarPopupFrameTexture(WzSubProperty backgroundProperty, int buttonCount, GraphicsDevice device)
+        {
+            if (backgroundProperty == null || buttonCount <= 0)
+            {
+                return null;
+            }
+
+            System.Drawing.Bitmap top = ((WzCanvasProperty)backgroundProperty["0"])?.GetLinkedWzCanvasBitmap();
+            System.Drawing.Bitmap middle = ((WzCanvasProperty)backgroundProperty["1"])?.GetLinkedWzCanvasBitmap();
+            System.Drawing.Bitmap bottom = ((WzCanvasProperty)backgroundProperty["2"])?.GetLinkedWzCanvasBitmap();
+            if (top == null || middle == null || bottom == null)
+            {
+                return null;
+            }
+
+            int middleHeight = Math.Max(0, (buttonCount * 25) - top.Height);
+            int totalHeight = top.Height + middleHeight + bottom.Height;
+            using (System.Drawing.Bitmap composed = new System.Drawing.Bitmap(top.Width, totalHeight))
+            using (System.Drawing.Graphics graphics = System.Drawing.Graphics.FromImage(composed))
+            {
+                graphics.DrawImage(top, 0, 0);
+                int y = top.Height;
+                while (y < top.Height + middleHeight)
+                {
+                    graphics.DrawImage(middle, 0, y, top.Width, Math.Min(middle.Height, (top.Height + middleHeight) - y));
+                    y += middle.Height;
+                }
+
+                graphics.DrawImage(bottom, 0, totalHeight - bottom.Height);
+                graphics.Flush();
+                return composed.ToTexture2DAndDispose(device);
+            }
+        }
+
         #region MouseCursor
         /// <summary>
         /// Creates mouse cursor item from UI.wz/Basic.img/Cursor
@@ -1440,7 +1608,7 @@ namespace HaCreator.MapSimulator.Loaders
                 npcHoverState = MapSimulatorLoader.CreateMapItemFromProperty(texturePool, cursorClickable, 0, 0, new Point(0, 0), device, usedProps, false);
             }
 
-            return new MouseCursorItem(frames, holdState, clickableButtonState, npcHoverState);
+            return new MouseCursorItem(frames, holdState, clickableButtonState, npcHoverState, holdState);
         }
         #endregion
     }

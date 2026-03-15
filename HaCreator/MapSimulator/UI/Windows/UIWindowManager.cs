@@ -70,6 +70,7 @@ namespace HaCreator.MapSimulator.UI
         /// Whether any window is currently visible
         /// </summary>
         public bool AnyWindowVisible => windows.Exists(w => w.IsVisible);
+        public bool CapturesKeyboardInput => SkillMacroWindow?.CapturesKeyboardInput == true;
 
         /// <summary>
         /// Whether a window is currently being dragged
@@ -296,6 +297,7 @@ namespace HaCreator.MapSimulator.UI
             }
 
             QuickSlotWindow?.CancelDrag();
+            SkillMacroWindow?.CancelDrag();
         }
 
         /// <summary>
@@ -323,7 +325,7 @@ namespace HaCreator.MapSimulator.UI
             KeyboardState keyState = Keyboard.GetState();
 
             // Skip hotkey handling while chat is active or the simulator window is unfocused.
-            if (inputActive && !chatIsActive)
+            if (inputActive && !chatIsActive && !CapturesKeyboardInput)
             {
                 // ESC key closes the topmost visible window (one at a time)
                 if (keyState.IsKeyDown(Keys.Escape) && !_previousKeyState.IsKeyDown(Keys.Escape))
@@ -391,6 +393,13 @@ namespace HaCreator.MapSimulator.UI
             bool leftJustReleased = mouseState.LeftButton == ButtonState.Released && _previousMouseState.LeftButton == ButtonState.Pressed;
             bool rightJustPressed = mouseState.RightButton == ButtonState.Pressed && _previousMouseState.RightButton == ButtonState.Released;
 
+            if ((GetActiveSkillDragSource() != null || QuickSlotWindow?.IsDraggingSlot == true || SkillMacroWindow?.IsDraggingMacroBinding == true ||
+                 SkillMacroWindow?.IsDraggingSkillSlot == true || (_draggingWindow != null && mouseState.LeftButton == ButtonState.Pressed))
+                && mouseCursor != null)
+            {
+                mouseCursor.SetMouseCursorHold();
+            }
+
             if (HandleSkillDrag(mouseState, leftJustPressed, leftJustReleased))
             {
                 _previousMouseState = mouseState;
@@ -398,6 +407,12 @@ namespace HaCreator.MapSimulator.UI
             }
 
             if (HandleQuickSlotInteraction(mouseState, leftJustPressed, leftJustReleased, rightJustPressed))
+            {
+                _previousMouseState = mouseState;
+                return false;
+            }
+
+            if (HandleSkillMacroInteraction(mouseState, leftJustPressed, leftJustReleased, rightJustPressed))
             {
                 _previousMouseState = mouseState;
                 return false;
@@ -438,8 +453,11 @@ namespace HaCreator.MapSimulator.UI
                         _draggingWindow == null &&
                         mouseIsOverWindow)
                     {
-                        _draggingWindow = window;
                         BringToFront(window);
+                        if (window.SupportsDragging)
+                        {
+                            _draggingWindow = window;
+                        }
                         window.CheckMouseEvent(shiftCenteredX, shiftCenteredY, mouseState, mouseCursor, renderWidth, renderHeight);
                         _previousMouseState = mouseState;
                         return false; // Don't consume - just like minimap
@@ -541,6 +559,56 @@ namespace HaCreator.MapSimulator.UI
             {
                 BringToFront(QuickSlotWindow);
                 QuickSlotWindow.OnMouseDown(mouseState.X, mouseState.Y, true, false);
+                return true;
+            }
+
+            if (mouseState.LeftButton == ButtonState.Pressed)
+                return true;
+
+            return false;
+        }
+
+        private bool HandleSkillMacroInteraction(MouseState mouseState, bool leftJustPressed, bool leftJustReleased, bool rightJustPressed)
+        {
+            if (SkillMacroWindow == null || !SkillMacroWindow.IsVisible)
+                return false;
+
+            SkillMacroWindow.OnMouseMove(mouseState.X, mouseState.Y);
+
+            if (SkillMacroWindow.IsDraggingMacroBinding || SkillMacroWindow.IsDraggingSkillSlot)
+            {
+                if (leftJustReleased)
+                {
+                    bool dropped = SkillMacroWindow.IsDraggingMacroBinding &&
+                                   QuickSlotWindow?.IsVisible == true &&
+                                   QuickSlotWindow.AcceptMacroDrop(SkillMacroWindow.DraggedMacroIndex, mouseState.X, mouseState.Y);
+
+                    SkillMacroWindow.OnMouseUp(mouseState.X, mouseState.Y);
+
+                    if (dropped && QuickSlotWindow != null)
+                    {
+                        BringToFront(QuickSlotWindow);
+                    }
+                }
+
+                return true;
+            }
+
+            if (!SkillMacroWindow.ContainsPoint(mouseState.X, mouseState.Y) ||
+                !SkillMacroWindow.HandlesMacroInteractionPoint(mouseState.X, mouseState.Y))
+                return false;
+
+            if (rightJustPressed)
+            {
+                BringToFront(SkillMacroWindow);
+                SkillMacroWindow.OnMouseDown(mouseState.X, mouseState.Y, false, true);
+                return true;
+            }
+
+            if (leftJustPressed)
+            {
+                BringToFront(SkillMacroWindow);
+                SkillMacroWindow.OnMouseDown(mouseState.X, mouseState.Y, true, false);
                 return true;
             }
 

@@ -15,9 +15,10 @@ namespace HaCreator.MapSimulator.Interaction
 {
     internal enum QuestLogTabType
     {
-        InProgress = 0,
-        Completed = 1,
-        Available = 2
+        Available = 0,
+        InProgress = 1,
+        Completed = 2,
+        Recommended = 3
     }
 
     internal sealed class QuestLogLineSnapshot
@@ -25,6 +26,7 @@ namespace HaCreator.MapSimulator.Interaction
         public string Label { get; init; } = string.Empty;
         public string Text { get; init; } = string.Empty;
         public bool IsComplete { get; init; }
+        public int? ItemId { get; init; }
     }
 
     internal sealed class QuestLogEntrySnapshot
@@ -108,6 +110,7 @@ namespace HaCreator.MapSimulator.Interaction
             public int? MaxLevel { get; init; }
             public IReadOnlyList<int> AllowedJobs { get; init; } = Array.Empty<int>();
             public IReadOnlyList<QuestStateRequirement> StartQuestRequirements { get; init; } = Array.Empty<QuestStateRequirement>();
+            public IReadOnlyList<QuestItemRequirement> StartItemRequirements { get; init; } = Array.Empty<QuestItemRequirement>();
             public IReadOnlyList<QuestStateRequirement> EndQuestRequirements { get; init; } = Array.Empty<QuestStateRequirement>();
             public IReadOnlyList<QuestMobRequirement> EndMobRequirements { get; init; } = Array.Empty<QuestMobRequirement>();
             public IReadOnlyList<QuestItemRequirement> EndItemRequirements { get; init; } = Array.Empty<QuestItemRequirement>();
@@ -261,15 +264,17 @@ namespace HaCreator.MapSimulator.Interaction
 
             string requirementText = state switch
             {
-                QuestStateType.Not_Started => BuildStartRequirementText(definition, startIssues),
-                QuestStateType.Started => BuildProgressRequirementText(definition, completionIssues),
-                QuestStateType.Completed => "This quest has already been completed.",
+                QuestStateType.Not_Started => NpcDialogueTextFormatter.Format(definition.DemandSummary),
+                QuestStateType.Started => NpcDialogueTextFormatter.Format(definition.DemandSummary),
+                QuestStateType.Completed => string.Empty,
                 _ => string.Empty
             };
 
-            string rewardText = BuildRewardText(definition);
+            string rewardText = NpcDialogueTextFormatter.Format(definition.RewardSummary);
             string hintText = BuildHintText(definition, state, startIssues, completionIssues);
             string npcText = BuildNpcText(definition);
+            List<QuestLogLineSnapshot> requirementLines = BuildDetailRequirementLines(definition, state, build);
+            List<QuestLogLineSnapshot> rewardLines = BuildRewardLines(definition);
             (QuestWindowActionKind primaryAction, bool primaryEnabled, string primaryLabel) = GetPrimaryAction(definition, state, startIssues, completionIssues);
             (QuestWindowActionKind secondaryAction, bool secondaryEnabled, string secondaryLabel) = GetSecondaryAction(state);
 
@@ -283,6 +288,8 @@ namespace HaCreator.MapSimulator.Interaction
                 RewardText = rewardText,
                 HintText = hintText,
                 NpcText = npcText,
+                RequirementLines = requirementLines,
+                RewardLines = rewardLines,
                 CurrentProgress = currentProgress,
                 TotalProgress = totalProgress,
                 PrimaryAction = primaryAction,
@@ -376,6 +383,54 @@ namespace HaCreator.MapSimulator.Interaction
             };
         }
 
+        public QuestWindowActionResult TryCompleteFromQuestWindow(int questId, CharacterBuild build)
+        {
+            EnsureDefinitionsLoaded();
+            if (!_definitions.TryGetValue(questId, out QuestDefinition definition))
+            {
+                return new QuestWindowActionResult
+                {
+                    QuestId = questId,
+                    Messages = new[] { $"Quest #{questId} is not available in the loaded quest data." }
+                };
+            }
+
+            if (GetQuestState(questId) != QuestStateType.Started)
+            {
+                return new QuestWindowActionResult
+                {
+                    QuestId = questId,
+                    Messages = new[] { $"{definition.Name} is not currently in progress." }
+                };
+            }
+
+            List<string> issues = EvaluateCompletionIssues(definition, build);
+            if (issues.Count > 0)
+            {
+                return new QuestWindowActionResult
+                {
+                    QuestId = questId,
+                    Messages = issues
+                };
+            }
+
+            QuestProgress progress = GetOrCreateProgress(questId);
+            progress.State = QuestStateType.Completed;
+
+            var messages = new List<string>
+            {
+                $"Completed quest: {definition.Name}"
+            };
+            ApplyActions(definition.EndActions, build, messages);
+
+            return new QuestWindowActionResult
+            {
+                StateChanged = true,
+                QuestId = questId,
+                Messages = messages
+            };
+        }
+
         public QuestLogSnapshot BuildQuestLogSnapshot(QuestLogTabType tab, CharacterBuild build, bool showAllLevels)
         {
             EnsureDefinitionsLoaded();
@@ -389,12 +444,13 @@ namespace HaCreator.MapSimulator.Interaction
                     continue;
                 }
 
-                if (tab == QuestLogTabType.Available && !showAllLevels && !MatchesLevelFilter(definition, build))
+                QuestLogEntrySnapshot entry = BuildQuestLogEntry(definition, build, state);
+                if (!ShouldIncludeQuestLogEntry(tab, entry, definition, build, showAllLevels))
                 {
                     continue;
                 }
 
-                entries.Add(BuildQuestLogEntry(definition, build, state));
+                entries.Add(entry);
             }
 
             IOrderedEnumerable<QuestLogEntrySnapshot> orderedEntries = tab switch
@@ -407,6 +463,10 @@ namespace HaCreator.MapSimulator.Interaction
                     .OrderBy(entry => entry.CanComplete ? 0 : 1)
                     .ThenBy(entry => entry.Name, StringComparer.OrdinalIgnoreCase)
                     .ThenBy(entry => entry.QuestId),
+                QuestLogTabType.Recommended => entries
+                    .OrderBy(entry => entry.CanStart ? 0 : 1)
+                    .ThenBy(entry => entry.Name, StringComparer.OrdinalIgnoreCase)
+                    .ThenBy(entry => entry.QuestId),
                 _ => entries
                     .OrderByDescending(entry => entry.QuestId)
                     .ThenBy(entry => entry.Name, StringComparer.OrdinalIgnoreCase)
@@ -415,6 +475,46 @@ namespace HaCreator.MapSimulator.Interaction
             return new QuestLogSnapshot
             {
                 Entries = orderedEntries.ToList()
+            };
+        }
+
+        public QuestAlarmSnapshot BuildQuestAlarmSnapshot(CharacterBuild build)
+        {
+            EnsureDefinitionsLoaded();
+
+            List<QuestAlarmEntrySnapshot> entries = _definitions.Values
+                .Select(definition => new
+                {
+                    Definition = definition,
+                    State = GetQuestState(definition.QuestId)
+                })
+                .Where(item => item.State == QuestStateType.Started)
+                .Select(item =>
+                {
+                    List<string> issues = EvaluateCompletionIssues(item.Definition, build);
+                    CalculateProgress(item.Definition, GetOrCreateProgress(item.Definition.QuestId), out int currentProgress, out int totalProgress);
+
+                    return new QuestAlarmEntrySnapshot
+                    {
+                        QuestId = item.Definition.QuestId,
+                        Title = item.Definition.Name,
+                        StatusText = issues.Count == 0 ? "Ready" : "In progress",
+                        CurrentProgress = currentProgress,
+                        TotalProgress = totalProgress,
+                        IsReadyToComplete = issues.Count == 0,
+                        RequirementLines = BuildRequirementLines(item.Definition, build, QuestStateType.Started),
+                        IssueLines = issues,
+                        DemandText = NpcDialogueTextFormatter.Format(item.Definition.DemandSummary)
+                    };
+                })
+                .OrderByDescending(entry => entry.IsReadyToComplete)
+                .ThenBy(entry => entry.Title, StringComparer.OrdinalIgnoreCase)
+                .ThenBy(entry => entry.QuestId)
+                .ToList();
+
+            return new QuestAlarmSnapshot
+            {
+                Entries = entries
             };
         }
 
@@ -756,7 +856,7 @@ namespace HaCreator.MapSimulator.Interaction
             if (includeProgress)
             {
                 AppendMobProgress(definition, details);
-                AppendItemRequirements(definition, details);
+                AppendItemRequirements(definition.EndItemRequirements, details);
             }
             else
             {
@@ -815,6 +915,8 @@ namespace HaCreator.MapSimulator.Interaction
             {
                 details.Add($"Jobs: {string.Join(", ", definition.AllowedJobs.Select(FormatJobName))}");
             }
+
+            AppendItemRequirements(definition.StartItemRequirements, details);
         }
 
         private void AppendMobProgress(QuestDefinition definition, ICollection<string> details)
@@ -828,11 +930,11 @@ namespace HaCreator.MapSimulator.Interaction
             }
         }
 
-        private void AppendItemRequirements(QuestDefinition definition, ICollection<string> details)
+        private void AppendItemRequirements(IReadOnlyList<QuestItemRequirement> requirements, ICollection<string> details)
         {
-            for (int i = 0; i < definition.EndItemRequirements.Count; i++)
+            for (int i = 0; i < requirements.Count; i++)
             {
-                QuestItemRequirement requirement = definition.EndItemRequirements[i];
+                QuestItemRequirement requirement = requirements[i];
                 int currentCount = GetTrackedItemCount(requirement.ItemId);
                 details.Add($"Item: {GetItemName(requirement.ItemId)} {Math.Min(currentCount, requirement.RequiredCount)}/{requirement.RequiredCount}");
             }
@@ -881,6 +983,18 @@ namespace HaCreator.MapSimulator.Interaction
                     Label = "Req",
                     Text = $"Job: {string.Join(", ", definition.AllowedJobs.Select(FormatJobName))}",
                     IsComplete = matchesJob
+                });
+            }
+
+            for (int i = 0; i < definition.StartItemRequirements.Count; i++)
+            {
+                QuestItemRequirement requirement = definition.StartItemRequirements[i];
+                int currentCount = Math.Min(GetTrackedItemCount(requirement.ItemId), requirement.RequiredCount);
+                lines.Add(new QuestLogLineSnapshot
+                {
+                    Label = "Item",
+                    Text = $"{GetItemName(requirement.ItemId)} {currentCount}/{requirement.RequiredCount}",
+                    IsComplete = currentCount >= requirement.RequiredCount
                 });
             }
 
@@ -976,7 +1090,8 @@ namespace HaCreator.MapSimulator.Interaction
                 {
                     Label = "Item",
                     Text = $"{GetItemName(item.ItemId)} x{item.Count}",
-                    IsComplete = true
+                    IsComplete = true,
+                    ItemId = item.ItemId
                 });
             }
 
@@ -1016,6 +1131,7 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             AppendQuestStateIssues(definition.StartQuestRequirements, issues);
+            AppendItemIssues(definition.StartItemRequirements, issues);
             return issues;
         }
 
@@ -1072,6 +1188,21 @@ namespace HaCreator.MapSimulator.Interaction
             }
         }
 
+        private void AppendItemIssues(IReadOnlyList<QuestItemRequirement> requirements, ICollection<string> issues)
+        {
+            for (int i = 0; i < requirements.Count; i++)
+            {
+                QuestItemRequirement requirement = requirements[i];
+                int currentCount = GetTrackedItemCount(requirement.ItemId);
+                if (currentCount >= requirement.RequiredCount)
+                {
+                    continue;
+                }
+
+                issues.Add($"Collect {GetItemName(requirement.ItemId)} x{requirement.RequiredCount - currentCount} more.");
+            }
+        }
+
         private void ApplyActions(QuestActionBundle actions, CharacterBuild build, ICollection<string> messages)
         {
             if (actions == null)
@@ -1092,7 +1223,15 @@ namespace HaCreator.MapSimulator.Interaction
 
             if (actions.FameReward != 0)
             {
-                messages.Add($"Fame +{actions.FameReward} (fame runtime not tracked)");
+                if (build != null)
+                {
+                    build.Fame += actions.FameReward;
+                    messages.Add($"Fame {actions.FameReward:+#;-#;0}");
+                }
+                else
+                {
+                    messages.Add($"Fame {actions.FameReward:+#;-#;0} (fame runtime not tracked)");
+                }
             }
 
             for (int i = 0; i < actions.RewardItems.Count; i++)
@@ -1140,10 +1279,26 @@ namespace HaCreator.MapSimulator.Interaction
         {
             return tab switch
             {
+                QuestLogTabType.Available => state == QuestStateType.Not_Started,
                 QuestLogTabType.InProgress => state == QuestStateType.Started,
                 QuestLogTabType.Completed => state == QuestStateType.Completed,
-                QuestLogTabType.Available => state == QuestStateType.Not_Started,
+                QuestLogTabType.Recommended => state == QuestStateType.Not_Started,
                 _ => false
+            };
+        }
+
+        private static bool ShouldIncludeQuestLogEntry(
+            QuestLogTabType tab,
+            QuestLogEntrySnapshot entry,
+            QuestDefinition definition,
+            CharacterBuild build,
+            bool showAllLevels)
+        {
+            return tab switch
+            {
+                QuestLogTabType.Available => showAllLevels || MatchesLevelFilter(definition, build),
+                QuestLogTabType.Recommended => MatchesLevelFilter(definition, build) && entry.CanStart,
+                _ => true
             };
         }
 
@@ -1321,6 +1476,7 @@ namespace HaCreator.MapSimulator.Interaction
                 MaxLevel = ParseInt(startCheck?["lvmax"]) ?? ParseInt(endCheck?["lvmax"]),
                 AllowedJobs = ParseJobIds(startCheck?["job"]),
                 StartQuestRequirements = ParseQuestRequirements(startCheck?["quest"]),
+                StartItemRequirements = ParseItemRequirements(startCheck?["item"]),
                 EndQuestRequirements = ParseQuestRequirements(endCheck?["quest"]),
                 EndMobRequirements = ParseMobRequirements(endCheck?["mob"]),
                 EndItemRequirements = ParseItemRequirements(endCheck?["item"]),
@@ -1550,7 +1706,7 @@ namespace HaCreator.MapSimulator.Interaction
                 return Array.Empty<NpcInteractionPage>();
             }
 
-            var pages = new List<NpcInteractionPage>();
+            var numberedPages = new List<(int PageIndex, WzImageProperty Property)>();
             if (property.WzProperties != null)
             {
                 for (int i = 0; i < property.WzProperties.Count; i++)
@@ -1561,16 +1717,45 @@ namespace HaCreator.MapSimulator.Interaction
                         continue;
                     }
 
-                    AppendConversationPage(child, pages);
+                    numberedPages.Add((pageIndex, child));
                 }
             }
 
-            if (pages.Count == 0)
+            if (numberedPages.Count == 0)
             {
-                AppendConversationPage(property, pages);
+                NpcInteractionPage page = CreateConversationPage(property);
+                return page != null ? new[] { page } : Array.Empty<NpcInteractionPage>();
             }
 
-            return pages;
+            var pages = new NpcInteractionPage[numberedPages.Count];
+            WzImageProperty rootStopProperty = property["stop"];
+
+            for (int i = numberedPages.Count - 1; i >= 0; i--)
+            {
+                (int pageIndex, WzImageProperty pageProperty) = numberedPages[i];
+                string rawText = ExtractConversationText(pageProperty);
+                string text = NpcDialogueTextFormatter.Format(rawText);
+                var choices = new List<NpcInteractionChoice>();
+
+                AppendConversationChoices(pageProperty, choices);
+                AppendInlineSelectionChoices(rawText, pageIndex, rootStopProperty, GetRemainingPages(pages, i + 1), choices);
+
+                if (i == numberedPages.Count - 1)
+                {
+                    AppendConversationChoices(property, choices);
+                }
+
+                if (!string.IsNullOrWhiteSpace(text) || choices.Count > 0)
+                {
+                    pages[i] = new NpcInteractionPage
+                    {
+                        Text = text,
+                        Choices = choices
+                    };
+                }
+            }
+
+            return pages.Where(page => page != null).ToArray();
         }
 
         private static void AppendConversationPage(WzImageProperty property, ICollection<NpcInteractionPage> pages)
@@ -1584,8 +1769,11 @@ namespace HaCreator.MapSimulator.Interaction
 
         private static NpcInteractionPage CreateConversationPage(WzImageProperty property)
         {
-            string text = NpcDialogueTextFormatter.Format(ExtractConversationText(property));
-            IReadOnlyList<NpcInteractionChoice> choices = ExtractConversationChoices(property);
+            string rawText = ExtractConversationText(property);
+            string text = NpcDialogueTextFormatter.Format(rawText);
+            var choices = new List<NpcInteractionChoice>();
+            AppendConversationChoices(property, choices);
+            AppendInlineSelectionChoices(rawText, -1, property["stop"], Array.Empty<NpcInteractionPage>(), choices);
             if (string.IsNullOrWhiteSpace(text) && choices.Count == 0)
             {
                 return null;
@@ -1596,6 +1784,25 @@ namespace HaCreator.MapSimulator.Interaction
                 Text = text,
                 Choices = choices
             };
+        }
+
+        private static IReadOnlyList<NpcInteractionPage> GetRemainingPages(NpcInteractionPage[] pages, int startIndex)
+        {
+            if (pages == null || startIndex < 0 || startIndex >= pages.Length)
+            {
+                return Array.Empty<NpcInteractionPage>();
+            }
+
+            var remainingPages = new List<NpcInteractionPage>(pages.Length - startIndex);
+            for (int i = startIndex; i < pages.Length; i++)
+            {
+                if (pages[i] != null)
+                {
+                    remainingPages.Add(pages[i]);
+                }
+            }
+
+            return remainingPages;
         }
 
         private static string ExtractConversationText(WzImageProperty property)
@@ -1637,20 +1844,16 @@ namespace HaCreator.MapSimulator.Interaction
             return null;
         }
 
-        private static IReadOnlyList<NpcInteractionChoice> ExtractConversationChoices(WzImageProperty property)
+        private static void AppendConversationChoices(WzImageProperty property, ICollection<NpcInteractionChoice> choices)
         {
             if (property?.WzProperties == null)
             {
-                return Array.Empty<NpcInteractionChoice>();
+                return;
             }
-
-            var choices = new List<NpcInteractionChoice>();
 
             AppendConversationChoice(property["yes"], "Yes", choices);
             AppendConversationChoice(property["no"], "No", choices);
             AppendConversationChoice(property["stop"], "Stop", choices);
-
-            return choices;
         }
 
         private static void AppendConversationChoice(WzImageProperty property, string label, ICollection<NpcInteractionChoice> choices)
@@ -1666,6 +1869,64 @@ namespace HaCreator.MapSimulator.Interaction
                 Label = label,
                 Pages = branchPages
             });
+        }
+
+        private static void AppendInlineSelectionChoices(
+            string rawText,
+            int pageIndex,
+            WzImageProperty stopProperty,
+            IReadOnlyList<NpcInteractionPage> nextPages,
+            ICollection<NpcInteractionChoice> choices)
+        {
+            NpcInlineSelection[] inlineSelections = NpcDialogueTextFormatter.ExtractInlineSelections(rawText);
+            if (inlineSelections.Length == 0)
+            {
+                return;
+            }
+
+            WzImageProperty pageStopProperty = pageIndex >= 0 ? stopProperty?[pageIndex.ToString()] : null;
+            for (int i = 0; i < inlineSelections.Length; i++)
+            {
+                NpcInlineSelection selection = inlineSelections[i];
+                IReadOnlyList<NpcInteractionPage> selectionPages = ParseStopSelectionPages(pageStopProperty, selection.SelectionId);
+                if (selectionPages.Count == 0 && nextPages.Count > 0)
+                {
+                    selectionPages = nextPages;
+                }
+
+                if (selectionPages.Count == 0)
+                {
+                    selectionPages = CreateUnavailableSelectionPages(selection.Label);
+                }
+
+                choices.Add(new NpcInteractionChoice
+                {
+                    Label = selection.Label,
+                    Pages = selectionPages
+                });
+            }
+        }
+
+        private static IReadOnlyList<NpcInteractionPage> ParseStopSelectionPages(WzImageProperty stopProperty, int selectionId)
+        {
+            if (stopProperty == null)
+            {
+                return Array.Empty<NpcInteractionPage>();
+            }
+
+            WzImageProperty selectionProperty = stopProperty[selectionId.ToString()];
+            return selectionProperty != null ? ParseBranchPages(selectionProperty) : Array.Empty<NpcInteractionPage>();
+        }
+
+        private static IReadOnlyList<NpcInteractionPage> CreateUnavailableSelectionPages(string selectionLabel)
+        {
+            return new[]
+            {
+                new NpcInteractionPage
+                {
+                    Text = $"\"{selectionLabel}\" requires simulator script execution that is not implemented yet."
+                }
+            };
         }
 
         private static IReadOnlyList<NpcInteractionPage> ParseBranchPages(WzImageProperty property)
@@ -1905,6 +2166,31 @@ namespace HaCreator.MapSimulator.Interaction
                 : string.Join("\n", rewards);
         }
 
+        private List<QuestLogLineSnapshot> BuildDetailRequirementLines(QuestDefinition definition, QuestStateType state, CharacterBuild build)
+        {
+            var lines = new List<QuestLogLineSnapshot>();
+
+            switch (state)
+            {
+                case QuestStateType.Not_Started:
+                    AppendStartRequirementLines(definition, build, lines);
+                    break;
+                case QuestStateType.Started:
+                    AppendProgressRequirementLines(definition, lines);
+                    break;
+                case QuestStateType.Completed:
+                    lines.Add(new QuestLogLineSnapshot
+                    {
+                        Label = "State",
+                        Text = "Quest completed",
+                        IsComplete = true
+                    });
+                    break;
+            }
+
+            return lines;
+        }
+
         private static string BuildHintText(
             QuestDefinition definition,
             QuestStateType state,
@@ -1950,8 +2236,8 @@ namespace HaCreator.MapSimulator.Interaction
             return state switch
             {
                 QuestStateType.Not_Started => (QuestWindowActionKind.Accept, startIssues == null || startIssues.Count == 0, "Accept"),
-                QuestStateType.Started when definition.EndNpcId.HasValue && (completionIssues == null || completionIssues.Count == 0) =>
-                    (QuestWindowActionKind.Complete, false, "Complete"),
+                QuestStateType.Started when completionIssues == null || completionIssues.Count == 0 =>
+                    (QuestWindowActionKind.Complete, true, "Complete"),
                 QuestStateType.Started => (QuestWindowActionKind.Track, true, "Track"),
                 _ => (QuestWindowActionKind.None, false, string.Empty)
             };

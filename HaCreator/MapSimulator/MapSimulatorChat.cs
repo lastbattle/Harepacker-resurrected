@@ -51,6 +51,7 @@ namespace HaCreator.MapSimulator
     {
         #region Constants
         private static readonly Color WhisperMessageColor = new Color(255, 170, 255);
+        private static readonly Color SystemMessageColor = new Color(255, 228, 151);
 
         private const int CHAT_INPUT_X = 5;
         private const int CHAT_INPUT_Y_OFFSET = 55; // Offset from bottom of screen (just above status bar level indicator)
@@ -107,6 +108,8 @@ namespace HaCreator.MapSimulator
         /// Command handler for registering and executing chat commands
         /// </summary>
         public ChatCommandHandler CommandHandler => _commandHandler;
+
+        public Action<string, int> MessageSubmitted { get; set; }
         #endregion
 
         #region Initialization
@@ -705,6 +708,7 @@ namespace HaCreator.MapSimulator
             if (!string.IsNullOrWhiteSpace(_whisperTarget))
             {
                 AddMessage($"> {_whisperTarget}: {message}", WhisperMessageColor, tickCount);
+                MessageSubmitted?.Invoke(message, tickCount);
                 return;
             }
 
@@ -713,10 +717,12 @@ namespace HaCreator.MapSimulator
             if (string.IsNullOrEmpty(prefix))
             {
                 AddMessage(message, color, tickCount);
+                MessageSubmitted?.Invoke(message, tickCount);
                 return;
             }
 
             AddMessage($"{prefix} {message}", color, tickCount);
+            MessageSubmitted?.Invoke(message, tickCount);
         }
 
         private bool TryHandleWhisperCommand(string message, int tickCount)
@@ -765,7 +771,125 @@ namespace HaCreator.MapSimulator
                 return true;
             }
 
+            if (TryHandleTargetModeCommand(trimmedMessage, tickCount))
+            {
+                return true;
+            }
+
             return false;
+        }
+
+        private bool TryHandleTargetModeCommand(string trimmedMessage, int tickCount)
+        {
+            if (!TryParseTargetModeCommand(trimmedMessage, out MapSimulatorChatTargetType targetType, out string payload))
+            {
+                return false;
+            }
+
+            bool targetChanged = _chatTarget != targetType;
+            _chatTarget = targetType;
+            _whisperTarget = string.Empty;
+
+            if (string.IsNullOrWhiteSpace(payload))
+            {
+                if (targetChanged)
+                {
+                    AddMessage($"{GetTargetModeDisplayName(targetType)} chat selected.", SystemMessageColor, tickCount);
+                }
+                return true;
+            }
+
+            string prefix = GetTargetPrefix(targetType);
+            Color color = GetTargetColor(targetType);
+            if (string.IsNullOrEmpty(prefix))
+            {
+                AddMessage(payload, color, tickCount);
+            }
+            else
+            {
+                AddMessage($"{prefix} {payload}", color, tickCount);
+            }
+
+            MessageSubmitted?.Invoke(payload, tickCount);
+
+            return true;
+        }
+
+        private static bool TryParseTargetModeCommand(
+            string trimmedMessage,
+            out MapSimulatorChatTargetType targetType,
+            out string payload)
+        {
+            targetType = MapSimulatorChatTargetType.All;
+            payload = string.Empty;
+
+            string[] parts = trimmedMessage.Split(new[] { ' ' }, 2, StringSplitOptions.RemoveEmptyEntries);
+            if (parts.Length == 0)
+            {
+                return false;
+            }
+
+            if (!TryMapTargetCommand(parts[0], out targetType))
+            {
+                return false;
+            }
+
+            if (parts.Length >= 2)
+            {
+                payload = parts[1].Trim();
+            }
+
+            return true;
+        }
+
+        private static bool TryMapTargetCommand(string command, out MapSimulatorChatTargetType targetType)
+        {
+            targetType = MapSimulatorChatTargetType.All;
+
+            switch (command.ToLowerInvariant())
+            {
+                case "/all":
+                case "/say":
+                    targetType = MapSimulatorChatTargetType.All;
+                    return true;
+                case "/f":
+                case "/friend":
+                    targetType = MapSimulatorChatTargetType.Friend;
+                    return true;
+                case "/p":
+                case "/party":
+                    targetType = MapSimulatorChatTargetType.Party;
+                    return true;
+                case "/g":
+                case "/guild":
+                    targetType = MapSimulatorChatTargetType.Guild;
+                    return true;
+                case "/a":
+                case "/alliance":
+                case "/association":
+                    targetType = MapSimulatorChatTargetType.Association;
+                    return true;
+                case "/e":
+                case "/expedition":
+                    targetType = MapSimulatorChatTargetType.Expedition;
+                    return true;
+                default:
+                    return false;
+            }
+        }
+
+        private static string GetTargetModeDisplayName(MapSimulatorChatTargetType targetType)
+        {
+            return targetType switch
+            {
+                MapSimulatorChatTargetType.All => "All",
+                MapSimulatorChatTargetType.Friend => "Friend",
+                MapSimulatorChatTargetType.Party => "Party",
+                MapSimulatorChatTargetType.Guild => "Guild",
+                MapSimulatorChatTargetType.Association => "Alliance",
+                MapSimulatorChatTargetType.Expedition => "Expedition",
+                _ => "All"
+            };
         }
 
         private static string GetTargetPrefix(MapSimulatorChatTargetType targetType)

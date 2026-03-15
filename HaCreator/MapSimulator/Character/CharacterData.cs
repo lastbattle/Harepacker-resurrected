@@ -333,9 +333,31 @@ namespace HaCreator.MapSimulator.Character
         public string VSlot { get; set; }           // Visible slot conflicts
         public string ISlot { get; set; }           // Item slot priority
         public bool IsCash { get; set; }            // Cash shop item (overrides defaults)
+        public string Description { get; set; }
+        public string ItemCategory { get; set; }
         public DateTime? ExpirationDateUtc { get; set; }
         public int? Durability { get; set; }
         public int? MaxDurability { get; set; }
+        public int RequiredLevel { get; set; }
+        public int RequiredSTR { get; set; }
+        public int RequiredDEX { get; set; }
+        public int RequiredINT { get; set; }
+        public int RequiredLUK { get; set; }
+        public int BonusSTR { get; set; }
+        public int BonusDEX { get; set; }
+        public int BonusINT { get; set; }
+        public int BonusLUK { get; set; }
+        public int BonusHP { get; set; }
+        public int BonusMP { get; set; }
+        public int BonusWeaponAttack { get; set; }
+        public int BonusMagicAttack { get; set; }
+        public int BonusWeaponDefense { get; set; }
+        public int BonusMagicDefense { get; set; }
+        public int BonusAccuracy { get; set; }
+        public int BonusAvoidability { get; set; }
+        public int BonusSpeed { get; set; }
+        public int BonusJump { get; set; }
+        public int UpgradeSlots { get; set; }
 
         // Icon for UI
         public IDXObject Icon { get; set; }
@@ -580,6 +602,13 @@ namespace HaCreator.MapSimulator.Character
     public class CharacterBuild
     {
         public const int MaxPrimaryStat = 999;
+        public const int MaxHpMpStat = 30000;
+        private const int DefaultAttackValue = 10;
+        private const int DefaultDefenseValue = 5;
+        private const int DefaultMagicAttackValue = 5;
+        private const int DefaultMagicDefenseValue = 5;
+        private const float DefaultSpeedValue = 100f;
+        private const float DefaultJumpValue = 100f;
 
         public int Id { get; set; }
         public string Name { get; set; }
@@ -614,8 +643,17 @@ namespace HaCreator.MapSimulator.Character
         public int SubJob { get; set; } = 0;
         public string JobName { get; set; } = "Beginner";
         public string GuildName { get; set; } = string.Empty;
+        public string AllianceName { get; set; } = string.Empty;
         public int Fame { get; set; } = 0;
+        public int WorldRank { get; set; }
+        public int JobRank { get; set; }
         public bool HasMonsterRiding { get; set; }
+        public int TraitCharisma { get; set; }
+        public int TraitInsight { get; set; }
+        public int TraitWill { get; set; }
+        public int TraitCraft { get; set; }
+        public int TraitSense { get; set; }
+        public int TraitCharm { get; set; }
 
         // Experience
         public long Exp { get; set; } = 0;
@@ -634,6 +672,7 @@ namespace HaCreator.MapSimulator.Character
         public float JumpPower { get; set; } = 100;     // Jump height %
 
         public string GuildDisplayText => string.IsNullOrWhiteSpace(GuildName) ? "-" : GuildName;
+        public string AllianceDisplayText => string.IsNullOrWhiteSpace(AllianceName) ? "-" : AllianceName;
 
         public int ExpPercent
         {
@@ -654,6 +693,96 @@ namespace HaCreator.MapSimulator.Character
         public bool CanIncreasePrimaryStat(int currentValue)
         {
             return AP > 0 && currentValue < MaxPrimaryStat;
+        }
+
+        public int TotalSTR => STR + SumEquipmentBonus(part => part.BonusSTR);
+        public int TotalDEX => DEX + SumEquipmentBonus(part => part.BonusDEX);
+        public int TotalINT => INT + SumEquipmentBonus(part => part.BonusINT);
+        public int TotalLUK => LUK + SumEquipmentBonus(part => part.BonusLUK);
+        public int TotalMaxHP => Math.Clamp(MaxHP + SumEquipmentBonus(part => part.BonusHP), 1, MaxHpMpStat);
+        public int TotalMaxMP => Math.Clamp(MaxMP + SumEquipmentBonus(part => part.BonusMP), 0, MaxHpMpStat);
+        public int TotalHP => Math.Clamp(HP + SumEquipmentBonus(part => part.BonusHP), 0, TotalMaxHP);
+        public int TotalMP => Math.Clamp(MP + SumEquipmentBonus(part => part.BonusMP), 0, TotalMaxMP);
+
+        public int TotalAttack
+        {
+            get
+            {
+                int runtimeBonus = Math.Max(0, Attack - DefaultAttackValue);
+                return Math.Max(0, runtimeBonus + SumEquipmentBonus(part => part.BonusWeaponAttack));
+            }
+        }
+
+        public int TotalDefense
+        {
+            get
+            {
+                int runtimeBonus = Math.Max(0, Defense - DefaultDefenseValue);
+                return Math.Max(0, runtimeBonus + SumEquipmentBonus(part => part.BonusWeaponDefense));
+            }
+        }
+
+        public int TotalMagicAttack
+        {
+            get
+            {
+                int runtimeBonus = Math.Max(0, MagicAttack - DefaultMagicAttackValue);
+                return Math.Max(0, runtimeBonus + SumEquipmentBonus(part => part.BonusMagicAttack));
+            }
+        }
+
+        public int TotalMagicDefense
+        {
+            get
+            {
+                int runtimeBonus = Math.Max(0, MagicDefense - DefaultMagicDefenseValue);
+                return Math.Max(0, runtimeBonus + SumEquipmentBonus(part => part.BonusMagicDefense));
+            }
+        }
+
+        public int TotalAccuracy => Math.Max(0, GetBaseAccuracy() + Accuracy + SumEquipmentBonus(part => part.BonusAccuracy));
+        public int TotalAvoidability => Math.Max(0, GetBaseAvoidability() + Avoidability + SumEquipmentBonus(part => part.BonusAvoidability));
+        public int TotalHands => Math.Max(0, Hands + TotalDEX + TotalINT + TotalLUK);
+        public int TotalCriticalRate => Math.Max(0, CriticalRate);
+        public float TotalSpeed => Math.Max(0f, Speed + SumEquipmentBonus(part => part.BonusSpeed));
+        public float TotalJumpPower => Math.Max(0f, JumpPower + SumEquipmentBonus(part => part.BonusJump));
+
+        public bool CanIncreaseMaxHp()
+        {
+            return AP > 0 && MaxHP < MaxHpMpStat;
+        }
+
+        public bool CanIncreaseMaxMp()
+        {
+            return AP > 0 && MaxMP < MaxHpMpStat;
+        }
+
+        public bool IncreaseMaxHp(Func<int, int, int> rollInclusive = null)
+        {
+            if (!CanIncreaseMaxHp())
+            {
+                return false;
+            }
+
+            int amount = GetHpIncreaseAmount(rollInclusive ?? DefaultRollInclusive);
+            MaxHP = Math.Clamp(MaxHP + amount, 1, MaxHpMpStat);
+            HP = Math.Clamp(HP + amount, 0, MaxHP);
+            AP--;
+            return true;
+        }
+
+        public bool IncreaseMaxMp(Func<int, int, int> rollInclusive = null)
+        {
+            if (!CanIncreaseMaxMp())
+            {
+                return false;
+            }
+
+            int amount = GetMpIncreaseAmount(rollInclusive ?? DefaultRollInclusive);
+            MaxMP = Math.Clamp(MaxMP + amount, 0, MaxHpMpStat);
+            MP = Math.Clamp(MP + amount, 0, MaxMP);
+            AP--;
+            return true;
         }
 
         /// <summary>
@@ -762,6 +891,84 @@ namespace HaCreator.MapSimulator.Character
             return null;
         }
 
+        private static int DefaultRollInclusive(int min, int max)
+        {
+            return Random.Shared.Next(min, max + 1);
+        }
+
+        private int SumEquipmentBonus(Func<CharacterPart, int> selector)
+        {
+            int total = 0;
+
+            foreach (CharacterPart part in Equipment.Values)
+            {
+                if (part != null)
+                {
+                    total += selector(part);
+                }
+            }
+
+            return total;
+        }
+
+        private int GetBaseAccuracy()
+        {
+            return GetJobGroup() switch
+            {
+                1 => (int)Math.Floor(TotalDEX * 0.8f + TotalLUK * 0.5f),
+                2 => (int)Math.Floor(TotalDEX * 0.8f + TotalLUK * 0.5f),
+                3 => (int)Math.Floor(TotalDEX * 1.2f + TotalLUK),
+                4 => (int)Math.Floor(TotalDEX * 0.6f + TotalLUK * 0.3f),
+                5 => (int)Math.Floor(TotalDEX * 0.8f + TotalSTR * 0.5f),
+                _ => (int)Math.Floor(TotalDEX * 0.8f + TotalLUK * 0.5f)
+            };
+        }
+
+        private int GetBaseAvoidability()
+        {
+            return GetJobGroup() switch
+            {
+                4 => (int)Math.Floor(TotalDEX * 0.3f + TotalLUK * 0.6f),
+                2 => (int)Math.Floor(TotalDEX * 0.2f + TotalLUK * 0.5f),
+                _ => (int)Math.Floor(TotalDEX * 0.25f + TotalLUK * 0.5f)
+            };
+        }
+
+        private int GetHpIncreaseAmount(Func<int, int, int> rollInclusive)
+        {
+            (int min, int max) range = GetJobGroup() switch
+            {
+                1 => (20, 24),
+                2 => (6, 10),
+                3 => (16, 20),
+                4 => (16, 20),
+                5 => (18, 22),
+                _ => (8, 12)
+            };
+
+            return rollInclusive(range.min, range.max);
+        }
+
+        private int GetMpIncreaseAmount(Func<int, int, int> rollInclusive)
+        {
+            (int min, int max) range = GetJobGroup() switch
+            {
+                1 => (2, 4),
+                2 => (18, 20),
+                3 => (10, 12),
+                4 => (10, 12),
+                5 => (14, 16),
+                _ => (6, 8)
+            };
+
+            return rollInclusive(range.min, range.max);
+        }
+
+        private int GetJobGroup()
+        {
+            return Job / 100;
+        }
+
         /// <summary>
         /// Clone this build
         /// </summary>
@@ -792,8 +999,17 @@ namespace HaCreator.MapSimulator.Character
                 SubJob = SubJob,
                 JobName = JobName,
                 GuildName = GuildName,
+                AllianceName = AllianceName,
                 Fame = Fame,
+                WorldRank = WorldRank,
+                JobRank = JobRank,
                 HasMonsterRiding = HasMonsterRiding,
+                TraitCharisma = TraitCharisma,
+                TraitInsight = TraitInsight,
+                TraitWill = TraitWill,
+                TraitCraft = TraitCraft,
+                TraitSense = TraitSense,
+                TraitCharm = TraitCharm,
                 Exp = Exp,
                 ExpToNextLevel = ExpToNextLevel,
                 Attack = Attack,

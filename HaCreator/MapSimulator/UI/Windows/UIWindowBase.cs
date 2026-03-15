@@ -48,6 +48,11 @@ namespace HaCreator.MapSimulator.UI
         public abstract string WindowName { get; }
 
         /// <summary>
+        /// Whether the window can be dragged by holding its frame.
+        /// </summary>
+        public virtual bool SupportsDragging => true;
+
+        /// <summary>
         /// Character build for stat windows (AbilityUI, AbilityUIBigBang)
         /// Override in derived classes that need character stats
         /// </summary>
@@ -269,7 +274,7 @@ namespace HaCreator.MapSimulator.UI
             }
 
             // Handle UI movement (exactly like MinimapUI)
-            if (mouseState.LeftButton == ButtonState.Pressed)
+            if (SupportsDragging && mouseState.LeftButton == ButtonState.Pressed)
             {
                 // Get current frame dimensions (use override frame if set)
                 IDXObject currentFrame = CurrentFrame;

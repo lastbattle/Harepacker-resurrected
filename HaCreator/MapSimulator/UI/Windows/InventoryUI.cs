@@ -315,7 +315,8 @@ namespace HaCreator.MapSimulator.UI
             {
                 ItemId = itemId,
                 ItemTexture = texture,
-                Quantity = Math.Max(1, quantity)
+                Quantity = Math.Max(1, quantity),
+                MaxStackSize = InventoryItemMetadataResolver.ResolveMaxStack(type)
             });
         }
 
@@ -326,29 +327,33 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
-            if (TryMergeStackableSlot(type, slotData))
+            int remainingQuantity = Math.Max(1, slotData.Quantity);
+            int maxStackSize = InventoryItemMetadataResolver.ResolveMaxStack(type, slotData.MaxStackSize);
+
+            if (IsStackable(type, maxStackSize))
             {
-                return;
+                remainingQuantity = FillExistingStacks(type, slotData, remainingQuantity, maxStackSize);
             }
 
-            if (slots.Count >= GetSlotLimit(type))
+            while (remainingQuantity > 0 && slots.Count < GetSlotLimit(type))
             {
-                return;
-            }
+                int stackQuantity = IsStackable(type, maxStackSize)
+                    ? Math.Min(remainingQuantity, maxStackSize)
+                    : 1;
 
-            slots.Add(slotData);
+                InventorySlotData newSlot = slotData.Clone();
+                newSlot.Quantity = stackQuantity;
+                newSlot.MaxStackSize = maxStackSize;
+                slots.Add(newSlot);
+                remainingQuantity -= stackQuantity;
+            }
         }
 
-        private bool TryMergeStackableSlot(InventoryType type, InventorySlotData incoming)
+        private int FillExistingStacks(InventoryType type, InventorySlotData incoming, int remainingQuantity, int maxStackSize)
         {
-            if (type == InventoryType.EQUIP || type == InventoryType.CASH || incoming.Quantity <= 0)
+            if (incoming == null || incoming.Quantity <= 0 || !_inventoryData.TryGetValue(type, out List<InventorySlotData> slots))
             {
-                return false;
-            }
-
-            if (!_inventoryData.TryGetValue(type, out List<InventorySlotData> slots))
-            {
-                return false;
+                return remainingQuantity;
             }
 
             for (int i = 0; i < slots.Count; i++)
@@ -359,7 +364,17 @@ namespace HaCreator.MapSimulator.UI
                     continue;
                 }
 
-                existing.Quantity += incoming.Quantity;
+                int existingMaxStack = InventoryItemMetadataResolver.ResolveMaxStack(type, existing.MaxStackSize);
+                int capacity = existingMaxStack - Math.Max(1, existing.Quantity);
+                if (capacity <= 0)
+                {
+                    continue;
+                }
+
+                int quantityToMerge = Math.Min(capacity, remainingQuantity);
+                existing.Quantity += quantityToMerge;
+                existing.MaxStackSize = existingMaxStack;
+
                 if (incoming.ItemTexture != null)
                 {
                     existing.ItemTexture = incoming.ItemTexture;
@@ -367,10 +382,15 @@ namespace HaCreator.MapSimulator.UI
 
                 existing.GradeFrameIndex = incoming.GradeFrameIndex ?? existing.GradeFrameIndex;
                 existing.IsActiveBullet = incoming.IsActiveBullet || existing.IsActiveBullet;
-                return true;
+                remainingQuantity -= quantityToMerge;
+
+                if (remainingQuantity <= 0)
+                {
+                    break;
+                }
             }
 
-            return false;
+            return remainingQuantity;
         }
 
         public void ClearInventory()
@@ -399,6 +419,54 @@ namespace HaCreator.MapSimulator.UI
             }
 
             return total;
+        }
+
+        public bool CanAcceptItem(InventoryType type, int itemId, int quantity = 1)
+        {
+            if (type == InventoryType.NONE || quantity <= 0 || !_inventoryData.TryGetValue(type, out List<InventorySlotData> slots))
+            {
+                return false;
+            }
+
+            int remainingQuantity = quantity;
+            int defaultMaxStack = InventoryItemMetadataResolver.ResolveMaxStack(type);
+            if (IsStackable(type, defaultMaxStack))
+            {
+                for (int i = 0; i < slots.Count && remainingQuantity > 0; i++)
+                {
+                    InventorySlotData slot = slots[i];
+                    if (slot.ItemId != itemId || slot.IsDisabled)
+                    {
+                        continue;
+                    }
+
+                    int maxStackSize = InventoryItemMetadataResolver.ResolveMaxStack(type, slot.MaxStackSize);
+                    int capacity = maxStackSize - Math.Max(1, slot.Quantity);
+                    if (capacity > 0)
+                    {
+                        remainingQuantity -= capacity;
+                    }
+                }
+            }
+
+            if (remainingQuantity <= 0)
+            {
+                return true;
+            }
+
+            int freeSlotCount = GetSlotLimit(type) - slots.Count;
+            if (freeSlotCount <= 0)
+            {
+                return false;
+            }
+
+            if (!IsStackable(type, defaultMaxStack))
+            {
+                return freeSlotCount >= remainingQuantity;
+            }
+
+            int neededStacks = (remainingQuantity + defaultMaxStack - 1) / defaultMaxStack;
+            return freeSlotCount >= neededStacks;
         }
 
         public bool TryConsumeItem(InventoryType type, int itemId, int quantity)
@@ -457,6 +525,37 @@ namespace HaCreator.MapSimulator.UI
             return null;
         }
 
+        public long GetMesoCount()
+        {
+            return _mesoCount;
+        }
+
+        public void AddMeso(long amount)
+        {
+            if (amount <= 0)
+            {
+                return;
+            }
+
+            MesoCount += amount;
+        }
+
+        public bool TryConsumeMeso(long amount)
+        {
+            if (amount <= 0)
+            {
+                return true;
+            }
+
+            if (_mesoCount < amount)
+            {
+                return false;
+            }
+
+            _mesoCount -= amount;
+            return true;
+        }
+
         public void ScrollUp()
         {
             if (_scrollOffset > 0)
@@ -489,6 +588,11 @@ namespace HaCreator.MapSimulator.UI
             base.Update(gameTime);
             UpdateTabStates();
         }
+
+        private static bool IsStackable(InventoryType type, int maxStackSize)
+        {
+            return type != InventoryType.EQUIP && maxStackSize > 1;
+        }
         #endregion
     }
 
@@ -500,11 +604,28 @@ namespace HaCreator.MapSimulator.UI
         public int ItemId { get; set; }
         public Texture2D ItemTexture { get; set; }
         public int Quantity { get; set; } = 1;
+        public int? MaxStackSize { get; set; }
         public bool IsEquipped { get; set; }
         public bool IsDisabled { get; set; }
         public bool IsActiveBullet { get; set; }
         public int? GradeFrameIndex { get; set; }
         public string ItemName { get; set; }
+
+        public InventorySlotData Clone()
+        {
+            return new InventorySlotData
+            {
+                ItemId = ItemId,
+                ItemTexture = ItemTexture,
+                Quantity = Quantity,
+                MaxStackSize = MaxStackSize,
+                IsEquipped = IsEquipped,
+                IsDisabled = IsDisabled,
+                IsActiveBullet = IsActiveBullet,
+                GradeFrameIndex = GradeFrameIndex,
+                ItemName = ItemName
+            };
+        }
     }
 
     internal static class InventoryRenderUtil

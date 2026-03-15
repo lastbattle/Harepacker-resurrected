@@ -8,6 +8,7 @@ using Microsoft.Xna.Framework.Input;
 using Spine;
 using System;
 using System.Collections.Generic;
+using System.Linq;
 
 namespace HaCreator.MapSimulator.UI
 {
@@ -27,6 +28,13 @@ namespace HaCreator.MapSimulator.UI
     /// </summary>
     public class SkillMacroUI : UIWindowBase
     {
+        private enum MacroDragMode
+        {
+            None,
+            Skill,
+            MacroBinding
+        }
+
         #region Constants
         // Window dimensions from WZ data (pre-Big Bang style)
         // UI.wz/UIWindow.img/SkillMacro/backgrnd: 207x289
@@ -67,6 +75,7 @@ namespace HaCreator.MapSimulator.UI
         private const int NAME_FIELD_HEIGHT = 20;
         private const int NAME_FIELD_X = CONTENT_OFFSET_X;
         private const int NAME_FIELD_Y = CONTENT_OFFSET_Y - 30;
+        private const int MAX_MACRO_NAME_LENGTH = 12;
 
         // Button positions (relative to window)
         // BtOK button origin from UIWindow2: (-145, -255) means 145 from left, 255 from top
@@ -97,8 +106,9 @@ namespace HaCreator.MapSimulator.UI
         private int[] _editingSkillIds = new int[SKILLS_PER_MACRO];
 
         // Drag and drop for skill assignment
-        private bool _isDragging = false;
+        private MacroDragMode _dragMode = MacroDragMode.None;
         private int _dragSkillId = 0;
+        private int _dragMacroIndex = -1;
         private int _dragSourceSlot = -1;
         private int _dragSourceMacro = -1;
         private Vector2 _dragPosition;
@@ -116,6 +126,7 @@ namespace HaCreator.MapSimulator.UI
 
         // Checkbox state
         private bool _notifyPartyMembers = false;
+        private string _validationMessage = string.Empty;
 
         // Buttons
         private UIObject _btnOK;
@@ -128,6 +139,10 @@ namespace HaCreator.MapSimulator.UI
 
         #region Properties
         public override string WindowName => "SkillMacro";
+        public bool CapturesKeyboardInput => IsVisible && _editingMacroIndex >= 0;
+        public bool IsDraggingSkillSlot => _dragMode == MacroDragMode.Skill;
+        public bool IsDraggingMacroBinding => _dragMode == MacroDragMode.MacroBinding;
+        public int DraggedMacroIndex => IsDraggingMacroBinding ? _dragMacroIndex : -1;
 
         /// <summary>
         /// Gets or sets the currently selected macro index (-1 for none)
@@ -355,9 +370,13 @@ namespace HaCreator.MapSimulator.UI
             DrawCheckbox(sprite, windowX, windowY);
 
             // Draw dragged skill icon
-            if (_isDragging && _dragSkillId > 0)
+            if (_dragMode == MacroDragMode.Skill && _dragSkillId > 0)
             {
                 DrawDraggedSkill(sprite);
+            }
+            else if (_dragMode == MacroDragMode.MacroBinding && _dragMacroIndex >= 0)
+            {
+                DrawDraggedMacro(sprite);
             }
         }
 
@@ -432,7 +451,7 @@ namespace HaCreator.MapSimulator.UI
             // Draw macro number indicator
             if (_font != null)
             {
-                string numberText = (macroIndex + 1).ToString();
+                string numberText = $"M{macroIndex + 1}";
                 sprite.DrawString(_font, numberText,
                     new Vector2(slotX - 15, slotY + (MACRO_SLOT_HEIGHT - 12) / 2),
                     isSelected ? Color.Yellow : Color.LightGray);
@@ -456,12 +475,19 @@ namespace HaCreator.MapSimulator.UI
 
             // Draw current name
             string displayText = _editingMacroName ?? "";
-            if (displayText.Length > 15)
-                displayText = displayText.Substring(0, 15);
+            if (displayText.Length > MAX_MACRO_NAME_LENGTH)
+                displayText = displayText.Substring(0, MAX_MACRO_NAME_LENGTH);
 
             sprite.DrawString(_font, displayText,
                 new Vector2(fieldX + 4, fieldY + 3),
                 Color.White);
+
+            if (!string.IsNullOrWhiteSpace(_validationMessage))
+            {
+                sprite.DrawString(_font, _validationMessage,
+                    new Vector2(fieldX, fieldY + NAME_FIELD_HEIGHT + 2),
+                    Color.IndianRed);
+            }
         }
 
         private void DrawCheckbox(SpriteBatch sprite, int windowX, int windowY)
@@ -501,6 +527,31 @@ namespace HaCreator.MapSimulator.UI
             }
         }
 
+        private void DrawDraggedMacro(SpriteBatch sprite)
+        {
+            SkillMacro macro = GetMacro(_dragMacroIndex);
+            int skillId = macro?.SkillIds?.FirstOrDefault(id => id > 0) ?? 0;
+            int drawX = (int)_dragPosition.X - SKILL_ICON_SIZE / 2;
+            int drawY = (int)_dragPosition.Y - SKILL_ICON_SIZE / 2;
+
+            if (skillId > 0)
+            {
+                IDXObject icon = GetSkillIcon(skillId);
+                icon?.DrawBackground(sprite, null, null, drawX, drawY, Color.White * 0.8f, false, null);
+            }
+            else
+            {
+                sprite.Draw(_emptySlotTexture, new Rectangle(drawX, drawY, SKILL_ICON_SIZE, SKILL_ICON_SIZE), Color.White);
+            }
+
+            if (_font != null)
+            {
+                sprite.DrawString(_font, $"M{_dragMacroIndex + 1}",
+                    new Vector2(drawX - 2, drawY - 14),
+                    Color.Yellow);
+            }
+        }
+
         private IDXObject GetSkillIcon(int skillId)
         {
             if (_skillIconCache.TryGetValue(skillId, out var cached))
@@ -528,6 +579,8 @@ namespace HaCreator.MapSimulator.UI
 
             _editingMacroIndex = index;
             _editingMacroName = _macros[index].Name ?? "";
+            _notifyPartyMembers = _macros[index].NotifyParty;
+            _validationMessage = string.Empty;
 
             for (int i = 0; i < SKILLS_PER_MACRO; i++)
             {
@@ -538,18 +591,31 @@ namespace HaCreator.MapSimulator.UI
         /// <summary>
         /// Save the currently editing macro
         /// </summary>
-        public void SaveCurrentMacro()
+        public bool SaveCurrentMacro()
         {
             if (_editingMacroIndex < 0 || _editingMacroIndex >= MAX_MACRO_SLOTS)
-                return;
+                return false;
 
-            _macros[_editingMacroIndex].Name = _editingMacroName;
+            string validatedName = ValidateMacroName(_editingMacroName);
+            if (validatedName == null)
+                return false;
+
+            if (!_editingSkillIds.Any(skillId => skillId > 0))
+            {
+                _validationMessage = "Assign at least one skill.";
+                return false;
+            }
+
+            _macros[_editingMacroIndex].Name = validatedName;
+            _macros[_editingMacroIndex].NotifyParty = _notifyPartyMembers;
             for (int i = 0; i < SKILLS_PER_MACRO; i++)
             {
                 _macros[_editingMacroIndex].SkillIds[i] = _editingSkillIds[i];
             }
 
             OnMacroSaved?.Invoke(_editingMacroIndex, _macros[_editingMacroIndex]);
+            _validationMessage = string.Empty;
+            return true;
         }
 
         /// <summary>
@@ -562,6 +628,7 @@ namespace HaCreator.MapSimulator.UI
 
             // Clear the macro
             _macros[_selectedMacroIndex].Name = $"Macro {_selectedMacroIndex + 1}";
+            _macros[_selectedMacroIndex].NotifyParty = false;
             for (int i = 0; i < SKILLS_PER_MACRO; i++)
             {
                 _macros[_selectedMacroIndex].SkillIds[i] = 0;
@@ -572,6 +639,8 @@ namespace HaCreator.MapSimulator.UI
             // Reset editing state
             _editingMacroIndex = -1;
             _editingMacroName = "";
+            _notifyPartyMembers = false;
+            _validationMessage = string.Empty;
             Array.Clear(_editingSkillIds, 0, SKILLS_PER_MACRO);
         }
 
@@ -620,17 +689,47 @@ namespace HaCreator.MapSimulator.UI
             if (macroIndex < 0 || macroIndex >= MAX_MACRO_SLOTS)
                 return;
 
-            var macro = _macros[macroIndex];
-            for (int i = 0; i < SKILLS_PER_MACRO; i++)
+            _skillManager?.TryExecuteMacro(macroIndex, Environment.TickCount);
+        }
+
+        private string ValidateMacroName(string name)
+        {
+            string trimmed = (name ?? string.Empty).Trim();
+            if (trimmed.Length == 0)
             {
-                int skillId = macro.SkillIds[i];
-                if (skillId > 0 && _skillManager != null)
+                _validationMessage = "Enter a macro name.";
+                return null;
+            }
+
+            Span<char> buffer = stackalloc char[Math.Min(trimmed.Length, MAX_MACRO_NAME_LENGTH)];
+            int length = 0;
+            foreach (char ch in trimmed)
+            {
+                if (length >= MAX_MACRO_NAME_LENGTH)
+                    break;
+
+                if (char.IsControl(ch))
+                    continue;
+
+                if (char.IsLetterOrDigit(ch) || ch == ' ' || ch == '\'' || ch == '-' || ch == '!' || ch == '?')
                 {
-                    // Queue the skill for execution
-                    // The actual execution timing would be handled by SkillManager
-                    _skillManager.QueueSkill(skillId);
+                    buffer[length++] = ch;
+                }
+                else
+                {
+                    _validationMessage = "Only letters, numbers, spaces, and - ' ! ? are allowed.";
+                    return null;
                 }
             }
+
+            if (length == 0)
+            {
+                _validationMessage = "Enter a macro name.";
+                return null;
+            }
+
+            _validationMessage = string.Empty;
+            return new string(buffer[..length]).TrimEnd();
         }
         #endregion
 
@@ -695,7 +794,7 @@ namespace HaCreator.MapSimulator.UI
         /// </summary>
         public void OnMouseMove(int mouseX, int mouseY)
         {
-            if (_isDragging)
+            if (_dragMode != MacroDragMode.None)
             {
                 _dragPosition = new Vector2(mouseX, mouseY);
             }
@@ -737,23 +836,26 @@ namespace HaCreator.MapSimulator.UI
             }
             else if (leftButton)
             {
-                // Left-click to select macro or start drag
                 if (skillSlot >= 0)
                 {
                     int skillId = _macros[macroIndex].SkillIds[skillSlot];
                     if (skillId > 0)
                     {
-                        // Start drag
-                        _isDragging = true;
+                        _dragMode = MacroDragMode.Skill;
                         _dragSkillId = skillId;
                         _dragSourceMacro = macroIndex;
                         _dragSourceSlot = skillSlot;
                         _dragPosition = new Vector2(mouseX, mouseY);
                     }
                 }
+                else if (_selectedMacroIndex == macroIndex && _macros[macroIndex].IsEnabled)
+                {
+                    _dragMode = MacroDragMode.MacroBinding;
+                    _dragMacroIndex = macroIndex;
+                    _dragPosition = new Vector2(mouseX, mouseY);
+                }
                 else
                 {
-                    // Select macro
                     SelectedMacroIndex = macroIndex;
                 }
             }
@@ -764,7 +866,7 @@ namespace HaCreator.MapSimulator.UI
         /// </summary>
         public void OnMouseUp(int mouseX, int mouseY)
         {
-            if (_isDragging)
+            if (_dragMode == MacroDragMode.Skill)
             {
                 int targetMacro = GetMacroIndexAtPosition(mouseX, mouseY);
                 int targetSlot = targetMacro >= 0 ? GetSkillSlotAtPosition(mouseX, mouseY, targetMacro) : -1;
@@ -781,12 +883,9 @@ namespace HaCreator.MapSimulator.UI
                         SetMacroSkill(_dragSourceMacro, _dragSourceSlot, targetSkillId);
                     }
                 }
-
-                _isDragging = false;
-                _dragSkillId = 0;
-                _dragSourceMacro = -1;
-                _dragSourceSlot = -1;
             }
+
+            CancelDrag();
         }
 
         /// <summary>
@@ -829,14 +928,21 @@ namespace HaCreator.MapSimulator.UI
             return mouseX >= checkX && mouseX <= checkX + 12 &&
                    mouseY >= checkY && mouseY <= checkY + 12;
         }
+
+        public bool HandlesMacroInteractionPoint(int mouseX, int mouseY)
+        {
+            return GetMacroIndexAtPosition(mouseX, mouseY) >= 0 || IsPointInCheckbox(mouseX, mouseY);
+        }
         #endregion
 
         #region Button Handlers
         private void OnOKClicked(UIObject sender)
         {
-            SaveCurrentMacro();
-            Hide();
-            OnMacroWindowClosed?.Invoke();
+            if (SaveCurrentMacro())
+            {
+                Hide();
+                OnMacroWindowClosed?.Invoke();
+            }
         }
 
         private void OnCancelClicked(UIObject sender)
@@ -844,6 +950,8 @@ namespace HaCreator.MapSimulator.UI
             // Discard changes
             _editingMacroIndex = -1;
             _editingMacroName = "";
+            _notifyPartyMembers = false;
+            _validationMessage = string.Empty;
             Array.Clear(_editingSkillIds, 0, SKILLS_PER_MACRO);
 
             Hide();
@@ -857,32 +965,21 @@ namespace HaCreator.MapSimulator.UI
         #endregion
 
         #region Update
-        private MouseState _previousMouseState;
+        private KeyboardState _previousKeyboardState;
 
         public override void Update(GameTime gameTime)
         {
             base.Update(gameTime);
 
-            // Update mouse input
-            var mouseState = Mouse.GetState();
-            OnMouseMove(mouseState.X, mouseState.Y);
-
-            // Handle mouse button state changes
-            if (mouseState.LeftButton == ButtonState.Pressed && _previousMouseState.LeftButton == ButtonState.Released)
+            if (!CapturesKeyboardInput)
             {
-                OnMouseDown(mouseState.X, mouseState.Y, true, false);
-            }
-            else if (mouseState.RightButton == ButtonState.Pressed && _previousMouseState.RightButton == ButtonState.Released)
-            {
-                OnMouseDown(mouseState.X, mouseState.Y, false, true);
+                _previousKeyboardState = Keyboard.GetState();
+                return;
             }
 
-            if (mouseState.LeftButton == ButtonState.Released && _previousMouseState.LeftButton == ButtonState.Pressed)
-            {
-                OnMouseUp(mouseState.X, mouseState.Y);
-            }
-
-            _previousMouseState = mouseState;
+            KeyboardState keyboardState = Keyboard.GetState();
+            HandleKeyboardInput(keyboardState);
+            _previousKeyboardState = keyboardState;
         }
         #endregion
 
@@ -893,6 +990,75 @@ namespace HaCreator.MapSimulator.UI
         public void ClearIconCache()
         {
             _skillIconCache.Clear();
+        }
+
+        public void CancelDrag()
+        {
+            _dragMode = MacroDragMode.None;
+            _dragSkillId = 0;
+            _dragMacroIndex = -1;
+            _dragSourceMacro = -1;
+            _dragSourceSlot = -1;
+        }
+
+        private void HandleKeyboardInput(KeyboardState keyboardState)
+        {
+            bool shift = keyboardState.IsKeyDown(Keys.LeftShift) || keyboardState.IsKeyDown(Keys.RightShift);
+
+            if (keyboardState.IsKeyDown(Keys.Back) && _previousKeyboardState.IsKeyUp(Keys.Back) && _editingMacroName.Length > 0)
+            {
+                _editingMacroName = _editingMacroName[..^1];
+                _validationMessage = string.Empty;
+            }
+
+            foreach (Keys key in keyboardState.GetPressedKeys())
+            {
+                if (_previousKeyboardState.IsKeyDown(key))
+                    continue;
+
+                if (key == Keys.Back || key == Keys.Enter || key == Keys.Tab || key == Keys.Escape ||
+                    key == Keys.LeftShift || key == Keys.RightShift || key == Keys.LeftControl || key == Keys.RightControl ||
+                    key == Keys.LeftAlt || key == Keys.RightAlt)
+                {
+                    continue;
+                }
+
+                char? character = KeyToChar(key, shift);
+                if (!character.HasValue || _editingMacroName.Length >= MAX_MACRO_NAME_LENGTH)
+                    continue;
+
+                _editingMacroName += character.Value;
+                _validationMessage = string.Empty;
+            }
+        }
+
+        private static char? KeyToChar(Keys key, bool shift)
+        {
+            if (key >= Keys.A && key <= Keys.Z)
+            {
+                char c = (char)('a' + (key - Keys.A));
+                return shift ? char.ToUpperInvariant(c) : c;
+            }
+
+            if (key >= Keys.D0 && key <= Keys.D9)
+            {
+                const string normal = "0123456789";
+                const string shifted = ")!@#$%^&*(";
+                int index = key - Keys.D0;
+                return shift ? shifted[index] : normal[index];
+            }
+
+            return key switch
+            {
+                Keys.Space => ' ',
+                Keys.OemMinus => shift ? '_' : '-',
+                Keys.OemPlus => shift ? '+' : '=',
+                Keys.OemQuotes => shift ? '"' : '\'',
+                Keys.OemQuestion => shift ? '?' : '/',
+                Keys.OemPeriod => shift ? '>' : '.',
+                Keys.OemComma => shift ? '<' : ',',
+                _ => null
+            };
         }
         #endregion
     }
@@ -920,7 +1086,7 @@ namespace HaCreator.MapSimulator.UI
         /// <summary>
         /// Whether this macro is enabled
         /// </summary>
-        public bool IsEnabled => SkillIds != null && SkillIds.Length > 0 && SkillIds[0] != 0;
+        public bool IsEnabled => SkillCount > 0;
 
         /// <summary>
         /// Get the skill ID at a specific position (0-2)

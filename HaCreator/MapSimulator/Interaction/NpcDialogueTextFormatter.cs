@@ -5,6 +5,7 @@ namespace HaCreator.MapSimulator.Interaction
 {
     internal static class NpcDialogueTextFormatter
     {
+        private static readonly Regex InlineSelectionRegex = new(@"#L(?<id>-?\d+)#(?<text>.*?)#l", RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.Singleline);
         private static readonly Regex SelectionRegex = new(@"#L\d+#", RegexOptions.Compiled);
         private static readonly Regex NpcRegex = new(@"#p(\d+)#", RegexOptions.Compiled);
         private static readonly Regex ItemNameRegex = new(@"#t(\d+)#", RegexOptions.Compiled);
@@ -19,10 +20,7 @@ namespace HaCreator.MapSimulator.Interaction
                 return string.Empty;
             }
 
-            string formatted = text
-                .Replace("\\r\\n", "\n")
-                .Replace("\\n", "\n")
-                .Replace("\\r", "\n")
+            string formatted = NormalizeLineBreaks(StripInlineSelections(text))
                 .Replace("\r", string.Empty)
                 .Replace("#l", string.Empty);
 
@@ -62,6 +60,61 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             return builder.ToString().Trim();
+        }
+
+        public static NpcInlineSelection[] ExtractInlineSelections(string text)
+        {
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                return System.Array.Empty<NpcInlineSelection>();
+            }
+
+            MatchCollection matches = InlineSelectionRegex.Matches(NormalizeLineBreaks(text));
+            if (matches.Count == 0)
+            {
+                return System.Array.Empty<NpcInlineSelection>();
+            }
+
+            var selections = new NpcInlineSelection[matches.Count];
+            int count = 0;
+            for (int i = 0; i < matches.Count; i++)
+            {
+                Match match = matches[i];
+                if (!int.TryParse(match.Groups["id"].Value, out int selectionId))
+                {
+                    continue;
+                }
+
+                string label = Format(match.Groups["text"].Value);
+                if (string.IsNullOrWhiteSpace(label))
+                {
+                    continue;
+                }
+
+                selections[count++] = new NpcInlineSelection(selectionId, label);
+            }
+
+            if (count == selections.Length)
+            {
+                return selections;
+            }
+
+            var resizedSelections = new NpcInlineSelection[count];
+            System.Array.Copy(selections, resizedSelections, count);
+            return resizedSelections;
+        }
+
+        private static string StripInlineSelections(string text)
+        {
+            return InlineSelectionRegex.Replace(text, string.Empty);
+        }
+
+        private static string NormalizeLineBreaks(string text)
+        {
+            return text
+                .Replace("\\r\\n", "\n")
+                .Replace("\\n", "\n")
+                .Replace("\\r", "\n");
         }
 
         private static void TrimTrailingSpace(StringBuilder builder)

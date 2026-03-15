@@ -33,6 +33,7 @@ namespace HaCreator.MapSimulator.Pools
     /// </summary>
     public enum ReactorActivationType
     {
+        None,           // Animation-only or otherwise non-interactive reactor
         Touch,          // Activated by player collision
         Hit,            // Activated by attacking
         Skill,          // Activated by specific skill
@@ -74,6 +75,7 @@ namespace HaCreator.MapSimulator.Pools
         public int RequiredHits { get; set; }
         public float Alpha { get; set; } = 1f;
         public ReactorActivationType ActivationType { get; set; }
+        public ReactorType ReactorType { get; set; } = ReactorType.UNKNOWN;
         public int ActivatingPlayerId { get; set; }
         public bool CanRespawn { get; set; } = true;
     }
@@ -168,6 +170,7 @@ namespace HaCreator.MapSimulator.Pools
                     HitCount = 0,
                     RequiredHits = 1, // Default, could be loaded from reactor info
                     Alpha = 1f,
+                    ReactorType = ResolveReactorType(instance),
                     ActivationType = ResolveActivationType(instance),
                     CanRespawn = true
                 };
@@ -432,6 +435,9 @@ namespace HaCreator.MapSimulator.Pools
                 {
                     continue;
                 }
+
+                if (!IsAttackDirectionValid(data.ReactorType, attackBounds, reactor.ReactorInstance))
+                    continue;
 
                 Rectangle reactorBounds = GetReactorBounds(reactor.ReactorInstance);
                 if (reactorBounds.Intersects(attackBounds))
@@ -903,31 +909,55 @@ namespace HaCreator.MapSimulator.Pools
 
         internal static ReactorActivationType ResolveActivationType(ReactorInstance reactorInstance)
         {
+            return ResolveReactorType(reactorInstance) switch
+            {
+                ReactorType.ActivatedByAnyHit => ReactorActivationType.Hit,
+                ReactorType.ActivatedLeftHit => ReactorActivationType.Hit,
+                ReactorType.ActivatedRightHit => ReactorActivationType.Hit,
+                ReactorType.ActivatedByHarvesting => ReactorActivationType.Hit,
+                ReactorType.ActivatedBySkill => ReactorActivationType.Skill,
+                ReactorType.ActivatedByTouch => ReactorActivationType.Touch,
+                ReactorType.ActivatedbyItem => ReactorActivationType.Item,
+                ReactorType.AnimationOnly => ReactorActivationType.None,
+                _ => ReactorActivationType.Touch
+            };
+        }
+
+        internal static ReactorType ResolveReactorType(ReactorInstance reactorInstance)
+        {
             WzImage linkedReactorImage = reactorInstance?.ReactorInfo?.LinkedWzImage;
             if (linkedReactorImage == null)
-                return ReactorActivationType.Touch;
+                return ReactorType.UNKNOWN;
 
             WzImageProperty infoProperty = WzInfoTools.GetRealProperty(linkedReactorImage["info"]);
             if (infoProperty == null)
-                return ReactorActivationType.Touch;
+                return ReactorType.UNKNOWN;
 
             int? reactorTypeValue =
                 TryReadIntProperty(WzInfoTools.GetRealProperty(infoProperty["reactorType"])) ??
                 TryReadIntProperty(WzInfoTools.GetRealProperty(infoProperty["type"]));
 
             if (!reactorTypeValue.HasValue)
-                return ReactorActivationType.Touch;
+                return ReactorType.UNKNOWN;
 
-            return reactorTypeValue.Value switch
+            return Enum.IsDefined(typeof(ReactorType), reactorTypeValue.Value)
+                ? (ReactorType)reactorTypeValue.Value
+                : ReactorType.UNKNOWN;
+        }
+
+        private static bool IsAttackDirectionValid(ReactorType reactorType, Rectangle attackBounds, ReactorInstance instance)
+        {
+            if (instance == null || attackBounds.Width <= 0)
+                return false;
+
+            float reactorCenterX = GetReactorBounds(instance).Center.X;
+            float attackCenterX = attackBounds.Center.X;
+
+            return reactorType switch
             {
-                (int)ReactorType.ActivatedByAnyHit => ReactorActivationType.Hit,
-                (int)ReactorType.ActivatedLeftHit => ReactorActivationType.Hit,
-                (int)ReactorType.ActivatedRightHit => ReactorActivationType.Hit,
-                (int)ReactorType.ActivatedByHarvesting => ReactorActivationType.Hit,
-                (int)ReactorType.ActivatedBySkill => ReactorActivationType.Skill,
-                (int)ReactorType.ActivatedByTouch => ReactorActivationType.Touch,
-                (int)ReactorType.ActivatedbyItem => ReactorActivationType.Item,
-                _ => ReactorActivationType.Touch
+                ReactorType.ActivatedLeftHit => attackCenterX <= reactorCenterX,
+                ReactorType.ActivatedRightHit => attackCenterX >= reactorCenterX,
+                _ => true
             };
         }
 

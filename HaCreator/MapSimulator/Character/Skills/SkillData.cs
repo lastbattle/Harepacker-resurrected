@@ -351,6 +351,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         public string RepeatSoundKey { get; set; }           // Registered simulator sound key for repeated hits/shots
         public string ZoneType { get; set; }
         public bool IsMassSpell { get; set; }
+        public string DebuffMessageToken { get; set; }
         public SkillAnimation ZoneAnimation { get; set; }
         public int AffectedSkillId { get; set; }
         public string AffectedSkillEffect { get; set; }

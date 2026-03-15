@@ -253,6 +253,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 skill.TriggerCondition = condition;
                 skill.ZoneType = GetString(infoNode, "zoneType");
                 skill.IsMassSpell = GetInt(infoNode, "massSpell") == 1;
+                skill.DebuffMessageToken = GetString(infoNode, "mes");
                 skill.AffectedSkillId = GetInt(infoNode, "affectedSkill");
                 skill.AffectedSkillEffect = GetString(infoNode, "affectedSkillEffect");
                 skill.IsMagicDamageSkill = GetInt(infoNode, "magicDamage") == 1;

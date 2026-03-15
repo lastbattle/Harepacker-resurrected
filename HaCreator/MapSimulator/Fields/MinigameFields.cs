@@ -869,6 +869,7 @@ namespace HaCreator.MapSimulator.Fields
         private int _team0Score;
         private int _team1Score;
         private int _timeRemaining;
+        private int _finishTick;
         private int _lastUpdateTime;
         private bool _gameActive;
 
@@ -990,9 +991,17 @@ namespace HaCreator.MapSimulator.Fields
         /// </summary>
         public void OnClock(int timeSeconds)
         {
-            _timeRemaining = timeSeconds;
+            int now = Environment.TickCount;
+            int durationMs = Math.Max(0, timeSeconds) * 1000;
+            _finishTick = durationMs > 0 ? now + durationMs : 1;
+            _timeRemaining = Math.Max(0, timeSeconds);
 
-            if (timeSeconds <= 0 && _gameActive)
+            if (timeSeconds > 0)
+            {
+                _gameActive = true;
+                _lastUpdateTime = now;
+            }
+            else if (_gameActive)
             {
                 EndGame();
             }
@@ -1006,6 +1015,8 @@ namespace HaCreator.MapSimulator.Fields
         {
             _gameActive = true;
             _timeRemaining = durationSeconds;
+            _finishTick = Environment.TickCount + Math.Max(0, durationSeconds) * 1000;
+            _lastUpdateTime = Environment.TickCount;
             ShowMessage("Coconut harvest begins!", 3000);
         }
 
@@ -1024,6 +1035,8 @@ namespace HaCreator.MapSimulator.Fields
         private void EndGame()
         {
             _gameActive = false;
+            _finishTick = 0;
+            _timeRemaining = 0;
 
             string winner = _team0Score > _team1Score
                 ? "Team Maple wins!"
@@ -1041,42 +1054,35 @@ namespace HaCreator.MapSimulator.Fields
 
         public void Update(int tickCount)
         {
-            if (!_gameActive)
-                return;
-
-            float deltaTime = (tickCount - _lastUpdateTime) / 1000f;
-            _lastUpdateTime = tickCount;
-
-            // Update timer
-            _timeRemaining -= (int)(deltaTime * 1000) / 1000;
-            if (_timeRemaining <= 0)
-            {
-                EndGame();
-                return;
-            }
-
-            // Process hit queue
             ProcessHitQueue(tickCount);
 
-            // Update all coconuts
-            foreach (var coconut in _coconuts)
+            if (_gameActive)
             {
-                coconut.Update(tickCount, _gravity, _groundY);
+                _lastUpdateTime = tickCount;
 
-                // Score coconuts that hit the ground
-                if (coconut.State == CoconutState.Scored && coconut.IsActive)
+                if (_finishTick > 0)
                 {
-                    coconut.IsActive = false;
-                    if (coconut.Team == 0)
-                        _team0Score++;
-                    else if (coconut.Team == 1)
-                        _team1Score++;
+                    int remainingMs = _finishTick - tickCount;
+                    _timeRemaining = remainingMs > 0
+                        ? (remainingMs + 999) / 1000
+                        : 0;
+
+                    if (remainingMs <= 0)
+                    {
+                        EndGame();
+                    }
+                }
+
+                foreach (var coconut in _coconuts)
+                {
+                    coconut.Update(tickCount, _gravity, _groundY);
                 }
             }
 
-            // Clear expired message
             if (_currentMessage != null && tickCount >= _messageEndTime)
+            {
                 _currentMessage = null;
+            }
         }
 
         private void ProcessHitQueue(int tickCount)
@@ -1088,10 +1094,50 @@ namespace HaCreator.MapSimulator.Fields
                 {
                     if (hit.Target >= 0 && hit.Target < _coconuts.Count)
                     {
-                        _coconuts[hit.Target].State = (CoconutState)hit.NewState;
+                        ApplyPacketState(_coconuts[hit.Target], (CoconutState)hit.NewState);
                     }
                     _hitQueue.RemoveAt(i);
                 }
+            }
+        }
+
+        private void ApplyPacketState(Coconut coconut, CoconutState newState)
+        {
+            coconut.State = newState;
+
+            switch (newState)
+            {
+                case CoconutState.OnTree:
+                    coconut.Team = -1;
+                    coconut.Velocity = Vector2.Zero;
+                    coconut.IsActive = true;
+                    coconut.Rotation = 0f;
+                    break;
+                case CoconutState.Falling:
+                    coconut.IsActive = true;
+                    if (coconut.Team < 0)
+                    {
+                        coconut.Team = 0;
+                    }
+                    break;
+                case CoconutState.Team0Claimed:
+                    coconut.Team = 0;
+                    coconut.Velocity = Vector2.Zero;
+                    coconut.IsActive = true;
+                    break;
+                case CoconutState.Team1Claimed:
+                    coconut.Team = 1;
+                    coconut.Velocity = Vector2.Zero;
+                    coconut.IsActive = true;
+                    break;
+                case CoconutState.Scored:
+                    coconut.Velocity = Vector2.Zero;
+                    coconut.IsActive = true;
+                    break;
+                case CoconutState.Destroyed:
+                    coconut.Velocity = Vector2.Zero;
+                    coconut.IsActive = false;
+                    break;
             }
         }
 
@@ -1185,31 +1231,36 @@ namespace HaCreator.MapSimulator.Fields
         private void DrawUI(SpriteBatch spriteBatch, Texture2D pixel, SpriteFont font)
         {
             int screenWidth = spriteBatch.GraphicsDevice.Viewport.Width;
+            int boardWidth = 220;
+            int boardHeight = 120;
+            int boardX = screenWidth / 2 - boardWidth / 2;
+            int boardY = 10;
 
-            // Scoreboard
-            Rectangle bgRect = new Rectangle(screenWidth / 2 - 120, 10, 240, 60);
+            Rectangle bgRect = new Rectangle(boardX, boardY, boardWidth, boardHeight);
             spriteBatch.Draw(pixel, bgRect, new Color(0, 0, 0, 150));
+            spriteBatch.Draw(pixel, new Rectangle(boardX + 12, boardY + 12, boardWidth - 24, boardHeight - 24), new Color(40, 58, 36, 190));
 
-            // Scores
-            string scoreText = $"Maple {_team0Score} : {_team1Score} Story";
-            Vector2 scoreSize = font.MeasureString(scoreText);
-            spriteBatch.DrawString(font, scoreText,
-                new Vector2((screenWidth - scoreSize.X) / 2, 20), Color.White);
+            string team0Text = _team0Score.ToString();
+            string team1Text = _team1Score.ToString();
+            Vector2 team0Size = font.MeasureString(team0Text);
+            Vector2 team1Size = font.MeasureString(team1Text);
+            Vector2 team0Pos = new Vector2(boardX + 37 - team0Size.X / 2f, boardY + 25);
+            Vector2 team1Pos = new Vector2(boardX + 150 - team1Size.X / 2f, boardY + 25);
+            spriteBatch.DrawString(font, team0Text, team0Pos, new Color(120, 190, 255));
+            spriteBatch.DrawString(font, team1Text, team1Pos, new Color(255, 140, 140));
 
-            // Timer
             int minutes = _timeRemaining / 60;
             int seconds = _timeRemaining % 60;
-            string timerText = $"Time: {minutes}:{seconds:D2}";
+            string timerText = $"{minutes}:{seconds:D2}";
             Vector2 timerSize = font.MeasureString(timerText);
             Color timerColor = _timeRemaining <= 10 ? Color.Red : Color.Yellow;
             spriteBatch.DrawString(font, timerText,
-                new Vector2((screenWidth - timerSize.X) / 2, 45), timerColor);
+                new Vector2(boardX + 60 - timerSize.X / 2f, boardY + 83), timerColor);
 
-            // Message
             if (_currentMessage != null)
             {
                 Vector2 msgSize = font.MeasureString(_currentMessage);
-                Vector2 msgPos = new Vector2((screenWidth - msgSize.X) / 2, 100);
+                Vector2 msgPos = new Vector2((screenWidth - msgSize.X) / 2, boardY + boardHeight + 16);
                 spriteBatch.DrawString(font, _currentMessage, msgPos + Vector2.One, Color.Black);
                 spriteBatch.DrawString(font, _currentMessage, msgPos, Color.Yellow);
             }
@@ -1225,6 +1276,8 @@ namespace HaCreator.MapSimulator.Fields
             _hitQueue.Clear();
             _team0Score = 0;
             _team1Score = 0;
+            _timeRemaining = 0;
+            _finishTick = 0;
             _currentMessage = null;
 
             // Reset all coconuts

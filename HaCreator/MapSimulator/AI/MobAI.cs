@@ -84,6 +84,7 @@ namespace HaCreator.MapSimulator.AI
         public float X { get; set; }
         public float Y { get; set; }
         public Rectangle Hitbox { get; set; }
+        public bool IsGrounded { get; set; }
         public int OwnerId { get; set; }
         public int AggroValue { get; set; }
         public int ExpirationTime { get; set; }
@@ -141,6 +142,7 @@ namespace HaCreator.MapSimulator.AI
         public bool IsRushAttack { get; set; }      // attackN/info/rush or info/attack/N/rush
         public bool IsJumpAttack { get; set; }      // attackN/info/jumpAttack or info/attack/N/jumpAttack
         public bool Tremble { get; set; }           // attackN/info/tremble or info/attack/N/tremble
+        public bool IsAngerAttack { get; set; }     // attackN/info/AngerAttack
 
         // Runtime state
         public int LastUseTime { get; set; }        // Tick when last used
@@ -313,6 +315,10 @@ namespace HaCreator.MapSimulator.AI
         private int _specialSpawnTime = int.MinValue;
         private bool _selfDestructTriggered = false;
         private bool _selfDestructPending = false;
+        private bool _hasAngerGauge = false;
+        private int _angerChargeTarget = 0;
+        private int _angerChargeCount = 0;
+        private int _angerAttackIndex = -1;
 
         // Status effects
         private MobStatusEffect _statusEffects = MobStatusEffect.None;
@@ -349,6 +355,10 @@ namespace HaCreator.MapSimulator.AI
         public bool CanTargetPlayer => _canTargetPlayer;
         public bool IsTargetingSummoned => _target.IsValid && _target.TargetType == MobTargetType.Summoned;
         public bool IsTargetingMob => _target.IsValid && _target.TargetType == MobTargetType.Mob;
+        public bool HasAngerGauge => _hasAngerGauge && _angerChargeTarget > 0;
+        public int AngerChargeTarget => _angerChargeTarget;
+        public int AngerChargeCount => _angerChargeCount;
+        public bool IsAngerCharged => HasAngerGauge && _angerChargeCount >= _angerChargeTarget;
 
         // Status effect properties
         public MobStatusEffect StatusEffects => _statusEffects;
@@ -400,6 +410,10 @@ namespace HaCreator.MapSimulator.AI
             _specialSpawnTime = int.MinValue;
             _selfDestructTriggered = false;
             _selfDestructPending = false;
+            _hasAngerGauge = false;
+            _angerChargeTarget = 0;
+            _angerChargeCount = 0;
+            _angerAttackIndex = -1;
 
             // Bosses have larger aggro range
             if (isBoss)
@@ -446,7 +460,19 @@ namespace HaCreator.MapSimulator.AI
 
         public void AddAttack(MobAttackEntry attack)
         {
+            if (attack?.IsAngerAttack == true)
+            {
+                _angerAttackIndex = _attacks.Count;
+            }
+
             _attacks.Add(attack);
+        }
+
+        public void ConfigureAngerGauge(bool hasAngerGauge, int chargeTarget)
+        {
+            _hasAngerGauge = hasAngerGauge && chargeTarget > 0;
+            _angerChargeTarget = _hasAngerGauge ? chargeTarget : 0;
+            _angerChargeCount = 0;
         }
 
         public void AddAttack(int attackId, string animName, int damage, int range, int cooldown = 1500, bool isRanged = false)
@@ -787,6 +813,11 @@ namespace HaCreator.MapSimulator.AI
                     return;
                 }
 
+                if (_state == MobAIState.Attack)
+                {
+                    ResolveAngerGaugeAfterAttack(_currentAttackIndex);
+                }
+
                 if (TryChainNextCombatAction(currentTick))
                 {
                     return;
@@ -1075,7 +1106,6 @@ namespace HaCreator.MapSimulator.AI
                                        GetStatusPercent(MobStatusEffect.MGuardUp) +
                                        GetStatusPercent(MobStatusEffect.HardSkin);
                 int bonusPercent = GetStatusPercent(MobStatusEffect.Ambush) +
-                                   GetStatusPercent(MobStatusEffect.Showdown) +
                                    GetStatusPercent(MobStatusEffect.Neutralise) +
                                    GetStatusPercent(MobStatusEffect.Weakness);
                 damage = ApplyPercentModifier(damage, bonusPercent - reductionPercent);
@@ -1091,7 +1121,6 @@ namespace HaCreator.MapSimulator.AI
                                        GetStatusPercent(MobStatusEffect.PGuardUp) +
                                        GetStatusPercent(MobStatusEffect.HardSkin);
                 int bonusPercent = GetStatusPercent(MobStatusEffect.Ambush) +
-                                   GetStatusPercent(MobStatusEffect.Showdown) +
                                    GetStatusPercent(MobStatusEffect.Weakness);
                 damage = ApplyPercentModifier(damage, bonusPercent - reductionPercent);
             }
@@ -1217,6 +1246,7 @@ namespace HaCreator.MapSimulator.AI
             _specialSpawnTime = int.MinValue;
             _selfDestructTriggered = false;
             _selfDestructPending = false;
+            _angerChargeCount = 0;
 
             // Reset boss aggro timeout state
             _bossAggroStartTime = 0;
@@ -1516,9 +1546,23 @@ namespace HaCreator.MapSimulator.AI
                 return -1;
             }
 
+            if (IsAngerCharged &&
+                _angerAttackIndex >= 0 &&
+                _angerAttackIndex < _attacks.Count &&
+                !_attacks[_angerAttackIndex].IsOnCooldown(currentTick) &&
+                _target.Distance <= _attacks[_angerAttackIndex].Range)
+            {
+                return _angerAttackIndex;
+            }
+
             for (int i = 0; i < _attacks.Count; i++)
             {
                 if (IsReservedSelfDestructAttack(i))
+                {
+                    continue;
+                }
+
+                if (i == _angerAttackIndex)
                 {
                     continue;
                 }
@@ -1534,7 +1578,7 @@ namespace HaCreator.MapSimulator.AI
 
         private int FindAvailableSkillIndex(int currentTick)
         {
-            if (IsSealed || !_target.IsValid || (_target.TargetType == MobTargetType.Player && !_canTargetPlayer))
+            if (IsSealed || HasStatusEffect(MobStatusEffect.SealSkill) || !_target.IsValid || (_target.TargetType == MobTargetType.Player && !_canTargetPlayer))
             {
                 return -1;
             }
@@ -1613,7 +1657,7 @@ namespace HaCreator.MapSimulator.AI
 
         private bool TryChainNextCombatAction(int currentTick)
         {
-            if (!_target.IsValid || !_canTargetPlayer)
+            if (!_target.IsValid || (_target.TargetType == MobTargetType.Player && !_canTargetPlayer))
             {
                 return false;
             }
@@ -1829,6 +1873,22 @@ namespace HaCreator.MapSimulator.AI
                 _deathTime = currentTick;
                 SetState(MobAIState.Death, currentTick);
             }
+        }
+
+        private void ResolveAngerGaugeAfterAttack(int attackIndex)
+        {
+            if (!HasAngerGauge || attackIndex < 0 || attackIndex >= _attacks.Count)
+            {
+                return;
+            }
+
+            if (attackIndex == _angerAttackIndex)
+            {
+                _angerChargeCount = 0;
+                return;
+            }
+
+            _angerChargeCount = Math.Min(_angerChargeTarget, _angerChargeCount + 1);
         }
         #endregion
 
