@@ -8,6 +8,7 @@ using HaCreator.MapSimulator.AI;
 using HaCreator.MapSimulator.Pools;
 using HaCreator.MapSimulator.Animation;
 using HaCreator.MapSimulator.Loaders;
+using HaCreator.MapSimulator.Companions;
 using MapleLib.WzLib;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
@@ -31,6 +32,7 @@ namespace HaCreator.MapSimulator.Character
         public CharacterConfigManager Config { get; private set; }
         public SkillManager Skills { get; private set; }
         public SkillLoader SkillLoader { get; private set; }
+        public PetController Pets { get; }
 
         public bool IsPlayerActive => Player != null && Player.IsAlive;
         public bool IsPlayerControlEnabled { get; set; } = true;
@@ -77,6 +79,7 @@ namespace HaCreator.MapSimulator.Character
 
             Input = new PlayerInput();
             Config = new CharacterConfigManager();
+            Pets = new PetController(device);
         }
 
         /// <summary>
@@ -236,6 +239,11 @@ namespace HaCreator.MapSimulator.Character
             Skills?.SetSoundManager(soundManager);
         }
 
+        public void SetCurrentMapIdProvider(Func<int> currentMapIdProvider)
+        {
+            Pets.SetCurrentMapIdProvider(currentMapIdProvider);
+        }
+
         /// <summary>
         /// Set spawn point
         /// </summary>
@@ -384,6 +392,7 @@ namespace HaCreator.MapSimulator.Character
 
             // Set spawn position and snap to foothold
             TeleportTo(_spawnPoint.X, _spawnPoint.Y);
+            Pets.EnsureDefaultPetActive(Player);
         }
 
         /// <summary>
@@ -447,6 +456,7 @@ namespace HaCreator.MapSimulator.Character
 
             // Set spawn position
             Player.SetPosition(_spawnPoint.X, _spawnPoint.Y);
+            Pets.EnsureDefaultPetActive(Player);
 
             System.Diagnostics.Debug.WriteLine($"Placeholder player created at ({_spawnPoint.X}, {_spawnPoint.Y})");
             return true;
@@ -459,6 +469,7 @@ namespace HaCreator.MapSimulator.Character
         {
             Player = null;
             Combat = null;
+            Pets.Clear();
         }
 
         #endregion
@@ -584,6 +595,7 @@ namespace HaCreator.MapSimulator.Character
 
             // Update skills (projectiles, buffs, cooldowns)
             Skills?.Update(currentTime, deltaTime);
+            Pets.Update(Player, _dropPool, currentTime, deltaTime);
 
             // Check mob attacks
             if (Combat != null && _mobPool != null)
@@ -613,6 +625,7 @@ namespace HaCreator.MapSimulator.Character
             }
 
             Player.Draw(spriteBatch, skeletonRenderer, mapShiftX, mapShiftY, centerX, centerY, currentTime);
+            Pets.Draw(spriteBatch, skeletonRenderer, mapShiftX, mapShiftY, centerX, centerY);
 
             // Draw skill effects and projectiles
             if (Skills != null)

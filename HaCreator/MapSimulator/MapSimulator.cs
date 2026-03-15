@@ -5185,6 +5185,7 @@ namespace HaCreator.MapSimulator
             _playerManager.SetDropPool(_dropPool);
             _playerManager.SetCombatEffects(_combatEffects);
             _playerManager.SetSoundManager(_soundManager);
+            _playerManager.SetCurrentMapIdProvider(() => _mapBoard?.MapInfo?.id ?? -1);
 
             // Set up sound callbacks
             _playerManager.SetJumpSoundCallback(PlayJumpSE);
