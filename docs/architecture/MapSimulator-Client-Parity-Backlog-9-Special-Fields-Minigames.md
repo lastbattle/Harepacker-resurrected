@@ -38,6 +38,9 @@ It does three things that the old notes did not do well:
 - `CField_Massacre::UpdateKeyAnimation` at `0x556bf0`
 - `CTimerboard_Massacre::Draw` at `0x557100`
 - `CField_Massacre::Init` at `0x5579d0`
+- `CMemoryGameDlg::OnButtonClicked` at `0x628df0`
+- `CMemoryGameDlg::OnCreate` at `0x62f3c0`
+- `CMemoryGameDlg::Draw` at `0x631cb0`
 - `CField_MonsterCarnival::CreateUIWindow` at `0x55a510`
 - `CField_MonsterCarnival::OnEnter` at `0x55a6c0`
 - `CField_MonsterCarnival::OnRequestResult` at `0x55a890`
@@ -87,6 +90,9 @@ These are the first functions to inspect before changing simulator behavior.
 - `CField_Massacre::OnClock` at `0x556af0`
 - `CField_Massacre::UpdateKeyAnimation` at `0x556bf0`
 - `CTimerboard_Massacre::Draw` at `0x557100`
+- `CMemoryGameDlg::OnButtonClicked` at `0x628df0`
+- `CMemoryGameDlg::OnCreate` at `0x62f3c0`
+- `CMemoryGameDlg::Draw` at `0x631cb0`
 - `CField_SnowBall::OnSnowBallState` at `0x560ab0`
 - `CField_SnowBall::OnSnowBallHit` at `0x5619d0`
 - `CField_SnowBall::OnSnowBallMsg` at `0x562040`
@@ -100,7 +106,7 @@ These are the first functions to inspect before changing simulator behavior.
 - `CTimerboard_SpaceGAGA::Draw` at `0x5626c0`
 
 Notes:
-IDA shows that these field modes are not generic map-rule variants. The client owns separate state machines, packet handlers, and timer or scoreboard widgets for Guild Boss, Coconut, Wedding, Witchtower, Massacre, SnowBall, Ariant Arena, Battlefield, Dojang, Cookie House, Monster Carnival, Party Raid, and SpaceGAGA, so parity work should be tracked separately from the broader field, combat, or UI backlog areas.
+IDA shows that these field modes are not generic map-rule variants. The client owns separate state machines, packet handlers, timer or scoreboard widgets, and even dedicated minigame dialog owners such as `CMemoryGameDlg` for Guild Boss, Coconut, Wedding, Witchtower, Massacre, SnowBall, Ariant Arena, Battlefield, Dojang, Cookie House, Monster Carnival, Party Raid, SpaceGAGA, and MiniRoom card games, so parity work should be tracked separately from the broader field, combat, or UI backlog areas.
 
 ## Current State Summary
 
@@ -127,6 +133,7 @@ This area is currently unowned by backlog documents even though the client and s
 | Partial | Wedding ceremony fields | The simulator already detects wedding maps, queues ceremony dialogs, and plays a simplified bless-effect sparkle pass, but it still does not mirror the client's full ceremony step scripting, NPC dialog sourcing, participant state flow, or packet-driven scene transitions owned by `CField_Wedding` | Wedding maps have visible simulator support today, so the remaining work is concrete client-sequence parity rather than generic effect polish | `SpecialEffectFields.cs`, `WeddingField` (`CField_Wedding::OnWeddingProgress`, `CField_Wedding::SetBlessEffect`) |
 | Partial | Witchtower score UI | The simulator already exposes a witchtower score tracker and draws a lightweight scoreboard, but it still lacks the client widget's exact score presentation, focus behavior, and broader event-state integration | This is already a visible special-field HUD, and IDA confirms the client uses a dedicated scoreboard owner rather than a generic overlay | `SpecialEffectFields.cs`, `WitchtowerField` (`CField_Witchtower::OnScoreUpdate`, `CScoreboard_Witchtower::Draw`) |
 | Partial | Massacre timerboard and gauge flow | The simulator already models massacre gauge growth, clear effects, and a basic field HUD, but it still does not match the client's clock setup, key-animation cadence, and full result or timerboard lifecycle | Hunting-event maps depend on dedicated timer and gauge behavior that the client does not route through the normal status bar | `SpecialEffectFields.cs`, `MassacreField` (`CField_Massacre::OnClock`, `CField_Massacre::UpdateKeyAnimation`, `CTimerboard_Massacre::Draw`) |
+| Missing | Memory Game and MiniRoom card parity | IDA shows `CMemoryGameDlg` owns a dedicated Memory Game or Match Cards dialog with its own creation path, draw surface, and button-click flow, but the simulator does not currently expose the corresponding board state, turn flow, card-reveal rules, or room-driven UI shell | MiniRoom parity is not only about a generic room container; one of the client’s most visible room minigames has its own concrete dialog owner and interaction model that remains entirely absent | minigame room runtime, board UI layer (`CMemoryGameDlg::OnCreate`, `CMemoryGameDlg::Draw`, `CMemoryGameDlg::OnButtonClicked`) |
 | Partial | Snowball minigame runtime | The simulator already has snowball field state, hit, message, touch-zone handling, and simple win detection, but it still does not reproduce the client's full action cadence, snowman stun rules, team scoring flow, and result handling | Snowball is one of the clearer cases where the simulator has a usable baseline but not the client-owned minigame loop | `MinigameFields.cs`, `SnowBallField` (`CField_SnowBall::OnSnowBallState`, `CField_SnowBall::BasicActionAttack`, `CField_SnowBall::OnSnowBallHit`, `CField_SnowBall::OnSnowBallMsg`, `CField_SnowBall::OnSnowBallTouch`) |
 | Missing | Ariant Arena field flow | IDA shows dedicated score and result handlers for Ariant Arena, but the simulator does not currently expose a corresponding event runtime, ranking surface, or result presentation | Arena scoring and ranking are owned by a dedicated field class in the client and are not covered by generic mob or UI behavior | special field runtime, ranking or result UI (`CField_AriantArena::OnUserScore`, `CField_AriantArena::OnShowResult`) |
 | Missing | Battlefield event flow | The client has a dedicated battlefield field class with team-change, score-update, and clock handlers, but the simulator does not appear to surface that event mode today | Battlefield maps depend on a team-scoring field runtime rather than only ordinary combat rules | special field runtime, scoreboard layer (`CField_Battlefield::OnClock`, `CField_Battlefield::OnScoreUpdate`) |
@@ -143,7 +150,7 @@ If the goal is visible parity first, the next work in this area should be sequen
 1. Existing-special-field refinement pass:
    Tighten Wedding, Witchtower, Massacre, and SnowBall behavior against the client owners that already have simulator counterparts.
 2. Missing-event-field bring-up pass:
-   Add Monster Carnival, Party Raid, and SpaceGAGA runtime shells so the major field-specific owners present in the client are at least represented in the simulator.
+   Add Monster Carnival, Party Raid, SpaceGAGA, and MiniRoom card-game runtime shells so the major field-specific owners present in the client are at least represented in the simulator.
 3. Packet and HUD parity pass:
    Match timerboard, scoreboard, and result-surface behavior before extending generic field systems again.
 
