@@ -1733,7 +1733,149 @@ namespace HaCreator.MapSimulator.Loaders
                 }
             }
 
+            RegisterProgressionUtilityPlaceholderWindows(manager, basicImage, soundUIImage, device, screenWidth, screenHeight);
+
             return manager;
+        }
+
+        private static void RegisterProgressionUtilityPlaceholderWindows(
+            UIWindowManager manager,
+            WzImage basicImage,
+            WzImage soundUIImage,
+            GraphicsDevice device,
+            int screenWidth,
+            int screenHeight)
+        {
+            if (manager == null)
+            {
+                return;
+            }
+
+            int x = Math.Max(40, (screenWidth / 2) - 160);
+            int y = Math.Max(40, (screenHeight / 2) - 120);
+            const int cascade = 24;
+
+            RegisterPlaceholderWindow(manager, basicImage, soundUIImage, device,
+                MapSimulatorWindowNames.WorldMap, "World Map",
+                "Scaffold owner for the minimap full-map transition and region overlay flow.",
+                new Point(x, y));
+            RegisterPlaceholderWindow(manager, basicImage, soundUIImage, device,
+                MapSimulatorWindowNames.MapTransfer, "Map Transfer",
+                "Scaffold owner for the dedicated map transfer and destination selection flow.",
+                new Point(x + cascade, y + cascade));
+            RegisterPlaceholderWindow(manager, basicImage, soundUIImage, device,
+                MapSimulatorWindowNames.CashShop, "Cash Shop",
+                "Scaffold owner for the client cash-service dialog lifecycle.",
+                new Point(x + (cascade * 2), y + (cascade * 2)));
+            RegisterPlaceholderWindow(manager, basicImage, soundUIImage, device,
+                MapSimulatorWindowNames.Mts, "MTS",
+                "Scaffold owner for the secondary cash-service entry point routed from the status bar.",
+                new Point(x + (cascade * 3), y + (cascade * 3)));
+            RegisterPlaceholderWindow(manager, basicImage, soundUIImage, device,
+                MapSimulatorWindowNames.Menu, "Menu",
+                "Scaffold owner for the status-bar menu button until a client-accurate utility surface is added.",
+                new Point(x + (cascade * 4), y + (cascade * 4)));
+            RegisterPlaceholderWindow(manager, basicImage, soundUIImage, device,
+                MapSimulatorWindowNames.System, "System",
+                "Scaffold owner for the status-bar system button until a client-accurate utility surface is added.",
+                new Point(x + (cascade * 5), y + (cascade * 5)));
+            RegisterPlaceholderWindow(manager, basicImage, soundUIImage, device,
+                MapSimulatorWindowNames.WorldSelect, "World Select",
+                "Scaffold owner for the world-selection stage in the channel switching flow.",
+                new Point(x + (cascade * 6), y + (cascade * 6)));
+            RegisterPlaceholderWindow(manager, basicImage, soundUIImage, device,
+                MapSimulatorWindowNames.ChannelSelect, "Channel Select",
+                "Scaffold owner for the channel-selection surface reached from world selection.",
+                new Point(x + (cascade * 7), y + (cascade * 7)));
+            RegisterPlaceholderWindow(manager, basicImage, soundUIImage, device,
+                MapSimulatorWindowNames.ChannelShift, "Channel Shift",
+                "Scaffold owner for the separate channel transition surface noted in the client.",
+                new Point(x + (cascade * 8), y + (cascade * 8)));
+            RegisterPlaceholderWindow(manager, basicImage, soundUIImage, device,
+                MapSimulatorWindowNames.ItemMaker, "Item Maker",
+                "Scaffold owner for the dedicated crafting and recipe interaction window.",
+                new Point(x + (cascade * 9), y + (cascade * 9)));
+            RegisterPlaceholderWindow(manager, basicImage, soundUIImage, device,
+                MapSimulatorWindowNames.ItemUpgrade, "Item Upgrade",
+                "Scaffold owner for the dedicated item enhancement flow.",
+                new Point(x + (cascade * 10), y + (cascade * 10)));
+            RegisterPlaceholderWindow(manager, basicImage, soundUIImage, device,
+                MapSimulatorWindowNames.CharacterInfo, "Character Info",
+                "Scaffold owner for the separate character profile surface beyond the stat window.",
+                new Point(x + (cascade * 11), y + (cascade * 11)));
+            RegisterPlaceholderWindow(manager, basicImage, soundUIImage, device,
+                MapSimulatorWindowNames.QuestDetail, "Quest Detail",
+                "Scaffold owner for the dedicated quest detail and action pane.",
+                new Point(x + (cascade * 12), y + (cascade * 12)));
+            RegisterPlaceholderWindow(manager, basicImage, soundUIImage, device,
+                MapSimulatorWindowNames.QuestAlarm, "Quest Alarm",
+                "Scaffold owner for the standalone quest progress tracker surface.",
+                new Point(x + (cascade * 13), y + (cascade * 13)));
+        }
+
+        private static void RegisterPlaceholderWindow(
+            UIWindowManager manager,
+            WzImage basicImage,
+            WzImage soundUIImage,
+            GraphicsDevice device,
+            string windowName,
+            string title,
+            string body,
+            Point position)
+        {
+            if (manager.GetWindow(windowName) != null)
+            {
+                return;
+            }
+
+            PlaceholderUtilityWindow window = CreatePlaceholderUtilityWindow(
+                basicImage,
+                soundUIImage,
+                device,
+                windowName,
+                title,
+                body,
+                position);
+            manager.RegisterCustomWindow(window);
+        }
+
+        private static PlaceholderUtilityWindow CreatePlaceholderUtilityWindow(
+            WzImage basicImage,
+            WzImage soundUIImage,
+            GraphicsDevice device,
+            string windowName,
+            string title,
+            string body,
+            Point position)
+        {
+            const int width = 292;
+            const int height = 148;
+
+            Texture2D bgTexture = CreatePlaceholderWindowTexture(device, width, height, title);
+            IDXObject frame = new DXObject(0, 0, bgTexture, 0);
+            PlaceholderUtilityWindow window = new PlaceholderUtilityWindow(frame, windowName, title, body)
+            {
+                Position = position
+            };
+
+            WzBinaryProperty btClickSound = (WzBinaryProperty)soundUIImage?["BtMouseClick"];
+            WzBinaryProperty btOverSound = (WzBinaryProperty)soundUIImage?["BtMouseOver"];
+            WzSubProperty closeButtonProperty = (WzSubProperty)basicImage?["BtClose"];
+            if (closeButtonProperty != null)
+            {
+                try
+                {
+                    UIObject closeBtn = new UIObject(closeButtonProperty, btClickSound, btOverSound, false, Point.Zero, device);
+                    closeBtn.X = width - closeBtn.CanvasSnapshotWidth - 8;
+                    closeBtn.Y = 8;
+                    window.InitializeCloseButton(closeBtn);
+                }
+                catch
+                {
+                }
+            }
+
+            return window;
         }
         #endregion
     }

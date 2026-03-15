@@ -217,15 +217,30 @@ namespace HaCreator.MapSimulator.UI {
 
             // Add buttons with null checks (pre-BigBang may have fewer buttons)
             if (obj_Ui_BtCashShop != null)
+            {
                 uiButtons.Add(obj_Ui_BtCashShop);
+                obj_Ui_BtCashShop.ButtonClickReleased += _ => CashShopRequested?.Invoke();
+            }
             if (obj_Ui_BtMTS != null)
+            {
                 uiButtons.Add(obj_Ui_BtMTS);
+                obj_Ui_BtMTS.ButtonClickReleased += _ => MtsRequested?.Invoke();
+            }
             if (obj_Ui_BtMenu != null)
+            {
                 uiButtons.Add(obj_Ui_BtMenu);
+                obj_Ui_BtMenu.ButtonClickReleased += _ => MenuRequested?.Invoke();
+            }
             if (obj_Ui_BtSystem != null)
+            {
                 uiButtons.Add(obj_Ui_BtSystem);
+                obj_Ui_BtSystem.ButtonClickReleased += _ => SystemRequested?.Invoke();
+            }
             if (obj_Ui_BtChannel != null)
+            {
                 uiButtons.Add(obj_Ui_BtChannel);
+                obj_Ui_BtChannel.ButtonClickReleased += _ => ChannelRequested?.Invoke();
+            }
 
             uiButtons.AddRange(otherUI);
 
@@ -258,6 +273,11 @@ namespace HaCreator.MapSimulator.UI {
         }
 
         public Action<int> BuffCancelRequested { get; set; }
+        public Action CashShopRequested { get; set; }
+        public Action MtsRequested { get; set; }
+        public Action MenuRequested { get; set; }
+        public Action SystemRequested { get; set; }
+        public Action ChannelRequested { get; set; }
 
         /// <summary>
         /// Set the pixel texture for drawing gauge bars

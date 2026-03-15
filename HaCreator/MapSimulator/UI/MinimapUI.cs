@@ -35,6 +35,9 @@ namespace HaCreator.MapSimulator.UI
         private int _playerMinimapX = 0;
         private int _playerMinimapY = 0;
 
+        public Action FullMapRequested { get; set; }
+        public Action MapTransferRequested { get; set; }
+
         /// <summary>
         /// Sets the player's position on the minimap.
         /// Call this before Draw() to update the yellow dot position.
@@ -317,6 +320,7 @@ namespace HaCreator.MapSimulator.UI
         /// <param name="sender"></param>
         private void ObjUIBtBig_ButtonClickReleased(UIObject sender)
         {
+            FullMapRequested?.Invoke();
         }
 
         /// <summary>
@@ -325,6 +329,7 @@ namespace HaCreator.MapSimulator.UI
         /// <param name="sender"></param>
         private void ObjUIBtMap_ButtonClickReleased(UIObject sender)
         {
+            MapTransferRequested?.Invoke();
         }
 
         #endregion

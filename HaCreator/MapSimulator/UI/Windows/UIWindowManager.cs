@@ -38,12 +38,12 @@ namespace HaCreator.MapSimulator.UI
         // Keyboard toggle bindings
         private readonly Dictionary<Keys, string> keyBindings = new Dictionary<Keys, string>
         {
-            { Keys.I, "Inventory" },
-            { Keys.E, "Equipment" },
-            { Keys.S, "Skills" },
-            { Keys.Q, "Quest" },
-            { Keys.A, "Ability" },
-            { Keys.OemTilde, "QuickSlot" }  // ` key toggles quick slot bar
+            { Keys.I, MapSimulatorWindowNames.Inventory },
+            { Keys.E, MapSimulatorWindowNames.Equipment },
+            { Keys.S, MapSimulatorWindowNames.Skills },
+            { Keys.Q, MapSimulatorWindowNames.Quest },
+            { Keys.A, MapSimulatorWindowNames.Ability },
+            { Keys.OemTilde, MapSimulatorWindowNames.QuickSlot }  // ` key toggles quick slot bar
             // Note: SkillMacro window is opened via MACRO button in Skill window, not keyboard shortcut
         };
 
@@ -149,6 +149,14 @@ namespace HaCreator.MapSimulator.UI
         {
             SkillMacroWindow = skillMacroWindow;
             RegisterWindow(skillMacroWindow);
+        }
+
+        /// <summary>
+        /// Register a custom or placeholder utility window with the manager.
+        /// </summary>
+        public void RegisterCustomWindow(UIWindowBase window)
+        {
+            RegisterWindow(window);
         }
 
         /// <summary>
