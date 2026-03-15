@@ -761,6 +761,11 @@ namespace HaCreator.MapSimulator.UI
 
             _skillManager?.RevalidateHotkeys();
 
+            if (_isDragging && _skillManager?.GetHotkeySkill(_dragSourceSlot) != _dragSkillId)
+            {
+                CancelDrag();
+            }
+
             // Get mouse state for hover detection
             var mouseState = Mouse.GetState();
             OnMouseMove(mouseState.X, mouseState.Y);

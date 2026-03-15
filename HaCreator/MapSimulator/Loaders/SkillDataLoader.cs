@@ -8,6 +8,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Diagnostics;
+using System.Linq;
 using System.Text;
 using System.Text.RegularExpressions;
 
@@ -18,6 +19,18 @@ namespace HaCreator.MapSimulator.Loaders
     /// </summary>
     public static class SkillDataLoader
     {
+        public readonly struct RecommendedSkillEntry
+        {
+            public RecommendedSkillEntry(int spentSpThreshold, int skillId)
+            {
+                SpentSpThreshold = spentSpThreshold;
+                SkillId = skillId;
+            }
+
+            public int SpentSpThreshold { get; }
+            public int SkillId { get; }
+        }
+
         /// <summary>
         /// Job ID to skill book image mapping
         /// Beginner: 000.img, Warriors: 100.img, etc.
@@ -109,6 +122,29 @@ namespace HaCreator.MapSimulator.Loaders
 
             Debug.WriteLine($"[SkillDataLoader] Total skills loaded for job {jobId}: {skills.Count}");
             return skills;
+        }
+
+        public static IReadOnlyList<RecommendedSkillEntry> LoadRecommendedSkillEntries(
+            int jobId,
+            IEnumerable<int> validSkillIds = null)
+        {
+            WzImage recommendSkillImage = Program.FindImage("Etc", "RecommendSkill.img");
+            if (recommendSkillImage == null)
+                return Array.Empty<RecommendedSkillEntry>();
+
+            if (recommendSkillImage[jobId.ToString(CultureInfo.InvariantCulture)] is not WzSubProperty recommendProperty)
+                return Array.Empty<RecommendedSkillEntry>();
+
+            var validSkillIdSet = validSkillIds != null
+                ? new HashSet<int>(validSkillIds)
+                : new HashSet<int>();
+            if (validSkillIdSet.Count == 0)
+                return Array.Empty<RecommendedSkillEntry>();
+
+            if (!TryBuildRecommendedSkillEntries(recommendProperty, validSkillIdSet, out List<RecommendedSkillEntry> entries))
+                return Array.Empty<RecommendedSkillEntry>();
+
+            return entries;
         }
 
         /// <summary>
@@ -869,6 +905,71 @@ namespace HaCreator.MapSimulator.Loaders
                 return name;
 
             return $"Job {jobId}";
+        }
+
+        private static bool TryBuildRecommendedSkillEntries(
+            WzImageProperty property,
+            ISet<int> validSkillIds,
+            out List<RecommendedSkillEntry> entries)
+        {
+            entries = null;
+            if (property?.WzProperties == null || property.WzProperties.Count < 2)
+                return false;
+
+            entries = new List<RecommendedSkillEntry>();
+            foreach (WzImageProperty child in property.WzProperties)
+            {
+                if (child == null)
+                    return false;
+
+                if (!int.TryParse(child.Name, NumberStyles.Integer, CultureInfo.InvariantCulture, out int spentSpThreshold) ||
+                    spentSpThreshold < 0 ||
+                    !TryGetIntValue(child, out int skillId) ||
+                    !validSkillIds.Contains(skillId))
+                {
+                    return false;
+                }
+
+                entries.Add(new RecommendedSkillEntry(spentSpThreshold, skillId));
+            }
+
+            if (entries.Count < 2)
+                return false;
+
+            entries.Sort((left, right) =>
+            {
+                int thresholdCompare = left.SpentSpThreshold.CompareTo(right.SpentSpThreshold);
+                return thresholdCompare != 0 ? thresholdCompare : left.SkillId.CompareTo(right.SkillId);
+            });
+            return true;
+        }
+
+        private static bool TryGetIntValue(WzObject node, out int value)
+        {
+            value = 0;
+
+            switch (node)
+            {
+                case WzIntProperty intProperty:
+                    value = intProperty.Value;
+                    return true;
+                case WzShortProperty shortProperty:
+                    value = shortProperty.Value;
+                    return true;
+                case WzLongProperty longProperty:
+                    value = (int)longProperty.Value;
+                    return true;
+                case WzFloatProperty floatProperty:
+                    value = (int)Math.Round(floatProperty.Value, MidpointRounding.AwayFromZero);
+                    return true;
+            }
+
+            if (node is WzImageProperty imageProperty && imageProperty.WzProperties != null && imageProperty.WzProperties.Count == 1)
+            {
+                return TryGetIntValue(imageProperty.WzProperties[0], out value);
+            }
+
+            return false;
         }
 
         private sealed class FormulaParser

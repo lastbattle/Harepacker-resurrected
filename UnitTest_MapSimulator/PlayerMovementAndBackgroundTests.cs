@@ -984,6 +984,76 @@ namespace UnitTest_MapSimulator
             Assert.Same(sitFrame, passengerAttackResult);
         }
 
+        [Fact]
+        public void CharacterAssembler_MechanicRideActions_UseRideFramesAndHideBaseAvatar()
+        {
+            var bodyTexture = new Mock<IDXObject>();
+            bodyTexture.SetupGet(x => x.Width).Returns(40);
+            bodyTexture.SetupGet(x => x.Height).Returns(60);
+
+            var rideTexture = new Mock<IDXObject>();
+            rideTexture.SetupGet(x => x.Width).Returns(120);
+            rideTexture.SetupGet(x => x.Height).Returns(90);
+
+            var body = new BodyPart();
+            var bodyStandFrame = new CharacterFrame
+            {
+                Texture = bodyTexture.Object,
+                Delay = 90
+            };
+            bodyStandFrame.Map["navel"] = new Microsoft.Xna.Framework.Point(12, 18);
+            var bodyStandAnimation = new CharacterAnimation();
+            bodyStandAnimation.Frames.Add(bodyStandFrame);
+            body.Animations["stand1"] = bodyStandAnimation;
+
+            var head = new BodyPart();
+            var headStandFrame = new CharacterFrame
+            {
+                Texture = bodyTexture.Object,
+                Delay = 90
+            };
+            headStandFrame.Map["neck"] = new Microsoft.Xna.Framework.Point(5, 4);
+            var headStandAnimation = new CharacterAnimation();
+            headStandAnimation.Frames.Add(headStandFrame);
+            head.Animations["stand1"] = headStandAnimation;
+
+            var mechanicMount = new CharacterPart
+            {
+                ItemId = 1932016,
+                Type = CharacterPartType.TamingMob,
+                Slot = EquipSlot.TamingMob
+            };
+            var tankLaserFrame = new CharacterFrame
+            {
+                Texture = rideTexture.Object,
+                Delay = 240,
+                Z = "body"
+            };
+            tankLaserFrame.Map["navel"] = new Microsoft.Xna.Framework.Point(30, 50);
+            var tankLaserAnimation = new CharacterAnimation();
+            tankLaserAnimation.Frames.Add(tankLaserFrame);
+            mechanicMount.Animations["tank_laser"] = tankLaserAnimation;
+
+            var build = new CharacterBuild
+            {
+                Body = body,
+                Head = head
+            };
+            build.Equip(mechanicMount);
+
+            var assembler = new CharacterAssembler(build);
+
+            AssembledFrame[] frames = assembler.GetAnimation("tank_laser");
+
+            Assert.Single(frames);
+            Assert.Equal(240, frames[0].Duration);
+            Assert.Single(frames[0].Parts);
+            Assert.Equal(CharacterPartType.TamingMob, frames[0].Parts[0].PartType);
+            Assert.Same(mechanicMount, frames[0].Parts[0].SourcePart);
+            Assert.Equal(-30, frames[0].Parts[0].OffsetX);
+            Assert.Equal(-50, frames[0].Parts[0].OffsetY);
+        }
+
         [Theory]
         [InlineData(35001001, "flamethrower", "flamethrower", "flamethrower", "flamethrower")]
         [InlineData(35101009, "flamethrower2", "flamethrower2", "flamethrower2", "flamethrower2")]
@@ -1227,6 +1297,41 @@ namespace UnitTest_MapSimulator
             Assert.True(currentCast.SuppressEffectAnimation);
 
             player.Update(1119, 0.016f);
+            Assert.True(player.HasSkillAvatarEffect(skill.SkillId));
+
+            updateBuffs!.Invoke(skillManager, new object[] { 2001 });
+            player.Update(2001, 0.016f);
+            Assert.False(player.HasSkillAvatarEffect(skill.SkillId));
+        }
+
+        [Fact]
+        public void SkillManager_InvisibleSwallowBuffs_PromoteEffectToClientOwnedAvatarLayer()
+        {
+            var player = new PlayerCharacter(device: null, texturePool: null, build: null);
+            var skillManager = new SkillManager(new SkillLoader(skillWz: null, device: null, texturePool: null), player);
+            var applyBuff = typeof(SkillManager).GetMethod("ApplyBuff", BindingFlags.Instance | BindingFlags.NonPublic);
+            var updateBuffs = typeof(SkillManager).GetMethod("UpdateBuffs", BindingFlags.Instance | BindingFlags.NonPublic);
+
+            Assert.NotNull(applyBuff);
+            Assert.NotNull(updateBuffs);
+
+            var skill = new SkillData
+            {
+                SkillId = 33101006,
+                MaxLevel = 1,
+                Name = "Test Swallow Buff",
+                IsBuff = true,
+                Invisible = true,
+                Effect = CreateSkillAnimation("effect", 60, 60)
+            };
+            skill.Levels[1] = new SkillLevelData
+            {
+                Level = 1,
+                Time = 1
+            };
+
+            applyBuff!.Invoke(skillManager, new object[] { skill, 1, 1000 });
+
             Assert.True(player.HasSkillAvatarEffect(skill.SkillId));
 
             updateBuffs!.Invoke(skillManager, new object[] { 2001 });
@@ -1482,6 +1587,71 @@ namespace UnitTest_MapSimulator
             Assert.Same(mechanicMount, build.Equipment[EquipSlot.TamingMob]);
             Assert.True(player.HasSkillAvatarTransform(35121005));
             Assert.False(player.HasSkillAvatarTransform(35121013));
+        }
+
+        [Fact]
+        public void SkillManager_MechanicSiegeRepeatSustain_BlocksOtherSkillCastsUntilExpiry()
+        {
+            var build = new CharacterBuild
+            {
+                Body = new BodyPart(),
+                Head = new BodyPart()
+            };
+            var player = new PlayerCharacter(device: null, texturePool: null, build);
+            var foothold = CreateFoothold(0, 100, 200, 100);
+            var skillManager = new SkillManager(new SkillLoader(skillWz: null, device: null, texturePool: null), player);
+            var startCast = typeof(SkillManager).GetMethod("StartCast", BindingFlags.Instance | BindingFlags.NonPublic);
+            var availableSkillsField = typeof(SkillManager).GetField("_availableSkills", BindingFlags.Instance | BindingFlags.NonPublic);
+
+            Assert.NotNull(startCast);
+            Assert.NotNull(availableSkillsField);
+
+            player.SetPosition(100, 100);
+            player.Physics.LandOnFoothold(foothold);
+            player.SetFootholdLookup(CreateFootholdLookup(foothold));
+
+            var siegeSkill = new SkillData
+            {
+                SkillId = 35111004,
+                MaxLevel = 1,
+                ActionName = "siege_pre",
+                IsBuff = true,
+                OnlyNormalAttackInState = true,
+                Levels =
+                {
+                    [1] = new SkillLevelData
+                    {
+                        Level = 1,
+                        Time = 1
+                    }
+                }
+            };
+            var otherSkill = new SkillData
+            {
+                SkillId = 1001004,
+                MaxLevel = 1,
+                IsBuff = true,
+                Levels =
+                {
+                    [1] = new SkillLevelData
+                    {
+                        Level = 1,
+                        Time = 10
+                    }
+                }
+            };
+
+            availableSkillsField!.SetValue(skillManager, new System.Collections.Generic.List<SkillData> { siegeSkill, otherSkill });
+            skillManager.SetSkillLevel(siegeSkill.SkillId, 1);
+            skillManager.SetSkillLevel(otherSkill.SkillId, 1);
+
+            startCast!.Invoke(skillManager, new object[] { siegeSkill, 1, 1200 });
+
+            skillManager.Update(1800, 0.016f);
+            Assert.False(skillManager.TryCastSkill(otherSkill.SkillId, 1800));
+
+            skillManager.Update(2201, 0.016f);
+            Assert.True(skillManager.TryCastSkill(otherSkill.SkillId, 2201));
         }
 
         [Theory]

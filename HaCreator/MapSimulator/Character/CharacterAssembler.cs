@@ -88,6 +88,8 @@ namespace HaCreator.MapSimulator.Character
     /// </summary>
     public class CharacterAssembler
     {
+        private const int MechanicTamingMobItemId = 1932016;
+
         private static readonly IReadOnlyDictionary<string, string[]> TamingMobActionAliases =
             new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase)
             {
@@ -250,13 +252,19 @@ namespace HaCreator.MapSimulator.Character
         private AssembledFrame[] AssembleAnimation(string actionName)
         {
             var frames = new List<AssembledFrame>();
+            CharacterPart activeTamingMob = GetActiveTamingMobPart();
+            bool suppressBaseAvatar = ShouldSuppressBaseAvatarForTamingMob(activeTamingMob, actionName);
 
             // Get body animation as the base (determines frame count and timing)
-            var bodyAnim = _build.Body?.GetAnimation(CharacterPart.ParseActionString(actionName));
+            CharacterAnimation bodyAnim = suppressBaseAvatar
+                ? GetPartAnimation(activeTamingMob, actionName)
+                : _build.Body?.GetAnimation(CharacterPart.ParseActionString(actionName));
             if (bodyAnim == null || bodyAnim.Frames.Count == 0)
             {
                 // Try stand1 as fallback
-                bodyAnim = _build.Body?.GetAnimation(CharacterAction.Stand1);
+                bodyAnim = suppressBaseAvatar
+                    ? GetPartAnimation(activeTamingMob, CharacterPart.GetActionString(CharacterAction.Stand1))
+                    : _build.Body?.GetAnimation(CharacterAction.Stand1);
             }
 
             if (bodyAnim == null || bodyAnim.Frames.Count == 0)
@@ -285,17 +293,22 @@ namespace HaCreator.MapSimulator.Character
             };
 
             var parts = new List<AssembledPart>();
+            CharacterPart activeTamingMob = GetActiveTamingMobPart();
+            bool suppressBaseAvatar = ShouldSuppressBaseAvatarForTamingMob(activeTamingMob, actionName);
 
             // Body is the anchor point - navel at origin
             Point bodyNavel = bodyFrame.GetMapPoint(MAP_NAVEL);
             Point baseOffset = new Point(-bodyNavel.X, -bodyNavel.Y);
 
-            // Add body
-            AddPart(parts, bodyFrame, baseOffset, CharacterPartType.Body, _build.Body);
+            if (!suppressBaseAvatar)
+            {
+                // Add body
+                AddPart(parts, bodyFrame, baseOffset, CharacterPartType.Body, _build.Body);
+            }
 
             // Add head - connects to body's neck
             Point bodyNeck = bodyFrame.GetMapPoint(MAP_NECK);
-            var headFrame = GetPartFrame(_build.Head, actionName, frameIndex);
+            CharacterFrame headFrame = suppressBaseAvatar ? null : GetPartFrame(_build.Head, actionName, frameIndex);
 
             // Debug: log what we're getting
             if (frameIndex == 0)
@@ -308,7 +321,7 @@ namespace HaCreator.MapSimulator.Character
             }
 
             Point? headOffset = null;
-            if (headFrame != null)
+            if (!suppressBaseAvatar && headFrame != null)
             {
                 Point headNeck = headFrame.GetMapPoint(MAP_NECK);
                 headOffset = new Point(
@@ -378,6 +391,11 @@ namespace HaCreator.MapSimulator.Character
             // Add equipment
             foreach (var kv in _build.Equipment)
             {
+                if (suppressBaseAvatar && kv.Key != EquipSlot.TamingMob)
+                {
+                    continue;
+                }
+
                 var equipFrame = GetPartFrame(kv.Value, actionName, frameIndex);
                 if (equipFrame == null) continue;
 
@@ -394,6 +412,45 @@ namespace HaCreator.MapSimulator.Character
             CalculateBounds(assembled);
 
             return assembled;
+        }
+
+        private CharacterPart GetActiveTamingMobPart()
+        {
+            return _build?.Equipment != null
+                && _build.Equipment.TryGetValue(EquipSlot.TamingMob, out CharacterPart tamingMobPart)
+                ? tamingMobPart
+                : null;
+        }
+
+        private static bool ShouldSuppressBaseAvatarForTamingMob(CharacterPart tamingMobPart, string actionName)
+        {
+            return tamingMobPart?.Type == CharacterPartType.TamingMob
+                   && tamingMobPart.ItemId == MechanicTamingMobItemId
+                   && IsMechanicVehicleAction(actionName);
+        }
+
+        private static bool IsMechanicVehicleAction(string actionName)
+        {
+            if (string.IsNullOrWhiteSpace(actionName))
+            {
+                return false;
+            }
+
+            return actionName.StartsWith("tank_", StringComparison.OrdinalIgnoreCase)
+                   || actionName.StartsWith("siege_", StringComparison.OrdinalIgnoreCase)
+                   || actionName.StartsWith("flamethrower", StringComparison.OrdinalIgnoreCase)
+                   || actionName.StartsWith("rbooster", StringComparison.OrdinalIgnoreCase)
+                   || actionName.StartsWith("gatlingshot", StringComparison.OrdinalIgnoreCase)
+                   || actionName.StartsWith("drillrush", StringComparison.OrdinalIgnoreCase)
+                   || actionName.StartsWith("earthslug", StringComparison.OrdinalIgnoreCase)
+                   || actionName.StartsWith("rpunch", StringComparison.OrdinalIgnoreCase)
+                   || actionName.StartsWith("mbooster", StringComparison.OrdinalIgnoreCase)
+                   || actionName.StartsWith("msummon", StringComparison.OrdinalIgnoreCase)
+                   || actionName.StartsWith("mRush", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(actionName, "ride2", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(actionName, "getoff2", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(actionName, "herbalism_mechanic", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(actionName, "mining_mechanic", StringComparison.OrdinalIgnoreCase);
         }
 
         private void AddPart(

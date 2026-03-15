@@ -9,6 +9,7 @@ using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using Spine;
 using System.IO;
+using System.Linq;
 
 namespace HaCreator.MapSimulator.Character
 {
@@ -1453,6 +1454,8 @@ namespace HaCreator.MapSimulator.Character
             State = PlayerState.Attacking;
             _sustainedSkillAnimation = false;
 
+            actionName = ResolveActiveSkillSpecificActionName(actionName);
+
             if (string.IsNullOrEmpty(actionName))
                 actionName = "attack1";
 
@@ -2456,6 +2459,32 @@ namespace HaCreator.MapSimulator.Character
             return null;
         }
 
+        private string ResolveActiveSkillSpecificActionName(string actionName)
+        {
+            if (string.IsNullOrWhiteSpace(actionName)
+                || actionName.StartsWith("tank_", StringComparison.OrdinalIgnoreCase)
+                || _activeSkillAvatarTransform == null)
+            {
+                return actionName;
+            }
+
+            if (!HasTankSkillTransformPrefix())
+            {
+                return actionName;
+            }
+
+            string tankActionName = $"tank_{actionName}";
+            return HasAvatarAction(tankActionName)
+                ? tankActionName
+                : actionName;
+        }
+
+        private bool HasTankSkillTransformPrefix()
+        {
+            return EnumerateTransformActionNames(_activeSkillAvatarTransform?.StandActionNames)
+                .Any(actionName => actionName.StartsWith("tank_", StringComparison.OrdinalIgnoreCase));
+        }
+
         private IEnumerable<string> EnumerateTransformActionNames(params IReadOnlyList<string>[] actionGroups)
         {
             if (actionGroups == null)
@@ -2518,6 +2547,9 @@ namespace HaCreator.MapSimulator.Character
                 case 35121013:
                     transform = CreateMechanicTransform(skillId, "tank_siegestand", "tank_siegestand", "tank_siegeattack", "tank_siegestand", "tank_siegeafter", locksMovement: true);
                     return true;
+                case 35101004:
+                    transform = CreateRocketBoosterTransform(skillId, normalizedAction);
+                    return true;
             }
 
             if (string.Equals(normalizedAction, "flamethrower", StringComparison.OrdinalIgnoreCase))
@@ -2556,9 +2588,11 @@ namespace HaCreator.MapSimulator.Character
                 return true;
             }
 
-            if (string.Equals(normalizedAction, "rbooster", StringComparison.OrdinalIgnoreCase))
+            if (string.Equals(normalizedAction, "rbooster", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(normalizedAction, "rbooster_pre", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(normalizedAction, "tank_rbooster_pre", StringComparison.OrdinalIgnoreCase))
             {
-                transform = CreateSingleActionTransform(skillId, "rbooster", "rbooster_after");
+                transform = CreateRocketBoosterTransform(skillId, normalizedAction);
                 return true;
             }
 
@@ -2598,6 +2632,15 @@ namespace HaCreator.MapSimulator.Character
                 HitActionNames = CreateActionVariants(actionName),
                 ExitActionName = exitActionName
             };
+        }
+
+        private static SkillAvatarTransformState CreateRocketBoosterTransform(int skillId, string actionName)
+        {
+            string exitActionName = string.Equals(actionName, "tank_rbooster_pre", StringComparison.OrdinalIgnoreCase)
+                ? "tank_rbooster_after"
+                : "rbooster_after";
+
+            return CreateSingleActionTransform(skillId, "rbooster", exitActionName);
         }
 
         private static IReadOnlyList<string> CreateActionVariants(params string[] actionNames)

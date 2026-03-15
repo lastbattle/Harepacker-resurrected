@@ -97,6 +97,26 @@ namespace UnitTest_MapSimulator
             Assert.True(projectile.VelocityX > 0);
         }
 
+        [Fact]
+        public void TryQueueFollowUpAttack_ReplacesPendingFollowUpInsteadOfStacking()
+        {
+            var triggerSkill = CreateTriggerSkill();
+            var followUpSkill = CreateFollowUpSkill();
+            var manager = CreateSkillManager(1302000, triggerSkill, followUpSkill);
+            manager.SetSkillLevel(triggerSkill.SkillId, 1);
+            manager.SetSkillLevel(followUpSkill.SkillId, 1);
+
+            InvokeQueueFollowUpAttack(manager, triggerSkill, 1000, 77, true);
+            InvokeQueueFollowUpAttack(manager, triggerSkill, 1040, 88, false);
+
+            Assert.Equal(1, GetQueuedFollowUpAttackCount(manager));
+
+            object queuedAttack = GetSingleQueuedFollowUpAttack(manager);
+            Assert.Equal(1040 + 90, GetQueuedFollowUpAttackIntProperty(queuedAttack, "ExecuteTime"));
+            Assert.Equal(88, GetQueuedFollowUpAttackNullableIntProperty(queuedAttack, "TargetMobId"));
+            Assert.False(GetQueuedFollowUpAttackBoolProperty(queuedAttack, "FacingRight"));
+        }
+
         private static SkillData CreateTriggerSkill()
         {
             return new SkillData
@@ -193,6 +213,39 @@ namespace UnitTest_MapSimulator
             var queue = field!.GetValue(manager) as System.Collections.ICollection;
             Assert.NotNull(queue);
             return queue!.Count;
+        }
+
+        private static object GetSingleQueuedFollowUpAttack(SkillManager manager)
+        {
+            FieldInfo field = typeof(SkillManager).GetField("_queuedFollowUpAttacks", BindingFlags.Instance | BindingFlags.NonPublic);
+            Assert.NotNull(field);
+            var queue = Assert.IsAssignableFrom<System.Collections.IEnumerable>(field!.GetValue(manager));
+            var enumerator = queue.GetEnumerator();
+            Assert.True(enumerator.MoveNext());
+            object queuedAttack = enumerator.Current;
+            Assert.False(enumerator.MoveNext());
+            return queuedAttack;
+        }
+
+        private static int GetQueuedFollowUpAttackIntProperty(object queuedAttack, string propertyName)
+        {
+            PropertyInfo property = queuedAttack.GetType().GetProperty(propertyName, BindingFlags.Instance | BindingFlags.Public);
+            Assert.NotNull(property);
+            return Assert.IsType<int>(property!.GetValue(queuedAttack));
+        }
+
+        private static int? GetQueuedFollowUpAttackNullableIntProperty(object queuedAttack, string propertyName)
+        {
+            PropertyInfo property = queuedAttack.GetType().GetProperty(propertyName, BindingFlags.Instance | BindingFlags.Public);
+            Assert.NotNull(property);
+            return Assert.IsType<int?>(property!.GetValue(queuedAttack));
+        }
+
+        private static bool GetQueuedFollowUpAttackBoolProperty(object queuedAttack, string propertyName)
+        {
+            PropertyInfo property = queuedAttack.GetType().GetProperty(propertyName, BindingFlags.Instance | BindingFlags.Public);
+            Assert.NotNull(property);
+            return Assert.IsType<bool>(property!.GetValue(queuedAttack));
         }
 
         private static ActiveProjectile GetSingleProjectile(SkillManager manager)

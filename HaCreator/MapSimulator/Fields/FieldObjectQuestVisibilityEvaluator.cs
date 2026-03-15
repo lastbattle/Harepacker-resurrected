@@ -19,12 +19,25 @@ namespace HaCreator.MapSimulator.Fields
             Func<int, QuestStateType> getQuestState,
             Func<string, bool?> getDynamicTagState)
         {
-            if (hiddenByMap)
+            bool matchesQuestState = MatchesQuestState(questInfo, getQuestState);
+            if (!matchesQuestState)
             {
                 return false;
             }
 
-            return IsVisible(questInfo, dynamicTags, getQuestState, getDynamicTagState);
+            bool hasDynamicTags = dynamicTags != null && dynamicTags.Count > 0;
+            if (hiddenByMap)
+            {
+                bool hasQuestInfo = questInfo != null && questInfo.Count > 0;
+                if (!hasQuestInfo && !hasDynamicTags)
+                {
+                    return false;
+                }
+
+                return MatchesDynamicTagState(dynamicTags, getDynamicTagState, treatUnknownAsMatch: false);
+            }
+
+            return MatchesDynamicTagState(dynamicTags, getDynamicTagState, treatUnknownAsMatch: true);
         }
 
         public static bool IsVisible(IReadOnlyList<ObjectInstanceQuest> questInfo, Func<int, QuestStateType> getQuestState)
@@ -43,7 +56,7 @@ namespace HaCreator.MapSimulator.Fields
                 return false;
             }
 
-            return MatchesDynamicTagState(dynamicTags, getDynamicTagState);
+            return MatchesDynamicTagState(dynamicTags, getDynamicTagState, treatUnknownAsMatch: true);
         }
 
         private static bool MatchesQuestState(IReadOnlyList<ObjectInstanceQuest> questInfo, Func<int, QuestStateType> getQuestState)
@@ -70,11 +83,14 @@ namespace HaCreator.MapSimulator.Fields
             return false;
         }
 
-        private static bool MatchesDynamicTagState(IReadOnlyList<string> dynamicTags, Func<string, bool?> getDynamicTagState)
+        private static bool MatchesDynamicTagState(
+            IReadOnlyList<string> dynamicTags,
+            Func<string, bool?> getDynamicTagState,
+            bool treatUnknownAsMatch)
         {
             if (dynamicTags == null || dynamicTags.Count == 0 || getDynamicTagState == null)
             {
-                return true;
+                return treatUnknownAsMatch || dynamicTags == null || dynamicTags.Count == 0;
             }
 
             for (int i = 0; i < dynamicTags.Count; i++)
@@ -88,6 +104,11 @@ namespace HaCreator.MapSimulator.Fields
                 bool? tagState = getDynamicTagState(tag);
                 if (!tagState.HasValue)
                 {
+                    if (!treatUnknownAsMatch)
+                    {
+                        return false;
+                    }
+
                     continue;
                 }
 

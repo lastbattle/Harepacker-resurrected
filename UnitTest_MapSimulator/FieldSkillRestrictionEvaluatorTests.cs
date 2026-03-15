@@ -70,5 +70,37 @@ namespace UnitTest_MapSimulator
 
             Assert.Equal("Mystic Door cannot be used in this field.", message);
         }
+
+        [Fact]
+        public void GetRestrictionMessage_ReturnsRocketBoosterMessageWhenFieldBlocksRocketBoost()
+        {
+            long fieldLimit = 1L << (int)FieldLimitType.Unable_To_Use_Rocket_Boost;
+            var skill = new SkillData { SkillId = 35101004, Name = "Rocket Booster", IsMovement = true };
+
+            string message = FieldSkillRestrictionEvaluator.GetRestrictionMessage(fieldLimit, skill);
+
+            Assert.Equal("Rocket Booster cannot be used in this field.", message);
+        }
+
+        [Fact]
+        public void CanUseSkill_AllowsOtherMovementSkillsWhenFieldBlocksRocketBoost()
+        {
+            long fieldLimit = 1L << (int)FieldLimitType.Unable_To_Use_Rocket_Boost;
+            var skill = new SkillData { SkillId = 1000, Name = "Flash Jump", IsMovement = true };
+
+            bool canUse = FieldSkillRestrictionEvaluator.CanUseSkill(fieldLimit, skill);
+
+            Assert.True(canUse);
+        }
+
+        [Fact]
+        public void GetFieldEntryNotice_ReturnsRocketBoosterNoticeWhenFieldBlocksRocketBoost()
+        {
+            long fieldLimit = 1L << (int)FieldLimitType.Unable_To_Use_Rocket_Boost;
+
+            string message = FieldSkillRestrictionEvaluator.GetFieldEntryNotice(fieldLimit);
+
+            Assert.Equal("Rocket Booster is disabled in this map.", message);
+        }
     }
 }

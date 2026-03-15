@@ -60,7 +60,7 @@ namespace UnitTest_MapSimulator
                 questInfo,
                 questId => questId == 1000 ? QuestStateType.Started : QuestStateType.Not_Started);
 
-            Assert.False(visible);
+            Assert.True(visible);
         }
 
         [Fact]
@@ -83,6 +83,32 @@ namespace UnitTest_MapSimulator
                 dynamicTags: new[] { "stageDoor" },
                 _ => QuestStateType.Not_Started,
                 _ => null);
+
+            Assert.True(visible);
+        }
+
+        [Fact]
+        public void IsVisible_RequiresPublishedTagStateToRevealMapHiddenObjects()
+        {
+            bool visible = FieldObjectQuestVisibilityEvaluator.IsVisible(
+                hiddenByMap: true,
+                questInfo: null,
+                dynamicTags: new[] { "stageDoor" },
+                _ => QuestStateType.Not_Started,
+                _ => null);
+
+            Assert.False(visible);
+        }
+
+        [Fact]
+        public void IsVisible_RevealsMapHiddenObjectsWhenDynamicTagStateEnablesThem()
+        {
+            bool visible = FieldObjectQuestVisibilityEvaluator.IsVisible(
+                hiddenByMap: true,
+                questInfo: null,
+                dynamicTags: new[] { "stageDoor" },
+                _ => QuestStateType.Not_Started,
+                tag => tag == "stageDoor" ? true : null);
 
             Assert.True(visible);
         }

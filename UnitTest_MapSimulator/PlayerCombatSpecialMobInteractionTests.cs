@@ -50,6 +50,56 @@ namespace UnitTest_MapSimulator
             Assert.True(normalMob.AI.CurrentHp < normalMob.AI.MaxHp);
         }
 
+        [Fact]
+        public void TryApplyMobHit_BlindMobStatusForcesMissAndDoesNotDamagePlayer()
+        {
+            var player = new PlayerCharacter(
+                device: null,
+                texturePool: null,
+                build: new CharacterBuild { MaxHP = 100, HP = 100, Defense = 0 });
+            player.SetPosition(100, 100);
+
+            var mob = CreateMob(120, 100);
+            mob.AI.ApplyStatusEffect(MobStatusEffect.Blind, durationMs: 4000, currentTick: 2000);
+
+            var combat = new PlayerCombat(player);
+            int missCount = 0;
+            combat.OnMobAttackMissPlayer = (_, _, _) => missCount++;
+
+            bool applied = combat.TryApplyMobHit(mob, player.GetHitbox(), currentTime: 3000);
+
+            Assert.True(applied);
+            Assert.Equal(100, player.HP);
+            Assert.Equal(1, missCount);
+            Assert.False(combat.IsInvincible(3000));
+        }
+
+        [Fact]
+        public void GetMobHitChance_DarknessAndAccuracyStatusesAdjustChance()
+        {
+            var player = new PlayerCharacter(
+                device: null,
+                texturePool: null,
+                build: new CharacterBuild { Avoidability = 80 });
+            var mob = CreateMob(120, 100);
+            var combat = new PlayerCombat(player);
+
+            MethodInfo method = typeof(PlayerCombat).GetMethod(
+                "GetMobHitChance",
+                BindingFlags.Instance | BindingFlags.NonPublic)!;
+
+            float baseChance = (float)method.Invoke(combat, new object[] { mob.AI })!;
+
+            mob.AI.ApplyStatusEffect(MobStatusEffect.Darkness, durationMs: 5000, currentTick: 0, value: 40);
+            float darknessChance = (float)method.Invoke(combat, new object[] { mob.AI })!;
+
+            mob.AI.ApplyStatusEffect(MobStatusEffect.ACC, durationMs: 5000, currentTick: 0, value: 25);
+            float recoveredChance = (float)method.Invoke(combat, new object[] { mob.AI })!;
+
+            Assert.True(darknessChance < baseChance);
+            Assert.True(recoveredChance > darknessChance);
+        }
+
         private static MobItem CreateMob(float x, float y, bool isProtectedFromPlayerDamage = false)
         {
             var mobInfo = new MobInfo(new Bitmap(1, 1), DrawingPoint.Empty, "100100", "Test Mob", null);

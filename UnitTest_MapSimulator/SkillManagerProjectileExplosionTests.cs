@@ -135,6 +135,44 @@ namespace UnitTest_MapSimulator
             Assert.True(projectile.VelocityY < 0f);
         }
 
+        [Fact]
+        public void CheckProjectileCollisions_RectBasedOnTargetHitsAdditionalMobsInTargetAnchoredRange()
+        {
+            var skill = CreateRectBasedProjectileSkill();
+            var manager = CreateSkillManager(skill);
+
+            var directMob = CreateMob(100, 100);
+            var forwardSplashMob = CreateMob(155, 100);
+            var outsideRectMob = CreateMob(240, 100);
+
+            var pool = new MobPool();
+            pool.Initialize(new[] { directMob, forwardSplashMob, outsideRectMob });
+            manager.SetMobPool(pool);
+            XnaRectangle directHitbox = directMob.GetBodyHitbox(1100);
+
+            var projectile = new ActiveProjectile
+            {
+                Id = 2,
+                SkillId = skill.SkillId,
+                SkillLevel = 1,
+                Data = skill.Projectile,
+                LevelData = skill.GetLevel(1),
+                X = directHitbox.Center.X,
+                Y = directHitbox.Center.Y,
+                VelocityX = 300f,
+                VelocityY = 0f,
+                FacingRight = true,
+                SpawnTime = 1000
+            };
+
+            InvokeCheckProjectileCollisions(manager, projectile, 1100);
+
+            Assert.True(directMob.AI.CurrentHp < directMob.AI.MaxHp);
+            Assert.True(forwardSplashMob.AI.CurrentHp < forwardSplashMob.AI.MaxHp);
+            Assert.Equal(outsideRectMob.AI.MaxHp, outsideRectMob.AI.CurrentHp);
+            Assert.Equal(2, projectile.HitCount);
+        }
+
         private static SkillData CreateExplodingProjectileSkill()
         {
             return new SkillData
@@ -158,6 +196,38 @@ namespace UnitTest_MapSimulator
                         Damage = 100,
                         AttackCount = 1,
                         MobCount = 2
+                    }
+                }
+            };
+        }
+
+        private static SkillData CreateRectBasedProjectileSkill()
+        {
+            return new SkillData
+            {
+                SkillId = 3001004,
+                MaxLevel = 1,
+                IsAttack = true,
+                AttackType = SkillAttackType.Ranged,
+                RectBasedOnTarget = true,
+                Projectile = new ProjectileData
+                {
+                    Behavior = ProjectileBehavior.Straight,
+                    MaxHits = 2,
+                    LifeTime = 2000f
+                },
+                Levels = new Dictionary<int, SkillLevelData>
+                {
+                    [1] = new SkillLevelData
+                    {
+                        Level = 1,
+                        Damage = 100,
+                        AttackCount = 1,
+                        MobCount = 2,
+                        RangeL = 120,
+                        RangeR = 120,
+                        RangeTop = -75,
+                        RangeBottom = 30
                     }
                 }
             };

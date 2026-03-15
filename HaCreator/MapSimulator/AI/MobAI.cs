@@ -346,6 +346,7 @@ namespace HaCreator.MapSimulator.AI
         public bool IsEscortMob => _isEscortMob;
         public bool CanTargetPlayer => _canTargetPlayer;
         public bool IsTargetingSummoned => _target.IsValid && _target.TargetType == MobTargetType.Summoned;
+        public bool IsTargetingMob => _target.IsValid && _target.TargetType == MobTargetType.Mob;
 
         // Status effect properties
         public MobStatusEffect StatusEffects => _statusEffects;
@@ -593,19 +594,19 @@ namespace HaCreator.MapSimulator.AI
 
         private void UpdateTarget(int currentTick, float mobX, float mobY, float? playerX, float? playerY)
         {
-            if (!_canTargetPlayer)
-            {
-                _target.IsValid = false;
-                _target.Distance = float.MaxValue;
-                return;
-            }
-
             if (_target.IsValid && _target.TargetType != MobTargetType.Player)
             {
                 float externalDx = _target.TargetX - mobX;
                 float externalDy = _target.TargetY - mobY;
                 _target.Distance = MathF.Sqrt(externalDx * externalDx + externalDy * externalDy);
                 _target.LastSeenTime = currentTick;
+                return;
+            }
+
+            if (!_canTargetPlayer)
+            {
+                _target.IsValid = false;
+                _target.Distance = float.MaxValue;
                 return;
             }
 
@@ -731,17 +732,13 @@ namespace HaCreator.MapSimulator.AI
             if (availableSkillIndex >= 0 &&
                 ShouldPreferSkill(_skills[availableSkillIndex], availableAttackIndex >= 0 ? _attacks[availableAttackIndex] : null))
             {
-                _currentSkillIndex = availableSkillIndex;
-                _skills[availableSkillIndex].LastUseTime = currentTick;
-                SetState(MobAIState.Skill, currentTick);
+                StartSkill(availableSkillIndex, currentTick);
                 return;
             }
 
             if (availableAttackIndex >= 0)
             {
-                _currentAttackIndex = availableAttackIndex;
-                _attacks[availableAttackIndex].LastUseTime = currentTick;
-                SetState(MobAIState.Attack, currentTick);
+                StartAttack(availableAttackIndex, currentTick);
             }
         }
 
@@ -782,6 +779,11 @@ namespace HaCreator.MapSimulator.AI
                 {
                     _selfDestructPending = false;
                     Kill(currentTick, MobDeathType.Bomb);
+                    return;
+                }
+
+                if (TryChainNextCombatAction(currentTick))
+                {
                     return;
                 }
 
@@ -916,7 +918,7 @@ namespace HaCreator.MapSimulator.AI
             if (IsDead)
                 return;
 
-            if (!_canTargetPlayer)
+            if (!_canTargetPlayer && targetType == MobTargetType.Player)
                 return;
 
             // Don't aggro if boss aggro has timed out
@@ -1003,9 +1005,7 @@ namespace HaCreator.MapSimulator.AI
             if (skillIndex < 0 || skillIndex >= _skills.Count)
                 return;
 
-            _currentSkillIndex = skillIndex;
-            _skills[skillIndex].LastUseTime = currentTick;
-            SetState(MobAIState.Skill, currentTick);
+            StartSkill(skillIndex, currentTick);
         }
 
         /// <summary>
@@ -1506,7 +1506,7 @@ namespace HaCreator.MapSimulator.AI
         #region Helpers
         private int FindAvailableAttackIndex(int currentTick)
         {
-            if (!_canTargetPlayer)
+            if (!_target.IsValid || (_target.TargetType == MobTargetType.Player && !_canTargetPlayer))
             {
                 return -1;
             }
@@ -1529,7 +1529,7 @@ namespace HaCreator.MapSimulator.AI
 
         private int FindAvailableSkillIndex(int currentTick)
         {
-            if (IsSealed || !_canTargetPlayer)
+            if (IsSealed || !_target.IsValid || (_target.TargetType == MobTargetType.Player && !_canTargetPlayer))
             {
                 return -1;
             }
@@ -1568,6 +1568,68 @@ namespace HaCreator.MapSimulator.AI
             }
 
             return Random.Shared.Next(100) < 35;
+        }
+
+        private void StartAttack(int attackIndex, int currentTick)
+        {
+            if (attackIndex < 0 || attackIndex >= _attacks.Count)
+            {
+                return;
+            }
+
+            _currentAttackIndex = attackIndex;
+            _attacks[attackIndex].LastUseTime = currentTick;
+            TransitionToActionState(MobAIState.Attack, currentTick);
+        }
+
+        private void StartSkill(int skillIndex, int currentTick)
+        {
+            if (skillIndex < 0 || skillIndex >= _skills.Count)
+            {
+                return;
+            }
+
+            _currentSkillIndex = skillIndex;
+            _skills[skillIndex].LastUseTime = currentTick;
+            TransitionToActionState(MobAIState.Skill, currentTick);
+        }
+
+        private void TransitionToActionState(MobAIState newState, int currentTick)
+        {
+            if (_state != newState)
+            {
+                SetState(newState, currentTick);
+                return;
+            }
+
+            _stateStartTime = currentTick;
+            _stateTimer = 0;
+        }
+
+        private bool TryChainNextCombatAction(int currentTick)
+        {
+            if (!_target.IsValid || !_canTargetPlayer)
+            {
+                return false;
+            }
+
+            int availableAttackIndex = FindAvailableAttackIndex(currentTick);
+            int availableSkillIndex = FindAvailableSkillIndex(currentTick);
+
+            if (availableSkillIndex >= 0 &&
+                ShouldPreferSkill(_skills[availableSkillIndex], availableAttackIndex >= 0 ? _attacks[availableAttackIndex] : null))
+            {
+                StartSkill(availableSkillIndex, currentTick);
+                return true;
+            }
+
+            if (availableAttackIndex >= 0)
+            {
+                StartAttack(availableAttackIndex, currentTick);
+                return true;
+            }
+
+            return false;
         }
 
         private static int GetAttackTriggerDelay(MobAttackEntry attack)

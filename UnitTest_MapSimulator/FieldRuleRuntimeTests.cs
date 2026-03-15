@@ -36,6 +36,21 @@ namespace UnitTest_MapSimulator
         }
 
         [Fact]
+        public void Reset_ReportsRocketBoosterRestrictionNotice()
+        {
+            MapInfo mapInfo = new MapInfo
+            {
+                fieldLimit = 1L << (int)FieldLimitType.Unable_To_Use_Rocket_Boost
+            };
+
+            FieldRuleRuntime runtime = new FieldRuleRuntime(mapInfo);
+
+            IReadOnlyList<string> messages = runtime.Reset(0);
+
+            Assert.Contains(messages, message => message.Contains("Rocket Booster is disabled in this map."));
+        }
+
+        [Fact]
         public void Update_RequestsReturnMapWhenTimeLimitExpires()
         {
             MapInfo mapInfo = new MapInfo

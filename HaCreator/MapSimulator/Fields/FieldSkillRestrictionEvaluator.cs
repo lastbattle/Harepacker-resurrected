@@ -8,6 +8,8 @@ namespace HaCreator.MapSimulator.Fields
     /// </summary>
     public static class FieldSkillRestrictionEvaluator
     {
+        private const int RocketBoosterSkillId = 35101004;
+
         public static bool CanUseSkill(long fieldLimit, SkillData skill)
         {
             return GetRestrictionMessage(fieldLimit, skill) == null;
@@ -20,6 +22,9 @@ namespace HaCreator.MapSimulator.Fields
 
             if (FieldLimitType.Unable_To_Use_Mystic_Door.Check(fieldLimit) && IsMysticDoorSkill(skill))
                 return "Mystic Door cannot be used in this field.";
+
+            if (FieldLimitType.Unable_To_Use_Rocket_Boost.Check(fieldLimit) && IsRocketBoosterSkill(skill))
+                return "Rocket Booster cannot be used in this field.";
 
             if (FieldLimitType.Unable_To_Use_Skill.Check(fieldLimit))
                 return "This field forbids skill usage.";
@@ -34,7 +39,8 @@ namespace HaCreator.MapSimulator.Fields
         {
             return FieldLimitType.Unable_To_Use_Skill.Check(fieldLimit)
                    || FieldLimitType.Move_Skill_Only.Check(fieldLimit)
-                   || FieldLimitType.Unable_To_Use_Mystic_Door.Check(fieldLimit);
+                   || FieldLimitType.Unable_To_Use_Mystic_Door.Check(fieldLimit)
+                   || FieldLimitType.Unable_To_Use_Rocket_Boost.Check(fieldLimit);
         }
 
         public static string GetFieldEntryNotice(long fieldLimit)
@@ -48,6 +54,9 @@ namespace HaCreator.MapSimulator.Fields
             if (FieldLimitType.Unable_To_Use_Mystic_Door.Check(fieldLimit))
                 return "Mystic Door is disabled in this map.";
 
+            if (FieldLimitType.Unable_To_Use_Rocket_Boost.Check(fieldLimit))
+                return "Rocket Booster is disabled in this map.";
+
             return null;
         }
 
@@ -55,6 +64,12 @@ namespace HaCreator.MapSimulator.Fields
         {
             return skill?.SkillId == 2311002
                    || string.Equals(skill?.Name, "Mystic Door", System.StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static bool IsRocketBoosterSkill(SkillData skill)
+        {
+            return skill?.SkillId == RocketBoosterSkillId
+                   || string.Equals(skill?.Name, "Rocket Booster", System.StringComparison.OrdinalIgnoreCase);
         }
     }
 }

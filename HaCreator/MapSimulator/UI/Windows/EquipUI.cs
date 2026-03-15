@@ -276,6 +276,7 @@ namespace HaCreator.MapSimulator.UI
     {
         public int ItemId { get; set; }
         public Texture2D ItemTexture { get; set; }
+        public IDXObject ItemIcon { get; set; }
         public string ItemName { get; set; }
 
         // Stats (for tooltip display)

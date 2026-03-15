@@ -301,6 +301,10 @@ namespace HaCreator.MapSimulator.Character.Skills
         public bool IsRapidAttack { get; set; }
         public bool Invisible { get; set; }          // Hidden skill
         public bool MasterOnly { get; set; }         // Only usable at max level
+        public bool FixedState { get; set; }
+        public bool CanNotMoveInState { get; set; }
+        public bool OnlyNormalAttackInState { get; set; }
+        public bool SpecialNormalAttackInState { get; set; }
 
         // Level data
         public Dictionary<int, SkillLevelData> Levels { get; set; } = new();
@@ -333,6 +337,9 @@ namespace HaCreator.MapSimulator.Character.Skills
         public ProjectileData Projectile { get; set; }       // Ball/projectile
         public string CastSoundKey { get; set; }             // Registered simulator sound key for cast SFX
         public string RepeatSoundKey { get; set; }           // Registered simulator sound key for repeated hits/shots
+        public string ZoneType { get; set; }
+        public bool IsMassSpell { get; set; }
+        public SkillAnimation ZoneAnimation { get; set; }
 
         // Action
         public string ActionName { get; set; }       // Animation action to play
@@ -345,6 +352,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         public int KeydownRepeatIntervalMs { get; set; }
         public bool CasterMove { get; set; }
         public bool AreaAttack { get; set; }
+        public bool RectBasedOnTarget { get; set; }
         public string LandingEffectName { get; set; }
         public Dictionary<int, HashSet<int>> FinalAttackTriggers { get; set; } = new();
 
@@ -478,6 +486,39 @@ namespace HaCreator.MapSimulator.Character.Skills
         {
             if (Duration <= 0) return 0;
             return (float)GetRemainingTime(currentTime) / Duration;
+        }
+    }
+
+    #endregion
+
+    #region Active Skill Zone
+
+    public class ActiveSkillZone
+    {
+        public int SkillId { get; set; }
+        public int Level { get; set; }
+        public int StartTime { get; set; }
+        public int Duration { get; set; }
+        public float X { get; set; }
+        public float Y { get; set; }
+        public SkillData SkillData { get; set; }
+        public SkillLevelData LevelData { get; set; }
+        public SkillAnimation Animation { get; set; }
+        public Rectangle WorldBounds { get; set; }
+
+        public bool IsExpired(int currentTime)
+        {
+            return Duration > 0 && currentTime - StartTime >= Duration;
+        }
+
+        public int AnimationTime(int currentTime)
+        {
+            return Math.Max(0, currentTime - StartTime);
+        }
+
+        public bool Contains(float worldX, float worldY)
+        {
+            return WorldBounds.Contains((int)worldX, (int)worldY);
         }
     }
 

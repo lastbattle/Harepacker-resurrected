@@ -39,6 +39,7 @@ namespace HaCreator.MapSimulator.UI {
         public int RemainingMs { get; set; }
         public int DurationMs { get; set; }
         public IReadOnlyList<string> TemporaryStatLabels { get; set; } = Array.Empty<string>();
+        public IReadOnlyList<string> TemporaryStatDisplayNames { get; set; } = Array.Empty<string>();
     }
 
     public class StatusBarPreparedSkillRenderData
@@ -71,6 +72,7 @@ namespace HaCreator.MapSimulator.UI {
         public Texture2D Bar { get; set; }
         public Texture2D Gauge { get; set; }
         public Texture2D Graduation { get; set; }
+        public Point BarOrigin { get; set; }
     }
 
     public class StatusBarWarningAnimation
@@ -199,7 +201,12 @@ namespace HaCreator.MapSimulator.UI {
         private const int TOOLTIP_OFFSET_X = 12;
         private const int TOOLTIP_OFFSET_Y = -4;
         private const int PREPARED_SKILL_LABEL_GAP = 6;
-        private static readonly Vector2 KEYDOWN_BAR_POS = new Vector2(214, -22);
+        // Preserve the existing default bar placement by treating the WZ origin
+        // as the HUD anchor and remapping each skin's top-left from that anchor.
+        private static readonly Point KEYDOWN_BAR_DEFAULT_ORIGIN = new Point(40, 83);
+        private static readonly Vector2 KEYDOWN_BAR_ANCHOR_POS = new Vector2(
+            214 + KEYDOWN_BAR_DEFAULT_ORIGIN.X,
+            -22 + KEYDOWN_BAR_DEFAULT_ORIGIN.Y);
         private static readonly Point KEYDOWN_BAR_GAUGE_OFFSET = new Point(2, 2);
 
         /// <summary>
@@ -523,7 +530,7 @@ namespace HaCreator.MapSimulator.UI {
 
             // Job name
             Vector2 jobPos = basePosLeft + JOB_TEXT_POS;
-            DrawTextWithShadow(sprite, FormatStatusBarJobLabel(stats.Job), jobPos, JOB_TEXT_COLOR, Color.Black, JOB_TEXT_SCALE);
+            DrawPlainText(sprite, FormatStatusBarJobLabel(stats.Job), jobPos, JOB_TEXT_COLOR, JOB_TEXT_SCALE);
 
             // Character name - drawn with shadow effect (from IDA: multiple positions for shadow)
             Vector2 namePos = basePosLeft + NAME_TEXT_POS;
@@ -790,8 +797,12 @@ namespace HaCreator.MapSimulator.UI {
                 return;
             }
 
-            string temporaryStatText = buffEntry.TemporaryStatLabels != null && buffEntry.TemporaryStatLabels.Count > 0
-                ? $"Temp Stats: {string.Join(", ", buffEntry.TemporaryStatLabels)}"
+            IReadOnlyList<string> temporaryStatDisplayNames = buffEntry.TemporaryStatDisplayNames != null
+                && buffEntry.TemporaryStatDisplayNames.Count > 0
+                ? buffEntry.TemporaryStatDisplayNames
+                : buffEntry.TemporaryStatLabels;
+            string temporaryStatText = temporaryStatDisplayNames != null && temporaryStatDisplayNames.Count > 0
+                ? $"Temp Stats: {string.Join(", ", temporaryStatDisplayNames)}"
                 : string.Empty;
             Texture2D iconTexture = buffEntry.IconTexture;
             if (iconTexture == null && !_buffIconTextures.TryGetValue(buffEntry.IconKey ?? string.Empty, out iconTexture))
@@ -1450,7 +1461,8 @@ namespace HaCreator.MapSimulator.UI {
             Texture2D barTexture = textures?.Bar;
             int width = barTexture?.Width ?? 72;
             int height = barTexture?.Height ?? 12;
-            Vector2 barPos = basePosGauge + KEYDOWN_BAR_POS;
+            Point origin = textures?.BarOrigin ?? KEYDOWN_BAR_DEFAULT_ORIGIN;
+            Vector2 barPos = basePosGauge + KEYDOWN_BAR_ANCHOR_POS - origin.ToVector2();
             return new Rectangle((int)barPos.X, (int)barPos.Y, width, height);
         }
 
@@ -1566,6 +1578,16 @@ namespace HaCreator.MapSimulator.UI {
             sprite.DrawString(_font, text, position + new Vector2(0, 1), shadowColor, 0f, Vector2.Zero, scale, SpriteEffects.None, 0f);
 
             // Draw main text
+            sprite.DrawString(_font, text, position, textColor, 0f, Vector2.Zero, scale, SpriteEffects.None, 0f);
+        }
+
+        private void DrawPlainText(SpriteBatch sprite, string text, Vector2 position, Color textColor, float scale = 1.0f)
+        {
+            if (_font == null || string.IsNullOrEmpty(text))
+            {
+                return;
+            }
+
             sprite.DrawString(_font, text, position, textColor, 0f, Vector2.Zero, scale, SpriteEffects.None, 0f);
         }
 

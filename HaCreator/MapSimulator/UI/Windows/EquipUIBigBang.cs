@@ -4,9 +4,13 @@ using HaSharedLibrary.Render;
 using HaSharedLibrary.Render.DX;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
+using Microsoft.Xna.Framework.Input;
 using Spine;
 using System;
 using System.Collections.Generic;
+using CharacterBuild = HaCreator.MapSimulator.Character.CharacterBuild;
+using CharacterEquipSlot = HaCreator.MapSimulator.Character.EquipSlot;
+using CharacterPart = HaCreator.MapSimulator.Character.CharacterPart;
 
 namespace HaCreator.MapSimulator.UI
 {
@@ -23,6 +27,13 @@ namespace HaCreator.MapSimulator.UI
         // Window dimensions (from UIWindow2.img/Equip/character/backgrnd)
         private const int WINDOW_WIDTH = 184;
         private const int WINDOW_HEIGHT = 290;
+        private const int TOOLTIP_FALLBACK_WIDTH = 300;
+        private const int TOOLTIP_PADDING = 10;
+        private const int TOOLTIP_ICON_GAP = 8;
+        private const int TOOLTIP_TITLE_GAP = 8;
+        private const int TOOLTIP_SECTION_GAP = 4;
+        private const int TOOLTIP_OFFSET_X = 12;
+        private const int TOOLTIP_OFFSET_Y = -4;
 
         // Tab indices
         private const int TAB_CHARACTER = 0;
@@ -92,10 +103,21 @@ namespace HaCreator.MapSimulator.UI
 
         // Graphics device
         private GraphicsDevice _device;
+        private readonly Texture2D[] _tooltipFrames = new Texture2D[3];
+        private Texture2D _debugPlaceholder;
+        private SpriteFont _font;
+        private CharacterBuild _characterBuild;
+        private EquipSlot? _hoveredSlot;
+        private Point _lastMousePosition;
         #endregion
 
         #region Properties
         public override string WindowName => "Equipment";
+        public override CharacterBuild CharacterBuild
+        {
+            get => _characterBuild;
+            set => _characterBuild = value;
+        }
 
         public int CurrentTab
         {
@@ -167,6 +189,8 @@ namespace HaCreator.MapSimulator.UI
             };
 
             equippedItems = new Dictionary<EquipSlot, EquipSlotData>();
+            _debugPlaceholder = new Texture2D(device, 1, 1);
+            _debugPlaceholder.SetData(new[] { Color.White });
         }
         #endregion
 
@@ -225,6 +249,22 @@ namespace HaCreator.MapSimulator.UI
                 AddButton(btnSlot);
             }
         }
+
+        public override void SetFont(SpriteFont font)
+        {
+            _font = font;
+        }
+
+        public void SetTooltipTextures(Texture2D[] tooltipFrames)
+        {
+            if (tooltipFrames == null)
+                return;
+
+            for (int i = 0; i < Math.Min(_tooltipFrames.Length, tooltipFrames.Length); i++)
+            {
+                _tooltipFrames[i] = tooltipFrames[i];
+            }
+        }
         #endregion
 
         #region Drawing
@@ -253,7 +293,24 @@ namespace HaCreator.MapSimulator.UI
                     Color.White, false, drawReflectionInfo);
             }
 
-            // Equipped item icons would be drawn here when items are equipped
+            foreach ((EquipSlot uiSlot, Point slotPosition) in slotPositions)
+            {
+                if (!TryGetEquippedPart(uiSlot, out CharacterPart part) && !equippedItems.TryGetValue(uiSlot, out _))
+                    continue;
+
+                int slotX = windowX + slotPosition.X;
+                int slotY = windowY + slotPosition.Y;
+                DrawEquippedItemIcon(sprite, part, equippedItems.TryGetValue(uiSlot, out EquipSlotData slotData) ? slotData : null, slotX, slotY);
+            }
+        }
+
+        protected override void DrawOverlay(SpriteBatch sprite, SkeletonMeshRenderer skeletonMeshRenderer, GameTime gameTime,
+            int mapShiftX, int mapShiftY, int centerX, int centerY,
+            ReflectionDrawableBoundary drawReflectionInfo,
+            RenderParameters renderParameters,
+            int TickCount)
+        {
+            DrawHoveredEquipmentTooltip(sprite, renderParameters.RenderWidth, renderParameters.RenderHeight);
         }
         #endregion
 
@@ -303,7 +360,306 @@ namespace HaCreator.MapSimulator.UI
         public override void Update(GameTime gameTime)
         {
             base.Update(gameTime);
+
+            MouseState mouseState = Mouse.GetState();
+            _lastMousePosition = new Point(mouseState.X, mouseState.Y);
+            _hoveredSlot = GetSlotAtPosition(mouseState.X, mouseState.Y);
         }
         #endregion
+
+        private void DrawEquippedItemIcon(SpriteBatch sprite, CharacterPart part, EquipSlotData slotData, int slotX, int slotY)
+        {
+            IDXObject icon = part?.IconRaw ?? part?.Icon ?? slotData?.ItemIcon;
+            if (icon != null)
+            {
+                icon.DrawBackground(sprite, null, null, slotX, slotY, Color.White, false, null);
+                return;
+            }
+
+            if (slotData?.ItemTexture != null)
+            {
+                sprite.Draw(slotData.ItemTexture, new Rectangle(slotX, slotY, SLOT_SIZE, SLOT_SIZE), Color.White);
+            }
+        }
+
+        private void DrawHoveredEquipmentTooltip(SpriteBatch sprite, int renderWidth, int renderHeight)
+        {
+            if (_font == null || _hoveredSlot == null || _currentTab != TAB_CHARACTER)
+                return;
+
+            EquipSlot hoveredSlot = _hoveredSlot.Value;
+            if (!TryGetEquippedPart(hoveredSlot, out CharacterPart part))
+            {
+                if (!equippedItems.TryGetValue(hoveredSlot, out EquipSlotData fallbackData))
+                    return;
+
+                DrawItemTooltip(sprite,
+                    fallbackData.ItemName,
+                    $"Item ID: {fallbackData.ItemId}",
+                    $"Slot: {hoveredSlot}",
+                    fallbackData.ItemTexture,
+                    fallbackData.ItemIcon,
+                    renderWidth,
+                    renderHeight);
+                return;
+            }
+
+            string itemName = string.IsNullOrWhiteSpace(part.Name) ? $"Equip {part.ItemId}" : part.Name;
+            string line1 = $"Item ID: {part.ItemId}";
+            string line2 = $"Slot: {ResolveSlotLabel(hoveredSlot)}";
+            if (part.IsCash)
+            {
+                line2 += "  Cash";
+            }
+
+            DrawItemTooltip(sprite,
+                itemName,
+                line1,
+                line2,
+                null,
+                part.IconRaw ?? part.Icon,
+                renderWidth,
+                renderHeight);
+        }
+
+        private void DrawItemTooltip(
+            SpriteBatch sprite,
+            string title,
+            string line1,
+            string line2,
+            Texture2D itemTexture,
+            IDXObject itemIcon,
+            int renderWidth,
+            int renderHeight)
+        {
+            int tooltipWidth = ResolveTooltipWidth();
+            int textLeftOffset = TOOLTIP_PADDING + SLOT_SIZE + TOOLTIP_ICON_GAP;
+            float titleWidth = tooltipWidth - (TOOLTIP_PADDING * 2);
+            float sectionWidth = tooltipWidth - textLeftOffset - TOOLTIP_PADDING;
+            string[] wrappedTitle = WrapTooltipText(title, titleWidth);
+            string[] wrappedLine1 = WrapTooltipText(line1, sectionWidth);
+            string[] wrappedLine2 = WrapTooltipText(line2, sectionWidth);
+            float titleHeight = MeasureLinesHeight(wrappedTitle);
+            float line1Height = MeasureLinesHeight(wrappedLine1);
+            float line2Height = MeasureLinesHeight(wrappedLine2);
+            float contentHeight = line1Height;
+            if (line2Height > 0f)
+                contentHeight += (contentHeight > 0f ? TOOLTIP_SECTION_GAP : 0f) + line2Height;
+
+            float iconBlockHeight = Math.Max(SLOT_SIZE, contentHeight);
+            int tooltipHeight = (int)Math.Ceiling((TOOLTIP_PADDING * 2) + titleHeight + TOOLTIP_TITLE_GAP + iconBlockHeight);
+            int tooltipX = _lastMousePosition.X + TOOLTIP_OFFSET_X;
+            int tooltipY = _lastMousePosition.Y + 20;
+            int tooltipFrameIndex = 1;
+
+            if (tooltipX + tooltipWidth > renderWidth - TOOLTIP_PADDING)
+            {
+                tooltipX = _lastMousePosition.X - tooltipWidth - TOOLTIP_OFFSET_X;
+                tooltipFrameIndex = 0;
+            }
+
+            if (tooltipX < TOOLTIP_PADDING)
+                tooltipX = TOOLTIP_PADDING;
+
+            if (tooltipY + tooltipHeight > renderHeight - TOOLTIP_PADDING)
+            {
+                tooltipY = Math.Max(TOOLTIP_PADDING, _lastMousePosition.Y - tooltipHeight + TOOLTIP_OFFSET_Y);
+                tooltipFrameIndex = 2;
+            }
+
+            Rectangle backgroundRect = new Rectangle(tooltipX, tooltipY, tooltipWidth, tooltipHeight);
+            DrawTooltipBackground(sprite, backgroundRect, tooltipFrameIndex);
+
+            int titleX = tooltipX + TOOLTIP_PADDING;
+            int titleY = tooltipY + TOOLTIP_PADDING;
+            DrawTooltipLines(sprite, wrappedTitle, titleX, titleY, new Color(255, 220, 120));
+
+            int contentY = tooltipY + TOOLTIP_PADDING + (int)Math.Ceiling(titleHeight) + TOOLTIP_TITLE_GAP;
+            int iconX = tooltipX + TOOLTIP_PADDING;
+            if (itemIcon != null)
+            {
+                itemIcon.DrawBackground(sprite, null, null, iconX, contentY, Color.White, false, null);
+            }
+            else if (itemTexture != null)
+            {
+                sprite.Draw(itemTexture, new Rectangle(iconX, contentY, SLOT_SIZE, SLOT_SIZE), Color.White);
+            }
+
+            int textX = tooltipX + textLeftOffset;
+            float sectionY = contentY;
+            DrawTooltipLines(sprite, wrappedLine1, textX, sectionY, new Color(181, 224, 255));
+            if (line1Height > 0f)
+                sectionY += line1Height + (line2Height > 0f ? TOOLTIP_SECTION_GAP : 0f);
+            DrawTooltipLines(sprite, wrappedLine2, textX, sectionY, Color.White);
+        }
+
+        private EquipSlot? GetSlotAtPosition(int mouseX, int mouseY)
+        {
+            if (_currentTab != TAB_CHARACTER)
+                return null;
+
+            foreach ((EquipSlot slot, Point slotPosition) in slotPositions)
+            {
+                Rectangle slotRect = new Rectangle(Position.X + slotPosition.X, Position.Y + slotPosition.Y, SLOT_SIZE, SLOT_SIZE);
+                if (slotRect.Contains(mouseX, mouseY))
+                    return slot;
+            }
+
+            return null;
+        }
+
+        private bool TryGetEquippedPart(EquipSlot uiSlot, out CharacterPart part)
+        {
+            part = null;
+            if (_characterBuild?.Equipment == null)
+                return false;
+
+            CharacterEquipSlot? characterSlot = MapToCharacterEquipSlot(uiSlot);
+            if (characterSlot == null)
+                return false;
+
+            return _characterBuild.Equipment.TryGetValue(characterSlot.Value, out part) && part != null;
+        }
+
+        private static CharacterEquipSlot? MapToCharacterEquipSlot(EquipSlot uiSlot)
+        {
+            return uiSlot switch
+            {
+                EquipSlot.Ring1 => CharacterEquipSlot.Ring1,
+                EquipSlot.Ring2 => CharacterEquipSlot.Ring2,
+                EquipSlot.Ring3 => CharacterEquipSlot.Ring3,
+                EquipSlot.Ring4 => CharacterEquipSlot.Ring4,
+                EquipSlot.Pendant1 => CharacterEquipSlot.Pendant,
+                EquipSlot.Pendant2 => CharacterEquipSlot.Pendant,
+                EquipSlot.Weapon => CharacterEquipSlot.Weapon,
+                EquipSlot.Belt => CharacterEquipSlot.Belt,
+                EquipSlot.Cap => CharacterEquipSlot.Cap,
+                EquipSlot.FaceAccessory => CharacterEquipSlot.FaceAccessory,
+                EquipSlot.EyeAccessory => CharacterEquipSlot.EyeAccessory,
+                EquipSlot.Top => CharacterEquipSlot.Coat,
+                EquipSlot.Bottom => CharacterEquipSlot.Pants,
+                EquipSlot.Shoes => CharacterEquipSlot.Shoes,
+                EquipSlot.Earring => CharacterEquipSlot.Earrings,
+                EquipSlot.Glove => CharacterEquipSlot.Glove,
+                EquipSlot.Shield => CharacterEquipSlot.Shield,
+                EquipSlot.Cape => CharacterEquipSlot.Cape,
+                EquipSlot.Medal => CharacterEquipSlot.Medal,
+                EquipSlot.Totem1 => CharacterEquipSlot.TamingMob,
+                EquipSlot.Totem2 => CharacterEquipSlot.Saddle,
+                _ => null
+            };
+        }
+
+        private static string ResolveSlotLabel(EquipSlot slot)
+        {
+            return slot switch
+            {
+                EquipSlot.Earring => "Earring",
+                EquipSlot.FaceAccessory => "Face Accessory",
+                EquipSlot.EyeAccessory => "Eye Accessory",
+                EquipSlot.Pendant1 => "Pendant",
+                EquipSlot.Pendant2 => "Pendant",
+                _ => slot.ToString()
+            };
+        }
+
+        private int ResolveTooltipWidth()
+        {
+            int textureWidth = _tooltipFrames[1]?.Width ?? 0;
+            return textureWidth > 0 ? textureWidth : TOOLTIP_FALLBACK_WIDTH;
+        }
+
+        private void DrawTooltipBackground(SpriteBatch sprite, Rectangle rect, int tooltipFrameIndex)
+        {
+            Texture2D tooltipFrame = tooltipFrameIndex >= 0 && tooltipFrameIndex < _tooltipFrames.Length
+                ? _tooltipFrames[tooltipFrameIndex]
+                : null;
+
+            if (tooltipFrame != null)
+            {
+                sprite.Draw(tooltipFrame, rect, Color.White);
+                return;
+            }
+
+            sprite.Draw(_debugPlaceholder, rect, new Color(18, 18, 26, 235));
+            DrawTooltipBorder(sprite, rect);
+        }
+
+        private void DrawTooltipBorder(SpriteBatch sprite, Rectangle rect)
+        {
+            Color borderColor = new Color(214, 174, 82);
+            sprite.Draw(_debugPlaceholder, new Rectangle(rect.X - 1, rect.Y - 1, rect.Width + 2, 1), borderColor);
+            sprite.Draw(_debugPlaceholder, new Rectangle(rect.X - 1, rect.Bottom, rect.Width + 2, 1), borderColor);
+            sprite.Draw(_debugPlaceholder, new Rectangle(rect.X - 1, rect.Y, 1, rect.Height), borderColor);
+            sprite.Draw(_debugPlaceholder, new Rectangle(rect.Right, rect.Y, 1, rect.Height), borderColor);
+        }
+
+        private void DrawTooltipLines(SpriteBatch sprite, string[] lines, int x, float y, Color color)
+        {
+            for (int i = 0; i < lines.Length; i++)
+            {
+                DrawTooltipText(sprite, lines[i], new Vector2(x, y + (i * _font.LineSpacing)), color);
+            }
+        }
+
+        private void DrawTooltipText(SpriteBatch sprite, string text, Vector2 position, Color color)
+        {
+            if (string.IsNullOrWhiteSpace(text))
+                return;
+
+            sprite.DrawString(_font, text, position + Vector2.One, Color.Black);
+            sprite.DrawString(_font, text, position, color);
+        }
+
+        private float MeasureLinesHeight(string[] lines)
+        {
+            if (lines == null || lines.Length == 0)
+                return 0f;
+
+            int nonEmptyLines = 0;
+            for (int i = 0; i < lines.Length; i++)
+            {
+                if (!string.IsNullOrWhiteSpace(lines[i]))
+                    nonEmptyLines++;
+            }
+
+            return nonEmptyLines > 0 ? nonEmptyLines * _font.LineSpacing : 0f;
+        }
+
+        private string[] WrapTooltipText(string text, float maxWidth)
+        {
+            if (_font == null || string.IsNullOrWhiteSpace(text))
+                return Array.Empty<string>();
+
+            var lines = new List<string>();
+            string[] paragraphs = text.Replace("\r\n", "\n").Split('\n');
+            foreach (string paragraph in paragraphs)
+            {
+                string trimmed = paragraph.Trim();
+                if (trimmed.Length == 0)
+                    continue;
+
+                string currentLine = string.Empty;
+                string[] words = trimmed.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
+                foreach (string word in words)
+                {
+                    string candidate = string.IsNullOrEmpty(currentLine) ? word : $"{currentLine} {word}";
+                    if (!string.IsNullOrEmpty(currentLine) && _font.MeasureString(candidate).X > maxWidth)
+                    {
+                        lines.Add(currentLine);
+                        currentLine = word;
+                    }
+                    else
+                    {
+                        currentLine = candidate;
+                    }
+                }
+
+                if (!string.IsNullOrEmpty(currentLine))
+                    lines.Add(currentLine);
+            }
+
+            return lines.ToArray();
+        }
     }
 }

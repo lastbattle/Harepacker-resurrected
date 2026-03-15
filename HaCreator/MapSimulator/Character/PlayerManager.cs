@@ -315,6 +315,11 @@ namespace HaCreator.MapSimulator.Character
                     duration);
             };
 
+            Combat.OnMobAttackMissPlayer = (x, y, currentTime) =>
+            {
+                _combatEffects?.AddMiss(x, y, currentTime);
+            };
+
             // Create SkillManager if we have a SkillLoader
             if (SkillLoader != null)
             {
@@ -332,6 +337,8 @@ namespace HaCreator.MapSimulator.Character
 
                 System.Diagnostics.Debug.WriteLine($"[PlayerManager] SkillManager created for job path {build.Job}");
             }
+
+            Combat.SetDamageBlockedEvaluator(currentTime => Skills?.IsPlayerProtectedByClientSkillZone(currentTime) == true);
 
             // Set up callbacks
             Player.SetFootholdLookup(_findFoothold);

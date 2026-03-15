@@ -50,6 +50,27 @@ namespace UnitTest_MapSimulator
             Assert.NotEqual(laterPositionMob.PoolId, projectile.PreferredTargetMobId);
         }
 
+        [Fact]
+        public void ExecuteSkillPayload_CasterMoveProjectilePreservesCastStartFacing()
+        {
+            SkillData skill = CreateCasterMoveProjectileSkill();
+            SkillManager manager = CreateSkillManager(skill);
+
+            PlayerCharacter player = GetPlayer(manager);
+            player.SetPosition(0, 0);
+            player.FacingRight = true;
+
+            InvokeExecuteSkillPayload(manager, skill, 1, 1000);
+
+            player.FacingRight = false;
+
+            manager.Update(1090, 0f);
+
+            ActiveProjectile projectile = GetOnlyProjectile(manager);
+            Assert.True(projectile.FacingRight);
+            Assert.True(projectile.VelocityX > 0f);
+        }
+
         private static SkillData CreateCasterMoveProjectileSkill()
         {
             return new SkillData

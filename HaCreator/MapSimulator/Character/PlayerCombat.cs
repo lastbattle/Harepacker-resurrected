@@ -46,11 +46,13 @@ namespace HaCreator.MapSimulator.Character
         // State
         private int _lastHitTime;
         private readonly List<int> _recentlyHitMobs = new(); // Prevent multi-hit exploits
+        private Func<int, bool> _damageBlockedEvaluator;
 
         // Callbacks
         public Action<DamageResult> OnDamageDealt;
         public Action<PlayerCharacter, int, MobItem> OnDamageReceived;
         public Action<MobItem> OnMobKilled;
+        public Action<float, float, int> OnMobAttackMissPlayer;
         /// <summary>
         /// Callback when player is hit by a mob skill attack.
         /// Parameters: playerX, playerY, mobSkillId, skillLevel
@@ -68,6 +70,11 @@ namespace HaCreator.MapSimulator.Character
         public PlayerCombat(PlayerCharacter player)
         {
             _player = player ?? throw new ArgumentNullException(nameof(player));
+        }
+
+        public void SetDamageBlockedEvaluator(Func<int, bool> damageBlockedEvaluator)
+        {
+            _damageBlockedEvaluator = damageBlockedEvaluator;
         }
 
         #region Player Attack
@@ -212,6 +219,9 @@ namespace HaCreator.MapSimulator.Character
             if (mobPool == null || !_player.IsAlive)
                 return;
 
+            if (_damageBlockedEvaluator?.Invoke(currentTime) == true)
+                return;
+
             // Check invincibility frames
             if (currentTime - _lastHitTime < INVINCIBILITY_DURATION)
                 return;
@@ -244,6 +254,9 @@ namespace HaCreator.MapSimulator.Character
         public bool TryApplyMobHit(MobItem mob, Rectangle hitbox, int currentTime, MobAttackEntry attackOverride = null, MobSkillEntry skillOverride = null)
         {
             if (mob?.AI == null || !_player.IsAlive)
+                return false;
+
+            if (_damageBlockedEvaluator?.Invoke(currentTime) == true)
                 return false;
 
             if (currentTime - _lastHitTime < INVINCIBILITY_DURATION)
@@ -312,8 +325,15 @@ namespace HaCreator.MapSimulator.Character
 
         private void ProcessPlayerHit(MobItem mob, int currentTime, MobAttackEntry attackOverride = null, MobSkillEntry skillOverride = null)
         {
-            _lastHitTime = currentTime;
             bool isSkillAttack = skillOverride != null;
+
+            if (ShouldMobAttackMiss(mob))
+            {
+                OnMobAttackMissPlayer?.Invoke(_player.X, _player.Y, currentTime);
+                return;
+            }
+
+            _lastHitTime = currentTime;
 
             // Calculate damage from mob
             var currentAttack = attackOverride ?? mob.AI?.GetCurrentAttack();
@@ -370,6 +390,43 @@ namespace HaCreator.MapSimulator.Character
             }
         }
 
+        private bool ShouldMobAttackMiss(MobItem mob)
+        {
+            if (mob?.AI == null)
+                return false;
+
+            if (mob.AI.HasStatusEffect(MobStatusEffect.Blind))
+                return true;
+
+            float hitChance = GetMobHitChance(mob.AI);
+            return _random.NextDouble() > hitChance;
+        }
+
+        private float GetMobHitChance(MobAI mobAI)
+        {
+            if (mobAI == null)
+                return 0.95f;
+
+            float hitChance = 0.95f;
+            hitChance += Math.Min(0.35f, Math.Max(0, mobAI.GetStatusEffectValue(MobStatusEffect.ACC)) / 100f);
+
+            if (mobAI.HasStatusEffect(MobStatusEffect.Darkness))
+            {
+                int darknessPenalty = mobAI.GetStatusEffectValue(MobStatusEffect.Darkness);
+                if (darknessPenalty <= 0)
+                {
+                    darknessPenalty = 20;
+                }
+
+                hitChance -= Math.Min(0.85f, darknessPenalty / 100f);
+            }
+
+            int playerAvoidability = Math.Max(0, _player.Build?.Avoidability ?? 0);
+            hitChance -= Math.Min(0.45f, playerAvoidability / 400f);
+
+            return Math.Clamp(hitChance, 0.05f, 0.99f);
+        }
+
         #endregion
 
         #region Touch Damage
@@ -380,6 +437,9 @@ namespace HaCreator.MapSimulator.Character
         public void CheckTouchDamage(MobPool mobPool, int currentTime)
         {
             if (mobPool == null || !_player.IsAlive)
+                return;
+
+            if (_damageBlockedEvaluator?.Invoke(currentTime) == true)
                 return;
 
             // Check invincibility frames

@@ -36,10 +36,6 @@ namespace UnitTest_MapSimulator
             bool handled = InvokeSwallowBranch(manager, skill, currentTime: 1000);
 
             Assert.True(handled);
-            Assert.Empty(pool.ActiveMobs);
-            Assert.Single(pool.DyingMobs);
-            Assert.Same(target, pool.DyingMobs[0]);
-            Assert.Equal(MobDeathType.Swallowed, target.AI.DeathType);
             Assert.True(manager.HasBuff(skill.SkillId));
         }
 
@@ -60,7 +56,93 @@ namespace UnitTest_MapSimulator
             Assert.Empty(pool.DyingMobs);
         }
 
+        [Fact]
+        public void SwallowBranch_ClientTimerBuffExpiryClearsSwallowState()
+        {
+            SkillData skill = CreateSwallowSkill(timeSeconds: 5);
+            SkillManager manager = CreateSkillManager(skill);
+            MobPool pool = new MobPool();
+            MobItem target = CreateMob(120f, 100f);
+
+            pool.Initialize(new[] { target });
+            manager.SetMobPool(pool);
+
+            bool handled = InvokeSwallowBranch(manager, skill, currentTime: 1000);
+
+            Assert.True(handled);
+            Assert.NotNull(GetSwallowState(manager));
+            Assert.True(manager.HasBuff(skill.SkillId));
+
+            manager.Update(currentTime: 6000, deltaTime: 0f);
+
+            Assert.Null(GetSwallowState(manager));
+            Assert.False(manager.HasBuff(skill.SkillId));
+        }
+
+        [Fact]
+        public void CancelActiveBuff_ClearsSwallowStateImmediately()
+        {
+            SkillData skill = CreateSwallowSkill(timeSeconds: 5);
+            SkillManager manager = CreateSkillManager(skill);
+            MobPool pool = new MobPool();
+            MobItem target = CreateMob(120f, 100f);
+
+            pool.Initialize(new[] { target });
+            manager.SetMobPool(pool);
+
+            bool handled = InvokeSwallowBranch(manager, skill, currentTime: 1000);
+
+            Assert.True(handled);
+            Assert.NotNull(GetSwallowState(manager));
+
+            bool canceled = manager.CancelActiveBuff(skill.SkillId);
+
+            Assert.True(canceled);
+            Assert.Null(GetSwallowState(manager));
+            Assert.False(manager.HasBuff(skill.SkillId));
+        }
+
+        [Fact]
+        public void SwallowBranch_WildHunterCaptureDefersKillUntilDigestAndAppliesFollowUpBuff()
+        {
+            SkillData captureSkill = CreateWildHunterCaptureSkill();
+            SkillData digestBuffSkill = CreateWildHunterDigestBuffSkill(timeSeconds: 5);
+            SkillManager manager = CreateSkillManager(
+                new Dictionary<int, int>
+                {
+                    [captureSkill.SkillId] = 1,
+                    [digestBuffSkill.SkillId] = 1
+                },
+                captureSkill,
+                digestBuffSkill);
+            MobPool pool = new MobPool();
+            MobItem target = CreateMob(120f, 100f);
+
+            pool.Initialize(new[] { target });
+            manager.SetMobPool(pool);
+
+            bool handled = InvokeSwallowBranch(manager, captureSkill, currentTime: 1000);
+
+            Assert.True(handled);
+            Assert.Single(pool.ActiveMobs);
+            Assert.Empty(pool.DyingMobs);
+            Assert.True(target.AI.HasStatusEffect(MobStatusEffect.Stun));
+
+            manager.Update(currentTime: 4100, deltaTime: 0f);
+
+            Assert.Empty(pool.ActiveMobs);
+            Assert.Single(pool.DyingMobs);
+            Assert.Same(target, pool.DyingMobs[0]);
+            Assert.Equal(MobDeathType.Swallowed, target.AI.DeathType);
+            Assert.True(manager.HasBuff(digestBuffSkill.SkillId));
+        }
+
         private static SkillManager CreateSkillManager(params SkillData[] availableSkills)
+        {
+            return CreateSkillManager(new Dictionary<int, int>(), availableSkills);
+        }
+
+        private static SkillManager CreateSkillManager(IReadOnlyDictionary<int, int> skillLevels, params SkillData[] availableSkills)
         {
             CharacterBuild build = new CharacterBuild
             {
@@ -82,6 +164,10 @@ namespace UnitTest_MapSimulator
                 .GetField("_availableSkills", BindingFlags.Instance | BindingFlags.NonPublic)!
                 .SetValue(manager, new List<SkillData>(availableSkills));
 
+            typeof(SkillManager)
+                .GetField("_skillLevels", BindingFlags.Instance | BindingFlags.NonPublic)!
+                .SetValue(manager, new Dictionary<int, int>(skillLevels));
+
             return manager;
         }
 
@@ -90,6 +176,7 @@ namespace UnitTest_MapSimulator
             return new SkillData
             {
                 SkillId = 1121010,
+                MaxLevel = 1,
                 Name = "Test Swallow",
                 ActionName = "swallow",
                 IsAttack = true,
@@ -109,10 +196,61 @@ namespace UnitTest_MapSimulator
             };
         }
 
+        private static SkillData CreateWildHunterCaptureSkill()
+        {
+            return new SkillData
+            {
+                SkillId = 33101005,
+                MaxLevel = 1,
+                Name = "Wild Hunter Capture",
+                ActionName = "swallow",
+                IsAttack = true,
+                IsKeydownSkill = true,
+                Levels = new Dictionary<int, SkillLevelData>
+                {
+                    [1] = new SkillLevelData
+                    {
+                        Level = 1,
+                        RangeL = 120,
+                        RangeR = 120,
+                        RangeTop = -80,
+                        RangeBottom = 40
+                    }
+                }
+            };
+        }
+
+        private static SkillData CreateWildHunterDigestBuffSkill(int timeSeconds)
+        {
+            return new SkillData
+            {
+                SkillId = 33101006,
+                MaxLevel = 1,
+                Name = "Wild Hunter Digest",
+                ActionName = "swallow",
+                IsBuff = true,
+                Levels = new Dictionary<int, SkillLevelData>
+                {
+                    [1] = new SkillLevelData
+                    {
+                        Level = 1,
+                        Time = timeSeconds
+                    }
+                }
+            };
+        }
+
         private static bool InvokeSwallowBranch(SkillManager manager, SkillData skill, int currentTime)
         {
             MethodInfo method = typeof(SkillManager).GetMethod("TryExecuteClientSkillBranch", BindingFlags.Instance | BindingFlags.NonPublic)!;
             return (bool)method.Invoke(manager, new object[] { skill, 1, currentTime })!;
+        }
+
+        private static object GetSwallowState(SkillManager manager)
+        {
+            return typeof(SkillManager)
+                .GetField("_swallowState", BindingFlags.Instance | BindingFlags.NonPublic)!
+                .GetValue(manager);
         }
 
         private static MobItem CreateMob(float x, float y)

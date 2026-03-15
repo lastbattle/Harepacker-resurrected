@@ -225,6 +225,16 @@ namespace HaCreator.MapSimulator.Loaders
             UIObject btnSlot = LoadButton(characterProperty, "BtSlot", btClickSound, btOverSound, device);
             equip.InitializeTabButtons(btnPet, btnDragon, btnMechanic, btnAndroid, btnSlot);
 
+            WzSubProperty skillMainProperty = uiWindow2Image?["Skill"]?["main"] as WzSubProperty;
+            if (skillMainProperty != null)
+            {
+                Texture2D[] tooltipFrames = new Texture2D[3];
+                tooltipFrames[0] = LoadCanvasTexture(skillMainProperty, "tip0", device);
+                tooltipFrames[1] = LoadCanvasTexture(skillMainProperty, "tip1", device);
+                tooltipFrames[2] = LoadCanvasTexture(skillMainProperty, "tip2", device);
+                equip.SetTooltipTextures(tooltipFrames);
+            }
+
             return equip;
         }
 
@@ -858,6 +868,11 @@ namespace HaCreator.MapSimulator.Loaders
 
                     var mergedSkills = skillMap.Values.ToList();
                     skillWindow.AddSkills(tabIndex, mergedSkills);
+                    skillWindow.SetRecommendedSkillEntries(
+                        tabIndex,
+                        SkillDataLoader.LoadRecommendedSkillEntries(
+                            pathJobId,
+                            mergedSkills.Select(skill => skill.SkillId)));
                     System.Diagnostics.Debug.WriteLine($"[UIWindowLoader] Tab {tabIndex}: Loaded {mergedSkills.Count} skills for display job {pathJobId}");
 
                     // Load and set the job icon and name for the populated tab.

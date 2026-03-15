@@ -69,6 +69,19 @@ namespace UnitTest_MapSimulator
         }
 
         [Fact]
+        public void SelectPreferredSummonAttackBranch_FallsBackToAttackPrefixedVariant()
+        {
+            string branch = SkillLoader.SelectPreferredSummonAttackBranch(new[]
+            {
+                "stand",
+                "attackTriangle",
+                "prepare"
+            });
+
+            Assert.Equal("attackTriangle", branch);
+        }
+
+        [Fact]
         public void SelectPreferredSummonAttackBranch_ReturnsNullWhenAttackIsMissing()
         {
             string branch = SkillLoader.SelectPreferredSummonAttackBranch(new[]

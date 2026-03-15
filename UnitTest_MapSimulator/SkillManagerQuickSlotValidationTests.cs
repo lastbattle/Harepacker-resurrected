@@ -51,6 +51,22 @@ namespace UnitTest_MapSimulator
         }
 
         [Fact]
+        public void SetSkillLevel_ClearsHotkeyImmediatelyWhenSkillBecomesUnlearned()
+        {
+            var activeSkill = new SkillData { SkillId = 2001002, MaxLevel = 1 };
+            var manager = CreateSkillManager(activeSkill);
+            manager.SetSkillLevel(activeSkill.SkillId, 1);
+
+            Assert.True(manager.TrySetHotkey(0, activeSkill.SkillId));
+            Assert.Equal(activeSkill.SkillId, manager.GetHotkeySkill(0));
+
+            manager.SetSkillLevel(activeSkill.SkillId, 0);
+
+            Assert.Equal(0, manager.GetHotkeySkill(0));
+            Assert.Empty(manager.GetAllHotkeys());
+        }
+
+        [Fact]
         public void CharacterPresetApplySkillsTo_RevalidatesHotkeysAfterLoadingLevels()
         {
             var activeSkill = new SkillData { SkillId = 3001001, MaxLevel = 1 };

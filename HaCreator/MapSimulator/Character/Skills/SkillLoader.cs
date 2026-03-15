@@ -243,9 +243,16 @@ namespace HaCreator.MapSimulator.Character.Skills
                 skill.IsMesoExplosion = GetInt(infoNode, "mesoExplosion") == 1;
                 skill.CasterMove = GetInt(infoNode, "casterMove") == 1;
                 skill.AreaAttack = GetInt(infoNode, "areaAttack") == 1;
+                skill.RectBasedOnTarget = GetInt(infoNode, "rectBasedOnTarget") == 1;
                 skill.LandingEffectName = GetString(infoNode, "landingEffect");
                 skill.MinionAbility = GetString(infoNode, "minionAbility");
                 skill.SummonCondition = GetString(infoNode, "condition");
+                skill.ZoneType = GetString(infoNode, "zoneType");
+                skill.IsMassSpell = GetInt(infoNode, "massSpell") == 1;
+                skill.FixedState = GetInt(infoNode, "fixedState") == 1;
+                skill.CanNotMoveInState = GetInt(infoNode, "canNotMoveInState") == 1;
+                skill.OnlyNormalAttackInState = GetInt(infoNode, "onlyNormalAttack") == 1;
+                skill.SpecialNormalAttackInState = GetInt(infoNode, "specialNormalAttack") == 1;
             }
 
             // Check common nodes
@@ -530,6 +537,12 @@ namespace HaCreator.MapSimulator.Character.Skills
                 LoadSummonAnimations(skill, summonNode);
             }
 
+            var tileNode = skillNode["tile"];
+            if (tileNode != null)
+            {
+                skill.ZoneAnimation = LoadZoneAnimation(tileNode);
+            }
+
             // Load projectile/ball
             var ballNode = skillNode["ball"];
             if (ballNode != null)
@@ -666,6 +679,38 @@ namespace HaCreator.MapSimulator.Character.Skills
             animation.ZOrder = GetInt(node, "z");
 
             return animation;
+        }
+
+        private SkillAnimation LoadZoneAnimation(WzImageProperty tileNode)
+        {
+            if (tileNode == null)
+            {
+                return null;
+            }
+
+            foreach (WzImageProperty child in tileNode.WzProperties)
+            {
+                if (!int.TryParse(child.Name, out _))
+                {
+                    continue;
+                }
+
+                SkillAnimation animation = LoadSkillAnimation(child, "tile");
+                if (animation.Frames.Count > 0)
+                {
+                    animation.Loop = true;
+                    return animation;
+                }
+            }
+
+            SkillAnimation fallbackAnimation = LoadSkillAnimation(tileNode, "tile");
+            if (fallbackAnimation.Frames.Count > 0)
+            {
+                fallbackAnimation.Loop = true;
+                return fallbackAnimation;
+            }
+
+            return null;
         }
 
         private static int ResolveAnimationDuration(WzImageProperty node)
@@ -844,6 +889,14 @@ namespace HaCreator.MapSimulator.Character.Skills
                 if (availableBranches.TryGetValue(preferredBranch, out string actualBranchName))
                 {
                     return actualBranchName;
+                }
+            }
+
+            foreach (string availableBranch in availableBranches.Keys)
+            {
+                if (availableBranch.StartsWith("attack", StringComparison.OrdinalIgnoreCase))
+                {
+                    return availableBranch;
                 }
             }
 

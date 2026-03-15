@@ -35,6 +35,7 @@ namespace UnitTest_MapSimulator
 
             Assert.Equal("buff/incPAD", entry.IconKey);
             Assert.Equal(new[] { "PAD", "ACC" }, entry.TemporaryStatLabels);
+            Assert.Equal(new[] { "Physical Attack", "Accuracy" }, entry.TemporaryStatDisplayNames);
             Assert.Equal(29500, entry.RemainingMs);
         }
 

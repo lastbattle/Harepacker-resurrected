@@ -1,6 +1,7 @@
 using HaCreator.MapSimulator.UI;
 using HaCreator.MapSimulator.UI.Controls;
 using HaCreator.MapSimulator.Character.Skills;
+using HaCreator.MapSimulator.Loaders;
 using HaSharedLibrary.Render;
 using HaSharedLibrary.Render.DX;
 using Microsoft.Xna.Framework;
@@ -9,6 +10,7 @@ using Microsoft.Xna.Framework.Input;
 using Spine;
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Text;
 
 namespace HaCreator.MapSimulator.UI
@@ -164,6 +166,7 @@ namespace HaCreator.MapSimulator.UI
 
         // Skill points available per tab
         private readonly Dictionary<int, int> skillPointsByTab;
+        private readonly Dictionary<int, List<SkillDataLoader.RecommendedSkillEntry>> _recommendedSkillsByTab;
 
         // Graphics device
         private GraphicsDevice _device;
@@ -261,6 +264,14 @@ namespace HaCreator.MapSimulator.UI
                 { TAB_3RD, 0 },
                 { TAB_4TH, 0 }
             };
+            _recommendedSkillsByTab = new Dictionary<int, List<SkillDataLoader.RecommendedSkillEntry>>
+            {
+                { TAB_BEGINNER, new List<SkillDataLoader.RecommendedSkillEntry>() },
+                { TAB_1ST, new List<SkillDataLoader.RecommendedSkillEntry>() },
+                { TAB_2ND, new List<SkillDataLoader.RecommendedSkillEntry>() },
+                { TAB_3RD, new List<SkillDataLoader.RecommendedSkillEntry>() },
+                { TAB_4TH, new List<SkillDataLoader.RecommendedSkillEntry>() }
+            };
 
             // Initialize job header data
             _jobIconsByTab = new Dictionary<int, Texture2D>
@@ -325,6 +336,25 @@ namespace HaCreator.MapSimulator.UI
         public void SetRecommendTexture(Texture2D recommendTexture)
         {
             _recommendTexture = recommendTexture;
+        }
+
+        public void SetRecommendedSkillEntries(int tab, IEnumerable<SkillDataLoader.RecommendedSkillEntry> entries)
+        {
+            int tabIndex = Math.Clamp(tab, TAB_BEGINNER, TAB_4TH);
+            if (!_recommendedSkillsByTab.TryGetValue(tabIndex, out List<SkillDataLoader.RecommendedSkillEntry> list))
+            {
+                list = new List<SkillDataLoader.RecommendedSkillEntry>();
+                _recommendedSkillsByTab[tabIndex] = list;
+            }
+
+            list.Clear();
+            if (entries == null)
+                return;
+
+            list.AddRange(entries
+                .Where(entry => entry.SkillId > 0)
+                .OrderBy(entry => entry.SpentSpThreshold)
+                .ThenBy(entry => entry.SkillId));
         }
 
         /// <summary>
@@ -678,6 +708,10 @@ namespace HaCreator.MapSimulator.UI
             if (skills == null || skills.Count == 0 || availableSp <= 0)
                 return 0;
 
+            int tableRecommendedSkillId = ResolveRecommendedSkillIdFromThresholdTable(skills, availableSp);
+            if (tableRecommendedSkillId > 0)
+                return tableRecommendedSkillId;
+
             for (int i = 0; i < skills.Count; i++)
             {
                 SkillDisplayData skill = skills[i];
@@ -686,6 +720,44 @@ namespace HaCreator.MapSimulator.UI
 
                 if (CanLevelUp(skill, availableSp))
                     return skill.SkillId;
+            }
+
+            return 0;
+        }
+
+        private int ResolveRecommendedSkillIdFromThresholdTable(IReadOnlyList<SkillDisplayData> skills, int availableSp)
+        {
+            if (!_recommendedSkillsByTab.TryGetValue(_currentTab, out List<SkillDataLoader.RecommendedSkillEntry> entries) ||
+                entries == null ||
+                entries.Count == 0)
+            {
+                return 0;
+            }
+
+            int spentSp = GetCurrentSpentSkillPoints();
+            for (int i = 0; i < entries.Count; i++)
+            {
+                SkillDataLoader.RecommendedSkillEntry entry = entries[i];
+                if (entry.SpentSpThreshold > spentSp)
+                    return ResolveRecommendedSkillCandidate(skills, availableSp, i > 0 ? entries[i - 1].SkillId : 0);
+
+                if (entry.SpentSpThreshold == spentSp)
+                    return ResolveRecommendedSkillCandidate(skills, availableSp, entry.SkillId);
+            }
+
+            return 0;
+        }
+
+        private int ResolveRecommendedSkillCandidate(IReadOnlyList<SkillDisplayData> skills, int availableSp, int candidateSkillId)
+        {
+            if (candidateSkillId <= 0)
+                return 0;
+
+            for (int i = 0; i < skills.Count; i++)
+            {
+                SkillDisplayData skill = skills[i];
+                if (skill?.SkillId == candidateSkillId && CanLevelUp(skill, availableSp))
+                    return candidateSkillId;
             }
 
             return 0;
@@ -1497,6 +1569,11 @@ namespace HaCreator.MapSimulator.UI
                 skillPointsByTab[kvp.Key] = 0;
             }
 
+            foreach (var kvp in _recommendedSkillsByTab)
+            {
+                kvp.Value.Clear();
+            }
+
             _hoveredSkillIndex = -1;
             _hoveredSpUpSkillIndex = -1;
             _pressedSpUpSkillIndex = -1;
@@ -1590,6 +1667,20 @@ namespace HaCreator.MapSimulator.UI
         private int GetMaxScrollOffset()
         {
             return Math.Max(0, CurrentSkills.Count - VISIBLE_SKILLS);
+        }
+
+        private int GetCurrentSpentSkillPoints()
+        {
+            if (!skillsByTab.TryGetValue(_currentTab, out List<SkillDisplayData> skills) || skills == null)
+                return 0;
+
+            int spentSp = 0;
+            for (int i = 0; i < skills.Count; i++)
+            {
+                spentSp += Math.Max(0, skills[i]?.CurrentLevel ?? 0);
+            }
+
+            return spentSp;
         }
 
         private bool CanScrollSkills()

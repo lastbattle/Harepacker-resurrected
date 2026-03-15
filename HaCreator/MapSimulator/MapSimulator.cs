@@ -506,6 +506,7 @@ namespace HaCreator.MapSimulator
                     _mobPool?.UpdatePuppets(currentTick);
                     _mobPool?.SyncPuppetTargets(currentTick);
                 });
+            _mobAttackSystem.SetMobTargeting(mobId => _mobPool?.GetMob(mobId));
         }
 
         #region Loading and unloading
@@ -1099,6 +1100,11 @@ namespace HaCreator.MapSimulator
                 uiWindowManager.AbilityWindow.CharacterBuild = _playerManager.Player.Build;
                 uiWindowManager.AbilityWindow.SetFont(_fontDebugValues);
             }
+            if (uiWindowManager?.EquipWindow != null && _playerManager?.Player?.Build != null)
+            {
+                uiWindowManager.EquipWindow.CharacterBuild = _playerManager.Player.Build;
+                uiWindowManager.EquipWindow.SetFont(_fontChat);
+            }
 
             // Start fade-in effect on initial map load (matching CField::Init behavior)
             // This creates the classic MapleStory "fade in from black" effect when entering a map
@@ -1603,6 +1609,11 @@ namespace HaCreator.MapSimulator
             {
                 uiWindowManager.AbilityWindow.CharacterBuild = _playerManager.Player.Build;
                 uiWindowManager.AbilityWindow.SetFont(_fontDebugValues);
+            }
+            if (uiWindowManager?.EquipWindow != null && _playerManager?.Player?.Build != null)
+            {
+                uiWindowManager.EquipWindow.CharacterBuild = _playerManager.Player.Build;
+                uiWindowManager.EquipWindow.SetFont(_fontChat);
             }
 
             // Reload boss HP bar textures from WZ files (UI.wz/UIWindow.img/MobGage)
@@ -5831,7 +5842,8 @@ namespace HaCreator.MapSimulator
                     IconTexture = buffEntry.IconTexture,
                     RemainingMs = buffEntry.RemainingMs,
                     DurationMs = buffEntry.DurationMs,
-                    TemporaryStatLabels = buffEntry.TemporaryStatLabels
+                    TemporaryStatLabels = buffEntry.TemporaryStatLabels,
+                    TemporaryStatDisplayNames = buffEntry.TemporaryStatDisplayNames
                 });
             }
 
@@ -5851,11 +5863,13 @@ namespace HaCreator.MapSimulator
                 return Array.Empty<StatusBarCooldownRenderData>();
             }
 
-            List<StatusBarCooldownRenderData> renderData = new List<StatusBarCooldownRenderData>();
+            List<(StatusBarCooldownRenderData RenderData, int CooldownStartTime, int SlotIndex)> renderData =
+                new List<(StatusBarCooldownRenderData RenderData, int CooldownStartTime, int SlotIndex)>();
+            HashSet<int> processedSkills = new HashSet<int>();
             foreach (KeyValuePair<int, int> hotkey in hotkeys.OrderBy(entry => entry.Key))
             {
                 int skillId = hotkey.Value;
-                if (skillId <= 0 || renderData.Any(entry => entry.SkillId == skillId))
+                if (skillId <= 0 || !processedSkills.Add(skillId))
                 {
                     continue;
                 }
@@ -5874,7 +5888,9 @@ namespace HaCreator.MapSimulator
                     continue;
                 }
 
-                renderData.Add(new StatusBarCooldownRenderData
+                _playerManager.Skills.TryGetCooldownStartTime(skillId, out int cooldownStartTime);
+
+                renderData.Add((new StatusBarCooldownRenderData
                 {
                     SkillId = skillId,
                     SkillName = skill?.Name,
@@ -5882,10 +5898,14 @@ namespace HaCreator.MapSimulator
                     IconTexture = skill?.IconTexture,
                     RemainingMs = remainingMs,
                     DurationMs = Math.Max(remainingMs, durationMs)
-                });
+                }, cooldownStartTime, hotkey.Key));
             }
 
-            return renderData;
+            return renderData
+                .OrderByDescending(entry => entry.CooldownStartTime)
+                .ThenBy(entry => entry.SlotIndex)
+                .Select(entry => entry.RenderData)
+                .ToList();
         }
 
         private StatusBarPreparedSkillRenderData GetPreparedSkillBarData(int currentTime)

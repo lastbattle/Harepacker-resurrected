@@ -232,12 +232,12 @@ namespace HaCreator.MapSimulator.Entities
         /// <param name="attackerX">Attacker X position for aggro</param>
         /// <param name="attackerY">Attacker Y position for aggro</param>
         /// <returns>True if mob died from this damage</returns>
-        public bool ApplyDamage(int damage, int currentTick, bool isCritical, float? attackerX, float? attackerY)
+        public bool ApplyDamage(int damage, int currentTick, bool isCritical, float? attackerX, float? attackerY, bool originatedFromPlayer = true)
         {
             if (AI == null)
                 return false;
 
-            if (IsProtectedFromPlayerDamage && attackerX.HasValue && attackerY.HasValue)
+            if (IsProtectedFromPlayerDamage && originatedFromPlayer)
                 return false;
 
             bool died = AI.TakeDamage(damage, currentTick, isCritical, attackerX, attackerY);

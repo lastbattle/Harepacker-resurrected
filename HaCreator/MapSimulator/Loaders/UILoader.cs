@@ -862,6 +862,16 @@ namespace HaCreator.MapSimulator.Loaders
                 return keyDownBarTextures;
             }
 
+            static Point GetCanvasOrigin(WzCanvasProperty canvas)
+            {
+                if (!(canvas?["origin"] is WzVectorProperty origin))
+                {
+                    return Point.Zero;
+                }
+
+                return new Point(origin.X.Value, origin.Y.Value);
+            }
+
             foreach (string skinKey in new[] { "KeyDownBar", "KeyDownBar1", "KeyDownBar2", "KeyDownBar3", "KeyDownBar4" })
             {
                 if (!(uiBasic[skinKey] is WzSubProperty skinProperty))
@@ -869,11 +879,14 @@ namespace HaCreator.MapSimulator.Loaders
                     continue;
                 }
 
+                WzCanvasProperty barCanvas = skinProperty["bar"] as WzCanvasProperty;
+
                 var textures = new StatusBarKeyDownBarTextures
                 {
-                    Bar = LoadCanvasTexture(skinProperty["bar"] as WzCanvasProperty, device),
+                    Bar = LoadCanvasTexture(barCanvas, device),
                     Gauge = LoadCanvasTexture(skinProperty["gauge"] as WzCanvasProperty, device),
-                    Graduation = LoadCanvasTexture(skinProperty["graduation"] as WzCanvasProperty, device)
+                    Graduation = LoadCanvasTexture(skinProperty["graduation"] as WzCanvasProperty, device),
+                    BarOrigin = GetCanvasOrigin(barCanvas)
                 };
 
                 if (textures.Bar != null || textures.Gauge != null || textures.Graduation != null)

@@ -32,6 +32,8 @@ namespace HaCreator.MapSimulator.UI
         private Texture2D _pixelTexture;
         private Texture2D _chatEnterTexture;
         private int _scrollOffset;
+        private int _lastWrappedLineCount;
+        private int _lastManualScrollTick = int.MinValue;
         private int? _previousScrollWheelValue;
 
         private const int ChatMessageDisplayTime = 10000;
@@ -40,6 +42,7 @@ namespace HaCreator.MapSimulator.UI
         private const int ChatLogLineHeight = 14;
         private const int ChatLogWidth = 452;
         private const int ChatWrapIndentSpaces = 5;
+        private const int ChatScrollRecentThresholdMs = 5000;
         private static readonly Vector2 ChatTargetLabelPos = new Vector2(17, 7);
         private static readonly Vector2 ChatInputPos = new Vector2(74, 5);
         private static readonly Vector2 ChatWhisperPromptPos = new Vector2(74, -13);
@@ -120,12 +123,20 @@ namespace HaCreator.MapSimulator.UI
 
             if (scrollUpButton != null)
             {
-                scrollUpButton.ButtonClickReleased += _ => _scrollOffset++;
+                scrollUpButton.ButtonClickReleased += _ =>
+                {
+                    _scrollOffset++;
+                    RecordManualScroll();
+                };
             }
 
             if (scrollDownButton != null)
             {
-                scrollDownButton.ButtonClickReleased += _ => _scrollOffset = Math.Max(0, _scrollOffset - 1);
+                scrollDownButton.ButtonClickReleased += _ =>
+                {
+                    _scrollOffset = Math.Max(0, _scrollOffset - 1);
+                    RecordManualScroll();
+                };
             }
         }
 
@@ -203,6 +214,8 @@ namespace HaCreator.MapSimulator.UI
         private void DrawChatMessages(SpriteBatch sprite, MapSimulatorChatRenderState chatState, int tickCount)
         {
             List<WrappedChatLine> wrappedLines = BuildWrappedLines(chatState.Messages);
+            AdjustScrollForNewLines(wrappedLines.Count, tickCount);
+
             int maxScrollOffset = Math.Max(0, wrappedLines.Count - ChatMaxVisibleLines);
             _scrollOffset = Math.Clamp(_scrollOffset, 0, maxScrollOffset);
 
@@ -242,6 +255,30 @@ namespace HaCreator.MapSimulator.UI
                 drawnLines++;
                 lineIndex--;
             }
+
+            _lastWrappedLineCount = wrappedLines.Count;
+        }
+
+        private void AdjustScrollForNewLines(int wrappedLineCount, int tickCount)
+        {
+            if (wrappedLineCount <= _lastWrappedLineCount)
+            {
+                return;
+            }
+
+            int addedLineCount = wrappedLineCount - _lastWrappedLineCount;
+            int maxScrollOffset = Math.Max(0, wrappedLineCount - ChatMaxVisibleLines);
+            bool shouldSnapToBottom = maxScrollOffset <= 2
+                || _scrollOffset == 0
+                || tickCount - _lastManualScrollTick > ChatScrollRecentThresholdMs;
+
+            if (shouldSnapToBottom)
+            {
+                _scrollOffset = 0;
+                return;
+            }
+
+            _scrollOffset = Math.Min(maxScrollOffset, _scrollOffset + addedLineCount);
         }
 
         private void DrawChatInput(SpriteBatch sprite, MapSimulatorChatRenderState chatState, int tickCount)
@@ -426,6 +463,13 @@ namespace HaCreator.MapSimulator.UI
             {
                 _scrollOffset = Math.Max(0, _scrollOffset - steps);
             }
+
+            RecordManualScroll();
+        }
+
+        private void RecordManualScroll()
+        {
+            _lastManualScrollTick = Environment.TickCount;
         }
 
         private Rectangle GetChatInteractionBounds()
