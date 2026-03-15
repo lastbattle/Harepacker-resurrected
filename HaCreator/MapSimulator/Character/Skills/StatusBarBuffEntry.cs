@@ -1,5 +1,7 @@
 namespace HaCreator.MapSimulator.Character.Skills
 {
+    using System;
+    using System.Collections.Generic;
     using Microsoft.Xna.Framework.Graphics;
 
     /// <summary>
@@ -15,5 +17,6 @@ namespace HaCreator.MapSimulator.Character.Skills
         public int StartTime { get; set; }
         public int DurationMs { get; set; }
         public int RemainingMs { get; set; }
+        public IReadOnlyList<string> TemporaryStatLabels { get; set; } = Array.Empty<string>();
     }
 }

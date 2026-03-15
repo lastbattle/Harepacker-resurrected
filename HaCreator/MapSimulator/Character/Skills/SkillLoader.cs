@@ -971,6 +971,7 @@ namespace HaCreator.MapSimulator.Character.Skills
 
             if (GetInt(ballNode, "homing") == 1)
             {
+                projectile.Homing = true;
                 projectile.Behavior = ProjectileBehavior.Homing;
             }
 
@@ -1427,8 +1428,49 @@ namespace HaCreator.MapSimulator.Character.Skills
             levelData.CriticalRate = GetInt(node, "cr", 0, level);
 
             levelData.RequiredLevel = GetInt(node, "reqLevel", 0, level);
+            PopulateSkillLevelRequirements(levelData, node);
 
             return levelData;
+        }
+
+        private static void PopulateSkillLevelRequirements(SkillLevelData levelData, WzImageProperty node)
+        {
+            if (levelData == null || node == null)
+                return;
+
+            WzImageProperty reqNode = node["req"];
+            if (reqNode?.WzProperties == null)
+                return;
+
+            foreach (WzImageProperty requirementNode in reqNode.WzProperties)
+            {
+                if (!int.TryParse(requirementNode.Name, out int requiredSkillId) || requiredSkillId <= 0)
+                    continue;
+
+                int requiredSkillLevel = 0;
+                switch (requirementNode)
+                {
+                    case WzIntProperty intProperty:
+                        requiredSkillLevel = intProperty.Value;
+                        break;
+                    case WzShortProperty shortProperty:
+                        requiredSkillLevel = shortProperty.Value;
+                        break;
+                    case WzLongProperty longProperty:
+                        requiredSkillLevel = (int)longProperty.Value;
+                        break;
+                    default:
+                        requiredSkillLevel = GetInt(reqNode, requirementNode.Name, 0);
+                        break;
+                }
+
+                if (requiredSkillLevel <= 0)
+                    continue;
+
+                levelData.RequiredSkill = requiredSkillId;
+                levelData.RequiredSkillLevel = requiredSkillLevel;
+                break;
+            }
         }
 
         private static void ParseFinalAttackTriggers(SkillData skill, WzImageProperty skillNode)

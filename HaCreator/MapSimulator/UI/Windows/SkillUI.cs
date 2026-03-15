@@ -653,6 +653,9 @@ namespace HaCreator.MapSimulator.UI
         public string Description { get; set; }
         public int CurrentLevel { get; set; }
         public int MaxLevel { get; set; }
+        public int RequiredCharacterLevel { get; set; }
+        public int RequiredSkillId { get; set; }
+        public int RequiredSkillLevel { get; set; }
         public Dictionary<int, string> LevelDescriptions { get; } = new Dictionary<int, string>();
 
         // Skill properties for tooltip

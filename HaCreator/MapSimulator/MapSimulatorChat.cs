@@ -50,6 +50,8 @@ namespace HaCreator.MapSimulator
     public class MapSimulatorChat
     {
         #region Constants
+        private static readonly Color WhisperMessageColor = new Color(255, 170, 255);
+
         private const int CHAT_INPUT_X = 5;
         private const int CHAT_INPUT_Y_OFFSET = 55; // Offset from bottom of screen (just above status bar level indicator)
         private const int CHAT_INPUT_WIDTH = 478;
@@ -700,6 +702,12 @@ namespace HaCreator.MapSimulator
 
         private void SendTargetedChatMessage(string message, int tickCount)
         {
+            if (!string.IsNullOrWhiteSpace(_whisperTarget))
+            {
+                AddMessage($"> {_whisperTarget}: {message}", WhisperMessageColor, tickCount);
+                return;
+            }
+
             string prefix = GetTargetPrefix(_chatTarget);
             Color color = GetTargetColor(_chatTarget);
             if (string.IsNullOrEmpty(prefix))
@@ -723,14 +731,17 @@ namespace HaCreator.MapSimulator
                 || trimmedMessage.StartsWith("/whisper ", StringComparison.OrdinalIgnoreCase))
             {
                 string[] parts = trimmedMessage.Split(new[] { ' ' }, 3, StringSplitOptions.RemoveEmptyEntries);
-                if (parts.Length < 3)
+                if (parts.Length < 2)
                 {
-                    AddMessage("Usage: /w <name> <message>", Color.IndianRed, tickCount);
+                    AddMessage("Usage: /w <name> [message]", Color.IndianRed, tickCount);
                     return true;
                 }
 
                 _whisperTarget = parts[1];
-                AddMessage($"> {_whisperTarget}: {parts[2]}", new Color(255, 170, 255), tickCount);
+                if (parts.Length >= 3)
+                {
+                    AddMessage($"> {_whisperTarget}: {parts[2]}", WhisperMessageColor, tickCount);
+                }
                 return true;
             }
 
@@ -750,7 +761,7 @@ namespace HaCreator.MapSimulator
                     return true;
                 }
 
-                AddMessage($"> {_whisperTarget}: {parts[1]}", new Color(255, 170, 255), tickCount);
+                AddMessage($"> {_whisperTarget}: {parts[1]}", WhisperMessageColor, tickCount);
                 return true;
             }
 

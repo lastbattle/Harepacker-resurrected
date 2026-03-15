@@ -991,11 +991,12 @@ namespace HaCreator.MapSimulator.Entities
                     bool canRushDuringAttack = currentAttack?.IsRushAttack == true &&
                                                MovementInfo.MoveType != MobMoveType.Stand;
                     bool canJumpDuringAttack = currentAttack?.IsJumpAttack == true &&
-                                               MovementInfo.MoveType == MobMoveType.Jump;
+                                               MovementInfo.MoveType != MobMoveType.Stand &&
+                                               MovementInfo.MoveType != MobMoveType.Fly;
 
                     if (canJumpDuringAttack && MovementInfo.JumpState == MobJumpState.None)
                     {
-                        MovementInfo.TryTriggerJump();
+                        MovementInfo.TryTriggerAttackJump();
                     }
 
                     if (canRushDuringAttack)

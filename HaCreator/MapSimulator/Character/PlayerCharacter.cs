@@ -53,14 +53,14 @@ namespace HaCreator.MapSimulator.Character
         private sealed class SkillAvatarTransformState
         {
             public int SkillId { get; init; }
-            public string StandActionName { get; init; }
-            public string WalkActionName { get; init; }
-            public string JumpActionName { get; init; }
-            public string ProneActionName { get; init; }
-            public string AttackActionName { get; init; }
-            public string ClimbActionName { get; init; }
-            public string FloatActionName { get; init; }
-            public string HitActionName { get; init; }
+            public IReadOnlyList<string> StandActionNames { get; init; }
+            public IReadOnlyList<string> WalkActionNames { get; init; }
+            public IReadOnlyList<string> JumpActionNames { get; init; }
+            public IReadOnlyList<string> ProneActionNames { get; init; }
+            public IReadOnlyList<string> AttackActionNames { get; init; }
+            public IReadOnlyList<string> ClimbActionNames { get; init; }
+            public IReadOnlyList<string> FloatActionNames { get; init; }
+            public IReadOnlyList<string> HitActionNames { get; init; }
             public string ExitActionName { get; init; }
             public bool LocksMovement { get; init; }
         }
@@ -248,6 +248,8 @@ namespace HaCreator.MapSimulator.Character
 
         // Sound callbacks
         private Action _onJumpSound;
+        private Func<string> _jumpRestrictionMessageProvider;
+        private Action<string> _onJumpRestricted;
 
         // Foothold system reference
         private Func<float, float, float, FootholdLine> _findFoothold;
@@ -326,6 +328,12 @@ namespace HaCreator.MapSimulator.Character
         public void SetJumpSoundCallback(Action onJump)
         {
             _onJumpSound = onJump;
+        }
+
+        public void SetJumpRestrictionHandler(Func<string> getRestrictionMessage, Action<string> onJumpRestricted)
+        {
+            _jumpRestrictionMessageProvider = getRestrictionMessage;
+            _onJumpRestricted = onJumpRestricted;
         }
 
         #endregion
@@ -814,6 +822,13 @@ namespace HaCreator.MapSimulator.Character
 
         private void TryJump(int currentTime)
         {
+            string jumpRestrictionMessage = _jumpRestrictionMessageProvider?.Invoke();
+            if (!string.IsNullOrWhiteSpace(jumpRestrictionMessage))
+            {
+                _onJumpRestricted?.Invoke(jumpRestrictionMessage);
+                return;
+            }
+
             // Check for jump down first (Down + Jump while on foothold)
             // This works even while prone - character gets up and falls through
             if (_inputDown && Physics.IsOnFoothold())
@@ -2411,16 +2426,71 @@ namespace HaCreator.MapSimulator.Character
 
             return state switch
             {
-                PlayerState.Walking => _activeSkillAvatarTransform.WalkActionName ?? _activeSkillAvatarTransform.StandActionName,
-                PlayerState.Jumping or PlayerState.Falling => _activeSkillAvatarTransform.JumpActionName ?? _activeSkillAvatarTransform.StandActionName,
-                PlayerState.Prone => _activeSkillAvatarTransform.ProneActionName ?? _activeSkillAvatarTransform.StandActionName,
-                PlayerState.Ladder or PlayerState.Rope => _activeSkillAvatarTransform.ClimbActionName ?? _activeSkillAvatarTransform.StandActionName,
-                PlayerState.Swimming or PlayerState.Flying => _activeSkillAvatarTransform.FloatActionName ?? _activeSkillAvatarTransform.StandActionName,
-                PlayerState.Attacking => _activeSkillAvatarTransform.AttackActionName ?? _activeSkillAvatarTransform.StandActionName,
-                PlayerState.Hit => _activeSkillAvatarTransform.HitActionName ?? _activeSkillAvatarTransform.StandActionName,
+                PlayerState.Walking => ResolveSkillTransformActionName(_activeSkillAvatarTransform.WalkActionNames, _activeSkillAvatarTransform.StandActionNames),
+                PlayerState.Jumping or PlayerState.Falling => ResolveSkillTransformActionName(_activeSkillAvatarTransform.JumpActionNames, _activeSkillAvatarTransform.StandActionNames),
+                PlayerState.Prone => ResolveSkillTransformActionName(_activeSkillAvatarTransform.ProneActionNames, _activeSkillAvatarTransform.StandActionNames),
+                PlayerState.Ladder or PlayerState.Rope => ResolveSkillTransformActionName(_activeSkillAvatarTransform.ClimbActionNames, _activeSkillAvatarTransform.StandActionNames),
+                PlayerState.Swimming or PlayerState.Flying => ResolveSkillTransformActionName(_activeSkillAvatarTransform.FloatActionNames, _activeSkillAvatarTransform.StandActionNames),
+                PlayerState.Attacking => ResolveSkillTransformActionName(_activeSkillAvatarTransform.AttackActionNames, _activeSkillAvatarTransform.StandActionNames),
+                PlayerState.Hit => ResolveSkillTransformActionName(_activeSkillAvatarTransform.HitActionNames, _activeSkillAvatarTransform.StandActionNames),
                 PlayerState.Dead => CharacterPart.GetActionString(CharacterAction.Dead),
-                _ => _activeSkillAvatarTransform.StandActionName
+                _ => ResolveSkillTransformActionName(_activeSkillAvatarTransform.StandActionNames)
             };
+        }
+
+        private string ResolveSkillTransformActionName(IReadOnlyList<string> preferredActionNames, IReadOnlyList<string> fallbackActionNames = null)
+        {
+            foreach (string actionName in EnumerateTransformActionNames(preferredActionNames, fallbackActionNames))
+            {
+                if (HasAvatarAction(actionName))
+                {
+                    return actionName;
+                }
+            }
+
+            foreach (string actionName in EnumerateTransformActionNames(preferredActionNames, fallbackActionNames))
+            {
+                return actionName;
+            }
+
+            return null;
+        }
+
+        private IEnumerable<string> EnumerateTransformActionNames(params IReadOnlyList<string>[] actionGroups)
+        {
+            if (actionGroups == null)
+            {
+                yield break;
+            }
+
+            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (IReadOnlyList<string> actionGroup in actionGroups)
+            {
+                if (actionGroup == null)
+                {
+                    continue;
+                }
+
+                foreach (string actionName in actionGroup)
+                {
+                    if (string.IsNullOrWhiteSpace(actionName) || !seen.Add(actionName))
+                    {
+                        continue;
+                    }
+
+                    yield return actionName;
+                }
+            }
+        }
+
+        private bool HasAvatarAction(string actionName)
+        {
+            if (string.IsNullOrWhiteSpace(actionName))
+            {
+                return false;
+            }
+
+            return Build?.Body?.Animations?.ContainsKey(actionName) == true;
         }
 
         private static bool TryCreateSkillAvatarTransform(int skillId, string actionName, out SkillAvatarTransformState transform)
@@ -2500,14 +2570,14 @@ namespace HaCreator.MapSimulator.Character
             return new SkillAvatarTransformState
             {
                 SkillId = skillId,
-                StandActionName = standActionName,
-                WalkActionName = walkActionName,
-                JumpActionName = standActionName,
-                ProneActionName = proneActionName,
-                AttackActionName = attackActionName,
-                ClimbActionName = standActionName,
-                FloatActionName = standActionName,
-                HitActionName = standActionName,
+                StandActionNames = CreateActionVariants(standActionName),
+                WalkActionNames = CreateActionVariants(walkActionName, standActionName),
+                JumpActionNames = CreateActionVariants(GetActionFamilyVariant(standActionName, "jump"), standActionName),
+                ProneActionNames = CreateActionVariants(proneActionName, standActionName),
+                AttackActionNames = CreateActionVariants(attackActionName, standActionName),
+                ClimbActionNames = CreateActionVariants(GetActionFamilyVariant(standActionName, "ladder"), GetActionFamilyVariant(standActionName, "rope"), standActionName),
+                FloatActionNames = CreateActionVariants(GetActionFamilyVariant(standActionName, "fly"), GetActionFamilyVariant(standActionName, "swim"), standActionName),
+                HitActionNames = CreateActionVariants(GetActionFamilyVariant(standActionName, "hit"), standActionName),
                 ExitActionName = exitActionName,
                 LocksMovement = locksMovement
             };
@@ -2518,15 +2588,65 @@ namespace HaCreator.MapSimulator.Character
             return new SkillAvatarTransformState
             {
                 SkillId = skillId,
-                StandActionName = actionName,
-                WalkActionName = actionName,
-                JumpActionName = actionName,
-                ProneActionName = actionName,
-                AttackActionName = actionName,
-                ClimbActionName = actionName,
-                FloatActionName = actionName,
-                HitActionName = actionName,
+                StandActionNames = CreateActionVariants(actionName),
+                WalkActionNames = CreateActionVariants(actionName),
+                JumpActionNames = CreateActionVariants(actionName),
+                ProneActionNames = CreateActionVariants(actionName),
+                AttackActionNames = CreateActionVariants(actionName),
+                ClimbActionNames = CreateActionVariants(actionName),
+                FloatActionNames = CreateActionVariants(actionName),
+                HitActionNames = CreateActionVariants(actionName),
                 ExitActionName = exitActionName
+            };
+        }
+
+        private static IReadOnlyList<string> CreateActionVariants(params string[] actionNames)
+        {
+            var actions = new List<string>();
+            if (actionNames == null)
+            {
+                return actions;
+            }
+
+            foreach (string actionName in actionNames)
+            {
+                if (string.IsNullOrWhiteSpace(actionName))
+                {
+                    continue;
+                }
+
+                bool alreadyAdded = false;
+                foreach (string existingAction in actions)
+                {
+                    if (string.Equals(existingAction, actionName, StringComparison.OrdinalIgnoreCase))
+                    {
+                        alreadyAdded = true;
+                        break;
+                    }
+                }
+
+                if (!alreadyAdded)
+                {
+                    actions.Add(actionName);
+                }
+            }
+
+            return actions;
+        }
+
+        private static string GetActionFamilyVariant(string standActionName, string variantSuffix)
+        {
+            if (string.IsNullOrWhiteSpace(standActionName) || string.IsNullOrWhiteSpace(variantSuffix))
+            {
+                return null;
+            }
+
+            return standActionName switch
+            {
+                "tank_stand" => $"tank_{variantSuffix}",
+                "siege_stand" => $"siege_{variantSuffix}",
+                "tank_siegestand" => $"tank_siege{variantSuffix}",
+                _ => null
             };
         }
 

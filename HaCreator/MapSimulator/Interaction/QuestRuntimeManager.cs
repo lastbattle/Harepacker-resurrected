@@ -187,6 +187,18 @@ namespace HaCreator.MapSimulator.Interaction
                     selectedEntryId = preferredEntry.EntryId;
                 }
             }
+            else
+            {
+                NpcInteractionEntry prioritizedEntry = entries
+                    .Where(entry => entry.QuestId.HasValue)
+                    .OrderBy(GetEntryPriority)
+                    .ThenBy(entry => entry.EntryId)
+                    .FirstOrDefault();
+                if (prioritizedEntry != null)
+                {
+                    selectedEntryId = prioritizedEntry.EntryId;
+                }
+            }
 
             return new NpcInteractionState
             {
@@ -240,6 +252,7 @@ namespace HaCreator.MapSimulator.Interaction
                 return new QuestActionResult
                 {
                     StateChanged = true,
+                    PreferredQuestId = questId,
                     Messages = messages
                 };
             }
@@ -274,6 +287,7 @@ namespace HaCreator.MapSimulator.Interaction
                 return new QuestActionResult
                 {
                     StateChanged = true,
+                    PreferredQuestId = definition.EndActions?.NextQuestId,
                     Messages = messages
                 };
             }
@@ -401,15 +415,20 @@ namespace HaCreator.MapSimulator.Interaction
                 summary = $"{summary}\n\n{definition.Summary}";
             }
 
-            string stageText = state == QuestStateType.Not_Started
-                ? FirstNonEmpty(definition.StartSayPages.FirstOrDefault(), definition.StartDescription, definition.DemandSummary)
-                : FirstNonEmpty(definition.EndSayPages.FirstOrDefault(), definition.ProgressDescription, definition.CompletionDescription, definition.DemandSummary);
-            if (!string.IsNullOrWhiteSpace(stageText))
+            IReadOnlyList<string> conversationPages = state == QuestStateType.Not_Started
+                ? definition.StartSayPages
+                : definition.EndSayPages;
+            string fallbackStageText = state == QuestStateType.Not_Started
+                ? FirstNonEmpty(definition.StartDescription, definition.DemandSummary)
+                : FirstNonEmpty(definition.ProgressDescription, definition.CompletionDescription, definition.DemandSummary);
+
+            if (!string.IsNullOrWhiteSpace(fallbackStageText) && conversationPages.Count == 0)
             {
-                summary = $"{summary}\n\n{stageText}";
+                summary = $"{summary}\n\n{fallbackStageText}";
             }
 
             pages.Add(summary.Trim());
+            AppendConversationPages(conversationPages, pages);
 
             var details = new List<string>();
             if (!string.IsNullOrWhiteSpace(definition.RewardSummary))
@@ -439,6 +458,22 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             return pages;
+        }
+
+        private static void AppendConversationPages(IEnumerable<string> sourcePages, ICollection<string> pages)
+        {
+            if (sourcePages == null)
+            {
+                return;
+            }
+
+            foreach (string page in sourcePages)
+            {
+                if (!string.IsNullOrWhiteSpace(page))
+                {
+                    pages.Add(page.Trim());
+                }
+            }
         }
 
         private void AppendRequirementSummary(QuestDefinition definition, ICollection<string> details)
@@ -948,24 +983,31 @@ namespace HaCreator.MapSimulator.Interaction
                         continue;
                     }
 
-                    string text = ExtractConversationText(child);
-                    if (!string.IsNullOrWhiteSpace(text))
-                    {
-                        pages.Add(text.Trim());
-                    }
+                    AppendConversationPage(child, pages);
                 }
             }
 
             if (pages.Count == 0)
             {
-                string text = ExtractConversationText(property);
-                if (!string.IsNullOrWhiteSpace(text))
-                {
-                    pages.Add(text.Trim());
-                }
+                AppendConversationPage(property, pages);
             }
 
             return pages;
+        }
+
+        private static void AppendConversationPage(WzImageProperty property, ICollection<string> pages)
+        {
+            string text = ExtractConversationText(property);
+            if (!string.IsNullOrWhiteSpace(text))
+            {
+                pages.Add(text.Trim());
+            }
+
+            string branchSummary = ExtractConversationBranchSummary(property);
+            if (!string.IsNullOrWhiteSpace(branchSummary))
+            {
+                pages.Add(branchSummary);
+            }
         }
 
         private static string ExtractConversationText(WzImageProperty property)
@@ -1005,6 +1047,88 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             return null;
+        }
+
+        private static string ExtractConversationBranchSummary(WzImageProperty property)
+        {
+            if (property?.WzProperties == null)
+            {
+                return null;
+            }
+
+            var sections = new List<string>();
+
+            string yesResponses = ExtractConversationResponseList(property["yes"]);
+            if (!string.IsNullOrWhiteSpace(yesResponses))
+            {
+                sections.Add($"Yes:\n{yesResponses}");
+            }
+
+            string noResponses = ExtractConversationResponseList(property["no"]);
+            if (!string.IsNullOrWhiteSpace(noResponses))
+            {
+                sections.Add($"No:\n{noResponses}");
+            }
+
+            string stopResponses = ExtractStopConversationSummary(property["stop"]);
+            if (!string.IsNullOrWhiteSpace(stopResponses))
+            {
+                sections.Add(stopResponses);
+            }
+
+            if (sections.Count == 0)
+            {
+                return null;
+            }
+
+            return string.Join("\n\n", sections);
+        }
+
+        private static string ExtractConversationResponseList(WzImageProperty property)
+        {
+            if (property?.WzProperties == null)
+            {
+                return null;
+            }
+
+            var responses = new List<string>();
+            for (int i = 0; i < property.WzProperties.Count; i++)
+            {
+                string text = ExtractConversationText(property.WzProperties[i]);
+                if (!string.IsNullOrWhiteSpace(text))
+                {
+                    responses.Add($"- {text.Trim()}");
+                }
+            }
+
+            return responses.Count > 0
+                ? string.Join("\n", responses)
+                : null;
+        }
+
+        private static string ExtractStopConversationSummary(WzImageProperty property)
+        {
+            if (property?.WzProperties == null)
+            {
+                return null;
+            }
+
+            var groups = new List<string>();
+            for (int i = 0; i < property.WzProperties.Count; i++)
+            {
+                WzImageProperty child = property.WzProperties[i];
+                string responses = ExtractConversationResponseList(child);
+                if (string.IsNullOrWhiteSpace(responses))
+                {
+                    continue;
+                }
+
+                groups.Add($"{child.Name}:\n{responses}");
+            }
+
+            return groups.Count > 0
+                ? $"Stop responses:\n{string.Join("\n\n", groups)}"
+                : null;
         }
 
         private static string FirstNonEmpty(params string[] values)
@@ -1059,6 +1183,18 @@ namespace HaCreator.MapSimulator.Interaction
                    !string.IsNullOrWhiteSpace(itemInfo?.Item2)
                 ? itemInfo.Item2
                 : $"Item #{itemId}";
+        }
+
+        private static int GetEntryPriority(NpcInteractionEntry entry)
+        {
+            return entry?.Kind switch
+            {
+                NpcInteractionEntryKind.CompletableQuest => 0,
+                NpcInteractionEntryKind.AvailableQuest => 1,
+                NpcInteractionEntryKind.InProgressQuest => 2,
+                NpcInteractionEntryKind.LockedQuest => 3,
+                _ => 4
+            };
         }
     }
 }

@@ -201,6 +201,8 @@ namespace HaCreator.MapSimulator
         private Texture2D _npcQuestInProgressIcon;
         private Texture2D _npcQuestCompletableIcon;
         private readonly NpcFeedbackBalloonQueue _npcQuestFeedback = new();
+        private readonly Random _npcIdleSpeechRandom = new();
+        private int _nextNpcIdleSpeechTick;
         private int _lastReactorCollisionCheckTick = -ReactorCollisionCheckIntervalMs;
         private readonly Dictionary<(int skillId, int level), MobSummonSkillInfo> _mobSummonSkillCache = new();
         private readonly Dictionary<long, int> _appliedMobSkillEffects = new();
@@ -364,13 +366,15 @@ namespace HaCreator.MapSimulator
 
         private readonly struct QuestGatedMapObjectState
         {
-            public QuestGatedMapObjectState(ObjectInstanceQuest[] questInfo, bool hiddenByMap)
+            public QuestGatedMapObjectState(ObjectInstanceQuest[] questInfo, string[] dynamicTags, bool hiddenByMap)
             {
                 QuestInfo = questInfo ?? Array.Empty<ObjectInstanceQuest>();
+                DynamicTags = dynamicTags ?? Array.Empty<string>();
                 HiddenByMap = hiddenByMap;
             }
 
             public ObjectInstanceQuest[] QuestInfo { get; }
+            public string[] DynamicTags { get; }
             public bool HiddenByMap { get; }
         }
 
@@ -2233,6 +2237,7 @@ namespace HaCreator.MapSimulator
 
             UpdateDirectionModeState(currTickCount);
             UpdateNpcQuestFeedbackState(currTickCount);
+            UpdateNpcIdleSpeechState(currTickCount);
 
             // Handle portal UP key interaction (player presses UP near portal)
             if (isWindowActive)
@@ -3181,6 +3186,8 @@ namespace HaCreator.MapSimulator
             CleanupAppliedMobSkillEffects(tickCount);
             List<MobItem> skillEffectMobs = null;
 
+            EscortProgressionState escortProgressionState = EscortProgressionController.ResolveState(_mobsArray);
+
             for (int i = 0; i < _mobsArray.Length; i++)
             {
                 MobItem mobItem = _mobsArray[i];
@@ -3189,6 +3196,7 @@ namespace HaCreator.MapSimulator
 
                 mobItem.MovementEnabled = _gameState.MobMovementEnabled;
                 bool escortFollowActive = mobItem.AI?.IsEscortMob == true
+                    && EscortProgressionController.CanMobFollow(mobItem, escortProgressionState)
                     && _escortFollow.UpdateEscortFollow(_playerManager?.Player, mobItem.MovementInfo);
                 mobItem.SetEscortFollowActive(escortFollowActive);
 
@@ -3308,12 +3316,90 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
+            ApplyMobSkillVisualEffect(mobItem, skill, currentTick);
+
             switch (skill.SkillId)
             {
                 case 200:
                     ApplyMobSummonSkill(mobItem, skill, currentTick);
                     break;
             }
+        }
+
+        private void ApplyMobSkillVisualEffect(MobItem mobItem, MobSkillEntry skill, int currentTick)
+        {
+            MobSkillEffectData effectData = _playerManager?.LoadMobSkillEffect(skill.SkillId, skill.Level);
+            if (effectData == null)
+            {
+                return;
+            }
+
+            if (effectData.HasEffect)
+            {
+                Vector2 effectPosition = ResolveMobSkillEffectPosition(mobItem, effectData);
+                bool flip = mobItem?.MovementInfo?.FlipX ?? false;
+                _animationEffects?.AddOneTime(effectData.EffectFrames, effectPosition.X, effectPosition.Y, flip, currentTick);
+
+                if (effectData.EffectPosition == MobSkillEffectPosition.Screen)
+                {
+                    _effectManager.Tremble(2, true, 0, 0, true, currentTick);
+                }
+            }
+
+            if (effectData.MobIconFrames != null && effectData.MobIconFrames.Count > 0)
+            {
+                Vector2 iconPosition = ResolveMobSkillIconPosition(mobItem);
+                _animationEffects?.AddOneTime(effectData.MobIconFrames, iconPosition.X, iconPosition.Y, false, currentTick, 1);
+            }
+        }
+
+        private Vector2 ResolveMobSkillEffectPosition(MobItem mobItem, MobSkillEffectData effectData)
+        {
+            if (mobItem == null)
+            {
+                return Vector2.Zero;
+            }
+
+            float mobX = mobItem.CurrentX;
+            float mobY = mobItem.CurrentY;
+            float mobHeight = Math.Max(60, mobItem.GetVisualHeight(60));
+
+            switch (effectData.EffectPosition)
+            {
+                case MobSkillEffectPosition.Target:
+                    if (_playerManager?.Player != null)
+                    {
+                        return new Vector2(_playerManager.Player.X, _playerManager.Player.Y - 24f);
+                    }
+
+                    if (mobItem.AI?.Target?.IsValid == true)
+                    {
+                        return new Vector2(mobItem.AI.Target.TargetX, mobItem.AI.Target.TargetY);
+                    }
+
+                    break;
+
+                case MobSkillEffectPosition.Screen:
+                    if (_playerManager?.Player != null)
+                    {
+                        return new Vector2(_playerManager.Player.X, _playerManager.Player.Y - 80f);
+                    }
+
+                    break;
+            }
+
+            return new Vector2(mobX, mobY - mobHeight * 0.5f);
+        }
+
+        private static Vector2 ResolveMobSkillIconPosition(MobItem mobItem)
+        {
+            if (mobItem == null)
+            {
+                return Vector2.Zero;
+            }
+
+            float mobHeight = Math.Max(60, mobItem.GetVisualHeight(60));
+            return new Vector2(mobItem.CurrentX, mobItem.CurrentY - mobHeight);
         }
 
         private void ApplyMobSummonSkill(MobItem mobItem, MobSkillEntry skill, int currentTick)
@@ -3463,6 +3549,11 @@ namespace HaCreator.MapSimulator
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void UpdateNpcActions(GameTime gameTime)
         {
+            if (_npcsArray == null || _npcsArray.Length == 0)
+            {
+                return;
+            }
+
             int deltaTimeMs = (int)gameTime.ElapsedGameTime.TotalMilliseconds;
 
             for (int i = 0; i < _npcsArray.Length; i++)
@@ -3531,6 +3622,10 @@ namespace HaCreator.MapSimulator
             if (npc == null || _npcInteractionOverlay == null)
                 return;
 
+            // Enter direction mode as soon as the scripted overlay opens so the
+            // same click cannot continue into later world-interaction handlers.
+            _gameState.EnterDirectionMode();
+            _scriptedDirectionModeOwnerActive = true;
             _activeNpcInteractionNpc = npc;
             _activeNpcInteractionNpcId = int.TryParse(npc.NpcInstance?.NpcInfo?.ID, out int npcId) ? npcId : 0;
             _npcInteractionOverlay.Open(_questRuntime.BuildInteractionState(npc, _playerManager?.Player?.Build, preferredQuestId));
@@ -3557,7 +3652,7 @@ namespace HaCreator.MapSimulator
             if (result?.StateChanged == true)
             {
                 ShowNpcQuestFeedback(result, currTickCount);
-                OpenNpcInteraction(_activeNpcInteractionNpc, questId);
+                OpenNpcInteraction(_activeNpcInteractionNpc, result.PreferredQuestId ?? questId);
             }
         }
 
@@ -3584,6 +3679,80 @@ namespace HaCreator.MapSimulator
             }
 
             ApplyNpcQuestFeedbackAnimation(currentTickCount);
+        }
+
+        private void UpdateNpcIdleSpeechState(int currentTickCount)
+        {
+            if (_npcsArray == null ||
+                _npcsArray.Length == 0 ||
+                _npcQuestFeedback.HasActiveBalloon ||
+                _npcInteractionOverlay?.IsVisible == true ||
+                _gameState.DirectionModeActive)
+            {
+                return;
+            }
+
+            if (_nextNpcIdleSpeechTick == 0)
+            {
+                _nextNpcIdleSpeechTick = currentTickCount + GetNextNpcIdleSpeechDelay();
+                return;
+            }
+
+            if (currentTickCount < _nextNpcIdleSpeechTick)
+            {
+                return;
+            }
+
+            NpcItem npc = SelectNpcForIdleSpeech();
+            _nextNpcIdleSpeechTick = currentTickCount + GetNextNpcIdleSpeechDelay();
+            if (npc == null)
+            {
+                return;
+            }
+
+            int npcId = int.TryParse(npc.NpcInstance?.NpcInfo?.ID, out int parsedNpcId) ? parsedNpcId : 0;
+            string speechLine = npc.GetNextIdleSpeechLine();
+            if (npcId <= 0 || string.IsNullOrWhiteSpace(speechLine))
+            {
+                return;
+            }
+
+            if (_npcQuestFeedback.Enqueue(npcId, new[] { speechLine }, currentTickCount))
+            {
+                ApplyNpcQuestFeedbackAnimation(currentTickCount);
+            }
+        }
+
+        private NpcItem SelectNpcForIdleSpeech()
+        {
+            if (_npcsArray == null || _playerManager?.Player == null)
+            {
+                return null;
+            }
+
+            var eligibleNpcs = new List<NpcItem>();
+            for (int i = 0; i < _npcsArray.Length; i++)
+            {
+                NpcItem npc = _npcsArray[i];
+                if (npc == null || !npc.HasIdleSpeech || !CanTalkToNpc(npc))
+                {
+                    continue;
+                }
+
+                eligibleNpcs.Add(npc);
+            }
+
+            if (eligibleNpcs.Count == 0)
+            {
+                return null;
+            }
+
+            return eligibleNpcs[_npcIdleSpeechRandom.Next(eligibleNpcs.Count)];
+        }
+
+        private int GetNextNpcIdleSpeechDelay()
+        {
+            return _npcIdleSpeechRandom.Next(12000, 22001);
         }
 
         private void ApplyNpcQuestFeedbackAnimation(int currentTickCount)
@@ -4778,13 +4947,16 @@ namespace HaCreator.MapSimulator
 
             bool hiddenByMap = objInst.hide == true;
             bool hasQuestInfo = objInst.QuestInfo != null && objInst.QuestInfo.Count > 0;
-            if (!hiddenByMap && !hasQuestInfo)
+            string[] dynamicTags = ParseObjectTags(objInst.tags);
+            bool hasDynamicTags = dynamicTags.Length > 0;
+            if (!hiddenByMap && !hasQuestInfo && !hasDynamicTags)
             {
                 return;
             }
 
             questGatedMapObjects[mapItem] = new QuestGatedMapObjectState(
                 objInst.QuestInfo?.ToArray(),
+                dynamicTags,
                 hiddenByMap);
         }
 
@@ -4812,8 +4984,31 @@ namespace HaCreator.MapSimulator
             bool visible = FieldObjectQuestVisibilityEvaluator.IsVisible(
                 state.HiddenByMap,
                 state.QuestInfo,
-                _questRuntime.GetCurrentState);
+                state.DynamicTags,
+                _questRuntime.GetCurrentState,
+                TryGetDynamicObjectTagState);
             item.SetVisible(item.IsVisible && visible);
+        }
+
+        private bool? TryGetDynamicObjectTagState(string tag)
+        {
+            if (string.IsNullOrWhiteSpace(tag))
+            {
+                return null;
+            }
+
+            return _fieldEffects.TryIsObstacleOn(tag, out bool isOn) ? isOn : null;
+        }
+
+        private static string[] ParseObjectTags(string tags)
+        {
+            if (string.IsNullOrWhiteSpace(tags))
+            {
+                return Array.Empty<string>();
+            }
+
+            return tags
+                .Split(new[] { ',', ';' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
         }
 
         /// <summary>
@@ -5278,6 +5473,9 @@ namespace HaCreator.MapSimulator
                 skill => FieldSkillRestrictionEvaluator.CanUseSkill(fieldLimit, skill));
             _playerManager.Skills.SetFieldSkillRestrictionMessageProvider(
                 skill => FieldSkillRestrictionEvaluator.GetRestrictionMessage(fieldLimit, skill));
+            _playerManager.SetJumpRestrictionHandler(
+                () => FieldInteractionRestrictionEvaluator.GetJumpRestrictionMessage(fieldLimit),
+                ShowFieldRestrictionMessage);
         }
 
         private void ConfigureSkillUIBindings()
@@ -5297,6 +5495,8 @@ namespace HaCreator.MapSimulator
             if (uiWindowManager.SkillWindow is not SkillUIBigBang skillWindow)
                 return;
 
+            skillWindow.SetSkillManager(_playerManager.Skills);
+            skillWindow.SetCharacterLevel(_playerManager.Player?.Level ?? 1);
             skillWindow.OnSkillInvoked = skillId =>
             {
                 _playerManager.Skills.TryCastSkill(skillId, currTickCount);
@@ -5322,6 +5522,17 @@ namespace HaCreator.MapSimulator
         {
             if (skill == null || _playerManager?.Skills == null)
                 return false;
+
+            int playerLevel = _playerManager.Player?.Level ?? 1;
+            if (skill.RequiredCharacterLevel > 0 && playerLevel < skill.RequiredCharacterLevel)
+                return false;
+
+            if (skill.RequiredSkillId > 0)
+            {
+                int requiredLevel = Math.Max(1, skill.RequiredSkillLevel);
+                if (_playerManager.Skills.GetSkillLevel(skill.RequiredSkillId) < requiredLevel)
+                    return false;
+            }
 
             int currentLevel = _playerManager.Skills.GetSkillLevel(skill.SkillId);
             int targetLevel = Math.Min(skill.MaxLevel, Math.Max(currentLevel, skill.CurrentLevel) + 1);
@@ -5568,7 +5779,8 @@ namespace HaCreator.MapSimulator
                     IconKey = buffEntry.IconKey,
                     IconTexture = buffEntry.IconTexture,
                     RemainingMs = buffEntry.RemainingMs,
-                    DurationMs = buffEntry.DurationMs
+                    DurationMs = buffEntry.DurationMs,
+                    TemporaryStatLabels = buffEntry.TemporaryStatLabels
                 });
             }
 
@@ -5646,7 +5858,11 @@ namespace HaCreator.MapSimulator
                 RemainingMs = Math.Max(0, preparedSkill.Duration - preparedSkill.Elapsed(currentTime)),
                 DurationMs = preparedSkill.Duration,
                 GaugeDurationMs = preparedSkill.HudGaugeDurationMs,
-                Progress = preparedSkill.Progress(currentTime)
+                Progress = preparedSkill.Progress(currentTime),
+                IsKeydownSkill = preparedSkill.IsKeydownSkill,
+                IsHolding = preparedSkill.IsHolding,
+                HoldElapsedMs = preparedSkill.HoldElapsed(currentTime),
+                MaxHoldDurationMs = preparedSkill.MaxHoldDurationMs
             };
         }
 

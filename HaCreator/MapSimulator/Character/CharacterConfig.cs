@@ -156,16 +156,15 @@ namespace HaCreator.MapSimulator.Character
         {
             if (skillManager == null) return;
 
-            // Load hotkey assignments
-            skillManager.LoadHotkeys(SkillHotkeys);
-
             // Load skill levels
             foreach (var kv in SkillLevels)
             {
                 skillManager.SetSkillLevel(kv.Key, kv.Value);
             }
 
-            skillManager.RevalidateHotkeys();
+            // Restore hotkeys after levels so preset load uses the same validation
+            // path as live quick-slot assignment.
+            skillManager.LoadHotkeys(SkillHotkeys);
         }
 
         /// <summary>

@@ -255,6 +255,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         public float Speed { get; set; } = 400f;
         public float Gravity { get; set; } = 0f;
         public float LifeTime { get; set; } = 2000f;  // Max life in ms
+        public bool Homing { get; set; } = false;
         public bool Piercing { get; set; } = false;
         public int MaxHits { get; set; } = 1;
 
@@ -649,6 +650,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         public int LastRepeatTime { get; set; }
 
         public int Elapsed(int currentTime) => Math.Max(0, currentTime - StartTime);
+        public int HoldElapsed(int currentTime) => IsHolding ? Math.Max(0, currentTime - HoldStartTime) : 0;
 
         public float Progress(int currentTime)
         {
@@ -686,6 +688,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         public SkillData SkillData { get; set; }
         public SkillLevelData LevelData { get; set; }
         public bool FacingRight { get; set; }
+        public bool ManualAssistEnabled { get; set; } = true;
 
         public bool IsExpired(int currentTime)
         {

@@ -78,6 +78,25 @@ namespace UnitTest_MapSimulator
             Assert.Equal(0, GetQueuedFollowUpAttackCount(manager));
         }
 
+        [Fact]
+        public void Update_QueuedProjectileFollowUpKeepsOriginalFacingWhenPlayerTurnsBeforeExecution()
+        {
+            var triggerSkill = CreateTriggerSkill();
+            var followUpSkill = CreateProjectileFollowUpSkill();
+            var manager = CreateSkillManager(1302000, triggerSkill, followUpSkill);
+            manager.SetSkillLevel(triggerSkill.SkillId, 1);
+            manager.SetSkillLevel(followUpSkill.SkillId, 1);
+
+            InvokeQueueFollowUpAttack(manager, triggerSkill, 1000, 77, true);
+            SetFacingRight(manager, false);
+
+            manager.Update(1090, 0.016f);
+
+            var projectile = GetSingleProjectile(manager);
+            Assert.True(projectile.FacingRight);
+            Assert.True(projectile.VelocityX > 0);
+        }
+
         private static SkillData CreateTriggerSkill()
         {
             return new SkillData
@@ -107,6 +126,35 @@ namespace UnitTest_MapSimulator
                 Levels = new Dictionary<int, SkillLevelData>
                 {
                     [1] = new SkillLevelData { Level = 1, Damage = 150, AttackCount = 1, MobCount = 1, Prop = 100 }
+                }
+            };
+        }
+
+        private static SkillData CreateProjectileFollowUpSkill()
+        {
+            return new SkillData
+            {
+                SkillId = 1000001,
+                MaxLevel = 1,
+                IsAttack = true,
+                IsPassive = true,
+                Projectile = new ProjectileData
+                {
+                    Speed = 300f,
+                    LifeTime = 2000f,
+                    MaxHits = 1
+                },
+                Levels = new Dictionary<int, SkillLevelData>
+                {
+                    [1] = new SkillLevelData
+                    {
+                        Level = 1,
+                        Damage = 150,
+                        AttackCount = 1,
+                        MobCount = 1,
+                        Prop = 100,
+                        BulletCount = 1
+                    }
                 }
             };
         }
@@ -147,6 +195,15 @@ namespace UnitTest_MapSimulator
             return queue!.Count;
         }
 
+        private static ActiveProjectile GetSingleProjectile(SkillManager manager)
+        {
+            FieldInfo field = typeof(SkillManager).GetField("_projectiles", BindingFlags.Instance | BindingFlags.NonPublic);
+            Assert.NotNull(field);
+            var projectiles = Assert.IsType<List<ActiveProjectile>>(field!.GetValue(manager));
+            var projectile = Assert.Single(projectiles);
+            return projectile;
+        }
+
         private static void EquipWeapon(SkillManager manager, int weaponItemId)
         {
             FieldInfo field = typeof(SkillManager).GetField("_player", BindingFlags.Instance | BindingFlags.NonPublic);
@@ -160,6 +217,16 @@ namespace UnitTest_MapSimulator
                 Slot = EquipSlot.Weapon,
                 Type = CharacterPartType.Weapon
             });
+        }
+
+        private static void SetFacingRight(SkillManager manager, bool facingRight)
+        {
+            FieldInfo field = typeof(SkillManager).GetField("_player", BindingFlags.Instance | BindingFlags.NonPublic);
+            Assert.NotNull(field);
+            var player = field!.GetValue(manager) as PlayerCharacter;
+            Assert.NotNull(player);
+
+            player!.FacingRight = facingRight;
         }
     }
 }

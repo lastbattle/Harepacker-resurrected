@@ -100,6 +100,41 @@ namespace UnitTest_MapSimulator
             Assert.Equal(1, projectile.HitCount);
         }
 
+        [Fact]
+        public void UpdateProjectileBehavior_HomingFlagStillSteersExplodingProjectiles()
+        {
+            var skill = CreateExplodingProjectileSkill();
+            skill.Projectile.Homing = true;
+            skill.Projectile.Behavior = ProjectileBehavior.Exploding;
+
+            var manager = CreateSkillManager(skill);
+            var targetMob = CreateMob(160, 40);
+            var pool = new MobPool();
+            pool.Initialize(new[] { targetMob });
+            manager.SetMobPool(pool);
+
+            var projectile = new ActiveProjectile
+            {
+                Id = 1,
+                SkillId = skill.SkillId,
+                SkillLevel = 1,
+                Data = skill.Projectile,
+                LevelData = skill.GetLevel(1),
+                X = 100,
+                Y = 100,
+                VelocityX = 300f,
+                VelocityY = 0f,
+                FacingRight = true,
+                SpawnTime = 1000,
+                PreferredTargetMobId = targetMob.PoolId
+            };
+
+            InvokeUpdateProjectileBehavior(manager, projectile, 1100);
+
+            Assert.True(projectile.VelocityX > 0f);
+            Assert.True(projectile.VelocityY < 0f);
+        }
+
         private static SkillData CreateExplodingProjectileSkill()
         {
             return new SkillData
@@ -181,6 +216,12 @@ namespace UnitTest_MapSimulator
         private static void InvokeCheckProjectileCollisions(SkillManager manager, ActiveProjectile projectile, int currentTime)
         {
             MethodInfo method = typeof(SkillManager).GetMethod("CheckProjectileCollisions", BindingFlags.Instance | BindingFlags.NonPublic)!;
+            method.Invoke(manager, new object[] { projectile, currentTime });
+        }
+
+        private static void InvokeUpdateProjectileBehavior(SkillManager manager, ActiveProjectile projectile, int currentTime)
+        {
+            MethodInfo method = typeof(SkillManager).GetMethod("UpdateProjectileBehavior", BindingFlags.Instance | BindingFlags.NonPublic)!;
             method.Invoke(manager, new object[] { projectile, currentTime });
         }
 

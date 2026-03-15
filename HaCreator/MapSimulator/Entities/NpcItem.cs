@@ -8,6 +8,7 @@ using Microsoft.Xna.Framework.Graphics;
 using Spine;
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Runtime.CompilerServices;
 
 namespace HaCreator.MapSimulator.Entities
@@ -27,6 +28,8 @@ namespace HaCreator.MapSimulator.Entities
         // Animation system - using AnimationController for unified frame management
         private readonly NpcAnimationSet _animationSet;
         private readonly AnimationController _animationController;
+        private readonly string[] _idleSpeechLines;
+        private int _nextIdleSpeechIndex;
 
         // Action cycling (based on MapleNecrocer) - only when standing
         private int _actionCycleCounter = 0;
@@ -49,13 +52,25 @@ namespace HaCreator.MapSimulator.Entities
         /// <param name="animationSet"></param>
         /// <param name="_nameTooltip"></param>
         /// <param name="_npcDescTooltip"></param>
-        public NpcItem(NpcInstance _npcInstance, NpcAnimationSet animationSet, NameTooltipItem _nameTooltip, NameTooltipItem _npcDescTooltip)
+        public NpcItem(
+            NpcInstance _npcInstance,
+            NpcAnimationSet animationSet,
+            NameTooltipItem _nameTooltip,
+            NameTooltipItem _npcDescTooltip,
+            IReadOnlyList<string> idleSpeechLines = null)
             : base(animationSet.GetFrames(AnimationKeys.Stand) ?? animationSet.GetFrames(null), _npcInstance.Flip)
         {
             this._npcInstance = _npcInstance;
             this._nameTooltip = _nameTooltip;
             this._npcDescTooltip = _npcDescTooltip;
             this._animationSet = animationSet;
+            _idleSpeechLines = idleSpeechLines?
+                .Where(line => !string.IsNullOrWhiteSpace(line))
+                .Select(line => line.Trim())
+                .Distinct(StringComparer.Ordinal)
+                .ToArray()
+                ?? Array.Empty<string>();
+            _nextIdleSpeechIndex = _idleSpeechLines.Length > 0 ? _random.Next(_idleSpeechLines.Length) : 0;
 
             // Initialize animation controller
             _animationController = new AnimationController(animationSet, AnimationKeys.Stand);
@@ -201,6 +216,20 @@ namespace HaCreator.MapSimulator.Entities
             _temporaryAction = action;
             _temporaryActionRemainingMs = durationMs;
             SetAction(action);
+        }
+
+        public bool HasIdleSpeech => _idleSpeechLines.Length > 0;
+
+        public string GetNextIdleSpeechLine()
+        {
+            if (_idleSpeechLines.Length == 0)
+            {
+                return null;
+            }
+
+            string line = _idleSpeechLines[_nextIdleSpeechIndex];
+            _nextIdleSpeechIndex = (_nextIdleSpeechIndex + 1) % _idleSpeechLines.Length;
+            return line;
         }
 
         /// <summary>

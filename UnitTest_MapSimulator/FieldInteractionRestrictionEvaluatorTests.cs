@@ -24,5 +24,15 @@ namespace UnitTest_MapSimulator
 
             Assert.Equal("This field forbids map transfer.", message);
         }
+
+        [Fact]
+        public void GetJumpRestrictionMessage_ReturnsJumpMessageWhenBlocked()
+        {
+            long fieldLimit = 1L << (int)FieldLimitType.Unable_To_Jump;
+
+            string message = FieldInteractionRestrictionEvaluator.GetJumpRestrictionMessage(fieldLimit);
+
+            Assert.Equal("Jumping is disabled in this map.", message);
+        }
     }
 }

@@ -52,6 +52,7 @@ namespace HaCreator.MapSimulator.Fields
             _decHp > 0 ||
             _allowedItems.Count > 0 ||
             _levelLimit.HasValue ||
+            FieldInteractionRestrictionEvaluator.GetJumpRestrictionMessage(_fieldLimit) != null ||
             FieldInteractionRestrictionEvaluator.GetTransferRestrictionMessage(_fieldLimit) != null ||
             FieldSkillRestrictionEvaluator.HasFieldEntryNotice(_fieldLimit) ||
             _moveLimit.HasValue ||
@@ -161,6 +162,12 @@ namespace HaCreator.MapSimulator.Fields
             if (!string.IsNullOrWhiteSpace(transferRestrictionNotice))
             {
                 messages.Add(transferRestrictionNotice.Replace("field", "map"));
+            }
+
+            string jumpRestrictionNotice = FieldInteractionRestrictionEvaluator.GetJumpRestrictionMessage(_fieldLimit);
+            if (!string.IsNullOrWhiteSpace(jumpRestrictionNotice))
+            {
+                messages.Add(jumpRestrictionNotice);
             }
 
             string skillRestrictionNotice = FieldSkillRestrictionEvaluator.GetFieldEntryNotice(_fieldLimit);

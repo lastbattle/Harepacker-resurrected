@@ -69,6 +69,29 @@ namespace UnitTest_MapSimulator
         }
 
         [Fact]
+        public void UpdateEscortFollow_StaysAttachedWhilePlayerIsAirborneFromSameFoothold()
+        {
+            FootholdLine foothold = CreateFoothold(0, 0, 180, 0);
+            var player = new PlayerCharacter(device: null, texturePool: null, build: null);
+            player.SetPosition(70, 0);
+            player.Physics.LandOnFoothold(foothold);
+
+            var movement = new MobMovementInfo();
+            movement.Initialize(x: 110, y: 0, rx0Shift: 50, rx1Shift: 50, yShift: 0, isFlyingMob: false);
+            movement.CurrentFoothold = foothold;
+
+            var controller = new EscortFollowController();
+
+            Assert.True(controller.UpdateEscortFollow(player, movement));
+
+            player.Physics.Jump();
+
+            Assert.Null(player.Physics.CurrentFoothold);
+            Assert.Same(foothold, player.Physics.FallStartFoothold);
+            Assert.True(controller.UpdateEscortFollow(player, movement));
+        }
+
+        [Fact]
         public void CanTraverseBetween_RejectsDisconnectedFootholds()
         {
             FootholdLine first = CreateFoothold(0, 0, 100, 0);

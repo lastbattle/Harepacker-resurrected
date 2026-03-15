@@ -5,9 +5,13 @@ using System.Runtime.CompilerServices;
 using HaCreator.MapSimulator.Entities;
 using HaCreator.MapEditor.Instance;
 using HaCreator.MapEditor.Info;
+using HaSharedLibrary.Render.DX;
+using HaSharedLibrary.Wz;
+using MapleLib.WzLib;
+using MapleLib.WzLib.WzProperties;
+using MapleLib.WzLib.WzStructure.Data;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
-using HaSharedLibrary.Render.DX;
 
 namespace HaCreator.MapSimulator.Pools
 {
@@ -164,7 +168,7 @@ namespace HaCreator.MapSimulator.Pools
                     HitCount = 0,
                     RequiredHits = 1, // Default, could be loaded from reactor info
                     Alpha = 1f,
-                    ActivationType = ReactorActivationType.Touch, // Default
+                    ActivationType = ResolveActivationType(instance),
                     CanRespawn = true
                 };
                 _reactorData[i] = data;
@@ -397,6 +401,47 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             return results;
+        }
+
+        /// <summary>
+        /// Trigger reactors that react to skill or attack interaction inside the supplied range.
+        /// </summary>
+        public List<ReactorItem> TriggerSkillReactors(
+            float skillX,
+            float skillY,
+            float skillRange,
+            int playerId,
+            int currentTick,
+            int skillId = 0,
+            int damage = 1)
+        {
+            var triggeredReactors = new List<ReactorItem>();
+
+            foreach (var (reactor, index) in FindSkillReactor(skillX, skillY, skillRange, skillId))
+            {
+                ReactorRuntimeData data = GetReactorData(index);
+                if (data == null)
+                    continue;
+
+                switch (data.ActivationType)
+                {
+                    case ReactorActivationType.Hit:
+                        if (HitReactor(index, playerId, currentTick, damage))
+                        {
+                            triggeredReactors.Add(reactor);
+                        }
+                        break;
+                    case ReactorActivationType.Skill:
+                        if (data.State == ReactorState.Idle)
+                        {
+                            ActivateReactor(index, playerId, currentTick, ReactorActivationType.Skill);
+                            triggeredReactors.Add(reactor);
+                        }
+                        break;
+                }
+            }
+
+            return triggeredReactors;
         }
         #endregion
 
@@ -775,6 +820,51 @@ namespace HaCreator.MapSimulator.Pools
                 DestroyedReactors = destroyedCount,
                 RespawningReactors = respawningCount
             };
+        }
+
+        internal static ReactorActivationType ResolveActivationType(ReactorInstance reactorInstance)
+        {
+            WzImage linkedReactorImage = reactorInstance?.ReactorInfo?.LinkedWzImage;
+            if (linkedReactorImage == null)
+                return ReactorActivationType.Touch;
+
+            WzImageProperty infoProperty = WzInfoTools.GetRealProperty(linkedReactorImage["info"]);
+            if (infoProperty == null)
+                return ReactorActivationType.Touch;
+
+            int? reactorTypeValue =
+                TryReadIntProperty(WzInfoTools.GetRealProperty(infoProperty["reactorType"])) ??
+                TryReadIntProperty(WzInfoTools.GetRealProperty(infoProperty["type"]));
+
+            if (!reactorTypeValue.HasValue)
+                return ReactorActivationType.Touch;
+
+            return reactorTypeValue.Value switch
+            {
+                (int)ReactorType.ActivatedByAnyHit => ReactorActivationType.Hit,
+                (int)ReactorType.ActivatedLeftHit => ReactorActivationType.Hit,
+                (int)ReactorType.ActivatedRightHit => ReactorActivationType.Hit,
+                (int)ReactorType.ActivatedByHarvesting => ReactorActivationType.Hit,
+                (int)ReactorType.ActivatedBySkill => ReactorActivationType.Skill,
+                (int)ReactorType.ActivatedByTouch => ReactorActivationType.Touch,
+                (int)ReactorType.ActivatedbyItem => ReactorActivationType.Item,
+                _ => ReactorActivationType.Touch
+            };
+        }
+
+        private static int? TryReadIntProperty(WzImageProperty property)
+        {
+            if (property is WzIntProperty intProperty)
+                return intProperty.Value;
+
+            object value = property?.WzValue;
+            if (value == null)
+                return null;
+
+            if (value is int intValue)
+                return intValue;
+
+            return int.TryParse(value.ToString(), out int parsedValue) ? parsedValue : null;
         }
         #endregion
     }

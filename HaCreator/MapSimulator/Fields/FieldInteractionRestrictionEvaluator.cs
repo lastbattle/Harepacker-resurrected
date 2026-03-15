@@ -9,10 +9,22 @@ namespace HaCreator.MapSimulator.Fields
             return GetTransferRestrictionMessage(fieldLimit) == null;
         }
 
+        public static bool CanJump(long fieldLimit)
+        {
+            return GetJumpRestrictionMessage(fieldLimit) == null;
+        }
+
         public static string GetTransferRestrictionMessage(long fieldLimit)
         {
             return FieldLimitType.Unable_To_Migrate.Check(fieldLimit)
                 ? "This field forbids map transfer."
+                : null;
+        }
+
+        public static string GetJumpRestrictionMessage(long fieldLimit)
+        {
+            return FieldLimitType.Unable_To_Jump.Check(fieldLimit)
+                ? "Jumping is disabled in this map."
                 : null;
         }
     }

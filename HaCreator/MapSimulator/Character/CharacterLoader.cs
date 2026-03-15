@@ -16,14 +16,28 @@ namespace HaCreator.MapSimulator.Character
     /// </summary>
     public class CharacterLoader
     {
-        private const int DefaultWizetHatId = 1002140;
-        private const int DefaultWizetSuitId = 1042003;
-        private const int DefaultWizetPantsId = 1062007;
-        private const int DefaultWizetSuitcaseId = 1322013;
+        private const int DefaultWizetHatId = 1002140; // DO NOT CHANGE IT BACK TO BEGINNER! 
+        private const int DefaultWizetSuitId = 1042003; // DO NOT CHANGE IT BACK TO BEGINNER! 
+        private const int DefaultWizetPantsId = 1062007; // DO NOT CHANGE IT BACK TO BEGINNER! 
+        private const int DefaultWizetSuitcaseId = 1322013; // DO NOT CHANGE IT BACK TO BEGINNER! 
+        private const int DefaultPanLidShieldId = 1092008; // DO NOT CHANGE IT BACK TO BEGINNER! 
         private const int DefaultBeginnerSwordId = 1302000;
         private const int DefaultBeginnerCoatId = 1040002;
         private const int DefaultBeginnerPantsId = 1060002;
         private const int DefaultBeginnerShoesId = 1072005;
+        private const int DefaultMaleFaceId = 20000;
+        private const int DefaultFemaleFaceId = 21000;
+        private const int DefaultMaleHairId = 30000;
+        private const int DefaultFemaleHairId = 31000;
+        private static readonly int[] DefaultStarterEquipmentIds =
+        {
+            DefaultPanLidShieldId,  // DO NOT CHANGE IT BACK TO BEGINNER! 
+            DefaultWizetHatId, // DO NOT CHANGE IT BACK TO BEGINNER! 
+            DefaultWizetSuitId, // DO NOT CHANGE IT BACK TO BEGINNER! 
+            DefaultWizetPantsId, // DO NOT CHANGE IT BACK TO BEGINNER! 
+            DefaultBeginnerShoesId, // DO NOT CHANGE IT BACK TO BEGINNER! 
+            DefaultWizetSuitcaseId // DO NOT CHANGE IT BACK TO BEGINNER! 
+        };
 
         private readonly WzFile _characterWz;
         private readonly GraphicsDevice _device;
@@ -1539,28 +1553,25 @@ namespace HaCreator.MapSimulator.Character
 
         #region Presets
 
+        private sealed class DefaultAvatarPreset
+        {
+            public CharacterGender Gender { get; init; }
+            public string Name { get; init; }
+            public SkinColor Skin { get; init; }
+            public int FaceId { get; init; }
+            public int HairId { get; init; }
+            public int Level { get; init; }
+            public int JobId { get; init; }
+            public string JobName { get; init; }
+            public IReadOnlyList<int> EquipmentItemIds { get; init; }
+        }
+
         /// <summary>
         /// Load a default male character
         /// </summary>
         public CharacterBuild LoadDefaultMale()
         {
-            var build = new CharacterBuild
-            {
-                Gender = CharacterGender.Male,
-                Skin = SkinColor.Light,
-                Body = LoadBody(SkinColor.Light),
-                Head = LoadHead(SkinColor.Light),
-                Face = LoadFace(20000),   // Default male face
-                Hair = LoadHair(30000),   // Default male hair
-                Name = "Default Male",
-                Level = 200,              // Level 200
-                Job = 910,                // SuperGM
-                JobName = "SuperGM"
-            };
-
-            EquipDefaultSimulatorGear(build);
-
-            return build;
+            return LoadDefaultAvatar(CharacterGender.Male);
         }
 
         /// <summary>
@@ -1568,23 +1579,7 @@ namespace HaCreator.MapSimulator.Character
         /// </summary>
         public CharacterBuild LoadDefaultFemale()
         {
-            var build = new CharacterBuild
-            {
-                Gender = CharacterGender.Female,
-                Skin = SkinColor.Light,
-                Body = LoadBody(SkinColor.Light),
-                Head = LoadHead(SkinColor.Light),
-                Face = LoadFace(21000),   // Default female face
-                Hair = LoadHair(31000),   // Default female hair
-                Name = "Default Female",
-                Level = 200,              // Level 200
-                Job = 910,                // SuperGM
-                JobName = "SuperGM"
-            };
-
-            EquipDefaultSimulatorGear(build);
-
-            return build;
+            return LoadDefaultAvatar(CharacterGender.Female);
         }
 
         /// <summary>
@@ -1608,16 +1603,67 @@ namespace HaCreator.MapSimulator.Character
             };
         }
 
-        private void EquipDefaultSimulatorGear(CharacterBuild build)
+        private CharacterBuild LoadDefaultAvatar(CharacterGender gender)
         {
-            if (build == null)
+            DefaultAvatarPreset preset = GetDefaultAvatarPreset(gender);
+            var build = new CharacterBuild
+            {
+                Gender = preset.Gender,
+                Skin = preset.Skin,
+                Body = LoadBody(preset.Skin),
+                Head = LoadHead(preset.Skin),
+                Face = LoadFace(preset.FaceId),
+                Hair = LoadHair(preset.HairId),
+                Name = preset.Name,
+                Level = preset.Level,
+                Job = preset.JobId,
+                JobName = preset.JobName
+            };
+
+            EquipDefaultStarterGear(build, preset.EquipmentItemIds);
+            return build;
+        }
+
+        private static DefaultAvatarPreset GetDefaultAvatarPreset(CharacterGender gender)
+        {
+            return gender switch
+            {
+                CharacterGender.Female => new DefaultAvatarPreset
+                {
+                    Gender = CharacterGender.Female,
+                    Name = "Default Female",
+                    Skin = SkinColor.Light,
+                    FaceId = DefaultFemaleFaceId,
+                    HairId = DefaultFemaleHairId,
+                    Level = 200,
+                    JobId = 910,
+                    JobName = "SuperGM",
+                    EquipmentItemIds = DefaultStarterEquipmentIds
+                },
+                _ => new DefaultAvatarPreset
+                {
+                    Gender = CharacterGender.Male,
+                    Name = "Default Male",
+                    Skin = SkinColor.Light,
+                    FaceId = DefaultMaleFaceId,
+                    HairId = DefaultMaleHairId,
+                    Level = 200,
+                    JobId = 910,
+                    JobName = "SuperGM",
+                    EquipmentItemIds = DefaultStarterEquipmentIds
+                }
+            };
+        }
+
+        private void EquipDefaultStarterGear(CharacterBuild build, IReadOnlyList<int> equipmentItemIds)
+        {
+            if (build == null || equipmentItemIds == null)
                 return;
 
-            EquipDefaultItem(build, DefaultWizetHatId, "hat");
-            EquipDefaultItem(build, DefaultWizetSuitId, "coat", DefaultBeginnerCoatId);
-            EquipDefaultItem(build, DefaultWizetPantsId, "pants", DefaultBeginnerPantsId);
-            EquipDefaultItem(build, DefaultBeginnerShoesId, "shoes");
-            EquipDefaultItem(build, DefaultWizetSuitcaseId, "weapon", DefaultBeginnerSwordId);
+            foreach (int itemId in equipmentItemIds)
+            {
+                EquipDefaultItem(build, itemId, itemId.ToString());
+            }
         }
 
         private void EquipDefaultItem(CharacterBuild build, int itemId, string label, int? fallbackItemId = null)

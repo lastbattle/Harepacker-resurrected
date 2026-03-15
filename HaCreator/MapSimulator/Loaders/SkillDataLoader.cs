@@ -319,6 +319,8 @@ namespace HaCreator.MapSimulator.Loaders
             }
 
             description = NormalizeSkillText(description);
+            int requiredCharacterLevel = ResolveRequiredCharacterLevel(skillEntry);
+            ResolveRequiredSkill(skillEntry, out int requiredSkillId, out int requiredSkillLevel);
 
             var displayData = new SkillDisplayData
             {
@@ -329,7 +331,10 @@ namespace HaCreator.MapSimulator.Loaders
                 SkillName = skillName,
                 Description = description,
                 CurrentLevel = 0,
-                MaxLevel = Math.Max(1, maxLevel)
+                MaxLevel = Math.Max(1, maxLevel),
+                RequiredCharacterLevel = requiredCharacterLevel,
+                RequiredSkillId = requiredSkillId,
+                RequiredSkillLevel = requiredSkillLevel
             };
 
             if (levelDescriptions != null)
@@ -339,6 +344,42 @@ namespace HaCreator.MapSimulator.Loaders
             }
 
             return displayData;
+        }
+
+        private static int ResolveRequiredCharacterLevel(WzSubProperty skillEntry)
+        {
+            if (skillEntry == null)
+                return 0;
+
+            if (TryGetNumericPropertyValue(skillEntry["common"], "reqLevel", 1, out int requiredLevel) ||
+                TryGetNumericPropertyValue(skillEntry["level"]?["1"], "reqLevel", 1, out requiredLevel) ||
+                TryGetNumericPropertyValue(skillEntry["info"], "reqLevel", 1, out requiredLevel))
+            {
+                return Math.Max(0, requiredLevel);
+            }
+
+            return 0;
+        }
+
+        private static void ResolveRequiredSkill(WzSubProperty skillEntry, out int requiredSkillId, out int requiredSkillLevel)
+        {
+            requiredSkillId = 0;
+            requiredSkillLevel = 0;
+            if (skillEntry?["req"] is not WzSubProperty requirementNode)
+                return;
+
+            foreach (WzImageProperty requirementEntry in requirementNode.WzProperties)
+            {
+                if (!int.TryParse(requirementEntry?.Name, NumberStyles.Integer, CultureInfo.InvariantCulture, out int skillId))
+                    continue;
+
+                if (!TryGetNumericValue(requirementEntry, out int skillLevel) || skillLevel <= 0)
+                    continue;
+
+                requiredSkillId = skillId;
+                requiredSkillLevel = skillLevel;
+                return;
+            }
         }
 
         private static Dictionary<int, string> BuildLevelDescriptions(WzSubProperty skillEntry, WzSubProperty stringEntry, int maxLevel)
@@ -645,6 +686,33 @@ namespace HaCreator.MapSimulator.Loaders
                     return true;
                 case WzStringProperty stringProp:
                     return TryEvaluateFormula(stringProp.Value, formulaX, out value);
+                default:
+                    return false;
+            }
+        }
+
+        private static bool TryGetNumericValue(WzImageProperty property, out int value)
+        {
+            value = 0;
+            switch (property)
+            {
+                case WzIntProperty intProp:
+                    value = intProp.Value;
+                    return true;
+                case WzShortProperty shortProp:
+                    value = shortProp.Value;
+                    return true;
+                case WzLongProperty longProp:
+                    value = (int)longProp.Value;
+                    return true;
+                case WzFloatProperty floatProp:
+                    value = (int)Math.Round(floatProp.Value, MidpointRounding.AwayFromZero);
+                    return true;
+                case WzDoubleProperty doubleProp:
+                    value = (int)Math.Round(doubleProp.Value, MidpointRounding.AwayFromZero);
+                    return true;
+                case WzStringProperty stringProp:
+                    return TryEvaluateFormula(stringProp.Value, 1, out value);
                 default:
                     return false;
             }

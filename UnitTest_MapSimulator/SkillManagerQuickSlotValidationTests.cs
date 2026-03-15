@@ -66,6 +66,29 @@ namespace UnitTest_MapSimulator
             Assert.Equal(activeSkill.SkillId, manager.GetHotkeySkill(0));
         }
 
+        [Fact]
+        public void LoadHotkeys_UsesAssignmentValidationForMixedEntries()
+        {
+            var activeSkill = new SkillData { SkillId = 3001002, MaxLevel = 1 };
+            var passiveSkill = new SkillData { SkillId = 3000000, MaxLevel = 1, IsPassive = true };
+            var manager = CreateSkillManager(activeSkill, passiveSkill);
+
+            manager.SetSkillLevel(activeSkill.SkillId, 1);
+            manager.SetSkillLevel(passiveSkill.SkillId, 1);
+
+            manager.LoadHotkeys(new Dictionary<int, int>
+            {
+                [0] = activeSkill.SkillId,
+                [1] = passiveSkill.SkillId,
+                [2] = 9999999
+            });
+
+            Assert.Equal(activeSkill.SkillId, manager.GetHotkeySkill(0));
+            Assert.Equal(0, manager.GetHotkeySkill(1));
+            Assert.Equal(0, manager.GetHotkeySkill(2));
+            Assert.Equal(new Dictionary<int, int> { [0] = activeSkill.SkillId }, manager.GetAllHotkeys());
+        }
+
         private static SkillManager CreateSkillManager(params SkillData[] availableSkills)
         {
             var manager = new SkillManager(

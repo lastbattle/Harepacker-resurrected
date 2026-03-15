@@ -370,6 +370,22 @@ namespace HaCreator.MapSimulator.Effects
             return _obstacles.TryGetValue(obstacleName, out var obstacle) && obstacle.TargetState;
         }
 
+        /// <summary>
+        /// Try to read the current target state for an obstacle-backed object toggle.
+        /// Returns false when the field has not published a state for that tag yet.
+        /// </summary>
+        public bool TryIsObstacleOn(string obstacleName, out bool isOn)
+        {
+            if (_obstacles.TryGetValue(obstacleName, out var obstacle))
+            {
+                isOn = obstacle.TargetState;
+                return true;
+            }
+
+            isOn = false;
+            return false;
+        }
+
         #endregion
 
         #region Screen Effects

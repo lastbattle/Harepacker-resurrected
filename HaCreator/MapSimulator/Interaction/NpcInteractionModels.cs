@@ -46,6 +46,7 @@ namespace HaCreator.MapSimulator.Interaction
     internal sealed class QuestActionResult
     {
         public bool StateChanged { get; init; }
+        public int? PreferredQuestId { get; init; }
         public IReadOnlyList<string> Messages { get; init; } = Array.Empty<string>();
     }
 }

@@ -73,5 +73,49 @@ namespace UnitTest_MapSimulator
 
             Assert.False(visible);
         }
+
+        [Fact]
+        public void IsVisible_IgnoresDynamicTagsWithoutPublishedRuntimeState()
+        {
+            bool visible = FieldObjectQuestVisibilityEvaluator.IsVisible(
+                hiddenByMap: false,
+                questInfo: null,
+                dynamicTags: new[] { "stageDoor" },
+                _ => QuestStateType.Not_Started,
+                _ => null);
+
+            Assert.True(visible);
+        }
+
+        [Fact]
+        public void IsVisible_ReturnsFalseWhenDynamicTagStateDisablesObject()
+        {
+            bool visible = FieldObjectQuestVisibilityEvaluator.IsVisible(
+                hiddenByMap: false,
+                questInfo: null,
+                dynamicTags: new[] { "stageDoor" },
+                _ => QuestStateType.Not_Started,
+                tag => tag == "stageDoor" ? false : null);
+
+            Assert.False(visible);
+        }
+
+        [Fact]
+        public void IsVisible_RequiresQuestMatchBeforeAllowingEnabledDynamicTags()
+        {
+            var questInfo = new List<ObjectInstanceQuest>
+            {
+                new ObjectInstanceQuest(1000, QuestStateType.Started)
+            };
+
+            bool visible = FieldObjectQuestVisibilityEvaluator.IsVisible(
+                hiddenByMap: false,
+                questInfo,
+                dynamicTags: new[] { "stageDoor" },
+                _ => QuestStateType.Completed,
+                tag => tag == "stageDoor" ? true : null);
+
+            Assert.False(visible);
+        }
     }
 }

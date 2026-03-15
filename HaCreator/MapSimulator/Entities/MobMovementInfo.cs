@@ -1219,9 +1219,9 @@ namespace HaCreator.MapSimulator.Entities
         /// <summary>
         /// Trigger a jump
         /// </summary>
-        private void TriggerJump()
+        private void TriggerJump(bool ignoreCooldown = false)
         {
-            if (JumpState != MobJumpState.None || _jumpCooldown > 0)
+            if (JumpState != MobJumpState.None || (!ignoreCooldown && _jumpCooldown > 0))
                 return;
 
             // Don't jump if too close to map boundaries (would jump off map)
@@ -1259,6 +1259,18 @@ namespace HaCreator.MapSimulator.Entities
 
             MobJumpState previousState = JumpState;
             TriggerJump();
+            return JumpState != previousState;
+        }
+
+        public bool TryTriggerAttackJump()
+        {
+            if (MoveType == MobMoveType.Stand || MoveType == MobMoveType.Fly)
+            {
+                return false;
+            }
+
+            MobJumpState previousState = JumpState;
+            TriggerJump(ignoreCooldown: true);
             return JumpState != previousState;
         }
 

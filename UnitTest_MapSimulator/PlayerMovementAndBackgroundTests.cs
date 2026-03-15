@@ -223,6 +223,29 @@ namespace UnitTest_MapSimulator
         }
 
         [Fact]
+        public void JumpRestriction_BlocksGroundJumpAndReportsFieldMessage()
+        {
+            var player = new PlayerCharacter(device: null, texturePool: null, build: null);
+            var foothold = CreateFoothold(0, 100, 200, 100);
+            string blockedMessage = null;
+
+            player.SetPosition(100, 100);
+            player.Physics.LandOnFoothold(foothold);
+            player.SetFootholdLookup(CreateFootholdLookup(foothold));
+            player.SetJumpRestrictionHandler(
+                () => "Jumping is disabled in this map.",
+                message => blockedMessage = message);
+            player.SetInput(left: false, right: false, up: false, down: false, jump: true, attack: false, pickup: false);
+
+            player.Update(Environment.TickCount, 0.016f);
+
+            Assert.Equal("Jumping is disabled in this map.", blockedMessage);
+            Assert.True(player.Physics.IsOnFoothold());
+            Assert.Equal(PlayerState.Standing, player.State);
+            Assert.Equal(0f, player.Physics.VelocityY);
+        }
+
+        [Fact]
         public void JumpWhileSwimming_AppliesClientStyleSwimJumpImpulse()
         {
             var player = new PlayerCharacter(device: null, texturePool: null, build: null);
@@ -697,6 +720,37 @@ namespace UnitTest_MapSimulator
             Assert.Contains("fly", standardActions);
         }
 
+        [Theory]
+        [InlineData(CharacterGender.Male, "Default Male", 20000, 30000)]
+        [InlineData(CharacterGender.Female, "Default Female", 21000, 31000)]
+        public void CharacterLoader_DefaultAvatarPreset_UsesBeginnerStarterMetadata(
+            CharacterGender gender,
+            string expectedName,
+            int expectedFaceId,
+            int expectedHairId)
+        {
+            var getDefaultAvatarPreset = typeof(CharacterLoader).GetMethod("GetDefaultAvatarPreset", BindingFlags.Static | BindingFlags.NonPublic);
+
+            Assert.NotNull(getDefaultAvatarPreset);
+
+            object preset = getDefaultAvatarPreset!.Invoke(null, new object[] { gender })!;
+            Type presetType = preset.GetType();
+
+            Assert.Equal(gender, (CharacterGender)presetType.GetProperty("Gender")!.GetValue(preset)!);
+            Assert.Equal(expectedName, (string)presetType.GetProperty("Name")!.GetValue(preset)!);
+            Assert.Equal(SkinColor.Light, (SkinColor)presetType.GetProperty("Skin")!.GetValue(preset)!);
+            Assert.Equal(expectedFaceId, (int)presetType.GetProperty("FaceId")!.GetValue(preset)!);
+            Assert.Equal(expectedHairId, (int)presetType.GetProperty("HairId")!.GetValue(preset)!);
+            Assert.Equal(1, (int)presetType.GetProperty("Level")!.GetValue(preset)!);
+            Assert.Equal(0, (int)presetType.GetProperty("JobId")!.GetValue(preset)!);
+            Assert.Equal("Beginner", (string)presetType.GetProperty("JobName")!.GetValue(preset)!);
+
+            var equipmentIds = Assert.IsAssignableFrom<System.Collections.IEnumerable>(presetType.GetProperty("EquipmentItemIds")!.GetValue(preset));
+            int[] values = equipmentIds.Cast<object>().Select(value => (int)value).ToArray();
+
+            Assert.Equal(new[] { 1040002, 1060002, 1072005, 1302000 }, values);
+        }
+
         [Fact]
         public void CharacterLoader_ActionLoadOrder_IncludesRareAndDeathActionsFromImageSurface()
         {
@@ -1138,6 +1192,49 @@ namespace UnitTest_MapSimulator
         }
 
         [Fact]
+        public void SkillManager_FlyingBuffSkills_PromoteEffectToClientOwnedAvatarLayer()
+        {
+            var player = new PlayerCharacter(device: null, texturePool: null, build: null);
+            var skillManager = new SkillManager(new SkillLoader(skillWz: null, device: null, texturePool: null), player);
+            var startCast = typeof(SkillManager).GetMethod("StartCast", BindingFlags.Instance | BindingFlags.NonPublic);
+            var currentCastField = typeof(SkillManager).GetField("_currentCast", BindingFlags.Instance | BindingFlags.NonPublic);
+            var updateBuffs = typeof(SkillManager).GetMethod("UpdateBuffs", BindingFlags.Instance | BindingFlags.NonPublic);
+
+            Assert.NotNull(startCast);
+            Assert.NotNull(currentCastField);
+            Assert.NotNull(updateBuffs);
+
+            var skill = new SkillData
+            {
+                SkillId = 9100000,
+                MaxLevel = 1,
+                Name = "Test Flight",
+                IsBuff = true,
+                ActionName = "fly",
+                Effect = CreateSkillAnimation("effect", 60, 60)
+            };
+            skill.Levels[1] = new SkillLevelData
+            {
+                Level = 1,
+                Time = 1
+            };
+
+            startCast!.Invoke(skillManager, new object[] { skill, 1, 1000 });
+
+            Assert.True(player.HasSkillAvatarEffect(skill.SkillId));
+
+            var currentCast = Assert.IsType<SkillCastInfo>(currentCastField!.GetValue(skillManager));
+            Assert.True(currentCast.SuppressEffectAnimation);
+
+            player.Update(1119, 0.016f);
+            Assert.True(player.HasSkillAvatarEffect(skill.SkillId));
+
+            updateBuffs!.Invoke(skillManager, new object[] { 2001 });
+            player.Update(2001, 0.016f);
+            Assert.False(player.HasSkillAvatarEffect(skill.SkillId));
+        }
+
+        [Fact]
         public void SkillManager_PreparedSkillTransforms_PlayExitActionsOnRelease()
         {
             var player = new PlayerCharacter(device: null, texturePool: null, build: null);
@@ -1314,6 +1411,77 @@ namespace UnitTest_MapSimulator
 
             skillManager.ClearMapState();
             Assert.Same(originalMount, build.Equipment[EquipSlot.TamingMob]);
+        }
+
+        [Fact]
+        public void SkillManager_MechanicRepeatSustainExpiry_ReturnsToTankBeforeBuffCleanupClearsRide()
+        {
+            var build = new CharacterBuild
+            {
+                Body = new BodyPart(),
+                Head = new BodyPart()
+            };
+            var player = new PlayerCharacter(device: null, texturePool: null, build);
+            var foothold = CreateFoothold(0, 100, 200, 100);
+            var skillManager = new SkillManager(new SkillLoader(skillWz: null, device: null, texturePool: null), player);
+            var startCast = typeof(SkillManager).GetMethod("StartCast", BindingFlags.Instance | BindingFlags.NonPublic);
+
+            Assert.NotNull(startCast);
+
+            var originalMount = new CharacterPart
+            {
+                ItemId = 1902000,
+                Type = CharacterPartType.TamingMob,
+                Slot = EquipSlot.TamingMob
+            };
+            var mechanicMount = new CharacterPart
+            {
+                ItemId = 1932016,
+                Type = CharacterPartType.TamingMob,
+                Slot = EquipSlot.TamingMob
+            };
+
+            build.Equip(originalMount);
+            skillManager.SetTamingMobLoader(itemId => itemId == mechanicMount.ItemId ? mechanicMount : null);
+
+            player.SetPosition(100, 100);
+            player.Physics.LandOnFoothold(foothold);
+            player.SetFootholdLookup(CreateFootholdLookup(foothold));
+
+            var tankSkill = new SkillData
+            {
+                SkillId = 35121005,
+                MaxLevel = 1,
+                ActionName = "tank_pre",
+                Levels =
+                {
+                    [1] = new SkillLevelData { Level = 1 }
+                }
+            };
+            var siegeSkill = new SkillData
+            {
+                SkillId = 35121013,
+                MaxLevel = 1,
+                ActionName = "tank_siegepre",
+                IsBuff = true,
+                Levels =
+                {
+                    [1] = new SkillLevelData
+                    {
+                        Level = 1,
+                        Time = 1
+                    }
+                }
+            };
+
+            startCast!.Invoke(skillManager, new object[] { tankSkill, 1, 1000 });
+            startCast.Invoke(skillManager, new object[] { siegeSkill, 1, 1200 });
+
+            skillManager.Update(2200, 0.016f);
+
+            Assert.Same(mechanicMount, build.Equipment[EquipSlot.TamingMob]);
+            Assert.True(player.HasSkillAvatarTransform(35121005));
+            Assert.False(player.HasSkillAvatarTransform(35121013));
         }
 
         [Theory]

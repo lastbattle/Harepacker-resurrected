@@ -30,7 +30,8 @@ namespace HaCreator.MapSimulator.Fields
                 return false;
             }
 
-            if (!CanEvaluate(player, movement))
+            FootholdLine playerFoothold = ResolvePlayerFoothold(player);
+            if (!CanEvaluate(player, playerFoothold, movement))
             {
                 _attachedFollowers.Remove(movement);
                 return false;
@@ -44,7 +45,7 @@ namespace HaCreator.MapSimulator.Fields
                 ? dx <= ReleaseHorizontalRange && dy <= ReleaseVerticalRange
                 : dx <= AttachHorizontalRange && dy <= AttachVerticalRange;
 
-            if (!withinWindow || !CanTraverseBetween(player.Physics.CurrentFoothold, movement.CurrentFoothold))
+            if (!withinWindow || !CanTraverseBetween(playerFoothold, movement.CurrentFoothold))
             {
                 _attachedFollowers.Remove(movement);
                 return false;
@@ -59,17 +60,27 @@ namespace HaCreator.MapSimulator.Fields
             _attachedFollowers.Clear();
         }
 
-        private static bool CanEvaluate(PlayerCharacter player, MobMovementInfo movement)
+        private static bool CanEvaluate(PlayerCharacter player, FootholdLine playerFoothold, MobMovementInfo movement)
         {
             return player?.IsAlive == true
                    && !player.GmFlyMode
                    && !player.Physics.IsOnLadderOrRope
                    && !player.Physics.IsUserFlying()
                    && !player.Physics.IsInSwimArea
-                   && player.Physics.CurrentFoothold != null
+                   && playerFoothold != null
                    && movement.CurrentFoothold != null
                    && movement.MoveType != MobMoveType.Fly
                    && !movement.IsInKnockback;
+        }
+
+        private static FootholdLine ResolvePlayerFoothold(PlayerCharacter player)
+        {
+            if (player?.Physics == null)
+            {
+                return null;
+            }
+
+            return player.Physics.CurrentFoothold ?? player.Physics.FallStartFoothold;
         }
 
         public static bool CanTraverseBetween(FootholdLine start, FootholdLine target)

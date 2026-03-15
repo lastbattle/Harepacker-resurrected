@@ -422,7 +422,52 @@ namespace HaCreator.MapSimulator.Loaders
                 npcInstance.NpcInfo.StringFunc, npcInstance.X, npcInstance.Y + NPC_FUNC_Y_POS, color_foreGround,
                 texturePool, UserScreenScaleFactor, device);
 
-            return new NpcItem(npcInstance, animationSet, nameTooltip, npcDescTooltip);
+            return new NpcItem(
+                npcInstance,
+                animationSet,
+                nameTooltip,
+                npcDescTooltip,
+                LoadNpcIdleSpeech(source["info"]?["speak"]));
+        }
+
+        private static IReadOnlyList<string> LoadNpcIdleSpeech(WzImageProperty speakProperty)
+        {
+            if (speakProperty == null)
+            {
+                return Array.Empty<string>();
+            }
+
+            var lines = new List<string>();
+            AppendNpcIdleSpeech(lines, speakProperty);
+            return lines;
+        }
+
+        private static void AppendNpcIdleSpeech(ICollection<string> lines, WzImageProperty property)
+        {
+            if (property == null)
+            {
+                return;
+            }
+
+            if (property is WzStringProperty stringProp)
+            {
+                if (!string.IsNullOrWhiteSpace(stringProp.Value))
+                {
+                    lines.Add(stringProp.Value.Trim());
+                }
+
+                return;
+            }
+
+            if (property.WzProperties == null)
+            {
+                return;
+            }
+
+            for (int i = 0; i < property.WzProperties.Count; i++)
+            {
+                AppendNpcIdleSpeech(lines, property.WzProperties[i]);
+            }
         }
         #endregion
     }

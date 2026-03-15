@@ -63,6 +63,8 @@ namespace HaCreator.MapSimulator.Character
 
         // Sound callbacks
         private Action _onJumpSound;
+        private Func<string> _jumpRestrictionMessageProvider;
+        private Action<string> _onJumpRestricted;
 
         #endregion
 
@@ -119,6 +121,8 @@ namespace HaCreator.MapSimulator.Character
             {
                 Player.SetFootholdLookup(findFoothold);
             }
+
+            Skills?.SetFootholdLookup(findFoothold);
         }
 
         /// <summary>
@@ -185,6 +189,21 @@ namespace HaCreator.MapSimulator.Character
             {
                 Player.SetJumpSoundCallback(onJump);
             }
+        }
+
+        public void SetJumpRestrictionHandler(Func<string> getRestrictionMessage, Action<string> onJumpRestricted)
+        {
+            _jumpRestrictionMessageProvider = getRestrictionMessage;
+            _onJumpRestricted = onJumpRestricted;
+            if (Player != null)
+            {
+                Player.SetJumpRestrictionHandler(getRestrictionMessage, onJumpRestricted);
+            }
+        }
+
+        public MobSkillEffectData LoadMobSkillEffect(int skillId, int skillLevel = 1)
+        {
+            return _mobSkillEffectLoader?.LoadMobSkillEffect(skillId, skillLevel);
         }
 
         /// <summary>
@@ -296,6 +315,7 @@ namespace HaCreator.MapSimulator.Character
                 Skills.SetDropPool(_dropPool);
                 Skills.SetCombatEffects(_combatEffects);
                 Skills.SetSoundManager(_soundManager);
+                Skills.SetFootholdLookup(_findFoothold);
                 Skills.SetTamingMobLoader(Loader.LoadEquipment);
 
                 // Keep only the player's current job path resident at startup.
@@ -310,6 +330,7 @@ namespace HaCreator.MapSimulator.Character
             Player.SetLadderLookup(_findLadder);
             Player.SetSwimAreaCheck(_checkSwimArea);
             Player.SetJumpSoundCallback(_onJumpSound);
+            Player.SetJumpRestrictionHandler(_jumpRestrictionMessageProvider, _onJumpRestricted);
             Player.Physics.IsFlyingMap = _isFlyingMap;
             Player.Physics.RequiresFlyingSkillForMap = _requiresFlyingSkillForMap;
 
@@ -418,6 +439,7 @@ namespace HaCreator.MapSimulator.Character
                 Player.SetLadderLookup(_findLadder);
             if (_onJumpSound != null)
                 Player.SetJumpSoundCallback(_onJumpSound);
+            Player.SetJumpRestrictionHandler(_jumpRestrictionMessageProvider, _onJumpRestricted);
             if (_checkSwimArea != null)
                 Player.SetSwimAreaCheck(_checkSwimArea);
             Player.Physics.IsFlyingMap = _isFlyingMap;

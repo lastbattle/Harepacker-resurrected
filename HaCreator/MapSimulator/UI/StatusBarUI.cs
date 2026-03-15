@@ -38,6 +38,7 @@ namespace HaCreator.MapSimulator.UI {
         public Texture2D IconTexture { get; set; }
         public int RemainingMs { get; set; }
         public int DurationMs { get; set; }
+        public IReadOnlyList<string> TemporaryStatLabels { get; set; } = Array.Empty<string>();
     }
 
     public class StatusBarPreparedSkillRenderData
@@ -49,6 +50,10 @@ namespace HaCreator.MapSimulator.UI {
         public int DurationMs { get; set; }
         public int GaugeDurationMs { get; set; }
         public float Progress { get; set; }
+        public bool IsKeydownSkill { get; set; }
+        public bool IsHolding { get; set; }
+        public int HoldElapsedMs { get; set; }
+        public int MaxHoldDurationMs { get; set; }
     }
 
     public class StatusBarCooldownRenderData
@@ -188,6 +193,7 @@ namespace HaCreator.MapSimulator.UI {
         private const int COOLDOWN_TRAY_RIGHT_MARGIN = 8;
         private const int TOOLTIP_FALLBACK_WIDTH = 320;
         private const int TOOLTIP_PADDING = 10;
+        private const int TOOLTIP_ICON_GAP = 8;
         private const int TOOLTIP_TITLE_GAP = 8;
         private const int TOOLTIP_SECTION_GAP = 6;
         private const int TOOLTIP_OFFSET_X = 12;
@@ -506,7 +512,7 @@ namespace HaCreator.MapSimulator.UI {
             // Draw gauge text section (HP/MP/EXP area) - use basePosGauge
             // HP text - format from client: [HP/MaxHP]
             string hpText = $"[{stats.HP}/{stats.MaxHP}]";
-            Vector2 hpPos = basePosGauge + HP_TEXT_POS;
+            Vector2 hpPos = GetRightAlignedStatusTextPosition(basePosGauge, HP_TEXT_POS, hpText, 1.0f, 0.7f);
             if (_useBitmapFont) {
                 DrawBitmapString(sprite, hpText, hpPos, 1.0f);
             } else {
@@ -515,7 +521,7 @@ namespace HaCreator.MapSimulator.UI {
 
             // MP text - format from client: [MP/MaxMP]
             string mpText = $"[{stats.MP}/{stats.MaxMP}]";
-            Vector2 mpPos = basePosGauge + MP_TEXT_POS;
+            Vector2 mpPos = GetRightAlignedStatusTextPosition(basePosGauge, MP_TEXT_POS, mpText, 1.0f, 0.7f);
             if (_useBitmapFont) {
                 DrawBitmapString(sprite, mpText, mpPos, 1.0f);
             } else {
@@ -527,7 +533,7 @@ namespace HaCreator.MapSimulator.UI {
             // Cap at 99.99% like the client does
             if (expPercent > 99.99) expPercent = 99.99;
             string expText = $"{Math.Max(0L, stats.EXP)}[{expPercent:F2}%]";
-            Vector2 expPos = basePosGauge + EXP_TEXT_POS;
+            Vector2 expPos = GetRightAlignedStatusTextPosition(basePosGauge, EXP_TEXT_POS, expText, 1.0f, 0.7f);
             if (_useBitmapFont) {
                 DrawBitmapString(sprite, expText, expPos, 1.0f);
             } else {
@@ -764,47 +770,27 @@ namespace HaCreator.MapSimulator.UI {
                 return;
             }
 
-            string title = SanitizeTooltipText(buffEntry.SkillName);
-            string remainingText = buffEntry.RemainingMs > 0
-                ? $"Time Left: {Math.Max(1, (int)Math.Ceiling(buffEntry.RemainingMs / 1000f))} sec"
-                : "Time Left: --";
-            string[] descriptionLines = WrapTooltipText(
+            string temporaryStatText = buffEntry.TemporaryStatLabels != null && buffEntry.TemporaryStatLabels.Count > 0
+                ? $"Temp Stats: {string.Join(", ", buffEntry.TemporaryStatLabels)}"
+                : string.Empty;
+            Texture2D iconTexture = buffEntry.IconTexture;
+            if (iconTexture == null && !_buffIconTextures.TryGetValue(buffEntry.IconKey ?? string.Empty, out iconTexture))
+            {
+                _buffIconTextures.TryGetValue("united/buff", out iconTexture);
+            }
+
+            DrawStatusBarSkillTooltip(
+                sprite,
+                iconRect,
+                renderWidth,
+                renderHeight,
+                SanitizeTooltipText(buffEntry.SkillName),
+                buffEntry.RemainingMs > 0
+                    ? $"Time Left: {Math.Max(1, (int)Math.Ceiling(buffEntry.RemainingMs / 1000f))} sec"
+                    : "Time Left: --",
+                temporaryStatText,
                 SanitizeTooltipText(buffEntry.Description),
-                TOOLTIP_FALLBACK_WIDTH - (TOOLTIP_PADDING * 2));
-
-            float textWidth = Math.Max(
-                _font.MeasureString(title).X,
-                _font.MeasureString(remainingText).X);
-            if (descriptionLines.Length > 0)
-            {
-                textWidth = Math.Max(textWidth, MeasureLongestLine(descriptionLines));
-            }
-
-            int tooltipWidth = Math.Max(
-                TOOLTIP_FALLBACK_WIDTH,
-                (int)Math.Ceiling(textWidth + (TOOLTIP_PADDING * 2)));
-            int tooltipHeight = (TOOLTIP_PADDING * 2) + _font.LineSpacing + TOOLTIP_TITLE_GAP + _font.LineSpacing;
-            if (descriptionLines.Length > 0)
-            {
-                tooltipHeight += TOOLTIP_SECTION_GAP + (int)Math.Ceiling(MeasureLinesHeight(descriptionLines));
-            }
-
-            Point tooltipPosition = GetTooltipPosition(iconRect, tooltipWidth, tooltipHeight, renderWidth, renderHeight);
-            Rectangle tooltipRect = new Rectangle(tooltipPosition.X, tooltipPosition.Y, tooltipWidth, tooltipHeight);
-
-            DrawTooltipBackground(sprite, tooltipRect);
-
-            float textY = tooltipRect.Y + TOOLTIP_PADDING;
-            DrawTooltipText(sprite, title, new Vector2(tooltipRect.X + TOOLTIP_PADDING, textY), new Color(255, 238, 155));
-            textY += _font.LineSpacing + TOOLTIP_TITLE_GAP;
-            DrawTooltipText(sprite, remainingText, new Vector2(tooltipRect.X + TOOLTIP_PADDING, textY), Color.White);
-            textY += _font.LineSpacing;
-
-            if (descriptionLines.Length > 0)
-            {
-                textY += TOOLTIP_SECTION_GAP;
-                DrawTooltipLines(sprite, descriptionLines, tooltipRect.X + TOOLTIP_PADDING, textY, new Color(219, 219, 219));
-            }
+                iconTexture);
         }
 
         private bool TryGetHoveredBuffEntry(out StatusBarBuffRenderData buffEntry, out Rectangle iconRect)
@@ -927,47 +913,18 @@ namespace HaCreator.MapSimulator.UI {
                 return;
             }
 
-            string title = SanitizeTooltipText(cooldownEntry.SkillName);
-            string remainingText = cooldownEntry.RemainingMs > 0
-                ? $"Cooldown: {Math.Max(1, (int)Math.Ceiling(cooldownEntry.RemainingMs / 1000f))} sec"
-                : "Cooldown: --";
-            string[] descriptionLines = WrapTooltipText(
+            DrawStatusBarSkillTooltip(
+                sprite,
+                iconRect,
+                renderWidth,
+                renderHeight,
+                SanitizeTooltipText(cooldownEntry.SkillName),
+                cooldownEntry.RemainingMs > 0
+                    ? $"Cooldown: {Math.Max(1, (int)Math.Ceiling(cooldownEntry.RemainingMs / 1000f))} sec"
+                    : "Cooldown: --",
+                string.Empty,
                 SanitizeTooltipText(cooldownEntry.Description),
-                TOOLTIP_FALLBACK_WIDTH - (TOOLTIP_PADDING * 2));
-
-            float textWidth = Math.Max(
-                _font.MeasureString(title).X,
-                _font.MeasureString(remainingText).X);
-            if (descriptionLines.Length > 0)
-            {
-                textWidth = Math.Max(textWidth, MeasureLongestLine(descriptionLines));
-            }
-
-            int tooltipWidth = Math.Max(
-                TOOLTIP_FALLBACK_WIDTH,
-                (int)Math.Ceiling(textWidth + (TOOLTIP_PADDING * 2)));
-            int tooltipHeight = (TOOLTIP_PADDING * 2) + _font.LineSpacing + TOOLTIP_TITLE_GAP + _font.LineSpacing;
-            if (descriptionLines.Length > 0)
-            {
-                tooltipHeight += TOOLTIP_SECTION_GAP + (int)Math.Ceiling(MeasureLinesHeight(descriptionLines));
-            }
-
-            Point tooltipPosition = GetTooltipPosition(iconRect, tooltipWidth, tooltipHeight, renderWidth, renderHeight);
-            Rectangle tooltipRect = new Rectangle(tooltipPosition.X, tooltipPosition.Y, tooltipWidth, tooltipHeight);
-
-            DrawTooltipBackground(sprite, tooltipRect);
-
-            float textY = tooltipRect.Y + TOOLTIP_PADDING;
-            DrawTooltipText(sprite, title, new Vector2(tooltipRect.X + TOOLTIP_PADDING, textY), new Color(255, 238, 155));
-            textY += _font.LineSpacing + TOOLTIP_TITLE_GAP;
-            DrawTooltipText(sprite, remainingText, new Vector2(tooltipRect.X + TOOLTIP_PADDING, textY), Color.White);
-            textY += _font.LineSpacing;
-
-            if (descriptionLines.Length > 0)
-            {
-                textY += TOOLTIP_SECTION_GAP;
-                DrawTooltipLines(sprite, descriptionLines, tooltipRect.X + TOOLTIP_PADDING, textY, new Color(219, 219, 219));
-            }
+                cooldownEntry.IconTexture);
         }
 
         private void DrawCooldownOverlay(SpriteBatch sprite, Rectangle iconRect, float remainingProgress)
@@ -1088,16 +1045,29 @@ namespace HaCreator.MapSimulator.UI {
                 return string.Empty;
             }
 
+            if (preparedSkill.IsHolding)
+            {
+                if (preparedSkill.MaxHoldDurationMs > 0)
+                {
+                    int remainingHoldMs = Math.Max(0, preparedSkill.MaxHoldDurationMs - preparedSkill.HoldElapsedMs);
+                    return remainingHoldMs > 0
+                        ? $"Maintaining {Math.Max(1, (int)Math.Ceiling(remainingHoldMs / 1000f))} sec"
+                        : "Ready";
+                }
+
+                return preparedSkill.IsKeydownSkill ? "Maintaining" : "Ready";
+            }
+
             if (hudProfile.GaugeDurationMs > 0)
             {
                 return progress >= 0.999f
                     ? "Ready"
-                    : $"{Math.Clamp((int)Math.Round(progress * 100f), 0, 100)}%";
+                    : $"Charging {Math.Clamp((int)Math.Round(progress * 100f), 0, 100)}%";
             }
 
             if (preparedSkill.RemainingMs > 0)
             {
-                return $"{Math.Max(1, (int)Math.Ceiling(preparedSkill.RemainingMs / 1000f))} sec";
+                return $"Charging {Math.Max(1, (int)Math.Ceiling(preparedSkill.RemainingMs / 1000f))} sec";
             }
 
             return $"{Math.Clamp((int)Math.Round(progress * 100f), 0, 100)}%";
@@ -1129,14 +1099,101 @@ namespace HaCreator.MapSimulator.UI {
             return new PreparedSkillHudProfile(preparedSkill.SkinKey, preparedSkill.GaugeDurationMs);
         }
 
-        private Point GetTooltipPosition(Rectangle anchorRect, int tooltipWidth, int tooltipHeight, int renderWidth, int renderHeight)
+        private void DrawStatusBarSkillTooltip(
+            SpriteBatch sprite,
+            Rectangle anchorRect,
+            int renderWidth,
+            int renderHeight,
+            string title,
+            string statusLine,
+            string secondaryLine,
+            string description,
+            Texture2D iconTexture)
+        {
+            int tooltipWidth = ResolveTooltipWidth();
+            int textLeftOffset = TOOLTIP_PADDING + BUFF_ICON_SIZE + TOOLTIP_ICON_GAP;
+            float titleWidth = tooltipWidth - (TOOLTIP_PADDING * 2);
+            float sectionWidth = tooltipWidth - textLeftOffset - TOOLTIP_PADDING;
+            string[] wrappedTitle = WrapTooltipText(title, titleWidth);
+            string[] wrappedStatus = WrapTooltipText(statusLine, sectionWidth);
+            string[] wrappedSecondary = WrapTooltipText(secondaryLine, sectionWidth);
+            string[] wrappedDescription = WrapTooltipText(description, sectionWidth);
+
+            float titleHeight = MeasureLinesHeight(wrappedTitle);
+            float statusHeight = MeasureLinesHeight(wrappedStatus);
+            float secondaryHeight = MeasureLinesHeight(wrappedSecondary);
+            float descriptionHeight = MeasureLinesHeight(wrappedDescription);
+            float contentHeight = 0f;
+            if (statusHeight > 0f)
+            {
+                contentHeight += statusHeight;
+            }
+
+            if (secondaryHeight > 0f)
+            {
+                contentHeight += (contentHeight > 0f ? 2f : 0f) + secondaryHeight;
+            }
+
+            if (descriptionHeight > 0f)
+            {
+                contentHeight += (contentHeight > 0f ? TOOLTIP_SECTION_GAP : 0f) + descriptionHeight;
+            }
+
+            float iconBlockHeight = Math.Max(BUFF_ICON_SIZE, contentHeight);
+            int tooltipHeight = (int)Math.Ceiling((TOOLTIP_PADDING * 2) + titleHeight + TOOLTIP_TITLE_GAP + iconBlockHeight);
+            Point tooltipPosition = GetTooltipPosition(anchorRect, tooltipWidth, tooltipHeight, renderWidth, renderHeight, out int tooltipFrameIndex);
+            Rectangle tooltipRect = new Rectangle(tooltipPosition.X, tooltipPosition.Y, tooltipWidth, tooltipHeight);
+
+            DrawTooltipBackground(sprite, tooltipRect, tooltipFrameIndex);
+
+            float titleY = tooltipRect.Y + TOOLTIP_PADDING;
+            DrawTooltipLines(sprite, wrappedTitle, tooltipRect.X + TOOLTIP_PADDING, titleY, new Color(255, 238, 155));
+
+            int contentY = tooltipRect.Y + TOOLTIP_PADDING + (int)Math.Ceiling(titleHeight) + TOOLTIP_TITLE_GAP;
+            int iconX = tooltipRect.X + TOOLTIP_PADDING;
+            if (iconTexture != null)
+            {
+                sprite.Draw(iconTexture, new Rectangle(iconX, contentY, BUFF_ICON_SIZE, BUFF_ICON_SIZE), Color.White);
+            }
+
+            int textX = tooltipRect.X + textLeftOffset;
+            float sectionY = contentY;
+            if (statusHeight > 0f)
+            {
+                DrawTooltipLines(sprite, wrappedStatus, textX, sectionY, Color.White);
+                sectionY += statusHeight;
+            }
+
+            if (secondaryHeight > 0f)
+            {
+                sectionY += statusHeight > 0f ? 2f : 0f;
+                DrawTooltipLines(sprite, wrappedSecondary, textX, sectionY, new Color(181, 224, 255));
+                sectionY += secondaryHeight;
+            }
+
+            if (descriptionHeight > 0f)
+            {
+                sectionY += (statusHeight > 0f || secondaryHeight > 0f) ? TOOLTIP_SECTION_GAP : 0f;
+                DrawTooltipLines(sprite, wrappedDescription, textX, sectionY, new Color(219, 219, 219));
+            }
+        }
+
+        private int ResolveTooltipWidth()
+        {
+            int textureWidth = _tooltipFrames[1]?.Width ?? 0;
+            return textureWidth > 0 ? textureWidth : TOOLTIP_FALLBACK_WIDTH;
+        }
+
+        private Point GetTooltipPosition(Rectangle anchorRect, int tooltipWidth, int tooltipHeight, int renderWidth, int renderHeight, out int tooltipFrameIndex)
         {
             int x = anchorRect.Right + TOOLTIP_OFFSET_X;
             int y = anchorRect.Y + TOOLTIP_OFFSET_Y;
+            tooltipFrameIndex = 1;
 
             if (x + tooltipWidth > renderWidth - TOOLTIP_PADDING)
             {
                 x = anchorRect.Left - tooltipWidth - TOOLTIP_OFFSET_X;
+                tooltipFrameIndex = 0;
             }
 
             if (x < TOOLTIP_PADDING)
@@ -1148,6 +1205,7 @@ namespace HaCreator.MapSimulator.UI {
             if (y + tooltipHeight > renderHeight - TOOLTIP_PADDING)
             {
                 y = renderHeight - tooltipHeight - TOOLTIP_PADDING;
+                tooltipFrameIndex = 2;
             }
 
             if (y < TOOLTIP_PADDING)
@@ -1160,16 +1218,14 @@ namespace HaCreator.MapSimulator.UI {
                 Math.Max(TOOLTIP_PADDING, y));
         }
 
-        private void DrawTooltipBackground(SpriteBatch sprite, Rectangle rect)
+        private void DrawTooltipBackground(SpriteBatch sprite, Rectangle rect, int tooltipFrameIndex)
         {
-            Texture2D leftFrame = _tooltipFrames[0];
-            Texture2D centerFrame = _tooltipFrames[1];
-            Texture2D rightFrame = _tooltipFrames[2];
-            if (leftFrame != null && centerFrame != null && rightFrame != null)
+            Texture2D tooltipFrame = tooltipFrameIndex >= 0 && tooltipFrameIndex < _tooltipFrames.Length
+                ? _tooltipFrames[tooltipFrameIndex]
+                : null;
+            if (tooltipFrame != null)
             {
-                sprite.Draw(leftFrame, new Rectangle(rect.X, rect.Y, leftFrame.Width, rect.Height), Color.White);
-                sprite.Draw(centerFrame, new Rectangle(rect.X + leftFrame.Width, rect.Y, Math.Max(1, rect.Width - leftFrame.Width - rightFrame.Width), rect.Height), Color.White);
-                sprite.Draw(rightFrame, new Rectangle(rect.Right - rightFrame.Width, rect.Y, rightFrame.Width, rect.Height), Color.White);
+                sprite.Draw(tooltipFrame, rect, Color.White);
                 return;
             }
 
@@ -1344,6 +1400,29 @@ namespace HaCreator.MapSimulator.UI {
             }
 
             return ellipsis;
+        }
+
+        private Vector2 GetRightAlignedStatusTextPosition(Vector2 basePos, Vector2 anchorOffset, string text, float bitmapScale, float spriteFontScale)
+        {
+            float textWidth = MeasureStatusBarTextWidth(text, bitmapScale, spriteFontScale);
+            return new Vector2(
+                basePos.X + anchorOffset.X - textWidth,
+                basePos.Y + anchorOffset.Y);
+        }
+
+        private float MeasureStatusBarTextWidth(string text, float bitmapScale, float spriteFontScale)
+        {
+            if (_useBitmapFont)
+            {
+                return MeasureBitmapString(text, bitmapScale);
+            }
+
+            if (_font == null || string.IsNullOrEmpty(text))
+            {
+                return 0f;
+            }
+
+            return _font.MeasureString(text).X * spriteFontScale;
         }
 
         private Rectangle GetKeyDownBarRectangle(Vector2 basePosGauge, StatusBarKeyDownBarTextures textures)

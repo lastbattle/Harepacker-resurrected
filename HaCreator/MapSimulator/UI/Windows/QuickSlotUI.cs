@@ -480,7 +480,7 @@ namespace HaCreator.MapSimulator.UI
             // The client advances the quick-slot CoolTime masks in 15 stepped states (0..14)
             // and uses frame 15 as the cleared surface when nothing is cooling down.
             int totalSeconds = Math.Max(1, (int)Math.Ceiling(totalMs / 1000f));
-            int remainingSeconds = Math.Max(0, remainingMs / 1000);
+            int remainingSeconds = Math.Max(0, (int)Math.Ceiling(remainingMs / 1000f));
             int elapsedSeconds = Math.Clamp(totalSeconds - remainingSeconds, 0, totalSeconds);
             frameIndex = Math.Clamp((14 * elapsedSeconds) / totalSeconds, 0, 14);
             remainingText = Math.Max(1, (int)Math.Ceiling(remainingMs / 1000f)).ToString();

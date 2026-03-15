@@ -1,5 +1,6 @@
 using HaCreator.MapSimulator.UI;
 using HaCreator.MapSimulator.UI.Controls;
+using HaCreator.MapSimulator.Character.Skills;
 using HaSharedLibrary.Render;
 using HaSharedLibrary.Render.DX;
 using Microsoft.Xna.Framework;
@@ -70,6 +71,7 @@ namespace HaCreator.MapSimulator.UI
         private const int TOOLTIP_SECTION_GAP = 6;
         private const int TOOLTIP_OFFSET_X = 12;
         private const int TOOLTIP_OFFSET_Y = -4;
+        private const float COOLDOWN_TEXT_SCALE = 0.55f;
         private static readonly Color TOOLTIP_BACKGROUND_COLOR = new Color(28, 28, 28, 228);
         private static readonly Color TOOLTIP_BORDER_COLOR = new Color(112, 112, 112, 235);
 
@@ -101,6 +103,7 @@ namespace HaCreator.MapSimulator.UI
 
         #region Fields
         private int _currentTab = TAB_BEGINNER;
+        private int _characterLevel = 1;
         private int _scrollOffset = 0;
         private int _hoveredSkillIndex = -1;
         private int _hoveredSpUpSkillIndex = -1;
@@ -167,6 +170,7 @@ namespace HaCreator.MapSimulator.UI
 
         // Font for rendering text
         private SpriteFont _font;
+        private SkillManager _skillManager;
 
         // Mouse state
         private MouseState _previousMouseState;
@@ -440,6 +444,11 @@ namespace HaCreator.MapSimulator.UI
             _font = font;
         }
 
+        public void SetSkillManager(SkillManager skillManager)
+        {
+            _skillManager = skillManager;
+        }
+
         /// <summary>
         /// Set job header info for a specific tab
         /// </summary>
@@ -491,7 +500,7 @@ namespace HaCreator.MapSimulator.UI
             DrawJobHeader(sprite, windowX, windowY);
 
             // Draw skill rows
-            DrawSkillRows(sprite, windowX, windowY);
+            DrawSkillRows(sprite, windowX, windowY, TickCount);
             DrawScrollBar(sprite);
 
             // Draw SP count
@@ -507,7 +516,7 @@ namespace HaCreator.MapSimulator.UI
             int windowX = this.Position.X;
             int windowY = this.Position.Y;
 
-            DrawHoveredSkillTooltip(sprite, windowX, windowY, renderParameters.RenderWidth, renderParameters.RenderHeight);
+            DrawHoveredSkillTooltip(sprite, windowX, windowY, renderParameters.RenderWidth, renderParameters.RenderHeight, TickCount);
         }
 
         /// <summary>
@@ -543,7 +552,7 @@ namespace HaCreator.MapSimulator.UI
         /// <summary>
         /// Draw the skill rows with icons, names, and levels
         /// </summary>
-        private void DrawSkillRows(SpriteBatch sprite, int windowX, int windowY)
+        private void DrawSkillRows(SpriteBatch sprite, int windowX, int windowY, int currentTime)
         {
             var skills = CurrentSkills;
             int availableSp = GetCurrentSkillPoints();
@@ -557,7 +566,7 @@ namespace HaCreator.MapSimulator.UI
 
                 int nTop = FIRST_ROW_TOP + (rowIndex * SKILL_ROW_HEIGHT);
                 SkillDisplayData skill = skills[skillIndex];
-                bool canLevelUp = availableSp > 0 && skill.CurrentLevel < skill.MaxLevel;
+                bool canLevelUp = CanLevelUp(skill, availableSp);
 
                 DrawSkillEntry(
                     sprite,
@@ -565,6 +574,7 @@ namespace HaCreator.MapSimulator.UI
                     windowX,
                     windowY,
                     nTop,
+                    currentTime,
                     canLevelUp,
                     skill.SkillId == recommendedSkillId,
                     skillIndex == _hoveredSkillIndex,
@@ -586,6 +596,7 @@ namespace HaCreator.MapSimulator.UI
             int windowX,
             int windowY,
             int nTop,
+            int currentTime,
             bool canLevelUp,
             bool isRecommended,
             bool isHovered,
@@ -617,6 +628,20 @@ namespace HaCreator.MapSimulator.UI
             {
                 Rectangle iconRect = new Rectangle(iconX, iconY, SKILL_ICON_SIZE, SKILL_ICON_SIZE);
                 sprite.Draw(icon, iconRect, Color.White);
+
+                if (TryGetCooldownVisualState(skill.SkillId, currentTime, out float remainingProgress, out string remainingText))
+                {
+                    DrawCooldownOverlay(sprite, iconRect, remainingProgress);
+
+                    if (_font != null && !string.IsNullOrWhiteSpace(remainingText))
+                    {
+                        Vector2 textSize = _font.MeasureString(remainingText) * COOLDOWN_TEXT_SCALE;
+                        Vector2 textPosition = new Vector2(
+                            iconRect.Right - textSize.X - 2f,
+                            iconRect.Bottom - textSize.Y - 1f);
+                        DrawTooltipText(sprite, remainingText, textPosition, Color.White, COOLDOWN_TEXT_SCALE);
+                    }
+                }
             }
 
             if (_font != null)
@@ -648,7 +673,7 @@ namespace HaCreator.MapSimulator.UI
             }
         }
 
-        private static int ResolveRecommendedSkillId(IReadOnlyList<SkillDisplayData> skills, int availableSp)
+        private int ResolveRecommendedSkillId(IReadOnlyList<SkillDisplayData> skills, int availableSp)
         {
             if (skills == null || skills.Count == 0 || availableSp <= 0)
                 return 0;
@@ -659,7 +684,7 @@ namespace HaCreator.MapSimulator.UI
                 if (skill == null)
                     continue;
 
-                if (skill.CurrentLevel < skill.MaxLevel)
+                if (CanLevelUp(skill, availableSp))
                     return skill.SkillId;
             }
 
@@ -705,7 +730,7 @@ namespace HaCreator.MapSimulator.UI
                     break;
 
                 SkillDisplayData skill = skills[skillIndex];
-                if (skill == null || skill.CurrentLevel >= skill.MaxLevel || availableSp <= 0)
+                if (!CanLevelUp(skill, availableSp))
                     continue;
 
                 if (GetSpUpButtonBounds(rowIndex).Contains(mouseX, mouseY))
@@ -722,7 +747,7 @@ namespace HaCreator.MapSimulator.UI
                 return false;
 
             SkillDisplayData skill = skills[skillIndex];
-            if (skill == null || skill.CurrentLevel >= skill.MaxLevel || GetCurrentSkillPoints() <= 0)
+            if (!CanLevelUp(skill, GetCurrentSkillPoints()))
                 return false;
 
             if (OnSkillLevelUpRequested != null && !OnSkillLevelUpRequested(skill))
@@ -806,7 +831,7 @@ namespace HaCreator.MapSimulator.UI
             sprite.Draw(texture, destination, Color.White);
         }
 
-        private void DrawHoveredSkillTooltip(SpriteBatch sprite, int windowX, int windowY, int renderWidth, int renderHeight)
+        private void DrawHoveredSkillTooltip(SpriteBatch sprite, int windowX, int windowY, int renderWidth, int renderHeight, int currentTime)
         {
             if (_font == null || _isDraggingSkill || _hoveredSkillIndex < 0)
                 return;
@@ -828,6 +853,7 @@ namespace HaCreator.MapSimulator.UI
             string currentLevelDescription = currentLevel > 0
                 ? SanitizeFontText(skill.GetLevelDescription(currentLevel))
                 : string.Empty;
+            string cooldownLine = GetCooldownTooltipText(skill.SkillId, currentTime);
             bool showNextLevel = nextLevel > 0 && nextLevel <= skill.MaxLevel && nextLevel != currentLevel;
             string nextLevelHeader = showNextLevel ? $"Next Level: {nextLevel}" : string.Empty;
             string nextLevelDescription = showNextLevel
@@ -840,6 +866,7 @@ namespace HaCreator.MapSimulator.UI
             float sectionWidth = tooltipWidth - textLeftOffset - TOOLTIP_PADDING;
             string[] wrappedName = WrapTooltipText(skillName, titleWidth);
             string[] wrappedDescription = WrapTooltipText(description, sectionWidth);
+            string[] wrappedCooldown = WrapTooltipText(cooldownLine, sectionWidth);
             string[] wrappedCurrentHeader = WrapTooltipText(currentLevelHeader, sectionWidth);
             string[] wrappedCurrentDescription = WrapTooltipText(currentLevelDescription, sectionWidth);
             string[] wrappedNextHeader = WrapTooltipText(nextLevelHeader, sectionWidth);
@@ -847,12 +874,14 @@ namespace HaCreator.MapSimulator.UI
 
             float titleHeight = MeasureLinesHeight(wrappedName);
             float descriptionHeight = MeasureLinesHeight(wrappedDescription);
+            float cooldownHeight = MeasureLinesHeight(wrappedCooldown);
             float currentHeaderHeight = MeasureLinesHeight(wrappedCurrentHeader);
             float currentDescriptionHeight = MeasureLinesHeight(wrappedCurrentDescription);
             float nextHeaderHeight = MeasureLinesHeight(wrappedNextHeader);
             float nextDescriptionHeight = MeasureLinesHeight(wrappedNextDescription);
             float sectionHeight = CalculateTooltipSectionHeight(
                 descriptionHeight,
+                cooldownHeight,
                 currentHeaderHeight,
                 currentDescriptionHeight,
                 nextHeaderHeight,
@@ -907,6 +936,13 @@ namespace HaCreator.MapSimulator.UI
                 sectionY += descriptionHeight;
             }
 
+            if (cooldownHeight > 0f)
+            {
+                sectionY += TOOLTIP_SECTION_GAP;
+                DrawTooltipLines(sprite, wrappedCooldown, textX, sectionY, new Color(255, 238, 155));
+                sectionY += cooldownHeight;
+            }
+
             if (currentHeaderHeight > 0f)
             {
                 sectionY += TOOLTIP_SECTION_GAP;
@@ -937,6 +973,7 @@ namespace HaCreator.MapSimulator.UI
 
         private static float CalculateTooltipSectionHeight(
             float descriptionHeight,
+            float cooldownHeight,
             float currentHeaderHeight,
             float currentDescriptionHeight,
             float nextHeaderHeight,
@@ -945,6 +982,8 @@ namespace HaCreator.MapSimulator.UI
             float height = 0f;
             if (descriptionHeight > 0f)
                 height += descriptionHeight;
+            if (cooldownHeight > 0f)
+                height += (height > 0f ? TOOLTIP_SECTION_GAP : 0f) + cooldownHeight;
             if (currentHeaderHeight > 0f)
                 height += (height > 0f ? TOOLTIP_SECTION_GAP : 0f) + currentHeaderHeight;
             if (currentDescriptionHeight > 0f)
@@ -995,13 +1034,84 @@ namespace HaCreator.MapSimulator.UI
             }
         }
 
-        private void DrawTooltipText(SpriteBatch sprite, string text, Vector2 position, Color color)
+        private void DrawTooltipText(SpriteBatch sprite, string text, Vector2 position, Color color, float scale = 1f)
         {
             if (string.IsNullOrWhiteSpace(text))
                 return;
 
-            sprite.DrawString(_font, text, position + Vector2.One, Color.Black);
-            sprite.DrawString(_font, text, position, color);
+            sprite.DrawString(_font, text, position + Vector2.One, Color.Black, 0f, Vector2.Zero, scale, SpriteEffects.None, 0f);
+            sprite.DrawString(_font, text, position, color, 0f, Vector2.Zero, scale, SpriteEffects.None, 0f);
+        }
+
+        private bool TryGetCooldownVisualState(int skillId, int currentTime, out float remainingProgress, out string remainingText)
+        {
+            remainingProgress = 0f;
+            remainingText = string.Empty;
+
+            if (_skillManager == null || !_skillManager.IsOnCooldown(skillId, currentTime))
+            {
+                return false;
+            }
+
+            int remainingMs = Math.Max(0, _skillManager.GetCooldownRemaining(skillId, currentTime));
+            if (remainingMs <= 0)
+            {
+                return false;
+            }
+
+            int level = _skillManager.GetSkillLevel(skillId);
+            SkillData skill = _skillManager.GetSkillData(skillId);
+            int durationMs = Math.Max(remainingMs, skill?.GetLevel(level)?.Cooldown ?? 0);
+            if (durationMs <= 0)
+            {
+                return false;
+            }
+
+            remainingProgress = Math.Clamp(remainingMs / (float)durationMs, 0f, 1f);
+            remainingText = Math.Max(1, (int)Math.Ceiling(remainingMs / 1000f)).ToString();
+            return true;
+        }
+
+        private string GetCooldownTooltipText(int skillId, int currentTime)
+        {
+            if (_skillManager == null)
+            {
+                return string.Empty;
+            }
+
+            if (!_skillManager.IsOnCooldown(skillId, currentTime))
+            {
+                return "Cooldown: Ready";
+            }
+
+            int remainingMs = Math.Max(0, _skillManager.GetCooldownRemaining(skillId, currentTime));
+            if (remainingMs <= 0)
+            {
+                return "Cooldown: Ready";
+            }
+
+            return $"Cooldown: {Math.Max(1, (int)Math.Ceiling(remainingMs / 1000f))} sec";
+        }
+
+        private void DrawCooldownOverlay(SpriteBatch sprite, Rectangle iconRect, float remainingProgress)
+        {
+            if (_debugPlaceholder == null)
+            {
+                return;
+            }
+
+            int overlayHeight = Math.Clamp((int)Math.Round(iconRect.Height * remainingProgress), 0, iconRect.Height);
+            if (overlayHeight <= 0)
+            {
+                return;
+            }
+
+            Rectangle overlayRect = new Rectangle(
+                iconRect.X,
+                iconRect.Bottom - overlayHeight,
+                iconRect.Width,
+                overlayHeight);
+            sprite.Draw(_debugPlaceholder, overlayRect, new Color(0, 0, 0, 150));
         }
 
         private float MeasureLongestLine(string[] lines)
@@ -1306,6 +1416,11 @@ namespace HaCreator.MapSimulator.UI
             skillPointsByTab[tab] = Math.Max(0, points);
         }
 
+        public void SetCharacterLevel(int level)
+        {
+            _characterLevel = Math.Max(1, level);
+        }
+
         public void RecalculateSkillPointsFromCurrentLevels()
         {
             foreach (var entry in skillsByTab)
@@ -1332,6 +1447,42 @@ namespace HaCreator.MapSimulator.UI
         {
             if (skillPointsByTab.TryGetValue(_currentTab, out int points))
                 return points;
+            return 0;
+        }
+
+        private bool CanLevelUp(SkillDisplayData skill, int availableSp)
+        {
+            if (skill == null || availableSp <= 0 || skill.CurrentLevel >= skill.MaxLevel)
+                return false;
+
+            if (skill.RequiredCharacterLevel > 0 && _characterLevel < skill.RequiredCharacterLevel)
+                return false;
+
+            if (skill.RequiredSkillId > 0)
+            {
+                int requiredLevel = Math.Max(1, skill.RequiredSkillLevel);
+                if (GetCurrentSkillLevel(skill.RequiredSkillId) < requiredLevel)
+                    return false;
+            }
+
+            return true;
+        }
+
+        private int GetCurrentSkillLevel(int skillId)
+        {
+            if (skillId <= 0)
+                return 0;
+
+            foreach (List<SkillDisplayData> tabSkills in skillsByTab.Values)
+            {
+                for (int i = 0; i < tabSkills.Count; i++)
+                {
+                    SkillDisplayData skill = tabSkills[i];
+                    if (skill?.SkillId == skillId)
+                        return Math.Max(0, skill.CurrentLevel);
+                }
+            }
+
             return 0;
         }
 
@@ -1599,6 +1750,55 @@ namespace HaCreator.MapSimulator.UI
             return false;
         }
 
+        private bool TryHandleTabKeyboardNavigation(KeyboardState keyboardState)
+        {
+            bool WasPressed(Keys key) => keyboardState.IsKeyDown(key) && !_previousKeyboardState.IsKeyDown(key);
+
+            if (WasPressed(Keys.Left))
+                return TrySwitchVisibleTab(-1);
+
+            if (WasPressed(Keys.Right))
+                return TrySwitchVisibleTab(1);
+
+            return false;
+        }
+
+        private bool TrySwitchVisibleTab(int direction)
+        {
+            if (direction == 0)
+                return false;
+
+            int nextTab = FindAdjacentVisibleTab(_currentTab, direction);
+            if (nextTab == _currentTab)
+                return false;
+
+            CurrentTab = nextTab;
+            return true;
+        }
+
+        private int FindAdjacentVisibleTab(int startTab, int direction)
+        {
+            int step = Math.Sign(direction);
+            if (step == 0)
+                return startTab;
+
+            for (int tab = startTab + step; tab >= TAB_BEGINNER && tab <= TAB_4TH; tab += step)
+            {
+                if (_tabVisible[tab])
+                    return tab;
+            }
+
+            for (int tab = step > 0 ? TAB_BEGINNER : TAB_4TH;
+                 tab >= TAB_BEGINNER && tab <= TAB_4TH;
+                 tab += step)
+            {
+                if (_tabVisible[tab])
+                    return tab;
+            }
+
+            return startTab;
+        }
+
         /// <summary>
         /// Get skill at a position relative to window
         /// </summary>
@@ -1843,6 +2043,7 @@ namespace HaCreator.MapSimulator.UI
             _hoveredSkillIndex = GetSkillIndexAtPosition(mouseState.X, mouseState.Y);
 
             KeyboardState keyboardState = Keyboard.GetState();
+            TryHandleTabKeyboardNavigation(keyboardState);
             TryHandleSkillListKeyboardNavigation(keyboardState);
             bool invokeSelected = SelectedSkill != null &&
                                   ((keyboardState.IsKeyDown(Keys.Enter) && !_previousKeyboardState.IsKeyDown(Keys.Enter)) ||
