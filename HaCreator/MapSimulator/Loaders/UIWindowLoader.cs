@@ -4,6 +4,7 @@ using HaSharedLibrary.Render.DX;
 using HaSharedLibrary.Util;
 using MapleLib.WzLib;
 using MapleLib.WzLib.WzProperties;
+using MapleLib.WzLib.WzStructure.Data.ItemStructure;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using System;
@@ -46,6 +47,11 @@ namespace HaCreator.MapSimulator.Loaders
             // Create the inventory window
             InventoryUI inventory = new InventoryUI(frame, null, device);
             inventory.Position = new Point(screenWidth - bgTexture.Width - 20, 100);
+            inventory.SetRenderAssets(
+                LoadCanvasTexture(itemProperty, "activeIcon", device),
+                LoadCanvasTexture(itemProperty, "disabled", device),
+                LoadCanvasTexture(itemProperty, "shadow", device),
+                LoadInventoryMarkerTextures(itemProperty, "Grade", device));
 
             // Load tab buttons if available
             WzBinaryProperty btClickSound = (WzBinaryProperty)soundUIImage?["BtMouseClick"];
@@ -224,6 +230,10 @@ namespace HaCreator.MapSimulator.Loaders
             UIObject btnAndroid = LoadButton(characterProperty, "BtAndroid", btClickSound, btOverSound, device);
             UIObject btnSlot = LoadButton(characterProperty, "BtSlot", btClickSound, btOverSound, device);
             equip.InitializeTabButtons(btnPet, btnDragon, btnMechanic, btnAndroid, btnSlot);
+            LoadEquipCompanionTabLayout(equip, equipProperty, "pet", 1, device);
+            LoadEquipCompanionTabLayout(equip, equipProperty, "dragon", 2, device);
+            LoadEquipCompanionTabLayout(equip, equipProperty, "mechanic", 3, device);
+            LoadEquipCompanionTabLayout(equip, equipProperty, "Android", 4, device);
 
             WzSubProperty skillMainProperty = uiWindow2Image?["Skill"]?["main"] as WzSubProperty;
             if (skillMainProperty != null)
@@ -236,6 +246,58 @@ namespace HaCreator.MapSimulator.Loaders
             }
 
             return equip;
+        }
+
+        private static void LoadEquipCompanionTabLayout(EquipUIBigBang equip, WzSubProperty equipProperty, string propertyName, int tabIndex, GraphicsDevice device)
+        {
+            if (equipProperty?[propertyName] is not WzSubProperty tabProperty)
+            {
+                return;
+            }
+
+            IDXObject frame = LoadCanvasObject(tabProperty, "backgrnd", device, out Point _);
+            if (frame == null)
+            {
+                return;
+            }
+
+            IDXObject foreground = LoadCanvasObject(tabProperty, "backgrnd2", device, out Point foregroundOffset);
+            IDXObject slotLabels = LoadCanvasObject(tabProperty, "backgrnd3", device, out Point slotLabelOffset);
+            equip.SetCompanionTabLayout(
+                tabIndex,
+                frame,
+                foreground,
+                foregroundOffset.X,
+                foregroundOffset.Y,
+                slotLabels,
+                slotLabelOffset.X,
+                slotLabelOffset.Y);
+        }
+
+        private static IDXObject LoadCanvasObject(WzSubProperty parent, string canvasName, GraphicsDevice device, out Point offset)
+        {
+            offset = Point.Zero;
+            if (parent?[canvasName] is not WzCanvasProperty canvas)
+            {
+                return null;
+            }
+
+            try
+            {
+                System.Drawing.Bitmap bitmap = canvas.GetLinkedWzCanvasBitmap();
+                Texture2D texture = bitmap.ToTexture2DAndDispose(device);
+                System.Drawing.PointF? origin = canvas.GetCanvasOriginPosition();
+                if (origin.HasValue)
+                {
+                    offset = new Point(-(int)origin.Value.X, -(int)origin.Value.Y);
+                }
+
+                return new DXObject(0, 0, texture, 0);
+            }
+            catch
+            {
+                return null;
+            }
         }
 
         private static EquipUI CreatePlaceholderEquip(GraphicsDevice device, int screenWidth, int screenHeight)
@@ -1435,10 +1497,18 @@ namespace HaCreator.MapSimulator.Loaders
             UIObject btnFull = LoadButton(itemProperty, "BtFull", btClickSound, btOverSound, device);
             UIObject btnSmall = LoadButton(itemProperty, "BtSmall", btClickSound, btOverSound, device);
             inventory.InitializeBigBangButtons(btnGather, btnSort, btnFull, btnSmall);
+            inventory.SetRenderAssets(
+                LoadCanvasTexture(itemProperty, "activeIcon", device),
+                LoadCanvasTexture(itemProperty, "disabled", device),
+                LoadCanvasTexture(itemProperty, "shadow", device),
+                LoadInventoryMarkerTextures(itemProperty, "Quality", device));
 
-            // Load tab buttons
-            WzSubProperty tabProperty = (WzSubProperty)itemProperty["Tab"];
-            // Tab buttons would be loaded here if available
+            UIObject tabEquip = LoadInventoryCanvasTabButton(itemProperty, "0", btClickSound, btOverSound, device);
+            UIObject tabUse = LoadInventoryCanvasTabButton(itemProperty, "1", btClickSound, btOverSound, device);
+            UIObject tabSetup = LoadInventoryCanvasTabButton(itemProperty, "2", btClickSound, btOverSound, device);
+            UIObject tabEtc = LoadInventoryCanvasTabButton(itemProperty, "3", btClickSound, btOverSound, device);
+            UIObject tabCash = LoadInventoryCanvasTabButton(itemProperty, "4", btClickSound, btOverSound, device);
+            inventory.InitializeTabs(tabEquip, tabUse, tabSetup, tabEtc, tabCash);
 
             return inventory;
         }
@@ -1520,6 +1590,152 @@ namespace HaCreator.MapSimulator.Loaders
             return quest;
         }
 
+        private static QuestDetailWindow CreateQuestDetailWindowUnified(
+            WzImage uiWindow1Image,
+            WzImage uiWindow2Image,
+            WzImage basicImage,
+            WzImage soundUIImage,
+            GraphicsDevice device,
+            int screenWidth,
+            int screenHeight,
+            bool isBigBang)
+        {
+            QuestDetailWindow window = isBigBang
+                ? CreateQuestDetailWindowBigBang(uiWindow2Image, basicImage, soundUIImage, device, screenWidth, screenHeight)
+                : CreateQuestDetailWindowPreBigBang(uiWindow1Image, basicImage, soundUIImage, device, screenWidth, screenHeight);
+
+            if (window != null)
+            {
+                return window;
+            }
+
+            return CreatePlaceholderQuestDetailWindow(device, basicImage, soundUIImage, screenWidth, screenHeight);
+        }
+
+        private static QuestDetailWindow CreateQuestDetailWindowBigBang(
+            WzImage uiWindow2Image,
+            WzImage basicImage,
+            WzImage soundUIImage,
+            GraphicsDevice device,
+            int screenWidth,
+            int screenHeight)
+        {
+            WzSubProperty questInfoProperty = uiWindow2Image?["Quest"]?["quest_info"] as WzSubProperty;
+            WzCanvasProperty backgroundProperty = questInfoProperty?["backgrnd"] as WzCanvasProperty;
+            Texture2D frameTexture = backgroundProperty?.GetLinkedWzCanvasBitmap()?.ToTexture2DAndDispose(device);
+            if (frameTexture == null)
+            {
+                return null;
+            }
+
+            WzBinaryProperty clickSound = soundUIImage?["BtMouseClick"] as WzBinaryProperty;
+            WzBinaryProperty overSound = soundUIImage?["BtMouseOver"] as WzBinaryProperty;
+            QuestDetailWindow window = CreateQuestDetailWindowShell(device, frameTexture, screenWidth, screenHeight);
+
+            Texture2D foregroundTexture = LoadCanvasTexture(questInfoProperty, "backgrnd2", device);
+            if (foregroundTexture != null)
+            {
+                window.SetForeground(new DXObject(0, 0, foregroundTexture, 0), ResolveCanvasOffset(questInfoProperty, "backgrnd2", new Point(6, 23)));
+            }
+
+            Texture2D panelTexture = LoadCanvasTexture(questInfoProperty, "backgrnd3", device);
+            if (panelTexture != null)
+            {
+                window.SetBottomPanel(new DXObject(0, 0, panelTexture, 0), ResolveCanvasOffset(questInfoProperty, "backgrnd3", new Point(10, 27)));
+            }
+
+            UIObject closeButton = CreateUserInfoCloseButton(basicImage, clickSound, overSound, device, frameTexture.Width);
+            window.InitializeCloseButton(closeButton);
+            InitializeQuestDetailButtons(window, device, frameTexture.Width, frameTexture.Height);
+            return window;
+        }
+
+        private static QuestDetailWindow CreateQuestDetailWindowPreBigBang(
+            WzImage uiWindow1Image,
+            WzImage basicImage,
+            WzImage soundUIImage,
+            GraphicsDevice device,
+            int screenWidth,
+            int screenHeight)
+        {
+            WzSubProperty questProperty = uiWindow1Image?["Quest"] as WzSubProperty;
+            WzCanvasProperty backgroundProperty = questProperty?["backgrnd2"] as WzCanvasProperty ?? questProperty?["backgrnd"] as WzCanvasProperty;
+            Texture2D frameTexture = backgroundProperty?.GetLinkedWzCanvasBitmap()?.ToTexture2DAndDispose(device);
+            if (frameTexture == null)
+            {
+                return null;
+            }
+
+            WzBinaryProperty clickSound = soundUIImage?["BtMouseClick"] as WzBinaryProperty;
+            WzBinaryProperty overSound = soundUIImage?["BtMouseOver"] as WzBinaryProperty;
+            QuestDetailWindow window = CreateQuestDetailWindowShell(device, frameTexture, screenWidth, screenHeight);
+
+            Texture2D panelTexture = LoadCanvasTexture(questProperty, "backgrnd5", device);
+            if (panelTexture != null)
+            {
+                window.SetBottomPanel(new DXObject(0, 0, panelTexture, 0), ResolveCanvasOffset(questProperty, "backgrnd5", new Point(20, 252)));
+            }
+
+            UIObject closeButton = CreateUserInfoCloseButton(basicImage, clickSound, overSound, device, frameTexture.Width);
+            window.InitializeCloseButton(closeButton);
+            InitializeQuestDetailButtons(window, device, frameTexture.Width, frameTexture.Height);
+            return window;
+        }
+
+        private static QuestDetailWindow CreatePlaceholderQuestDetailWindow(
+            GraphicsDevice device,
+            WzImage basicImage,
+            WzImage soundUIImage,
+            int screenWidth,
+            int screenHeight)
+        {
+            Texture2D frameTexture = CreatePlaceholderWindowTexture(device, 296, 396, "Quest Detail");
+            QuestDetailWindow window = CreateQuestDetailWindowShell(device, frameTexture, screenWidth, screenHeight);
+            WzBinaryProperty clickSound = soundUIImage?["BtMouseClick"] as WzBinaryProperty;
+            WzBinaryProperty overSound = soundUIImage?["BtMouseOver"] as WzBinaryProperty;
+            window.InitializeCloseButton(CreateUserInfoCloseButton(basicImage, clickSound, overSound, device, frameTexture.Width));
+            InitializeQuestDetailButtons(window, device, frameTexture.Width, frameTexture.Height);
+            return window;
+        }
+
+        private static QuestDetailWindow CreateQuestDetailWindowShell(
+            GraphicsDevice device,
+            Texture2D frameTexture,
+            int screenWidth,
+            int screenHeight)
+        {
+            return new QuestDetailWindow(new DXObject(0, 0, frameTexture, 0), MapSimulatorWindowNames.QuestDetail)
+            {
+                Position = new Point(
+                    Math.Max(40, (screenWidth / 2) - (frameTexture.Width / 2)),
+                    Math.Max(40, (screenHeight / 2) - (frameTexture.Height / 2)))
+            };
+        }
+
+        private static void InitializeQuestDetailButtons(QuestDetailWindow window, GraphicsDevice device, int frameWidth, int frameHeight)
+        {
+            UIObject primaryButton = UiButtonFactory.CreateSolidButton(
+                device, 78, 22,
+                new Color(69, 95, 122, 230),
+                new Color(101, 131, 160, 240),
+                new Color(82, 110, 140, 240),
+                new Color(42, 42, 42, 170));
+            primaryButton.X = Math.Max(16, frameWidth - 96);
+            primaryButton.Y = Math.Max(16, frameHeight - 32);
+
+            UIObject secondaryButton = UiButtonFactory.CreateSolidButton(
+                device, 78, 22,
+                new Color(77, 63, 63, 225),
+                new Color(118, 88, 88, 235),
+                new Color(98, 75, 75, 235),
+                new Color(42, 42, 42, 170));
+            secondaryButton.X = Math.Max(16, frameWidth - 180);
+            secondaryButton.Y = primaryButton.Y;
+
+            window.InitializeActionButtons(primaryButton, secondaryButton);
+            window.InitializeNavigationButtons(device);
+        }
+
         private static QuickSlotUI CreateQuickSlotWindow(WzImage uiWindow2Image, GraphicsDevice device, int screenWidth, int screenHeight)
         {
             const int width = 286;
@@ -1572,6 +1788,68 @@ namespace HaCreator.MapSimulator.Loaders
             return quickSlot;
         }
 
+        private static MapTransferUI CreateMapTransferWindow(
+            WzImage uiWindow1Image,
+            WzImage uiWindow2Image,
+            WzImage basicImage,
+            WzImage soundUIImage,
+            GraphicsDevice device,
+            int screenWidth,
+            int screenHeight)
+        {
+            WzSubProperty teleportProperty =
+                uiWindow2Image?["Teleport3"] as WzSubProperty ??
+                uiWindow2Image?["Teleport2"] as WzSubProperty ??
+                uiWindow2Image?["Teleport"] as WzSubProperty ??
+                uiWindow1Image?["Teleport"] as WzSubProperty;
+            if (teleportProperty == null)
+            {
+                return null;
+            }
+
+            WzCanvasProperty backgroundProperty = teleportProperty["backgrnd"] as WzCanvasProperty;
+            Texture2D frameTexture = backgroundProperty?.GetLinkedWzCanvasBitmap()?.ToTexture2DAndDispose(device);
+            if (frameTexture == null)
+            {
+                return null;
+            }
+
+            WzBinaryProperty btClickSound = soundUIImage?["BtMouseClick"] as WzBinaryProperty;
+            WzBinaryProperty btOverSound = soundUIImage?["BtMouseOver"] as WzBinaryProperty;
+            IDXObject frame = new DXObject(0, 0, frameTexture, 0);
+            MapTransferUI window = new MapTransferUI(
+                frame,
+                LoadWindowCanvasLayer(teleportProperty, "backgrnd2", device),
+                LoadWindowCanvasLayer(teleportProperty, "backgrnd3", device),
+                LoadCanvasTexture(teleportProperty, "select", device),
+                LoadButton(teleportProperty, "BtRegister", btClickSound, btOverSound, device),
+                LoadButton(teleportProperty, "BtDelete", btClickSound, btOverSound, device),
+                LoadButton(teleportProperty, "BtMove", btClickSound, btOverSound, device),
+                LoadButton(teleportProperty, "BtMap", btClickSound, btOverSound, device),
+                device);
+
+            window.Position = new Point(
+                Math.Max(24, screenWidth - frameTexture.Width - 44),
+                Math.Max(36, (screenHeight - frameTexture.Height) / 2));
+
+            WzSubProperty closeButtonProperty = basicImage?["BtClose"] as WzSubProperty;
+            if (closeButtonProperty != null)
+            {
+                try
+                {
+                    UIObject closeBtn = new UIObject(closeButtonProperty, btClickSound, btOverSound, false, Point.Zero, device);
+                    closeBtn.X = frameTexture.Width - closeBtn.CanvasSnapshotWidth - 8;
+                    closeBtn.Y = 8;
+                    window.InitializeCloseButton(closeBtn);
+                }
+                catch
+                {
+                }
+            }
+
+            return window;
+        }
+
         private static Texture2D LoadQuestIcon(WzSubProperty questIconProperty, string iconNum, GraphicsDevice device)
         {
             WzSubProperty iconSub = (WzSubProperty)questIconProperty[iconNum];
@@ -1584,6 +1862,187 @@ namespace HaCreator.MapSimulator.Loaders
                 }
             }
             return null;
+        }
+
+        private static UserInfoUI CreateCharacterInfoWindow(
+            WzImage uiWindow1Image,
+            WzImage uiWindow2Image,
+            WzImage basicImage,
+            WzImage soundUIImage,
+            GraphicsDevice device,
+            int screenWidth,
+            int screenHeight,
+            bool isBigBang)
+        {
+            if (isBigBang)
+            {
+                UserInfoUI bigBangWindow = CreateCharacterInfoWindowBigBang(
+                    uiWindow2Image,
+                    basicImage,
+                    soundUIImage,
+                    device,
+                    screenWidth,
+                    screenHeight);
+                if (bigBangWindow != null)
+                {
+                    return bigBangWindow;
+                }
+            }
+
+            return CreateCharacterInfoWindowPreBigBang(
+                uiWindow1Image,
+                basicImage,
+                soundUIImage,
+                device,
+                screenWidth,
+                screenHeight);
+        }
+
+        private static UserInfoUI CreateCharacterInfoWindowPreBigBang(
+            WzImage uiWindowImage,
+            WzImage basicImage,
+            WzImage soundUIImage,
+            GraphicsDevice device,
+            int screenWidth,
+            int screenHeight)
+        {
+            WzSubProperty userInfoProperty = uiWindowImage?["UserInfo"] as WzSubProperty;
+            WzCanvasProperty backgroundProperty = userInfoProperty?["backgrnd"] as WzCanvasProperty;
+            Texture2D frameTexture = backgroundProperty?.GetLinkedWzCanvasBitmap()?.ToTexture2DAndDispose(device);
+            if (frameTexture == null)
+            {
+                return null;
+            }
+
+            UserInfoUI window = new UserInfoUI(new DXObject(0, 0, frameTexture, 0), false)
+            {
+                Position = new Point(
+                    Math.Max(40, (screenWidth / 2) - (frameTexture.Width / 2)),
+                    Math.Max(40, (screenHeight / 2) - (frameTexture.Height / 2)))
+            };
+
+            WzBinaryProperty clickSound = soundUIImage?["BtMouseClick"] as WzBinaryProperty;
+            WzBinaryProperty overSound = soundUIImage?["BtMouseOver"] as WzBinaryProperty;
+            window.InitializeCloseButton(CreateUserInfoCloseButton(basicImage, clickSound, overSound, device, frameTexture.Width));
+            window.InitializeDecorativeButtons(
+                LoadButton(userInfoProperty, "BtParty", clickSound, overSound, device),
+                LoadButton(userInfoProperty, "BtTrade", clickSound, overSound, device),
+                LoadButton(userInfoProperty, "BtItem", clickSound, overSound, device),
+                LoadButton(userInfoProperty, "BtWish", clickSound, overSound, device),
+                LoadButton(userInfoProperty, "BtFamily", clickSound, overSound, device));
+            return window;
+        }
+
+        private static UserInfoUI CreateCharacterInfoWindowBigBang(
+            WzImage uiWindow2Image,
+            WzImage basicImage,
+            WzImage soundUIImage,
+            GraphicsDevice device,
+            int screenWidth,
+            int screenHeight)
+        {
+            WzSubProperty userInfoProperty = uiWindow2Image?["UserInfo"] as WzSubProperty;
+            WzSubProperty characterProperty = userInfoProperty?["character"] as WzSubProperty;
+            WzCanvasProperty backgroundProperty = characterProperty?["backgrnd"] as WzCanvasProperty;
+            Texture2D frameTexture = backgroundProperty?.GetLinkedWzCanvasBitmap()?.ToTexture2DAndDispose(device);
+            if (frameTexture == null)
+            {
+                return null;
+            }
+
+            UserInfoUI window = new UserInfoUI(new DXObject(0, 0, frameTexture, 0), true)
+            {
+                Position = new Point(
+                    Math.Max(40, (screenWidth / 2) - (frameTexture.Width / 2)),
+                    Math.Max(40, (screenHeight / 2) - (frameTexture.Height / 2)))
+            };
+
+            Texture2D foregroundTexture = LoadCanvasTexture(characterProperty, "backgrnd2", device);
+            if (foregroundTexture != null)
+            {
+                IDXObject foreground = new DXObject(0, 0, foregroundTexture, 0);
+                Point foregroundOffset = ResolveCanvasOffset(characterProperty, "backgrnd2", new Point(6, 23));
+                window.SetForeground(foreground, foregroundOffset.X, foregroundOffset.Y);
+            }
+
+            Texture2D nameBannerTexture = LoadCanvasTexture(characterProperty, "backgrnd3", device);
+            if (nameBannerTexture != null)
+            {
+                IDXObject nameBanner = new DXObject(0, 0, nameBannerTexture, 0);
+                Point bannerOffset = ResolveCanvasOffset(characterProperty, "backgrnd3", new Point(14, 151));
+                window.SetNameBanner(nameBanner, bannerOffset.X, bannerOffset.Y);
+            }
+
+            WzBinaryProperty clickSound = soundUIImage?["BtMouseClick"] as WzBinaryProperty;
+            WzBinaryProperty overSound = soundUIImage?["BtMouseOver"] as WzBinaryProperty;
+            window.InitializeCloseButton(CreateUserInfoCloseButton(basicImage, clickSound, overSound, device, frameTexture.Width));
+            window.InitializeDecorativeButtons(
+                LoadButton(characterProperty, "BtParty", clickSound, overSound, device),
+                LoadButton(characterProperty, "BtTrad", clickSound, overSound, device),
+                LoadButton(characterProperty, "BtItem", clickSound, overSound, device),
+                LoadButton(characterProperty, "BtWish", clickSound, overSound, device),
+                LoadButton(characterProperty, "BtFamily", clickSound, overSound, device),
+                LoadButton(characterProperty, "BtRide", clickSound, overSound, device),
+                LoadButton(characterProperty, "BtPet", clickSound, overSound, device),
+                LoadButton(characterProperty, "BtCollect", clickSound, overSound, device),
+                LoadButton(characterProperty, "BtPersonality", clickSound, overSound, device));
+            return window;
+        }
+
+        private static UIObject CreateUserInfoCloseButton(
+            WzImage basicImage,
+            WzBinaryProperty clickSound,
+            WzBinaryProperty overSound,
+            GraphicsDevice device,
+            int windowWidth)
+        {
+            WzSubProperty closeButtonProperty = basicImage?["BtClose"] as WzSubProperty;
+            if (closeButtonProperty == null)
+            {
+                return null;
+            }
+
+            try
+            {
+                UIObject closeButton = new UIObject(closeButtonProperty, clickSound, overSound, false, Point.Zero, device);
+                closeButton.X = windowWidth - closeButton.CanvasSnapshotWidth - 8;
+                closeButton.Y = 7;
+                return closeButton;
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        private static UIObject CreateTextureButton(Texture2D normalTexture, Texture2D pressedTexture)
+        {
+            if (normalTexture == null)
+            {
+                return null;
+            }
+
+            BaseDXDrawableItem normal = new BaseDXDrawableItem(new DXObject(0, 0, normalTexture, 0), false);
+            BaseDXDrawableItem disabled = new BaseDXDrawableItem(new DXObject(0, 0, normalTexture, 0), false);
+            Texture2D activeTexture = pressedTexture ?? normalTexture;
+            BaseDXDrawableItem pressed = new BaseDXDrawableItem(new DXObject(0, 0, activeTexture, 0), false);
+            BaseDXDrawableItem mouseOver = new BaseDXDrawableItem(new DXObject(0, 0, activeTexture, 0), false);
+            return new UIObject(normal, disabled, pressed, mouseOver);
+        }
+
+        private static Point GetCanvasOffset(WzCanvasProperty canvas)
+        {
+            System.Drawing.PointF? origin = canvas?.GetCanvasOriginPosition();
+            return origin.HasValue
+                ? new Point(-(int)origin.Value.X, -(int)origin.Value.Y)
+                : Point.Zero;
+        }
+
+        private static Texture2D CreateSolidTexture(GraphicsDevice device, Color color)
+        {
+            Texture2D texture = new Texture2D(device, 1, 1);
+            texture.SetData(new[] { color });
+            return texture;
         }
         #endregion
 
@@ -1626,6 +2085,119 @@ namespace HaCreator.MapSimulator.Loaders
             {
                 return null;
             }
+        }
+
+        private static UIObject LoadInventoryCanvasTabButton(WzSubProperty itemProperty, string tabIndex,
+            WzBinaryProperty clickSound, WzBinaryProperty overSound, GraphicsDevice device)
+        {
+            WzCanvasProperty enabledCanvas = itemProperty?["Tab"]?["enabled"]?[tabIndex] as WzCanvasProperty;
+            WzCanvasProperty disabledCanvas = itemProperty?["Tab"]?["disabled"]?[tabIndex] as WzCanvasProperty;
+            if (enabledCanvas == null || disabledCanvas == null)
+            {
+                return null;
+            }
+
+            try
+            {
+                Texture2D enabledTexture = enabledCanvas.GetLinkedWzCanvasBitmap()?.ToTexture2DAndDispose(device);
+                Texture2D disabledTexture = disabledCanvas.GetLinkedWzCanvasBitmap()?.ToTexture2DAndDispose(device);
+                if (enabledTexture == null || disabledTexture == null)
+                {
+                    return null;
+                }
+
+                Point enabledOffset = ResolveCanvasOffset(enabledCanvas, Point.Zero);
+                Point disabledOffset = ResolveCanvasOffset(disabledCanvas, Point.Zero);
+                BaseDXDrawableItem normalState = new BaseDXDrawableItem(new DXObject(disabledOffset.X, disabledOffset.Y, disabledTexture), false);
+                BaseDXDrawableItem pressedState = new BaseDXDrawableItem(new DXObject(enabledOffset.X, disabledOffset.Y, enabledTexture), false);
+                UIObject button = new UIObject(normalState, normalState, pressedState, pressedState);
+                button.X = disabledOffset.X;
+                button.Y = disabledOffset.Y;
+                return button;
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        private static Texture2D[] LoadInventoryMarkerTextures(WzSubProperty itemProperty, string markerFamilyName, GraphicsDevice device)
+        {
+            Texture2D[] textures = new Texture2D[6];
+            WzSubProperty markerFamily = itemProperty?[markerFamilyName] as WzSubProperty;
+            if (markerFamily == null)
+            {
+                return textures;
+            }
+
+            for (int i = 0; i < textures.Length; i++)
+            {
+                textures[i] = LoadCanvasTexture(markerFamily, i.ToString(), device);
+            }
+
+            return textures;
+        }
+
+        private static Point ResolveCanvasOffset(WzSubProperty parent, string name, Point fallback)
+        {
+            WzCanvasProperty canvas = parent?[name] as WzCanvasProperty;
+            System.Drawing.PointF? origin = canvas?.GetCanvasOriginPosition();
+            if (!origin.HasValue)
+            {
+                return fallback;
+            }
+
+            return new Point(-(int)origin.Value.X, -(int)origin.Value.Y);
+        }
+
+        private static Point ResolveCanvasOffset(WzCanvasProperty canvas, Point fallback)
+        {
+            System.Drawing.PointF? origin = canvas?.GetCanvasOriginPosition();
+            if (!origin.HasValue)
+            {
+                return fallback;
+            }
+
+            return new Point(-(int)origin.Value.X, -(int)origin.Value.Y);
+        }
+
+        private static IDXObject LoadWindowCanvasLayer(WzSubProperty parent, string name, GraphicsDevice device)
+        {
+            WzCanvasProperty canvas = parent?[name] as WzCanvasProperty;
+            if (canvas == null)
+            {
+                return null;
+            }
+
+            Texture2D texture = canvas.GetLinkedWzCanvasBitmap()?.ToTexture2DAndDispose(device);
+            if (texture == null)
+            {
+                return null;
+            }
+
+            System.Drawing.PointF origin = canvas.GetCanvasOriginPosition();
+            return new DXObject(origin, texture, 0);
+        }
+
+        private static IDXObject LoadWindowCanvasLayerWithOffset(WzSubProperty parent, string name, GraphicsDevice device, out Point offset)
+        {
+            offset = Point.Zero;
+
+            WzCanvasProperty canvas = parent?[name] as WzCanvasProperty;
+            if (canvas == null)
+            {
+                return null;
+            }
+
+            Texture2D texture = canvas.GetLinkedWzCanvasBitmap()?.ToTexture2DAndDispose(device);
+            if (texture == null)
+            {
+                return null;
+            }
+
+            System.Drawing.PointF origin = canvas.GetCanvasOriginPosition();
+            offset = new Point(-(int)origin.X, -(int)origin.Y);
+            return new DXObject(0, 0, texture, 0);
         }
 
         /// <summary>
@@ -1704,7 +2276,9 @@ namespace HaCreator.MapSimulator.Loaders
             UIWindowBase equip = CreateEquipWindowUnified(uiWindow1Image, uiWindow2Image, basicImage, soundUIImage, device, screenWidth, screenHeight, isBigBang);
             UIWindowBase skill = CreateSkillWindowUnified(uiWindow1Image, uiWindow2Image, basicImage, soundUIImage, device, screenWidth, screenHeight, isBigBang);
             UIWindowBase quest = CreateQuestWindowUnified(uiWindow1Image, uiWindow2Image, basicImage, soundUIImage, device, screenWidth, screenHeight, isBigBang);
+            QuestDetailWindow questDetail = CreateQuestDetailWindowUnified(uiWindow1Image, uiWindow2Image, basicImage, soundUIImage, device, screenWidth, screenHeight, isBigBang);
             UIWindowBase ability = CreateAbilityWindow(uiWindow1Image, uiWindow2Image, basicImage, soundUIImage, device, screenWidth, screenHeight, isBigBang);
+            UserInfoUI characterInfo = CreateCharacterInfoWindow(uiWindow1Image, uiWindow2Image, basicImage, soundUIImage, device, screenWidth, screenHeight, isBigBang);
             QuickSlotUI quickSlot = CreateQuickSlotWindow(uiWindow2Image, device, screenWidth, screenHeight);
 
             // Seed the skill window with the requested job path only.
@@ -1726,8 +2300,13 @@ namespace HaCreator.MapSimulator.Loaders
             manager.RegisterEquipWindow(equip);
             manager.RegisterSkillWindow(skill);
             manager.RegisterQuestWindow(quest);
+            manager.RegisterQuestDetailWindow(questDetail);
             manager.RegisterAbilityWindow(ability);
             manager.RegisterQuickSlotWindow(quickSlot);
+            if (characterInfo != null)
+            {
+                manager.RegisterCustomWindow(characterInfo);
+            }
 
             if (skillMacro != null)
             {
@@ -1748,13 +2327,23 @@ namespace HaCreator.MapSimulator.Loaders
                 }
             }
 
-            RegisterProgressionUtilityPlaceholderWindows(manager, basicImage, soundUIImage, device, screenWidth, screenHeight);
+            SeedStarterCraftingInventory(manager.InventoryWindow as IInventoryRuntime);
+
+            MapTransferUI mapTransfer = CreateMapTransferWindow(uiWindow1Image, uiWindow2Image, basicImage, soundUIImage, device, screenWidth, screenHeight);
+            if (mapTransfer != null)
+            {
+                manager.RegisterCustomWindow(mapTransfer);
+            }
+
+            RegisterProgressionUtilityPlaceholderWindows(manager, uiWindow1Image, uiWindow2Image, basicImage, soundUIImage, device, screenWidth, screenHeight);
 
             return manager;
         }
 
         private static void RegisterProgressionUtilityPlaceholderWindows(
             UIWindowManager manager,
+            WzImage uiWindow1Image,
+            WzImage uiWindow2Image,
             WzImage basicImage,
             WzImage soundUIImage,
             GraphicsDevice device,
@@ -1766,6 +2355,8 @@ namespace HaCreator.MapSimulator.Loaders
                 return;
             }
 
+            RegisterChannelSelectionWindows(manager, uiWindow1Image, uiWindow2Image, soundUIImage, device, screenWidth, screenHeight);
+
             int x = Math.Max(40, (screenWidth / 2) - 160);
             int y = Math.Max(40, (screenHeight / 2) - 120);
             const int cascade = 24;
@@ -1774,58 +2365,245 @@ namespace HaCreator.MapSimulator.Loaders
                 MapSimulatorWindowNames.WorldMap, "World Map",
                 "Scaffold owner for the minimap full-map transition and region overlay flow.",
                 new Point(x, y));
-            RegisterPlaceholderWindow(manager, basicImage, soundUIImage, device,
-                MapSimulatorWindowNames.MapTransfer, "Map Transfer",
-                "Scaffold owner for the dedicated map transfer and destination selection flow.",
+            RegisterAdminShopWindow(manager, uiWindow2Image, basicImage, soundUIImage, device,
+                MapSimulatorWindowNames.CashShop, AdminShopServiceMode.CashShop,
                 new Point(x + cascade, y + cascade));
-            RegisterPlaceholderWindow(manager, basicImage, soundUIImage, device,
-                MapSimulatorWindowNames.CashShop, "Cash Shop",
-                "Scaffold owner for the client cash-service dialog lifecycle.",
+            RegisterAdminShopWindow(manager, uiWindow2Image, basicImage, soundUIImage, device,
+                MapSimulatorWindowNames.Mts, AdminShopServiceMode.Mts,
                 new Point(x + (cascade * 2), y + (cascade * 2)));
-            RegisterPlaceholderWindow(manager, basicImage, soundUIImage, device,
-                MapSimulatorWindowNames.Mts, "MTS",
-                "Scaffold owner for the secondary cash-service entry point routed from the status bar.",
-                new Point(x + (cascade * 3), y + (cascade * 3)));
             RegisterPlaceholderWindow(manager, basicImage, soundUIImage, device,
                 MapSimulatorWindowNames.Menu, "Menu",
                 "Scaffold owner for the status-bar menu button until a client-accurate utility surface is added.",
-                new Point(x + (cascade * 4), y + (cascade * 4)));
+                new Point(x + (cascade * 3), y + (cascade * 3)));
             RegisterPlaceholderWindow(manager, basicImage, soundUIImage, device,
                 MapSimulatorWindowNames.System, "System",
                 "Scaffold owner for the status-bar system button until a client-accurate utility surface is added.",
+                new Point(x + (cascade * 4), y + (cascade * 4)));
+            RegisterItemMakerWindow(manager, uiWindow1Image, uiWindow2Image, basicImage, soundUIImage, device,
                 new Point(x + (cascade * 5), y + (cascade * 5)));
-            RegisterPlaceholderWindow(manager, basicImage, soundUIImage, device,
-                MapSimulatorWindowNames.WorldSelect, "World Select",
-                "Scaffold owner for the world-selection stage in the channel switching flow.",
+            RegisterItemUpgradeWindow(manager, uiWindow1Image, uiWindow2Image, basicImage, soundUIImage, device,
                 new Point(x + (cascade * 6), y + (cascade * 6)));
-            RegisterPlaceholderWindow(manager, basicImage, soundUIImage, device,
-                MapSimulatorWindowNames.ChannelSelect, "Channel Select",
-                "Scaffold owner for the channel-selection surface reached from world selection.",
-                new Point(x + (cascade * 7), y + (cascade * 7)));
-            RegisterPlaceholderWindow(manager, basicImage, soundUIImage, device,
-                MapSimulatorWindowNames.ChannelShift, "Channel Shift",
-                "Scaffold owner for the separate channel transition surface noted in the client.",
-                new Point(x + (cascade * 8), y + (cascade * 8)));
-            RegisterPlaceholderWindow(manager, basicImage, soundUIImage, device,
-                MapSimulatorWindowNames.ItemMaker, "Item Maker",
-                "Scaffold owner for the dedicated crafting and recipe interaction window.",
-                new Point(x + (cascade * 9), y + (cascade * 9)));
-            RegisterPlaceholderWindow(manager, basicImage, soundUIImage, device,
-                MapSimulatorWindowNames.ItemUpgrade, "Item Upgrade",
-                "Scaffold owner for the dedicated item enhancement flow.",
-                new Point(x + (cascade * 10), y + (cascade * 10)));
-            RegisterPlaceholderWindow(manager, basicImage, soundUIImage, device,
-                MapSimulatorWindowNames.CharacterInfo, "Character Info",
-                "Scaffold owner for the separate character profile surface beyond the stat window.",
-                new Point(x + (cascade * 11), y + (cascade * 11)));
-            RegisterPlaceholderWindow(manager, basicImage, soundUIImage, device,
-                MapSimulatorWindowNames.QuestDetail, "Quest Detail",
-                "Scaffold owner for the dedicated quest detail and action pane.",
-                new Point(x + (cascade * 12), y + (cascade * 12)));
             RegisterPlaceholderWindow(manager, basicImage, soundUIImage, device,
                 MapSimulatorWindowNames.QuestAlarm, "Quest Alarm",
                 "Scaffold owner for the standalone quest progress tracker surface.",
-                new Point(x + (cascade * 13), y + (cascade * 13)));
+                new Point(x + (cascade * 8), y + (cascade * 8)));
+        }
+
+        private static void RegisterChannelSelectionWindows(
+            UIWindowManager manager,
+            WzImage uiWindow1Image,
+            WzImage uiWindow2Image,
+            WzImage soundUIImage,
+            GraphicsDevice device,
+            int screenWidth,
+            int screenHeight)
+        {
+            if (manager.GetWindow(MapSimulatorWindowNames.WorldSelect) != null)
+            {
+                return;
+            }
+
+            WzSubProperty channelProperty = uiWindow2Image?["Channel"] as WzSubProperty
+                ?? uiWindow1Image?["Channel"] as WzSubProperty;
+            if (channelProperty == null)
+            {
+                return;
+            }
+
+            WzBinaryProperty clickSound = soundUIImage?["BtMouseClick"] as WzBinaryProperty;
+            WzBinaryProperty overSound = soundUIImage?["BtMouseOver"] as WzBinaryProperty;
+
+            Dictionary<int, Texture2D> worldBadges = new Dictionary<int, Texture2D>();
+            WzSubProperty worldBadgeProperty = channelProperty["world"] as WzSubProperty;
+            foreach (WzImageProperty property in worldBadgeProperty?.WzProperties ?? Enumerable.Empty<WzImageProperty>())
+            {
+                if (!int.TryParse(property.Name, out int worldId))
+                {
+                    continue;
+                }
+
+                Texture2D badgeTexture = LoadCanvasTexture(worldBadgeProperty, property.Name, device);
+                if (badgeTexture != null && !worldBadges.ContainsKey(worldId))
+                {
+                    worldBadges.Add(worldId, badgeTexture);
+                }
+            }
+
+            if (worldBadges.Count == 0)
+            {
+                return;
+            }
+
+            WorldSelectWindow worldSelectWindow = CreateWorldSelectWindow(device, worldBadges);
+            worldSelectWindow.Position = new Point(Math.Max(24, (screenWidth / 2) - 264), Math.Max(24, (screenHeight / 2) - 145));
+            manager.RegisterCustomWindow(worldSelectWindow);
+
+            ChannelSelectWindow channelSelectWindow = CreateChannelSelectWindow(channelProperty, clickSound, overSound, device, worldBadges);
+            if (channelSelectWindow != null)
+            {
+                channelSelectWindow.Position = new Point(Math.Max(24, (screenWidth / 2) - 84), Math.Max(24, (screenHeight / 2) - 112));
+                manager.RegisterCustomWindow(channelSelectWindow);
+            }
+
+            ChannelShiftWindow channelShiftWindow = CreateChannelShiftWindow(channelProperty, device, worldBadges);
+            if (channelShiftWindow != null)
+            {
+                channelShiftWindow.Position = new Point(Math.Max(24, (screenWidth / 2) - 64), Math.Max(24, (screenHeight / 2) - 102));
+                manager.RegisterCustomWindow(channelShiftWindow);
+            }
+        }
+
+        private static WorldSelectWindow CreateWorldSelectWindow(GraphicsDevice device, Dictionary<int, Texture2D> worldBadges)
+        {
+            Texture2D frameTexture = CreatePlaceholderWindowTexture(device, 336, 214, "World Select");
+            Texture2D highlightTexture = CreateSolidTexture(device, Color.White);
+            List<(int worldId, UIObject button, Texture2D icon)> worldButtons = new List<(int, UIObject, Texture2D)>();
+
+            int column = 0;
+            int row = 0;
+            foreach (KeyValuePair<int, Texture2D> badge in worldBadges.OrderBy(pair => pair.Key).Take(12))
+            {
+                UIObject button = CreateTextureButton(badge.Value, badge.Value);
+                if (button == null)
+                {
+                    continue;
+                }
+
+                button.X = 18 + (column * 156);
+                button.Y = 44 + (row * 24);
+                worldButtons.Add((badge.Key, button, badge.Value));
+
+                row++;
+                if (row == 6)
+                {
+                    row = 0;
+                    column++;
+                }
+            }
+
+            return new WorldSelectWindow(new DXObject(0, 0, frameTexture, 0), highlightTexture, worldButtons);
+        }
+
+        private static ChannelSelectWindow CreateChannelSelectWindow(
+            WzSubProperty channelProperty,
+            WzBinaryProperty clickSound,
+            WzBinaryProperty overSound,
+            GraphicsDevice device,
+            Dictionary<int, Texture2D> worldBadges)
+        {
+            Texture2D frameTexture = LoadCanvasTexture(channelProperty, "backgrnd", device);
+            if (frameTexture == null)
+            {
+                return null;
+            }
+
+            Texture2D overlayTexture2 = LoadCanvasTexture(channelProperty, "backgrnd2", device);
+            Texture2D overlayTexture3 = LoadCanvasTexture(channelProperty, "backgrnd3", device);
+            Point overlayOffset2 = GetCanvasOffset(channelProperty["backgrnd2"] as WzCanvasProperty);
+            Point overlayOffset3 = GetCanvasOffset(channelProperty["backgrnd3"] as WzCanvasProperty);
+
+            UIObject changeButton = LoadButton(channelProperty, "BtChange", clickSound, overSound, device);
+            UIObject cancelButton = LoadButton(channelProperty, "BtCancel", clickSound, overSound, device);
+            if (changeButton != null)
+            {
+                changeButton.X = 278;
+                changeButton.Y = 20;
+            }
+
+            if (cancelButton != null)
+            {
+                cancelButton.X = 228;
+                cancelButton.Y = 20;
+            }
+
+            Texture2D channelNormalTexture = LoadCanvasTexture(channelProperty, "channel0", device);
+            Texture2D channelSelectedTexture = LoadCanvasTexture(channelProperty, "channel1", device) ?? channelNormalTexture;
+            WzSubProperty channelIconProperty = channelProperty["ch"] as WzSubProperty;
+            List<(int channelIndex, UIObject button, Texture2D icon)> channelButtons = new List<(int, UIObject, Texture2D)>();
+            for (int channelIndex = 0; channelIndex < 20; channelIndex++)
+            {
+                UIObject button = CreateTextureButton(channelNormalTexture, channelSelectedTexture);
+                if (button == null)
+                {
+                    continue;
+                }
+
+                int column = channelIndex % 4;
+                int row = channelIndex / 4;
+                button.X = 20 + (column * 78);
+                button.Y = 58 + (row * 20);
+                channelButtons.Add((channelIndex, button, LoadCanvasTexture(channelIconProperty, channelIndex.ToString(), device)));
+            }
+
+            return new ChannelSelectWindow(
+                new DXObject(0, 0, frameTexture, 0),
+                overlayTexture2,
+                overlayOffset2,
+                overlayTexture3,
+                overlayOffset3,
+                CreateSolidTexture(device, Color.White),
+                changeButton,
+                cancelButton,
+                channelButtons,
+                worldBadges);
+        }
+
+        private static ChannelShiftWindow CreateChannelShiftWindow(
+            WzSubProperty channelProperty,
+            GraphicsDevice device,
+            Dictionary<int, Texture2D> worldBadges)
+        {
+            Texture2D frameTexture = LoadCanvasTexture(channelProperty, "backgrnd", device);
+            if (frameTexture == null)
+            {
+                return null;
+            }
+
+            Dictionary<int, Texture2D> channelIcons = new Dictionary<int, Texture2D>();
+            WzSubProperty channelIconProperty = channelProperty["ch"] as WzSubProperty;
+            for (int channelIndex = 0; channelIndex < 20; channelIndex++)
+            {
+                Texture2D channelTexture = LoadCanvasTexture(channelIconProperty, channelIndex.ToString(), device);
+                if (channelTexture != null)
+                {
+                    channelIcons[channelIndex] = channelTexture;
+                }
+            }
+
+            return new ChannelShiftWindow(
+                new DXObject(0, 0, frameTexture, 0),
+                LoadCanvasTexture(channelProperty, "backgrnd2", device),
+                GetCanvasOffset(channelProperty["backgrnd2"] as WzCanvasProperty),
+                LoadCanvasTexture(channelProperty, "backgrnd3", device),
+                GetCanvasOffset(channelProperty["backgrnd3"] as WzCanvasProperty),
+                LoadCanvasTexture(channelProperty, "channel1", device),
+                worldBadges,
+                channelIcons);
+        }
+
+        private static void RegisterAdminShopWindow(
+            UIWindowManager manager,
+            WzImage uiWindow2Image,
+            WzImage basicImage,
+            WzImage soundUIImage,
+            GraphicsDevice device,
+            string windowName,
+            AdminShopServiceMode defaultMode,
+            Point position)
+        {
+            if (manager.GetWindow(windowName) != null)
+            {
+                return;
+            }
+
+            manager.RegisterCustomWindow(CreateAdminShopDialogWindow(
+                uiWindow2Image,
+                basicImage,
+                soundUIImage,
+                device,
+                windowName,
+                defaultMode,
+                position));
         }
 
         private static void RegisterPlaceholderWindow(
@@ -1852,6 +2630,252 @@ namespace HaCreator.MapSimulator.Loaders
                 body,
                 position);
             manager.RegisterCustomWindow(window);
+        }
+
+        private static void RegisterItemMakerWindow(
+            UIWindowManager manager,
+            WzImage uiWindow1Image,
+            WzImage uiWindow2Image,
+            WzImage basicImage,
+            WzImage soundUIImage,
+            GraphicsDevice device,
+            Point position)
+        {
+            if (manager.GetWindow(MapSimulatorWindowNames.ItemMaker) != null)
+            {
+                return;
+            }
+
+            UIWindowBase itemMaker = CreateItemMakerWindow(uiWindow1Image, uiWindow2Image, basicImage, soundUIImage, device, position, manager.InventoryWindow as IInventoryRuntime);
+            manager.RegisterCustomWindow(itemMaker);
+        }
+
+        private static void RegisterItemUpgradeWindow(
+            UIWindowManager manager,
+            WzImage uiWindow1Image,
+            WzImage uiWindow2Image,
+            WzImage basicImage,
+            WzImage soundUIImage,
+            GraphicsDevice device,
+            Point position)
+        {
+            if (manager.GetWindow(MapSimulatorWindowNames.ItemUpgrade) != null)
+            {
+                return;
+            }
+
+            UIWindowBase itemUpgrade = CreateItemUpgradeWindow(uiWindow1Image, uiWindow2Image, basicImage, soundUIImage, device, position);
+            manager.RegisterCustomWindow(itemUpgrade);
+        }
+
+        private static UIWindowBase CreateItemMakerWindow(
+            WzImage uiWindow1Image,
+            WzImage uiWindow2Image,
+            WzImage basicImage,
+            WzImage soundUIImage,
+            GraphicsDevice device,
+            Point position,
+            IInventoryRuntime inventory)
+        {
+            WzSubProperty sourceProperty = uiWindow2Image?["Maker"] as WzSubProperty
+                ?? uiWindow1Image?["Maker"] as WzSubProperty;
+            if (sourceProperty == null)
+            {
+                return CreatePlaceholderUtilityWindow(
+                    basicImage,
+                    soundUIImage,
+                    device,
+                    MapSimulatorWindowNames.ItemMaker,
+                    "Item Maker",
+                    "Fallback owner for the dedicated crafting and recipe interaction window.",
+                    position);
+            }
+
+            WzCanvasProperty background = sourceProperty["backgrnd"] as WzCanvasProperty;
+            if (background == null)
+            {
+                return CreatePlaceholderUtilityWindow(
+                    basicImage,
+                    soundUIImage,
+                    device,
+                    MapSimulatorWindowNames.ItemMaker,
+                    "Item Maker",
+                    "Fallback owner for the dedicated crafting and recipe interaction window.",
+                    position);
+            }
+
+            Texture2D frameTexture = background.GetLinkedWzCanvasBitmap().ToTexture2DAndDispose(device);
+            Texture2D pixel = new Texture2D(device, 1, 1);
+            pixel.SetData(new[] { Color.White });
+
+            ItemMakerUI itemMaker = new ItemMakerUI(new DXObject(0, 0, frameTexture, 0), pixel)
+            {
+                Position = position
+            };
+            itemMaker.SetInventory(inventory);
+
+            Texture2D overlay = LoadCanvasTexture(sourceProperty, "backgrnd2", device);
+            Texture2D header = LoadCanvasTexture(sourceProperty, "backgrnd3", device);
+            Texture2D innerOverlay = LoadCanvasTexture(sourceProperty, "backgrnd4", device);
+            if (overlay != null)
+            {
+                itemMaker.AddBackgroundLayer(new DXObject(0, 0, overlay, 0), ResolveCanvasOffset(sourceProperty["backgrnd2"] as WzCanvasProperty));
+            }
+            if (header != null)
+            {
+                itemMaker.AddBackgroundLayer(new DXObject(0, 0, header, 0), ResolveCanvasOffset(sourceProperty["backgrnd3"] as WzCanvasProperty));
+            }
+            if (innerOverlay != null)
+            {
+                itemMaker.AddBackgroundLayer(new DXObject(0, 0, innerOverlay, 0), ResolveCanvasOffset(sourceProperty["backgrnd4"] as WzCanvasProperty));
+            }
+
+            WzSubProperty gaugeBarProperty = sourceProperty["GaugeBar"] as WzSubProperty;
+            if (gaugeBarProperty != null)
+            {
+                Texture2D gaugeBar = LoadCanvasTexture(gaugeBarProperty, "bar", device);
+                Texture2D gaugeFill = LoadCanvasTexture(gaugeBarProperty, "gauge", device);
+                Point gaugeOffset = ResolveCanvasOffset(gaugeBarProperty["bar"] as WzCanvasProperty);
+                itemMaker.SetGaugeTextures(gaugeBar, gaugeFill, gaugeOffset);
+            }
+
+            WzBinaryProperty btClickSound = (WzBinaryProperty)soundUIImage?["BtMouseClick"];
+            WzBinaryProperty btOverSound = (WzBinaryProperty)soundUIImage?["BtMouseOver"];
+            UIObject startButton = LoadButton(sourceProperty, "BtStart", btClickSound, btOverSound, device);
+            UIObject cancelButton = LoadButton(sourceProperty, "BtCancel", btClickSound, btOverSound, device);
+            itemMaker.InitializeControls(startButton, cancelButton);
+
+            WzSubProperty closeButtonProperty = (WzSubProperty)basicImage?["BtClose"];
+            if (closeButtonProperty != null)
+            {
+                try
+                {
+                    UIObject closeBtn = new UIObject(closeButtonProperty, btClickSound, btOverSound, false, Point.Zero, device);
+                    closeBtn.X = frameTexture.Width - closeBtn.CanvasSnapshotWidth - 8;
+                    closeBtn.Y = 8;
+                    itemMaker.InitializeCloseButton(closeBtn);
+                }
+                catch
+                {
+                }
+            }
+
+            return itemMaker;
+        }
+
+        private static UIWindowBase CreateItemUpgradeWindow(
+            WzImage uiWindow1Image,
+            WzImage uiWindow2Image,
+            WzImage basicImage,
+            WzImage soundUIImage,
+            GraphicsDevice device,
+            Point position)
+        {
+            WzSubProperty goldHammerProperty = uiWindow2Image?["GoldHammer"] as WzSubProperty;
+            WzSubProperty viciousHammerProperty = uiWindow1Image?["ViciousHammer"] as WzSubProperty;
+            WzSubProperty enchantSkillProperty = uiWindow2Image?["EnchantSkill"] as WzSubProperty
+                ?? uiWindow1Image?["EnchantSkill"] as WzSubProperty;
+            WzSubProperty sourceProperty = goldHammerProperty ?? viciousHammerProperty ?? enchantSkillProperty;
+            if (sourceProperty == null)
+            {
+                return CreatePlaceholderUtilityWindow(
+                    basicImage,
+                    soundUIImage,
+                    device,
+                    MapSimulatorWindowNames.ItemUpgrade,
+                    "Item Upgrade",
+                    "Fallback owner for the dedicated item enhancement flow.",
+                    position);
+            }
+
+            WzCanvasProperty background = sourceProperty["backgrnd"] as WzCanvasProperty;
+            if (background == null)
+            {
+                return CreatePlaceholderUtilityWindow(
+                    basicImage,
+                    soundUIImage,
+                    device,
+                    MapSimulatorWindowNames.ItemUpgrade,
+                    "Item Upgrade",
+                    "Fallback owner for the dedicated item enhancement flow.",
+                    position);
+            }
+
+            Texture2D frameTexture = background.GetLinkedWzCanvasBitmap().ToTexture2DAndDispose(device);
+            IDXObject frame = new DXObject(0, 0, frameTexture, 0);
+            ItemUpgradeUI itemUpgrade = new ItemUpgradeUI(frame)
+            {
+                Position = position
+            };
+
+            Texture2D overlay = LoadCanvasTexture(sourceProperty, "backgrnd2", device);
+            Texture2D header = LoadCanvasTexture(sourceProperty, "backgrnd3", device);
+            Point overlayOffset = ResolveCanvasOffset(sourceProperty["backgrnd2"] as WzCanvasProperty);
+            Point headerOffset = ResolveCanvasOffset(sourceProperty["backgrnd3"] as WzCanvasProperty);
+            itemUpgrade.SetDecorations(overlay, overlayOffset, header, headerOffset);
+
+            WzSubProperty gaugeBarProperty = sourceProperty["GaugeBar"] as WzSubProperty;
+            if (gaugeBarProperty != null)
+            {
+                Texture2D gaugeBar = LoadCanvasTexture(gaugeBarProperty, "bar", device);
+                Texture2D gaugeFill = LoadCanvasTexture(gaugeBarProperty, "gauge", device);
+                Point gaugeOffset = ResolveCanvasOffset(gaugeBarProperty["bar"] as WzCanvasProperty);
+                itemUpgrade.SetGaugeTextures(gaugeBar, gaugeFill, gaugeOffset);
+            }
+
+            WzBinaryProperty btClickSound = (WzBinaryProperty)soundUIImage?["BtMouseClick"];
+            WzBinaryProperty btOverSound = (WzBinaryProperty)soundUIImage?["BtMouseOver"];
+            UIObject startButton = LoadButton(sourceProperty, "BtStart", btClickSound, btOverSound, device);
+            if (startButton == null)
+            {
+                WzSubProperty basicOk = basicImage?["BtOK"] as WzSubProperty;
+                if (basicOk != null)
+                {
+                    startButton = new UIObject(basicOk, btClickSound, btOverSound, false, Point.Zero, device);
+                }
+            }
+
+            UIObject cancelButton = LoadButton(sourceProperty, "BtCancel", btClickSound, btOverSound, device);
+            if (cancelButton == null)
+            {
+                WzSubProperty basicCancel = basicImage?["BtCancel"] as WzSubProperty;
+                if (basicCancel != null)
+                {
+                    cancelButton = new UIObject(basicCancel, btClickSound, btOverSound, false, Point.Zero, device);
+                }
+            }
+
+            UIObject prevButton = null;
+            WzSubProperty basicUp = basicImage?["BtUP"] as WzSubProperty;
+            if (basicUp != null)
+            {
+                prevButton = new UIObject(basicUp, btClickSound, btOverSound, false, Point.Zero, device);
+            }
+
+            UIObject nextButton = null;
+            WzSubProperty basicDown = basicImage?["BtDown"] as WzSubProperty;
+            if (basicDown != null)
+            {
+                nextButton = new UIObject(basicDown, btClickSound, btOverSound, false, Point.Zero, device);
+            }
+            itemUpgrade.InitializeUpgradeButtons(startButton, cancelButton, prevButton, nextButton);
+
+            WzSubProperty closeButtonProperty = (WzSubProperty)basicImage?["BtClose"];
+            if (closeButtonProperty != null)
+            {
+                try
+                {
+                    UIObject closeBtn = new UIObject(closeButtonProperty, btClickSound, btOverSound, false, Point.Zero, device);
+                    closeBtn.X = frameTexture.Width - closeBtn.CanvasSnapshotWidth - 8;
+                    closeBtn.Y = 7;
+                    itemUpgrade.InitializeCloseButton(closeBtn);
+                }
+                catch
+                {
+                }
+            }
+
+            return itemUpgrade;
         }
 
         private static PlaceholderUtilityWindow CreatePlaceholderUtilityWindow(
@@ -1891,6 +2915,110 @@ namespace HaCreator.MapSimulator.Loaders
             }
 
             return window;
+        }
+
+        private static UIWindowBase CreateAdminShopDialogWindow(
+            WzImage uiWindow2Image,
+            WzImage basicImage,
+            WzImage soundUIImage,
+            GraphicsDevice device,
+            string windowName,
+            AdminShopServiceMode defaultMode,
+            Point position)
+        {
+            WzSubProperty shopProperty = uiWindow2Image?["Shop"] as WzSubProperty;
+            if (shopProperty == null)
+            {
+                return CreatePlaceholderUtilityWindow(
+                    basicImage,
+                    soundUIImage,
+                    device,
+                    windowName,
+                    defaultMode == AdminShopServiceMode.CashShop ? "Cash Shop" : "MTS",
+                    "Fallback utility owner because UIWindow2.img/Shop assets were unavailable.",
+                    position);
+            }
+
+            WzCanvasProperty backgroundProperty = shopProperty["backgrnd"] as WzCanvasProperty;
+            if (backgroundProperty == null)
+            {
+                return CreatePlaceholderUtilityWindow(
+                    basicImage,
+                    soundUIImage,
+                    device,
+                    windowName,
+                    defaultMode == AdminShopServiceMode.CashShop ? "Cash Shop" : "MTS",
+                    "Fallback utility owner because the shop dialog background could not be loaded.",
+                    position);
+            }
+
+            Texture2D frameTexture = backgroundProperty.GetLinkedWzCanvasBitmap()?.ToTexture2DAndDispose(device);
+            if (frameTexture == null)
+            {
+                return CreatePlaceholderUtilityWindow(
+                    basicImage,
+                    soundUIImage,
+                    device,
+                    windowName,
+                    defaultMode == AdminShopServiceMode.CashShop ? "Cash Shop" : "MTS",
+                    "Fallback utility owner because the shop dialog texture conversion failed.",
+                    position);
+            }
+
+            IDXObject frame = new DXObject(0, 0, frameTexture, 0);
+            IDXObject frameOverlay = LoadWindowCanvasLayerWithOffset(shopProperty, "backgrnd2", device, out Point frameOverlayOffset);
+            IDXObject contentOverlay = LoadWindowCanvasLayerWithOffset(shopProperty, "backgrnd3", device, out Point contentOverlayOffset);
+            Texture2D selectTexture = LoadCanvasTexture(shopProperty, "select", device);
+            Texture2D mesoTexture = LoadCanvasTexture(shopProperty, "meso", device);
+
+            WzBinaryProperty btClickSound = soundUIImage?["BtMouseClick"] as WzBinaryProperty;
+            WzBinaryProperty btOverSound = soundUIImage?["BtMouseOver"] as WzBinaryProperty;
+            UIObject buyButton = LoadButton(shopProperty, "BtBuy", btClickSound, btOverSound, device);
+            UIObject sellButton = LoadButton(shopProperty, "BtSell", btClickSound, btOverSound, device);
+            UIObject exitButton = LoadButton(shopProperty, "BtExit", btClickSound, btOverSound, device);
+
+            AdminShopDialogUI window = new AdminShopDialogUI(
+                frame,
+                windowName,
+                defaultMode,
+                frameOverlay,
+                frameOverlayOffset,
+                contentOverlay,
+                contentOverlayOffset,
+                selectTexture,
+                mesoTexture,
+                buyButton,
+                sellButton,
+                exitButton)
+            {
+                Position = position,
+                Money = 0
+            };
+
+            return window;
+        }
+
+        private static Point ResolveCanvasOffset(WzCanvasProperty canvas)
+        {
+            System.Drawing.PointF? origin = canvas?.GetCanvasOriginPosition();
+            if (!origin.HasValue)
+            {
+                return Point.Zero;
+            }
+
+            return new Point(-(int)origin.Value.X, -(int)origin.Value.Y);
+        }
+
+        private static void SeedStarterCraftingInventory(IInventoryRuntime inventory)
+        {
+            if (inventory == null || inventory.GetItemCount(InventoryType.ETC, 4010001) > 0)
+            {
+                return;
+            }
+
+            inventory.AddItem(InventoryType.ETC, 4010001, null, 30); // Steel Ore
+            inventory.AddItem(InventoryType.ETC, 4010002, null, 20); // Mithril Ore
+            inventory.AddItem(InventoryType.ETC, 4020008, null, 10); // Black Crystal Ore
         }
         #endregion
     }

@@ -38,6 +38,7 @@ namespace HaCreator.MapSimulator.UI {
         public Texture2D IconTexture { get; set; }
         public int RemainingMs { get; set; }
         public int DurationMs { get; set; }
+        public int SortOrder { get; set; }
         public IReadOnlyList<string> TemporaryStatLabels { get; set; } = Array.Empty<string>();
         public IReadOnlyList<string> TemporaryStatDisplayNames { get; set; } = Array.Empty<string>();
     }
@@ -764,11 +765,7 @@ namespace HaCreator.MapSimulator.UI {
                 _buffTooltipEntries[buffEntry.SkillId] = buffEntry;
                 DrawBuffIconFrame(sprite, iconRect);
 
-                Texture2D iconTexture = buffEntry.IconTexture;
-                if (iconTexture == null && !_buffIconTextures.TryGetValue(buffEntry.IconKey ?? string.Empty, out iconTexture))
-                {
-                    _buffIconTextures.TryGetValue("united/buff", out iconTexture);
-                }
+                Texture2D iconTexture = ResolveBuffIconTexture(buffEntry.IconTexture, buffEntry.IconKey);
 
                 if (iconTexture != null)
                 {
@@ -804,11 +801,7 @@ namespace HaCreator.MapSimulator.UI {
             string temporaryStatText = temporaryStatDisplayNames != null && temporaryStatDisplayNames.Count > 0
                 ? $"Temp Stats: {string.Join(", ", temporaryStatDisplayNames)}"
                 : string.Empty;
-            Texture2D iconTexture = buffEntry.IconTexture;
-            if (iconTexture == null && !_buffIconTextures.TryGetValue(buffEntry.IconKey ?? string.Empty, out iconTexture))
-            {
-                _buffIconTextures.TryGetValue("united/buff", out iconTexture);
-            }
+            Texture2D iconTexture = ResolveBuffIconTexture(buffEntry.IconTexture, buffEntry.IconKey);
 
             DrawStatusBarSkillTooltip(
                 sprite,
@@ -879,6 +872,38 @@ namespace HaCreator.MapSimulator.UI {
             sprite.Draw(_pixelTexture, new Rectangle(iconRect.X, iconRect.Bottom - 1, iconRect.Width, 1), new Color(42, 42, 54));
             sprite.Draw(_pixelTexture, new Rectangle(iconRect.X, iconRect.Y, 1, iconRect.Height), new Color(92, 92, 110));
             sprite.Draw(_pixelTexture, new Rectangle(iconRect.Right - 1, iconRect.Y, 1, iconRect.Height), new Color(42, 42, 54));
+        }
+
+        private Texture2D ResolveBuffIconTexture(Texture2D preferredTexture, string iconKey)
+        {
+            if (preferredTexture != null)
+            {
+                return preferredTexture;
+            }
+
+            if (!string.IsNullOrWhiteSpace(iconKey))
+            {
+                if (_buffIconTextures.TryGetValue(iconKey, out Texture2D iconTexture))
+                {
+                    return iconTexture;
+                }
+
+                string suffixedKey = iconKey.EndsWith("/0", StringComparison.OrdinalIgnoreCase)
+                    ? iconKey
+                    : $"{iconKey}/0";
+                if (_buffIconTextures.TryGetValue(suffixedKey, out iconTexture))
+                {
+                    return iconTexture;
+                }
+            }
+
+            if (_buffIconTextures.TryGetValue("united/buff", out Texture2D genericTexture))
+            {
+                return genericTexture;
+            }
+
+            _buffIconTextures.TryGetValue("united/buff/0", out genericTexture);
+            return genericTexture;
         }
 
         private void DrawCooldownTray(SpriteBatch sprite, RenderParameters renderParameters, int currentTime)

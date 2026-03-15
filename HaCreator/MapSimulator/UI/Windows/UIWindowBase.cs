@@ -225,7 +225,7 @@ namespace HaCreator.MapSimulator.UI
         /// <summary>
         /// Show the window
         /// </summary>
-        public void Show()
+        public virtual void Show()
         {
             _isVisible = true;
         }
@@ -252,7 +252,7 @@ namespace HaCreator.MapSimulator.UI
         /// Handle mouse events (buttons, dragging)
         /// Matches MinimapUI behavior exactly
         /// </summary>
-        public bool CheckMouseEvent(int shiftCenteredX, int shiftCenteredY, MouseState mouseState, MouseCursorItem mouseCursor, int renderWidth, int renderHeight)
+        public virtual bool CheckMouseEvent(int shiftCenteredX, int shiftCenteredY, MouseState mouseState, MouseCursorItem mouseCursor, int renderWidth, int renderHeight)
         {
             if (!_isVisible)
                 return false;

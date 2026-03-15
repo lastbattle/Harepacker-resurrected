@@ -4,23 +4,29 @@ using HaSharedLibrary.Render;
 using HaSharedLibrary.Render.DX;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
+using Microsoft.Xna.Framework.Input;
 using Spine;
 using System;
 using System.Collections.Generic;
+using CharacterBuild = HaCreator.MapSimulator.Character.CharacterBuild;
+using CharacterEquipSlot = HaCreator.MapSimulator.Character.EquipSlot;
+using CharacterPart = HaCreator.MapSimulator.Character.CharacterPart;
+using EquipSlotStateResolver = HaCreator.MapSimulator.Character.EquipSlotStateResolver;
+using EquipSlotVisualState = HaCreator.MapSimulator.Character.EquipSlotVisualState;
 
 namespace HaCreator.MapSimulator.UI
 {
     /// <summary>
-    /// Equipment UI window displaying equipped items
+    /// Equipment UI window displaying equipped items.
     /// Structure: UI.wz/UIWindow.img/Equip/
     /// </summary>
     public class EquipUI : UIWindowBase
     {
-        #region Constants
         private const int SLOT_SIZE = 32;
-        #endregion
+        private const int TOOLTIP_PADDING = 8;
+        private const int TOOLTIP_OFFSET_X = 14;
+        private const int TOOLTIP_OFFSET_Y = 8;
 
-        #region Equipment Slot Types
         public enum EquipSlot
         {
             Ring1 = 0,
@@ -52,70 +58,47 @@ namespace HaCreator.MapSimulator.UI
             Totem2 = 26,
             Totem3 = 27
         }
-        #endregion
 
-        #region Fields
-        // Equipment slot positions (relative to window)
         private readonly Dictionary<EquipSlot, Point> slotPositions;
-
-        // Equipped items textures
         private readonly Dictionary<EquipSlot, EquipSlotData> equippedItems;
+        private readonly Texture2D _overlayPixel;
+        private SpriteFont _font;
+        private CharacterBuild _characterBuild;
+        private EquipSlot? _hoveredSlot;
+        private Point _lastMousePosition;
 
-        // Empty slot texture
-        private Texture2D _emptySlotTexture;
-
-        // Character preview area
-        private Texture2D _characterPreviewTexture;
-        private Rectangle _characterPreviewRect;
-
-        // Tab buttons (Pet equip, Cash equip, etc.)
         private UIObject _tabNormal;
         private UIObject _tabCash;
         private UIObject _tabPet;
-        private int _currentTab = 0; // 0 = normal, 1 = cash, 2 = pet
-        #endregion
+        private int _currentTab;
 
-        #region Properties
         public override string WindowName => "Equipment";
-        #endregion
+        public override CharacterBuild CharacterBuild
+        {
+            get => _characterBuild;
+            set => _characterBuild = value;
+        }
 
-        #region Constructor
-        /// <summary>
-        /// Constructor
-        /// </summary>
-        /// <param name="frame">Window background frame</param>
-        /// <param name="device">Graphics device</param>
         public EquipUI(IDXObject frame, GraphicsDevice device)
             : base(frame)
         {
-
-            // Initialize slot positions (approximate positions based on typical equip window layout)
             slotPositions = new Dictionary<EquipSlot, Point>
             {
-                // Left column
                 { EquipSlot.Ring1, new Point(12, 55) },
                 { EquipSlot.Ring2, new Point(12, 92) },
                 { EquipSlot.Ring3, new Point(12, 129) },
                 { EquipSlot.Ring4, new Point(12, 166) },
                 { EquipSlot.Pocket, new Point(12, 203) },
-
-                // Center-left column
                 { EquipSlot.Pendant1, new Point(49, 55) },
                 { EquipSlot.Pendant2, new Point(49, 92) },
                 { EquipSlot.Weapon, new Point(49, 129) },
                 { EquipSlot.Belt, new Point(49, 166) },
-
-                // Center column (character preview area - skip)
-
-                // Center-right column
                 { EquipSlot.Cap, new Point(135, 55) },
                 { EquipSlot.FaceAccessory, new Point(135, 92) },
                 { EquipSlot.EyeAccessory, new Point(135, 129) },
                 { EquipSlot.Top, new Point(135, 166) },
                 { EquipSlot.Bottom, new Point(135, 203) },
                 { EquipSlot.Shoes, new Point(135, 240) },
-
-                // Right column
                 { EquipSlot.Earring, new Point(172, 55) },
                 { EquipSlot.Shoulder, new Point(172, 92) },
                 { EquipSlot.Glove, new Point(172, 129) },
@@ -124,105 +107,83 @@ namespace HaCreator.MapSimulator.UI
             };
 
             equippedItems = new Dictionary<EquipSlot, EquipSlotData>();
-
-            // Create empty slot texture
-            CreateEmptySlotTexture(device);
-
-            // Character preview area in center
-            _characterPreviewRect = new Rectangle(86, 92, 44, 100);
+            _overlayPixel = new Texture2D(device, 1, 1);
+            _overlayPixel.SetData(new[] { Color.White });
         }
 
-        private void CreateEmptySlotTexture(GraphicsDevice device)
-        {
-            _emptySlotTexture = new Texture2D(device, SLOT_SIZE, SLOT_SIZE);
-            Color[] data = new Color[SLOT_SIZE * SLOT_SIZE];
-
-            Color slotColor = new Color(40, 40, 60, 120);
-            Color borderColor = new Color(70, 70, 90, 180);
-
-            for (int y = 0; y < SLOT_SIZE; y++)
-            {
-                for (int x = 0; x < SLOT_SIZE; x++)
-                {
-                    if (x == 0 || x == SLOT_SIZE - 1 || y == 0 || y == SLOT_SIZE - 1)
-                    {
-                        data[y * SLOT_SIZE + x] = borderColor;
-                    }
-                    else
-                    {
-                        data[y * SLOT_SIZE + x] = slotColor;
-                    }
-                }
-            }
-            _emptySlotTexture.SetData(data);
-        }
-        #endregion
-
-        #region Initialization
-        /// <summary>
-        /// Initialize tab buttons for equipment types
-        /// </summary>
         public void InitializeTabs(UIObject normalTab, UIObject cashTab, UIObject petTab)
         {
-            this._tabNormal = normalTab;
-            this._tabCash = cashTab;
-            this._tabPet = petTab;
+            _tabNormal = normalTab;
+            _tabCash = cashTab;
+            _tabPet = petTab;
 
             if (normalTab != null)
             {
                 AddButton(normalTab);
-                normalTab.ButtonClickReleased += (sender) => { _currentTab = 0; UpdateTabStates(); };
+                normalTab.ButtonClickReleased += _ => { _currentTab = 0; UpdateTabStates(); };
             }
+
             if (cashTab != null)
             {
                 AddButton(cashTab);
-                cashTab.ButtonClickReleased += (sender) => { _currentTab = 1; UpdateTabStates(); };
+                cashTab.ButtonClickReleased += _ => { _currentTab = 1; UpdateTabStates(); };
             }
+
             if (petTab != null)
             {
                 AddButton(petTab);
-                petTab.ButtonClickReleased += (sender) => { _currentTab = 2; UpdateTabStates(); };
+                petTab.ButtonClickReleased += _ => { _currentTab = 2; UpdateTabStates(); };
             }
 
             UpdateTabStates();
         }
 
-        private void UpdateTabStates()
+        public override void SetFont(SpriteFont font)
         {
-            _tabNormal?.SetButtonState(_currentTab == 0 ? UIObjectState.Pressed : UIObjectState.Normal);
-            _tabCash?.SetButtonState(_currentTab == 1 ? UIObjectState.Pressed : UIObjectState.Normal);
-            _tabPet?.SetButtonState(_currentTab == 2 ? UIObjectState.Pressed : UIObjectState.Normal);
+            _font = font;
         }
 
-        /// <summary>
-        /// Set the character preview texture
-        /// </summary>
-        public void SetCharacterPreview(Texture2D texture)
-        {
-            _characterPreviewTexture = texture;
-        }
-        #endregion
-
-        #region Drawing
-        /// <summary>
-        /// Draw equipment window contents
-        /// </summary>
         protected override void DrawContents(SpriteBatch sprite, SkeletonMeshRenderer skeletonMeshRenderer, GameTime gameTime,
             int mapShiftX, int mapShiftY, int centerX, int centerY,
             ReflectionDrawableBoundary drawReflectionInfo,
             RenderParameters renderParameters,
             int TickCount)
         {
-            // Equipment slot content is rendered as part of the window background texture from UI.wz
-            // Equipped item icons would be drawn here when items are equipped
-            // For now, the window frame from UI.wz already includes the slot grid visuals
-        }
-        #endregion
+            foreach ((EquipSlot uiSlot, Point slotPosition) in slotPositions)
+            {
+                int slotX = Position.X + slotPosition.X;
+                int slotY = Position.Y + slotPosition.Y;
 
-        #region Equipment Management
-        /// <summary>
-        /// Equip an item to a slot (for simulation/testing)
-        /// </summary>
+                CharacterPart part = ResolveEquippedPart(uiSlot);
+                EquipSlotData slotData = equippedItems.TryGetValue(uiSlot, out EquipSlotData data) ? data : null;
+                if (part != null || slotData != null)
+                {
+                    DrawEquippedItemIcon(sprite, part, slotData, slotX, slotY);
+                }
+
+                CharacterEquipSlot? characterSlot = MapToCharacterEquipSlot(uiSlot);
+                if (!characterSlot.HasValue)
+                {
+                    continue;
+                }
+
+                EquipSlotVisualState visualState = EquipSlotStateResolver.ResolveVisualState(_characterBuild, characterSlot.Value);
+                if (visualState.IsDisabled)
+                {
+                    DrawDisabledOverlay(sprite, slotX, slotY, visualState);
+                }
+            }
+        }
+
+        protected override void DrawOverlay(SpriteBatch sprite, SkeletonMeshRenderer skeletonMeshRenderer, GameTime gameTime,
+            int mapShiftX, int mapShiftY, int centerX, int centerY,
+            ReflectionDrawableBoundary drawReflectionInfo,
+            RenderParameters renderParameters,
+            int TickCount)
+        {
+            DrawHoverTooltip(sprite, renderParameters.RenderWidth, renderParameters.RenderHeight);
+        }
+
         public void EquipItem(EquipSlot slot, int itemId, Texture2D texture, string itemName = "")
         {
             equippedItems[slot] = new EquipSlotData
@@ -233,9 +194,6 @@ namespace HaCreator.MapSimulator.UI
             };
         }
 
-        /// <summary>
-        /// Unequip an item from a slot
-        /// </summary>
         public void UnequipItem(EquipSlot slot)
         {
             if (equippedItems.ContainsKey(slot))
@@ -244,42 +202,206 @@ namespace HaCreator.MapSimulator.UI
             }
         }
 
-        /// <summary>
-        /// Get equipped item data
-        /// </summary>
         public EquipSlotData GetEquippedItem(EquipSlot slot)
         {
-            return equippedItems.TryGetValue(slot, out var data) ? data : null;
+            return equippedItems.TryGetValue(slot, out EquipSlotData data) ? data : null;
         }
 
-        /// <summary>
-        /// Clear all equipped items
-        /// </summary>
         public void ClearAllEquipment()
         {
             equippedItems.Clear();
         }
-        #endregion
 
-        #region Update
         public override void Update(GameTime gameTime)
         {
             base.Update(gameTime);
+
+            MouseState mouseState = Mouse.GetState();
+            _lastMousePosition = new Point(mouseState.X, mouseState.Y);
+            _hoveredSlot = GetSlotAtPosition(mouseState.X, mouseState.Y);
         }
-        #endregion
+
+        private void UpdateTabStates()
+        {
+            _tabNormal?.SetButtonState(_currentTab == 0 ? UIObjectState.Pressed : UIObjectState.Normal);
+            _tabCash?.SetButtonState(_currentTab == 1 ? UIObjectState.Pressed : UIObjectState.Normal);
+            _tabPet?.SetButtonState(_currentTab == 2 ? UIObjectState.Pressed : UIObjectState.Normal);
+        }
+
+        private void DrawEquippedItemIcon(SpriteBatch sprite, CharacterPart part, EquipSlotData slotData, int slotX, int slotY)
+        {
+            IDXObject icon = part?.IconRaw ?? part?.Icon ?? slotData?.ItemIcon;
+            if (icon != null)
+            {
+                icon.DrawBackground(sprite, null, null, slotX, slotY, Color.White, false, null);
+                return;
+            }
+
+            if (slotData?.ItemTexture != null)
+            {
+                sprite.Draw(slotData.ItemTexture, new Rectangle(slotX, slotY, SLOT_SIZE, SLOT_SIZE), Color.White);
+            }
+        }
+
+        private void DrawDisabledOverlay(SpriteBatch sprite, int slotX, int slotY, EquipSlotVisualState visualState)
+        {
+            Color overlay = visualState.IsExpired
+                ? new Color(110, 30, 30, 180)
+                : visualState.IsBroken
+                    ? new Color(90, 60, 20, 180)
+                    : new Color(20, 20, 20, 145);
+            sprite.Draw(_overlayPixel, new Rectangle(slotX, slotY, SLOT_SIZE, SLOT_SIZE), overlay);
+            sprite.Draw(_overlayPixel, new Rectangle(slotX, slotY, SLOT_SIZE, 2), Color.Black);
+            sprite.Draw(_overlayPixel, new Rectangle(slotX, slotY + SLOT_SIZE - 2, SLOT_SIZE, 2), Color.Black);
+            sprite.Draw(_overlayPixel, new Rectangle(slotX, slotY, 2, SLOT_SIZE), Color.Black);
+            sprite.Draw(_overlayPixel, new Rectangle(slotX + SLOT_SIZE - 2, slotY, 2, SLOT_SIZE), Color.Black);
+        }
+
+        private void DrawHoverTooltip(SpriteBatch sprite, int renderWidth, int renderHeight)
+        {
+            if (_font == null || !_hoveredSlot.HasValue)
+            {
+                return;
+            }
+
+            string title = null;
+            string line = null;
+
+            CharacterPart part = ResolveEquippedPart(_hoveredSlot.Value);
+            if (part != null)
+            {
+                title = string.IsNullOrWhiteSpace(part.Name) ? $"Equip {part.ItemId}" : part.Name;
+                line = $"Item ID: {part.ItemId}";
+
+                CharacterEquipSlot? characterSlot = MapToCharacterEquipSlot(_hoveredSlot.Value);
+                if (characterSlot.HasValue)
+                {
+                    EquipSlotVisualState state = EquipSlotStateResolver.ResolveVisualState(_characterBuild, characterSlot.Value);
+                    if (!string.IsNullOrWhiteSpace(state.Message))
+                    {
+                        line = $"{line}  {state.Message}";
+                    }
+                }
+            }
+            else if (equippedItems.TryGetValue(_hoveredSlot.Value, out EquipSlotData slotData))
+            {
+                title = slotData.ItemName;
+                line = $"Item ID: {slotData.ItemId}";
+            }
+            else
+            {
+                CharacterEquipSlot? characterSlot = MapToCharacterEquipSlot(_hoveredSlot.Value);
+                if (!characterSlot.HasValue)
+                {
+                    return;
+                }
+
+                EquipSlotVisualState state = EquipSlotStateResolver.ResolveVisualState(_characterBuild, characterSlot.Value);
+                if (!state.IsDisabled)
+                {
+                    return;
+                }
+
+                title = ResolveSlotLabel(_hoveredSlot.Value);
+                line = state.Message;
+            }
+
+            if (string.IsNullOrWhiteSpace(title))
+            {
+                return;
+            }
+
+            Vector2 titleSize = _font.MeasureString(title);
+            Vector2 lineSize = string.IsNullOrWhiteSpace(line) ? Vector2.Zero : _font.MeasureString(line);
+            int width = (int)Math.Ceiling(Math.Max(titleSize.X, lineSize.X)) + (TOOLTIP_PADDING * 2);
+            int height = (int)Math.Ceiling(titleSize.Y + (lineSize.Y > 0 ? lineSize.Y + 4 : 0)) + (TOOLTIP_PADDING * 2);
+            int x = Math.Min(_lastMousePosition.X + TOOLTIP_OFFSET_X, Math.Max(TOOLTIP_PADDING, renderWidth - width - TOOLTIP_PADDING));
+            int y = _lastMousePosition.Y - height - TOOLTIP_OFFSET_Y;
+            if (y < TOOLTIP_PADDING)
+            {
+                y = Math.Min(renderHeight - height - TOOLTIP_PADDING, _lastMousePosition.Y + TOOLTIP_OFFSET_Y);
+            }
+
+            Rectangle rect = new Rectangle(x, y, width, height);
+            sprite.Draw(_overlayPixel, rect, new Color(18, 18, 26, 235));
+            sprite.Draw(_overlayPixel, new Rectangle(rect.X, rect.Y, rect.Width, 1), new Color(214, 174, 82));
+            sprite.Draw(_overlayPixel, new Rectangle(rect.X, rect.Bottom - 1, rect.Width, 1), new Color(214, 174, 82));
+            sprite.Draw(_overlayPixel, new Rectangle(rect.X, rect.Y, 1, rect.Height), new Color(214, 174, 82));
+            sprite.Draw(_overlayPixel, new Rectangle(rect.Right - 1, rect.Y, 1, rect.Height), new Color(214, 174, 82));
+            sprite.DrawString(_font, title, new Vector2(rect.X + TOOLTIP_PADDING, rect.Y + TOOLTIP_PADDING), new Color(255, 220, 120));
+            if (!string.IsNullOrWhiteSpace(line))
+            {
+                sprite.DrawString(_font, line, new Vector2(rect.X + TOOLTIP_PADDING, rect.Y + TOOLTIP_PADDING + titleSize.Y + 4), Color.White);
+            }
+        }
+
+        private EquipSlot? GetSlotAtPosition(int mouseX, int mouseY)
+        {
+            foreach ((EquipSlot slot, Point slotPosition) in slotPositions)
+            {
+                Rectangle slotRect = new Rectangle(Position.X + slotPosition.X, Position.Y + slotPosition.Y, SLOT_SIZE, SLOT_SIZE);
+                if (slotRect.Contains(mouseX, mouseY))
+                {
+                    return slot;
+                }
+            }
+
+            return null;
+        }
+
+        private CharacterPart ResolveEquippedPart(EquipSlot uiSlot)
+        {
+            CharacterEquipSlot? characterSlot = MapToCharacterEquipSlot(uiSlot);
+            return characterSlot.HasValue ? EquipSlotStateResolver.ResolveDisplayedPart(_characterBuild, characterSlot.Value) : null;
+        }
+
+        private static CharacterEquipSlot? MapToCharacterEquipSlot(EquipSlot uiSlot)
+        {
+            return uiSlot switch
+            {
+                EquipSlot.Ring1 => CharacterEquipSlot.Ring1,
+                EquipSlot.Ring2 => CharacterEquipSlot.Ring2,
+                EquipSlot.Ring3 => CharacterEquipSlot.Ring3,
+                EquipSlot.Ring4 => CharacterEquipSlot.Ring4,
+                EquipSlot.Pendant1 => CharacterEquipSlot.Pendant,
+                EquipSlot.Pendant2 => CharacterEquipSlot.Pendant,
+                EquipSlot.Weapon => CharacterEquipSlot.Weapon,
+                EquipSlot.Belt => CharacterEquipSlot.Belt,
+                EquipSlot.Cap => CharacterEquipSlot.Cap,
+                EquipSlot.FaceAccessory => CharacterEquipSlot.FaceAccessory,
+                EquipSlot.EyeAccessory => CharacterEquipSlot.EyeAccessory,
+                EquipSlot.Top => CharacterEquipSlot.Coat,
+                EquipSlot.Bottom => CharacterEquipSlot.Pants,
+                EquipSlot.Shoes => CharacterEquipSlot.Shoes,
+                EquipSlot.Earring => CharacterEquipSlot.Earrings,
+                EquipSlot.Glove => CharacterEquipSlot.Glove,
+                EquipSlot.Shield => CharacterEquipSlot.Shield,
+                EquipSlot.Cape => CharacterEquipSlot.Cape,
+                EquipSlot.Medal => CharacterEquipSlot.Medal,
+                _ => null
+            };
+        }
+
+        private static string ResolveSlotLabel(EquipSlot slot)
+        {
+            return slot switch
+            {
+                EquipSlot.Earring => "Earring",
+                EquipSlot.FaceAccessory => "Face Accessory",
+                EquipSlot.EyeAccessory => "Eye Accessory",
+                EquipSlot.Pendant1 => "Pendant",
+                EquipSlot.Pendant2 => "Pendant",
+                _ => slot.ToString()
+            };
+        }
     }
 
-    /// <summary>
-    /// Data for an equipped item
-    /// </summary>
     public class EquipSlotData
     {
         public int ItemId { get; set; }
         public Texture2D ItemTexture { get; set; }
         public IDXObject ItemIcon { get; set; }
         public string ItemName { get; set; }
-
-        // Stats (for tooltip display)
         public int STR { get; set; }
         public int DEX { get; set; }
         public int INT { get; set; }

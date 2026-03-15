@@ -25,6 +25,7 @@ namespace HaCreator.MapSimulator.UI
         public UIWindowBase EquipWindow { get; private set; }
         public UIWindowBase SkillWindow { get; private set; }
         public UIWindowBase QuestWindow { get; private set; }
+        public QuestDetailWindow QuestDetailWindow { get; private set; }
         public UIWindowBase AbilityWindow { get; private set; }
         public QuickSlotUI QuickSlotWindow { get; private set; }
         public SkillMacroUI SkillMacroWindow { get; private set; }
@@ -43,6 +44,8 @@ namespace HaCreator.MapSimulator.UI
             { Keys.S, MapSimulatorWindowNames.Skills },
             { Keys.Q, MapSimulatorWindowNames.Quest },
             { Keys.A, MapSimulatorWindowNames.Ability },
+            { Keys.M, MapSimulatorWindowNames.ItemMaker }, // Simulator shortcut until inventory/NPC launch parity is wired
+            { Keys.U, MapSimulatorWindowNames.ItemUpgrade }, // Simulator shortcut until inventory/NPC launch parity is wired
             { Keys.OemTilde, MapSimulatorWindowNames.QuickSlot }  // ` key toggles quick slot bar
             // Note: SkillMacro window is opened via MACRO button in Skill window, not keyboard shortcut
         };
@@ -122,6 +125,12 @@ namespace HaCreator.MapSimulator.UI
         {
             QuestWindow = questWindow;
             RegisterWindow(questWindow);
+        }
+
+        public void RegisterQuestDetailWindow(QuestDetailWindow questDetailWindow)
+        {
+            QuestDetailWindow = questDetailWindow;
+            RegisterWindow(questDetailWindow);
         }
 
         /// <summary>

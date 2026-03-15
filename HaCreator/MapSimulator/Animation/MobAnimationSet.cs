@@ -56,6 +56,10 @@ namespace HaCreator.MapSimulator.Animation
             public int EffectDistance { get; set; }
             public bool RandomPos { get; set; }
             public int Delay { get; set; }
+            public int Start { get; set; }
+            public int Interval { get; set; }
+            public int Count { get; set; }
+            public int Duration { get; set; }
             public bool HasRangeBounds { get; set; }
             public Rectangle RangeBounds { get; set; }
             public List<List<IDXObject>> Sequences { get; } = new List<List<IDXObject>>();

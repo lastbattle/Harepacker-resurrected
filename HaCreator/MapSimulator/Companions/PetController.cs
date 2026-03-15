@@ -18,6 +18,8 @@ namespace HaCreator.MapSimulator.Companions
         private const float SnapDistance = 220f;
 
         private readonly AnimationController _animation;
+        private readonly string[] _idleAutoSpeechLines;
+        private int _nextIdleAutoSpeechIndex;
 
         internal PetRuntime(int runtimeId, int slotIndex, PetDefinition definition)
         {
@@ -25,6 +27,7 @@ namespace HaCreator.MapSimulator.Companions
             SlotIndex = slotIndex;
             Definition = definition ?? throw new ArgumentNullException(nameof(definition));
             _animation = new AnimationController(definition.Animations, "stand1");
+            _idleAutoSpeechLines = definition.IdleAutoSpeechLines ?? Array.Empty<string>();
         }
 
         public int RuntimeId { get; }
@@ -37,12 +40,31 @@ namespace HaCreator.MapSimulator.Companions
         public string CurrentAction => _animation.CurrentAction;
         public int ItemId => Definition.ItemId;
         public string Name => Definition.Name;
+        public int ChatBalloonStyle => Definition.ChatBalloonStyle;
+        public bool HasIdleAutoSpeech => _idleAutoSpeechLines.Length > 0;
 
         internal void SetPosition(float x, float y, bool facingRight)
         {
             X = x;
             Y = y;
             FacingRight = facingRight;
+        }
+
+        public string GetNextIdleAutoSpeechLine()
+        {
+            if (_idleAutoSpeechLines.Length == 0)
+            {
+                return null;
+            }
+
+            string line = _idleAutoSpeechLines[_nextIdleAutoSpeechIndex];
+            _nextIdleAutoSpeechIndex = (_nextIdleAutoSpeechIndex + 1) % _idleAutoSpeechLines.Length;
+            return line;
+        }
+
+        public IDXObject GetCurrentFrame()
+        {
+            return _animation.GetCurrentFrame();
         }
 
         internal void Update(PlayerCharacter owner, DropPool dropPool, int ownerId, bool pickupAllowed, int currentTime, float deltaTime)

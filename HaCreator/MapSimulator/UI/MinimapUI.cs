@@ -1,4 +1,4 @@
-﻿using HaCreator.MapSimulator.UI;
+using HaCreator.MapSimulator.Entities;
 using HaSharedLibrary.Render;
 using HaSharedLibrary.Render.DX;
 using Microsoft.Xna.Framework;
@@ -16,17 +16,22 @@ namespace HaCreator.MapSimulator.UI
     public class MinimapUI : BaseDXDrawableItem, IUIObjectEvents
     {
         private readonly BaseDXDrawableItem _pixelDot;
+        private readonly BaseDXDrawableItem _collapsedFrame;
+        private readonly BaseDXDrawableItem _npcMarker;
+        private readonly BaseDXDrawableItem _npcListPanel;
         private readonly List<UIObject> uiButtons = new List<UIObject>();
 
         private UIObject _btnMin;
         private UIObject _btnMax;
         private UIObject _btnBig;
         private UIObject _btnMap;
+        private UIObject _btnNpc;
 
         private bool _bIsCollapsedState = false; // minimised minimap state
-        private readonly BaseDXDrawableItem _collapsedFrame;
-
-        private int _mapWidth, _mapHeight;
+        private readonly int _minimapImageWidth;
+        private readonly int _minimapImageHeight;
+        private IReadOnlyList<NpcItem> _npcMarkers = Array.Empty<NpcItem>();
+        private bool _showNpcMarkers;
 
         private int _lastMinimapToggleTime = 0;
         private const int MINIMAP_TOGGLE_COOLDOWN_MS = 200; // Cooldown in milliseconds
@@ -34,6 +39,8 @@ namespace HaCreator.MapSimulator.UI
         // Player position on minimap (in minimap coordinates, not world coordinates)
         private int _playerMinimapX = 0;
         private int _playerMinimapY = 0;
+        private int _minimapOriginX = 0;
+        private int _minimapOriginY = 0;
 
         public Action FullMapRequested { get; set; }
         public Action MapTransferRequested { get; set; }
@@ -48,6 +55,9 @@ namespace HaCreator.MapSimulator.UI
         /// <param name="minimapOriginY">World Y coordinate that corresponds to minimap position 0</param>
         public void SetPlayerPosition(float playerWorldX, float playerWorldY, int minimapOriginX, int minimapOriginY)
         {
+            _minimapOriginX = minimapOriginX;
+            _minimapOriginY = minimapOriginY;
+
             // Convert world coordinates to minimap coordinates
             // Minimap is scaled 1:16 from world coordinates
             _playerMinimapX = (int)(playerWorldX - minimapOriginX) / 16;
@@ -59,34 +69,47 @@ namespace HaCreator.MapSimulator.UI
         /// </summary>
         /// <param name="frame"></param>
         /// <param name="_pixelDot"></param>
-        public MinimapUI(IDXObject frame, BaseDXDrawableItem _pixelDot, BaseDXDrawableItem _collapsedFrame, int _mapWidth, int _mapHeight)
+        public MinimapUI(
+            IDXObject frame,
+            BaseDXDrawableItem _pixelDot,
+            BaseDXDrawableItem _collapsedFrame,
+            int minimapImageWidth,
+            int minimapImageHeight,
+            BaseDXDrawableItem npcMarker = null,
+            BaseDXDrawableItem npcListPanel = null)
             : base(frame, false)
         {
             this._pixelDot = _pixelDot;
             this._collapsedFrame = _collapsedFrame;
-            this._mapWidth = _mapWidth;
-            this._mapHeight = _mapHeight;
+            _minimapImageWidth = minimapImageWidth;
+            _minimapImageHeight = minimapImageHeight;
+            _npcMarker = npcMarker;
+            _npcListPanel = npcListPanel;
         }
 
         /// <summary>
         /// Add UI buttons to be rendered
         /// </summary>
-        /// <param name="baseClickableUIObject"></param>
         public void InitializeMinimapButtons(
             UIObject _btnMin,
             UIObject _btnMax,
-            UIObject _btnBig, UIObject _btnMap)
+            UIObject _btnBig,
+            UIObject _btnMap,
+            UIObject _btnNpc = null)
         {
             this._btnMin = _btnMin;
             this._btnMax = _btnMax;
             if (_btnBig != null)
                 this._btnBig = _btnBig;
             this._btnMap = _btnMap;
+            this._btnNpc = _btnNpc;
 
             uiButtons.Add(_btnMin);
             uiButtons.Add(_btnMax);
             if (_btnBig != null)
                 uiButtons.Add(_btnBig);
+            if (_btnNpc != null)
+                uiButtons.Add(_btnNpc);
             uiButtons.Add(_btnMap);
 
             _btnMax.SetButtonState(UIObjectState.Disabled); // start maximised
@@ -95,7 +118,22 @@ namespace HaCreator.MapSimulator.UI
             _btnMax.ButtonClickReleased += ObjUIBtMax_ButtonClickReleased;
             if (_btnBig != null)
                 _btnBig.ButtonClickReleased += ObjUIBtBig_ButtonClickReleased;
+            if (_btnNpc != null)
+                _btnNpc.ButtonClickReleased += ObjUIBtNpc_ButtonClickReleased;
             _btnMap.ButtonClickReleased += ObjUIBtMap_ButtonClickReleased;
+        }
+
+        public void SetNpcMarkers(IReadOnlyList<NpcItem> npcMarkers)
+        {
+            _npcMarkers = npcMarkers ?? Array.Empty<NpcItem>();
+
+            if (_btnNpc == null)
+                return;
+
+            bool hasNpcMarkers = _npcMarker != null && _npcMarkers.Count > 0;
+            _btnNpc.SetVisible(hasNpcMarkers);
+            _showNpcMarkers = hasNpcMarkers && _showNpcMarkers;
+            _btnNpc.SetButtonState(_showNpcMarkers ? UIObjectState.Disabled : UIObjectState.Normal);
         }
 
         public override void Draw(SpriteBatch sprite, SkeletonMeshRenderer skeletonMeshRenderer, GameTime gameTime,
@@ -108,13 +146,16 @@ namespace HaCreator.MapSimulator.UI
             //  Position.X, Position.Y
 
             // Draw the main frame
-            if (_bIsCollapsedState) {
+            if (_bIsCollapsedState)
+            {
                 _collapsedFrame.Draw(sprite, skeletonMeshRenderer, gameTime,
                    0, 0, centerX, centerY,
                    drawReflectionInfo,
                    renderParameters,
                    TickCount);
-            } else {
+            }
+            else
+            {
                 base.Draw(sprite, skeletonMeshRenderer, gameTime,
                    0, 0, centerX, centerY,
                    drawReflectionInfo,
@@ -132,44 +173,46 @@ namespace HaCreator.MapSimulator.UI
                     drawReflectionInfo,
                     renderParameters,
                     TickCount);
-            }
 
-            //IDXObject lastFrameDrawn = base.LastFrameDrawn;
-            //int minimapMainFrameWidth = lastFrameDrawn.Width;
-            //int minimapMainFrameHeight = lastFrameDrawn.Height;
+                DrawNpcMarkers(sprite, skeletonMeshRenderer, gameTime, drawReflectionInfo, renderParameters, TickCount);
+                DrawNpcListPanel(sprite, skeletonMeshRenderer, gameTime, centerX, centerY, renderParameters, TickCount);
+            }
 
             // draw minimap buttons
             foreach (UIObject uiBtn in uiButtons)
             {
+                if (uiBtn == null || !uiBtn.ButtonVisible)
+                    continue;
+
                 BaseDXDrawableItem buttonToDraw = uiBtn.GetBaseDXDrawableItemByState();
 
                 // Position drawn is relative to the MinimapItem
                 int drawRelativeX = -(this.Position.X) - uiBtn.X; // Left to right
                 int drawRelativeY = -(this.Position.Y) - uiBtn.Y; // Top to bottom
 
-                buttonToDraw.Draw(sprite, skeletonMeshRenderer, 
+                buttonToDraw.Draw(sprite, skeletonMeshRenderer,
                     gameTime,
                     drawRelativeX,
                     drawRelativeY,
                     centerX, centerY,
                     null,
-                    renderParameters, 
+                    renderParameters,
                     TickCount);
             }
         }
 
-        /// <summary>
-        /// 
-        /// </summary>
-        /// <param name="currTickCount"></param>
-        public void MinimiseOrMaximiseMinimap(int currTickCount) {
-            if (currTickCount - _lastMinimapToggleTime > MINIMAP_TOGGLE_COOLDOWN_MS) {
+        public void MinimiseOrMaximiseMinimap(int currTickCount)
+        {
+            if (currTickCount - _lastMinimapToggleTime > MINIMAP_TOGGLE_COOLDOWN_MS)
+            {
                 _lastMinimapToggleTime = currTickCount;
 
-                if (!this._bIsCollapsedState) {
+                if (!this._bIsCollapsedState)
+                {
                     ObjUIBtMin_ButtonClickReleased(null);
                 }
-                else {
+                else
+                {
                     ObjUIBtMax_ButtonClickReleased(null);
                 }
             }
@@ -208,26 +251,33 @@ namespace HaCreator.MapSimulator.UI
             return rect.Contains(x, y);
         }
 
-        public bool CheckMouseEvent(int shiftCenteredX, int shiftCenteredY, MouseState mouseState, MouseCursorItem mouseCursor, int renderWidth, int renderHeight) {
-            foreach (UIObject uiBtn in uiButtons) {
+        public bool CheckMouseEvent(int shiftCenteredX, int shiftCenteredY, MouseState mouseState, MouseCursorItem mouseCursor, int renderWidth, int renderHeight)
+        {
+            foreach (UIObject uiBtn in uiButtons)
+            {
+                if (uiBtn == null || !uiBtn.ButtonVisible)
+                    continue;
+
                 bool bHandled = uiBtn.CheckMouseEvent(shiftCenteredX, shiftCenteredY, this.Position.X, this.Position.Y, mouseState);
-                if (bHandled) {
+                if (bHandled)
+                {
                     mouseCursor.SetMouseCursorMovedToClickableItem();
                     return true;
                 }
             }
 
             // handle UI movement
-            if (mouseState.LeftButton == ButtonState.Pressed) {
-                // The rectangle of the MinimapItem UI object
-
+            if (mouseState.LeftButton == ButtonState.Pressed)
+            {
                 // if drag has not started, initialize the offset
-                if (mouseOffsetOnDragStart == null) {
+                if (mouseOffsetOnDragStart == null)
+                {
                     Rectangle rect = new Rectangle(
                         this.Position.X,
                         this.Position.Y,
                         this.LastFrameDrawn.Width, this.LastFrameDrawn.Height);
-                    if (!rect.Contains(mouseState.X, mouseState.Y)) {
+                    if (!rect.Contains(mouseState.X, mouseState.Y))
+                    {
                         return false;
                     }
                     mouseOffsetOnDragStart = new Point(mouseState.X - this.Position.X, mouseState.Y - this.Position.Y);
@@ -243,19 +293,17 @@ namespace HaCreator.MapSimulator.UI
                 int frameHeight = _bIsCollapsedState ? _collapsedFrame.LastFrameDrawn.Height : this.LastFrameDrawn.Height;
 
                 // Enforce screen boundary constraints
-                // Ensure the UI doesn't move outside the window
                 newX = Math.Max(0, Math.Min(newX, renderWidth - frameWidth));
                 newY = Math.Max(0, Math.Min(newY, renderHeight - frameHeight));
 
                 this.Position = new Point(newX, newY);
-                if (_bIsCollapsedState) {
+                if (_bIsCollapsedState)
+                {
                     this._collapsedFrame.Position = new Point(newX, newY);
                 }
-                //System.Diagnostics.Debug.WriteLine("Button rect: " + rect.ToString());
-                //System.Diagnostics.Debug.WriteLine("Mouse X: " + mouseState.X + ", Y: " + mouseState.Y);
             }
-            else {
-                // if the mouse button is not pressed, reset the initial drag offset
+            else
+            {
                 mouseOffsetOnDragStart = null;
             }
             return false;
@@ -267,20 +315,30 @@ namespace HaCreator.MapSimulator.UI
         /// On 'BtMin' clicked
         /// Map minimised mode
         /// </summary>
-        /// <param name="sender"></param>
         private void ObjUIBtMin_ButtonClickReleased(UIObject sender)
         {
             _btnMin.SetButtonState(UIObjectState.Disabled);
             _btnMax.SetButtonState(UIObjectState.Normal);
 
-            _btnMap.X = this._collapsedFrame.Frame0.Width - _btnMap.CanvasSnapshotWidth - 8; // render at the (width of minimap - obj width)
-            if (_btnBig != null) {
-                _btnBig.X = _btnMap.X - _btnBig.CanvasSnapshotWidth; // render at the (width of minimap - obj width)
-                _btnMax.X = _btnBig.X - _btnMax.CanvasSnapshotWidth; // render at the (width of minimap - obj width)
-                _btnMin.X = _btnMax.X - _btnMin.CanvasSnapshotWidth; // render at the (width of minimap - obj width)
-            } else { // beta maplestory
-                _btnMax.X = _btnMap.X - _btnMax.CanvasSnapshotWidth; // render at the (width of minimap - obj width)
-                _btnMin.X = _btnMax.X - _btnMin.CanvasSnapshotWidth; // render at the (width of minimap - obj width)
+            _btnMap.X = this._collapsedFrame.Frame0.Width - _btnMap.CanvasSnapshotWidth - 8;
+            if (_btnBig != null)
+            {
+                _btnBig.X = _btnMap.X - _btnBig.CanvasSnapshotWidth;
+                if (_btnNpc != null)
+                {
+                    _btnNpc.X = _btnBig.X - _btnNpc.CanvasSnapshotWidth;
+                    _btnMax.X = _btnNpc.X - _btnMax.CanvasSnapshotWidth;
+                }
+                else
+                {
+                    _btnMax.X = _btnBig.X - _btnMax.CanvasSnapshotWidth;
+                }
+                _btnMin.X = _btnMax.X - _btnMin.CanvasSnapshotWidth;
+            }
+            else
+            {
+                _btnMax.X = _btnMap.X - _btnMax.CanvasSnapshotWidth;
+                _btnMin.X = _btnMax.X - _btnMin.CanvasSnapshotWidth;
             }
 
             BaseDXDrawableItem baseItem = (BaseDXDrawableItem)this;
@@ -293,21 +351,31 @@ namespace HaCreator.MapSimulator.UI
         /// On 'BtMax' clicked.
         /// Map maximised mode
         /// </summary>
-        /// <param name="sender"></param>
         private void ObjUIBtMax_ButtonClickReleased(UIObject sender)
         {
             _btnMin.SetButtonState(UIObjectState.Normal);
             _btnMax.SetButtonState(UIObjectState.Disabled);
 
-            if (_btnBig != null) {
-                _btnMap.X = this.Frame0.Width - _btnMap.CanvasSnapshotWidth - 8; // render at the (width of minimap - obj width)
-                _btnBig.X = _btnMap.X - _btnBig.CanvasSnapshotWidth; // render at the (width of minimap - obj width)
-                _btnMax.X = _btnBig.X - _btnMax.CanvasSnapshotWidth; // render at the (width of minimap - obj width)
-                _btnMin.X = _btnMax.X - _btnMin.CanvasSnapshotWidth; // render at the (width of minimap - obj width)
-            } else { // beta maplestory
-                _btnMap.X = this.Frame0.Width - _btnMap.CanvasSnapshotWidth - 8; // render at the (width of minimap - obj width)
-                _btnMax.X = _btnMap.X - _btnMax.CanvasSnapshotWidth; // render at the (width of minimap - obj width)
-                _btnMin.X = _btnMax.X - _btnMin.CanvasSnapshotWidth; // render at the (width of minimap - obj width)
+            if (_btnBig != null)
+            {
+                _btnMap.X = this.Frame0.Width - _btnMap.CanvasSnapshotWidth - 8;
+                _btnBig.X = _btnMap.X - _btnBig.CanvasSnapshotWidth;
+                if (_btnNpc != null)
+                {
+                    _btnNpc.X = _btnBig.X - _btnNpc.CanvasSnapshotWidth;
+                    _btnMax.X = _btnNpc.X - _btnMax.CanvasSnapshotWidth;
+                }
+                else
+                {
+                    _btnMax.X = _btnBig.X - _btnMax.CanvasSnapshotWidth;
+                }
+                _btnMin.X = _btnMax.X - _btnMin.CanvasSnapshotWidth;
+            }
+            else
+            {
+                _btnMap.X = this.Frame0.Width - _btnMap.CanvasSnapshotWidth - 8;
+                _btnMax.X = _btnMap.X - _btnMax.CanvasSnapshotWidth;
+                _btnMin.X = _btnMax.X - _btnMin.CanvasSnapshotWidth;
             }
             this.CopyObjectPosition(_collapsedFrame);
 
@@ -317,21 +385,99 @@ namespace HaCreator.MapSimulator.UI
         /// <summary>
         /// On 'BtBig' clicked
         /// </summary>
-        /// <param name="sender"></param>
         private void ObjUIBtBig_ButtonClickReleased(UIObject sender)
         {
             FullMapRequested?.Invoke();
         }
 
         /// <summary>
+        /// On 'BtNpc' clicked
+        /// Toggle NPC marker visibility on the minimap.
+        /// </summary>
+        private void ObjUIBtNpc_ButtonClickReleased(UIObject sender)
+        {
+            if (_btnNpc == null || _npcMarker == null || _npcMarkers.Count == 0)
+                return;
+
+            _showNpcMarkers = !_showNpcMarkers;
+            _btnNpc.SetButtonState(_showNpcMarkers ? UIObjectState.Disabled : UIObjectState.Normal);
+        }
+
+        /// <summary>
         /// On 'BtMap' clicked
         /// </summary>
-        /// <param name="sender"></param>
         private void ObjUIBtMap_ButtonClickReleased(UIObject sender)
         {
             MapTransferRequested?.Invoke();
         }
 
+        private void DrawNpcMarkers(
+            SpriteBatch sprite,
+            SkeletonMeshRenderer skeletonMeshRenderer,
+            GameTime gameTime,
+            ReflectionDrawableBoundary drawReflectionInfo,
+            RenderParameters renderParameters,
+            int tickCount)
+        {
+            if (_bIsCollapsedState || !_showNpcMarkers || _npcMarker == null || _npcMarkers.Count == 0)
+                return;
+
+            foreach (NpcItem npc in _npcMarkers)
+            {
+                if (npc?.NpcInstance == null)
+                    continue;
+
+                Point minimapPoint = WorldToMinimap(npc.CurrentX, npc.CurrentY);
+                if (!IsWithinMinimapImage(minimapPoint))
+                    continue;
+
+                _npcMarker.Draw(sprite, skeletonMeshRenderer, gameTime,
+                    -Position.X, -Position.Y, minimapPoint.X, minimapPoint.Y,
+                    drawReflectionInfo,
+                    renderParameters,
+                    tickCount);
+            }
+        }
+
+        private Point WorldToMinimap(int worldX, int worldY)
+        {
+            return new Point(
+                (worldX - _minimapOriginX) / 16,
+                (worldY - _minimapOriginY) / 16);
+        }
+
+        private void DrawNpcListPanel(
+            SpriteBatch sprite,
+            SkeletonMeshRenderer skeletonMeshRenderer,
+            GameTime gameTime,
+            int centerX,
+            int centerY,
+            RenderParameters renderParameters,
+            int tickCount)
+        {
+            if (_bIsCollapsedState || !_showNpcMarkers || _npcListPanel == null)
+                return;
+
+            int drawRelativeX = -Position.X - _npcListPanel.Position.X;
+            int drawRelativeY = -Position.Y - _npcListPanel.Position.Y;
+
+            _npcListPanel.Draw(sprite, skeletonMeshRenderer, gameTime,
+                drawRelativeX,
+                drawRelativeY,
+                centerX,
+                centerY,
+                null,
+                renderParameters,
+                tickCount);
+        }
+
+        private bool IsWithinMinimapImage(Point minimapPoint)
+        {
+            return minimapPoint.X >= 0 &&
+                   minimapPoint.Y >= 0 &&
+                   minimapPoint.X < _minimapImageWidth &&
+                   minimapPoint.Y < _minimapImageHeight;
+        }
         #endregion
     }
 }

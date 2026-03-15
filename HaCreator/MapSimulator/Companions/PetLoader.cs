@@ -13,6 +13,10 @@ namespace HaCreator.MapSimulator.Companions
     {
         public int ItemId { get; init; }
         public string Name { get; init; }
+        public int ChatBalloonStyle { get; init; }
+        public IDXObject Icon { get; init; }
+        public IDXObject IconRaw { get; init; }
+        internal string[] IdleAutoSpeechLines { get; init; } = Array.Empty<string>();
         internal PetAnimationSet Animations { get; } = new PetAnimationSet();
     }
 
@@ -55,7 +59,11 @@ namespace HaCreator.MapSimulator.Companions
             var definition = new PetDefinition
             {
                 ItemId = petItemId,
-                Name = LoadPetName(petItemId) ?? $"Pet_{petItemId}"
+                Name = LoadPetName(petItemId) ?? $"Pet_{petItemId}",
+                ChatBalloonStyle = GetIntValue(petImage["info"]?["chatBalloon"]) ?? 0,
+                Icon = LoadInfoIcon(petImage, "icon"),
+                IconRaw = LoadInfoIcon(petImage, "iconRaw"),
+                IdleAutoSpeechLines = LoadIdleAutoSpeechLines(petItemId)
             };
 
             foreach (string action in SupportedActions)
@@ -96,6 +104,62 @@ namespace HaCreator.MapSimulator.Companions
             return (petString["name"] as WzStringProperty)?.Value;
         }
 
+        private static string[] LoadIdleAutoSpeechLines(int petItemId)
+        {
+            WzImage petDialogImage = global::HaCreator.Program.FindImage("String", "PetDialog.img");
+            if (petDialogImage == null)
+            {
+                return Array.Empty<string>();
+            }
+
+            petDialogImage.ParseImage();
+            if (petDialogImage[petItemId.ToString()] is not WzSubProperty petDialogProperty)
+            {
+                return Array.Empty<string>();
+            }
+
+            if (petDialogProperty["autoSpeaking"] is WzImageProperty autoSpeakingProperty)
+            {
+                return ExtractSpeechLines(autoSpeakingProperty)
+                    .Where(line => !string.IsNullOrWhiteSpace(line))
+                    .Distinct(StringComparer.Ordinal)
+                    .ToArray();
+            }
+
+            var fallbackLines = new List<string>();
+            foreach (WzImageProperty child in petDialogProperty.WzProperties)
+            {
+                if (child is not WzStringProperty eventNameProperty)
+                {
+                    continue;
+                }
+
+                string eventNames = eventNameProperty.Value?.Trim();
+                if (string.IsNullOrWhiteSpace(eventNames) ||
+                    eventNames.IndexOf("talk", StringComparison.OrdinalIgnoreCase) < 0 &&
+                    eventNames.IndexOf("chat", StringComparison.OrdinalIgnoreCase) < 0 &&
+                    eventNames.IndexOf("say", StringComparison.OrdinalIgnoreCase) < 0)
+                {
+                    continue;
+                }
+
+                string prefix = child.Name + "_s";
+                foreach (WzImageProperty sibling in petDialogProperty.WzProperties)
+                {
+                    if (sibling is WzStringProperty lineProperty &&
+                        sibling.Name.StartsWith(prefix, StringComparison.OrdinalIgnoreCase) &&
+                        !string.IsNullOrWhiteSpace(lineProperty.Value))
+                    {
+                        fallbackLines.Add(lineProperty.Value.Trim());
+                    }
+                }
+            }
+
+            return fallbackLines
+                .Distinct(StringComparer.Ordinal)
+                .ToArray();
+        }
+
         private List<IDXObject> LoadActionFrames(WzSubProperty actionNode)
         {
             var frames = new List<IDXObject>();
@@ -121,6 +185,52 @@ namespace HaCreator.MapSimulator.Companions
             }
 
             return frames;
+        }
+
+        private IDXObject LoadInfoIcon(WzImage petImage, string iconName)
+        {
+            if (petImage?["info"] is not WzSubProperty info)
+            {
+                return null;
+            }
+
+            if (info[iconName] is not WzCanvasProperty canvas)
+            {
+                return null;
+            }
+
+            return LoadTexture(canvas);
+        }
+
+        private static IEnumerable<string> ExtractSpeechLines(WzImageProperty property)
+        {
+            if (property == null)
+            {
+                yield break;
+            }
+
+            if (property is WzStringProperty stringProperty)
+            {
+                if (!string.IsNullOrWhiteSpace(stringProperty.Value))
+                {
+                    yield return stringProperty.Value.Trim();
+                }
+
+                yield break;
+            }
+
+            if (property.WzProperties == null)
+            {
+                yield break;
+            }
+
+            foreach (WzImageProperty child in property.WzProperties.OrderBy(GetFrameOrder))
+            {
+                foreach (string line in ExtractSpeechLines(child))
+                {
+                    yield return line;
+                }
+            }
         }
 
         private IDXObject LoadTexture(WzCanvasProperty canvas)

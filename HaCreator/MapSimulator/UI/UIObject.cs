@@ -131,6 +131,19 @@ namespace HaCreator.MapSimulator.UI
             this._disabledState = _disabledState;
             this._pressedState = _pressedState;
             this._mouseOverState = _mouseOverState;
+
+            IDXObject snapshotFrame = _normalState?.Frame0 ?? _normalState?.LastFrameDrawn;
+            if (snapshotFrame != null)
+            {
+                _CanvasSnapshotWidth = snapshotFrame.Width;
+                _CanvasSnapshotHeight = snapshotFrame.Height;
+            }
+
+            if (_normalState != null)
+            {
+                X = _normalState.Position.X;
+                Y = _normalState.Position.Y;
+            }
         }
 
         /// <summary>

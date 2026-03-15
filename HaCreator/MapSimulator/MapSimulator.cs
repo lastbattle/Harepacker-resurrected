@@ -7,6 +7,7 @@ using HaCreator.MapSimulator.AI;
 using HaCreator.MapSimulator.UI;
 using HaCreator.MapSimulator.Character;
 using HaCreator.MapSimulator.Character.Skills;
+using HaCreator.MapSimulator.Companions;
 using HaCreator.MapSimulator.Loaders;
 using HaSharedLibrary.Wz;
 using HaCreator.MapSimulator.Entities;
@@ -22,6 +23,7 @@ using MapleLib.WzLib;
 using MapleLib.WzLib.Spine;
 using MapleLib.WzLib.WzProperties;
 using MapleLib.WzLib.WzStructure.Data;
+using MapleLib.WzLib.WzStructure.Data.ItemStructure;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Audio;
 using Microsoft.Xna.Framework.Graphics;
@@ -58,6 +60,9 @@ namespace HaCreator.MapSimulator
         private const int DefaultLowHpWarningThresholdPercent = 20;
         private const int DefaultLowMpWarningThresholdPercent = 20;
         private const int ReactorCollisionCheckIntervalMs = 1000;
+        private const int PetAutoSpeechIdleThresholdMs = 600000;
+        private const int PetAutoSpeechIdleCooldownMs = 120000;
+        private const int PetAutoSpeechBalloonDurationMs = 5000;
         public int mapShiftX = 0;
         public int mapShiftY = 0;
         public Point minimapPos;
@@ -195,6 +200,8 @@ namespace HaCreator.MapSimulator
         private readonly PickupNoticeUI _pickupNoticeUI = new PickupNoticeUI();
         private NpcInteractionOverlay _npcInteractionOverlay;
         private readonly QuestRuntimeManager _questRuntime = new QuestRuntimeManager();
+        private bool _questUiBindingsConfigured;
+        private int _activeQuestDetailQuestId;
         private NpcItem _activeNpcInteractionNpc;
         private int _activeNpcInteractionNpcId;
         private Texture2D _npcQuestAvailableIcon;
@@ -203,8 +210,15 @@ namespace HaCreator.MapSimulator
         private readonly NpcFeedbackBalloonQueue _npcQuestFeedback = new();
         private readonly Random _npcIdleSpeechRandom = new();
         private int _nextNpcIdleSpeechTick;
+        private readonly Random _petIdleSpeechRandom = new();
+        private int _petStandingSinceTick = -1;
+        private int _nextPetIdleSpeechTick;
+        private int _activePetSpeechRuntimeId;
+        private string _activePetSpeechText;
+        private int _activePetSpeechExpiresAt;
         private int _lastReactorCollisionCheckTick = -ReactorCollisionCheckIntervalMs;
         private readonly Dictionary<(int skillId, int level), MobSummonSkillInfo> _mobSummonSkillCache = new();
+        private readonly Dictionary<(int skillId, int level), MobSkillRuntimeData> _mobSkillRuntimeCache = new();
         private readonly Dictionary<long, int> _appliedMobSkillEffects = new();
         private readonly Random _mobSkillRandom = new Random();
 
@@ -271,6 +285,16 @@ namespace HaCreator.MapSimulator
             public Point? Rb { get; set; }
         }
 
+        private sealed class MobSkillRuntimeData
+        {
+            public int X { get; init; }
+            public int Y { get; init; }
+            public int Hp { get; init; }
+            public int DurationMs { get; init; }
+            public Point? Lt { get; init; }
+            public Point? Rb { get; init; }
+        }
+
         // Frame counter for visibility culling (increments each frame)
         private int _frameNumber = 0;
 
@@ -327,6 +351,9 @@ namespace HaCreator.MapSimulator
         private const int PASSIVE_TRANSFER_REQUEST_DURATION_MS = 1200;
         private const int FIELD_RULE_DAMAGE_MIST_DURATION_MS = 650;
         private const int FIELD_RULE_MESSAGE_COOLDOWN_MS = 1200;
+        private const int DefaultSimulatorWorldId = 0;
+        private const int DefaultSimulatorChannelIndex = 0;
+        private const int DefaultSimulatorChannelCount = 20;
         private bool _sameMapTeleportPending = false;
         private int _sameMapTeleportStartTime = 0;
         private int _sameMapTeleportDelay = 0;
@@ -337,9 +364,19 @@ namespace HaCreator.MapSimulator
         private int _passiveTransferRequestExpiresAt = int.MinValue;
         private int _lastFieldRestrictionMessageTime = int.MinValue;
         private string _lastFieldRestrictionMessage = null;
+        private int _simulatorWorldId = DefaultSimulatorWorldId;
+        private int _simulatorChannelIndex = DefaultSimulatorChannelIndex;
+        private readonly List<SavedMapTransferDestination> _savedMapTransferDestinations = new();
+        private readonly Dictionary<int, string> _mapTransferTitleCache = new();
 
         // Seamless map transition support (state managed by _gameState)
         private Func<int, Tuple<Board, string>> _loadMapCallback = null; // Callback to load new map
+
+        private sealed class SavedMapTransferDestination
+        {
+            public int MapId { get; init; }
+            public string DisplayName { get; init; }
+        }
 
         /// <summary>
         /// Sets the callback used to load maps for portal teleportation.
@@ -347,6 +384,288 @@ namespace HaCreator.MapSimulator
         public void SetLoadMapCallback(Func<int, Tuple<Board, string>> callback)
         {
             _loadMapCallback = callback;
+        }
+
+        private void RefreshMapTransferWindow()
+        {
+            if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.MapTransfer) is not MapTransferUI mapTransferWindow)
+            {
+                return;
+            }
+
+            mapTransferWindow.RegisterCurrentMapRequested = RegisterCurrentMapTransferDestination;
+            mapTransferWindow.DeleteDestinationRequested = DeleteMapTransferDestination;
+            mapTransferWindow.MoveDestinationRequested = MoveToMapTransferDestination;
+            mapTransferWindow.WorldMapRequested = () => uiWindowManager?.ShowWindow(MapSimulatorWindowNames.WorldMap);
+            mapTransferWindow.SetCurrentMapName(GetCurrentMapTransferDisplayName());
+            mapTransferWindow.SetStatusMessage(GetMapTransferStatusMessage());
+            mapTransferWindow.SetDestinations(BuildMapTransferDestinations());
+        }
+
+        private List<MapTransferUI.DestinationEntry> BuildMapTransferDestinations()
+        {
+            List<MapTransferUI.DestinationEntry> destinations = new();
+            HashSet<string> seenKeys = new(StringComparer.OrdinalIgnoreCase);
+
+            foreach (SavedMapTransferDestination saved in _savedMapTransferDestinations)
+            {
+                string displayName = ResolveMapTransferDisplayName(saved.MapId, saved.DisplayName);
+                if (!seenKeys.Add($"saved:{saved.MapId}"))
+                {
+                    continue;
+                }
+
+                destinations.Add(new MapTransferUI.DestinationEntry
+                {
+                    MapId = saved.MapId,
+                    DisplayName = $"[Saved] {displayName}",
+                    DetailText = $"{saved.MapId}",
+                    CanDelete = true
+                });
+            }
+
+            AddSystemMapTransferDestination(destinations, seenKeys, _mapBoard?.MapInfo?.returnMap, "Return");
+            AddSystemMapTransferDestination(destinations, seenKeys, _mapBoard?.MapInfo?.forcedReturn, "Forced");
+
+            if (_mapBoard?.BoardItems?.Portals != null)
+            {
+                foreach (PortalInstance portal in _mapBoard.BoardItems.Portals)
+                {
+                    if (portal == null || portal.tm <= 0 || portal.tm == MapConstants.MaxMap)
+                    {
+                        continue;
+                    }
+
+                    string key = $"portal:{portal.tm}:{portal.tn}";
+                    if (!seenKeys.Add(key))
+                    {
+                        continue;
+                    }
+
+                    string displayName = ResolveMapTransferDisplayName(portal.tm);
+                    string sourcePortal = string.IsNullOrWhiteSpace(portal.pn) ? "portal" : portal.pn;
+                    destinations.Add(new MapTransferUI.DestinationEntry
+                    {
+                        MapId = portal.tm,
+                        DisplayName = $"[Portal] {displayName}",
+                        DetailText = $"{portal.tm} via {sourcePortal}",
+                        TargetPortalName = portal.tn,
+                        CanDelete = false
+                    });
+                }
+            }
+
+            return destinations;
+        }
+
+        private void AddSystemMapTransferDestination(
+            ICollection<MapTransferUI.DestinationEntry> destinations,
+            ISet<string> seenKeys,
+            int? mapId,
+            string label)
+        {
+            if (!mapId.HasValue || mapId.Value <= 0 || mapId.Value == MapConstants.MaxMap)
+            {
+                return;
+            }
+
+            string key = $"system:{label}:{mapId.Value}";
+            if (!seenKeys.Add(key))
+            {
+                return;
+            }
+
+            string displayName = ResolveMapTransferDisplayName(mapId.Value);
+            destinations.Add(new MapTransferUI.DestinationEntry
+            {
+                MapId = mapId.Value,
+                DisplayName = $"[{label}] {displayName}",
+                DetailText = $"{mapId.Value}",
+                CanDelete = false
+            });
+        }
+
+        private void RegisterCurrentMapTransferDestination()
+        {
+            if (_mapBoard?.MapInfo == null)
+            {
+                return;
+            }
+
+            int mapId = _mapBoard.MapInfo.id;
+            if (mapId <= 0 || mapId == MapConstants.MaxMap)
+            {
+                return;
+            }
+
+            string displayName = ResolveMapTransferDisplayName(mapId, GetCurrentMapTransferDisplayName());
+            if (_savedMapTransferDestinations.Any(saved => saved.MapId == mapId))
+            {
+                RefreshMapTransferWindow();
+                return;
+            }
+
+            _savedMapTransferDestinations.Add(new SavedMapTransferDestination
+            {
+                MapId = mapId,
+                DisplayName = displayName
+            });
+            RefreshMapTransferWindow();
+        }
+
+        private void DeleteMapTransferDestination(MapTransferUI.DestinationEntry destination)
+        {
+            if (destination == null || !destination.CanDelete)
+            {
+                return;
+            }
+
+            _savedMapTransferDestinations.RemoveAll(saved => saved.MapId == destination.MapId);
+            RefreshMapTransferWindow();
+        }
+
+        private void MoveToMapTransferDestination(MapTransferUI.DestinationEntry destination)
+        {
+            if (destination == null)
+            {
+                return;
+            }
+
+            string restrictionMessage = FieldInteractionRestrictionEvaluator.GetTransferRestrictionMessage(_mapBoard?.MapInfo?.fieldLimit ?? 0);
+            if (!string.IsNullOrWhiteSpace(restrictionMessage))
+            {
+                ShowFieldRestrictionMessage(restrictionMessage);
+                return;
+            }
+
+            if (_loadMapCallback == null)
+            {
+                _chat.AddMessage("Map transfer is unavailable without a map loader.", new Color(255, 228, 151), Environment.TickCount);
+                return;
+            }
+
+            QueueMapTransfer(destination.MapId, destination.TargetPortalName);
+        }
+
+        private bool QueueMapTransfer(int targetMapId, string targetPortalName)
+        {
+            if (targetMapId <= 0 || targetMapId == MapConstants.MaxMap || _gameState.PendingMapChange)
+            {
+                return false;
+            }
+
+            _playerManager?.ForceStand();
+            _gameState.PendingMapChange = true;
+            _gameState.PendingMapId = targetMapId;
+            _gameState.PendingPortalName = targetPortalName;
+            return true;
+        }
+
+        private string GetCurrentMapTransferDisplayName()
+        {
+            if (_mapBoard?.MapInfo == null)
+            {
+                return string.Empty;
+            }
+
+            string street = _mapBoard.MapInfo.strStreetName;
+            string map = _mapBoard.MapInfo.strMapName;
+            if (string.IsNullOrWhiteSpace(street))
+            {
+                return string.IsNullOrWhiteSpace(map) ? _mapBoard.MapInfo.id.ToString() : map;
+            }
+
+            if (string.IsNullOrWhiteSpace(map) || string.Equals(street, map, StringComparison.OrdinalIgnoreCase))
+            {
+                return street;
+            }
+
+            return $"{street} : {map}";
+        }
+
+        private string GetMapTransferStatusMessage()
+        {
+            if (_loadMapCallback == null)
+            {
+                return "Map loading is unavailable in this session.";
+            }
+
+            string restrictionMessage = FieldInteractionRestrictionEvaluator.GetTransferRestrictionMessage(_mapBoard?.MapInfo?.fieldLimit ?? 0);
+            if (!string.IsNullOrWhiteSpace(restrictionMessage))
+            {
+                return restrictionMessage;
+            }
+
+            return "Register the current map or choose a listed route.";
+        }
+
+        private string ResolveMapTransferDisplayName(int mapId, string fallbackDisplayName = null)
+        {
+            if (_mapTransferTitleCache.TryGetValue(mapId, out string cachedName) && !string.IsNullOrWhiteSpace(cachedName))
+            {
+                return cachedName;
+            }
+
+            if (!string.IsNullOrWhiteSpace(fallbackDisplayName))
+            {
+                _mapTransferTitleCache[mapId] = fallbackDisplayName;
+                return fallbackDisplayName;
+            }
+
+            if (_mapBoard?.MapInfo?.id == mapId)
+            {
+                string currentDisplayName = GetCurrentMapTransferDisplayName();
+                if (!string.IsNullOrWhiteSpace(currentDisplayName))
+                {
+                    _mapTransferTitleCache[mapId] = currentDisplayName;
+                    return currentDisplayName;
+                }
+            }
+
+            if (_loadMapCallback != null)
+            {
+                try
+                {
+                    Tuple<Board, string> result = _loadMapCallback(mapId);
+                    string title = result?.Item2;
+                    Board board = result?.Item1;
+                    string resolved = title;
+                    if (board?.MapInfo != null)
+                    {
+                        string street = board.MapInfo.strStreetName;
+                        string map = board.MapInfo.strMapName;
+                        if (!string.IsNullOrWhiteSpace(street) && !string.IsNullOrWhiteSpace(map) && !string.Equals(street, map, StringComparison.OrdinalIgnoreCase))
+                        {
+                            resolved = $"{street} : {map}";
+                        }
+                        else if (!string.IsNullOrWhiteSpace(map))
+                        {
+                            resolved = map;
+                        }
+                        else if (!string.IsNullOrWhiteSpace(street))
+                        {
+                            resolved = street;
+                        }
+                    }
+
+                    if (!string.IsNullOrWhiteSpace(resolved))
+                    {
+                        _mapTransferTitleCache[mapId] = resolved;
+                        return resolved;
+                    }
+                }
+                catch
+                {
+                }
+            }
+
+            return mapId.ToString();
+        }
+
+        private void WireQuestLogWindowData()
+        {
+            ConfigureQuestUiBindings();
+            RefreshQuestUiState();
         }
 
         private void WireProgressionUtilityWindowLaunchers()
@@ -359,12 +678,101 @@ namespace HaCreator.MapSimulator
 
             if (statusBarUi != null)
             {
-                statusBarUi.CashShopRequested = () => uiWindowManager?.ShowWindow(MapSimulatorWindowNames.CashShop);
-                statusBarUi.MtsRequested = () => uiWindowManager?.ShowWindow(MapSimulatorWindowNames.Mts);
+                statusBarUi.CashShopRequested = () =>
+                {
+                    uiWindowManager?.HideWindow(MapSimulatorWindowNames.Mts);
+                    uiWindowManager?.ShowWindow(MapSimulatorWindowNames.CashShop);
+                };
+                statusBarUi.MtsRequested = () =>
+                {
+                    uiWindowManager?.HideWindow(MapSimulatorWindowNames.CashShop);
+                    uiWindowManager?.ShowWindow(MapSimulatorWindowNames.Mts);
+                };
                 statusBarUi.MenuRequested = () => uiWindowManager?.ShowWindow(MapSimulatorWindowNames.Menu);
                 statusBarUi.SystemRequested = () => uiWindowManager?.ShowWindow(MapSimulatorWindowNames.System);
-                statusBarUi.ChannelRequested = () => uiWindowManager?.ShowWindow(MapSimulatorWindowNames.WorldSelect);
+                statusBarUi.ChannelRequested = ShowWorldSelectWindow;
             }
+
+            if (statusBarChatUI != null)
+            {
+                statusBarChatUI.CharacterInfoRequested = () => uiWindowManager?.ShowWindow(MapSimulatorWindowNames.CharacterInfo);
+            }
+
+            WireWorldChannelSelectorWindows();
+        }
+
+        private void WireWorldChannelSelectorWindows()
+        {
+            if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.WorldSelect) is WorldSelectWindow worldSelectWindow)
+            {
+                worldSelectWindow.SetCurrentWorld(_simulatorWorldId);
+                worldSelectWindow.WorldSelected -= HandleWorldSelected;
+                worldSelectWindow.WorldSelected += HandleWorldSelected;
+            }
+
+            if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.ChannelSelect) is ChannelSelectWindow channelSelectWindow)
+            {
+                channelSelectWindow.ChangeRequested -= HandleChannelChangeRequested;
+                channelSelectWindow.ChangeRequested += HandleChannelChangeRequested;
+                channelSelectWindow.Configure(_simulatorWorldId, _simulatorWorldId, _simulatorChannelIndex, DefaultSimulatorChannelCount);
+            }
+        }
+
+        private void ShowWorldSelectWindow()
+        {
+            if (uiWindowManager == null)
+            {
+                return;
+            }
+
+            uiWindowManager.HideWindow(MapSimulatorWindowNames.ChannelSelect);
+            uiWindowManager.HideWindow(MapSimulatorWindowNames.ChannelShift);
+
+            if (uiWindowManager.GetWindow(MapSimulatorWindowNames.WorldSelect) is WorldSelectWindow worldSelectWindow)
+            {
+                worldSelectWindow.SetCurrentWorld(_simulatorWorldId);
+                worldSelectWindow.Show();
+                uiWindowManager.BringToFront(worldSelectWindow);
+                return;
+            }
+
+            uiWindowManager.ShowWindow(MapSimulatorWindowNames.WorldSelect);
+        }
+
+        private void HandleWorldSelected(int worldId)
+        {
+            if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.ChannelSelect) is not ChannelSelectWindow channelSelectWindow)
+            {
+                return;
+            }
+
+            channelSelectWindow.Configure(worldId, _simulatorWorldId, _simulatorChannelIndex, DefaultSimulatorChannelCount);
+            channelSelectWindow.Show();
+            uiWindowManager.BringToFront(channelSelectWindow);
+        }
+
+        private void HandleChannelChangeRequested(int worldId, int channelIndex)
+        {
+            _simulatorWorldId = Math.Max(0, worldId);
+            _simulatorChannelIndex = Math.Max(0, channelIndex);
+
+            uiWindowManager?.HideWindow(MapSimulatorWindowNames.WorldSelect);
+            uiWindowManager?.HideWindow(MapSimulatorWindowNames.ChannelSelect);
+
+            if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.ChannelShift) is ChannelShiftWindow channelShiftWindow)
+            {
+                channelShiftWindow.BeginShift(_simulatorWorldId, _simulatorChannelIndex);
+                uiWindowManager.BringToFront(channelShiftWindow);
+            }
+            else
+            {
+                uiWindowManager?.ShowWindow(MapSimulatorWindowNames.ChannelShift);
+            }
+
+            _chat?.AddMessage(
+                $"Changed to world {_simulatorWorldId}, channel {_simulatorChannelIndex + 1}.",
+                new Color(255, 228, 151),
+                Environment.TickCount);
         }
 
 
@@ -498,7 +906,10 @@ namespace HaCreator.MapSimulator
                 () => _mobPool?.ActivePuppets,
                 (puppet, _, __, currentTick) =>
                 {
-                    if (puppet != null)
+                    bool consumedSummon = puppet != null
+                        && (_playerManager?.Skills?.TryConsumeSummonByObjectId(puppet.ObjectId) ?? false);
+
+                    if (puppet != null && !consumedSummon)
                     {
                         puppet.IsActive = false;
                     }
@@ -905,7 +1316,9 @@ namespace HaCreator.MapSimulator
 
             // Set fonts on UI windows after all tasks complete
             uiWindowManager?.SetFonts(_fontChat);
+            WireQuestLogWindowData();
             WireProgressionUtilityWindowLaunchers();
+            RefreshMapTransferWindow();
             LoadNpcQuestAlertIcons(uiWindow1Image, uiWindow2Image);
 
             // Initialize mob foothold references after all mobs are loaded
@@ -1100,10 +1513,28 @@ namespace HaCreator.MapSimulator
                 uiWindowManager.AbilityWindow.CharacterBuild = _playerManager.Player.Build;
                 uiWindowManager.AbilityWindow.SetFont(_fontDebugValues);
             }
+            if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.CharacterInfo) != null && _playerManager?.Player?.Build != null)
+            {
+                UIWindowBase characterInfoWindow = uiWindowManager.GetWindow(MapSimulatorWindowNames.CharacterInfo);
+                characterInfoWindow.CharacterBuild = _playerManager.Player.Build;
+                characterInfoWindow.SetFont(_fontDebugValues);
+            }
             if (uiWindowManager?.EquipWindow != null && _playerManager?.Player?.Build != null)
             {
                 uiWindowManager.EquipWindow.CharacterBuild = _playerManager.Player.Build;
                 uiWindowManager.EquipWindow.SetFont(_fontChat);
+                if (uiWindowManager.EquipWindow is EquipUIBigBang equipBigBang)
+                {
+                    equipBigBang.SetPetController(_playerManager.Pets);
+                }
+            }
+            if (uiWindowManager?.SkillWindow != null)
+            {
+                uiWindowManager.SkillWindow.SetFont(_fontChat);
+            }
+            if (uiWindowManager?.SkillWindow != null)
+            {
+                uiWindowManager.SkillWindow.SetFont(_fontChat);
             }
 
             // Start fade-in effect on initial map load (matching CField::Init behavior)
@@ -1328,6 +1759,7 @@ namespace HaCreator.MapSimulator
             _activeNpcInteractionNpc = null;
             _activeNpcInteractionNpcId = 0;
             _npcQuestFeedback.Clear();
+            ClearPetIdleSpeechState(resetStandingTimer: true);
             _gameState.ExitDirectionModeImmediate();
             _scriptedDirectionModeOwnerActive = false;
         }
@@ -1581,7 +2013,9 @@ namespace HaCreator.MapSimulator
 
             // Set fonts on UI windows after all tasks complete
             uiWindowManager?.SetFonts(_fontChat);
+            WireQuestLogWindowData();
             WireProgressionUtilityWindowLaunchers();
+            RefreshMapTransferWindow();
             LoadNpcQuestAlertIcons(uiWindow1Image, uiWindow2Image);
 
             // Initialize status bar character stats display after map change
@@ -1610,10 +2044,20 @@ namespace HaCreator.MapSimulator
                 uiWindowManager.AbilityWindow.CharacterBuild = _playerManager.Player.Build;
                 uiWindowManager.AbilityWindow.SetFont(_fontDebugValues);
             }
+            if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.CharacterInfo) != null && _playerManager?.Player?.Build != null)
+            {
+                UIWindowBase characterInfoWindow = uiWindowManager.GetWindow(MapSimulatorWindowNames.CharacterInfo);
+                characterInfoWindow.CharacterBuild = _playerManager.Player.Build;
+                characterInfoWindow.SetFont(_fontDebugValues);
+            }
             if (uiWindowManager?.EquipWindow != null && _playerManager?.Player?.Build != null)
             {
                 uiWindowManager.EquipWindow.CharacterBuild = _playerManager.Player.Build;
                 uiWindowManager.EquipWindow.SetFont(_fontChat);
+                if (uiWindowManager.EquipWindow is EquipUIBigBang equipBigBang)
+                {
+                    equipBigBang.SetPetController(_playerManager.Pets);
+                }
             }
 
             // Reload boss HP bar textures from WZ files (UI.wz/UIWindow.img/MobGage)
@@ -2230,6 +2674,7 @@ namespace HaCreator.MapSimulator
             bool uiWindowsHandledEsc = false;
             if (uiWindowManager != null)
             {
+                RefreshQuestUiState();
                 uiWindowsHandledEsc = uiWindowManager.Update(gameTime, currTickCount, _chat.IsActive, isWindowActive);
             }
 
@@ -2298,6 +2743,7 @@ namespace HaCreator.MapSimulator
             UpdateDirectionModeState(currTickCount);
             UpdateNpcQuestFeedbackState(currTickCount);
             UpdateNpcIdleSpeechState(currTickCount);
+            UpdatePetIdleSpeechState(currTickCount);
 
             // Handle portal UP key interaction (player presses UP near portal)
             if (isWindowActive)
@@ -3384,6 +3830,39 @@ namespace HaCreator.MapSimulator
                 case 200:
                     ApplyMobSummonSkill(mobItem, skill, currentTick);
                     break;
+                default:
+                    ApplyMobStatusSkill(mobItem, skill, currentTick);
+                    break;
+            }
+        }
+
+        private void ApplyMobStatusSkill(MobItem sourceMob, MobSkillEntry skill, int currentTick)
+        {
+            if (sourceMob?.AI == null ||
+                !MobSkillStatusMapper.TryGetDefinition(skill.SkillId, out MobSkillStatusDefinition definition))
+            {
+                return;
+            }
+
+            MobSkillRuntimeData runtimeData = ResolveMobSkillRuntimeData(skill.SkillId, skill.Level);
+            if (runtimeData == null || runtimeData.DurationMs <= 0)
+            {
+                return;
+            }
+
+            int value = MobSkillStatusMapper.ResolveStatusValue(
+                definition.Effect,
+                runtimeData.X,
+                runtimeData.Y,
+                runtimeData.Hp);
+            if (value <= 0)
+            {
+                return;
+            }
+
+            foreach (MobItem targetMob in ResolveMobSkillStatusTargets(sourceMob, definition, runtimeData, currentTick))
+            {
+                targetMob?.AI?.ApplyStatusEffect(definition.Effect, runtimeData.DurationMs, currentTick, value);
             }
         }
 
@@ -3461,6 +3940,82 @@ namespace HaCreator.MapSimulator
 
             float mobHeight = Math.Max(60, mobItem.GetVisualHeight(60));
             return new Vector2(mobItem.CurrentX, mobItem.CurrentY - mobHeight);
+        }
+
+        private IEnumerable<MobItem> ResolveMobSkillStatusTargets(
+            MobItem sourceMob,
+            MobSkillStatusDefinition definition,
+            MobSkillRuntimeData runtimeData,
+            int currentTick)
+        {
+            if (sourceMob == null)
+            {
+                yield break;
+            }
+
+            if (definition.TargetMode == MobSkillStatusTargetMode.Self || _mobPool == null)
+            {
+                yield return sourceMob;
+                yield break;
+            }
+
+            Rectangle area = CreateMobSkillArea(sourceMob, runtimeData);
+            bool yieldedSource = false;
+
+            foreach (MobItem mob in _mobPool.ActiveMobs)
+            {
+                if (mob?.AI == null || mob.AI.IsDead)
+                {
+                    continue;
+                }
+
+                Rectangle hitbox = mob.GetBodyHitbox(currentTick);
+                if (hitbox.IsEmpty || !hitbox.Intersects(area))
+                {
+                    continue;
+                }
+
+                if (ReferenceEquals(mob, sourceMob))
+                {
+                    yieldedSource = true;
+                }
+
+                yield return mob;
+            }
+
+            if (!yieldedSource)
+            {
+                yield return sourceMob;
+            }
+        }
+
+        private static Rectangle CreateMobSkillArea(MobItem sourceMob, MobSkillRuntimeData runtimeData)
+        {
+            if (sourceMob == null)
+            {
+                return Rectangle.Empty;
+            }
+
+            if (runtimeData?.Lt is not Point lt || runtimeData.Rb is not Point rb)
+            {
+                const int defaultHalfWidth = 200;
+                const int defaultHalfHeight = 120;
+                return new Rectangle(
+                    (int)sourceMob.CurrentX - defaultHalfWidth,
+                    (int)sourceMob.CurrentY - defaultHalfHeight,
+                    defaultHalfWidth * 2,
+                    defaultHalfHeight * 2);
+            }
+
+            int left = Math.Min(lt.X, rb.X);
+            int right = Math.Max(lt.X, rb.X);
+            int top = Math.Min(lt.Y, rb.Y);
+            int bottom = Math.Max(lt.Y, rb.Y);
+            return new Rectangle(
+                (int)sourceMob.CurrentX + left,
+                (int)sourceMob.CurrentY + top,
+                Math.Max(1, right - left),
+                Math.Max(1, bottom - top));
         }
 
         private void ApplyMobSummonSkill(MobItem mobItem, MobSkillEntry skill, int currentTick)
@@ -3595,6 +4150,46 @@ namespace HaCreator.MapSimulator
 
             _mobSummonSkillCache[cacheKey] = summonInfo;
             return summonInfo;
+        }
+
+        private MobSkillRuntimeData ResolveMobSkillRuntimeData(int skillId, int level)
+        {
+            var cacheKey = (skillId, level);
+            if (_mobSkillRuntimeCache.TryGetValue(cacheKey, out MobSkillRuntimeData cachedData))
+            {
+                return cachedData;
+            }
+
+            WzImage mobSkillImage = Program.FindImage("Skill", "MobSkill");
+            if (mobSkillImage != null && !mobSkillImage.Parsed)
+            {
+                mobSkillImage.ParseImage();
+            }
+
+            WzSubProperty skillNode = mobSkillImage?[skillId.ToString()] as WzSubProperty;
+            WzSubProperty levelNode = skillNode?["level"] as WzSubProperty;
+            WzSubProperty selectedLevel = levelNode?[level.ToString()] as WzSubProperty ?? levelNode?["1"] as WzSubProperty;
+            if (selectedLevel == null)
+            {
+                return null;
+            }
+
+            WzVectorProperty lt = selectedLevel["lt"] as WzVectorProperty;
+            WzVectorProperty rb = selectedLevel["rb"] as WzVectorProperty;
+            int durationSeconds = MapleLib.WzLib.WzStructure.InfoTool.GetInt(selectedLevel["time"], 0);
+
+            var runtimeData = new MobSkillRuntimeData
+            {
+                X = MapleLib.WzLib.WzStructure.InfoTool.GetInt(selectedLevel["x"], 0),
+                Y = MapleLib.WzLib.WzStructure.InfoTool.GetInt(selectedLevel["y"], 0),
+                Hp = MapleLib.WzLib.WzStructure.InfoTool.GetInt(selectedLevel["hp"], 0),
+                DurationMs = Math.Max(0, durationSeconds) * 1000,
+                Lt = lt != null ? new Point(lt.X.Value, lt.Y.Value) : null,
+                Rb = rb != null ? new Point(rb.X.Value, rb.Y.Value) : null
+            };
+
+            _mobSkillRuntimeCache[cacheKey] = runtimeData;
+            return runtimeData;
         }
 
         private static long GetMobSkillEffectKey(MobItem mobItem, int currentTick)
@@ -3819,7 +4414,7 @@ namespace HaCreator.MapSimulator
         private void ApplyNpcQuestFeedbackAnimation(int currentTickCount)
         {
             if (_npcQuestFeedback.ActiveNpcId == 0 || _npcsArray == null)
-        {
+            {
                 return;
             }
 
@@ -3834,6 +4429,106 @@ namespace HaCreator.MapSimulator
 
             int remainingDurationMs = Math.Max(0, _npcQuestFeedback.ActiveExpiresAt - currentTickCount);
             npc.SetTemporaryAction(AnimationKeys.Speak, remainingDurationMs);
+        }
+
+        private void UpdatePetIdleSpeechState(int currentTickCount)
+        {
+            if (_activePetSpeechRuntimeId != 0 && currentTickCount >= _activePetSpeechExpiresAt)
+            {
+                ClearPetIdleSpeechState(resetStandingTimer: false);
+            }
+
+            if (_playerManager?.Player == null || _playerManager.Pets?.ActivePets == null || _playerManager.Pets.ActivePets.Count == 0)
+            {
+                ClearPetIdleSpeechState(resetStandingTimer: true);
+                return;
+            }
+
+            if (_playerManager.Player.State != PlayerState.Standing ||
+                _npcInteractionOverlay?.IsVisible == true ||
+                _gameState.DirectionModeActive)
+            {
+                ClearPetIdleSpeechState(resetStandingTimer: true);
+                return;
+            }
+
+            if (_petStandingSinceTick < 0)
+            {
+                _petStandingSinceTick = currentTickCount;
+                return;
+            }
+
+            if (currentTickCount - _petStandingSinceTick < PetAutoSpeechIdleThresholdMs ||
+                _activePetSpeechRuntimeId != 0)
+            {
+                return;
+            }
+
+            if (_nextPetIdleSpeechTick == 0)
+            {
+                _nextPetIdleSpeechTick = currentTickCount;
+            }
+
+            if (currentTickCount < _nextPetIdleSpeechTick)
+            {
+                return;
+            }
+
+            PetRuntime pet = SelectPetForIdleSpeech();
+            _nextPetIdleSpeechTick = currentTickCount + PetAutoSpeechIdleCooldownMs;
+            if (pet == null)
+            {
+                return;
+            }
+
+            string speechLine = pet.GetNextIdleAutoSpeechLine();
+            if (string.IsNullOrWhiteSpace(speechLine))
+            {
+                return;
+            }
+
+            _activePetSpeechRuntimeId = pet.RuntimeId;
+            _activePetSpeechText = speechLine.Trim();
+            _activePetSpeechExpiresAt = currentTickCount + PetAutoSpeechBalloonDurationMs;
+        }
+
+        private PetRuntime SelectPetForIdleSpeech()
+        {
+            IReadOnlyList<PetRuntime> activePets = _playerManager?.Pets?.ActivePets;
+            if (activePets == null || activePets.Count == 0)
+            {
+                return null;
+            }
+
+            var eligiblePets = new List<PetRuntime>();
+            for (int i = 0; i < activePets.Count; i++)
+            {
+                PetRuntime pet = activePets[i];
+                if (pet != null && pet.HasIdleAutoSpeech)
+                {
+                    eligiblePets.Add(pet);
+                }
+            }
+
+            if (eligiblePets.Count == 0)
+            {
+                return null;
+            }
+
+            return eligiblePets[_petIdleSpeechRandom.Next(eligiblePets.Count)];
+        }
+
+        private void ClearPetIdleSpeechState(bool resetStandingTimer)
+        {
+            _activePetSpeechRuntimeId = 0;
+            _activePetSpeechText = null;
+            _activePetSpeechExpiresAt = 0;
+
+            if (resetStandingTimer)
+            {
+                _petStandingSinceTick = -1;
+                _nextPetIdleSpeechTick = 0;
+            }
         }
 
         private void LoadNpcQuestAlertIcons(WzImage uiWindow1Image, WzImage uiWindow2Image)
@@ -3870,6 +4565,106 @@ namespace HaCreator.MapSimulator
             }
 
             return iconCanvas.GetLinkedWzCanvasBitmap()?.ToTexture2DAndDispose(GraphicsDevice);
+        }
+
+        private void AddMesoToInventoryWindow(int amount)
+        {
+            if (amount <= 0 || uiWindowManager?.InventoryWindow == null)
+            {
+                return;
+            }
+
+            if (uiWindowManager.InventoryWindow is InventoryUI inventoryWindow)
+            {
+                inventoryWindow.MesoCount += amount;
+            }
+        }
+
+        private void AddItemToInventoryWindow(string itemIdText, int quantity)
+        {
+            if (string.IsNullOrWhiteSpace(itemIdText) ||
+                quantity <= 0 ||
+                uiWindowManager?.InventoryWindow == null ||
+                !int.TryParse(itemIdText, out int itemId))
+            {
+                return;
+            }
+
+            InventoryType inventoryType = ResolveInventoryType(itemId);
+            if (inventoryType == InventoryType.NONE)
+            {
+                return;
+            }
+
+            Texture2D itemTexture = LoadInventoryItemIcon(itemId);
+            InventorySlotData slotData = new InventorySlotData
+            {
+                ItemId = itemId,
+                ItemTexture = itemTexture,
+                Quantity = Math.Max(1, quantity),
+                GradeFrameIndex = inventoryType == InventoryType.EQUIP ? 0 : null
+            };
+
+            if (uiWindowManager.InventoryWindow is InventoryUI inventoryWindow)
+            {
+                inventoryWindow.AddItem(inventoryType, slotData);
+            }
+        }
+
+        private InventoryType ResolveInventoryType(int itemId)
+        {
+            int typeBucket = itemId / 1000000;
+            return typeBucket switch
+            {
+                1 => InventoryType.EQUIP,
+                2 => InventoryType.USE,
+                3 => InventoryType.SETUP,
+                4 => InventoryType.ETC,
+                5 => InventoryType.CASH,
+                _ => InventoryType.NONE
+            };
+        }
+
+        private Texture2D LoadInventoryItemIcon(int itemId)
+        {
+            string itemText = itemId.ToString("D7");
+            (string folder, string imageName) = ResolveItemFolderAndImage(itemId);
+            if (string.IsNullOrEmpty(folder) || string.IsNullOrEmpty(imageName))
+            {
+                return null;
+            }
+
+            if (Program.FindWzObject("Item", folder) is not WzObject directory)
+            {
+                return null;
+            }
+
+            if (directory[imageName] is not WzImage itemImage)
+            {
+                return null;
+            }
+
+            WzSubProperty itemProperty = itemImage[itemText] as WzSubProperty;
+            WzSubProperty infoProperty = itemProperty?["info"] as WzSubProperty;
+            WzCanvasProperty iconCanvas = infoProperty?["iconRaw"] as WzCanvasProperty
+                                          ?? infoProperty?["icon"] as WzCanvasProperty;
+            return iconCanvas?.GetLinkedWzCanvasBitmap()?.ToTexture2DAndDispose(GraphicsDevice);
+        }
+
+        private (string folder, string imageName) ResolveItemFolderAndImage(int itemId)
+        {
+            int group = itemId / 10000;
+            int typeBucket = itemId / 1000000;
+
+            return typeBucket switch
+            {
+                1 => (null, null),
+                2 => ("Consume", $"{group:D4}.img"),
+                3 => ("Install", $"{group:D4}.img"),
+                4 => ("Etc", $"{group:D4}.img"),
+                5 => ("Cash", $"{group:D4}.img"),
+                _ => (null, null)
+            };
         }
 
         private void DrawNpcQuestAlerts(in Managers.RenderContext renderContext)
@@ -3959,6 +4754,51 @@ namespace HaCreator.MapSimulator
             _spriteBatch.Draw(_debugBoundaryTexture, new Rectangle(boxX, boxY, 2, boxHeight), borderColor);
             _spriteBatch.Draw(_debugBoundaryTexture, new Rectangle(boxX + boxWidth - 2, boxY, 2, boxHeight), borderColor);
             _spriteBatch.DrawString(_fontChat, _npcQuestFeedback.ActiveText, new Vector2(boxX + 9, boxY + 6), textColor);
+        }
+
+        private void DrawPetIdleSpeechFeedback(in Managers.RenderContext renderContext)
+        {
+            if (_activePetSpeechRuntimeId == 0 ||
+                string.IsNullOrWhiteSpace(_activePetSpeechText) ||
+                _fontChat == null ||
+                _debugBoundaryTexture == null)
+            {
+                return;
+            }
+
+            PetRuntime pet = _playerManager?.Pets?.ActivePets?.FirstOrDefault(candidate => candidate?.RuntimeId == _activePetSpeechRuntimeId);
+            if (pet == null)
+            {
+                return;
+            }
+
+            IDXObject currentFrame = pet.GetCurrentFrame();
+            int petTop = (int)pet.Y - (currentFrame?.Height ?? 40);
+            Vector2 textSize = _fontChat.MeasureString(_activePetSpeechText);
+            int boxWidth = (int)Math.Ceiling(textSize.X) + 18;
+            int boxHeight = (int)Math.Ceiling(textSize.Y) + 12;
+            int boxX = (int)pet.X - renderContext.MapShiftX + renderContext.MapCenterX - (boxWidth / 2);
+            int boxY = petTop - renderContext.MapShiftY + renderContext.MapCenterY - boxHeight - 24;
+
+            if (boxX + boxWidth < 0 ||
+                boxY + boxHeight < 0 ||
+                boxX > renderContext.RenderParams.RenderWidth ||
+                boxY > renderContext.RenderParams.RenderHeight)
+            {
+                return;
+            }
+
+            float remainingAlpha = MathHelper.Clamp((_activePetSpeechExpiresAt - renderContext.TickCount) / 400f, 0f, 1f);
+            Color backgroundColor = new Color(30, 31, 45) * (0.88f * remainingAlpha);
+            Color borderColor = new Color(176, 223, 255) * remainingAlpha;
+            Color textColor = new Color(242, 249, 255) * remainingAlpha;
+
+            _spriteBatch.Draw(_debugBoundaryTexture, new Rectangle(boxX, boxY, boxWidth, boxHeight), backgroundColor);
+            _spriteBatch.Draw(_debugBoundaryTexture, new Rectangle(boxX, boxY, boxWidth, 2), borderColor);
+            _spriteBatch.Draw(_debugBoundaryTexture, new Rectangle(boxX, boxY + boxHeight - 2, boxWidth, 2), borderColor);
+            _spriteBatch.Draw(_debugBoundaryTexture, new Rectangle(boxX, boxY, 2, boxHeight), borderColor);
+            _spriteBatch.Draw(_debugBoundaryTexture, new Rectangle(boxX + boxWidth - 2, boxY, 2, boxHeight), borderColor);
+            _spriteBatch.DrawString(_fontChat, _activePetSpeechText, new Vector2(boxX + 9, boxY + 6), textColor);
         }
 
         private Texture2D GetNpcQuestAlertTexture(NpcInteractionEntryKind? alertKind)
@@ -4245,6 +5085,19 @@ namespace HaCreator.MapSimulator
             }
 
             return touchedReactors.Select(t => t.reactor).ToList();
+        }
+
+        private void TriggerAttackReactors(Rectangle worldHitbox, int currentTick, int skillId, int damage)
+        {
+            if (_reactorPool == null || worldHitbox.Width <= 0 || worldHitbox.Height <= 0)
+                return;
+
+            _reactorPool.TriggerSkillReactorsInBounds(
+                worldHitbox,
+                playerId: 0,
+                currentTick: currentTick,
+                skillId: skillId,
+                damage: damage);
         }
 
         private void UpdateReactorRuntime(int currentTick, float deltaSeconds)
@@ -4759,7 +5612,8 @@ namespace HaCreator.MapSimulator
 
         private void UpdateDirectionModeState(int currentTime)
         {
-            bool scriptedOwnerActive = _npcInteractionOverlay?.IsVisible == true;
+            bool scriptedOwnerActive = (_npcInteractionOverlay?.IsVisible == true)
+                || _specialFieldRuntime.HasBlockingScriptedSequence;
 
             if (scriptedOwnerActive)
             {
@@ -4824,6 +5678,7 @@ namespace HaCreator.MapSimulator
             _npcsArray = mapObjects_NPCs.Count > 0
                 ? mapObjects_NPCs.Cast<NpcItem>().ToArray()
                 : Array.Empty<NpcItem>();
+            miniMapUi?.SetNpcMarkers(_npcsArray);
 
             // Convert Mobs
             _mobsArray = mapObjects_Mobs.Count > 0
@@ -4857,11 +5712,13 @@ namespace HaCreator.MapSimulator
                 if (drop.Type == Pools.DropType.Meso)
                 {
                     _pickupNoticeUI.AddMesoPickup(drop.MesoAmount, currentTime);
+                    AddMesoToInventoryWindow(drop.MesoAmount);
                 }
                 else if (drop.Type == Pools.DropType.Item || drop.Type == Pools.DropType.InstallItem)
                 {
                     string itemName = !string.IsNullOrEmpty(drop.ItemId) ? $"Item #{drop.ItemId}" : "Unknown Item";
                     _pickupNoticeUI.AddItemPickup(itemName, drop.Quantity, currentTime);
+                    AddItemToInventoryWindow(drop.ItemId, drop.Quantity);
                 }
                 else if (drop.Type == Pools.DropType.QuestItem)
                 {
@@ -5061,6 +5918,23 @@ namespace HaCreator.MapSimulator
             return _fieldEffects.TryIsObstacleOn(tag, out bool isOn) ? isOn : null;
         }
 
+        public bool SetDynamicObjectTagState(string tag, bool? isEnabled, int transitionTimeMs = 0, int? currentTimeMs = null)
+        {
+            if (string.IsNullOrWhiteSpace(tag))
+            {
+                return false;
+            }
+
+            int resolvedCurrentTime = currentTimeMs ?? Environment.TickCount;
+            if (isEnabled.HasValue)
+            {
+                _fieldEffects.OnFieldObstacleOnOff(tag, isEnabled.Value, Math.Max(0, transitionTimeMs), resolvedCurrentTime);
+                return true;
+            }
+
+            return _fieldEffects.ClearObstacleState(tag);
+        }
+
         private static string[] ParseObjectTags(string tags)
         {
             if (string.IsNullOrWhiteSpace(tags))
@@ -5247,6 +6121,7 @@ namespace HaCreator.MapSimulator
             _playerManager.SetCombatEffects(_combatEffects);
             _playerManager.SetSoundManager(_soundManager);
             _playerManager.SetCurrentMapIdProvider(() => _mapBoard?.MapInfo?.id ?? -1);
+            _playerManager.SetReactorAttackAreaHandler(TriggerAttackReactors);
 
             // Set up sound callbacks
             _playerManager.SetJumpSoundCallback(PlayJumpSE);
@@ -5554,6 +6429,12 @@ namespace HaCreator.MapSimulator
                 uiWindowManager.QuickSlotWindow.SetSkillLoader(_playerManager.SkillLoader);
             }
 
+            if (uiWindowManager.SkillWindow is SkillUI skillWindowClassic)
+            {
+                skillWindowClassic.SetSkillManager(_playerManager.Skills);
+                return;
+            }
+
             if (uiWindowManager.SkillWindow is not SkillUIBigBang skillWindow)
                 return;
 
@@ -5578,6 +6459,179 @@ namespace HaCreator.MapSimulator
             }
 
             skillWindow.RecalculateSkillPointsFromCurrentLevels();
+        }
+
+        private void ConfigureQuestUiBindings()
+        {
+            if (uiWindowManager == null || _questUiBindingsConfigured)
+            {
+                return;
+            }
+
+            if (uiWindowManager.QuestWindow is QuestUI questWindow)
+            {
+                questWindow.SetFont(_fontChat);
+                questWindow.SetQuestLogProvider((tab, showAllLevels) =>
+                    _questRuntime.BuildQuestLogSnapshot(tab, _playerManager?.Player?.Build, showAllLevels));
+                questWindow.QuestDetailRequested += OpenQuestDetailWindow;
+            }
+
+            if (uiWindowManager.QuestDetailWindow != null)
+            {
+                uiWindowManager.QuestDetailWindow.SetFont(_fontChat);
+                uiWindowManager.QuestDetailWindow.PreviousRequested += () => NavigateQuestDetail(-1);
+                uiWindowManager.QuestDetailWindow.NextRequested += () => NavigateQuestDetail(1);
+                uiWindowManager.QuestDetailWindow.ActionRequested += HandleQuestDetailAction;
+            }
+
+            _questUiBindingsConfigured = true;
+        }
+
+        private void RefreshQuestUiState()
+        {
+            if (_activeQuestDetailQuestId != 0 && uiWindowManager.QuestDetailWindow?.IsVisible == true)
+            {
+                UpdateQuestDetailWindow();
+            }
+        }
+
+        private void OpenQuestDetailWindow(int questId)
+        {
+            if (questId <= 0 || uiWindowManager?.QuestDetailWindow == null)
+            {
+                return;
+            }
+
+            _activeQuestDetailQuestId = questId;
+            UpdateQuestDetailWindow();
+            uiWindowManager.QuestDetailWindow.Show();
+            uiWindowManager.BringToFront(uiWindowManager.QuestDetailWindow);
+        }
+
+        private void UpdateQuestDetailWindow()
+        {
+            if (_activeQuestDetailQuestId <= 0 || uiWindowManager?.QuestDetailWindow == null)
+            {
+                return;
+            }
+
+            IReadOnlyList<int> questIds = GetVisibleQuestIdsForCurrentTab();
+            if (questIds.Count == 0)
+            {
+                uiWindowManager.QuestDetailWindow.SetDetailState(null, -1, 0);
+                return;
+            }
+
+            int navigationIndex = -1;
+            for (int i = 0; i < questIds.Count; i++)
+            {
+                if (questIds[i] == _activeQuestDetailQuestId)
+                {
+                    navigationIndex = i;
+                    break;
+                }
+            }
+
+            if (navigationIndex < 0)
+            {
+                _activeQuestDetailQuestId = questIds[0];
+                navigationIndex = 0;
+                SelectQuestInActiveWindow(_activeQuestDetailQuestId);
+            }
+
+            QuestWindowDetailState state = _questRuntime.GetQuestWindowDetailState(_activeQuestDetailQuestId, _playerManager?.Player?.Build);
+            uiWindowManager.QuestDetailWindow.SetDetailState(state, navigationIndex, questIds.Count);
+        }
+
+        private IReadOnlyList<int> GetVisibleQuestIdsForCurrentTab()
+        {
+            return uiWindowManager?.QuestWindow is QuestUI questWindow
+                ? questWindow.GetCurrentTabQuestIds()
+                : Array.Empty<int>();
+        }
+
+        private void SelectQuestInActiveWindow(int questId)
+        {
+            if (uiWindowManager?.QuestWindow is QuestUI questWindow)
+            {
+                questWindow.SelectQuestById(questId);
+            }
+        }
+
+        private void NavigateQuestDetail(int direction)
+        {
+            IReadOnlyList<int> questIds = GetVisibleQuestIdsForCurrentTab();
+            if (questIds.Count <= 1)
+            {
+                return;
+            }
+
+            int currentIndex = -1;
+            for (int i = 0; i < questIds.Count; i++)
+            {
+                if (questIds[i] == _activeQuestDetailQuestId)
+                {
+                    currentIndex = i;
+                    break;
+                }
+            }
+            if (currentIndex < 0)
+            {
+                currentIndex = 0;
+            }
+
+            int nextIndex = Math.Max(0, Math.Min(questIds.Count - 1, currentIndex + direction));
+            if (nextIndex == currentIndex)
+            {
+                return;
+            }
+
+            _activeQuestDetailQuestId = questIds[nextIndex];
+            SelectQuestInActiveWindow(_activeQuestDetailQuestId);
+            UpdateQuestDetailWindow();
+        }
+
+        private void HandleQuestDetailAction(QuestWindowActionKind action)
+        {
+            if (_activeQuestDetailQuestId <= 0)
+            {
+                return;
+            }
+
+            QuestWindowActionResult result = action switch
+            {
+                QuestWindowActionKind.Accept => _questRuntime.TryAcceptFromQuestWindow(_activeQuestDetailQuestId, _playerManager?.Player?.Build),
+                QuestWindowActionKind.GiveUp => _questRuntime.TryGiveUpFromQuestWindow(_activeQuestDetailQuestId),
+                QuestWindowActionKind.Complete => new QuestWindowActionResult
+                {
+                    QuestId = _activeQuestDetailQuestId,
+                    Messages = new[] { "Return to the completion NPC to turn in this quest." }
+                },
+                QuestWindowActionKind.Track => new QuestWindowActionResult
+                {
+                    QuestId = _activeQuestDetailQuestId,
+                    Messages = new[] { "Quest tracking surface is not implemented yet; use the detail summary and NPC hint for now." }
+                },
+                _ => null
+            };
+
+            if (result?.Messages != null)
+            {
+                for (int i = 0; i < result.Messages.Count; i++)
+                {
+                    if (!string.IsNullOrWhiteSpace(result.Messages[i]))
+                    {
+                        _chat.AddMessage(result.Messages[i], new Color(255, 228, 151), currTickCount);
+                    }
+                }
+            }
+
+            if (result?.StateChanged == true)
+            {
+                RefreshQuestUiState();
+                SelectQuestInActiveWindow(_activeQuestDetailQuestId);
+                UpdateQuestDetailWindow();
+            }
         }
 
         private bool TryHandleSkillUiLevelUp(SkillDisplayData skill)
@@ -5642,6 +6696,8 @@ namespace HaCreator.MapSimulator
         private void InitializeFieldRuleRuntime(int currentTime)
         {
             _fieldRuleRuntime = new FieldRuleRuntime(_mapBoard?.MapInfo);
+            ApplyAmbientFieldWeather(currentTime);
+
             if (_fieldRuleRuntime == null || !_fieldRuleRuntime.IsActive)
             {
                 _fieldRuleRuntime = null;
@@ -5710,14 +6766,38 @@ namespace HaCreator.MapSimulator
 
         private bool QueueFieldTransfer(int targetMapId)
         {
-            if (targetMapId <= 0 || targetMapId == MapConstants.MaxMap || _gameState.PendingMapChange)
-                return false;
+            return QueueMapTransfer(targetMapId, null);
+        }
 
-            _playerManager?.ForceStand();
-            _gameState.PendingMapChange = true;
-            _gameState.PendingMapId = targetMapId;
-            _gameState.PendingPortalName = null;
-            return true;
+        private void ApplyAmbientFieldWeather(int currentTime)
+        {
+            WeatherType ambientWeather = FieldEnvironmentEffectEvaluator.ResolveAmbientWeather(_mapBoard?.MapInfo);
+            ToggleWeather(ambientWeather);
+
+            if (ambientWeather == WeatherType.None)
+            {
+                _fieldEffects.StopWeather();
+                return;
+            }
+
+            _fieldEffects.OnBlowWeather(
+                ConvertToFieldWeatherEffect(ambientWeather),
+                null,
+                null,
+                1f,
+                -1,
+                currentTime);
+        }
+
+        private static WeatherEffectType ConvertToFieldWeatherEffect(WeatherType weather)
+        {
+            return weather switch
+            {
+                WeatherType.Rain => WeatherEffectType.Rain,
+                WeatherType.Snow => WeatherEffectType.Snow,
+                WeatherType.Leaves => WeatherEffectType.Leaves,
+                _ => WeatherEffectType.None
+            };
         }
 
         private bool TryResolveMysticDoorReturnTarget(out int returnMapId, out float returnX, out float returnY)
@@ -5842,6 +6922,7 @@ namespace HaCreator.MapSimulator
                     IconTexture = buffEntry.IconTexture,
                     RemainingMs = buffEntry.RemainingMs,
                     DurationMs = buffEntry.DurationMs,
+                    SortOrder = buffEntry.SortOrder,
                     TemporaryStatLabels = buffEntry.TemporaryStatLabels,
                     TemporaryStatDisplayNames = buffEntry.TemporaryStatDisplayNames
                 });
@@ -6015,6 +7096,7 @@ namespace HaCreator.MapSimulator
             _renderingManager.DrawNpcs(in renderContext); // NPCs - rendered on top
             DrawNpcQuestAlerts(in renderContext);
             DrawNpcQuestFeedback(in renderContext);
+            DrawPetIdleSpeechFeedback(in renderContext);
             _renderingManager.DrawTransportation(in renderContext); // ship/balrog
             _renderingManager.DrawBackgrounds(in renderContext, true); // front background
             _specialFieldRuntime.Draw(
@@ -6674,10 +7756,10 @@ namespace HaCreator.MapSimulator
                         return ChatCommandHandler.CommandResult.Error("Map loading not available");
                     }
 
-                    // Trigger map change
-                    _gameState.PendingMapChange = true;
-                    _gameState.PendingMapId = mapId;
-                    _gameState.PendingPortalName = null;
+                    if (!QueueMapTransfer(mapId, null))
+                    {
+                        return ChatCommandHandler.CommandResult.Error($"Unable to queue map change to {mapId}.");
+                    }
 
                     return ChatCommandHandler.CommandResult.Ok($"Loading map {mapId}...");
                 });
@@ -6825,6 +7907,55 @@ namespace HaCreator.MapSimulator
                     }
 
                     return ChatCommandHandler.CommandResult.Ok(message);
+                });
+
+            _chat.CommandHandler.RegisterCommand(
+                "objtag",
+                "Publish or clear a dynamic object-tag state",
+                "/objtag <tag> <on|off|clear> [transitionMs]",
+                args =>
+                {
+                    if (args.Length < 2)
+                    {
+                        return ChatCommandHandler.CommandResult.Error("Usage: /objtag <tag> <on|off|clear> [transitionMs]");
+                    }
+
+                    string tag = args[0];
+                    if (string.IsNullOrWhiteSpace(tag))
+                    {
+                        return ChatCommandHandler.CommandResult.Error("Tag must not be empty");
+                    }
+
+                    string action = args[1];
+                    bool? isEnabled = action.ToLowerInvariant() switch
+                    {
+                        "on" => true,
+                        "off" => false,
+                        "clear" => null,
+                        _ => null
+                    };
+
+                    if (!string.Equals(action, "on", StringComparison.OrdinalIgnoreCase) &&
+                        !string.Equals(action, "off", StringComparison.OrdinalIgnoreCase) &&
+                        !string.Equals(action, "clear", StringComparison.OrdinalIgnoreCase))
+                    {
+                        return ChatCommandHandler.CommandResult.Error("State must be one of: on, off, clear");
+                    }
+
+                    int transitionMs = 0;
+                    if (args.Length >= 3 && !int.TryParse(args[2], out transitionMs))
+                    {
+                        return ChatCommandHandler.CommandResult.Error("transitionMs must be an integer");
+                    }
+
+                    bool changed = SetDynamicObjectTagState(tag, isEnabled, transitionMs, currTickCount);
+                    if (!changed)
+                    {
+                        return ChatCommandHandler.CommandResult.Error($"No published state existed for object tag '{tag}'.");
+                    }
+
+                    string stateLabel = isEnabled.HasValue ? (isEnabled.Value ? "ON" : "OFF") : "CLEARED";
+                    return ChatCommandHandler.CommandResult.Ok($"Object tag '{tag}' set to {stateLabel}");
                 });
         }
 

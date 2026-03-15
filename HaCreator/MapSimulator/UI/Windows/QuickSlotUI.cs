@@ -332,7 +332,7 @@ namespace HaCreator.MapSimulator.UI
             RenderParameters renderParameters,
             int TickCount)
         {
-            DrawHoveredSkillTooltip(sprite, renderParameters.RenderWidth, renderParameters.RenderHeight);
+            DrawHoveredSkillTooltip(sprite, renderParameters.RenderWidth, renderParameters.RenderHeight, TickCount);
         }
 
         private IDXObject GetSkillIcon(int skillId)
@@ -357,7 +357,7 @@ namespace HaCreator.MapSimulator.UI
             sprite.DrawString(_font, text, position, color, 0f, Vector2.Zero, scale, SpriteEffects.None, 0f);
         }
 
-        private void DrawHoveredSkillTooltip(SpriteBatch sprite, int renderWidth, int renderHeight)
+        private void DrawHoveredSkillTooltip(SpriteBatch sprite, int renderWidth, int renderHeight, int currentTime)
         {
             if (_font == null || _isDragging || _hoveredSlot < 0)
                 return;
@@ -375,9 +375,7 @@ namespace HaCreator.MapSimulator.UI
             string title = SanitizeFontText(skill.Name);
             string description = SanitizeFontText(skill.Description);
             string levelLine = $"Level: {level}";
-            string costLine = levelData != null
-                ? $"MP {levelData.MpCon}  Cooldown {Math.Max(0, levelData.Cooldown) / 1000f:0.#}s"
-                : string.Empty;
+            string costLine = GetTooltipCostLine(skillId, levelData, currentTime);
 
             int tooltipWidth = ResolveTooltipWidth();
             int textLeftOffset = TOOLTIP_PADDING + SLOT_SIZE + TOOLTIP_ICON_GAP;
@@ -485,6 +483,29 @@ namespace HaCreator.MapSimulator.UI
             frameIndex = Math.Clamp((14 * elapsedSeconds) / totalSeconds, 0, 14);
             remainingText = Math.Max(1, (int)Math.Ceiling(remainingMs / 1000f)).ToString();
             return true;
+        }
+
+        private string GetTooltipCostLine(int skillId, SkillLevelData levelData, int currentTime)
+        {
+            if (levelData == null)
+                return string.Empty;
+
+            string cooldownText;
+            if (_skillManager == null || !_skillManager.IsOnCooldown(skillId, currentTime))
+            {
+                cooldownText = levelData.Cooldown > 0
+                    ? $"{Math.Max(0, levelData.Cooldown) / 1000f:0.#}s"
+                    : "Ready";
+            }
+            else
+            {
+                int remainingMs = Math.Max(0, _skillManager.GetCooldownRemaining(skillId, currentTime));
+                cooldownText = remainingMs > 0
+                    ? $"{Math.Max(1, (int)Math.Ceiling(remainingMs / 1000f))}s remaining"
+                    : "Ready";
+            }
+
+            return $"MP {levelData.MpCon}  Cooldown {cooldownText}";
         }
 
         private void DrawCooldownMask(SpriteBatch sprite, int slotX, int slotY, int frameIndex)

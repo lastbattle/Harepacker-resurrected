@@ -543,7 +543,7 @@ namespace HaCreator.MapSimulator.Loaders
                     chatUI.InitializeButtons();
                     chatUI.SetChatEnterTexture(LoadCanvasTexture(mainBarProperties?["chatEnter"] as WzCanvasProperty, device));
                     chatUI.SetChatTargetTextures(LoadChatTargetTextures(subProperty_chatTarget, device));
-                    chatUI.BindControls(obj_Ui_chatTarget, obj_Ui_chatOpen, obj_Ui_scrollUp, obj_Ui_scrollDown);
+                    chatUI.BindControls(obj_Ui_chatTarget, obj_Ui_chatOpen, obj_Ui_scrollUp, obj_Ui_scrollDown, obj_Ui_BtCharacter);
 
                     return new Tuple<StatusBarUI, StatusBarChatUI>(statusBar, chatUI);
                 }
@@ -814,16 +814,7 @@ namespace HaCreator.MapSimulator.Loaders
                 return buffIconTextures;
             }
 
-            TryAddBuffIcon(buffIconTextures, uiBuffIcon, device, "united/buff/0");
-            TryAddBuffIcon(buffIconTextures, uiBuffIcon, device, "buff/incPAD/0");
-            TryAddBuffIcon(buffIconTextures, uiBuffIcon, device, "buff/incPDD/0");
-            TryAddBuffIcon(buffIconTextures, uiBuffIcon, device, "buff/incMAD/0");
-            TryAddBuffIcon(buffIconTextures, uiBuffIcon, device, "buff/incMDD/0");
-            TryAddBuffIcon(buffIconTextures, uiBuffIcon, device, "buff/incACC/0");
-            TryAddBuffIcon(buffIconTextures, uiBuffIcon, device, "buff/incEVA/0");
-            TryAddBuffIcon(buffIconTextures, uiBuffIcon, device, "buff/incSpeed/0");
-            TryAddBuffIcon(buffIconTextures, uiBuffIcon, device, "buff/incJump/0");
-
+            LoadBuffIconsRecursive(buffIconTextures, uiBuffIcon, device, string.Empty);
             return buffIconTextures;
         }
 
@@ -966,26 +957,66 @@ namespace HaCreator.MapSimulator.Loaders
             }
         }
 
-        private static void TryAddBuffIcon(Dictionary<string, Texture2D> buffIconTextures, WzImage uiBuffIcon,
-            GraphicsDevice device, string path)
+        private static void LoadBuffIconsRecursive(
+            Dictionary<string, Texture2D> buffIconTextures,
+            WzObject currentNode,
+            GraphicsDevice device,
+            string currentPath)
         {
-            if (buffIconTextures.ContainsKey(path))
+            if (currentNode == null || device == null)
             {
                 return;
             }
 
-            if (!(uiBuffIcon[path] is WzCanvasProperty iconCanvas))
+            if (currentNode is WzCanvasProperty iconCanvas)
+            {
+                if (!string.Equals(currentNode.Name, "0", StringComparison.OrdinalIgnoreCase))
+                {
+                    return;
+                }
+
+                string normalizedPath = NormalizeBuffIconKey(currentPath);
+                if (string.IsNullOrWhiteSpace(normalizedPath) || buffIconTextures.ContainsKey(normalizedPath))
+                {
+                    return;
+                }
+
+                var bitmap = iconCanvas.GetLinkedWzCanvasBitmap();
+                if (bitmap == null)
+                {
+                    return;
+                }
+
+                Texture2D texture = bitmap.ToTexture2DAndDispose(device);
+                buffIconTextures[normalizedPath] = texture;
+                buffIconTextures[$"{normalizedPath}/0"] = texture;
+                return;
+            }
+
+            if (!(currentNode is IPropertyContainer container))
             {
                 return;
             }
 
-            var bitmap = iconCanvas.GetLinkedWzCanvasBitmap();
-            if (bitmap == null)
+            foreach (WzImageProperty child in container.WzProperties)
             {
-                return;
+                string childPath = string.IsNullOrWhiteSpace(currentPath)
+                    ? child.Name
+                    : $"{currentPath}/{child.Name}";
+                LoadBuffIconsRecursive(buffIconTextures, child, device, childPath);
+            }
+        }
+
+        private static string NormalizeBuffIconKey(string path)
+        {
+            if (string.IsNullOrWhiteSpace(path))
+            {
+                return string.Empty;
             }
 
-            buffIconTextures[path] = bitmap.ToTexture2DAndDispose(device);
+            return path.EndsWith("/0", StringComparison.OrdinalIgnoreCase)
+                ? path.Substring(0, path.Length - 2)
+                : path;
         }
 
         private static Texture2D LoadCanvasTexture(WzCanvasProperty canvas, GraphicsDevice device)
@@ -1154,16 +1185,118 @@ namespace HaCreator.MapSimulator.Loaders
             HaUISize fullMiniMapStackPanelSize = fullMiniMapStackPanel.GetSize();
             int alignmentXOffset = HaUIHelper.CalculateAlignmentOffset(fullMiniMapStackPanelSize.Width, minimapUiImage.GetInfo().Bitmap.Width, minimapUiGrid.GetInfo().HorizontalAlignment);
 
+            Point minimapImageOffset = new Point(MAP_IMAGE_TEXT_PADDING + alignmentXOffset, 0);
+            BaseDXDrawableItem npcMarker = null;
+            BaseDXDrawableItem npcListPanel = null;
+
+            WzCanvasProperty iconNpcCanvas = bBigBang ? (WzCanvasProperty)minimapFrameProperty["iconNpc"]?["0"] : null;
+            if (iconNpcCanvas != null)
+            {
+                System.Drawing.Bitmap npcMarkerBitmap = iconNpcCanvas.GetLinkedWzCanvasBitmap();
+                if (npcMarkerBitmap != null)
+                {
+                    IDXObject dxObjNpcMarker = new DXObject(iconNpcCanvas.GetCanvasOriginPosition(), npcMarkerBitmap.ToTexture2DAndDispose(device), 0);
+                    npcMarker = new BaseDXDrawableItem(dxObjNpcMarker, false)
+                    {
+                        Position = minimapImageOffset
+                    };
+                }
+            }
+
+            if (bBigBang)
+            {
+                WzSubProperty listNpcProperty = (WzSubProperty)minimapFrameProperty["ListNpc"];
+                if (listNpcProperty != null)
+                {
+                    var npcRows = new List<string>();
+                    var seenNpcNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                    foreach (var npc in mapBoard.BoardItems.NPCs)
+                    {
+                        string npcName = npc?.NpcInfo?.StringName;
+                        if (string.IsNullOrWhiteSpace(npcName) || !seenNpcNames.Add(npcName))
+                            continue;
+
+                        npcRows.Add(npcName.Trim());
+                    }
+
+                    if (npcRows.Count > 0)
+                    {
+                        HaUIStackPanel npcListContent = new HaUIStackPanel(HaUIStackOrientation.Vertical, new HaUIInfo()
+                        {
+                            MinWidth = 150,
+                            Margins = new HaUIMargin() { Left = 6, Top = 6, Right = 6, Bottom = 6 }
+                        });
+
+                        foreach (string npcName in npcRows)
+                        {
+                            HaUIStackPanel npcRow = new HaUIStackPanel(HaUIStackOrientation.Horizontal, new HaUIInfo()
+                            {
+                                Margins = new HaUIMargin() { Left = 4, Top = 2, Right = 4, Bottom = 2 }
+                            });
+
+                            if (iconNpcCanvas != null)
+                            {
+                                System.Drawing.Bitmap npcIconBitmap = iconNpcCanvas.GetLinkedWzCanvasBitmap();
+                                if (npcIconBitmap != null)
+                                {
+                                    npcRow.AddRenderable(new HaUIImage(new HaUIInfo()
+                                    {
+                                        Bitmap = npcIconBitmap,
+                                        Margins = new HaUIMargin() { Right = 4 }
+                                    }));
+                                }
+                            }
+
+                            npcRow.AddRenderable(new HaUIText(npcName, color_foreGround, GLOBAL_FONT, MINIMAP_STREETNAME_TOOLTIP_FONTSIZE, UserScreenScaleFactor));
+                            npcListContent.AddRenderable(npcRow);
+                        }
+
+                        System.Drawing.Bitmap listC = ((WzCanvasProperty)listNpcProperty["c"])?.GetLinkedWzCanvasBitmap();
+                        System.Drawing.Bitmap listE = ((WzCanvasProperty)listNpcProperty["e"])?.GetLinkedWzCanvasBitmap();
+                        System.Drawing.Bitmap listN = ((WzCanvasProperty)listNpcProperty["n"])?.GetLinkedWzCanvasBitmap();
+                        System.Drawing.Bitmap listS = ((WzCanvasProperty)listNpcProperty["s"])?.GetLinkedWzCanvasBitmap();
+                        System.Drawing.Bitmap listW = ((WzCanvasProperty)listNpcProperty["w"])?.GetLinkedWzCanvasBitmap();
+                        System.Drawing.Bitmap listNe = ((WzCanvasProperty)listNpcProperty["ne"])?.GetLinkedWzCanvasBitmap();
+                        System.Drawing.Bitmap listNw = ((WzCanvasProperty)listNpcProperty["nw"])?.GetLinkedWzCanvasBitmap();
+                        System.Drawing.Bitmap listSe = ((WzCanvasProperty)listNpcProperty["se"])?.GetLinkedWzCanvasBitmap();
+                        System.Drawing.Bitmap listSw = ((WzCanvasProperty)listNpcProperty["sw"])?.GetLinkedWzCanvasBitmap();
+
+                        System.Drawing.Bitmap npcListBitmap = HaUIHelper.RenderAndMergeMinimapUIFrame(
+                            npcListContent,
+                            color_bgFill,
+                            listNe,
+                            listNw,
+                            listSe,
+                            listSw,
+                            listE,
+                            listW,
+                            listN,
+                            listS,
+                            listC,
+                            0);
+
+                        IDXObject dxObjNpcList = new DXObject(0, 0, npcListBitmap.ToTexture2DAndDispose(device), 0);
+                        npcListPanel = new BaseDXDrawableItem(dxObjNpcList, false)
+                        {
+                            Position = new Point(Math.Max(0, texturer_miniMap.Width - dxObjNpcList.Width), texturer_miniMap.Height + 4)
+                        };
+                    }
+                }
+            }
+
             MinimapUI minimapItem = new MinimapUI(dxObj_miniMap,
                 new BaseDXDrawableItem(dxObj_miniMapPixel, false)
                 {
-                    Position = new Point(MAP_IMAGE_TEXT_PADDING + alignmentXOffset, 0) // map is on the center
+                    Position = minimapImageOffset // map is on the center
                 },
                 new BaseDXDrawableItem(dxObj_miniMap_Minimised, false)
                 {
                     Position = new Point(MAP_IMAGE_TEXT_PADDING, 0)
                 },
-                texturer_miniMap.Width, texturer_miniMap.Height);
+                miniMapImage.Width,
+                miniMapImage.Height,
+                npcMarker,
+                npcListPanel);
 
             minimapItem.Position = new Point(10, 10); // default position
 
@@ -1207,9 +1340,19 @@ namespace HaCreator.MapSimulator.Loaders
                     new Point(MAP_IMAGE_TEXT_PADDING, MAP_IMAGE_TEXT_PADDING), device);
                 objUIBtMin.X = objUIBtMax.X - objUIBtMin.CanvasSnapshotWidth; // render at the (width of minimap - obj width)
 
-                // BaseClickableUIObject objUINpc = new BaseClickableUIObject(BtNpc, false, new Point(objUIBtMap.CanvasSnapshotWidth + objUIBtBig.CanvasSnapshotWidth + objUIBtMax.CanvasSnapshotWidth + objUIBtMin.CanvasSnapshotWidth, MAP_IMAGE_PADDING), device);
+                UIObject objUIBtNpc = null;
+                if (BtNpc != null)
+                {
+                    objUIBtNpc = new UIObject(BtNpc, BtMouseClickSoundProperty, BtMouseOverSoundProperty,
+                        false,
+                        new Point(MAP_IMAGE_TEXT_PADDING, MAP_IMAGE_TEXT_PADDING), device);
+                    objUIBtNpc.X = objUIBtBig.X - objUIBtNpc.CanvasSnapshotWidth;
+                    objUIBtMax.X = objUIBtNpc.X - objUIBtMax.CanvasSnapshotWidth;
+                    objUIBtMin.X = objUIBtMax.X - objUIBtMin.CanvasSnapshotWidth;
+                    objUIBtNpc.SetVisible(false);
+                }
 
-                minimapItem.InitializeMinimapButtons(objUIBtMin, objUIBtMax, objUIBtBig, objUIBtMap);
+                minimapItem.InitializeMinimapButtons(objUIBtMin, objUIBtMax, objUIBtBig, objUIBtMap, objUIBtNpc);
             }
             else
             {

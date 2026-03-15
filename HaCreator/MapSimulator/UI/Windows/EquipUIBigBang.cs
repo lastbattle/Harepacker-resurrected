@@ -1,5 +1,6 @@
 using HaCreator.MapSimulator.UI;
 using HaCreator.MapSimulator.UI.Controls;
+using HaCreator.MapSimulator.Companions;
 using HaSharedLibrary.Render;
 using HaSharedLibrary.Render.DX;
 using Microsoft.Xna.Framework;
@@ -11,6 +12,8 @@ using System.Collections.Generic;
 using CharacterBuild = HaCreator.MapSimulator.Character.CharacterBuild;
 using CharacterEquipSlot = HaCreator.MapSimulator.Character.EquipSlot;
 using CharacterPart = HaCreator.MapSimulator.Character.CharacterPart;
+using EquipSlotStateResolver = HaCreator.MapSimulator.Character.EquipSlotStateResolver;
+using EquipSlotVisualState = HaCreator.MapSimulator.Character.EquipSlotVisualState;
 
 namespace HaCreator.MapSimulator.UI
 {
@@ -34,6 +37,9 @@ namespace HaCreator.MapSimulator.UI
         private const int TOOLTIP_SECTION_GAP = 4;
         private const int TOOLTIP_OFFSET_X = 12;
         private const int TOOLTIP_OFFSET_Y = -4;
+        private const int COMPANION_PANE_ATTACH_X = 10;
+        private const int COMPANION_PANE_ATTACH_Y = 18;
+        private const int COMPANION_EMPTY_TEXT_PADDING = 14;
 
         // Tab indices
         private const int TAB_CHARACTER = 0;
@@ -77,6 +83,15 @@ namespace HaCreator.MapSimulator.UI
         }
         #endregion
 
+        private sealed class CompanionPaneLayout
+        {
+            public IDXObject Frame { get; init; }
+            public IDXObject Foreground { get; init; }
+            public Point ForegroundOffset { get; init; }
+            public IDXObject SlotLabels { get; init; }
+            public Point SlotLabelsOffset { get; init; }
+        }
+
         #region Fields
         private int _currentTab = TAB_CHARACTER;
 
@@ -100,14 +115,20 @@ namespace HaCreator.MapSimulator.UI
 
         // Equipped items data
         private readonly Dictionary<EquipSlot, EquipSlotData> equippedItems;
+        private readonly Dictionary<int, CompanionPaneLayout> _companionLayouts;
+        private readonly Point[] _petSlotPositions;
+        private readonly Point[] _petSkillSlotPositions;
 
         // Graphics device
         private GraphicsDevice _device;
         private readonly Texture2D[] _tooltipFrames = new Texture2D[3];
         private Texture2D _debugPlaceholder;
+        private Texture2D _slotOverlayTexture;
         private SpriteFont _font;
         private CharacterBuild _characterBuild;
+        private PetController _petController;
         private EquipSlot? _hoveredSlot;
+        private int? _hoveredPetIndex;
         private Point _lastMousePosition;
         #endregion
 
@@ -127,6 +148,7 @@ namespace HaCreator.MapSimulator.UI
                 if (value >= TAB_CHARACTER && value <= TAB_ANDROID)
                 {
                     _currentTab = value;
+                    UpdateTabButtonStates();
                 }
             }
         }
@@ -189,8 +211,22 @@ namespace HaCreator.MapSimulator.UI
             };
 
             equippedItems = new Dictionary<EquipSlot, EquipSlotData>();
+            _companionLayouts = new Dictionary<int, CompanionPaneLayout>();
+            _petSlotPositions = new[]
+            {
+                new Point(11, 27),
+                new Point(44, 27),
+                new Point(77, 27)
+            };
+            _petSkillSlotPositions = new[]
+            {
+                new Point(11, 93),
+                new Point(44, 93),
+                new Point(77, 93)
+            };
             _debugPlaceholder = new Texture2D(device, 1, 1);
             _debugPlaceholder.SetData(new[] { Color.White });
+            _slotOverlayTexture = _debugPlaceholder;
         }
         #endregion
 
@@ -211,6 +247,23 @@ namespace HaCreator.MapSimulator.UI
         {
             _slotLabels = slotLabels;
             _slotLabelsOffset = new Point(offsetX, offsetY);
+        }
+
+        public void SetCompanionTabLayout(int tabIndex, IDXObject frame, IDXObject foreground, int foregroundOffsetX, int foregroundOffsetY, IDXObject slotLabels, int slotLabelOffsetX, int slotLabelOffsetY)
+        {
+            if (tabIndex < TAB_PET || tabIndex > TAB_ANDROID || frame == null)
+            {
+                return;
+            }
+
+            _companionLayouts[tabIndex] = new CompanionPaneLayout
+            {
+                Frame = frame,
+                Foreground = foreground,
+                ForegroundOffset = new Point(foregroundOffsetX, foregroundOffsetY),
+                SlotLabels = slotLabels,
+                SlotLabelsOffset = new Point(slotLabelOffsetX, slotLabelOffsetY)
+            };
         }
 
         /// <summary>
@@ -247,7 +300,10 @@ namespace HaCreator.MapSimulator.UI
             if (btnSlot != null)
             {
                 AddButton(btnSlot);
+                btnSlot.ButtonClickReleased += (sender) => CurrentTab = TAB_CHARACTER;
             }
+
+            UpdateTabButtonStates();
         }
 
         public override void SetFont(SpriteFont font)
@@ -264,6 +320,11 @@ namespace HaCreator.MapSimulator.UI
             {
                 _tooltipFrames[i] = tooltipFrames[i];
             }
+        }
+
+        public void SetPetController(PetController petController)
+        {
+            _petController = petController;
         }
         #endregion
 
@@ -295,13 +356,29 @@ namespace HaCreator.MapSimulator.UI
 
             foreach ((EquipSlot uiSlot, Point slotPosition) in slotPositions)
             {
-                if (!TryGetEquippedPart(uiSlot, out CharacterPart part) && !equippedItems.TryGetValue(uiSlot, out _))
-                    continue;
-
                 int slotX = windowX + slotPosition.X;
                 int slotY = windowY + slotPosition.Y;
-                DrawEquippedItemIcon(sprite, part, equippedItems.TryGetValue(uiSlot, out EquipSlotData slotData) ? slotData : null, slotX, slotY);
+                CharacterPart part = ResolveEquippedPart(uiSlot);
+                EquipSlotData slotData = equippedItems.TryGetValue(uiSlot, out EquipSlotData itemData) ? itemData : null;
+                if (part != null || slotData != null)
+                {
+                    DrawEquippedItemIcon(sprite, part, slotData, slotX, slotY);
+                }
+
+                CharacterEquipSlot? characterSlot = MapToCharacterEquipSlot(uiSlot);
+                if (!characterSlot.HasValue)
+                {
+                    continue;
+                }
+
+                EquipSlotVisualState visualState = EquipSlotStateResolver.ResolveVisualState(_characterBuild, characterSlot.Value);
+                if (visualState.IsDisabled)
+                {
+                    //DrawDisabledOverlay(sprite, slotX, slotY, visualState);
+                }
             }
+
+            DrawCompanionPane(sprite, skeletonMeshRenderer, gameTime, drawReflectionInfo, windowX, windowY);
         }
 
         protected override void DrawOverlay(SpriteBatch sprite, SkeletonMeshRenderer skeletonMeshRenderer, GameTime gameTime,
@@ -364,8 +441,125 @@ namespace HaCreator.MapSimulator.UI
             MouseState mouseState = Mouse.GetState();
             _lastMousePosition = new Point(mouseState.X, mouseState.Y);
             _hoveredSlot = GetSlotAtPosition(mouseState.X, mouseState.Y);
+            _hoveredPetIndex = GetHoveredPetIndex(mouseState.X, mouseState.Y);
         }
         #endregion
+
+        private void DrawCompanionPane(SpriteBatch sprite, SkeletonMeshRenderer skeletonMeshRenderer, GameTime gameTime,
+            ReflectionDrawableBoundary drawReflectionInfo, int windowX, int windowY)
+        {
+            if (_currentTab == TAB_CHARACTER || !_companionLayouts.TryGetValue(_currentTab, out CompanionPaneLayout layout))
+            {
+                return;
+            }
+
+            Point panePosition = GetCompanionPanePosition(layout, windowX, windowY);
+            layout.Frame.DrawBackground(sprite, skeletonMeshRenderer, gameTime,
+                panePosition.X, panePosition.Y,
+                Color.White, false, drawReflectionInfo);
+
+            layout.Foreground?.DrawBackground(sprite, skeletonMeshRenderer, gameTime,
+                panePosition.X + layout.ForegroundOffset.X, panePosition.Y + layout.ForegroundOffset.Y,
+                Color.White, false, drawReflectionInfo);
+
+            layout.SlotLabels?.DrawBackground(sprite, skeletonMeshRenderer, gameTime,
+                panePosition.X + layout.SlotLabelsOffset.X, panePosition.Y + layout.SlotLabelsOffset.Y,
+                Color.White, false, drawReflectionInfo);
+
+            switch (_currentTab)
+            {
+                case TAB_PET:
+                    DrawPetPaneContents(sprite, panePosition);
+                    break;
+                case TAB_DRAGON:
+                    DrawCompanionEmptyState(sprite, layout.Frame, panePosition,
+                        "Dragon equipment slots are loaded from UI.wz, but dragon equip runtime is still missing.");
+                    break;
+                case TAB_ANDROID:
+                    DrawCompanionEmptyState(sprite, layout.Frame, panePosition,
+                        "Android equip slots are present, but android-specific gear runtime is still not wired.");
+                    break;
+                case TAB_MECHANIC:
+                    DrawCompanionEmptyState(sprite, layout.Frame, panePosition,
+                        "Mechanic equip pane art is available, but simulator support for this page is still pending.");
+                    break;
+            }
+        }
+
+        private void DrawPetPaneContents(SpriteBatch sprite, Point panePosition)
+        {
+            IReadOnlyList<PetRuntime> pets = _petController?.ActivePets;
+            bool hasActivePets = pets != null && pets.Count > 0;
+
+            for (int i = 0; i < _petSlotPositions.Length; i++)
+            {
+                if (!hasActivePets || i >= pets.Count)
+                {
+                    continue;
+                }
+
+                PetRuntime pet = pets[i];
+                IDXObject icon = pet.Definition?.IconRaw ?? pet.Definition?.Icon;
+                Point petSlot = _petSlotPositions[i];
+                if (icon != null)
+                {
+                    icon.DrawBackground(sprite, null, null,
+                        panePosition.X + petSlot.X,
+                        panePosition.Y + petSlot.Y,
+                        Color.White, false, null);
+                }
+
+                if (pet.AutoLootEnabled && _font != null)
+                {
+                    Point skillSlot = _petSkillSlotPositions[i];
+                    Rectangle markerRect = new Rectangle(
+                        panePosition.X + skillSlot.X + 1,
+                        panePosition.Y + skillSlot.Y + 1,
+                        SLOT_SIZE - 2,
+                        SLOT_SIZE - 2);
+                    sprite.Draw(_debugPlaceholder, markerRect, new Color(27, 64, 41, 160));
+                    Vector2 textSize = _font.MeasureString("AUTO");
+                    Vector2 textPosition = new Vector2(
+                        markerRect.Center.X - (textSize.X / 2f),
+                        markerRect.Center.Y - (textSize.Y / 2f));
+                    DrawTooltipText(sprite, "AUTO", textPosition, new Color(180, 244, 194));
+                }
+            }
+
+            if (!hasActivePets)
+            {
+                _companionLayouts.TryGetValue(TAB_PET, out CompanionPaneLayout layout);
+                DrawCompanionEmptyState(sprite, layout?.Frame, panePosition,
+                    "Summon pets in the simulator to populate the Multi Pet pane.");
+            }
+        }
+
+        private void DrawCompanionEmptyState(SpriteBatch sprite, IDXObject paneFrame, Point panePosition, string message)
+        {
+            if (_font == null || paneFrame == null || string.IsNullOrWhiteSpace(message))
+            {
+                return;
+            }
+
+            float maxWidth = Math.Max(80, paneFrame.Width - (COMPANION_EMPTY_TEXT_PADDING * 2));
+            string[] lines = WrapTooltipText(message, maxWidth);
+            if (lines.Length == 0)
+            {
+                return;
+            }
+
+            float textHeight = MeasureLinesHeight(lines);
+            int startX = panePosition.X + COMPANION_EMPTY_TEXT_PADDING;
+            float startY = panePosition.Y + Math.Max(34, (paneFrame.Height - textHeight) / 2f);
+            DrawTooltipLines(sprite, lines, startX, startY, new Color(216, 216, 216));
+        }
+
+        private Point GetCompanionPanePosition(CompanionPaneLayout layout, int windowX, int windowY)
+        {
+            return new Point(
+                windowX - layout.Frame.Width + COMPANION_PANE_ATTACH_X,
+                windowY + COMPANION_PANE_ATTACH_Y);
+        }
 
         private void DrawEquippedItemIcon(SpriteBatch sprite, CharacterPart part, EquipSlotData slotData, int slotX, int slotY)
         {
@@ -384,21 +578,49 @@ namespace HaCreator.MapSimulator.UI
 
         private void DrawHoveredEquipmentTooltip(SpriteBatch sprite, int renderWidth, int renderHeight)
         {
-            if (_font == null || _hoveredSlot == null || _currentTab != TAB_CHARACTER)
+            if (_font == null)
+                return;
+
+            if (_currentTab == TAB_PET && TryBuildPetTooltip(out string petTitle, out string petLine1, out string petLine2, out IDXObject petIcon))
+            {
+                DrawItemTooltip(sprite, petTitle, petLine1, petLine2, null, petIcon, renderWidth, renderHeight);
+                return;
+            }
+
+            if (_currentTab != TAB_CHARACTER || _hoveredSlot == null)
                 return;
 
             EquipSlot hoveredSlot = _hoveredSlot.Value;
-            if (!TryGetEquippedPart(hoveredSlot, out CharacterPart part))
+            CharacterPart part = ResolveEquippedPart(hoveredSlot);
+            if (part == null)
             {
-                if (!equippedItems.TryGetValue(hoveredSlot, out EquipSlotData fallbackData))
+                if (equippedItems.TryGetValue(hoveredSlot, out EquipSlotData fallbackData))
+                {
+                    DrawItemTooltip(sprite,
+                        fallbackData.ItemName,
+                        $"Item ID: {fallbackData.ItemId}",
+                        $"Slot: {hoveredSlot}",
+                        fallbackData.ItemTexture,
+                        fallbackData.ItemIcon,
+                        renderWidth,
+                        renderHeight);
+                    return;
+                }
+
+                CharacterEquipSlot? emptySlot = MapToCharacterEquipSlot(hoveredSlot);
+                if (!emptySlot.HasValue)
+                    return;
+
+                EquipSlotVisualState emptyState = EquipSlotStateResolver.ResolveVisualState(_characterBuild, emptySlot.Value);
+                if (!emptyState.IsDisabled)
                     return;
 
                 DrawItemTooltip(sprite,
-                    fallbackData.ItemName,
-                    $"Item ID: {fallbackData.ItemId}",
-                    $"Slot: {hoveredSlot}",
-                    fallbackData.ItemTexture,
-                    fallbackData.ItemIcon,
+                    ResolveSlotLabel(hoveredSlot),
+                    emptyState.Message,
+                    $"Slot: {ResolveSlotLabel(hoveredSlot)}",
+                    null,
+                    null,
                     renderWidth,
                     renderHeight);
                 return;
@@ -412,6 +634,16 @@ namespace HaCreator.MapSimulator.UI
                 line2 += "  Cash";
             }
 
+            CharacterEquipSlot? characterSlot = MapToCharacterEquipSlot(hoveredSlot);
+            if (characterSlot.HasValue)
+            {
+                EquipSlotVisualState visualState = EquipSlotStateResolver.ResolveVisualState(_characterBuild, characterSlot.Value);
+                if (!string.IsNullOrWhiteSpace(visualState.Message))
+                {
+                    line2 += $"  {visualState.Message}";
+                }
+            }
+
             DrawItemTooltip(sprite,
                 itemName,
                 line1,
@@ -420,6 +652,33 @@ namespace HaCreator.MapSimulator.UI
                 part.IconRaw ?? part.Icon,
                 renderWidth,
                 renderHeight);
+        }
+
+        private bool TryBuildPetTooltip(out string title, out string line1, out string line2, out IDXObject icon)
+        {
+            title = null;
+            line1 = null;
+            line2 = null;
+            icon = null;
+
+            if (_hoveredPetIndex == null)
+            {
+                return false;
+            }
+
+            IReadOnlyList<PetRuntime> pets = _petController?.ActivePets;
+            int petIndex = _hoveredPetIndex.Value;
+            if (pets == null || petIndex < 0 || petIndex >= pets.Count)
+            {
+                return false;
+            }
+
+            PetRuntime pet = pets[petIndex];
+            title = string.IsNullOrWhiteSpace(pet.Name) ? $"Pet {pet.ItemId}" : pet.Name;
+            line1 = $"Item ID: {pet.ItemId}";
+            line2 = $"Slot: Pet {petIndex + 1}  Auto Loot: {(pet.AutoLootEnabled ? "On" : "Off")}";
+            icon = pet.Definition?.IconRaw ?? pet.Definition?.Icon;
+            return true;
         }
 
         private void DrawItemTooltip(
@@ -508,17 +767,45 @@ namespace HaCreator.MapSimulator.UI
             return null;
         }
 
-        private bool TryGetEquippedPart(EquipSlot uiSlot, out CharacterPart part)
+        private int? GetHoveredPetIndex(int mouseX, int mouseY)
         {
-            part = null;
-            if (_characterBuild?.Equipment == null)
-                return false;
+            if (_currentTab != TAB_PET || !_companionLayouts.TryGetValue(TAB_PET, out CompanionPaneLayout layout))
+            {
+                return null;
+            }
 
+            Point panePosition = GetCompanionPanePosition(layout, Position.X, Position.Y);
+            IReadOnlyList<PetRuntime> pets = _petController?.ActivePets;
+            int petCount = pets?.Count ?? 0;
+            for (int i = 0; i < Math.Min(_petSlotPositions.Length, petCount); i++)
+            {
+                Rectangle slotRect = new Rectangle(
+                    panePosition.X + _petSlotPositions[i].X,
+                    panePosition.Y + _petSlotPositions[i].Y,
+                    SLOT_SIZE,
+                    SLOT_SIZE);
+                if (slotRect.Contains(mouseX, mouseY))
+                {
+                    return i;
+                }
+            }
+
+            return null;
+        }
+
+        private void UpdateTabButtonStates()
+        {
+            _btnSlot?.SetButtonState(_currentTab == TAB_CHARACTER ? UIObjectState.Pressed : UIObjectState.Normal);
+            _btnPet?.SetButtonState(_currentTab == TAB_PET ? UIObjectState.Pressed : UIObjectState.Normal);
+            _btnDragon?.SetButtonState(_currentTab == TAB_DRAGON ? UIObjectState.Pressed : UIObjectState.Normal);
+            _btnMechanic?.SetButtonState(_currentTab == TAB_MECHANIC ? UIObjectState.Pressed : UIObjectState.Normal);
+            _btnAndroid?.SetButtonState(_currentTab == TAB_ANDROID ? UIObjectState.Pressed : UIObjectState.Normal);
+        }
+
+        private CharacterPart ResolveEquippedPart(EquipSlot uiSlot)
+        {
             CharacterEquipSlot? characterSlot = MapToCharacterEquipSlot(uiSlot);
-            if (characterSlot == null)
-                return false;
-
-            return _characterBuild.Equipment.TryGetValue(characterSlot.Value, out part) && part != null;
+            return characterSlot.HasValue ? EquipSlotStateResolver.ResolveDisplayedPart(_characterBuild, characterSlot.Value) : null;
         }
 
         private static CharacterEquipSlot? MapToCharacterEquipSlot(EquipSlot uiSlot)

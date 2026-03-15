@@ -7,7 +7,6 @@ using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using Spine;
 using System;
-using System.Collections.Generic;
 
 namespace HaCreator.MapSimulator.UI
 {
@@ -201,6 +200,8 @@ namespace HaCreator.MapSimulator.UI
                 AddButton(btnDetailClose);
                 btnDetailClose.ButtonClickReleased += OnCloseDetail;
             }
+
+            RefreshDetailButtonVisibility();
         }
 
         /// <summary>
@@ -273,7 +274,7 @@ namespace HaCreator.MapSimulator.UI
             DrawStatRow(sprite, windowX, windowY, NAME_Y, _characterBuild.Name ?? "Unknown");
             DrawStatRow(sprite, windowX, windowY, JOB_Y, _characterBuild.JobName ?? "Beginner");
             DrawStatRow(sprite, windowX, windowY, LEVEL_Y, _characterBuild.Level.ToString());
-            DrawStatRow(sprite, windowX, windowY, GUILD_Y, "-");
+            DrawStatRow(sprite, windowX, windowY, GUILD_Y, _characterBuild.GuildDisplayText);
 
             // Draw HP/MP
             DrawStatRow(sprite, windowX, windowY, HP_Y, $"{_characterBuild.HP}/{_characterBuild.MaxHP}");
@@ -331,8 +332,8 @@ namespace HaCreator.MapSimulator.UI
             DrawDetailStatRow(sprite, panelX, panelY, startY + lineHeight * 3, _characterBuild.MagicDefense.ToString());
             DrawDetailStatRow(sprite, panelX, panelY, startY + lineHeight * 4, _characterBuild.Accuracy.ToString());
             DrawDetailStatRow(sprite, panelX, panelY, startY + lineHeight * 5, _characterBuild.Avoidability.ToString());
-            DrawDetailStatRow(sprite, panelX, panelY, startY + lineHeight * 6, "0");
-            DrawDetailStatRow(sprite, panelX, panelY, startY + lineHeight * 7, "0%");
+            DrawDetailStatRow(sprite, panelX, panelY, startY + lineHeight * 6, _characterBuild.Hands.ToString());
+            DrawDetailStatRow(sprite, panelX, panelY, startY + lineHeight * 7, $"{_characterBuild.CriticalRate}%");
             DrawDetailStatRow(sprite, panelX, panelY, startY + lineHeight * 8, $"{_characterBuild.Speed:F0}%");
             DrawDetailStatRow(sprite, panelX, panelY, startY + lineHeight * 9, $"{_characterBuild.JumpPower:F0}%");
         }
@@ -367,52 +368,64 @@ namespace HaCreator.MapSimulator.UI
             }
         }
 
-        public void IncreaseSTR()
+        public bool IncreaseSTR()
         {
-            if (_characterBuild != null && _characterBuild.AP > 0)
+            if (_characterBuild != null && _characterBuild.CanIncreasePrimaryStat(_characterBuild.STR))
             {
                 _characterBuild.STR++;
                 _characterBuild.AP--;
+                return true;
             }
+
+            return false;
         }
 
-        public void IncreaseDEX()
+        public bool IncreaseDEX()
         {
-            if (_characterBuild != null && _characterBuild.AP > 0)
+            if (_characterBuild != null && _characterBuild.CanIncreasePrimaryStat(_characterBuild.DEX))
             {
                 _characterBuild.DEX++;
                 _characterBuild.AP--;
+                return true;
             }
+
+            return false;
         }
 
-        public void IncreaseINT()
+        public bool IncreaseINT()
         {
-            if (_characterBuild != null && _characterBuild.AP > 0)
+            if (_characterBuild != null && _characterBuild.CanIncreasePrimaryStat(_characterBuild.INT))
             {
                 _characterBuild.INT++;
                 _characterBuild.AP--;
+                return true;
             }
+
+            return false;
         }
 
-        public void IncreaseLUK()
+        public bool IncreaseLUK()
         {
-            if (_characterBuild != null && _characterBuild.AP > 0)
+            if (_characterBuild != null && _characterBuild.CanIncreasePrimaryStat(_characterBuild.LUK))
             {
                 _characterBuild.LUK++;
                 _characterBuild.AP--;
+                return true;
             }
+
+            return false;
         }
 
         public void OpenDetailMode()
         {
             _isDetailMode = true;
-            // TODO: Toggle button visibility when UIObject supports it
+            RefreshDetailButtonVisibility();
         }
 
         public void CloseDetailMode()
         {
             _isDetailMode = false;
-            // TODO: Toggle button visibility when UIObject supports it
+            RefreshDetailButtonVisibility();
         }
 
         public void AddAbilityPoints(int amount)
@@ -459,59 +472,72 @@ namespace HaCreator.MapSimulator.UI
 
             while (_characterBuild.AP > 0)
             {
+                bool assigned;
+
                 switch (jobClass)
                 {
                     case 1: // Warrior
                         if (_characterBuild.STR % 5 == 0 && _characterBuild.DEX < _characterBuild.STR / 2)
-                            IncreaseDEX();
+                            assigned = IncreaseDEX() || IncreaseSTR();
                         else
-                            IncreaseSTR();
+                            assigned = IncreaseSTR() || IncreaseDEX();
                         break;
 
                     case 2: // Magician
                         if (_characterBuild.INT % 5 == 0 && _characterBuild.LUK < _characterBuild.INT / 2)
-                            IncreaseLUK();
+                            assigned = IncreaseLUK() || IncreaseINT();
                         else
-                            IncreaseINT();
+                            assigned = IncreaseINT() || IncreaseLUK();
                         break;
 
                     case 3: // Archer
                         if (_characterBuild.DEX % 5 == 0 && _characterBuild.STR < _characterBuild.DEX / 2)
-                            IncreaseSTR();
+                            assigned = IncreaseSTR() || IncreaseDEX();
                         else
-                            IncreaseDEX();
+                            assigned = IncreaseDEX() || IncreaseSTR();
                         break;
 
                     case 4: // Thief
                         if (_characterBuild.LUK % 5 == 0 && _characterBuild.DEX < _characterBuild.LUK / 2)
-                            IncreaseDEX();
+                            assigned = IncreaseDEX() || IncreaseLUK();
                         else
-                            IncreaseLUK();
+                            assigned = IncreaseLUK() || IncreaseDEX();
                         break;
 
                     case 5: // Pirate
                         if (_characterBuild.STR <= _characterBuild.DEX)
-                            IncreaseSTR();
+                            assigned = IncreaseSTR() || IncreaseDEX();
                         else
-                            IncreaseDEX();
+                            assigned = IncreaseDEX() || IncreaseSTR();
                         break;
 
                     default:
                         int minStat = Math.Min(Math.Min(_characterBuild.STR, _characterBuild.DEX),
                                                Math.Min(_characterBuild.INT, _characterBuild.LUK));
                         if (_characterBuild.STR == minStat)
-                            IncreaseSTR();
+                            assigned = IncreaseSTR() || IncreaseDEX() || IncreaseINT() || IncreaseLUK();
                         else if (_characterBuild.DEX == minStat)
-                            IncreaseDEX();
+                            assigned = IncreaseDEX() || IncreaseINT() || IncreaseLUK() || IncreaseSTR();
                         else if (_characterBuild.INT == minStat)
-                            IncreaseINT();
+                            assigned = IncreaseINT() || IncreaseLUK() || IncreaseSTR() || IncreaseDEX();
                         else
-                            IncreaseLUK();
+                            assigned = IncreaseLUK() || IncreaseSTR() || IncreaseDEX() || IncreaseINT();
                         break;
+                }
+
+                if (!assigned)
+                {
+                    break;
                 }
             }
         }
         #endregion
+
+        private void RefreshDetailButtonVisibility()
+        {
+            _btnDetailOpen?.SetVisible(!_isDetailMode);
+            _btnDetailClose?.SetVisible(_isDetailMode);
+        }
 
         #region Update
         public override void Update(GameTime gameTime)
@@ -521,10 +547,10 @@ namespace HaCreator.MapSimulator.UI
             bool hasAP = _characterBuild != null && _characterBuild.AP > 0;
             _btnIncHP?.SetEnabled(hasAP);
             _btnIncMP?.SetEnabled(hasAP);
-            _btnIncSTR?.SetEnabled(hasAP);
-            _btnIncDEX?.SetEnabled(hasAP);
-            _btnIncINT?.SetEnabled(hasAP);
-            _btnIncLUK?.SetEnabled(hasAP);
+            _btnIncSTR?.SetEnabled(_characterBuild != null && _characterBuild.CanIncreasePrimaryStat(_characterBuild.STR));
+            _btnIncDEX?.SetEnabled(_characterBuild != null && _characterBuild.CanIncreasePrimaryStat(_characterBuild.DEX));
+            _btnIncINT?.SetEnabled(_characterBuild != null && _characterBuild.CanIncreasePrimaryStat(_characterBuild.INT));
+            _btnIncLUK?.SetEnabled(_characterBuild != null && _characterBuild.CanIncreasePrimaryStat(_characterBuild.LUK));
             _btnAutoAssign?.SetEnabled(hasAP);
         }
         #endregion

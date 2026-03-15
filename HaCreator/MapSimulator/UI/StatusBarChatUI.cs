@@ -49,6 +49,7 @@ namespace HaCreator.MapSimulator.UI
 
         public Action ToggleChatRequested { get; set; }
         public Action<int> CycleChatTargetRequested { get; set; }
+        public Action CharacterInfoRequested { get; set; }
 
         /// <summary>
         /// Constructor for the status bar chat window
@@ -109,7 +110,7 @@ namespace HaCreator.MapSimulator.UI
             _chatStateProvider = chatStateProvider;
         }
 
-        public void BindControls(UIObject chatTargetButton, UIObject chatToggleButton, UIObject scrollUpButton, UIObject scrollDownButton)
+        public void BindControls(UIObject chatTargetButton, UIObject chatToggleButton, UIObject scrollUpButton, UIObject scrollDownButton, UIObject characterInfoButton = null)
         {
             if (chatTargetButton != null)
             {
@@ -137,6 +138,11 @@ namespace HaCreator.MapSimulator.UI
                     _scrollOffset = Math.Max(0, _scrollOffset - 1);
                     RecordManualScroll();
                 };
+            }
+
+            if (characterInfoButton != null)
+            {
+                characterInfoButton.ButtonClickReleased += _ => CharacterInfoRequested?.Invoke();
             }
         }
 
