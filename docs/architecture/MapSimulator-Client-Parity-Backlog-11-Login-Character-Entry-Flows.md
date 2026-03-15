@@ -63,12 +63,13 @@ Notes:
 
 ## Current State Summary
 
-This area is effectively absent from the simulator today.
+This area is still mostly absent from the simulator today.
 The project currently includes:
 
 - Cash-shop-map and wider game-state gating flags in `MapSimulator.cs` and `GameStateManager.cs`.
 - Status-bar utility buttons that already expose some neighboring service entry points once the simulator is in-map.
 - Local avatar loading and runtime state that could eventually feed character-preview surfaces, even though no actual pre-field roster UI exists today.
+- A dedicated login bootstrap runtime in `HaCreator/MapSimulator/Managers/LoginRuntimeManager.cs` that now owns pre-field steps, delayed login-step changes, and login-packet dispatch on login maps.
 
 The gap is not a small missing window shell.
 The gap is that the simulator does not currently model the client's entire account-entry and character bootstrap pipeline before gameplay begins.
@@ -81,7 +82,7 @@ This area is not represented by the existing ten documents even though IDA shows
 
 | Status | Area | Gap | Why it matters | Primary seam |
 |--------|------|-----|----------------|--------------|
-| Missing | Login bootstrap and packet-state parity | `CLogin::Init`, `CLogin::Update`, and `CLogin::OnPacket` confirm a dedicated login bootstrap, state progression, and packet dispatch pipeline, but the simulator does not currently expose any equivalent runtime for account entry, login responses, or pre-field step transitions | Without the login-state owner, all account-facing transitions are effectively skipped, which hides an entire category of client behavior before the character ever enters a map | account-entry runtime, state machine, packet-routing layer (`CLogin::Init`, `CLogin::Update`, `CLogin::OnPacket`) |
+| Partial | Login bootstrap and packet-state parity | The simulator now exposes a dedicated login bootstrap runtime with client-backed step names, delayed step changes, and a login-packet router on login maps, but it is still command-driven and not yet wired to real account UI, roster UI, or socket-backed packet intake | Without the login-state owner, all account-facing transitions are effectively skipped, which hides an entire category of client behavior before the character ever enters a map. The new runtime establishes that owner so later roster, avatar, and dialog work can attach to a real pre-field pipeline instead of jumping straight into a field | account-entry runtime, state machine, packet-routing layer (`CLogin::Init`, `CLogin::Update`, `CLogin::OnPacket`; simulator seam: `HaCreator/MapSimulator/Managers/LoginRuntimeManager.cs`) |
 | Missing | Character roster and selection parity | `CUICharSelect::OnCreate` and `CUICharSelect::OnButtonClicked` confirm a dedicated roster-selection surface with its own focus, selection, and request-validation flow, but the simulator does not currently expose a character list, selection shell, or roster-driven transition model | The client's path into gameplay is built around explicit character selection rather than spawning a hardcoded local avatar directly into a field | roster UI layer, character-selection model (`CUICharSelect::OnCreate`, `CUICharSelect::OnButtonClicked`) |
 | Missing | Avatar preview carousel parity | `CUIAvatar::OnCreate` and `CUIAvatar::OnMouseButton` confirm a dedicated avatar-preview owner for clickable character presentation, name-tag focus, and preview-state transitions, but the simulator does not currently expose any equivalent avatar carousel or preview interaction flow | Character-entry parity needs more than a text roster; the client lets the player browse and inspect live avatar previews before entering the game | avatar-preview UI layer, character-preview assembly path (`CUIAvatar::OnCreate`, `CUIAvatar::OnMouseButton`) |
 | Missing | Character detail panel parity | `CUICharDetail::Draw` confirms a separate character-detail owner for per-character metadata and presentation, but the simulator does not currently surface a dedicated details pane for the selected character | The client distinguishes high-level roster browsing from the focused detail view, so skipping the detail panel hides a visible layer of pre-entry feedback | character-detail UI layer, character metadata presentation (`CUICharDetail::Draw`) |

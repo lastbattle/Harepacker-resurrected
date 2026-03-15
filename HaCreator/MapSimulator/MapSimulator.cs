@@ -224,12 +224,14 @@ namespace HaCreator.MapSimulator
         private readonly LimitedViewField _limitedViewField = new LimitedViewField();
         private TemporaryPortalField _temporaryPortalField;
         private FieldRuleRuntime _fieldRuleRuntime;
+        private readonly SpecialFieldRuntimeCoordinator _specialFieldRuntime = new SpecialFieldRuntimeCoordinator();
 
         // Camera controller for smooth scrolling and zoom
         private readonly CameraController _cameraController = new CameraController();
 
         // Centralized game state management
         private readonly GameStateManager _gameState = new GameStateManager();
+        private readonly LoginRuntimeManager _loginRuntime = new LoginRuntimeManager();
 
         // Map state cache for maintaining entity positions across map transitions
         private readonly MapStateCache _mapStateCache = new MapStateCache();
@@ -345,6 +347,24 @@ namespace HaCreator.MapSimulator
         public void SetLoadMapCallback(Func<int, Tuple<Board, string>> callback)
         {
             _loadMapCallback = callback;
+        }
+
+        private void WireProgressionUtilityWindowLaunchers()
+        {
+            if (miniMapUi != null)
+            {
+                miniMapUi.FullMapRequested = () => uiWindowManager?.ShowWindow(MapSimulatorWindowNames.WorldMap);
+                miniMapUi.MapTransferRequested = () => uiWindowManager?.ShowWindow(MapSimulatorWindowNames.MapTransfer);
+            }
+
+            if (statusBarUi != null)
+            {
+                statusBarUi.CashShopRequested = () => uiWindowManager?.ShowWindow(MapSimulatorWindowNames.CashShop);
+                statusBarUi.MtsRequested = () => uiWindowManager?.ShowWindow(MapSimulatorWindowNames.Mts);
+                statusBarUi.MenuRequested = () => uiWindowManager?.ShowWindow(MapSimulatorWindowNames.Menu);
+                statusBarUi.SystemRequested = () => uiWindowManager?.ShowWindow(MapSimulatorWindowNames.System);
+                statusBarUi.ChannelRequested = () => uiWindowManager?.ShowWindow(MapSimulatorWindowNames.WorldSelect);
+            }
         }
 
 
@@ -884,6 +904,7 @@ namespace HaCreator.MapSimulator
 
             // Set fonts on UI windows after all tasks complete
             uiWindowManager?.SetFonts(_fontChat);
+            WireProgressionUtilityWindowLaunchers();
             LoadNpcQuestAlertIcons(uiWindow1Image, uiWindow2Image);
 
             // Initialize mob foothold references after all mobs are loaded
@@ -899,6 +920,7 @@ namespace HaCreator.MapSimulator
 #endif
             //
             _spriteBatch = new SpriteBatch(GraphicsDevice);
+            _specialFieldRuntime.Initialize(_DxDeviceManager.GraphicsDevice);
 
             ///////////////////////////////////////////////
             ////// Default positioning for character //////
@@ -918,8 +940,17 @@ namespace HaCreator.MapSimulator
             _mapCenterX = _mapBoard.CenterPoint.X;
             _mapCenterY = _mapBoard.CenterPoint.Y;
             // Spawn at portal spawn point (spawnX, spawnY set above from StartPoint portal)
-            InitializePlayerManager(spawnX, spawnY);
-            InitializeFieldRuleRuntime(currTickCount);
+            ResetLoginRuntimeForCurrentMap(currTickCount);
+            if (!_gameState.IsLoginMap)
+            {
+                InitializePlayerManager(spawnX, spawnY);
+                InitializeFieldRuleRuntime(currTickCount);
+            }
+            else
+            {
+                _gameState.PlayerControlEnabled = false;
+            }
+            _specialFieldRuntime.BindMap(_mapBoard.MapInfo.id);
 
             // Initialize camera controller
             _cameraController.Initialize(
@@ -1206,6 +1237,7 @@ namespace HaCreator.MapSimulator
             // Clear combat effects (only map-specific effects like mob HP bars)
             _combatEffects?.ClearMapState();
             _fieldEffects?.ResetAllEffects();
+            _specialFieldRuntime.Reset();
 
             // Prepare player manager for map change (preserves character, caches, skill levels)
             _playerManager?.PrepareForMapChange();
@@ -1543,6 +1575,7 @@ namespace HaCreator.MapSimulator
 
             // Set fonts on UI windows after all tasks complete
             uiWindowManager?.SetFonts(_fontChat);
+            WireProgressionUtilityWindowLaunchers();
             LoadNpcQuestAlertIcons(uiWindow1Image, uiWindow2Image);
 
             // Initialize status bar character stats display after map change
@@ -1604,15 +1637,25 @@ namespace HaCreator.MapSimulator
             // Initialize player at portal spawn position (not viewfinder center)
             // spawnX/spawnY are set above from target portal or start point
             // For map changes, reconnect existing player instead of creating new one
-            if (_playerManager != null && _playerManager.Player != null)
+            ResetLoginRuntimeForCurrentMap(currTickCount);
+            if (!_gameState.IsLoginMap)
             {
-                ReconnectPlayerToMap(spawnX, spawnY);
+                if (_playerManager != null && _playerManager.Player != null)
+                {
+                    ReconnectPlayerToMap(spawnX, spawnY);
+                }
+                else
+                {
+                    InitializePlayerManager(spawnX, spawnY);
+                }
+
+                InitializeFieldRuleRuntime(currTickCount);
             }
             else
             {
-                InitializePlayerManager(spawnX, spawnY);
+                _gameState.PlayerControlEnabled = false;
             }
-            InitializeFieldRuleRuntime(currTickCount);
+            _specialFieldRuntime.BindMap(_mapBoard.MapInfo.id);
 
             // Initialize camera controller for smooth scrolling
             _cameraController.Initialize(
@@ -2215,6 +2258,12 @@ namespace HaCreator.MapSimulator
             // Handle mouse
             mouseCursor.UpdateCursorState();
 
+            if (IsLoginRuntimeSceneActive)
+            {
+                UpdateLoginRuntimeFrame(gameTime, newKeyboardState, newMouseState, isWindowActive);
+                return;
+            }
+
             if (isWindowActive)
             {
                 NpcInteractionOverlayResult npcOverlayResult = _npcInteractionOverlay != null
@@ -2246,6 +2295,7 @@ namespace HaCreator.MapSimulator
             }
 
             _temporaryPortalField?.Update(currTickCount);
+            _specialFieldRuntime.Update(gameTime, currTickCount);
 
             // Handle same-map portal teleport with delay (no fade, just wait for delay)
             if (_sameMapTeleportPending)
@@ -5947,6 +5997,17 @@ namespace HaCreator.MapSimulator
             DrawNpcQuestFeedback(in renderContext);
             _renderingManager.DrawTransportation(in renderContext); // ship/balrog
             _renderingManager.DrawBackgrounds(in renderContext, true); // front background
+            _specialFieldRuntime.Draw(
+                _spriteBatch,
+                _skeletonMeshRenderer,
+                gameTime,
+                mapShiftX,
+                mapShiftY,
+                mapCenterX,
+                mapCenterY,
+                TickCount,
+                _debugBoundaryTexture,
+                _fontDebugValues);
 
             // Borders
             _renderingManager.DrawVRFieldBorder(in renderContext);
@@ -5976,9 +6037,19 @@ namespace HaCreator.MapSimulator
             }
 
             if (gameTime.TotalGameTime.TotalSeconds < 5)
-                _spriteBatch.DrawString(_fontNavigationKeysHelper,
-                    _gameState.MobMovementEnabled ? _navHelpTextMobOn : _navHelpTextMobOff,
-                    new Vector2(20, Height - 190), Color.White);
+            {
+                if (!_gameState.IsLoginMap)
+                {
+                    _spriteBatch.DrawString(_fontNavigationKeysHelper,
+                        _gameState.MobMovementEnabled ? _navHelpTextMobOn : _navHelpTextMobOff,
+                        new Vector2(20, Height - 190), Color.White);
+                }
+            }
+
+            if (IsLoginRuntimeSceneActive && !_gameState.HideUIMode)
+            {
+                DrawLoginRuntimeOverlay();
+            }
             
             if (!_screenshotManager.TakeScreenshot && _gameState.ShowDebugMode)
             {
@@ -6030,7 +6101,7 @@ namespace HaCreator.MapSimulator
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void DrawPlayer(GameTime gameTime, int mapCenterX, int mapCenterY, int TickCount)
         {
-            if (_playerManager == null || _playerManager.Player == null)
+            if (IsLoginRuntimeSceneActive || _playerManager == null || _playerManager.Player == null)
                 return;
 
             var player = _playerManager.Player;
@@ -6507,6 +6578,60 @@ namespace HaCreator.MapSimulator
         /// </summary>
         private void RegisterChatCommands()
         {
+            _chat.CommandHandler.RegisterCommand(
+                "login",
+                "Show the login bootstrap runtime state",
+                "/login",
+                args =>
+                {
+                    if (!IsLoginRuntimeSceneActive)
+                    {
+                        return ChatCommandHandler.CommandResult.Error("Login runtime is only active on login maps");
+                    }
+
+                    return ChatCommandHandler.CommandResult.Info(_loginRuntime.DescribeStatus());
+                });
+
+            _chat.CommandHandler.RegisterCommand(
+                "loginstep",
+                "Force the login runtime to a specific step",
+                "/loginstep <title|world|char|newchar|avatar|vac|enter>",
+                args =>
+                {
+                    if (!IsLoginRuntimeSceneActive)
+                    {
+                        return ChatCommandHandler.CommandResult.Error("Login runtime is only active on login maps");
+                    }
+
+                    if (args.Length == 0 || !LoginRuntimeManager.TryParseStep(args[0], out LoginStep step))
+                    {
+                        return ChatCommandHandler.CommandResult.Error("Usage: /loginstep <title|world|char|newchar|avatar|vac|enter>");
+                    }
+
+                    _loginRuntime.ForceStep(step, "Manual login step override");
+                    return ChatCommandHandler.CommandResult.Ok(_loginRuntime.DescribeStatus());
+                });
+
+            _chat.CommandHandler.RegisterCommand(
+                "loginpacket",
+                "Dispatch a login bootstrap packet into the runtime",
+                "/loginpacket <checkpassword|worldinfo|selectworld|selectchar|vac|recommendworld|latestworld|extracharinfo>",
+                args =>
+                {
+                    if (!IsLoginRuntimeSceneActive)
+                    {
+                        return ChatCommandHandler.CommandResult.Error("Login runtime is only active on login maps");
+                    }
+
+                    if (args.Length == 0 || !LoginRuntimeManager.TryParsePacketType(args[0], out LoginPacketType packetType))
+                    {
+                        return ChatCommandHandler.CommandResult.Error("Usage: /loginpacket <checkpassword|worldinfo|selectworld|selectchar|vac|recommendworld|latestworld|extracharinfo>");
+                    }
+
+                    _loginRuntime.TryDispatchPacket(packetType, currTickCount, out string message);
+                    return ChatCommandHandler.CommandResult.Ok(message);
+                });
+
             // /map <id> - Change to a different map
             _chat.CommandHandler.RegisterCommand(
                 "map",
@@ -6709,6 +6834,79 @@ namespace HaCreator.MapSimulator
             statusBarUi?.SetLowResourceWarningThresholds(_statusBarHpWarningThresholdPercent, _statusBarMpWarningThresholdPercent);
             message = $"{(isHp ? "HP" : "MP")} warning threshold set to {thresholdPercent}%";
             return true;
+        }
+
+        private bool IsLoginRuntimeSceneActive => _gameState.IsLoginMap;
+
+        private void ResetLoginRuntimeForCurrentMap(int currentTickCount)
+        {
+            if (_gameState.IsLoginMap)
+            {
+                _loginRuntime.Initialize(currentTickCount);
+                return;
+            }
+
+            _loginRuntime.Reset();
+            _gameState.PlayerControlEnabled = true;
+        }
+
+        private void UpdateLoginRuntimeFrame(GameTime gameTime, KeyboardState newKeyboardState, MouseState newMouseState, bool isWindowActive)
+        {
+            _loginRuntime.Update(currTickCount);
+
+            bool chatConsumedInput = isWindowActive &&
+                                     _chat.HandleInput(newKeyboardState, _oldKeyboardState, currTickCount);
+
+            if (!chatConsumedInput && !_chat.IsActive && isWindowActive)
+            {
+                if (newKeyboardState.IsKeyUp(Keys.H) && _oldKeyboardState.IsKeyDown(Keys.H))
+                {
+                    _gameState.HideUIMode = !_gameState.HideUIMode;
+                }
+            }
+
+            _frameNumber++;
+            UpdateObjectVisibility();
+            FinalizeFrameInputState(newKeyboardState, newMouseState, gameTime);
+        }
+
+        private void FinalizeFrameInputState(KeyboardState newKeyboardState, MouseState newMouseState, GameTime gameTime)
+        {
+            _oldKeyboardState = newKeyboardState;
+            _oldMouseState = newMouseState;
+
+            _soundManager?.Update();
+            base.Update(gameTime);
+        }
+
+        private void DrawLoginRuntimeOverlay()
+        {
+            if (_fontDebugValues == null)
+            {
+                return;
+            }
+
+            const int overlayX = 20;
+            const int overlayY = 20;
+            const int overlayWidth = 560;
+            const int overlayPadding = 12;
+            string overlayText = "Login Bootstrap Runtime\n"
+                + _loginRuntime.DescribeStatus()
+                + "\nCommands: /login, /loginstep <step>, /loginpacket <packet>";
+
+            Vector2 textSize = _fontDebugValues.MeasureString(overlayText);
+            if (_debugBoundaryTexture != null)
+            {
+                var background = new Rectangle(
+                    overlayX - overlayPadding,
+                    overlayY - overlayPadding,
+                    Math.Max(overlayWidth, (int)textSize.X + overlayPadding * 2),
+                    (int)textSize.Y + overlayPadding * 2);
+                _spriteBatch.Draw(_debugBoundaryTexture, background, Color.Black * 0.75f);
+            }
+
+            _spriteBatch.DrawString(_fontDebugValues, overlayText, new Vector2(overlayX + 1, overlayY + 1), Color.Black);
+            _spriteBatch.DrawString(_fontDebugValues, overlayText, new Vector2(overlayX, overlayY), Color.White);
         }
         #endregion
 

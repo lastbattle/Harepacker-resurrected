@@ -8,6 +8,82 @@ using System.Runtime.CompilerServices;
 
 namespace HaCreator.MapSimulator.Fields
 {
+    /// <summary>
+    /// Aggregates minigame field runtimes behind a single simulator surface.
+    /// This gives parity work a stable ownership seam before each minigame is
+    /// expanded into client-like packet, timerboard, and result handling.
+    /// </summary>
+    public class MinigameFields
+    {
+        private readonly SnowBallField _snowBall = new();
+        private readonly CoconutField _coconut = new();
+
+        public SnowBallField SnowBall => _snowBall;
+        public CoconutField Coconut => _coconut;
+
+        public void Update(int tickCount)
+        {
+            if (_snowBall.IsActive || _snowBall.State != SnowBallField.GameState.NotStarted)
+            {
+                _snowBall.Update(tickCount);
+            }
+
+            if (_coconut.IsActive)
+            {
+                _coconut.Update(tickCount);
+            }
+        }
+
+        public void Draw(
+            SpriteBatch spriteBatch,
+            SkeletonMeshRenderer skeletonMeshRenderer,
+            GameTime gameTime,
+            int mapShiftX,
+            int mapShiftY,
+            int centerX,
+            int centerY,
+            int tickCount,
+            Texture2D pixelTexture,
+            SpriteFont font = null)
+        {
+            if (_snowBall.IsActive || _snowBall.State != SnowBallField.GameState.NotStarted)
+            {
+                _snowBall.Draw(
+                    spriteBatch,
+                    skeletonMeshRenderer,
+                    gameTime,
+                    mapShiftX,
+                    mapShiftY,
+                    centerX,
+                    centerY,
+                    tickCount,
+                    pixelTexture,
+                    font);
+            }
+
+            if (_coconut.IsActive)
+            {
+                _coconut.Draw(
+                    spriteBatch,
+                    skeletonMeshRenderer,
+                    gameTime,
+                    mapShiftX,
+                    mapShiftY,
+                    centerX,
+                    centerY,
+                    tickCount,
+                    pixelTexture,
+                    font);
+            }
+        }
+
+        public void ResetAll()
+        {
+            _snowBall.Reset();
+            _coconut.Reset();
+        }
+    }
+
     #region SnowBall Field (CField_SnowBall)
     /// <summary>
     /// SnowBall Field Minigame - Team-based snowball pushing competition.

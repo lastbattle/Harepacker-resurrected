@@ -21,7 +21,7 @@ namespace UnitTest_MapSimulator
 
             ChatMessage sentMessage = Assert.Single(renderState.Messages);
             Assert.Equal("> Athena: hello there", sentMessage.Text);
-            Assert.Equal(new Color(255, 170, 255), sentMessage.Color);
+            Assert.Equal(new Microsoft.Xna.Framework.Color(255, 170, 255), sentMessage.Color);
         }
 
         [Fact]
