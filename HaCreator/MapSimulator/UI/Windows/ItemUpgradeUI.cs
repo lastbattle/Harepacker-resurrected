@@ -317,10 +317,10 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
+            bool success = _random.NextDouble() < ResolveSuccessRate(consumable.ItemId, state);
             state.RemainingSlots--;
             state.Attempts++;
 
-            bool success = _random.NextDouble() < ResolveSuccessRate(consumable.ItemId, state);
             if (success)
             {
                 state.SuccessCount++;
@@ -330,7 +330,14 @@ namespace HaCreator.MapSimulator.UI
             else
             {
                 state.FailCount++;
-                DestroySelectedItem(selection.Key, selectedPart, state, consumable.Name);
+                if (ResolveDestroyOnFailure(consumable.ItemId, state))
+                {
+                    DestroySelectedItem(selection.Key, selectedPart, state, consumable.Name);
+                }
+                else
+                {
+                    _statusMessage = $"{ResolveItemName(selectedPart)} failed with {consumable.Name}. A slot was consumed.";
+                }
             }
 
             _lastUpgradeSucceeded = success;
@@ -460,7 +467,10 @@ namespace HaCreator.MapSimulator.UI
             }
 
             return _characterBuild.Equipment
-                .Where(entry => entry.Value != null && entry.Key != EquipSlot.None && !entry.Value.IsCash)
+                .Where(entry => entry.Value != null
+                    && entry.Key != EquipSlot.None
+                    && !entry.Value.IsCash
+                    && ResolveDefaultSlotCount(entry.Key, entry.Value) > 0)
                 .OrderBy(entry => entry.Key)
                 .ToArray();
         }
@@ -490,6 +500,26 @@ namespace HaCreator.MapSimulator.UI
             }
 
             return null;
+        }
+
+        private bool ResolveDestroyOnFailure(int consumableItemId, UpgradeState state)
+        {
+            float destroyRate = consumableItemId == AdvancedEnhancementScrollId
+                ? state.SuccessCount switch
+                {
+                    >= 7 => 0.4f,
+                    >= 5 => 0.3f,
+                    >= 3 => 0.2f,
+                    _ => 0.1f
+                }
+                : state.SuccessCount switch
+                {
+                    >= 5 => 0.25f,
+                    >= 3 => 0.15f,
+                    _ => 0.05f
+                };
+
+            return _random.NextDouble() < destroyRate;
         }
 
         private int GetConsumableCount(int itemId)
@@ -535,9 +565,14 @@ namespace HaCreator.MapSimulator.UI
 
         private static int ResolveDefaultSlotCount(EquipSlot slot, CharacterPart part)
         {
+            if (part?.UpgradeSlots > 0)
+            {
+                return part.UpgradeSlots;
+            }
+
             if (part?.IsCash == true)
             {
-                return 3;
+                return 0;
             }
 
             return slot switch

@@ -15,6 +15,13 @@ namespace HaCreator.MapSimulator.UI
     /// </summary>
     public class MinimapUI : BaseDXDrawableItem, IUIObjectEvents
     {
+        public enum NpcMarkerType
+        {
+            Default,
+            QuestStart,
+            QuestEnd
+        }
+
         public enum DirectionArrow
         {
             NorthWest,
@@ -30,6 +37,8 @@ namespace HaCreator.MapSimulator.UI
         private readonly BaseDXDrawableItem _pixelDot;
         private readonly BaseDXDrawableItem _collapsedFrame;
         private readonly BaseDXDrawableItem _npcMarker;
+        private readonly BaseDXDrawableItem _questStartNpcMarker;
+        private readonly BaseDXDrawableItem _questEndNpcMarker;
         private readonly BaseDXDrawableItem _portalMarker;
         private readonly BaseDXDrawableItem _npcListPanel;
         private readonly IReadOnlyDictionary<DirectionArrow, BaseDXDrawableItem> _directionMarkers;
@@ -59,6 +68,7 @@ namespace HaCreator.MapSimulator.UI
 
         public Action FullMapRequested { get; set; }
         public Action MapTransferRequested { get; set; }
+        public Func<NpcItem, NpcMarkerType> ResolveNpcMarkerType { get; set; }
 
         /// <summary>
         /// Sets the player's position on the minimap.
@@ -91,6 +101,8 @@ namespace HaCreator.MapSimulator.UI
             int minimapImageWidth,
             int minimapImageHeight,
             BaseDXDrawableItem npcMarker = null,
+            BaseDXDrawableItem questStartNpcMarker = null,
+            BaseDXDrawableItem questEndNpcMarker = null,
             BaseDXDrawableItem npcListPanel = null,
             BaseDXDrawableItem portalMarker = null,
             IReadOnlyDictionary<DirectionArrow, BaseDXDrawableItem> directionMarkers = null)
@@ -101,6 +113,8 @@ namespace HaCreator.MapSimulator.UI
             _minimapImageWidth = minimapImageWidth;
             _minimapImageHeight = minimapImageHeight;
             _npcMarker = npcMarker;
+            _questStartNpcMarker = questStartNpcMarker;
+            _questEndNpcMarker = questEndNpcMarker;
             _npcListPanel = npcListPanel;
             _portalMarker = portalMarker;
             _directionMarkers = directionMarkers ?? new Dictionary<DirectionArrow, BaseDXDrawableItem>();
@@ -149,7 +163,7 @@ namespace HaCreator.MapSimulator.UI
             if (_btnNpc == null)
                 return;
 
-            bool hasNpcMarkers = _npcMarker != null && _npcMarkers.Count > 0;
+            bool hasNpcMarkers = (_npcMarker != null || _questStartNpcMarker != null || _questEndNpcMarker != null) && _npcMarkers.Count > 0;
             _btnNpc.SetVisible(hasNpcMarkers);
             _showNpcMarkers = hasNpcMarkers && _showNpcMarkers;
             _btnNpc.SetButtonState(_showNpcMarkers ? UIObjectState.Disabled : UIObjectState.Normal);
@@ -450,14 +464,18 @@ namespace HaCreator.MapSimulator.UI
 
             foreach (NpcItem npc in _npcMarkers)
             {
-                if (npc?.NpcInstance == null)
+                if (npc?.NpcInstance == null || !npc.IsVisible)
                     continue;
 
                 Point minimapPoint = WorldToMinimap(npc.CurrentX, npc.CurrentY);
                 if (!IsWithinMinimapImage(minimapPoint))
                     continue;
 
-                _npcMarker.Draw(sprite, skeletonMeshRenderer, gameTime,
+                BaseDXDrawableItem marker = ResolveNpcMarker(npc);
+                if (marker == null)
+                    continue;
+
+                marker.Draw(sprite, skeletonMeshRenderer, gameTime,
                     -Position.X, -Position.Y, minimapPoint.X, minimapPoint.Y,
                     drawReflectionInfo,
                     renderParameters,
@@ -478,7 +496,7 @@ namespace HaCreator.MapSimulator.UI
 
             foreach (PortalItem portal in _portalMarkers)
             {
-                if (portal?.PortalInstance == null)
+                if (portal?.PortalInstance == null || !portal.IsVisible)
                     continue;
 
                 Point minimapPoint = WorldToMinimap(portal.PortalInstance.X, portal.PortalInstance.Y);
@@ -506,7 +524,7 @@ namespace HaCreator.MapSimulator.UI
 
             foreach (PortalItem portal in _portalMarkers)
             {
-                if (portal?.PortalInstance == null)
+                if (portal?.PortalInstance == null || !portal.IsVisible)
                     continue;
 
                 DrawDirectionOverlayForPoint(
@@ -524,7 +542,7 @@ namespace HaCreator.MapSimulator.UI
 
             foreach (NpcItem npc in _npcMarkers)
             {
-                if (npc?.NpcInstance == null)
+                if (npc?.NpcInstance == null || !npc.IsVisible)
                     continue;
 
                 DrawDirectionOverlayForPoint(
@@ -567,6 +585,17 @@ namespace HaCreator.MapSimulator.UI
             return new Point(
                 (worldX - _minimapOriginX) / 16,
                 (worldY - _minimapOriginY) / 16);
+        }
+
+        private BaseDXDrawableItem ResolveNpcMarker(NpcItem npc)
+        {
+            NpcMarkerType markerType = ResolveNpcMarkerType?.Invoke(npc) ?? NpcMarkerType.Default;
+            return markerType switch
+            {
+                NpcMarkerType.QuestStart when _questStartNpcMarker != null => _questStartNpcMarker,
+                NpcMarkerType.QuestEnd when _questEndNpcMarker != null => _questEndNpcMarker,
+                _ => _npcMarker ?? _questStartNpcMarker ?? _questEndNpcMarker
+            };
         }
 
         private void DrawNpcListPanel(

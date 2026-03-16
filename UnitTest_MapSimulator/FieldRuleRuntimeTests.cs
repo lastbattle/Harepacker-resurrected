@@ -113,5 +113,95 @@ namespace UnitTest_MapSimulator
             Assert.False(field.IsActive);
             Assert.Equal(0, field.TimeRemaining);
         }
+
+        [Fact]
+        public void MemoryGameField_StartGame_RequiresBothPlayersReady()
+        {
+            MinigameFields.MemoryGameField field = new();
+            field.OpenRoom(rows: 2, columns: 2);
+
+            bool started = field.TryStartGame(Environment.TickCount, out string message);
+
+            Assert.False(started);
+            Assert.Equal("Both players must be ready before the round can start.", message);
+        }
+
+        [Fact]
+        public void MemoryGameField_RevealMismatch_HidesCardsAndAdvancesTurnAfterDelay()
+        {
+            MinigameFields.MemoryGameField field = new();
+            field.OpenRoom(rows: 2, columns: 2);
+            field.TrySetReady(0, true, out _);
+            field.TrySetReady(1, true, out _);
+            field.TryStartGame(1000, out _);
+
+            int firstIndex = -1;
+            int secondIndex = -1;
+            for (int i = 0; i < field.Cards.Count; i++)
+            {
+                for (int j = i + 1; j < field.Cards.Count; j++)
+                {
+                    if (field.Cards[i].FaceId != field.Cards[j].FaceId)
+                    {
+                        firstIndex = i;
+                        secondIndex = j;
+                        break;
+                    }
+                }
+
+                if (firstIndex >= 0)
+                {
+                    break;
+                }
+            }
+
+            Assert.True(field.TryRevealCard(firstIndex, 1100, out _));
+            Assert.True(field.TryRevealCard(secondIndex, 1150, out _));
+            Assert.True(field.HasPendingMismatch);
+
+            field.Update(2055);
+
+            Assert.False(field.Cards[firstIndex].IsFaceUp);
+            Assert.False(field.Cards[secondIndex].IsFaceUp);
+            Assert.Equal(1, field.CurrentTurnIndex);
+        }
+
+        [Fact]
+        public void MemoryGameField_RevealMatch_IncrementsScoreWithoutAdvancingTurn()
+        {
+            MinigameFields.MemoryGameField field = new();
+            field.OpenRoom(rows: 2, columns: 2);
+            field.TrySetReady(0, true, out _);
+            field.TrySetReady(1, true, out _);
+            field.TryStartGame(1000, out _);
+
+            int firstIndex = -1;
+            int secondIndex = -1;
+            for (int i = 0; i < field.Cards.Count; i++)
+            {
+                for (int j = i + 1; j < field.Cards.Count; j++)
+                {
+                    if (field.Cards[i].FaceId == field.Cards[j].FaceId)
+                    {
+                        firstIndex = i;
+                        secondIndex = j;
+                        break;
+                    }
+                }
+
+                if (firstIndex >= 0)
+                {
+                    break;
+                }
+            }
+
+            Assert.True(field.TryRevealCard(firstIndex, 1100, out _));
+            Assert.True(field.TryRevealCard(secondIndex, 1150, out _));
+
+            Assert.True(field.Cards[firstIndex].IsMatched);
+            Assert.True(field.Cards[secondIndex].IsMatched);
+            Assert.Equal(1, field.Scores[0]);
+            Assert.Equal(0, field.CurrentTurnIndex);
+        }
     }
 }

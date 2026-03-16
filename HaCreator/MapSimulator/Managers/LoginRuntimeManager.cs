@@ -57,6 +57,7 @@ namespace HaCreator.MapSimulator.Managers
             _packetHandlers = new Dictionary<LoginPacketType, Action<int>>
             {
                 [LoginPacketType.CheckPasswordResult] = HandleCheckPasswordResult,
+                [LoginPacketType.CheckUserLimitResult] = HandleCheckUserLimitResult,
                 [LoginPacketType.WorldInformation] = HandleWorldInformation,
                 [LoginPacketType.SelectWorldResult] = HandleSelectWorldResult,
                 [LoginPacketType.SelectCharacterResult] = HandleSelectCharacterResult,
@@ -263,6 +264,11 @@ namespace HaCreator.MapSimulator.Managers
         {
             HasWorldInformation = true;
             LastEventSummary = "Received WorldInformation and populated the world-selection state.";
+        }
+
+        private void HandleCheckUserLimitResult(int currentTickCount)
+        {
+            LastEventSummary = "Received CheckUserLimitResult and unlocked channel selection for the chosen world.";
         }
 
         private void HandleSelectWorldResult(int currentTickCount)

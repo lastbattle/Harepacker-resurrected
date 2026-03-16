@@ -27,6 +27,15 @@ namespace HaCreator.MapSimulator.Companions
         private const float FollowSpacing = 28f;
         private const float MultiPetSpacing = 18f;
         private const float SnapDistance = 220f;
+        private const float HangOnBackMoveSpeed = 280f;
+        private const float BackHangPrimaryX = 18f;
+        private const float BackHangPrimaryY = 24f;
+        private const float BackHangMultiPrimaryX = 10f;
+        private const float BackHangMultiPrimaryY = 18f;
+        private const float BackHangSecondaryX = 24f;
+        private const float BackHangSecondaryY = 30f;
+        private const float BackHangTertiaryX = 36f;
+        private const float BackHangTertiaryY = 40f;
         private const int AutoSpeechIntervalMs = 1800000;
         private const int IdleActionStartMs = 5000;
         private const int IdleSleepActionMs = 120000;
@@ -45,8 +54,10 @@ namespace HaCreator.MapSimulator.Companions
         private int _nextIdleActionTick;
         private string _temporaryActionName;
         private int _temporaryActionExpiresAt;
+        private int _commandLevel = 1;
         private string _activeSpeechText;
         private int _activeSpeechExpiresAt;
+        private bool _hangOnBack;
 
         internal PetRuntime(int runtimeId, int slotIndex, PetDefinition definition)
         {
@@ -68,10 +79,12 @@ namespace HaCreator.MapSimulator.Companions
         public int ItemId => Definition.ItemId;
         public string Name => Definition.Name;
         public int ChatBalloonStyle => Definition.ChatBalloonStyle;
+        public int CommandLevel => _commandLevel;
         public bool HasIdleAutoSpeech => HasAutoSpeechEvent(PetAutoSpeechEvent.Rest);
         public bool HasActiveSpeech => !string.IsNullOrWhiteSpace(_activeSpeechText);
         public string ActiveSpeechText => _activeSpeechText;
         public int ActiveSpeechExpiresAt => _activeSpeechExpiresAt;
+        internal bool DrawBehindOwner => _hangOnBack;
 
         internal void SetPosition(float x, float y, bool facingRight)
         {
@@ -124,7 +137,7 @@ namespace HaCreator.MapSimulator.Companions
             return true;
         }
 
-        internal void Update(PlayerCharacter owner, DropPool dropPool, int ownerId, bool pickupAllowed, int currentTime, float deltaTime)
+        internal void Update(PlayerCharacter owner, DropPool dropPool, int ownerId, bool pickupAllowed, int currentTime, float deltaTime, int activePetCount)
         {
             if (owner == null)
             {
@@ -148,9 +161,9 @@ namespace HaCreator.MapSimulator.Companions
             }
 
             FacingRight = owner.FacingRight;
-            Vector2 followTarget = GetFollowTarget(owner);
+            Vector2 followTarget = GetFollowTarget(owner, activePetCount);
             Vector2 desiredTarget = followTarget;
-            float moveSpeed = FollowSpeed;
+            float moveSpeed = _hangOnBack ? HangOnBackMoveSpeed : FollowSpeed;
             bool chasingDrop = false;
 
             if (dropPool != null)
@@ -200,6 +213,7 @@ namespace HaCreator.MapSimulator.Companions
             }
 
             PetCommandDefinition command = Definition.Commands.FirstOrDefault(candidate =>
+                IsCommandLevelEligible(candidate) &&
                 candidate.Triggers.Any(trigger => string.Equals(NormalizeTrigger(trigger), normalizedMessage, StringComparison.OrdinalIgnoreCase)));
             if (command == null)
             {
@@ -211,9 +225,36 @@ namespace HaCreator.MapSimulator.Companions
             return true;
         }
 
-        public void Draw(SpriteBatch spriteBatch, SkeletonMeshRenderer skeletonRenderer,
-            int mapShiftX, int mapShiftY, int centerX, int centerY)
+        public void SetCommandLevel(int level)
         {
+            _commandLevel = Math.Clamp(level, 1, 30);
+        }
+
+        public bool TryTriggerSlangFeedback(int currentTime)
+        {
+            return TryApplyDialogFeedback(Definition.SlangFeedback, success: true, currentTime: currentTime);
+        }
+
+        public bool TryTriggerFoodFeedback(int variant, bool success, int currentTime)
+        {
+            if (variant < 1 || variant > 4 ||
+                Definition.FoodFeedback == null ||
+                !Definition.FoodFeedback.TryGetValue(variant, out PetDialogFeedbackDefinition feedback))
+            {
+                return false;
+            }
+
+            return TryApplyDialogFeedback(feedback, success, currentTime);
+        }
+
+        public void Draw(SpriteBatch spriteBatch, SkeletonMeshRenderer skeletonRenderer,
+            int mapShiftX, int mapShiftY, int centerX, int centerY, bool drawBehindOwner)
+        {
+            if (DrawBehindOwner != drawBehindOwner)
+            {
+                return;
+            }
+
             IDXObject frame = _animation.GetCurrentFrame();
             if (frame == null)
             {
@@ -225,11 +266,61 @@ namespace HaCreator.MapSimulator.Companions
             frame.DrawBackground(spriteBatch, skeletonRenderer, null, screenX, screenY, Color.White, !FacingRight, null);
         }
 
-        private Vector2 GetFollowTarget(PlayerCharacter owner)
+        private Vector2 GetFollowTarget(PlayerCharacter owner, int activePetCount)
         {
-            float direction = owner.FacingRight ? -1f : 1f;
-            float offsetX = direction * (FollowSpacing + SlotIndex * MultiPetSpacing);
-            return new Vector2(owner.X + offsetX, owner.Y);
+            return ResolveAnchorTarget(
+                owner.X,
+                owner.Y,
+                owner.GetHitbox(),
+                owner.FacingRight,
+                owner.State,
+                SlotIndex,
+                activePetCount,
+                out _hangOnBack,
+                out _);
+        }
+
+        internal static Vector2 ResolveAnchorTarget(
+            float ownerX,
+            float ownerY,
+            Rectangle ownerHitbox,
+            bool ownerFacingRight,
+            PlayerState ownerState,
+            int slotIndex,
+            int activePetCount,
+            out bool hangOnBack,
+            out bool useMultiPetHangLayout)
+        {
+            hangOnBack = ownerState == PlayerState.Ladder || ownerState == PlayerState.Rope;
+            useMultiPetHangLayout = hangOnBack && slotIndex == 0 && activePetCount > 1;
+
+            float backDirection = ownerFacingRight ? -1f : 1f;
+            if (!hangOnBack)
+            {
+                float offsetX = backDirection * (FollowSpacing + slotIndex * MultiPetSpacing);
+                return new Vector2(ownerX + offsetX, ownerY);
+            }
+
+            float xOffset;
+            float yOffset;
+            switch (slotIndex)
+            {
+                case 0:
+                    xOffset = useMultiPetHangLayout ? BackHangMultiPrimaryX : BackHangPrimaryX;
+                    yOffset = useMultiPetHangLayout ? BackHangMultiPrimaryY : BackHangPrimaryY;
+                    break;
+                case 1:
+                    xOffset = BackHangSecondaryX;
+                    yOffset = BackHangSecondaryY;
+                    break;
+                default:
+                    xOffset = BackHangTertiaryX;
+                    yOffset = BackHangTertiaryY;
+                    break;
+            }
+
+            float baseY = ownerHitbox.IsEmpty ? ownerY - 42f : ownerHitbox.Top + yOffset;
+            return new Vector2(ownerX + (backDirection * xOffset), baseY);
         }
 
         private void MoveTowards(Vector2 desiredTarget, float moveSpeed, float deltaTime, Vector2 followTarget)
@@ -358,10 +449,7 @@ namespace HaCreator.MapSimulator.Companions
             if (reaction.SpeechLines.Length > 0)
             {
                 string line = reaction.SpeechLines[SharedRandom.Next(reaction.SpeechLines.Length)];
-                if (!string.IsNullOrWhiteSpace(line))
-                {
-                    SetSpeech(line, currentTime + SpeechDurationMs);
-                }
+                TryShowSpeech(line, currentTime);
             }
         }
 
@@ -371,7 +459,7 @@ namespace HaCreator.MapSimulator.Companions
             float deltaX = desiredTarget.X - X;
             float deltaY = desiredTarget.Y - Y;
 
-            if (owner.State == PlayerState.Ladder || owner.State == PlayerState.Rope)
+            if (_hangOnBack)
             {
                 action = "hang";
             }
@@ -419,6 +507,54 @@ namespace HaCreator.MapSimulator.Companions
             return string.IsNullOrWhiteSpace(trigger)
                 ? string.Empty
                 : trigger.Trim().Replace(" ", string.Empty);
+        }
+
+        private bool IsCommandLevelEligible(PetCommandDefinition command)
+        {
+            return command != null && _commandLevel >= command.LevelMin && _commandLevel <= command.LevelMax;
+        }
+
+        private bool TryApplyDialogFeedback(PetDialogFeedbackDefinition feedback, bool success, int currentTime)
+        {
+            if (feedback == null)
+            {
+                return false;
+            }
+
+            string[] lines = success ? feedback.SuccessLines : feedback.FailureLines;
+            if ((lines == null || lines.Length == 0) && success)
+            {
+                lines = feedback.FailureLines;
+            }
+            else if ((lines == null || lines.Length == 0) && !success)
+            {
+                lines = feedback.SuccessLines;
+            }
+
+            if (lines == null || lines.Length == 0)
+            {
+                return false;
+            }
+
+            string line = lines[SharedRandom.Next(lines.Length)];
+            return TryShowSpeech(line, currentTime);
+        }
+
+        private bool TryShowSpeech(string line, int currentTime)
+        {
+            if (string.IsNullOrWhiteSpace(line))
+            {
+                return false;
+            }
+
+            SetSpeech(line, currentTime + SpeechDurationMs);
+            if (Definition.Animations.GetAvailableActions().Any(action =>
+                    string.Equals(action, "chat", StringComparison.OrdinalIgnoreCase)))
+            {
+                SetTemporaryAction("chat", currentTime + TemporaryActionDurationMs);
+            }
+
+            return true;
         }
     }
 
@@ -518,6 +654,37 @@ namespace HaCreator.MapSimulator.Companions
             return false;
         }
 
+        public PetRuntime GetPetAt(int slotIndex)
+        {
+            return slotIndex < 0 || slotIndex >= _activePets.Count
+                ? null
+                : _activePets[slotIndex];
+        }
+
+        public bool TrySetCommandLevel(int slotIndex, int level)
+        {
+            PetRuntime pet = GetPetAt(slotIndex);
+            if (pet == null)
+            {
+                return false;
+            }
+
+            pet.SetCommandLevel(level);
+            return true;
+        }
+
+        public bool TryTriggerSlangFeedback(int slotIndex, int currentTime)
+        {
+            PetRuntime pet = GetPetAt(slotIndex);
+            return pet != null && pet.TryTriggerSlangFeedback(currentTime);
+        }
+
+        public bool TryTriggerFoodFeedback(int slotIndex, int variant, bool success, int currentTime)
+        {
+            PetRuntime pet = GetPetAt(slotIndex);
+            return pet != null && pet.TryTriggerFoodFeedback(variant, success, currentTime);
+        }
+
         public IEnumerable<PetRuntime> GetSpeakingPets(int currentTime)
         {
             return _activePets.Where(pet => pet.HasActiveSpeech && pet.ActiveSpeechExpiresAt > currentTime);
@@ -535,16 +702,16 @@ namespace HaCreator.MapSimulator.Companions
 
             for (int i = 0; i < _activePets.Count; i++)
             {
-                _activePets[i].Update(owner, dropPool, ownerId, pickupAllowed, currentTime, deltaTime);
+                _activePets[i].Update(owner, dropPool, ownerId, pickupAllowed, currentTime, deltaTime, _activePets.Count);
             }
         }
 
         public void Draw(SpriteBatch spriteBatch, SkeletonMeshRenderer skeletonRenderer,
-            int mapShiftX, int mapShiftY, int centerX, int centerY)
+            int mapShiftX, int mapShiftY, int centerX, int centerY, bool drawBehindOwner)
         {
             for (int i = 0; i < _activePets.Count; i++)
             {
-                _activePets[i].Draw(spriteBatch, skeletonRenderer, mapShiftX, mapShiftY, centerX, centerY);
+                _activePets[i].Draw(spriteBatch, skeletonRenderer, mapShiftX, mapShiftY, centerX, centerY, drawBehindOwner);
             }
         }
 

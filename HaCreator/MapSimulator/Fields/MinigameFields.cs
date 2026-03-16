@@ -1,9 +1,15 @@
 using HaSharedLibrary.Render.DX;
+using HaSharedLibrary.Util;
+using HaSharedLibrary.Wz;
+using MapleLib.Converters;
+using MapleLib.WzLib;
+using MapleLib.WzLib.WzProperties;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using Spine;
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Runtime.CompilerServices;
 
 namespace HaCreator.MapSimulator.Fields
@@ -17,9 +23,20 @@ namespace HaCreator.MapSimulator.Fields
     {
         private readonly SnowBallField _snowBall = new();
         private readonly CoconutField _coconut = new();
+        private readonly MemoryGameField _memoryGame = new();
+        private readonly AriantArenaField _ariantArena = new();
+        private readonly MonsterCarnivalField _monsterCarnival = new();
 
         public SnowBallField SnowBall => _snowBall;
         public CoconutField Coconut => _coconut;
+        public MemoryGameField MemoryGame => _memoryGame;
+        public AriantArenaField AriantArena => _ariantArena;
+        public MonsterCarnivalField MonsterCarnival => _monsterCarnival;
+
+        public void Initialize(GraphicsDevice graphicsDevice)
+        {
+            _ariantArena.Initialize(graphicsDevice);
+        }
 
         public void Update(int tickCount)
         {
@@ -31,6 +48,21 @@ namespace HaCreator.MapSimulator.Fields
             if (_coconut.IsActive)
             {
                 _coconut.Update(tickCount);
+            }
+
+            if (_memoryGame.IsVisible)
+            {
+                _memoryGame.Update(tickCount);
+            }
+
+            if (_ariantArena.IsActive)
+            {
+                _ariantArena.Update(tickCount);
+            }
+
+            if (_monsterCarnival.IsVisible)
+            {
+                _monsterCarnival.Update(tickCount);
             }
         }
 
@@ -75,12 +107,50 @@ namespace HaCreator.MapSimulator.Fields
                     pixelTexture,
                     font);
             }
+
+            if (_memoryGame.IsVisible)
+            {
+                _memoryGame.Draw(
+                    spriteBatch,
+                    skeletonMeshRenderer,
+                    gameTime,
+                    mapShiftX,
+                    mapShiftY,
+                    centerX,
+                    centerY,
+                    tickCount,
+                    pixelTexture,
+                    font);
+            }
+
+            if (_ariantArena.IsActive)
+            {
+                _ariantArena.Draw(
+                    spriteBatch,
+                    skeletonMeshRenderer,
+                    gameTime,
+                    mapShiftX,
+                    mapShiftY,
+                    centerX,
+                    centerY,
+                    tickCount,
+                    pixelTexture,
+                    font);
+            }
+
+            if (_monsterCarnival.IsVisible)
+            {
+                _monsterCarnival.Draw(spriteBatch, pixelTexture, font);
+            }
         }
 
         public void ResetAll()
         {
             _snowBall.Reset();
             _coconut.Reset();
+            _memoryGame.Reset();
+            _ariantArena.Reset();
+            _monsterCarnival.Reset();
         }
     }
 
@@ -1299,5 +1369,959 @@ namespace HaCreator.MapSimulator.Fields
 
         #endregion
     }
+    #endregion
+
+    #region Memory Game / Match Cards (CMemoryGameDlg)
+    /// <summary>
+    /// MiniRoom Match Cards runtime. This mirrors the client-owned dialog shape
+    /// by keeping a dedicated room shell, board state, ready/start button flow,
+    /// turn ownership, and delayed mismatch hide handling.
+    /// </summary>
+    public class MemoryGameField
+    {
+        private const int DefaultRows = 4;
+        private const int DefaultColumns = 4;
+        private const int DefaultLocalPlayerIndex = 0;
+        private const int DefaultMismatchHideDelayMs = 900;
+        private const int DefaultTurnSeconds = 15;
+        private const int DefaultResultSeconds = 5;
+
+        private readonly List<Card> _cards = new();
+        private readonly List<int> _revealedCardIndices = new(2);
+        private readonly int[] _scores = new int[2];
+        private readonly bool[] _readyStates = new bool[2];
+        private readonly string[] _playerNames = new string[2];
+        private readonly int[] _wins = new int[2];
+        private readonly int[] _losses = new int[2];
+        private readonly int[] _draws = new int[2];
+
+        private RoomStage _stage = RoomStage.Hidden;
+        private int _rows;
+        private int _columns;
+        private int _localPlayerIndex;
+        private int _currentTurnIndex;
+        private int _pendingHideTick;
+        private int _turnDeadlineTick;
+        private int _resultExpireTick;
+        private int _lastWinnerIndex = -1;
+        private string _title = "Match Cards";
+        private string _statusMessage = "Open a MiniRoom to begin.";
+
+        public enum RoomStage
+        {
+            Hidden,
+            Lobby,
+            Playing,
+            Result
+        }
+
+        public sealed class Card
+        {
+            public int FaceId { get; init; }
+            public bool IsFaceUp { get; set; }
+            public bool IsMatched { get; set; }
+        }
+
+        public RoomStage Stage => _stage;
+        public bool IsVisible => _stage != RoomStage.Hidden;
+        public bool IsPlaying => _stage == RoomStage.Playing;
+        public bool HasPendingMismatch => _pendingHideTick > 0;
+        public IReadOnlyList<Card> Cards => _cards;
+        public int CurrentTurnIndex => _currentTurnIndex;
+        public int LocalPlayerIndex => _localPlayerIndex;
+        public int CurrentTurnTimeRemainingSeconds => _turnDeadlineTick <= 0 ? 0 : Math.Max(0, (_turnDeadlineTick - Environment.TickCount + 999) / 1000);
+        public int LastWinnerIndex => _lastWinnerIndex;
+        public IReadOnlyList<int> Scores => _scores;
+        public IReadOnlyList<bool> ReadyStates => _readyStates;
+        public IReadOnlyList<string> PlayerNames => _playerNames;
+        public string Title => _title;
+
+        public void OpenRoom(
+            string title = "Match Cards",
+            string playerOneName = "Player",
+            string playerTwoName = "Opponent",
+            int rows = DefaultRows,
+            int columns = DefaultColumns,
+            int localPlayerIndex = DefaultLocalPlayerIndex)
+        {
+            rows = Math.Max(2, rows);
+            columns = Math.Max(2, columns);
+            if ((rows * columns) % 2 != 0)
+            {
+                columns++;
+            }
+
+            _rows = rows;
+            _columns = columns;
+            _localPlayerIndex = Math.Clamp(localPlayerIndex, 0, 1);
+            _playerNames[0] = string.IsNullOrWhiteSpace(playerOneName) ? "Player" : playerOneName.Trim();
+            _playerNames[1] = string.IsNullOrWhiteSpace(playerTwoName) ? "Opponent" : playerTwoName.Trim();
+            _title = string.IsNullOrWhiteSpace(title) ? "Match Cards" : title.Trim();
+
+            ClearRoundState();
+            _stage = RoomStage.Lobby;
+            _statusMessage = "Ready the room, then start the board.";
+        }
+
+        public bool TrySetReady(int playerIndex, bool isReady, out string message)
+        {
+            if (_stage == RoomStage.Hidden)
+            {
+                message = "Open a Memory Game room first.";
+                return false;
+            }
+
+            if (_stage == RoomStage.Playing)
+            {
+                message = "Ready state is locked while a round is in progress.";
+                return false;
+            }
+
+            if (!IsValidPlayerIndex(playerIndex))
+            {
+                message = $"Invalid player index: {playerIndex}.";
+                return false;
+            }
+
+            _readyStates[playerIndex] = isReady;
+            _statusMessage = $"{_playerNames[playerIndex]} is {(isReady ? "ready" : "not ready")}.";
+            message = _statusMessage;
+            return true;
+        }
+
+        public bool TryStartGame(int tickCount, out string message)
+        {
+            if (_stage == RoomStage.Hidden)
+            {
+                message = "Open a Memory Game room first.";
+                return false;
+            }
+
+            if (!_readyStates[0] || !_readyStates[1])
+            {
+                message = "Both players must be ready before the round can start.";
+                return false;
+            }
+
+            InitializeBoard();
+            _stage = RoomStage.Playing;
+            _currentTurnIndex = 0;
+            _pendingHideTick = 0;
+            _lastWinnerIndex = -1;
+            _turnDeadlineTick = tickCount + DefaultTurnSeconds * 1000;
+            _statusMessage = $"{_playerNames[_currentTurnIndex]}'s turn.";
+            message = _statusMessage;
+            return true;
+        }
+
+        public bool TryRevealCard(int cardIndex, int tickCount, out string message)
+        {
+            if (_stage != RoomStage.Playing)
+            {
+                message = "The board is not active.";
+                return false;
+            }
+
+            if (_currentTurnIndex != _localPlayerIndex)
+            {
+                message = $"It is {_playerNames[_currentTurnIndex]}'s turn.";
+                return false;
+            }
+
+            if (_pendingHideTick > 0)
+            {
+                message = "Wait for the previous mismatch to resolve.";
+                return false;
+            }
+
+            if (cardIndex < 0 || cardIndex >= _cards.Count)
+            {
+                message = $"Invalid card index: {cardIndex}.";
+                return false;
+            }
+
+            Card card = _cards[cardIndex];
+            if (card.IsMatched || card.IsFaceUp)
+            {
+                message = "That card is already revealed.";
+                return false;
+            }
+
+            card.IsFaceUp = true;
+            _revealedCardIndices.Add(cardIndex);
+
+            if (_revealedCardIndices.Count == 1)
+            {
+                _statusMessage = $"{_playerNames[_currentTurnIndex]} revealed card {cardIndex}.";
+                message = _statusMessage;
+                return true;
+            }
+
+            Card firstCard = _cards[_revealedCardIndices[0]];
+            if (firstCard.FaceId == card.FaceId)
+            {
+                firstCard.IsMatched = true;
+                card.IsMatched = true;
+                _scores[_currentTurnIndex]++;
+                _revealedCardIndices.Clear();
+                _turnDeadlineTick = tickCount + DefaultTurnSeconds * 1000;
+
+                if (AreAllCardsMatched())
+                {
+                    FinishRound(tickCount);
+                }
+                else
+                {
+                    _statusMessage = $"{_playerNames[_currentTurnIndex]} found a pair.";
+                }
+
+                message = _statusMessage;
+                return true;
+            }
+
+            _pendingHideTick = tickCount + DefaultMismatchHideDelayMs;
+            _statusMessage = "Mismatch. Cards will flip back.";
+            message = _statusMessage;
+            return true;
+        }
+
+        public bool TryClaimTie(out string message)
+        {
+            if (_stage == RoomStage.Hidden)
+            {
+                message = "Open a Memory Game room first.";
+                return false;
+            }
+
+            _stage = RoomStage.Result;
+            _lastWinnerIndex = -1;
+            _draws[0]++;
+            _draws[1]++;
+            _resultExpireTick = Environment.TickCount + DefaultResultSeconds * 1000;
+            _statusMessage = "The room settled as a draw.";
+            message = _statusMessage;
+            return true;
+        }
+
+        public bool TryGiveUp(int playerIndex, out string message)
+        {
+            if (_stage == RoomStage.Hidden)
+            {
+                message = "Open a Memory Game room first.";
+                return false;
+            }
+
+            if (!IsValidPlayerIndex(playerIndex))
+            {
+                message = $"Invalid player index: {playerIndex}.";
+                return false;
+            }
+
+            int winnerIndex = playerIndex == 0 ? 1 : 0;
+            _wins[winnerIndex]++;
+            _losses[playerIndex]++;
+            _stage = RoomStage.Result;
+            _lastWinnerIndex = winnerIndex;
+            _resultExpireTick = Environment.TickCount + DefaultResultSeconds * 1000;
+            _statusMessage = $"{_playerNames[playerIndex]} gave up. {_playerNames[winnerIndex]} wins.";
+            message = _statusMessage;
+            return true;
+        }
+
+        public bool TryEndRoom(out string message)
+        {
+            if (_stage == RoomStage.Hidden)
+            {
+                message = "Memory Game room is already closed.";
+                return false;
+            }
+
+            Reset();
+            message = "Memory Game room closed.";
+            return true;
+        }
+
+        public void Update(int tickCount)
+        {
+            if (_stage == RoomStage.Playing)
+            {
+                if (_pendingHideTick > 0 && tickCount >= _pendingHideTick)
+                {
+                    ResolveMismatch();
+                }
+
+                if (_turnDeadlineTick > 0 && tickCount >= _turnDeadlineTick && _pendingHideTick <= 0)
+                {
+                    AdvanceTurn(tickCount);
+                    _statusMessage = $"{_playerNames[_currentTurnIndex]}'s turn.";
+                }
+            }
+            else if (_stage == RoomStage.Result && _resultExpireTick > 0 && tickCount >= _resultExpireTick)
+            {
+                ReturnToLobby();
+            }
+        }
+
+        public void Draw(
+            SpriteBatch spriteBatch,
+            SkeletonMeshRenderer skeletonMeshRenderer,
+            GameTime gameTime,
+            int mapShiftX,
+            int mapShiftY,
+            int centerX,
+            int centerY,
+            int tickCount,
+            Texture2D pixelTexture,
+            SpriteFont font = null)
+        {
+            if (_stage == RoomStage.Hidden || pixelTexture == null || font == null)
+            {
+                return;
+            }
+
+            Viewport viewport = spriteBatch.GraphicsDevice.Viewport;
+            int dialogWidth = 420;
+            int dialogHeight = 360;
+            int dialogX = viewport.Width / 2 - dialogWidth / 2;
+            int dialogY = Math.Max(24, viewport.Height / 2 - dialogHeight / 2);
+
+            Rectangle outer = new Rectangle(dialogX, dialogY, dialogWidth, dialogHeight);
+            Rectangle inner = new Rectangle(dialogX + 8, dialogY + 8, dialogWidth - 16, dialogHeight - 16);
+            Rectangle titleBar = new Rectangle(dialogX + 8, dialogY + 8, dialogWidth - 16, 34);
+            Rectangle boardArea = new Rectangle(dialogX + 18, dialogY + 88, 252, 232);
+            Rectangle sidebar = new Rectangle(dialogX + 284, dialogY + 88, 118, 232);
+
+            spriteBatch.Draw(pixelTexture, outer, new Color(20, 27, 41, 235));
+            spriteBatch.Draw(pixelTexture, inner, new Color(236, 223, 191, 245));
+            spriteBatch.Draw(pixelTexture, titleBar, new Color(109, 69, 28, 255));
+            spriteBatch.Draw(pixelTexture, boardArea, new Color(97, 59, 28, 255));
+            spriteBatch.Draw(pixelTexture, sidebar, new Color(56, 40, 26, 230));
+
+            DrawOutlinedText(spriteBatch, font, _title, new Vector2(dialogX + 20, dialogY + 15), Color.Black, Color.White);
+
+            DrawNameBar(spriteBatch, pixelTexture, font, _playerNames[0], _scores[0], dialogX + 18, dialogY + 50, _currentTurnIndex == 0);
+            DrawNameBar(spriteBatch, pixelTexture, font, _playerNames[1], _scores[1], dialogX + 210, dialogY + 50, _currentTurnIndex == 1);
+
+            DrawBoard(spriteBatch, pixelTexture, font, boardArea);
+            DrawSidebar(spriteBatch, pixelTexture, font, sidebar, tickCount);
+            DrawOutlinedText(spriteBatch, font, _statusMessage, new Vector2(dialogX + 18, dialogY + 330), Color.Black, new Color(255, 239, 197));
+        }
+
+        public string DescribeStatus()
+        {
+            string playerOneName = string.IsNullOrWhiteSpace(_playerNames[0]) ? "Player" : _playerNames[0];
+            string playerTwoName = string.IsNullOrWhiteSpace(_playerNames[1]) ? "Opponent" : _playerNames[1];
+            return $"{_title}: stage={_stage}, turn={_currentTurnIndex}, ready=[{_readyStates[0]},{_readyStates[1]}], score={_scores[0]}-{_scores[1]}, players={playerOneName}/{playerTwoName}, cards={_cards.Count}, pendingHide={_pendingHideTick > 0}";
+        }
+
+        public void Reset()
+        {
+            _cards.Clear();
+            _revealedCardIndices.Clear();
+            _scores[0] = 0;
+            _scores[1] = 0;
+            _readyStates[0] = false;
+            _readyStates[1] = false;
+            _playerNames[0] = "Player";
+            _playerNames[1] = "Opponent";
+            _rows = 0;
+            _columns = 0;
+            _localPlayerIndex = DefaultLocalPlayerIndex;
+            _currentTurnIndex = 0;
+            _pendingHideTick = 0;
+            _turnDeadlineTick = 0;
+            _resultExpireTick = 0;
+            _lastWinnerIndex = -1;
+            _title = "Match Cards";
+            _statusMessage = "Open a MiniRoom to begin.";
+            _stage = RoomStage.Hidden;
+        }
+
+        private void InitializeBoard()
+        {
+            _cards.Clear();
+            _revealedCardIndices.Clear();
+            _scores[0] = 0;
+            _scores[1] = 0;
+            _pendingHideTick = 0;
+            _resultExpireTick = 0;
+
+            int pairCount = (_rows * _columns) / 2;
+            List<int> faceIds = new(pairCount * 2);
+            for (int i = 0; i < pairCount; i++)
+            {
+                faceIds.Add(i);
+                faceIds.Add(i);
+            }
+
+            Random random = new((_rows * 397) ^ (_columns * 211) ^ _title.GetHashCode(StringComparison.Ordinal));
+            for (int i = faceIds.Count - 1; i > 0; i--)
+            {
+                int swapIndex = random.Next(i + 1);
+                (faceIds[i], faceIds[swapIndex]) = (faceIds[swapIndex], faceIds[i]);
+            }
+
+            for (int i = 0; i < faceIds.Count; i++)
+            {
+                _cards.Add(new Card
+                {
+                    FaceId = faceIds[i],
+                    IsFaceUp = false,
+                    IsMatched = false
+                });
+            }
+        }
+
+        private void ResolveMismatch()
+        {
+            for (int i = 0; i < _revealedCardIndices.Count; i++)
+            {
+                _cards[_revealedCardIndices[i]].IsFaceUp = false;
+            }
+
+            _revealedCardIndices.Clear();
+            _pendingHideTick = 0;
+            AdvanceTurn(Environment.TickCount);
+            _statusMessage = $"{_playerNames[_currentTurnIndex]}'s turn.";
+        }
+
+        private void AdvanceTurn(int tickCount)
+        {
+            _currentTurnIndex = _currentTurnIndex == 0 ? 1 : 0;
+            _turnDeadlineTick = tickCount + DefaultTurnSeconds * 1000;
+        }
+
+        private bool AreAllCardsMatched()
+        {
+            for (int i = 0; i < _cards.Count; i++)
+            {
+                if (!_cards[i].IsMatched)
+                {
+                    return false;
+                }
+            }
+
+            return _cards.Count > 0;
+        }
+
+        private void FinishRound(int tickCount)
+        {
+            _stage = RoomStage.Result;
+            _resultExpireTick = tickCount + DefaultResultSeconds * 1000;
+            _pendingHideTick = 0;
+            _turnDeadlineTick = 0;
+
+            if (_scores[0] == _scores[1])
+            {
+                _lastWinnerIndex = -1;
+                _draws[0]++;
+                _draws[1]++;
+                _statusMessage = "Round complete. Draw.";
+                return;
+            }
+
+            int winnerIndex = _scores[0] > _scores[1] ? 0 : 1;
+            int loserIndex = winnerIndex == 0 ? 1 : 0;
+            _lastWinnerIndex = winnerIndex;
+            _wins[winnerIndex]++;
+            _losses[loserIndex]++;
+            _statusMessage = $"Round complete. {_playerNames[winnerIndex]} wins.";
+        }
+
+        private void ReturnToLobby()
+        {
+            _cards.Clear();
+            _revealedCardIndices.Clear();
+            _scores[0] = 0;
+            _scores[1] = 0;
+            _pendingHideTick = 0;
+            _turnDeadlineTick = 0;
+            _resultExpireTick = 0;
+            _lastWinnerIndex = -1;
+            _stage = RoomStage.Lobby;
+            _statusMessage = "Ready the room, then start the board.";
+        }
+
+        private void ClearRoundState()
+        {
+            _cards.Clear();
+            _revealedCardIndices.Clear();
+            _scores[0] = 0;
+            _scores[1] = 0;
+            _readyStates[0] = false;
+            _readyStates[1] = false;
+            _currentTurnIndex = 0;
+            _pendingHideTick = 0;
+            _turnDeadlineTick = 0;
+            _resultExpireTick = 0;
+            _lastWinnerIndex = -1;
+        }
+
+        private void DrawBoard(SpriteBatch spriteBatch, Texture2D pixel, SpriteFont font, Rectangle area)
+        {
+            if (_cards.Count == 0)
+            {
+                DrawOutlinedText(spriteBatch, font, "No board yet", new Vector2(area.X + 72, area.Y + 102), Color.Black, Color.White);
+                return;
+            }
+
+            int gap = 8;
+            int cardWidth = (area.Width - gap * (_columns + 1)) / _columns;
+            int cardHeight = (area.Height - gap * (_rows + 1)) / _rows;
+
+            for (int index = 0; index < _cards.Count; index++)
+            {
+                int row = index / _columns;
+                int column = index % _columns;
+                Rectangle cardRect = new Rectangle(
+                    area.X + gap + column * (cardWidth + gap),
+                    area.Y + gap + row * (cardHeight + gap),
+                    cardWidth,
+                    cardHeight);
+
+                Card card = _cards[index];
+                Color cardColor = card.IsMatched
+                    ? new Color(111, 162, 85)
+                    : card.IsFaceUp
+                        ? new Color(246, 224, 167)
+                        : new Color(145, 82, 42);
+
+                spriteBatch.Draw(pixel, cardRect, cardColor);
+                spriteBatch.Draw(pixel, new Rectangle(cardRect.X + 2, cardRect.Y + 2, cardRect.Width - 4, cardRect.Height - 4), cardColor * 0.9f);
+
+                string label = card.IsFaceUp || card.IsMatched ? (card.FaceId + 1).ToString() : "?";
+                Vector2 size = font.MeasureString(label);
+                Vector2 pos = new(cardRect.Center.X - size.X / 2f, cardRect.Center.Y - size.Y / 2f);
+                DrawOutlinedText(spriteBatch, font, label, pos, Color.Black, Color.White);
+            }
+        }
+
+        private void DrawSidebar(SpriteBatch spriteBatch, Texture2D pixel, SpriteFont font, Rectangle area, int tickCount)
+        {
+            string[] buttons =
+            {
+                _stage == RoomStage.Playing ? "1007 Ready" : "1001 Start",
+                "1002 Tie",
+                "1003 Give Up",
+                "1004 End",
+                "1008 Ban"
+            };
+
+            for (int i = 0; i < buttons.Length; i++)
+            {
+                Rectangle buttonRect = new Rectangle(area.X + 10, area.Y + 10 + i * 40, area.Width - 20, 30);
+                spriteBatch.Draw(pixel, buttonRect, new Color(119, 84, 48));
+                DrawOutlinedText(spriteBatch, font, buttons[i], new Vector2(buttonRect.X + 8, buttonRect.Y + 6), Color.Black, Color.White);
+            }
+
+            int textY = area.Y + 220;
+            DrawOutlinedText(spriteBatch, font, $"Turn: {_playerNames[_currentTurnIndex]}", new Vector2(area.X + 10, textY), Color.Black, Color.White);
+            DrawOutlinedText(spriteBatch, font, $"Time: {CurrentTurnTimeRemainingSeconds}", new Vector2(area.X + 10, textY + 20), Color.Black, Color.White);
+            DrawOutlinedText(spriteBatch, font, $"W/L/D: {_wins[0]}/{_losses[0]}/{_draws[0]}", new Vector2(area.X + 10, textY + 40), Color.Black, Color.White);
+        }
+
+        private void DrawNameBar(SpriteBatch spriteBatch, Texture2D pixel, SpriteFont font, string name, int score, int x, int y, bool isActiveTurn)
+        {
+            Rectangle rect = new Rectangle(x, y, 174, 28);
+            spriteBatch.Draw(pixel, rect, isActiveTurn ? new Color(223, 196, 120) : new Color(132, 103, 73));
+            DrawOutlinedText(spriteBatch, font, name, new Vector2(x + 8, y + 5), Color.Black, Color.White);
+            DrawOutlinedText(spriteBatch, font, score.ToString(), new Vector2(x + 146, y + 5), Color.Black, Color.White);
+        }
+
+        private static void DrawOutlinedText(SpriteBatch spriteBatch, SpriteFont font, string text, Vector2 position, Color shadowColor, Color textColor)
+        {
+            spriteBatch.DrawString(font, text, position + Vector2.One, shadowColor);
+            spriteBatch.DrawString(font, text, position, textColor);
+        }
+
+        private bool IsValidPlayerIndex(int playerIndex)
+        {
+            return playerIndex >= 0 && playerIndex < _playerNames.Length;
+        }
+    }
+    #endregion
+
+    #region Ariant Arena Field (CField_AriantArena)
+    /// <summary>
+    /// Ariant Arena ranking and result flow.
+    ///
+    /// Client evidence:
+    /// - CField_AriantArena::OnUserScore (0x5492b0): updates or removes score rows, clamps score to 9999, and re-sorts rank order
+    /// - CField_AriantArena::UpdateScoreAndRank (0x547c90): draws a top-left score surface with icon at (5, y), name at (21, y),
+    ///   score at (106, y), and 17px row spacing
+    /// - CField_AriantArena::OnShowResult (0x547630): loads the AriantMatch result animation at the center-top origin with a +100 Y offset
+    /// - WZ evidence: UI/UIWindow.img/AriantMatch and UI/UIWindow2.img/AriantMatch expose the result frames and rank icons
+    /// </summary>
+    public class AriantArenaField
+    {
+        private const int MaxRankEntries = 6;
+        private const int MaxScore = 9999;
+        private const int IconX = 5;
+        private const int NameX = 21;
+        private const int ScoreX = 106;
+        private const int FirstRowY = 0;
+        private const int RowSpacing = 17;
+        private const int ResultOffsetY = 100;
+        private const int ResultHoldDurationMs = 1200;
+
+        private readonly List<AriantArenaScoreEntry> _entries = new();
+        private readonly List<IDXObject> _resultFrames = new();
+        private readonly List<IDXObject> _rankIcons = new();
+        private GraphicsDevice _graphicsDevice;
+        private bool _assetsLoaded;
+        private bool _isActive;
+        private bool _showScoreboard;
+        private bool _showResult;
+        private int _resultFrameIndex;
+        private int _resultFrameStartedAt;
+        private int _resultVisibleUntil;
+        private string _lastResultMessage;
+
+        public bool IsActive => _isActive;
+        public IReadOnlyList<AriantArenaScoreEntry> Entries => _entries;
+
+        public void Initialize(GraphicsDevice graphicsDevice)
+        {
+            _graphicsDevice = graphicsDevice;
+            EnsureAssetsLoaded();
+        }
+
+        public void Enable()
+        {
+            _isActive = true;
+            _showScoreboard = true;
+            _showResult = false;
+            _resultFrameIndex = 0;
+            _resultFrameStartedAt = 0;
+            _resultVisibleUntil = 0;
+            _lastResultMessage = null;
+            EnsureAssetsLoaded();
+        }
+
+        public void OnUserScore(string userName, int score)
+        {
+            if (!_isActive)
+            {
+                return;
+            }
+
+            string normalizedName = userName?.Trim();
+            if (string.IsNullOrWhiteSpace(normalizedName))
+            {
+                return;
+            }
+
+            int existingIndex = _entries.FindIndex(entry => string.Equals(entry.Name, normalizedName, StringComparison.OrdinalIgnoreCase));
+            if (score < 0)
+            {
+                if (existingIndex >= 0)
+                {
+                    _entries.RemoveAt(existingIndex);
+                }
+            }
+            else
+            {
+                int clampedScore = Math.Clamp(score, 0, MaxScore);
+                if (existingIndex >= 0)
+                {
+                    _entries[existingIndex] = _entries[existingIndex] with { Score = clampedScore };
+                }
+                else
+                {
+                    _entries.Add(new AriantArenaScoreEntry(normalizedName, clampedScore));
+                }
+            }
+
+            _entries.Sort(static (left, right) =>
+            {
+                int scoreCompare = right.Score.CompareTo(left.Score);
+                return scoreCompare != 0
+                    ? scoreCompare
+                    : string.Compare(left.Name, right.Name, StringComparison.OrdinalIgnoreCase);
+            });
+
+            _showScoreboard = _entries.Count > 0;
+            _showResult = false;
+        }
+
+        public void OnShowResult(int currentTimeMs)
+        {
+            if (!_isActive)
+            {
+                return;
+            }
+
+            EnsureAssetsLoaded();
+            _showScoreboard = false;
+            _showResult = _resultFrames.Count > 0;
+            _resultFrameIndex = 0;
+            _resultFrameStartedAt = currentTimeMs;
+            _resultVisibleUntil = currentTimeMs + GetResultDuration() + ResultHoldDurationMs;
+            _lastResultMessage = _entries.Count > 0
+                ? $"{_entries[0].Name} wins Ariant Arena with {_entries[0].Score} point{(_entries[0].Score == 1 ? string.Empty : "s")}."
+                : "Ariant Arena result shown.";
+        }
+
+        public void ClearScores()
+        {
+            _entries.Clear();
+            _showScoreboard = false;
+            _showResult = false;
+            _resultFrameIndex = 0;
+            _resultFrameStartedAt = 0;
+            _resultVisibleUntil = 0;
+            _lastResultMessage = null;
+        }
+
+        public void Update(int currentTimeMs)
+        {
+            if (!_isActive || !_showResult || _resultFrames.Count == 0)
+            {
+                return;
+            }
+
+            if (currentTimeMs >= _resultVisibleUntil)
+            {
+                _showResult = false;
+                return;
+            }
+
+            while (_resultFrameIndex < _resultFrames.Count - 1)
+            {
+                IDXObject frame = _resultFrames[_resultFrameIndex];
+                int delay = frame.Delay > 0 ? frame.Delay : 100;
+                if (currentTimeMs - _resultFrameStartedAt < delay)
+                {
+                    break;
+                }
+
+                _resultFrameStartedAt += delay;
+                _resultFrameIndex++;
+            }
+        }
+
+        public void Draw(
+            SpriteBatch spriteBatch,
+            SkeletonMeshRenderer skeletonMeshRenderer,
+            GameTime gameTime,
+            int mapShiftX,
+            int mapShiftY,
+            int centerX,
+            int centerY,
+            int tickCount,
+            Texture2D pixelTexture,
+            SpriteFont font = null)
+        {
+            if (!_isActive)
+            {
+                return;
+            }
+
+            if (_showScoreboard && font != null)
+            {
+                DrawScoreboard(spriteBatch, skeletonMeshRenderer, gameTime, font);
+            }
+
+            if (_showResult)
+            {
+                DrawResult(spriteBatch, skeletonMeshRenderer, gameTime, pixelTexture, font);
+            }
+        }
+
+        public void Reset()
+        {
+            _isActive = false;
+            _showScoreboard = false;
+            _showResult = false;
+            _entries.Clear();
+            _resultFrameIndex = 0;
+            _resultFrameStartedAt = 0;
+            _resultVisibleUntil = 0;
+            _lastResultMessage = null;
+        }
+
+        public string DescribeStatus()
+        {
+            if (!_isActive)
+            {
+                return "Ariant Arena runtime inactive";
+            }
+
+            string leaderText = _entries.Count == 0
+                ? "no scores"
+                : string.Join(", ", _entries.Take(MaxRankEntries).Select((entry, index) => $"{index + 1}.{entry.Name}={entry.Score}"));
+
+            return $"Ariant Arena active, {_entries.Count} score row(s), result={(_showResult ? "showing" : "idle")}, {leaderText}";
+        }
+
+        private void DrawScoreboard(SpriteBatch spriteBatch, SkeletonMeshRenderer skeletonMeshRenderer, GameTime gameTime, SpriteFont font)
+        {
+            int rowCount = Math.Min(_entries.Count, MaxRankEntries);
+            for (int i = 0; i < rowCount; i++)
+            {
+                int rowY = FirstRowY + (i * RowSpacing);
+
+                if (i < _rankIcons.Count)
+                {
+                    IDXObject icon = _rankIcons[i];
+                    icon.DrawBackground(
+                        spriteBatch,
+                        skeletonMeshRenderer,
+                        gameTime,
+                        IconX + icon.X,
+                        rowY + icon.Y,
+                        Color.White,
+                        false,
+                        null);
+                }
+
+                AriantArenaScoreEntry entry = _entries[i];
+                DrawOutlinedText(spriteBatch, font, entry.Name, new Vector2(NameX, rowY), new Color(20, 20, 20), new Color(204, 236, 255));
+                DrawOutlinedText(spriteBatch, font, entry.Score.ToString(), new Vector2(ScoreX, rowY), new Color(20, 20, 20), new Color(255, 222, 112));
+            }
+        }
+
+        private void DrawResult(SpriteBatch spriteBatch, SkeletonMeshRenderer skeletonMeshRenderer, GameTime gameTime, Texture2D pixelTexture, SpriteFont font)
+        {
+            if (_resultFrames.Count == 0)
+            {
+                return;
+            }
+
+            IDXObject frame = _resultFrames[Math.Clamp(_resultFrameIndex, 0, _resultFrames.Count - 1)];
+            Viewport viewport = spriteBatch.GraphicsDevice.Viewport;
+            int anchorX = viewport.Width / 2;
+            int anchorY = ResultOffsetY;
+
+            frame.DrawBackground(
+                spriteBatch,
+                skeletonMeshRenderer,
+                gameTime,
+                anchorX + frame.X,
+                anchorY + frame.Y,
+                Color.White,
+                false,
+                null);
+
+            if (font != null && !string.IsNullOrWhiteSpace(_lastResultMessage))
+            {
+                Vector2 textSize = font.MeasureString(_lastResultMessage);
+                float textX = (viewport.Width - textSize.X) * 0.5f;
+                float textY = Math.Max(anchorY + 236, 220);
+
+                if (pixelTexture != null)
+                {
+                    Rectangle backdrop = new Rectangle((int)textX - 10, (int)textY - 6, (int)textSize.X + 20, (int)textSize.Y + 12);
+                    spriteBatch.Draw(pixelTexture, backdrop, new Color(0, 0, 0, 120));
+                }
+
+                DrawOutlinedText(spriteBatch, font, _lastResultMessage, new Vector2(textX, textY), Color.Black, Color.White);
+            }
+        }
+
+        private int GetResultDuration()
+        {
+            int total = 0;
+            for (int i = 0; i < _resultFrames.Count; i++)
+            {
+                total += _resultFrames[i].Delay > 0 ? _resultFrames[i].Delay : 100;
+            }
+
+            return total;
+        }
+
+        private void EnsureAssetsLoaded()
+        {
+            if (_assetsLoaded || _graphicsDevice == null)
+            {
+                return;
+            }
+
+            WzImage uiWindow = global::HaCreator.Program.FindImage("UI", "UIWindow.img")
+                ?? global::HaCreator.Program.FindImage("UI", "UIWindow2.img");
+
+            WzImageProperty ariantMatch = uiWindow?["AriantMatch"];
+            LoadAnimatedFrames(ariantMatch?["Result"], _resultFrames);
+
+            WzImageProperty iconRoot = ariantMatch?["characterIcon"];
+            for (int i = 0; i < MaxRankEntries; i++)
+            {
+                if (WzInfoTools.GetRealProperty(iconRoot?[i.ToString()]) is WzCanvasProperty canvas
+                    && TryCreateDxObject(canvas, out IDXObject icon))
+                {
+                    _rankIcons.Add(icon);
+                }
+            }
+
+            _assetsLoaded = true;
+        }
+
+        private void LoadAnimatedFrames(WzImageProperty source, List<IDXObject> target)
+        {
+            target.Clear();
+            if (source == null)
+            {
+                return;
+            }
+
+            WzImageProperty resolvedSource = WzInfoTools.GetRealProperty(source);
+            if (resolvedSource is WzCanvasProperty canvas)
+            {
+                if (TryCreateDxObject(canvas, out IDXObject singleFrame))
+                {
+                    target.Add(singleFrame);
+                }
+
+                return;
+            }
+
+            if (resolvedSource is not WzSubProperty)
+            {
+                return;
+            }
+
+            for (int i = 0; ; i++)
+            {
+                if (WzInfoTools.GetRealProperty(resolvedSource[i.ToString()]) is not WzCanvasProperty frameCanvas)
+                {
+                    break;
+                }
+
+                if (TryCreateDxObject(frameCanvas, out IDXObject frame))
+                {
+                    target.Add(frame);
+                }
+            }
+        }
+
+        private bool TryCreateDxObject(WzCanvasProperty canvas, out IDXObject dxObject)
+        {
+            dxObject = null;
+            if (_graphicsDevice == null || canvas == null)
+            {
+                return false;
+            }
+
+            using var bitmap = canvas.GetLinkedWzCanvasBitmap();
+            if (bitmap == null)
+            {
+                return false;
+            }
+
+            Texture2D texture = bitmap.ToTexture2D(_graphicsDevice);
+            System.Drawing.PointF origin = canvas.GetCanvasOriginPosition();
+            int delay = canvas["delay"]?.GetInt() ?? 100;
+            dxObject = new DXObject(-(int)origin.X, -(int)origin.Y, texture, delay);
+            return true;
+        }
+
+        private static void DrawOutlinedText(SpriteBatch spriteBatch, SpriteFont font, string text, Vector2 position, Color shadowColor, Color textColor)
+        {
+            spriteBatch.DrawString(font, text, position + Vector2.One, shadowColor);
+            spriteBatch.DrawString(font, text, position, textColor);
+        }
+    }
+
+    public readonly record struct AriantArenaScoreEntry(string Name, int Score);
     #endregion
 }

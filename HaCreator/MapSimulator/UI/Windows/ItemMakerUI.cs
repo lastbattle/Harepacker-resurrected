@@ -10,6 +10,7 @@ using Spine;
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.Linq;
 
 namespace HaCreator.MapSimulator.UI
 {
@@ -38,11 +39,19 @@ namespace HaCreator.MapSimulator.UI
             public int OutputQuantity { get; init; }
             public int RequiredLevel { get; init; }
             public int RequiredSkillLevel { get; init; }
+            public int RequiredItemId { get; init; }
             public int MesoCost { get; init; }
             public int CatalystItemId { get; init; }
             public bool UsesRandomReward { get; init; }
             public ItemMakerMaterial[] Materials { get; init; } = Array.Empty<ItemMakerMaterial>();
             public ItemMakerReward[] RandomRewards { get; init; } = Array.Empty<ItemMakerReward>();
+        }
+
+        private sealed class ItemMakerPage
+        {
+            public int BucketKey { get; init; }
+            public string Label { get; set; } = string.Empty;
+            public List<ItemMakerRecipe> Recipes { get; } = new();
         }
 
         private readonly struct BackgroundLayer
@@ -60,8 +69,9 @@ namespace HaCreator.MapSimulator.UI
         private const int RecipeRowHeight = 36;
         private const int CraftDurationMs = 1400;
         private const int VisibleRecipeCount = 6;
+        private static readonly int[] ClientRecipeBuckets = { 0, 1, 2, 4, 8, 16 };
         private readonly List<BackgroundLayer> _backgroundLayers = new();
-        private readonly List<ItemMakerRecipe> _recipes = new();
+        private readonly List<ItemMakerPage> _pages = new();
         private readonly Random _random = new();
         private readonly Texture2D _pixel;
         private Texture2D _gaugeBarTexture;
@@ -72,6 +82,7 @@ namespace HaCreator.MapSimulator.UI
         private MouseState _previousMouseState;
         private int _selectedRecipeIndex;
         private int _recipeScrollOffset;
+        private int _selectedPageIndex;
         private int _characterLevel = 1;
         private int _makerSkillLevel;
         private bool _isCrafting;
@@ -87,6 +98,11 @@ namespace HaCreator.MapSimulator.UI
         }
 
         public override string WindowName => MapSimulatorWindowNames.ItemMaker;
+
+        private IReadOnlyList<ItemMakerRecipe> CurrentRecipes =>
+            _selectedPageIndex >= 0 && _selectedPageIndex < _pages.Count
+                ? _pages[_selectedPageIndex].Recipes
+                : Array.Empty<ItemMakerRecipe>();
 
         public override void SetFont(SpriteFont font)
         {
@@ -121,7 +137,7 @@ namespace HaCreator.MapSimulator.UI
             }
         }
 
-        public void InitializeControls(UIObject startButton, UIObject cancelButton)
+        public void InitializeControls(UIObject startButton, UIObject cancelButton, UIObject pageCycleButton)
         {
             if (startButton != null)
             {
@@ -133,6 +149,12 @@ namespace HaCreator.MapSimulator.UI
             {
                 AddButton(cancelButton);
                 cancelButton.ButtonClickReleased += _ => CancelCraft();
+            }
+
+            if (pageCycleButton != null)
+            {
+                AddButton(pageCycleButton);
+                pageCycleButton.ButtonClickReleased += _ => CycleRecipePage(1);
             }
         }
 
@@ -162,6 +184,7 @@ namespace HaCreator.MapSimulator.UI
             }
 
             Rectangle listRect = GetRecipeListRectangle();
+            Rectangle comboRect = GetPageSelectorRectangle();
             if (listRect.Contains(mouseState.X, mouseState.Y) && mouseState.ScrollWheelValue != _previousMouseState.ScrollWheelValue)
             {
                 if (mouseState.ScrollWheelValue > _previousMouseState.ScrollWheelValue)
@@ -186,6 +209,14 @@ namespace HaCreator.MapSimulator.UI
             bool leftJustReleased = mouseState.LeftButton == ButtonState.Released && _previousMouseState.LeftButton == ButtonState.Pressed;
             if (!leftJustReleased || !listRect.Contains(mouseState.X, mouseState.Y))
             {
+                if (leftJustReleased && comboRect.Contains(mouseState.X, mouseState.Y))
+                {
+                    CycleRecipePage(1);
+                    _previousMouseState = mouseState;
+                    mouseCursor?.SetMouseCursorMovedToClickableItem();
+                    return true;
+                }
+
                 _previousMouseState = mouseState;
                 return false;
             }
@@ -193,7 +224,7 @@ namespace HaCreator.MapSimulator.UI
             int relativeY = mouseState.Y - listRect.Y;
             int visibleIndex = relativeY / RecipeRowHeight;
             int recipeIndex = _recipeScrollOffset + visibleIndex;
-            if (recipeIndex >= 0 && recipeIndex < _recipes.Count)
+            if (recipeIndex >= 0 && recipeIndex < _pages[recipeIndex].Recipes.Count)
             {
                 _selectedRecipeIndex = recipeIndex;
                 EnsureSelectedRecipeVisible();
@@ -226,19 +257,26 @@ namespace HaCreator.MapSimulator.UI
                     Color.White, false, drawReflectionInfo);
             }
 
-            if (_pixel == null || _font == null || _recipes.Count == 0)
+            if (_pixel == null || _font == null || CurrentRecipes.Count == 0)
             {
                 return;
             }
 
+            Rectangle comboRect = GetPageSelectorRectangle();
+            DrawPanel(sprite, comboRect, new Color(29, 33, 44, 220), new Color(103, 113, 139, 255));
+            string pageLabel = _pages[_selectedPageIndex].Label;
+            sprite.DrawString(_font, pageLabel, new Vector2(comboRect.X + 8, comboRect.Y + 1), new Color(239, 233, 213));
+            sprite.DrawString(_font, "v", new Vector2(comboRect.Right - 13, comboRect.Y + 1), new Color(239, 233, 213));
+
             Rectangle listRect = GetRecipeListRectangle();
             DrawPanel(sprite, listRect, new Color(16, 19, 28, 210), new Color(92, 105, 132, 255));
 
-            int visibleRows = Math.Min(VisibleRecipeCount, _recipes.Count - _recipeScrollOffset);
+            IReadOnlyList<ItemMakerRecipe> recipes = CurrentRecipes;
+            int visibleRows = Math.Min(VisibleRecipeCount, recipes.Count - _recipeScrollOffset);
             for (int i = 0; i < visibleRows; i++)
             {
                 int recipeIndex = _recipeScrollOffset + i;
-                ItemMakerRecipe recipe = _recipes[recipeIndex];
+                ItemMakerRecipe recipe = recipes[recipeIndex];
                 Rectangle rowRect = new(listRect.X + 4, listRect.Y + 4 + (i * RecipeRowHeight), listRect.Width - 8, RecipeRowHeight - 4);
                 bool selected = recipeIndex == _selectedRecipeIndex;
                 DrawPanel(sprite, rowRect,
@@ -252,16 +290,16 @@ namespace HaCreator.MapSimulator.UI
                 sprite.DrawString(_font, $"{requirementPrefix}  Output x{recipe.OutputQuantity}", new Vector2(rowRect.X + 8, rowRect.Y + 18), new Color(199, 211, 229));
             }
 
-            if (_recipes.Count > VisibleRecipeCount)
+            if (recipes.Count > VisibleRecipeCount)
             {
                 string scrollText = string.Format(CultureInfo.InvariantCulture, "{0}-{1}/{2}",
                     _recipeScrollOffset + 1,
-                    Math.Min(_recipeScrollOffset + VisibleRecipeCount, _recipes.Count),
-                    _recipes.Count);
+                    Math.Min(_recipeScrollOffset + VisibleRecipeCount, recipes.Count),
+                    recipes.Count);
                 sprite.DrawString(_font, scrollText, new Vector2(listRect.Right - 68, listRect.Bottom + 4), new Color(182, 191, 210));
             }
 
-            ItemMakerRecipe selectedRecipe = _recipes[_selectedRecipeIndex];
+            ItemMakerRecipe selectedRecipe = recipes[_selectedRecipeIndex];
             Vector2 detailOrigin = new(Position.X + 18, Position.Y + 185);
             sprite.DrawString(_font, selectedRecipe.Title, detailOrigin, Color.White);
             sprite.DrawString(_font, selectedRecipe.Description, detailOrigin + new Vector2(0, 18), new Color(207, 214, 226));
@@ -300,6 +338,18 @@ namespace HaCreator.MapSimulator.UI
                 sprite.DrawString(
                     _font,
                     $"Catalyst: {GetItemName(selectedRecipe.CatalystItemId)} {Math.Min(owned, 1)}/1",
+                    new Vector2(detailOrigin.X, y),
+                    color);
+                y += 17;
+            }
+
+            if (selectedRecipe.RequiredItemId > 0)
+            {
+                int owned = _inventory?.GetItemCount(ResolveInventoryType(selectedRecipe.RequiredItemId), selectedRecipe.RequiredItemId) ?? 0;
+                Color color = owned > 0 ? new Color(194, 233, 193) : new Color(240, 155, 155);
+                sprite.DrawString(
+                    _font,
+                    $"Req Item: {GetItemName(selectedRecipe.RequiredItemId)} {Math.Min(owned, 1)}/1",
                     new Vector2(detailOrigin.X, y),
                     color);
                 y += 17;
@@ -394,7 +444,7 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
-            ItemMakerRecipe recipe = _recipes[_selectedRecipeIndex];
+            ItemMakerRecipe recipe = CurrentRecipes[_selectedRecipeIndex];
             if (!CanCraftRecipe(recipe, out string failureReason))
             {
                 _statusMessage = failureReason;
@@ -423,14 +473,15 @@ namespace HaCreator.MapSimulator.UI
         private void CompleteCraft()
         {
             _isCrafting = false;
-            if (_inventory == null || _craftingRecipeIndex < 0 || _craftingRecipeIndex >= _recipes.Count)
+            IReadOnlyList<ItemMakerRecipe> recipes = CurrentRecipes;
+            if (_inventory == null || _craftingRecipeIndex < 0 || _craftingRecipeIndex >= recipes.Count)
             {
                 _craftingRecipeIndex = -1;
                 RefreshStatusMessage("Crafting ended without a valid recipe.");
                 return;
             }
 
-            ItemMakerRecipe recipe = _recipes[_craftingRecipeIndex];
+            ItemMakerRecipe recipe = recipes[_craftingRecipeIndex];
             if (!CanCraftRecipe(recipe, out string failureReason))
             {
                 _craftingRecipeIndex = -1;
@@ -503,6 +554,16 @@ namespace HaCreator.MapSimulator.UI
                 }
             }
 
+            if (recipe.RequiredItemId > 0)
+            {
+                InventoryType requiredItemType = ResolveInventoryType(recipe.RequiredItemId);
+                if (_inventory.GetItemCount(requiredItemType, recipe.RequiredItemId) < 1)
+                {
+                    failureReason = "Missing required crafting item.";
+                    return false;
+                }
+            }
+
             if (recipe.MesoCost > 0 && _inventory.GetMesoCount() < recipe.MesoCost)
             {
                 failureReason = "Not enough meso for this recipe.";
@@ -521,16 +582,21 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
-            if (_recipes.Count == 0)
+            if (_pages.Count == 0 || CurrentRecipes.Count == 0)
             {
                 _statusMessage = "No crafting recipes loaded.";
                 return;
             }
 
-            ItemMakerRecipe recipe = _recipes[_selectedRecipeIndex];
+            ItemMakerRecipe recipe = CurrentRecipes[_selectedRecipeIndex];
             _statusMessage = CanCraftRecipe(recipe, out string failureReason)
                 ? "Ready to craft."
                 : failureReason;
+        }
+
+        private Rectangle GetPageSelectorRectangle()
+        {
+            return new Rectangle(Position.X + 18, Position.Y + 23, 122, 18);
         }
 
         private Rectangle GetRecipeListRectangle()
@@ -540,13 +606,13 @@ namespace HaCreator.MapSimulator.UI
 
         private void ScrollRecipes(int delta)
         {
-            if (_recipes.Count <= VisibleRecipeCount)
+            if (CurrentRecipes.Count <= VisibleRecipeCount)
             {
                 _recipeScrollOffset = 0;
                 return;
             }
 
-            int maxOffset = Math.Max(0, _recipes.Count - VisibleRecipeCount);
+            int maxOffset = Math.Max(0, CurrentRecipes.Count - VisibleRecipeCount);
             _recipeScrollOffset = Math.Clamp(_recipeScrollOffset + delta, 0, maxOffset);
         }
 
@@ -560,6 +626,37 @@ namespace HaCreator.MapSimulator.UI
             {
                 _recipeScrollOffset = _selectedRecipeIndex - VisibleRecipeCount + 1;
             }
+        }
+
+        private void CycleRecipePage(int delta)
+        {
+            if (_pages.Count <= 1)
+            {
+                return;
+            }
+
+            int nextPage = (_selectedPageIndex + delta) % _pages.Count;
+            if (nextPage < 0)
+            {
+                nextPage += _pages.Count;
+            }
+
+            SelectRecipePage(nextPage);
+        }
+
+        private void SelectRecipePage(int pageIndex)
+        {
+            if (pageIndex < 0 || pageIndex >= _pages.Count || pageIndex == _selectedPageIndex)
+            {
+                return;
+            }
+
+            _selectedPageIndex = pageIndex;
+            _selectedRecipeIndex = 0;
+            _recipeScrollOffset = 0;
+            _craftingRecipeIndex = -1;
+            _isCrafting = false;
+            RefreshStatusMessage($"Viewing {_pages[_selectedPageIndex].Label} recipes.");
         }
 
         private void DrawPanel(SpriteBatch sprite, Rectangle rect, Color fill, Color border)
@@ -602,7 +699,10 @@ namespace HaCreator.MapSimulator.UI
 
         private void LoadRecipes()
         {
-            _recipes.Clear();
+            _pages.Clear();
+            _selectedPageIndex = 0;
+            _selectedRecipeIndex = 0;
+            _recipeScrollOffset = 0;
 
             if (!TryLoadClientRecipes())
             {
@@ -618,35 +718,50 @@ namespace HaCreator.MapSimulator.UI
                 return false;
             }
 
-            WzSubProperty etcRecipeBucket = itemMakeImage["0"] as WzSubProperty;
-            if (etcRecipeBucket == null)
+            foreach (int bucketKey in ClientRecipeBuckets)
             {
-                return false;
-            }
-
-            foreach (WzImageProperty recipeProperty in etcRecipeBucket.WzProperties)
-            {
-                if (recipeProperty is not WzSubProperty recipeData || !int.TryParse(recipeData.Name, out int outputItemId))
+                WzSubProperty recipeBucket = itemMakeImage[bucketKey.ToString(CultureInfo.InvariantCulture)] as WzSubProperty;
+                if (recipeBucket == null)
                 {
                     continue;
                 }
 
-                ItemMakerRecipe recipe = CreateRecipeFromWz(recipeData, outputItemId);
-                if (recipe != null)
+                ItemMakerPage page = new ItemMakerPage
                 {
-                    _recipes.Add(recipe);
+                    BucketKey = bucketKey
+                };
+
+                foreach (WzImageProperty recipeProperty in recipeBucket.WzProperties)
+                {
+                    if (recipeProperty is not WzSubProperty recipeData || !int.TryParse(recipeData.Name, out int outputItemId))
+                    {
+                        continue;
+                    }
+
+                    ItemMakerRecipe recipe = CreateRecipeFromWz(recipeData, outputItemId);
+                    if (recipe != null)
+                    {
+                        page.Recipes.Add(recipe);
+                    }
                 }
+
+                if (page.Recipes.Count == 0)
+                {
+                    continue;
+                }
+
+                page.Recipes.Sort(static (left, right) =>
+                {
+                    int levelCompare = left.RequiredLevel.CompareTo(right.RequiredLevel);
+                    return levelCompare != 0
+                        ? levelCompare
+                        : string.Compare(left.Title, right.Title, StringComparison.OrdinalIgnoreCase);
+                });
+                page.Label = ResolvePageLabel(page);
+                _pages.Add(page);
             }
 
-            _recipes.Sort(static (left, right) =>
-            {
-                int levelCompare = left.RequiredLevel.CompareTo(right.RequiredLevel);
-                return levelCompare != 0
-                    ? levelCompare
-                    : string.Compare(left.Title, right.Title, StringComparison.OrdinalIgnoreCase);
-            });
-
-            return _recipes.Count > 0;
+            return _pages.Count > 0;
         }
 
         private static ItemMakerRecipe CreateRecipeFromWz(WzSubProperty recipeData, int outputItemId)
@@ -729,12 +844,46 @@ namespace HaCreator.MapSimulator.UI
                 OutputQuantity = Math.Max(1, outputQuantity),
                 RequiredLevel = (recipeData["reqLevel"] as WzIntProperty)?.Value ?? 0,
                 RequiredSkillLevel = (recipeData["reqSkillLevel"] as WzIntProperty)?.Value ?? 0,
+                RequiredItemId = Math.Max(0, (recipeData["reqItem"] as WzIntProperty)?.Value ?? 0),
                 MesoCost = Math.Max(0, (recipeData["meso"] as WzIntProperty)?.Value ?? 0),
                 CatalystItemId = Math.Max(0, (recipeData["catalyst"] as WzIntProperty)?.Value ?? 0),
                 UsesRandomReward = usesRandomReward,
                 Materials = materials.ToArray(),
                 RandomRewards = randomRewards.ToArray()
             };
+        }
+
+        private static string ResolvePageLabel(ItemMakerPage page)
+        {
+            if (page?.Recipes == null || page.Recipes.Count == 0)
+            {
+                return "Recipes";
+            }
+
+            var categoryCounts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+            for (int i = 0; i < page.Recipes.Count; i++)
+            {
+                int itemId = page.Recipes[i].OutputItemId;
+                if (HaCreator.Program.InfoManager?.ItemNameCache != null &&
+                    HaCreator.Program.InfoManager.ItemNameCache.TryGetValue(itemId, out Tuple<string, string, string> itemInfo) &&
+                    !string.IsNullOrWhiteSpace(itemInfo?.Item1))
+                {
+                    string categoryName = itemInfo.Item1.Trim();
+                    categoryCounts[categoryName] = categoryCounts.TryGetValue(categoryName, out int count) ? count + 1 : 1;
+                }
+            }
+
+            if (categoryCounts.Count == 0)
+            {
+                return $"Recipes {page.BucketKey}";
+            }
+
+            string label = categoryCounts
+                .OrderByDescending(pair => pair.Value)
+                .ThenBy(pair => pair.Key, StringComparer.OrdinalIgnoreCase)
+                .First()
+                .Key;
+            return label.Length > 18 ? label[..18] : label;
         }
 
         private ItemMakerReward ResolveCraftReward(ItemMakerRecipe recipe)
@@ -782,7 +931,12 @@ namespace HaCreator.MapSimulator.UI
 
         private void PopulateFallbackRecipes()
         {
-            _recipes.Add(new ItemMakerRecipe
+            ItemMakerPage fallbackPage = new ItemMakerPage
+            {
+                BucketKey = 0,
+                Label = "Etc"
+            };
+            fallbackPage.Recipes.Add(new ItemMakerRecipe
             {
                 Title = "Steel Plate",
                 Description = "Fallback maker recipe when ItemMake.img is unavailable.",
@@ -795,7 +949,7 @@ namespace HaCreator.MapSimulator.UI
                     new ItemMakerMaterial { InventoryType = InventoryType.ETC, ItemId = 4010001, Quantity = 10 }
                 }
             });
-            _recipes.Add(new ItemMakerRecipe
+            fallbackPage.Recipes.Add(new ItemMakerRecipe
             {
                 Title = "Mithril Plate",
                 Description = "Fallback maker recipe when ItemMake.img is unavailable.",
@@ -808,7 +962,7 @@ namespace HaCreator.MapSimulator.UI
                     new ItemMakerMaterial { InventoryType = InventoryType.ETC, ItemId = 4010002, Quantity = 10 }
                 }
             });
-            _recipes.Add(new ItemMakerRecipe
+            fallbackPage.Recipes.Add(new ItemMakerRecipe
             {
                 Title = "Black Crystal",
                 Description = "Fallback maker recipe when ItemMake.img is unavailable.",
@@ -821,7 +975,7 @@ namespace HaCreator.MapSimulator.UI
                     new ItemMakerMaterial { InventoryType = InventoryType.ETC, ItemId = 4020008, Quantity = 10 }
                 }
             });
-            _recipes.Add(new ItemMakerRecipe
+            fallbackPage.Recipes.Add(new ItemMakerRecipe
             {
                 Title = "Screw Batch",
                 Description = "Fallback maker recipe when ItemMake.img is unavailable.",
@@ -834,6 +988,7 @@ namespace HaCreator.MapSimulator.UI
                     new ItemMakerMaterial { InventoryType = InventoryType.ETC, ItemId = 4011001, Quantity = 1 }
                 }
             });
+            _pages.Add(fallbackPage);
         }
     }
 }

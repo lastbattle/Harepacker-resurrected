@@ -89,6 +89,8 @@ namespace HaCreator.MapSimulator.Character
     public class CharacterAssembler
     {
         private const int MechanicTamingMobItemId = 1932016;
+        private const int PortableChairBackZ = -100;
+        private const int PortableChairFrontZ = 900;
 
         private static readonly IReadOnlyDictionary<string, string[]> TamingMobActionAliases =
             new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase)
@@ -403,6 +405,11 @@ namespace HaCreator.MapSimulator.Character
                 AddPart(parts, equipFrame, equipOffset, kv.Value.Type, kv.Value);
             }
 
+            if (!suppressBaseAvatar && IsPortableChairAction(actionName))
+            {
+                AddPortableChairLayers(parts, frameIndex);
+            }
+
             // Sort parts by z-index
             parts.Sort((a, b) => a.ZIndex.CompareTo(b.ZIndex));
             ApplyVisibility(parts);
@@ -420,6 +427,57 @@ namespace HaCreator.MapSimulator.Character
                 && _build.Equipment.TryGetValue(EquipSlot.TamingMob, out CharacterPart tamingMobPart)
                 ? tamingMobPart
                 : null;
+        }
+
+        private void AddPortableChairLayers(List<AssembledPart> parts, int frameIndex)
+        {
+            PortableChair chair = _build?.ActivePortableChair;
+            if (chair?.Layers == null)
+            {
+                return;
+            }
+
+            for (int i = 0; i < chair.Layers.Count; i++)
+            {
+                PortableChairLayer layer = chair.Layers[i];
+                CharacterFrame frame = GetPortableChairFrame(layer, frameIndex);
+                if (frame == null)
+                {
+                    continue;
+                }
+
+                AddPart(
+                    parts,
+                    frame,
+                    Point.Zero,
+                    CharacterPartType.PortableChair,
+                    sourcePart: null,
+                    zOverride: GetPortableChairZIndex(layer.RelativeZ));
+            }
+        }
+
+        private static CharacterFrame GetPortableChairFrame(PortableChairLayer layer, int frameIndex)
+        {
+            if (layer?.Animation?.Frames == null || layer.Animation.Frames.Count == 0)
+            {
+                return null;
+            }
+
+            int resolvedIndex = Math.Abs(frameIndex) % layer.Animation.Frames.Count;
+            return layer.Animation.Frames[resolvedIndex];
+        }
+
+        private static int GetPortableChairZIndex(int relativeZ)
+        {
+            return relativeZ > 0
+                ? PortableChairFrontZ + relativeZ
+                : PortableChairBackZ + relativeZ;
+        }
+
+        private static bool IsPortableChairAction(string actionName)
+        {
+            return !string.IsNullOrWhiteSpace(actionName)
+                   && actionName.StartsWith("sit", StringComparison.OrdinalIgnoreCase);
         }
 
         internal static bool ShouldSuppressBaseAvatarForState(CharacterBuild build, string actionName)

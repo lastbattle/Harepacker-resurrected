@@ -645,8 +645,9 @@ namespace HaCreator.MapSimulator.Character
                 // Player.Draw handles flash internally
             }
 
+            Pets.Draw(spriteBatch, skeletonRenderer, mapShiftX, mapShiftY, centerX, centerY, drawBehindOwner: true);
             Player.Draw(spriteBatch, skeletonRenderer, mapShiftX, mapShiftY, centerX, centerY, currentTime);
-            Pets.Draw(spriteBatch, skeletonRenderer, mapShiftX, mapShiftY, centerX, centerY);
+            Pets.Draw(spriteBatch, skeletonRenderer, mapShiftX, mapShiftY, centerX, centerY, drawBehindOwner: false);
 
             // Draw skill effects and projectiles
             if (Skills != null)

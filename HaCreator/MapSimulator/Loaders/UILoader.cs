@@ -320,6 +320,24 @@ namespace HaCreator.MapSimulator.Loaders
                     // notice
                     // this is rendered above
 
+                    UIObject obj_Ui_MemoIcon = null;
+                    WzCanvasProperty memoIconProperty = uiStatusBar?["base"]?["iconMemo"] as WzCanvasProperty;
+                    if (memoIconProperty != null)
+                    {
+                        var memoBitmap = memoIconProperty.GetLinkedWzCanvasBitmap();
+                        if (memoBitmap != null)
+                        {
+                            Texture2D memoTexture = memoBitmap.ToTexture2DAndDispose(device);
+                            IDXObject memoFrame = new DXObject(0, 0, memoTexture, 0);
+                            BaseDXDrawableItem memoDrawable = new BaseDXDrawableItem(memoFrame, false);
+                            obj_Ui_MemoIcon = new UIObject(memoDrawable, memoDrawable, memoDrawable, memoDrawable)
+                            {
+                                X = obj_Ui_BtClaim.X + 20,
+                                Y = obj_Ui_BtClaim.Y + 2
+                            };
+                        }
+                    }
+
 
                     // character
                     WzSubProperty subProperty_BtCharacter = (WzSubProperty)mainBarProperties?["BtCharacter"];
@@ -548,6 +566,7 @@ namespace HaCreator.MapSimulator.Loaders
                              obj_Ui_chatOpen,
                              obj_Ui_scrollUp, obj_Ui_scrollDown,
                              obj_Ui_BtChat, obj_Ui_BtClaim,
+                             obj_Ui_MemoIcon,
                              obj_Ui_BtCharacter, obj_Ui_BtStat, obj_Ui_BtQuest, obj_Ui_BtInven, obj_Ui_BtEquip, obj_Ui_BtSkill, obj_Ui_BtKeysetting
                           }
                         );
@@ -557,7 +576,7 @@ namespace HaCreator.MapSimulator.Loaders
                     chatUI.SetPointNotificationAnimations(
                         LoadPointNotificationAnimation(mainBarProperties?["ApNotify"] as WzSubProperty, device),
                         LoadPointNotificationAnimation(mainBarProperties?["SpNotify"] as WzSubProperty, device));
-                    chatUI.BindControls(obj_Ui_chatTarget, obj_Ui_chatOpen, obj_Ui_scrollUp, obj_Ui_scrollDown, obj_Ui_BtCharacter);
+                    chatUI.BindControls(obj_Ui_chatTarget, obj_Ui_chatOpen, obj_Ui_scrollUp, obj_Ui_scrollDown, obj_Ui_BtCharacter, obj_Ui_MemoIcon);
 
                     return new Tuple<StatusBarUI, StatusBarChatUI>(statusBar, chatUI);
                 }
@@ -1255,9 +1274,18 @@ namespace HaCreator.MapSimulator.Loaders
 
             Point minimapImageOffset = new Point(MAP_IMAGE_TEXT_PADDING + alignmentXOffset, 0);
             BaseDXDrawableItem npcMarker = null;
+            BaseDXDrawableItem questStartNpcMarker = null;
+            BaseDXDrawableItem questEndNpcMarker = null;
             BaseDXDrawableItem npcListPanel = null;
+            BaseDXDrawableItem portalMarker = null;
+            Dictionary<MinimapUI.DirectionArrow, BaseDXDrawableItem> directionMarkers = new Dictionary<MinimapUI.DirectionArrow, BaseDXDrawableItem>();
 
-            WzCanvasProperty iconNpcCanvas = bBigBang ? (WzCanvasProperty)minimapFrameProperty["iconNpc"]?["0"] : null;
+            WzSubProperty minimapSimpleModeProperty = uiWindow2Image?["MiniMapSimpleMode"] as WzSubProperty;
+            WzSubProperty defaultHelperProperty = minimapSimpleModeProperty?["DefaultHelper"] as WzSubProperty;
+
+            WzCanvasProperty iconNpcCanvas =
+                defaultHelperProperty?["npc"] as WzCanvasProperty ??
+                (bBigBang ? (WzCanvasProperty)minimapFrameProperty["iconNpc"]?["0"] : null);
             if (iconNpcCanvas != null)
             {
                 System.Drawing.Bitmap npcMarkerBitmap = iconNpcCanvas.GetLinkedWzCanvasBitmap();
@@ -1269,6 +1297,77 @@ namespace HaCreator.MapSimulator.Loaders
                         Position = minimapImageOffset
                     };
                 }
+            }
+
+            WzCanvasProperty questStartNpcCanvas = defaultHelperProperty?["startnpc"] as WzCanvasProperty;
+            if (questStartNpcCanvas != null)
+            {
+                System.Drawing.Bitmap questStartNpcBitmap = questStartNpcCanvas.GetLinkedWzCanvasBitmap();
+                if (questStartNpcBitmap != null)
+                {
+                    IDXObject dxObjQuestStartNpc = new DXObject(questStartNpcCanvas.GetCanvasOriginPosition(), questStartNpcBitmap.ToTexture2DAndDispose(device), 0);
+                    questStartNpcMarker = new BaseDXDrawableItem(dxObjQuestStartNpc, false)
+                    {
+                        Position = minimapImageOffset
+                    };
+                }
+            }
+
+            WzCanvasProperty questEndNpcCanvas = defaultHelperProperty?["endnpc"] as WzCanvasProperty;
+            if (questEndNpcCanvas != null)
+            {
+                System.Drawing.Bitmap questEndNpcBitmap = questEndNpcCanvas.GetLinkedWzCanvasBitmap();
+                if (questEndNpcBitmap != null)
+                {
+                    IDXObject dxObjQuestEndNpc = new DXObject(questEndNpcCanvas.GetCanvasOriginPosition(), questEndNpcBitmap.ToTexture2DAndDispose(device), 0);
+                    questEndNpcMarker = new BaseDXDrawableItem(dxObjQuestEndNpc, false)
+                    {
+                        Position = minimapImageOffset
+                    };
+                }
+            }
+
+            WzCanvasProperty portalCanvas = defaultHelperProperty?["portal"] as WzCanvasProperty;
+            if (portalCanvas != null)
+            {
+                System.Drawing.Bitmap portalBitmap = portalCanvas.GetLinkedWzCanvasBitmap();
+                if (portalBitmap != null)
+                {
+                    IDXObject dxObjPortalMarker = new DXObject(portalCanvas.GetCanvasOriginPosition(), portalBitmap.ToTexture2DAndDispose(device), 0);
+                    portalMarker = new BaseDXDrawableItem(dxObjPortalMarker, false)
+                    {
+                        Position = minimapImageOffset
+                    };
+                }
+            }
+
+            var arrowCanvasMap = new Dictionary<MinimapUI.DirectionArrow, string>
+            {
+                { MinimapUI.DirectionArrow.NorthWest, "arrowupleft" },
+                { MinimapUI.DirectionArrow.North, "arrowup" },
+                { MinimapUI.DirectionArrow.NorthEast, "arrowupright" },
+                { MinimapUI.DirectionArrow.West, "arrowleft" },
+                { MinimapUI.DirectionArrow.East, "arrowright" },
+                { MinimapUI.DirectionArrow.SouthWest, "arrowdownleft" },
+                { MinimapUI.DirectionArrow.South, "arrowdown" },
+                { MinimapUI.DirectionArrow.SouthEast, "arrowdownright" }
+            };
+
+            foreach (var arrowEntry in arrowCanvasMap)
+            {
+                WzCanvasProperty arrowCanvas = defaultHelperProperty?[arrowEntry.Value] as WzCanvasProperty;
+                if (arrowCanvas == null)
+                    continue;
+
+                System.Drawing.Bitmap arrowBitmap = arrowCanvas.GetLinkedWzCanvasBitmap();
+                if (arrowBitmap == null)
+                    continue;
+
+                IDXObject dxObjArrow = new DXObject(arrowCanvas.GetCanvasOriginPosition(), arrowBitmap.ToTexture2DAndDispose(device), 0);
+                directionMarkers[arrowEntry.Key] = new BaseDXDrawableItem(dxObjArrow, false)
+                {
+                    Position = minimapImageOffset
+                };
             }
 
             if (bBigBang)
@@ -1364,7 +1463,11 @@ namespace HaCreator.MapSimulator.Loaders
                 miniMapImage.Width,
                 miniMapImage.Height,
                 npcMarker,
-                npcListPanel);
+                questStartNpcMarker,
+                questEndNpcMarker,
+                npcListPanel,
+                portalMarker,
+                directionMarkers);
 
             minimapItem.Position = new Point(10, 10); // default position
 

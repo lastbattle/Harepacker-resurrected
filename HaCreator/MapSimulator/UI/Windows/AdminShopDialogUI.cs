@@ -42,6 +42,14 @@ namespace HaCreator.MapSimulator.UI
             public int ScrollOffset { get; set; }
         }
 
+        private sealed class AdminShopTabVisual
+        {
+            public Texture2D EnabledTexture { get; set; }
+            public Texture2D DisabledTexture { get; set; }
+            public Point Offset { get; set; }
+            public string Label { get; set; } = string.Empty;
+        }
+
         private const int MaxVisibleRows = 5;
         private const int LeftPaneX = 17;
         private const int RightPaneX = 242;
@@ -60,6 +68,18 @@ namespace HaCreator.MapSimulator.UI
         private const int MoneyIconY = 299;
         private const int MoneyTextX = 353;
         private const int MoneyTextY = 296;
+        private const int ScrollBarY = 131;
+        private const int ScrollBarHeight = 194;
+        private const int ScrollBarWidth = 12;
+        private const int ScrollButtonHeight = 12;
+        private const int NpcScrollBarX = 210;
+        private const int UserScrollBarX = 441;
+        private const int ScrollThumbMinHeight = 16;
+        private const int ModalWidth = 206;
+        private const int ModalHeight = 60;
+        private const float ModalTextMaxWidth = 176f;
+        private const int ServiceTabTextY = 4;
+        private const int PaneTabTextY = 4;
 
         private readonly string _windowName;
         private readonly AdminShopServiceMode _defaultMode;
@@ -69,24 +89,36 @@ namespace HaCreator.MapSimulator.UI
         private readonly Point _contentOverlayOffset;
         private readonly Texture2D _selectionTexture;
         private readonly Texture2D _mesoTexture;
+        private readonly Texture2D _pixelTexture;
         private readonly UIObject _buyButton;
         private readonly UIObject _sellButton;
         private readonly UIObject _exitButton;
         private readonly UIObject _rechargeButton;
         private readonly List<UIObject> _npcRowButtons = new();
         private readonly List<UIObject> _userRowButtons = new();
+        private readonly List<UIObject> _modalButtons = new();
         private readonly Dictionary<AdminShopPane, AdminShopPaneState> _paneStates = new()
         {
             [AdminShopPane.Npc] = new AdminShopPaneState(),
             [AdminShopPane.User] = new AdminShopPaneState()
         };
+        private readonly AdminShopTabVisual[] _serviceTabs = new AdminShopTabVisual[2];
+        private readonly AdminShopTabVisual[] _paneTabs = new AdminShopTabVisual[2];
+        private readonly Texture2D _modalTexture;
+        private readonly UIObject _modalConfirmButton;
+        private readonly UIObject _modalCancelButton;
 
         private SpriteFont _font;
         private AdminShopServiceMode _currentMode;
         private AdminShopPane _activePane = AdminShopPane.Npc;
         private string _footerMessage = string.Empty;
+        private string _modalMessage = string.Empty;
         private AdminShopEntry _pendingWishlistEntry;
         private int _previousScrollWheelValue;
+        private MouseState _previousMouseState;
+        private AdminShopPane? _draggingScrollPane;
+        private int _scrollThumbDragOffsetY;
+        private bool _wishlistModalVisible;
 
         public AdminShopDialogUI(
             IDXObject frame,
@@ -102,6 +134,9 @@ namespace HaCreator.MapSimulator.UI
             UIObject sellButton,
             UIObject exitButton,
             UIObject rechargeButton,
+            Texture2D modalTexture,
+            UIObject modalConfirmButton,
+            UIObject modalCancelButton,
             GraphicsDevice device)
             : base(frame)
         {
@@ -114,10 +149,15 @@ namespace HaCreator.MapSimulator.UI
             _contentOverlayOffset = contentOverlayOffset;
             _selectionTexture = selectionTexture;
             _mesoTexture = mesoTexture;
+            _pixelTexture = new Texture2D(device, 1, 1);
+            _pixelTexture.SetData(new[] { Color.White });
             _buyButton = buyButton;
             _sellButton = sellButton;
             _exitButton = exitButton;
             _rechargeButton = rechargeButton;
+            _modalTexture = modalTexture;
+            _modalConfirmButton = modalConfirmButton;
+            _modalCancelButton = modalCancelButton;
 
             if (_buyButton != null)
             {
@@ -143,7 +183,24 @@ namespace HaCreator.MapSimulator.UI
                 _rechargeButton.ButtonClickReleased += OnRechargeButtonClicked;
             }
 
+            if (_modalConfirmButton != null)
+            {
+                AddButton(_modalConfirmButton);
+                _modalButtons.Add(_modalConfirmButton);
+                _modalConfirmButton.SetVisible(false);
+                _modalConfirmButton.ButtonClickReleased += OnModalConfirmClicked;
+            }
+
+            if (_modalCancelButton != null)
+            {
+                AddButton(_modalCancelButton);
+                _modalButtons.Add(_modalCancelButton);
+                _modalCancelButton.SetVisible(false);
+                _modalCancelButton.ButtonClickReleased += OnModalCancelClicked;
+            }
+
             InitializeRowButtons(device);
+            InitializeTabVisuals();
             ResetMode(defaultMode);
         }
 
@@ -154,7 +211,9 @@ namespace HaCreator.MapSimulator.UI
         public override void Show()
         {
             base.Show();
-            _previousScrollWheelValue = Mouse.GetState().ScrollWheelValue;
+            MouseState mouseState = Mouse.GetState();
+            _previousScrollWheelValue = mouseState.ScrollWheelValue;
+            _previousMouseState = mouseState;
             ResetMode(_defaultMode);
         }
 
@@ -174,26 +233,59 @@ namespace HaCreator.MapSimulator.UI
             int wheelDelta = mouseState.ScrollWheelValue - _previousScrollWheelValue;
             _previousScrollWheelValue = mouseState.ScrollWheelValue;
 
+            bool leftJustPressed = mouseState.LeftButton == ButtonState.Pressed && _previousMouseState.LeftButton == ButtonState.Released;
+
+            if (_wishlistModalVisible)
+            {
+                _previousMouseState = mouseState;
+                return;
+            }
+
+            if (_draggingScrollPane.HasValue)
+            {
+                if (mouseState.LeftButton == ButtonState.Pressed)
+                {
+                    SetScrollOffsetFromThumb(_draggingScrollPane.Value, mouseState.Y);
+                }
+                else
+                {
+                    _draggingScrollPane = null;
+                }
+            }
+
+            if (leftJustPressed)
+            {
+                if (TryHandleServiceTabClick(mouseState) || TryHandlePaneTabClick(mouseState) || TryHandleScrollBarMouseDown(mouseState))
+                {
+                    _previousMouseState = mouseState;
+                    return;
+                }
+            }
+
             if (wheelDelta == 0)
             {
+                _previousMouseState = mouseState;
                 return;
             }
 
             AdminShopPane? hoveredPane = GetPaneAt(mouseState.X, mouseState.Y);
             if (!hoveredPane.HasValue)
             {
+                _previousMouseState = mouseState;
                 return;
             }
 
             AdminShopPaneState paneState = _paneStates[hoveredPane.Value];
             if (paneState.Entries.Count <= MaxVisibleRows)
             {
+                _previousMouseState = mouseState;
                 return;
             }
 
             paneState.ScrollOffset += wheelDelta > 0 ? -1 : 1;
             ClampPaneState(paneState);
             UpdateRowButtons();
+            _previousMouseState = mouseState;
         }
 
         protected override void DrawContents(
@@ -220,10 +312,18 @@ namespace HaCreator.MapSimulator.UI
             }
 
             DrawHeader(sprite, windowX, windowY);
+            DrawTabs(sprite, windowX, windowY);
             DrawPane(sprite, windowX, windowY, LeftPaneX, AdminShopPane.Npc, "NPC offers");
             DrawPane(sprite, windowX, windowY, RightPaneX, AdminShopPane.User, "User listings");
+            DrawScrollBar(sprite, windowX, windowY, AdminShopPane.Npc);
+            DrawScrollBar(sprite, windowX, windowY, AdminShopPane.User);
             DrawFooter(sprite, windowX, windowY);
             DrawMoney(sprite, windowX, windowY);
+
+            if (_wishlistModalVisible)
+            {
+                DrawWishlistModal(sprite, windowX, windowY);
+            }
         }
 
         private void DrawLayer(
@@ -250,10 +350,43 @@ namespace HaCreator.MapSimulator.UI
         private void DrawHeader(SpriteBatch sprite, int windowX, int windowY)
         {
             string modeLabel = _currentMode == AdminShopServiceMode.CashShop ? "Cash Shop" : "MTS";
-            string instruction = "BtBuy submits a request, BtSell switches service, BtRecharge confirms wish list.";
+            string instruction = "BtBuy submits a request, BtSell switches service, BtRecharge opens the wish-list dialog.";
 
             sprite.DrawString(_font, modeLabel + " dialog", new Vector2(windowX + HeaderX, windowY + HeaderY), Color.White);
             sprite.DrawString(_font, instruction, new Vector2(windowX + HeaderX, windowY + HeaderY + 18), new Color(215, 215, 215));
+        }
+
+        private void DrawTabs(SpriteBatch sprite, int windowX, int windowY)
+        {
+            DrawTab(sprite, windowX, windowY, _serviceTabs[0], _currentMode == AdminShopServiceMode.CashShop, ServiceTabTextY);
+            DrawTab(sprite, windowX, windowY, _serviceTabs[1], _currentMode == AdminShopServiceMode.Mts, ServiceTabTextY);
+            DrawTab(sprite, windowX, windowY, _paneTabs[0], _activePane == AdminShopPane.Npc, PaneTabTextY);
+            DrawTab(sprite, windowX, windowY, _paneTabs[1], _activePane == AdminShopPane.User, PaneTabTextY);
+        }
+
+        private void DrawTab(SpriteBatch sprite, int windowX, int windowY, AdminShopTabVisual tab, bool enabled, int textOffsetY)
+        {
+            if (tab == null)
+            {
+                return;
+            }
+
+            Texture2D texture = enabled ? tab.EnabledTexture ?? tab.DisabledTexture : tab.DisabledTexture ?? tab.EnabledTexture;
+            if (texture != null)
+            {
+                sprite.Draw(texture, new Vector2(windowX + tab.Offset.X, windowY + tab.Offset.Y), Color.White);
+            }
+
+            if (_font == null || string.IsNullOrWhiteSpace(tab.Label))
+            {
+                return;
+            }
+
+            Vector2 textSize = _font.MeasureString(tab.Label);
+            float textX = windowX + tab.Offset.X + ((texture?.Width ?? 42) - textSize.X) / 2f;
+            float textY = windowY + tab.Offset.Y + textOffsetY;
+            Color textColor = enabled ? new Color(66, 38, 0) : new Color(230, 226, 218);
+            sprite.DrawString(_font, tab.Label, new Vector2(textX, textY), textColor);
         }
 
         private void DrawPane(SpriteBatch sprite, int windowX, int windowY, int paneX, AdminShopPane pane, string label)
@@ -290,6 +423,40 @@ namespace HaCreator.MapSimulator.UI
             }
         }
 
+        private void DrawScrollBar(SpriteBatch sprite, int windowX, int windowY, AdminShopPane pane)
+        {
+            Rectangle barBounds = GetScrollBarBounds(windowX, windowY, pane);
+            Rectangle upBounds = GetScrollUpButtonBounds(windowX, windowY, pane);
+            Rectangle downBounds = GetScrollDownButtonBounds(windowX, windowY, pane);
+            Rectangle trackBounds = GetScrollTrackBounds(windowX, windowY, pane);
+            Rectangle thumbBounds = GetScrollThumbBounds(windowX, windowY, pane);
+            bool canScroll = GetMaxScrollOffset(_paneStates[pane]) > 0;
+
+            sprite.Draw(_pixelTexture, barBounds, new Color(16, 16, 16, 220));
+            sprite.Draw(_pixelTexture, upBounds, canScroll ? new Color(88, 88, 88) : new Color(52, 52, 52));
+            sprite.Draw(_pixelTexture, downBounds, canScroll ? new Color(88, 88, 88) : new Color(52, 52, 52));
+            sprite.Draw(_pixelTexture, trackBounds, canScroll ? new Color(42, 42, 42) : new Color(30, 30, 30));
+            sprite.Draw(_pixelTexture, thumbBounds, canScroll ? new Color(215, 177, 84) : new Color(96, 96, 96));
+
+            DrawArrowGlyph(sprite, upBounds, true);
+            DrawArrowGlyph(sprite, downBounds, false);
+        }
+
+        private void DrawArrowGlyph(SpriteBatch sprite, Rectangle bounds, bool up)
+        {
+            if (_font == null)
+            {
+                return;
+            }
+
+            string glyph = up ? "^" : "v";
+            Vector2 size = _font.MeasureString(glyph);
+            Vector2 position = new Vector2(
+                bounds.X + (bounds.Width - size.X) / 2f,
+                bounds.Y + (bounds.Height - size.Y) / 2f - 1f);
+            sprite.DrawString(_font, glyph, position, Color.White);
+        }
+
         private void DrawFooter(SpriteBatch sprite, int windowX, int windowY)
         {
             AdminShopEntry entry = GetSelectedEntry();
@@ -315,6 +482,30 @@ namespace HaCreator.MapSimulator.UI
             if (!string.IsNullOrWhiteSpace(_footerMessage))
             {
                 sprite.DrawString(_font, _footerMessage, new Vector2(windowX + DetailX, windowY + DetailY + 68), new Color(255, 221, 143));
+            }
+        }
+
+        private void DrawWishlistModal(SpriteBatch sprite, int windowX, int windowY)
+        {
+            Rectangle modalBounds = GetModalBounds(windowX, windowY);
+
+            sprite.Draw(_pixelTexture, new Rectangle(windowX, windowY, CurrentFrame?.Width ?? 465, CurrentFrame?.Height ?? 328), new Color(0, 0, 0, 96));
+            if (_modalTexture != null)
+            {
+                sprite.Draw(_modalTexture, new Vector2(modalBounds.X, modalBounds.Y), Color.White);
+            }
+            else
+            {
+                sprite.Draw(_pixelTexture, modalBounds, new Color(248, 244, 230));
+            }
+
+            float lineY = modalBounds.Y + 10f;
+            foreach (string line in WrapText(_modalMessage, ModalTextMaxWidth))
+            {
+                Vector2 lineSize = _font.MeasureString(line);
+                float lineX = modalBounds.X + (modalBounds.Width - lineSize.X) / 2f;
+                sprite.DrawString(_font, line, new Vector2(lineX, lineY), new Color(55, 39, 15));
+                lineY += 14f;
             }
         }
 
@@ -376,16 +567,10 @@ namespace HaCreator.MapSimulator.UI
 
             if (!ReferenceEquals(_pendingWishlistEntry, entry))
             {
-                _pendingWishlistEntry = entry;
-                _footerMessage = $"Confirm wish list entry for {entry.Title} with BtRecharge again.";
+                OpenWishlistConfirmation(entry);
                 UpdateActionButtonStates();
                 return;
             }
-
-            entry.Wishlisted = true;
-            _pendingWishlistEntry = null;
-            _footerMessage = $"Wish list confirmed for {entry.Title}.";
-            UpdateActionButtonStates();
         }
 
         private void InitializeRowButtons(GraphicsDevice device)
@@ -449,6 +634,7 @@ namespace HaCreator.MapSimulator.UI
             _currentMode = mode;
             _activePane = AdminShopPane.Npc;
             _pendingWishlistEntry = null;
+            _wishlistModalVisible = false;
             _paneStates[AdminShopPane.Npc].Entries.Clear();
             _paneStates[AdminShopPane.User].Entries.Clear();
             _paneStates[AdminShopPane.Npc].Entries.AddRange(CreateNpcEntries(mode));
@@ -465,6 +651,7 @@ namespace HaCreator.MapSimulator.UI
             _footerMessage = BuildSelectionMessage(GetSelectedEntry(), _activePane);
             UpdateRowButtons();
             UpdateActionButtonStates();
+            UpdateModalButtons();
         }
 
         private void UpdateRowButtons()
@@ -487,8 +674,11 @@ namespace HaCreator.MapSimulator.UI
         private void UpdateActionButtonStates()
         {
             AdminShopEntry entry = GetSelectedEntry();
-            _buyButton?.SetEnabled(entry != null);
-            _rechargeButton?.SetEnabled(entry?.SupportsWishlist == true);
+            bool modalBlocked = _wishlistModalVisible;
+            _buyButton?.SetEnabled(!modalBlocked && entry != null);
+            _sellButton?.SetEnabled(!modalBlocked);
+            _exitButton?.SetEnabled(!modalBlocked);
+            _rechargeButton?.SetEnabled(!modalBlocked && entry?.SupportsWishlist == true);
         }
 
         private AdminShopEntry GetSelectedEntry()
@@ -504,7 +694,7 @@ namespace HaCreator.MapSimulator.UI
 
         private void ClampPaneState(AdminShopPaneState paneState)
         {
-            int maxScroll = Math.Max(0, paneState.Entries.Count - MaxVisibleRows);
+            int maxScroll = GetMaxScrollOffset(paneState);
             paneState.ScrollOffset = Math.Clamp(paneState.ScrollOffset, 0, maxScroll);
 
             if (paneState.SelectedIndex >= 0 && paneState.SelectedIndex < paneState.ScrollOffset)
@@ -532,6 +722,313 @@ namespace HaCreator.MapSimulator.UI
             }
 
             return null;
+        }
+
+        public override bool CheckMouseEvent(int shiftCenteredX, int shiftCenteredY, MouseState mouseState, MouseCursorItem mouseCursor, int renderWidth, int renderHeight)
+        {
+            if (!IsVisible)
+            {
+                return false;
+            }
+
+            if (_wishlistModalVisible)
+            {
+                foreach (UIObject button in _modalButtons)
+                {
+                    if (button.CheckMouseEvent(shiftCenteredX, shiftCenteredY, Position.X, Position.Y, mouseState))
+                    {
+                        mouseCursor?.SetMouseCursorMovedToClickableItem();
+                        return true;
+                    }
+                }
+
+                return ContainsPoint(mouseState.X, mouseState.Y);
+            }
+
+            return base.CheckMouseEvent(shiftCenteredX, shiftCenteredY, mouseState, mouseCursor, renderWidth, renderHeight);
+        }
+
+        private void InitializeTabVisuals()
+        {
+            _serviceTabs[0] = new AdminShopTabVisual { Label = "Cash", Offset = new Point(10, 91) };
+            _serviceTabs[1] = new AdminShopTabVisual { Label = "MTS", Offset = new Point(53, 91) };
+            _paneTabs[0] = new AdminShopTabVisual { Label = "NPC", Offset = new Point(241, 91) };
+            _paneTabs[1] = new AdminShopTabVisual { Label = "User", Offset = new Point(284, 91) };
+        }
+
+        public void SetTabTextures(
+            Texture2D cashEnabled,
+            Texture2D cashDisabled,
+            Texture2D mtsEnabled,
+            Texture2D mtsDisabled,
+            Texture2D npcEnabled,
+            Texture2D npcDisabled,
+            Texture2D userEnabled,
+            Texture2D userDisabled)
+        {
+            _serviceTabs[0].EnabledTexture = cashEnabled;
+            _serviceTabs[0].DisabledTexture = cashDisabled;
+            _serviceTabs[1].EnabledTexture = mtsEnabled;
+            _serviceTabs[1].DisabledTexture = mtsDisabled;
+            _paneTabs[0].EnabledTexture = npcEnabled;
+            _paneTabs[0].DisabledTexture = npcDisabled;
+            _paneTabs[1].EnabledTexture = userEnabled;
+            _paneTabs[1].DisabledTexture = userDisabled;
+        }
+
+        private bool TryHandleServiceTabClick(MouseState mouseState)
+        {
+            if (GetTabBounds(_serviceTabs[0]).Contains(mouseState.X, mouseState.Y))
+            {
+                if (_currentMode != AdminShopServiceMode.CashShop)
+                {
+                    ResetMode(AdminShopServiceMode.CashShop);
+                    _footerMessage = "Switched to Cash Shop offers.";
+                }
+                return true;
+            }
+
+            if (GetTabBounds(_serviceTabs[1]).Contains(mouseState.X, mouseState.Y))
+            {
+                if (_currentMode != AdminShopServiceMode.Mts)
+                {
+                    ResetMode(AdminShopServiceMode.Mts);
+                    _footerMessage = "Switched to MTS offers.";
+                }
+                return true;
+            }
+
+            return false;
+        }
+
+        private bool TryHandlePaneTabClick(MouseState mouseState)
+        {
+            if (GetTabBounds(_paneTabs[0]).Contains(mouseState.X, mouseState.Y))
+            {
+                _activePane = AdminShopPane.Npc;
+                _footerMessage = BuildSelectionMessage(GetSelectedEntry(), _activePane);
+                UpdateActionButtonStates();
+                return true;
+            }
+
+            if (GetTabBounds(_paneTabs[1]).Contains(mouseState.X, mouseState.Y))
+            {
+                _activePane = AdminShopPane.User;
+                _footerMessage = BuildSelectionMessage(GetSelectedEntry(), _activePane);
+                UpdateActionButtonStates();
+                return true;
+            }
+
+            return false;
+        }
+
+        private Rectangle GetTabBounds(AdminShopTabVisual tab)
+        {
+            int width = tab?.EnabledTexture?.Width ?? tab?.DisabledTexture?.Width ?? 42;
+            int height = tab?.EnabledTexture?.Height ?? tab?.DisabledTexture?.Height ?? 19;
+            return new Rectangle(Position.X + tab.Offset.X, Position.Y + tab.Offset.Y, width, height);
+        }
+
+        private bool TryHandleScrollBarMouseDown(MouseState mouseState)
+        {
+            foreach (AdminShopPane pane in Enum.GetValues(typeof(AdminShopPane)))
+            {
+                Rectangle scrollBarBounds = GetScrollBarBounds(Position.X, Position.Y, pane);
+                if (!scrollBarBounds.Contains(mouseState.X, mouseState.Y))
+                {
+                    continue;
+                }
+
+                AdminShopPaneState paneState = _paneStates[pane];
+                if (GetMaxScrollOffset(paneState) <= 0)
+                {
+                    return true;
+                }
+
+                if (GetScrollUpButtonBounds(Position.X, Position.Y, pane).Contains(mouseState.X, mouseState.Y))
+                {
+                    paneState.ScrollOffset--;
+                    ClampPaneState(paneState);
+                    UpdateRowButtons();
+                    return true;
+                }
+
+                if (GetScrollDownButtonBounds(Position.X, Position.Y, pane).Contains(mouseState.X, mouseState.Y))
+                {
+                    paneState.ScrollOffset++;
+                    ClampPaneState(paneState);
+                    UpdateRowButtons();
+                    return true;
+                }
+
+                Rectangle thumbBounds = GetScrollThumbBounds(Position.X, Position.Y, pane);
+                if (thumbBounds.Contains(mouseState.X, mouseState.Y))
+                {
+                    _draggingScrollPane = pane;
+                    _scrollThumbDragOffsetY = mouseState.Y - thumbBounds.Y;
+                    return true;
+                }
+
+                Rectangle trackBounds = GetScrollTrackBounds(Position.X, Position.Y, pane);
+                if (trackBounds.Contains(mouseState.X, mouseState.Y))
+                {
+                    paneState.ScrollOffset += mouseState.Y < thumbBounds.Y ? -MaxVisibleRows : MaxVisibleRows;
+                    ClampPaneState(paneState);
+                    UpdateRowButtons();
+                    return true;
+                }
+
+                return true;
+            }
+
+            return false;
+        }
+
+        private Rectangle GetScrollBarBounds(int windowX, int windowY, AdminShopPane pane)
+        {
+            int x = pane == AdminShopPane.Npc ? NpcScrollBarX : UserScrollBarX;
+            return new Rectangle(windowX + x, windowY + ScrollBarY, ScrollBarWidth, ScrollBarHeight);
+        }
+
+        private Rectangle GetScrollUpButtonBounds(int windowX, int windowY, AdminShopPane pane)
+        {
+            Rectangle bounds = GetScrollBarBounds(windowX, windowY, pane);
+            return new Rectangle(bounds.X, bounds.Y, bounds.Width, ScrollButtonHeight);
+        }
+
+        private Rectangle GetScrollDownButtonBounds(int windowX, int windowY, AdminShopPane pane)
+        {
+            Rectangle bounds = GetScrollBarBounds(windowX, windowY, pane);
+            return new Rectangle(bounds.X, bounds.Bottom - ScrollButtonHeight, bounds.Width, ScrollButtonHeight);
+        }
+
+        private Rectangle GetScrollTrackBounds(int windowX, int windowY, AdminShopPane pane)
+        {
+            Rectangle bounds = GetScrollBarBounds(windowX, windowY, pane);
+            return new Rectangle(bounds.X, bounds.Y + ScrollButtonHeight, bounds.Width, bounds.Height - (ScrollButtonHeight * 2));
+        }
+
+        private Rectangle GetScrollThumbBounds(int windowX, int windowY, AdminShopPane pane)
+        {
+            Rectangle trackBounds = GetScrollTrackBounds(windowX, windowY, pane);
+            AdminShopPaneState paneState = _paneStates[pane];
+            int maxScroll = GetMaxScrollOffset(paneState);
+            if (maxScroll <= 0)
+            {
+                return new Rectangle(trackBounds.X, trackBounds.Y, trackBounds.Width, trackBounds.Height);
+            }
+
+            float visibleRatio = MaxVisibleRows / (float)paneState.Entries.Count;
+            int thumbHeight = Math.Max(ScrollThumbMinHeight, (int)Math.Round(trackBounds.Height * visibleRatio));
+            thumbHeight = Math.Min(trackBounds.Height, thumbHeight);
+            int travel = Math.Max(0, trackBounds.Height - thumbHeight);
+            int thumbY = trackBounds.Y + (travel == 0 ? 0 : (int)Math.Round((paneState.ScrollOffset / (float)maxScroll) * travel));
+            return new Rectangle(trackBounds.X, thumbY, trackBounds.Width, thumbHeight);
+        }
+
+        private void SetScrollOffsetFromThumb(AdminShopPane pane, int mouseY)
+        {
+            Rectangle trackBounds = GetScrollTrackBounds(Position.X, Position.Y, pane);
+            Rectangle thumbBounds = GetScrollThumbBounds(Position.X, Position.Y, pane);
+            int travel = Math.Max(0, trackBounds.Height - thumbBounds.Height);
+            int maxScroll = GetMaxScrollOffset(_paneStates[pane]);
+            if (travel <= 0 || maxScroll <= 0)
+            {
+                return;
+            }
+
+            int thumbTop = Math.Clamp(mouseY - _scrollThumbDragOffsetY, trackBounds.Y, trackBounds.Bottom - thumbBounds.Height);
+            float ratio = (thumbTop - trackBounds.Y) / (float)travel;
+            _paneStates[pane].ScrollOffset = (int)Math.Round(ratio * maxScroll);
+            ClampPaneState(_paneStates[pane]);
+            UpdateRowButtons();
+        }
+
+        private static int GetMaxScrollOffset(AdminShopPaneState paneState)
+        {
+            return Math.Max(0, paneState.Entries.Count - MaxVisibleRows);
+        }
+
+        private void OpenWishlistConfirmation(AdminShopEntry entry)
+        {
+            _pendingWishlistEntry = entry;
+            _wishlistModalVisible = true;
+            _modalMessage = $"Add {entry.Title} to the wish list?";
+            _footerMessage = $"Wish list dialog opened for {entry.Title}.";
+            PositionModalButtons();
+            UpdateModalButtons();
+            UpdateActionButtonStates();
+        }
+
+        private void OnModalConfirmClicked(UIObject sender)
+        {
+            if (_pendingWishlistEntry == null)
+            {
+                CloseWishlistConfirmation("Wish list dialog closed.");
+                return;
+            }
+
+            _pendingWishlistEntry.Wishlisted = true;
+            string title = _pendingWishlistEntry.Title;
+            CloseWishlistConfirmation($"Wish list confirmed for {title}.");
+        }
+
+        private void OnModalCancelClicked(UIObject sender)
+        {
+            string title = _pendingWishlistEntry?.Title;
+            CloseWishlistConfirmation(string.IsNullOrWhiteSpace(title)
+                ? "Wish list dialog cancelled."
+                : $"Wish list dialog cancelled for {title}.");
+        }
+
+        private void CloseWishlistConfirmation(string footerMessage)
+        {
+            _pendingWishlistEntry = null;
+            _wishlistModalVisible = false;
+            _modalMessage = string.Empty;
+            _footerMessage = footerMessage;
+            UpdateModalButtons();
+            UpdateActionButtonStates();
+        }
+
+        private void UpdateModalButtons()
+        {
+            bool visible = _wishlistModalVisible;
+            foreach (UIObject button in _modalButtons)
+            {
+                button.SetVisible(visible);
+                button.SetEnabled(visible);
+            }
+
+            if (visible)
+            {
+                PositionModalButtons();
+            }
+        }
+
+        private void PositionModalButtons()
+        {
+            Rectangle modalBounds = GetModalBounds(Position.X, Position.Y);
+            if (_modalConfirmButton != null)
+            {
+                _modalConfirmButton.X = modalBounds.X - Position.X + 34;
+                _modalConfirmButton.Y = modalBounds.Y - Position.Y + 35;
+            }
+
+            if (_modalCancelButton != null)
+            {
+                _modalCancelButton.X = modalBounds.X - Position.X + 111;
+                _modalCancelButton.Y = modalBounds.Y - Position.Y + 35;
+            }
+        }
+
+        private Rectangle GetModalBounds(int windowX, int windowY)
+        {
+            int frameWidth = CurrentFrame?.Width ?? 465;
+            int frameHeight = CurrentFrame?.Height ?? 328;
+            int modalX = windowX + (frameWidth - ModalWidth) / 2;
+            int modalY = windowY + (frameHeight - ModalHeight) / 2;
+            return new Rectangle(modalX, modalY, ModalWidth, ModalHeight);
         }
 
         private static string BuildSelectionMessage(AdminShopEntry entry, AdminShopPane pane)

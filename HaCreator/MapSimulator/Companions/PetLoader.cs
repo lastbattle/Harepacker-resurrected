@@ -20,6 +20,9 @@ namespace HaCreator.MapSimulator.Companions
             new Dictionary<PetAutoSpeechEvent, string[]>();
         internal string[] RandomIdleActions { get; set; } = Array.Empty<string>();
         internal PetCommandDefinition[] Commands { get; init; } = Array.Empty<PetCommandDefinition>();
+        internal PetDialogFeedbackDefinition SlangFeedback { get; init; }
+        internal IReadOnlyDictionary<int, PetDialogFeedbackDefinition> FoodFeedback { get; init; } =
+            new Dictionary<int, PetDialogFeedbackDefinition>();
         internal PetAnimationSet Animations { get; } = new PetAnimationSet();
     }
 
@@ -27,6 +30,12 @@ namespace HaCreator.MapSimulator.Companions
     {
         public string ActionName { get; init; }
         public string[] SpeechLines { get; init; } = Array.Empty<string>();
+    }
+
+    internal sealed class PetDialogFeedbackDefinition
+    {
+        public string[] SuccessLines { get; init; } = Array.Empty<string>();
+        public string[] FailureLines { get; init; } = Array.Empty<string>();
     }
 
     internal sealed class PetCommandDefinition
@@ -112,7 +121,9 @@ namespace HaCreator.MapSimulator.Companions
                 Icon = LoadInfoIcon(petImage, "icon"),
                 IconRaw = LoadInfoIcon(petImage, "iconRaw"),
                 EventSpeechLines = LoadEventSpeechLines(dialogStrings),
-                Commands = LoadInteractCommands(petImage, dialogStrings)
+                Commands = LoadInteractCommands(petImage, dialogStrings),
+                SlangFeedback = LoadDialogFeedback(dialogStrings, "s"),
+                FoodFeedback = LoadFoodFeedback(dialogStrings)
             };
 
             foreach (string action in SupportedActions)
@@ -343,6 +354,68 @@ namespace HaCreator.MapSimulator.Companions
                 ActionName = actionName,
                 SpeechLines = speechLines
             };
+        }
+
+        private static IReadOnlyDictionary<int, PetDialogFeedbackDefinition> LoadFoodFeedback(
+            IReadOnlyDictionary<string, string> dialogStrings)
+        {
+            var feedback = new Dictionary<int, PetDialogFeedbackDefinition>();
+            for (int variant = 1; variant <= 4; variant++)
+            {
+                PetDialogFeedbackDefinition entry = LoadDialogFeedback(dialogStrings, $"f{variant}");
+                if (entry != null)
+                {
+                    feedback[variant] = entry;
+                }
+            }
+
+            return feedback;
+        }
+
+        private static PetDialogFeedbackDefinition LoadDialogFeedback(
+            IReadOnlyDictionary<string, string> dialogStrings,
+            string prefix)
+        {
+            if (dialogStrings == null || string.IsNullOrWhiteSpace(prefix))
+            {
+                return null;
+            }
+
+            string[] successLines = ResolveFeedbackLines(dialogStrings, prefix + "_s");
+            string[] failureLines = ResolveFeedbackLines(dialogStrings, prefix + "_f");
+
+            if (successLines.Length == 0 && failureLines.Length == 0)
+            {
+                successLines = ResolveFeedbackLines(dialogStrings, prefix);
+            }
+
+            return successLines.Length == 0 && failureLines.Length == 0
+                ? null
+                : new PetDialogFeedbackDefinition
+                {
+                    SuccessLines = successLines,
+                    FailureLines = failureLines
+                };
+        }
+
+        private static string[] ResolveFeedbackLines(
+            IReadOnlyDictionary<string, string> dialogStrings,
+            string key)
+        {
+            if (dialogStrings == null ||
+                string.IsNullOrWhiteSpace(key) ||
+                !dialogStrings.TryGetValue(key, out string value) ||
+                string.IsNullOrWhiteSpace(value))
+            {
+                return Array.Empty<string>();
+            }
+
+            return value
+                .Split(new[] { '\n' }, StringSplitOptions.RemoveEmptyEntries)
+                .Select(line => line.Trim())
+                .Where(line => !string.IsNullOrWhiteSpace(line))
+                .Distinct(StringComparer.Ordinal)
+                .ToArray();
         }
 
         private List<IDXObject> LoadActionFrames(WzSubProperty actionNode)

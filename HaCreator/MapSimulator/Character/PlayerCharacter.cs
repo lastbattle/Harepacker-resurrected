@@ -356,6 +356,42 @@ namespace HaCreator.MapSimulator.Character
             _inputPickup = pickup;
         }
 
+        public bool TryActivatePortableChair(PortableChair chair)
+        {
+            if (chair == null || Build == null || !IsAlive || !Physics.IsOnFoothold())
+            {
+                return false;
+            }
+
+            Build.ActivePortableChair = chair;
+            Physics.VelocityX = 0;
+            Physics.VelocityY = 0;
+            Physics.CurrentAction = MoveAction.Stand;
+            ClearForcedActionName();
+            State = PlayerState.Sitting;
+            CurrentAction = CharacterAction.Sit;
+            CurrentActionName = CharacterPart.GetActionString(CharacterAction.Sit);
+            _animationStartTime = Environment.TickCount;
+            return true;
+        }
+
+        public void ClearPortableChair(bool standUp = true)
+        {
+            if (Build?.ActivePortableChair == null)
+            {
+                return;
+            }
+
+            Build.ActivePortableChair = null;
+            if (standUp && State == PlayerState.Sitting)
+            {
+                State = Physics.IsOnFoothold() ? PlayerState.Standing : PlayerState.Falling;
+                CurrentAction = CharacterAction.Stand1;
+                CurrentActionName = CharacterPart.GetActionString(CharacterAction.Stand1);
+                _animationStartTime = Environment.TickCount;
+            }
+        }
+
         /// <summary>
         /// Clear all input
         /// </summary>
@@ -526,6 +562,11 @@ namespace HaCreator.MapSimulator.Character
             bool movementLockedBySkillTransform = IsMovementLockedBySkillTransform;
             if (!CanMove && State != PlayerState.Attacking && !movementLockedBySkillTransform)
                 return;
+
+            if (Build?.ActivePortableChair != null && ShouldCancelPortableChairFromInput())
+            {
+                ClearPortableChair();
+            }
 
             // deltaTime is already in seconds (same as tSec in official client)
             float tSec = deltaTime;
@@ -1382,6 +1423,7 @@ namespace HaCreator.MapSimulator.Character
 
         private void StartAttack(int currentTime)
         {
+            ClearPortableChair(standUp: false);
             State = PlayerState.Attacking;
             _lastAttackTime = currentTime;
             _animationStartTime = currentTime;
@@ -1452,6 +1494,7 @@ namespace HaCreator.MapSimulator.Character
         public void TriggerSkillAnimation(string actionName)
         {
             // Map action name to CharacterAction
+            ClearPortableChair(standUp: false);
             State = PlayerState.Attacking;
             _sustainedSkillAnimation = false;
 
@@ -1475,6 +1518,8 @@ namespace HaCreator.MapSimulator.Character
         {
             if (string.IsNullOrEmpty(actionName))
                 actionName = "attack1";
+
+            ClearPortableChair(standUp: false);
 
             bool isSameAction = _sustainedSkillAnimation
                 && State == PlayerState.Attacking
@@ -1883,6 +1928,7 @@ namespace HaCreator.MapSimulator.Character
             }
 
             // Enter hit state (knockback stun)
+            ClearPortableChair(standUp: false);
             State = PlayerState.Hit;
             _hitStateStartTime = Environment.TickCount;
             _hitExpressionEndTime = _hitStateStartTime + FACE_HIT_EXPRESSION_DURATION_MS;
@@ -1916,6 +1962,7 @@ namespace HaCreator.MapSimulator.Character
             if (!IsAlive) return;
 
             // Enter hit state for knockback animation
+            ClearPortableChair(standUp: false);
             State = PlayerState.Hit;
             _hitStateStartTime = Environment.TickCount;
             _hitExpressionEndTime = _hitStateStartTime + FACE_HIT_EXPRESSION_DURATION_MS;
@@ -2014,6 +2061,7 @@ namespace HaCreator.MapSimulator.Character
         {
             if (!IsAlive) return;
 
+            ClearPortableChair(standUp: false);
             HP = 0;
             State = PlayerState.Dead;
             CurrentAction = CharacterAction.Dead;
@@ -2054,6 +2102,7 @@ namespace HaCreator.MapSimulator.Character
         /// </summary>
         public void Respawn(float x, float y)
         {
+            ClearPortableChair(standUp: false);
             HP = MaxHP;
             MP = MaxMP;
             State = PlayerState.Standing;
@@ -2080,6 +2129,7 @@ namespace HaCreator.MapSimulator.Character
             if (State == PlayerState.Dead)
                 return;
 
+            ClearPortableChair(standUp: false);
             State = PlayerState.Standing;
             CurrentAction = CharacterAction.Stand1;
             CurrentActionName = CharacterPart.GetActionString(CharacterAction.Stand1);
@@ -2339,6 +2389,11 @@ namespace HaCreator.MapSimulator.Character
         {
             return _skillAvatarEffectRenderSuppressionSkillIds.Count > 0
                    || CharacterAssembler.ShouldSuppressBaseAvatarForState(Build, CurrentActionName);
+        }
+
+        private bool ShouldCancelPortableChairFromInput()
+        {
+            return _inputLeft || _inputRight || _inputUp || _inputJump || _inputAttack;
         }
 
         private void ClearTransientSkillAvatarEffect(int skillId)

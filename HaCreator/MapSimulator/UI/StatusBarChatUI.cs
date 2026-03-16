@@ -67,6 +67,7 @@ namespace HaCreator.MapSimulator.UI
         public Action ToggleChatRequested { get; set; }
         public Action<int> CycleChatTargetRequested { get; set; }
         public Action CharacterInfoRequested { get; set; }
+        public Action MemoMailboxRequested { get; set; }
 
         /// <summary>
         /// Constructor for the status bar chat window
@@ -140,7 +141,7 @@ namespace HaCreator.MapSimulator.UI
             _skillPointNotificationAnimation = skillPointAnimation ?? new StatusBarPointNotificationAnimation();
         }
 
-        public void BindControls(UIObject chatTargetButton, UIObject chatToggleButton, UIObject scrollUpButton, UIObject scrollDownButton, UIObject characterInfoButton = null)
+        public void BindControls(UIObject chatTargetButton, UIObject chatToggleButton, UIObject scrollUpButton, UIObject scrollDownButton, UIObject characterInfoButton = null, UIObject memoButton = null)
         {
             if (chatTargetButton != null)
             {
@@ -173,6 +174,11 @@ namespace HaCreator.MapSimulator.UI
             if (characterInfoButton != null)
             {
                 characterInfoButton.ButtonClickReleased += _ => CharacterInfoRequested?.Invoke();
+            }
+
+            if (memoButton != null)
+            {
+                memoButton.ButtonClickReleased += _ => MemoMailboxRequested?.Invoke();
             }
         }
 

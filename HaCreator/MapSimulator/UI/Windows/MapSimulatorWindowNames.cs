@@ -26,9 +26,16 @@ namespace HaCreator.MapSimulator.UI
         public const string CharacterSelect = "CharacterSelect";
         public const string ItemMaker = "ItemMaker";
         public const string ItemUpgrade = "ItemUpgrade";
+        public const string Trunk = "Trunk";
         public const string CharacterInfo = "CharacterInfo";
+        public const string Messenger = "Messenger";
+        public const string MemoMailbox = "MemoMailbox";
         public const string QuestDetail = "QuestDetail";
         public const string QuestAlarm = "QuestAlarm";
         public const string AranSkillGuide = "AranSkillGuide";
+        public const string MiniRoom = "MiniRoom";
+        public const string PersonalShop = "PersonalShop";
+        public const string EntrustedShop = "EntrustedShop";
+        public const string TradingRoom = "TradingRoom";
     }
 }

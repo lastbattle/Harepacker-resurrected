@@ -109,7 +109,8 @@ namespace HaCreator.MapSimulator.Character
         HandBelowWeapon,
         HandOverHair,
         Ear,
-        TamingMob
+        TamingMob,
+        PortableChair
     }
 
     /// <summary>
@@ -592,6 +593,24 @@ namespace HaCreator.MapSimulator.Character
         public bool IsTwoHanded { get; set; }
     }
 
+    public sealed class PortableChairLayer
+    {
+        public string Name { get; set; }
+        public CharacterAnimation Animation { get; set; }
+        public int RelativeZ { get; set; }
+        public int PositionHint { get; set; }
+    }
+
+    public sealed class PortableChair
+    {
+        public int ItemId { get; set; }
+        public string Name { get; set; }
+        public string Description { get; set; }
+        public int? SitActionId { get; set; }
+        public int? TamingMobItemId { get; set; }
+        public List<PortableChairLayer> Layers { get; set; } = new();
+    }
+
     #endregion
 
     #region Character Build
@@ -620,6 +639,7 @@ namespace HaCreator.MapSimulator.Character
         public BodyPart Head { get; set; }
         public FacePart Face { get; set; }
         public HairPart Hair { get; set; }
+        public PortableChair ActivePortableChair { get; set; }
 
         // Equipment slots
         public Dictionary<EquipSlot, CharacterPart> Equipment { get; set; } = new();
@@ -984,6 +1004,7 @@ namespace HaCreator.MapSimulator.Character
                 Head = Head,
                 Face = Face,
                 Hair = Hair,
+                ActivePortableChair = ActivePortableChair,
                 Equipment = new Dictionary<EquipSlot, CharacterPart>(Equipment),
                 Level = Level,
                 MaxHP = MaxHP,

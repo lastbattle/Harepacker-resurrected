@@ -792,7 +792,7 @@ namespace HaCreator.MapSimulator.UI
             PetRuntime pet = pets[petIndex];
             title = string.IsNullOrWhiteSpace(pet.Name) ? $"Pet {pet.ItemId}" : pet.Name;
             line1 = $"Item ID: {pet.ItemId}";
-            line2 = $"Slot: Pet {petIndex + 1}  Auto Loot: {(pet.AutoLootEnabled ? "On" : "Off")}";
+            line2 = $"Slot: Pet {petIndex + 1}  Cmd Lv: {pet.CommandLevel}  Auto Loot: {(pet.AutoLootEnabled ? "On" : "Off")}";
             description = ResolveItemDescription(pet.ItemId, "Pet");
             icon = pet.Definition?.IconRaw ?? pet.Definition?.Icon;
             return true;

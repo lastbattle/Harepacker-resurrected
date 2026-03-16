@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using HaCreator.MapSimulator.Pools;
+using HaCreator.MapSimulator.UI;
 using HaSharedLibrary.Render.DX;
 using HaSharedLibrary.Util;
 using MapleLib.WzLib;
@@ -48,6 +49,7 @@ namespace HaCreator.MapSimulator.Character
         private readonly Dictionary<int, FacePart> _faceCache = new();
         private readonly Dictionary<int, HairPart> _hairCache = new();
         private readonly Dictionary<int, CharacterPart> _equipCache = new();
+        private readonly Dictionary<int, PortableChair> _portableChairCache = new();
 
         // Standard actions to load
         private static readonly string[] StandardActions = new[]
@@ -157,6 +159,134 @@ namespace HaCreator.MapSimulator.Character
             LoadPartAnimations(head, imgNode as WzImage);
             _bodyCache[headId] = head;
             return head;
+        }
+
+        #endregion
+
+        #region Portable Chair Loading
+
+        public PortableChair LoadPortableChair(int itemId)
+        {
+            if (_portableChairCache.TryGetValue(itemId, out PortableChair cached))
+            {
+                return cached;
+            }
+
+            if (InventoryItemMetadataResolver.ResolveInventoryType(itemId) != MapleLib.WzLib.WzStructure.Data.ItemStructure.InventoryType.SETUP
+                || !InventoryItemMetadataResolver.TryResolveImageSource(itemId, out string category, out string imagePath))
+            {
+                return null;
+            }
+
+            WzImage itemImage = Program.FindImage(category, imagePath);
+            if (itemImage == null)
+            {
+                return null;
+            }
+
+            itemImage.ParseImage();
+            string itemNodeName = itemId.ToString("D7");
+            WzSubProperty itemProperty = itemImage[itemNodeName] as WzSubProperty;
+            if (itemProperty == null)
+            {
+                return null;
+            }
+
+            WzSubProperty info = itemProperty["info"] as WzSubProperty;
+            var chair = new PortableChair
+            {
+                ItemId = itemId,
+                Name = ResolvePortableChairName(itemId),
+                Description = ResolvePortableChairDescription(itemId),
+                SitActionId = GetIntValue(info?["sitAction"]),
+                TamingMobItemId = GetIntValue(info?["tamingMob"])
+            };
+
+            foreach (WzImageProperty child in itemProperty.WzProperties)
+            {
+                if (child is not WzSubProperty layerProperty || child.Name.Equals("info", StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                PortableChairLayer layer = LoadPortableChairLayer(layerProperty);
+                if (layer != null)
+                {
+                    chair.Layers.Add(layer);
+                }
+            }
+
+            if (chair.Layers.Count == 0)
+            {
+                return null;
+            }
+
+            _portableChairCache[itemId] = chair;
+            return chair;
+        }
+
+        private PortableChairLayer LoadPortableChairLayer(WzSubProperty layerProperty)
+        {
+            var animation = new CharacterAnimation
+            {
+                Action = CharacterAction.Custom,
+                ActionName = layerProperty.Name,
+                Loop = true
+            };
+
+            var orderedFrames = new List<(int Index, CharacterFrame Frame)>();
+            foreach (WzImageProperty child in layerProperty.WzProperties)
+            {
+                if (child is not WzCanvasProperty canvas || !int.TryParse(child.Name, out int frameIndex))
+                {
+                    continue;
+                }
+
+                CharacterFrame frame = LoadFrame(canvas, child.Name);
+                if (frame == null)
+                {
+                    continue;
+                }
+
+                orderedFrames.Add((frameIndex, frame));
+            }
+
+            if (orderedFrames.Count == 0)
+            {
+                return null;
+            }
+
+            orderedFrames.Sort((a, b) => a.Index.CompareTo(b.Index));
+            foreach ((int _, CharacterFrame frame) in orderedFrames)
+            {
+                animation.Frames.Add(frame);
+            }
+
+            animation.CalculateTotalDuration();
+            return new PortableChairLayer
+            {
+                Name = layerProperty.Name,
+                Animation = animation,
+                RelativeZ = GetIntValue(layerProperty["z"]) ?? 0,
+                PositionHint = GetIntValue(layerProperty["pos"]) ?? 0
+            };
+        }
+
+        private static string ResolvePortableChairName(int itemId)
+        {
+            return Program.InfoManager?.ItemNameCache != null
+                   && Program.InfoManager.ItemNameCache.TryGetValue(itemId, out Tuple<string, string, string> itemInfo)
+                   && !string.IsNullOrWhiteSpace(itemInfo.Item2)
+                ? itemInfo.Item2
+                : $"Portable Chair {itemId}";
+        }
+
+        private static string ResolvePortableChairDescription(int itemId)
+        {
+            return Program.InfoManager?.ItemNameCache != null
+                   && Program.InfoManager.ItemNameCache.TryGetValue(itemId, out Tuple<string, string, string> itemInfo)
+                ? itemInfo.Item3
+                : null;
         }
 
         #endregion

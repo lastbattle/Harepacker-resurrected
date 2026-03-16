@@ -1,3 +1,4 @@
+using HaCreator.MapSimulator.Companions;
 using HaCreator.MapSimulator.UI;
 using HaCreator.MapSimulator.UI.Controls;
 using HaSharedLibrary.Render;
@@ -8,6 +9,7 @@ using Microsoft.Xna.Framework.Input;
 using Spine;
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using CharacterBuild = HaCreator.MapSimulator.Character.CharacterBuild;
 using CharacterEquipSlot = HaCreator.MapSimulator.Character.EquipSlot;
 using CharacterPart = HaCreator.MapSimulator.Character.CharacterPart;
@@ -16,61 +18,54 @@ using EquipSlotVisualState = HaCreator.MapSimulator.Character.EquipSlotVisualSta
 
 namespace HaCreator.MapSimulator.UI
 {
-    /// <summary>
-    /// Equipment UI window displaying equipped items.
-    /// Structure: UI.wz/UIWindow.img/Equip/
-    /// </summary>
     public class EquipUI : UIWindowBase
     {
         private const int SLOT_SIZE = 32;
         private const int TOOLTIP_PADDING = 8;
         private const int TOOLTIP_OFFSET_X = 14;
         private const int TOOLTIP_OFFSET_Y = 8;
+        private const int COMPANION_PANE_ATTACH_X = 12;
+        private const int COMPANION_PANE_ATTACH_Y = 34;
+        private const int COMPANION_MESSAGE_PADDING = 10;
+        private const int COMPANION_TEXT_LINE_GAP = 4;
+
+        private enum CompanionPaneMode
+        {
+            Hidden,
+            Pet,
+            Dragon
+        }
 
         public enum EquipSlot
         {
-            Ring1 = 0,
-            Ring2 = 1,
-            Ring3 = 2,
-            Ring4 = 3,
-            Pocket = 4,
-            Pendant1 = 5,
-            Pendant2 = 6,
-            Weapon = 7,
-            Belt = 8,
-            Cap = 9,
-            FaceAccessory = 10,
-            EyeAccessory = 11,
-            Top = 12,
-            Bottom = 13,
-            Shoes = 14,
-            Earring = 15,
-            Shoulder = 16,
-            Glove = 17,
-            Shield = 18,
-            Cape = 19,
-            Heart = 20,
-            Badge = 21,
-            Medal = 22,
-            Android = 23,
-            AndroidHeart = 24,
-            Totem1 = 25,
-            Totem2 = 26,
-            Totem3 = 27
+            Ring1 = 0, Ring2 = 1, Ring3 = 2, Ring4 = 3, Pocket = 4, Pendant1 = 5, Pendant2 = 6,
+            Weapon = 7, Belt = 8, Cap = 9, FaceAccessory = 10, EyeAccessory = 11, Top = 12,
+            Bottom = 13, Shoes = 14, Earring = 15, Shoulder = 16, Glove = 17, Shield = 18,
+            Cape = 19, Heart = 20, Badge = 21, Medal = 22, Android = 23, AndroidHeart = 24,
+            Totem1 = 25, Totem2 = 26, Totem3 = 27
         }
 
         private readonly Dictionary<EquipSlot, Point> slotPositions;
         private readonly Dictionary<EquipSlot, EquipSlotData> equippedItems;
+        private readonly Dictionary<DragonEquipSlot, Point> _dragonSlotPositions;
         private readonly Texture2D _overlayPixel;
+        private readonly Point[] _petButtonIconPositions;
         private SpriteFont _font;
         private CharacterBuild _characterBuild;
+        private PetController _petController;
+        private DragonEquipmentController _dragonEquipmentController;
         private EquipSlot? _hoveredSlot;
+        private int? _hoveredPetIndex;
+        private DragonEquipSlot? _hoveredDragonSlot;
         private Point _lastMousePosition;
-
-        private UIObject _tabNormal;
-        private UIObject _tabCash;
-        private UIObject _tabPet;
-        private int _currentTab;
+        private IDXObject _petPaneFrame;
+        private IDXObject _dragonPaneFrame;
+        private UIObject _btnPetEquipShow;
+        private UIObject _btnPetEquipHide;
+        private UIObject _btnDragonEquip;
+        private readonly UIObject[] _petButtons = new UIObject[3];
+        private CompanionPaneMode _companionPaneMode;
+        private int _selectedPetIndex;
 
         public override string WindowName => "Equipment";
         public override CharacterBuild CharacterBuild
@@ -79,153 +74,291 @@ namespace HaCreator.MapSimulator.UI
             set => _characterBuild = value;
         }
 
-        public EquipUI(IDXObject frame, GraphicsDevice device)
-            : base(frame)
+        public EquipUI(IDXObject frame, GraphicsDevice device) : base(frame)
         {
             slotPositions = new Dictionary<EquipSlot, Point>
             {
-                { EquipSlot.Ring1, new Point(12, 55) },
-                { EquipSlot.Ring2, new Point(12, 92) },
-                { EquipSlot.Ring3, new Point(12, 129) },
-                { EquipSlot.Ring4, new Point(12, 166) },
-                { EquipSlot.Pocket, new Point(12, 203) },
-                { EquipSlot.Pendant1, new Point(49, 55) },
-                { EquipSlot.Pendant2, new Point(49, 92) },
-                { EquipSlot.Weapon, new Point(49, 129) },
-                { EquipSlot.Belt, new Point(49, 166) },
-                { EquipSlot.Cap, new Point(135, 55) },
-                { EquipSlot.FaceAccessory, new Point(135, 92) },
-                { EquipSlot.EyeAccessory, new Point(135, 129) },
-                { EquipSlot.Top, new Point(135, 166) },
-                { EquipSlot.Bottom, new Point(135, 203) },
-                { EquipSlot.Shoes, new Point(135, 240) },
-                { EquipSlot.Earring, new Point(172, 55) },
-                { EquipSlot.Shoulder, new Point(172, 92) },
-                { EquipSlot.Glove, new Point(172, 129) },
-                { EquipSlot.Shield, new Point(172, 166) },
-                { EquipSlot.Cape, new Point(172, 203) }
+                { EquipSlot.Ring1, new Point(12, 55) }, { EquipSlot.Ring2, new Point(12, 92) },
+                { EquipSlot.Ring3, new Point(12, 129) }, { EquipSlot.Ring4, new Point(12, 166) },
+                { EquipSlot.Pocket, new Point(12, 203) }, { EquipSlot.Pendant1, new Point(49, 55) },
+                { EquipSlot.Pendant2, new Point(49, 92) }, { EquipSlot.Weapon, new Point(49, 129) },
+                { EquipSlot.Belt, new Point(49, 166) }, { EquipSlot.Cap, new Point(135, 55) },
+                { EquipSlot.FaceAccessory, new Point(135, 92) }, { EquipSlot.EyeAccessory, new Point(135, 129) },
+                { EquipSlot.Top, new Point(135, 166) }, { EquipSlot.Bottom, new Point(135, 203) },
+                { EquipSlot.Shoes, new Point(135, 240) }, { EquipSlot.Earring, new Point(172, 55) },
+                { EquipSlot.Shoulder, new Point(172, 92) }, { EquipSlot.Glove, new Point(172, 129) },
+                { EquipSlot.Shield, new Point(172, 166) }, { EquipSlot.Cape, new Point(172, 203) }
             };
-
+            _dragonSlotPositions = new Dictionary<DragonEquipSlot, Point>
+            {
+                { DragonEquipSlot.Mask, new Point(88, 45) }, { DragonEquipSlot.Wings, new Point(88, 74) },
+                { DragonEquipSlot.Pendant, new Point(50, 92) }, { DragonEquipSlot.Tail, new Point(95, 104) }
+            };
+            _petButtonIconPositions = new[] { new Point(12, 11), new Point(49, 11), new Point(86, 11) };
             equippedItems = new Dictionary<EquipSlot, EquipSlotData>();
             _overlayPixel = new Texture2D(device, 1, 1);
             _overlayPixel.SetData(new[] { Color.White });
         }
 
-        public void InitializeTabs(UIObject normalTab, UIObject cashTab, UIObject petTab)
+        public override void SetFont(SpriteFont font) => _font = font;
+
+        public void SetCompanionPanes(IDXObject petPaneFrame, IDXObject dragonPaneFrame)
         {
-            _tabNormal = normalTab;
-            _tabCash = cashTab;
-            _tabPet = petTab;
-
-            if (normalTab != null)
-            {
-                AddButton(normalTab);
-                normalTab.ButtonClickReleased += _ => { _currentTab = 0; UpdateTabStates(); };
-            }
-
-            if (cashTab != null)
-            {
-                AddButton(cashTab);
-                cashTab.ButtonClickReleased += _ => { _currentTab = 1; UpdateTabStates(); };
-            }
-
-            if (petTab != null)
-            {
-                AddButton(petTab);
-                petTab.ButtonClickReleased += _ => { _currentTab = 2; UpdateTabStates(); };
-            }
-
-            UpdateTabStates();
+            _petPaneFrame = petPaneFrame;
+            _dragonPaneFrame = dragonPaneFrame;
         }
 
-        public override void SetFont(SpriteFont font)
+        public void InitializeCompanionButtons(UIObject petEquipShowButton, UIObject petEquipHideButton, UIObject dragonEquipButton, UIObject pet1Button, UIObject pet2Button, UIObject pet3Button)
         {
-            _font = font;
+            _btnPetEquipShow = petEquipShowButton;
+            _btnPetEquipHide = petEquipHideButton;
+            _btnDragonEquip = dragonEquipButton;
+            _petButtons[0] = pet1Button;
+            _petButtons[1] = pet2Button;
+            _petButtons[2] = pet3Button;
+
+            if (_btnPetEquipShow != null)
+            {
+                AddButton(_btnPetEquipShow);
+                _btnPetEquipShow.ButtonClickReleased += _ => { _companionPaneMode = CompanionPaneMode.Pet; EnsureSelectedPet(); UpdateCompanionButtonStates(); };
+            }
+            if (_btnPetEquipHide != null)
+            {
+                AddButton(_btnPetEquipHide);
+                _btnPetEquipHide.ButtonClickReleased += _ => { _companionPaneMode = CompanionPaneMode.Hidden; UpdateCompanionButtonStates(); };
+            }
+            if (_btnDragonEquip != null)
+            {
+                AddButton(_btnDragonEquip);
+                _btnDragonEquip.ButtonClickReleased += _ =>
+                {
+                    _companionPaneMode = _companionPaneMode == CompanionPaneMode.Dragon ? CompanionPaneMode.Hidden : CompanionPaneMode.Dragon;
+                    UpdateCompanionButtonStates();
+                };
+            }
+
+            for (int i = 0; i < _petButtons.Length; i++)
+            {
+                UIObject petButton = _petButtons[i];
+                if (petButton == null)
+                    continue;
+                int petIndex = i;
+                AddButton(petButton);
+                petButton.ButtonClickReleased += _ =>
+                {
+                    _companionPaneMode = CompanionPaneMode.Pet;
+                    _selectedPetIndex = petIndex;
+                    EnsureSelectedPet();
+                    UpdateCompanionButtonStates();
+                };
+            }
+
+            UpdateCompanionButtonStates();
         }
 
-        protected override void DrawContents(SpriteBatch sprite, SkeletonMeshRenderer skeletonMeshRenderer, GameTime gameTime,
-            int mapShiftX, int mapShiftY, int centerX, int centerY,
-            ReflectionDrawableBoundary drawReflectionInfo,
-            RenderParameters renderParameters,
-            int TickCount)
+        public void SetPetController(PetController petController)
+        {
+            _petController = petController;
+            EnsureSelectedPet();
+            UpdateCompanionButtonStates();
+        }
+
+        public void SetDragonEquipmentController(DragonEquipmentController dragonEquipmentController)
+        {
+            _dragonEquipmentController = dragonEquipmentController;
+        }
+
+        protected override void DrawContents(SpriteBatch sprite, SkeletonMeshRenderer skeletonMeshRenderer, GameTime gameTime, int mapShiftX, int mapShiftY, int centerX, int centerY, ReflectionDrawableBoundary drawReflectionInfo, RenderParameters renderParameters, int TickCount)
         {
             foreach ((EquipSlot uiSlot, Point slotPosition) in slotPositions)
             {
                 int slotX = Position.X + slotPosition.X;
                 int slotY = Position.Y + slotPosition.Y;
-
                 CharacterPart part = ResolveEquippedPart(uiSlot);
                 EquipSlotData slotData = equippedItems.TryGetValue(uiSlot, out EquipSlotData data) ? data : null;
                 if (part != null || slotData != null)
-                {
                     DrawEquippedItemIcon(sprite, part, slotData, slotX, slotY);
-                }
 
                 CharacterEquipSlot? characterSlot = MapToCharacterEquipSlot(uiSlot);
                 if (!characterSlot.HasValue)
-                {
                     continue;
-                }
 
                 EquipSlotVisualState visualState = EquipSlotStateResolver.ResolveVisualState(_characterBuild, characterSlot.Value);
                 if (visualState.IsDisabled)
-                {
                     DrawDisabledOverlay(sprite, slotX, slotY, visualState);
-                }
             }
+
+            DrawCompanionPane(sprite, skeletonMeshRenderer, gameTime, drawReflectionInfo);
         }
 
-        protected override void DrawOverlay(SpriteBatch sprite, SkeletonMeshRenderer skeletonMeshRenderer, GameTime gameTime,
-            int mapShiftX, int mapShiftY, int centerX, int centerY,
-            ReflectionDrawableBoundary drawReflectionInfo,
-            RenderParameters renderParameters,
-            int TickCount)
+        protected override void DrawOverlay(SpriteBatch sprite, SkeletonMeshRenderer skeletonMeshRenderer, GameTime gameTime, int mapShiftX, int mapShiftY, int centerX, int centerY, ReflectionDrawableBoundary drawReflectionInfo, RenderParameters renderParameters, int TickCount)
         {
             DrawHoverTooltip(sprite, renderParameters.RenderWidth, renderParameters.RenderHeight);
         }
 
         public void EquipItem(EquipSlot slot, int itemId, Texture2D texture, string itemName = "")
         {
-            equippedItems[slot] = new EquipSlotData
-            {
-                ItemId = itemId,
-                ItemTexture = texture,
-                ItemName = itemName
-            };
+            equippedItems[slot] = new EquipSlotData { ItemId = itemId, ItemTexture = texture, ItemName = itemName };
         }
 
         public void UnequipItem(EquipSlot slot)
         {
             if (equippedItems.ContainsKey(slot))
-            {
                 equippedItems.Remove(slot);
-            }
         }
 
-        public EquipSlotData GetEquippedItem(EquipSlot slot)
-        {
-            return equippedItems.TryGetValue(slot, out EquipSlotData data) ? data : null;
-        }
-
-        public void ClearAllEquipment()
-        {
-            equippedItems.Clear();
-        }
+        public EquipSlotData GetEquippedItem(EquipSlot slot) => equippedItems.TryGetValue(slot, out EquipSlotData data) ? data : null;
+        public void ClearAllEquipment() => equippedItems.Clear();
 
         public override void Update(GameTime gameTime)
         {
             base.Update(gameTime);
-
             MouseState mouseState = Mouse.GetState();
             _lastMousePosition = new Point(mouseState.X, mouseState.Y);
             _hoveredSlot = GetSlotAtPosition(mouseState.X, mouseState.Y);
+            _hoveredPetIndex = GetHoveredPetIndex(mouseState.X, mouseState.Y);
+            _hoveredDragonSlot = GetHoveredDragonSlot(mouseState.X, mouseState.Y);
         }
 
-        private void UpdateTabStates()
+        private void DrawCompanionPane(SpriteBatch sprite, SkeletonMeshRenderer skeletonMeshRenderer, GameTime gameTime, ReflectionDrawableBoundary drawReflectionInfo)
         {
-            _tabNormal?.SetButtonState(_currentTab == 0 ? UIObjectState.Pressed : UIObjectState.Normal);
-            _tabCash?.SetButtonState(_currentTab == 1 ? UIObjectState.Pressed : UIObjectState.Normal);
-            _tabPet?.SetButtonState(_currentTab == 2 ? UIObjectState.Pressed : UIObjectState.Normal);
+            switch (_companionPaneMode)
+            {
+                case CompanionPaneMode.Pet:
+                    if (_petPaneFrame != null)
+                    {
+                        Point panePosition = GetCompanionPanePosition(_petPaneFrame);
+                        _petPaneFrame.DrawBackground(sprite, skeletonMeshRenderer, gameTime, panePosition.X, panePosition.Y, Color.White, false, drawReflectionInfo);
+                        DrawPetPaneContents(sprite, panePosition);
+                    }
+                    break;
+                case CompanionPaneMode.Dragon:
+                    if (_dragonPaneFrame != null)
+                    {
+                        Point panePosition = GetCompanionPanePosition(_dragonPaneFrame);
+                        _dragonPaneFrame.DrawBackground(sprite, skeletonMeshRenderer, gameTime, panePosition.X, panePosition.Y, Color.White, false, drawReflectionInfo);
+                        DrawDragonPaneContents(sprite, panePosition);
+                    }
+                    break;
+            }
+        }
+
+        private void DrawPetPaneContents(SpriteBatch sprite, Point panePosition)
+        {
+            IReadOnlyList<PetRuntime> pets = _petController?.ActivePets;
+            if (pets == null || pets.Count == 0)
+            {
+                DrawCompanionMessage(sprite, panePosition, _petPaneFrame, "Summon pets in the simulator to populate the pet equip page.");
+                return;
+            }
+
+            int selectedIndex = Math.Clamp(_selectedPetIndex, 0, pets.Count - 1);
+            PetRuntime selectedPet = pets[selectedIndex];
+            for (int i = 0; i < Math.Min(_petButtonIconPositions.Length, pets.Count); i++)
+            {
+                IDXObject icon = pets[i].Definition?.IconRaw ?? pets[i].Definition?.Icon;
+                if (icon == null)
+                    continue;
+
+                Point iconPosition = _petButtonIconPositions[i];
+                icon.DrawBackground(sprite, null, null, panePosition.X + iconPosition.X, panePosition.Y + iconPosition.Y, Color.White, false, null);
+            }
+
+            IDXObject selectedIcon = selectedPet.Definition?.IconRaw ?? selectedPet.Definition?.Icon;
+            selectedIcon?.DrawBackground(sprite, null, null, panePosition.X + 108, panePosition.Y + 71, Color.White, false, null);
+
+            if (_font == null)
+                return;
+
+            string autoLootText = selectedPet.AutoLootEnabled ? "AUTO" : "OFF";
+            Color autoLootColor = selectedPet.AutoLootEnabled ? new Color(187, 244, 189) : new Color(255, 211, 140);
+            Vector2 autoLootSize = _font.MeasureString(autoLootText);
+            DrawTooltipText(sprite, autoLootText, new Vector2(panePosition.X + 77 - (autoLootSize.X / 2f), panePosition.Y + 86 - (autoLootSize.Y / 2f)), autoLootColor);
+
+            float textX = panePosition.X + COMPANION_MESSAGE_PADDING;
+            float textY = panePosition.Y + 142;
+            DrawTooltipText(sprite, selectedPet.Name, new Vector2(textX, textY), new Color(255, 220, 120));
+            textY += _font.LineSpacing + COMPANION_TEXT_LINE_GAP;
+            DrawTooltipText(sprite, $"Item ID: {selectedPet.ItemId}", new Vector2(textX, textY), Color.White);
+            textY += _font.LineSpacing + COMPANION_TEXT_LINE_GAP;
+            DrawTooltipText(sprite, $"Pet {selectedIndex + 1}  Auto Loot: {(selectedPet.AutoLootEnabled ? "On" : "Off")}", new Vector2(textX, textY), new Color(181, 224, 255));
+        }
+
+        private void DrawDragonPaneContents(SpriteBatch sprite, Point panePosition)
+        {
+            bool hasAnyItems = false;
+            foreach ((DragonEquipSlot slot, Point slotPosition) in _dragonSlotPositions)
+            {
+                if (_dragonEquipmentController == null || !_dragonEquipmentController.TryGetItem(slot, out CompanionEquipItem item))
+                    continue;
+
+                hasAnyItems = true;
+                IDXObject icon = item.IconRaw ?? item.Icon ?? item.CharacterPart?.IconRaw ?? item.CharacterPart?.Icon;
+                icon?.DrawBackground(sprite, null, null, panePosition.X + slotPosition.X, panePosition.Y + slotPosition.Y, Color.White, false, null);
+            }
+
+            if (!hasAnyItems)
+                DrawCompanionMessage(sprite, panePosition, _dragonPaneFrame, "Dragon equipment defaults are loaded, but no dragon items are available to draw.");
+        }
+
+        private void DrawCompanionMessage(SpriteBatch sprite, Point panePosition, IDXObject paneFrame, string message)
+        {
+            if (_font == null || paneFrame == null || string.IsNullOrWhiteSpace(message))
+                return;
+
+            float maxWidth = Math.Max(80, paneFrame.Width - (COMPANION_MESSAGE_PADDING * 2));
+            string[] lines = WrapTooltipText(message, maxWidth);
+            float y = panePosition.Y + 132;
+            for (int i = 0; i < lines.Length; i++)
+            {
+                DrawTooltipText(sprite, lines[i], new Vector2(panePosition.X + COMPANION_MESSAGE_PADDING, y), new Color(216, 216, 216));
+                y += _font.LineSpacing;
+            }
+        }
+
+        private void UpdateCompanionButtonStates()
+        {
+            bool petPaneVisible = _companionPaneMode == CompanionPaneMode.Pet && _petPaneFrame != null;
+            bool dragonPaneVisible = _companionPaneMode == CompanionPaneMode.Dragon && _dragonPaneFrame != null;
+
+            if (_btnPetEquipShow != null)
+            {
+                _btnPetEquipShow.ButtonVisible = !petPaneVisible;
+                _btnPetEquipShow.SetButtonState(UIObjectState.Normal);
+            }
+            if (_btnPetEquipHide != null)
+            {
+                _btnPetEquipHide.ButtonVisible = petPaneVisible;
+                _btnPetEquipHide.SetButtonState(petPaneVisible ? UIObjectState.Pressed : UIObjectState.Normal);
+            }
+            if (_btnDragonEquip != null)
+            {
+                _btnDragonEquip.ButtonVisible = true;
+                _btnDragonEquip.SetButtonState(dragonPaneVisible ? UIObjectState.Pressed : UIObjectState.Normal);
+            }
+
+            IReadOnlyList<PetRuntime> pets = _petController?.ActivePets;
+            for (int i = 0; i < _petButtons.Length; i++)
+            {
+                UIObject petButton = _petButtons[i];
+                if (petButton == null)
+                    continue;
+
+                bool hasPet = pets != null && i < pets.Count;
+                petButton.ButtonVisible = petPaneVisible;
+                petButton.SetButtonState(petPaneVisible && hasPet && i == _selectedPetIndex ? UIObjectState.Pressed : UIObjectState.Normal);
+            }
+        }
+
+        private void EnsureSelectedPet()
+        {
+            IReadOnlyList<PetRuntime> pets = _petController?.ActivePets;
+            _selectedPetIndex = pets == null || pets.Count == 0 ? 0 : Math.Clamp(_selectedPetIndex, 0, pets.Count - 1);
+        }
+
+        private Point GetCompanionPanePosition(IDXObject paneFrame)
+        {
+            return new Point(Position.X - paneFrame.Width + COMPANION_PANE_ATTACH_X, Position.Y + COMPANION_PANE_ATTACH_Y);
         }
 
         private void DrawEquippedItemIcon(SpriteBatch sprite, CharacterPart part, EquipSlotData slotData, int slotX, int slotY)
@@ -236,20 +369,13 @@ namespace HaCreator.MapSimulator.UI
                 icon.DrawBackground(sprite, null, null, slotX, slotY, Color.White, false, null);
                 return;
             }
-
             if (slotData?.ItemTexture != null)
-            {
                 sprite.Draw(slotData.ItemTexture, new Rectangle(slotX, slotY, SLOT_SIZE, SLOT_SIZE), Color.White);
-            }
         }
 
         private void DrawDisabledOverlay(SpriteBatch sprite, int slotX, int slotY, EquipSlotVisualState visualState)
         {
-            Color overlay = visualState.IsExpired
-                ? new Color(110, 30, 30, 180)
-                : visualState.IsBroken
-                    ? new Color(90, 60, 20, 180)
-                    : new Color(20, 20, 20, 145);
+            Color overlay = visualState.IsExpired ? new Color(110, 30, 30, 180) : visualState.IsBroken ? new Color(90, 60, 20, 180) : new Color(20, 20, 20, 145);
             sprite.Draw(_overlayPixel, new Rectangle(slotX, slotY, SLOT_SIZE, SLOT_SIZE), overlay);
             sprite.Draw(_overlayPixel, new Rectangle(slotX, slotY, SLOT_SIZE, 2), Color.Black);
             sprite.Draw(_overlayPixel, new Rectangle(slotX, slotY + SLOT_SIZE - 2, SLOT_SIZE, 2), Color.Black);
@@ -259,68 +385,103 @@ namespace HaCreator.MapSimulator.UI
 
         private void DrawHoverTooltip(SpriteBatch sprite, int renderWidth, int renderHeight)
         {
-            if (_font == null || !_hoveredSlot.HasValue)
+            if (_font == null)
+                return;
+
+            if (TryBuildPetTooltip(out string petTitle, out string petLine, out IDXObject petIcon))
             {
+                DrawTooltip(sprite, petTitle, petLine, null, petIcon, renderWidth, renderHeight);
                 return;
             }
+            if (TryBuildDragonTooltip(out string dragonTitle, out string dragonLine, out string dragonDescription, out IDXObject dragonIcon))
+            {
+                DrawTooltip(sprite, dragonTitle, dragonLine, dragonDescription, dragonIcon, renderWidth, renderHeight);
+                return;
+            }
+            if (!_hoveredSlot.HasValue)
+                return;
 
-            string title = null;
-            string line = null;
-
+            string title;
+            string line;
             CharacterPart part = ResolveEquippedPart(_hoveredSlot.Value);
             if (part != null)
             {
                 title = string.IsNullOrWhiteSpace(part.Name) ? $"Equip {part.ItemId}" : part.Name;
                 line = $"Item ID: {part.ItemId}";
-
                 CharacterEquipSlot? characterSlot = MapToCharacterEquipSlot(_hoveredSlot.Value);
                 if (characterSlot.HasValue)
                 {
                     EquipSlotVisualState state = EquipSlotStateResolver.ResolveVisualState(_characterBuild, characterSlot.Value);
                     if (!string.IsNullOrWhiteSpace(state.Message))
-                    {
                         line = $"{line}  {state.Message}";
-                    }
                 }
+                DrawTooltip(sprite, title, line, null, part.IconRaw ?? part.Icon, renderWidth, renderHeight);
+                return;
             }
-            else if (equippedItems.TryGetValue(_hoveredSlot.Value, out EquipSlotData slotData))
+            if (equippedItems.TryGetValue(_hoveredSlot.Value, out EquipSlotData slotData))
             {
-                title = slotData.ItemName;
-                line = $"Item ID: {slotData.ItemId}";
-            }
-            else
-            {
-                CharacterEquipSlot? characterSlot = MapToCharacterEquipSlot(_hoveredSlot.Value);
-                if (!characterSlot.HasValue)
-                {
-                    return;
-                }
-
-                EquipSlotVisualState state = EquipSlotStateResolver.ResolveVisualState(_characterBuild, characterSlot.Value);
-                if (!state.IsDisabled)
-                {
-                    return;
-                }
-
-                title = ResolveSlotLabel(_hoveredSlot.Value);
-                line = state.Message;
-            }
-
-            if (string.IsNullOrWhiteSpace(title))
-            {
+                DrawTooltip(sprite, slotData.ItemName, $"Item ID: {slotData.ItemId}", null, slotData.ItemIcon, renderWidth, renderHeight);
                 return;
             }
 
+            CharacterEquipSlot? emptySlot = MapToCharacterEquipSlot(_hoveredSlot.Value);
+            if (!emptySlot.HasValue)
+                return;
+
+            EquipSlotVisualState emptyState = EquipSlotStateResolver.ResolveVisualState(_characterBuild, emptySlot.Value);
+            if (!emptyState.IsDisabled)
+                return;
+
+            DrawTooltip(sprite, ResolveSlotLabel(_hoveredSlot.Value), emptyState.Message, null, null, renderWidth, renderHeight);
+        }
+
+        private bool TryBuildPetTooltip(out string title, out string line, out IDXObject icon)
+        {
+            title = null;
+            line = null;
+            icon = null;
+            if (_hoveredPetIndex == null)
+                return false;
+
+            IReadOnlyList<PetRuntime> pets = _petController?.ActivePets;
+            int petIndex = _hoveredPetIndex.Value;
+            if (pets == null || petIndex < 0 || petIndex >= pets.Count)
+                return false;
+
+            PetRuntime pet = pets[petIndex];
+            title = string.IsNullOrWhiteSpace(pet.Name) ? $"Pet {pet.ItemId}" : pet.Name;
+            line = $"Item ID: {pet.ItemId}  Pet {petIndex + 1}  Auto Loot: {(pet.AutoLootEnabled ? "On" : "Off")}";
+            icon = pet.Definition?.IconRaw ?? pet.Definition?.Icon;
+            return true;
+        }
+
+        private bool TryBuildDragonTooltip(out string title, out string line, out string description, out IDXObject icon)
+        {
+            title = null;
+            line = null;
+            description = null;
+            icon = null;
+            if (_hoveredDragonSlot == null || _dragonEquipmentController == null || !_dragonEquipmentController.TryGetItem(_hoveredDragonSlot.Value, out CompanionEquipItem item))
+                return false;
+
+            title = string.IsNullOrWhiteSpace(item.Name) ? $"Dragon Equip {item.ItemId}" : item.Name;
+            line = $"Item ID: {item.ItemId}  Slot: {ResolveDragonSlotLabel(_hoveredDragonSlot.Value)}";
+            description = BuildDragonDescription(item);
+            icon = item.IconRaw ?? item.Icon ?? item.CharacterPart?.IconRaw ?? item.CharacterPart?.Icon;
+            return true;
+        }
+
+        private void DrawTooltip(SpriteBatch sprite, string title, string line, string description, IDXObject icon, int renderWidth, int renderHeight)
+        {
             Vector2 titleSize = _font.MeasureString(title);
             Vector2 lineSize = string.IsNullOrWhiteSpace(line) ? Vector2.Zero : _font.MeasureString(line);
-            int width = (int)Math.Ceiling(Math.Max(titleSize.X, lineSize.X)) + (TOOLTIP_PADDING * 2);
-            int height = (int)Math.Ceiling(titleSize.Y + (lineSize.Y > 0 ? lineSize.Y + 4 : 0)) + (TOOLTIP_PADDING * 2);
+            Vector2 descriptionSize = string.IsNullOrWhiteSpace(description) ? Vector2.Zero : _font.MeasureString(description);
+            int width = (int)Math.Ceiling(Math.Max(titleSize.X, Math.Max(lineSize.X, descriptionSize.X))) + (TOOLTIP_PADDING * 2) + SLOT_SIZE + 8;
+            int height = (int)Math.Ceiling(titleSize.Y + (lineSize.Y > 0 ? lineSize.Y + 4 : 0) + (descriptionSize.Y > 0 ? descriptionSize.Y + 4 : 0)) + (TOOLTIP_PADDING * 2);
             int x = Math.Min(_lastMousePosition.X + TOOLTIP_OFFSET_X, Math.Max(TOOLTIP_PADDING, renderWidth - width - TOOLTIP_PADDING));
             int y = _lastMousePosition.Y - height - TOOLTIP_OFFSET_Y;
             if (y < TOOLTIP_PADDING)
-            {
                 y = Math.Min(renderHeight - height - TOOLTIP_PADDING, _lastMousePosition.Y + TOOLTIP_OFFSET_Y);
-            }
 
             Rectangle rect = new Rectangle(x, y, width, height);
             sprite.Draw(_overlayPixel, rect, new Color(18, 18, 26, 235));
@@ -328,11 +489,55 @@ namespace HaCreator.MapSimulator.UI
             sprite.Draw(_overlayPixel, new Rectangle(rect.X, rect.Bottom - 1, rect.Width, 1), new Color(214, 174, 82));
             sprite.Draw(_overlayPixel, new Rectangle(rect.X, rect.Y, 1, rect.Height), new Color(214, 174, 82));
             sprite.Draw(_overlayPixel, new Rectangle(rect.Right - 1, rect.Y, 1, rect.Height), new Color(214, 174, 82));
-            sprite.DrawString(_font, title, new Vector2(rect.X + TOOLTIP_PADDING, rect.Y + TOOLTIP_PADDING), new Color(255, 220, 120));
+
+            int iconX = rect.X + TOOLTIP_PADDING;
+            int textX = iconX + SLOT_SIZE + 8;
+            int textY = rect.Y + TOOLTIP_PADDING;
+            icon?.DrawBackground(sprite, null, null, iconX, textY, Color.White, false, null);
+            DrawTooltipText(sprite, title, new Vector2(textX, textY), new Color(255, 220, 120));
+            float currentY = textY + titleSize.Y + 4;
             if (!string.IsNullOrWhiteSpace(line))
             {
-                sprite.DrawString(_font, line, new Vector2(rect.X + TOOLTIP_PADDING, rect.Y + TOOLTIP_PADDING + titleSize.Y + 4), Color.White);
+                DrawTooltipText(sprite, line, new Vector2(textX, currentY), Color.White);
+                currentY += lineSize.Y + 4;
             }
+            if (!string.IsNullOrWhiteSpace(description))
+                DrawTooltipText(sprite, description, new Vector2(textX, currentY), new Color(216, 216, 216));
+        }
+
+        private void DrawTooltipText(SpriteBatch sprite, string text, Vector2 position, Color color)
+        {
+            if (string.IsNullOrWhiteSpace(text))
+                return;
+
+            sprite.DrawString(_font, text, position + Vector2.One, Color.Black);
+            sprite.DrawString(_font, text, position, color);
+        }
+
+        private string[] WrapTooltipText(string text, float maxWidth)
+        {
+            if (_font == null || string.IsNullOrWhiteSpace(text))
+                return Array.Empty<string>();
+
+            var lines = new List<string>();
+            string[] words = text.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
+            string currentLine = string.Empty;
+            foreach (string word in words)
+            {
+                string candidate = string.IsNullOrEmpty(currentLine) ? word : $"{currentLine} {word}";
+                if (!string.IsNullOrEmpty(currentLine) && _font.MeasureString(candidate).X > maxWidth)
+                {
+                    lines.Add(currentLine);
+                    currentLine = word;
+                }
+                else
+                {
+                    currentLine = candidate;
+                }
+            }
+            if (!string.IsNullOrEmpty(currentLine))
+                lines.Add(currentLine);
+            return lines.ToArray();
         }
 
         private EquipSlot? GetSlotAtPosition(int mouseX, int mouseY)
@@ -341,11 +546,52 @@ namespace HaCreator.MapSimulator.UI
             {
                 Rectangle slotRect = new Rectangle(Position.X + slotPosition.X, Position.Y + slotPosition.Y, SLOT_SIZE, SLOT_SIZE);
                 if (slotRect.Contains(mouseX, mouseY))
-                {
                     return slot;
-                }
             }
+            return null;
+        }
 
+        private int? GetHoveredPetIndex(int mouseX, int mouseY)
+        {
+            if (_companionPaneMode != CompanionPaneMode.Pet)
+                return null;
+
+            IReadOnlyList<PetRuntime> pets = _petController?.ActivePets;
+            if (pets == null || pets.Count == 0)
+                return null;
+
+            for (int i = 0; i < _petButtons.Length; i++)
+            {
+                UIObject button = _petButtons[i];
+                if (button == null || !button.ButtonVisible)
+                    continue;
+
+                Rectangle buttonRect = new Rectangle(
+                    Position.X + button.X,
+                    Position.Y + button.Y,
+                    Math.Max(button.CanvasSnapshotWidth, SLOT_SIZE),
+                    Math.Max(button.CanvasSnapshotHeight, SLOT_SIZE));
+                if (buttonRect.Contains(mouseX, mouseY) && i < pets.Count)
+                    return i;
+            }
+            return null;
+        }
+
+        private DragonEquipSlot? GetHoveredDragonSlot(int mouseX, int mouseY)
+        {
+            if (_companionPaneMode != CompanionPaneMode.Dragon || _dragonPaneFrame == null)
+                return null;
+
+            Point panePosition = GetCompanionPanePosition(_dragonPaneFrame);
+            foreach ((DragonEquipSlot slot, Point slotPosition) in _dragonSlotPositions)
+            {
+                if (_dragonEquipmentController == null || !_dragonEquipmentController.TryGetItem(slot, out _))
+                    continue;
+
+                Rectangle slotRect = new Rectangle(panePosition.X + slotPosition.X, panePosition.Y + slotPosition.Y, SLOT_SIZE, SLOT_SIZE);
+                if (slotRect.Contains(mouseX, mouseY))
+                    return slot;
+            }
             return null;
         }
 
@@ -393,6 +639,29 @@ namespace HaCreator.MapSimulator.UI
                 EquipSlot.Pendant2 => "Pendant",
                 _ => slot.ToString()
             };
+        }
+
+        private static string ResolveDragonSlotLabel(DragonEquipSlot slot)
+        {
+            return slot switch
+            {
+                DragonEquipSlot.Mask => "Cap Accessory",
+                DragonEquipSlot.Wings => "Wing Accessory",
+                DragonEquipSlot.Pendant => "Pendant",
+                DragonEquipSlot.Tail => "Tail Accessory",
+                _ => slot.ToString()
+            };
+        }
+
+        private static string BuildDragonDescription(CompanionEquipItem item)
+        {
+            if (!string.IsNullOrWhiteSpace(item?.Description))
+                return item.Description;
+            if (item?.CharacterPart != null && !string.IsNullOrWhiteSpace(item.CharacterPart.Description))
+                return item.CharacterPart.Description;
+            if (item?.CharacterPart != null && item.CharacterPart.ExpirationDateUtc.HasValue)
+                return $"Expires {item.CharacterPart.ExpirationDateUtc.Value.ToLocalTime().ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)}";
+            return null;
         }
     }
 

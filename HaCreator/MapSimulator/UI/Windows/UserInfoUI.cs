@@ -90,6 +90,8 @@ namespace HaCreator.MapSimulator.UI
         }
 
         public override string WindowName => MapSimulatorWindowNames.CharacterInfo;
+        public Action MiniRoomRequested { get; set; }
+        public Action TradingRoomRequested { get; set; }
 
         public override CharacterBuild CharacterBuild
         {
@@ -153,8 +155,8 @@ namespace HaCreator.MapSimulator.UI
         public void InitializePrimaryButtons(UIObject partyButton, UIObject tradeButton, UIObject itemButton, UIObject wishButton, UIObject familyButton)
         {
             BindActionButton(partyButton, "Party invite is not simulated yet.");
-            BindActionButton(tradeButton, "Trade-room invites are not simulated yet.");
-            BindActionButton(itemButton, "Mini-room item detail flow is not simulated yet.");
+            BindActionButton(tradeButton, "Trading-room shell opened.", () => TradingRoomRequested?.Invoke());
+            BindActionButton(itemButton, "Mini-room shell opened.", () => MiniRoomRequested?.Invoke());
             BindActionButton(wishButton, "Wishlist and present flow is not simulated yet.");
             BindActionButton(familyButton, "Family chart flow is not simulated yet.");
         }
@@ -386,9 +388,9 @@ namespace HaCreator.MapSimulator.UI
                     null,
                     null);
                 DrawLabeledRow(sprite, baseY + 2, $"Pet {i + 1}", pet.Name, ValueColor, 120);
-                DrawLabeledRow(sprite, baseY + 16, "Mode", pet.AutoLootEnabled ? "Auto-loot enabled" : "Auto-loot disabled",
+                DrawLabeledRow(sprite, baseY + 16, "Level", $"Command Lv. {pet.CommandLevel}", MutedColor, 120);
+                DrawLabeledRow(sprite, baseY + 30, "Mode", $"{(pet.AutoLootEnabled ? "Auto-loot enabled" : "Auto-loot disabled")}  Balloon {pet.ChatBalloonStyle}",
                     pet.AutoLootEnabled ? SuccessColor : WarningColor, 120);
-                DrawLabeledRow(sprite, baseY + 30, "Style", $"Balloon {pet.ChatBalloonStyle}", MutedColor, 120);
             }
         }
 
@@ -479,7 +481,7 @@ namespace HaCreator.MapSimulator.UI
                 0.55f);
         }
 
-        private void BindActionButton(UIObject button, string message)
+        private void BindActionButton(UIObject button, string message, Action action = null)
         {
             if (button == null)
             {
@@ -487,7 +489,11 @@ namespace HaCreator.MapSimulator.UI
             }
 
             AddButton(button);
-            button.ButtonClickReleased += _ => _statusMessage = message;
+            button.ButtonClickReleased += _ =>
+            {
+                _statusMessage = message;
+                action?.Invoke();
+            };
         }
 
         private void BindPageButton(UserInfoPage page, UIObject button, string message)

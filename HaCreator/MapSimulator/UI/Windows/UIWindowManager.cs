@@ -44,7 +44,13 @@ namespace HaCreator.MapSimulator.UI
             { Keys.S, MapSimulatorWindowNames.Skills },
             { Keys.Q, MapSimulatorWindowNames.Quest },
             { Keys.A, MapSimulatorWindowNames.Ability },
+            { Keys.N, MapSimulatorWindowNames.MemoMailbox }, // Simulator shortcut until a dedicated memo launcher is wired
             { Keys.M, MapSimulatorWindowNames.ItemMaker }, // Simulator shortcut until inventory/NPC launch parity is wired
+            { Keys.T, MapSimulatorWindowNames.TradingRoom }, // Simulator shortcut until room launch parity is wired
+            { Keys.P, MapSimulatorWindowNames.PersonalShop }, // Simulator shortcut until room launch parity is wired
+            { Keys.H, MapSimulatorWindowNames.EntrustedShop }, // Simulator shortcut until room launch parity is wired
+            { Keys.O, MapSimulatorWindowNames.MiniRoom }, // Simulator shortcut until room launch parity is wired
+            { Keys.Y, MapSimulatorWindowNames.Trunk }, // Simulator shortcut until NPC-backed storage parity is wired
             { Keys.U, MapSimulatorWindowNames.ItemUpgrade }, // Simulator shortcut until inventory/NPC launch parity is wired
             { Keys.OemTilde, MapSimulatorWindowNames.QuickSlot }  // ` key toggles quick slot bar
             // Note: SkillMacro window is opened via MACRO button in Skill window, not keyboard shortcut

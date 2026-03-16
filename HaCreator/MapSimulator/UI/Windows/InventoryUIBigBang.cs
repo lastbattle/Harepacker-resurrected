@@ -102,16 +102,6 @@ namespace HaCreator.MapSimulator.UI
             _btnFull = btnFull;
             _btnSmall = btnSmall;
 
-            if (btnGather != null)
-            {
-                AddButton(btnGather);
-            }
-
-            if (btnSort != null)
-            {
-                AddButton(btnSort);
-            }
-
             if (_btnFull != null)
             {
                 _btnFull.X = BtnFullSmallX;
@@ -225,6 +215,34 @@ namespace HaCreator.MapSimulator.UI
                 int originX = ExpandedSlotOriginX + ((tabIndex - TAB_EQUIP) * ExpandedSectionPitch);
                 DrawSlotGrid(sprite, windowX, windowY, inventoryType, slots, originX, ExpandedSlotOriginY, 0, ExpandedVisibleSlotCountPerTab);
             }
+        }
+
+        protected override bool TryGetSlotAtPosition(int mouseX, int mouseY, out InventoryType inventoryType, out int slotIndex)
+        {
+            if (_isExpanded)
+            {
+                for (int tabIndex = TAB_EQUIP; tabIndex <= TAB_CASH; tabIndex++)
+                {
+                    inventoryType = GetInventoryTypeFromTab(tabIndex);
+                    int originX = Position.X + ExpandedSlotOriginX + ((tabIndex - TAB_EQUIP) * ExpandedSectionPitch);
+                    int originY = Position.Y + ExpandedSlotOriginY;
+                    if (TryResolveSlotAtPosition(mouseX, mouseY, originX, originY, SLOTS_PER_ROW, VISIBLE_ROWS, 0, out slotIndex))
+                    {
+                        return true;
+                    }
+                }
+            }
+
+            inventoryType = GetInventoryTypeFromTab(CurrentTab);
+            return TryResolveSlotAtPosition(
+                mouseX,
+                mouseY,
+                Position.X + SmallSlotOriginX,
+                Position.Y + SmallSlotOriginY,
+                SLOTS_PER_ROW,
+                VISIBLE_ROWS,
+                _scrollOffset,
+                out slotIndex);
         }
         #endregion
 

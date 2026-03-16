@@ -8,6 +8,7 @@ using MapleLib.WzLib.WzStructure.Data;
 using Spine;
 using System;
 using System.Collections.Generic;
+using System.Linq;
 
 namespace HaCreator.MapSimulator.Fields
 {
@@ -65,6 +66,8 @@ namespace HaCreator.MapSimulator.Fields
     {
         private readonly SpecialEffectFields _specialEffects = new();
         private readonly MinigameFields _minigames = new();
+        private readonly CookieHouseField _cookieHouse = new();
+        private readonly PartyRaidField _partyRaid = new();
         private readonly List<SpecialFieldBacklogEntry> _catalog = new()
         {
             new(SpecialFieldBacklogArea.GuildBossEventFields, SpecialFieldBacklogStatus.Partial, "SpecialEffectFields.cs / GuildBossField", IsGuildBossMap),
@@ -72,26 +75,30 @@ namespace HaCreator.MapSimulator.Fields
             new(SpecialFieldBacklogArea.WeddingCeremonyFields, SpecialFieldBacklogStatus.Partial, "SpecialEffectFields.cs / WeddingField", IsWeddingMap),
             new(SpecialFieldBacklogArea.WitchtowerScoreUi, SpecialFieldBacklogStatus.Partial, "SpecialEffectFields.cs / WitchtowerField", IsWitchtowerMap),
             new(SpecialFieldBacklogArea.MassacreTimerboardAndGaugeFlow, SpecialFieldBacklogStatus.Partial, "SpecialEffectFields.cs / MassacreField", IsMassacreMap),
-            new(SpecialFieldBacklogArea.MemoryGameAndMiniRoomCardParity, SpecialFieldBacklogStatus.Missing, "minigame room runtime / board UI layer"),
+            new(SpecialFieldBacklogArea.MemoryGameAndMiniRoomCardParity, SpecialFieldBacklogStatus.Partial, "MinigameFields.cs / MemoryGameField"),
             new(SpecialFieldBacklogArea.SnowballMinigameRuntime, SpecialFieldBacklogStatus.Partial, "MinigameFields.cs / SnowBallField"),
-            new(SpecialFieldBacklogArea.AriantArenaFieldFlow, SpecialFieldBacklogStatus.Missing, "special field runtime / ranking or result UI"),
-            new(SpecialFieldBacklogArea.BattlefieldEventFlow, SpecialFieldBacklogStatus.Missing, "special field runtime / scoreboard layer"),
-            new(SpecialFieldBacklogArea.MuLungDojoFieldFlow, SpecialFieldBacklogStatus.Missing, "special field runtime / timer or score HUD"),
-            new(SpecialFieldBacklogArea.CookieHouseEventFlow, SpecialFieldBacklogStatus.Missing, "special field runtime"),
-            new(SpecialFieldBacklogArea.MonsterCarnivalFieldFlow, SpecialFieldBacklogStatus.Missing, "special field runtime / event UI layer"),
-            new(SpecialFieldBacklogArea.PartyRaidFieldFlow, SpecialFieldBacklogStatus.Missing, "special field runtime / scoreboard and timer layer"),
-            new(SpecialFieldBacklogArea.SpaceGagaTimerboardFlow, SpecialFieldBacklogStatus.Missing, "special field runtime / timerboard UI"),
+            new(SpecialFieldBacklogArea.AriantArenaFieldFlow, SpecialFieldBacklogStatus.Partial, "MinigameFields.cs / AriantArenaField", IsAriantArenaMap),
+            new(SpecialFieldBacklogArea.BattlefieldEventFlow, SpecialFieldBacklogStatus.Partial, "SpecialEffectFields.cs / BattlefieldField", IsBattlefieldMap),
+            new(SpecialFieldBacklogArea.MuLungDojoFieldFlow, SpecialFieldBacklogStatus.Partial, "SpecialEffectFields.cs / DojoField", IsDojoMap),
+            new(SpecialFieldBacklogArea.CookieHouseEventFlow, SpecialFieldBacklogStatus.Partial, "CookieHouseField.cs / special field runtime", IsCookieHouseMap),
+            new(SpecialFieldBacklogArea.MonsterCarnivalFieldFlow, SpecialFieldBacklogStatus.Partial, "MonsterCarnivalField.cs / event UI layer", IsMonsterCarnivalMap),
+            new(SpecialFieldBacklogArea.PartyRaidFieldFlow, SpecialFieldBacklogStatus.Partial, "PartyRaidField.cs / PartyRaidField", IsPartyRaidMap),
+            new(SpecialFieldBacklogArea.SpaceGagaTimerboardFlow, SpecialFieldBacklogStatus.Partial, "SpecialEffectFields.cs / SpaceGagaField", IsSpaceGagaMap),
         };
 
         public IReadOnlyList<SpecialFieldBacklogEntry> Catalog => _catalog;
         public SpecialFieldBacklogArea? ActiveArea { get; private set; }
         public SpecialEffectFields SpecialEffects => _specialEffects;
         public MinigameFields Minigames => _minigames;
+        public CookieHouseField CookieHouse => _cookieHouse;
+        public PartyRaidField PartyRaid => _partyRaid;
         public bool HasBlockingScriptedSequence => _specialEffects.HasBlockingScriptedSequence;
 
         public void Initialize(GraphicsDevice graphicsDevice)
         {
             _specialEffects.Initialize(graphicsDevice);
+            _minigames.Initialize(graphicsDevice);
+            _partyRaid.Initialize(graphicsDevice);
         }
 
         public void BindMap(Board board)
@@ -106,6 +113,19 @@ namespace HaCreator.MapSimulator.Fields
 
             _specialEffects.DetectFieldType(mapInfo.id, mapInfo.fieldType);
             _specialEffects.ConfigureMap(board);
+            _partyRaid.BindMap(mapInfo);
+
+            if (IsAriantArenaMap(mapInfo))
+            {
+                _minigames.AriantArena.Enable();
+            }
+
+            _minigames.MonsterCarnival.Configure(mapInfo);
+
+            if (IsCookieHouseMap(mapInfo))
+            {
+                _cookieHouse.Enable(mapInfo.id);
+            }
 
             for (int i = 0; i < _catalog.Count; i++)
             {
@@ -123,10 +143,16 @@ namespace HaCreator.MapSimulator.Fields
             _specialEffects.SetWeddingPlayerState(localCharacterId, localWorldPosition);
         }
 
+        public void SetDojoRuntimeState(int? playerHp, int? playerMaxHp, float? bossHpPercent)
+        {
+            _specialEffects.SetDojoRuntimeState(playerHp, playerMaxHp, bossHpPercent);
+        }
+
         public void Update(GameTime gameTime, int currentTimeMs)
         {
             _specialEffects.Update(gameTime, currentTimeMs);
             _minigames.Update(currentTimeMs);
+            _partyRaid.Update(currentTimeMs);
         }
 
         public void Draw(
@@ -164,6 +190,26 @@ namespace HaCreator.MapSimulator.Fields
                 tickCount,
                 pixelTexture,
                 font);
+
+            if (_cookieHouse.IsActive)
+            {
+                _cookieHouse.Draw(spriteBatch, pixelTexture, font, centerX);
+            }
+
+            if (_partyRaid.IsActive)
+            {
+                _partyRaid.Draw(
+                    spriteBatch,
+                    skeletonMeshRenderer,
+                    gameTime,
+                    mapShiftX,
+                    mapShiftY,
+                    centerX,
+                    centerY,
+                    tickCount,
+                    pixelTexture,
+                    font);
+            }
         }
 
         public void Reset()
@@ -171,6 +217,8 @@ namespace HaCreator.MapSimulator.Fields
             ActiveArea = null;
             _specialEffects.ResetAll();
             _minigames.ResetAll();
+            _cookieHouse.Reset();
+            _partyRaid.Reset();
         }
 
         private static bool IsWeddingMap(MapInfo mapInfo)
@@ -218,6 +266,60 @@ namespace HaCreator.MapSimulator.Fields
             return mapInfo.fieldType == FieldType.FIELDTYPE_MASSACRE
                 || mapInfo.fieldType == FieldType.FIELDTYPE_MASSACRE_RESULT
                 || (mapInfo.id >= 910000000 && mapInfo.id <= 910000099);
+        }
+
+        private static bool IsDojoMap(MapInfo mapInfo)
+        {
+            if (mapInfo == null)
+            {
+                return false;
+            }
+
+            return mapInfo.fieldType == FieldType.FIELDTYPE_DOJANG
+                || (mapInfo.id >= 925020000 && mapInfo.id <= 925040999)
+                || string.Equals(mapInfo.mapMark, "MuruengRaid", StringComparison.OrdinalIgnoreCase)
+                || (!string.IsNullOrWhiteSpace(mapInfo.onUserEnter)
+                    && mapInfo.onUserEnter.StartsWith("dojang", StringComparison.OrdinalIgnoreCase));
+        }
+
+        private static bool IsBattlefieldMap(MapInfo mapInfo)
+        {
+            if (mapInfo == null)
+            {
+                return false;
+            }
+
+            return mapInfo.fieldType == FieldType.FIELDTYPE_BATTLEFIELD
+                || mapInfo.additionalNonInfoProps.Any(prop => string.Equals(prop.Name, "battleField", StringComparison.OrdinalIgnoreCase))
+                || (mapInfo.id >= 910040000 && mapInfo.id <= 910041399);
+        }
+
+        private static bool IsCookieHouseMap(MapInfo mapInfo)
+        {
+            return mapInfo?.fieldType == FieldType.FIELDTYPE_COOKIEHOUSE;
+        }
+
+        private static bool IsAriantArenaMap(MapInfo mapInfo)
+        {
+            return mapInfo?.fieldType == FieldType.FIELDTYPE_ARIANTARENA;
+        }
+
+        private static bool IsMonsterCarnivalMap(MapInfo mapInfo)
+        {
+            return MonsterCarnivalFieldDataLoader.IsMonsterCarnivalMap(mapInfo);
+        }
+
+        private static bool IsPartyRaidMap(MapInfo mapInfo)
+        {
+            return mapInfo?.fieldType == FieldType.FIELDTYPE_PARTYRAID
+                || mapInfo?.fieldType == FieldType.FIELDTYPE_PARTYRAID_BOSS
+                || mapInfo?.fieldType == FieldType.FIELDTYPE_PARTYRAID_RESULT;
+        }
+
+        private static bool IsSpaceGagaMap(MapInfo mapInfo)
+        {
+            return mapInfo?.fieldType == FieldType.FIELDTYPE_SPACEGAGA
+                || (mapInfo?.id >= 922240000 && mapInfo.id <= 922240200);
         }
     }
 }
