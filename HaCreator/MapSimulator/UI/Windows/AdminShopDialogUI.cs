@@ -24,6 +24,15 @@ namespace HaCreator.MapSimulator.UI
             User
         }
 
+        private enum AdminShopEntryState
+        {
+            Available,
+            SoldOut,
+            PreviewOnly,
+            PendingResponse,
+            RequestAccepted
+        }
+
         private sealed class AdminShopEntry
         {
             public string Title { get; init; } = string.Empty;
@@ -33,6 +42,8 @@ namespace HaCreator.MapSimulator.UI
             public long Price { get; init; }
             public bool SupportsWishlist { get; init; }
             public bool Wishlisted { get; set; }
+            public AdminShopEntryState State { get; set; }
+            public string StateLabel { get; init; } = string.Empty;
         }
 
         private sealed class AdminShopPaneState
@@ -108,17 +119,20 @@ namespace HaCreator.MapSimulator.UI
         private readonly UIObject _modalConfirmButton;
         private readonly UIObject _modalCancelButton;
 
+        private IInventoryRuntime _inventory;
         private SpriteFont _font;
         private AdminShopServiceMode _currentMode;
         private AdminShopPane _activePane = AdminShopPane.Npc;
         private string _footerMessage = string.Empty;
         private string _modalMessage = string.Empty;
         private AdminShopEntry _pendingWishlistEntry;
+        private AdminShopEntry _pendingRequestEntry;
         private int _previousScrollWheelValue;
         private MouseState _previousMouseState;
         private AdminShopPane? _draggingScrollPane;
         private int _scrollThumbDragOffsetY;
         private bool _wishlistModalVisible;
+        private int _requestResolveTick;
 
         public AdminShopDialogUI(
             IDXObject frame,
@@ -208,6 +222,13 @@ namespace HaCreator.MapSimulator.UI
 
         public long Money { get; set; }
 
+        public void SetInventory(IInventoryRuntime inventory)
+        {
+            _inventory = inventory;
+            Money = _inventory?.GetMesoCount() ?? Money;
+            UpdateActionButtonStates();
+        }
+
         public override void Show()
         {
             base.Show();
@@ -227,6 +248,16 @@ namespace HaCreator.MapSimulator.UI
             if (!IsVisible)
             {
                 return;
+            }
+
+            if (_inventory != null)
+            {
+                Money = _inventory.GetMesoCount();
+            }
+
+            if (_pendingRequestEntry != null && Environment.TickCount >= _requestResolveTick)
+            {
+                ResolvePendingRequest();
             }
 
             MouseState mouseState = Mouse.GetState();
@@ -350,7 +381,9 @@ namespace HaCreator.MapSimulator.UI
         private void DrawHeader(SpriteBatch sprite, int windowX, int windowY)
         {
             string modeLabel = _currentMode == AdminShopServiceMode.CashShop ? "Cash Shop" : "MTS";
-            string instruction = "BtBuy submits a request, BtSell switches service, BtRecharge opens the wish-list dialog.";
+            string instruction = _pendingRequestEntry == null
+                ? "BtBuy submits a request, BtSell switches service, BtRecharge opens the wish-list dialog."
+                : $"Waiting for catalog response on {_pendingRequestEntry.Title}.";
 
             sprite.DrawString(_font, modeLabel + " dialog", new Vector2(windowX + HeaderX, windowY + HeaderY), Color.White);
             sprite.DrawString(_font, instruction, new Vector2(windowX + HeaderX, windowY + HeaderY + 18), new Color(215, 215, 215));
@@ -409,10 +442,18 @@ namespace HaCreator.MapSimulator.UI
                     sprite.Draw(_selectionTexture, new Vector2(rowX, rowY), Color.White);
                 }
 
-                Color titleColor = isSelected ? Color.Black : Color.White;
-                Color detailColor = isSelected ? new Color(42, 42, 42) : new Color(210, 210, 210);
+                Color titleColor = GetTitleColor(entry, isSelected);
+                Color detailColor = GetDetailColor(entry, isSelected);
                 sprite.DrawString(_font, TrimToWidth(entry.Title, 130f), new Vector2(rowX + RowTextX, rowY + RowTitleY), titleColor);
                 sprite.DrawString(_font, TrimToWidth(entry.PriceLabel, 130f), new Vector2(rowX + RowTextX, rowY + RowDetailY), detailColor);
+
+                if (!string.IsNullOrWhiteSpace(entry.StateLabel))
+                {
+                    string stateLabel = TrimToWidth(entry.StateLabel, 58f);
+                    Vector2 stateSize = _font.MeasureString(stateLabel);
+                    Vector2 statePosition = new Vector2(rowX + PaneWidth - stateSize.X - 8f, rowY + RowTitleY);
+                    sprite.DrawString(_font, stateLabel, statePosition, GetStateColor(entry, isSelected));
+                }
             }
 
             if (paneState.Entries.Count > MaxVisibleRows)
@@ -468,8 +509,9 @@ namespace HaCreator.MapSimulator.UI
 
             sprite.DrawString(_font, entry.Title, new Vector2(windowX + DetailX, windowY + DetailY), Color.White);
             sprite.DrawString(_font, $"{entry.Seller}  |  {entry.PriceLabel}", new Vector2(windowX + DetailX, windowY + DetailY + 18), new Color(235, 224, 164));
+            sprite.DrawString(_font, BuildEntryStateText(entry), new Vector2(windowX + DetailX, windowY + DetailY + 36), GetStateColor(entry, false));
 
-            float detailY = windowY + DetailY + 36;
+            float detailY = windowY + DetailY + 54;
             foreach (string line in WrapText(entry.Detail, 400f))
             {
                 sprite.DrawString(_font, line, new Vector2(windowX + DetailX, detailY), new Color(218, 218, 218));
@@ -477,11 +519,11 @@ namespace HaCreator.MapSimulator.UI
             }
 
             string wishState = entry.Wishlisted ? "Wish list: saved." : "Wish list: not saved.";
-            sprite.DrawString(_font, wishState, new Vector2(windowX + DetailX, windowY + DetailY + 52), new Color(175, 220, 175));
+            sprite.DrawString(_font, wishState, new Vector2(windowX + DetailX, windowY + DetailY + 70), new Color(175, 220, 175));
 
             if (!string.IsNullOrWhiteSpace(_footerMessage))
             {
-                sprite.DrawString(_font, _footerMessage, new Vector2(windowX + DetailX, windowY + DetailY + 68), new Color(255, 221, 143));
+                sprite.DrawString(_font, _footerMessage, new Vector2(windowX + DetailX, windowY + DetailY + 86), new Color(255, 221, 143));
             }
         }
 
@@ -529,10 +571,18 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
+            if (!CanRequestEntry(entry))
+            {
+                _footerMessage = BuildBlockedRequestMessage(entry);
+                UpdateActionButtonStates();
+                return;
+            }
+
             _pendingWishlistEntry = null;
-            string modeLabel = _currentMode == AdminShopServiceMode.CashShop ? "Cash Shop" : "MTS";
-            string targetLabel = _activePane == AdminShopPane.Npc ? "NPC" : "user";
-            _footerMessage = $"{modeLabel} request sent for {entry.Title} via the {targetLabel} list.";
+            _pendingRequestEntry = entry;
+            _requestResolveTick = Environment.TickCount + 900;
+            entry.State = AdminShopEntryState.PendingResponse;
+            _footerMessage = $"Submitted a {_currentMode} request for {entry.Title}. Waiting for simulator response.";
             UpdateActionButtonStates();
         }
 
@@ -675,10 +725,10 @@ namespace HaCreator.MapSimulator.UI
         {
             AdminShopEntry entry = GetSelectedEntry();
             bool modalBlocked = _wishlistModalVisible;
-            _buyButton?.SetEnabled(!modalBlocked && entry != null);
+            _buyButton?.SetEnabled(!modalBlocked && entry != null && CanRequestEntry(entry));
             _sellButton?.SetEnabled(!modalBlocked);
             _exitButton?.SetEnabled(!modalBlocked);
-            _rechargeButton?.SetEnabled(!modalBlocked && entry?.SupportsWishlist == true);
+            _rechargeButton?.SetEnabled(!modalBlocked && entry?.SupportsWishlist == true && entry.State == AdminShopEntryState.Available);
         }
 
         private AdminShopEntry GetSelectedEntry()
@@ -1039,7 +1089,7 @@ namespace HaCreator.MapSimulator.UI
             }
 
             string paneLabel = pane == AdminShopPane.Npc ? "NPC offer" : "user listing";
-            return $"Selected {paneLabel}: {entry.Title}.";
+            return $"Selected {paneLabel}: {entry.Title}. {BuildEntryStateText(entry)}";
         }
 
         private static IEnumerable<AdminShopEntry> CreateNpcEntries(AdminShopServiceMode mode)
@@ -1051,11 +1101,11 @@ namespace HaCreator.MapSimulator.UI
                     CreateEntry("Royal Hair Coupon", "Rotating salon coupon preview from the featured cash-service board.", "Cash Manager", 3400, true),
                     CreateEntry("Royal Face Coupon", "Premium face coupon entry with the same preview flow the client routes into wish-list dialogs.", "Cash Manager", 2900, true),
                     CreateEntry("Pet Snack Bundle", "Utility bundle with snack and pet-tag support for multi-pet sessions.", "Cash Manager", 1900, true),
-                    CreateEntry("Storage Slot Expansion", "Convenience service for storage and shared account inventory capacity.", "Cash Manager", 2800, true),
+                    CreateEntry("Storage Slot Expansion", "Convenience service for storage and shared account inventory capacity.", "Cash Manager", 2800, true, AdminShopEntryState.PreviewOnly, "Preview"),
                     CreateEntry("Hyper Teleport Rock", "Navigation-heavy service entry used to compare convenience bundles.", "Cash Manager", 900, true),
                     CreateEntry("Surprise Style Box", "Random cosmetic box surfaced through the featured rotation.", "Cash Manager", 3400, true),
                     CreateEntry("Cosmetic Lens Coupon", "Style utility item staged for wish-list confirmation tests.", "Cash Manager", 1600, true),
-                    CreateEntry("Pet Equip Bundle", "Pet equipment and accessory bundle bound to the NPC-side catalog.", "Cash Manager", 2200, true)
+                    CreateEntry("Pet Equip Bundle", "Pet equipment and accessory bundle bound to the NPC-side catalog.", "Cash Manager", 2200, true, AdminShopEntryState.SoldOut, "Sold out")
                 };
             }
 
@@ -1064,11 +1114,11 @@ namespace HaCreator.MapSimulator.UI
                 CreateEntry("Zakum Helmet Listing", "Admin MTS preview of a high-demand helmet sold from the NPC-owned catalog view.", "MTS Clerk", 12500000, false),
                 CreateEntry("Maple Kandayo", "MTS equipment board seeded to exercise request submission and price display.", "MTS Clerk", 9800000, false),
                 CreateEntry("Steely Throwing-Knives", "Consumable trade board sample that mirrors a browse-first MTS flow.", "MTS Clerk", 3200000, false),
-                CreateEntry("Chaos Scroll 60%", "Scroll listing preview staged for user-vs-NPC comparison.", "MTS Clerk", 21000000, false),
+                CreateEntry("Chaos Scroll 60%", "Scroll listing preview staged for user-vs-NPC comparison.", "MTS Clerk", 21000000, false, AdminShopEntryState.SoldOut, "Sold out"),
                 CreateEntry("Brown Work Gloves", "Common MTS browse row with seller and price labels only.", "MTS Clerk", 4700000, false),
                 CreateEntry("Pink Adventurer Cape", "Apparel listing in the MTS catalog pane.", "MTS Clerk", 15000000, false),
                 CreateEntry("Ilbi Throwing-Stars", "Projectile listing to keep the pane scrollable.", "MTS Clerk", 6100000, false),
-                CreateEntry("Bathrobe for Men", "Popular dex robe listing inside the scrollable MTS pane.", "MTS Clerk", 8700000, false)
+                CreateEntry("Bathrobe for Men", "Popular dex robe listing inside the scrollable MTS pane.", "MTS Clerk", 8700000, false, AdminShopEntryState.PreviewOnly, "Preview")
             };
         }
 
@@ -1080,11 +1130,11 @@ namespace HaCreator.MapSimulator.UI
                 {
                     CreateUserEntry("NX Outfit Bundle", "Preview of a user-side recommendation row surfaced next to the NPC catalog.", "FashionMuse", 5200),
                     CreateUserEntry("Pet Accessory Package", "User listing used to test trade-request submission from the secondary pane.", "PetCrafter", 2400),
-                    CreateUserEntry("Chair Showcase", "Decorative listing for mixed cosmetic browsing.", "ChairMerchant", 1800),
+                    CreateUserEntry("Chair Showcase", "Decorative listing for mixed cosmetic browsing.", "ChairMerchant", 1800, AdminShopEntryState.PreviewOnly, "Preview"),
                     CreateUserEntry("Android Coupon Pack", "Secondary-pane listing for user catalog parity.", "AndroidDealer", 4100),
                     CreateUserEntry("Damage Skin Coupon", "Cash-market listing with its own seller label and request target.", "SkinBroker", 2700),
                     CreateUserEntry("Label Ring Pair", "Small cosmetic listing that keeps the right pane scrollable.", "RingSeller", 900),
-                    CreateUserEntry("Megaphone Stack", "Bulk utility listing staged for user-row browsing.", "WorldShout", 600)
+                    CreateUserEntry("Megaphone Stack", "Bulk utility listing staged for user-row browsing.", "WorldShout", 600, AdminShopEntryState.SoldOut, "Sold out")
                 };
             }
 
@@ -1094,13 +1144,20 @@ namespace HaCreator.MapSimulator.UI
                 CreateUserEntry("PAC 4 ATT", "Popular cape listing to stress-test page movement.", "WindDeal", 34500000),
                 CreateUserEntry("Pink Gaia Cape", "Secondary-pane seller row for MTS browsing parity.", "CapeShop", 9100000),
                 CreateUserEntry("Dep Star", "Accessory listing used to test selecting user rows before sending a request.", "StarFinder", 8600000),
-                CreateUserEntry("Crystal Ilbis", "Projectile listing with high-price formatting.", "ThrowKing", 25500000),
+                CreateUserEntry("Crystal Ilbis", "Projectile listing with high-price formatting.", "ThrowKing", 25500000, AdminShopEntryState.SoldOut, "Sold out"),
                 CreateUserEntry("Brown Bamboo Hat", "Lower-tier listing that still participates in request flow.", "OldSchooler", 2800000),
-                CreateUserEntry("Blue Anel Cape", "Additional listing to force scrollbar use.", "CapeCollector", 6400000)
+                CreateUserEntry("Blue Anel Cape", "Additional listing to force scrollbar use.", "CapeCollector", 6400000, AdminShopEntryState.PreviewOnly, "Preview")
             };
         }
 
-        private static AdminShopEntry CreateEntry(string title, string detail, string seller, long price, bool supportsWishlist)
+        private static AdminShopEntry CreateEntry(
+            string title,
+            string detail,
+            string seller,
+            long price,
+            bool supportsWishlist,
+            AdminShopEntryState state = AdminShopEntryState.Available,
+            string stateLabel = "")
         {
             return new AdminShopEntry
             {
@@ -1109,11 +1166,19 @@ namespace HaCreator.MapSimulator.UI
                 Seller = seller,
                 Price = price,
                 PriceLabel = FormatPriceLabel(price),
-                SupportsWishlist = supportsWishlist
+                SupportsWishlist = supportsWishlist,
+                State = state,
+                StateLabel = stateLabel
             };
         }
 
-        private static AdminShopEntry CreateUserEntry(string title, string detail, string seller, long price)
+        private static AdminShopEntry CreateUserEntry(
+            string title,
+            string detail,
+            string seller,
+            long price,
+            AdminShopEntryState state = AdminShopEntryState.Available,
+            string stateLabel = "")
         {
             return new AdminShopEntry
             {
@@ -1122,7 +1187,98 @@ namespace HaCreator.MapSimulator.UI
                 Seller = seller,
                 Price = price,
                 PriceLabel = FormatPriceLabel(price),
-                SupportsWishlist = false
+                SupportsWishlist = false,
+                State = state,
+                StateLabel = stateLabel
+            };
+        }
+
+        private void ResolvePendingRequest()
+        {
+            if (_pendingRequestEntry == null)
+            {
+                return;
+            }
+
+            _pendingRequestEntry.State = AdminShopEntryState.RequestAccepted;
+            _footerMessage = $"Catalog response received for {_pendingRequestEntry.Title}. The simulator accepted the request.";
+            _pendingRequestEntry = null;
+            UpdateActionButtonStates();
+        }
+
+        private bool CanRequestEntry(AdminShopEntry entry)
+        {
+            if (entry == null || _pendingRequestEntry != null)
+            {
+                return false;
+            }
+
+            return entry.State == AdminShopEntryState.Available || entry.State == AdminShopEntryState.RequestAccepted;
+        }
+
+        private string BuildBlockedRequestMessage(AdminShopEntry entry)
+        {
+            if (_pendingRequestEntry != null)
+            {
+                return $"A catalog request for {_pendingRequestEntry.Title} is already in flight.";
+            }
+
+            return BuildEntryStateText(entry);
+        }
+
+        private static string BuildEntryStateText(AdminShopEntry entry)
+        {
+            return entry?.State switch
+            {
+                AdminShopEntryState.Available => "Status: ready to request.",
+                AdminShopEntryState.SoldOut => "Status: sold out in the simulator catalog.",
+                AdminShopEntryState.PreviewOnly => "Status: preview-only row until full session data is wired.",
+                AdminShopEntryState.PendingResponse => "Status: waiting for the shop response.",
+                AdminShopEntryState.RequestAccepted => "Status: request acknowledged by the simulator session.",
+                _ => "Status: unavailable."
+            };
+        }
+
+        private static Color GetTitleColor(AdminShopEntry entry, bool isSelected)
+        {
+            if (entry?.State == AdminShopEntryState.SoldOut || entry?.State == AdminShopEntryState.PreviewOnly)
+            {
+                return isSelected ? new Color(64, 64, 64) : new Color(186, 186, 186);
+            }
+
+            if (entry?.State == AdminShopEntryState.PendingResponse)
+            {
+                return isSelected ? new Color(56, 38, 0) : new Color(255, 232, 142);
+            }
+
+            return isSelected ? Color.Black : Color.White;
+        }
+
+        private static Color GetDetailColor(AdminShopEntry entry, bool isSelected)
+        {
+            if (entry?.State == AdminShopEntryState.SoldOut || entry?.State == AdminShopEntryState.PreviewOnly)
+            {
+                return isSelected ? new Color(78, 78, 78) : new Color(158, 158, 158);
+            }
+
+            if (entry?.State == AdminShopEntryState.PendingResponse)
+            {
+                return isSelected ? new Color(84, 58, 0) : new Color(230, 204, 104);
+            }
+
+            return isSelected ? new Color(42, 42, 42) : new Color(210, 210, 210);
+        }
+
+        private static Color GetStateColor(AdminShopEntry entry, bool isSelected)
+        {
+            return entry?.State switch
+            {
+                AdminShopEntryState.Available => isSelected ? new Color(31, 79, 29) : new Color(166, 225, 161),
+                AdminShopEntryState.SoldOut => isSelected ? new Color(110, 54, 54) : new Color(231, 161, 161),
+                AdminShopEntryState.PreviewOnly => isSelected ? new Color(85, 74, 27) : new Color(228, 209, 142),
+                AdminShopEntryState.PendingResponse => isSelected ? new Color(84, 58, 0) : new Color(255, 229, 128),
+                AdminShopEntryState.RequestAccepted => isSelected ? new Color(24, 78, 88) : new Color(146, 223, 238),
+                _ => isSelected ? new Color(42, 42, 42) : Color.White
             };
         }
 

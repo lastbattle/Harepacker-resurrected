@@ -148,6 +148,11 @@ namespace HaCreator.MapSimulator.Fields
             _specialEffects.SetDojoRuntimeState(playerHp, playerMaxHp, bossHpPercent);
         }
 
+        public void SetAriantArenaPlayerState(string localPlayerName, int? localPlayerJob)
+        {
+            _minigames.AriantArena.SetLocalPlayerState(localPlayerName, localPlayerJob ?? 0);
+        }
+
         public void Update(GameTime gameTime, int currentTimeMs)
         {
             _specialEffects.Update(gameTime, currentTimeMs);

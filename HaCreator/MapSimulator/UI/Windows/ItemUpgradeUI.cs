@@ -56,6 +56,7 @@ namespace HaCreator.MapSimulator.UI
         private CharacterBuild _characterBuild;
         private IInventoryRuntime _inventory;
         private int _selectedIndex;
+        private int? _preferredConsumableItemId;
         private string _statusMessage = "Select equipment and begin enhancement.";
         private bool? _lastUpgradeSucceeded;
 
@@ -85,6 +86,59 @@ namespace HaCreator.MapSimulator.UI
         {
             _inventory = inventory;
             UpdateButtonStates();
+        }
+
+        public static bool IsSupportedConsumable(int itemId)
+        {
+            return itemId == EquipEnhancementScrollId || itemId == AdvancedEnhancementScrollId;
+        }
+
+        public static bool CanUpgrade(EquipSlot slot, CharacterPart part)
+        {
+            return part != null
+                   && !part.IsCash
+                   && ResolveDefaultSlotCount(slot, part) > 0;
+        }
+
+        public void PrepareConsumableSelection(int itemId)
+        {
+            if (!IsSupportedConsumable(itemId))
+            {
+                return;
+            }
+
+            _preferredConsumableItemId = itemId;
+            _statusMessage = $"{ResolveConsumableName(itemId)} ready. Choose equipment to enhance.";
+            _lastUpgradeSucceeded = null;
+            UpdateButtonStates();
+        }
+
+        public void PrepareEquipmentSelection(EquipSlot slot)
+        {
+            IReadOnlyList<KeyValuePair<EquipSlot, CharacterPart>> candidates = GetCandidates();
+            if (candidates.Count == 0)
+            {
+                _selectedIndex = 0;
+                _statusMessage = "No equipped item can be upgraded.";
+                _lastUpgradeSucceeded = null;
+                UpdateButtonStates();
+                return;
+            }
+
+            for (int i = 0; i < candidates.Count; i++)
+            {
+                if (candidates[i].Key != slot)
+                {
+                    continue;
+                }
+
+                _selectedIndex = i;
+                CharacterPart selectedPart = candidates[i].Value;
+                _statusMessage = $"{ResolveItemName(selectedPart)} selected for enhancement.";
+                _lastUpgradeSucceeded = null;
+                UpdateButtonStates();
+                return;
+            }
         }
 
         public void SetDecorations(Texture2D backgroundOverlay, Point backgroundOverlayOffset, Texture2D headerOverlay, Point headerOverlayOffset)
@@ -469,8 +523,7 @@ namespace HaCreator.MapSimulator.UI
             return _characterBuild.Equipment
                 .Where(entry => entry.Value != null
                     && entry.Key != EquipSlot.None
-                    && !entry.Value.IsCash
-                    && ResolveDefaultSlotCount(entry.Key, entry.Value) > 0)
+                    && CanUpgrade(entry.Key, entry.Value))
                 .OrderBy(entry => entry.Key)
                 .ToArray();
         }
@@ -480,6 +533,17 @@ namespace HaCreator.MapSimulator.UI
             if (_inventory == null)
             {
                 return null;
+            }
+
+            if (_preferredConsumableItemId.HasValue)
+            {
+                int preferredItemId = _preferredConsumableItemId.Value;
+                if (GetConsumableCount(preferredItemId) > 0)
+                {
+                    return new EnhancementConsumable(preferredItemId, ResolveConsumableName(preferredItemId));
+                }
+
+                _preferredConsumableItemId = null;
             }
 
             int normalCount = GetConsumableCount(EquipEnhancementScrollId);

@@ -36,6 +36,7 @@ namespace HaCreator.MapSimulator.UI
 
         private readonly BaseDXDrawableItem _pixelDot;
         private readonly BaseDXDrawableItem _collapsedFrame;
+        private readonly BaseDXDrawableItem _userMarker;
         private readonly BaseDXDrawableItem _npcMarker;
         private readonly BaseDXDrawableItem _questStartNpcMarker;
         private readonly BaseDXDrawableItem _questEndNpcMarker;
@@ -100,6 +101,7 @@ namespace HaCreator.MapSimulator.UI
             BaseDXDrawableItem _collapsedFrame,
             int minimapImageWidth,
             int minimapImageHeight,
+            BaseDXDrawableItem userMarker = null,
             BaseDXDrawableItem npcMarker = null,
             BaseDXDrawableItem questStartNpcMarker = null,
             BaseDXDrawableItem questEndNpcMarker = null,
@@ -112,6 +114,7 @@ namespace HaCreator.MapSimulator.UI
             this._collapsedFrame = _collapsedFrame;
             _minimapImageWidth = minimapImageWidth;
             _minimapImageHeight = minimapImageHeight;
+            _userMarker = userMarker;
             _npcMarker = npcMarker;
             _questStartNpcMarker = questStartNpcMarker;
             _questEndNpcMarker = questEndNpcMarker;
@@ -204,6 +207,15 @@ namespace HaCreator.MapSimulator.UI
                 // This ensures the dot follows the actual character position, not the viewport center
                 int minimapPosX = _playerMinimapX;
                 int minimapPosY = _playerMinimapY;
+
+                if (_userMarker != null)
+                {
+                    _userMarker.Draw(sprite, skeletonMeshRenderer, gameTime,
+                        -Position.X, -Position.Y, minimapPosX, minimapPosY,
+                        drawReflectionInfo,
+                        renderParameters,
+                        TickCount);
+                }
 
                 // Draw the minimap pixel dot
                 _pixelDot.Draw(sprite, skeletonMeshRenderer, gameTime,

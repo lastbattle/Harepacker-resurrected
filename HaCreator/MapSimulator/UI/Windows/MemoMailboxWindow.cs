@@ -31,12 +31,13 @@ namespace HaCreator.MapSimulator.UI
         private Action<int> _openMemoRequested;
         private Action<int> _keepMemoRequested;
         private Action<int> _deleteMemoRequested;
+        private Action<int> _attachmentRequested;
         private MouseState _previousMouseState;
         private int _selectedMemoId = -1;
         private int _openedMemoId = -1;
         private UIObject _keepButton;
         private UIObject _deleteButton;
-        private UIObject _inboxButton;
+        private UIObject _actionButton;
 
         private sealed class RowLayout
         {
@@ -71,22 +72,27 @@ namespace HaCreator.MapSimulator.UI
             _snapshotProvider = snapshotProvider;
         }
 
-        internal void SetActions(Action<int> openMemoRequested, Action<int> keepMemoRequested, Action<int> deleteMemoRequested)
+        internal void SetActions(
+            Action<int> openMemoRequested,
+            Action<int> keepMemoRequested,
+            Action<int> deleteMemoRequested,
+            Action<int> attachmentRequested)
         {
             _openMemoRequested = openMemoRequested;
             _keepMemoRequested = keepMemoRequested;
             _deleteMemoRequested = deleteMemoRequested;
+            _attachmentRequested = attachmentRequested;
         }
 
-        internal void InitializeButtons(UIObject keepButton, UIObject deleteButton, UIObject inboxButton)
+        internal void InitializeButtons(UIObject keepButton, UIObject deleteButton, UIObject actionButton)
         {
             _keepButton = keepButton;
             _deleteButton = deleteButton;
-            _inboxButton = inboxButton;
+            _actionButton = actionButton;
 
             ConfigureButton(_keepButton, 16, 215, KeepOpenedMemo);
             ConfigureButton(_deleteButton, 60, 215, DeleteOpenedMemo);
-            ConfigureButton(_inboxButton, 214, 215, ReturnToInbox);
+            ConfigureButton(_actionButton, 214, 215, HandleActionButton);
             UpdateButtonVisibility();
         }
 
@@ -130,7 +136,9 @@ namespace HaCreator.MapSimulator.UI
             EnsureSelection(snapshot);
 
             Rectangle contentBounds = GetContentBounds();
-            string title = _openedMemoId > 0 ? "READ MEMO" : $"INBOX ({snapshot.UnreadCount} unread)";
+            string title = _openedMemoId > 0
+                ? "READ MEMO"
+                : $"INBOX ({snapshot.UnreadCount} unread / {snapshot.ClaimableCount} package)";
             sprite.DrawString(_font, title, new Vector2(Position.X + 28, Position.Y + 10), Color.White, 0f, Vector2.Zero, 0.46f, SpriteEffects.None, 0f);
 
             if (_openedMemoId > 0)
@@ -195,9 +203,14 @@ namespace HaCreator.MapSimulator.UI
                 Vector2 timeSize = _font.MeasureString(memo.DeliveredAtText) * 0.34f;
                 sprite.DrawString(_font, memo.DeliveredAtText, new Vector2(rowBounds.Right - timeSize.X - 2, rowBounds.Y + 3), new Color(123, 129, 141), 0f, Vector2.Zero, 0.34f, SpriteEffects.None, 0f);
                 sprite.DrawString(_font, Truncate(memo.Preview, 36), new Vector2(rowBounds.Right - 120, rowBounds.Y + 15), new Color(108, 115, 126), 0f, Vector2.Zero, 0.34f, SpriteEffects.None, 0f);
+                if (memo.HasAttachment)
+                {
+                    Color attachmentColor = memo.CanClaimAttachment ? new Color(67, 137, 76) : new Color(129, 136, 145);
+                    sprite.DrawString(_font, "PKG", new Vector2(rowBounds.Right - 28, rowBounds.Y + 14), attachmentColor, 0f, Vector2.Zero, 0.34f, SpriteEffects.None, 0f);
+                }
             }
 
-            sprite.DrawString(_font, "Click a memo entry to read it.", new Vector2(contentBounds.X, contentBounds.Bottom - 18), new Color(97, 105, 117), 0f, Vector2.Zero, 0.39f, SpriteEffects.None, 0f);
+            sprite.DrawString(_font, snapshot.LastActionSummary ?? "Click a memo entry to read it.", new Vector2(contentBounds.X, contentBounds.Bottom - 18), new Color(97, 105, 117), 0f, Vector2.Zero, 0.37f, SpriteEffects.None, 0f);
 
             if (snapshot.Entries.Count > visibleCount)
             {
@@ -223,7 +236,24 @@ namespace HaCreator.MapSimulator.UI
             sprite.DrawString(_font, memo.DeliveredAtText, new Vector2(contentBounds.Right - 76, contentBounds.Y + 18), new Color(112, 119, 131), 0f, Vector2.Zero, 0.36f, SpriteEffects.None, 0f);
             sprite.Draw(_pixel, new Rectangle(contentBounds.X, contentBounds.Y + 34, contentBounds.Width, 1), new Color(195, 205, 214));
 
-            float drawY = contentBounds.Y + 42;
+            if (memo.HasAttachment)
+            {
+                Color attachmentColor = memo.CanClaimAttachment ? new Color(74, 134, 80) : new Color(123, 129, 141);
+                sprite.DrawString(
+                    _font,
+                    memo.CanClaimAttachment
+                        ? $"Package ready: {memo.AttachmentSummary}"
+                        : $"Package claimed: {memo.AttachmentSummary}",
+                    new Vector2(contentBounds.X, contentBounds.Y + 34),
+                    attachmentColor,
+                    0f,
+                    Vector2.Zero,
+                    0.39f,
+                    SpriteEffects.None,
+                    0f);
+            }
+
+            float drawY = contentBounds.Y + (memo.HasAttachment ? 52 : 42);
             foreach (string line in WrapText(memo.Body, contentBounds.Width - 4, 0.43f))
             {
                 sprite.DrawString(_font, line, new Vector2(contentBounds.X + 2, drawY), bodyColor, 0f, Vector2.Zero, 0.43f, SpriteEffects.None, 0f);
@@ -236,6 +266,8 @@ namespace HaCreator.MapSimulator.UI
 
             string footer = memo.IsKept
                 ? "Kept in the mailbox backlog."
+                : memo.CanClaimAttachment
+                    ? "Use OPEN to inspect and claim the attached package."
                 : "Use KEEP to preserve this memo in the inbox.";
             sprite.DrawString(_font, footer, new Vector2(contentBounds.X, contentBounds.Bottom - 18), accentColor, 0f, Vector2.Zero, 0.39f, SpriteEffects.None, 0f);
         }
@@ -308,6 +340,23 @@ namespace HaCreator.MapSimulator.UI
             UpdateButtonVisibility();
         }
 
+        private void HandleActionButton()
+        {
+            if (_openedMemoId <= 0)
+            {
+                return;
+            }
+
+            MemoMailboxEntrySnapshot memo = GetSnapshot().Entries.FirstOrDefault(entry => entry.MemoId == _openedMemoId);
+            if (memo?.CanClaimAttachment == true)
+            {
+                _attachmentRequested?.Invoke(_openedMemoId);
+                return;
+            }
+
+            ReturnToInbox();
+        }
+
         private void EnsureSelection(MemoMailboxSnapshot snapshot)
         {
             if (_selectedMemoId > 0 && snapshot.Entries.Any(entry => entry.MemoId == _selectedMemoId))
@@ -335,9 +384,9 @@ namespace HaCreator.MapSimulator.UI
                 _deleteButton.ButtonVisible = readerVisible;
             }
 
-            if (_inboxButton != null)
+            if (_actionButton != null)
             {
-                _inboxButton.ButtonVisible = readerVisible;
+                _actionButton.ButtonVisible = readerVisible;
             }
         }
 

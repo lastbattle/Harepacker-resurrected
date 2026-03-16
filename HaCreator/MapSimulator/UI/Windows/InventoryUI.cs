@@ -69,6 +69,12 @@ namespace HaCreator.MapSimulator.UI
         private Point _lastMousePosition;
         private InventoryType _hoveredInventoryType = InventoryType.NONE;
         private int _hoveredSlotIndex = -1;
+        private MouseState _previousInteractionMouseState;
+        private bool _isDraggingItem;
+        private InventoryType _draggedInventoryType = InventoryType.NONE;
+        private int _draggedSlotIndex = -1;
+        private InventorySlotData _draggedSlotData;
+        private Point _draggedItemPosition;
 
         protected Texture2D ActiveIconTexture;
         protected Texture2D DisabledSlotTexture;
@@ -78,6 +84,7 @@ namespace HaCreator.MapSimulator.UI
 
         #region Properties
         public override string WindowName => "Inventory";
+        public Action<int> ItemUpgradeRequested { get; set; }
 
         public int CurrentTab
         {
@@ -99,6 +106,8 @@ namespace HaCreator.MapSimulator.UI
             get => _mesoCount;
             set => _mesoCount = Math.Max(0, value);
         }
+
+        public bool IsDraggingItem => _isDraggingItem;
         #endregion
 
         #region Constructor
@@ -123,8 +132,11 @@ namespace HaCreator.MapSimulator.UI
                 { InventoryType.CASH, TOTAL_SLOTS }
             };
 
-            _debugTooltipTexture = new Texture2D(device, 1, 1);
-            _debugTooltipTexture.SetData(new[] { Color.White });
+            if (device != null)
+            {
+                _debugTooltipTexture = new Texture2D(device, 1, 1);
+                _debugTooltipTexture.SetData(new[] { Color.White });
+            }
         }
         #endregion
 
@@ -760,6 +772,158 @@ namespace HaCreator.MapSimulator.UI
             return true;
         }
 
+        public bool HandlesInventoryInteractionPoint(int mouseX, int mouseY)
+        {
+            return TryGetSlotAtPosition(mouseX, mouseY, out _, out int slotIndex)
+                && slotIndex >= 0;
+        }
+
+        public void OnInventoryMouseDown(int mouseX, int mouseY)
+        {
+            _lastMousePosition = new Point(mouseX, mouseY);
+
+            if (!TryGetSlotAtPosition(mouseX, mouseY, out InventoryType inventoryType, out int slotIndex)
+                || !TryGetSlotsForType(inventoryType, out List<InventorySlotData> slots)
+                || slotIndex < 0
+                || slotIndex >= slots.Count)
+            {
+                return;
+            }
+
+            InventorySlotData slot = slots[slotIndex];
+            if (slot == null || slot.IsDisabled)
+            {
+                return;
+            }
+
+            _isDraggingItem = true;
+            _draggedInventoryType = inventoryType;
+            _draggedSlotIndex = slotIndex;
+            _draggedSlotData = slot.Clone();
+            _draggedItemPosition = _lastMousePosition;
+            _hoveredInventoryType = InventoryType.NONE;
+            _hoveredSlotIndex = -1;
+        }
+
+        public void OnInventoryMouseMove(int mouseX, int mouseY)
+        {
+            _lastMousePosition = new Point(mouseX, mouseY);
+
+            if (_isDraggingItem)
+            {
+                _draggedItemPosition = _lastMousePosition;
+            }
+        }
+
+        public bool OnInventoryMouseUp(int mouseX, int mouseY)
+        {
+            _lastMousePosition = new Point(mouseX, mouseY);
+            _draggedItemPosition = _lastMousePosition;
+
+            bool moved = false;
+            if (_isDraggingItem)
+            {
+                moved = TryMoveSlot(_draggedInventoryType, _draggedSlotIndex, mouseX, mouseY);
+            }
+
+            CancelInventoryDrag();
+            return moved;
+        }
+
+        public void CancelInventoryDrag()
+        {
+            _isDraggingItem = false;
+            _draggedInventoryType = InventoryType.NONE;
+            _draggedSlotIndex = -1;
+            _draggedSlotData = null;
+        }
+
+        public bool TryMoveSlot(InventoryType sourceType, int sourceIndex, int mouseX, int mouseY)
+        {
+            if (!TryGetSlotAtPosition(mouseX, mouseY, out InventoryType targetType, out int targetIndex))
+            {
+                return false;
+            }
+
+            return TryMoveSlot(sourceType, sourceIndex, targetType, targetIndex);
+        }
+
+        public bool TryMoveSlot(InventoryType sourceType, int sourceIndex, InventoryType targetType, int targetIndex)
+        {
+            if (sourceType == InventoryType.NONE
+                || targetType == InventoryType.NONE
+                || sourceType != targetType
+                || !TryGetSlotsForType(sourceType, out List<InventorySlotData> slots)
+                || sourceIndex < 0
+                || sourceIndex >= slots.Count
+                || targetIndex < 0
+                || targetIndex >= GetSlotLimit(targetType))
+            {
+                return false;
+            }
+
+            InventorySlotData sourceSlot = slots[sourceIndex];
+            if (sourceSlot == null || sourceSlot.IsDisabled)
+            {
+                return false;
+            }
+
+            if (targetIndex == sourceIndex)
+            {
+                return true;
+            }
+
+            if (targetIndex >= slots.Count)
+            {
+                InventorySlotData movedSlot = sourceSlot;
+                slots.RemoveAt(sourceIndex);
+                slots.Add(movedSlot);
+                return true;
+            }
+
+            InventorySlotData targetSlot = slots[targetIndex];
+            if (targetSlot == null)
+            {
+                InventorySlotData movedSlot = sourceSlot;
+                slots.RemoveAt(sourceIndex);
+                slots.Insert(Math.Min(targetIndex, slots.Count), movedSlot);
+                return true;
+            }
+
+            int maxStackSize = InventoryItemMetadataResolver.ResolveMaxStack(sourceType, sourceSlot.MaxStackSize ?? targetSlot.MaxStackSize);
+            if (IsStackable(sourceType, maxStackSize)
+                && !targetSlot.IsDisabled
+                && sourceSlot.ItemId == targetSlot.ItemId)
+            {
+                int targetQuantity = Math.Max(1, targetSlot.Quantity);
+                int sourceQuantity = Math.Max(1, sourceSlot.Quantity);
+                int capacity = maxStackSize - targetQuantity;
+                if (capacity > 0)
+                {
+                    int quantityToMove = Math.Min(capacity, sourceQuantity);
+                    targetSlot.Quantity = targetQuantity + quantityToMove;
+                    sourceQuantity -= quantityToMove;
+
+                    if (sourceQuantity <= 0)
+                    {
+                        slots.RemoveAt(sourceIndex);
+                    }
+                    else
+                    {
+                        sourceSlot.Quantity = sourceQuantity;
+                    }
+
+                    targetSlot.MaxStackSize = maxStackSize;
+                    sourceSlot.MaxStackSize = maxStackSize;
+                    return true;
+                }
+            }
+
+            slots[sourceIndex] = targetSlot;
+            slots[targetIndex] = sourceSlot;
+            return true;
+        }
+
         public void ScrollUp()
         {
             if (_scrollOffset > 0)
@@ -818,6 +982,7 @@ namespace HaCreator.MapSimulator.UI
         {
             if (!IsVisible)
             {
+                _previousInteractionMouseState = mouseState;
                 return false;
             }
 
@@ -827,6 +992,7 @@ namespace HaCreator.MapSimulator.UI
                 bool handled = uiBtn.CheckMouseEvent(shiftCenteredX, shiftCenteredY, Position.X, Position.Y, mouseState);
                 if (handled)
                 {
+                    _previousInteractionMouseState = mouseState;
                     mouseCursor?.SetMouseCursorMovedToClickableItem();
                     return true;
                 }
@@ -836,11 +1002,40 @@ namespace HaCreator.MapSimulator.UI
             {
                 _hoveredInventoryType = inventoryType;
                 _hoveredSlotIndex = slotIndex;
+                TryRequestItemUpgrade(mouseState, inventoryType, slotIndex);
+                _previousInteractionMouseState = mouseState;
                 mouseCursor?.SetMouseCursorMovedToClickableItem();
                 return true;
             }
 
-            return base.CheckMouseEvent(shiftCenteredX, shiftCenteredY, mouseState, mouseCursor, renderWidth, renderHeight);
+            bool baseHandled = base.CheckMouseEvent(shiftCenteredX, shiftCenteredY, mouseState, mouseCursor, renderWidth, renderHeight);
+            _previousInteractionMouseState = mouseState;
+            return baseHandled;
+        }
+
+        private void TryRequestItemUpgrade(MouseState mouseState, InventoryType inventoryType, int slotIndex)
+        {
+            bool rightJustPressed = mouseState.RightButton == ButtonState.Pressed &&
+                                    _previousInteractionMouseState.RightButton == ButtonState.Released;
+            if (!rightJustPressed || inventoryType != InventoryType.USE)
+            {
+                return;
+            }
+
+            if (!TryGetSlotsForType(inventoryType, out List<InventorySlotData> slots) ||
+                slotIndex < 0 ||
+                slotIndex >= slots.Count)
+            {
+                return;
+            }
+
+            InventorySlotData slot = slots[slotIndex];
+            if (slot == null || !ItemUpgradeUI.IsSupportedConsumable(slot.ItemId))
+            {
+                return;
+            }
+
+            ItemUpgradeRequested?.Invoke(slot.ItemId);
         }
 
         protected override void DrawOverlay(SpriteBatch sprite, SkeletonMeshRenderer skeletonMeshRenderer, GameTime gameTime,
@@ -851,11 +1046,13 @@ namespace HaCreator.MapSimulator.UI
         {
             base.DrawOverlay(sprite, skeletonMeshRenderer, gameTime, mapShiftX, mapShiftY, centerX, centerY, drawReflectionInfo, renderParameters, TickCount);
             DrawHoveredSlotTooltip(sprite);
+            DrawDraggedItemOverlay(sprite);
         }
 
         private void DrawHoveredSlotTooltip(SpriteBatch sprite)
         {
-            if (_font == null
+            if (_isDraggingItem
+                || _font == null
                 || _hoveredInventoryType == InventoryType.NONE
                 || _hoveredSlotIndex < 0
                 || !TryGetSlotsForType(_hoveredInventoryType, out List<InventorySlotData> slots)
@@ -977,6 +1174,36 @@ namespace HaCreator.MapSimulator.UI
             }
         }
 
+        private void DrawDraggedItemOverlay(SpriteBatch sprite)
+        {
+            if (!_isDraggingItem || _draggedSlotData?.ItemTexture == null)
+            {
+                return;
+            }
+
+            int slotX = _draggedItemPosition.X - (SLOT_SIZE / 2);
+            int slotY = _draggedItemPosition.Y - (SLOT_SIZE / 2);
+            Color tint = Color.White * 0.85f;
+
+            if (SlotShadowTexture != null)
+            {
+                InventoryRenderUtil.DrawSlotShadow(sprite, SlotShadowTexture, slotX, slotY, SLOT_SIZE);
+            }
+
+            sprite.Draw(_draggedSlotData.ItemTexture, new Rectangle(slotX, slotY, SLOT_SIZE, SLOT_SIZE), tint);
+            InventoryRenderUtil.DrawGradeMarker(sprite, GradeFrameTextures, _draggedSlotData.GradeFrameIndex, slotX, slotY);
+
+            if (_draggedSlotData.IsActiveBullet && ActiveIconTexture != null)
+            {
+                sprite.Draw(ActiveIconTexture, new Vector2(slotX - 2, slotY - 2), tint);
+            }
+
+            if (_font != null && _draggedSlotData.Quantity > 1)
+            {
+                InventoryRenderUtil.DrawSlotQuantity(sprite, _font, _draggedSlotData.Quantity, slotX, slotY, SLOT_SIZE);
+            }
+        }
+
         private int ResolveTooltipWidth()
         {
             int textureWidth = _tooltipFrames[1]?.Width ?? 0;
@@ -995,12 +1222,22 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
+            if (_debugTooltipTexture == null)
+            {
+                return;
+            }
+
             sprite.Draw(_debugTooltipTexture, rect, new Color(24, 30, 44, 235));
             DrawTooltipBorder(sprite, rect);
         }
 
         private void DrawTooltipBorder(SpriteBatch sprite, Rectangle rect)
         {
+            if (_debugTooltipTexture == null)
+            {
+                return;
+            }
+
             Color borderColor = new Color(87, 100, 128);
             sprite.Draw(_debugTooltipTexture, new Rectangle(rect.X - 1, rect.Y - 1, rect.Width + 2, 1), borderColor);
             sprite.Draw(_debugTooltipTexture, new Rectangle(rect.X - 1, rect.Bottom, rect.Width + 2, 1), borderColor);

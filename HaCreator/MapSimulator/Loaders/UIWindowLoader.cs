@@ -2572,58 +2572,74 @@ namespace HaCreator.MapSimulator.Loaders
                 return;
             }
 
-            Texture2D frameTexture = CreatePlaceholderWindowTexture(device, 364, 236, "Character Select");
-            Texture2D selectionTexture = CreateSolidTexture(device, Color.White);
-            Texture2D rowNormalTexture = CreateFilledTexture(device, 332, 22, new Color(38, 46, 65, 220), new Color(76, 90, 122, 255));
-            Texture2D rowPressedTexture = CreateFilledTexture(device, 332, 22, new Color(67, 95, 153, 240), new Color(131, 170, 247, 255));
+            Texture2D frameTexture = CreatePlaceholderWindowTexture(device, 618, 320, "Character Select");
+            Texture2D cardNormalTexture = CreateFilledTexture(device, 183, 151, new Color(34, 42, 59, 228), new Color(87, 101, 135, 255));
+            Texture2D cardPressedTexture = CreateFilledTexture(device, 183, 151, new Color(62, 88, 147, 238), new Color(153, 186, 255, 255));
             Texture2D buttonNormalTexture = CreateFilledTexture(device, 88, 24, new Color(52, 58, 74, 235), new Color(113, 128, 162, 255));
             Texture2D buttonPressedTexture = CreateFilledTexture(device, 88, 24, new Color(84, 108, 170, 245), new Color(168, 194, 255, 255));
+            Texture2D pageButtonNormalTexture = CreateFilledTexture(device, 40, 24, new Color(50, 57, 73, 230), new Color(116, 131, 162, 255));
+            Texture2D pageButtonPressedTexture = CreateFilledTexture(device, 40, 24, new Color(80, 104, 162, 245), new Color(169, 194, 255, 255));
 
-            List<UIObject> rowButtons = new List<UIObject>();
-            for (int row = 0; row < 6; row++)
+            List<UIObject> cardButtons = new List<UIObject>();
+            for (int slot = 0; slot < 3; slot++)
             {
-                UIObject rowButton = CreateTextureButton(rowNormalTexture, rowPressedTexture);
-                if (rowButton == null)
+                UIObject cardButton = CreateTextureButton(cardNormalTexture, cardPressedTexture);
+                if (cardButton == null)
                 {
                     continue;
                 }
 
-                rowButton.X = 16;
-                rowButton.Y = 42 + (row * 26);
-                rowButtons.Add(rowButton);
+                cardButton.X = 18 + (slot * 197);
+                cardButton.Y = 46;
+                cardButtons.Add(cardButton);
             }
 
+            UIObject prevPageButton = CreateTextureButton(pageButtonNormalTexture, pageButtonPressedTexture);
+            UIObject nextPageButton = CreateTextureButton(pageButtonNormalTexture, pageButtonPressedTexture);
             UIObject enterButton = CreateTextureButton(buttonNormalTexture, buttonPressedTexture);
             UIObject newButton = CreateTextureButton(buttonNormalTexture, buttonPressedTexture);
             UIObject deleteButton = CreateTextureButton(buttonNormalTexture, buttonPressedTexture);
 
+            if (prevPageButton != null)
+            {
+                prevPageButton.X = 220;
+                prevPageButton.Y = 248;
+            }
+
+            if (nextPageButton != null)
+            {
+                nextPageButton.X = 358;
+                nextPageButton.Y = 248;
+            }
+
             if (enterButton != null)
             {
-                enterButton.X = 16;
-                enterButton.Y = 172;
+                enterButton.X = 154;
+                enterButton.Y = 248;
             }
 
             if (newButton != null)
             {
-                newButton.X = 112;
-                newButton.Y = 172;
+                newButton.X = 264;
+                newButton.Y = 248;
             }
 
             if (deleteButton != null)
             {
-                deleteButton.X = 208;
-                deleteButton.Y = 172;
+                deleteButton.X = 374;
+                deleteButton.Y = 248;
             }
 
             CharacterSelectWindow window = new CharacterSelectWindow(
                 new DXObject(0, 0, frameTexture, 0),
-                selectionTexture,
-                rowButtons,
+                cardButtons,
+                prevPageButton,
+                nextPageButton,
                 enterButton,
                 newButton,
                 deleteButton)
             {
-                Position = new Point(Math.Max(24, (screenWidth / 2) - 182), Math.Max(24, (screenHeight / 2) - 118))
+                Position = new Point(Math.Max(24, (screenWidth / 2) - 309), Math.Max(24, (screenHeight / 2) - 160))
             };
 
             WzBinaryProperty btClickSound = soundUIImage?["BtMouseClick"] as WzBinaryProperty;
@@ -2634,7 +2650,138 @@ namespace HaCreator.MapSimulator.Loaders
                 try
                 {
                     UIObject closeBtn = new UIObject(closeButtonProperty, btClickSound, btOverSound, false, Point.Zero, device);
-                    closeBtn.X = 336;
+                    closeBtn.X = 590;
+                    closeBtn.Y = 8;
+                    window.InitializeCloseButton(closeBtn);
+                }
+                catch
+                {
+                }
+            }
+
+            manager.RegisterCustomWindow(window);
+        }
+
+        public static void RegisterConnectionNoticeWindow(
+            UIWindowManager manager,
+            WzImage basicImage,
+            WzImage soundUIImage,
+            GraphicsDevice device,
+            int screenWidth,
+            int screenHeight)
+        {
+            if (manager == null || manager.GetWindow(MapSimulatorWindowNames.ConnectionNotice) != null)
+            {
+                return;
+            }
+
+            Texture2D frameTexture = CreatePlaceholderWindowTexture(device, 300, 120, "Connection Notice");
+            Texture2D progressTrackTexture = CreateSolidTexture(device, Color.White);
+            Texture2D progressFillTexture = CreateSolidTexture(device, Color.White);
+
+            ConnectionNoticeWindow window = new ConnectionNoticeWindow(
+                new DXObject(0, 0, frameTexture, 0),
+                progressTrackTexture,
+                progressFillTexture)
+            {
+                Position = new Point(Math.Max(24, (screenWidth / 2) - 150), Math.Max(24, (screenHeight / 2) - 60))
+            };
+
+            manager.RegisterCustomWindow(window);
+        }
+
+        public static void RegisterLoginUtilityDialogWindow(
+            UIWindowManager manager,
+            WzImage basicImage,
+            WzImage soundUIImage,
+            GraphicsDevice device,
+            int screenWidth,
+            int screenHeight)
+        {
+            if (manager == null || manager.GetWindow(MapSimulatorWindowNames.LoginUtilityDialog) != null)
+            {
+                return;
+            }
+
+            Texture2D frameTexture = CreatePlaceholderWindowTexture(device, 282, 154, "Login Utility");
+            Texture2D buttonNormalTexture = CreateFilledTexture(device, 88, 24, new Color(52, 58, 74, 235), new Color(113, 128, 162, 255));
+            Texture2D buttonPressedTexture = CreateFilledTexture(device, 88, 24, new Color(84, 108, 170, 245), new Color(168, 194, 255, 255));
+            UIObject primaryButton = CreateTextureButton(buttonNormalTexture, buttonPressedTexture);
+            UIObject secondaryButton = CreateTextureButton(buttonNormalTexture, buttonPressedTexture);
+
+            if (primaryButton != null)
+            {
+                primaryButton.X = 64;
+                primaryButton.Y = 114;
+            }
+
+            if (secondaryButton != null)
+            {
+                secondaryButton.X = 160;
+                secondaryButton.Y = 114;
+            }
+
+            LoginUtilityDialogWindow window = new LoginUtilityDialogWindow(
+                new DXObject(0, 0, frameTexture, 0),
+                primaryButton,
+                secondaryButton)
+            {
+                Position = new Point(Math.Max(24, (screenWidth / 2) - 141), Math.Max(24, (screenHeight / 2) - 77))
+            };
+
+            manager.RegisterCustomWindow(window);
+        }
+
+        public static void RegisterLoginEntryWindows(
+            UIWindowManager manager,
+            WzImage uiWindow1Image,
+            WzImage uiWindow2Image,
+            WzImage basicImage,
+            WzImage soundUIImage,
+            GraphicsDevice device,
+            int screenWidth,
+            int screenHeight)
+        {
+            if (manager == null)
+            {
+                return;
+            }
+
+            RegisterChannelSelectionWindows(manager, uiWindow1Image, uiWindow2Image, soundUIImage, device, screenWidth, screenHeight);
+            RegisterLoginRecommendWorldWindow(manager, device, screenWidth, screenHeight);
+            RegisterLoginCharacterSelectWindow(manager, basicImage, soundUIImage, device, screenWidth, screenHeight);
+            RegisterConnectionNoticeWindow(manager, basicImage, soundUIImage, device, screenWidth, screenHeight);
+            RegisterLoginUtilityDialogWindow(manager, basicImage, soundUIImage, device, screenWidth, screenHeight);
+        }
+
+        public static void RegisterLoginCharacterDetailWindow(
+            UIWindowManager manager,
+            WzImage basicImage,
+            WzImage soundUIImage,
+            GraphicsDevice device,
+            int screenWidth,
+            int screenHeight)
+        {
+            if (manager == null || manager.GetWindow(MapSimulatorWindowNames.CharacterDetail) != null)
+            {
+                return;
+            }
+
+            Texture2D frameTexture = CreatePlaceholderWindowTexture(device, 208, 236, "Character Detail");
+            CharacterDetailWindow window = new CharacterDetailWindow(new DXObject(0, 0, frameTexture, 0))
+            {
+                Position = new Point(Math.Max(24, (screenWidth / 2) + 194), Math.Max(24, (screenHeight / 2) - 118))
+            };
+
+            WzBinaryProperty btClickSound = soundUIImage?["BtMouseClick"] as WzBinaryProperty;
+            WzBinaryProperty btOverSound = soundUIImage?["BtMouseOver"] as WzBinaryProperty;
+            WzSubProperty closeButtonProperty = basicImage?["BtClose"] as WzSubProperty;
+            if (closeButtonProperty != null)
+            {
+                try
+                {
+                    UIObject closeBtn = new UIObject(closeButtonProperty, btClickSound, btOverSound, false, Point.Zero, device);
+                    closeBtn.X = 180;
                     closeBtn.Y = 8;
                     window.InitializeCloseButton(closeBtn);
                 }
@@ -2802,13 +2949,17 @@ namespace HaCreator.MapSimulator.Loaders
             RegisterAdminShopWindow(manager, uiWindow2Image, basicImage, soundUIImage, device,
                 MapSimulatorWindowNames.Mts, AdminShopServiceMode.Mts,
                 new Point(x + (cascade * 2), y + (cascade * 2)));
+            RegisterSocialListWindow(manager, uiWindow1Image, uiWindow2Image, basicImage, soundUIImage, device,
+                new Point(x + (cascade * 2), y + (cascade * 5)));
             RegisterMessengerWindow(manager, uiWindow1Image, uiWindow2Image, basicImage, soundUIImage, device,
                 new Point(x + (cascade * 3), y + (cascade * 3)));
+            RegisterMapleTvWindow(manager, uiWindow1Image, basicImage, soundUIImage, device,
+                new Point(x + (cascade * 4), y + (cascade * 2)));
             RegisterItemMakerWindow(manager, uiWindow1Image, uiWindow2Image, basicImage, soundUIImage, device,
                 new Point(x + (cascade * 5), y + (cascade * 5)));
             RegisterItemUpgradeWindow(manager, uiWindow1Image, uiWindow2Image, basicImage, soundUIImage, device,
                 new Point(x + (cascade * 6), y + (cascade * 6)));
-            RegisterMemoMailboxWindow(manager, uiWindow1Image, basicImage, soundUIImage, device,
+            RegisterMemoMailboxWindow(manager, uiWindow1Image, uiWindow2Image, basicImage, soundUIImage, device,
                 new Point(x + (cascade * 7), y + (cascade * 4)));
             RegisterQuestAlarmWindow(manager, uiWindow1Image, uiWindow2Image, basicImage, soundUIImage, device,
                 new Point(x + (cascade * 8), y + (cascade * 8)));
@@ -2911,6 +3062,65 @@ namespace HaCreator.MapSimulator.Loaders
                 channelShiftWindow.Position = new Point(Math.Max(24, (screenWidth / 2) - 185), Math.Max(24, (screenHeight / 2) - 84));
                 manager.RegisterCustomWindow(channelShiftWindow);
             }
+        }
+
+        private static void RegisterLoginRecommendWorldWindow(
+            UIWindowManager manager,
+            GraphicsDevice device,
+            int screenWidth,
+            int screenHeight)
+        {
+            if (manager.GetWindow(MapSimulatorWindowNames.RecommendWorld) != null)
+            {
+                return;
+            }
+
+            Texture2D frameTexture = CreatePlaceholderWindowTexture(device, 200, 220, "Recommend World");
+            Texture2D highlightTexture = CreateSolidTexture(device, Color.White);
+            Texture2D buttonNormalTexture = CreateFilledTexture(device, 48, 22, new Color(52, 58, 74, 235), new Color(113, 128, 162, 255));
+            Texture2D buttonPressedTexture = CreateFilledTexture(device, 48, 22, new Color(84, 108, 170, 245), new Color(168, 194, 255, 255));
+
+            UIObject prevButton = CreateTextureButton(buttonNormalTexture, buttonPressedTexture);
+            UIObject nextButton = CreateTextureButton(buttonNormalTexture, buttonPressedTexture);
+            UIObject selectButton = CreateTextureButton(buttonNormalTexture, buttonPressedTexture);
+            UIObject closeButton = CreateTextureButton(buttonNormalTexture, buttonPressedTexture);
+
+            if (prevButton != null)
+            {
+                prevButton.X = 34;
+                prevButton.Y = 90;
+            }
+
+            if (nextButton != null)
+            {
+                nextButton.X = 118;
+                nextButton.Y = 90;
+            }
+
+            if (selectButton != null)
+            {
+                selectButton.X = 47;
+                selectButton.Y = 185;
+            }
+
+            if (closeButton != null)
+            {
+                closeButton.X = 104;
+                closeButton.Y = 185;
+            }
+
+            RecommendWorldWindow window = new RecommendWorldWindow(
+                new DXObject(0, 0, frameTexture, 0),
+                highlightTexture,
+                prevButton,
+                nextButton,
+                selectButton,
+                closeButton)
+            {
+                Position = new Point(Math.Max(24, (screenWidth / 2) - 100), Math.Max(24, (screenHeight / 2) - 160))
+            };
+
+            manager.RegisterCustomWindow(window);
         }
 
         private static WorldSelectWindow CreateWorldSelectWindow(GraphicsDevice device, Dictionary<int, Texture2D> worldBadges)
@@ -3157,6 +3367,7 @@ namespace HaCreator.MapSimulator.Loaders
         private static void RegisterMemoMailboxWindow(
             UIWindowManager manager,
             WzImage uiWindow1Image,
+            WzImage uiWindow2Image,
             WzImage basicImage,
             WzImage soundUIImage,
             GraphicsDevice device,
@@ -3169,6 +3380,39 @@ namespace HaCreator.MapSimulator.Loaders
 
             UIWindowBase memoMailboxWindow = CreateMemoMailboxWindow(uiWindow1Image, basicImage, soundUIImage, device, position);
             manager.RegisterCustomWindow(memoMailboxWindow);
+
+            UIWindowBase memoSendWindow = CreateMemoSendWindow(uiWindow2Image, basicImage, soundUIImage, device, new Point(position.X + 24, position.Y + 18));
+            if (memoSendWindow != null)
+            {
+                manager.RegisterCustomWindow(memoSendWindow);
+            }
+
+            UIWindowBase memoGetWindow = CreateMemoGetWindow(uiWindow2Image, basicImage, soundUIImage, device, new Point(position.X + 18, position.Y + 10));
+            if (memoGetWindow != null)
+            {
+                manager.RegisterCustomWindow(memoGetWindow);
+            }
+        }
+
+        private static void RegisterSocialListWindow(
+            UIWindowManager manager,
+            WzImage uiWindow1Image,
+            WzImage uiWindow2Image,
+            WzImage basicImage,
+            WzImage soundUIImage,
+            GraphicsDevice device,
+            Point position)
+        {
+            if (manager.GetWindow(MapSimulatorWindowNames.SocialList) != null)
+            {
+                return;
+            }
+
+            UIWindowBase socialListWindow = CreateSocialListWindow(uiWindow1Image, uiWindow2Image, basicImage, soundUIImage, device, position);
+            if (socialListWindow != null)
+            {
+                manager.RegisterCustomWindow(socialListWindow);
+            }
         }
 
         private static void RegisterMessengerWindow(
@@ -3187,6 +3431,39 @@ namespace HaCreator.MapSimulator.Loaders
 
             UIWindowBase messengerWindow = CreateMessengerWindow(uiWindow1Image, uiWindow2Image, basicImage, soundUIImage, device, position);
             manager.RegisterCustomWindow(messengerWindow);
+        }
+
+        public static void RegisterGuildBbsWindow(
+            UIWindowManager manager,
+            WzImage guildBbsImage,
+            WzImage basicImage,
+            WzImage soundUIImage,
+            GraphicsDevice device,
+            Point position)
+        {
+            if (manager == null || manager.GetWindow(MapSimulatorWindowNames.GuildBbs) != null)
+            {
+                return;
+            }
+
+            manager.RegisterCustomWindow(CreateGuildBbsWindow(guildBbsImage, basicImage, soundUIImage, device, position));
+        }
+
+        private static void RegisterMapleTvWindow(
+            UIWindowManager manager,
+            WzImage uiWindow1Image,
+            WzImage basicImage,
+            WzImage soundUIImage,
+            GraphicsDevice device,
+            Point position)
+        {
+            if (manager.GetWindow(MapSimulatorWindowNames.MapleTv) != null)
+            {
+                return;
+            }
+
+            UIWindowBase mapleTvWindow = CreateMapleTvWindow(uiWindow1Image, basicImage, soundUIImage, device, position);
+            manager.RegisterCustomWindow(mapleTvWindow);
         }
 
         private static UIWindowBase CreateMiniRoomWindow(
@@ -3646,6 +3923,269 @@ namespace HaCreator.MapSimulator.Loaders
             return window;
         }
 
+        private static UIWindowBase CreateMemoSendWindow(
+            WzImage uiWindow2Image,
+            WzImage basicImage,
+            WzImage soundUIImage,
+            GraphicsDevice device,
+            Point position)
+        {
+            WzSubProperty memoProperty = uiWindow2Image?["Memo"]?["Send"] as WzSubProperty;
+            if (memoProperty == null)
+            {
+                return null;
+            }
+
+            Texture2D frameTexture = LoadCanvasTexture(memoProperty, "backgrnd", device);
+            if (frameTexture == null)
+            {
+                return null;
+            }
+
+            WzBinaryProperty btClickSound = soundUIImage?["BtMouseClick"] as WzBinaryProperty;
+            WzBinaryProperty btOverSound = soundUIImage?["BtMouseOver"] as WzBinaryProperty;
+
+            MemoSendWindow window = new MemoSendWindow(
+                new DXObject(0, 0, frameTexture, 0),
+                LoadWindowCanvasLayerWithOffset(memoProperty, "backgrnd2", device, out Point overlayOffset),
+                overlayOffset,
+                LoadWindowCanvasLayerWithOffset(memoProperty, "backgrnd3", device, out Point headerOffset),
+                headerOffset)
+            {
+                Position = position
+            };
+
+            window.InitializeControls(
+                LoadButton(memoProperty, "BtOK", btClickSound, btOverSound, device),
+                LoadButton(memoProperty, "BtCancle", btClickSound, btOverSound, device));
+
+            WzSubProperty closeButtonProperty = basicImage?["BtClose"] as WzSubProperty;
+            if (closeButtonProperty != null)
+            {
+                try
+                {
+                    UIObject closeBtn = new UIObject(closeButtonProperty, btClickSound, btOverSound, false, Point.Zero, device);
+                    closeBtn.X = frameTexture.Width - closeBtn.CanvasSnapshotWidth - 8;
+                    closeBtn.Y = 8;
+                    window.InitializeCloseButton(closeBtn);
+                }
+                catch
+                {
+                }
+            }
+
+            return window;
+        }
+
+        private static UIWindowBase CreateMemoGetWindow(
+            WzImage uiWindow2Image,
+            WzImage basicImage,
+            WzImage soundUIImage,
+            GraphicsDevice device,
+            Point position)
+        {
+            WzSubProperty memoProperty = uiWindow2Image?["Memo"]?["Get"] as WzSubProperty;
+            if (memoProperty == null)
+            {
+                return null;
+            }
+
+            Texture2D frameTexture = LoadCanvasTexture(memoProperty, "backgrnd", device);
+            if (frameTexture == null)
+            {
+                return null;
+            }
+
+            WzBinaryProperty btClickSound = soundUIImage?["BtMouseClick"] as WzBinaryProperty;
+            WzBinaryProperty btOverSound = soundUIImage?["BtMouseOver"] as WzBinaryProperty;
+            WzSubProperty sheetProperty = memoProperty["sheet"] as WzSubProperty;
+            IDXObject sheetLayer = LoadWindowCanvasLayerWithOffset(sheetProperty, "innerCenter", device, out Point sheetOffset)
+                ?? LoadWindowCanvasLayerWithOffset(sheetProperty, "innerTop", device, out sheetOffset);
+
+            MemoGetWindow window = new MemoGetWindow(
+                new DXObject(0, 0, frameTexture, 0),
+                LoadWindowCanvasLayerWithOffset(memoProperty, "backgrnd2", device, out Point overlayOffset),
+                overlayOffset,
+                LoadWindowCanvasLayerWithOffset(memoProperty, "backgrnd3", device, out Point headerOffset),
+                headerOffset,
+                sheetLayer,
+                sheetOffset,
+                LoadWindowCanvasLayerWithOffset(memoProperty, "line", device, out Point lineOffset),
+                lineOffset)
+            {
+                Position = position
+            };
+
+            window.InitializeControls(
+                LoadButton(memoProperty, "BtOK", btClickSound, btOverSound, device),
+                LoadButton(memoProperty, "BtClame", btClickSound, btOverSound, device));
+
+            WzSubProperty closeButtonProperty = basicImage?["BtClose"] as WzSubProperty;
+            if (closeButtonProperty != null)
+            {
+                try
+                {
+                    UIObject closeBtn = new UIObject(closeButtonProperty, btClickSound, btOverSound, false, Point.Zero, device);
+                    closeBtn.X = frameTexture.Width - closeBtn.CanvasSnapshotWidth - 8;
+                    closeBtn.Y = 8;
+                    window.InitializeCloseButton(closeBtn);
+                }
+                catch
+                {
+                }
+            }
+
+            return window;
+        }
+
+        private static UIWindowBase CreateSocialListWindow(
+            WzImage uiWindow1Image,
+            WzImage uiWindow2Image,
+            WzImage basicImage,
+            WzImage soundUIImage,
+            GraphicsDevice device,
+            Point position)
+        {
+            WzSubProperty userListProperty = uiWindow2Image?["UserList"] as WzSubProperty
+                ?? uiWindow1Image?["UserList"] as WzSubProperty;
+            WzSubProperty mainProperty = userListProperty?["Main"] as WzSubProperty;
+            WzCanvasProperty backgroundProperty = mainProperty?["backgrnd"] as WzCanvasProperty
+                ?? userListProperty?["backgrnd"] as WzCanvasProperty;
+            Texture2D frameTexture = backgroundProperty?.GetLinkedWzCanvasBitmap()?.ToTexture2DAndDispose(device);
+            if (frameTexture == null)
+            {
+                return CreatePlaceholderUtilityWindow(
+                    basicImage,
+                    soundUIImage,
+                    device,
+                    MapSimulatorWindowNames.SocialList,
+                    "Social",
+                    "Fallback owner for friend, party, guild, alliance, and blacklist windows.",
+                    position);
+            }
+
+            Texture2D[] enabledTabs = new Texture2D[5];
+            Texture2D[] disabledTabs = new Texture2D[5];
+            WzSubProperty tabProperty = mainProperty?["Tab"] as WzSubProperty ?? userListProperty?["Tab"] as WzSubProperty;
+            WzSubProperty enabledTabProperty = tabProperty?["enabled"] as WzSubProperty;
+            WzSubProperty disabledTabProperty = tabProperty?["disabled"] as WzSubProperty;
+            for (int i = 0; i < enabledTabs.Length; i++)
+            {
+                enabledTabs[i] = LoadCanvasTexture(enabledTabProperty, i.ToString(), device);
+                disabledTabs[i] = LoadCanvasTexture(disabledTabProperty, i.ToString(), device);
+            }
+
+            SocialListWindow window = new SocialListWindow(
+                new DXObject(0, 0, frameTexture, 0),
+                LoadWindowCanvasLayerWithOffset(mainProperty ?? userListProperty, "backgrnd2", device, out Point overlayOffset),
+                overlayOffset,
+                enabledTabs,
+                disabledTabs,
+                device)
+            {
+                Position = position
+            };
+
+            RegisterSocialListHeader(window, SocialListTab.Friend, mainProperty?["Friend"] as WzSubProperty, "title", device);
+            RegisterSocialListHeader(window, SocialListTab.Party, mainProperty?["Party"] as WzSubProperty, "partyOn", device);
+            RegisterSocialListHeader(window, SocialListTab.Guild, mainProperty?["Guild"] as WzSubProperty, "guildOn", device);
+            RegisterSocialListHeader(window, SocialListTab.Alliance, mainProperty?["Union"] as WzSubProperty, "guildName", device);
+            RegisterSocialListHeader(window, SocialListTab.Blacklist, mainProperty?["BlackList"] as WzSubProperty, "base", device);
+
+            WzBinaryProperty clickSound = soundUIImage?["BtMouseClick"] as WzBinaryProperty;
+            WzBinaryProperty overSound = soundUIImage?["BtMouseOver"] as WzBinaryProperty;
+            window.SetPageButtons(
+                LoadButton(userListProperty, "BtPagePre", clickSound, overSound, device),
+                LoadButton(userListProperty, "BtPageNext", clickSound, overSound, device));
+            window.SetFriendFilterButtons(
+                LoadButton(mainProperty?["Friend"] as WzSubProperty, "TapShowAll", clickSound, overSound, device),
+                LoadButton(mainProperty?["Friend"] as WzSubProperty, "TapShowOnline", clickSound, overSound, device));
+
+            RegisterSocialListActionButtons(window, SocialListTab.Friend, mainProperty?["Friend"] as WzSubProperty, clickSound, overSound, device,
+                ("Friend.AddFriend", "BtAddFriend"),
+                ("Friend.Party", "BtParty"),
+                ("Friend.Whisper", "BtWhisper"),
+                ("Friend.Message", "BtMessage"),
+                ("Friend.Delete", "BtDelete"),
+                ("Friend.Block", "BtBlock"),
+                ("Friend.UnBlock", "BtUnBlock"));
+            RegisterSocialListActionButtons(window, SocialListTab.Party, mainProperty?["Party"] as WzSubProperty, clickSound, overSound, device,
+                ("Party.Create", "BtCreate"),
+                ("Party.Invite", "BtInvite"),
+                ("Party.Kick", "BtKick"),
+                ("Party.Withdraw", "BtWithdraw"),
+                ("Party.Whisper", "BtWhisper"),
+                ("Party.Chat", "BtChat"),
+                ("Party.ChangeBoss", "BtChangeBoss"),
+                ("Party.Search", "BtSearch"));
+            RegisterSocialListActionButtons(window, SocialListTab.Guild, mainProperty?["Guild"] as WzSubProperty, clickSound, overSound, device,
+                ("Guild.Board", "BtBoard"),
+                ("Guild.Invite", "BtInvite"),
+                ("Guild.Withdraw", "BtWithdraw"),
+                ("Guild.PartyInvite", "BtPartyInvite"),
+                ("Guild.Kick", "BtKick"),
+                ("Guild.Where", "BtWhere"),
+                ("Guild.Whisper", "BtWhisper"),
+                ("Guild.Info", "BtInfo"));
+            RegisterSocialListActionButtons(window, SocialListTab.Alliance, mainProperty?["Union"] as WzSubProperty, clickSound, overSound, device,
+                ("Alliance.Invite", "BtInvite"),
+                ("Alliance.Withdraw", "BtWithdraw"),
+                ("Alliance.PartyInvite", "BtPartyInvite"),
+                ("Alliance.Kick", "BtKick"),
+                ("Alliance.Change", "BtChange"),
+                ("Alliance.Whisper", "BtWhisper"),
+                ("Alliance.Info", "BtInfo"));
+            RegisterSocialListActionButtons(window, SocialListTab.Blacklist, mainProperty?["BlackList"] as WzSubProperty, clickSound, overSound, device,
+                ("Blacklist.Add", "BtAdd"),
+                ("Blacklist.Delete", "BtDelete"));
+
+            window.InitializeCloseButton(CreateUserInfoCloseButton(basicImage, clickSound, overSound, device, frameTexture.Width));
+            return window;
+        }
+
+        private static void RegisterSocialListHeader(
+            SocialListWindow window,
+            SocialListTab tab,
+            WzSubProperty sourceProperty,
+            string canvasName,
+            GraphicsDevice device)
+        {
+            if (window == null || sourceProperty == null)
+            {
+                return;
+            }
+
+            IDXObject headerLayer = LoadWindowCanvasLayerWithOffset(sourceProperty, canvasName, device, out Point offset);
+            if (headerLayer != null)
+            {
+                window.RegisterHeaderLayer(tab, headerLayer, offset);
+            }
+        }
+
+        private static void RegisterSocialListActionButtons(
+            SocialListWindow window,
+            SocialListTab tab,
+            WzSubProperty sourceProperty,
+            WzBinaryProperty clickSound,
+            WzBinaryProperty overSound,
+            GraphicsDevice device,
+            params (string ActionKey, string ButtonName)[] buttonMappings)
+        {
+            if (window == null || sourceProperty == null || buttonMappings == null)
+            {
+                return;
+            }
+
+            foreach ((string actionKey, string buttonName) in buttonMappings)
+            {
+                UIObject button = LoadButton(sourceProperty, buttonName, clickSound, overSound, device);
+                if (button != null)
+                {
+                    window.RegisterActionButton(tab, actionKey, button);
+                }
+            }
+        }
+
         private static UIWindowBase CreateMessengerWindow(
             WzImage uiWindow1Image,
             WzImage uiWindow2Image,
@@ -3744,6 +4284,131 @@ namespace HaCreator.MapSimulator.Loaders
                 catch
                 {
                 }
+            }
+
+            return window;
+        }
+
+        private static UIWindowBase CreateMapleTvWindow(
+            WzImage uiWindow1Image,
+            WzImage basicImage,
+            WzImage soundUIImage,
+            GraphicsDevice device,
+            Point position)
+        {
+            WzSubProperty sourceProperty = uiWindow1Image?["MapleTV"] as WzSubProperty;
+            if (sourceProperty == null)
+            {
+                return CreatePlaceholderUtilityWindow(
+                    basicImage,
+                    soundUIImage,
+                    device,
+                    MapSimulatorWindowNames.MapleTv,
+                    "MapleTV",
+                    "Fallback owner for the MapleTV send board and timed broadcast surface.",
+                    position);
+            }
+
+            Texture2D selfFrameTexture = LoadCanvasTexture(sourceProperty, "backgrnd", device);
+            Texture2D receiverFrameTexture = LoadCanvasTexture(sourceProperty, "backgrnd3", device) ?? selfFrameTexture;
+            if (selfFrameTexture == null || receiverFrameTexture == null)
+            {
+                return CreatePlaceholderUtilityWindow(
+                    basicImage,
+                    soundUIImage,
+                    device,
+                    MapSimulatorWindowNames.MapleTv,
+                    "MapleTV",
+                    "Fallback owner for the MapleTV send board and timed broadcast surface.",
+                    position);
+            }
+
+            WzBinaryProperty btClickSound = soundUIImage?["BtMouseClick"] as WzBinaryProperty;
+            WzBinaryProperty btOverSound = soundUIImage?["BtMouseOver"] as WzBinaryProperty;
+            MapleTvWindow window = new MapleTvWindow(
+                new DXObject(0, 0, selfFrameTexture, 0),
+                new DXObject(0, 0, receiverFrameTexture, 0),
+                LoadWindowCanvasLayerWithOffset(sourceProperty, "backgrnd2", device, out Point selfOverlayOffset),
+                selfOverlayOffset,
+                LoadWindowCanvasLayerWithOffset(sourceProperty, "backgrnd4", device, out Point receiverOverlayOffset),
+                receiverOverlayOffset)
+            {
+                Position = position
+            };
+
+            window.InitializeControls(
+                LoadButton(sourceProperty, "BtOk", btClickSound, btOverSound, device),
+                LoadButton(sourceProperty, "BtCancel", btClickSound, btOverSound, device),
+                LoadButton(sourceProperty, "BtTo", btClickSound, btOverSound, device));
+
+            WzSubProperty closeButtonProperty = basicImage?["BtClose"] as WzSubProperty;
+            if (closeButtonProperty != null)
+            {
+                try
+                {
+                    UIObject closeBtn = new UIObject(closeButtonProperty, btClickSound, btOverSound, false, Point.Zero, device);
+                    closeBtn.X = selfFrameTexture.Width - closeBtn.CanvasSnapshotWidth - 8;
+                    closeBtn.Y = 8;
+                    window.InitializeCloseButton(closeBtn);
+                }
+                catch
+                {
+                }
+            }
+
+            return window;
+        }
+
+        private static UIWindowBase CreateGuildBbsWindow(
+            WzImage guildBbsImage,
+            WzImage basicImage,
+            WzImage soundUIImage,
+            GraphicsDevice device,
+            Point position)
+        {
+            WzSubProperty sourceProperty = guildBbsImage?["GuildBBS"] as WzSubProperty;
+            Texture2D frameTexture = LoadCanvasTexture(sourceProperty, "backgrnd", device);
+            if (frameTexture == null)
+            {
+                return CreatePlaceholderUtilityWindow(
+                    basicImage,
+                    soundUIImage,
+                    device,
+                    MapSimulatorWindowNames.GuildBbs,
+                    "Guild BBS",
+                    "Fallback owner for the dedicated guild board thread and reply surface.",
+                    position);
+            }
+
+            WzBinaryProperty btClickSound = soundUIImage?["BtMouseClick"] as WzBinaryProperty;
+            WzBinaryProperty btOverSound = soundUIImage?["BtMouseOver"] as WzBinaryProperty;
+
+            GuildBbsWindow window = new GuildBbsWindow(
+                new DXObject(0, 0, frameTexture, 0),
+                LoadWindowCanvasLayerWithOffset(sourceProperty, "backgrnd2", device, out Point overlayOffset),
+                overlayOffset,
+                LoadWindowCanvasLayerWithOffset(sourceProperty, "backgrnd3", device, out Point contentOffset),
+                contentOffset,
+                device)
+            {
+                Position = position
+            };
+
+            window.InitializeButtons(
+                LoadButton(sourceProperty, "BtRegister", btClickSound, btOverSound, device),
+                LoadButton(sourceProperty, "BtCancel", btClickSound, btOverSound, device),
+                LoadButton(sourceProperty, "BtNotice", btClickSound, btOverSound, device),
+                LoadButton(sourceProperty, "BtWrite", btClickSound, btOverSound, device),
+                LoadButton(sourceProperty, "BtRetouch", btClickSound, btOverSound, device),
+                LoadButton(sourceProperty, "BtDelete", btClickSound, btOverSound, device),
+                LoadButton(sourceProperty, "BtQuit", btClickSound, btOverSound, device),
+                LoadButton(sourceProperty, "BtReply", btClickSound, btOverSound, device),
+                LoadButton(sourceProperty, "BtReplyDelete", btClickSound, btOverSound, device));
+
+            UIObject closeButton = CreateUserInfoCloseButton(basicImage, btClickSound, btOverSound, device, frameTexture.Width);
+            if (closeButton != null)
+            {
+                window.InitializeCloseButton(closeButton);
             }
 
             return window;

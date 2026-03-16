@@ -11,6 +11,13 @@ using System.Linq;
 
 namespace HaCreator.MapSimulator.Companions
 {
+    public enum PetRenderPlane
+    {
+        BehindOwner = 0,
+        UnderFace = 1,
+        InFrontOfOwner = 2
+    }
+
     public enum PetAutoSpeechEvent
     {
         LevelUp = 0,
@@ -84,7 +91,9 @@ namespace HaCreator.MapSimulator.Companions
         public bool HasActiveSpeech => !string.IsNullOrWhiteSpace(_activeSpeechText);
         public string ActiveSpeechText => _activeSpeechText;
         public int ActiveSpeechExpiresAt => _activeSpeechExpiresAt;
-        internal bool DrawBehindOwner => _hangOnBack;
+        internal PetRenderPlane RenderPlane => _hangOnBack
+            ? PetRenderPlane.UnderFace
+            : PetRenderPlane.InFrontOfOwner;
 
         internal void SetPosition(float x, float y, bool facingRight)
         {
@@ -161,7 +170,7 @@ namespace HaCreator.MapSimulator.Companions
             }
 
             FacingRight = owner.FacingRight;
-            Vector2 followTarget = GetFollowTarget(owner, activePetCount);
+            Vector2 followTarget = GetFollowTarget(owner, currentTime, activePetCount);
             Vector2 desiredTarget = followTarget;
             float moveSpeed = _hangOnBack ? HangOnBackMoveSpeed : FollowSpeed;
             bool chasingDrop = false;
@@ -248,9 +257,9 @@ namespace HaCreator.MapSimulator.Companions
         }
 
         public void Draw(SpriteBatch spriteBatch, SkeletonMeshRenderer skeletonRenderer,
-            int mapShiftX, int mapShiftY, int centerX, int centerY, bool drawBehindOwner)
+            int mapShiftX, int mapShiftY, int centerX, int centerY, PetRenderPlane plane)
         {
-            if (DrawBehindOwner != drawBehindOwner)
+            if (RenderPlane != plane)
             {
                 return;
             }
@@ -266,11 +275,13 @@ namespace HaCreator.MapSimulator.Companions
             frame.DrawBackground(spriteBatch, skeletonRenderer, null, screenX, screenY, Color.White, !FacingRight, null);
         }
 
-        private Vector2 GetFollowTarget(PlayerCharacter owner, int activePetCount)
+        private Vector2 GetFollowTarget(PlayerCharacter owner, int currentTime, int activePetCount)
         {
+            Point? ownerBodyOrigin = owner.TryGetCurrentBodyOrigin(currentTime);
             return ResolveAnchorTarget(
                 owner.X,
                 owner.Y,
+                ownerBodyOrigin,
                 owner.GetHitbox(),
                 owner.FacingRight,
                 owner.State,
@@ -283,6 +294,7 @@ namespace HaCreator.MapSimulator.Companions
         internal static Vector2 ResolveAnchorTarget(
             float ownerX,
             float ownerY,
+            Point? ownerBodyOrigin,
             Rectangle ownerHitbox,
             bool ownerFacingRight,
             PlayerState ownerState,
@@ -320,6 +332,11 @@ namespace HaCreator.MapSimulator.Companions
             }
 
             float baseY = ownerHitbox.IsEmpty ? ownerY - 42f : ownerHitbox.Top + yOffset;
+            if (ownerBodyOrigin.HasValue)
+            {
+                baseY = ownerBodyOrigin.Value.Y + yOffset;
+            }
+
             return new Vector2(ownerX + (backDirection * xOffset), baseY);
         }
 
@@ -679,6 +696,25 @@ namespace HaCreator.MapSimulator.Companions
             return pet != null && pet.TryTriggerSlangFeedback(currentTime);
         }
 
+        public bool TryTriggerSpeechEvent(PetAutoSpeechEvent eventType, int currentTime, int? slotIndex = null)
+        {
+            if (slotIndex.HasValue)
+            {
+                PetRuntime pet = GetPetAt(slotIndex.Value);
+                return pet != null && pet.TryTriggerAutoSpeechEvent(eventType, currentTime);
+            }
+
+            for (int i = 0; i < _activePets.Count; i++)
+            {
+                if (_activePets[i].TryTriggerAutoSpeechEvent(eventType, currentTime))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
         public bool TryTriggerFoodFeedback(int slotIndex, int variant, bool success, int currentTime)
         {
             PetRuntime pet = GetPetAt(slotIndex);
@@ -707,11 +743,11 @@ namespace HaCreator.MapSimulator.Companions
         }
 
         public void Draw(SpriteBatch spriteBatch, SkeletonMeshRenderer skeletonRenderer,
-            int mapShiftX, int mapShiftY, int centerX, int centerY, bool drawBehindOwner)
+            int mapShiftX, int mapShiftY, int centerX, int centerY, PetRenderPlane plane)
         {
             for (int i = 0; i < _activePets.Count; i++)
             {
-                _activePets[i].Draw(spriteBatch, skeletonRenderer, mapShiftX, mapShiftY, centerX, centerY, drawBehindOwner);
+                _activePets[i].Draw(spriteBatch, skeletonRenderer, mapShiftX, mapShiftY, centerX, centerY, plane);
             }
         }
 

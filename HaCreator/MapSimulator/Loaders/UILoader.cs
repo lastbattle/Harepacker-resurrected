@@ -1273,6 +1273,7 @@ namespace HaCreator.MapSimulator.Loaders
             int alignmentXOffset = HaUIHelper.CalculateAlignmentOffset(fullMiniMapStackPanelSize.Width, minimapUiImage.GetInfo().Bitmap.Width, minimapUiGrid.GetInfo().HorizontalAlignment);
 
             Point minimapImageOffset = new Point(MAP_IMAGE_TEXT_PADDING + alignmentXOffset, 0);
+            BaseDXDrawableItem userMarker = null;
             BaseDXDrawableItem npcMarker = null;
             BaseDXDrawableItem questStartNpcMarker = null;
             BaseDXDrawableItem questEndNpcMarker = null;
@@ -1282,6 +1283,20 @@ namespace HaCreator.MapSimulator.Loaders
 
             WzSubProperty minimapSimpleModeProperty = uiWindow2Image?["MiniMapSimpleMode"] as WzSubProperty;
             WzSubProperty defaultHelperProperty = minimapSimpleModeProperty?["DefaultHelper"] as WzSubProperty;
+
+            WzCanvasProperty userCanvas = defaultHelperProperty?["user"] as WzCanvasProperty;
+            if (userCanvas != null)
+            {
+                System.Drawing.Bitmap userMarkerBitmap = userCanvas.GetLinkedWzCanvasBitmap();
+                if (userMarkerBitmap != null)
+                {
+                    IDXObject dxObjUserMarker = new DXObject(userCanvas.GetCanvasOriginPosition(), userMarkerBitmap.ToTexture2DAndDispose(device), 0);
+                    userMarker = new BaseDXDrawableItem(dxObjUserMarker, false)
+                    {
+                        Position = minimapImageOffset
+                    };
+                }
+            }
 
             WzCanvasProperty iconNpcCanvas =
                 defaultHelperProperty?["npc"] as WzCanvasProperty ??
@@ -1462,6 +1477,7 @@ namespace HaCreator.MapSimulator.Loaders
                 },
                 miniMapImage.Width,
                 miniMapImage.Height,
+                userMarker,
                 npcMarker,
                 questStartNpcMarker,
                 questEndNpcMarker,

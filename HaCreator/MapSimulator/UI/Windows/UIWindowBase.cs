@@ -53,6 +53,11 @@ namespace HaCreator.MapSimulator.UI
         public virtual bool SupportsDragging => true;
 
         /// <summary>
+        /// Whether the window currently owns keyboard input and should block chat or window hotkeys.
+        /// </summary>
+        public virtual bool CapturesKeyboardInput => false;
+
+        /// <summary>
         /// Character build for stat windows (AbilityUI, AbilityUIBigBang)
         /// Override in derived classes that need character stats
         /// </summary>

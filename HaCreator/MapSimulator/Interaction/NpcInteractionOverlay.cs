@@ -136,13 +136,13 @@ namespace HaCreator.MapSimulator.Interaction
             if (!windowRect.Contains(mousePoint))
             {
                 Close();
-                return new NpcInteractionOverlayResult(true, false);
+                return new NpcInteractionOverlayResult(true, null);
             }
 
             if (GetCloseButtonRectangle(windowRect).Contains(mousePoint))
             {
                 Close();
-                return new NpcInteractionOverlayResult(true, false);
+                return new NpcInteractionOverlayResult(true, null);
             }
 
             Rectangle entryListRect = GetEntryListRectangle(windowRect);
@@ -157,7 +157,7 @@ namespace HaCreator.MapSimulator.Interaction
 
                     _selectedEntryIndex = i;
                     ResetCurrentPages();
-                    return new NpcInteractionOverlayResult(true, false);
+                    return new NpcInteractionOverlayResult(true, null);
                 }
             }
 
@@ -178,7 +178,7 @@ namespace HaCreator.MapSimulator.Interaction
                 _pageContextStack.Push(new PageContext(_currentPages, _currentPage));
                 _currentPages = choice.Pages;
                 _currentPage = 0;
-                return new NpcInteractionOverlayResult(true, false);
+                return new NpcInteractionOverlayResult(true, null);
             }
 
             if (GetPrevButtonRectangle(windowRect).Contains(mousePoint))
@@ -194,7 +194,7 @@ namespace HaCreator.MapSimulator.Interaction
                     _currentPage = context.PageIndex;
                 }
 
-                return new NpcInteractionOverlayResult(true, false);
+                return new NpcInteractionOverlayResult(true, null);
             }
 
             if (GetNextButtonRectangle(windowRect).Contains(mousePoint))
@@ -208,16 +208,16 @@ namespace HaCreator.MapSimulator.Interaction
                     Close();
                 }
 
-                return new NpcInteractionOverlayResult(true, false);
+                return new NpcInteractionOverlayResult(true, null);
             }
 
             Rectangle primaryRect = GetPrimaryButtonRectangle(windowRect);
             if (!string.IsNullOrEmpty(GetPrimaryButtonText()) && primaryRect.Contains(mousePoint))
             {
-                return new NpcInteractionOverlayResult(true, SelectedEntry?.PrimaryActionEnabled == true);
+                return new NpcInteractionOverlayResult(true, SelectedEntry?.PrimaryActionEnabled == true ? SelectedEntry : null);
             }
 
-            return new NpcInteractionOverlayResult(true, false);
+            return new NpcInteractionOverlayResult(true, null);
         }
 
         public void Draw(SpriteBatch spriteBatch, int renderWidth, int renderHeight)

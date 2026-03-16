@@ -257,6 +257,9 @@ namespace HaCreator.MapSimulator.Character
         private Func<float, float, float, FootholdLine> _findFoothold;
         private Func<float, float, float, (int x, int top, int bottom, bool isLadder)?> _findLadder;
         private Func<float, float, float, bool> _checkSwimArea;
+        private Func<int, CharacterPart> _portableChairTamingMobLoader;
+        private CharacterPart _portableChairPreviousMount;
+        private bool _portableChairAppliedMount;
 
         // Preserve ladder context across hit knockback so holding UP can immediately re-grab it.
         private bool _pendingLadderRegrab;
@@ -324,6 +327,11 @@ namespace HaCreator.MapSimulator.Character
             _checkSwimArea = checkSwimArea;
         }
 
+        public void SetPortableChairTamingMobLoader(Func<int, CharacterPart> loader)
+        {
+            _portableChairTamingMobLoader = loader;
+        }
+
         /// <summary>
         /// Set jump sound callback (called when player jumps)
         /// </summary>
@@ -363,7 +371,9 @@ namespace HaCreator.MapSimulator.Character
                 return false;
             }
 
+            ClearPortableChairMountState();
             Build.ActivePortableChair = chair;
+            ApplyPortableChairMount(chair);
             Physics.VelocityX = 0;
             Physics.VelocityY = 0;
             Physics.CurrentAction = MoveAction.Stand;
@@ -383,6 +393,7 @@ namespace HaCreator.MapSimulator.Character
             }
 
             Build.ActivePortableChair = null;
+            ClearPortableChairMountState();
             if (standUp && State == PlayerState.Sitting)
             {
                 State = Physics.IsOnFoothold() ? PlayerState.Standing : PlayerState.Falling;
@@ -2152,7 +2163,8 @@ namespace HaCreator.MapSimulator.Character
         /// Draw the player
         /// </summary>
         public void Draw(SpriteBatch spriteBatch, SkeletonMeshRenderer skeletonRenderer,
-            int mapShiftX, int mapShiftY, int centerX, int centerY, int currentTime)
+            int mapShiftX, int mapShiftY, int centerX, int centerY, int currentTime,
+            Action drawUnderFaceOverlay = null)
         {
             int screenX = (int)X - mapShiftX + centerX;
             int screenY = (int)Y - mapShiftY + centerY;
@@ -2176,7 +2188,15 @@ namespace HaCreator.MapSimulator.Character
                     tint = Color.Lerp(Color.White, Color.Red, flash);
                 }
 
-                DrawFrameWithAvatarEffects(spriteBatch, skeletonRenderer, frame, screenX, screenY, tint, currentTime);
+                DrawFrameWithAvatarEffects(
+                    spriteBatch,
+                    skeletonRenderer,
+                    frame,
+                    screenX,
+                    screenY,
+                    tint,
+                    currentTime,
+                    drawUnderFaceOverlay);
             }
             else
             {
@@ -2232,7 +2252,8 @@ namespace HaCreator.MapSimulator.Character
             int screenX,
             int screenY,
             Color tint,
-            int currentTime)
+            int currentTime,
+            Action drawUnderFaceOverlay)
         {
             if (frame == null)
             {
@@ -2251,6 +2272,7 @@ namespace HaCreator.MapSimulator.Character
             {
                 if (!underFaceDrawn && i == underFaceInsertionIndex)
                 {
+                    drawUnderFaceOverlay?.Invoke();
                     DrawAvatarEffectPlane(spriteBatch, skeletonRenderer, avatarEffects, SkillAvatarEffectPlane.UnderFace, screenX, screenY, tint);
                     underFaceDrawn = true;
                 }
@@ -2260,6 +2282,7 @@ namespace HaCreator.MapSimulator.Character
 
             if (!underFaceDrawn)
             {
+                drawUnderFaceOverlay?.Invoke();
                 DrawAvatarEffectPlane(spriteBatch, skeletonRenderer, avatarEffects, SkillAvatarEffectPlane.UnderFace, screenX, screenY, tint);
             }
 
@@ -2396,6 +2419,47 @@ namespace HaCreator.MapSimulator.Character
             return _inputLeft || _inputRight || _inputUp || _inputJump || _inputAttack;
         }
 
+        private void ApplyPortableChairMount(PortableChair chair)
+        {
+            if (Build == null
+                || chair?.TamingMobItemId is not int tamingMobItemId
+                || tamingMobItemId <= 0
+                || _portableChairTamingMobLoader == null)
+            {
+                return;
+            }
+
+            CharacterPart mountPart = _portableChairTamingMobLoader(tamingMobItemId);
+            if (mountPart?.Slot != EquipSlot.TamingMob)
+            {
+                return;
+            }
+
+            Build.Equipment.TryGetValue(EquipSlot.TamingMob, out _portableChairPreviousMount);
+            Build.Equip(mountPart);
+            _portableChairAppliedMount = true;
+        }
+
+        private void ClearPortableChairMountState()
+        {
+            if (Build == null || !_portableChairAppliedMount)
+            {
+                return;
+            }
+
+            if (_portableChairPreviousMount != null)
+            {
+                Build.Equip(_portableChairPreviousMount);
+            }
+            else
+            {
+                Build.Unequip(EquipSlot.TamingMob);
+            }
+
+            _portableChairPreviousMount = null;
+            _portableChairAppliedMount = false;
+        }
+
         private void ClearTransientSkillAvatarEffect(int skillId)
         {
             for (int i = _transientSkillAvatarEffects.Count - 1; i >= 0; i--)
@@ -2479,6 +2543,19 @@ namespace HaCreator.MapSimulator.Character
                 (int)Y + HITBOX_OFFSET_Y,
                 HITBOX_WIDTH,
                 HITBOX_HEIGHT);
+        }
+
+        public Point? TryGetCurrentBodyOrigin(int currentTime)
+        {
+            if (Assembler == null)
+            {
+                return null;
+            }
+
+            AssembledFrame frame = Assembler.GetFrameAtTime(CurrentActionName, GetRenderAnimationTime(currentTime));
+            return frame == null
+                ? null
+                : new Point((int)X, (int)Y - frame.FeetOffset);
         }
 
         private void ClearForcedActionName()

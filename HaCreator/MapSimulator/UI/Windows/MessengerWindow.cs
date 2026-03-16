@@ -7,6 +7,7 @@ using Microsoft.Xna.Framework.Input;
 using Spine;
 using System;
 using System.Collections.Generic;
+using System.Text;
 
 namespace HaCreator.MapSimulator.UI
 {
@@ -32,14 +33,27 @@ namespace HaCreator.MapSimulator.UI
         private readonly Point _minContentOffset;
         private readonly Texture2D[] _nameBarTextures;
         private readonly Texture2D _pixel;
+        private readonly StringBuilder _inputText = new(80);
 
         private SpriteFont _font;
+        private KeyboardState _previousKeyboardState;
         private MouseState _previousMouseState;
         private bool _isMinimized;
+        private bool _inputActive;
+        private bool _whisperMode;
+        private int _cursorPosition;
+        private int _cursorBlinkTimer;
+        private Keys _lastHeldKey = Keys.None;
+        private int _keyHoldStartTime;
+        private int _lastKeyRepeatTime;
+        private Point? _clickStartPoint;
         private Func<MessengerSnapshot> _snapshotProvider;
         private Action<int> _slotSelectionHandler;
         private Func<string> _inviteHandler;
         private Func<string> _whisperHandler;
+        private Func<string> _leaveHandler;
+        private Func<string, string> _sendMessageHandler;
+        private Func<string, string> _sendWhisperHandler;
         private Action<string> _feedbackHandler;
         private UIObject _enterButton;
         private UIObject _claimButton;
@@ -79,6 +93,7 @@ namespace HaCreator.MapSimulator.UI
         }
 
         public override string WindowName => MapSimulatorWindowNames.Messenger;
+        public override bool CapturesKeyboardInput => IsVisible && _inputActive;
 
         internal void SetSnapshotProvider(Func<MessengerSnapshot> provider)
         {
@@ -89,11 +104,17 @@ namespace HaCreator.MapSimulator.UI
             Action<int> slotSelectionHandler,
             Func<string> inviteHandler,
             Func<string> whisperHandler,
+            Func<string> leaveHandler,
+            Func<string, string> sendMessageHandler,
+            Func<string, string> sendWhisperHandler,
             Action<string> feedbackHandler)
         {
             _slotSelectionHandler = slotSelectionHandler;
             _inviteHandler = inviteHandler;
             _whisperHandler = whisperHandler;
+            _leaveHandler = leaveHandler;
+            _sendMessageHandler = sendMessageHandler;
+            _sendWhisperHandler = sendWhisperHandler;
             _feedbackHandler = feedbackHandler;
         }
 
@@ -128,18 +149,57 @@ namespace HaCreator.MapSimulator.UI
             MessengerSnapshot snapshot = GetSnapshot();
             UpdateButtonStates(snapshot);
 
+            KeyboardState keyboardState = Keyboard.GetState();
+            if (_inputActive)
+            {
+                HandleKeyboardInput(keyboardState, snapshot, Environment.TickCount);
+            }
+            else
+            {
+                ResetKeyRepeat();
+            }
+
             MouseState mouseState = Mouse.GetState();
+            bool leftPressed = mouseState.LeftButton == ButtonState.Pressed
+                && _previousMouseState.LeftButton == ButtonState.Released;
             bool leftReleased = mouseState.LeftButton == ButtonState.Released
                 && _previousMouseState.LeftButton == ButtonState.Pressed;
+            if (leftPressed && ContainsPoint(mouseState.X, mouseState.Y))
+            {
+                _clickStartPoint = new Point(mouseState.X, mouseState.Y);
+            }
+
             if (leftReleased && ContainsPoint(mouseState.X, mouseState.Y))
             {
-                int slot = GetSlotIndexAt(mouseState.X, mouseState.Y);
-                if (slot >= 0)
+                bool treatAsClick = !_clickStartPoint.HasValue
+                    || Vector2.Distance(new Vector2(_clickStartPoint.Value.X, _clickStartPoint.Value.Y), new Vector2(mouseState.X, mouseState.Y)) <= 4f;
+                if (treatAsClick)
                 {
-                    _slotSelectionHandler?.Invoke(slot);
+                    if (GetLeaveButtonBounds().Contains(mouseState.X, mouseState.Y))
+                    {
+                        HandleLeave();
+                    }
+                    else if (!_isMinimized && GetInputBounds().Contains(mouseState.X, mouseState.Y))
+                    {
+                        ActivateInput(whisperMode: false, snapshot, clearText: false);
+                    }
+                    else
+                    {
+                        int slot = GetSlotIndexAt(mouseState.X, mouseState.Y);
+                        if (slot >= 0)
+                        {
+                            _slotSelectionHandler?.Invoke(slot);
+                        }
+                    }
                 }
             }
 
+            if (mouseState.LeftButton == ButtonState.Released)
+            {
+                _clickStartPoint = null;
+            }
+
+            _previousKeyboardState = keyboardState;
             _previousMouseState = mouseState;
         }
 
@@ -170,9 +230,11 @@ namespace HaCreator.MapSimulator.UI
 
             MessengerSnapshot snapshot = GetSnapshot();
             sprite.DrawString(_font, "Messenger", new Vector2(Position.X + 26, Position.Y + 7), Color.White, 0f, Vector2.Zero, 0.5f, SpriteEffects.None, 0f);
+            DrawLeaveControl(sprite, snapshot);
 
             DrawParticipantSlots(sprite, snapshot);
             DrawLogEntries(sprite, snapshot, contentOffset);
+            DrawInputPanel(sprite, snapshot, Environment.TickCount);
         }
 
         private void ConfigureButton(UIObject button, Action action)
@@ -196,7 +258,20 @@ namespace HaCreator.MapSimulator.UI
 
         private void HandleWhisper()
         {
-            ShowFeedback(_whisperHandler?.Invoke());
+            MessengerSnapshot snapshot = GetSnapshot();
+            if (!snapshot.CanWhisper)
+            {
+                ShowFeedback(_whisperHandler?.Invoke());
+                return;
+            }
+
+            if (_isMinimized)
+            {
+                SetMinimized(false);
+            }
+
+            ActivateInput(whisperMode: true, snapshot, clearText: true);
+            ShowFeedback($"Whispering to {snapshot.SelectedParticipantName}.");
         }
 
         private void ShowFeedback(string message)
@@ -210,6 +285,10 @@ namespace HaCreator.MapSimulator.UI
         private void SetMinimized(bool minimized)
         {
             _isMinimized = minimized;
+            if (_isMinimized)
+            {
+                DeactivateInput(clearText: false);
+            }
             RefreshFrame();
             UpdateButtonStates(GetSnapshot());
         }
@@ -238,6 +317,12 @@ namespace HaCreator.MapSimulator.UI
             {
                 _claimButton.SetButtonState(snapshot.CanWhisper ? UIObjectState.Normal : UIObjectState.Disabled);
             }
+        }
+
+        private void HandleLeave()
+        {
+            DeactivateInput(clearText: false);
+            ShowFeedback(_leaveHandler?.Invoke());
         }
 
         private void DrawParticipantSlots(SpriteBatch sprite, MessengerSnapshot snapshot)
@@ -286,21 +371,27 @@ namespace HaCreator.MapSimulator.UI
                 Position.X + contentOffset.X + 8,
                 Position.Y + contentOffset.Y + 8,
                 258,
-                _isMinimized ? 130 : 185);
+                _isMinimized ? 130 : 155);
 
             sprite.Draw(_pixel, panelBounds, new Color(7, 12, 20, 160));
 
             IReadOnlyList<MessengerLogEntrySnapshot> logEntries = snapshot.LogEntries ?? Array.Empty<MessengerLogEntrySnapshot>();
-            int visibleEntries = _isMinimized ? 5 : 8;
+            int visibleEntries = _isMinimized ? 5 : 6;
             int startIndex = Math.Max(0, logEntries.Count - visibleEntries);
             int y = panelBounds.Y + 8;
             for (int i = startIndex; i < logEntries.Count; i++)
             {
                 MessengerLogEntrySnapshot entry = logEntries[i];
-                Color color = entry.IsSystem ? new Color(255, 227, 150) : new Color(220, 227, 238);
+                Color color = entry.IsSystem
+                    ? new Color(255, 227, 150)
+                    : entry.IsWhisper
+                        ? new Color(255, 183, 241)
+                        : new Color(220, 227, 238);
                 string line = entry.IsSystem
                     ? entry.Message
-                    : $"{entry.Author}: {entry.Message}";
+                    : entry.IsWhisper
+                        ? $"[W] {entry.Author} -> {entry.TargetName}: {entry.Message}"
+                        : $"{entry.Author}: {entry.Message}";
 
                 foreach (string wrappedLine in WrapText(line, panelBounds.Width - 10))
                 {
@@ -317,6 +408,46 @@ namespace HaCreator.MapSimulator.UI
             }
         }
 
+        private void DrawInputPanel(SpriteBatch sprite, MessengerSnapshot snapshot, int tickCount)
+        {
+            if (_isMinimized)
+            {
+                return;
+            }
+
+            Rectangle inputBounds = GetInputBounds();
+            sprite.Draw(_pixel, inputBounds, _inputActive ? new Color(33, 53, 84, 225) : new Color(18, 25, 40, 190));
+
+            string label = _whisperMode && !string.IsNullOrWhiteSpace(snapshot.SelectedParticipantName)
+                ? $"Whisper > {snapshot.SelectedParticipantName}"
+                : "Messenger";
+            sprite.DrawString(_font, label, new Vector2(inputBounds.X + 6, inputBounds.Y - 12), new Color(202, 213, 226), 0f, Vector2.Zero, 0.35f, SpriteEffects.None, 0f);
+
+            string messageText = _inputText.Length > 0
+                ? _inputText.ToString()
+                : _whisperMode && !string.IsNullOrWhiteSpace(snapshot.SelectedParticipantName)
+                    ? $"Send a whisper to {snapshot.SelectedParticipantName}"
+                    : "Click here to chat with the Messenger room";
+            Color textColor = _inputText.Length > 0 ? Color.White : new Color(144, 156, 176);
+            sprite.DrawString(_font, messageText, new Vector2(inputBounds.X + 6, inputBounds.Y + 6), textColor, 0f, Vector2.Zero, 0.38f, SpriteEffects.None, 0f);
+
+            if (_inputActive && ((tickCount - _cursorBlinkTimer) / 500) % 2 == 0)
+            {
+                string textBeforeCursor = _inputText.ToString(0, Math.Clamp(_cursorPosition, 0, _inputText.Length));
+                float cursorX = inputBounds.X + 6 + (_font.MeasureString(textBeforeCursor).X * 0.38f);
+                sprite.Draw(_pixel, new Rectangle((int)cursorX, inputBounds.Y + 4, 1, inputBounds.Height - 8), Color.White);
+            }
+        }
+
+        private void DrawLeaveControl(SpriteBatch sprite, MessengerSnapshot snapshot)
+        {
+            Rectangle leaveBounds = GetLeaveButtonBounds();
+            Color fill = snapshot.CanLeave ? new Color(103, 63, 73, 180) : new Color(50, 50, 54, 140);
+            Color text = snapshot.CanLeave ? new Color(255, 224, 224) : new Color(160, 165, 174);
+            sprite.Draw(_pixel, leaveBounds, fill);
+            DrawCentered(sprite, "Leave", leaveBounds.X, leaveBounds.Y + 4, leaveBounds.Width, text, 0.35f);
+        }
+
         private int GetSlotIndexAt(int mouseX, int mouseY)
         {
             for (int i = 0; i < SlotCount; i++)
@@ -329,6 +460,16 @@ namespace HaCreator.MapSimulator.UI
             }
 
             return -1;
+        }
+
+        private Rectangle GetInputBounds()
+        {
+            return new Rectangle(Position.X + 19, Position.Y + 225, 252, 26);
+        }
+
+        private Rectangle GetLeaveButtonBounds()
+        {
+            return new Rectangle(Position.X + 224, Position.Y + 6, 42, 16);
         }
 
         private void DrawLayer(
@@ -404,6 +545,297 @@ namespace HaCreator.MapSimulator.UI
             }
 
             return $"{value.Substring(0, Math.Max(0, maxChars - 3))}...";
+        }
+
+        private void ActivateInput(bool whisperMode, MessengerSnapshot snapshot, bool clearText)
+        {
+            _inputActive = true;
+            _whisperMode = whisperMode && snapshot.CanWhisper;
+            if (clearText)
+            {
+                _inputText.Clear();
+                _cursorPosition = 0;
+            }
+            else
+            {
+                _cursorPosition = Math.Clamp(_cursorPosition, 0, _inputText.Length);
+            }
+
+            _cursorBlinkTimer = Environment.TickCount;
+        }
+
+        private void DeactivateInput(bool clearText)
+        {
+            _inputActive = false;
+            _whisperMode = false;
+            if (clearText)
+            {
+                _inputText.Clear();
+                _cursorPosition = 0;
+            }
+
+            ResetKeyRepeat();
+        }
+
+        private void HandleKeyboardInput(KeyboardState keyboardState, MessengerSnapshot snapshot, int tickCount)
+        {
+            if (keyboardState.IsKeyDown(Keys.Escape) && _previousKeyboardState.IsKeyUp(Keys.Escape))
+            {
+                DeactivateInput(clearText: false);
+                return;
+            }
+
+            if (keyboardState.IsKeyDown(Keys.Enter) && _previousKeyboardState.IsKeyUp(Keys.Enter))
+            {
+                SendCurrentInput(snapshot);
+                return;
+            }
+
+            if (keyboardState.IsKeyDown(Keys.Back))
+            {
+                if (_previousKeyboardState.IsKeyUp(Keys.Back))
+                {
+                    if (_cursorPosition > 0)
+                    {
+                        _inputText.Remove(_cursorPosition - 1, 1);
+                        _cursorPosition--;
+                    }
+
+                    _lastHeldKey = Keys.Back;
+                    _keyHoldStartTime = tickCount;
+                    _lastKeyRepeatTime = tickCount;
+                }
+                else if (ShouldRepeatKey(Keys.Back, tickCount) && _cursorPosition > 0)
+                {
+                    _inputText.Remove(_cursorPosition - 1, 1);
+                    _cursorPosition--;
+                    _lastKeyRepeatTime = tickCount;
+                }
+
+                return;
+            }
+
+            if (keyboardState.IsKeyDown(Keys.Delete))
+            {
+                if (_previousKeyboardState.IsKeyUp(Keys.Delete))
+                {
+                    if (_cursorPosition < _inputText.Length)
+                    {
+                        _inputText.Remove(_cursorPosition, 1);
+                    }
+
+                    _lastHeldKey = Keys.Delete;
+                    _keyHoldStartTime = tickCount;
+                    _lastKeyRepeatTime = tickCount;
+                }
+                else if (ShouldRepeatKey(Keys.Delete, tickCount) && _cursorPosition < _inputText.Length)
+                {
+                    _inputText.Remove(_cursorPosition, 1);
+                    _lastKeyRepeatTime = tickCount;
+                }
+
+                return;
+            }
+
+            if (keyboardState.IsKeyDown(Keys.Left))
+            {
+                if (_previousKeyboardState.IsKeyUp(Keys.Left))
+                {
+                    _cursorPosition = Math.Max(0, _cursorPosition - 1);
+                    _lastHeldKey = Keys.Left;
+                    _keyHoldStartTime = tickCount;
+                    _lastKeyRepeatTime = tickCount;
+                }
+                else if (ShouldRepeatKey(Keys.Left, tickCount))
+                {
+                    _cursorPosition = Math.Max(0, _cursorPosition - 1);
+                    _lastKeyRepeatTime = tickCount;
+                }
+
+                return;
+            }
+
+            if (keyboardState.IsKeyDown(Keys.Right))
+            {
+                if (_previousKeyboardState.IsKeyUp(Keys.Right))
+                {
+                    _cursorPosition = Math.Min(_inputText.Length, _cursorPosition + 1);
+                    _lastHeldKey = Keys.Right;
+                    _keyHoldStartTime = tickCount;
+                    _lastKeyRepeatTime = tickCount;
+                }
+                else if (ShouldRepeatKey(Keys.Right, tickCount))
+                {
+                    _cursorPosition = Math.Min(_inputText.Length, _cursorPosition + 1);
+                    _lastKeyRepeatTime = tickCount;
+                }
+
+                return;
+            }
+
+            if (keyboardState.IsKeyDown(Keys.Home) && _previousKeyboardState.IsKeyUp(Keys.Home))
+            {
+                _cursorPosition = 0;
+                return;
+            }
+
+            if (keyboardState.IsKeyDown(Keys.End) && _previousKeyboardState.IsKeyUp(Keys.End))
+            {
+                _cursorPosition = _inputText.Length;
+                return;
+            }
+
+            bool shift = keyboardState.IsKeyDown(Keys.LeftShift) || keyboardState.IsKeyDown(Keys.RightShift);
+            foreach (Keys key in keyboardState.GetPressedKeys())
+            {
+                if (_previousKeyboardState.IsKeyDown(key)
+                    || key == Keys.Enter
+                    || key == Keys.Escape
+                    || key == Keys.Back
+                    || key == Keys.Delete
+                    || key == Keys.Left
+                    || key == Keys.Right
+                    || key == Keys.Home
+                    || key == Keys.End
+                    || key == Keys.LeftShift
+                    || key == Keys.RightShift
+                    || key == Keys.LeftControl
+                    || key == Keys.RightControl
+                    || key == Keys.LeftAlt
+                    || key == Keys.RightAlt)
+                {
+                    continue;
+                }
+
+                char? character = KeyToChar(key, shift);
+                if (!character.HasValue || _inputText.Length >= 70)
+                {
+                    continue;
+                }
+
+                _inputText.Insert(_cursorPosition, character.Value);
+                _cursorPosition++;
+                _lastHeldKey = key;
+                _keyHoldStartTime = tickCount;
+                _lastKeyRepeatTime = tickCount;
+            }
+
+            if (_lastHeldKey != Keys.None
+                && _lastHeldKey != Keys.Back
+                && _lastHeldKey != Keys.Delete
+                && keyboardState.IsKeyDown(_lastHeldKey)
+                && ShouldRepeatKey(_lastHeldKey, tickCount))
+            {
+                char? repeatedCharacter = KeyToChar(_lastHeldKey, shift);
+                if (repeatedCharacter.HasValue && _inputText.Length < 70)
+                {
+                    _inputText.Insert(_cursorPosition, repeatedCharacter.Value);
+                    _cursorPosition++;
+                    _lastKeyRepeatTime = tickCount;
+                }
+            }
+            else if (_lastHeldKey != Keys.None
+                && _lastHeldKey != Keys.Back
+                && _lastHeldKey != Keys.Delete
+                && !keyboardState.IsKeyDown(_lastHeldKey))
+            {
+                ResetKeyRepeat();
+            }
+        }
+
+        private void SendCurrentInput(MessengerSnapshot snapshot)
+        {
+            string text = _inputText.ToString().Trim();
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                ShowFeedback(_whisperMode ? "Type a whisper before sending." : "Type a Messenger message before sending.");
+                return;
+            }
+
+            string result = _whisperMode
+                ? _sendWhisperHandler?.Invoke(text)
+                : _sendMessageHandler?.Invoke(text);
+            ShowFeedback(result);
+
+            _inputText.Clear();
+            _cursorPosition = 0;
+            _cursorBlinkTimer = Environment.TickCount;
+
+            if (_whisperMode && !snapshot.CanWhisper)
+            {
+                _whisperMode = false;
+            }
+        }
+
+        private bool ShouldRepeatKey(Keys key, int tickCount)
+        {
+            if (_lastHeldKey != key)
+            {
+                return false;
+            }
+
+            int holdDuration = tickCount - _keyHoldStartTime;
+            if (holdDuration < 400)
+            {
+                return false;
+            }
+
+            return tickCount - _lastKeyRepeatTime >= 35;
+        }
+
+        private void ResetKeyRepeat()
+        {
+            _lastHeldKey = Keys.None;
+            _keyHoldStartTime = 0;
+            _lastKeyRepeatTime = 0;
+        }
+
+        protected override void OnCloseButtonClicked(UIObject sender)
+        {
+            DeactivateInput(clearText: false);
+            base.OnCloseButtonClicked(sender);
+        }
+
+        private static char? KeyToChar(Keys key, bool shift)
+        {
+            if (key >= Keys.A && key <= Keys.Z)
+            {
+                char c = (char)('a' + (key - Keys.A));
+                return shift ? char.ToUpperInvariant(c) : c;
+            }
+
+            if (key >= Keys.D0 && key <= Keys.D9)
+            {
+                if (shift)
+                {
+                    char[] shifted = { ')', '!', '@', '#', '$', '%', '^', '&', '*', '(' };
+                    return shifted[key - Keys.D0];
+                }
+
+                return (char)('0' + (key - Keys.D0));
+            }
+
+            if (key >= Keys.NumPad0 && key <= Keys.NumPad9)
+            {
+                return (char)('0' + (key - Keys.NumPad0));
+            }
+
+            return key switch
+            {
+                Keys.Space => ' ',
+                Keys.OemPeriod => shift ? '>' : '.',
+                Keys.OemComma => shift ? '<' : ',',
+                Keys.OemMinus => shift ? '_' : '-',
+                Keys.OemPlus => shift ? '+' : '=',
+                Keys.OemQuestion => shift ? '?' : '/',
+                Keys.OemSemicolon => shift ? ':' : ';',
+                Keys.OemQuotes => shift ? '"' : '\'',
+                Keys.OemOpenBrackets => shift ? '{' : '[',
+                Keys.OemCloseBrackets => shift ? '}' : ']',
+                Keys.OemPipe => shift ? '|' : '\\',
+                Keys.OemTilde => shift ? '~' : '`',
+                _ => null
+            };
         }
     }
 }

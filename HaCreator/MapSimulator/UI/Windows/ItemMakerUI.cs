@@ -67,6 +67,7 @@ namespace HaCreator.MapSimulator.UI
         }
 
         private const int RecipeRowHeight = 36;
+        private const int PageDropdownRowHeight = 20;
         private const int CraftDurationMs = 1400;
         private const int VisibleRecipeCount = 6;
         private static readonly int[] ClientRecipeBuckets = { 0, 1, 2, 4, 8, 16 };
@@ -86,6 +87,7 @@ namespace HaCreator.MapSimulator.UI
         private int _characterLevel = 1;
         private int _makerSkillLevel;
         private bool _isCrafting;
+        private bool _isPageSelectorExpanded;
         private int _craftStartTick;
         private int _craftingRecipeIndex = -1;
         private string _statusMessage = "Select a recipe and press Start.";
@@ -137,7 +139,7 @@ namespace HaCreator.MapSimulator.UI
             }
         }
 
-        public void InitializeControls(UIObject startButton, UIObject cancelButton, UIObject pageCycleButton)
+        public void InitializeControls(UIObject startButton, UIObject cancelButton, UIObject pageSelectorButton)
         {
             if (startButton != null)
             {
@@ -151,10 +153,10 @@ namespace HaCreator.MapSimulator.UI
                 cancelButton.ButtonClickReleased += _ => CancelCraft();
             }
 
-            if (pageCycleButton != null)
+            if (pageSelectorButton != null)
             {
-                AddButton(pageCycleButton);
-                pageCycleButton.ButtonClickReleased += _ => CycleRecipePage(1);
+                AddButton(pageSelectorButton);
+                pageSelectorButton.ButtonClickReleased += _ => TogglePageSelector();
             }
         }
 
@@ -185,6 +187,7 @@ namespace HaCreator.MapSimulator.UI
 
             Rectangle listRect = GetRecipeListRectangle();
             Rectangle comboRect = GetPageSelectorRectangle();
+            Rectangle comboDropDownRect = GetPageSelectorDropDownRectangle();
             if (listRect.Contains(mouseState.X, mouseState.Y) && mouseState.ScrollWheelValue != _previousMouseState.ScrollWheelValue)
             {
                 if (mouseState.ScrollWheelValue > _previousMouseState.ScrollWheelValue)
@@ -211,10 +214,24 @@ namespace HaCreator.MapSimulator.UI
             {
                 if (leftJustReleased && comboRect.Contains(mouseState.X, mouseState.Y))
                 {
-                    CycleRecipePage(1);
+                    TogglePageSelector();
                     _previousMouseState = mouseState;
                     mouseCursor?.SetMouseCursorMovedToClickableItem();
                     return true;
+                }
+
+                if (leftJustReleased && _isPageSelectorExpanded && comboDropDownRect.Contains(mouseState.X, mouseState.Y))
+                {
+                    int optionIndex = Math.Clamp((mouseState.Y - comboDropDownRect.Y) / PageDropdownRowHeight, 0, _pages.Count - 1);
+                    SelectRecipePage(optionIndex);
+                    _previousMouseState = mouseState;
+                    mouseCursor?.SetMouseCursorMovedToClickableItem();
+                    return true;
+                }
+
+                if (leftJustReleased)
+                {
+                    _isPageSelectorExpanded = false;
                 }
 
                 _previousMouseState = mouseState;
@@ -224,10 +241,11 @@ namespace HaCreator.MapSimulator.UI
             int relativeY = mouseState.Y - listRect.Y;
             int visibleIndex = relativeY / RecipeRowHeight;
             int recipeIndex = _recipeScrollOffset + visibleIndex;
-            if (recipeIndex >= 0 && recipeIndex < _pages[recipeIndex].Recipes.Count)
+            if (recipeIndex >= 0 && recipeIndex < CurrentRecipes.Count)
             {
                 _selectedRecipeIndex = recipeIndex;
                 EnsureSelectedRecipeVisible();
+                _isPageSelectorExpanded = false;
                 RefreshStatusMessage();
                 _previousMouseState = mouseState;
                 mouseCursor?.SetMouseCursorMovedToClickableItem();
@@ -266,7 +284,12 @@ namespace HaCreator.MapSimulator.UI
             DrawPanel(sprite, comboRect, new Color(29, 33, 44, 220), new Color(103, 113, 139, 255));
             string pageLabel = _pages[_selectedPageIndex].Label;
             sprite.DrawString(_font, pageLabel, new Vector2(comboRect.X + 8, comboRect.Y + 1), new Color(239, 233, 213));
-            sprite.DrawString(_font, "v", new Vector2(comboRect.Right - 13, comboRect.Y + 1), new Color(239, 233, 213));
+            sprite.DrawString(_font, _isPageSelectorExpanded ? "^" : "v", new Vector2(comboRect.Right - 13, comboRect.Y + 1), new Color(239, 233, 213));
+
+            if (_isPageSelectorExpanded)
+            {
+                DrawPageSelectorDropDown(sprite);
+            }
 
             Rectangle listRect = GetRecipeListRectangle();
             DrawPanel(sprite, listRect, new Color(16, 19, 28, 210), new Color(92, 105, 132, 255));
@@ -459,6 +482,7 @@ namespace HaCreator.MapSimulator.UI
 
         private void CancelCraft()
         {
+            _isPageSelectorExpanded = false;
             if (_isCrafting)
             {
                 _isCrafting = false;
@@ -604,6 +628,12 @@ namespace HaCreator.MapSimulator.UI
             return new Rectangle(Position.X + 18, Position.Y + 43, 258, (VisibleRecipeCount * RecipeRowHeight) + 8);
         }
 
+        private Rectangle GetPageSelectorDropDownRectangle()
+        {
+            Rectangle comboRect = GetPageSelectorRectangle();
+            return new Rectangle(comboRect.X, comboRect.Bottom + 2, comboRect.Width + 92, _pages.Count * PageDropdownRowHeight);
+        }
+
         private void ScrollRecipes(int delta)
         {
             if (CurrentRecipes.Count <= VisibleRecipeCount)
@@ -644,6 +674,17 @@ namespace HaCreator.MapSimulator.UI
             SelectRecipePage(nextPage);
         }
 
+        private void TogglePageSelector()
+        {
+            if (_pages.Count <= 1)
+            {
+                _isPageSelectorExpanded = false;
+                return;
+            }
+
+            _isPageSelectorExpanded = !_isPageSelectorExpanded;
+        }
+
         private void SelectRecipePage(int pageIndex)
         {
             if (pageIndex < 0 || pageIndex >= _pages.Count || pageIndex == _selectedPageIndex)
@@ -656,7 +697,29 @@ namespace HaCreator.MapSimulator.UI
             _recipeScrollOffset = 0;
             _craftingRecipeIndex = -1;
             _isCrafting = false;
+            _isPageSelectorExpanded = false;
             RefreshStatusMessage($"Viewing {_pages[_selectedPageIndex].Label} recipes.");
+        }
+
+        private void DrawPageSelectorDropDown(SpriteBatch sprite)
+        {
+            Rectangle dropDownRect = GetPageSelectorDropDownRectangle();
+            DrawPanel(sprite, dropDownRect, new Color(17, 20, 30, 235), new Color(103, 113, 139, 255));
+
+            for (int i = 0; i < _pages.Count; i++)
+            {
+                Rectangle optionRect = new(dropDownRect.X + 2, dropDownRect.Y + (i * PageDropdownRowHeight) + 2, dropDownRect.Width - 4, PageDropdownRowHeight - 2);
+                bool selected = i == _selectedPageIndex;
+                DrawPanel(sprite,
+                    optionRect,
+                    selected ? new Color(55, 88, 126, 230) : new Color(27, 31, 45, 205),
+                    selected ? new Color(153, 190, 230, 255) : new Color(66, 74, 95, 255));
+
+                sprite.DrawString(_font, _pages[i].Label, new Vector2(optionRect.X + 6, optionRect.Y + 2), Color.White);
+                string bucketText = _pages[i].BucketKey.ToString(CultureInfo.InvariantCulture);
+                Vector2 bucketSize = _font.MeasureString(bucketText);
+                sprite.DrawString(_font, bucketText, new Vector2(optionRect.Right - bucketSize.X - 6, optionRect.Y + 2), new Color(203, 212, 230));
+            }
         }
 
         private void DrawPanel(SpriteBatch sprite, Rectangle rect, Color fill, Color border)

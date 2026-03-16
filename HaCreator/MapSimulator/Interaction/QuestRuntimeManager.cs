@@ -540,6 +540,16 @@ namespace HaCreator.MapSimulator.Interaction
                 }
             };
 
+            if (IsStorageKeeper(npc))
+            {
+                entries.Add(CreateStorageEntry(npc));
+            }
+
+            if (IsItemMakerNpc(npc))
+            {
+                entries.Add(CreateItemMakerEntry(npc));
+            }
+
             EnsureDefinitionsLoaded();
 
             foreach (QuestDefinition definition in _definitions.Values.OrderBy(q => q.QuestId))
@@ -563,7 +573,7 @@ namespace HaCreator.MapSimulator.Interaction
             else
             {
                 NpcInteractionEntry prioritizedEntry = entries
-                    .Where(entry => entry.QuestId.HasValue)
+                    .Where(entry => entry.Kind != NpcInteractionEntryKind.Talk)
                     .OrderBy(GetEntryPriority)
                     .ThenBy(entry => entry.EntryId)
                     .FirstOrDefault();
@@ -749,7 +759,8 @@ namespace HaCreator.MapSimulator.Interaction
                     Subtitle = isAvailable ? "Available" : "Locked",
                     Pages = BuildQuestPages(definition, issues, state, false),
                     PrimaryActionLabel = "Accept",
-                    PrimaryActionEnabled = isAvailable
+                    PrimaryActionEnabled = isAvailable,
+                    PrimaryActionKind = NpcInteractionActionKind.QuestPrimary
                 };
             }
 
@@ -767,7 +778,8 @@ namespace HaCreator.MapSimulator.Interaction
                     Subtitle = isCompletable ? "Ready to complete" : (matchesEndNpc ? "In progress" : "Started"),
                     Pages = BuildQuestPages(definition, issues, state, true),
                     PrimaryActionLabel = "Complete",
-                    PrimaryActionEnabled = isCompletable
+                    PrimaryActionEnabled = isCompletable,
+                    PrimaryActionKind = NpcInteractionActionKind.QuestPrimary
                 };
             }
 
@@ -2025,12 +2037,90 @@ namespace HaCreator.MapSimulator.Interaction
         {
             return entry?.Kind switch
             {
-                NpcInteractionEntryKind.CompletableQuest => 0,
-                NpcInteractionEntryKind.AvailableQuest => 1,
-                NpcInteractionEntryKind.InProgressQuest => 2,
-                NpcInteractionEntryKind.LockedQuest => 3,
-                _ => 4
+                NpcInteractionEntryKind.Storage => 0,
+                NpcInteractionEntryKind.Utility => 1,
+                NpcInteractionEntryKind.CompletableQuest => 2,
+                NpcInteractionEntryKind.AvailableQuest => 3,
+                NpcInteractionEntryKind.InProgressQuest => 4,
+                NpcInteractionEntryKind.LockedQuest => 5,
+                _ => 6
             };
+        }
+
+        private static NpcInteractionEntry CreateStorageEntry(NpcItem npc)
+        {
+            string npcName = npc?.NpcInstance?.NpcInfo?.StringName;
+            string storageName = string.IsNullOrWhiteSpace(npcName) ? "the storage keeper" : npcName;
+            return new NpcInteractionEntry
+            {
+                EntryId = -100,
+                Kind = NpcInteractionEntryKind.Storage,
+                Title = "Storage",
+                Subtitle = "Shared item and meso storage",
+                Pages = new[]
+                {
+                    new NpcInteractionPage
+                    {
+                        Text = $"{storageName} can open your account storage. Withdraw, deposit, and sort items here."
+                    }
+                },
+                PrimaryActionLabel = "Open",
+                PrimaryActionEnabled = true,
+                PrimaryActionKind = NpcInteractionActionKind.OpenTrunk
+            };
+        }
+
+        private static NpcInteractionEntry CreateItemMakerEntry(NpcItem npc)
+        {
+            string npcName = npc?.NpcInstance?.NpcInfo?.StringName;
+            string makerName = string.IsNullOrWhiteSpace(npcName) ? "the maker NPC" : npcName;
+            string subtitle = npc?.NpcInstance?.NpcInfo?.StringFunc;
+            return new NpcInteractionEntry
+            {
+                EntryId = -110,
+                Kind = NpcInteractionEntryKind.Utility,
+                Title = "Item Maker",
+                Subtitle = string.IsNullOrWhiteSpace(subtitle) ? "Crafting" : subtitle,
+                Pages = new[]
+                {
+                    new NpcInteractionPage
+                    {
+                        Text = $"{makerName} can open the maker crafting window for client ItemMake recipes."
+                    }
+                },
+                PrimaryActionLabel = "Open",
+                PrimaryActionEnabled = true,
+                PrimaryActionKind = NpcInteractionActionKind.OpenItemMaker
+            };
+        }
+
+        private static bool IsStorageKeeper(NpcItem npc)
+        {
+            string func = npc?.NpcInstance?.NpcInfo?.StringFunc;
+            if (!string.IsNullOrWhiteSpace(func) &&
+                func.IndexOf("storage", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                return true;
+            }
+
+            string name = npc?.NpcInstance?.NpcInfo?.StringName;
+            return !string.IsNullOrWhiteSpace(name) &&
+                   (name.IndexOf("storage", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                    name.IndexOf("trunk", StringComparison.OrdinalIgnoreCase) >= 0);
+        }
+
+        private static bool IsItemMakerNpc(NpcItem npc)
+        {
+            string func = npc?.NpcInstance?.NpcInfo?.StringFunc;
+            if (string.IsNullOrWhiteSpace(func))
+            {
+                return false;
+            }
+
+            return func.IndexOf("item maker", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                   func.IndexOf("glove maker", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                   func.IndexOf("shoemaker", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                   func.IndexOf("toy maker", StringComparison.OrdinalIgnoreCase) >= 0;
         }
 
         private static string JoinQuestSections(params string[] sections)

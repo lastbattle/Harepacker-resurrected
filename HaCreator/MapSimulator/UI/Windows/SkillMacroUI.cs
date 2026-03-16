@@ -139,7 +139,7 @@ namespace HaCreator.MapSimulator.UI
 
         #region Properties
         public override string WindowName => "SkillMacro";
-        public bool CapturesKeyboardInput => IsVisible && _editingMacroIndex >= 0;
+        public override bool CapturesKeyboardInput => IsVisible && _editingMacroIndex >= 0;
         public bool IsDraggingSkillSlot => _dragMode == MacroDragMode.Skill;
         public bool IsDraggingMacroBinding => _dragMode == MacroDragMode.MacroBinding;
         public int DraggedMacroIndex => IsDraggingMacroBinding ? _dragMacroIndex : -1;

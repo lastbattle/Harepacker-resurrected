@@ -44,15 +44,18 @@ namespace HaCreator.MapSimulator.UI
             { Keys.S, MapSimulatorWindowNames.Skills },
             { Keys.Q, MapSimulatorWindowNames.Quest },
             { Keys.A, MapSimulatorWindowNames.Ability },
-            { Keys.N, MapSimulatorWindowNames.MemoMailbox }, // Simulator shortcut until a dedicated memo launcher is wired
-            { Keys.M, MapSimulatorWindowNames.ItemMaker }, // Simulator shortcut until inventory/NPC launch parity is wired
-            { Keys.T, MapSimulatorWindowNames.TradingRoom }, // Simulator shortcut until room launch parity is wired
-            { Keys.P, MapSimulatorWindowNames.PersonalShop }, // Simulator shortcut until room launch parity is wired
-            { Keys.H, MapSimulatorWindowNames.EntrustedShop }, // Simulator shortcut until room launch parity is wired
-            { Keys.O, MapSimulatorWindowNames.MiniRoom }, // Simulator shortcut until room launch parity is wired
-            { Keys.Y, MapSimulatorWindowNames.Trunk }, // Simulator shortcut until NPC-backed storage parity is wired
-            { Keys.U, MapSimulatorWindowNames.ItemUpgrade }, // Simulator shortcut until inventory/NPC launch parity is wired
-            { Keys.OemTilde, MapSimulatorWindowNames.QuickSlot }  // ` key toggles quick slot bar
+            //{ Keys.G, MapSimulatorWindowNames.SocialList }, // Simulator shortcut until every client launcher path is mirrored
+            //{ Keys.N, MapSimulatorWindowNames.MemoMailbox }, // Simulator shortcut until a dedicated memo launcher is wired
+            //{ Keys.B, MapSimulatorWindowNames.GuildBbs }, // Simulator shortcut until guild-board launch parity is wired
+            //{ Keys.M, MapSimulatorWindowNames.ItemMaker }, // Simulator shortcut until inventory/NPC launch parity is wired
+            //{ Keys.T, MapSimulatorWindowNames.TradingRoom }, // Simulator shortcut until room launch parity is wired
+            //{ Keys.P, MapSimulatorWindowNames.PersonalShop }, // Simulator shortcut until room launch parity is wired
+            //{ Keys.H, MapSimulatorWindowNames.EntrustedShop }, // Simulator shortcut until room launch parity is wired
+            //{ Keys.O, MapSimulatorWindowNames.MiniRoom }, // Simulator shortcut until room launch parity is wired
+            //{ Keys.Y, MapSimulatorWindowNames.Trunk }, // Fallback shortcut in addition to storage-keeper NPC access
+            //{ Keys.U, MapSimulatorWindowNames.ItemUpgrade }, // Simulator shortcut until inventory/NPC launch parity is wired
+            //{ Keys.V, MapSimulatorWindowNames.MapleTv }, // Simulator shortcut until MapleTV launch parity is wired
+            { Keys.OemCloseBrackets, MapSimulatorWindowNames.QuickSlot }  // ` key toggles quick slot bar
             // Note: SkillMacro window is opened via MACRO button in Skill window, not keyboard shortcut
         };
 
@@ -76,7 +79,7 @@ namespace HaCreator.MapSimulator.UI
         /// Whether any window is currently visible
         /// </summary>
         public bool AnyWindowVisible => windows.Exists(w => w.IsVisible);
-        public bool CapturesKeyboardInput => SkillMacroWindow?.CapturesKeyboardInput == true;
+        public bool CapturesKeyboardInput => windows.Exists(w => w.IsVisible && w.CapturesKeyboardInput);
 
         /// <summary>
         /// Whether a window is currently being dragged
@@ -300,6 +303,10 @@ namespace HaCreator.MapSimulator.UI
             {
                 window.ResetDragState();
                 CancelSkillDrag(window);
+                if (window is InventoryUI inventoryWindow)
+                {
+                    inventoryWindow.CancelInventoryDrag();
+                }
             }
 
             QuickSlotWindow?.CancelDrag();
@@ -399,7 +406,7 @@ namespace HaCreator.MapSimulator.UI
             bool leftJustReleased = mouseState.LeftButton == ButtonState.Released && _previousMouseState.LeftButton == ButtonState.Pressed;
             bool rightJustPressed = mouseState.RightButton == ButtonState.Pressed && _previousMouseState.RightButton == ButtonState.Released;
 
-            if ((GetActiveSkillDragSource() != null || QuickSlotWindow?.IsDraggingSlot == true || SkillMacroWindow?.IsDraggingMacroBinding == true ||
+            if ((GetActiveSkillDragSource() != null || (InventoryWindow as InventoryUI)?.IsDraggingItem == true || QuickSlotWindow?.IsDraggingSlot == true || SkillMacroWindow?.IsDraggingMacroBinding == true ||
                  SkillMacroWindow?.IsDraggingSkillSlot == true || (_draggingWindow != null && mouseState.LeftButton == ButtonState.Pressed))
                 && mouseCursor != null)
             {
@@ -407,6 +414,12 @@ namespace HaCreator.MapSimulator.UI
             }
 
             if (HandleSkillDrag(mouseState, leftJustPressed, leftJustReleased))
+            {
+                _previousMouseState = mouseState;
+                return false;
+            }
+
+            if (HandleInventoryInteraction(mouseState, leftJustPressed, leftJustReleased))
             {
                 _previousMouseState = mouseState;
                 return false;
@@ -572,6 +585,44 @@ namespace HaCreator.MapSimulator.UI
                 return true;
 
             return false;
+        }
+
+        private bool HandleInventoryInteraction(MouseState mouseState, bool leftJustPressed, bool leftJustReleased)
+        {
+            if (InventoryWindow is not InventoryUI inventoryWindow || !inventoryWindow.IsVisible)
+                return false;
+
+            inventoryWindow.OnInventoryMouseMove(mouseState.X, mouseState.Y);
+
+            if (inventoryWindow.IsDraggingItem)
+            {
+                if (leftJustReleased)
+                {
+                    inventoryWindow.OnInventoryMouseUp(mouseState.X, mouseState.Y);
+                }
+
+                return true;
+            }
+
+            if (!inventoryWindow.ContainsPoint(mouseState.X, mouseState.Y) ||
+                !inventoryWindow.HandlesInventoryInteractionPoint(mouseState.X, mouseState.Y))
+            {
+                return false;
+            }
+
+            if (leftJustPressed)
+            {
+                BringToFront(inventoryWindow);
+                inventoryWindow.OnInventoryMouseDown(mouseState.X, mouseState.Y);
+                if (inventoryWindow.IsDraggingItem)
+                {
+                    _draggingWindow = null;
+                }
+
+                return true;
+            }
+
+            return mouseState.LeftButton == ButtonState.Pressed;
         }
 
         private bool HandleSkillMacroInteraction(MouseState mouseState, bool leftJustPressed, bool leftJustReleased, bool rightJustPressed)

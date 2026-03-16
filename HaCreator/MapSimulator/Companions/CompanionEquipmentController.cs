@@ -83,16 +83,17 @@ namespace HaCreator.MapSimulator.Companions
 
     public sealed class AndroidEquipmentController
     {
-        private static readonly (AndroidEquipSlot Slot, EquipSlot BuildSlot, int FallbackItemId)[] SlotDefaults =
+        private static readonly (AndroidEquipSlot Slot, EquipSlot BuildSlot, int FallbackItemId)[] SharedSlotDefaults =
         {
             (AndroidEquipSlot.Cap, EquipSlot.Cap, 1002140),
             (AndroidEquipSlot.FaceAccessory, EquipSlot.FaceAccessory, 1010000),
-            (AndroidEquipSlot.Clothes, EquipSlot.Longcoat, 1050000),
             (AndroidEquipSlot.Glove, EquipSlot.Glove, 1080000),
             (AndroidEquipSlot.Cape, EquipSlot.Cape, 1100000),
-            (AndroidEquipSlot.Pants, EquipSlot.Pants, 1062007),
             (AndroidEquipSlot.Shoes, EquipSlot.Shoes, 1072005)
         };
+
+        private const int FallbackAndroidTopItemId = 1040000;
+        private const int FallbackAndroidPantsItemId = 1062007;
 
         private readonly Dictionary<AndroidEquipSlot, CompanionEquipItem> _equippedItems = new();
 
@@ -100,30 +101,22 @@ namespace HaCreator.MapSimulator.Companions
 
         public void EnsureDefaults(CharacterLoader loader, CharacterBuild build)
         {
-            if (loader == null)
+            _equippedItems.Clear();
+            foreach ((AndroidEquipSlot slot, EquipSlot buildSlot, int fallbackItemId) in SharedSlotDefaults)
             {
-                return;
+                SetEquippedItem(slot, ResolveBuildPart(build, buildSlot) ?? loader?.LoadEquipment(fallbackItemId));
             }
 
-            _equippedItems.Clear();
-            foreach ((AndroidEquipSlot slot, EquipSlot buildSlot, int fallbackItemId) in SlotDefaults)
-            {
-                CharacterPart part = ResolveBuildPart(build, buildSlot);
-                part ??= loader.LoadEquipment(fallbackItemId);
-                if (part == null)
-                {
-                    continue;
-                }
+            CharacterPart clothingPart = ResolveBuildPart(build, EquipSlot.Longcoat);
+            bool usingOverall = clothingPart != null;
+            clothingPart ??= ResolveBuildPart(build, EquipSlot.Coat) ?? loader?.LoadEquipment(FallbackAndroidTopItemId);
+            SetEquippedItem(AndroidEquipSlot.Clothes, clothingPart);
 
-                _equippedItems[slot] = new CompanionEquipItem
-                {
-                    ItemId = part.ItemId,
-                    Name = part.Name,
-                    Description = part.Description,
-                    Icon = part.Icon,
-                    IconRaw = part.IconRaw,
-                    CharacterPart = part
-                };
+            if (!usingOverall)
+            {
+                SetEquippedItem(
+                    AndroidEquipSlot.Pants,
+                    ResolveBuildPart(build, EquipSlot.Pants) ?? loader?.LoadEquipment(FallbackAndroidPantsItemId));
             }
         }
 
@@ -139,19 +132,26 @@ namespace HaCreator.MapSimulator.Companions
                 return null;
             }
 
-            if (slot == EquipSlot.Longcoat)
-            {
-                if (build.Equipment.TryGetValue(EquipSlot.Longcoat, out CharacterPart overall) && overall != null)
-                {
-                    return overall;
-                }
-
-                build.Equipment.TryGetValue(EquipSlot.Coat, out CharacterPart coat);
-                return coat;
-            }
-
             build.Equipment.TryGetValue(slot, out CharacterPart part);
             return part;
+        }
+
+        private void SetEquippedItem(AndroidEquipSlot slot, CharacterPart part)
+        {
+            if (part == null)
+            {
+                return;
+            }
+
+            _equippedItems[slot] = new CompanionEquipItem
+            {
+                ItemId = part.ItemId,
+                Name = part.Name,
+                Description = part.Description,
+                Icon = part.Icon,
+                IconRaw = part.IconRaw,
+                CharacterPart = part
+            };
         }
     }
 

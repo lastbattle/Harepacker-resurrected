@@ -48,7 +48,6 @@ using HaCreator.MapSimulator.Fields;
 using HaCreator.MapSimulator.Managers;
 using HaCreator.MapSimulator.Core;
 using HaCreator.MapSimulator.Combat;
-using HaCreator.MapSimulator.Interaction;
 
 namespace HaCreator.MapSimulator
 {
@@ -202,9 +201,13 @@ namespace HaCreator.MapSimulator
         private NpcInteractionOverlay _npcInteractionOverlay;
         private readonly QuestRuntimeManager _questRuntime = new QuestRuntimeManager();
         private readonly MemoMailboxManager _memoMailbox = new MemoMailboxManager();
+        private readonly SocialListRuntime _socialListRuntime = new SocialListRuntime();
         private readonly MessengerRuntime _messengerRuntime = new MessengerRuntime();
+        private readonly GuildBbsRuntime _guildBbsRuntime = new GuildBbsRuntime();
+        private readonly MapleTvRuntime _mapleTvRuntime = new MapleTvRuntime();
         private bool _questUiBindingsConfigured;
         private int _activeQuestDetailQuestId;
+        private int _activeMemoAttachmentId = -1;
         private NpcItem _activeNpcInteractionNpc;
         private int _activeNpcInteractionNpcId;
         private Texture2D _npcQuestAvailableIcon;
@@ -352,6 +355,25 @@ namespace HaCreator.MapSimulator
             ChannelChange = 2,
         }
 
+        private sealed class LoginWorldSelectorMetadata
+        {
+            public LoginWorldSelectorMetadata(int worldId, IReadOnlyList<ChannelSelectionState> channels)
+            {
+                WorldId = Math.Max(0, worldId);
+                Channels = channels ?? Array.Empty<ChannelSelectionState>();
+            }
+
+            public int WorldId { get; }
+            public IReadOnlyList<ChannelSelectionState> Channels { get; }
+        }
+
+        private enum LoginUtilityDialogAction
+        {
+            None = 0,
+            DismissOnly = 1,
+            ConfirmDeleteCharacter = 2,
+        }
+
         // Same-map portal teleport delay (no fade, just delay before teleport)
         // Default delay is 1000ms (1 second) if portal doesn't specify its own delay
         private const int SAME_MAP_PORTAL_DEFAULT_DELAY_MS = 1000;
@@ -383,13 +405,29 @@ namespace HaCreator.MapSimulator
         private SelectorRequestKind _selectorRequestKind = SelectorRequestKind.None;
         private int _selectorRequestWorldId = DefaultSimulatorWorldId;
         private int _selectorRequestChannelIndex = DefaultSimulatorChannelIndex;
+        private int _selectorRequestStartedAt = int.MinValue;
+        private int _selectorRequestDurationMs;
         private int _selectorRequestCompletesAt = int.MinValue;
         private string _selectorRequestStatusMessage = null;
         private readonly Dictionary<int, List<ChannelSelectionState>> _simulatorChannelStatesByWorld = new();
-        private readonly MapTransferDestinationStore _mapTransferDestinations = new();
+        private readonly Dictionary<int, LoginWorldSelectorMetadata> _loginWorldMetadataByWorld = new();
+        private readonly HashSet<int> _loginRecommendedWorldIds = new();
+        private int? _loginLatestConnectedWorldId;
+        private readonly List<RecommendWorldEntry> _recommendWorldEntries = new();
+        private int _recommendWorldIndex;
+        private bool _recommendWorldDismissed;
+        private LoginStep _lastLoginStep = LoginStep.Title;
+        private readonly MapTransferDestinationStore _mapTransferDestinations;
         private readonly Dictionary<int, string> _mapTransferTitleCache = new();
         private readonly LoginCharacterRosterManager _loginCharacterRoster = new();
         private string _loginCharacterStatusMessage = "Dispatch SelectWorldResult to populate the character roster.";
+        private LoginUtilityDialogAction _loginUtilityDialogAction;
+        private string _loginUtilityDialogTitle = "Login Utility";
+        private string _loginUtilityDialogBody = string.Empty;
+        private string _loginUtilityDialogPrimaryLabel = "OK";
+        private string _loginUtilityDialogSecondaryLabel = "Cancel";
+        private bool _loginUtilityDialogShowSecondaryButton;
+        private int _loginUtilityDialogTargetIndex = -1;
 
         // Seamless map transition support (state managed by _gameState)
         private Func<int, Tuple<Board, string>> _loadMapCallback = null; // Callback to load new map
@@ -412,17 +450,20 @@ namespace HaCreator.MapSimulator
             mapTransferWindow.RegisterCurrentMapRequested = RegisterCurrentMapTransferDestination;
             mapTransferWindow.DeleteDestinationRequested = DeleteMapTransferDestination;
             mapTransferWindow.MoveDestinationRequested = MoveToMapTransferDestination;
-            mapTransferWindow.WorldMapRequested = () =>
-            {
-                RefreshWorldMapWindow();
-                uiWindowManager?.ShowWindow(MapSimulatorWindowNames.WorldMap);
-            };
+            mapTransferWindow.WorldMapRequested = HandleMapTransferWorldMapRequested;
             mapTransferWindow.SetCurrentMapName(GetCurrentMapTransferDisplayName());
             mapTransferWindow.SetStatusMessage(GetMapTransferStatusMessage());
             mapTransferWindow.SetDestinations(BuildMapTransferDestinations());
         }
 
-        private void RefreshWorldMapWindow()
+        private void HandleMapTransferWorldMapRequested(MapTransferUI.DestinationEntry destination)
+        {
+            int focusedMapId = destination?.MapId ?? (_mapBoard?.MapInfo?.id ?? 0);
+            RefreshWorldMapWindow(focusedMapId);
+            uiWindowManager?.ShowWindow(MapSimulatorWindowNames.WorldMap);
+        }
+
+        private void RefreshWorldMapWindow(int? focusedMapId = null)
         {
             if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.WorldMap) is not WorldMapUI worldMapWindow)
             {
@@ -431,7 +472,7 @@ namespace HaCreator.MapSimulator
 
             worldMapWindow.MapRequested -= HandleWorldMapRequested;
             worldMapWindow.MapRequested += HandleWorldMapRequested;
-            worldMapWindow.SetEntries(BuildWorldMapEntries(), _mapBoard?.MapInfo?.id ?? 0);
+            worldMapWindow.SetEntries(BuildWorldMapEntries(), _mapBoard?.MapInfo?.id ?? 0, focusedMapId);
         }
 
         private List<WorldMapUI.MapEntry> BuildWorldMapEntries()
@@ -801,17 +842,109 @@ namespace HaCreator.MapSimulator
 
         private void WireMemoMailboxWindowData()
         {
-            if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.MemoMailbox) is not MemoMailboxWindow memoMailboxWindow)
+            if (uiWindowManager == null)
             {
                 return;
             }
 
-            memoMailboxWindow.SetSnapshotProvider(_memoMailbox.GetSnapshot);
-            memoMailboxWindow.SetActions(
-                memoId => _memoMailbox.OpenMemo(memoId),
-                memoId => _memoMailbox.KeepMemo(memoId),
-                memoId => _memoMailbox.DeleteMemo(memoId));
-            memoMailboxWindow.SetFont(_fontChat);
+            if (uiWindowManager.GetWindow(MapSimulatorWindowNames.MemoMailbox) is MemoMailboxWindow memoMailboxWindow)
+            {
+                memoMailboxWindow.SetSnapshotProvider(_memoMailbox.GetSnapshot);
+                memoMailboxWindow.SetActions(
+                    memoId => _memoMailbox.OpenMemo(memoId),
+                    memoId => _memoMailbox.KeepMemo(memoId),
+                    memoId => _memoMailbox.DeleteMemo(memoId),
+                    OpenMemoAttachmentWindow);
+                memoMailboxWindow.SetFont(_fontChat);
+            }
+
+            if (uiWindowManager.GetWindow(MapSimulatorWindowNames.MemoSend) is MemoSendWindow memoSendWindow)
+            {
+                memoSendWindow.SetSnapshotProvider(_memoMailbox.GetDraftSnapshot);
+                memoSendWindow.SetActions(
+                    () =>
+                    {
+                        if (_memoMailbox.TrySendDraft(out string message))
+                        {
+                            ShowUtilityFeedbackMessage(message);
+                            memoSendWindow.Hide();
+                            uiWindowManager?.ShowWindow(MapSimulatorWindowNames.MemoMailbox);
+                        }
+                        else
+                        {
+                            ShowUtilityFeedbackMessage(message);
+                        }
+
+                        return message;
+                    },
+                    () => ShowUtilityFeedbackMessage("Closed memo send dialog."));
+                memoSendWindow.SetFont(_fontChat);
+            }
+
+            if (uiWindowManager.GetWindow(MapSimulatorWindowNames.MemoGet) is MemoGetWindow memoGetWindow)
+            {
+                memoGetWindow.SetSnapshotProvider(() => _memoMailbox.GetAttachmentSnapshot(_activeMemoAttachmentId));
+                memoGetWindow.SetActions(
+                    () =>
+                    {
+                        if (_memoMailbox.TryClaimAttachment(_activeMemoAttachmentId, out string message))
+                        {
+                            ShowUtilityFeedbackMessage(message);
+                        }
+                        else
+                        {
+                            ShowUtilityFeedbackMessage(message);
+                        }
+
+                        return message;
+                    },
+                    () => ShowUtilityFeedbackMessage("Closed memo package dialog."));
+                memoGetWindow.SetFont(_fontChat);
+            }
+        }
+
+        private void OpenMemoAttachmentWindow(int memoId)
+        {
+            if (!_memoMailbox.CanClaimAttachment(memoId))
+            {
+                if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.MemoMailbox) is MemoMailboxWindow)
+                {
+                    ShowUtilityFeedbackMessage("No claimable package is attached to this memo.");
+                }
+
+                return;
+            }
+
+            _activeMemoAttachmentId = memoId;
+            uiWindowManager?.ShowWindow(MapSimulatorWindowNames.MemoGet);
+        }
+
+        private void WireSocialListWindowData()
+        {
+            if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.SocialList) is not SocialListWindow socialListWindow)
+            {
+                return;
+            }
+
+            _socialListRuntime.UpdateLocalContext(_playerManager?.Player?.Build, GetCurrentMapTransferDisplayName(), 1);
+            socialListWindow.SetSnapshotProvider(_socialListRuntime.BuildSnapshot);
+            socialListWindow.SetHandlers(
+                tab => _socialListRuntime.SelectTab(tab),
+                visibleIndex => _socialListRuntime.SelectVisibleEntry(visibleIndex),
+                delta => _socialListRuntime.MovePage(delta),
+                onlineOnly => _socialListRuntime.SetFriendOnlineOnly(onlineOnly),
+                actionKey =>
+                {
+                    if (string.Equals(actionKey, "Guild.Board", StringComparison.Ordinal))
+                    {
+                        uiWindowManager?.ShowWindow(MapSimulatorWindowNames.GuildBbs);
+                        return "Opened Guild BBS from the guild member list.";
+                    }
+
+                    return _socialListRuntime.ExecuteAction(actionKey);
+                },
+                ShowUtilityFeedbackMessage);
+            socialListWindow.SetFont(_fontChat);
         }
 
         private void WireMessengerWindowData()
@@ -830,8 +963,55 @@ namespace HaCreator.MapSimulator
                 slotIndex => _messengerRuntime.SelectSlot(slotIndex),
                 () => _messengerRuntime.InviteNextContact(),
                 () => _messengerRuntime.WhisperSelected(),
+                () => _messengerRuntime.LeaveMessenger(),
+                message => _messengerRuntime.SendMessage(message),
+                message => _messengerRuntime.WhisperSelected(message),
                 ShowUtilityFeedbackMessage);
             messengerWindow.SetFont(_fontChat);
+        }
+
+        private void WireGuildBbsWindowData()
+        {
+            if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.GuildBbs) is not GuildBbsWindow guildBbsWindow)
+            {
+                return;
+            }
+
+            CharacterBuild build = _playerManager?.Player?.Build;
+            string playerName = build?.Name ?? "Player";
+            string guildName = string.IsNullOrWhiteSpace(build?.GuildName) ? "Maple Guild" : build.GuildName;
+            _guildBbsRuntime.UpdateLocalContext(playerName, guildName, GetCurrentMapTransferDisplayName());
+
+            guildBbsWindow.SetSnapshotProvider(_guildBbsRuntime.BuildSnapshot);
+            guildBbsWindow.SetActionHandlers(
+                threadId => _guildBbsRuntime.SelectThread(threadId),
+                () => _guildBbsRuntime.BeginWrite(),
+                () => _guildBbsRuntime.BeginEditSelected(),
+                () => _guildBbsRuntime.DeleteSelectedThread(),
+                () => _guildBbsRuntime.SubmitCompose(),
+                () => _guildBbsRuntime.CancelCompose(),
+                () => _guildBbsRuntime.ToggleNotice(),
+                () => _guildBbsRuntime.AddReply(),
+                () => _guildBbsRuntime.DeleteLatestReply(),
+                ShowUtilityFeedbackMessage);
+            guildBbsWindow.SetFont(_fontChat);
+        }
+
+        private void WireMapleTvWindowData()
+        {
+            if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.MapleTv) is not MapleTvWindow mapleTvWindow)
+            {
+                return;
+            }
+
+            _mapleTvRuntime.UpdateLocalContext(_playerManager?.Player?.Build?.Name ?? "Player");
+            mapleTvWindow.SetSnapshotProvider(() => _mapleTvRuntime.BuildSnapshot(currTickCount));
+            mapleTvWindow.SetActionHandlers(
+                PublishMapleTvDraft,
+                ClearMapleTvMessage,
+                ToggleMapleTvReceiverMode,
+                ShowUtilityFeedbackMessage);
+            mapleTvWindow.SetFont(_fontChat);
         }
 
         private void WireProgressionUtilityWindowLaunchers()
@@ -870,8 +1050,76 @@ namespace HaCreator.MapSimulator
                 statusBarChatUI.MemoMailboxRequested = () => uiWindowManager?.ShowWindow(MapSimulatorWindowNames.MemoMailbox);
             }
 
+            WireItemUpgradeWindowLaunchers();
             WireWorldChannelSelectorWindows();
             WireStatusBarPopupUtilityWindows();
+        }
+
+        private void WireMiniRoomWindowData()
+        {
+            if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.MiniRoom) is not SocialRoomWindow miniRoomWindow)
+            {
+                return;
+            }
+
+            _specialFieldRuntime.Minigames.MemoryGame.AttachMiniRoomRuntime(miniRoomWindow.Runtime);
+            miniRoomWindow.SetFont(_fontChat);
+        }
+
+        private void WireItemUpgradeWindowLaunchers()
+        {
+            if (uiWindowManager == null)
+            {
+                return;
+            }
+
+            if (uiWindowManager.InventoryWindow is InventoryUI inventoryWindow)
+            {
+                inventoryWindow.ItemUpgradeRequested = OpenItemUpgradeWindowForConsumable;
+            }
+
+            switch (uiWindowManager.EquipWindow)
+            {
+                case EquipUI equipWindow:
+                    equipWindow.ItemUpgradeRequested = OpenItemUpgradeWindowForEquipment;
+                    break;
+                case EquipUIBigBang equipWindowBigBang:
+                    equipWindowBigBang.ItemUpgradeRequested = OpenItemUpgradeWindowForEquipment;
+                    break;
+            }
+        }
+
+        private void OpenItemUpgradeWindowForConsumable(int itemId)
+        {
+            if (!TryShowItemUpgradeWindow(out ItemUpgradeUI itemUpgradeWindow))
+            {
+                return;
+            }
+
+            itemUpgradeWindow.PrepareConsumableSelection(itemId);
+        }
+
+        private void OpenItemUpgradeWindowForEquipment(Character.EquipSlot slot)
+        {
+            if (!TryShowItemUpgradeWindow(out ItemUpgradeUI itemUpgradeWindow))
+            {
+                return;
+            }
+
+            itemUpgradeWindow.PrepareEquipmentSelection(slot);
+        }
+
+        private bool TryShowItemUpgradeWindow(out ItemUpgradeUI itemUpgradeWindow)
+        {
+            itemUpgradeWindow = uiWindowManager?.GetWindow(MapSimulatorWindowNames.ItemUpgrade) as ItemUpgradeUI;
+            if (itemUpgradeWindow == null)
+            {
+                return false;
+            }
+
+            itemUpgradeWindow.Show();
+            uiWindowManager.BringToFront(itemUpgradeWindow);
+            return true;
         }
 
         private void RegisterStatusBarPopupUtilityWindows(WzImage uiStatus2BarImage, WzImage uiBasicImage, WzImage soundUIImage)
@@ -921,7 +1169,7 @@ namespace HaCreator.MapSimulator
                 menuWindow.BindEntryAction("BtStat", () => uiWindowManager?.ShowWindow(MapSimulatorWindowNames.Ability));
                 menuWindow.BindEntryAction("BtSkill", () => uiWindowManager?.ShowWindow(MapSimulatorWindowNames.Skills));
                 menuWindow.BindEntryAction("BtQuest", () => uiWindowManager?.ShowWindow(MapSimulatorWindowNames.Quest));
-                menuWindow.BindEntryAction("BtCommunity", () => uiWindowManager?.ShowWindow(MapSimulatorWindowNames.CharacterInfo));
+                menuWindow.BindEntryAction("BtCommunity", () => uiWindowManager?.ShowWindow(MapSimulatorWindowNames.SocialList));
                 menuWindow.BindEntryAction("BtMSN", () => uiWindowManager?.ShowWindow(MapSimulatorWindowNames.Messenger));
                 menuWindow.BindEntryAction("BtRank", () => ShowUtilityFeedbackMessage("Ranking tools are not implemented in MapSimulator yet."));
                 menuWindow.BindEntryAction("BtEvent", () => ShowUtilityFeedbackMessage("Event tools are not implemented in MapSimulator yet."));
@@ -971,6 +1219,27 @@ namespace HaCreator.MapSimulator
             }
         }
 
+        private string PublishMapleTvDraft()
+        {
+            string message = _mapleTvRuntime.OnSetMessage(currTickCount);
+            if (message.StartsWith("MapleTV message set", StringComparison.Ordinal))
+            {
+                uiWindowManager?.ShowWindow(MapSimulatorWindowNames.MapleTv);
+            }
+
+            return message;
+        }
+
+        private string ClearMapleTvMessage()
+        {
+            return _mapleTvRuntime.OnClearMessage();
+        }
+
+        private string ToggleMapleTvReceiverMode()
+        {
+            return _mapleTvRuntime.ToggleReceiverMode();
+        }
+
         private void WireWorldChannelSelectorWindows()
         {
             if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.WorldSelect) is WorldSelectWindow worldSelectWindow)
@@ -1006,6 +1275,60 @@ namespace HaCreator.MapSimulator
             characterSelectWindow.DeleteRequested += HandleLoginCharacterDeleteRequested;
         }
 
+        private void WireRecommendWorldWindow()
+        {
+            if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.RecommendWorld) is not RecommendWorldWindow recommendWorldWindow)
+            {
+                return;
+            }
+
+            recommendWorldWindow.PreviousRequested -= HandleRecommendWorldPreviousRequested;
+            recommendWorldWindow.PreviousRequested += HandleRecommendWorldPreviousRequested;
+            recommendWorldWindow.NextRequested -= HandleRecommendWorldNextRequested;
+            recommendWorldWindow.NextRequested += HandleRecommendWorldNextRequested;
+            recommendWorldWindow.SelectRequested -= HandleRecommendWorldSelected;
+            recommendWorldWindow.SelectRequested += HandleRecommendWorldSelected;
+            recommendWorldWindow.CloseRequested -= HandleRecommendWorldClosed;
+            recommendWorldWindow.CloseRequested += HandleRecommendWorldClosed;
+        }
+
+        private void WireLoginEntryDialogWindows()
+        {
+            if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.LoginUtilityDialog) is not LoginUtilityDialogWindow utilityDialogWindow)
+            {
+                return;
+            }
+
+            utilityDialogWindow.PrimaryRequested -= HandleLoginUtilityPrimaryRequested;
+            utilityDialogWindow.PrimaryRequested += HandleLoginUtilityPrimaryRequested;
+            utilityDialogWindow.SecondaryRequested -= HandleLoginUtilitySecondaryRequested;
+            utilityDialogWindow.SecondaryRequested += HandleLoginUtilitySecondaryRequested;
+        }
+
+        private void SyncLoginCharacterDetailWindow()
+        {
+            if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.CharacterDetail) is not CharacterDetailWindow characterDetailWindow)
+            {
+                return;
+            }
+
+            bool shouldShow = IsLoginRuntimeSceneActive &&
+                              (_loginRuntime.CurrentStep == LoginStep.CharacterSelect ||
+                               _loginRuntime.CurrentStep == LoginStep.ViewAllCharacters);
+            if (!shouldShow)
+            {
+                characterDetailWindow.Hide();
+                return;
+            }
+
+            characterDetailWindow.SetEntry(
+                _loginCharacterRoster.SelectedEntry,
+                _loginCharacterRoster.SelectedEntry == null
+                    ? "Select a character to inspect details."
+                    : "Client-backed detail view for the selected roster entry.");
+            characterDetailWindow.Show();
+        }
+
         private void ShowWorldSelectWindow()
         {
             if (uiWindowManager == null)
@@ -1013,7 +1336,7 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
-            _selectorBrowseWorldId = _simulatorWorldId;
+            _selectorBrowseWorldId = GetPreferredSelectorBrowseWorldId();
             uiWindowManager.HideWindow(MapSimulatorWindowNames.ChannelSelect);
             uiWindowManager.HideWindow(MapSimulatorWindowNames.ChannelShift);
             RefreshWorldChannelSelectorWindows();
@@ -1099,6 +1422,7 @@ namespace HaCreator.MapSimulator
             if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.WorldSelect) is WorldSelectWindow worldSelectWindow)
             {
                 EnsureWorldChannelSelectorState(worldSelectWindow.WorldIds);
+                EnsureLoginWorldSelectorMetadata(worldSelectWindow.WorldIds);
                 worldSelectWindow.Configure(
                     BuildWorldSelectionStates(),
                     _simulatorWorldId,
@@ -1125,6 +1449,172 @@ namespace HaCreator.MapSimulator
                    (!IsLoginRuntimeSceneActive || _loginRuntime.CurrentStep == LoginStep.WorldSelect);
         }
 
+        private bool ShouldUseLoginWorldMetadata => IsLoginRuntimeSceneActive && _loginRuntime.HasWorldInformation;
+
+        private IReadOnlyList<int> GetRegisteredWorldSelectorIds()
+        {
+            if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.WorldSelect) is WorldSelectWindow worldSelectWindow &&
+                worldSelectWindow.WorldIds.Count > 0)
+            {
+                return worldSelectWindow.WorldIds;
+            }
+
+            if (_simulatorChannelStatesByWorld.Count > 0)
+            {
+                return _simulatorChannelStatesByWorld.Keys.OrderBy(id => id).ToArray();
+            }
+
+            return new[] { DefaultSimulatorWorldId };
+        }
+
+        private int GetPreferredSelectorBrowseWorldId()
+        {
+            if (ShouldUseLoginWorldMetadata && _loginLatestConnectedWorldId.HasValue)
+            {
+                return _loginLatestConnectedWorldId.Value;
+            }
+
+            return _simulatorWorldId;
+        }
+
+        private void DispatchLoginRuntimePacket(LoginPacketType packetType, out string message)
+        {
+            _loginRuntime.TryDispatchPacket(packetType, currTickCount, out message);
+            ApplyLoginWorldSelectorPacket(packetType);
+            RefreshWorldChannelSelectorWindows();
+            SyncRecommendWorldWindow();
+            SyncLoginCharacterSelectWindow();
+            SyncLoginEntryDialogs();
+        }
+
+        private void SyncLoginWorldSelectionWindows()
+        {
+            bool shouldShowWorldSelect = IsLoginRuntimeSceneActive &&
+                                         _loginRuntime.CurrentStep == LoginStep.WorldSelect;
+
+            if (_lastLoginStep != _loginRuntime.CurrentStep)
+            {
+                if (_loginRuntime.CurrentStep == LoginStep.WorldSelect)
+                {
+                    _recommendWorldDismissed = false;
+                    _selectorBrowseWorldId = GetPreferredSelectorBrowseWorldId();
+                }
+
+                _lastLoginStep = _loginRuntime.CurrentStep;
+            }
+
+            if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.WorldSelect) is WorldSelectWindow worldSelectWindow)
+            {
+                if (shouldShowWorldSelect)
+                {
+                    if (!worldSelectWindow.IsVisible)
+                    {
+                        worldSelectWindow.Show();
+                        uiWindowManager.BringToFront(worldSelectWindow);
+                    }
+                }
+                else
+                {
+                    worldSelectWindow.Hide();
+                }
+            }
+
+            if (!shouldShowWorldSelect)
+            {
+                uiWindowManager?.HideWindow(MapSimulatorWindowNames.ChannelSelect);
+            }
+
+            SyncRecommendWorldWindow();
+        }
+
+        private void SyncRecommendWorldWindow()
+        {
+            if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.RecommendWorld) is not RecommendWorldWindow recommendWorldWindow)
+            {
+                return;
+            }
+
+            bool shouldShow = IsLoginRuntimeSceneActive &&
+                              _loginRuntime.CurrentStep == LoginStep.WorldSelect &&
+                              !_recommendWorldDismissed;
+            if (!shouldShow)
+            {
+                recommendWorldWindow.Hide();
+                return;
+            }
+
+            RebuildRecommendWorldEntries();
+            if (_recommendWorldEntries.Count == 0)
+            {
+                recommendWorldWindow.Hide();
+                return;
+            }
+
+            _recommendWorldIndex = Math.Clamp(_recommendWorldIndex, 0, _recommendWorldEntries.Count - 1);
+            recommendWorldWindow.Configure(
+                _recommendWorldEntries,
+                _recommendWorldIndex,
+                IsWorldChannelSelectorRequestAllowed(),
+                GetRecommendWorldStatusMessage());
+
+            if (!recommendWorldWindow.IsVisible)
+            {
+                recommendWorldWindow.Show();
+                uiWindowManager.BringToFront(recommendWorldWindow);
+            }
+        }
+
+        private void RebuildRecommendWorldEntries()
+        {
+            _recommendWorldEntries.Clear();
+
+            Dictionary<int, WorldSelectionState> worldStates = BuildWorldSelectionStates();
+            IEnumerable<WorldSelectionState> orderedStates = worldStates.Values
+                .OrderByDescending(state => state.IsRecommended)
+                .ThenByDescending(state => state.IsLatestConnected)
+                .ThenBy(state => state.OccupancyPercent)
+                .ThenBy(state => state.WorldId)
+                .Take(5);
+
+            foreach (WorldSelectionState state in orderedStates)
+            {
+                int visibleChannels = GetChannelSelectionStates(state.WorldId).Count(channel => channel.Capacity > 0);
+                string helperLead = state.IsRecommended
+                    ? "Recommended for lighter traffic."
+                    : state.IsLatestConnected
+                        ? "Latest connected world."
+                        : "Stable world-selection option.";
+                string loadLine = $"Load {state.OccupancyPercent}% ({state.Availability}).";
+                string channelLine = $"{visibleChannels} visible channels, {state.ActiveChannels} enterable.";
+
+                _recommendWorldEntries.Add(new RecommendWorldEntry(
+                    state.WorldId,
+                    new[] { helperLead, loadLine, channelLine }));
+            }
+
+            int matchingIndex = _recommendWorldEntries.FindIndex(entry => entry.WorldId == _selectorBrowseWorldId);
+            if (matchingIndex >= 0)
+            {
+                _recommendWorldIndex = matchingIndex;
+            }
+        }
+
+        private string GetRecommendWorldStatusMessage()
+        {
+            if (_selectorRequestKind == SelectorRequestKind.LoginWorldCheck ||
+                _selectorRequestKind == SelectorRequestKind.ChannelChange)
+            {
+                return _selectorRequestStatusMessage;
+            }
+
+            if (!_loginRuntime.HasWorldInformation)
+            {
+                return "Dispatch WorldInformation to refine simulator recommendations.";
+            }
+
+            return "Browse recommended worlds, then select one for channel entry.";
+        }
+
         private string GetWorldSelectorStatusMessage()
         {
             if (_selectorRequestKind == SelectorRequestKind.LoginWorldCheck)
@@ -1148,6 +1638,14 @@ namespace HaCreator.MapSimulator
                 {
                     return "Using simulator-side world data until WorldInformation is dispatched.";
                 }
+
+                string latestLabel = _loginLatestConnectedWorldId.HasValue
+                    ? $" Latest: {_loginLatestConnectedWorldId.Value}."
+                    : string.Empty;
+                string recommendedLabel = _loginRecommendedWorldIds.Count > 0
+                    ? $" Recommended: {string.Join(", ", _loginRecommendedWorldIds.OrderBy(id => id).Take(3))}."
+                    : string.Empty;
+                return $"WorldInformation loaded.{latestLabel}{recommendedLabel}";
             }
 
             return "Select a world to inspect its channels.";
@@ -1178,9 +1676,12 @@ namespace HaCreator.MapSimulator
             _selectorRequestKind = requestKind;
             _selectorRequestWorldId = Math.Max(0, worldId);
             _selectorRequestChannelIndex = Math.Max(0, channelIndex);
-            _selectorRequestCompletesAt = currTickCount + Math.Max(1, durationMs);
+            _selectorRequestStartedAt = currTickCount;
+            _selectorRequestDurationMs = Math.Max(1, durationMs);
+            _selectorRequestCompletesAt = currTickCount + _selectorRequestDurationMs;
             _selectorRequestStatusMessage = statusMessage;
             RefreshWorldChannelSelectorWindows();
+            SyncLoginEntryDialogs();
         }
 
         private void UpdateWorldChannelSelectorRequestState()
@@ -1196,14 +1697,15 @@ namespace HaCreator.MapSimulator
             int channelIndex = _selectorRequestChannelIndex;
 
             _selectorRequestKind = SelectorRequestKind.None;
+            _selectorRequestStartedAt = int.MinValue;
+            _selectorRequestDurationMs = 0;
             _selectorRequestCompletesAt = int.MinValue;
             _selectorRequestStatusMessage = null;
 
             if (completedRequest == SelectorRequestKind.LoginWorldCheck)
             {
                 _selectorBrowseWorldId = worldId;
-                _loginRuntime.TryDispatchPacket(LoginPacketType.CheckUserLimitResult, currTickCount, out _);
-                RefreshWorldChannelSelectorWindows();
+                DispatchLoginRuntimePacket(LoginPacketType.CheckUserLimitResult, out _);
 
                 if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.ChannelSelect) is ChannelSelectWindow channelSelectWindow)
                 {
@@ -1211,6 +1713,7 @@ namespace HaCreator.MapSimulator
                     uiWindowManager.BringToFront(channelSelectWindow);
                 }
 
+                SyncLoginEntryDialogs();
                 return;
             }
 
@@ -1224,9 +1727,9 @@ namespace HaCreator.MapSimulator
 
             if (IsLoginRuntimeSceneActive)
             {
-                _loginRuntime.TryDispatchPacket(LoginPacketType.SelectWorldResult, currTickCount, out string runtimeMessage);
+                DispatchLoginRuntimePacket(LoginPacketType.SelectWorldResult, out string runtimeMessage);
                 _loginCharacterStatusMessage = $"Requested world {_simulatorWorldId}, channel {_simulatorChannelIndex + 1}. {runtimeMessage}";
-                SyncLoginCharacterSelectWindow();
+                SyncLoginEntryDialogs();
                 return;
             }
 
@@ -1272,9 +1775,11 @@ namespace HaCreator.MapSimulator
             _loginCharacterStatusMessage = entries.Count > 0
                 ? "Choose a character and press Enter to request field entry."
                 : "Unable to populate the simulator character roster.";
+            HideLoginUtilityDialog();
 
             WireLoginCharacterSelectWindow();
             SyncLoginCharacterSelectWindow();
+            SyncLoginEntryDialogs();
         }
 
         private int ResolveLoginCharacterTargetMapId()
@@ -1300,6 +1805,7 @@ namespace HaCreator.MapSimulator
         {
             if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.CharacterSelect) is not CharacterSelectWindow characterSelectWindow)
             {
+                SyncLoginCharacterDetailWindow();
                 return;
             }
 
@@ -1309,6 +1815,7 @@ namespace HaCreator.MapSimulator
             if (!shouldShow)
             {
                 characterSelectWindow.Hide();
+                SyncLoginCharacterDetailWindow();
                 return;
             }
 
@@ -1324,6 +1831,124 @@ namespace HaCreator.MapSimulator
                 canDelete);
             characterSelectWindow.Show();
             uiWindowManager.BringToFront(characterSelectWindow);
+            SyncLoginCharacterDetailWindow();
+        }
+
+        private void SyncLoginEntryDialogs()
+        {
+            if (uiWindowManager == null)
+            {
+                return;
+            }
+
+            if (!IsLoginRuntimeSceneActive)
+            {
+                uiWindowManager.HideWindow(MapSimulatorWindowNames.ConnectionNotice);
+                uiWindowManager.HideWindow(MapSimulatorWindowNames.LoginUtilityDialog);
+                return;
+            }
+
+            SyncConnectionNoticeWindow();
+            SyncLoginUtilityDialogWindow();
+        }
+
+        private void SyncConnectionNoticeWindow()
+        {
+            if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.ConnectionNotice) is not ConnectionNoticeWindow noticeWindow)
+            {
+                return;
+            }
+
+            bool shouldShow = false;
+            string body = string.Empty;
+            bool showProgress = false;
+            float progress = 0f;
+
+            if (_selectorRequestKind != SelectorRequestKind.None)
+            {
+                shouldShow = true;
+                body = _selectorRequestStatusMessage ?? "Waiting for the login bootstrap reply.";
+                showProgress = true;
+                if (_selectorRequestDurationMs > 0 && _selectorRequestStartedAt != int.MinValue)
+                {
+                    progress = MathHelper.Clamp(
+                        (currTickCount - _selectorRequestStartedAt) / (float)_selectorRequestDurationMs,
+                        0f,
+                        1f);
+                }
+            }
+            else if (_loginRuntime.CurrentStep == LoginStep.EnteringField)
+            {
+                shouldShow = true;
+                body = string.IsNullOrWhiteSpace(_loginCharacterStatusMessage)
+                    ? "Requesting field entry from the selected character."
+                    : _loginCharacterStatusMessage;
+            }
+
+            if (!shouldShow)
+            {
+                noticeWindow.Hide();
+                return;
+            }
+
+            noticeWindow.Configure("Connection Notice", body, showProgress, progress);
+            noticeWindow.Show();
+            uiWindowManager.BringToFront(noticeWindow);
+        }
+
+        private void SyncLoginUtilityDialogWindow()
+        {
+            if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.LoginUtilityDialog) is not LoginUtilityDialogWindow utilityDialogWindow)
+            {
+                return;
+            }
+
+            if (_loginUtilityDialogAction == LoginUtilityDialogAction.None)
+            {
+                utilityDialogWindow.Hide();
+                return;
+            }
+
+            utilityDialogWindow.Configure(
+                _loginUtilityDialogTitle,
+                _loginUtilityDialogBody,
+                _loginUtilityDialogPrimaryLabel,
+                _loginUtilityDialogSecondaryLabel,
+                showPrimaryButton: true,
+                showSecondaryButton: _loginUtilityDialogShowSecondaryButton);
+            utilityDialogWindow.Show();
+            uiWindowManager.BringToFront(utilityDialogWindow);
+        }
+
+        private void ShowLoginUtilityDialog(
+            string title,
+            string body,
+            string primaryLabel,
+            string secondaryLabel,
+            bool showSecondaryButton,
+            LoginUtilityDialogAction action,
+            int targetIndex = -1)
+        {
+            _loginUtilityDialogTitle = string.IsNullOrWhiteSpace(title) ? "Login Utility" : title;
+            _loginUtilityDialogBody = body ?? string.Empty;
+            _loginUtilityDialogPrimaryLabel = string.IsNullOrWhiteSpace(primaryLabel) ? "OK" : primaryLabel;
+            _loginUtilityDialogSecondaryLabel = string.IsNullOrWhiteSpace(secondaryLabel) ? "Cancel" : secondaryLabel;
+            _loginUtilityDialogShowSecondaryButton = showSecondaryButton;
+            _loginUtilityDialogAction = action;
+            _loginUtilityDialogTargetIndex = targetIndex;
+            SyncLoginEntryDialogs();
+        }
+
+        private void HideLoginUtilityDialog()
+        {
+            _loginUtilityDialogAction = LoginUtilityDialogAction.None;
+            _loginUtilityDialogBody = string.Empty;
+            _loginUtilityDialogShowSecondaryButton = false;
+            _loginUtilityDialogTargetIndex = -1;
+            if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.LoginUtilityDialog) is LoginUtilityDialogWindow utilityDialogWindow)
+            {
+                utilityDialogWindow.Hide();
+            }
         }
 
         private void HandleLoginCharacterSelected(int rowIndex)
@@ -1338,6 +1963,7 @@ namespace HaCreator.MapSimulator
                 ? "Select a character first."
                 : $"Selected {entry.Build.Name} Lv.{entry.Build.Level} {entry.Build.JobName}.";
             SyncLoginCharacterSelectWindow();
+            SyncLoginEntryDialogs();
         }
 
         private void HandleLoginCharacterEnterRequested()
@@ -1346,6 +1972,13 @@ namespace HaCreator.MapSimulator
             {
                 _loginCharacterStatusMessage = validationMessage;
                 SyncLoginCharacterSelectWindow();
+                ShowLoginUtilityDialog(
+                    "Login Utility",
+                    validationMessage,
+                    "OK",
+                    "Cancel",
+                    showSecondaryButton: false,
+                    LoginUtilityDialogAction.DismissOnly);
                 return;
             }
 
@@ -1354,6 +1987,13 @@ namespace HaCreator.MapSimulator
             {
                 _loginCharacterStatusMessage = "Selected character data is unavailable.";
                 SyncLoginCharacterSelectWindow();
+                ShowLoginUtilityDialog(
+                    "Login Utility",
+                    _loginCharacterStatusMessage,
+                    "OK",
+                    "Cancel",
+                    showSecondaryButton: false,
+                    LoginUtilityDialogAction.DismissOnly);
                 return;
             }
 
@@ -1364,33 +2004,142 @@ namespace HaCreator.MapSimulator
             {
                 _loginCharacterStatusMessage = $"Selected {entry.Build.Name}, but map loading is unavailable.";
                 SyncLoginCharacterSelectWindow();
+                ShowLoginUtilityDialog(
+                    "Login Utility",
+                    _loginCharacterStatusMessage,
+                    "OK",
+                    "Cancel",
+                    showSecondaryButton: false,
+                    LoginUtilityDialogAction.DismissOnly);
                 return;
             }
 
-            _loginRuntime.TryDispatchPacket(LoginPacketType.SelectCharacterResult, currTickCount, out string runtimeMessage);
+            HideLoginUtilityDialog();
+            DispatchLoginRuntimePacket(LoginPacketType.SelectCharacterResult, out string runtimeMessage);
             _loginCharacterStatusMessage = $"Entering field with {entry.Build.Name}. {runtimeMessage}";
-            SyncLoginCharacterSelectWindow();
+            SyncLoginEntryDialogs();
         }
 
         private void HandleLoginNewCharacterRequested()
         {
             _loginCharacterStatusMessage = "New character creation is not implemented yet.";
             SyncLoginCharacterSelectWindow();
+            ShowLoginUtilityDialog(
+                "Login Utility",
+                "New character creation is not implemented in MapSimulator yet.",
+                "OK",
+                "Cancel",
+                showSecondaryButton: false,
+                LoginUtilityDialogAction.DismissOnly);
         }
 
         private void HandleLoginCharacterDeleteRequested()
         {
-            if (!_loginCharacterRoster.DeleteSelected(out LoginCharacterRosterEntry deletedEntry))
+            LoginCharacterRosterEntry selectedEntry = _loginCharacterRoster.SelectedEntry;
+            if (selectedEntry == null || !selectedEntry.CanDelete)
             {
                 _loginCharacterStatusMessage = "The selected character cannot be deleted.";
                 SyncLoginCharacterSelectWindow();
+                ShowLoginUtilityDialog(
+                    "Login Utility",
+                    _loginCharacterStatusMessage,
+                    "OK",
+                    "Cancel",
+                    showSecondaryButton: false,
+                    LoginUtilityDialogAction.DismissOnly);
                 return;
             }
 
-            _loginCharacterStatusMessage = deletedEntry == null
-                ? "Character deleted from the simulator roster."
-                : $"Deleted {deletedEntry.Build.Name} from the simulator roster.";
+            ShowLoginUtilityDialog(
+                "Login Utility",
+                $"Delete {selectedEntry.Build.Name} from the simulator roster?",
+                "Delete",
+                "Cancel",
+                showSecondaryButton: true,
+                LoginUtilityDialogAction.ConfirmDeleteCharacter,
+                _loginCharacterRoster.SelectedIndex);
+        }
+
+        private void HandleLoginUtilityPrimaryRequested()
+        {
+            switch (_loginUtilityDialogAction)
+            {
+                case LoginUtilityDialogAction.ConfirmDeleteCharacter:
+                    ExecuteLoginCharacterDeleteConfirmation();
+                    break;
+                default:
+                    HideLoginUtilityDialog();
+                    break;
+            }
+
             SyncLoginCharacterSelectWindow();
+            SyncLoginEntryDialogs();
+        }
+
+        private void HandleLoginUtilitySecondaryRequested()
+        {
+            HideLoginUtilityDialog();
+            SyncLoginEntryDialogs();
+        }
+
+        private void ExecuteLoginCharacterDeleteConfirmation()
+        {
+            if (_loginUtilityDialogTargetIndex >= 0)
+            {
+                _loginCharacterRoster.Select(_loginUtilityDialogTargetIndex);
+            }
+
+            if (!_loginCharacterRoster.DeleteSelected(out LoginCharacterRosterEntry deletedEntry))
+            {
+                _loginCharacterStatusMessage = "The selected character cannot be deleted.";
+            }
+            else
+            {
+                _loginCharacterStatusMessage = deletedEntry == null
+                    ? "Character deleted from the simulator roster."
+                    : $"Deleted {deletedEntry.Build.Name} from the simulator roster.";
+            }
+
+            HideLoginUtilityDialog();
+        }
+
+        private void HandleRecommendWorldPreviousRequested()
+        {
+            if (_recommendWorldEntries.Count <= 1 || !IsWorldChannelSelectorRequestAllowed())
+            {
+                return;
+            }
+
+            _recommendWorldIndex = (_recommendWorldIndex - 1 + _recommendWorldEntries.Count) % _recommendWorldEntries.Count;
+            _selectorBrowseWorldId = _recommendWorldEntries[_recommendWorldIndex].WorldId;
+            RefreshWorldChannelSelectorWindows();
+            SyncRecommendWorldWindow();
+        }
+
+        private void HandleRecommendWorldNextRequested()
+        {
+            if (_recommendWorldEntries.Count <= 1 || !IsWorldChannelSelectorRequestAllowed())
+            {
+                return;
+            }
+
+            _recommendWorldIndex = (_recommendWorldIndex + 1) % _recommendWorldEntries.Count;
+            _selectorBrowseWorldId = _recommendWorldEntries[_recommendWorldIndex].WorldId;
+            RefreshWorldChannelSelectorWindows();
+            SyncRecommendWorldWindow();
+        }
+
+        private void HandleRecommendWorldSelected(int worldId)
+        {
+            _recommendWorldDismissed = true;
+            uiWindowManager?.HideWindow(MapSimulatorWindowNames.RecommendWorld);
+            HandleWorldSelected(worldId);
+        }
+
+        private void HandleRecommendWorldClosed()
+        {
+            _recommendWorldDismissed = true;
+            uiWindowManager?.HideWindow(MapSimulatorWindowNames.RecommendWorld);
         }
 
         private void EnsureWorldChannelSelectorState(IEnumerable<int> worldIds)
@@ -1425,10 +2174,121 @@ namespace HaCreator.MapSimulator
             }
         }
 
+        private void EnsureLoginWorldSelectorMetadata(IEnumerable<int> worldIds)
+        {
+            if (!ShouldUseLoginWorldMetadata || worldIds == null)
+            {
+                return;
+            }
+
+            foreach (int worldId in worldIds.Distinct().OrderBy(id => id))
+            {
+                if (_loginWorldMetadataByWorld.ContainsKey(worldId))
+                {
+                    continue;
+                }
+
+                int visibleChannels = 8 + ((worldId * 5) % 10);
+                int capacityBase = 600 + (((worldId + 1) * 75) % 250);
+                List<ChannelSelectionState> channels = new(DefaultSimulatorChannelCount);
+                for (int channelIndex = 0; channelIndex < DefaultSimulatorChannelCount; channelIndex++)
+                {
+                    bool isVisible = channelIndex < visibleChannels;
+                    int capacity = isVisible
+                        ? capacityBase + (((channelIndex + 1) * 40) % 160)
+                        : 0;
+                    bool isCurrentSelection = worldId == _simulatorWorldId && channelIndex == _simulatorChannelIndex;
+                    int occupancySeed = ((worldId + 2) * 71 + (channelIndex + 5) * 43) % 100;
+                    int occupancyPercent = Math.Clamp(25 + occupancySeed, 0, 100);
+                    int userCount = capacity <= 0
+                        ? 0
+                        : Math.Clamp((int)Math.Round(capacity * (occupancyPercent / 100d)), 0, capacity);
+                    bool isSelectable = isVisible && (userCount < capacity || isCurrentSelection);
+
+                    channels.Add(new ChannelSelectionState(channelIndex, userCount, capacity, isSelectable));
+                }
+
+                _loginWorldMetadataByWorld[worldId] = new LoginWorldSelectorMetadata(worldId, channels);
+            }
+        }
+
+        private void ClearLoginWorldSelectorMetadata()
+        {
+            _loginWorldMetadataByWorld.Clear();
+            _loginRecommendedWorldIds.Clear();
+            _loginLatestConnectedWorldId = null;
+        }
+
+        private void ApplyLoginWorldSelectorPacket(LoginPacketType packetType)
+        {
+            if (!IsLoginRuntimeSceneActive)
+            {
+                return;
+            }
+
+            switch (packetType)
+            {
+                case LoginPacketType.CheckPasswordResult:
+                    ClearLoginWorldSelectorMetadata();
+                    _selectorBrowseWorldId = _simulatorWorldId;
+                    break;
+                case LoginPacketType.WorldInformation:
+                    EnsureLoginWorldSelectorMetadata(GetRegisteredWorldSelectorIds());
+                    UpdateRecommendedLoginWorlds();
+                    break;
+                case LoginPacketType.RecommendWorldMessage:
+                    EnsureLoginWorldSelectorMetadata(GetRegisteredWorldSelectorIds());
+                    UpdateRecommendedLoginWorlds();
+                    break;
+                case LoginPacketType.LatestConnectedWorld:
+                    EnsureLoginWorldSelectorMetadata(GetRegisteredWorldSelectorIds());
+                    UpdateLatestConnectedWorld();
+                    break;
+            }
+        }
+
+        private void UpdateRecommendedLoginWorlds()
+        {
+            _loginRecommendedWorldIds.Clear();
+            foreach (int worldId in _loginWorldMetadataByWorld
+                         .OrderBy(pair => pair.Value.Channels.Where(channel => channel.Capacity > 0).DefaultIfEmpty()
+                             .Average(channel => channel?.OccupancyPercent ?? 100))
+                         .ThenBy(pair => pair.Key)
+                         .Take(3)
+                         .Select(pair => pair.Key))
+            {
+                _loginRecommendedWorldIds.Add(worldId);
+            }
+        }
+
+        private void UpdateLatestConnectedWorld()
+        {
+            if (_loginWorldMetadataByWorld.Count == 0)
+            {
+                _loginLatestConnectedWorldId = null;
+                return;
+            }
+
+            int latestWorldId = _loginWorldMetadataByWorld.ContainsKey(_simulatorWorldId)
+                ? _simulatorWorldId
+                : _loginWorldMetadataByWorld.Keys.OrderBy(id => id).First();
+            _loginLatestConnectedWorldId = latestWorldId;
+
+            if (_loginRuntime.CurrentStep == LoginStep.WorldSelect &&
+                _selectorRequestKind == SelectorRequestKind.None)
+            {
+                _selectorBrowseWorldId = latestWorldId;
+            }
+        }
+
         private Dictionary<int, WorldSelectionState> BuildWorldSelectionStates()
         {
             Dictionary<int, WorldSelectionState> states = new();
-            foreach ((int worldId, List<ChannelSelectionState> channels) in _simulatorChannelStatesByWorld)
+            IEnumerable<KeyValuePair<int, IReadOnlyList<ChannelSelectionState>>> channelsByWorld = ShouldUseLoginWorldMetadata
+                ? _loginWorldMetadataByWorld.ToDictionary(pair => pair.Key, pair => pair.Value.Channels)
+                : _simulatorChannelStatesByWorld.ToDictionary(pair => pair.Key, pair => (IReadOnlyList<ChannelSelectionState>)pair.Value);
+
+            foreach ((int worldId, IReadOnlyList<ChannelSelectionState> channels) in channelsByWorld)
             {
                 int totalChannels = channels.Count(channel => channel.Capacity > 0);
                 int activeChannels = channels.Count(channel => channel.IsSelectable);
@@ -1442,7 +2302,9 @@ namespace HaCreator.MapSimulator
                     activeChannels,
                     totalChannels,
                     occupancyPercent,
-                    isSelectable);
+                    isSelectable,
+                    isRecommended: ShouldUseLoginWorldMetadata && _loginRecommendedWorldIds.Contains(worldId),
+                    isLatestConnected: ShouldUseLoginWorldMetadata && _loginLatestConnectedWorldId == worldId);
             }
 
             return states;
@@ -1450,6 +2312,15 @@ namespace HaCreator.MapSimulator
 
         private IReadOnlyList<ChannelSelectionState> GetChannelSelectionStates(int worldId)
         {
+            if (ShouldUseLoginWorldMetadata)
+            {
+                EnsureLoginWorldSelectorMetadata(new[] { worldId });
+                if (_loginWorldMetadataByWorld.TryGetValue(worldId, out LoginWorldSelectorMetadata metadata))
+                {
+                    return metadata.Channels.ToArray();
+                }
+            }
+
             if (!_simulatorChannelStatesByWorld.TryGetValue(worldId, out List<ChannelSelectionState> channels))
             {
                 EnsureWorldChannelSelectorState(new[] { worldId });
@@ -1500,6 +2371,7 @@ namespace HaCreator.MapSimulator
         {
             this._mapBoard = _mapBoard;
             this._spawnPortalName = spawnPortalName;
+            _mapTransferDestinations = new MapTransferDestinationStore();
 
             // Check if the simulated map is the Login map. 'MapLogin1:MapLogin1'
             string[] titleNameParts = titleName.Split(':');
@@ -1729,6 +2601,7 @@ namespace HaCreator.MapSimulator
             WzImage uiBasicImage = Program.FindImage("UI", "Basic.img");
             WzImage uiWindow1Image = Program.FindImage("UI", "UIWindow.img"); //
             WzImage uiWindow2Image = Program.FindImage("UI", "UIWindow2.img"); // doesnt exist before big-bang
+            WzImage uiGuildBbsImage = Program.FindImage("UI", "GuildBBS.img");
             WzImage uiBuffIconImage = Program.FindImage("UI", "BuffIcon.img");
 
             WzImage uiStatusBarImage = Program.FindImage("UI", "StatusBar.img");
@@ -1992,7 +2865,30 @@ namespace HaCreator.MapSimulator
                 if (_gameState.IsLoginMap)
                 {
                     uiWindowManager ??= new UIWindowManager();
-                    UIWindowLoader.RegisterLoginCharacterSelectWindow(
+                    UIWindowLoader.RegisterLoginEntryWindows(
+                        uiWindowManager,
+                        uiWindow1Image,
+                        uiWindow2Image,
+                        uiBasicImage,
+                        soundUIImage,
+                        GraphicsDevice,
+                        _renderParams.RenderWidth,
+                        _renderParams.RenderHeight);
+                    UIWindowLoader.RegisterLoginCharacterDetailWindow(
+                        uiWindowManager,
+                        uiBasicImage,
+                        soundUIImage,
+                        GraphicsDevice,
+                        _renderParams.RenderWidth,
+                        _renderParams.RenderHeight);
+                    UIWindowLoader.RegisterConnectionNoticeWindow(
+                        uiWindowManager,
+                        uiBasicImage,
+                        soundUIImage,
+                        GraphicsDevice,
+                        _renderParams.RenderWidth,
+                        _renderParams.RenderHeight);
+                    UIWindowLoader.RegisterLoginUtilityDialogWindow(
                         uiWindowManager,
                         uiBasicImage,
                         soundUIImage,
@@ -2006,6 +2902,15 @@ namespace HaCreator.MapSimulator
                         uiWindow1Image, uiWindow2Image, uiBasicImage, soundUIImage,
                         skillWzFile, stringWzFile,
                         GraphicsDevice, _renderParams.RenderWidth, _renderParams.RenderHeight, _gameState.IsBigBangUpdate);
+                    UIWindowLoader.RegisterGuildBbsWindow(
+                        uiWindowManager,
+                        uiGuildBbsImage,
+                        uiBasicImage,
+                        soundUIImage,
+                        GraphicsDevice,
+                        new Point(
+                            Math.Max(24, (_renderParams.RenderWidth / 2) - 367),
+                            Math.Max(24, (_renderParams.RenderHeight / 2) - 263)));
                 }
             });
 
@@ -2021,14 +2926,29 @@ namespace HaCreator.MapSimulator
 
             // Set fonts on UI windows after all tasks complete
             uiWindowManager?.SetFonts(_fontChat);
+            WireWorldChannelSelectorWindows();
+            WireRecommendWorldWindow();
             WireLoginCharacterSelectWindow();
+            WireLoginEntryDialogWindows();
             WireQuestLogWindowData();
             WireMemoMailboxWindowData();
+            WireSocialListWindowData();
             WireMessengerWindowData();
+            WireGuildBbsWindowData();
+            WireMapleTvWindowData();
             WireProgressionUtilityWindowLaunchers();
+            WireMiniRoomWindowData();
             if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.ItemMaker) is ItemMakerUI itemMakerWindow)
             {
-                itemMakerWindow.SetCraftingState(_playerManager?.Player?.Level ?? 1, 0);
+                itemMakerWindow.SetCraftingState(_playerManager?.Player?.Level ?? 1, _playerManager?.Player?.Build?.TraitCraft ?? 0);
+            }
+            if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.CashShop) is AdminShopDialogUI cashShopWindowReload)
+            {
+                cashShopWindowReload.SetInventory(uiWindowManager.InventoryWindow as IInventoryRuntime);
+            }
+            if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.Mts) is AdminShopDialogUI mtsWindowReload)
+            {
+                mtsWindowReload.SetInventory(uiWindowManager.InventoryWindow as IInventoryRuntime);
             }
             RefreshMapTransferWindow();
             RefreshWorldMapWindow();
@@ -2261,6 +3181,14 @@ namespace HaCreator.MapSimulator
                 itemUpgradeWindow.CharacterBuild = _playerManager.Player.Build;
                 itemUpgradeWindow.SetFont(_fontChat);
                 itemUpgradeWindow.SetInventory(uiWindowManager.InventoryWindow as IInventoryRuntime);
+            }
+            if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.CashShop) is AdminShopDialogUI cashShopWindowRebuild)
+            {
+                cashShopWindowRebuild.SetInventory(uiWindowManager.InventoryWindow as IInventoryRuntime);
+            }
+            if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.Mts) is AdminShopDialogUI mtsWindowRebuild)
+            {
+                mtsWindowRebuild.SetInventory(uiWindowManager.InventoryWindow as IInventoryRuntime);
             }
             if (uiWindowManager?.SkillWindow != null)
             {
@@ -2529,6 +3457,7 @@ namespace HaCreator.MapSimulator
             WzImage uiBasicImage = Program.FindImage("UI", "Basic.img");
             WzImage uiWindow1Image = Program.FindImage("UI", "UIWindow.img");
             WzImage uiWindow2Image = Program.FindImage("UI", "UIWindow2.img");
+            WzImage uiGuildBbsImage = Program.FindImage("UI", "GuildBBS.img");
             WzImage uiBuffIconImage = Program.FindImage("UI", "BuffIcon.img");
             WzImage uiStatusBarImage = Program.FindImage("UI", "StatusBar.img");
             WzImage uiStatus2BarImage = Program.FindImage("UI", "StatusBar2.img");
@@ -2731,7 +3660,30 @@ namespace HaCreator.MapSimulator
                 if (_gameState.IsLoginMap)
                 {
                     uiWindowManager ??= new UIWindowManager();
-                    UIWindowLoader.RegisterLoginCharacterSelectWindow(
+                    UIWindowLoader.RegisterLoginEntryWindows(
+                        uiWindowManager,
+                        uiWindow1Image,
+                        uiWindow2Image,
+                        uiBasicImage,
+                        soundUIImage,
+                        GraphicsDevice,
+                        _renderParams.RenderWidth,
+                        _renderParams.RenderHeight);
+                    UIWindowLoader.RegisterLoginCharacterDetailWindow(
+                        uiWindowManager,
+                        uiBasicImage,
+                        soundUIImage,
+                        GraphicsDevice,
+                        _renderParams.RenderWidth,
+                        _renderParams.RenderHeight);
+                    UIWindowLoader.RegisterConnectionNoticeWindow(
+                        uiWindowManager,
+                        uiBasicImage,
+                        soundUIImage,
+                        GraphicsDevice,
+                        _renderParams.RenderWidth,
+                        _renderParams.RenderHeight);
+                    UIWindowLoader.RegisterLoginUtilityDialogWindow(
                         uiWindowManager,
                         uiBasicImage,
                         soundUIImage,
@@ -2745,6 +3697,15 @@ namespace HaCreator.MapSimulator
                         uiWindow1Image, uiWindow2Image, uiBasicImage, soundUIImage,
                         skillWzFile, stringWzFile,
                         GraphicsDevice, _renderParams.RenderWidth, _renderParams.RenderHeight, _gameState.IsBigBangUpdate);
+                    UIWindowLoader.RegisterGuildBbsWindow(
+                        uiWindowManager,
+                        uiGuildBbsImage,
+                        uiBasicImage,
+                        soundUIImage,
+                        GraphicsDevice,
+                        new Point(
+                            Math.Max(24, (_renderParams.RenderWidth / 2) - 367),
+                            Math.Max(24, (_renderParams.RenderHeight / 2) - 263)));
                 }
             });
 
@@ -2764,11 +3725,18 @@ namespace HaCreator.MapSimulator
 
             // Set fonts on UI windows after all tasks complete
             uiWindowManager?.SetFonts(_fontChat);
+            WireWorldChannelSelectorWindows();
+            WireRecommendWorldWindow();
             WireLoginCharacterSelectWindow();
+            WireLoginEntryDialogWindows();
             WireQuestLogWindowData();
             WireMemoMailboxWindowData();
+            WireSocialListWindowData();
             WireMessengerWindowData();
+            WireGuildBbsWindowData();
+            WireMapleTvWindowData();
             WireProgressionUtilityWindowLaunchers();
+            WireMiniRoomWindowData();
             RefreshMapTransferWindow();
             RefreshWorldMapWindow();
             LoadNpcQuestAlertIcons(uiWindow1Image, uiWindow2Image);
@@ -2830,6 +3798,14 @@ namespace HaCreator.MapSimulator
                 itemUpgradeWindow.CharacterBuild = _playerManager.Player.Build;
                 itemUpgradeWindow.SetFont(_fontChat);
                 itemUpgradeWindow.SetInventory(uiWindowManager.InventoryWindow as IInventoryRuntime);
+            }
+            if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.CashShop) is AdminShopDialogUI cashShopWindow)
+            {
+                cashShopWindow.SetInventory(uiWindowManager.InventoryWindow as IInventoryRuntime);
+            }
+            if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.Mts) is AdminShopDialogUI mtsWindow)
+            {
+                mtsWindow.SetInventory(uiWindowManager.InventoryWindow as IInventoryRuntime);
             }
 
             // Reload boss HP bar textures from WZ files (UI.wz/UIWindow.img/MobGage)
@@ -3506,6 +4482,9 @@ namespace HaCreator.MapSimulator
                 _playerManager?.Player?.HP,
                 _playerManager?.Player?.MaxHP,
                 _mobPool?.FindBossMob()?.AI?.HpPercent);
+            _specialFieldRuntime.SetAriantArenaPlayerState(
+                _playerManager?.Player?.Build?.Name,
+                _playerManager?.Player?.Build?.Job);
             _specialFieldRuntime.Update(gameTime, currTickCount);
             UpdateDirectionModeState(currTickCount);
             UpdateWorldChannelSelectorRequestState();
@@ -3515,12 +4494,31 @@ namespace HaCreator.MapSimulator
                 NpcInteractionOverlayResult npcOverlayResult = _npcInteractionOverlay != null
                     ? _npcInteractionOverlay.HandleMouse(newMouseState, _oldMouseState, _renderParams.RenderWidth, _renderParams.RenderHeight)
                     : default;
-                if (npcOverlayResult.PrimaryActionRequested)
+                bool memoryGameMouseConsumed = false;
+                if (npcOverlayResult.PrimaryActionEntry != null)
                 {
-                    HandleNpcOverlayPrimaryAction();
+                    HandleNpcOverlayPrimaryAction(npcOverlayResult.PrimaryActionEntry);
                 }
 
-                if (!npcOverlayResult.Consumed)
+                if (!npcOverlayResult.Consumed &&
+                    newMouseState.LeftButton == ButtonState.Released &&
+                    _oldMouseState.LeftButton == ButtonState.Pressed &&
+                    uiWindowManager?.ContainsPoint(newMouseState.X, newMouseState.Y) != true &&
+                    _specialFieldRuntime.Minigames.MemoryGame.HandleMouseClick(
+                        new Point(newMouseState.X, newMouseState.Y),
+                        _renderParams.RenderWidth,
+                        _renderParams.RenderHeight,
+                        currTickCount,
+                        out string memoryGameMouseMessage))
+                {
+                    memoryGameMouseConsumed = true;
+                    if (!string.IsNullOrWhiteSpace(memoryGameMouseMessage))
+                    {
+                        _chat.AddMessage(memoryGameMouseMessage, new Color(255, 228, 151), currTickCount);
+                    }
+                }
+
+                if (!npcOverlayResult.Consumed && !memoryGameMouseConsumed)
                 {
                     // Avoid leaking the overlay-dismissal click into world interactions while
                     // direction mode is transitioning through its delayed release window.
@@ -3534,6 +4532,8 @@ namespace HaCreator.MapSimulator
             UpdateNpcIdleSpeechState(currTickCount);
             UpdatePetEventSpeechState(currTickCount);
             UpdatePetIdleSpeechState(currTickCount);
+            _mapleTvRuntime.UpdateLocalContext(_playerManager?.Player?.Build?.Name ?? "Player");
+            _mapleTvRuntime.Update(currTickCount);
 
             // Handle portal UP key interaction (player presses UP near portal)
             if (isWindowActive)
@@ -5008,9 +6008,36 @@ namespace HaCreator.MapSimulator
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private void HandleNpcOverlayPrimaryAction()
+        private void HandleNpcOverlayPrimaryAction(NpcInteractionEntry entry)
         {
-            if (_npcInteractionOverlay?.SelectedEntry?.QuestId is not int questId || _activeNpcInteractionNpc == null || _activeNpcInteractionNpcId == 0)
+            if (entry == null)
+            {
+                return;
+            }
+
+            if (entry.PrimaryActionKind == NpcInteractionActionKind.OpenTrunk)
+            {
+                _npcInteractionOverlay?.Close();
+                uiWindowManager?.ShowWindow(MapSimulatorWindowNames.Trunk);
+                return;
+            }
+
+            if (entry.PrimaryActionKind == NpcInteractionActionKind.OpenItemMaker)
+            {
+                _npcInteractionOverlay?.Close();
+                if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.ItemMaker) is ItemMakerUI itemMakerWindow)
+                {
+                    itemMakerWindow.SetCraftingState(_playerManager?.Player?.Level ?? 1, _playerManager?.Player?.Build?.TraitCraft ?? 0);
+                }
+
+                uiWindowManager?.ShowWindow(MapSimulatorWindowNames.ItemMaker);
+                return;
+            }
+
+            if (entry.PrimaryActionKind != NpcInteractionActionKind.QuestPrimary ||
+                entry.QuestId is not int questId ||
+                _activeNpcInteractionNpc == null ||
+                _activeNpcInteractionNpcId == 0)
                 return;
 
             QuestActionResult result = _questRuntime.TryPerformPrimaryAction(questId, _activeNpcInteractionNpcId, _playerManager?.Player?.Build);
@@ -5923,7 +6950,12 @@ namespace HaCreator.MapSimulator
 
         private void TriggerAttackReactors(Rectangle worldHitbox, int currentTick, int skillId, int damage)
         {
-            if (_reactorPool == null || worldHitbox.Width <= 0 || worldHitbox.Height <= 0)
+            if (worldHitbox.Width <= 0 || worldHitbox.Height <= 0)
+                return;
+
+            _specialFieldRuntime?.Minigames?.Coconut?.TryHandleNormalAttack(worldHitbox, currentTick, skillId);
+
+            if (_reactorPool == null)
                 return;
 
             _reactorPool.TriggerSkillReactorsInBounds(
@@ -8661,6 +9693,8 @@ namespace HaCreator.MapSimulator
                     }
 
                     _loginRuntime.ForceStep(step, "Manual login step override");
+                    RefreshWorldChannelSelectorWindows();
+                    SyncLoginCharacterSelectWindow();
                     return ChatCommandHandler.CommandResult.Ok(_loginRuntime.DescribeStatus());
                 });
 
@@ -8680,7 +9714,7 @@ namespace HaCreator.MapSimulator
                         return ChatCommandHandler.CommandResult.Error("Usage: /loginpacket <checkpassword|worldinfo|selectworld|selectchar|vac|recommendworld|latestworld|extracharinfo>");
                     }
 
-                    _loginRuntime.TryDispatchPacket(packetType, currTickCount, out string message);
+                    DispatchLoginRuntimePacket(packetType, out string message);
                     return ChatCommandHandler.CommandResult.Ok(message);
                 });
 
@@ -8753,6 +9787,149 @@ namespace HaCreator.MapSimulator
                 args =>
                 {
                     return ChatCommandHandler.CommandResult.Info($"Camera: X={mapShiftX}, Y={mapShiftY}");
+                });
+
+            _chat.CommandHandler.RegisterCommand(
+                "wedding",
+                "Inspect or drive the wedding ceremony runtime",
+                "/wedding [status|progress <step> <groomId> <brideId>|respond <yes|no>|actor <groom|bride> <x> <y>|end]",
+                args =>
+                {
+                    WeddingField wedding = _specialFieldRuntime.SpecialEffects.Wedding;
+                    if (!wedding.IsActive)
+                    {
+                        return ChatCommandHandler.CommandResult.Error("Wedding runtime is only active on wedding maps");
+                    }
+
+                    if (args.Length == 0 || string.Equals(args[0], "status", StringComparison.OrdinalIgnoreCase))
+                    {
+                        return ChatCommandHandler.CommandResult.Info(wedding.DescribeStatus());
+                    }
+
+                    if (string.Equals(args[0], "progress", StringComparison.OrdinalIgnoreCase))
+                    {
+                        if (args.Length < 4
+                            || !int.TryParse(args[1], out int step)
+                            || !int.TryParse(args[2], out int groomId)
+                            || !int.TryParse(args[3], out int brideId))
+                        {
+                            return ChatCommandHandler.CommandResult.Error("Usage: /wedding progress <step> <groomId> <brideId>");
+                        }
+
+                        wedding.OnWeddingProgress(step, groomId, brideId, currTickCount);
+                        return ChatCommandHandler.CommandResult.Ok(wedding.DescribeStatus());
+                    }
+
+                    if (string.Equals(args[0], "respond", StringComparison.OrdinalIgnoreCase))
+                    {
+                        if (args.Length < 2)
+                        {
+                            return ChatCommandHandler.CommandResult.Error("Usage: /wedding respond <yes|no>");
+                        }
+
+                        bool accepted;
+                        if (string.Equals(args[1], "yes", StringComparison.OrdinalIgnoreCase))
+                        {
+                            accepted = true;
+                        }
+                        else if (string.Equals(args[1], "no", StringComparison.OrdinalIgnoreCase))
+                        {
+                            accepted = false;
+                        }
+                        else
+                        {
+                            return ChatCommandHandler.CommandResult.Error("Wedding response must be yes or no");
+                        }
+
+                        WeddingPacketResponse? response = wedding.RespondToCurrentDialog(accepted, currTickCount);
+                        return response.HasValue
+                            ? ChatCommandHandler.CommandResult.Ok($"{wedding.DescribeStatus()} Sent packet {response.Value}.")
+                            : ChatCommandHandler.CommandResult.Ok(wedding.DescribeStatus());
+                    }
+
+                    if (string.Equals(args[0], "actor", StringComparison.OrdinalIgnoreCase))
+                    {
+                        if (args.Length < 4
+                            || !int.TryParse(args[2], out int actorX)
+                            || !int.TryParse(args[3], out int actorY))
+                        {
+                            return ChatCommandHandler.CommandResult.Error("Usage: /wedding actor <groom|bride> <x> <y>");
+                        }
+
+                        if (string.Equals(args[1], "groom", StringComparison.OrdinalIgnoreCase))
+                        {
+                            if (wedding.GroomId <= 0)
+                            {
+                                return ChatCommandHandler.CommandResult.Error("Wedding groom ID is not set yet. Use /wedding progress first.");
+                            }
+
+                            wedding.SetParticipantPosition(wedding.GroomId, new Vector2(actorX, actorY));
+                            return ChatCommandHandler.CommandResult.Ok(wedding.DescribeStatus());
+                        }
+
+                        if (string.Equals(args[1], "bride", StringComparison.OrdinalIgnoreCase))
+                        {
+                            if (wedding.BrideId <= 0)
+                            {
+                                return ChatCommandHandler.CommandResult.Error("Wedding bride ID is not set yet. Use /wedding progress first.");
+                            }
+
+                            wedding.SetParticipantPosition(wedding.BrideId, new Vector2(actorX, actorY));
+                            return ChatCommandHandler.CommandResult.Ok(wedding.DescribeStatus());
+                        }
+
+                        return ChatCommandHandler.CommandResult.Error("Wedding actor must be groom or bride");
+                    }
+
+                    if (string.Equals(args[0], "end", StringComparison.OrdinalIgnoreCase))
+                    {
+                        wedding.OnWeddingCeremonyEnd(currTickCount);
+                        return ChatCommandHandler.CommandResult.Ok(wedding.DescribeStatus());
+                    }
+
+                    return ChatCommandHandler.CommandResult.Error("Usage: /wedding [status|progress <step> <groomId> <brideId>|respond <yes|no>|actor <groom|bride> <x> <y>|end]");
+                });
+
+            _chat.CommandHandler.RegisterCommand(
+                "guildboss",
+                "Inspect or update guild boss healer and pulley state",
+                "/guildboss [status|healer <y>|pulley <state>]",
+                args =>
+                {
+                    GuildBossField guildBoss = _specialFieldRuntime.SpecialEffects.GuildBoss;
+                    if (!guildBoss.IsActive)
+                    {
+                        return ChatCommandHandler.CommandResult.Error("Guild boss runtime is only active on guild boss maps");
+                    }
+
+                    if (args.Length == 0 || string.Equals(args[0], "status", StringComparison.OrdinalIgnoreCase))
+                    {
+                        return ChatCommandHandler.CommandResult.Info(guildBoss.DescribeStatus());
+                    }
+
+                    if (string.Equals(args[0], "healer", StringComparison.OrdinalIgnoreCase))
+                    {
+                        if (args.Length < 2 || !int.TryParse(args[1], out int healerY))
+                        {
+                            return ChatCommandHandler.CommandResult.Error("Usage: /guildboss healer <y>");
+                        }
+
+                        guildBoss.OnHealerMove(healerY, currTickCount);
+                        return ChatCommandHandler.CommandResult.Ok(guildBoss.DescribeStatus());
+                    }
+
+                    if (string.Equals(args[0], "pulley", StringComparison.OrdinalIgnoreCase))
+                    {
+                        if (args.Length < 2 || !int.TryParse(args[1], out int pulleyState))
+                        {
+                            return ChatCommandHandler.CommandResult.Error("Usage: /guildboss pulley <state>");
+                        }
+
+                        guildBoss.OnPulleyStateChange(pulleyState, currTickCount);
+                        return ChatCommandHandler.CommandResult.Ok(guildBoss.DescribeStatus());
+                    }
+
+                    return ChatCommandHandler.CommandResult.Error("Usage: /guildboss [status|healer <y>|pulley <state>]");
                 });
 
             _chat.CommandHandler.RegisterCommand(
@@ -8896,7 +10073,7 @@ namespace HaCreator.MapSimulator
             _chat.CommandHandler.RegisterCommand(
                 "battlefield",
                 "Inspect or drive the Battlefield timerboard and team score flow",
-                "/battlefield [clock [seconds]|score <wolves> <sheep>]",
+                "/battlefield [clock [seconds]|score <wolves> <sheep>|team <wolves|sheep|0|1|2|clear>|result [wolves|sheep|draw|auto]]",
                 args =>
                 {
                     BattlefieldField battlefield = _specialFieldRuntime.SpecialEffects.Battlefield;
@@ -8935,13 +10112,45 @@ namespace HaCreator.MapSimulator
                         return ChatCommandHandler.CommandResult.Ok(battlefield.DescribeStatus());
                     }
 
-                    return ChatCommandHandler.CommandResult.Error("Usage: /battlefield [clock [seconds]|score <wolves> <sheep>]");
+                    if (string.Equals(args[0], "team", StringComparison.OrdinalIgnoreCase))
+                    {
+                        if (args.Length < 2 || !TryParseBattlefieldTeam(args[1], out int? teamId))
+                        {
+                            return ChatCommandHandler.CommandResult.Error("Usage: /battlefield team <wolves|sheep|0|1|2|clear>");
+                        }
+
+                        battlefield.SetLocalTeam(teamId, currTickCount);
+                        return ChatCommandHandler.CommandResult.Ok(battlefield.DescribeStatus());
+                    }
+
+                    if (string.Equals(args[0], "result", StringComparison.OrdinalIgnoreCase))
+                    {
+                        BattlefieldField.BattlefieldWinner winner = BattlefieldField.BattlefieldWinner.None;
+                        if (args.Length >= 2 && !TryParseBattlefieldWinner(args[1], out winner))
+                        {
+                            return ChatCommandHandler.CommandResult.Error("Usage: /battlefield result [wolves|sheep|draw|auto]");
+                        }
+
+                        if (winner == BattlefieldField.BattlefieldWinner.None)
+                        {
+                            winner = battlefield.WolvesScore == battlefield.SheepScore
+                                ? BattlefieldField.BattlefieldWinner.Draw
+                                : battlefield.WolvesScore > battlefield.SheepScore
+                                    ? BattlefieldField.BattlefieldWinner.Wolves
+                                    : BattlefieldField.BattlefieldWinner.Sheep;
+                        }
+
+                        battlefield.ResolveResult(winner, currTickCount);
+                        return ChatCommandHandler.CommandResult.Ok(battlefield.DescribeStatus());
+                    }
+
+                    return ChatCommandHandler.CommandResult.Error("Usage: /battlefield [clock [seconds]|score <wolves> <sheep>|team <wolves|sheep|0|1|2|clear>|result [wolves|sheep|draw|auto]]");
                 });
 
             _chat.CommandHandler.RegisterCommand(
                 "ariantarena",
                 "Inspect or drive the Ariant Arena ranking/result HUD",
-                "/ariantarena [score <name> <score>|remove <name>|result|clear]",
+                "/ariantarena [score <name> <score>|packet <name> <score> [<name> <score> ...]|remove <name>|result|clear]",
                 args =>
                 {
                     AriantArenaField field = _specialFieldRuntime.Minigames.AriantArena;
@@ -8971,6 +10180,26 @@ namespace HaCreator.MapSimulator
                             field.OnUserScore(args[1], score);
                             return ChatCommandHandler.CommandResult.Ok(field.DescribeStatus());
 
+                        case "packet":
+                            if (args.Length < 3 || args.Length % 2 == 0)
+                            {
+                                return ChatCommandHandler.CommandResult.Error("Usage: /ariantarena packet <name> <score> [<name> <score> ...]");
+                            }
+
+                            var updates = new List<AriantArenaScoreUpdate>();
+                            for (int i = 1; i < args.Length; i += 2)
+                            {
+                                if (!int.TryParse(args[i + 1], out int packetScore))
+                                {
+                                    return ChatCommandHandler.CommandResult.Error($"Invalid Ariant Arena score: {args[i + 1]}");
+                                }
+
+                                updates.Add(new AriantArenaScoreUpdate(args[i], packetScore));
+                            }
+
+                            field.ApplyUserScoreBatch(updates);
+                            return ChatCommandHandler.CommandResult.Ok(field.DescribeStatus());
+
                         case "remove":
                             if (args.Length < 2)
                             {
@@ -8989,7 +10218,7 @@ namespace HaCreator.MapSimulator
                             return ChatCommandHandler.CommandResult.Ok(field.DescribeStatus());
 
                         default:
-                            return ChatCommandHandler.CommandResult.Error("Usage: /ariantarena [score <name> <score>|remove <name>|result|clear]");
+                            return ChatCommandHandler.CommandResult.Error("Usage: /ariantarena [score <name> <score>|packet <name> <score> [<name> <score> ...]|remove <name>|result|clear]");
                     }
                 });
 
@@ -9176,6 +10405,81 @@ namespace HaCreator.MapSimulator
                 });
 
             _chat.CommandHandler.RegisterCommand(
+                "massacre",
+                "Inspect or drive the Massacre timerboard and gauge flow",
+                "/massacre [status|clock <seconds>|kill [gauge]|inc <value>|params <maxGauge> <decayPerSec>|reset]",
+                args =>
+                {
+                    MassacreField massacre = _specialFieldRuntime.SpecialEffects.Massacre;
+                    if (!massacre.IsActive)
+                    {
+                        return ChatCommandHandler.CommandResult.Error("Massacre HUD is only active on Massacre maps");
+                    }
+
+                    if (args.Length == 0 || string.Equals(args[0], "status", StringComparison.OrdinalIgnoreCase))
+                    {
+                        return ChatCommandHandler.CommandResult.Info(massacre.DescribeStatus());
+                    }
+
+                    if (string.Equals(args[0], "clock", StringComparison.OrdinalIgnoreCase))
+                    {
+                        if (args.Length < 2 || !int.TryParse(args[1], out int seconds) || seconds < 0)
+                        {
+                            return ChatCommandHandler.CommandResult.Error("Usage: /massacre clock <seconds>");
+                        }
+
+                        massacre.OnClock(2, seconds, currTickCount);
+                        return ChatCommandHandler.CommandResult.Ok(massacre.DescribeStatus());
+                    }
+
+                    if (string.Equals(args[0], "kill", StringComparison.OrdinalIgnoreCase))
+                    {
+                        int gaugeAmount = 1;
+                        if (args.Length >= 2 && (!int.TryParse(args[1], out gaugeAmount) || gaugeAmount < 0))
+                        {
+                            return ChatCommandHandler.CommandResult.Error("Usage: /massacre kill [gauge]");
+                        }
+
+                        massacre.AddKill(gaugeAmount, currTickCount);
+                        return ChatCommandHandler.CommandResult.Ok(massacre.DescribeStatus());
+                    }
+
+                    if (string.Equals(args[0], "inc", StringComparison.OrdinalIgnoreCase))
+                    {
+                        if (args.Length < 2 || !int.TryParse(args[1], out int incGauge) || incGauge < 0)
+                        {
+                            return ChatCommandHandler.CommandResult.Error("Usage: /massacre inc <value>");
+                        }
+
+                        massacre.OnMassacreIncGauge(incGauge, currTickCount);
+                        return ChatCommandHandler.CommandResult.Ok(massacre.DescribeStatus());
+                    }
+
+                    if (string.Equals(args[0], "params", StringComparison.OrdinalIgnoreCase))
+                    {
+                        if (args.Length < 3
+                            || !int.TryParse(args[1], out int maxGauge)
+                            || !int.TryParse(args[2], out int decayPerSec)
+                            || maxGauge <= 0
+                            || decayPerSec < 0)
+                        {
+                            return ChatCommandHandler.CommandResult.Error("Usage: /massacre params <maxGauge> <decayPerSec>");
+                        }
+
+                        massacre.SetGaugeParameters(maxGauge, decayPerSec);
+                        return ChatCommandHandler.CommandResult.Ok(massacre.DescribeStatus());
+                    }
+
+                    if (string.Equals(args[0], "reset", StringComparison.OrdinalIgnoreCase))
+                    {
+                        massacre.ResetRoundState();
+                        return ChatCommandHandler.CommandResult.Ok(massacre.DescribeStatus());
+                    }
+
+                    return ChatCommandHandler.CommandResult.Error("Usage: /massacre [status|clock <seconds>|kill [gauge]|inc <value>|params <maxGauge> <decayPerSec>|reset]");
+                });
+
+            _chat.CommandHandler.RegisterCommand(
                 "dojoenergy",
                 "Inspect or update the Mu Lung Dojo energy gauge",
                 "/dojoenergy [0-10000]",
@@ -9226,6 +10530,55 @@ namespace HaCreator.MapSimulator
                 });
 
             _chat.CommandHandler.RegisterCommand(
+                "guildbbs",
+                "Inspect or drive the Guild BBS runtime",
+                "/guildbbs [open|status|write|edit|register|cancel|notice|reply|replydelete|delete|select <threadId>]",
+                args =>
+                {
+                    if (args.Length == 0 || string.Equals(args[0], "status", StringComparison.OrdinalIgnoreCase))
+                    {
+                        return ChatCommandHandler.CommandResult.Info(_guildBbsRuntime.DescribeStatus());
+                    }
+
+                    string action = args[0].ToLowerInvariant();
+                    switch (action)
+                    {
+                        case "open":
+                            uiWindowManager?.ShowWindow(MapSimulatorWindowNames.GuildBbs);
+                            return ChatCommandHandler.CommandResult.Ok("Guild BBS window opened.");
+                        case "write":
+                            uiWindowManager?.ShowWindow(MapSimulatorWindowNames.GuildBbs);
+                            return ChatCommandHandler.CommandResult.Ok(_guildBbsRuntime.BeginWrite());
+                        case "edit":
+                            uiWindowManager?.ShowWindow(MapSimulatorWindowNames.GuildBbs);
+                            return ChatCommandHandler.CommandResult.Ok(_guildBbsRuntime.BeginEditSelected());
+                        case "register":
+                            return ChatCommandHandler.CommandResult.Ok(_guildBbsRuntime.SubmitCompose());
+                        case "cancel":
+                            return ChatCommandHandler.CommandResult.Ok(_guildBbsRuntime.CancelCompose());
+                        case "notice":
+                            return ChatCommandHandler.CommandResult.Ok(_guildBbsRuntime.ToggleNotice());
+                        case "reply":
+                            uiWindowManager?.ShowWindow(MapSimulatorWindowNames.GuildBbs);
+                            return ChatCommandHandler.CommandResult.Ok(_guildBbsRuntime.AddReply());
+                        case "replydelete":
+                            return ChatCommandHandler.CommandResult.Ok(_guildBbsRuntime.DeleteLatestReply());
+                        case "delete":
+                            return ChatCommandHandler.CommandResult.Ok(_guildBbsRuntime.DeleteSelectedThread());
+                        case "select":
+                            if (args.Length < 2 || !int.TryParse(args[1], out int threadId))
+                            {
+                                return ChatCommandHandler.CommandResult.Error("Usage: /guildbbs select <threadId>");
+                            }
+
+                            _guildBbsRuntime.SelectThread(threadId);
+                            return ChatCommandHandler.CommandResult.Ok($"Selected Guild BBS thread #{threadId}.");
+                        default:
+                            return ChatCommandHandler.CommandResult.Error("Usage: /guildbbs [open|status|write|edit|register|cancel|notice|reply|replydelete|delete|select <threadId>]");
+                    }
+                });
+
+            _chat.CommandHandler.RegisterCommand(
                 "memorygame",
                 "Drive the MiniRoom Match Cards runtime",
                 "/memorygame <open|ready|start|flip|tie|giveup|end|status> [...]",
@@ -9233,7 +10586,7 @@ namespace HaCreator.MapSimulator
                 {
                     if (args.Length == 0)
                     {
-                        return ChatCommandHandler.CommandResult.Error("Usage: /memorygame <open|ready|start|flip|tie|giveup|end|status> [...]");
+                        return ChatCommandHandler.CommandResult.Error("Usage: /memorygame <open|ready|start|flip|tie|giveup|end|status|remote> [...]");
                     }
 
                     MemoryGameField field = _specialFieldRuntime.Minigames.MemoryGame;
@@ -9247,6 +10600,7 @@ namespace HaCreator.MapSimulator
                             int rows = args.Length >= 4 && int.TryParse(args[3], out int parsedRows) ? parsedRows : 4;
                             int columns = args.Length >= 5 && int.TryParse(args[4], out int parsedColumns) ? parsedColumns : 4;
                             field.OpenRoom(playerOneName: playerOne, playerTwoName: playerTwo, rows: rows, columns: columns);
+                            uiWindowManager?.ShowWindow(MapSimulatorWindowNames.MiniRoom);
                             return ChatCommandHandler.CommandResult.Ok(field.DescribeStatus());
                         }
                         case "ready":
@@ -9313,8 +10667,208 @@ namespace HaCreator.MapSimulator
                         }
                         case "status":
                             return ChatCommandHandler.CommandResult.Info(field.DescribeStatus());
+                        case "remote":
+                        {
+                            if (args.Length < 2)
+                            {
+                                return ChatCommandHandler.CommandResult.Error("Usage: /memorygame remote <ready|unready|start|flip|tie|giveup|end> [...]");
+                            }
+
+                            string remoteAction = args[1].ToLowerInvariant();
+                            int cardIndex = args.Length >= 3 && int.TryParse(args[2], out int parsedCardIndex) ? parsedCardIndex : -1;
+                            int delayMs = args.Length >= 4 && int.TryParse(args[3], out int parsedDelayMs) ? parsedDelayMs : 600;
+                            if (!field.TryQueueRemoteAction(remoteAction, currTickCount, out string remoteMessage, cardIndex, delayMs))
+                            {
+                                return ChatCommandHandler.CommandResult.Error(remoteMessage);
+                            }
+
+                            return ChatCommandHandler.CommandResult.Ok(remoteMessage);
+                        }
                         default:
-                            return ChatCommandHandler.CommandResult.Error("Usage: /memorygame <open|ready|start|flip|tie|giveup|end|status> [...]");
+                            return ChatCommandHandler.CommandResult.Error("Usage: /memorygame <open|ready|start|flip|tie|giveup|end|status|remote> [...]");
+                    }
+                });
+
+            _chat.CommandHandler.RegisterCommand(
+                "memo",
+                "Drive simulator memo inbox, compose, and package-claim flows",
+                "/memo [status|open|compose|send|claim [memoId]|draft <recipient|subject|body|item|meso|clearattachment|reset> ...|deliver <sender>|<subject>|<body> [|item:<id>:<qty>|meso:<amount>]]",
+                args =>
+                {
+                    MemoMailboxSnapshot mailboxSnapshot = _memoMailbox.GetSnapshot();
+                    MemoMailboxDraftSnapshot draftSnapshot = _memoMailbox.GetDraftSnapshot();
+                    if (args.Length == 0 || string.Equals(args[0], "status", StringComparison.OrdinalIgnoreCase))
+                    {
+                        return ChatCommandHandler.CommandResult.Info(
+                            $"Inbox: {mailboxSnapshot.Entries.Count} memo(s), {mailboxSnapshot.UnreadCount} unread, {mailboxSnapshot.ClaimableCount} claimable package(s). Draft to {draftSnapshot.Recipient}: '{draftSnapshot.Subject}'.");
+                    }
+
+                    string action = args[0].ToLowerInvariant();
+                    switch (action)
+                    {
+                        case "open":
+                        case "inbox":
+                            uiWindowManager?.ShowWindow(MapSimulatorWindowNames.MemoMailbox);
+                            return ChatCommandHandler.CommandResult.Ok("Opened the memo inbox.");
+                        case "compose":
+                            uiWindowManager?.ShowWindow(MapSimulatorWindowNames.MemoSend);
+                            return ChatCommandHandler.CommandResult.Ok("Opened the memo send dialog. Use /memo draft ... to edit the current draft.");
+                        case "send":
+                            if (_memoMailbox.TrySendDraft(out string sendMessage))
+                            {
+                                uiWindowManager?.HideWindow(MapSimulatorWindowNames.MemoSend);
+                                uiWindowManager?.ShowWindow(MapSimulatorWindowNames.MemoMailbox);
+                                return ChatCommandHandler.CommandResult.Ok(sendMessage);
+                            }
+
+                            return ChatCommandHandler.CommandResult.Error(sendMessage);
+                        case "claim":
+                        {
+                            int memoId = -1;
+                            if (args.Length >= 2)
+                            {
+                                if (!int.TryParse(args[1], out memoId) || memoId <= 0)
+                                {
+                                    return ChatCommandHandler.CommandResult.Error("Usage: /memo claim [memoId]");
+                                }
+                            }
+                            else
+                            {
+                                memoId = mailboxSnapshot.Entries.FirstOrDefault(entry => entry.CanClaimAttachment)?.MemoId ?? -1;
+                            }
+
+                            if (memoId <= 0)
+                            {
+                                return ChatCommandHandler.CommandResult.Error("No claimable memo package is available.");
+                            }
+
+                            _activeMemoAttachmentId = memoId;
+                            return _memoMailbox.TryClaimAttachment(memoId, out string claimMessage)
+                                ? ChatCommandHandler.CommandResult.Ok(claimMessage)
+                                : ChatCommandHandler.CommandResult.Error(claimMessage);
+                        }
+                        case "draft":
+                        {
+                            if (args.Length < 2)
+                            {
+                                return ChatCommandHandler.CommandResult.Info(
+                                    $"Draft to {draftSnapshot.Recipient} / '{draftSnapshot.Subject}' / package {draftSnapshot.AttachmentSummary}. Use /memo draft <recipient|subject|body|item|meso|clearattachment|reset> ...");
+                            }
+
+                            string draftAction = args[1].ToLowerInvariant();
+                            string payload = string.Join(" ", args.Skip(2));
+                            switch (draftAction)
+                            {
+                                case "recipient":
+                                case "to":
+                                    if (string.IsNullOrWhiteSpace(payload))
+                                    {
+                                        return ChatCommandHandler.CommandResult.Error("Usage: /memo draft recipient <name>");
+                                    }
+
+                                    _memoMailbox.SetDraftRecipient(payload);
+                                    return ChatCommandHandler.CommandResult.Ok($"Draft recipient set to {payload.Trim()}.");
+                                case "subject":
+                                    if (string.IsNullOrWhiteSpace(payload))
+                                    {
+                                        return ChatCommandHandler.CommandResult.Error("Usage: /memo draft subject <text>");
+                                    }
+
+                                    _memoMailbox.SetDraftSubject(payload);
+                                    return ChatCommandHandler.CommandResult.Ok("Draft subject updated.");
+                                case "body":
+                                    if (string.IsNullOrWhiteSpace(payload))
+                                    {
+                                        return ChatCommandHandler.CommandResult.Error("Usage: /memo draft body <text>");
+                                    }
+
+                                    _memoMailbox.SetDraftBody(payload);
+                                    return ChatCommandHandler.CommandResult.Ok("Draft body updated.");
+                                case "item":
+                                {
+                                    if (args.Length < 3 || !int.TryParse(args[2], out int itemId) || itemId <= 0)
+                                    {
+                                        return ChatCommandHandler.CommandResult.Error("Usage: /memo draft item <itemId> [quantity]");
+                                    }
+
+                                    int quantity = args.Length >= 4 && int.TryParse(args[3], out int parsedQuantity)
+                                        ? parsedQuantity
+                                        : 1;
+                                    return _memoMailbox.SetDraftItemAttachment(itemId, quantity, out string itemMessage)
+                                        ? ChatCommandHandler.CommandResult.Ok(itemMessage)
+                                        : ChatCommandHandler.CommandResult.Error(itemMessage);
+                                }
+                                case "meso":
+                                    if (args.Length < 3 || !int.TryParse(args[2], out int meso))
+                                    {
+                                        return ChatCommandHandler.CommandResult.Error("Usage: /memo draft meso <amount>");
+                                    }
+
+                                    return _memoMailbox.SetDraftMesoAttachment(meso, out string mesoMessage)
+                                        ? ChatCommandHandler.CommandResult.Ok(mesoMessage)
+                                        : ChatCommandHandler.CommandResult.Error(mesoMessage);
+                                case "clearattachment":
+                                    _memoMailbox.ClearDraftAttachment();
+                                    return ChatCommandHandler.CommandResult.Ok("Draft attachment cleared.");
+                                case "reset":
+                                    _memoMailbox.ResetDraftState();
+                                    return ChatCommandHandler.CommandResult.Ok("Draft reset.");
+                                default:
+                                    return ChatCommandHandler.CommandResult.Error("Usage: /memo draft <recipient|subject|body|item|meso|clearattachment|reset> ...");
+                            }
+                        }
+                        case "deliver":
+                        {
+                            string joined = string.Join(" ", args.Skip(1));
+                            string[] segments = joined.Split('|');
+                            if (segments.Length < 3)
+                            {
+                                return ChatCommandHandler.CommandResult.Error("Usage: /memo deliver <sender>|<subject>|<body> [|item:<id>:<qty>|meso:<amount>]");
+                            }
+
+                            string sender = segments[0].Trim();
+                            string subject = segments[1].Trim();
+                            string body = segments[2].Trim();
+                            int attachmentItemId = 0;
+                            int attachmentQuantity = 0;
+                            int attachmentMeso = 0;
+
+                            if (segments.Length >= 4)
+                            {
+                                string attachmentSpec = segments[3].Trim();
+                                if (attachmentSpec.StartsWith("item:", StringComparison.OrdinalIgnoreCase))
+                                {
+                                    string[] itemParts = attachmentSpec.Split(':');
+                                    if (itemParts.Length < 2
+                                        || !int.TryParse(itemParts[1], out attachmentItemId)
+                                        || attachmentItemId <= 0)
+                                    {
+                                        return ChatCommandHandler.CommandResult.Error("Item attachment format is item:<itemId>:<qty>.");
+                                    }
+
+                                    attachmentQuantity = itemParts.Length >= 3 && int.TryParse(itemParts[2], out int parsedQty)
+                                        ? parsedQty
+                                        : 1;
+                                }
+                                else if (attachmentSpec.StartsWith("meso:", StringComparison.OrdinalIgnoreCase))
+                                {
+                                    string[] mesoParts = attachmentSpec.Split(':');
+                                    if (mesoParts.Length < 2 || !int.TryParse(mesoParts[1], out attachmentMeso) || attachmentMeso <= 0)
+                                    {
+                                        return ChatCommandHandler.CommandResult.Error("Meso attachment format is meso:<amount>.");
+                                    }
+                                }
+                                else
+                                {
+                                    return ChatCommandHandler.CommandResult.Error("Attachment format must be item:<itemId>:<qty> or meso:<amount>.");
+                                }
+                            }
+
+                            _memoMailbox.DeliverMemo(sender, subject, body, DateTimeOffset.Now, false, attachmentItemId, attachmentQuantity, attachmentMeso);
+                            return ChatCommandHandler.CommandResult.Ok($"Delivered memo '{subject}' from {sender}.");
+                        }
+                        default:
+                            return ChatCommandHandler.CommandResult.Error("Usage: /memo [status|open|compose|send|claim [memoId]|draft <recipient|subject|body|item|meso|clearattachment|reset> ...|deliver <sender>|<subject>|<body> [|item:<id>:<qty>|meso:<amount>]]");
                     }
                 });
 
@@ -9467,6 +11021,124 @@ namespace HaCreator.MapSimulator
                 });
 
             _chat.CommandHandler.RegisterCommand(
+                "mapletv",
+                "Inspect or drive the MapleTV send board and broadcast lifecycle",
+                "/mapletv [open|status|sample|set|clear|toggleto|sender|receiver|item|line|wait|result] [...]",
+                args =>
+                {
+                    _mapleTvRuntime.UpdateLocalContext(_playerManager?.Player?.Build?.Name ?? "Player");
+                    if (args.Length == 0)
+                    {
+                        uiWindowManager?.ShowWindow(MapSimulatorWindowNames.MapleTv);
+                        return ChatCommandHandler.CommandResult.Info(_mapleTvRuntime.DescribeStatus(currTickCount));
+                    }
+
+                    string action = args[0].ToLowerInvariant();
+                    switch (action)
+                    {
+                        case "open":
+                            uiWindowManager?.ShowWindow(MapSimulatorWindowNames.MapleTv);
+                            return ChatCommandHandler.CommandResult.Ok(_mapleTvRuntime.DescribeStatus(currTickCount));
+
+                        case "status":
+                            return ChatCommandHandler.CommandResult.Info(_mapleTvRuntime.DescribeStatus(currTickCount));
+
+                        case "sample":
+                            uiWindowManager?.ShowWindow(MapSimulatorWindowNames.MapleTv);
+                            return ChatCommandHandler.CommandResult.Ok(
+                                _mapleTvRuntime.LoadSample(
+                                    _playerManager?.Player?.Build?.Name ?? "Player",
+                                    GetCurrentMapTransferDisplayName()));
+
+                        case "set":
+                        {
+                            string publishMessage = PublishMapleTvDraft();
+                            return publishMessage.StartsWith("MapleTV message set", StringComparison.Ordinal)
+                                ? ChatCommandHandler.CommandResult.Ok(publishMessage)
+                                : ChatCommandHandler.CommandResult.Error(publishMessage);
+                        }
+
+                        case "clear":
+                            return ChatCommandHandler.CommandResult.Ok(ClearMapleTvMessage());
+
+                        case "toggleto":
+                        case "to":
+                            return ChatCommandHandler.CommandResult.Ok(ToggleMapleTvReceiverMode());
+
+                        case "sender":
+                            if (args.Length < 2)
+                            {
+                                return ChatCommandHandler.CommandResult.Error("Usage: /mapletv sender <name>");
+                            }
+
+                            return ChatCommandHandler.CommandResult.Ok(_mapleTvRuntime.SetSender(string.Join(" ", args.Skip(1))));
+
+                        case "receiver":
+                            if (args.Length < 2)
+                            {
+                                return ChatCommandHandler.CommandResult.Error("Usage: /mapletv receiver <name|self|clear>");
+                            }
+
+                            return ChatCommandHandler.CommandResult.Ok(_mapleTvRuntime.SetReceiver(string.Join(" ", args.Skip(1))));
+
+                        case "item":
+                            if (args.Length < 2 || !int.TryParse(args[1], out int itemId) || itemId < 0)
+                            {
+                                return ChatCommandHandler.CommandResult.Error("Usage: /mapletv item <itemId>");
+                            }
+
+                            return ChatCommandHandler.CommandResult.Ok(
+                                _mapleTvRuntime.SetItem(itemId, itemId > 0 ? ResolvePickupItemName(itemId) : "Maple TV"));
+
+                        case "line":
+                            if (args.Length < 3 || !int.TryParse(args[1], out int lineNumber))
+                            {
+                                return ChatCommandHandler.CommandResult.Error("Usage: /mapletv line <1-5> <text>");
+                            }
+
+                            return ChatCommandHandler.CommandResult.Ok(_mapleTvRuntime.SetDraftLine(lineNumber, string.Join(" ", args.Skip(2))));
+
+                        case "wait":
+                            if (args.Length < 2 || !int.TryParse(args[1], out int durationMs))
+                            {
+                                return ChatCommandHandler.CommandResult.Error("Usage: /mapletv wait <durationMs>");
+                            }
+
+                            string durationMessage = _mapleTvRuntime.SetDuration(durationMs);
+                            return durationMs >= 1000 && durationMs <= 60000
+                                ? ChatCommandHandler.CommandResult.Ok(durationMessage)
+                                : ChatCommandHandler.CommandResult.Error(durationMessage);
+
+                        case "result":
+                            if (args.Length < 2)
+                            {
+                                return ChatCommandHandler.CommandResult.Error("Usage: /mapletv result <success|busy|offline|fail>");
+                            }
+
+                            MapleTvSendResultKind? resultKind = args[1].ToLowerInvariant() switch
+                            {
+                                "success" => MapleTvSendResultKind.Success,
+                                "busy" => MapleTvSendResultKind.Busy,
+                                "offline" => MapleTvSendResultKind.RecipientOffline,
+                                "fail" => MapleTvSendResultKind.Failed,
+                                "failed" => MapleTvSendResultKind.Failed,
+                                _ => null
+                            };
+
+                            if (resultKind == null)
+                            {
+                                return ChatCommandHandler.CommandResult.Error("Result must be one of: success, busy, offline, fail");
+                            }
+
+                            return ChatCommandHandler.CommandResult.Ok(_mapleTvRuntime.OnSendMessageResult(resultKind.Value));
+
+                        default:
+                            return ChatCommandHandler.CommandResult.Error(
+                                "Usage: /mapletv [open|status|sample|set|clear|toggleto|sender|receiver|item|line|wait|result] [...]");
+                    }
+                });
+
+            _chat.CommandHandler.RegisterCommand(
                 "chair",
                 "Activate or clear an owned portable chair",
                 "/chair <itemId|clear>",
@@ -9517,10 +11189,69 @@ namespace HaCreator.MapSimulator
                         return ChatCommandHandler.CommandResult.Error("Portable chairs can only be activated while standing on a foothold.");
                     }
 
-                    string ridingChairNote = chair.TamingMobItemId.HasValue
-                        ? $" Riding-chair handoff hint: {chair.TamingMobItemId.Value}."
+                    string ridingChairNote = chair.TamingMobItemId is int tamingMobItemId && tamingMobItemId > 0
+                        ? $" Riding-chair mount applied: {tamingMobItemId}."
                         : string.Empty;
                     return ChatCommandHandler.CommandResult.Ok($"Activated chair {chair.Name} ({itemId}).{ridingChairNote}");
+                });
+
+            _chat.CommandHandler.RegisterCommand(
+                "petevent",
+                "Trigger a WZ-backed pet auto-speech event",
+                "/petevent <rest|levelup|prelevelup|hpalert|nohppotion|nomppotion> [slot 1-3]",
+                args =>
+                {
+                    if (_playerManager?.Pets?.ActivePets == null || _playerManager.Pets.ActivePets.Count == 0)
+                    {
+                        return ChatCommandHandler.CommandResult.Error("No active pets are available");
+                    }
+
+                    if (args.Length == 0)
+                    {
+                        return ChatCommandHandler.CommandResult.Error(
+                            "Usage: /petevent <rest|levelup|prelevelup|hpalert|nohppotion|nomppotion> [slot 1-3]");
+                    }
+
+                    if (!TryParsePetSpeechEvent(args[0], out PetAutoSpeechEvent eventType, out string eventName))
+                    {
+                        return ChatCommandHandler.CommandResult.Error(
+                            $"Unknown pet event '{args[0]}'. Expected rest, levelup, prelevelup, hpalert, nohppotion, or nomppotion.");
+                    }
+
+                    int? petSlotIndex = null;
+                    if (args.Length >= 2)
+                    {
+                        if (!TryParsePetSlot(args[1], out int parsedSlotIndex, out string slotError))
+                        {
+                            return ChatCommandHandler.CommandResult.Error(slotError);
+                        }
+
+                        if (_playerManager.Pets.GetPetAt(parsedSlotIndex) == null)
+                        {
+                            return ChatCommandHandler.CommandResult.Error($"No active pet is present in slot {parsedSlotIndex + 1}");
+                        }
+
+                        petSlotIndex = parsedSlotIndex;
+                    }
+
+                    if (!_playerManager.Pets.TryTriggerSpeechEvent(eventType, currTickCount, petSlotIndex))
+                    {
+                        string slotLabel = petSlotIndex.HasValue
+                            ? $"pet {petSlotIndex.Value + 1}"
+                            : "the active pet roster";
+                        return ChatCommandHandler.CommandResult.Error(
+                            $"No loaded speech lines are available for '{eventName}' on {slotLabel}.");
+                    }
+
+                    if (petSlotIndex.HasValue)
+                    {
+                        PetRuntime pet = _playerManager.Pets.GetPetAt(petSlotIndex.Value);
+                        return ChatCommandHandler.CommandResult.Ok(
+                            $"Triggered {eventName} speech for pet {petSlotIndex.Value + 1} ({pet?.Name ?? "Unknown"}).");
+                    }
+
+                    return ChatCommandHandler.CommandResult.Ok(
+                        $"Triggered {eventName} speech for the first eligible active pet.");
                 });
 
             _chat.CommandHandler.RegisterCommand(
@@ -9736,9 +11467,132 @@ namespace HaCreator.MapSimulator
             return false;
         }
 
+        private static bool TryParseBattlefieldTeam(string text, out int? teamId)
+        {
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                teamId = null;
+                return false;
+            }
+
+            if (string.Equals(text, "clear", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(text, "none", StringComparison.OrdinalIgnoreCase))
+            {
+                teamId = null;
+                return true;
+            }
+
+            if (string.Equals(text, "wolves", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(text, "wolf", StringComparison.OrdinalIgnoreCase))
+            {
+                teamId = 0;
+                return true;
+            }
+
+            if (string.Equals(text, "sheep", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(text, "lamb", StringComparison.OrdinalIgnoreCase))
+            {
+                teamId = 1;
+                return true;
+            }
+
+            if (int.TryParse(text, out int numericTeam) && numericTeam >= 0 && numericTeam <= 2)
+            {
+                teamId = numericTeam;
+                return true;
+            }
+
+            teamId = null;
+            return false;
+        }
+
+        private static bool TryParseBattlefieldWinner(string text, out BattlefieldField.BattlefieldWinner winner)
+        {
+            if (string.IsNullOrWhiteSpace(text)
+                || string.Equals(text, "auto", StringComparison.OrdinalIgnoreCase))
+            {
+                winner = BattlefieldField.BattlefieldWinner.None;
+                return true;
+            }
+
+            if (string.Equals(text, "wolves", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(text, "wolf", StringComparison.OrdinalIgnoreCase))
+            {
+                winner = BattlefieldField.BattlefieldWinner.Wolves;
+                return true;
+            }
+
+            if (string.Equals(text, "sheep", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(text, "lamb", StringComparison.OrdinalIgnoreCase))
+            {
+                winner = BattlefieldField.BattlefieldWinner.Sheep;
+                return true;
+            }
+
+            if (string.Equals(text, "draw", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(text, "tie", StringComparison.OrdinalIgnoreCase))
+            {
+                winner = BattlefieldField.BattlefieldWinner.Draw;
+                return true;
+            }
+
+            winner = BattlefieldField.BattlefieldWinner.None;
+            return false;
+        }
+
         private void HandleChatMessageSubmitted(string message, int tickCount)
         {
             _playerManager?.TryExecutePetCommand(message, tickCount);
+        }
+
+        private static bool TryParsePetSpeechEvent(
+            string value,
+            out PetAutoSpeechEvent eventType,
+            out string displayName)
+        {
+            eventType = PetAutoSpeechEvent.Rest;
+            displayName = null;
+
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                return false;
+            }
+
+            switch (value.Trim().ToLowerInvariant())
+            {
+                case "rest":
+                case "idle":
+                    eventType = PetAutoSpeechEvent.Rest;
+                    displayName = "rest";
+                    return true;
+                case "levelup":
+                case "level":
+                    eventType = PetAutoSpeechEvent.LevelUp;
+                    displayName = "levelup";
+                    return true;
+                case "prelevelup":
+                case "prelevel":
+                    eventType = PetAutoSpeechEvent.PreLevelUp;
+                    displayName = "prelevelup";
+                    return true;
+                case "hpalert":
+                case "lowhp":
+                    eventType = PetAutoSpeechEvent.HpAlert;
+                    displayName = "hpalert";
+                    return true;
+                case "nohppotion":
+                case "nohp":
+                    eventType = PetAutoSpeechEvent.NoHpPotion;
+                    displayName = "nohppotion";
+                    return true;
+                case "nomppotion":
+                case "nomp":
+                    eventType = PetAutoSpeechEvent.NoMpPotion;
+                    displayName = "nomppotion";
+                    return true;
+                default:
+                    return false;
+            }
         }
 
         private string DescribePetCommandLevels()
@@ -9814,13 +11668,21 @@ namespace HaCreator.MapSimulator
 
         private void ResetLoginRuntimeForCurrentMap(int currentTickCount)
         {
+            ClearLoginWorldSelectorMetadata();
+            _recommendWorldDismissed = false;
+            _recommendWorldEntries.Clear();
+            _recommendWorldIndex = 0;
+
             if (_gameState.IsLoginMap)
             {
                 _loginRuntime.Initialize(currentTickCount);
+                _lastLoginStep = _loginRuntime.CurrentStep;
+                HideLoginUtilityDialog();
                 return;
             }
 
             _loginRuntime.Reset();
+            HideLoginUtilityDialog();
             _gameState.PlayerControlEnabled = true;
         }
 
@@ -9828,7 +11690,9 @@ namespace HaCreator.MapSimulator
         {
             _loginRuntime.Update(currTickCount);
             UpdateWorldChannelSelectorRequestState();
+            SyncLoginWorldSelectionWindows();
             SyncLoginCharacterSelectWindow();
+            SyncLoginEntryDialogs();
 
             if (HandlePendingMapChange())
             {

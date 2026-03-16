@@ -1,6 +1,8 @@
 using HaCreator.MapSimulator.Character;
 using System;
 using System.Collections.Generic;
+using System.IO;
+using System.Text.Json;
 
 namespace HaCreator.MapSimulator.Managers
 {
@@ -10,7 +12,36 @@ namespace HaCreator.MapSimulator.Managers
     /// </summary>
     public sealed class MapTransferDestinationStore
     {
+        private sealed class PersistedStore
+        {
+            public Dictionary<string, List<MapTransferDestinationRecord>> DestinationsByCharacter { get; set; } = new(StringComparer.Ordinal);
+        }
+
+        private static readonly JsonSerializerOptions JsonOptions = new()
+        {
+            WriteIndented = true,
+            PropertyNamingPolicy = JsonNamingPolicy.CamelCase
+        };
+
         private readonly Dictionary<string, List<MapTransferDestinationRecord>> _destinationsByCharacter = new(StringComparer.Ordinal);
+        private readonly string _storageFilePath;
+
+        public MapTransferDestinationStore(string storageFilePath = null)
+        {
+            _storageFilePath = storageFilePath ?? Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+                "HaCreator",
+                "MapSimulator",
+                "map-transfer-destinations.json");
+
+            string directoryPath = Path.GetDirectoryName(_storageFilePath);
+            if (!string.IsNullOrWhiteSpace(directoryPath))
+            {
+                Directory.CreateDirectory(directoryPath);
+            }
+
+            LoadFromDisk();
+        }
 
         public IReadOnlyList<MapTransferDestinationRecord> GetDestinations(CharacterBuild build)
         {
@@ -65,6 +96,7 @@ namespace HaCreator.MapSimulator.Managers
             }
 
             destinations.Add(destination);
+            SaveToDisk();
             return true;
         }
 
@@ -85,6 +117,11 @@ namespace HaCreator.MapSimulator.Managers
             if (destinations.Count == 0)
             {
                 _destinationsByCharacter.Remove(key);
+            }
+
+            if (removedCount > 0)
+            {
+                SaveToDisk();
             }
 
             return removedCount > 0;
@@ -119,6 +156,69 @@ namespace HaCreator.MapSimulator.Managers
             }
 
             return "session:default";
+        }
+
+        private void LoadFromDisk()
+        {
+            if (string.IsNullOrWhiteSpace(_storageFilePath) || !File.Exists(_storageFilePath))
+            {
+                return;
+            }
+
+            try
+            {
+                string json = File.ReadAllText(_storageFilePath);
+                PersistedStore persisted = JsonSerializer.Deserialize<PersistedStore>(json, JsonOptions);
+                if (persisted?.DestinationsByCharacter == null)
+                {
+                    return;
+                }
+
+                _destinationsByCharacter.Clear();
+                foreach (KeyValuePair<string, List<MapTransferDestinationRecord>> entry in persisted.DestinationsByCharacter)
+                {
+                    if (string.IsNullOrWhiteSpace(entry.Key))
+                    {
+                        continue;
+                    }
+
+                    List<MapTransferDestinationRecord> destinations = entry.Value?
+                        .FindAll(destination => destination != null && destination.MapId > 0)
+                        ?? new List<MapTransferDestinationRecord>();
+
+                    if (destinations.Count > 0)
+                    {
+                        _destinationsByCharacter[entry.Key] = destinations;
+                    }
+                }
+            }
+            catch
+            {
+                _destinationsByCharacter.Clear();
+            }
+        }
+
+        private void SaveToDisk()
+        {
+            if (string.IsNullOrWhiteSpace(_storageFilePath))
+            {
+                return;
+            }
+
+            PersistedStore persisted = new()
+            {
+                DestinationsByCharacter = new Dictionary<string, List<MapTransferDestinationRecord>>(_destinationsByCharacter, StringComparer.Ordinal)
+            };
+
+            try
+            {
+                string json = JsonSerializer.Serialize(persisted, JsonOptions);
+                File.WriteAllText(_storageFilePath, json);
+            }
+            catch
+            {
+                // Ignore persistence failures so map transfer remains usable in restricted environments.
+            }
         }
     }
 

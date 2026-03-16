@@ -32,9 +32,11 @@ namespace HaCreator.MapSimulator.UI
         private const int MoneyStorageRightX = 193;
         private const int MoneyInventoryRightX = 424;
         private const int MoneyTextY = 279;
+        private const int MesoPromptTextY = 291;
         private const int StatusTextX = 14;
         private const int StatusTextY = 308;
         private const int StatusTextWidth = 430;
+        private const int MaxMesoDigits = 10;
 
         private readonly IDXObject _foreground;
         private readonly Point _foregroundOffset;
@@ -78,14 +80,27 @@ namespace HaCreator.MapSimulator.UI
         private int _storageSelectedIndex = -1;
         private int _inventorySelectedIndex = -1;
         private int _previousScrollWheelValue;
+        private KeyboardState _previousKeyboardState;
         private long _storageMeso;
         private string _statusMessage = "Select an item to deposit or withdraw.";
+        private MesoEntryMode _mesoEntryMode = MesoEntryMode.None;
+        private string _mesoEntryText = string.Empty;
+        private long _mesoEntryMaxValue;
+        private string _mesoEntryPrompt = string.Empty;
+        private bool _mesoEntryReplaceOnDigit;
 
         private enum TrunkPane
         {
             None,
             Storage,
             Inventory
+        }
+
+        private enum MesoEntryMode
+        {
+            None,
+            Withdraw,
+            Deposit
         }
 
         public TrunkUI(
@@ -121,11 +136,14 @@ namespace HaCreator.MapSimulator.UI
         }
 
         public override string WindowName => MapSimulatorWindowNames.Trunk;
+        public override bool CapturesKeyboardInput => IsVisible && _mesoEntryMode != MesoEntryMode.None;
 
         public override void Show()
         {
             base.Show();
+            CancelMesoEntry();
             _previousScrollWheelValue = Mouse.GetState().ScrollWheelValue;
+            _previousKeyboardState = Keyboard.GetState();
         }
 
         public override void SetFont(SpriteFont font)
@@ -211,6 +229,7 @@ namespace HaCreator.MapSimulator.UI
             }
 
             UpdateTabStates();
+            HandleMesoEntryInput();
 
             MouseState mouseState = Mouse.GetState();
             int wheelDelta = mouseState.ScrollWheelValue - _previousScrollWheelValue;
@@ -257,6 +276,7 @@ namespace HaCreator.MapSimulator.UI
             DrawRows(sprite, inventoryRows, _inventoryScrollOffset, InventoryRowX, InventoryRowY, InventoryRowWidth);
 
             DrawMoneyValues(sprite);
+            DrawMesoPrompt(sprite);
             DrawStatusText(sprite);
         }
 
@@ -294,13 +314,13 @@ namespace HaCreator.MapSimulator.UI
             if (withdrawMesoButton != null)
             {
                 AddButton(withdrawMesoButton);
-                withdrawMesoButton.ButtonClickReleased += _ => WithdrawAllMeso();
+                withdrawMesoButton.ButtonClickReleased += _ => BeginMesoEntry(MesoEntryMode.Withdraw);
             }
 
             if (depositMesoButton != null)
             {
                 AddButton(depositMesoButton);
-                depositMesoButton.ButtonClickReleased += _ => DepositAllMeso();
+                depositMesoButton.ButtonClickReleased += _ => BeginMesoEntry(MesoEntryMode.Deposit);
             }
         }
 
@@ -349,6 +369,7 @@ namespace HaCreator.MapSimulator.UI
             _inventoryScrollOffset = 0;
             _storageSelectedIndex = -1;
             _inventorySelectedIndex = -1;
+            CancelMesoEntry();
             _statusMessage = "Select an item to deposit or withdraw.";
             UpdateTabStates();
             UpdateButtonStates();
@@ -473,41 +494,62 @@ namespace HaCreator.MapSimulator.UI
             UpdateButtonStates();
         }
 
-        private void WithdrawAllMeso()
+        private void BeginMesoEntry(MesoEntryMode mode)
         {
-            if (_inventory == null || _storageMeso <= 0)
+            long maxValue = mode == MesoEntryMode.Withdraw
+                ? _storageMeso
+                : _inventory?.GetMesoCount() ?? 0;
+            if (_inventory == null || maxValue <= 0)
             {
-                _statusMessage = "No meso is stored.";
+                _statusMessage = mode == MesoEntryMode.Withdraw
+                    ? "No meso is stored."
+                    : "No meso is available to deposit.";
+                CancelMesoEntry();
                 UpdateButtonStates();
                 return;
             }
 
-            _inventory.AddMeso(_storageMeso);
-            _statusMessage = $"Withdrew {_storageMeso.ToString("N0", CultureInfo.InvariantCulture)} meso.";
-            _storageMeso = 0;
+            _mesoEntryMode = mode;
+            _mesoEntryMaxValue = maxValue;
+            _mesoEntryText = maxValue.ToString(CultureInfo.InvariantCulture);
+            _mesoEntryPrompt = mode == MesoEntryMode.Withdraw
+                ? "Withdraw meso amount"
+                : "Deposit meso amount";
+            _mesoEntryReplaceOnDigit = true;
             UpdateButtonStates();
         }
 
-        private void DepositAllMeso()
+        private void ConfirmMesoEntry()
         {
-            long inventoryMeso = _inventory?.GetMesoCount() ?? 0;
-            if (_inventory == null || inventoryMeso <= 0)
+            if (!TryParseMesoEntry(out long amount))
             {
-                _statusMessage = "No meso is available to deposit.";
+                _statusMessage = $"Enter a meso amount between 1 and {_mesoEntryMaxValue.ToString("N0", CultureInfo.InvariantCulture)}.";
                 UpdateButtonStates();
                 return;
             }
 
-            if (_inventory.TryConsumeMeso(inventoryMeso))
+            if (_mesoEntryMode == MesoEntryMode.Withdraw)
             {
-                _storageMeso += inventoryMeso;
-                _statusMessage = $"Deposited {inventoryMeso.ToString("N0", CultureInfo.InvariantCulture)} meso.";
+                _inventory.AddMeso(amount);
+                _storageMeso -= amount;
+                _statusMessage = $"Withdrew {amount.ToString("N0", CultureInfo.InvariantCulture)} meso.";
             }
             else
             {
-                _statusMessage = "Unable to move meso into storage.";
+                if (_inventory.TryConsumeMeso(amount))
+                {
+                    _storageMeso += amount;
+                    _statusMessage = $"Deposited {amount.ToString("N0", CultureInfo.InvariantCulture)} meso.";
+                }
+                else
+                {
+                    _statusMessage = "Unable to move meso into storage.";
+                    UpdateButtonStates();
+                    return;
+                }
             }
 
+            CancelMesoEntry();
             UpdateButtonStates();
         }
 
@@ -532,8 +574,9 @@ namespace HaCreator.MapSimulator.UI
                 CanAcceptStorageItem(inventoryType, inventoryRows[_inventorySelectedIndex]));
 
             _sortButton?.SetEnabled(storageRows.Count > 1 || inventoryRows.Count > 1);
-            _withdrawMesoButton?.SetEnabled(_inventory != null && _storageMeso > 0);
-            _depositMesoButton?.SetEnabled(_inventory != null && _inventory.GetMesoCount() > 0);
+            bool mesoEntryActive = _mesoEntryMode != MesoEntryMode.None;
+            _withdrawMesoButton?.SetEnabled(!mesoEntryActive && _inventory != null && _storageMeso > 0);
+            _depositMesoButton?.SetEnabled(!mesoEntryActive && _inventory != null && _inventory.GetMesoCount() > 0);
 
             for (int row = 0; row < MaxVisibleRows; row++)
             {
@@ -653,6 +696,24 @@ namespace HaCreator.MapSimulator.UI
                 TrimToWidth(_statusMessage, StatusTextWidth),
                 new Vector2(Position.X + StatusTextX, Position.Y + StatusTextY),
                 new Color(225, 225, 225),
+                0.62f);
+        }
+
+        private void DrawMesoPrompt(SpriteBatch sprite)
+        {
+            if (_font == null || _mesoEntryMode == MesoEntryMode.None)
+            {
+                return;
+            }
+
+            string amountText = string.IsNullOrEmpty(_mesoEntryText) ? "0" : _mesoEntryText;
+            string prompt = $"{_mesoEntryPrompt}: {amountText} / {_mesoEntryMaxValue.ToString("N0", CultureInfo.InvariantCulture)}";
+            InventoryRenderUtil.DrawOutlinedText(
+                sprite,
+                _font,
+                TrimToWidth(prompt, StatusTextWidth),
+                new Vector2(Position.X + StatusTextX, Position.Y + MesoPromptTextY),
+                new Color(255, 228, 151),
                 0.62f);
         }
 
@@ -887,6 +948,113 @@ namespace HaCreator.MapSimulator.UI
             }
 
             return string.IsNullOrEmpty(value) ? ellipsis : value + ellipsis;
+        }
+
+        private void HandleMesoEntryInput()
+        {
+            KeyboardState keyboardState = Keyboard.GetState();
+            try
+            {
+                if (_mesoEntryMode == MesoEntryMode.None)
+                {
+                    return;
+                }
+
+                if (IsPressed(keyboardState, Keys.Escape))
+                {
+                    _statusMessage = "Meso transfer cancelled.";
+                    CancelMesoEntry();
+                    UpdateButtonStates();
+                    return;
+                }
+
+                if (IsPressed(keyboardState, Keys.Enter))
+                {
+                    ConfirmMesoEntry();
+                    return;
+                }
+
+                if (IsPressed(keyboardState, Keys.Back) && _mesoEntryText.Length > 0)
+                {
+                    _mesoEntryText = _mesoEntryReplaceOnDigit ? string.Empty : _mesoEntryText[..^1];
+                    _mesoEntryReplaceOnDigit = false;
+                }
+
+                foreach (Keys key in keyboardState.GetPressedKeys())
+                {
+                    if (_previousKeyboardState.IsKeyDown(key))
+                    {
+                        continue;
+                    }
+
+                    char? digit = KeyToDigit(key);
+                    if (!digit.HasValue)
+                    {
+                        continue;
+                    }
+
+                    string source = _mesoEntryReplaceOnDigit ? digit.Value.ToString() : _mesoEntryText + digit.Value;
+                    string rawValue = source.TrimStart('0');
+                    string candidate = string.IsNullOrEmpty(rawValue) ? "0" : rawValue;
+                    if (candidate.Length > MaxMesoDigits)
+                    {
+                        continue;
+                    }
+
+                    if (long.TryParse(candidate, NumberStyles.None, CultureInfo.InvariantCulture, out long parsed) &&
+                        parsed <= int.MaxValue)
+                    {
+                        _mesoEntryText = candidate;
+                        _mesoEntryReplaceOnDigit = false;
+                    }
+                }
+            }
+            finally
+            {
+                _previousKeyboardState = keyboardState;
+            }
+        }
+
+        private void CancelMesoEntry()
+        {
+            _mesoEntryMode = MesoEntryMode.None;
+            _mesoEntryText = string.Empty;
+            _mesoEntryMaxValue = 0;
+            _mesoEntryPrompt = string.Empty;
+            _mesoEntryReplaceOnDigit = false;
+        }
+
+        private bool TryParseMesoEntry(out long amount)
+        {
+            amount = 0;
+            if (_mesoEntryMode == MesoEntryMode.None ||
+                string.IsNullOrWhiteSpace(_mesoEntryText) ||
+                !long.TryParse(_mesoEntryText, NumberStyles.None, CultureInfo.InvariantCulture, out amount))
+            {
+                return false;
+            }
+
+            return amount > 0 && amount <= _mesoEntryMaxValue;
+        }
+
+        private bool IsPressed(KeyboardState keyboardState, Keys key)
+        {
+            return keyboardState.IsKeyDown(key) && _previousKeyboardState.IsKeyUp(key);
+        }
+
+        private static char? KeyToDigit(Keys key)
+        {
+            if (key >= Keys.D0 && key <= Keys.D9)
+            {
+                return (char)('0' + (key - Keys.D0));
+            }
+
+            if (key >= Keys.NumPad0 && key <= Keys.NumPad9)
+            {
+                return (char)('0' + (key - Keys.NumPad0));
+            }
+
+            return null;
         }
     }
 }

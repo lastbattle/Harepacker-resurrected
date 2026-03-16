@@ -358,6 +358,7 @@ namespace HaCreator.MapSimulator.Character
             Player.SetFootholdLookup(_findFoothold);
             Player.SetLadderLookup(_findLadder);
             Player.SetSwimAreaCheck(_checkSwimArea);
+            Player.SetPortableChairTamingMobLoader(Loader.LoadEquipment);
             Player.SetJumpSoundCallback(_onJumpSound);
             Player.SetJumpRestrictionHandler(_jumpRestrictionMessageProvider, _onJumpRestricted);
             Player.Physics.IsFlyingMap = _isFlyingMap;
@@ -645,9 +646,17 @@ namespace HaCreator.MapSimulator.Character
                 // Player.Draw handles flash internally
             }
 
-            Pets.Draw(spriteBatch, skeletonRenderer, mapShiftX, mapShiftY, centerX, centerY, drawBehindOwner: true);
-            Player.Draw(spriteBatch, skeletonRenderer, mapShiftX, mapShiftY, centerX, centerY, currentTime);
-            Pets.Draw(spriteBatch, skeletonRenderer, mapShiftX, mapShiftY, centerX, centerY, drawBehindOwner: false);
+            Pets.Draw(spriteBatch, skeletonRenderer, mapShiftX, mapShiftY, centerX, centerY, PetRenderPlane.BehindOwner);
+            Player.Draw(
+                spriteBatch,
+                skeletonRenderer,
+                mapShiftX,
+                mapShiftY,
+                centerX,
+                centerY,
+                currentTime,
+                () => Pets.Draw(spriteBatch, skeletonRenderer, mapShiftX, mapShiftY, centerX, centerY, PetRenderPlane.UnderFace));
+            Pets.Draw(spriteBatch, skeletonRenderer, mapShiftX, mapShiftY, centerX, centerY, PetRenderPlane.InFrontOfOwner);
 
             // Draw skill effects and projectiles
             if (Skills != null)

@@ -78,7 +78,7 @@ namespace HaCreator.MapSimulator.UI
         public Action RegisterCurrentMapRequested { get; set; }
         public Action<DestinationEntry> DeleteDestinationRequested { get; set; }
         public Action<DestinationEntry> MoveDestinationRequested { get; set; }
-        public Action WorldMapRequested { get; set; }
+        public Action<DestinationEntry> WorldMapRequested { get; set; }
 
         public override void Show()
         {
@@ -247,7 +247,7 @@ namespace HaCreator.MapSimulator.UI
             if (mapButton != null)
             {
                 AddButton(mapButton);
-                mapButton.ButtonClickReleased += _ => WorldMapRequested?.Invoke();
+                mapButton.ButtonClickReleased += _ => WorldMapRequested?.Invoke(GetSelectedEntry());
             }
         }
 

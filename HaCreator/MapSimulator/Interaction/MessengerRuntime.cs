@@ -92,8 +92,10 @@ namespace HaCreator.MapSimulator.Interaction
                 Participants = participants,
                 LogEntries = _logEntries.ToArray(),
                 SelectedSlot = _selectedSlot,
+                SelectedParticipantName = selectedParticipant?.Name ?? string.Empty,
                 CanInvite = roomHasEmptySlot && hasUninvitedSeedContact,
-                CanWhisper = selectedParticipant != null && !selectedParticipant.IsLocalPlayer
+                CanWhisper = selectedParticipant != null && !selectedParticipant.IsLocalPlayer,
+                CanLeave = _participants.Count > 1
             };
         }
 
@@ -135,6 +137,11 @@ namespace HaCreator.MapSimulator.Interaction
 
         public string WhisperSelected()
         {
+            return WhisperSelected("Meet at your current map.");
+        }
+
+        public string WhisperSelected(string message)
+        {
             if (_selectedSlot < 0 || _selectedSlot >= _participants.Count)
             {
                 return "Select a Messenger member before whispering.";
@@ -146,11 +153,52 @@ namespace HaCreator.MapSimulator.Interaction
                 return "Select another Messenger member before whispering.";
             }
 
+            string resolvedMessage = NormalizeMessage(message);
+            if (resolvedMessage == null)
+            {
+                return "Type a whisper before sending.";
+            }
+
             string author = _participants.Count > 0 ? _participants[0].Name : "Player";
-            string message = $"[Whisper] {author} -> {participant.Name}: Meet at {participant.LocationSummary}.";
-            AddParticipantLog(author, $"Pinged {participant.Name}.");
-            AddParticipantLog(participant.Name, $"Meet at {participant.LocationSummary}.");
-            return message;
+            AddParticipantLog(author, resolvedMessage, isWhisper: true, targetName: participant.Name);
+            AddParticipantLog(participant.Name, BuildAutoReply(participant, resolvedMessage, whisper: true), isWhisper: true, targetName: author);
+            return $"[Whisper] {author} -> {participant.Name}: {resolvedMessage}";
+        }
+
+        public string SendMessage(string message)
+        {
+            string resolvedMessage = NormalizeMessage(message);
+            if (resolvedMessage == null)
+            {
+                return "Type a Messenger message before sending.";
+            }
+
+            string author = _participants.Count > 0 ? _participants[0].Name : "Player";
+            AddParticipantLog(author, resolvedMessage);
+
+            MessengerParticipantSnapshot responder = GetAutoReplyParticipant();
+            if (responder != null)
+            {
+                AddParticipantLog(responder.Name, BuildAutoReply(responder, resolvedMessage, whisper: false));
+            }
+
+            return $"{author}: {resolvedMessage}";
+        }
+
+        public string LeaveMessenger()
+        {
+            if (_participants.Count <= 1)
+            {
+                return "Messenger only has your local simulator profile right now.";
+            }
+
+            MessengerParticipantSnapshot localPlayer = _participants[0];
+            _participants.Clear();
+            _participants.Add(localPlayer);
+            _selectedSlot = 0;
+
+            AddSystemLog($"{localPlayer.Name} left the Messenger. Simulator room reset to a solo state.");
+            return $"{localPlayer.Name} left the Messenger.";
         }
 
         private MessengerSeedContact FindNextInvitableContact()
@@ -193,13 +241,69 @@ namespace HaCreator.MapSimulator.Interaction
             });
         }
 
-        private void AddParticipantLog(string author, string message)
+        private MessengerParticipantSnapshot GetAutoReplyParticipant()
+        {
+            if (_selectedSlot > 0 && _selectedSlot < _participants.Count)
+            {
+                return _participants[_selectedSlot];
+            }
+
+            for (int i = 1; i < _participants.Count; i++)
+            {
+                if (!_participants[i].IsLocalPlayer)
+                {
+                    return _participants[i];
+                }
+            }
+
+            return null;
+        }
+
+        private static string BuildAutoReply(MessengerParticipantSnapshot participant, string message, bool whisper)
+        {
+            string normalized = (message ?? string.Empty).Trim();
+            if (normalized.IndexOf("where", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                return $"I'm in {participant.LocationSummary}, CH {participant.Channel}.";
+            }
+
+            if (normalized.IndexOf("meet", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                return whisper
+                    ? $"On my way from {participant.LocationSummary}."
+                    : $"Meet me in {participant.LocationSummary}.";
+            }
+
+            if (normalized.IndexOf("buff", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                return "Give me a second to rebuff.";
+            }
+
+            if (normalized.IndexOf("trade", StringComparison.OrdinalIgnoreCase) >= 0
+                || normalized.IndexOf("fm", StringComparison.OrdinalIgnoreCase) >= 0
+                || normalized.IndexOf("market", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                return participant.StatusText;
+            }
+
+            return whisper ? "Got it." : "Okay.";
+        }
+
+        private static string NormalizeMessage(string message)
+        {
+            string trimmed = message?.Trim();
+            return string.IsNullOrWhiteSpace(trimmed) ? null : trimmed;
+        }
+
+        private void AddParticipantLog(string author, string message, bool isWhisper = false, string targetName = null)
         {
             AddLog(new MessengerLogEntrySnapshot
             {
                 Author = author,
                 Message = message,
-                IsSystem = false
+                IsSystem = false,
+                IsWhisper = isWhisper,
+                TargetName = targetName ?? string.Empty
             });
         }
 
@@ -239,8 +343,10 @@ namespace HaCreator.MapSimulator.Interaction
         public IReadOnlyList<MessengerParticipantSnapshot> Participants { get; init; } = Array.Empty<MessengerParticipantSnapshot>();
         public IReadOnlyList<MessengerLogEntrySnapshot> LogEntries { get; init; } = Array.Empty<MessengerLogEntrySnapshot>();
         public int SelectedSlot { get; init; }
+        public string SelectedParticipantName { get; init; } = string.Empty;
         public bool CanInvite { get; init; }
         public bool CanWhisper { get; init; }
+        public bool CanLeave { get; init; }
     }
 
     internal sealed class MessengerParticipantSnapshot
@@ -258,5 +364,7 @@ namespace HaCreator.MapSimulator.Interaction
         public string Author { get; init; } = string.Empty;
         public string Message { get; init; } = string.Empty;
         public bool IsSystem { get; init; }
+        public bool IsWhisper { get; init; }
+        public string TargetName { get; init; } = string.Empty;
     }
 }

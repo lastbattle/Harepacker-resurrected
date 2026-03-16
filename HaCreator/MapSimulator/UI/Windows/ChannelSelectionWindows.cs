@@ -19,13 +19,22 @@ namespace HaCreator.MapSimulator.UI
 
     public sealed class WorldSelectionState
     {
-        public WorldSelectionState(int worldId, int activeChannels, int totalChannels, int occupancyPercent, bool isSelectable)
+        public WorldSelectionState(
+            int worldId,
+            int activeChannels,
+            int totalChannels,
+            int occupancyPercent,
+            bool isSelectable,
+            bool isRecommended = false,
+            bool isLatestConnected = false)
         {
             WorldId = worldId;
             ActiveChannels = Math.Max(0, activeChannels);
             TotalChannels = Math.Max(0, totalChannels);
             OccupancyPercent = Math.Clamp(occupancyPercent, 0, 100);
             IsSelectable = isSelectable;
+            IsRecommended = isRecommended;
+            IsLatestConnected = isLatestConnected;
         }
 
         public int WorldId { get; }
@@ -33,6 +42,8 @@ namespace HaCreator.MapSimulator.UI
         public int TotalChannels { get; }
         public int OccupancyPercent { get; }
         public bool IsSelectable { get; }
+        public bool IsRecommended { get; }
+        public bool IsLatestConnected { get; }
 
         public SelectorAvailability Availability => !IsSelectable
             ? SelectorAvailability.Disabled
@@ -219,6 +230,17 @@ namespace HaCreator.MapSimulator.UI
                     $"Load: {selectedState.OccupancyPercent}% ({selectedState.Availability})",
                     new Vector2(Position.X + 18, Position.Y + 158),
                     SelectorWindowDrawing.GetAvailabilityColor(selectedState.Availability));
+
+                string markerLabel = SelectorWindowDrawing.BuildWorldMarkerLabel(selectedState);
+                if (!string.IsNullOrWhiteSpace(markerLabel))
+                {
+                    SelectorWindowDrawing.DrawShadowedText(
+                        sprite,
+                        _font,
+                        markerLabel,
+                        new Vector2(Position.X + 18, Position.Y + 174),
+                        new Color(163, 226, 255));
+                }
             }
 
             SelectorWindowDrawing.DrawShadowedText(
@@ -790,6 +812,31 @@ namespace HaCreator.MapSimulator.UI
                 SelectorAvailability.Busy => new Color(255, 204, 107),
                 _ => new Color(145, 232, 145),
             };
+        }
+
+        public static string BuildWorldMarkerLabel(WorldSelectionState state)
+        {
+            if (state == null)
+            {
+                return null;
+            }
+
+            if (state.IsLatestConnected && state.IsRecommended)
+            {
+                return "Latest connected and recommended";
+            }
+
+            if (state.IsLatestConnected)
+            {
+                return "Latest connected world";
+            }
+
+            if (state.IsRecommended)
+            {
+                return "Recommended world";
+            }
+
+            return null;
         }
     }
 }

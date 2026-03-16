@@ -1,6 +1,7 @@
 using HaSharedLibrary.Render.DX;
 using HaSharedLibrary.Util;
 using HaSharedLibrary.Wz;
+using HaCreator.MapSimulator.Interaction;
 using MapleLib.Converters;
 using MapleLib.WzLib;
 using MapleLib.WzLib.WzProperties;
@@ -35,6 +36,7 @@ namespace HaCreator.MapSimulator.Fields
 
         public void Initialize(GraphicsDevice graphicsDevice)
         {
+            _coconut.Initialize(graphicsDevice);
             _ariantArena.Initialize(graphicsDevice);
         }
 
@@ -191,6 +193,9 @@ namespace HaCreator.MapSimulator.Fields
             public List<IDXObject> Frames;   // Animation frames
             public int FrameIndex;
             public int LastFrameTime;
+            public int SpeedDegree;
+            public int PositionDelta;
+            public int MovementElapsed;
 
             // Movement properties
             public int PositionX => Area.X + Area.Width / 2;
@@ -217,10 +222,14 @@ namespace HaCreator.MapSimulator.Fields
             {
                 Area.X = x - Area.Width / 2;
                 Area.Y = y - Area.Height / 2;
+                PositionDelta = 0;
+                MovementElapsed = 0;
             }
 
             public void Update(int tickCount)
             {
+                UpdateMovement();
+
                 if (IsWinner || Frames == null || Frames.Count == 0)
                     return;
 
@@ -233,6 +242,85 @@ namespace HaCreator.MapSimulator.Fields
                     FrameIndex = (FrameIndex + 1) % Frames.Count;
                     LastFrameTime = tickCount;
                 }
+            }
+
+            public void ApplyStatePosition(int x, int y, int speedDegree, bool reset)
+            {
+                int dx = x - PositionX;
+                SpeedDegree = speedDegree;
+                if (reset)
+                {
+                    SetPos(x, y, false);
+                    if (dx != 0)
+                    {
+                        Rotation += 4f * Math.Sign(dx);
+                    }
+                    return;
+                }
+
+                PositionDelta = dx * 3;
+            }
+
+            private void UpdateMovement()
+            {
+                if (PositionDelta == 0)
+                {
+                    MovementElapsed = 0;
+                    return;
+                }
+
+                int direction = Math.Sign(PositionDelta);
+                int stepDelay = GetStepDelay(SpeedDegree, direction);
+                if (stepDelay <= 0)
+                {
+                    int nextX = PositionX + direction;
+                    if (ms_rgBall.Left <= nextX && nextX <= ms_rgBall.Right)
+                    {
+                        MovementElapsed += 30;
+                        if (MovementElapsed >= 30)
+                        {
+                            MovementElapsed -= 30;
+                            Move(direction);
+                            PositionDelta -= direction * 3;
+                        }
+                    }
+                    else
+                    {
+                        MovementElapsed = 0;
+                    }
+
+                    return;
+                }
+
+                int nextPosition = PositionX + Math.Sign(stepDelay);
+                if (ms_rgBall.Left > nextPosition || nextPosition > ms_rgBall.Right)
+                {
+                    MovementElapsed = 0;
+                    return;
+                }
+
+                MovementElapsed += 30;
+                int threshold = Math.Abs(stepDelay) * (3 - direction * Math.Sign(stepDelay)) / 3;
+                if (MovementElapsed >= threshold)
+                {
+                    MovementElapsed -= threshold;
+                    Move(Math.Sign(stepDelay));
+                    PositionDelta -= direction;
+                }
+            }
+
+            private static int GetStepDelay(int speedDegree, int direction)
+            {
+                return speedDegree switch
+                {
+                    0 => 0,
+                    1 => 90,
+                    2 => 75,
+                    3 => 60,
+                    4 => 45,
+                    5 => 30,
+                    _ => direction * 30
+                };
             }
         }
 
@@ -250,6 +338,7 @@ namespace HaCreator.MapSimulator.Fields
             public int LastFrameTime;
             public bool ShowHitEffect;
             public int HitEffectEndTime;
+            public int StunDurationMs = 10000;
 
             public void Init(int x, int y, int hp)
             {
@@ -258,15 +347,17 @@ namespace HaCreator.MapSimulator.Fields
                 HP = hp;
             }
 
-            public void Hit(int damage)
+            public void ApplyHp(int hp)
             {
-                HP = Math.Max(0, HP - damage);
-                ShowHitEffect = true;
-                HitEffectEndTime = Environment.TickCount + 500;
+                HP = Math.Clamp(hp, 0, MaxHP);
+            }
 
-                // Stun briefly on hit
+            public void Hit(int tickCount)
+            {
+                ShowHitEffect = true;
+                HitEffectEndTime = tickCount + 500;
                 IsStunned = true;
-                StunEndTime = Environment.TickCount + 300;
+                StunEndTime = tickCount + Math.Max(0, StunDurationMs);
             }
 
             public void Update(int tickCount)
@@ -310,10 +401,8 @@ namespace HaCreator.MapSimulator.Fields
         {
             NotStarted = -1,
             Active = 1,
-            Team0InZone = 2,
-            Team1InZone = 3,
-            Team0Win = 10,
-            Team1Win = 11
+            Team0Win = 2,
+            Team1Win = 3
         }
 
         #endregion
@@ -336,6 +425,11 @@ namespace HaCreator.MapSimulator.Fields
         private int _team1Score;
         private string _currentMessage;
         private int _messageEndTime;
+        private int _damageSnowBall = 10;
+        private readonly int[] _damageSnowMan = new[] { 15, 45 };
+        private int _snowManWaitMs = 10000;
+        private bool _hasReceivedStateSnapshot;
+        private int _lastTouchImpactTime;
 
         #endregion
 
@@ -357,12 +451,18 @@ namespace HaCreator.MapSimulator.Fields
         /// Initialize SnowBall field from map configuration
         /// </summary>
         public void Initialize(int leftGoalX, int rightGoalX, int groundY,
-            int snowBallRadius = 80, int deltaX = 20)
+            int snowBallRadius = 80, int deltaX = 20,
+            int damageSnowBall = 10, int damageSnowMan0 = 15, int damageSnowMan1 = 45,
+            int snowManHp = 7500, int snowManWaitMs = 10000)
         {
             ms_nDeltaX = deltaX;
             _leftGoalX = leftGoalX;
             _rightGoalX = rightGoalX;
             _groundY = groundY;
+            _damageSnowBall = damageSnowBall;
+            _damageSnowMan[0] = damageSnowMan0;
+            _damageSnowMan[1] = damageSnowMan1;
+            _snowManWaitMs = snowManWaitMs;
 
             int centerX = (leftGoalX + rightGoalX) / 2;
             int ballStartOffset = (rightGoalX - leftGoalX) / 4;
@@ -393,7 +493,8 @@ namespace HaCreator.MapSimulator.Fields
             {
                 _snowMen[i] = new SnowMan { Team = i };
                 int snowManX = i == 0 ? leftGoalX + 100 : rightGoalX - 100;
-                _snowMen[i].Init(snowManX, groundY, 100);
+                _snowMen[i].Init(snowManX, groundY, snowManHp);
+                _snowMen[i].StunDurationMs = snowManWaitMs;
             }
 
             ms_rgBall = new Rectangle(leftGoalX, groundY - 200, rightGoalX - leftGoalX, 200);
@@ -426,31 +527,61 @@ namespace HaCreator.MapSimulator.Fields
         /// </summary>
         public void OnSnowBallState(int newState, int team0Pos, int team1Pos)
         {
+            OnSnowBallState(newState, _snowMen[0]?.HP ?? 0, _snowMen[1]?.HP ?? 0, team0Pos, 0, team1Pos, 0);
+        }
+
+        public void OnSnowBallState(
+            int newState,
+            int team0SnowManHp,
+            int team1SnowManHp,
+            int team0Pos,
+            int team0SpeedDegree,
+            int team1Pos,
+            int team1SpeedDegree)
+        {
             GameState previousState = _state;
+            bool isFirstSnapshot = !_hasReceivedStateSnapshot;
+            _hasReceivedStateSnapshot = true;
             _state = (GameState)newState;
 
-            // Update snowball positions
-            if (team0Pos != 0 && _snowBalls[0] != null)
-                _snowBalls[0].SetPos(team0Pos, _groundY - _snowBalls[0].Area.Height / 2, false);
-            if (team1Pos != 0 && _snowBalls[1] != null)
-                _snowBalls[1].SetPos(team1Pos, _groundY - _snowBalls[1].Area.Height / 2, true);
+            if (_snowMen[0] != null)
+            {
+                _snowMen[0].ApplyHp(team0SnowManHp);
+            }
 
-            // Handle state transitions
+            if (_snowMen[1] != null)
+            {
+                _snowMen[1].ApplyHp(team1SnowManHp);
+            }
+
+            if (_snowBalls[0] != null)
+            {
+                _snowBalls[0].ApplyStatePosition(team0Pos, _groundY - _snowBalls[0].Area.Height / 2, team0SpeedDegree, isFirstSnapshot || _state != GameState.Active);
+            }
+
+            if (_snowBalls[1] != null)
+            {
+                _snowBalls[1].ApplyStatePosition(team1Pos, _groundY - _snowBalls[1].Area.Height / 2, team1SpeedDegree, isFirstSnapshot || _state != GameState.Active);
+            }
+
             switch (_state)
             {
                 case GameState.Active:
                     if (previousState == GameState.NotStarted)
+                    {
                         ShowMessage("The snowball fight has begun!", 3000);
+                    }
+
                     break;
                 case GameState.Team0Win:
                     _snowBalls[0]?.Win();
                     _team0Score++;
-                    ShowMessage("Team Maple wins!", 5000);
+                    ShowMessage("Team Maple wins the round!", 5000);
                     break;
                 case GameState.Team1Win:
                     _snowBalls[1]?.Win();
                     _team1Score++;
-                    ShowMessage("Team Story wins!", 5000);
+                    ShowMessage("Team Story wins the round!", 5000);
                     break;
             }
 
@@ -485,11 +616,7 @@ namespace HaCreator.MapSimulator.Fields
         /// </summary>
         public void OnSnowBallTouch(int team)
         {
-            // This triggers movement when a player is in the zone
-            if (_state == GameState.Active && team >= 0 && team < 2)
-            {
-                _state = team == 0 ? GameState.Team0InZone : GameState.Team1InZone;
-            }
+            _lastTouchImpactTime = Environment.TickCount;
         }
 
         #endregion
@@ -509,24 +636,26 @@ namespace HaCreator.MapSimulator.Fields
             switch (target)
             {
                 case 0: // Left snowball
+                    if (_snowBalls[0] != null && team == 0)
+                    {
+                        _snowBalls[0].Move(1);
+                        QueueDamage(target, damage > 0 ? damage : _damageSnowBall, tickCount);
+                        CheckWinCondition();
+                    }
+
+                    break;
                 case 1: // Right snowball
                     if (_snowBalls[target] != null)
                     {
-                        // Snowball moves based on which team hit it
-                        int direction = team == 0 ? 1 : -1; // Team 0 pushes right, Team 1 pushes left
-                        _snowBalls[target].Move(direction);
-
-                        // Queue damage display
-                        _damageQueue.Add(new DamageInfo
+                        int direction = team == 1 ? -1 : 0;
+                        if (direction != 0)
                         {
-                            Target = target,
-                            Damage = damage,
-                            StartTime = tickCount
-                        });
-
-                        // Check win conditions
-                        CheckWinCondition();
+                            _snowBalls[target].Move(direction);
+                            QueueDamage(target, damage > 0 ? damage : _damageSnowBall, tickCount);
+                            CheckWinCondition();
+                        }
                     }
+
                     break;
 
                 case 2: // Left snowman
@@ -534,13 +663,8 @@ namespace HaCreator.MapSimulator.Fields
                     int snowManIndex = target - 2;
                     if (_snowMen[snowManIndex] != null)
                     {
-                        _snowMen[snowManIndex].Hit(damage);
-                        _damageQueue.Add(new DamageInfo
-                        {
-                            Target = target,
-                            Damage = damage,
-                            StartTime = tickCount
-                        });
+                        int resolvedDamage = damage > 0 ? damage : _damageSnowMan[Math.Min(snowManIndex, _damageSnowMan.Length - 1)];
+                        QueueDamage(target, resolvedDamage, tickCount);
                     }
                     break;
             }
@@ -557,15 +681,27 @@ namespace HaCreator.MapSimulator.Fields
 
         private void CheckWinCondition()
         {
-            // Team 0 wins if right snowball reaches left goal
-            if (_snowBalls[1] != null && _snowBalls[1].PositionX <= _leftGoalX + 50)
+            if (_snowBalls[0] != null && _snowBalls[0].PositionX >= _rightGoalX - 50)
             {
-                OnSnowBallState((int)GameState.Team0Win, 0, 0);
+                OnSnowBallState(
+                    (int)GameState.Team0Win,
+                    _snowMen[0]?.HP ?? 0,
+                    _snowMen[1]?.HP ?? 0,
+                    _snowBalls[0].PositionX,
+                    0,
+                    _snowBalls[1]?.PositionX ?? 0,
+                    0);
             }
-            // Team 1 wins if left snowball reaches right goal
-            else if (_snowBalls[0] != null && _snowBalls[0].PositionX >= _rightGoalX - 50)
+            else if (_snowBalls[1] != null && _snowBalls[1].PositionX <= _leftGoalX + 50)
             {
-                OnSnowBallState((int)GameState.Team1Win, 0, 0);
+                OnSnowBallState(
+                    (int)GameState.Team1Win,
+                    _snowMen[0]?.HP ?? 0,
+                    _snowMen[1]?.HP ?? 0,
+                    _snowBalls[0]?.PositionX ?? 0,
+                    0,
+                    _snowBalls[1].PositionX,
+                    0);
             }
         }
 
@@ -575,9 +711,10 @@ namespace HaCreator.MapSimulator.Fields
 
         public void Update(int tickCount)
         {
-            // Update snowballs
             foreach (var ball in _snowBalls)
+            {
                 ball?.Update(tickCount);
+            }
 
             // Update snowmen
             foreach (var snowMan in _snowMen)
@@ -618,10 +755,20 @@ namespace HaCreator.MapSimulator.Fields
                     break;
                 case 2:
                 case 3:
-                    // Snowman hit effect
+                    _snowMen[damage.Target - 2]?.Hit(Environment.TickCount);
                     System.Diagnostics.Debug.WriteLine($"[SnowBallField] SnowMan {damage.Target - 2} hit for {damage.Damage}");
                     break;
             }
+        }
+
+        private void QueueDamage(int target, int damage, int startTime)
+        {
+            _damageQueue.Add(new DamageInfo
+            {
+                Target = target,
+                Damage = damage,
+                StartTime = startTime
+            });
         }
 
         private void ShowMessage(string message, int durationMs)
@@ -759,8 +906,6 @@ namespace HaCreator.MapSimulator.Fields
             {
                 GameState.NotStarted => "Waiting...",
                 GameState.Active => "FIGHT!",
-                GameState.Team0InZone => "Maple Zone!",
-                GameState.Team1InZone => "Story Zone!",
                 GameState.Team0Win => "MAPLE WINS!",
                 GameState.Team1Win => "STORY WINS!",
                 _ => ""
@@ -782,6 +927,8 @@ namespace HaCreator.MapSimulator.Fields
             _state = GameState.NotStarted;
             _damageQueue.Clear();
             _currentMessage = null;
+            _hasReceivedStateSnapshot = false;
+            _lastTouchImpactTime = 0;
 
             // Reset snowballs
             int centerX = (_leftGoalX + _rightGoalX) / 2;
@@ -795,6 +942,7 @@ namespace HaCreator.MapSimulator.Fields
                     _snowBalls[i].SetPos(x, _groundY - _snowBalls[i].Area.Height / 2, i == 1);
                     _snowBalls[i].Rotation = 0f;
                     _snowBalls[i].IsWinner = false;
+                    _snowBalls[i].SpeedDegree = 0;
                 }
             }
 
@@ -806,6 +954,7 @@ namespace HaCreator.MapSimulator.Fields
                     _snowMen[i].HP = _snowMen[i].MaxHP;
                     _snowMen[i].IsStunned = false;
                     _snowMen[i].ShowHitEffect = false;
+                    _snowMen[i].StunDurationMs = _snowManWaitMs;
                 }
             }
         }
@@ -835,6 +984,9 @@ namespace HaCreator.MapSimulator.Fields
     /// </summary>
     public class CoconutField
     {
+        private const int LocalNormalAttackDelayMs = 120;
+        private const int ResultBannerTopY = 145;
+
         #region Nested Types
 
         public enum CoconutState
@@ -845,6 +997,14 @@ namespace HaCreator.MapSimulator.Fields
             Team1Claimed = 3,
             Scored = 4,
             Destroyed = 5
+        }
+
+        public enum RoundResult
+        {
+            None,
+            Victory,
+            Lose,
+            Draw
         }
 
         public class Coconut
@@ -942,12 +1102,22 @@ namespace HaCreator.MapSimulator.Fields
         private int _finishTick;
         private int _lastUpdateTime;
         private bool _gameActive;
+        private int _localTeam;
 
         // Configuration
         private int _totalCoconuts;
         private int _groundY;
         private float _gravity = 0.3f;
         private Rectangle _treeArea;
+        private GraphicsDevice _graphicsDevice;
+        private bool _assetsLoaded;
+        private readonly List<IDXObject> _victoryFrames = new();
+        private readonly List<IDXObject> _loseFrames = new();
+        private List<IDXObject> _activeResultFrames;
+        private int _resultFrameIndex;
+        private int _resultFrameStartTime;
+        private int _resultExpireTime;
+        private RoundResult _lastRoundResult;
 
         // Avatar appearances (from WZ)
         private int[,] _avatarEquip; // [team][gender] = equipment set
@@ -965,10 +1135,16 @@ namespace HaCreator.MapSimulator.Fields
         public int TimeRemaining => _timeRemaining;
         public bool IsActive => _gameActive;
         public IReadOnlyList<Coconut> Coconuts => _coconuts;
+        public RoundResult LastRoundResult => _lastRoundResult;
 
         #endregion
 
         #region Initialization
+
+        public void Initialize(GraphicsDevice graphicsDevice)
+        {
+            _graphicsDevice = graphicsDevice;
+        }
 
         public void Initialize(int coconutCount, Rectangle treeArea, int groundY)
         {
@@ -1000,6 +1176,8 @@ namespace HaCreator.MapSimulator.Fields
             _team1Score = 0;
             _gameActive = false;
             _lastUpdateTime = Environment.TickCount;
+            _localTeam = 0;
+            ClearRoundResult();
 
             System.Diagnostics.Debug.WriteLine($"[CoconutField] Initialized with {coconutCount} coconuts");
         }
@@ -1070,6 +1248,7 @@ namespace HaCreator.MapSimulator.Fields
             {
                 _gameActive = true;
                 _lastUpdateTime = now;
+                ClearRoundResult();
             }
             else if (_gameActive)
             {
@@ -1087,6 +1266,7 @@ namespace HaCreator.MapSimulator.Fields
             _timeRemaining = durationSeconds;
             _finishTick = Environment.TickCount + Math.Max(0, durationSeconds) * 1000;
             _lastUpdateTime = Environment.TickCount;
+            ClearRoundResult();
             ShowMessage("Coconut harvest begins!", 3000);
         }
 
@@ -1102,11 +1282,57 @@ namespace HaCreator.MapSimulator.Fields
             coconut.Hit(byTeam);
         }
 
+        public bool TryHandleNormalAttack(Rectangle attackBounds, int currentTick, int skillId = 0)
+        {
+            if (!_gameActive || skillId != 0 || attackBounds.Width <= 0 || attackBounds.Height <= 0)
+            {
+                return false;
+            }
+
+            Coconut target = null;
+            float bestDistance = float.MaxValue;
+            Vector2 attackCenter = new Vector2(
+                attackBounds.Left + attackBounds.Width * 0.5f,
+                attackBounds.Top + attackBounds.Height * 0.5f);
+
+            for (int i = 0; i < _coconuts.Count; i++)
+            {
+                Coconut coconut = _coconuts[i];
+                if (!IsAttackable(coconut))
+                {
+                    continue;
+                }
+
+                Rectangle targetBounds = GetObjectBounds(coconut);
+                if (!attackBounds.Intersects(targetBounds))
+                {
+                    continue;
+                }
+
+                Vector2 coconutCenter = new Vector2(targetBounds.Center.X, targetBounds.Center.Y);
+                float distance = Vector2.DistanceSquared(attackCenter, coconutCenter);
+                if (distance < bestDistance)
+                {
+                    bestDistance = distance;
+                    target = coconut;
+                }
+            }
+
+            if (target == null)
+            {
+                return false;
+            }
+
+            QueueHit(target.Id, ResolveLocalAttackState(target, _localTeam), currentTick + LocalNormalAttackDelayMs);
+            return true;
+        }
+
         private void EndGame()
         {
             _gameActive = false;
             _finishTick = 0;
             _timeRemaining = 0;
+            ShowRoundResult(Environment.TickCount);
 
             string winner = _team0Score > _team1Score
                 ? "Team Maple wins!"
@@ -1124,6 +1350,7 @@ namespace HaCreator.MapSimulator.Fields
 
         public void Update(int tickCount)
         {
+            EnsureAssetsLoaded();
             ProcessHitQueue(tickCount);
 
             if (_gameActive)
@@ -1153,6 +1380,8 @@ namespace HaCreator.MapSimulator.Fields
             {
                 _currentMessage = null;
             }
+
+            UpdateResultFrames(tickCount);
         }
 
         private void ProcessHitQueue(int tickCount)
@@ -1169,6 +1398,16 @@ namespace HaCreator.MapSimulator.Fields
                     _hitQueue.RemoveAt(i);
                 }
             }
+        }
+
+        private void QueueHit(int targetId, CoconutState newState, int startTime)
+        {
+            _hitQueue.Add(new HitInfo
+            {
+                Target = targetId,
+                NewState = (int)newState,
+                StartTime = startTime
+            });
         }
 
         private void ApplyPacketState(Coconut coconut, CoconutState newState)
@@ -1215,6 +1454,198 @@ namespace HaCreator.MapSimulator.Fields
         {
             _currentMessage = message;
             _messageEndTime = Environment.TickCount + durationMs;
+        }
+
+        private bool IsAttackable(Coconut coconut)
+        {
+            return coconut != null
+                && coconut.IsActive
+                && coconut.State != CoconutState.Scored
+                && coconut.State != CoconutState.Destroyed;
+        }
+
+        private Rectangle GetObjectBounds(Coconut coconut)
+        {
+            if (coconut?.Frames != null && coconut.Frames.Count > 0)
+            {
+                IDXObject frame = coconut.Frames[coconut.FrameIndex % coconut.Frames.Count];
+                return new Rectangle(
+                    (int)coconut.Position.X + frame.X,
+                    (int)coconut.Position.Y + frame.Y,
+                    Math.Max(1, frame.Width),
+                    Math.Max(1, frame.Height));
+            }
+
+            int size = (int)(24 * coconut.Scale);
+            return new Rectangle(
+                (int)coconut.Position.X - size / 2,
+                (int)coconut.Position.Y - size / 2,
+                Math.Max(1, size),
+                Math.Max(1, size));
+        }
+
+        private static CoconutState ResolveLocalAttackState(Coconut coconut, int localTeam)
+        {
+            CoconutState claimState = localTeam == 0 ? CoconutState.Team0Claimed : CoconutState.Team1Claimed;
+
+            return coconut.State switch
+            {
+                CoconutState.OnTree => CoconutState.Falling,
+                CoconutState.Falling => claimState,
+                CoconutState.Team0Claimed when localTeam == 1 => CoconutState.Team1Claimed,
+                CoconutState.Team1Claimed when localTeam == 0 => CoconutState.Team0Claimed,
+                _ => coconut.State
+            };
+        }
+
+        private void ShowRoundResult(int currentTick)
+        {
+            EnsureAssetsLoaded();
+
+            if (_team0Score == _team1Score)
+            {
+                _lastRoundResult = RoundResult.Draw;
+                _activeResultFrames = null;
+                _resultExpireTime = currentTick + 3000;
+                return;
+            }
+
+            bool localWon = _localTeam == 0 ? _team0Score > _team1Score : _team1Score > _team0Score;
+            _lastRoundResult = localWon ? RoundResult.Victory : RoundResult.Lose;
+            _activeResultFrames = localWon ? _victoryFrames : _loseFrames;
+            _resultFrameIndex = 0;
+            _resultFrameStartTime = currentTick;
+            _resultExpireTime = currentTick + GetAnimationDuration(_activeResultFrames);
+        }
+
+        private void ClearRoundResult()
+        {
+            _lastRoundResult = RoundResult.None;
+            _activeResultFrames = null;
+            _resultFrameIndex = 0;
+            _resultFrameStartTime = 0;
+            _resultExpireTime = 0;
+        }
+
+        private void UpdateResultFrames(int tickCount)
+        {
+            if (_activeResultFrames == null || _activeResultFrames.Count == 0)
+            {
+                if (_resultExpireTime > 0 && tickCount >= _resultExpireTime && _lastRoundResult != RoundResult.None)
+                {
+                    _resultExpireTime = 0;
+                }
+
+                return;
+            }
+
+            if (tickCount >= _resultExpireTime)
+            {
+                _activeResultFrames = null;
+                return;
+            }
+
+            while (_resultFrameIndex < _activeResultFrames.Count - 1)
+            {
+                int frameDelay = _activeResultFrames[_resultFrameIndex].Delay > 0 ? _activeResultFrames[_resultFrameIndex].Delay : 100;
+                if (tickCount - _resultFrameStartTime < frameDelay)
+                {
+                    break;
+                }
+
+                _resultFrameStartTime += frameDelay;
+                _resultFrameIndex++;
+            }
+        }
+
+        private static int GetAnimationDuration(List<IDXObject> frames)
+        {
+            if (frames == null || frames.Count == 0)
+            {
+                return 3000;
+            }
+
+            int total = 0;
+            for (int i = 0; i < frames.Count; i++)
+            {
+                total += frames[i].Delay > 0 ? frames[i].Delay : 100;
+            }
+
+            return total;
+        }
+
+        private void EnsureAssetsLoaded()
+        {
+            if (_assetsLoaded || _graphicsDevice == null)
+            {
+                return;
+            }
+
+            WzImage effectImage = global::HaCreator.Program.FindImage("Map", "Effect.img")
+                ?? global::HaCreator.Program.FindImage("Map", "effect.img");
+            WzImageProperty coconutRoot = effectImage?["event"]?["coconut"];
+            LoadAnimatedFrames(coconutRoot?["victory"], _victoryFrames);
+            LoadAnimatedFrames(coconutRoot?["lose"], _loseFrames);
+            _assetsLoaded = true;
+        }
+
+        private void LoadAnimatedFrames(WzImageProperty source, List<IDXObject> target)
+        {
+            target.Clear();
+            if (source == null)
+            {
+                return;
+            }
+
+            WzImageProperty resolvedSource = WzInfoTools.GetRealProperty(source);
+            if (resolvedSource is WzCanvasProperty canvas)
+            {
+                if (TryCreateDxObject(canvas, out IDXObject singleFrame))
+                {
+                    target.Add(singleFrame);
+                }
+
+                return;
+            }
+
+            if (resolvedSource is not WzSubProperty)
+            {
+                return;
+            }
+
+            for (int i = 0; ; i++)
+            {
+                if (WzInfoTools.GetRealProperty(resolvedSource[i.ToString()]) is not WzCanvasProperty frameCanvas)
+                {
+                    break;
+                }
+
+                if (TryCreateDxObject(frameCanvas, out IDXObject frame))
+                {
+                    target.Add(frame);
+                }
+            }
+        }
+
+        private bool TryCreateDxObject(WzCanvasProperty canvas, out IDXObject dxObject)
+        {
+            dxObject = null;
+            if (_graphicsDevice == null || canvas == null)
+            {
+                return false;
+            }
+
+            using var bitmap = canvas.GetLinkedWzCanvasBitmap();
+            if (bitmap == null)
+            {
+                return false;
+            }
+
+            Texture2D texture = bitmap.ToTexture2D(_graphicsDevice);
+            System.Drawing.PointF origin = canvas.GetCanvasOriginPosition();
+            int delay = canvas["delay"]?.GetInt() ?? 100;
+            dxObject = new DXObject(-(int)origin.X, -(int)origin.Y, texture, delay);
+            return true;
         }
 
         #endregion
@@ -1270,6 +1701,7 @@ namespace HaCreator.MapSimulator.Fields
             if (font != null)
             {
                 DrawUI(spriteBatch, pixelTexture, font);
+                DrawRoundResult(spriteBatch, skeletonMeshRenderer, gameTime, font);
             }
         }
 
@@ -1336,6 +1768,41 @@ namespace HaCreator.MapSimulator.Fields
             }
         }
 
+        private void DrawRoundResult(SpriteBatch spriteBatch, SkeletonMeshRenderer skeletonMeshRenderer, GameTime gameTime, SpriteFont font)
+        {
+            if (_lastRoundResult == RoundResult.None || _resultExpireTime <= Environment.TickCount)
+            {
+                return;
+            }
+
+            Viewport viewport = spriteBatch.GraphicsDevice.Viewport;
+            int centerX = viewport.Width / 2;
+
+            if (_activeResultFrames != null && _activeResultFrames.Count > 0)
+            {
+                IDXObject frame = _activeResultFrames[Math.Clamp(_resultFrameIndex, 0, _activeResultFrames.Count - 1)];
+                frame.DrawBackground(spriteBatch, skeletonMeshRenderer, gameTime, centerX + frame.X, ResultBannerTopY + frame.Y, Color.White, false, null);
+            }
+
+            string resultText = _lastRoundResult switch
+            {
+                RoundResult.Victory => "Victory",
+                RoundResult.Lose => "Defeat",
+                RoundResult.Draw => "Draw",
+                _ => null
+            };
+
+            if (resultText == null)
+            {
+                return;
+            }
+
+            Vector2 textSize = font.MeasureString(resultText);
+            Vector2 position = new Vector2((viewport.Width - textSize.X) * 0.5f, ResultBannerTopY + 92);
+            spriteBatch.DrawString(font, resultText, position + Vector2.One, Color.Black);
+            spriteBatch.DrawString(font, resultText, position, Color.White);
+        }
+
         #endregion
 
         #region Utility
@@ -1349,6 +1816,8 @@ namespace HaCreator.MapSimulator.Fields
             _timeRemaining = 0;
             _finishTick = 0;
             _currentMessage = null;
+            _localTeam = 0;
+            ClearRoundResult();
 
             // Reset all coconuts
             Random rand = new Random();
@@ -1385,9 +1854,11 @@ namespace HaCreator.MapSimulator.Fields
         private const int DefaultMismatchHideDelayMs = 900;
         private const int DefaultTurnSeconds = 15;
         private const int DefaultResultSeconds = 5;
+        private const int DefaultRemoteActionDelayMs = 600;
 
         private readonly List<Card> _cards = new();
         private readonly List<int> _revealedCardIndices = new(2);
+        private readonly Queue<PendingRemoteAction> _pendingRemoteActions = new();
         private readonly int[] _scores = new int[2];
         private readonly bool[] _readyStates = new bool[2];
         private readonly string[] _playerNames = new string[2];
@@ -1396,6 +1867,7 @@ namespace HaCreator.MapSimulator.Fields
         private readonly int[] _draws = new int[2];
 
         private RoomStage _stage = RoomStage.Hidden;
+        private SocialRoomRuntime _miniRoomRuntime;
         private int _rows;
         private int _columns;
         private int _localPlayerIndex;
@@ -1422,6 +1894,34 @@ namespace HaCreator.MapSimulator.Fields
             public bool IsMatched { get; set; }
         }
 
+        private readonly struct PendingRemoteAction
+        {
+            public PendingRemoteAction(RemoteActionType actionType, int executeTick, int playerIndex, int cardIndex, bool readyState)
+            {
+                ActionType = actionType;
+                ExecuteTick = executeTick;
+                PlayerIndex = playerIndex;
+                CardIndex = cardIndex;
+                ReadyState = readyState;
+            }
+
+            public RemoteActionType ActionType { get; }
+            public int ExecuteTick { get; }
+            public int PlayerIndex { get; }
+            public int CardIndex { get; }
+            public bool ReadyState { get; }
+        }
+
+        private enum RemoteActionType
+        {
+            Ready,
+            Start,
+            Reveal,
+            Tie,
+            GiveUp,
+            End
+        }
+
         public RoomStage Stage => _stage;
         public bool IsVisible => _stage != RoomStage.Hidden;
         public bool IsPlaying => _stage == RoomStage.Playing;
@@ -1435,6 +1935,13 @@ namespace HaCreator.MapSimulator.Fields
         public IReadOnlyList<bool> ReadyStates => _readyStates;
         public IReadOnlyList<string> PlayerNames => _playerNames;
         public string Title => _title;
+
+        public void AttachMiniRoomRuntime(SocialRoomRuntime runtime)
+        {
+            _miniRoomRuntime = runtime;
+            _miniRoomRuntime?.BindMiniRoomHandlers(HandleMiniRoomReadyRequested, HandleMiniRoomStartRequested, HandleMiniRoomModeRequested);
+            SyncMiniRoomRuntime();
+        }
 
         public void OpenRoom(
             string title = "Match Cards",
@@ -1461,6 +1968,7 @@ namespace HaCreator.MapSimulator.Fields
             ClearRoundState();
             _stage = RoomStage.Lobby;
             _statusMessage = "Ready the room, then start the board.";
+            SyncMiniRoomRuntime();
         }
 
         public bool TrySetReady(int playerIndex, bool isReady, out string message)
@@ -1486,6 +1994,7 @@ namespace HaCreator.MapSimulator.Fields
             _readyStates[playerIndex] = isReady;
             _statusMessage = $"{_playerNames[playerIndex]} is {(isReady ? "ready" : "not ready")}.";
             message = _statusMessage;
+            SyncMiniRoomRuntime();
             return true;
         }
 
@@ -1511,10 +2020,16 @@ namespace HaCreator.MapSimulator.Fields
             _turnDeadlineTick = tickCount + DefaultTurnSeconds * 1000;
             _statusMessage = $"{_playerNames[_currentTurnIndex]}'s turn.";
             message = _statusMessage;
+            SyncMiniRoomRuntime();
             return true;
         }
 
         public bool TryRevealCard(int cardIndex, int tickCount, out string message)
+        {
+            return TryRevealCard(cardIndex, tickCount, _localPlayerIndex, out message);
+        }
+
+        public bool TryRevealCard(int cardIndex, int tickCount, int playerIndex, out string message)
         {
             if (_stage != RoomStage.Playing)
             {
@@ -1522,7 +2037,7 @@ namespace HaCreator.MapSimulator.Fields
                 return false;
             }
 
-            if (_currentTurnIndex != _localPlayerIndex)
+            if (_currentTurnIndex != playerIndex)
             {
                 message = $"It is {_playerNames[_currentTurnIndex]}'s turn.";
                 return false;
@@ -1554,6 +2069,7 @@ namespace HaCreator.MapSimulator.Fields
             {
                 _statusMessage = $"{_playerNames[_currentTurnIndex]} revealed card {cardIndex}.";
                 message = _statusMessage;
+                SyncMiniRoomRuntime();
                 return true;
             }
 
@@ -1573,6 +2089,7 @@ namespace HaCreator.MapSimulator.Fields
                 else
                 {
                     _statusMessage = $"{_playerNames[_currentTurnIndex]} found a pair.";
+                    SyncMiniRoomRuntime();
                 }
 
                 message = _statusMessage;
@@ -1582,6 +2099,7 @@ namespace HaCreator.MapSimulator.Fields
             _pendingHideTick = tickCount + DefaultMismatchHideDelayMs;
             _statusMessage = "Mismatch. Cards will flip back.";
             message = _statusMessage;
+            SyncMiniRoomRuntime();
             return true;
         }
 
@@ -1600,6 +2118,7 @@ namespace HaCreator.MapSimulator.Fields
             _resultExpireTick = Environment.TickCount + DefaultResultSeconds * 1000;
             _statusMessage = "The room settled as a draw.";
             message = _statusMessage;
+            SyncMiniRoomRuntime();
             return true;
         }
 
@@ -1625,6 +2144,7 @@ namespace HaCreator.MapSimulator.Fields
             _resultExpireTick = Environment.TickCount + DefaultResultSeconds * 1000;
             _statusMessage = $"{_playerNames[playerIndex]} gave up. {_playerNames[winnerIndex]} wins.";
             message = _statusMessage;
+            SyncMiniRoomRuntime();
             return true;
         }
 
@@ -1641,6 +2161,52 @@ namespace HaCreator.MapSimulator.Fields
             return true;
         }
 
+        public bool TryQueueRemoteAction(string action, int tickCount, out string message, int cardIndex = -1, int delayMs = DefaultRemoteActionDelayMs)
+        {
+            int remotePlayerIndex = _localPlayerIndex == 0 ? 1 : 0;
+            int executeTick = tickCount + Math.Max(0, delayMs);
+            switch (action)
+            {
+                case "ready":
+                    _pendingRemoteActions.Enqueue(new PendingRemoteAction(RemoteActionType.Ready, executeTick, remotePlayerIndex, -1, true));
+                    message = $"{_playerNames[remotePlayerIndex]} will ready in {Math.Max(0, delayMs)} ms.";
+                    return true;
+                case "unready":
+                    _pendingRemoteActions.Enqueue(new PendingRemoteAction(RemoteActionType.Ready, executeTick, remotePlayerIndex, -1, false));
+                    message = $"{_playerNames[remotePlayerIndex]} will clear ready in {Math.Max(0, delayMs)} ms.";
+                    return true;
+                case "start":
+                    _pendingRemoteActions.Enqueue(new PendingRemoteAction(RemoteActionType.Start, executeTick, remotePlayerIndex, -1, false));
+                    message = $"{_playerNames[remotePlayerIndex]} will request start in {Math.Max(0, delayMs)} ms.";
+                    return true;
+                case "flip":
+                    if (cardIndex < 0)
+                    {
+                        message = "Remote flip requires a card index.";
+                        return false;
+                    }
+
+                    _pendingRemoteActions.Enqueue(new PendingRemoteAction(RemoteActionType.Reveal, executeTick, remotePlayerIndex, cardIndex, false));
+                    message = $"{_playerNames[remotePlayerIndex]} will reveal card {cardIndex} in {Math.Max(0, delayMs)} ms.";
+                    return true;
+                case "tie":
+                    _pendingRemoteActions.Enqueue(new PendingRemoteAction(RemoteActionType.Tie, executeTick, remotePlayerIndex, -1, false));
+                    message = $"{_playerNames[remotePlayerIndex]} will request a tie in {Math.Max(0, delayMs)} ms.";
+                    return true;
+                case "giveup":
+                    _pendingRemoteActions.Enqueue(new PendingRemoteAction(RemoteActionType.GiveUp, executeTick, remotePlayerIndex, -1, false));
+                    message = $"{_playerNames[remotePlayerIndex]} will give up in {Math.Max(0, delayMs)} ms.";
+                    return true;
+                case "end":
+                    _pendingRemoteActions.Enqueue(new PendingRemoteAction(RemoteActionType.End, executeTick, remotePlayerIndex, -1, false));
+                    message = $"{_playerNames[remotePlayerIndex]} will close the room in {Math.Max(0, delayMs)} ms.";
+                    return true;
+                default:
+                    message = "Usage: /memorygame remote <ready|unready|start|flip|tie|giveup|end> [...]";
+                    return false;
+            }
+        }
+
         public void Update(int tickCount)
         {
             if (_stage == RoomStage.Playing)
@@ -1654,12 +2220,65 @@ namespace HaCreator.MapSimulator.Fields
                 {
                     AdvanceTurn(tickCount);
                     _statusMessage = $"{_playerNames[_currentTurnIndex]}'s turn.";
+                    SyncMiniRoomRuntime();
                 }
             }
             else if (_stage == RoomStage.Result && _resultExpireTick > 0 && tickCount >= _resultExpireTick)
             {
                 ReturnToLobby();
             }
+
+            ProcessRemoteActions(tickCount);
+        }
+
+        public bool HandleMouseClick(Point mousePosition, int viewportWidth, int viewportHeight, int tickCount, out string message)
+        {
+            message = null;
+            if (_stage == RoomStage.Hidden)
+            {
+                return false;
+            }
+
+            GetLayout(viewportWidth, viewportHeight, out Rectangle outer, out Rectangle boardArea, out _, out Rectangle[] buttonRects);
+            if (!outer.Contains(mousePosition))
+            {
+                return false;
+            }
+
+            for (int i = 0; i < buttonRects.Length; i++)
+            {
+                if (!buttonRects[i].Contains(mousePosition))
+                {
+                    continue;
+                }
+
+                switch (i)
+                {
+                    case 0:
+                        return HandlePrimarySidebarAction(tickCount, out message);
+                    case 1:
+                        TryClaimTie(out message);
+                        return true;
+                    case 2:
+                        TryGiveUp(_localPlayerIndex, out message);
+                        return true;
+                    case 3:
+                        TryEndRoom(out message);
+                        return true;
+                    case 4:
+                        message = "Ban is not modeled for the simulator MiniRoom.";
+                        return true;
+                }
+            }
+
+            int cardIndex = GetCardIndexAt(mousePosition, boardArea);
+            if (cardIndex >= 0)
+            {
+                TryRevealCard(cardIndex, tickCount, out message);
+                return true;
+            }
+
+            return true;
         }
 
         public void Draw(
@@ -1735,6 +2354,8 @@ namespace HaCreator.MapSimulator.Fields
             _title = "Match Cards";
             _statusMessage = "Open a MiniRoom to begin.";
             _stage = RoomStage.Hidden;
+            _pendingRemoteActions.Clear();
+            SyncMiniRoomRuntime();
         }
 
         private void InitializeBoard()
@@ -1745,6 +2366,7 @@ namespace HaCreator.MapSimulator.Fields
             _scores[1] = 0;
             _pendingHideTick = 0;
             _resultExpireTick = 0;
+            _pendingRemoteActions.Clear();
 
             int pairCount = (_rows * _columns) / 2;
             List<int> faceIds = new(pairCount * 2);
@@ -1783,6 +2405,7 @@ namespace HaCreator.MapSimulator.Fields
             _pendingHideTick = 0;
             AdvanceTurn(Environment.TickCount);
             _statusMessage = $"{_playerNames[_currentTurnIndex]}'s turn.";
+            SyncMiniRoomRuntime();
         }
 
         private void AdvanceTurn(int tickCount)
@@ -1817,6 +2440,7 @@ namespace HaCreator.MapSimulator.Fields
                 _draws[0]++;
                 _draws[1]++;
                 _statusMessage = "Round complete. Draw.";
+                SyncMiniRoomRuntime();
                 return;
             }
 
@@ -1826,6 +2450,7 @@ namespace HaCreator.MapSimulator.Fields
             _wins[winnerIndex]++;
             _losses[loserIndex]++;
             _statusMessage = $"Round complete. {_playerNames[winnerIndex]} wins.";
+            SyncMiniRoomRuntime();
         }
 
         private void ReturnToLobby()
@@ -1840,6 +2465,7 @@ namespace HaCreator.MapSimulator.Fields
             _lastWinnerIndex = -1;
             _stage = RoomStage.Lobby;
             _statusMessage = "Ready the room, then start the board.";
+            SyncMiniRoomRuntime();
         }
 
         private void ClearRoundState()
@@ -1855,6 +2481,7 @@ namespace HaCreator.MapSimulator.Fields
             _turnDeadlineTick = 0;
             _resultExpireTick = 0;
             _lastWinnerIndex = -1;
+            _pendingRemoteActions.Clear();
         }
 
         private void DrawBoard(SpriteBatch spriteBatch, Texture2D pixel, SpriteFont font, Rectangle area)
@@ -1900,7 +2527,7 @@ namespace HaCreator.MapSimulator.Fields
         {
             string[] buttons =
             {
-                _stage == RoomStage.Playing ? "1007 Ready" : "1001 Start",
+                GetPrimaryButtonLabel(),
                 "1002 Tie",
                 "1003 Give Up",
                 "1004 End",
@@ -1918,6 +2545,173 @@ namespace HaCreator.MapSimulator.Fields
             DrawOutlinedText(spriteBatch, font, $"Turn: {_playerNames[_currentTurnIndex]}", new Vector2(area.X + 10, textY), Color.Black, Color.White);
             DrawOutlinedText(spriteBatch, font, $"Time: {CurrentTurnTimeRemainingSeconds}", new Vector2(area.X + 10, textY + 20), Color.Black, Color.White);
             DrawOutlinedText(spriteBatch, font, $"W/L/D: {_wins[0]}/{_losses[0]}/{_draws[0]}", new Vector2(area.X + 10, textY + 40), Color.Black, Color.White);
+        }
+
+        private void HandleMiniRoomReadyRequested()
+        {
+            EnsureRoomOpenFromMiniRoomRuntime();
+            int remotePlayerIndex = _localPlayerIndex == 0 ? 1 : 0;
+            TrySetReady(remotePlayerIndex, !_readyStates[remotePlayerIndex], out _);
+        }
+
+        private void HandleMiniRoomStartRequested()
+        {
+            EnsureRoomOpenFromMiniRoomRuntime();
+            TrySetReady(_localPlayerIndex, true, out _);
+            int remotePlayerIndex = _localPlayerIndex == 0 ? 1 : 0;
+            TrySetReady(remotePlayerIndex, true, out _);
+            TryStartGame(Environment.TickCount, out _);
+        }
+
+        private void HandleMiniRoomModeRequested()
+        {
+            EnsureRoomOpenFromMiniRoomRuntime();
+            _statusMessage = "Match Cards room selected.";
+            SyncMiniRoomRuntime();
+        }
+
+        private void EnsureRoomOpenFromMiniRoomRuntime()
+        {
+            if (_stage != RoomStage.Hidden)
+            {
+                return;
+            }
+
+            string ownerName = _miniRoomRuntime?.Occupants.Count > 0 ? _miniRoomRuntime.Occupants[0].Name : "Player";
+            string guestName = _miniRoomRuntime?.Occupants.Count > 1 ? _miniRoomRuntime.Occupants[1].Name : "Opponent";
+            string title = _miniRoomRuntime?.RoomTitle ?? "Match Cards";
+            OpenRoom(title, ownerName, guestName, DefaultRows, DefaultColumns, DefaultLocalPlayerIndex);
+        }
+
+        private void ProcessRemoteActions(int tickCount)
+        {
+            while (_pendingRemoteActions.Count > 0 && tickCount >= _pendingRemoteActions.Peek().ExecuteTick)
+            {
+                PendingRemoteAction action = _pendingRemoteActions.Dequeue();
+                switch (action.ActionType)
+                {
+                    case RemoteActionType.Ready:
+                        TrySetReady(action.PlayerIndex, action.ReadyState, out _);
+                        break;
+                    case RemoteActionType.Start:
+                        TryStartGame(tickCount, out _);
+                        break;
+                    case RemoteActionType.Reveal:
+                        TryRevealCard(action.CardIndex, tickCount, action.PlayerIndex, out _);
+                        break;
+                    case RemoteActionType.Tie:
+                        TryClaimTie(out _);
+                        break;
+                    case RemoteActionType.GiveUp:
+                        TryGiveUp(action.PlayerIndex, out _);
+                        break;
+                    case RemoteActionType.End:
+                        TryEndRoom(out _);
+                        break;
+                }
+            }
+        }
+
+        private void SyncMiniRoomRuntime()
+        {
+            if (_miniRoomRuntime == null)
+            {
+                return;
+            }
+
+            string roomState = _stage switch
+            {
+                RoomStage.Hidden => "Board closed",
+                RoomStage.Lobby => "Waiting for ready check",
+                RoomStage.Playing => $"{_playerNames[_currentTurnIndex]}'s turn ({CurrentTurnTimeRemainingSeconds}s)",
+                RoomStage.Result => _lastWinnerIndex >= 0 ? $"{_playerNames[_lastWinnerIndex]} won the round" : "Round ended in a draw",
+                _ => string.Empty
+            };
+
+            _miniRoomRuntime.SyncMiniRoomMatchCards(
+                _title,
+                _playerNames[0],
+                _playerNames[1],
+                _readyStates[0],
+                _readyStates[1],
+                _scores[0],
+                _scores[1],
+                _currentTurnIndex,
+                _statusMessage,
+                roomState);
+        }
+
+        private bool HandlePrimarySidebarAction(int tickCount, out string message)
+        {
+            if (_stage == RoomStage.Lobby && !_readyStates[_localPlayerIndex])
+            {
+                TrySetReady(_localPlayerIndex, true, out message);
+                return true;
+            }
+
+            if (_stage == RoomStage.Lobby)
+            {
+                TryStartGame(tickCount, out message);
+                return true;
+            }
+
+            message = "The primary Memory Game button is only available from the lobby.";
+            return true;
+        }
+
+        private string GetPrimaryButtonLabel()
+        {
+            if (_stage == RoomStage.Lobby && !_readyStates[_localPlayerIndex])
+            {
+                return "1007 Ready";
+            }
+
+            return "1001 Start";
+        }
+
+        private void GetLayout(int viewportWidth, int viewportHeight, out Rectangle outer, out Rectangle boardArea, out Rectangle sidebar, out Rectangle[] buttonRects)
+        {
+            int dialogWidth = 420;
+            int dialogHeight = 360;
+            int dialogX = viewportWidth / 2 - dialogWidth / 2;
+            int dialogY = Math.Max(24, viewportHeight / 2 - dialogHeight / 2);
+            outer = new Rectangle(dialogX, dialogY, dialogWidth, dialogHeight);
+            boardArea = new Rectangle(dialogX + 18, dialogY + 88, 252, 232);
+            sidebar = new Rectangle(dialogX + 284, dialogY + 88, 118, 232);
+            buttonRects = new Rectangle[5];
+            for (int i = 0; i < buttonRects.Length; i++)
+            {
+                buttonRects[i] = new Rectangle(sidebar.X + 10, sidebar.Y + 10 + i * 40, sidebar.Width - 20, 30);
+            }
+        }
+
+        private int GetCardIndexAt(Point mousePosition, Rectangle area)
+        {
+            if (_cards.Count == 0 || !area.Contains(mousePosition))
+            {
+                return -1;
+            }
+
+            int gap = 8;
+            int cardWidth = (area.Width - gap * (_columns + 1)) / _columns;
+            int cardHeight = (area.Height - gap * (_rows + 1)) / _rows;
+
+            for (int index = 0; index < _cards.Count; index++)
+            {
+                int row = index / _columns;
+                int column = index % _columns;
+                Rectangle cardRect = new Rectangle(
+                    area.X + gap + column * (cardWidth + gap),
+                    area.Y + gap + row * (cardHeight + gap),
+                    cardWidth,
+                    cardHeight);
+                if (cardRect.Contains(mousePosition))
+                {
+                    return index;
+                }
+            }
+
+            return -1;
         }
 
         private void DrawNameBar(SpriteBatch spriteBatch, Texture2D pixel, SpriteFont font, string name, int score, int x, int y, bool isActiveTurn)
@@ -1947,8 +2741,9 @@ namespace HaCreator.MapSimulator.Fields
     ///
     /// Client evidence:
     /// - CField_AriantArena::OnUserScore (0x5492b0): updates or removes score rows, clamps score to 9999, and re-sorts rank order
+    ///   while suppressing the local player's entry for job branches 8xx and 9xx
     /// - CField_AriantArena::UpdateScoreAndRank (0x547c90): draws a top-left score surface with icon at (5, y), name at (21, y),
-    ///   score at (106, y), and 17px row spacing
+    ///   score at (106, y), 17px row spacing, and redraws user name tags after score refreshes
     /// - CField_AriantArena::OnShowResult (0x547630): loads the AriantMatch result animation at the center-top origin with a +100 Y offset
     /// - WZ evidence: UI/UIWindow.img/AriantMatch and UI/UIWindow2.img/AriantMatch expose the result frames and rank icons
     /// </summary>
@@ -1975,10 +2770,14 @@ namespace HaCreator.MapSimulator.Fields
         private int _resultFrameIndex;
         private int _resultFrameStartedAt;
         private int _resultVisibleUntil;
+        private int _scoreRefreshSerial;
+        private int _localPlayerJob;
         private string _lastResultMessage;
+        private string _localPlayerName;
 
         public bool IsActive => _isActive;
         public IReadOnlyList<AriantArenaScoreEntry> Entries => _entries;
+        public int ScoreRefreshSerial => _scoreRefreshSerial;
 
         public void Initialize(GraphicsDevice graphicsDevice)
         {
@@ -1994,42 +2793,74 @@ namespace HaCreator.MapSimulator.Fields
             _resultFrameIndex = 0;
             _resultFrameStartedAt = 0;
             _resultVisibleUntil = 0;
+            _scoreRefreshSerial = 0;
             _lastResultMessage = null;
             EnsureAssetsLoaded();
         }
 
+        public void SetLocalPlayerState(string playerName, int jobId)
+        {
+            _localPlayerName = string.IsNullOrWhiteSpace(playerName) ? null : playerName.Trim();
+            _localPlayerJob = Math.Max(0, jobId);
+        }
+
         public void OnUserScore(string userName, int score)
+        {
+            ApplyUserScoreBatch(new[] { new AriantArenaScoreUpdate(userName, score) });
+        }
+
+        public void ApplyUserScoreBatch(IEnumerable<AriantArenaScoreUpdate> updates)
         {
             if (!_isActive)
             {
                 return;
             }
 
-            string normalizedName = userName?.Trim();
-            if (string.IsNullOrWhiteSpace(normalizedName))
+            if (updates == null)
             {
                 return;
             }
 
-            int existingIndex = _entries.FindIndex(entry => string.Equals(entry.Name, normalizedName, StringComparison.OrdinalIgnoreCase));
-            if (score < 0)
+            bool changed = false;
+            foreach (AriantArenaScoreUpdate update in updates)
             {
-                if (existingIndex >= 0)
+                string normalizedName = update.UserName?.Trim();
+                if (string.IsNullOrWhiteSpace(normalizedName))
                 {
-                    _entries.RemoveAt(existingIndex);
+                    continue;
                 }
-            }
-            else
-            {
-                int clampedScore = Math.Clamp(score, 0, MaxScore);
+
+                int existingIndex = _entries.FindIndex(entry => string.Equals(entry.Name, normalizedName, StringComparison.OrdinalIgnoreCase));
+                if (update.Score < 0 || ShouldSuppressLocalRankEntry(normalizedName))
+                {
+                    if (existingIndex >= 0)
+                    {
+                        _entries.RemoveAt(existingIndex);
+                        changed = true;
+                    }
+
+                    continue;
+                }
+
+                int clampedScore = Math.Clamp(update.Score, 0, MaxScore);
                 if (existingIndex >= 0)
                 {
-                    _entries[existingIndex] = _entries[existingIndex] with { Score = clampedScore };
+                    if (_entries[existingIndex].Score != clampedScore)
+                    {
+                        _entries[existingIndex] = _entries[existingIndex] with { Score = clampedScore };
+                        changed = true;
+                    }
                 }
                 else
                 {
                     _entries.Add(new AriantArenaScoreEntry(normalizedName, clampedScore));
+                    changed = true;
                 }
+            }
+
+            if (!changed)
+            {
+                return;
             }
 
             _entries.Sort(static (left, right) =>
@@ -2040,6 +2871,7 @@ namespace HaCreator.MapSimulator.Fields
                     : string.Compare(left.Name, right.Name, StringComparison.OrdinalIgnoreCase);
             });
 
+            _scoreRefreshSerial++;
             _showScoreboard = _entries.Count > 0;
             _showResult = false;
         }
@@ -2070,6 +2902,7 @@ namespace HaCreator.MapSimulator.Fields
             _resultFrameIndex = 0;
             _resultFrameStartedAt = 0;
             _resultVisibleUntil = 0;
+            _scoreRefreshSerial = 0;
             _lastResultMessage = null;
         }
 
@@ -2137,7 +2970,10 @@ namespace HaCreator.MapSimulator.Fields
             _resultFrameIndex = 0;
             _resultFrameStartedAt = 0;
             _resultVisibleUntil = 0;
+            _scoreRefreshSerial = 0;
+            _localPlayerJob = 0;
             _lastResultMessage = null;
+            _localPlayerName = null;
         }
 
         public string DescribeStatus()
@@ -2151,7 +2987,20 @@ namespace HaCreator.MapSimulator.Fields
                 ? "no scores"
                 : string.Join(", ", _entries.Take(MaxRankEntries).Select((entry, index) => $"{index + 1}.{entry.Name}={entry.Score}"));
 
-            return $"Ariant Arena active, {_entries.Count} score row(s), result={(_showResult ? "showing" : "idle")}, {leaderText}";
+            return $"Ariant Arena active, {_entries.Count} score row(s), result={(_showResult ? "showing" : "idle")}, refresh={_scoreRefreshSerial}, {leaderText}";
+        }
+
+        private bool ShouldSuppressLocalRankEntry(string normalizedName)
+        {
+            return !string.IsNullOrWhiteSpace(_localPlayerName)
+                && string.Equals(normalizedName, _localPlayerName, StringComparison.OrdinalIgnoreCase)
+                && IsHiddenAriantArenaJob(_localPlayerJob);
+        }
+
+        private static bool IsHiddenAriantArenaJob(int jobId)
+        {
+            int branch = Math.Abs(jobId) % 1000 / 100;
+            return branch == 8 || branch == 9;
         }
 
         private void DrawScoreboard(SpriteBatch spriteBatch, SkeletonMeshRenderer skeletonMeshRenderer, GameTime gameTime, SpriteFont font)
@@ -2323,5 +3172,6 @@ namespace HaCreator.MapSimulator.Fields
     }
 
     public readonly record struct AriantArenaScoreEntry(string Name, int Score);
+    public readonly record struct AriantArenaScoreUpdate(string UserName, int Score);
     #endregion
 }

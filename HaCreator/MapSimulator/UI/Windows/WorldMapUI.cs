@@ -173,7 +173,7 @@ namespace HaCreator.MapSimulator.UI
             _font = font;
         }
 
-        public void SetEntries(IReadOnlyList<MapEntry> entries, int currentMapId)
+        public void SetEntries(IReadOnlyList<MapEntry> entries, int currentMapId, int? focusedMapId = null)
         {
             _allEntries.Clear();
             if (entries != null)
@@ -184,13 +184,21 @@ namespace HaCreator.MapSimulator.UI
             }
 
             _currentMapId = currentMapId;
-            _selectedMapId = currentMapId;
-            _selectedRegionCode = GetRegionCodeForMapId(currentMapId);
+            _selectedMapId = focusedMapId.GetValueOrDefault(currentMapId);
+
+            string currentRegionCode = GetRegionCodeForMapId(currentMapId);
+            string selectedRegionCode = GetRegionCodeForMapId(_selectedMapId);
+            _selectedRegionCode = selectedRegionCode;
             if (!_regionButtons.Any(entry => entry.RegionCode == _selectedRegionCode))
             {
-                _selectedRegionCode = _regionButtons.FirstOrDefault()?.RegionCode ?? string.Empty;
+                _selectedRegionCode = _regionButtons.Any(entry => entry.RegionCode == currentRegionCode)
+                    ? currentRegionCode
+                    : _regionButtons.FirstOrDefault()?.RegionCode ?? string.Empty;
             }
 
+            _showAnotherWorld = focusedMapId.HasValue
+                && !string.IsNullOrWhiteSpace(selectedRegionCode)
+                && !string.Equals(selectedRegionCode, currentRegionCode, StringComparison.Ordinal);
             EnsureSelectedEntryVisible();
             UpdateButtonStates();
         }

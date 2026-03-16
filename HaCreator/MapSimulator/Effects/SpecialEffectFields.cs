@@ -11,9 +11,13 @@ using System;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using System.Linq;
+using System.IO;
 using HaCreator.MapEditor;
 using HaCreator.MapEditor.Info;
 using HaCreator.MapEditor.Instance.Misc;
+using HaCreator.Wz;
+using HaSharedLibrary.Wz;
+using HaSharedLibrary.Util;
 
 namespace HaCreator.MapSimulator.Effects
 {
@@ -114,7 +118,7 @@ namespace HaCreator.MapSimulator.Effects
             // Massacre maps (special event PQ maps)
             else if (IsMassacreMap(mapId, fieldType))
             {
-                _massacre.Enable();
+                _massacre.Enable(mapId);
                 System.Diagnostics.Debug.WriteLine($"[SpecialEffectFields] Massacre field detected: {mapId}");
             }
         }
@@ -128,7 +132,7 @@ namespace HaCreator.MapSimulator.Effects
 
             if (_guildBoss.IsActive)
             {
-                //_guildBoss.ConfigureFromBoard(board);
+                _guildBoss.ConfigureFromBoard(board);
             }
         }
 
@@ -289,6 +293,7 @@ namespace HaCreator.MapSimulator.Effects
         private Vector2? _localPlayerPosition;
         private Vector2? _groomPosition;
         private Vector2? _bridePosition;
+        private readonly Dictionary<int, Vector2> _participantPositions = new();
 
         // Wedding step (from OnWeddingProgress)
         private int _currentStep = 0;
@@ -311,6 +316,7 @@ namespace HaCreator.MapSimulator.Effects
         #region Dialog
         private WeddingDialog _currentDialog;
         private readonly Queue<WeddingDialog> _dialogQueue = new();
+        private WeddingPacketResponse? _lastPacketResponse;
         #endregion
 
         #region Public Properties
@@ -323,6 +329,11 @@ namespace HaCreator.MapSimulator.Effects
         public WeddingDialogMode CurrentDialogMode => _currentDialog?.Mode ?? WeddingDialogMode.Text;
         public bool IsGuestBlessPromptActive => _currentDialog?.Mode == WeddingDialogMode.YesNo;
         public Vector2? BlessEffectWorldCenter => TryGetBlessEffectWorldCenter();
+        public int GroomId => _groomId;
+        public int BrideId => _brideId;
+        public Vector2? GroomPosition => _groomPosition;
+        public Vector2? BridePosition => _bridePosition;
+        public WeddingPacketResponse? LastPacketResponse => _lastPacketResponse;
         #endregion
 
         #region Initialization
@@ -343,6 +354,8 @@ namespace HaCreator.MapSimulator.Effects
             _brideId = 0;
             _groomPosition = null;
             _bridePosition = null;
+            _participantPositions.Clear();
+            _lastPacketResponse = null;
             LocalParticipantRole = WeddingParticipantRole.Guest;
 
             System.Diagnostics.Debug.WriteLine($"[WeddingField] Enabled for map {mapId}, NPC {_npcId}");
@@ -357,6 +370,17 @@ namespace HaCreator.MapSimulator.Effects
         {
             _localCharacterId = localCharacterId;
             _localPlayerPosition = localWorldPosition;
+            UpdateParticipantState();
+        }
+
+        public void SetParticipantPosition(int characterId, Vector2 worldPosition)
+        {
+            if (characterId <= 0)
+            {
+                return;
+            }
+
+            _participantPositions[characterId] = worldPosition;
             UpdateParticipantState();
         }
         #endregion
@@ -396,6 +420,45 @@ namespace HaCreator.MapSimulator.Effects
         {
             System.Diagnostics.Debug.WriteLine("[WeddingField] OnWeddingCeremonyEnd - Starting bless effect");
             SetBlessEffect(true, currentTimeMs);
+        }
+
+        public WeddingPacketResponse? RespondToCurrentDialog(bool accepted, int currentTimeMs)
+        {
+            if (_currentDialog == null)
+            {
+                return null;
+            }
+
+            WeddingPacketResponse? packetResponse = null;
+            if (_currentDialog.Mode == WeddingDialogMode.YesNo)
+            {
+                if (accepted)
+                {
+                    packetResponse = new WeddingPacketResponse(
+                        WeddingPacketOpcode.GuestBless,
+                        _currentStep,
+                        true,
+                        currentTimeMs);
+                }
+            }
+            else if (ShouldSendParticipantAdvancePacket())
+            {
+                packetResponse = new WeddingPacketResponse(
+                    WeddingPacketOpcode.AdvanceStep,
+                    _currentStep,
+                    Accepted: true,
+                    currentTimeMs);
+            }
+
+            _lastPacketResponse = packetResponse;
+            _currentDialog = null;
+            if (_dialogQueue.Count > 0)
+            {
+                _currentDialog = _dialogQueue.Dequeue();
+                _currentDialog.StartTime = currentTimeMs;
+            }
+
+            return packetResponse;
         }
 
         /// <summary>
@@ -525,6 +588,51 @@ namespace HaCreator.MapSimulator.Effects
                     _bridePosition = _localPlayerPosition;
                 }
             }
+
+            if (_groomId > 0
+                && _participantPositions.TryGetValue(_groomId, out Vector2 groomPosition)
+                && LocalParticipantRole != WeddingParticipantRole.Groom)
+            {
+                _groomPosition = groomPosition;
+            }
+
+            if (_brideId > 0
+                && _participantPositions.TryGetValue(_brideId, out Vector2 bridePosition)
+                && LocalParticipantRole != WeddingParticipantRole.Bride)
+            {
+                _bridePosition = bridePosition;
+            }
+        }
+
+        private bool ShouldSendParticipantAdvancePacket()
+        {
+            if (LocalParticipantRole != WeddingParticipantRole.Groom
+                && LocalParticipantRole != WeddingParticipantRole.Bride)
+            {
+                return false;
+            }
+
+            return !(_mapId == ChapelWeddingMapId && _currentStep == 2);
+        }
+
+        public string DescribeStatus()
+        {
+            string role = LocalParticipantRole.ToString();
+            string dialog = _currentDialog?.Mode == WeddingDialogMode.YesNo
+                ? "guest bless prompt"
+                : _currentDialog != null
+                    ? $"dialog step {_currentStep}"
+                    : "no dialog";
+            string groomPosition = _groomPosition.HasValue
+                ? $"({(int)_groomPosition.Value.X}, {(int)_groomPosition.Value.Y})"
+                : "unknown";
+            string bridePosition = _bridePosition.HasValue
+                ? $"({(int)_bridePosition.Value.X}, {(int)_bridePosition.Value.Y})"
+                : "unknown";
+            string lastPacket = _lastPacketResponse.HasValue
+                ? _lastPacketResponse.Value.ToString()
+                : "none";
+            return $"Wedding map {_mapId}: step {_currentStep}, role {role}, dialog {dialog}, groom {groomPosition}, bride {bridePosition}, last packet {lastPacket}.";
         }
 
         private Vector2? TryGetBlessEffectWorldCenter()
@@ -632,12 +740,7 @@ namespace HaCreator.MapSimulator.Effects
             {
                 if (currentTimeMs - _currentDialog.StartTime > _currentDialog.Duration)
                 {
-                    _currentDialog = null;
-                    if (_dialogQueue.Count > 0)
-                    {
-                        _currentDialog = _dialogQueue.Dequeue();
-                        _currentDialog.StartTime = currentTimeMs;
-                    }
+                    RespondToCurrentDialog(accepted: false, currentTimeMs);
                 }
             }
         }
@@ -648,7 +751,7 @@ namespace HaCreator.MapSimulator.Effects
             int mapShiftX, int mapShiftY, int centerX, int centerY, int tickCount,
             Texture2D pixelTexture, SpriteFont font)
         {
-            if (!_isActive || pixelTexture == null) return;
+            if (!_isActive) return;
 
             // Draw bless effect sparkles
             if (_blessEffectActive && _blessEffectAlpha > 0)
@@ -736,6 +839,8 @@ namespace HaCreator.MapSimulator.Effects
             _brideId = 0;
             _groomPosition = null;
             _bridePosition = null;
+            _participantPositions.Clear();
+            _lastPacketResponse = null;
             LocalParticipantRole = WeddingParticipantRole.Guest;
         }
         #endregion
@@ -772,6 +877,26 @@ namespace HaCreator.MapSimulator.Effects
         public int Duration;
         public WeddingDialogMode Mode;
     }
+
+    public enum WeddingPacketOpcode
+    {
+        AdvanceStep = 163,
+        GuestBless = 164
+    }
+
+    public readonly record struct WeddingPacketResponse(
+        WeddingPacketOpcode Opcode,
+        int Step,
+        bool Accepted,
+        int TimeMs)
+    {
+        public override string ToString()
+        {
+            return Opcode == WeddingPacketOpcode.GuestBless
+                ? $"{(int)Opcode} (guest bless {(Accepted ? "yes" : "no")})"
+                : $"{(int)Opcode} (step {Step})";
+        }
+    }
     #endregion
 
     #region Witchtower Field (CField_Witchtower)
@@ -789,6 +914,11 @@ namespace HaCreator.MapSimulator.Effects
         #region State
         private bool _isActive = false;
         private int _score = 0;
+        private GraphicsDevice _graphicsDevice;
+        private Texture2D _backgroundTexture;
+        private Texture2D _keyTexture;
+        private readonly Texture2D[] _digitTextures = new Texture2D[10];
+        private bool _assetsLoaded;
         #endregion
 
         #region Scoreboard Position (from client: CWnd::CreateWnd position)
@@ -811,6 +941,8 @@ namespace HaCreator.MapSimulator.Effects
         #region Initialization
         public void Initialize(GraphicsDevice device)
         {
+            _graphicsDevice = device;
+            EnsureAssetsLoaded();
         }
 
         public void Enable()
@@ -848,32 +980,36 @@ namespace HaCreator.MapSimulator.Effects
         {
             if (!_isActive || pixelTexture == null) return;
 
+            EnsureAssetsLoaded();
+
             Rectangle widgetBounds = GetScoreboardBounds(spriteBatch.GraphicsDevice.Viewport);
-            Rectangle innerBounds = new Rectangle(widgetBounds.X + 1, widgetBounds.Y + 1, widgetBounds.Width - 2, widgetBounds.Height - 2);
-            Rectangle panelBounds = new Rectangle(widgetBounds.X + 24, widgetBounds.Y + 4, 85, 28);
-            Rectangle keyBounds = new Rectangle(widgetBounds.X + 7, widgetBounds.Y, 22, 22);
-
             float pulseStrength = GetPulseStrength();
-            Color outerBorder = Color.Lerp(new Color(88, 71, 44), new Color(240, 218, 120), pulseStrength);
-            Color innerFill = Color.Lerp(new Color(56, 41, 18, 228), new Color(104, 78, 30, 244), pulseStrength * 0.45f);
-            Color panelFill = Color.Lerp(new Color(28, 24, 18, 220), new Color(77, 54, 18, 236), pulseStrength * 0.30f);
-            Color panelHighlight = Color.Lerp(new Color(134, 109, 61), new Color(255, 234, 154), pulseStrength);
-            Color keyColor = Color.Lerp(new Color(197, 168, 93), new Color(255, 234, 148), pulseStrength);
-            Color pulseOverlay = new Color(255, 234, 154) * (pulseStrength * 0.28f);
+            if (_backgroundTexture != null)
+            {
+                spriteBatch.Draw(_backgroundTexture, new Vector2(widgetBounds.X, widgetBounds.Y), Color.White);
+            }
+            else
+            {
+                spriteBatch.Draw(pixelTexture, widgetBounds, new Color(88, 71, 44));
+            }
 
-            spriteBatch.Draw(pixelTexture, widgetBounds, outerBorder);
-            spriteBatch.Draw(pixelTexture, innerBounds, innerFill);
-            spriteBatch.Draw(pixelTexture, panelBounds, panelFill);
-            spriteBatch.Draw(pixelTexture, new Rectangle(panelBounds.X, panelBounds.Y, panelBounds.Width, 1), panelHighlight);
-            spriteBatch.Draw(pixelTexture, new Rectangle(panelBounds.X, panelBounds.Bottom - 1, panelBounds.Width, 1), new Color(38, 28, 16, 255));
-            spriteBatch.Draw(pixelTexture, new Rectangle(panelBounds.X, panelBounds.Y, 1, panelBounds.Height), panelHighlight * 0.75f);
-            spriteBatch.Draw(pixelTexture, new Rectangle(panelBounds.Right - 1, panelBounds.Y, 1, panelBounds.Height), new Color(25, 19, 12, 255));
-
-            DrawKeyGlyph(spriteBatch, pixelTexture, keyBounds, keyColor);
+            if (_keyTexture != null)
+            {
+                spriteBatch.Draw(_keyTexture, new Vector2(widgetBounds.X + 7, widgetBounds.Y), Color.White);
+            }
+            else
+            {
+                DrawKeyGlyph(spriteBatch, pixelTexture, new Rectangle(widgetBounds.X + 7, widgetBounds.Y, 22, 22), new Color(197, 168, 93));
+            }
 
             if (pulseStrength > 0f)
             {
-                spriteBatch.Draw(pixelTexture, innerBounds, pulseOverlay);
+                spriteBatch.Draw(pixelTexture, widgetBounds, new Color(255, 234, 154) * (pulseStrength * 0.22f));
+            }
+
+            if (TryDrawBitmapScore(spriteBatch, widgetBounds))
+            {
+                return;
             }
 
             if (font != null)
@@ -931,6 +1067,65 @@ namespace HaCreator.MapSimulator.Effects
             return normalized * normalized;
         }
 
+        private void EnsureAssetsLoaded()
+        {
+            if (_assetsLoaded || _graphicsDevice == null)
+            {
+                return;
+            }
+
+            WzImage objImage = global::HaCreator.Program.FindImage("Map", "Obj/etc.img");
+            WzImageProperty goldKey = objImage?["goldkey"];
+            _backgroundTexture = LoadCanvasTexture(goldKey?["backgrnd"] as WzCanvasProperty);
+            _keyTexture = LoadCanvasTexture(goldKey?["key"] as WzCanvasProperty);
+
+            WzImageProperty digits = goldKey?["number"];
+            for (int i = 0; i < _digitTextures.Length; i++)
+            {
+                _digitTextures[i] = LoadCanvasTexture(digits?[i.ToString()] as WzCanvasProperty);
+            }
+
+            _assetsLoaded = true;
+        }
+
+        private Texture2D LoadCanvasTexture(WzCanvasProperty canvas)
+        {
+            if (_graphicsDevice == null || canvas == null)
+            {
+                return null;
+            }
+
+            using var bitmap = canvas.GetLinkedWzCanvasBitmap();
+            return bitmap?.ToTexture2DAndDispose(_graphicsDevice);
+        }
+
+        private bool TryDrawBitmapScore(SpriteBatch spriteBatch, Rectangle widgetBounds)
+        {
+            string scoreText = _score.ToString("00");
+            int drawX = widgetBounds.X + 67;
+            int drawY = widgetBounds.Y + 4;
+
+            foreach (char digitChar in scoreText)
+            {
+                int digit = digitChar - '0';
+                if (digit < 0 || digit >= _digitTextures.Length)
+                {
+                    return false;
+                }
+
+                Texture2D digitTexture = _digitTextures[digit];
+                if (digitTexture == null)
+                {
+                    return false;
+                }
+
+                spriteBatch.Draw(digitTexture, new Vector2(drawX, drawY), Color.White);
+                drawX += digitTexture.Width - 2;
+            }
+
+            return true;
+        }
+
         private static void DrawKeyGlyph(SpriteBatch spriteBatch, Texture2D pixelTexture, Rectangle keyBounds, Color keyColor)
         {
             spriteBatch.Draw(pixelTexture, new Rectangle(keyBounds.X + 4, keyBounds.Y + 3, 10, 10), keyColor);
@@ -954,9 +1149,19 @@ namespace HaCreator.MapSimulator.Effects
     /// Client evidence:
     /// - CField_Battlefield::OnScoreUpdate (0x5499a0): decodes wolves/sheep bytes and redraws the scoreboard.
     /// - CField_Battlefield::OnClock (0x549ad0): for clock type 2, creates a 258x73 center-top scoreboard window and starts its timer.
+    /// - CField_Battlefield::OnTeamChanged (0x5499e0): decodes character id + team byte and forwards it into SetUserTeam.
+    /// - CField_Battlefield::SetUserTeam (0x549870): stores the Battlefield team on the user, reapplies the user look, and toggles the minimap for local teams 0/2.
     /// </summary>
     public class BattlefieldField
     {
+        public enum BattlefieldWinner
+        {
+            None,
+            Wolves,
+            Sheep,
+            Draw
+        }
+
         private const int ScoreboardOffsetX = -107;
         private const int ScoreboardY = 30;
         private const int ScoreboardWidth = 258;
@@ -972,13 +1177,25 @@ namespace HaCreator.MapSimulator.Effects
         private int _clockStartTimeMs;
         private int _currentObservedTimeMs;
         private int _lastScoreUpdateTimeMs = int.MinValue;
+        private int _lastTeamChangeTimeMs = int.MinValue;
         private bool _clockVisible;
+        private int? _localTeamId;
+        private BattlefieldWinner _winner = BattlefieldWinner.None;
+        private int _resultResolvedTimeMs = int.MinValue;
+        private string _resolvedEffectPath;
+        private int _resolvedRewardMapId;
+        private string _statusMessage;
+        private int _statusMessageUntilMs;
 
         public bool IsActive => _isActive;
         public int WolvesScore => _wolvesScore;
         public int SheepScore => _sheepScore;
         public int DefaultDurationSeconds => _defaultDurationSeconds;
         public int FinishDurationSeconds => _finishDurationSeconds;
+        public int? LocalTeamId => _localTeamId;
+        public BattlefieldWinner Winner => _winner;
+        public string ResolvedEffectPath => _resolvedEffectPath;
+        public int ResolvedRewardMapId => _resolvedRewardMapId;
         public int RemainingSeconds => !_clockVisible
             ? _defaultDurationSeconds
             : Math.Max(0, _clockDurationSeconds - Math.Max(0, _currentObservedTimeMs - _clockStartTimeMs) / 1000);
@@ -1004,8 +1221,16 @@ namespace HaCreator.MapSimulator.Effects
             _clockStartTimeMs = 0;
             _currentObservedTimeMs = 0;
             _lastScoreUpdateTimeMs = int.MinValue;
+            _lastTeamChangeTimeMs = int.MinValue;
             _defaultDurationSeconds = 300;
             _finishDurationSeconds = 3;
+            _localTeamId = null;
+            _winner = BattlefieldWinner.None;
+            _resultResolvedTimeMs = int.MinValue;
+            _resolvedEffectPath = null;
+            _resolvedRewardMapId = 0;
+            _statusMessage = null;
+            _statusMessageUntilMs = 0;
             EffectWinPath = null;
             EffectLosePath = null;
             RewardMapWinWolf = 0;
@@ -1055,6 +1280,7 @@ namespace HaCreator.MapSimulator.Effects
             _wolvesScore = clampedWolves;
             _sheepScore = clampedSheep;
             _lastScoreUpdateTimeMs = currentTimeMs;
+            ClearResolvedResult();
         }
 
         public void OnClock(int clockType, int remainingSeconds, int currentTimeMs)
@@ -1068,7 +1294,62 @@ namespace HaCreator.MapSimulator.Effects
             _clockDurationSeconds = Math.Max(0, remainingSeconds);
             _clockStartTimeMs = currentTimeMs;
             _currentObservedTimeMs = currentTimeMs;
+            ClearResolvedResult();
             System.Diagnostics.Debug.WriteLine($"[BattlefieldField] OnClock: type={clockType}, seconds={remainingSeconds}");
+        }
+
+        public void OnTeamChanged(int characterId, int teamId, int currentTimeMs)
+        {
+            if (!_isActive)
+            {
+                return;
+            }
+
+            _lastTeamChangeTimeMs = currentTimeMs;
+
+            if (characterId <= 0)
+            {
+                SetLocalTeam(teamId, currentTimeMs);
+                return;
+            }
+
+            ShowStatus($"Battlefield user {characterId} switched to {FormatTeamName(teamId)}.", currentTimeMs, 2500);
+        }
+
+        public void SetLocalTeam(int? teamId, int currentTimeMs)
+        {
+            if (!_isActive)
+            {
+                return;
+            }
+
+            _localTeamId = teamId is >= 0 ? teamId : null;
+            _lastTeamChangeTimeMs = currentTimeMs;
+            RefreshResolvedResult();
+
+            string teamLabel = _localTeamId.HasValue ? FormatTeamName(_localTeamId.Value) : "unset";
+            ShowStatus($"Local Battlefield team: {teamLabel}.", currentTimeMs, 2500);
+        }
+
+        public void ResolveResult(BattlefieldWinner winner, int currentTimeMs)
+        {
+            if (!_isActive)
+            {
+                return;
+            }
+
+            _winner = winner;
+            _resultResolvedTimeMs = currentTimeMs;
+            _resolvedEffectPath = ResolveEffectPathForLocalOutcome(winner);
+            _resolvedRewardMapId = ResolveRewardMapIdForLocalOutcome(winner);
+
+            string suffix = _resolvedRewardMapId > 0
+                ? $" reward map {_resolvedRewardMapId}"
+                : " reward map unavailable";
+            string effectSuffix = string.IsNullOrWhiteSpace(_resolvedEffectPath)
+                ? string.Empty
+                : $", effect {_resolvedEffectPath}";
+            ShowStatus($"Battlefield result: {GetWinnerLabel(winner)}.{suffix}{effectSuffix}", currentTimeMs, Math.Max(1000, _finishDurationSeconds * 1000));
         }
 
         public void StartDefaultClock(int currentTimeMs)
@@ -1084,6 +1365,19 @@ namespace HaCreator.MapSimulator.Effects
             }
 
             _currentObservedTimeMs = currentTimeMs;
+
+            if (_winner == BattlefieldWinner.None
+                && _clockVisible
+                && _clockDurationSeconds > 0
+                && RemainingSeconds <= 0)
+            {
+                ResolveResult(ComputeWinnerFromScore(), currentTimeMs);
+            }
+
+            if (_statusMessage != null && currentTimeMs >= _statusMessageUntilMs)
+            {
+                _statusMessage = null;
+            }
         }
 
         public void Draw(SpriteBatch spriteBatch, Texture2D pixelTexture, SpriteFont font)
@@ -1098,6 +1392,7 @@ namespace HaCreator.MapSimulator.Effects
             Rectangle wolvesPanel = new Rectangle(bounds.X + 10, bounds.Y + 28, 105, 28);
             Rectangle sheepPanel = new Rectangle(bounds.Right - 115, bounds.Y + 28, 105, 28);
             Rectangle timerPanel = new Rectangle(bounds.X + 92, bounds.Y + 9, 74, 18);
+            Rectangle footerPanel = new Rectangle(bounds.X + 8, bounds.Bottom - 19, bounds.Width - 16, 11);
 
             float pulse = GetScorePulseStrength();
             Color frame = Color.Lerp(new Color(66, 56, 34), new Color(242, 229, 168), pulse);
@@ -1111,20 +1406,23 @@ namespace HaCreator.MapSimulator.Effects
             spriteBatch.Draw(pixelTexture, wolvesPanel, wolvesColor);
             spriteBatch.Draw(pixelTexture, sheepPanel, sheepColor);
             spriteBatch.Draw(pixelTexture, new Rectangle(bounds.X + 128, bounds.Y + 24, 2, 36), new Color(90, 85, 73, 220));
+            spriteBatch.Draw(pixelTexture, footerPanel, new Color(12, 12, 12, 180));
 
             if (font != null)
             {
                 string timerText = FormatTimer(RemainingSeconds);
                 string wolvesScore = _wolvesScore.ToString("D2");
                 string sheepScore = _sheepScore.ToString("D2");
-                string statusText = GetLeadingTeamLabel();
+                string statusText = GetFooterText();
+                string teamText = _localTeamId.HasValue ? $"You: {FormatTeamName(_localTeamId.Value)}" : "You: unset";
 
                 spriteBatch.DrawString(font, timerText, new Vector2(timerPanel.X + 9, timerPanel.Y + 1), Color.White);
                 spriteBatch.DrawString(font, "Wolves", new Vector2(wolvesPanel.X + 8, wolvesPanel.Y + 2), Color.White);
                 spriteBatch.DrawString(font, wolvesScore, new Vector2(wolvesPanel.Right - 26, wolvesPanel.Y + 2), Color.White);
                 spriteBatch.DrawString(font, "Sheep", new Vector2(sheepPanel.X + 10, sheepPanel.Y + 2), Color.White);
                 spriteBatch.DrawString(font, sheepScore, new Vector2(sheepPanel.Right - 26, sheepPanel.Y + 2), Color.White);
-                spriteBatch.DrawString(font, statusText, new Vector2(bounds.X + 84, bounds.Bottom - 17), new Color(225, 213, 161, 255));
+                spriteBatch.DrawString(font, teamText, new Vector2(bounds.X + 10, bounds.Y + 10), new Color(225, 213, 161, 255), 0f, Vector2.Zero, 0.72f, SpriteEffects.None, 0f);
+                spriteBatch.DrawString(font, statusText, new Vector2(bounds.X + 10, bounds.Bottom - 19), GetFooterColor(), 0f, Vector2.Zero, 0.68f, SpriteEffects.None, 0f);
             }
         }
 
@@ -1138,7 +1436,11 @@ namespace HaCreator.MapSimulator.Effects
             string clockText = _clockVisible
                 ? $"timer={FormatTimer(RemainingSeconds)}"
                 : $"timer=idle(default {FormatTimer(_defaultDurationSeconds)})";
-            return $"Battlefield active, wolves={_wolvesScore:D2}, sheep={_sheepScore:D2}, {clockText}";
+            string teamText = _localTeamId.HasValue ? $"team={FormatTeamName(_localTeamId.Value)}" : "team=unset";
+            string resultText = _winner == BattlefieldWinner.None
+                ? "result=pending"
+                : $"result={GetWinnerLabel(_winner)}, rewardMap={(_resolvedRewardMapId > 0 ? _resolvedRewardMapId : 0)}, effect={(_resolvedEffectPath ?? "none")}";
+            return $"Battlefield active, wolves={_wolvesScore:D2}, sheep={_sheepScore:D2}, {clockText}, {teamText}, {resultText}";
         }
 
         public void Reset()
@@ -1151,8 +1453,16 @@ namespace HaCreator.MapSimulator.Effects
             _clockStartTimeMs = 0;
             _currentObservedTimeMs = 0;
             _lastScoreUpdateTimeMs = int.MinValue;
+            _lastTeamChangeTimeMs = int.MinValue;
             _defaultDurationSeconds = 300;
             _finishDurationSeconds = 3;
+            _localTeamId = null;
+            _winner = BattlefieldWinner.None;
+            _resultResolvedTimeMs = int.MinValue;
+            _resolvedEffectPath = null;
+            _resolvedRewardMapId = 0;
+            _statusMessage = null;
+            _statusMessageUntilMs = 0;
             EffectWinPath = null;
             EffectLosePath = null;
             RewardMapWinWolf = 0;
@@ -1194,6 +1504,134 @@ namespace HaCreator.MapSimulator.Effects
             return _wolvesScore > _sheepScore ? "Wolves lead" : "Sheep lead";
         }
 
+        private string GetFooterText()
+        {
+            if (!string.IsNullOrWhiteSpace(_statusMessage))
+            {
+                return _statusMessage;
+            }
+
+            if (_winner != BattlefieldWinner.None)
+            {
+                return $"Finish: {GetWinnerLabel(_winner)}";
+            }
+
+            return GetLeadingTeamLabel();
+        }
+
+        private Color GetFooterColor()
+        {
+            return _winner switch
+            {
+                BattlefieldWinner.Wolves => new Color(239, 198, 131, 255),
+                BattlefieldWinner.Sheep => new Color(177, 221, 255, 255),
+                BattlefieldWinner.Draw => new Color(225, 213, 161, 255),
+                _ => new Color(225, 213, 161, 255)
+            };
+        }
+
+        private BattlefieldWinner ComputeWinnerFromScore()
+        {
+            if (_wolvesScore == _sheepScore)
+            {
+                return BattlefieldWinner.Draw;
+            }
+
+            return _wolvesScore > _sheepScore ? BattlefieldWinner.Wolves : BattlefieldWinner.Sheep;
+        }
+
+        private void RefreshResolvedResult()
+        {
+            if (_winner == BattlefieldWinner.None)
+            {
+                return;
+            }
+
+            _resolvedEffectPath = ResolveEffectPathForLocalOutcome(_winner);
+            _resolvedRewardMapId = ResolveRewardMapIdForLocalOutcome(_winner);
+        }
+
+        private void ClearResolvedResult()
+        {
+            _winner = BattlefieldWinner.None;
+            _resultResolvedTimeMs = int.MinValue;
+            _resolvedEffectPath = null;
+            _resolvedRewardMapId = 0;
+        }
+
+        private void ShowStatus(string message, int currentTimeMs, int durationMs)
+        {
+            _statusMessage = message;
+            _statusMessageUntilMs = currentTimeMs + Math.Max(250, durationMs);
+        }
+
+        private string ResolveEffectPathForLocalOutcome(BattlefieldWinner winner)
+        {
+            bool? localWin = GetIsLocalWin(winner);
+            if (!localWin.HasValue)
+            {
+                return null;
+            }
+
+            return localWin.Value ? EffectWinPath : EffectLosePath;
+        }
+
+        private int ResolveRewardMapIdForLocalOutcome(BattlefieldWinner winner)
+        {
+            if (!_localTeamId.HasValue)
+            {
+                return 0;
+            }
+
+            return (_localTeamId.Value, winner) switch
+            {
+                (0, BattlefieldWinner.Wolves) => RewardMapWinWolf,
+                (0, BattlefieldWinner.Sheep) => RewardMapLoseWolf,
+                (1, BattlefieldWinner.Sheep) => RewardMapWinSheep,
+                (1, BattlefieldWinner.Wolves) => RewardMapLoseSheep,
+                _ => 0
+            };
+        }
+
+        private bool? GetIsLocalWin(BattlefieldWinner winner)
+        {
+            if (!_localTeamId.HasValue || winner == BattlefieldWinner.None || winner == BattlefieldWinner.Draw)
+            {
+                return null;
+            }
+
+            return (_localTeamId.Value, winner) switch
+            {
+                (0, BattlefieldWinner.Wolves) => true,
+                (0, BattlefieldWinner.Sheep) => false,
+                (1, BattlefieldWinner.Sheep) => true,
+                (1, BattlefieldWinner.Wolves) => false,
+                _ => null
+            };
+        }
+
+        private static string GetWinnerLabel(BattlefieldWinner winner)
+        {
+            return winner switch
+            {
+                BattlefieldWinner.Wolves => "Wolves win",
+                BattlefieldWinner.Sheep => "Sheep win",
+                BattlefieldWinner.Draw => "Draw",
+                _ => "Pending"
+            };
+        }
+
+        private static string FormatTeamName(int teamId)
+        {
+            return teamId switch
+            {
+                0 => "Wolves",
+                1 => "Sheep",
+                2 => "Team 2",
+                _ => $"Team {teamId}"
+            };
+        }
+
         private static string FormatTimer(int totalSeconds)
         {
             int safeSeconds = Math.Max(0, totalSeconds);
@@ -1213,9 +1651,27 @@ namespace HaCreator.MapSimulator.Effects
     /// </summary>
     public class GuildBossField
     {
+        private sealed class GuildBossSpriteFrame
+        {
+            public Texture2D Texture { get; init; }
+            public Point Origin { get; init; }
+            public int Delay { get; init; }
+        }
+
         #region State
         private bool _isActive = false;
+        private GraphicsDevice _device;
         private int _pulleyState = 0; // 0 = idle, 1 = activating, 2 = active
+        private int _mapId;
+        private int _healerYMin;
+        private int _healerYMax;
+        private int _healerRise;
+        private int _healerFall;
+        private int _healerHealMin;
+        private int _healerHealMax;
+        private string _healerPath;
+        private string _pulleyPath;
+        private int _lastPulleyStateChangeTime;
         #endregion
 
         #region Healer (from CHealer class)
@@ -1224,7 +1680,7 @@ namespace HaCreator.MapSimulator.Effects
         private float _healerY;
         private float _healerTargetY;
         private float _healerMoveSpeed = 100f;
-        private List<IDXObject> _healerFrames;
+        private List<GuildBossSpriteFrame> _healerFrames;
         private int _healerFrameIndex = 0;
         private int _lastHealerFrameTime = 0;
         #endregion
@@ -1234,7 +1690,9 @@ namespace HaCreator.MapSimulator.Effects
         private Rectangle _pulleyArea; // From CPulley::Init: (x-186, y+90, x-60, y+184)
         private float _pulleyX;
         private float _pulleyY;
-        private List<IDXObject> _pulleyFrames;
+        private List<GuildBossSpriteFrame> _pulleyFrames;
+        private int _pulleyFrameIndex = 0;
+        private int _lastPulleyFrameTime = 0;
         #endregion
 
         #region Heal Effect
@@ -1255,12 +1713,54 @@ namespace HaCreator.MapSimulator.Effects
         #region Initialization
         public void Initialize(GraphicsDevice device)
         {
+            _device = device;
         }
 
         public void Enable()
         {
             _isActive = true;
             _pulleyState = 0;
+        }
+
+        public void ConfigureFromBoard(Board board)
+        {
+            WzImage mapImage = board?.MapInfo?.Image;
+            if (!_isActive || mapImage == null || _device == null)
+            {
+                return;
+            }
+
+            if (!mapImage.Parsed)
+            {
+                mapImage.ParseImage();
+            }
+
+            _mapId = board.MapInfo.id;
+
+            if (mapImage["healer"] is WzSubProperty healerProp)
+            {
+                int x = healerProp["x"]?.GetInt() ?? 0;
+                _healerYMin = healerProp["yMin"]?.GetInt() ?? 0;
+                _healerYMax = healerProp["yMax"]?.GetInt() ?? _healerYMin;
+                _healerRise = Math.Max(0, healerProp["rise"]?.GetInt() ?? 0);
+                _healerFall = Math.Max(0, healerProp["fall"]?.GetInt() ?? 0);
+                _healerHealMin = Math.Max(0, healerProp["healMin"]?.GetInt() ?? 0);
+                _healerHealMax = Math.Max(_healerHealMin, healerProp["healMax"]?.GetInt() ?? _healerHealMin);
+                _healerPath = healerProp["healer"]?.GetString();
+
+                InitHealer(x, _healerYMin, _healerPath);
+                SetHealerFrames(LoadObjectAnimation(_healerPath));
+            }
+
+            if (mapImage["pulley"] is WzSubProperty pulleyProp)
+            {
+                int x = pulleyProp["x"]?.GetInt() ?? 0;
+                int y = pulleyProp["y"]?.GetInt() ?? 0;
+                _pulleyPath = pulleyProp["pulley"]?.GetString();
+
+                InitPulley(x, y, _pulleyPath);
+                SetPulleyFrames(LoadObjectAnimation(_pulleyPath));
+            }
         }
 
         /// <summary>
@@ -1273,6 +1773,8 @@ namespace HaCreator.MapSimulator.Effects
             _healerX = x;
             _healerY = yMin;
             _healerTargetY = yMin;
+            _healerFrameIndex = 0;
+            _lastHealerFrameTime = 0;
             System.Diagnostics.Debug.WriteLine($"[GuildBossField] Healer initialized at ({x}, {yMin}), path: {healerPath}");
         }
 
@@ -1285,17 +1787,19 @@ namespace HaCreator.MapSimulator.Effects
             _pulleyEnabled = true;
             _pulleyX = x;
             _pulleyY = y;
+            _pulleyFrameIndex = 0;
+            _lastPulleyFrameTime = 0;
             // Pulley area from client: (x-186, y+90) to (x-60, y+184)
             _pulleyArea = new Rectangle(x - 186, y + 90, 126, 94);
             System.Diagnostics.Debug.WriteLine($"[GuildBossField] Pulley initialized at ({x}, {y}), area: {_pulleyArea}");
         }
 
-        public void SetHealerFrames(List<IDXObject> frames)
+        private void SetHealerFrames(List<GuildBossSpriteFrame> frames)
         {
             _healerFrames = frames;
         }
 
-        public void SetPulleyFrames(List<IDXObject> frames)
+        private void SetPulleyFrames(List<GuildBossSpriteFrame> frames)
         {
             _pulleyFrames = frames;
         }
@@ -1311,6 +1815,11 @@ namespace HaCreator.MapSimulator.Effects
         public void OnHealerMove(int newY, int currentTimeMs)
         {
             if (!_healerEnabled) return;
+
+            if (_healerYMin != 0 || _healerYMax != 0)
+            {
+                newY = Math.Clamp(newY, Math.Min(_healerYMin, _healerYMax), Math.Max(_healerYMin, _healerYMax));
+            }
 
             System.Diagnostics.Debug.WriteLine($"[GuildBossField] OnHealerMove: {_healerY} -> {newY}");
             _healerTargetY = newY;
@@ -1330,6 +1839,7 @@ namespace HaCreator.MapSimulator.Effects
         {
             System.Diagnostics.Debug.WriteLine($"[GuildBossField] OnPulleyStateChange: {_pulleyState} -> {newState}");
             _pulleyState = newState;
+            _lastPulleyStateChangeTime = currentTimeMs;
         }
 
         private void TriggerHealEffect(int currentTimeMs)
@@ -1370,6 +1880,13 @@ namespace HaCreator.MapSimulator.Effects
                     float move = Math.Sign(diff) * Math.Min(Math.Abs(diff), _healerMoveSpeed * deltaSeconds);
                     _healerY += move;
                 }
+
+                AdvanceFrame(_healerFrames, ref _healerFrameIndex, ref _lastHealerFrameTime, currentTimeMs);
+            }
+
+            if (_pulleyEnabled)
+            {
+                AdvanceFrame(_pulleyFrames, ref _pulleyFrameIndex, ref _lastPulleyFrameTime, currentTimeMs);
             }
 
             // Update heal effect
@@ -1419,26 +1936,29 @@ namespace HaCreator.MapSimulator.Effects
             // Draw healer
             if (_healerEnabled)
             {
-                int healerScreenX = (int)_healerX - shiftCenterX;
-                int healerScreenY = (int)_healerY - shiftCenterY;
-
-                // Debug rectangle for healer
-                spriteBatch.Draw(pixelTexture, new Rectangle(healerScreenX - 20, healerScreenY - 40, 40, 60),
-                    new Color(100, 200, 100, 150));
-
-                if (font != null)
+                GuildBossSpriteFrame healerFrame = GetCurrentFrame(_healerFrames, _healerFrameIndex);
+                if (healerFrame != null)
                 {
-                    spriteBatch.DrawString(font, "Healer", new Vector2(healerScreenX - 20, healerScreenY - 55), Color.LightGreen);
+                    DrawFrame(spriteBatch, healerFrame, _healerX, _healerY, shiftCenterX, shiftCenterY, Color.White);
+                }
+                else if (pixelTexture != null)
+                {
+                    int healerScreenX = (int)_healerX - shiftCenterX;
+                    int healerScreenY = (int)_healerY - shiftCenterY;
+                    spriteBatch.Draw(pixelTexture, new Rectangle(healerScreenX - 20, healerScreenY - 40, 40, 60),
+                        new Color(100, 200, 100, 150));
                 }
             }
 
             // Draw pulley
             if (_pulleyEnabled)
             {
-                int pulleyScreenX = (int)_pulleyX - shiftCenterX;
-                int pulleyScreenY = (int)_pulleyY - shiftCenterY;
+                GuildBossSpriteFrame pulleyFrame = GetCurrentFrame(_pulleyFrames, _pulleyFrameIndex);
+                if (pulleyFrame != null)
+                {
+                    DrawFrame(spriteBatch, pulleyFrame, _pulleyX, _pulleyY, shiftCenterX, shiftCenterY, Color.White);
+                }
 
-                // Draw pulley area
                 Rectangle screenArea = new Rectangle(
                     _pulleyArea.X - shiftCenterX,
                     _pulleyArea.Y - shiftCenterY,
@@ -1453,7 +1973,10 @@ namespace HaCreator.MapSimulator.Effects
                     _ => new Color(100, 100, 100, 100)
                 };
 
-                spriteBatch.Draw(pixelTexture, screenArea, pulleyColor);
+                if (pixelTexture != null)
+                {
+                    spriteBatch.Draw(pixelTexture, screenArea, pulleyColor);
+                }
 
                 if (font != null)
                 {
@@ -1488,23 +2011,213 @@ namespace HaCreator.MapSimulator.Effects
             // Debug info
             if (font != null)
             {
-                string info = $"GuildBoss: Pulley={_pulleyState} | Healer Y={_healerY:F0}";
+                string info = $"GuildBoss: map={_mapId} pulley={_pulleyState} healer={_healerY:F0}/{_healerTargetY:F0}";
                 spriteBatch.DrawString(font, info, new Vector2(10, 60), Color.LightBlue);
+
+                if (_lastPulleyStateChangeTime > 0 && tickCount - _lastPulleyStateChangeTime < 2000)
+                {
+                    string cue = _pulleyState switch
+                    {
+                        1 => "Pulley engaged",
+                        2 => "Pulley active",
+                        _ => "Pulley idle"
+                    };
+                    Vector2 size = font.MeasureString(cue);
+                    spriteBatch.DrawString(
+                        font,
+                        cue,
+                        new Vector2(centerX - (size.X / 2f), 96f),
+                        Color.LightGoldenrodYellow);
+                }
             }
         }
         #endregion
+
+        public string DescribeStatus()
+        {
+            if (!_isActive)
+            {
+                return "Guild boss field inactive";
+            }
+
+            string healerRange = _healerEnabled
+                ? $"{_healerY:F0}->{_healerTargetY:F0} (range {_healerYMin}..{_healerYMax})"
+                : "disabled";
+            string pulleyState = _pulleyState switch
+            {
+                0 => "idle",
+                1 => "activating",
+                2 => "active",
+                _ => $"state {_pulleyState}"
+            };
+
+            return $"Guild boss map {_mapId}: healer {healerRange}, pulley {pulleyState}, healer art={_healerPath ?? "none"}, pulley art={_pulleyPath ?? "none"}.";
+        }
 
         #region Reset
         public void Reset()
         {
             _isActive = false;
+            _mapId = 0;
             _pulleyState = 0;
             _healerEnabled = false;
             _pulleyEnabled = false;
             _healEffectActive = false;
             _healParticles.Clear();
+            _healerPath = null;
+            _pulleyPath = null;
+            _healerFrames = null;
+            _pulleyFrames = null;
+            _healerFrameIndex = 0;
+            _pulleyFrameIndex = 0;
+            _lastHealerFrameTime = 0;
+            _lastPulleyFrameTime = 0;
+            _lastPulleyStateChangeTime = 0;
         }
         #endregion
+
+        private List<GuildBossSpriteFrame> LoadObjectAnimation(string objectPath)
+        {
+            if (_device == null || string.IsNullOrWhiteSpace(objectPath))
+            {
+                return null;
+            }
+
+            WzImageProperty animationRoot = ResolveObjectPath(objectPath);
+            if (animationRoot == null)
+            {
+                return null;
+            }
+
+            var frames = new List<GuildBossSpriteFrame>();
+            foreach (WzImageProperty child in animationRoot.WzProperties.OrderBy(ParseFrameOrder))
+            {
+                if (WzInfoTools.GetRealProperty(child) is not WzCanvasProperty canvas)
+                {
+                    continue;
+                }
+
+                try
+                {
+                    var bitmap = canvas.GetLinkedWzCanvasBitmap();
+                    if (bitmap == null)
+                    {
+                        continue;
+                    }
+
+                    Texture2D texture = bitmap.ToTexture2DAndDispose(_device);
+                    if (texture == null)
+                    {
+                        continue;
+                    }
+
+                    WzVectorProperty origin = canvas["origin"] as WzVectorProperty;
+                    frames.Add(new GuildBossSpriteFrame
+                    {
+                        Texture = texture,
+                        Origin = new Point(origin?.X.Value ?? 0, origin?.Y.Value ?? 0),
+                        Delay = Math.Max(1, canvas["delay"]?.GetInt() ?? 100)
+                    });
+                }
+                catch
+                {
+                    // Ignore missing or malformed frames and keep the rest of the sequence usable.
+                }
+            }
+
+            return frames.Count > 0 ? frames : null;
+        }
+
+        private static WzImageProperty ResolveObjectPath(string objectPath)
+        {
+            string[] parts = objectPath.Split(new[] { '/' }, StringSplitOptions.RemoveEmptyEntries);
+            if (parts.Length < 4
+                || !string.Equals(parts[0], "Map", StringComparison.OrdinalIgnoreCase)
+                || !string.Equals(parts[1], "Obj", StringComparison.OrdinalIgnoreCase))
+            {
+                return null;
+            }
+
+            string objectSetName = Path.GetFileNameWithoutExtension(parts[2]);
+            WzImage objectSet = Program.InfoManager?.GetObjectSet(objectSetName);
+            if (objectSet == null)
+            {
+                return null;
+            }
+
+            if (!objectSet.Parsed)
+            {
+                objectSet.ParseImage();
+            }
+
+            WzObject current = objectSet;
+            for (int i = 3; i < parts.Length; i++)
+            {
+                current = current switch
+                {
+                    WzImage image => image[parts[i]],
+                    WzImageProperty property => property[parts[i]],
+                    _ => null
+                };
+
+                if (current == null)
+                {
+                    return null;
+                }
+            }
+
+            return current as WzImageProperty;
+        }
+
+        private static int ParseFrameOrder(WzImageProperty property)
+        {
+            return int.TryParse(property?.Name, out int order) ? order : int.MaxValue;
+        }
+
+        private static void AdvanceFrame(IReadOnlyList<GuildBossSpriteFrame> frames, ref int frameIndex, ref int lastFrameTime, int currentTimeMs)
+        {
+            if (frames == null || frames.Count <= 1)
+            {
+                return;
+            }
+
+            if (lastFrameTime <= 0)
+            {
+                lastFrameTime = currentTimeMs;
+                return;
+            }
+
+            GuildBossSpriteFrame frame = frames[Math.Clamp(frameIndex, 0, frames.Count - 1)];
+            while (currentTimeMs - lastFrameTime >= frame.Delay)
+            {
+                lastFrameTime += frame.Delay;
+                frameIndex = (frameIndex + 1) % frames.Count;
+                frame = frames[frameIndex];
+            }
+        }
+
+        private static GuildBossSpriteFrame GetCurrentFrame(IReadOnlyList<GuildBossSpriteFrame> frames, int frameIndex)
+        {
+            if (frames == null || frames.Count == 0)
+            {
+                return null;
+            }
+
+            return frames[Math.Clamp(frameIndex, 0, frames.Count - 1)];
+        }
+
+        private static void DrawFrame(SpriteBatch spriteBatch, GuildBossSpriteFrame frame, float worldX, float worldY, int shiftCenterX, int shiftCenterY, Color color)
+        {
+            if (frame?.Texture == null)
+            {
+                return;
+            }
+
+            Vector2 position = new Vector2(
+                worldX - shiftCenterX - frame.Origin.X,
+                worldY - shiftCenterY - frame.Origin.Y);
+            spriteBatch.Draw(frame.Texture, position, color);
+        }
     }
 
     public class HealParticle
@@ -2033,90 +2746,152 @@ namespace HaCreator.MapSimulator.Effects
 
     #region Massacre Field (CField_Massacre)
     /// <summary>
-    /// Massacre Field - Kill counting and gauge system for hunting events.
+    /// Massacre Field HUD and timerboard flow.
     ///
-    /// - OnMassacreIncGauge (packet 173): Update gauge value
-    /// - m_nIncGauge: Current gauge increase amount
-    /// - m_nTimer: Timer countdown
-    /// - m_nGaugeDec: Gauge decrease rate over time
-    /// - Clear effect on timer expiry
+    /// Client evidence:
+    /// - CField_Massacre::OnClock (0x556af0) only reacts to clock type 2, replaces the previous
+    ///   clock window, creates a dedicated 258x61 timerboard at (-96, 5), then starts it.
+    /// - CTimerboard_Massacre::Draw (0x557100) renders a dedicated source canvas and draws zero-
+    ///   padded minutes and seconds at fixed positions: (20, 13) and (105, 13).
+    /// - CField_Massacre::Update (0x557530) recalculates the decay gauge from timer elapsed time,
+    ///   advances UpdateKeyAnimation every frame, and shows the clear effect once when the board
+    ///   reaches one second remaining.
+    /// - CField_Massacre::UpdateKeyAnimation (0x556bf0) advances through three one-shot stages.
     /// </summary>
     public class MassacreField
     {
-        #region State
-        private bool _isActive = false;
+        private const int ComboTimeoutMs = 3000;
+        private const int TimerboardWidth = 258;
+        private const int TimerboardHeight = 61;
+        private const int TimerboardOffsetX = -96;
+        private const int TimerboardY = 5;
+        private const int TimerMinuteTextX = 20;
+        private const int TimerSecondTextX = 105;
+        private const int TimerTextY = 13;
+        private const int TimerDividerX = 79;
+        private const int TimerDividerY = 10;
+        private const int TimerDividerWidth = 17;
+        private const int TimerDividerHeight = 38;
+        private const int GaugeWidth = 259;
+        private const int GaugeHeight = 24;
+        private const int GaugeOffsetX = -66;
+        private const int GaugeY = 71;
+        private const int GaugeFillOffsetX = 10;
+        private const int GaugeFillOffsetY = 8;
+        private const int GaugeFillHeight = 8;
+        private const int KeyAnimationX = 7;
+        private const int KeyAnimationY = 135;
+        private const int KeyStageDurationMs = 180;
+        private const int ClearEffectDurationMs = 2200;
 
-        // Gauge system (from CField_Massacre)
-        private int _incGauge = 0;          // m_nIncGauge
-        private int _gaugeDec = 1;          // m_nGaugeDec (decrease rate per second)
-        private int _currentGauge = 0;
+        private bool _isActive;
+        private int _mapId;
+        private int _incGauge;
+        private int _gaugeDec = 1;
+        private int _currentGauge;
         private int _maxGauge = 100;
+        private float _displayGauge;
+        private int _killCount;
+        private int _comboCount;
+        private int _lastKillTime = int.MinValue;
+        private int _timerDurationSec;
+        private int _timeOverTick = int.MinValue;
+        private int _lastClockUpdateTick = int.MinValue;
+        private bool _showedClearEffect;
+        private bool _clearEffectActive;
+        private float _clearEffectAlpha;
+        private int _clearEffectStartTime = int.MinValue;
+        private int _keyAnimationStage = -1;
+        private int _keyAnimationStageStart = int.MinValue;
+        private bool _keyAnimationQueued;
 
-        // Timer (from m_pTimerboard)
-        private int _timer = 0;             // m_nTimer
-        private int _timerRemain = 0;       // m_tRemain
-        private int _startTime;
-        private bool _showedClearEffect = false;
-        #endregion
-
-        #region Display
-        private float _displayGauge = 0f;
-        private int _killCount = 0;
-        private int _comboCount = 0;
-        private int _lastKillTime = 0;
-        private const int COMBO_TIMEOUT = 3000;
-
-        // UI positions
-        private const int GAUGE_X = 10;
-        private const int GAUGE_Y = 130;
-        private const int GAUGE_WIDTH = 200;
-        private const int GAUGE_HEIGHT = 20;
-        #endregion
-
-        #region Effects
-        private bool _clearEffectActive = false;
-        private float _clearEffectAlpha = 0f;
-        private int _clearEffectStartTime;
-        #endregion
-
-        #region Public Properties
         public bool IsActive => _isActive;
         public int CurrentGauge => _currentGauge;
-        public float GaugeProgress => Math.Clamp((float)_currentGauge / _maxGauge, 0f, 1f);
         public int KillCount => _killCount;
         public int ComboCount => _comboCount;
-        public int TimerRemain => _timerRemain;
-        #endregion
+        public int TimerRemain => RemainingSeconds;
+        public float GaugeProgress => Math.Clamp(_maxGauge <= 0 ? 0f : _displayGauge / _maxGauge, 0f, 1f);
+        public bool HasRunningTimerboard => _timeOverTick != int.MinValue;
+        public int RemainingSeconds
+        {
+            get
+            {
+                if (_timeOverTick == int.MinValue)
+                {
+                    return 0;
+                }
 
-        #region Initialization
+                int remainingMs = _timeOverTick - Environment.TickCount;
+                if (remainingMs <= 0)
+                {
+                    return 0;
+                }
+
+                return (remainingMs + 999) / 1000;
+            }
+        }
+
         public void Initialize(GraphicsDevice device)
         {
         }
 
-        public void Enable()
+        public void Enable(int mapId = 0)
         {
             _isActive = true;
-            _currentGauge = 0;
-            _incGauge = 0;
-            _killCount = 0;
-            _comboCount = 0;
-            _showedClearEffect = false;
+            _mapId = mapId;
+            ResetRoundState();
         }
 
-        /// <summary>
-        /// Set massacre parameters
-        /// </summary>
         public void SetParameters(int maxGauge, int timer, int gaugeDec)
         {
             _maxGauge = Math.Max(1, maxGauge);
-            _timer = timer;
-            _timerRemain = timer;
-            _gaugeDec = gaugeDec;
-            _startTime = Environment.TickCount;
+            _gaugeDec = Math.Max(0, gaugeDec);
+            OnClock(2, timer, Environment.TickCount);
         }
-        #endregion
 
-        #region Packet Handling
+        public void SetGaugeParameters(int maxGauge, int gaugeDec)
+        {
+            _maxGauge = Math.Max(1, maxGauge);
+            _gaugeDec = Math.Max(0, gaugeDec);
+            _currentGauge = Math.Clamp(_currentGauge, 0, _maxGauge);
+            _displayGauge = Math.Clamp(_displayGauge, 0f, _maxGauge);
+        }
+
+        public void ResetRoundState()
+        {
+            _incGauge = 0;
+            _currentGauge = 0;
+            _displayGauge = 0f;
+            _killCount = 0;
+            _comboCount = 0;
+            _lastKillTime = int.MinValue;
+            _timerDurationSec = 0;
+            _timeOverTick = int.MinValue;
+            _lastClockUpdateTick = int.MinValue;
+            _showedClearEffect = false;
+            _clearEffectActive = false;
+            _clearEffectAlpha = 0f;
+            _clearEffectStartTime = int.MinValue;
+            _keyAnimationStage = -1;
+            _keyAnimationStageStart = int.MinValue;
+            _keyAnimationQueued = false;
+        }
+
+        public void OnClock(int clockType, int durationSec, int currentTimeMs)
+        {
+            if (!_isActive || clockType != 2)
+            {
+                return;
+            }
+
+            _timerDurationSec = Math.Max(0, durationSec);
+            _timeOverTick = _timerDurationSec > 0 ? currentTimeMs + (_timerDurationSec * 1000) : int.MinValue;
+            _lastClockUpdateTick = currentTimeMs;
+            _showedClearEffect = false;
+            _clearEffectActive = false;
+            _clearEffectAlpha = 0f;
+            _clearEffectStartTime = int.MinValue;
+        }
 
         /// <summary>
         /// OnMassacreIncGauge - Packet 173
@@ -2124,26 +2899,20 @@ namespace HaCreator.MapSimulator.Effects
         /// </summary>
         public void OnMassacreIncGauge(int newIncGauge, int currentTimeMs)
         {
+            if (!_isActive)
+            {
+                return;
+            }
+
             System.Diagnostics.Debug.WriteLine($"[MassacreField] OnMassacreIncGauge: {_incGauge} -> {newIncGauge}");
 
             int increase = newIncGauge - _incGauge;
-            _incGauge = newIncGauge;
+            _incGauge = Math.Max(0, newIncGauge);
 
-            // Update kill tracking
             if (increase > 0)
             {
-                _killCount++;
-
-                // Check combo
-                if (currentTimeMs - _lastKillTime < COMBO_TIMEOUT)
-                {
-                    _comboCount++;
-                }
-                else
-                {
-                    _comboCount = 1;
-                }
-                _lastKillTime = currentTimeMs;
+                RegisterKill(currentTimeMs);
+                QueueKeyAnimation();
             }
         }
 
@@ -2152,10 +2921,105 @@ namespace HaCreator.MapSimulator.Effects
         /// </summary>
         public void AddKill(int gaugeAmount, int currentTimeMs)
         {
-            _incGauge += gaugeAmount;
+            if (!_isActive)
+            {
+                return;
+            }
 
+            _incGauge = Math.Max(0, _incGauge + Math.Max(0, gaugeAmount));
+            RegisterKill(currentTimeMs);
+            QueueKeyAnimation();
+        }
+
+        public void Update(int currentTimeMs, float deltaSeconds)
+        {
+            if (!_isActive)
+            {
+                return;
+            }
+
+            int remainingSeconds = RemainingSeconds;
+            if (_timeOverTick != int.MinValue && _lastClockUpdateTick != int.MinValue)
+            {
+                int elapsedSeconds = Math.Max(0, _timerDurationSec - remainingSeconds);
+                int decayAmount = _gaugeDec * elapsedSeconds;
+                _currentGauge = Math.Clamp(_incGauge - decayAmount, 0, _maxGauge);
+            }
+            else
+            {
+                _currentGauge = Math.Clamp(_incGauge, 0, _maxGauge);
+            }
+
+            float targetGauge = _currentGauge;
+            float diff = targetGauge - _displayGauge;
+            _displayGauge = Math.Clamp(_displayGauge + (diff * MathF.Min(1f, 8f * deltaSeconds)), 0f, _maxGauge);
+
+            UpdateKeyAnimation(currentTimeMs);
+
+            if (!_showedClearEffect && _timeOverTick != int.MinValue && remainingSeconds <= 1)
+            {
+                TriggerClearEffect(currentTimeMs);
+            }
+
+            if (_clearEffectActive)
+            {
+                int clearElapsed = currentTimeMs - _clearEffectStartTime;
+                if (clearElapsed < 0 || clearElapsed >= ClearEffectDurationMs)
+                {
+                    _clearEffectActive = false;
+                    _clearEffectAlpha = 0f;
+                }
+                else
+                {
+                    float normalized = 1f - (clearElapsed / (float)ClearEffectDurationMs);
+                    _clearEffectAlpha = normalized * normalized;
+                }
+            }
+
+            if (_lastKillTime != int.MinValue && currentTimeMs - _lastKillTime > ComboTimeoutMs)
+            {
+                _comboCount = 0;
+            }
+        }
+
+        public void Draw(SpriteBatch spriteBatch, Texture2D pixelTexture, SpriteFont font)
+        {
+            if (!_isActive || pixelTexture == null)
+            {
+                return;
+            }
+
+            Viewport viewport = spriteBatch.GraphicsDevice.Viewport;
+            DrawTimerboard(spriteBatch, pixelTexture, font, viewport);
+            DrawGaugeHud(spriteBatch, pixelTexture, font, viewport);
+            DrawKeyAnimation(spriteBatch, pixelTexture, font);
+            DrawClearEffect(spriteBatch, pixelTexture, font, viewport);
+        }
+
+        public string DescribeStatus()
+        {
+            if (!_isActive)
+            {
+                return "Massacre HUD inactive";
+            }
+
+            string timerText = HasRunningTimerboard ? FormatTimer(RemainingSeconds) : "stopped";
+            return $"Massacre map {_mapId}, timer={timerText}, gauge={_currentGauge}/{_maxGauge}, inc={_incGauge}, decay={_gaugeDec}/s, kills={_killCount}, combo={_comboCount}";
+        }
+
+        public void Reset()
+        {
+            _isActive = false;
+            _mapId = 0;
+            _maxGauge = 100;
+            _gaugeDec = 1;
+            ResetRoundState();
+        }
+
+        private void RegisterKill(int currentTimeMs)
+        {
             _killCount++;
-            if (currentTimeMs - _lastKillTime < COMBO_TIMEOUT)
+            if (_lastKillTime != int.MinValue && currentTimeMs - _lastKillTime < ComboTimeoutMs)
             {
                 _comboCount++;
             }
@@ -2163,59 +3027,54 @@ namespace HaCreator.MapSimulator.Effects
             {
                 _comboCount = 1;
             }
+
             _lastKillTime = currentTimeMs;
         }
-        #endregion
 
-        #region Update
-        public void Update(int currentTimeMs, float deltaSeconds)
+        private void QueueKeyAnimation()
         {
-            if (!_isActive) return;
-
-            // Update timer (from client's Update: m_pTimerboard.p->m_tRemain)
-            if (_timer > 0)
+            if (_keyAnimationStage >= 0)
             {
-                int elapsed = currentTimeMs - _startTime;
-                _timerRemain = Math.Max(0, _timer - elapsed / 1000);
+                _keyAnimationQueued = true;
+                return;
             }
 
-            // Calculate gauge with decay (from client's _SetDecGauge)
-            // Formula: m_nGaugeDec * (m_nTimer - m_tRemain) - m_nIncGauge
-            int elapsedSeconds = _timer > 0 ? (_timer - _timerRemain) : 0;
-            int decayAmount = _gaugeDec * elapsedSeconds;
-            _currentGauge = Math.Max(0, _incGauge - decayAmount);
-            _currentGauge = Math.Min(_currentGauge, _maxGauge);
+            _keyAnimationStage = 0;
+            _keyAnimationStageStart = Environment.TickCount;
+            _keyAnimationQueued = false;
+        }
 
-            // Animate gauge display
-            float targetGauge = _currentGauge;
-            float diff = targetGauge - _displayGauge;
-            _displayGauge += diff * 3f * deltaSeconds;
-
-            // Check for clear effect (from client: if m_tRemain <= 1 && !m_bShowedClearEffect)
-            if (!_showedClearEffect && _timerRemain <= 1 && _timer > 0)
+        private void UpdateKeyAnimation(int currentTimeMs)
+        {
+            if (_keyAnimationStage < 0)
             {
-                TriggerClearEffect(currentTimeMs);
+                return;
             }
 
-            // Update clear effect
-            if (_clearEffectActive)
+            if (_keyAnimationStageStart == int.MinValue)
             {
-                int clearElapsed = currentTimeMs - _clearEffectStartTime;
-                if (clearElapsed > 3000)
+                _keyAnimationStageStart = currentTimeMs;
+            }
+
+            if (currentTimeMs - _keyAnimationStageStart < KeyStageDurationMs)
+            {
+                return;
+            }
+
+            _keyAnimationStageStart = currentTimeMs;
+            _keyAnimationStage++;
+            if (_keyAnimationStage > 2)
+            {
+                if (_keyAnimationQueued)
                 {
-                    _clearEffectActive = false;
+                    _keyAnimationStage = 0;
+                    _keyAnimationQueued = false;
                 }
                 else
                 {
-                    // Flash effect
-                    _clearEffectAlpha = (float)(0.5f + 0.5f * Math.Sin(clearElapsed * 0.01));
+                    _keyAnimationStage = -1;
+                    _keyAnimationStageStart = int.MinValue;
                 }
-            }
-
-            // Reset combo if timed out
-            if (currentTimeMs - _lastKillTime > COMBO_TIMEOUT)
-            {
-                _comboCount = 0;
             }
         }
 
@@ -2225,113 +3084,157 @@ namespace HaCreator.MapSimulator.Effects
             _showedClearEffect = true;
             _clearEffectActive = true;
             _clearEffectStartTime = currentTimeMs;
-            // Would call: CField::ShowScreenEffect(this, "clear effect path")
         }
-        #endregion
 
-        #region Draw
-        public void Draw(SpriteBatch spriteBatch, Texture2D pixelTexture, SpriteFont font)
+        private void DrawTimerboard(SpriteBatch spriteBatch, Texture2D pixelTexture, SpriteFont font, Viewport viewport)
         {
-            if (!_isActive || pixelTexture == null) return;
+            if (!HasRunningTimerboard && !_showedClearEffect)
+            {
+                return;
+            }
 
-            int screenWidth = spriteBatch.GraphicsDevice.Viewport.Width;
+            Rectangle bounds = new(viewport.Width / 2 + TimerboardOffsetX, TimerboardY, TimerboardWidth, TimerboardHeight);
+            spriteBatch.Draw(pixelTexture, bounds, new Color(18, 21, 24, 228));
+            spriteBatch.Draw(pixelTexture, new Rectangle(bounds.X, bounds.Y, bounds.Width, 2), new Color(95, 127, 160, 255));
+            spriteBatch.Draw(pixelTexture, new Rectangle(bounds.X, bounds.Bottom - 2, bounds.Width, 2), new Color(34, 45, 58, 255));
 
-            // Draw gauge bar
-            Color bgColor = new Color(40, 40, 40, 200);
-            Color gaugeColor = GetGaugeColor();
-            Color borderColor = new Color(100, 100, 100, 255);
+            Rectangle divider = new(bounds.X + TimerDividerX, bounds.Y + TimerDividerY, TimerDividerWidth, TimerDividerHeight);
+            spriteBatch.Draw(pixelTexture, divider, new Color(44, 53, 66, 255));
 
-            // Background
-            spriteBatch.Draw(pixelTexture, new Rectangle(GAUGE_X, GAUGE_Y, GAUGE_WIDTH, GAUGE_HEIGHT), bgColor);
+            if (font == null)
+            {
+                return;
+            }
 
-            // Gauge fill
-            int fillWidth = (int)(GAUGE_WIDTH * GaugeProgress);
-            spriteBatch.Draw(pixelTexture, new Rectangle(GAUGE_X, GAUGE_Y, fillWidth, GAUGE_HEIGHT), gaugeColor);
+            int remaining = RemainingSeconds;
+            string minuteText = $"{remaining / 60:00}";
+            string secondText = $"{remaining % 60:00}";
+            Color timeColor = remaining <= 10 ? new Color(255, 170, 120) : new Color(232, 242, 255);
 
-            // Border
-            spriteBatch.Draw(pixelTexture, new Rectangle(GAUGE_X, GAUGE_Y, GAUGE_WIDTH, 2), borderColor);
-            spriteBatch.Draw(pixelTexture, new Rectangle(GAUGE_X, GAUGE_Y + GAUGE_HEIGHT - 2, GAUGE_WIDTH, 2), borderColor);
-            spriteBatch.Draw(pixelTexture, new Rectangle(GAUGE_X, GAUGE_Y, 2, GAUGE_HEIGHT), borderColor);
-            spriteBatch.Draw(pixelTexture, new Rectangle(GAUGE_X + GAUGE_WIDTH - 2, GAUGE_Y, 2, GAUGE_HEIGHT), borderColor);
+            DrawDigitString(spriteBatch, font, minuteText, new Vector2(bounds.X + TimerMinuteTextX, bounds.Y + TimerTextY), timeColor);
+            DrawDigitString(spriteBatch, font, secondText, new Vector2(bounds.X + TimerSecondTextX, bounds.Y + TimerTextY), timeColor);
+        }
 
-            // Text
+        private void DrawGaugeHud(SpriteBatch spriteBatch, Texture2D pixelTexture, SpriteFont font, Viewport viewport)
+        {
+            Rectangle bounds = new(viewport.Width / 2 + GaugeOffsetX, GaugeY, GaugeWidth, GaugeHeight);
+            Rectangle fillBounds = new(bounds.X + GaugeFillOffsetX, bounds.Y + GaugeFillOffsetY, GaugeWidth - (GaugeFillOffsetX * 2), GaugeFillHeight);
+
+            spriteBatch.Draw(pixelTexture, bounds, new Color(25, 18, 16, 224));
+            spriteBatch.Draw(pixelTexture, fillBounds, new Color(54, 34, 25, 255));
+
+            int fillWidth = Math.Clamp((int)MathF.Round(fillBounds.Width * GaugeProgress), 0, fillBounds.Width);
+            if (fillWidth > 0)
+            {
+                Color fillColor = GetGaugeColor(GaugeProgress);
+                spriteBatch.Draw(pixelTexture, new Rectangle(fillBounds.X, fillBounds.Y, fillWidth, fillBounds.Height), fillColor);
+            }
+
+            spriteBatch.Draw(pixelTexture, new Rectangle(bounds.X, bounds.Y, bounds.Width, 1), new Color(185, 145, 83, 255));
+            spriteBatch.Draw(pixelTexture, new Rectangle(bounds.X, bounds.Bottom - 1, bounds.Width, 1), new Color(78, 54, 31, 255));
+
+            if (font == null)
+            {
+                return;
+            }
+
+            string gaugeText = $"{_currentGauge}/{_maxGauge}";
+            string statusText = _comboCount > 1 ? $"{_comboCount}x combo" : $"{_killCount} kills";
+            Color statusColor = _comboCount >= 10 ? Color.Gold : _comboCount >= 5 ? Color.Orange : new Color(238, 220, 191);
+
+            spriteBatch.DrawString(font, "MASSACRE", new Vector2(bounds.X + 8, bounds.Y - 20), new Color(238, 220, 191));
+            Vector2 gaugeValueSize = font.MeasureString(gaugeText);
+            spriteBatch.DrawString(font, gaugeText, new Vector2(bounds.Right - gaugeValueSize.X - 8, bounds.Y - 20), Color.White);
+            spriteBatch.DrawString(font, statusText, new Vector2(bounds.X + 8, bounds.Bottom + 4), statusColor);
+        }
+
+        private void DrawKeyAnimation(SpriteBatch spriteBatch, Texture2D pixelTexture, SpriteFont font)
+        {
+            if (_keyAnimationStage < 0)
+            {
+                return;
+            }
+
+            int elapsed = Environment.TickCount - _keyAnimationStageStart;
+            float normalized = 1f - Math.Clamp(elapsed / (float)KeyStageDurationMs, 0f, 1f);
+            float alpha = 0.35f + (normalized * 0.65f);
+            float widthScale = 1f + (_keyAnimationStage * 0.22f);
+            Rectangle pulse = new(
+                KeyAnimationX - (int)((18 * widthScale) / 2f),
+                KeyAnimationY - (_keyAnimationStage * 6),
+                (int)(72 * widthScale),
+                16);
+
+            Color pulseColor = _keyAnimationStage switch
+            {
+                0 => new Color(255, 213, 112),
+                1 => new Color(255, 165, 66),
+                _ => new Color(255, 118, 68)
+            };
+
+            spriteBatch.Draw(pixelTexture, pulse, pulseColor * alpha);
             if (font != null)
             {
-                // Gauge value
-                string gaugeText = $"{_currentGauge}/{_maxGauge}";
-                Vector2 textPos = new Vector2(GAUGE_X + GAUGE_WIDTH + 10, GAUGE_Y + 2);
-                spriteBatch.DrawString(font, gaugeText, textPos, Color.White);
-
-                // Kill count
-                string killText = $"Kills: {_killCount}";
-                spriteBatch.DrawString(font, killText, new Vector2(GAUGE_X, GAUGE_Y + GAUGE_HEIGHT + 5), Color.LightGray);
-
-                // Combo
-                if (_comboCount > 1)
+                string text = _keyAnimationStage switch
                 {
-                    string comboText = $"{_comboCount}x COMBO!";
-                    Color comboColor = _comboCount >= 10 ? Color.Gold :
-                                       _comboCount >= 5 ? Color.Orange : Color.Yellow;
-                    spriteBatch.DrawString(font, comboText, new Vector2(GAUGE_X + 100, GAUGE_Y + GAUGE_HEIGHT + 5), comboColor);
-                }
-
-                // Timer
-                if (_timer > 0)
-                {
-                    int minutes = _timerRemain / 60;
-                    int seconds = _timerRemain % 60;
-                    string timerText = $"Time: {minutes}:{seconds:D2}";
-                    Color timerColor = _timerRemain <= 10 ? Color.Red : Color.White;
-                    Vector2 timerPos = new Vector2(screenWidth - 100, GAUGE_Y);
-                    spriteBatch.DrawString(font, timerText, timerPos, timerColor);
-                }
+                    0 => "KEY",
+                    1 => "KEY!",
+                    _ => "KEY!!"
+                };
+                spriteBatch.DrawString(font, text, new Vector2(KeyAnimationX, KeyAnimationY - 22 - (_keyAnimationStage * 6)), Color.White * alpha);
             }
+        }
 
-            // Clear effect overlay
-            if (_clearEffectActive)
+        private void DrawClearEffect(SpriteBatch spriteBatch, Texture2D pixelTexture, SpriteFont font, Viewport viewport)
+        {
+            if (!_clearEffectActive)
             {
-                Color clearColor = new Color(255, 255, 255, (int)(_clearEffectAlpha * 100));
-                spriteBatch.Draw(pixelTexture,
-                    new Rectangle(0, 0, screenWidth, spriteBatch.GraphicsDevice.Viewport.Height),
-                    clearColor);
+                return;
+            }
 
-                if (font != null)
-                {
-                    string clearText = "CLEAR!";
-                    Vector2 clearSize = font.MeasureString(clearText) * 2;
-                    Vector2 clearPos = new Vector2((screenWidth - clearSize.X) / 2, 200);
-                    spriteBatch.DrawString(font, clearText, clearPos + new Vector2(3, 3), Color.Black);
-                    spriteBatch.DrawString(font, clearText, clearPos, Color.Gold);
-                }
+            spriteBatch.Draw(pixelTexture, new Rectangle(0, 0, viewport.Width, viewport.Height), Color.White * (0.16f * _clearEffectAlpha));
+            if (font != null)
+            {
+                const string clearText = "CLEAR!";
+                Vector2 textSize = font.MeasureString(clearText) * 1.5f;
+                Vector2 pos = new((viewport.Width - textSize.X) / 2f, 200f);
+                spriteBatch.DrawString(font, clearText, pos + new Vector2(2f, 2f), Color.Black * _clearEffectAlpha);
+                spriteBatch.DrawString(font, clearText, pos, new Color(255, 225, 118) * _clearEffectAlpha);
             }
         }
 
-        private Color GetGaugeColor()
+        private static void DrawDigitString(SpriteBatch spriteBatch, SpriteFont font, string text, Vector2 position, Color color)
         {
-            float progress = GaugeProgress;
-            if (progress >= 0.8f)
-                return new Color(255, 215, 0, 255); // Gold
-            else if (progress >= 0.5f)
-                return new Color(100, 200, 100, 255); // Green
-            else if (progress >= 0.25f)
-                return new Color(200, 200, 100, 255); // Yellow
-            else
-                return new Color(200, 100, 100, 255); // Red
+            spriteBatch.DrawString(font, text, position + Vector2.One, Color.Black);
+            spriteBatch.DrawString(font, text, position, color);
         }
-        #endregion
 
-        #region Reset
-        public void Reset()
+        private static string FormatTimer(int remainingSeconds)
         {
-            _isActive = false;
-            _currentGauge = 0;
-            _incGauge = 0;
-            _killCount = 0;
-            _comboCount = 0;
-            _showedClearEffect = false;
-            _clearEffectActive = false;
+            int minutes = Math.Max(0, remainingSeconds) / 60;
+            int seconds = Math.Max(0, remainingSeconds) % 60;
+            return $"{minutes:00}:{seconds:00}";
         }
-        #endregion
+
+        private static Color GetGaugeColor(float progress)
+        {
+            if (progress >= 0.8f)
+            {
+                return new Color(255, 215, 112);
+            }
+
+            if (progress >= 0.5f)
+            {
+                return new Color(255, 165, 66);
+            }
+
+            if (progress >= 0.25f)
+            {
+                return new Color(227, 109, 62);
+            }
+
+            return new Color(181, 65, 54);
+        }
     }
     #endregion
 }

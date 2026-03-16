@@ -138,10 +138,12 @@ namespace HaCreator.MapSimulator.UI
         private DragonEquipSlot? _hoveredDragonSlot;
         private AndroidEquipSlot? _hoveredAndroidSlot;
         private Point _lastMousePosition;
+        private MouseState _previousMouseState;
         #endregion
 
         #region Properties
         public override string WindowName => "Equipment";
+        public Action<CharacterEquipSlot> ItemUpgradeRequested { get; set; }
         public override CharacterBuild CharacterBuild
         {
             get => _characterBuild;
@@ -479,6 +481,46 @@ namespace HaCreator.MapSimulator.UI
             _hoveredPetIndex = GetHoveredPetIndex(mouseState.X, mouseState.Y);
             _hoveredDragonSlot = GetHoveredDragonSlot(mouseState.X, mouseState.Y);
             _hoveredAndroidSlot = GetHoveredAndroidSlot(mouseState.X, mouseState.Y);
+        }
+
+        public override bool CheckMouseEvent(int shiftCenteredX, int shiftCenteredY, MouseState mouseState, MouseCursorItem mouseCursor, int renderWidth, int renderHeight)
+        {
+            if (!IsVisible)
+            {
+                _previousMouseState = mouseState;
+                return false;
+            }
+
+            if (TryRequestItemUpgrade(mouseState))
+            {
+                _previousMouseState = mouseState;
+                mouseCursor?.SetMouseCursorMovedToClickableItem();
+                return true;
+            }
+
+            bool handled = base.CheckMouseEvent(shiftCenteredX, shiftCenteredY, mouseState, mouseCursor, renderWidth, renderHeight);
+            _previousMouseState = mouseState;
+            return handled;
+        }
+
+        private bool TryRequestItemUpgrade(MouseState mouseState)
+        {
+            bool rightJustPressed = mouseState.RightButton == ButtonState.Pressed &&
+                                    _previousMouseState.RightButton == ButtonState.Released;
+            if (!rightJustPressed || _currentTab != TAB_CHARACTER || !_hoveredSlot.HasValue)
+            {
+                return false;
+            }
+
+            CharacterEquipSlot? characterSlot = MapToCharacterEquipSlot(_hoveredSlot.Value);
+            CharacterPart part = ResolveEquippedPart(_hoveredSlot.Value);
+            if (!characterSlot.HasValue || !ItemUpgradeUI.CanUpgrade(characterSlot.Value, part))
+            {
+                return false;
+            }
+
+            ItemUpgradeRequested?.Invoke(characterSlot.Value);
+            return true;
         }
         #endregion
 

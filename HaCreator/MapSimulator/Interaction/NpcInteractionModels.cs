@@ -6,10 +6,20 @@ namespace HaCreator.MapSimulator.Interaction
     internal enum NpcInteractionEntryKind
     {
         Talk,
+        Storage,
+        Utility,
         LockedQuest,
         AvailableQuest,
         InProgressQuest,
         CompletableQuest
+    }
+
+    internal enum NpcInteractionActionKind
+    {
+        None,
+        QuestPrimary,
+        OpenTrunk,
+        OpenItemMaker
     }
 
     internal sealed class NpcInteractionEntry
@@ -22,6 +32,7 @@ namespace HaCreator.MapSimulator.Interaction
         public IReadOnlyList<NpcInteractionPage> Pages { get; init; } = Array.Empty<NpcInteractionPage>();
         public string PrimaryActionLabel { get; init; } = string.Empty;
         public bool PrimaryActionEnabled { get; init; }
+        public NpcInteractionActionKind PrimaryActionKind { get; init; }
     }
 
     internal sealed class NpcInteractionPage
@@ -57,14 +68,14 @@ namespace HaCreator.MapSimulator.Interaction
 
     internal readonly struct NpcInteractionOverlayResult
     {
-        public NpcInteractionOverlayResult(bool consumed, bool primaryActionRequested)
+        public NpcInteractionOverlayResult(bool consumed, NpcInteractionEntry primaryActionEntry)
         {
             Consumed = consumed;
-            PrimaryActionRequested = primaryActionRequested;
+            PrimaryActionEntry = primaryActionEntry;
         }
 
         public bool Consumed { get; }
-        public bool PrimaryActionRequested { get; }
+        public NpcInteractionEntry PrimaryActionEntry { get; }
     }
 
     internal sealed class QuestActionResult

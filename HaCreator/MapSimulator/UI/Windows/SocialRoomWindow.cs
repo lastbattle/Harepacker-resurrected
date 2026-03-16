@@ -34,6 +34,7 @@ namespace HaCreator.MapSimulator.UI
         private static readonly Color ValueColor = new Color(48, 48, 48);
         private static readonly Color MutedColor = new Color(104, 93, 71);
         private static readonly Color SuccessColor = new Color(56, 118, 66);
+        private static readonly Color WarningColor = new Color(153, 99, 37);
         private static readonly Color PanelColor = new Color(255, 250, 242, 210);
 
         public SocialRoomWindow(IDXObject frame, string windowName, Texture2D panelTexture, SocialRoomRuntime runtime)
@@ -45,6 +46,7 @@ namespace HaCreator.MapSimulator.UI
         }
 
         public override string WindowName => _windowName;
+        public SocialRoomRuntime Runtime => _runtime;
 
         public override void SetFont(SpriteFont font)
         {
@@ -112,10 +114,16 @@ namespace HaCreator.MapSimulator.UI
                 occupantPanel.Right + 16,
                 occupantPanel.Y,
                 Math.Max(130, (CurrentFrame?.Width ?? 320) - occupantPanel.Width - 52),
-                occupantPanel.Height);
+                110);
+            Rectangle itemPanel = new Rectangle(
+                statePanel.X,
+                statePanel.Bottom + 10,
+                statePanel.Width,
+                Math.Max(72, occupantPanel.Bottom - statePanel.Bottom - 10));
 
             DrawPanel(sprite, occupantPanel);
             DrawPanel(sprite, statePanel);
+            DrawPanel(sprite, itemPanel);
 
             DrawText(sprite, _runtime.RoomTitle, new Vector2(Position.X + 20, Position.Y + 18), HeaderColor, 0.82f);
             DrawText(sprite, $"{_runtime.ModeName} | Owner {_runtime.OwnerName}", new Vector2(Position.X + 20, Position.Y + 42), AccentColor, 0.6f);
@@ -141,11 +149,37 @@ namespace HaCreator.MapSimulator.UI
             DrawKeyValue(sprite, statePanel.X + 12, statePanel.Y + 82, "State", _runtime.RoomState);
             DrawKeyValue(sprite, statePanel.X + 12, statePanel.Y + 104, "Mesos", $"{_runtime.MesoAmount:N0}");
 
-            float noteY = statePanel.Y + 136;
-            for (int i = 0; i < _runtime.Notes.Count; i++)
+            DrawText(sprite, GetItemPanelTitle(), new Vector2(itemPanel.X + 12, itemPanel.Y + 10), HeaderColor, 0.68f);
+            float itemY = itemPanel.Y + 32;
+            foreach (SocialRoomItemEntry item in _runtime.Items)
             {
-                DrawWrapped(sprite, _runtime.Notes[i], statePanel.X + 12, ref noteY, statePanel.Width - 24, MutedColor, 0.53f);
-                if (noteY > statePanel.Bottom - 24)
+                Color itemColor = item.IsClaimed
+                    ? SuccessColor
+                    : item.IsLocked ? WarningColor : ValueColor;
+                DrawText(
+                    sprite,
+                    $"{item.OwnerName} | {item.ItemName} x{item.Quantity}",
+                    new Vector2(itemPanel.X + 12, itemY),
+                    itemColor,
+                    0.56f);
+                itemY += 17f;
+
+                string valueText = item.MesoAmount > 0
+                    ? $"{item.MesoAmount:N0} mesos | {item.Detail}"
+                    : item.Detail;
+                DrawWrapped(sprite, valueText, itemPanel.X + 18, ref itemY, itemPanel.Width - 24, MutedColor, 0.52f);
+                itemY += 4f;
+                if (itemY > itemPanel.Bottom - 42)
+                {
+                    break;
+                }
+            }
+
+            float noteY = itemY;
+            foreach (string note in _runtime.Notes)
+            {
+                DrawWrapped(sprite, note, itemPanel.X + 12, ref noteY, itemPanel.Width - 24, MutedColor, 0.5f);
+                if (noteY > itemPanel.Bottom - 24)
                 {
                     break;
                 }
@@ -235,6 +269,18 @@ namespace HaCreator.MapSimulator.UI
                 SocialRoomOccupantRole.Buyer => "Buyer",
                 SocialRoomOccupantRole.Trader => "Trader",
                 _ => "Occupant"
+            };
+        }
+
+        private string GetItemPanelTitle()
+        {
+            return _runtime.Kind switch
+            {
+                SocialRoomKind.MiniRoom => "Preview",
+                SocialRoomKind.PersonalShop => "Sale Bundles",
+                SocialRoomKind.EntrustedShop => "Ledger",
+                SocialRoomKind.TradingRoom => "Escrow",
+                _ => "Items"
             };
         }
     }
