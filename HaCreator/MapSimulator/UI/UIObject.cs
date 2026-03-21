@@ -152,15 +152,26 @@ namespace HaCreator.MapSimulator.UI
             Point relativePositionXY,
             GraphicsDevice graphicsDevice)
         {
-            WzSubProperty normalStateProperty = (WzSubProperty)uiButtonProperty["normal"];
-            WzSubProperty disabledStateProperty = (WzSubProperty)uiButtonProperty["disabled"];
-            WzSubProperty pressedStateProperty = (WzSubProperty)uiButtonProperty["pressed"];
-            WzSubProperty mouseOverStateProperty = (WzSubProperty)uiButtonProperty["mouseOver"];
+            WzSubProperty normalStateProperty = uiButtonProperty?["normal"] as WzSubProperty;
+            WzSubProperty disabledStateProperty = uiButtonProperty?["disabled"] as WzSubProperty;
+            WzSubProperty pressedStateProperty = uiButtonProperty?["pressed"] as WzSubProperty;
+            WzSubProperty mouseOverStateProperty = uiButtonProperty?["mouseOver"] as WzSubProperty;
 
-            this._normalState = CreateBaseDXDrawableItemWithWzProperty(normalStateProperty, flip, relativePositionXY, graphicsDevice);
-            this._disabledState = CreateBaseDXDrawableItemWithWzProperty(disabledStateProperty, flip, relativePositionXY, graphicsDevice);
-            this._pressedState = CreateBaseDXDrawableItemWithWzProperty(pressedStateProperty, flip, relativePositionXY, graphicsDevice);
-            this._mouseOverState = CreateBaseDXDrawableItemWithWzProperty(mouseOverStateProperty, flip, relativePositionXY, graphicsDevice);
+            BaseDXDrawableItem normalState = CreateBaseDXDrawableItemWithWzProperty(normalStateProperty, flip, relativePositionXY, graphicsDevice);
+            BaseDXDrawableItem disabledState = CreateBaseDXDrawableItemWithWzProperty(disabledStateProperty, flip, relativePositionXY, graphicsDevice);
+            BaseDXDrawableItem pressedState = CreateBaseDXDrawableItemWithWzProperty(pressedStateProperty, flip, relativePositionXY, graphicsDevice);
+            BaseDXDrawableItem mouseOverState = CreateBaseDXDrawableItemWithWzProperty(mouseOverStateProperty, flip, relativePositionXY, graphicsDevice);
+
+            normalState ??= pressedState ?? mouseOverState ?? disabledState;
+            if (normalState == null)
+            {
+                throw new InvalidOperationException("UI button could not be created because it has no drawable states.");
+            }
+
+            this._normalState = normalState;
+            this._disabledState = disabledState ?? normalState;
+            this._pressedState = pressedState ?? normalState;
+            this._mouseOverState = mouseOverState ?? normalState;
 
             this._seMouseClick = CreateSoundEffectWithWzProperty(btMouseClickSoundProperty);
             this._seMouseOver = CreateSoundEffectWithWzProperty(btMouseOverSoundProperty);
@@ -178,6 +189,11 @@ namespace HaCreator.MapSimulator.UI
         /// <returns></returns>
         private WzSoundResourceStreamer CreateSoundEffectWithWzProperty(WzBinaryProperty wzSoundProperty)
         {
+            if (wzSoundProperty == null)
+            {
+                return null;
+            }
+
             WzSoundResourceStreamer currAudio = new WzSoundResourceStreamer(wzSoundProperty, false) {
                 Volume = 1.0f
             };
@@ -194,6 +210,11 @@ namespace HaCreator.MapSimulator.UI
         /// <returns></returns>
         private BaseDXDrawableItem CreateBaseDXDrawableItemWithWzProperty(WzSubProperty subProperty, bool flip, Point relativePositionXY_, GraphicsDevice graphicsDevice)
         {
+            if (subProperty == null)
+            {
+                return null;
+            }
+
             bool bAddedOriginXY = false;
             Point relativePositionXY = new Point(relativePositionXY_.X, relativePositionXY_.Y);
 
@@ -234,8 +255,10 @@ namespace HaCreator.MapSimulator.UI
                 }
                 i++;
             }
-            if (drawableImages.Count == 0) // oh noz u sux
-                throw new Exception("Error creating BaseDXDrawableItem from WzSubProperty.");
+            if (drawableImages.Count == 0)
+            {
+                return null;
+            }
 
             return new BaseDXDrawableItem(drawableImages, flip)
             {

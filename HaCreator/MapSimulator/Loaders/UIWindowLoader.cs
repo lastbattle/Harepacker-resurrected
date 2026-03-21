@@ -3604,13 +3604,16 @@ namespace HaCreator.MapSimulator.Loaders
             GraphicsDevice device,
             Point position)
         {
-            if (manager.GetWindow(MapSimulatorWindowNames.MapleTv) != null)
+            if (manager == null || manager.GetWindow(MapSimulatorWindowNames.MapleTv) != null)
             {
                 return;
             }
 
             UIWindowBase mapleTvWindow = CreateMapleTvWindow(uiWindow1Image, basicImage, soundUIImage, device, position);
-            manager.RegisterCustomWindow(mapleTvWindow);
+            if (mapleTvWindow != null)
+            {
+                manager.RegisterCustomWindow(mapleTvWindow);
+            }
         }
 
         private static UIWindowBase CreateMiniRoomWindow(
@@ -4472,6 +4475,21 @@ namespace HaCreator.MapSimulator.Loaders
 
             WzBinaryProperty btClickSound = soundUIImage?["BtMouseClick"] as WzBinaryProperty;
             WzBinaryProperty btOverSound = soundUIImage?["BtMouseOver"] as WzBinaryProperty;
+            UIObject okButton = LoadButton(sourceProperty, "BtOk", btClickSound, btOverSound, device);
+            UIObject cancelButton = LoadButton(sourceProperty, "BtCancel", btClickSound, btOverSound, device);
+            UIObject toButton = LoadButton(sourceProperty, "BtTo", btClickSound, btOverSound, device);
+            if (okButton == null || cancelButton == null || toButton == null)
+            {
+                return CreatePlaceholderUtilityWindow(
+                    basicImage,
+                    soundUIImage,
+                    device,
+                    MapSimulatorWindowNames.MapleTv,
+                    "MapleTV",
+                    "MapleTV controls were unavailable in this UI dataset, so the simulator is using a placeholder window instead.",
+                    position);
+            }
+
             MapleTvWindow window = new MapleTvWindow(
                 new DXObject(0, 0, selfFrameTexture, 0),
                 new DXObject(0, 0, receiverFrameTexture, 0),
@@ -4483,10 +4501,7 @@ namespace HaCreator.MapSimulator.Loaders
                 Position = position
             };
 
-            window.InitializeControls(
-                LoadButton(sourceProperty, "BtOk", btClickSound, btOverSound, device),
-                LoadButton(sourceProperty, "BtCancel", btClickSound, btOverSound, device),
-                LoadButton(sourceProperty, "BtTo", btClickSound, btOverSound, device));
+            window.InitializeControls(okButton, cancelButton, toButton);
 
             WzSubProperty closeButtonProperty = basicImage?["BtClose"] as WzSubProperty;
             if (closeButtonProperty != null)

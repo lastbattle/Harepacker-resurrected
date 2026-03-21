@@ -214,6 +214,7 @@ namespace HaCreator.MapSimulator
         private Texture2D _npcQuestAvailableIcon;
         private Texture2D _npcQuestInProgressIcon;
         private Texture2D _npcQuestCompletableIcon;
+        private bool _npcQuestAlertIconsLoaded;
         private readonly NpcFeedbackBalloonQueue _npcQuestFeedback = new();
         private readonly Random _npcIdleSpeechRandom = new();
         private int _nextNpcIdleSpeechTick;
@@ -242,9 +243,11 @@ namespace HaCreator.MapSimulator
         private readonly PassengerSyncController _passengerSync = new PassengerSyncController();
         private readonly EscortFollowController _escortFollow = new EscortFollowController();
         private readonly LimitedViewField _limitedViewField = new LimitedViewField();
+        private bool _limitedViewFieldInitialized;
         private TemporaryPortalField _temporaryPortalField;
         private FieldRuleRuntime _fieldRuleRuntime;
         private readonly SpecialFieldRuntimeCoordinator _specialFieldRuntime = new SpecialFieldRuntimeCoordinator();
+        private bool _bossHpBarAssetsLoaded;
         private static readonly EquipSlot[] BattlefieldAppearanceSlots =
         {
             EquipSlot.Cap,
@@ -1127,6 +1130,12 @@ namespace HaCreator.MapSimulator
             messengerWindow.SetFont(_fontChat);
         }
 
+        private void ShowMessengerWindow()
+        {
+            WireMessengerWindowData();
+            uiWindowManager?.ShowWindow(MapSimulatorWindowNames.Messenger);
+        }
+
         private void WireGuildBbsWindowData()
         {
             if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.GuildBbs) is not GuildBbsWindow guildBbsWindow)
@@ -1169,6 +1178,12 @@ namespace HaCreator.MapSimulator
                 ToggleMapleTvReceiverMode,
                 ShowUtilityFeedbackMessage);
             mapleTvWindow.SetFont(_fontChat);
+        }
+
+        private void ShowMapleTvWindow()
+        {
+            WireMapleTvWindowData();
+            uiWindowManager?.ShowWindow(MapSimulatorWindowNames.MapleTv);
         }
 
         private void WireProgressionUtilityWindowLaunchers()
@@ -1225,6 +1240,12 @@ namespace HaCreator.MapSimulator
 
             _specialFieldRuntime.Minigames.MemoryGame.AttachMiniRoomRuntime(miniRoomWindow.Runtime);
             miniRoomWindow.SetFont(_fontChat);
+        }
+
+        private void ShowMiniRoomWindow()
+        {
+            WireMiniRoomWindowData();
+            uiWindowManager?.ShowWindow(MapSimulatorWindowNames.MiniRoom);
         }
 
         private void WireItemUpgradeWindowLaunchers()
@@ -1338,7 +1359,7 @@ namespace HaCreator.MapSimulator
                 menuWindow.BindEntryAction("BtSkill", () => uiWindowManager?.ShowWindow(MapSimulatorWindowNames.Skills));
                 menuWindow.BindEntryAction("BtQuest", () => uiWindowManager?.ShowWindow(MapSimulatorWindowNames.Quest));
                 menuWindow.BindEntryAction("BtCommunity", () => uiWindowManager?.ShowWindow(MapSimulatorWindowNames.SocialList));
-                menuWindow.BindEntryAction("BtMSN", () => uiWindowManager?.ShowWindow(MapSimulatorWindowNames.Messenger));
+                menuWindow.BindEntryAction("BtMSN", ShowMessengerWindow);
                 menuWindow.BindEntryAction("BtRank", () => ShowUtilityFeedbackMessage("Ranking tools are not implemented in MapSimulator yet."));
                 menuWindow.BindEntryAction("BtEvent", () => ShowUtilityFeedbackMessage("Event tools are not implemented in MapSimulator yet."));
                 menuWindow.BindEntryCursorHint("BtRank", () => StatusBarPopupCursorHint.Forbidden);
@@ -1433,7 +1454,7 @@ namespace HaCreator.MapSimulator
             string message = _mapleTvRuntime.OnSetMessage(currTickCount);
             if (message.StartsWith("MapleTV message set", StringComparison.Ordinal))
             {
-                uiWindowManager?.ShowWindow(MapSimulatorWindowNames.MapleTv);
+                ShowMapleTvWindow();
             }
 
             return message;
@@ -2145,6 +2166,8 @@ namespace HaCreator.MapSimulator
 
         private void SyncLoginCharacterSelectWindow()
         {
+            WireLoginCharacterSelectWindow();
+
             if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.CharacterSelect) is not CharacterSelectWindow characterSelectWindow)
             {
                 SyncLoginCharacterDetailWindow();
@@ -2182,6 +2205,8 @@ namespace HaCreator.MapSimulator
             {
                 return;
             }
+
+            WireLoginEntryDialogWindows();
 
             if (!IsLoginRuntimeSceneActive)
             {
@@ -3156,16 +3181,6 @@ namespace HaCreator.MapSimulator
                 this.mouseCursor = MapSimulatorLoader.CreateMouseCursorFromProperty(_texturePool, cursorImageProperty, 0, 0, _DxDeviceManager.GraphicsDevice, usedProps, false);
             });
 
-            // Spine object
-            Task t_spine = Task.Run(() =>
-            {
-                _skeletonMeshRenderer = new SkeletonMeshRenderer(GraphicsDevice)
-                {
-                    PremultipliedAlpha = false,
-                };
-                _skeletonMeshRenderer.Effect.World = this._matrixScale;
-            });
-
             // Minimap
             Task t_minimap = Task.Run(() =>
             {
@@ -3186,13 +3201,15 @@ namespace HaCreator.MapSimulator
                 }
             });
 
-            // UI Windows (Inventory, Equipment, Skills, Quest)
-            Task t_uiWindows = Task.Run(() => {
-                if (_gameState.IsCashShopMap)
-                {
-                    return;
-                }
+            while (!t_tiles.IsCompleted || !t_Background.IsCompleted || !t_reactor.IsCompleted || !t_npc.IsCompleted || !t_mobs.IsCompleted || !t_portal.IsCompleted ||
+                !t_tooltips.IsCompleted || !t_cursor.IsCompleted || !t_minimap.IsCompleted || !t_statusBar.IsCompleted)
+            {
+                Thread.Sleep(100);
+            }
 
+            // UI windows touch GraphicsDevice-backed resources and must be created on the main thread.
+            if (!_gameState.IsCashShopMap)
+            {
                 if (_gameState.IsLoginMap)
                 {
                     uiWindowManager ??= new UIWindowManager();
@@ -3243,12 +3260,6 @@ namespace HaCreator.MapSimulator
                             Math.Max(24, (_renderParams.RenderWidth / 2) - 367),
                             Math.Max(24, (_renderParams.RenderHeight / 2) - 263)));
                 }
-            });
-
-            while (!t_tiles.IsCompleted || !t_Background.IsCompleted || !t_reactor.IsCompleted || !t_npc.IsCompleted || !t_mobs.IsCompleted || !t_portal.IsCompleted ||
-                !t_tooltips.IsCompleted || !t_cursor.IsCompleted || !t_spine.IsCompleted || !t_minimap.IsCompleted || !t_statusBar.IsCompleted || !t_uiWindows.IsCompleted)
-            {
-                Thread.Sleep(100);
             }
 
             ReplaceQuestGatedMapObjects(questGatedMapObjects);
@@ -3259,16 +3270,11 @@ namespace HaCreator.MapSimulator
             uiWindowManager?.SetFonts(_fontChat);
             WireWorldChannelSelectorWindows();
             WireRecommendWorldWindow();
-            WireLoginCharacterSelectWindow();
-            WireLoginEntryDialogWindows();
             WireQuestLogWindowData();
             WireMemoMailboxWindowData();
             WireSocialListWindowData();
-            WireMessengerWindowData();
             WireGuildBbsWindowData();
-            WireMapleTvWindowData();
             WireProgressionUtilityWindowLaunchers();
-            WireMiniRoomWindowData();
             if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.ItemMaker) is ItemMakerUI itemMakerWindow)
             {
                 itemMakerWindow.SetCraftingState(
@@ -3287,7 +3293,6 @@ namespace HaCreator.MapSimulator
             }
             RefreshMapTransferWindow();
             RefreshWorldMapWindow();
-            LoadNpcQuestAlertIcons(uiWindow1Image, uiWindow2Image);
 
             // Initialize mob foothold references after all mobs are loaded
             InitializeMobFootholds();
@@ -3431,23 +3436,10 @@ namespace HaCreator.MapSimulator
             // Initialize pickup notice UI (bottom right corner messages)
             _pickupNoticeUI.Initialize(_fontChat, _debugBoundaryTexture, Width, Height);
 
-            // Initialize limited view field (fog of war)
-            _limitedViewField.Initialize(_DxDeviceManager.GraphicsDevice, _renderParams.RenderWidth, _renderParams.RenderHeight);
             _temporaryPortalField = new TemporaryPortalField(_texturePool, _DxDeviceManager.GraphicsDevice);
 
             // Initialize combat effects (damage numbers, hit effects)
             _combatEffects.Initialize(_DxDeviceManager.GraphicsDevice, _fontDebugValues);
-
-            // Load boss HP bar textures from WZ files (UI.wz/UIWindow.img/MobGage)
-            // Try UIWindow2 first (newer clients), then UIWindow1 (older clients)
-            if (uiWindow2Image != null)
-            {
-                _combatEffects.LoadBossHPBarFromWz(uiWindow2Image);
-            }
-            if (!_combatEffects.HasWzBossHPBar && uiWindow1Image != null)
-            {
-                _combatEffects.LoadBossHPBarFromWz(uiWindow1Image);
-            }
 
             // Load damage number sprites from Effect.wz/BasicEff.img
             // This enables authentic MapleStory digit sprites for damage numbers
@@ -3552,6 +3544,7 @@ namespace HaCreator.MapSimulator
                 WzSpineObject spineObj = (WzSpineObject) obj.MSTagSpine;
                 if (spineObj != null)
                 {
+                    EnsureSpineRenderer();
                     spineObj.state.Start += Start;
                     spineObj.state.End += End;
                     spineObj.state.Complete += Complete;
@@ -3608,7 +3601,7 @@ namespace HaCreator.MapSimulator
 
             _soundManager?.Dispose();
 
-            _skeletonMeshRenderer.End();
+            _skeletonMeshRenderer?.End();
 
             _DxDeviceManager.EndDraw();
             _DxDeviceManager.Dispose();
@@ -3985,15 +3978,22 @@ namespace HaCreator.MapSimulator
                 }
             });
 
-            // Reuse existing UI Windows if available (UI windows are preserved across map changes)
-            // This preserves skill data, hotkey assignments, and other UI state
-            Task t_uiWindows = Task.Run(() =>
+            // Reuse existing cursor if available (cursor is preserved across map changes)
+            Task t_cursor = Task.Run(() =>
             {
-                if (_gameState.IsCashShopMap)
+                if (this.mouseCursor == null)
                 {
-                    return;
+                    WzImageProperty cursorImageProperty = (WzImageProperty)uiBasicImage["Cursor"];
+                    this.mouseCursor = MapSimulatorLoader.CreateMouseCursorFromProperty(_texturePool, cursorImageProperty, 0, 0, _DxDeviceManager.GraphicsDevice, usedProps, false);
                 }
+            });
 
+            // Wait for all loading tasks
+            Task.WaitAll(t_tiles, t_Background, t_reactor, t_npc, t_mobs, t_portal, t_tooltips, t_minimap, t_statusBar, t_cursor);
+
+            // UI windows touch GraphicsDevice-backed resources and must be created on the main thread.
+            if (!_gameState.IsCashShopMap)
+            {
                 if (_gameState.IsLoginMap)
                 {
                     uiWindowManager ??= new UIWindowManager();
@@ -4044,39 +4044,21 @@ namespace HaCreator.MapSimulator
                             Math.Max(24, (_renderParams.RenderWidth / 2) - 367),
                             Math.Max(24, (_renderParams.RenderHeight / 2) - 263)));
                 }
-            });
+            }
 
-            // Reuse existing cursor if available (cursor is preserved across map changes)
-            Task t_cursor = Task.Run(() =>
-            {
-                if (this.mouseCursor == null)
-                {
-                    WzImageProperty cursorImageProperty = (WzImageProperty)uiBasicImage["Cursor"];
-                    this.mouseCursor = MapSimulatorLoader.CreateMouseCursorFromProperty(_texturePool, cursorImageProperty, 0, 0, _DxDeviceManager.GraphicsDevice, usedProps, false);
-                }
-            });
-
-            // Wait for all loading tasks
-            Task.WaitAll(t_tiles, t_Background, t_reactor, t_npc, t_mobs, t_portal, t_tooltips, t_minimap, t_statusBar, t_uiWindows, t_cursor);
             ReplaceQuestGatedMapObjects(questGatedMapObjects);
 
             // Set fonts on UI windows after all tasks complete
             uiWindowManager?.SetFonts(_fontChat);
             WireWorldChannelSelectorWindows();
             WireRecommendWorldWindow();
-            WireLoginCharacterSelectWindow();
-            WireLoginEntryDialogWindows();
             WireQuestLogWindowData();
             WireMemoMailboxWindowData();
             WireSocialListWindowData();
-            WireMessengerWindowData();
             WireGuildBbsWindowData();
-            WireMapleTvWindowData();
             WireProgressionUtilityWindowLaunchers();
-            WireMiniRoomWindowData();
             RefreshMapTransferWindow();
             RefreshWorldMapWindow();
-            LoadNpcQuestAlertIcons(uiWindow1Image, uiWindow2Image);
 
             // Initialize status bar character stats display after map change
             if (statusBarUi != null)
@@ -4144,17 +4126,6 @@ namespace HaCreator.MapSimulator
             if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.Mts) is AdminShopDialogUI mtsWindow)
             {
                 mtsWindow.SetInventory(uiWindowManager.InventoryWindow as IInventoryRuntime);
-            }
-
-            // Reload boss HP bar textures from WZ files (UI.wz/UIWindow.img/MobGage)
-            // Try UIWindow2 first (newer clients), then UIWindow1 (older clients)
-            if (uiWindow2Image != null)
-            {
-                _combatEffects.LoadBossHPBarFromWz(uiWindow2Image);
-            }
-            if (!_combatEffects.HasWzBossHPBar && uiWindow1Image != null)
-            {
-                _combatEffects.LoadBossHPBarFromWz(uiWindow1Image);
             }
 
             // Initialize mob foothold references
@@ -4272,6 +4243,7 @@ namespace HaCreator.MapSimulator
                 WzSpineObject spineObj = (WzSpineObject)obj.MSTagSpine;
                 if (spineObj != null)
                 {
+                    EnsureSpineRenderer();
                     spineObj.state.Start += Start;
                     spineObj.state.End += End;
                     spineObj.state.Complete += Complete;
@@ -5121,6 +5093,8 @@ namespace HaCreator.MapSimulator
                 // Test limited view / fog of war with 0 (cycle through modes)
                 if (newKeyboardState.IsKeyUp(Keys.D0) && _oldKeyboardState.IsKeyDown(Keys.D0))
                 {
+                    EnsureLimitedViewFieldInitialized();
+
                     if (!_limitedViewField.Enabled)
                     {
                         // Start with circle mode
@@ -6704,12 +6678,77 @@ namespace HaCreator.MapSimulator
                 _npcQuestAvailableIcon = null;
                 _npcQuestInProgressIcon = null;
                 _npcQuestCompletableIcon = null;
+                _npcQuestAlertIconsLoaded = true;
                 return;
             }
 
             _npcQuestAvailableIcon = LoadNpcQuestAlertIcon(questIconProperty, "0");
             _npcQuestInProgressIcon = LoadNpcQuestAlertIcon(questIconProperty, "1");
             _npcQuestCompletableIcon = LoadNpcQuestAlertIcon(questIconProperty, "2");
+            _npcQuestAlertIconsLoaded = true;
+        }
+
+        private void EnsureNpcQuestAlertIconsLoaded()
+        {
+            if (_npcQuestAlertIconsLoaded || GraphicsDevice == null)
+            {
+                return;
+            }
+
+            LoadNpcQuestAlertIcons(
+                Program.FindImage("UI", "UIWindow.img"),
+                Program.FindImage("UI", "UIWindow2.img"));
+        }
+
+        private void EnsureBossHpBarAssetsLoaded()
+        {
+            if (_bossHpBarAssetsLoaded)
+            {
+                return;
+            }
+
+            WzImage uiWindow2Image = Program.FindImage("UI", "UIWindow2.img");
+            WzImage uiWindow1Image = Program.FindImage("UI", "UIWindow.img");
+
+            if (uiWindow2Image != null)
+            {
+                _combatEffects.LoadBossHPBarFromWz(uiWindow2Image);
+            }
+
+            if (!_combatEffects.HasWzBossHPBar && uiWindow1Image != null)
+            {
+                _combatEffects.LoadBossHPBarFromWz(uiWindow1Image);
+            }
+
+            _bossHpBarAssetsLoaded = true;
+        }
+
+        private void EnsureLimitedViewFieldInitialized()
+        {
+            if (_limitedViewFieldInitialized)
+            {
+                return;
+            }
+
+            _limitedViewField.Initialize(
+                _DxDeviceManager.GraphicsDevice,
+                _renderParams.RenderWidth,
+                _renderParams.RenderHeight);
+            _limitedViewFieldInitialized = true;
+        }
+
+        private void EnsureSpineRenderer()
+        {
+            if (_skeletonMeshRenderer != null)
+            {
+                return;
+            }
+
+            _skeletonMeshRenderer = new SkeletonMeshRenderer(GraphicsDevice)
+            {
+                PremultipliedAlpha = false,
+            };
+            _skeletonMeshRenderer.Effect.World = this._matrixScale;
         }
 
         private Texture2D LoadNpcQuestAlertIcon(WzSubProperty questIconProperty, string iconKey)
@@ -6984,6 +7023,8 @@ namespace HaCreator.MapSimulator
             {
                 return;
             }
+
+            EnsureNpcQuestAlertIconsLoaded();
 
             for (int i = 0; i < _npcsArray.Length; i++)
             {
@@ -9601,6 +9642,7 @@ namespace HaCreator.MapSimulator
             // Boss HP bar should stay behind the map UI layers.
             if (!_gameState.HideUIMode && _combatEffects.HasActiveBossBar)
             {
+                EnsureBossHpBarAssetsLoaded();
                 _combatEffects.DrawBossHPBar(_spriteBatch);
             }
 
@@ -11178,7 +11220,7 @@ namespace HaCreator.MapSimulator
                             int rows = args.Length >= 4 && int.TryParse(args[3], out int parsedRows) ? parsedRows : 4;
                             int columns = args.Length >= 5 && int.TryParse(args[4], out int parsedColumns) ? parsedColumns : 4;
                             field.OpenRoom(playerOneName: playerOne, playerTwoName: playerTwo, rows: rows, columns: columns);
-                            uiWindowManager?.ShowWindow(MapSimulatorWindowNames.MiniRoom);
+                            ShowMiniRoomWindow();
                             return ChatCommandHandler.CommandResult.Ok(field.DescribeStatus());
                         }
                         case "ready":
@@ -11292,7 +11334,7 @@ namespace HaCreator.MapSimulator
 
                             if (packetType == MemoryGamePacketType.OpenRoom || packetType == MemoryGamePacketType.SelectMatchCardsMode)
                             {
-                                uiWindowManager?.ShowWindow(MapSimulatorWindowNames.MiniRoom);
+                                ShowMiniRoomWindow();
                             }
 
                             return ChatCommandHandler.CommandResult.Ok(packetMessage);
@@ -11659,7 +11701,7 @@ namespace HaCreator.MapSimulator
                     _mapleTvRuntime.UpdateLocalContext(_playerManager?.Player?.Build?.Name ?? "Player");
                     if (args.Length == 0)
                     {
-                        uiWindowManager?.ShowWindow(MapSimulatorWindowNames.MapleTv);
+                        ShowMapleTvWindow();
                         return ChatCommandHandler.CommandResult.Info(_mapleTvRuntime.DescribeStatus(currTickCount));
                     }
 
@@ -11667,14 +11709,14 @@ namespace HaCreator.MapSimulator
                     switch (action)
                     {
                         case "open":
-                            uiWindowManager?.ShowWindow(MapSimulatorWindowNames.MapleTv);
+                            ShowMapleTvWindow();
                             return ChatCommandHandler.CommandResult.Ok(_mapleTvRuntime.DescribeStatus(currTickCount));
 
                         case "status":
                             return ChatCommandHandler.CommandResult.Info(_mapleTvRuntime.DescribeStatus(currTickCount));
 
                         case "sample":
-                            uiWindowManager?.ShowWindow(MapSimulatorWindowNames.MapleTv);
+                            ShowMapleTvWindow();
                             return ChatCommandHandler.CommandResult.Ok(
                                 _mapleTvRuntime.LoadSample(
                                     _playerManager?.Player?.Build?.Name ?? "Player",
