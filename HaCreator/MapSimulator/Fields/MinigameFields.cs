@@ -2,6 +2,7 @@ using HaSharedLibrary.Render.DX;
 using HaSharedLibrary.Util;
 using HaSharedLibrary.Wz;
 using HaCreator.MapSimulator.Interaction;
+using HaCreator.MapSimulator.Managers;
 using MapleLib.Converters;
 using MapleLib.WzLib;
 using MapleLib.WzLib.WzProperties;
@@ -34,10 +35,16 @@ namespace HaCreator.MapSimulator.Fields
         public AriantArenaField AriantArena => _ariantArena;
         public MonsterCarnivalField MonsterCarnival => _monsterCarnival;
 
-        public void Initialize(GraphicsDevice graphicsDevice)
+        public void SetSnowBallPlayerState(Vector2? localWorldPosition)
+        {
+            _snowBall.SetLocalPlayerPosition(localWorldPosition);
+        }
+
+        public void Initialize(GraphicsDevice graphicsDevice, SoundManager soundManager = null)
         {
             _coconut.Initialize(graphicsDevice);
-            _ariantArena.Initialize(graphicsDevice);
+            _memoryGame.Initialize(graphicsDevice);
+            _ariantArena.Initialize(graphicsDevice, soundManager);
         }
 
         public void Update(int tickCount)
@@ -397,6 +404,8 @@ namespace HaCreator.MapSimulator.Fields
             public int StartTime;   // When to show effect
         }
 
+        public readonly record struct TouchPacketRequest(int Team, int TickCount, int Sequence);
+
         public enum GameState
         {
             NotStarted = -1,
@@ -430,6 +439,9 @@ namespace HaCreator.MapSimulator.Fields
         private int _snowManWaitMs = 10000;
         private bool _hasReceivedStateSnapshot;
         private int _lastTouchImpactTime;
+        private Vector2? _localPlayerPosition;
+        private TouchPacketRequest? _pendingTouchPacketRequest;
+        private int _touchPacketSequence;
 
         #endregion
 
@@ -442,6 +454,8 @@ namespace HaCreator.MapSimulator.Fields
         public int Team1Score => _team1Score;
         public bool IsActive => _state == GameState.Active;
         public string CurrentMessage => _currentMessage;
+        public TouchPacketRequest? PendingTouchPacketRequest => _pendingTouchPacketRequest;
+        public int TouchPacketSequence => _touchPacketSequence;
 
         #endregion
 
@@ -516,6 +530,11 @@ namespace HaCreator.MapSimulator.Fields
                 _snowMen[team].Frames = frames;
                 _snowMen[team].HitFrames = hitFrames;
             }
+        }
+
+        public void SetLocalPlayerPosition(Vector2? localWorldPosition)
+        {
+            _localPlayerPosition = localWorldPosition;
         }
 
         #endregion
@@ -616,7 +635,25 @@ namespace HaCreator.MapSimulator.Fields
         /// </summary>
         public void OnSnowBallTouch(int team)
         {
+            if (_pendingTouchPacketRequest?.Team == team)
+            {
+                _pendingTouchPacketRequest = null;
+            }
+
             _lastTouchImpactTime = Environment.TickCount;
+        }
+
+        public bool TryConsumeTouchPacketRequest(out TouchPacketRequest request)
+        {
+            if (_pendingTouchPacketRequest.HasValue)
+            {
+                request = _pendingTouchPacketRequest.Value;
+                _pendingTouchPacketRequest = null;
+                return true;
+            }
+
+            request = default;
+            return false;
         }
 
         #endregion
@@ -711,6 +748,8 @@ namespace HaCreator.MapSimulator.Fields
 
         public void Update(int tickCount)
         {
+            UpdateLocalTouchLoop(tickCount);
+
             foreach (var ball in _snowBalls)
             {
                 ball?.Update(tickCount);
@@ -775,6 +814,37 @@ namespace HaCreator.MapSimulator.Fields
         {
             _currentMessage = message;
             _messageEndTime = Environment.TickCount + durationMs;
+        }
+
+        private void UpdateLocalTouchLoop(int tickCount)
+        {
+            if (!_localPlayerPosition.HasValue)
+            {
+                return;
+            }
+
+            int touchedTeam = GetTouchedSnowBallTeam(_localPlayerPosition.Value);
+            if (touchedTeam < 0 || (int)_state == touchedTeam + 2)
+            {
+                return;
+            }
+
+            _touchPacketSequence++;
+            _pendingTouchPacketRequest = new TouchPacketRequest(touchedTeam, tickCount, _touchPacketSequence);
+        }
+
+        private int GetTouchedSnowBallTeam(Vector2 worldPosition)
+        {
+            Point point = new((int)MathF.Round(worldPosition.X), (int)MathF.Round(worldPosition.Y));
+            for (int i = 0; i < _snowBalls.Length; i++)
+            {
+                if (_snowBalls[i]?.Area.Contains(point) == true)
+                {
+                    return i;
+                }
+            }
+
+            return -1;
         }
 
         #endregion
@@ -929,6 +999,9 @@ namespace HaCreator.MapSimulator.Fields
             _currentMessage = null;
             _hasReceivedStateSnapshot = false;
             _lastTouchImpactTime = 0;
+            _localPlayerPosition = null;
+            _pendingTouchPacketRequest = null;
+            _touchPacketSequence = 0;
 
             // Reset snowballs
             int centerX = (_leftGoalX + _rightGoalX) / 2;
@@ -986,6 +1059,16 @@ namespace HaCreator.MapSimulator.Fields
     {
         private const int LocalNormalAttackDelayMs = 120;
         private const int ResultBannerTopY = 145;
+        private const int BoardWidth = 258;
+        private const int BoardHeight = 101;
+        private const int BoardTopY = 10;
+        private const int Team0ScoreX = 25;
+        private const int Team1ScoreX = 150;
+        private const int ScoreY = 37;
+        private const int TimerX = 60;
+        private const int TimerY = 83;
+        private const int ScoreDigitSpacing = 4;
+        private const int TimerDigitSpacing = 1;
 
         #region Nested Types
 
@@ -1113,6 +1196,9 @@ namespace HaCreator.MapSimulator.Fields
         private bool _assetsLoaded;
         private readonly List<IDXObject> _victoryFrames = new();
         private readonly List<IDXObject> _loseFrames = new();
+        private readonly Dictionary<char, IDXObject> _scoreFont = new();
+        private readonly Dictionary<char, IDXObject> _timeFont = new();
+        private IDXObject _boardBackground;
         private List<IDXObject> _activeResultFrames;
         private int _resultFrameIndex;
         private int _resultFrameStartTime;
@@ -1141,7 +1227,7 @@ namespace HaCreator.MapSimulator.Fields
 
         #region Initialization
 
-        public void Initialize(GraphicsDevice graphicsDevice)
+        public void Initialize(GraphicsDevice graphicsDevice, SoundManager soundManager = null)
         {
             _graphicsDevice = graphicsDevice;
         }
@@ -1581,12 +1667,46 @@ namespace HaCreator.MapSimulator.Fields
                 return;
             }
 
+            WzImage objectSet = global::HaCreator.Program.InfoManager?.GetObjectSet("etc");
+            WzImageProperty coconutBoard = objectSet?["coconut"];
+            if (TryCreateDxObject(WzInfoTools.GetRealProperty(coconutBoard?["backgrnd"]) as WzCanvasProperty, out IDXObject boardBackground))
+            {
+                _boardBackground = boardBackground;
+            }
+
+            LoadBitmapFont(coconutBoard?["fontScore"], _scoreFont, "0123456789,");
+            LoadBitmapFont(coconutBoard?["fontTime"], _timeFont, "0123456789:");
+
             WzImage effectImage = global::HaCreator.Program.FindImage("Map", "Effect.img")
                 ?? global::HaCreator.Program.FindImage("Map", "effect.img");
             WzImageProperty coconutRoot = effectImage?["event"]?["coconut"];
             LoadAnimatedFrames(coconutRoot?["victory"], _victoryFrames);
             LoadAnimatedFrames(coconutRoot?["lose"], _loseFrames);
             _assetsLoaded = true;
+        }
+
+        private void LoadBitmapFont(WzImageProperty source, Dictionary<char, IDXObject> target, string characters)
+        {
+            target.Clear();
+            if (source == null)
+            {
+                return;
+            }
+
+            foreach (char character in characters)
+            {
+                string propertyName = character switch
+                {
+                    ':' => ":",
+                    ',' => "comma",
+                    _ => character.ToString()
+                };
+
+                if (TryCreateDxObject(WzInfoTools.GetRealProperty(source[propertyName]) as WzCanvasProperty, out IDXObject glyph))
+                {
+                    target[character] = glyph;
+                }
+            }
         }
 
         private void LoadAnimatedFrames(WzImageProperty source, List<IDXObject> target)
@@ -1697,10 +1817,10 @@ namespace HaCreator.MapSimulator.Fields
                     new Color(0, 100, 0, 50));
             }
 
-            // Draw UI
+            DrawUI(spriteBatch, skeletonMeshRenderer, gameTime, pixelTexture, font);
+
             if (font != null)
             {
-                DrawUI(spriteBatch, pixelTexture, font);
                 DrawRoundResult(spriteBatch, skeletonMeshRenderer, gameTime, font);
             }
         }
@@ -1730,42 +1850,82 @@ namespace HaCreator.MapSimulator.Fields
             };
         }
 
-        private void DrawUI(SpriteBatch spriteBatch, Texture2D pixel, SpriteFont font)
+        private void DrawUI(SpriteBatch spriteBatch, SkeletonMeshRenderer skeletonMeshRenderer, GameTime gameTime, Texture2D pixel, SpriteFont font)
         {
             int screenWidth = spriteBatch.GraphicsDevice.Viewport.Width;
-            int boardWidth = 220;
-            int boardHeight = 120;
-            int boardX = screenWidth / 2 - boardWidth / 2;
-            int boardY = 10;
+            int boardX = (screenWidth - BoardWidth) / 2;
+            int boardY = BoardTopY;
 
-            Rectangle bgRect = new Rectangle(boardX, boardY, boardWidth, boardHeight);
-            spriteBatch.Draw(pixel, bgRect, new Color(0, 0, 0, 150));
-            spriteBatch.Draw(pixel, new Rectangle(boardX + 12, boardY + 12, boardWidth - 24, boardHeight - 24), new Color(40, 58, 36, 190));
+            if (_boardBackground != null)
+            {
+                _boardBackground.DrawBackground(spriteBatch, skeletonMeshRenderer, gameTime, boardX + _boardBackground.X, boardY + _boardBackground.Y, Color.White, false, null);
+            }
+            else if (pixel != null)
+            {
+                spriteBatch.Draw(pixel, new Rectangle(boardX, boardY, BoardWidth, BoardHeight), new Color(0, 0, 0, 150));
+            }
 
             string team0Text = _team0Score.ToString();
             string team1Text = _team1Score.ToString();
-            Vector2 team0Size = font.MeasureString(team0Text);
-            Vector2 team1Size = font.MeasureString(team1Text);
-            Vector2 team0Pos = new Vector2(boardX + 37 - team0Size.X / 2f, boardY + 25);
-            Vector2 team1Pos = new Vector2(boardX + 150 - team1Size.X / 2f, boardY + 25);
-            spriteBatch.DrawString(font, team0Text, team0Pos, new Color(120, 190, 255));
-            spriteBatch.DrawString(font, team1Text, team1Pos, new Color(255, 140, 140));
+            if (!DrawBitmapText(spriteBatch, skeletonMeshRenderer, gameTime, _scoreFont, team0Text, boardX + Team0ScoreX, boardY + ScoreY, ScoreDigitSpacing)
+                && font != null)
+            {
+                spriteBatch.DrawString(font, team0Text, new Vector2(boardX + Team0ScoreX, boardY + ScoreY), new Color(120, 190, 255));
+            }
+
+            if (!DrawBitmapText(spriteBatch, skeletonMeshRenderer, gameTime, _scoreFont, team1Text, boardX + Team1ScoreX, boardY + ScoreY, ScoreDigitSpacing)
+                && font != null)
+            {
+                spriteBatch.DrawString(font, team1Text, new Vector2(boardX + Team1ScoreX, boardY + ScoreY), new Color(255, 140, 140));
+            }
 
             int minutes = _timeRemaining / 60;
             int seconds = _timeRemaining % 60;
             string timerText = $"{minutes}:{seconds:D2}";
-            Vector2 timerSize = font.MeasureString(timerText);
-            Color timerColor = _timeRemaining <= 10 ? Color.Red : Color.Yellow;
-            spriteBatch.DrawString(font, timerText,
-                new Vector2(boardX + 60 - timerSize.X / 2f, boardY + 83), timerColor);
+            if (!DrawBitmapText(spriteBatch, skeletonMeshRenderer, gameTime, _timeFont, timerText, boardX + TimerX, boardY + TimerY, TimerDigitSpacing)
+                && font != null)
+            {
+                Color timerColor = _timeRemaining <= 10 ? Color.Red : Color.Yellow;
+                spriteBatch.DrawString(font, timerText, new Vector2(boardX + TimerX, boardY + TimerY), timerColor);
+            }
 
-            if (_currentMessage != null)
+            if (_currentMessage != null && font != null)
             {
                 Vector2 msgSize = font.MeasureString(_currentMessage);
-                Vector2 msgPos = new Vector2((screenWidth - msgSize.X) / 2, boardY + boardHeight + 16);
+                Vector2 msgPos = new Vector2((screenWidth - msgSize.X) / 2, boardY + BoardHeight + 16);
                 spriteBatch.DrawString(font, _currentMessage, msgPos + Vector2.One, Color.Black);
                 spriteBatch.DrawString(font, _currentMessage, msgPos, Color.Yellow);
             }
+        }
+
+        private static bool DrawBitmapText(
+            SpriteBatch spriteBatch,
+            SkeletonMeshRenderer skeletonMeshRenderer,
+            GameTime gameTime,
+            Dictionary<char, IDXObject> font,
+            string text,
+            int x,
+            int y,
+            int letterSpacing)
+        {
+            if (font == null || font.Count == 0 || string.IsNullOrEmpty(text))
+            {
+                return false;
+            }
+
+            int cursorX = x;
+            foreach (char character in text)
+            {
+                if (!font.TryGetValue(character, out IDXObject glyph))
+                {
+                    return false;
+                }
+
+                glyph.DrawBackground(spriteBatch, skeletonMeshRenderer, gameTime, cursorX + glyph.X, y + glyph.Y, Color.White, false, null);
+                cursorX += glyph.Width + letterSpacing;
+            }
+
+            return true;
         }
 
         private void DrawRoundResult(SpriteBatch spriteBatch, SkeletonMeshRenderer skeletonMeshRenderer, GameTime gameTime, SpriteFont font)
@@ -1841,6 +2001,18 @@ namespace HaCreator.MapSimulator.Fields
     #endregion
 
     #region Memory Game / Match Cards (CMemoryGameDlg)
+    public enum MemoryGamePacketType
+    {
+        OpenRoom,
+        SetReady,
+        StartGame,
+        RevealCard,
+        ClaimTie,
+        GiveUp,
+        EndRoom,
+        SelectMatchCardsMode
+    }
+
     /// <summary>
     /// MiniRoom Match Cards runtime. This mirrors the client-owned dialog shape
     /// by keeping a dedicated room shell, board state, ready/start button flow,
@@ -1855,6 +2027,43 @@ namespace HaCreator.MapSimulator.Fields
         private const int DefaultTurnSeconds = 15;
         private const int DefaultResultSeconds = 5;
         private const int DefaultRemoteActionDelayMs = 600;
+        private const int ClientDialogWidth = 734;
+        private const int ClientDialogHeight = 429;
+        private const int ClientBoardLeft = 48;
+        private const int ClientBoardTop = 36;
+        private const int ClientBoardWidth = 292;
+        private const int ClientBoardHeight = 330;
+        private const int ClientTurnIndicatorY = 55;
+        private const int ClientTurnIndicatorLeftX = 402;
+        private const int ClientTurnIndicatorRightX = 488;
+        private const int ClientNameBarY = 149;
+        private const int ClientNameBarLeftX = 404;
+        private const int ClientNameBarRightX = 490;
+        private const int ClientRecordPanelX = 404;
+        private const int ClientRecordPanelY = 167;
+        private const int ClientMasterPanelX = 460;
+        private const int ClientMasterPanelY = 63;
+        private const int ClientTimerTextX = 295;
+        private const int ClientTimerTextY = 404;
+        private const int ClientReadyButtonX = 625;
+        private const int ClientReadyButtonY = 243;
+        private const int ClientTieButtonX = 458;
+        private const int ClientTieButtonY = 403;
+        private const int ClientGiveUpButtonX = 410;
+        private const int ClientGiveUpButtonY = 403;
+        private const int ClientEndButtonX = 679;
+        private const int ClientEndButtonY = 403;
+        private const int ClientBanButtonX = 551;
+        private const int ClientBanButtonY = 63;
+        private const int ClientScoreLeftX = 418;
+        private const int ClientScoreRightX = 582;
+        private const int ClientScoreY = 176;
+        private const int ClientReadyIndicatorLeftX = 408;
+        private const int ClientReadyIndicatorRightX = 494;
+        private const int ClientReadyIndicatorY = 184;
+        private const int CardFaceTextureCount = 15;
+        private const int CardBackTextureCount = 3;
+        private const int DigitTextureCount = 10;
 
         private readonly List<Card> _cards = new();
         private readonly List<int> _revealedCardIndices = new(2);
@@ -1865,9 +2074,29 @@ namespace HaCreator.MapSimulator.Fields
         private readonly int[] _wins = new int[2];
         private readonly int[] _losses = new int[2];
         private readonly int[] _draws = new int[2];
+        private readonly Dictionary<MemoryGamePacketType, int> _packetCounts = new();
+        private readonly Texture2D[] _cardFaceTextures = new Texture2D[CardFaceTextureCount];
+        private readonly Texture2D[] _cardBackTextures = new Texture2D[CardBackTextureCount];
+        private readonly Texture2D[] _digitTextures = new Texture2D[DigitTextureCount];
 
         private RoomStage _stage = RoomStage.Hidden;
         private SocialRoomRuntime _miniRoomRuntime;
+        private GraphicsDevice _graphicsDevice;
+        private bool _assetsLoaded;
+        private Texture2D _backgroundTexture;
+        private Texture2D _masterPanelTexture;
+        private Texture2D _turnTexture;
+        private Texture2D _readyOnTexture;
+        private Texture2D _readyOffTexture;
+        private Texture2D _winTexture;
+        private Texture2D _loseTexture;
+        private Texture2D _drawTexture;
+        private Texture2D _readyButtonTexture;
+        private Texture2D _startButtonTexture;
+        private Texture2D _tieButtonTexture;
+        private Texture2D _giveUpButtonTexture;
+        private Texture2D _endButtonTexture;
+        private Texture2D _banButtonTexture;
         private int _rows;
         private int _columns;
         private int _localPlayerIndex;
@@ -1878,6 +2107,8 @@ namespace HaCreator.MapSimulator.Fields
         private int _lastWinnerIndex = -1;
         private string _title = "Match Cards";
         private string _statusMessage = "Open a MiniRoom to begin.";
+        private MemoryGamePacketType? _lastPacketType;
+        private string _lastPacketSummary = "No Match Cards packet dispatched.";
 
         public enum RoomStage
         {
@@ -1935,6 +2166,13 @@ namespace HaCreator.MapSimulator.Fields
         public IReadOnlyList<bool> ReadyStates => _readyStates;
         public IReadOnlyList<string> PlayerNames => _playerNames;
         public string Title => _title;
+        public MemoryGamePacketType? LastPacketType => _lastPacketType;
+        public string LastPacketSummary => _lastPacketSummary;
+
+        public void Initialize(GraphicsDevice graphicsDevice)
+        {
+            _graphicsDevice = graphicsDevice;
+        }
 
         public void AttachMiniRoomRuntime(SocialRoomRuntime runtime)
         {
@@ -2161,6 +2399,45 @@ namespace HaCreator.MapSimulator.Fields
             return true;
         }
 
+        public bool TryDispatchPacket(
+            MemoryGamePacketType packetType,
+            int tickCount,
+            out string message,
+            int playerIndex = DefaultLocalPlayerIndex,
+            int cardIndex = -1,
+            bool readyState = true,
+            string playerOneName = null,
+            string playerTwoName = null,
+            int rows = DefaultRows,
+            int columns = DefaultColumns,
+            string title = "Match Cards")
+        {
+            _lastPacketType = packetType;
+            _packetCounts.TryGetValue(packetType, out int count);
+            _packetCounts[packetType] = count + 1;
+
+            bool handled = packetType switch
+            {
+                MemoryGamePacketType.OpenRoom => TryDispatchOpenPacket(title, playerOneName, playerTwoName, rows, columns, playerIndex, out message),
+                MemoryGamePacketType.SetReady => TrySetReady(playerIndex, readyState, out message),
+                MemoryGamePacketType.StartGame => TryStartGame(tickCount, out message),
+                MemoryGamePacketType.RevealCard => TryRevealCard(cardIndex, tickCount, playerIndex, out message),
+                MemoryGamePacketType.ClaimTie => TryClaimTie(out message),
+                MemoryGamePacketType.GiveUp => TryGiveUp(playerIndex, out message),
+                MemoryGamePacketType.EndRoom => TryEndRoom(out message),
+                MemoryGamePacketType.SelectMatchCardsMode => TrySelectMatchCardsMode(out message),
+                _ => AssignUnsupportedPacket(packetType, out message)
+            };
+
+            _lastPacketSummary = $"{packetType}: {message}";
+            return handled;
+        }
+
+        public int GetPacketCount(MemoryGamePacketType packetType)
+        {
+            return _packetCounts.TryGetValue(packetType, out int count) ? count : 0;
+        }
+
         public bool TryQueueRemoteAction(string action, int tickCount, out string message, int cardIndex = -1, int delayMs = DefaultRemoteActionDelayMs)
         {
             int remotePlayerIndex = _localPlayerIndex == 0 ? 1 : 0;
@@ -2299,38 +2576,46 @@ namespace HaCreator.MapSimulator.Fields
             }
 
             Viewport viewport = spriteBatch.GraphicsDevice.Viewport;
-            int dialogWidth = 420;
-            int dialogHeight = 360;
+            EnsureAssetsLoaded();
+
+            int dialogWidth = _backgroundTexture?.Width ?? ClientDialogWidth;
+            int dialogHeight = _backgroundTexture?.Height ?? ClientDialogHeight;
             int dialogX = viewport.Width / 2 - dialogWidth / 2;
             int dialogY = Math.Max(24, viewport.Height / 2 - dialogHeight / 2);
 
             Rectangle outer = new Rectangle(dialogX, dialogY, dialogWidth, dialogHeight);
-            Rectangle inner = new Rectangle(dialogX + 8, dialogY + 8, dialogWidth - 16, dialogHeight - 16);
-            Rectangle titleBar = new Rectangle(dialogX + 8, dialogY + 8, dialogWidth - 16, 34);
-            Rectangle boardArea = new Rectangle(dialogX + 18, dialogY + 88, 252, 232);
-            Rectangle sidebar = new Rectangle(dialogX + 284, dialogY + 88, 118, 232);
+            Rectangle boardArea = new Rectangle(dialogX + ClientBoardLeft, dialogY + ClientBoardTop, ClientBoardWidth, ClientBoardHeight);
 
-            spriteBatch.Draw(pixelTexture, outer, new Color(20, 27, 41, 235));
-            spriteBatch.Draw(pixelTexture, inner, new Color(236, 223, 191, 245));
-            spriteBatch.Draw(pixelTexture, titleBar, new Color(109, 69, 28, 255));
-            spriteBatch.Draw(pixelTexture, boardArea, new Color(97, 59, 28, 255));
-            spriteBatch.Draw(pixelTexture, sidebar, new Color(56, 40, 26, 230));
+            if (_backgroundTexture != null)
+            {
+                spriteBatch.Draw(_backgroundTexture, new Vector2(dialogX, dialogY), Color.White);
+            }
+            else
+            {
+                spriteBatch.Draw(pixelTexture, outer, new Color(20, 27, 41, 235));
+            }
 
-            DrawOutlinedText(spriteBatch, font, _title, new Vector2(dialogX + 20, dialogY + 15), Color.Black, Color.White);
+            if (_masterPanelTexture != null)
+            {
+                spriteBatch.Draw(_masterPanelTexture, new Vector2(dialogX + ClientMasterPanelX, dialogY + ClientMasterPanelY), Color.White);
+            }
 
-            DrawNameBar(spriteBatch, pixelTexture, font, _playerNames[0], _scores[0], dialogX + 18, dialogY + 50, _currentTurnIndex == 0);
-            DrawNameBar(spriteBatch, pixelTexture, font, _playerNames[1], _scores[1], dialogX + 210, dialogY + 50, _currentTurnIndex == 1);
-
+            DrawOutlinedText(spriteBatch, font, _title, new Vector2(dialogX + 407, dialogY + 19), Color.Black, Color.Black);
+            DrawClientNamePanel(spriteBatch, pixelTexture, font, _playerNames[0], _scores[0], dialogX + ClientNameBarLeftX, dialogY + ClientNameBarY, _readyStates[0], _currentTurnIndex == 0, isLeftPanel: true);
+            DrawClientNamePanel(spriteBatch, pixelTexture, font, _playerNames[1], _scores[1], dialogX + ClientNameBarRightX, dialogY + ClientNameBarY, _readyStates[1], _currentTurnIndex == 1, isLeftPanel: false);
             DrawBoard(spriteBatch, pixelTexture, font, boardArea);
-            DrawSidebar(spriteBatch, pixelTexture, font, sidebar, tickCount);
-            DrawOutlinedText(spriteBatch, font, _statusMessage, new Vector2(dialogX + 18, dialogY + 330), Color.Black, new Color(255, 239, 197));
+            DrawClientTurnIndicator(spriteBatch, dialogX, dialogY);
+            DrawClientButtons(spriteBatch, pixelTexture, font, dialogX, dialogY);
+            DrawClientRecordSummary(spriteBatch, font, dialogX, dialogY);
+            DrawOutlinedText(spriteBatch, font, $"{CurrentTurnTimeRemainingSeconds}s", new Vector2(dialogX + ClientTimerTextX, dialogY + ClientTimerTextY), Color.Black, new Color(48, 48, 48));
+            DrawOutlinedText(spriteBatch, font, _statusMessage, new Vector2(dialogX + 407, dialogY + 320), Color.Black, new Color(72, 52, 24));
         }
 
         public string DescribeStatus()
         {
             string playerOneName = string.IsNullOrWhiteSpace(_playerNames[0]) ? "Player" : _playerNames[0];
             string playerTwoName = string.IsNullOrWhiteSpace(_playerNames[1]) ? "Opponent" : _playerNames[1];
-            return $"{_title}: stage={_stage}, turn={_currentTurnIndex}, ready=[{_readyStates[0]},{_readyStates[1]}], score={_scores[0]}-{_scores[1]}, players={playerOneName}/{playerTwoName}, cards={_cards.Count}, pendingHide={_pendingHideTick > 0}";
+            return $"{_title}: stage={_stage}, turn={_currentTurnIndex}, ready=[{_readyStates[0]},{_readyStates[1]}], score={_scores[0]}-{_scores[1]}, players={playerOneName}/{playerTwoName}, cards={_cards.Count}, pendingHide={_pendingHideTick > 0}, lastPacket={_lastPacketType?.ToString() ?? "None"}";
         }
 
         public void Reset()
@@ -2355,6 +2640,9 @@ namespace HaCreator.MapSimulator.Fields
             _statusMessage = "Open a MiniRoom to begin.";
             _stage = RoomStage.Hidden;
             _pendingRemoteActions.Clear();
+            _lastPacketType = null;
+            _lastPacketSummary = "Memory Game room reset.";
+            _packetCounts.Clear();
             SyncMiniRoomRuntime();
         }
 
@@ -2488,25 +2776,31 @@ namespace HaCreator.MapSimulator.Fields
         {
             if (_cards.Count == 0)
             {
-                DrawOutlinedText(spriteBatch, font, "No board yet", new Vector2(area.X + 72, area.Y + 102), Color.Black, Color.White);
+                DrawOutlinedText(spriteBatch, font, "No board yet", new Vector2(area.X + 96, area.Y + 124), Color.Black, Color.Black);
                 return;
             }
 
-            int gap = 8;
-            int cardWidth = (area.Width - gap * (_columns + 1)) / _columns;
-            int cardHeight = (area.Height - gap * (_rows + 1)) / _rows;
+            int gapX = _columns <= 0 ? 0 : Math.Max(6, (area.Width - (_columns * 49)) / (_columns + 1));
+            int gapY = _rows <= 0 ? 0 : Math.Max(8, (area.Height - (_rows * 62)) / (_rows + 1));
 
             for (int index = 0; index < _cards.Count; index++)
             {
                 int row = index / _columns;
                 int column = index % _columns;
                 Rectangle cardRect = new Rectangle(
-                    area.X + gap + column * (cardWidth + gap),
-                    area.Y + gap + row * (cardHeight + gap),
-                    cardWidth,
-                    cardHeight);
+                    area.X + gapX + column * (49 + gapX),
+                    area.Y + gapY + row * (62 + gapY),
+                    49,
+                    62);
 
                 Card card = _cards[index];
+                Texture2D cardTexture = ResolveCardTexture(card);
+                if (cardTexture != null)
+                {
+                    spriteBatch.Draw(cardTexture, new Vector2(cardRect.X, cardRect.Y), card.IsMatched ? Color.White * 0.82f : Color.White);
+                    continue;
+                }
+
                 Color cardColor = card.IsMatched
                     ? new Color(111, 162, 85)
                     : card.IsFaceUp
@@ -2514,60 +2808,48 @@ namespace HaCreator.MapSimulator.Fields
                         : new Color(145, 82, 42);
 
                 spriteBatch.Draw(pixel, cardRect, cardColor);
-                spriteBatch.Draw(pixel, new Rectangle(cardRect.X + 2, cardRect.Y + 2, cardRect.Width - 4, cardRect.Height - 4), cardColor * 0.9f);
-
-                string label = card.IsFaceUp || card.IsMatched ? (card.FaceId + 1).ToString() : "?";
-                Vector2 size = font.MeasureString(label);
-                Vector2 pos = new(cardRect.Center.X - size.X / 2f, cardRect.Center.Y - size.Y / 2f);
-                DrawOutlinedText(spriteBatch, font, label, pos, Color.Black, Color.White);
-            }
-        }
-
-        private void DrawSidebar(SpriteBatch spriteBatch, Texture2D pixel, SpriteFont font, Rectangle area, int tickCount)
-        {
-            string[] buttons =
-            {
-                GetPrimaryButtonLabel(),
-                "1002 Tie",
-                "1003 Give Up",
-                "1004 End",
-                "1008 Ban"
-            };
-
-            for (int i = 0; i < buttons.Length; i++)
-            {
-                Rectangle buttonRect = new Rectangle(area.X + 10, area.Y + 10 + i * 40, area.Width - 20, 30);
-                spriteBatch.Draw(pixel, buttonRect, new Color(119, 84, 48));
-                DrawOutlinedText(spriteBatch, font, buttons[i], new Vector2(buttonRect.X + 8, buttonRect.Y + 6), Color.Black, Color.White);
             }
 
-            int textY = area.Y + 220;
-            DrawOutlinedText(spriteBatch, font, $"Turn: {_playerNames[_currentTurnIndex]}", new Vector2(area.X + 10, textY), Color.Black, Color.White);
-            DrawOutlinedText(spriteBatch, font, $"Time: {CurrentTurnTimeRemainingSeconds}", new Vector2(area.X + 10, textY + 20), Color.Black, Color.White);
-            DrawOutlinedText(spriteBatch, font, $"W/L/D: {_wins[0]}/{_losses[0]}/{_draws[0]}", new Vector2(area.X + 10, textY + 40), Color.Black, Color.White);
+            if (_stage == RoomStage.Result)
+            {
+                Texture2D resultTexture = _lastWinnerIndex switch
+                {
+                    0 when _localPlayerIndex == 0 => _winTexture,
+                    1 when _localPlayerIndex == 1 => _winTexture,
+                    0 or 1 => _loseTexture,
+                    _ => _drawTexture
+                };
+
+                if (resultTexture != null)
+                {
+                    Vector2 resultPosition = new(
+                        area.Center.X - (resultTexture.Width / 2f),
+                        area.Center.Y - (resultTexture.Height / 2f));
+                    spriteBatch.Draw(resultTexture, resultPosition, Color.White);
+                }
+            }
         }
 
         private void HandleMiniRoomReadyRequested()
         {
             EnsureRoomOpenFromMiniRoomRuntime();
             int remotePlayerIndex = _localPlayerIndex == 0 ? 1 : 0;
-            TrySetReady(remotePlayerIndex, !_readyStates[remotePlayerIndex], out _);
+            TryDispatchPacket(MemoryGamePacketType.SetReady, Environment.TickCount, out _, remotePlayerIndex, readyState: !_readyStates[remotePlayerIndex]);
         }
 
         private void HandleMiniRoomStartRequested()
         {
             EnsureRoomOpenFromMiniRoomRuntime();
-            TrySetReady(_localPlayerIndex, true, out _);
+            TryDispatchPacket(MemoryGamePacketType.SetReady, Environment.TickCount, out _, _localPlayerIndex, readyState: true);
             int remotePlayerIndex = _localPlayerIndex == 0 ? 1 : 0;
-            TrySetReady(remotePlayerIndex, true, out _);
-            TryStartGame(Environment.TickCount, out _);
+            TryDispatchPacket(MemoryGamePacketType.SetReady, Environment.TickCount, out _, remotePlayerIndex, readyState: true);
+            TryDispatchPacket(MemoryGamePacketType.StartGame, Environment.TickCount, out _);
         }
 
         private void HandleMiniRoomModeRequested()
         {
             EnsureRoomOpenFromMiniRoomRuntime();
-            _statusMessage = "Match Cards room selected.";
-            SyncMiniRoomRuntime();
+            TryDispatchPacket(MemoryGamePacketType.SelectMatchCardsMode, Environment.TickCount, out _);
         }
 
         private void EnsureRoomOpenFromMiniRoomRuntime()
@@ -2588,27 +2870,18 @@ namespace HaCreator.MapSimulator.Fields
             while (_pendingRemoteActions.Count > 0 && tickCount >= _pendingRemoteActions.Peek().ExecuteTick)
             {
                 PendingRemoteAction action = _pendingRemoteActions.Dequeue();
-                switch (action.ActionType)
+                MemoryGamePacketType packetType = action.ActionType switch
                 {
-                    case RemoteActionType.Ready:
-                        TrySetReady(action.PlayerIndex, action.ReadyState, out _);
-                        break;
-                    case RemoteActionType.Start:
-                        TryStartGame(tickCount, out _);
-                        break;
-                    case RemoteActionType.Reveal:
-                        TryRevealCard(action.CardIndex, tickCount, action.PlayerIndex, out _);
-                        break;
-                    case RemoteActionType.Tie:
-                        TryClaimTie(out _);
-                        break;
-                    case RemoteActionType.GiveUp:
-                        TryGiveUp(action.PlayerIndex, out _);
-                        break;
-                    case RemoteActionType.End:
-                        TryEndRoom(out _);
-                        break;
-                }
+                    RemoteActionType.Ready => MemoryGamePacketType.SetReady,
+                    RemoteActionType.Start => MemoryGamePacketType.StartGame,
+                    RemoteActionType.Reveal => MemoryGamePacketType.RevealCard,
+                    RemoteActionType.Tie => MemoryGamePacketType.ClaimTie,
+                    RemoteActionType.GiveUp => MemoryGamePacketType.GiveUp,
+                    RemoteActionType.End => MemoryGamePacketType.EndRoom,
+                    _ => MemoryGamePacketType.SelectMatchCardsMode
+                };
+
+                TryDispatchPacket(packetType, tickCount, out _, action.PlayerIndex, action.CardIndex, action.ReadyState);
             }
         }
 
@@ -2645,13 +2918,13 @@ namespace HaCreator.MapSimulator.Fields
         {
             if (_stage == RoomStage.Lobby && !_readyStates[_localPlayerIndex])
             {
-                TrySetReady(_localPlayerIndex, true, out message);
+                TryDispatchPacket(MemoryGamePacketType.SetReady, tickCount, out message, _localPlayerIndex, readyState: true);
                 return true;
             }
 
             if (_stage == RoomStage.Lobby)
             {
-                TryStartGame(tickCount, out message);
+                TryDispatchPacket(MemoryGamePacketType.StartGame, tickCount, out message);
                 return true;
             }
 
@@ -2663,26 +2936,27 @@ namespace HaCreator.MapSimulator.Fields
         {
             if (_stage == RoomStage.Lobby && !_readyStates[_localPlayerIndex])
             {
-                return "1007 Ready";
+                return "Ready";
             }
 
-            return "1001 Start";
+            return "Start";
         }
 
         private void GetLayout(int viewportWidth, int viewportHeight, out Rectangle outer, out Rectangle boardArea, out Rectangle sidebar, out Rectangle[] buttonRects)
         {
-            int dialogWidth = 420;
-            int dialogHeight = 360;
+            int dialogWidth = _backgroundTexture?.Width ?? ClientDialogWidth;
+            int dialogHeight = _backgroundTexture?.Height ?? ClientDialogHeight;
             int dialogX = viewportWidth / 2 - dialogWidth / 2;
             int dialogY = Math.Max(24, viewportHeight / 2 - dialogHeight / 2);
             outer = new Rectangle(dialogX, dialogY, dialogWidth, dialogHeight);
-            boardArea = new Rectangle(dialogX + 18, dialogY + 88, 252, 232);
-            sidebar = new Rectangle(dialogX + 284, dialogY + 88, 118, 232);
+            boardArea = new Rectangle(dialogX + ClientBoardLeft, dialogY + ClientBoardTop, ClientBoardWidth, ClientBoardHeight);
+            sidebar = new Rectangle(dialogX + ClientRecordPanelX, dialogY + ClientRecordPanelY, 300, 132);
             buttonRects = new Rectangle[5];
-            for (int i = 0; i < buttonRects.Length; i++)
-            {
-                buttonRects[i] = new Rectangle(sidebar.X + 10, sidebar.Y + 10 + i * 40, sidebar.Width - 20, 30);
-            }
+            buttonRects[0] = CreateButtonRect(dialogX + ClientReadyButtonX, dialogY + ClientReadyButtonY, _readyStates[_localPlayerIndex] ? _startButtonTexture : _readyButtonTexture, 96, 29);
+            buttonRects[1] = CreateButtonRect(dialogX + ClientTieButtonX, dialogY + ClientTieButtonY, _tieButtonTexture, 43, 18);
+            buttonRects[2] = CreateButtonRect(dialogX + ClientGiveUpButtonX, dialogY + ClientGiveUpButtonY, _giveUpButtonTexture, 43, 18);
+            buttonRects[3] = CreateButtonRect(dialogX + ClientEndButtonX, dialogY + ClientEndButtonY, _endButtonTexture, 43, 18);
+            buttonRects[4] = CreateButtonRect(dialogX + ClientBanButtonX, dialogY + ClientBanButtonY, _banButtonTexture, 11, 11);
         }
 
         private int GetCardIndexAt(Point mousePosition, Rectangle area)
@@ -2692,19 +2966,18 @@ namespace HaCreator.MapSimulator.Fields
                 return -1;
             }
 
-            int gap = 8;
-            int cardWidth = (area.Width - gap * (_columns + 1)) / _columns;
-            int cardHeight = (area.Height - gap * (_rows + 1)) / _rows;
+            int gapX = _columns <= 0 ? 0 : Math.Max(6, (area.Width - (_columns * 49)) / (_columns + 1));
+            int gapY = _rows <= 0 ? 0 : Math.Max(8, (area.Height - (_rows * 62)) / (_rows + 1));
 
             for (int index = 0; index < _cards.Count; index++)
             {
                 int row = index / _columns;
                 int column = index % _columns;
                 Rectangle cardRect = new Rectangle(
-                    area.X + gap + column * (cardWidth + gap),
-                    area.Y + gap + row * (cardHeight + gap),
-                    cardWidth,
-                    cardHeight);
+                    area.X + gapX + column * (49 + gapX),
+                    area.Y + gapY + row * (62 + gapY),
+                    49,
+                    62);
                 if (cardRect.Contains(mousePosition))
                 {
                     return index;
@@ -2720,6 +2993,232 @@ namespace HaCreator.MapSimulator.Fields
             spriteBatch.Draw(pixel, rect, isActiveTurn ? new Color(223, 196, 120) : new Color(132, 103, 73));
             DrawOutlinedText(spriteBatch, font, name, new Vector2(x + 8, y + 5), Color.Black, Color.White);
             DrawOutlinedText(spriteBatch, font, score.ToString(), new Vector2(x + 146, y + 5), Color.Black, Color.White);
+        }
+
+        private void DrawClientNamePanel(SpriteBatch spriteBatch, Texture2D pixel, SpriteFont font, string name, int score, int x, int y, bool isReady, bool isActiveTurn, bool isLeftPanel)
+        {
+            DrawNameBar(spriteBatch, pixel, font, name, score, x, y, isActiveTurn);
+
+            Texture2D readyTexture = isReady ? _readyOnTexture : _readyOffTexture;
+            if (readyTexture != null)
+            {
+                int readyX = isLeftPanel ? ClientReadyIndicatorLeftX : ClientReadyIndicatorRightX;
+                spriteBatch.Draw(readyTexture, new Vector2(x - ClientNameBarLeftX + readyX, y - ClientNameBarY + ClientReadyIndicatorY), Color.White);
+            }
+        }
+
+        private void DrawClientButtons(SpriteBatch spriteBatch, Texture2D pixel, SpriteFont font, int dialogX, int dialogY)
+        {
+            DrawButton(spriteBatch, pixel, font, dialogX + ClientReadyButtonX, dialogY + ClientReadyButtonY, _readyStates[_localPlayerIndex] ? _startButtonTexture : _readyButtonTexture, GetPrimaryButtonLabel());
+            DrawButton(spriteBatch, pixel, font, dialogX + ClientTieButtonX, dialogY + ClientTieButtonY, _tieButtonTexture, "Tie");
+            DrawButton(spriteBatch, pixel, font, dialogX + ClientGiveUpButtonX, dialogY + ClientGiveUpButtonY, _giveUpButtonTexture, "Give Up");
+            DrawButton(spriteBatch, pixel, font, dialogX + ClientEndButtonX, dialogY + ClientEndButtonY, _endButtonTexture, "End");
+            DrawButton(spriteBatch, pixel, font, dialogX + ClientBanButtonX, dialogY + ClientBanButtonY, _banButtonTexture, string.Empty);
+        }
+
+        private void DrawButton(SpriteBatch spriteBatch, Texture2D pixel, SpriteFont font, int x, int y, Texture2D texture, string label)
+        {
+            if (texture != null)
+            {
+                spriteBatch.Draw(texture, new Vector2(x, y), Color.White);
+            }
+            else
+            {
+                spriteBatch.Draw(pixel, new Rectangle(x, y, 64, 22), new Color(119, 84, 48));
+            }
+
+            if (!string.IsNullOrWhiteSpace(label))
+            {
+                DrawOutlinedText(spriteBatch, font, label, new Vector2(x + 8, y + 6), Color.Black, Color.White);
+            }
+        }
+
+        private void DrawClientRecordSummary(SpriteBatch spriteBatch, SpriteFont font, int dialogX, int dialogY)
+        {
+            int localIndex = Math.Clamp(_localPlayerIndex, 0, _wins.Length - 1);
+            DrawBitmapNumber(spriteBatch, _scores[0], dialogX + ClientScoreLeftX, dialogY + ClientScoreY);
+            DrawBitmapNumber(spriteBatch, _scores[1], dialogX + ClientScoreRightX, dialogY + ClientScoreY);
+            DrawOutlinedText(spriteBatch, font, $"W {_wins[localIndex]}  L {_losses[localIndex]}  D {_draws[localIndex]}", new Vector2(dialogX + 409, dialogY + 210), Color.Black, new Color(48, 48, 48));
+            DrawOutlinedText(spriteBatch, font, $"Packet: {_lastPacketType?.ToString() ?? "None"}", new Vector2(dialogX + 409, dialogY + 228), Color.Black, new Color(48, 48, 48));
+            DrawOutlinedText(spriteBatch, font, $"Room: {_stage}", new Vector2(dialogX + 409, dialogY + 246), Color.Black, new Color(48, 48, 48));
+        }
+
+        private void DrawBitmapNumber(SpriteBatch spriteBatch, int value, int x, int y)
+        {
+            string scoreText = Math.Clamp(value, 0, 99).ToString("00");
+            foreach (char digit in scoreText)
+            {
+                int index = digit - '0';
+                Texture2D texture = index >= 0 && index < _digitTextures.Length ? _digitTextures[index] : null;
+                if (texture == null)
+                {
+                    return;
+                }
+
+                spriteBatch.Draw(texture, new Vector2(x, y), Color.White);
+                x += texture.Width - 1;
+            }
+        }
+
+        private void DrawClientTurnIndicator(SpriteBatch spriteBatch, int dialogX, int dialogY)
+        {
+            if (_turnTexture == null || _stage != RoomStage.Playing)
+            {
+                return;
+            }
+
+            spriteBatch.Draw(_turnTexture, new Vector2(dialogX + ResolveTurnIndicatorX(), dialogY + ClientTurnIndicatorY), Color.White);
+        }
+
+        public static bool TryParsePacketType(string text, out MemoryGamePacketType packetType)
+        {
+            packetType = MemoryGamePacketType.OpenRoom;
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                return false;
+            }
+
+            string normalized = text.Trim().Replace("-", string.Empty).Replace("_", string.Empty);
+            return normalized.ToLowerInvariant() switch
+            {
+                "open" => AssignPacket(MemoryGamePacketType.OpenRoom, out packetType),
+                "ready" or "unready" => AssignPacket(MemoryGamePacketType.SetReady, out packetType),
+                "start" => AssignPacket(MemoryGamePacketType.StartGame, out packetType),
+                "flip" or "reveal" => AssignPacket(MemoryGamePacketType.RevealCard, out packetType),
+                "tie" => AssignPacket(MemoryGamePacketType.ClaimTie, out packetType),
+                "giveup" => AssignPacket(MemoryGamePacketType.GiveUp, out packetType),
+                "end" or "close" => AssignPacket(MemoryGamePacketType.EndRoom, out packetType),
+                "mode" or "matchcards" => AssignPacket(MemoryGamePacketType.SelectMatchCardsMode, out packetType),
+                _ => Enum.TryParse(normalized, true, out packetType)
+            };
+        }
+
+        private bool TryDispatchOpenPacket(string title, string playerOneName, string playerTwoName, int rows, int columns, int localPlayerIndex, out string message)
+        {
+            OpenRoom(title, playerOneName ?? "Player", playerTwoName ?? "Opponent", rows, columns, localPlayerIndex);
+            message = DescribeStatus();
+            return true;
+        }
+
+        private bool TrySelectMatchCardsMode(out string message)
+        {
+            EnsureRoomOpenFromMiniRoomRuntime();
+            _statusMessage = "Match Cards room selected.";
+            message = _statusMessage;
+            SyncMiniRoomRuntime();
+            return true;
+        }
+
+        private static bool AssignUnsupportedPacket(MemoryGamePacketType packetType, out string message)
+        {
+            message = $"Unsupported Memory Game packet: {packetType}.";
+            return false;
+        }
+
+        private static bool AssignPacket(MemoryGamePacketType value, out MemoryGamePacketType packetType)
+        {
+            packetType = value;
+            return true;
+        }
+
+        private void EnsureAssetsLoaded()
+        {
+            if (_assetsLoaded || _graphicsDevice == null)
+            {
+                return;
+            }
+
+            WzImage uiWindow2Image = global::HaCreator.Program.FindImage("UI", "UIWindow2.img");
+            WzImage uiWindow1Image = global::HaCreator.Program.FindImage("UI", "UIWindow.img");
+            WzSubProperty minigameRoot = uiWindow2Image?["Minigame"] as WzSubProperty
+                ?? uiWindow1Image?["Minigame"] as WzSubProperty;
+            WzSubProperty memoryGameProperty = minigameRoot?["MemoryGame"] as WzSubProperty;
+            WzSubProperty commonProperty = minigameRoot?["Common"] as WzSubProperty;
+
+            _backgroundTexture = LoadCanvasTexture(memoryGameProperty?["backgrnd"] as WzCanvasProperty);
+            _masterPanelTexture = LoadCanvasTexture(memoryGameProperty?["backgrnd2"] as WzCanvasProperty);
+            _turnTexture = LoadCanvasTexture(commonProperty?["turn"] as WzCanvasProperty);
+            _readyOnTexture = LoadCanvasTexture(commonProperty?["readyOn"] as WzCanvasProperty);
+            _readyOffTexture = LoadCanvasTexture(commonProperty?["readyOff"] as WzCanvasProperty);
+            _winTexture = LoadCanvasTexture(commonProperty?["win"] as WzCanvasProperty);
+            _loseTexture = LoadCanvasTexture(commonProperty?["lose"] as WzCanvasProperty);
+            _drawTexture = LoadCanvasTexture(commonProperty?["draw"] as WzCanvasProperty);
+            _readyButtonTexture = LoadButtonTexture(commonProperty, "btReady");
+            _startButtonTexture = LoadButtonTexture(commonProperty, "btStart");
+            _tieButtonTexture = LoadButtonTexture(commonProperty, "btDraw");
+            _giveUpButtonTexture = LoadButtonTexture(commonProperty, "btAbsten");
+            _endButtonTexture = LoadButtonTexture(commonProperty, "btExit");
+            _banButtonTexture = LoadButtonTexture(commonProperty, "btBan");
+
+            WzImageProperty numberProperty = memoryGameProperty?["number"];
+            for (int i = 0; i < _digitTextures.Length; i++)
+            {
+                _digitTextures[i] = LoadCanvasTexture(numberProperty?[i.ToString()] as WzCanvasProperty);
+            }
+
+            WzImageProperty cardProperty = memoryGameProperty?["card"];
+            for (int i = 0; i < _cardFaceTextures.Length; i++)
+            {
+                _cardFaceTextures[i] = LoadCanvasTexture(cardProperty?[i.ToString()] as WzCanvasProperty);
+            }
+
+            for (int i = 0; i < _cardBackTextures.Length; i++)
+            {
+                _cardBackTextures[i] = LoadCanvasTexture(cardProperty?[$"back{i}"] as WzCanvasProperty);
+            }
+
+            _assetsLoaded = true;
+        }
+
+        private Texture2D LoadCanvasTexture(WzCanvasProperty canvas)
+        {
+            if (_graphicsDevice == null || canvas == null)
+            {
+                return null;
+            }
+
+            using var bitmap = canvas.GetLinkedWzCanvasBitmap();
+            return bitmap?.ToTexture2DAndDispose(_graphicsDevice);
+        }
+
+        private Texture2D LoadButtonTexture(WzSubProperty commonProperty, string buttonName)
+        {
+            return LoadCanvasTexture(commonProperty?[buttonName]?["normal"]?["0"] as WzCanvasProperty);
+        }
+
+        private Texture2D ResolveCardTexture(Card card)
+        {
+            if (card == null)
+            {
+                return null;
+            }
+
+            if (!card.IsFaceUp && !card.IsMatched)
+            {
+                return _cardBackTextures[0];
+            }
+
+            if (card.FaceId < 0 || card.FaceId >= _cardFaceTextures.Length)
+            {
+                return null;
+            }
+
+            return _cardFaceTextures[card.FaceId];
+        }
+
+        private int ResolveTurnIndicatorX()
+        {
+            if (_currentTurnIndex == 0)
+            {
+                return _localPlayerIndex != 0 ? ClientTurnIndicatorLeftX : ClientTurnIndicatorRightX;
+            }
+
+            return _localPlayerIndex != 0 ? ClientTurnIndicatorRightX : ClientTurnIndicatorLeftX;
+        }
+
+        private static Rectangle CreateButtonRect(int x, int y, Texture2D texture, int fallbackWidth, int fallbackHeight)
+        {
+            return new Rectangle(x, y, texture?.Width ?? fallbackWidth, texture?.Height ?? fallbackHeight);
         }
 
         private static void DrawOutlinedText(SpriteBatch spriteBatch, SpriteFont font, string text, Vector2 position, Color shadowColor, Color textColor)
@@ -2772,6 +3271,8 @@ namespace HaCreator.MapSimulator.Fields
         private int _resultVisibleUntil;
         private int _scoreRefreshSerial;
         private int _localPlayerJob;
+        private SoundManager _soundManager;
+        private string _resultSoundKey;
         private string _lastResultMessage;
         private string _localPlayerName;
 
@@ -2779,9 +3280,10 @@ namespace HaCreator.MapSimulator.Fields
         public IReadOnlyList<AriantArenaScoreEntry> Entries => _entries;
         public int ScoreRefreshSerial => _scoreRefreshSerial;
 
-        public void Initialize(GraphicsDevice graphicsDevice)
+        public void Initialize(GraphicsDevice graphicsDevice, SoundManager soundManager = null)
         {
             _graphicsDevice = graphicsDevice;
+            _soundManager = soundManager;
             EnsureAssetsLoaded();
         }
 
@@ -2892,6 +3394,11 @@ namespace HaCreator.MapSimulator.Fields
             _lastResultMessage = _entries.Count > 0
                 ? $"{_entries[0].Name} wins Ariant Arena with {_entries[0].Score} point{(_entries[0].Score == 1 ? string.Empty : "s")}."
                 : "Ariant Arena result shown.";
+
+            if (!string.IsNullOrWhiteSpace(_resultSoundKey))
+            {
+                _soundManager?.PlaySound(_resultSoundKey);
+            }
         }
 
         public void ClearScores()
@@ -3091,6 +3598,7 @@ namespace HaCreator.MapSimulator.Fields
 
             WzImageProperty ariantMatch = uiWindow?["AriantMatch"];
             LoadAnimatedFrames(ariantMatch?["Result"], _resultFrames);
+            EnsureResultSoundRegistered();
 
             WzImageProperty iconRoot = ariantMatch?["characterIcon"];
             for (int i = 0; i < MaxRankEntries; i++)
@@ -3103,6 +3611,104 @@ namespace HaCreator.MapSimulator.Fields
             }
 
             _assetsLoaded = true;
+        }
+
+        private void EnsureResultSoundRegistered()
+        {
+            if (_soundManager == null || !string.IsNullOrWhiteSpace(_resultSoundKey))
+            {
+                return;
+            }
+
+            WzBinaryProperty sound = FindBestAriantResultSound(
+                global::HaCreator.Program.FindImage("Sound", "MiniGame.img"),
+                global::HaCreator.Program.FindImage("Sound", "Game.img"));
+            if (sound == null)
+            {
+                return;
+            }
+
+            _resultSoundKey = "AriantArena:Result";
+            _soundManager.RegisterSound(_resultSoundKey, sound);
+        }
+
+        private static WzBinaryProperty FindBestAriantResultSound(params WzImage[] sources)
+        {
+            WzBinaryProperty best = null;
+            int bestScore = 0;
+
+            foreach (WzImage source in sources)
+            {
+                if (source?.WzProperties == null)
+                {
+                    continue;
+                }
+
+                foreach (WzImageProperty child in source.WzProperties)
+                {
+                    FindBestAriantResultSoundRecursive(child, child?.Name ?? string.Empty, ref best, ref bestScore);
+                }
+            }
+
+            return best;
+        }
+
+        private static void FindBestAriantResultSoundRecursive(
+            WzImageProperty property,
+            string path,
+            ref WzBinaryProperty best,
+            ref int bestScore)
+        {
+            if (property == null)
+            {
+                return;
+            }
+
+            WzImageProperty resolved = WzInfoTools.GetRealProperty(property);
+            string currentPath = string.IsNullOrWhiteSpace(path)
+                ? property.Name ?? string.Empty
+                : path;
+            string lowerPath = currentPath.ToLowerInvariant();
+
+            if (resolved is WzBinaryProperty binary)
+            {
+                int score = 0;
+                if (lowerPath.Contains("ariant"))
+                {
+                    score += 8;
+                }
+
+                if (lowerPath.Contains("result") || lowerPath.Contains("clear"))
+                {
+                    score += 4;
+                }
+
+                if (lowerPath.Contains("win"))
+                {
+                    score += 2;
+                }
+
+                if (score > bestScore)
+                {
+                    best = binary;
+                    bestScore = score;
+                }
+
+                return;
+            }
+
+            if (resolved?.WzProperties == null)
+            {
+                return;
+            }
+
+            foreach (WzImageProperty child in resolved.WzProperties)
+            {
+                string childPath = string.IsNullOrWhiteSpace(currentPath)
+                    ? child?.Name ?? string.Empty
+                    : $"{currentPath}/{child?.Name}";
+                FindBestAriantResultSoundRecursive(child, childPath, ref best, ref bestScore);
+            }
         }
 
         private void LoadAnimatedFrames(WzImageProperty source, List<IDXObject> target)

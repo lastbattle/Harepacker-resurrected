@@ -15,6 +15,7 @@ using System.IO;
 using HaCreator.MapEditor;
 using HaCreator.MapEditor.Info;
 using HaCreator.MapEditor.Instance.Misc;
+using HaCreator.MapSimulator.Character;
 using HaCreator.Wz;
 using HaSharedLibrary.Wz;
 using HaSharedLibrary.Util;
@@ -62,6 +63,11 @@ namespace HaCreator.MapSimulator.Effects
         public void SetDojoRuntimeState(int? playerHp, int? playerMaxHp, float? bossHpPercent)
         {
             _dojo.SetRuntimeState(playerHp, playerMaxHp, bossHpPercent);
+        }
+
+        public void SetGuildBossPlayerState(Rectangle? localPlayerHitbox)
+        {
+            _guildBoss.SetLocalPlayerHitbox(localPlayerHitbox ?? Rectangle.Empty);
         }
         #endregion
 
@@ -133,6 +139,11 @@ namespace HaCreator.MapSimulator.Effects
             if (_guildBoss.IsActive)
             {
                 _guildBoss.ConfigureFromBoard(board);
+            }
+
+            if (_massacre.IsActive)
+            {
+                _massacre.Configure(board?.MapInfo);
             }
         }
 
@@ -267,6 +278,8 @@ namespace HaCreator.MapSimulator.Effects
         private const int ChapelNpcId = 9201002;
         private const int DialogDurationMs = 5000;
         private const string ChapelGuestBlessPromptText = "Would you like to give your blessing to the couple?";
+        private const string BlessEffectImageName = "BasicEff.img";
+        private const string BlessEffectPath = "Wedding";
 
         private static readonly Dictionary<int, Dictionary<int, string>> WeddingDialogFallbacks = new()
         {
@@ -304,7 +317,6 @@ namespace HaCreator.MapSimulator.Effects
         private bool _blessEffectActive = false;
         private float _blessEffectAlpha = 0f;
         private int _blessEffectStartTime;
-        private const int BLESS_EFFECT_DURATION = 5000; // 5 seconds
         #endregion
 
         #region Visual Effects
@@ -339,7 +351,7 @@ namespace HaCreator.MapSimulator.Effects
         #region Initialization
         public void Initialize(GraphicsDevice device)
         {
-            // Load bless effect frames from Effect.wz if available
+            _blessFrames = LoadBlessFrames(device);
         }
 
         public void Enable(int mapId)
@@ -471,7 +483,13 @@ namespace HaCreator.MapSimulator.Effects
             if (active)
             {
                 _blessEffectStartTime = currentTimeMs;
-                _blessEffectAlpha = 0f;
+                _blessEffectAlpha = 1f;
+
+                if (_blessFrames != null && _blessFrames.Count > 0)
+                {
+                    _sparkles.Clear();
+                    return;
+                }
 
                 // Create sparkles
                 _sparkles.Clear();
@@ -493,6 +511,63 @@ namespace HaCreator.MapSimulator.Effects
             {
                 _blessEffectAlpha = 0f;
                 _sparkles.Clear();
+            }
+        }
+
+        private List<IDXObject> LoadBlessFrames(GraphicsDevice device)
+        {
+            if (device == null)
+            {
+                return null;
+            }
+
+            try
+            {
+                WzImage basicEffImage = global::HaCreator.Program.FindImage("Effect", BlessEffectImageName);
+                basicEffImage?.ParseImage();
+                WzImageProperty blessProperty = basicEffImage?.GetFromPath(BlessEffectPath) as WzImageProperty;
+                if (blessProperty == null)
+                {
+                    return null;
+                }
+
+                var frames = new List<IDXObject>();
+                int frameIndex = 0;
+                while (true)
+                {
+                    WzImageProperty frameProperty = WzInfoTools.GetRealProperty(blessProperty[frameIndex.ToString()]);
+                    if (frameProperty == null)
+                    {
+                        break;
+                    }
+
+                    WzCanvasProperty frameCanvas = frameProperty as WzCanvasProperty;
+                    if (frameCanvas == null && frameProperty is WzUOLProperty frameUol)
+                    {
+                        frameCanvas = frameUol.LinkValue as WzCanvasProperty;
+                    }
+
+                    if (frameCanvas != null)
+                    {
+                        using var bitmap = frameCanvas.GetLinkedWzCanvasBitmap();
+                        if (bitmap != null)
+                        {
+                            Texture2D texture = bitmap.ToTexture2D(device);
+                            System.Drawing.PointF origin = frameCanvas.GetCanvasOriginPosition();
+                            int delay = InfoTool.GetOptionalInt(frameCanvas["delay"], 100) ?? 100;
+                            frames.Add(new DXObject(-(int)origin.X, -(int)origin.Y, texture, delay));
+                        }
+                    }
+
+                    frameIndex++;
+                }
+
+                return frames.Count > 0 ? frames : null;
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[WeddingField] Failed to load bless effect frames: {ex.Message}");
+                return null;
             }
         }
 
@@ -680,32 +755,9 @@ namespace HaCreator.MapSimulator.Effects
             if (!_isActive) return;
 
             // Update bless effect
-            if (_blessEffectActive)
+            if (_blessEffectActive && (_blessFrames == null || _blessFrames.Count == 0))
             {
                 int elapsed = currentTimeMs - _blessEffectStartTime;
-
-                // Fade in (first 500ms)
-                if (elapsed < 500)
-                {
-                    _blessEffectAlpha = elapsed / 500f;
-                }
-                // Fade out (last 500ms)
-                else if (elapsed > BLESS_EFFECT_DURATION - 500)
-                {
-                    _blessEffectAlpha = (BLESS_EFFECT_DURATION - elapsed) / 500f;
-                }
-                else
-                {
-                    _blessEffectAlpha = 1f;
-                }
-
-                // End effect
-                if (elapsed >= BLESS_EFFECT_DURATION)
-                {
-                    _blessEffectActive = false;
-                    _blessEffectAlpha = 0f;
-                    _sparkles.Clear();
-                }
 
                 // Update sparkles
                 foreach (var sparkle in _sparkles)
@@ -713,13 +765,12 @@ namespace HaCreator.MapSimulator.Effects
                     if (elapsed < sparkle.SpawnDelay) continue;
 
                     int sparkleElapsed = elapsed - sparkle.SpawnDelay;
-                    float lifeProgress = (float)sparkleElapsed / sparkle.LifeTime;
-
-                    if (lifeProgress > 1f)
-                    {
-                        sparkle.Alpha = 0f;
-                        continue;
-                    }
+                    int loopedElapsed = sparkle.LifeTime > 0
+                        ? sparkleElapsed % sparkle.LifeTime
+                        : sparkleElapsed;
+                    float lifeProgress = sparkle.LifeTime > 0
+                        ? (float)loopedElapsed / sparkle.LifeTime
+                        : 0f;
 
                     // Fade in/out
                     if (lifeProgress < 0.2f)
@@ -760,19 +811,38 @@ namespace HaCreator.MapSimulator.Effects
                 int screenHeight = spriteBatch.GraphicsDevice.Viewport.Height;
                 Vector2 blessCenter = GetBlessEffectScreenCenter(mapShiftX, mapShiftY, centerX, centerY, screenWidth, screenHeight);
 
-                foreach (var sparkle in _sparkles)
+                if (_blessFrames != null && _blessFrames.Count > 0)
                 {
-                    if (sparkle.Alpha <= 0) continue;
+                    IDXObject currentBlessFrame = GetCurrentBlessFrame(tickCount);
+                    if (currentBlessFrame != null)
+                    {
+                        currentBlessFrame.DrawBackground(
+                            spriteBatch,
+                            skeletonMeshRenderer,
+                            gameTime,
+                            (int)blessCenter.X + currentBlessFrame.X,
+                            (int)blessCenter.Y + currentBlessFrame.Y,
+                            Color.White,
+                            false,
+                            null);
+                    }
+                }
+                else
+                {
+                    foreach (var sparkle in _sparkles)
+                    {
+                        if (sparkle.Alpha <= 0) continue;
 
-                    int x = (int)(blessCenter.X + sparkle.X);
-                    int y = (int)(blessCenter.Y + sparkle.Y);
-                    int size = (int)(8 * sparkle.Scale);
-                    byte alpha = (byte)(sparkle.Alpha * _blessEffectAlpha * 255);
+                        int x = (int)(blessCenter.X + sparkle.X);
+                        int y = (int)(blessCenter.Y + sparkle.Y);
+                        int size = (int)(8 * sparkle.Scale);
+                        byte alpha = (byte)(sparkle.Alpha * _blessEffectAlpha * 255);
 
-                    // Draw sparkle (cross pattern)
-                    Color sparkleColor = new Color((byte)255, (byte)255, (byte)200, alpha);
-                    spriteBatch.Draw(pixelTexture, new Rectangle(x - size / 2, y - 1, size, 2), sparkleColor);
-                    spriteBatch.Draw(pixelTexture, new Rectangle(x - 1, y - size / 2, 2, size), sparkleColor);
+                        // Draw sparkle (cross pattern)
+                        Color sparkleColor = new Color((byte)255, (byte)255, (byte)200, alpha);
+                        spriteBatch.Draw(pixelTexture, new Rectangle(x - size / 2, y - 1, size, 2), sparkleColor);
+                        spriteBatch.Draw(pixelTexture, new Rectangle(x - 1, y - size / 2, 2, size), sparkleColor);
+                    }
                 }
             }
 
@@ -823,6 +893,39 @@ namespace HaCreator.MapSimulator.Effects
                 Vector2 promptPosition = new Vector2(boxX + 20, boxY + boxHeight - 28);
                 spriteBatch.DrawString(font, "[Yes]     [No]", promptPosition, new Color(255, 235, 180, (int)(255 * alpha)));
             }
+        }
+
+        private IDXObject GetCurrentBlessFrame(int currentTimeMs)
+        {
+            if (_blessFrames == null || _blessFrames.Count == 0)
+            {
+                return null;
+            }
+
+            int totalDuration = 0;
+            foreach (IDXObject frame in _blessFrames)
+            {
+                totalDuration += Math.Max(frame.Delay, 1);
+            }
+
+            if (totalDuration <= 0)
+            {
+                return _blessFrames[0];
+            }
+
+            int elapsed = Math.Max(0, currentTimeMs - _blessEffectStartTime);
+            int loopTime = elapsed % totalDuration;
+            int accumulated = 0;
+            foreach (IDXObject frame in _blessFrames)
+            {
+                accumulated += Math.Max(frame.Delay, 1);
+                if (loopTime < accumulated)
+                {
+                    return frame;
+                }
+            }
+
+            return _blessFrames[_blessFrames.Count - 1];
         }
         #endregion
 
@@ -1154,6 +1257,18 @@ namespace HaCreator.MapSimulator.Effects
     /// </summary>
     public class BattlefieldField
     {
+        public sealed class BattlefieldTeamLookPreset
+        {
+            public BattlefieldTeamLookPreset(int teamId, IReadOnlyDictionary<EquipSlot, int> equipmentItemIds)
+            {
+                TeamId = teamId;
+                EquipmentItemIds = equipmentItemIds ?? new Dictionary<EquipSlot, int>();
+            }
+
+            public int TeamId { get; }
+            public IReadOnlyDictionary<EquipSlot, int> EquipmentItemIds { get; }
+        }
+
         public enum BattlefieldWinner
         {
             None,
@@ -1186,6 +1301,7 @@ namespace HaCreator.MapSimulator.Effects
         private int _resolvedRewardMapId;
         private string _statusMessage;
         private int _statusMessageUntilMs;
+        private readonly Dictionary<int, BattlefieldTeamLookPreset> _teamLookPresets = new();
 
         public bool IsActive => _isActive;
         public int WolvesScore => _wolvesScore;
@@ -1196,6 +1312,7 @@ namespace HaCreator.MapSimulator.Effects
         public BattlefieldWinner Winner => _winner;
         public string ResolvedEffectPath => _resolvedEffectPath;
         public int ResolvedRewardMapId => _resolvedRewardMapId;
+        public IReadOnlyDictionary<int, BattlefieldTeamLookPreset> TeamLookPresets => _teamLookPresets;
         public int RemainingSeconds => !_clockVisible
             ? _defaultDurationSeconds
             : Math.Max(0, _clockDurationSeconds - Math.Max(0, _currentObservedTimeMs - _clockStartTimeMs) / 1000);
@@ -1237,6 +1354,7 @@ namespace HaCreator.MapSimulator.Effects
             RewardMapWinSheep = 0;
             RewardMapLoseWolf = 0;
             RewardMapLoseSheep = 0;
+            _teamLookPresets.Clear();
         }
 
         public void Configure(MapInfo mapInfo)
@@ -1246,24 +1364,38 @@ namespace HaCreator.MapSimulator.Effects
                 return;
             }
 
+            _teamLookPresets.Clear();
+
             for (int i = 0; i < mapInfo.additionalNonInfoProps.Count; i++)
             {
-                if (mapInfo.additionalNonInfoProps[i] is not WzSubProperty battleField
-                    || !string.Equals(battleField.Name, "battleField", StringComparison.OrdinalIgnoreCase))
+                if (mapInfo.additionalNonInfoProps[i] is not WzSubProperty property)
                 {
                     continue;
                 }
 
-                _defaultDurationSeconds = Math.Max(1, InfoTool.GetOptionalInt(battleField["timeDefault"]) ?? _defaultDurationSeconds);
-                _finishDurationSeconds = Math.Max(0, InfoTool.GetOptionalInt(battleField["timeFinish"]) ?? _finishDurationSeconds);
-                EffectWinPath = InfoTool.GetOptionalString(battleField["effectWin"]);
-                EffectLosePath = InfoTool.GetOptionalString(battleField["effectLose"]);
-                RewardMapWinWolf = InfoTool.GetOptionalInt(battleField["rewardMapWinWolf"]) ?? RewardMapWinWolf;
-                RewardMapWinSheep = InfoTool.GetOptionalInt(battleField["rewardMapWinSheep"]) ?? RewardMapWinSheep;
-                RewardMapLoseWolf = InfoTool.GetOptionalInt(battleField["rewardMapLoseWolf"]) ?? RewardMapLoseWolf;
-                RewardMapLoseSheep = InfoTool.GetOptionalInt(battleField["rewardMapLoseSheep"]) ?? RewardMapLoseSheep;
-                return;
+                if (string.Equals(property.Name, "battleField", StringComparison.OrdinalIgnoreCase))
+                {
+                    _defaultDurationSeconds = Math.Max(1, InfoTool.GetOptionalInt(property["timeDefault"]) ?? _defaultDurationSeconds);
+                    _finishDurationSeconds = Math.Max(0, InfoTool.GetOptionalInt(property["timeFinish"]) ?? _finishDurationSeconds);
+                    EffectWinPath = InfoTool.GetOptionalString(property["effectWin"]);
+                    EffectLosePath = InfoTool.GetOptionalString(property["effectLose"]);
+                    RewardMapWinWolf = InfoTool.GetOptionalInt(property["rewardMapWinWolf"]) ?? RewardMapWinWolf;
+                    RewardMapWinSheep = InfoTool.GetOptionalInt(property["rewardMapWinSheep"]) ?? RewardMapWinSheep;
+                    RewardMapLoseWolf = InfoTool.GetOptionalInt(property["rewardMapLoseWolf"]) ?? RewardMapLoseWolf;
+                    RewardMapLoseSheep = InfoTool.GetOptionalInt(property["rewardMapLoseSheep"]) ?? RewardMapLoseSheep;
+                    continue;
+                }
+
+                if (string.Equals(property.Name, "user", StringComparison.OrdinalIgnoreCase))
+                {
+                    LoadTeamLookPresets(property);
+                }
             }
+        }
+
+        public bool TryGetTeamLookPreset(int teamId, out BattlefieldTeamLookPreset preset)
+        {
+            return _teamLookPresets.TryGetValue(teamId, out preset);
         }
 
         public void OnScoreUpdate(int wolves, int sheep, int currentTimeMs)
@@ -1440,7 +1572,10 @@ namespace HaCreator.MapSimulator.Effects
             string resultText = _winner == BattlefieldWinner.None
                 ? "result=pending"
                 : $"result={GetWinnerLabel(_winner)}, rewardMap={(_resolvedRewardMapId > 0 ? _resolvedRewardMapId : 0)}, effect={(_resolvedEffectPath ?? "none")}";
-            return $"Battlefield active, wolves={_wolvesScore:D2}, sheep={_sheepScore:D2}, {clockText}, {teamText}, {resultText}";
+            string lookPresetText = _teamLookPresets.Count > 0
+                ? $", lookPresets={string.Join(";", _teamLookPresets.OrderBy(kvp => kvp.Key).Select(kvp => $"{kvp.Key}:{kvp.Value.EquipmentItemIds.Count}"))}"
+                : string.Empty;
+            return $"Battlefield active, wolves={_wolvesScore:D2}, sheep={_sheepScore:D2}, {clockText}, {teamText}, {resultText}{lookPresetText}";
         }
 
         public void Reset()
@@ -1469,12 +1604,95 @@ namespace HaCreator.MapSimulator.Effects
             RewardMapWinSheep = 0;
             RewardMapLoseWolf = 0;
             RewardMapLoseSheep = 0;
+            _teamLookPresets.Clear();
         }
 
         private static Rectangle GetScoreboardBounds(Viewport viewport)
         {
             int x = viewport.Width / 2 + ScoreboardOffsetX;
             return new Rectangle(x, ScoreboardY, ScoreboardWidth, ScoreboardHeight);
+        }
+
+        private void LoadTeamLookPresets(WzSubProperty userProperty)
+        {
+            foreach (WzImageProperty child in userProperty.WzProperties)
+            {
+                if (child is not WzSubProperty userEntry)
+                {
+                    continue;
+                }
+
+                int parsedTeamId = 0;
+                int? teamId = InfoTool.GetOptionalInt(userEntry["cond"]?["battleFieldTeam"]);
+                if (!teamId.HasValue && !int.TryParse(userEntry.Name, out parsedTeamId))
+                {
+                    continue;
+                }
+
+                if (!teamId.HasValue)
+                {
+                    teamId = parsedTeamId;
+                }
+
+                if (userEntry["look"] is not WzSubProperty lookProperty)
+                {
+                    continue;
+                }
+
+                Dictionary<EquipSlot, int> equipmentItemIds = new();
+                foreach (WzImageProperty lookEntry in lookProperty.WzProperties)
+                {
+                    int? itemId = InfoTool.GetOptionalInt(lookEntry);
+                    if (!itemId.HasValue
+                        || !TryResolveBattlefieldEquipSlot(lookEntry.Name, itemId.Value, out EquipSlot slot))
+                    {
+                        continue;
+                    }
+
+                    equipmentItemIds[slot] = itemId.Value;
+                }
+
+                _teamLookPresets[teamId.Value] = new BattlefieldTeamLookPreset(teamId.Value, equipmentItemIds);
+            }
+        }
+
+        private static bool TryResolveBattlefieldEquipSlot(string propertyName, int itemId, out EquipSlot slot)
+        {
+            switch (propertyName?.ToLowerInvariant())
+            {
+                case "cap":
+                    slot = EquipSlot.Cap;
+                    return true;
+                case "gloves":
+                    slot = EquipSlot.Glove;
+                    return true;
+                case "shoes":
+                    slot = EquipSlot.Shoes;
+                    return true;
+                case "cape":
+                    slot = EquipSlot.Cape;
+                    return true;
+                case "pants":
+                    slot = EquipSlot.Pants;
+                    return true;
+                case "clothes":
+                    slot = (itemId / 10000) == 105 ? EquipSlot.Longcoat : EquipSlot.Coat;
+                    return true;
+            }
+
+            slot = (itemId / 10000) switch
+            {
+                100 => EquipSlot.Cap,
+                104 => EquipSlot.Coat,
+                105 => EquipSlot.Longcoat,
+                106 => EquipSlot.Pants,
+                107 => EquipSlot.Shoes,
+                108 => EquipSlot.Glove,
+                110 => EquipSlot.Cape,
+                _ => EquipSlot.None
+            };
+
+            return slot != EquipSlot.None;
         }
 
         private float GetScorePulseStrength()
@@ -1651,6 +1869,13 @@ namespace HaCreator.MapSimulator.Effects
     /// </summary>
     public class GuildBossField
     {
+        private enum LocalPulleySequenceStage
+        {
+            None = 0,
+            Activating = 1,
+            Active = 2
+        }
+
         private sealed class GuildBossSpriteFrame
         {
             public Texture2D Texture { get; init; }
@@ -1663,6 +1888,7 @@ namespace HaCreator.MapSimulator.Effects
         private GraphicsDevice _device;
         private int _pulleyState = 0; // 0 = idle, 1 = activating, 2 = active
         private int _mapId;
+        private Rectangle _localPlayerHitbox;
         private int _healerYMin;
         private int _healerYMax;
         private int _healerRise;
@@ -1690,6 +1916,12 @@ namespace HaCreator.MapSimulator.Effects
         private Rectangle _pulleyArea; // From CPulley::Init: (x-186, y+90, x-60, y+184)
         private float _pulleyX;
         private float _pulleyY;
+        private int _lastHealAmount;
+        private int _localPulleySequenceNextTransitionTick = int.MinValue;
+        private int _localPulleyCooldownUntil = int.MinValue;
+        private int _statusCueExpiresAt = int.MinValue;
+        private string _statusCueText;
+        private LocalPulleySequenceStage _localPulleySequenceStage = LocalPulleySequenceStage.None;
         private List<GuildBossSpriteFrame> _pulleyFrames;
         private int _pulleyFrameIndex = 0;
         private int _lastPulleyFrameTime = 0;
@@ -1704,10 +1936,16 @@ namespace HaCreator.MapSimulator.Effects
         #endregion
 
         #region Public Properties
+        private const int PulleyActivationDelayMs = 450;
+        private const int PulleyActiveDurationMs = 900;
+        private const int PulleyReuseDelayMs = 1200;
+        private const int StatusCueDurationMs = 1800;
+
         public bool IsActive => _isActive;
         public int PulleyState => _pulleyState;
         public float HealerY => _healerY;
         public bool IsHealEffectActive => _healEffectActive;
+        public bool IsLocalPlayerWithinPulleyArea => _pulleyEnabled && !_localPlayerHitbox.IsEmpty && _pulleyArea.Intersects(_localPlayerHitbox);
         #endregion
 
         #region Initialization
@@ -1720,6 +1958,7 @@ namespace HaCreator.MapSimulator.Effects
         {
             _isActive = true;
             _pulleyState = 0;
+            _localPlayerHitbox = Rectangle.Empty;
         }
 
         public void ConfigureFromBoard(Board board)
@@ -1803,6 +2042,11 @@ namespace HaCreator.MapSimulator.Effects
         {
             _pulleyFrames = frames;
         }
+
+        public void SetLocalPlayerHitbox(Rectangle localPlayerHitbox)
+        {
+            _localPlayerHitbox = localPlayerHitbox;
+        }
         #endregion
 
         #region Packet Handling
@@ -1842,6 +2086,33 @@ namespace HaCreator.MapSimulator.Effects
             _lastPulleyStateChangeTime = currentTimeMs;
         }
 
+        public bool TryHandleLocalPulleyInteract(Rectangle playerHitbox, int currentTimeMs, out string message)
+        {
+            message = null;
+            if (!_isActive || !_pulleyEnabled || playerHitbox.IsEmpty || !_pulleyArea.Intersects(playerHitbox))
+            {
+                return false;
+            }
+
+            if (_localPulleySequenceStage != LocalPulleySequenceStage.None || currentTimeMs < _localPulleyCooldownUntil)
+            {
+                return true;
+            }
+
+            OnPulleyStateChange(1, currentTimeMs);
+            if (_healerEnabled && _healerRise > 0)
+            {
+                OnHealerMove(ClampHealerY((int)MathF.Round(_healerTargetY) - _healerRise), currentTimeMs);
+            }
+
+            _localPulleySequenceStage = LocalPulleySequenceStage.Activating;
+            _localPulleySequenceNextTransitionTick = unchecked(currentTimeMs + PulleyActivationDelayMs);
+            _localPulleyCooldownUntil = unchecked(currentTimeMs + PulleyActivationDelayMs + PulleyActiveDurationMs + PulleyReuseDelayMs);
+            SetStatusCue("Pulley engaged", currentTimeMs);
+            message = "Guild boss pulley engaged.";
+            return true;
+        }
+
         private void TriggerHealEffect(int currentTimeMs)
         {
             _healEffectActive = true;
@@ -1870,6 +2141,8 @@ namespace HaCreator.MapSimulator.Effects
         public void Update(int currentTimeMs, float deltaSeconds)
         {
             if (!_isActive) return;
+
+            UpdateLocalPulleySequence(currentTimeMs);
 
             // Move healer towards target
             if (_healerEnabled)
@@ -1919,6 +2192,12 @@ namespace HaCreator.MapSimulator.Effects
                     _healEffectActive = false;
                     _healParticles.Clear();
                 }
+            }
+
+            if (_statusCueExpiresAt != int.MinValue && currentTimeMs >= _statusCueExpiresAt)
+            {
+                _statusCueExpiresAt = int.MinValue;
+                _statusCueText = null;
             }
         }
         #endregion
@@ -1989,6 +2268,16 @@ namespace HaCreator.MapSimulator.Effects
                     };
                     spriteBatch.DrawString(font, $"Pulley: {stateText}",
                         new Vector2(screenArea.X, screenArea.Y - 15), Color.LightBlue);
+
+                    if (_pulleyState == 0 && IsLocalPlayerWithinPulleyArea)
+                    {
+                        const string interactPrompt = "Press Up";
+                        Vector2 promptSize = font.MeasureString(interactPrompt);
+                        Vector2 promptPosition = new(
+                            screenArea.Center.X - (promptSize.X / 2f),
+                            screenArea.Y - 36f);
+                        spriteBatch.DrawString(font, interactPrompt, promptPosition, Color.LightGoldenrodYellow);
+                    }
                 }
             }
 
@@ -2014,7 +2303,16 @@ namespace HaCreator.MapSimulator.Effects
                 string info = $"GuildBoss: map={_mapId} pulley={_pulleyState} healer={_healerY:F0}/{_healerTargetY:F0}";
                 spriteBatch.DrawString(font, info, new Vector2(10, 60), Color.LightBlue);
 
-                if (_lastPulleyStateChangeTime > 0 && tickCount - _lastPulleyStateChangeTime < 2000)
+                if (!string.IsNullOrWhiteSpace(_statusCueText) && _statusCueExpiresAt != int.MinValue && tickCount < _statusCueExpiresAt)
+                {
+                    Vector2 size = font.MeasureString(_statusCueText);
+                    spriteBatch.DrawString(
+                        font,
+                        _statusCueText,
+                        new Vector2(centerX - (size.X / 2f), 96f),
+                        Color.LightGoldenrodYellow);
+                }
+                else if (_lastPulleyStateChangeTime > 0 && tickCount - _lastPulleyStateChangeTime < 2000)
                 {
                     string cue = _pulleyState switch
                     {
@@ -2051,7 +2349,7 @@ namespace HaCreator.MapSimulator.Effects
                 _ => $"state {_pulleyState}"
             };
 
-            return $"Guild boss map {_mapId}: healer {healerRange}, pulley {pulleyState}, healer art={_healerPath ?? "none"}, pulley art={_pulleyPath ?? "none"}.";
+            return $"Guild boss map {_mapId}: healer {healerRange}, pulley {pulleyState}, rise={_healerRise}, fall={_healerFall}, heal={_healerHealMin}..{_healerHealMax}, healer art={_healerPath ?? "none"}, pulley art={_pulleyPath ?? "none"}.";
         }
 
         #region Reset
@@ -2073,8 +2371,73 @@ namespace HaCreator.MapSimulator.Effects
             _lastHealerFrameTime = 0;
             _lastPulleyFrameTime = 0;
             _lastPulleyStateChangeTime = 0;
+            _lastHealAmount = 0;
+            _localPulleySequenceStage = LocalPulleySequenceStage.None;
+            _localPulleySequenceNextTransitionTick = int.MinValue;
+            _localPulleyCooldownUntil = int.MinValue;
+            _statusCueExpiresAt = int.MinValue;
+            _statusCueText = null;
+            _localPlayerHitbox = Rectangle.Empty;
         }
         #endregion
+
+        private void UpdateLocalPulleySequence(int currentTimeMs)
+        {
+            if (_localPulleySequenceStage == LocalPulleySequenceStage.None
+                || _localPulleySequenceNextTransitionTick == int.MinValue
+                || currentTimeMs < _localPulleySequenceNextTransitionTick)
+            {
+                return;
+            }
+
+            switch (_localPulleySequenceStage)
+            {
+                case LocalPulleySequenceStage.Activating:
+                    OnPulleyStateChange(2, currentTimeMs);
+                    _lastHealAmount = RollHealAmount();
+                    SetStatusCue($"Healer restored {_lastHealAmount}", currentTimeMs);
+                    _localPulleySequenceStage = LocalPulleySequenceStage.Active;
+                    _localPulleySequenceNextTransitionTick = unchecked(currentTimeMs + PulleyActiveDurationMs);
+                    break;
+
+                case LocalPulleySequenceStage.Active:
+                    OnPulleyStateChange(0, currentTimeMs);
+                    if (_healerEnabled && _healerFall > 0)
+                    {
+                        OnHealerMove(ClampHealerY((int)MathF.Round(_healerTargetY) + _healerFall), currentTimeMs);
+                    }
+
+                    _localPulleySequenceStage = LocalPulleySequenceStage.None;
+                    _localPulleySequenceNextTransitionTick = int.MinValue;
+                    break;
+            }
+        }
+
+        private int RollHealAmount()
+        {
+            if (_healerHealMax <= _healerHealMin)
+            {
+                return Math.Max(0, _healerHealMin);
+            }
+
+            return _random.Next(Math.Max(0, _healerHealMin), _healerHealMax + 1);
+        }
+
+        private int ClampHealerY(int y)
+        {
+            if (_healerYMin == 0 && _healerYMax == 0)
+            {
+                return y;
+            }
+
+            return Math.Clamp(y, Math.Min(_healerYMin, _healerYMax), Math.Max(_healerYMin, _healerYMax));
+        }
+
+        private void SetStatusCue(string text, int currentTimeMs)
+        {
+            _statusCueText = text;
+            _statusCueExpiresAt = unchecked(currentTimeMs + StatusCueDurationMs);
+        }
 
         private List<GuildBossSpriteFrame> LoadObjectAnimation(string objectPath)
         {
@@ -2245,18 +2608,34 @@ namespace HaCreator.MapSimulator.Effects
     /// </summary>
     public class DojoField
     {
-        private const int HudWidth = 332;
-        private const int GaugeWidth = 305;
-        private const int GaugeHeight = 10;
-        private const int HudOffsetX = -166;
-        private const int HudY = 34;
-        private const int GaugeStartX = 14;
-        private const int BossGaugeY = 46;
-        private const int PlayerGaugeY = 82;
-        private const int EnergyGaugeY = 118;
+        private const int TimerLayerOffsetX = -55;
+        private const int TimerLayerY = 16;
+        private const int ClockOffsetY = 26;
+        private static readonly Point ClockOrigin = new(102, 26);
+        private const int PlayerOffsetX = -231;
+        private const int PlayerOffsetY = 50;
+        private static readonly Point PlayerOrigin = new(160, 28);
+        private const int MonsterOffsetX = 231;
+        private const int MonsterOffsetY = 50;
+        private static readonly Point MonsterOrigin = new(160, 28);
+        private const int EnergyOffsetX = 20;
+        private const int EnergyOffsetY = 130;
+        private const int TimerMinuteX = 0;
+        private const int TimerSecondX = 68;
+        private const int TimerDigitSpacing = 23;
+        private const int TimerDigitY = 0;
+        private const int TimerColonX = 51;
+        private const int TimerColonY = 4;
+        private const int BarGaugeWidth = 305;
+        private const int BarGaugeHeight = 13;
+        private const int PlayerGaugeOffsetX = 7;
+        private const int MonsterGaugeOffsetX = 7;
+        private const int BarGaugeOffsetY = 6;
+        private const int EnergyGaugeWidth = 9;
+        private const int EnergyGaugeHeight = 77;
+        private const int EnergyGaugeOffsetX = 7;
+        private const int EnergyGaugeOffsetY = 7;
         private const int EnergyMax = 10000;
-        private const int BannerDurationMs = 1800;
-        private const int TimeOverOverlayDurationMs = 2200;
 
         private bool _isActive;
         private int _mapId;
@@ -2269,7 +2648,24 @@ namespace HaCreator.MapSimulator.Effects
         private float? _bossHpPercent;
         private int _energy;
         private int _stageBannerStartTick = int.MinValue;
-        private int _timeOverOverlayStartTick = int.MinValue;
+        private int _resultEffectStartTick = int.MinValue;
+        private GraphicsDevice _device;
+        private bool _assetsLoaded;
+        private Texture2D _clockTexture;
+        private Texture2D _playerTexture;
+        private Texture2D _playerGaugeTexture;
+        private Texture2D _monsterTexture;
+        private Texture2D _monsterGaugeTexture;
+        private Texture2D _energyTexture;
+        private Texture2D _energyGaugeTexture;
+        private Texture2D _timerColonTexture;
+        private readonly Texture2D[] _digitTextures = new Texture2D[10];
+        private List<DojoFrame> _energyFullFrames;
+        private List<DojoFrame> _stageFrames;
+        private readonly Dictionary<int, List<DojoFrame>> _stageNumberFrames = new();
+        private List<DojoFrame> _clearFrames;
+        private List<DojoFrame> _timeOverFrames;
+        private DojoResultEffect _resultEffect = DojoResultEffect.None;
 
         public bool IsActive => _isActive;
         public int Stage => _stage;
@@ -2295,6 +2691,8 @@ namespace HaCreator.MapSimulator.Effects
 
         public void Initialize(GraphicsDevice device)
         {
+            _device = device;
+            EnsureAssetsLoaded();
         }
 
         public void Enable(int mapId)
@@ -2309,8 +2707,10 @@ namespace HaCreator.MapSimulator.Effects
             _playerMaxHp = 100;
             _bossHpPercent = null;
             _energy = 0;
+            EnsureAssetsLoaded();
             _stageBannerStartTick = Environment.TickCount;
-            _timeOverOverlayStartTick = int.MinValue;
+            _resultEffectStartTick = int.MinValue;
+            _resultEffect = DojoResultEffect.None;
         }
 
         public void OnClock(int clockType, int durationSec, int currentTimeMs)
@@ -2323,7 +2723,11 @@ namespace HaCreator.MapSimulator.Effects
             _timerDurationSec = Math.Max(0, durationSec);
             _timeOverTick = currentTimeMs + (_timerDurationSec * 1000);
             _lastClockUpdateTick = currentTimeMs;
-            _timeOverOverlayStartTick = int.MinValue;
+            if (_resultEffect == DojoResultEffect.TimeOver)
+            {
+                _resultEffect = DojoResultEffect.None;
+                _resultEffectStartTick = int.MinValue;
+            }
         }
 
         public void SetRuntimeState(int? playerHp, int? playerMaxHp, float? bossHpPercent)
@@ -2359,6 +2763,20 @@ namespace HaCreator.MapSimulator.Effects
             _stageBannerStartTick = currentTimeMs;
         }
 
+        public void ShowClearResult(int currentTimeMs)
+        {
+            _resultEffect = DojoResultEffect.Clear;
+            _resultEffectStartTick = currentTimeMs;
+        }
+
+        public void ShowTimeOverResult(int currentTimeMs)
+        {
+            _resultEffect = DojoResultEffect.TimeOver;
+            _resultEffectStartTick = currentTimeMs;
+            _timeOverTick = 0;
+            _timerDurationSec = 0;
+        }
+
         public void Update(int currentTimeMs, float deltaSeconds)
         {
             if (!_isActive)
@@ -2366,9 +2784,9 @@ namespace HaCreator.MapSimulator.Effects
                 return;
             }
 
-            if (_timeOverTick != int.MinValue && currentTimeMs >= _timeOverTick && _timeOverOverlayStartTick == int.MinValue)
+            if (_timeOverTick != int.MinValue && _timeOverTick > 0 && currentTimeMs >= _timeOverTick && _resultEffect != DojoResultEffect.TimeOver)
             {
-                _timeOverOverlayStartTick = currentTimeMs;
+                ShowTimeOverResult(currentTimeMs);
             }
         }
 
@@ -2380,30 +2798,13 @@ namespace HaCreator.MapSimulator.Effects
             }
 
             Viewport viewport = spriteBatch.GraphicsDevice.Viewport;
-            Rectangle hudBounds = new(viewport.Width / 2 + HudOffsetX, HudY, HudWidth, 144);
+            EnsureAssetsLoaded();
 
-            spriteBatch.Draw(pixelTexture, hudBounds, new Color(22, 18, 12, 214));
-            spriteBatch.Draw(pixelTexture, new Rectangle(hudBounds.X, hudBounds.Y, hudBounds.Width, 2), new Color(126, 95, 45, 255));
-            spriteBatch.Draw(pixelTexture, new Rectangle(hudBounds.X, hudBounds.Bottom - 2, hudBounds.Width, 2), new Color(48, 34, 16, 255));
-
-            DrawGaugeRow(spriteBatch, pixelTexture, font, hudBounds, GaugeStartX, BossGaugeY, "Boss", _bossHpPercent ?? 0f, new Color(148, 44, 32, 255), _bossHpPercent.HasValue ? $"{(int)MathF.Round(_bossHpPercent.Value * 100f)}%" : "--");
-            DrawGaugeRow(spriteBatch, pixelTexture, font, hudBounds, GaugeStartX, PlayerGaugeY, "HP", _playerMaxHp > 0 ? (float)_playerHp / _playerMaxHp : 0f, new Color(42, 137, 63, 255), $"{_playerHp}/{_playerMaxHp}");
-            DrawGaugeRow(spriteBatch, pixelTexture, font, hudBounds, GaugeStartX, EnergyGaugeY, "Energy", (float)_energy / EnergyMax, new Color(232, 185, 49, 255), $"{_energy / 100f:0}%");
-
-            if (font != null)
-            {
-                string timerText = FormatTimer(RemainingSeconds);
-                Vector2 timerSize = font.MeasureString(timerText);
-                Vector2 timerPos = new(hudBounds.Center.X - (timerSize.X / 2f), hudBounds.Y + 12);
-                spriteBatch.DrawString(font, timerText, timerPos + Vector2.One, Color.Black);
-                spriteBatch.DrawString(font, timerText, timerPos, Color.White);
-
-                string stageText = _stage >= 0 ? $"Mu Lung Dojo Floor {_stage}" : "Mu Lung Dojo";
-                spriteBatch.DrawString(font, stageText, new Vector2(hudBounds.X + 12, hudBounds.Y + 12), new Color(235, 212, 149));
-            }
-
-            DrawStageBanner(spriteBatch, pixelTexture, font, viewport, currentTimeMs);
-            DrawTimeOverOverlay(spriteBatch, pixelTexture, font, viewport, currentTimeMs);
+            DrawClock(spriteBatch, viewport, pixelTexture, font);
+            DrawGaugeBars(spriteBatch, viewport, pixelTexture);
+            DrawEnergy(spriteBatch, viewport, pixelTexture);
+            DrawStageBanner(spriteBatch, viewport, font, currentTimeMs);
+            DrawResultEffect(spriteBatch, viewport, font, currentTimeMs);
         }
 
         public string DescribeStatus()
@@ -2433,7 +2834,8 @@ namespace HaCreator.MapSimulator.Effects
             _bossHpPercent = null;
             _energy = 0;
             _stageBannerStartTick = int.MinValue;
-            _timeOverOverlayStartTick = int.MinValue;
+            _resultEffectStartTick = int.MinValue;
+            _resultEffect = DojoResultEffect.None;
         }
 
         private static int ResolveStage(int mapId)
@@ -2454,82 +2856,350 @@ namespace HaCreator.MapSimulator.Effects
             return $"{minutes}:{seconds:00}";
         }
 
-        private static void DrawGaugeRow(SpriteBatch spriteBatch, Texture2D pixelTexture, SpriteFont font, Rectangle hudBounds, int gaugeXOffset, int gaugeYOffset, string label, float progress, Color fillColor, string valueText)
+        private void EnsureAssetsLoaded()
         {
-            Rectangle gaugeBounds = new(hudBounds.X + gaugeXOffset, hudBounds.Y + gaugeYOffset, GaugeWidth, GaugeHeight);
-            Rectangle innerBounds = new(gaugeBounds.X + 1, gaugeBounds.Y + 1, gaugeBounds.Width - 2, gaugeBounds.Height - 2);
-            int fillWidth = Math.Clamp((int)MathF.Round(innerBounds.Width * Math.Clamp(progress, 0f, 1f)), 0, innerBounds.Width);
-
-            spriteBatch.Draw(pixelTexture, gaugeBounds, new Color(83, 63, 32, 255));
-            spriteBatch.Draw(pixelTexture, innerBounds, new Color(18, 18, 18, 255));
-            if (fillWidth > 0)
+            if (_assetsLoaded || _device == null)
             {
-                spriteBatch.Draw(pixelTexture, new Rectangle(innerBounds.X, innerBounds.Y, fillWidth, innerBounds.Height), fillColor);
+                return;
             }
 
-            if (font != null)
+            WzImage uiWindow = global::HaCreator.Program.FindImage("UI", "UIWindow.img")
+                ?? global::HaCreator.Program.FindImage("UI", "UIWindow2.img");
+            WzImage effectImage = global::HaCreator.Program.FindImage("Map", "Effect.img");
+
+            WzImageProperty muruengRaid = uiWindow?["muruengRaid"];
+            _clockTexture = LoadCanvasTexture(muruengRaid?["clock"]?["0"] as WzCanvasProperty);
+            _playerTexture = LoadCanvasTexture(muruengRaid?["player"]?["0"] as WzCanvasProperty);
+            _playerGaugeTexture = LoadCanvasTexture(muruengRaid?["player"]?["Gage"]?["0"] as WzCanvasProperty);
+            _monsterTexture = LoadCanvasTexture(muruengRaid?["monster"]?["0"] as WzCanvasProperty);
+            _monsterGaugeTexture = LoadCanvasTexture(muruengRaid?["monster"]?["Gage"]?["0"] as WzCanvasProperty);
+            _energyTexture = LoadCanvasTexture(muruengRaid?["energy"]?["empty"]?["0"] as WzCanvasProperty);
+            _energyGaugeTexture = LoadCanvasTexture(muruengRaid?["energy"]?["empty"]?["Gage"]?["0"] as WzCanvasProperty);
+            _timerColonTexture = LoadCanvasTexture(muruengRaid?["number"]?["bar"] as WzCanvasProperty);
+
+            for (int i = 0; i < _digitTextures.Length; i++)
             {
-                Vector2 labelPos = new(hudBounds.X + gaugeXOffset, gaugeBounds.Y - 18);
-                Vector2 valueSize = font.MeasureString(valueText);
-                Vector2 valuePos = new(gaugeBounds.Right - valueSize.X, gaugeBounds.Y - 18);
-                spriteBatch.DrawString(font, label, labelPos, new Color(230, 218, 190));
-                spriteBatch.DrawString(font, valueText, valuePos, Color.White);
+                _digitTextures[i] = LoadCanvasTexture(muruengRaid?["number"]?[i.ToString()] as WzCanvasProperty);
+            }
+
+            _energyFullFrames = LoadAnimationFrames(muruengRaid?["energy"]?["full"]);
+            WzImageProperty dojang = effectImage?["dojang"];
+            _stageFrames = LoadAnimationFrames(dojang?["start"]?["stage"]);
+            _clearFrames = LoadAnimationFrames(dojang?["end"]?["clear"]);
+            _timeOverFrames = LoadAnimationFrames(dojang?["timeOver"]);
+
+            WzImageProperty startNumbers = dojang?["start"]?["number"];
+            if (startNumbers != null)
+            {
+                foreach (WzImageProperty child in startNumbers.WzProperties)
+                {
+                    if (!int.TryParse(child.Name, out int stage))
+                    {
+                        continue;
+                    }
+
+                    List<DojoFrame> frames = LoadAnimationFrames(child);
+                    if (frames?.Count > 0)
+                    {
+                        _stageNumberFrames[stage] = frames;
+                    }
+                }
+            }
+
+            _assetsLoaded = true;
+        }
+
+        private Texture2D LoadCanvasTexture(WzCanvasProperty canvas)
+        {
+            if (_device == null || canvas == null)
+            {
+                return null;
+            }
+
+            using var bitmap = canvas.GetLinkedWzCanvasBitmap();
+            return bitmap?.ToTexture2DAndDispose(_device);
+        }
+
+        private List<DojoFrame> LoadAnimationFrames(WzImageProperty root)
+        {
+            if (_device == null || root == null)
+            {
+                return null;
+            }
+
+            var frames = new List<DojoFrame>();
+            foreach (WzImageProperty child in root.WzProperties.OrderBy(ParseFrameOrder))
+            {
+                if (WzInfoTools.GetRealProperty(child) is not WzCanvasProperty canvas)
+                {
+                    continue;
+                }
+
+                try
+                {
+                    using var bitmap = canvas.GetLinkedWzCanvasBitmap();
+                    Texture2D texture = bitmap?.ToTexture2DAndDispose(_device);
+                    if (texture == null)
+                    {
+                        continue;
+                    }
+
+                    WzVectorProperty origin = canvas["origin"] as WzVectorProperty;
+                    frames.Add(new DojoFrame(
+                        texture,
+                        new Point(origin?.X.Value ?? 0, origin?.Y.Value ?? 0),
+                        Math.Max(1, canvas["delay"]?.GetInt() ?? 100)));
+                }
+                catch
+                {
+                    // Keep partially available animation sets usable.
+                }
+            }
+
+            return frames.Count > 0 ? frames : null;
+        }
+
+        private void DrawClock(SpriteBatch spriteBatch, Viewport viewport, Texture2D pixelTexture, SpriteFont font)
+        {
+            Vector2 clockAnchor = new(viewport.Width / 2f, ClockOffsetY);
+            DrawTextureAtOrigin(spriteBatch, _clockTexture, clockAnchor, ClockOrigin);
+
+            Vector2 timerOrigin = new((viewport.Width / 2f) + TimerLayerOffsetX, TimerLayerY);
+            bool drewDigits = TryDrawBitmapTimer(spriteBatch, timerOrigin);
+            if (!drewDigits && font != null)
+            {
+                string timerText = FormatTimer(RemainingSeconds);
+                spriteBatch.DrawString(font, timerText, timerOrigin, Color.White);
             }
         }
 
-        private void DrawStageBanner(SpriteBatch spriteBatch, Texture2D pixelTexture, SpriteFont font, Viewport viewport, int currentTimeMs)
+        private void DrawGaugeBars(SpriteBatch spriteBatch, Viewport viewport, Texture2D pixelTexture)
+        {
+            Vector2 playerAnchor = new((viewport.Width / 2f) + PlayerOffsetX, PlayerOffsetY);
+            Rectangle playerBounds = DrawTextureAtOrigin(spriteBatch, _playerTexture, playerAnchor, PlayerOrigin);
+            Rectangle playerGaugeBounds = new(
+                playerBounds.X + PlayerGaugeOffsetX,
+                playerBounds.Y + BarGaugeOffsetY,
+                BarGaugeWidth,
+                BarGaugeHeight);
+            DrawHorizontalGauge(spriteBatch, pixelTexture, _playerGaugeTexture, playerGaugeBounds, _playerMaxHp > 0 ? (float)_playerHp / _playerMaxHp : 0f);
+
+            Vector2 monsterAnchor = new((viewport.Width / 2f) + MonsterOffsetX, MonsterOffsetY);
+            Rectangle monsterBounds = DrawTextureAtOrigin(spriteBatch, _monsterTexture, monsterAnchor, MonsterOrigin);
+            Rectangle monsterGaugeBounds = new(
+                monsterBounds.X + MonsterGaugeOffsetX,
+                monsterBounds.Y + BarGaugeOffsetY,
+                BarGaugeWidth,
+                BarGaugeHeight);
+            DrawHorizontalGauge(spriteBatch, pixelTexture, _monsterGaugeTexture, monsterGaugeBounds, _bossHpPercent ?? 0f);
+        }
+
+        private void DrawEnergy(SpriteBatch spriteBatch, Viewport viewport, Texture2D pixelTexture)
+        {
+            Vector2 energyAnchor = new(EnergyOffsetX, EnergyOffsetY);
+            Rectangle energyBounds = DrawTextureAtTopLeft(spriteBatch, _energyTexture, energyAnchor);
+            if (_energy >= EnergyMax)
+            {
+                DrawAnimation(spriteBatch, _energyFullFrames, Environment.TickCount, int.MaxValue, new Vector2(9f, 80f), repeat: true);
+                return;
+            }
+
+            Rectangle energyGaugeBounds = new(
+                energyBounds.X + EnergyGaugeOffsetX,
+                energyBounds.Y + EnergyGaugeOffsetY,
+                EnergyGaugeWidth,
+                EnergyGaugeHeight);
+            DrawVerticalGauge(spriteBatch, pixelTexture, _energyGaugeTexture, energyGaugeBounds, (float)_energy / EnergyMax);
+        }
+
+        private void DrawStageBanner(SpriteBatch spriteBatch, Viewport viewport, SpriteFont font, int currentTimeMs)
         {
             if (_stageBannerStartTick == int.MinValue)
             {
                 return;
             }
 
-            int elapsed = currentTimeMs - _stageBannerStartTick;
-            if (elapsed < 0 || elapsed >= BannerDurationMs)
+            Vector2 center = new(viewport.Width / 2f, 200f);
+            bool drewStage = DrawAnimation(spriteBatch, _stageFrames, currentTimeMs, _stageBannerStartTick, center, repeat: false);
+            bool drewNumber = DrawAnimation(spriteBatch, ResolveStageNumberFrames(), currentTimeMs, _stageBannerStartTick, center, repeat: false);
+            if (!drewStage && !drewNumber && font != null)
             {
-                return;
-            }
-
-            float alpha = 1f - (elapsed / (float)BannerDurationMs);
-            Rectangle bannerBounds = new(viewport.Width / 2 - 150, 200, 300, 42);
-            spriteBatch.Draw(pixelTexture, bannerBounds, new Color(36, 25, 10) * (0.86f * alpha));
-            spriteBatch.Draw(pixelTexture, new Rectangle(bannerBounds.X, bannerBounds.Y, bannerBounds.Width, 2), new Color(221, 183, 87) * alpha);
-
-            if (font != null)
-            {
-                string bannerText = _stage >= 0 ? $"Mu Lung Dojo Floor {_stage}" : "Mu Lung Dojo";
-                Vector2 size = font.MeasureString(bannerText);
-                Vector2 pos = new(bannerBounds.Center.X - (size.X / 2f), bannerBounds.Center.Y - (size.Y / 2f));
-                spriteBatch.DrawString(font, bannerText, pos, Color.White * alpha);
+                string stageText = _stage >= 0 ? $"Mu Lung Dojo Floor {_stage}" : "Mu Lung Dojo";
+                Vector2 size = font.MeasureString(stageText);
+                spriteBatch.DrawString(font, stageText, new Vector2(center.X - (size.X / 2f), center.Y - (size.Y / 2f)), Color.White);
             }
         }
 
-        private void DrawTimeOverOverlay(SpriteBatch spriteBatch, Texture2D pixelTexture, SpriteFont font, Viewport viewport, int currentTimeMs)
+        private void DrawResultEffect(SpriteBatch spriteBatch, Viewport viewport, SpriteFont font, int currentTimeMs)
         {
-            if (_timeOverOverlayStartTick == int.MinValue)
+            if (_resultEffect == DojoResultEffect.None || _resultEffectStartTick == int.MinValue)
             {
                 return;
             }
 
-            int elapsed = currentTimeMs - _timeOverOverlayStartTick;
-            if (elapsed < 0 || elapsed >= TimeOverOverlayDurationMs)
+            List<DojoFrame> frames = _resultEffect == DojoResultEffect.Clear ? _clearFrames : _timeOverFrames;
+            bool drew = DrawAnimation(spriteBatch, frames, currentTimeMs, _resultEffectStartTick, new Vector2(viewport.Width / 2f, viewport.Height / 2f), repeat: false);
+            if (!drew && font != null)
             {
-                return;
-            }
-
-            float alpha = 1f - (elapsed / (float)TimeOverOverlayDurationMs);
-            Rectangle panel = new(viewport.Width / 2 - 180, viewport.Height / 2 - 46, 360, 92);
-            spriteBatch.Draw(pixelTexture, panel, new Color(15, 10, 8) * (0.82f * alpha));
-            spriteBatch.Draw(pixelTexture, new Rectangle(panel.X, panel.Y, panel.Width, 2), new Color(171, 61, 39) * alpha);
-
-            if (font != null)
-            {
-                const string text = "Time Over";
+                string text = _resultEffect == DojoResultEffect.Clear ? "Stage Clear" : "Time Over";
                 Vector2 size = font.MeasureString(text);
-                Vector2 pos = new(panel.Center.X - (size.X / 2f), panel.Center.Y - (size.Y / 2f));
-                spriteBatch.DrawString(font, text, pos + Vector2.One, Color.Black * alpha);
-                spriteBatch.DrawString(font, text, pos, new Color(255, 217, 180) * alpha);
+                spriteBatch.DrawString(font, text, new Vector2((viewport.Width - size.X) / 2f, (viewport.Height - size.Y) / 2f), Color.White);
             }
+        }
+
+        private bool TryDrawBitmapTimer(SpriteBatch spriteBatch, Vector2 timerOrigin)
+        {
+            if (_timerColonTexture == null || _digitTextures.Any(texture => texture == null))
+            {
+                return false;
+            }
+
+            int minutes = Math.Clamp(RemainingSeconds / 60, 0, 99);
+            int seconds = Math.Clamp(RemainingSeconds % 60, 0, 59);
+            DrawTwoDigits(spriteBatch, timerOrigin, TimerMinuteX, TimerDigitY, minutes);
+            DrawTwoDigits(spriteBatch, timerOrigin, TimerSecondX, TimerDigitY, seconds);
+            spriteBatch.Draw(_timerColonTexture, new Vector2(timerOrigin.X + TimerColonX, timerOrigin.Y + TimerColonY), Color.White);
+            return true;
+        }
+
+        private void DrawTwoDigits(SpriteBatch spriteBatch, Vector2 timerOrigin, int x, int y, int value)
+        {
+            int tens = (value / 10) % 10;
+            int ones = value % 10;
+            spriteBatch.Draw(_digitTextures[tens], new Vector2(timerOrigin.X + x, timerOrigin.Y + y), Color.White);
+            spriteBatch.Draw(_digitTextures[ones], new Vector2(timerOrigin.X + x + TimerDigitSpacing, timerOrigin.Y + y), Color.White);
+        }
+
+        private Rectangle DrawTextureAtOrigin(SpriteBatch spriteBatch, Texture2D texture, Vector2 anchor, Point origin)
+        {
+            if (texture == null)
+            {
+                return Rectangle.Empty;
+            }
+
+            Rectangle bounds = new(
+                (int)MathF.Round(anchor.X - origin.X),
+                (int)MathF.Round(anchor.Y - origin.Y),
+                texture.Width,
+                texture.Height);
+            spriteBatch.Draw(texture, new Vector2(bounds.X, bounds.Y), Color.White);
+            return bounds;
+        }
+
+        private Rectangle DrawTextureAtTopLeft(SpriteBatch spriteBatch, Texture2D texture, Vector2 topLeft)
+        {
+            if (texture == null)
+            {
+                return Rectangle.Empty;
+            }
+
+            Rectangle bounds = new((int)MathF.Round(topLeft.X), (int)MathF.Round(topLeft.Y), texture.Width, texture.Height);
+            spriteBatch.Draw(texture, new Vector2(bounds.X, bounds.Y), Color.White);
+            return bounds;
+        }
+
+        private static void DrawHorizontalGauge(SpriteBatch spriteBatch, Texture2D pixelTexture, Texture2D gaugeTexture, Rectangle bounds, float progress)
+        {
+            int fillWidth = Math.Clamp((int)MathF.Round(bounds.Width * Math.Clamp(progress, 0f, 1f)), 0, bounds.Width);
+            if (fillWidth <= 0)
+            {
+                return;
+            }
+
+            Texture2D source = gaugeTexture ?? pixelTexture;
+            if (source == null)
+            {
+                return;
+            }
+
+            spriteBatch.Draw(source, new Rectangle(bounds.X, bounds.Y, fillWidth, bounds.Height), Color.White);
+        }
+
+        private static void DrawVerticalGauge(SpriteBatch spriteBatch, Texture2D pixelTexture, Texture2D gaugeTexture, Rectangle bounds, float progress)
+        {
+            int fillHeight = Math.Clamp((int)MathF.Round(bounds.Height * Math.Clamp(progress, 0f, 1f)), 0, bounds.Height);
+            if (fillHeight <= 0)
+            {
+                return;
+            }
+
+            Texture2D source = gaugeTexture ?? pixelTexture;
+            if (source == null)
+            {
+                return;
+            }
+
+            Rectangle dest = new(bounds.X, bounds.Bottom - fillHeight, bounds.Width, fillHeight);
+            spriteBatch.Draw(source, dest, Color.White);
+        }
+
+        private bool DrawAnimation(SpriteBatch spriteBatch, IReadOnlyList<DojoFrame> frames, int currentTimeMs, int startTick, Vector2 anchor, bool repeat)
+        {
+            if (frames == null || frames.Count == 0 || startTick == int.MinValue)
+            {
+                return false;
+            }
+
+            DojoFrame frame = ResolveAnimationFrame(frames, currentTimeMs, startTick, repeat);
+            if (frame.Texture == null)
+            {
+                return false;
+            }
+
+            Vector2 drawPos = new(anchor.X - frame.Origin.X, anchor.Y - frame.Origin.Y);
+            spriteBatch.Draw(frame.Texture, drawPos, Color.White);
+            return true;
+        }
+
+        private static DojoFrame ResolveAnimationFrame(IReadOnlyList<DojoFrame> frames, int currentTimeMs, int startTick, bool repeat)
+        {
+            if (frames == null || frames.Count == 0)
+            {
+                return default;
+            }
+
+            long elapsed = Math.Max(0, currentTimeMs - startTick);
+            int totalDuration = frames.Sum(frame => Math.Max(1, frame.Delay));
+            if (repeat && totalDuration > 0)
+            {
+                elapsed %= totalDuration;
+            }
+
+            int cursor = 0;
+            foreach (DojoFrame frame in frames)
+            {
+                cursor += Math.Max(1, frame.Delay);
+                if (elapsed < cursor)
+                {
+                    return frame;
+                }
+            }
+
+            return frames[^1];
+        }
+
+        private List<DojoFrame> ResolveStageNumberFrames()
+        {
+            if (_stage >= 0 && _stageNumberFrames.TryGetValue(_stage, out List<DojoFrame> frames))
+            {
+                return frames;
+            }
+
+            return null;
+        }
+
+        private static int ParseFrameOrder(WzImageProperty property)
+        {
+            return int.TryParse(property?.Name, out int order) ? order : int.MaxValue;
+        }
+
+        private readonly record struct DojoFrame(Texture2D Texture, Point Origin, int Delay);
+
+        private enum DojoResultEffect
+        {
+            None,
+            Clear,
+            TimeOver
         }
     }
     #endregion
@@ -2790,6 +3460,10 @@ namespace HaCreator.MapSimulator.Effects
         private int _gaugeDec = 1;
         private int _currentGauge;
         private int _maxGauge = 100;
+        private int _defaultGaugeIncrease = 1;
+        private int _coolGaugeIncrease;
+        private int _missGaugePenalty;
+        private int _mapDistance;
         private float _displayGauge;
         private int _killCount;
         private int _comboCount;
@@ -2804,9 +3478,18 @@ namespace HaCreator.MapSimulator.Effects
         private int _keyAnimationStage = -1;
         private int _keyAnimationStageStart = int.MinValue;
         private bool _keyAnimationQueued;
+        private bool _disableSkill;
+        private readonly List<MassacreCountEffect> _countEffects = new();
+        private string _countEffectBannerText;
+        private int _countEffectBannerUntilMs = int.MinValue;
 
         public bool IsActive => _isActive;
         public int CurrentGauge => _currentGauge;
+        public int MaxGauge => _maxGauge;
+        public int GaugeDecreasePerSecond => _gaugeDec;
+        public int DefaultGaugeIncrease => _defaultGaugeIncrease;
+        public bool IsSkillDisabled => _disableSkill;
+        public bool HasKeyAnimation => _keyAnimationStage >= 0;
         public int KillCount => _killCount;
         public int ComboCount => _comboCount;
         public int TimerRemain => RemainingSeconds;
@@ -2842,6 +3525,66 @@ namespace HaCreator.MapSimulator.Effects
             ResetRoundState();
         }
 
+        public void Configure(MapInfo mapInfo)
+        {
+            if (!_isActive || mapInfo == null)
+            {
+                return;
+            }
+
+            for (int i = 0; i < mapInfo.additionalNonInfoProps.Count; i++)
+            {
+                if (mapInfo.additionalNonInfoProps[i] is not WzSubProperty massacre
+                    || !string.Equals(massacre.Name, "mobMassacre", StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                _mapDistance = Math.Max(0, InfoTool.GetOptionalInt(massacre["mapDistance"]) ?? _mapDistance);
+                _disableSkill = (InfoTool.GetOptionalInt(massacre["disableSkill"]) ?? 0) != 0;
+
+                if (massacre["gauge"] is WzSubProperty gauge)
+                {
+                    _maxGauge = Math.Max(1, InfoTool.GetOptionalInt(gauge["total"]) ?? _maxGauge);
+                    _gaugeDec = Math.Max(0, InfoTool.GetOptionalInt(gauge["decrease"]) ?? _gaugeDec);
+                    _defaultGaugeIncrease = Math.Max(0, InfoTool.GetOptionalInt(gauge["hitAdd"]) ?? _defaultGaugeIncrease);
+                    _coolGaugeIncrease = Math.Max(0, InfoTool.GetOptionalInt(gauge["coolAdd"]) ?? _coolGaugeIncrease);
+                    _missGaugePenalty = Math.Max(0, InfoTool.GetOptionalInt(gauge["missSub"]) ?? _missGaugePenalty);
+                }
+
+                _countEffects.Clear();
+                if (massacre["countEffect"] is WzSubProperty countEffect)
+                {
+                    foreach (WzImageProperty child in countEffect.WzProperties)
+                    {
+                        if (!int.TryParse(child.Name, out int threshold)
+                            || child is not WzSubProperty thresholdProperty)
+                        {
+                            continue;
+                        }
+
+                        _countEffects.Add(new MassacreCountEffect(
+                            threshold,
+                            InfoTool.GetOptionalInt(thresholdProperty["buff"]),
+                            (InfoTool.GetOptionalInt(thresholdProperty["skillUse"]) ?? 0) != 0));
+                    }
+
+                    _countEffects.Sort(static (left, right) => left.Threshold.CompareTo(right.Threshold));
+                }
+
+                _currentGauge = Math.Clamp(_currentGauge, 0, _maxGauge);
+                _displayGauge = Math.Clamp(_displayGauge, 0f, _maxGauge);
+                if (_disableSkill)
+                {
+                    _keyAnimationStage = -1;
+                    _keyAnimationStageStart = int.MinValue;
+                    _keyAnimationQueued = false;
+                }
+
+                return;
+            }
+        }
+
         public void SetParameters(int maxGauge, int timer, int gaugeDec)
         {
             _maxGauge = Math.Max(1, maxGauge);
@@ -2875,6 +3618,8 @@ namespace HaCreator.MapSimulator.Effects
             _keyAnimationStage = -1;
             _keyAnimationStageStart = int.MinValue;
             _keyAnimationQueued = false;
+            _countEffectBannerText = null;
+            _countEffectBannerUntilMs = int.MinValue;
         }
 
         public void OnClock(int clockType, int durationSec, int currentTimeMs)
@@ -3004,7 +3749,11 @@ namespace HaCreator.MapSimulator.Effects
             }
 
             string timerText = HasRunningTimerboard ? FormatTimer(RemainingSeconds) : "stopped";
-            return $"Massacre map {_mapId}, timer={timerText}, gauge={_currentGauge}/{_maxGauge}, inc={_incGauge}, decay={_gaugeDec}/s, kills={_killCount}, combo={_comboCount}";
+            string nextCountEffect = GetNextCountEffectThreshold() is int threshold
+                ? $", nextCountEffect={threshold}"
+                : string.Empty;
+            string disableSkillText = _disableSkill ? ", skills=disabled" : string.Empty;
+            return $"Massacre map {_mapId}, timer={timerText}, gauge={_currentGauge}/{_maxGauge}, inc={_incGauge}, hitAdd={_defaultGaugeIncrease}, decay={_gaugeDec}/s, kills={_killCount}, combo={_comboCount}{disableSkillText}{nextCountEffect}";
         }
 
         public void Reset()
@@ -3013,6 +3762,12 @@ namespace HaCreator.MapSimulator.Effects
             _mapId = 0;
             _maxGauge = 100;
             _gaugeDec = 1;
+            _defaultGaugeIncrease = 1;
+            _coolGaugeIncrease = 0;
+            _missGaugePenalty = 0;
+            _mapDistance = 0;
+            _disableSkill = false;
+            _countEffects.Clear();
             ResetRoundState();
         }
 
@@ -3029,10 +3784,16 @@ namespace HaCreator.MapSimulator.Effects
             }
 
             _lastKillTime = currentTimeMs;
+            UpdateCountEffectBanner(currentTimeMs);
         }
 
         private void QueueKeyAnimation()
         {
+            if (_disableSkill)
+            {
+                return;
+            }
+
             if (_keyAnimationStage >= 0)
             {
                 _keyAnimationQueued = true;
@@ -3141,11 +3902,27 @@ namespace HaCreator.MapSimulator.Effects
             string gaugeText = $"{_currentGauge}/{_maxGauge}";
             string statusText = _comboCount > 1 ? $"{_comboCount}x combo" : $"{_killCount} kills";
             Color statusColor = _comboCount >= 10 ? Color.Gold : _comboCount >= 5 ? Color.Orange : new Color(238, 220, 191);
+            string nextThresholdText = GetNextCountEffectThreshold() is int threshold
+                ? $"next {threshold}"
+                : null;
 
             spriteBatch.DrawString(font, "MASSACRE", new Vector2(bounds.X + 8, bounds.Y - 20), new Color(238, 220, 191));
             Vector2 gaugeValueSize = font.MeasureString(gaugeText);
             spriteBatch.DrawString(font, gaugeText, new Vector2(bounds.Right - gaugeValueSize.X - 8, bounds.Y - 20), Color.White);
             spriteBatch.DrawString(font, statusText, new Vector2(bounds.X + 8, bounds.Bottom + 4), statusColor);
+            if (!string.IsNullOrWhiteSpace(nextThresholdText))
+            {
+                Vector2 nextThresholdSize = font.MeasureString(nextThresholdText);
+                spriteBatch.DrawString(font, nextThresholdText, new Vector2(bounds.Right - nextThresholdSize.X - 8, bounds.Bottom + 4), new Color(214, 197, 166));
+            }
+
+            if (!string.IsNullOrWhiteSpace(_countEffectBannerText) && Environment.TickCount < _countEffectBannerUntilMs)
+            {
+                Vector2 bannerSize = font.MeasureString(_countEffectBannerText);
+                Vector2 bannerPos = new(bounds.Center.X - (bannerSize.X / 2f), bounds.Bottom + 24);
+                spriteBatch.DrawString(font, _countEffectBannerText, bannerPos + Vector2.One, Color.Black);
+                spriteBatch.DrawString(font, _countEffectBannerText, bannerPos, new Color(255, 223, 132));
+            }
         }
 
         private void DrawKeyAnimation(SpriteBatch spriteBatch, Texture2D pixelTexture, SpriteFont font)
@@ -3235,6 +4012,37 @@ namespace HaCreator.MapSimulator.Effects
 
             return new Color(181, 65, 54);
         }
+
+        private int? GetNextCountEffectThreshold()
+        {
+            for (int i = 0; i < _countEffects.Count; i++)
+            {
+                if (_killCount < _countEffects[i].Threshold)
+                {
+                    return _countEffects[i].Threshold;
+                }
+            }
+
+            return null;
+        }
+
+        private void UpdateCountEffectBanner(int currentTimeMs)
+        {
+            for (int i = 0; i < _countEffects.Count; i++)
+            {
+                if (_countEffects[i].Threshold != _killCount)
+                {
+                    continue;
+                }
+
+                string effectText = _countEffects[i].RequiresSkillUse ? " skill" : " buff";
+                _countEffectBannerText = $"{_countEffects[i].Threshold} kills{effectText}";
+                _countEffectBannerUntilMs = currentTimeMs + 1800;
+                return;
+            }
+        }
+
+        private readonly record struct MassacreCountEffect(int Threshold, int? BuffItemId, bool RequiresSkillUse);
     }
     #endregion
 }

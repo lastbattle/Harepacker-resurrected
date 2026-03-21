@@ -1,4 +1,5 @@
 using HaCreator.MapSimulator.Effects;
+using HaCreator.MapSimulator.Managers;
 using HaCreator.MapEditor;
 using HaSharedLibrary.Render.DX;
 using Microsoft.Xna.Framework;
@@ -94,10 +95,10 @@ namespace HaCreator.MapSimulator.Fields
         public PartyRaidField PartyRaid => _partyRaid;
         public bool HasBlockingScriptedSequence => _specialEffects.HasBlockingScriptedSequence;
 
-        public void Initialize(GraphicsDevice graphicsDevice)
+        public void Initialize(GraphicsDevice graphicsDevice, SoundManager soundManager = null)
         {
             _specialEffects.Initialize(graphicsDevice);
-            _minigames.Initialize(graphicsDevice);
+            _minigames.Initialize(graphicsDevice, soundManager);
             _partyRaid.Initialize(graphicsDevice);
         }
 
@@ -143,9 +144,19 @@ namespace HaCreator.MapSimulator.Fields
             _specialEffects.SetWeddingPlayerState(localCharacterId, localWorldPosition);
         }
 
+        public void SetSnowBallPlayerState(Vector2? localWorldPosition)
+        {
+            _minigames.SetSnowBallPlayerState(localWorldPosition);
+        }
+
         public void SetDojoRuntimeState(int? playerHp, int? playerMaxHp, float? bossHpPercent)
         {
             _specialEffects.SetDojoRuntimeState(playerHp, playerMaxHp, bossHpPercent);
+        }
+
+        public void SetGuildBossPlayerState(Rectangle? localPlayerHitbox)
+        {
+            _specialEffects.SetGuildBossPlayerState(localPlayerHitbox);
         }
 
         public void SetAriantArenaPlayerState(string localPlayerName, int? localPlayerJob)
