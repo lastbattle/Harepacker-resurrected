@@ -479,9 +479,6 @@ namespace HaCreator.MapSimulator.Loaders
             const int CLIENT_DEX_Y = 245;
             const int CLIENT_INT_Y = 263;
             const int CLIENT_LUK_Y = 281;
-            const int CLIENT_DETAIL_BTN_Y = 230;
-            const int CLIENT_AUTO_BTN_Y = 300;
-
             // Stat increase buttons - use BtApUp from Stat property
             UIObject btnIncSTR = LoadButton(statProperty, "BtApUp", btClickSound, btOverSound, device);
             UIObject btnIncDEX = LoadButton(statProperty, "BtApUp", btClickSound, btOverSound, device);

@@ -295,24 +295,6 @@ namespace HaCreator.MapSimulator
         // Debug
         private Texture2D _debugBoundaryTexture;
 
-        private sealed class MobSummonSkillInfo
-        {
-            public List<string> MobIds { get; } = new List<string>();
-            public int Limit { get; set; }
-            public Point? Lt { get; set; }
-            public Point? Rb { get; set; }
-        }
-
-        private sealed class MobSkillRuntimeData
-        {
-            public int X { get; init; }
-            public int Y { get; init; }
-            public int Hp { get; init; }
-            public int DurationMs { get; init; }
-            public Point? Lt { get; init; }
-            public Point? Rb { get; init; }
-        }
-
         // Frame counter for visibility culling (increments each frame)
         private int _frameNumber = 0;
 
@@ -329,83 +311,7 @@ namespace HaCreator.MapSimulator
         private const int PORTAL_FADE_DURATION_FAST_MS = 300;  // Fast travel fade duration
 
         // Portal fade state tracking
-        private enum PortalFadeState
-        {
-            None,           // No fade in progress
-            FadingOut,      // Fading to black before map change
-            FadingIn        // Fading from black after map change
-        }
         private PortalFadeState _portalFadeState = PortalFadeState.None;
-
-        private sealed class SameMapTeleportTarget
-        {
-            public SameMapTeleportTarget(float x, float y)
-            {
-                X = x;
-                Y = y;
-            }
-
-            public float X { get; }
-            public float Y { get; }
-        }
-
-        private sealed class PendingMapSpawnTarget
-        {
-            public PendingMapSpawnTarget(float x, float y)
-            {
-                X = x;
-                Y = y;
-            }
-
-            public float X { get; }
-            public float Y { get; }
-        }
-
-        private enum SelectorRequestKind
-        {
-            None = 0,
-            LoginWorldCheck = 1,
-            ChannelChange = 2,
-        }
-
-        private enum SelectorRequestResultCode
-        {
-            None = 0,
-            Success = 1,
-            LoginStepBlocked = 2,
-            WorldUnavailable = 3,
-            AdultWorldRestricted = 4,
-            ChannelUnavailable = 5,
-            ChannelFull = 6,
-            AdultChannelRestricted = 7,
-        }
-
-        private sealed class LoginWorldSelectorMetadata
-        {
-            public LoginWorldSelectorMetadata(int worldId, IReadOnlyList<ChannelSelectionState> channels, bool requiresAdultAccount)
-            {
-                WorldId = Math.Max(0, worldId);
-                Channels = channels ?? Array.Empty<ChannelSelectionState>();
-                RequiresAdultAccount = requiresAdultAccount;
-            }
-
-            public int WorldId { get; }
-            public IReadOnlyList<ChannelSelectionState> Channels { get; }
-            public bool RequiresAdultAccount { get; }
-        }
-
-        private enum LoginUtilityDialogAction
-        {
-            None = 0,
-            DismissOnly = 1,
-            ConfirmDeleteCharacter = 2,
-        }
-
-        private enum WorldMapRequestMode
-        {
-            DirectTransfer = 0,
-            MapTransferTargetSelection = 1,
-        }
 
         // Same-map portal teleport delay (no fade, just delay before teleport)
         // Default delay is 1000ms (1 second) if portal doesn't specify its own delay
@@ -2777,14 +2683,6 @@ namespace HaCreator.MapSimulator
         }
 
 
-        // Debug rendering data (collected during draw, rendered in separate pass)
-        private struct DebugDrawData
-        {
-            public Rectangle Rect;
-            public string Text;
-            public bool IsValid;
-        }
-
         // Cached StringBuilder for debug text to avoid GC allocations every frame
         private readonly StringBuilder _debugStringBuilder = new StringBuilder(256);
 
@@ -2792,20 +2690,6 @@ namespace HaCreator.MapSimulator
         private string _navHelpTextMobOn;
         private string _navHelpTextMobOff;
         private readonly MobAttackSystem _mobAttackSystem = new MobAttackSystem();
-
-        private readonly struct QuestGatedMapObjectState
-        {
-            public QuestGatedMapObjectState(ObjectInstanceQuest[] questInfo, string[] dynamicTags, bool hiddenByMap)
-            {
-                QuestInfo = questInfo ?? Array.Empty<ObjectInstanceQuest>();
-                DynamicTags = dynamicTags ?? Array.Empty<string>();
-                HiddenByMap = hiddenByMap;
-            }
-
-            public ObjectInstanceQuest[] QuestInfo { get; }
-            public string[] DynamicTags { get; }
-            public bool HiddenByMap { get; }
-        }
 
         /// <summary>
         /// MapSimulator Constructor

@@ -5,13 +5,10 @@ using HaSharedLibrary.Util;
 using MapleLib.WzLib;
 using MapleLib.WzLib.WzProperties;
 using Microsoft.Xna.Framework;
-using Microsoft.Xna.Framework.Audio;
 using Microsoft.Xna.Framework.Graphics;
 using Microsoft.Xna.Framework.Input;
-using NAudio.Wave;
 using System;
 using System.Collections.Generic;
-using System.IO;
 using static HaCreator.MapSimulator.UI.UIObjectButtonEvent;
 
 namespace HaCreator.MapSimulator.UI
@@ -65,17 +62,12 @@ namespace HaCreator.MapSimulator.UI
         #endregion
 
         #region Custom Members
-        private int _CanvasSnapshotHeight = -1, _CanvasSnapshotWidth = -1; // a snapshot of the height and width of the canvas for initialization of the buttons
-        public int CanvasSnapshotHeight
-        {
-            get { return _CanvasSnapshotHeight; }
-            private set { }
-        }
-        public int CanvasSnapshotWidth
-        {
-            get { return _CanvasSnapshotWidth; }
-            private set { }
-        }
+        private int _canvasSnapshotHeight = -1;
+        private int _canvasSnapshotWidth = -1;
+
+        public int CanvasSnapshotHeight => _canvasSnapshotHeight;
+
+        public int CanvasSnapshotWidth => _canvasSnapshotWidth;
 
         private int _X;
         /// <summary>
@@ -135,8 +127,8 @@ namespace HaCreator.MapSimulator.UI
             IDXObject snapshotFrame = _normalState?.Frame0 ?? _normalState?.LastFrameDrawn;
             if (snapshotFrame != null)
             {
-                _CanvasSnapshotWidth = snapshotFrame.Width;
-                _CanvasSnapshotHeight = snapshotFrame.Height;
+                _canvasSnapshotWidth = snapshotFrame.Width;
+                _canvasSnapshotHeight = snapshotFrame.Height;
             }
 
             if (_normalState != null)
@@ -190,51 +182,6 @@ namespace HaCreator.MapSimulator.UI
                 Volume = 1.0f
             };
             return currAudio;
-
-            /*using (MemoryStream ms = new MemoryStream(wzSoundProperty.GetBytes(true)))  // dont dispose until its no longer needed
-            {
-                SoundEffect soundEffect = null;
-
-                WaveFormat wavFmt = BtMouseProperty.WavFormat;
-                if (wavFmt.Encoding == WaveFormatEncoding.MpegLayer3)
-                 {
-                     Mp3FileReader mpegStream = new Mp3FileReader(ms);
-                     soundEffect = SoundEffect.FromStream(mpegStream);
-                 }
-                 else if (wavFmt.Encoding == WaveFormatEncoding.Pcm)
-                 {
-                     WaveFileReader waveFileStream = new WaveFileReader(ms);
-                     soundEffect = SoundEffect.FromStream(waveFileStream);
-                 }
-                return soundEffect;
-            }
-
-          /*      using (MemoryStream ms = new MemoryStream(BtMouseProperty.GetBytes(true)))  // dont dispose until its no longer needed
-                {
-                    using (Mp3FileReader reader = new Mp3FileReader(ms))
-                    {
-                        using (WaveStream pcmStream = WaveFormatConversionStream.CreatePcmStream(reader))
-                        {
-                            // WaveFileWriter.CreateWaveFile(outputFile, pcmStream);
-                            SoundEffect effect = SoundEffect.FromStream(pcmStream);
-                        }
-                    }
-                }
-
-                using (MemoryStream ms = new MemoryStream(BtMouseProperty.GetBytes(true)))  // dont dispose until its no longer needed
-                {
-                    using (WaveStream pcm = WaveFormatConversionStream.CreatePcmStream(new Mp3FileReader(ms)))
-                    {
-                        // convert 16 bit to 8 bit pcm stream
-                        var newFormat = new WaveFormat(8000, 16, 1);
-                        using (var conversionStream = new WaveFormatConversionStream(newFormat, pcm))  // https://stackoverflow.com/questions/49776648/wav-file-conversion-pcm-48khz-16-bit-rate-to-u-law-8khz-8-bit-rate-using-naudio ty
-                        {
-                            SoundEffect effect = SoundEffect.FromStream(conversionStream);
-                            return effect; // TODO: dispose this later
-                        }
-                    }
-                }
-            return null;*/
         }
 
         /// <summary>
@@ -267,10 +214,10 @@ namespace HaCreator.MapSimulator.UI
                     System.Drawing.PointF origin = property.GetCanvasOriginPosition();
                     int? delay = property[WzCanvasProperty.AnimationDelayPropertyName]?.GetInt();
 
-                    if (_CanvasSnapshotHeight == -1)
+                    if (_canvasSnapshotHeight == -1)
                     {
-                        _CanvasSnapshotHeight = btImage.Height; // set the snapshot width and height
-                        _CanvasSnapshotWidth = btImage.Width;
+                        _canvasSnapshotHeight = btImage.Height; // set the snapshot width and height
+                        _canvasSnapshotWidth = btImage.Width;
                     }
 
                     IDXObject dxObj = new DXObject(origin, btImage.ToTexture2DAndDispose(graphicsDevice), delay != null ? (int)delay : 0);
@@ -290,18 +237,10 @@ namespace HaCreator.MapSimulator.UI
             if (drawableImages.Count == 0) // oh noz u sux
                 throw new Exception("Error creating BaseDXDrawableItem from WzSubProperty.");
 
-            BaseDXDrawableItem ret;
-            if (drawableImages.Count > 0) {
-                ret = new BaseDXDrawableItem(drawableImages, flip) {
-                    Position = relativePositionXY
-                };
-            }
-            else {
-                ret = new BaseDXDrawableItem(drawableImages[0], flip) {
-                    Position = relativePositionXY
-                };
-            }
-            return ret;
+            return new BaseDXDrawableItem(drawableImages, flip)
+            {
+                Position = relativePositionXY
+            };
         }
         #endregion
 
@@ -363,11 +302,8 @@ namespace HaCreator.MapSimulator.UI
                 {
                     SetButtonState(UIObjectState.MouseOver);
 
-                    if (priorState == UIObjectState.Pressed) // this after setting the MouseOver state, so user-code does not get override
-                    {
-                        // Invoke clicked event
-                        ButtonClickReleased?.Invoke(this);
-                    }
+                    // Invoke after setting MouseOver so the handler sees the released state.
+                    ButtonClickReleased?.Invoke(this);
                 }
                 else
                 {
