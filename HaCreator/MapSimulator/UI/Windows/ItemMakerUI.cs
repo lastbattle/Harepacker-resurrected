@@ -3,6 +3,7 @@ using HaSharedLibrary.Render.DX;
 using MapleLib.WzLib;
 using MapleLib.WzLib.WzProperties;
 using MapleLib.WzLib.WzStructure.Data.ItemStructure;
+using MapleLib.WzLib.WzStructure.Data.QuestStructure;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using Microsoft.Xna.Framework.Input;
@@ -30,6 +31,12 @@ namespace HaCreator.MapSimulator.UI
             public int ProbabilityWeight { get; init; }
         }
 
+        private sealed class ItemMakerQuestRequirement
+        {
+            public int QuestId { get; init; }
+            public int RequiredStateValue { get; init; }
+        }
+
         private sealed class ItemMakerRecipe
         {
             public string Title { get; init; }
@@ -40,11 +47,13 @@ namespace HaCreator.MapSimulator.UI
             public int RequiredLevel { get; init; }
             public int RequiredSkillLevel { get; init; }
             public int RequiredItemId { get; init; }
+            public int RequiredEquipItemId { get; init; }
             public int MesoCost { get; init; }
             public int CatalystItemId { get; init; }
             public bool UsesRandomReward { get; init; }
             public ItemMakerMaterial[] Materials { get; init; } = Array.Empty<ItemMakerMaterial>();
             public ItemMakerReward[] RandomRewards { get; init; } = Array.Empty<ItemMakerReward>();
+            public ItemMakerQuestRequirement[] RequiredQuestStates { get; init; } = Array.Empty<ItemMakerQuestRequirement>();
         }
 
         private sealed class ItemMakerPage
@@ -86,6 +95,9 @@ namespace HaCreator.MapSimulator.UI
         private int _selectedPageIndex;
         private int _characterLevel = 1;
         private int _makerSkillLevel;
+        private Func<int, bool> _hasRequiredEquip;
+        private Func<int, int, bool> _matchesQuestRequirement;
+        private string _launchContextLabel;
         private bool _isCrafting;
         private bool _isPageSelectorExpanded;
         private int _craftStartTick;
@@ -117,11 +129,43 @@ namespace HaCreator.MapSimulator.UI
             RefreshStatusMessage();
         }
 
-        public void SetCraftingState(int characterLevel, int makerSkillLevel)
+        public void SetCraftingState(
+            int characterLevel,
+            int makerSkillLevel,
+            Func<int, bool> hasRequiredEquip = null,
+            Func<int, int, bool> matchesQuestRequirement = null)
         {
             _characterLevel = Math.Max(1, characterLevel);
             _makerSkillLevel = Math.Max(0, makerSkillLevel);
+            _hasRequiredEquip = hasRequiredEquip;
+            _matchesQuestRequirement = matchesQuestRequirement;
             RefreshStatusMessage();
+        }
+
+        public void ApplyLaunchContext(string npcFunctionText)
+        {
+            _launchContextLabel = npcFunctionText?.Trim();
+            if (_pages.Count == 0)
+            {
+                return;
+            }
+
+            string searchTerm = ResolveLaunchSearchTerm(_launchContextLabel);
+            if (string.IsNullOrWhiteSpace(searchTerm))
+            {
+                return;
+            }
+
+            for (int i = 0; i < _pages.Count; i++)
+            {
+                ItemMakerPage page = _pages[i];
+                if (page.Label.IndexOf(searchTerm, StringComparison.OrdinalIgnoreCase) >= 0 ||
+                    page.Recipes.Any(recipe => recipe.Title.IndexOf(searchTerm, StringComparison.OrdinalIgnoreCase) >= 0))
+                {
+                    SelectRecipePage(i);
+                    break;
+                }
+            }
         }
 
         public void SetGaugeTextures(Texture2D gaugeBarTexture, Texture2D gaugeFillTexture, Point gaugePosition)
@@ -306,9 +350,9 @@ namespace HaCreator.MapSimulator.UI
                     selected ? new Color(55, 88, 126, 210) : new Color(27, 31, 45, 180),
                     selected ? new Color(153, 190, 230, 255) : new Color(66, 74, 95, 255));
 
-                string requirementPrefix = recipe.RequiredLevel > 0
-                    ? $"Lv {recipe.RequiredLevel}"
-                    : "Maker";
+            string requirementPrefix = recipe.RequiredLevel > 0
+                ? $"Lv {recipe.RequiredLevel}"
+                : "Maker";
                 sprite.DrawString(_font, recipe.Title, new Vector2(rowRect.X + 8, rowRect.Y + 5), Color.White);
                 sprite.DrawString(_font, $"{requirementPrefix}  Output x{recipe.OutputQuantity}", new Vector2(rowRect.X + 8, rowRect.Y + 18), new Color(199, 211, 229));
             }
@@ -375,6 +419,29 @@ namespace HaCreator.MapSimulator.UI
                     $"Req Item: {GetItemName(selectedRecipe.RequiredItemId)} {Math.Min(owned, 1)}/1",
                     new Vector2(detailOrigin.X, y),
                     color);
+                y += 17;
+            }
+
+            if (selectedRecipe.RequiredEquipItemId > 0)
+            {
+                bool hasEquip = _hasRequiredEquip?.Invoke(selectedRecipe.RequiredEquipItemId) == true;
+                sprite.DrawString(
+                    _font,
+                    $"Req Equip: {GetItemName(selectedRecipe.RequiredEquipItemId)}",
+                    new Vector2(detailOrigin.X, y),
+                    hasEquip ? new Color(194, 233, 193) : new Color(240, 155, 155));
+                y += 17;
+            }
+
+            for (int i = 0; i < selectedRecipe.RequiredQuestStates.Length; i++)
+            {
+                ItemMakerQuestRequirement requirement = selectedRecipe.RequiredQuestStates[i];
+                bool satisfied = _matchesQuestRequirement?.Invoke(requirement.QuestId, requirement.RequiredStateValue) == true;
+                sprite.DrawString(
+                    _font,
+                    $"Req Quest: {GetQuestRequirementText(requirement)}",
+                    new Vector2(detailOrigin.X, y),
+                    satisfied ? new Color(194, 233, 193) : new Color(240, 155, 155));
                 y += 17;
             }
 
@@ -588,9 +655,46 @@ namespace HaCreator.MapSimulator.UI
                 }
             }
 
+            if (recipe.RequiredEquipItemId > 0)
+            {
+                if (_hasRequiredEquip == null)
+                {
+                    failureReason = "Equipment state is unavailable.";
+                    return false;
+                }
+
+                if (!_hasRequiredEquip(recipe.RequiredEquipItemId))
+                {
+                    failureReason = $"Requires equipped item {GetItemName(recipe.RequiredEquipItemId)}.";
+                    return false;
+                }
+            }
+
+            for (int i = 0; i < recipe.RequiredQuestStates.Length; i++)
+            {
+                ItemMakerQuestRequirement requirement = recipe.RequiredQuestStates[i];
+                if (_matchesQuestRequirement == null)
+                {
+                    failureReason = "Quest progress is unavailable.";
+                    return false;
+                }
+
+                if (!_matchesQuestRequirement(requirement.QuestId, requirement.RequiredStateValue))
+                {
+                    failureReason = $"Requires quest progress: {GetQuestRequirementText(requirement)}.";
+                    return false;
+                }
+            }
+
             if (recipe.MesoCost > 0 && _inventory.GetMesoCount() < recipe.MesoCost)
             {
                 failureReason = "Not enough meso for this recipe.";
+                return false;
+            }
+
+            if (!CanAcceptCraftReward(recipe))
+            {
+                failureReason = "Inventory is full for the crafting result.";
                 return false;
             }
 
@@ -760,6 +864,54 @@ namespace HaCreator.MapSimulator.UI
                 : $"Client ItemMake recipe for {GetItemName(itemId)}.";
         }
 
+        private static string ResolveLaunchSearchTerm(string npcFunctionText)
+        {
+            if (string.IsNullOrWhiteSpace(npcFunctionText))
+            {
+                return null;
+            }
+
+            if (npcFunctionText.IndexOf("glove maker", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                return "glove";
+            }
+
+            if (npcFunctionText.IndexOf("shoemaker", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                return "shoe";
+            }
+
+            if (npcFunctionText.IndexOf("item maker", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                return "etc";
+            }
+
+            if (npcFunctionText.IndexOf("toy maker", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                return "toy";
+            }
+
+            return null;
+        }
+
+        private static string GetQuestRequirementText(ItemMakerQuestRequirement requirement)
+        {
+            if (requirement == null)
+            {
+                return "Unknown quest";
+            }
+
+            string stateLabel = requirement.RequiredStateValue switch
+            {
+                (int)QuestStateType.Not_Started => "not started",
+                (int)QuestStateType.Started => "started",
+                (int)QuestStateType.Completed => "completed",
+                (int)QuestStateType.PartyQuest => "progressed",
+                _ => $"state {requirement.RequiredStateValue}"
+            };
+            return $"Quest #{requirement.QuestId} ({stateLabel})";
+        }
+
         private void LoadRecipes()
         {
             _pages.Clear();
@@ -870,6 +1022,7 @@ namespace HaCreator.MapSimulator.UI
             }
 
             List<ItemMakerReward> randomRewards = new();
+            List<ItemMakerQuestRequirement> requiredQuestStates = new();
             if (recipeData["randomReward"] is WzSubProperty randomRewardProperty)
             {
                 foreach (WzImageProperty rewardProperty in randomRewardProperty.WzProperties)
@@ -896,6 +1049,29 @@ namespace HaCreator.MapSimulator.UI
                 }
             }
 
+            if (recipeData["reqQuest"] is WzSubProperty reqQuestProperty)
+            {
+                foreach (WzImageProperty questProperty in reqQuestProperty.WzProperties)
+                {
+                    if (!int.TryParse(questProperty.Name, out int questId))
+                    {
+                        continue;
+                    }
+
+                    int requiredStateValue = (questProperty as WzIntProperty)?.Value ?? 0;
+                    if (questId <= 0)
+                    {
+                        continue;
+                    }
+
+                    requiredQuestStates.Add(new ItemMakerQuestRequirement
+                    {
+                        QuestId = questId,
+                        RequiredStateValue = requiredStateValue
+                    });
+                }
+            }
+
             int outputQuantity = (recipeData["itemNum"] as WzIntProperty)?.Value ?? 1;
             bool usesRandomReward = randomRewards.Count > 0;
             return new ItemMakerRecipe
@@ -908,11 +1084,13 @@ namespace HaCreator.MapSimulator.UI
                 RequiredLevel = (recipeData["reqLevel"] as WzIntProperty)?.Value ?? 0,
                 RequiredSkillLevel = (recipeData["reqSkillLevel"] as WzIntProperty)?.Value ?? 0,
                 RequiredItemId = Math.Max(0, (recipeData["reqItem"] as WzIntProperty)?.Value ?? 0),
+                RequiredEquipItemId = Math.Max(0, (recipeData["reqEquip"] as WzIntProperty)?.Value ?? 0),
                 MesoCost = Math.Max(0, (recipeData["meso"] as WzIntProperty)?.Value ?? 0),
                 CatalystItemId = Math.Max(0, (recipeData["catalyst"] as WzIntProperty)?.Value ?? 0),
                 UsesRandomReward = usesRandomReward,
                 Materials = materials.ToArray(),
-                RandomRewards = randomRewards.ToArray()
+                RandomRewards = randomRewards.ToArray(),
+                RequiredQuestStates = requiredQuestStates.ToArray()
             };
         }
 
@@ -1052,6 +1230,31 @@ namespace HaCreator.MapSimulator.UI
                 }
             });
             _pages.Add(fallbackPage);
+        }
+
+        private bool CanAcceptCraftReward(ItemMakerRecipe recipe)
+        {
+            if (_inventory == null)
+            {
+                return false;
+            }
+
+            if (!recipe.UsesRandomReward || recipe.RandomRewards.Length == 0)
+            {
+                return _inventory.CanAcceptItem(recipe.OutputInventoryType, recipe.OutputItemId, recipe.OutputQuantity);
+            }
+
+            for (int i = 0; i < recipe.RandomRewards.Length; i++)
+            {
+                ItemMakerReward reward = recipe.RandomRewards[i];
+                InventoryType rewardType = ResolveInventoryType(reward.ItemId);
+                if (!_inventory.CanAcceptItem(rewardType, reward.ItemId, reward.Quantity))
+                {
+                    return false;
+                }
+            }
+
+            return true;
         }
     }
 }

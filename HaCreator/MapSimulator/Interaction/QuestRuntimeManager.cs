@@ -10,6 +10,7 @@ using MapleLib.WzLib.WzProperties;
 using MapleLib.WzLib.WzStructure.Data.QuestStructure;
 using System.Text;
 using Microsoft.Xna.Framework;
+using System.Globalization;
 
 namespace HaCreator.MapSimulator.Interaction
 {
@@ -129,7 +130,17 @@ namespace HaCreator.MapSimulator.Interaction
         private readonly Dictionary<int, QuestDefinition> _definitions = new();
         private readonly Dictionary<int, QuestProgress> _progress = new();
         private readonly Dictionary<int, int> _trackedItems = new();
+        private Func<long> _mesoCountProvider;
+        private Func<long, bool> _consumeMeso;
+        private Action<long> _addMeso;
         private bool _definitionsLoaded;
+
+        public void ConfigureMesoRuntime(Func<long> mesoCountProvider, Func<long, bool> consumeMeso, Action<long> addMeso)
+        {
+            _mesoCountProvider = mesoCountProvider;
+            _consumeMeso = consumeMeso;
+            _addMeso = addMeso;
+        }
 
         public void RecordMobKill(MobInstance mobInstance)
         {
@@ -550,6 +561,11 @@ namespace HaCreator.MapSimulator.Interaction
                 entries.Add(CreateItemMakerEntry(npc));
             }
 
+            if (IsItemUpgradeNpc(npc))
+            {
+                entries.Add(CreateItemUpgradeEntry(npc));
+            }
+
             EnsureDefinitionsLoaded();
 
             foreach (QuestDefinition definition in _definitions.Values.OrderBy(q => q.QuestId))
@@ -929,6 +945,7 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             AppendItemRequirements(definition.StartItemRequirements, details);
+            AppendMesoRequirement(definition.StartActions.MesoReward, details);
         }
 
         private void AppendMobProgress(QuestDefinition definition, ICollection<string> details)
@@ -1006,9 +1023,12 @@ namespace HaCreator.MapSimulator.Interaction
                 {
                     Label = "Item",
                     Text = $"{GetItemName(requirement.ItemId)} {currentCount}/{requirement.RequiredCount}",
-                    IsComplete = currentCount >= requirement.RequiredCount
+                    IsComplete = currentCount >= requirement.RequiredCount,
+                    ItemId = requirement.ItemId
                 });
             }
+
+            AppendMesoRequirementLine(definition.StartActions.MesoReward, lines);
 
             for (int i = 0; i < definition.StartQuestRequirements.Count; i++)
             {
@@ -1045,6 +1065,8 @@ namespace HaCreator.MapSimulator.Interaction
                 });
             }
 
+            AppendMesoRequirementLine(definition.EndActions.MesoReward, lines);
+
             for (int i = 0; i < definition.EndMobRequirements.Count; i++)
             {
                 QuestMobRequirement requirement = definition.EndMobRequirements[i];
@@ -1066,7 +1088,8 @@ namespace HaCreator.MapSimulator.Interaction
                 {
                     Label = "Item",
                     Text = $"{GetItemName(requirement.ItemId)} {currentCount}/{requirement.RequiredCount}",
-                    IsComplete = currentCount >= requirement.RequiredCount
+                    IsComplete = currentCount >= requirement.RequiredCount,
+                    ItemId = requirement.ItemId
                 });
             }
         }
@@ -1144,6 +1167,7 @@ namespace HaCreator.MapSimulator.Interaction
 
             AppendQuestStateIssues(definition.StartQuestRequirements, issues);
             AppendItemIssues(definition.StartItemRequirements, issues);
+            AppendMesoIssues(definition.StartActions.MesoReward, issues, "start");
             return issues;
         }
 
@@ -1173,6 +1197,8 @@ namespace HaCreator.MapSimulator.Interaction
                     issues.Add($"Collect {GetItemName(requirement.ItemId)} x{requirement.RequiredCount - currentCount} more.");
                 }
             }
+
+            AppendMesoIssues(definition.EndActions.MesoReward, issues, "complete");
 
             if (build != null && definition.MaxLevel.HasValue && build.Level > definition.MaxLevel.Value)
             {
@@ -1230,7 +1256,20 @@ namespace HaCreator.MapSimulator.Interaction
 
             if (actions.MesoReward != 0)
             {
-                messages.Add($"Meso reward: {actions.MesoReward} (meso runtime not tracked)");
+                long mesoDelta = actions.MesoReward;
+                if (mesoDelta > 0)
+                {
+                    _addMeso?.Invoke(mesoDelta);
+                    messages.Add($"Meso +{mesoDelta.ToString("N0", CultureInfo.InvariantCulture)}");
+                }
+                else
+                {
+                    long mesoCost = Math.Abs(mesoDelta);
+                    bool consumed = _consumeMeso?.Invoke(mesoCost) == true;
+                    messages.Add(consumed
+                        ? $"Meso -{mesoCost.ToString("N0", CultureInfo.InvariantCulture)}"
+                        : $"Meso -{mesoCost.ToString("N0", CultureInfo.InvariantCulture)} (meso runtime unavailable)");
+                }
             }
 
             if (actions.FameReward != 0)
@@ -2094,6 +2133,30 @@ namespace HaCreator.MapSimulator.Interaction
             };
         }
 
+        private static NpcInteractionEntry CreateItemUpgradeEntry(NpcItem npc)
+        {
+            string npcName = npc?.NpcInstance?.NpcInfo?.StringName;
+            string upgradeName = string.IsNullOrWhiteSpace(npcName) ? "the enhancement NPC" : npcName;
+            string subtitle = npc?.NpcInstance?.NpcInfo?.StringFunc;
+            return new NpcInteractionEntry
+            {
+                EntryId = -120,
+                Kind = NpcInteractionEntryKind.Utility,
+                Title = "Item Upgrade",
+                Subtitle = string.IsNullOrWhiteSpace(subtitle) ? "Enhancement" : subtitle,
+                Pages = new[]
+                {
+                    new NpcInteractionPage
+                    {
+                        Text = $"{upgradeName} can open the dedicated item enhancement window for hammer and enhancement-scroll flows."
+                    }
+                },
+                PrimaryActionLabel = "Open",
+                PrimaryActionEnabled = true,
+                PrimaryActionKind = NpcInteractionActionKind.OpenItemUpgrade
+            };
+        }
+
         private static bool IsStorageKeeper(NpcItem npc)
         {
             string func = npc?.NpcInstance?.NpcInfo?.StringFunc;
@@ -2121,6 +2184,21 @@ namespace HaCreator.MapSimulator.Interaction
                    func.IndexOf("glove maker", StringComparison.OrdinalIgnoreCase) >= 0 ||
                    func.IndexOf("shoemaker", StringComparison.OrdinalIgnoreCase) >= 0 ||
                    func.IndexOf("toy maker", StringComparison.OrdinalIgnoreCase) >= 0;
+        }
+
+        private static bool IsItemUpgradeNpc(NpcItem npc)
+        {
+            string func = npc?.NpcInstance?.NpcInfo?.StringFunc;
+            if (string.IsNullOrWhiteSpace(func))
+            {
+                return false;
+            }
+
+            return func.IndexOf("item upgrade", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                   func.IndexOf("enhance", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                   func.IndexOf("hammer", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                   func.IndexOf("potential", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                   func.IndexOf("cube", StringComparison.OrdinalIgnoreCase) >= 0;
         }
 
         private static string JoinQuestSections(params string[] sections)
@@ -2191,6 +2269,8 @@ namespace HaCreator.MapSimulator.Interaction
             var lines = new List<string>();
             QuestProgress progress = GetOrCreateProgress(definition.QuestId);
 
+            AppendMesoRequirement(definition.EndActions.MesoReward, lines);
+
             for (int i = 0; i < definition.EndMobRequirements.Count; i++)
             {
                 QuestMobRequirement requirement = definition.EndMobRequirements[i];
@@ -2217,6 +2297,58 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             return string.Join("\n", lines.Where(line => !string.IsNullOrWhiteSpace(line)));
+        }
+
+        private void AppendMesoRequirement(int mesoRewardDelta, ICollection<string> lines)
+        {
+            if (mesoRewardDelta >= 0)
+            {
+                return;
+            }
+
+            long required = Math.Abs((long)mesoRewardDelta);
+            long current = Math.Min(GetCurrentMesoCount(), required);
+            lines.Add($"Meso: {current.ToString("N0", CultureInfo.InvariantCulture)}/{required.ToString("N0", CultureInfo.InvariantCulture)}");
+        }
+
+        private void AppendMesoRequirementLine(int mesoRewardDelta, ICollection<QuestLogLineSnapshot> lines)
+        {
+            if (mesoRewardDelta >= 0)
+            {
+                return;
+            }
+
+            long required = Math.Abs((long)mesoRewardDelta);
+            long current = Math.Min(GetCurrentMesoCount(), required);
+            lines.Add(new QuestLogLineSnapshot
+            {
+                Label = "Meso",
+                Text = $"{current.ToString("N0", CultureInfo.InvariantCulture)}/{required.ToString("N0", CultureInfo.InvariantCulture)}",
+                IsComplete = current >= required
+            });
+        }
+
+        private void AppendMesoIssues(int mesoRewardDelta, ICollection<string> issues, string actionLabel)
+        {
+            if (mesoRewardDelta >= 0)
+            {
+                return;
+            }
+
+            long required = Math.Abs((long)mesoRewardDelta);
+            long current = GetCurrentMesoCount();
+            if (current >= required)
+            {
+                return;
+            }
+
+            long missing = required - current;
+            issues.Add($"Need {missing.ToString("N0", CultureInfo.InvariantCulture)} more meso to {actionLabel} this quest.");
+        }
+
+        private long GetCurrentMesoCount()
+        {
+            return Math.Max(0, _mesoCountProvider?.Invoke() ?? 0L);
         }
 
         private static string BuildRewardText(QuestDefinition definition)

@@ -10,6 +10,9 @@ namespace HaCreator.MapSimulator.UI
         bool TryConsumeItem(InventoryType type, int itemId, int quantity);
         void AddItem(InventoryType type, int itemId, Texture2D texture, int quantity = 1);
         Texture2D GetItemTexture(InventoryType type, int itemId);
+        int GetSlotLimit(InventoryType type);
+        bool CanExpandSlotLimit(InventoryType type, int amount = 4);
+        bool TryExpandSlotLimit(InventoryType type, int amount = 4);
         long GetMesoCount();
         void AddMeso(long amount);
         bool TryConsumeMeso(long amount);

@@ -5,11 +5,14 @@ using HaSharedLibrary.Render.DX;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using Microsoft.Xna.Framework.Input;
+using MapleLib.WzLib;
+using MapleLib.WzLib.WzProperties;
 using MapleLib.WzLib.WzStructure.Data.QuestStructure;
 using Spine;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using HaSharedLibrary.Util;
 
 namespace HaCreator.MapSimulator.UI
 {
@@ -21,6 +24,7 @@ namespace HaCreator.MapSimulator.UI
         private const int TAB_IN_PROGRESS = 1;
         private const int TAB_COMPLETED = 2;
         private const int TAB_RECOMMENDED = 3;
+        private const int DETAIL_LINE_ICON_SIZE = 12;
         private const float TEXT_SCALE = 0.58f;
         private const float SMALL_TEXT_SCALE = 0.5f;
 
@@ -47,9 +51,13 @@ namespace HaCreator.MapSimulator.UI
         private Texture2D _iconInProgress;
         private Texture2D _iconCompleted;
         private Texture2D _pixel;
+        private readonly GraphicsDevice _graphicsDevice;
+        private readonly Dictionary<int, Texture2D> _itemIconCache = new();
         private SpriteFont _font;
         private MouseState _previousMouseState;
         private Func<QuestLogTabType, bool, QuestLogSnapshot> _questLogProvider;
+        private Point _lastMousePosition;
+        private HoveredQuestItemInfo _hoveredQuestItem;
 
         public event Action<int> QuestDetailRequested;
 
@@ -77,6 +85,7 @@ namespace HaCreator.MapSimulator.UI
         public QuestUI(IDXObject frame, GraphicsDevice device)
             : base(frame)
         {
+            _graphicsDevice = device;
             _questsByTab = new Dictionary<int, List<QuestDisplayData>>
             {
                 { TAB_AVAILABLE, new List<QuestDisplayData>() },
@@ -253,6 +262,16 @@ namespace HaCreator.MapSimulator.UI
             DrawQuestDetail(sprite, detailRect, snapshot);
         }
 
+        protected override void DrawOverlay(SpriteBatch sprite, SkeletonMeshRenderer skeletonMeshRenderer, GameTime gameTime,
+            int mapShiftX, int mapShiftY, int centerX, int centerY,
+            ReflectionDrawableBoundary drawReflectionInfo,
+            RenderParameters renderParameters,
+            int TickCount)
+        {
+            base.DrawOverlay(sprite, skeletonMeshRenderer, gameTime, mapShiftX, mapShiftY, centerX, centerY, drawReflectionInfo, renderParameters, TickCount);
+            DrawHoveredItemTooltip(sprite);
+        }
+
         private void DrawTabs(SpriteBatch sprite, Rectangle tabRect)
         {
             if (HasClientTabButtons())
@@ -388,8 +407,9 @@ namespace HaCreator.MapSimulator.UI
             {
                 QuestLogLineSnapshot line = lines[i];
                 Color iconColor = line.IsComplete ? new Color(114, 209, 108) : new Color(214, 146, 90);
-                sprite.Draw(_pixel, new Rectangle(detailRect.X + 8, y + 2, 6, 6), iconColor);
-                DrawText(sprite, $"{line.Label}: {line.Text}", new Vector2(detailRect.X + 18, y - 2), new Color(229, 233, 240), 0.44f, detailRect.Width - 28);
+                Rectangle iconRect = new Rectangle(detailRect.X + 8, y, DETAIL_LINE_ICON_SIZE, DETAIL_LINE_ICON_SIZE);
+                DrawQuestLineIcon(sprite, iconRect, line, iconColor);
+                DrawText(sprite, $"{line.Label}: {line.Text}", new Vector2(detailRect.X + 24, y - 2), new Color(229, 233, 240), 0.44f, detailRect.Width - 34);
                 y += 14;
             }
 
@@ -466,8 +486,10 @@ namespace HaCreator.MapSimulator.UI
             ClampScroll(snapshot);
 
             MouseState mouseState = Mouse.GetState();
+            _lastMousePosition = new Point(mouseState.X, mouseState.Y);
             bool leftReleased = mouseState.LeftButton == ButtonState.Released && _previousMouseState.LeftButton == ButtonState.Pressed;
             int wheelDelta = mouseState.ScrollWheelValue - _previousMouseState.ScrollWheelValue;
+            _hoveredQuestItem = ResolveHoveredQuestItem(mouseState.X, mouseState.Y, snapshot);
 
             if (ContainsPoint(mouseState.X, mouseState.Y))
             {
@@ -669,11 +691,263 @@ namespace HaCreator.MapSimulator.UI
                 {
                     Label = "Item",
                     Text = $"Item #{reward.ItemId} x{reward.Quantity}",
-                    IsComplete = true
+                    IsComplete = true,
+                    ItemId = reward.ItemId
                 });
             }
 
             return lines;
+        }
+
+        private void DrawQuestLineIcon(SpriteBatch sprite, Rectangle iconRect, QuestLogLineSnapshot line, Color fallbackColor)
+        {
+            Texture2D icon = line.ItemId.HasValue ? ResolveItemIcon(line.ItemId.Value) : null;
+            if (icon != null)
+            {
+                sprite.Draw(icon, iconRect, Color.White);
+                return;
+            }
+
+            sprite.Draw(_pixel, iconRect, fallbackColor);
+        }
+
+        private HoveredQuestItemInfo ResolveHoveredQuestItem(int mouseX, int mouseY, QuestLogSnapshot snapshot)
+        {
+            if (!IsVisible || !ContainsPoint(mouseX, mouseY))
+            {
+                return null;
+            }
+
+            QuestLogEntrySnapshot selected = snapshot.Entries.FirstOrDefault(entry => entry.QuestId == _selectedQuestId);
+            if (selected == null)
+            {
+                return null;
+            }
+
+            Rectangle listRect = GetListArea();
+            Rectangle detailRect = GetDetailArea(listRect);
+            int y = detailRect.Y + 8 + 18 + 18 + 14;
+
+            y = AdvanceSection(detailRect, y, selected.SummaryText, 0.45f);
+            y = AdvanceSection(detailRect, y, selected.StageText, 0.45f);
+
+            HoveredQuestItemInfo hovered = TryResolveHoveredLineItem(mouseX, mouseY, detailRect, ref y, selected.RequirementLines);
+            if (hovered != null)
+            {
+                return hovered;
+            }
+
+            return TryResolveHoveredLineItem(mouseX, mouseY, detailRect, ref y, selected.RewardLines);
+        }
+
+        private int AdvanceSection(Rectangle detailRect, int y, string text, float scale)
+        {
+            if (string.IsNullOrWhiteSpace(text) || y >= detailRect.Bottom - 16)
+            {
+                return y;
+            }
+
+            return y + 14 + (MeasureWrappedLineCount(text, detailRect.Width - 16, scale) * 12) + 4;
+        }
+
+        private HoveredQuestItemInfo TryResolveHoveredLineItem(int mouseX, int mouseY, Rectangle detailRect, ref int y, IReadOnlyList<QuestLogLineSnapshot> lines)
+        {
+            if (lines == null || lines.Count == 0 || y >= detailRect.Bottom - 16)
+            {
+                return null;
+            }
+
+            y += 14;
+            for (int i = 0; i < lines.Count && y < detailRect.Bottom - 14; i++)
+            {
+                QuestLogLineSnapshot line = lines[i];
+                if (line.ItemId.HasValue)
+                {
+                    Rectangle iconRect = new Rectangle(detailRect.X + 8, y, DETAIL_LINE_ICON_SIZE, DETAIL_LINE_ICON_SIZE);
+                    if (iconRect.Contains(mouseX, mouseY))
+                    {
+                        return CreateHoveredQuestItem(line.ItemId.Value, line.Text);
+                    }
+                }
+
+                y += 14;
+            }
+
+            y += 2;
+            return null;
+        }
+
+        private HoveredQuestItemInfo CreateHoveredQuestItem(int itemId, string lineText)
+        {
+            return new HoveredQuestItemInfo
+            {
+                ItemId = itemId,
+                Title = ResolveItemName(itemId),
+                Subtitle = lineText,
+                Description = ResolveItemDescription(itemId),
+                Icon = ResolveItemIcon(itemId)
+            };
+        }
+
+        private Texture2D ResolveItemIcon(int itemId)
+        {
+            if (itemId <= 0 || _graphicsDevice == null)
+            {
+                return null;
+            }
+
+            if (_itemIconCache.TryGetValue(itemId, out Texture2D cachedTexture))
+            {
+                return cachedTexture;
+            }
+
+            if (!InventoryItemMetadataResolver.TryResolveImageSource(itemId, out string category, out string imagePath))
+            {
+                _itemIconCache[itemId] = null;
+                return null;
+            }
+
+            WzImage itemImage = global::HaCreator.Program.FindImage(category, imagePath);
+            itemImage?.ParseImage();
+            string itemText = category == "Character" ? itemId.ToString("D8") : itemId.ToString("D7");
+            WzSubProperty itemProperty = itemImage?[itemText] as WzSubProperty;
+            WzSubProperty infoProperty = itemProperty?["info"] as WzSubProperty;
+            WzCanvasProperty iconCanvas = infoProperty?["iconRaw"] as WzCanvasProperty
+                                          ?? infoProperty?["icon"] as WzCanvasProperty;
+            Texture2D texture = iconCanvas?.GetLinkedWzCanvasBitmap()?.ToTexture2DAndDispose(_graphicsDevice);
+            _itemIconCache[itemId] = texture;
+            return texture;
+        }
+
+        private void DrawHoveredItemTooltip(SpriteBatch sprite)
+        {
+            if (_hoveredQuestItem == null || _font == null)
+            {
+                return;
+            }
+
+            string title = string.IsNullOrWhiteSpace(_hoveredQuestItem.Title) ? $"Item #{_hoveredQuestItem.ItemId}" : _hoveredQuestItem.Title;
+            const int tooltipWidth = 220;
+            const int padding = 8;
+            const int iconSize = 28;
+            const int gap = 8;
+            float titleScale = 0.56f;
+            float bodyScale = 0.44f;
+            float titleWidth = tooltipWidth - (padding * 2);
+            float bodyWidth = tooltipWidth - ((padding * 2) + iconSize + gap);
+
+            string[] wrappedTitle = WrapText(title, titleWidth, titleScale);
+            string[] wrappedSubtitle = WrapText(_hoveredQuestItem.Subtitle, bodyWidth, bodyScale);
+            string[] wrappedDescription = WrapText(_hoveredQuestItem.Description, bodyWidth, bodyScale);
+
+            float titleHeight = MeasureTooltipHeight(wrappedTitle, titleScale);
+            float subtitleHeight = MeasureTooltipHeight(wrappedSubtitle, bodyScale);
+            float descriptionHeight = MeasureTooltipHeight(wrappedDescription, bodyScale);
+            float bodyHeight = subtitleHeight + (descriptionHeight > 0f ? 4f + descriptionHeight : 0f);
+            int tooltipHeight = (int)Math.Ceiling((padding * 2) + titleHeight + 6f + Math.Max(iconSize, bodyHeight));
+
+            int viewportWidth = sprite.GraphicsDevice.Viewport.Width;
+            int viewportHeight = sprite.GraphicsDevice.Viewport.Height;
+            int tooltipX = _lastMousePosition.X + 18;
+            int tooltipY = _lastMousePosition.Y + 18;
+            if (tooltipX + tooltipWidth > viewportWidth - 4)
+            {
+                tooltipX = Math.Max(4, _lastMousePosition.X - tooltipWidth - 18);
+            }
+
+            if (tooltipY + tooltipHeight > viewportHeight - 4)
+            {
+                tooltipY = Math.Max(4, _lastMousePosition.Y - tooltipHeight - 18);
+            }
+
+            Rectangle backgroundRect = new Rectangle(tooltipX, tooltipY, tooltipWidth, tooltipHeight);
+            sprite.Draw(_pixel, backgroundRect, new Color(18, 24, 37, 235));
+            sprite.Draw(_pixel, new Rectangle(backgroundRect.X, backgroundRect.Y, backgroundRect.Width, 1), new Color(112, 146, 201));
+            sprite.Draw(_pixel, new Rectangle(backgroundRect.X, backgroundRect.Bottom - 1, backgroundRect.Width, 1), new Color(112, 146, 201));
+            sprite.Draw(_pixel, new Rectangle(backgroundRect.X, backgroundRect.Y, 1, backgroundRect.Height), new Color(112, 146, 201));
+            sprite.Draw(_pixel, new Rectangle(backgroundRect.Right - 1, backgroundRect.Y, 1, backgroundRect.Height), new Color(112, 146, 201));
+
+            float textY = tooltipY + padding;
+            DrawTooltipLines(sprite, wrappedTitle, new Vector2(tooltipX + padding, textY), new Color(255, 220, 120), titleScale);
+            textY += titleHeight + 6f;
+
+            if (_hoveredQuestItem.Icon != null)
+            {
+                sprite.Draw(_hoveredQuestItem.Icon, new Rectangle(tooltipX + padding, (int)textY, iconSize, iconSize), Color.White);
+            }
+
+            float bodyX = tooltipX + padding + iconSize + gap;
+            DrawTooltipLines(sprite, wrappedSubtitle, new Vector2(bodyX, textY), new Color(228, 233, 242), bodyScale);
+            if (descriptionHeight > 0f)
+            {
+                DrawTooltipLines(sprite, wrappedDescription, new Vector2(bodyX, textY + subtitleHeight + 4f), new Color(199, 206, 218), bodyScale);
+            }
+        }
+
+        private void DrawTooltipLines(SpriteBatch sprite, IReadOnlyList<string> lines, Vector2 position, Color color, float scale)
+        {
+            for (int i = 0; i < lines.Count; i++)
+            {
+                DrawText(sprite, lines[i], new Vector2(position.X, position.Y + (i * (_font.LineSpacing * scale))), color, scale);
+            }
+        }
+
+        private string[] WrapText(string text, float maxWidth, float scale)
+        {
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                return Array.Empty<string>();
+            }
+
+            var lines = new List<string>();
+            string[] paragraphs = text.Split(new[] { '\n' }, StringSplitOptions.RemoveEmptyEntries);
+            foreach (string paragraph in paragraphs)
+            {
+                string remaining = paragraph.Trim();
+                while (!string.IsNullOrEmpty(remaining))
+                {
+                    int length = remaining.Length;
+                    while (length > 1 && (_font.MeasureString(remaining[..length]).X * scale) > maxWidth)
+                    {
+                        int previousSpace = remaining.LastIndexOf(' ', length - 1, length - 1);
+                        length = previousSpace > 0 ? previousSpace : length - 1;
+                    }
+
+                    string line = remaining[..Math.Max(1, length)].Trim();
+                    if (line.Length == 0)
+                    {
+                        break;
+                    }
+
+                    lines.Add(line);
+                    remaining = remaining[line.Length..].TrimStart();
+                }
+            }
+
+            return lines.Count == 0 ? Array.Empty<string>() : lines.ToArray();
+        }
+
+        private float MeasureTooltipHeight(IReadOnlyList<string> lines, float scale)
+        {
+            return lines == null || lines.Count == 0 ? 0f : lines.Count * (_font.LineSpacing * scale);
+        }
+
+        private static string ResolveItemName(int itemId)
+        {
+            return global::HaCreator.Program.InfoManager?.ItemNameCache != null
+                   && global::HaCreator.Program.InfoManager.ItemNameCache.TryGetValue(itemId, out Tuple<string, string, string> itemInfo)
+                   && !string.IsNullOrWhiteSpace(itemInfo?.Item2)
+                ? itemInfo.Item2
+                : $"Item #{itemId}";
+        }
+
+        private static string ResolveItemDescription(int itemId)
+        {
+            return global::HaCreator.Program.InfoManager?.ItemNameCache != null
+                   && global::HaCreator.Program.InfoManager.ItemNameCache.TryGetValue(itemId, out Tuple<string, string, string> itemInfo)
+                   && !string.IsNullOrWhiteSpace(itemInfo?.Item3)
+                ? itemInfo.Item3
+                : string.Empty;
         }
 
         private void DrawText(SpriteBatch sprite, string text, Vector2 position, Color color, float scale, int maxWidth = int.MaxValue)
@@ -931,5 +1205,14 @@ namespace HaCreator.MapSimulator.UI
         public int RequiredCount { get; set; }
         public int CurrentCount { get; set; }
         public string Description { get; set; }
+    }
+
+    internal sealed class HoveredQuestItemInfo
+    {
+        public int ItemId { get; init; }
+        public string Title { get; init; } = string.Empty;
+        public string Subtitle { get; init; } = string.Empty;
+        public string Description { get; init; } = string.Empty;
+        public Texture2D Icon { get; init; }
     }
 }

@@ -75,7 +75,7 @@ namespace HaCreator.MapSimulator.UI
         public override string WindowName => MapSimulatorWindowNames.MapTransfer;
         public int MaxSavedDestinations => _maxSavedDestinations;
 
-        public Action RegisterCurrentMapRequested { get; set; }
+        public Action<DestinationEntry> RegisterCurrentMapRequested { get; set; }
         public Action<DestinationEntry> DeleteDestinationRequested { get; set; }
         public Action<DestinationEntry> MoveDestinationRequested { get; set; }
         public Action<DestinationEntry> WorldMapRequested { get; set; }
@@ -120,6 +120,25 @@ namespace HaCreator.MapSimulator.UI
                 ClampScrollOffset();
             }
 
+            UpdateRowButtons();
+            UpdateButtonStates();
+        }
+
+        public void SetSelectedMapId(int mapId)
+        {
+            if (mapId <= 0 || _destinations.Count == 0)
+            {
+                return;
+            }
+
+            int index = _destinations.FindIndex(entry => entry.MapId == mapId);
+            if (index < 0)
+            {
+                return;
+            }
+
+            _selectedIndex = index;
+            ClampScrollOffset();
             UpdateRowButtons();
             UpdateButtonStates();
         }
@@ -215,7 +234,7 @@ namespace HaCreator.MapSimulator.UI
             if (registerButton != null)
             {
                 AddButton(registerButton);
-                registerButton.ButtonClickReleased += _ => RegisterCurrentMapRequested?.Invoke();
+                registerButton.ButtonClickReleased += _ => RegisterCurrentMapRequested?.Invoke(GetSelectedEntry());
             }
 
             if (deleteButton != null)

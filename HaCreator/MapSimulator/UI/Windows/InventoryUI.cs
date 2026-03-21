@@ -26,6 +26,8 @@ namespace HaCreator.MapSimulator.UI
         protected const int VISIBLE_ROWS = 6;
         protected const int TOTAL_SLOTS = 24;
         protected const int SLOT_PITCH = SLOT_SIZE + 1;
+        protected const int MAX_SLOT_LIMIT = 96;
+        protected const int SLOT_EXPANSION_STEP = 4;
 
         protected const int TAB_EQUIP = 0;
         protected const int TAB_USE = 1;
@@ -58,6 +60,7 @@ namespace HaCreator.MapSimulator.UI
         private UIObject _tabCash;
         private UIObject _btnGather;
         private UIObject _btnSort;
+        private UIObject _btnCashShop;
 
         private readonly Dictionary<InventoryType, List<InventorySlotData>> _inventoryData;
         private readonly Dictionary<InventoryType, int> _inventorySlotLimits;
@@ -85,6 +88,7 @@ namespace HaCreator.MapSimulator.UI
         #region Properties
         public override string WindowName => "Inventory";
         public Action<int> ItemUpgradeRequested { get; set; }
+        public Action CashShopRequested { get; set; }
 
         public int CurrentTab
         {
@@ -193,10 +197,11 @@ namespace HaCreator.MapSimulator.UI
             UpdateTabStates();
         }
 
-        public void InitializeUtilityButtons(UIObject btnGather, UIObject btnSort)
+        public void InitializeUtilityButtons(UIObject btnGather, UIObject btnSort, UIObject btnCashShop = null)
         {
             _btnGather = btnGather;
             _btnSort = btnSort;
+            _btnCashShop = btnCashShop;
 
             if (_btnGather != null)
             {
@@ -208,6 +213,12 @@ namespace HaCreator.MapSimulator.UI
             {
                 AddButton(_btnSort);
                 _btnSort.ButtonClickReleased += sender => SortCurrentTab();
+            }
+
+            if (_btnCashShop != null)
+            {
+                AddButton(_btnCashShop);
+                _btnCashShop.ButtonClickReleased += sender => CashShopRequested?.Invoke();
             }
         }
 
@@ -404,10 +415,10 @@ namespace HaCreator.MapSimulator.UI
             return true;
         }
 
-        protected int GetSlotLimit(InventoryType type)
+        public int GetSlotLimit(InventoryType type)
         {
             return _inventorySlotLimits.TryGetValue(type, out int value)
-                ? Math.Max(TOTAL_SLOTS, value)
+                ? Math.Clamp(value, TOTAL_SLOTS, MAX_SLOT_LIMIT)
                 : TOTAL_SLOTS;
         }
 
@@ -418,7 +429,29 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
-            _inventorySlotLimits[type] = Math.Max(TOTAL_SLOTS, slotLimit);
+            _inventorySlotLimits[type] = Math.Clamp(slotLimit, TOTAL_SLOTS, MAX_SLOT_LIMIT);
+        }
+
+        public bool CanExpandSlotLimit(InventoryType type, int amount = SLOT_EXPANSION_STEP)
+        {
+            if (type == InventoryType.NONE || amount <= 0)
+            {
+                return false;
+            }
+
+            int normalizedAmount = NormalizeSlotExpansionAmount(amount);
+            return GetSlotLimit(type) + normalizedAmount <= MAX_SLOT_LIMIT;
+        }
+
+        public bool TryExpandSlotLimit(InventoryType type, int amount = SLOT_EXPANSION_STEP)
+        {
+            if (!CanExpandSlotLimit(type, amount))
+            {
+                return false;
+            }
+
+            SetSlotLimit(type, GetSlotLimit(type) + NormalizeSlotExpansionAmount(amount));
+            return true;
         }
 
         public void AddItem(InventoryType type, int itemId, Texture2D texture, int quantity = 1)
@@ -975,6 +1008,15 @@ namespace HaCreator.MapSimulator.UI
         {
             return type != InventoryType.EQUIP && maxStackSize > 1;
         }
+
+        private static int NormalizeSlotExpansionAmount(int amount)
+        {
+            int normalized = Math.Max(SLOT_EXPANSION_STEP, amount);
+            int remainder = normalized % SLOT_EXPANSION_STEP;
+            return remainder == 0
+                ? normalized
+                : normalized + (SLOT_EXPANSION_STEP - remainder);
+        }
         #endregion
 
         #region Interaction
@@ -1017,7 +1059,7 @@ namespace HaCreator.MapSimulator.UI
         {
             bool rightJustPressed = mouseState.RightButton == ButtonState.Pressed &&
                                     _previousInteractionMouseState.RightButton == ButtonState.Released;
-            if (!rightJustPressed || inventoryType != InventoryType.USE)
+            if (!rightJustPressed)
             {
                 return;
             }

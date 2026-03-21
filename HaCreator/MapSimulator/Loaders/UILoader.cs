@@ -1301,7 +1301,14 @@ namespace HaCreator.MapSimulator.Loaders
             WzCanvasProperty iconNpcCanvas =
                 defaultHelperProperty?["npc"] as WzCanvasProperty ??
                 (bBigBang ? (WzCanvasProperty)minimapFrameProperty["iconNpc"]?["0"] : null);
-            if (iconNpcCanvas != null)
+            BaseDXDrawableItem animatedNpcMarker = bBigBang
+                ? LoadAnimatedMinimapMarker(minimapFrameProperty["iconNpc"] as WzSubProperty, device, minimapImageOffset, 120)
+                : null;
+            if (animatedNpcMarker != null)
+            {
+                npcMarker = animatedNpcMarker;
+            }
+            else if (iconNpcCanvas != null)
             {
                 System.Drawing.Bitmap npcMarkerBitmap = iconNpcCanvas.GetLinkedWzCanvasBitmap();
                 if (npcMarkerBitmap != null)
@@ -1370,6 +1377,18 @@ namespace HaCreator.MapSimulator.Loaders
 
             foreach (var arrowEntry in arrowCanvasMap)
             {
+                BaseDXDrawableItem animatedArrow = null;
+                if (bBigBang)
+                {
+                    animatedArrow = LoadAnimatedMinimapMarker(minimapFrameProperty["iconDirection"]?[ToLegacyArrowKey(arrowEntry.Key)] as WzSubProperty, device, minimapImageOffset, 120);
+                }
+
+                if (animatedArrow != null)
+                {
+                    directionMarkers[arrowEntry.Key] = animatedArrow;
+                    continue;
+                }
+
                 WzCanvasProperty arrowCanvas = defaultHelperProperty?[arrowEntry.Value] as WzCanvasProperty;
                 if (arrowCanvas == null)
                     continue;
@@ -1568,6 +1587,58 @@ namespace HaCreator.MapSimulator.Loaders
             }
             return minimapItem;
         }
+
+        private static string ToLegacyArrowKey(MinimapUI.DirectionArrow arrow)
+        {
+            return arrow switch
+            {
+                MinimapUI.DirectionArrow.NorthWest => "nw",
+                MinimapUI.DirectionArrow.North => "n",
+                MinimapUI.DirectionArrow.NorthEast => "ne",
+                MinimapUI.DirectionArrow.West => "w",
+                MinimapUI.DirectionArrow.East => "e",
+                MinimapUI.DirectionArrow.SouthWest => "sw",
+                MinimapUI.DirectionArrow.South => "s",
+                MinimapUI.DirectionArrow.SouthEast => "se",
+                _ => string.Empty
+            };
+        }
+
+        private static BaseDXDrawableItem LoadAnimatedMinimapMarker(WzSubProperty sourceProperty, GraphicsDevice device, Point position, int fallbackDelay)
+        {
+            if (sourceProperty == null)
+            {
+                return null;
+            }
+
+            List<IDXObject> frames = new List<IDXObject>();
+            for (int i = 0; ; i++)
+            {
+                if (sourceProperty[i.ToString()] is not WzCanvasProperty frameCanvas)
+                {
+                    break;
+                }
+
+                System.Drawing.Bitmap frameBitmap = frameCanvas.GetLinkedWzCanvasBitmap();
+                if (frameBitmap == null)
+                {
+                    continue;
+                }
+
+                int delay = frameCanvas[WzCanvasProperty.AnimationDelayPropertyName]?.GetInt() ?? fallbackDelay;
+                frames.Add(new DXObject(frameCanvas.GetCanvasOriginPosition(), frameBitmap.ToTexture2DAndDispose(device), delay));
+            }
+
+            if (frames.Count == 0)
+            {
+                return null;
+            }
+
+            return new BaseDXDrawableItem(frames, false)
+            {
+                Position = position
+            };
+        }
         #endregion
 
         public static StatusBarPopupMenuWindow CreateStatusBarPopupMenuWindow(
@@ -1699,6 +1770,8 @@ namespace HaCreator.MapSimulator.Loaders
             WzSubProperty cursorHorizontalScrollable2 = (WzSubProperty)source?["10"]; //
             WzSubProperty cursorPickable2 = (WzSubProperty)source?["11"]; // pickable inventory
             WzSubProperty cursorHold = (WzSubProperty)source?["12"]; // pickable inventory
+            WzSubProperty cursorForbidden = (WzSubProperty)source?["13"]; // forbidden hand cursor
+            WzSubProperty cursorBusy = (WzSubProperty)source?["16"]; // busy / pending cursor
 
             List<IDXObject> frames = MapSimulatorLoader.LoadFrames(texturePool, cursorCanvas, x, y, device, usedProps);
 
@@ -1727,7 +1800,19 @@ namespace HaCreator.MapSimulator.Loaders
                 npcHoverState = MapSimulatorLoader.CreateMapItemFromProperty(texturePool, cursorClickable, 0, 0, new Point(0, 0), device, usedProps, false);
             }
 
-            return new MouseCursorItem(frames, holdState, clickableButtonState, npcHoverState, holdState);
+            BaseDXDrawableItem forbiddenState = null;
+            if (cursorForbidden != null)
+            {
+                forbiddenState = MapSimulatorLoader.CreateMapItemFromProperty(texturePool, cursorForbidden, 0, 0, new Point(0, 0), device, usedProps, false);
+            }
+
+            BaseDXDrawableItem busyState = null;
+            if (cursorBusy != null)
+            {
+                busyState = MapSimulatorLoader.CreateMapItemFromProperty(texturePool, cursorBusy, 0, 0, new Point(0, 0), device, usedProps, false);
+            }
+
+            return new MouseCursorItem(frames, holdState, clickableButtonState, npcHoverState, holdState, forbiddenState, busyState);
         }
         #endregion
     }

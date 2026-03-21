@@ -127,6 +127,50 @@ namespace HaCreator.MapSimulator.Managers
             return removedCount > 0;
         }
 
+        public bool Replace(CharacterBuild build, int existingMapId, MapTransferDestinationRecord destination, int maxCapacity)
+        {
+            if (destination == null || destination.MapId <= 0 || maxCapacity <= 0)
+            {
+                return false;
+            }
+
+            string key = ResolveCharacterKey(build);
+            List<MapTransferDestinationRecord> destinations = GetOrCreateBucket(key);
+            int existingIndex = existingMapId > 0
+                ? destinations.FindIndex(record => record.MapId == existingMapId)
+                : -1;
+
+            for (int i = 0; i < destinations.Count; i++)
+            {
+                if (i == existingIndex)
+                {
+                    continue;
+                }
+
+                if (destinations[i].MapId == destination.MapId)
+                {
+                    return false;
+                }
+            }
+
+            if (existingIndex >= 0)
+            {
+                destinations[existingIndex] = destination;
+            }
+            else
+            {
+                if (destinations.Count >= maxCapacity)
+                {
+                    return false;
+                }
+
+                destinations.Add(destination);
+            }
+
+            SaveToDisk();
+            return true;
+        }
+
         private List<MapTransferDestinationRecord> GetOrCreateBucket(string key)
         {
             if (!_destinationsByCharacter.TryGetValue(key, out List<MapTransferDestinationRecord> destinations))

@@ -344,10 +344,12 @@ namespace HaCreator.MapSimulator.Character
                 Skills.SetFootholdLookup(_findFoothold);
                 Skills.SetTamingMobLoader(Loader.LoadEquipment);
                 Skills.OnAttackAreaResolved = _reactorAttackAreaHandler;
+                build.SkillStatBonusProvider = stat => Skills.GetPassiveBonus(stat) + Skills.GetBuffStat(stat);
+                build.SkillMasteryProvider = Skills.GetMastery;
 
                 // Keep only the player's current job path resident at startup.
                 Skills.LoadSkillsForJob(build.Job);
-                Skills.LearnAllActiveSkills();
+                Skills.LearnAllNonHiddenSkills();
 
                 System.Diagnostics.Debug.WriteLine($"[PlayerManager] SkillManager created for job path {build.Job}");
             }

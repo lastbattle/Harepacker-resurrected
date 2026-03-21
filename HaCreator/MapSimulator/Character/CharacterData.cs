@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using HaCreator.MapSimulator.Character.Skills;
 using HaSharedLibrary.Render.DX;
 using MapleLib.WzLib;
 using MapleLib.WzLib.WzProperties;
@@ -690,6 +691,8 @@ namespace HaCreator.MapSimulator.Character
         public int CriticalRate { get; set; } = 0;
         public float Speed { get; set; } = 100;         // Movement speed %
         public float JumpPower { get; set; } = 100;     // Jump height %
+        public Func<BuffStatType, int> SkillStatBonusProvider { get; set; }
+        public Func<int> SkillMasteryProvider { get; set; }
 
         public string GuildDisplayText => string.IsNullOrWhiteSpace(GuildName) ? "-" : GuildName;
         public string AllianceDisplayText => string.IsNullOrWhiteSpace(AllianceName) ? "-" : AllianceName;
@@ -723,13 +726,14 @@ namespace HaCreator.MapSimulator.Character
         public int TotalMaxMP => Math.Clamp(MaxMP + SumEquipmentBonus(part => part.BonusMP), 0, MaxHpMpStat);
         public int TotalHP => Math.Clamp(HP + SumEquipmentBonus(part => part.BonusHP), 0, TotalMaxHP);
         public int TotalMP => Math.Clamp(MP + SumEquipmentBonus(part => part.BonusMP), 0, TotalMaxMP);
+        public int TotalMastery => Math.Max(10, SkillMasteryProvider?.Invoke() ?? 10);
 
         public int TotalAttack
         {
             get
             {
                 int runtimeBonus = Math.Max(0, Attack - DefaultAttackValue);
-                return Math.Max(0, runtimeBonus + SumEquipmentBonus(part => part.BonusWeaponAttack));
+                return Math.Max(0, runtimeBonus + SumEquipmentBonus(part => part.BonusWeaponAttack) + GetSkillStatBonus(BuffStatType.Attack));
             }
         }
 
@@ -738,7 +742,7 @@ namespace HaCreator.MapSimulator.Character
             get
             {
                 int runtimeBonus = Math.Max(0, Defense - DefaultDefenseValue);
-                return Math.Max(0, runtimeBonus + SumEquipmentBonus(part => part.BonusWeaponDefense));
+                return Math.Max(0, runtimeBonus + SumEquipmentBonus(part => part.BonusWeaponDefense) + GetSkillStatBonus(BuffStatType.Defense));
             }
         }
 
@@ -747,7 +751,7 @@ namespace HaCreator.MapSimulator.Character
             get
             {
                 int runtimeBonus = Math.Max(0, MagicAttack - DefaultMagicAttackValue);
-                return Math.Max(0, runtimeBonus + SumEquipmentBonus(part => part.BonusMagicAttack));
+                return Math.Max(0, runtimeBonus + SumEquipmentBonus(part => part.BonusMagicAttack) + GetSkillStatBonus(BuffStatType.MagicAttack));
             }
         }
 
@@ -756,16 +760,16 @@ namespace HaCreator.MapSimulator.Character
             get
             {
                 int runtimeBonus = Math.Max(0, MagicDefense - DefaultMagicDefenseValue);
-                return Math.Max(0, runtimeBonus + SumEquipmentBonus(part => part.BonusMagicDefense));
+                return Math.Max(0, runtimeBonus + SumEquipmentBonus(part => part.BonusMagicDefense) + GetSkillStatBonus(BuffStatType.MagicDefense));
             }
         }
 
-        public int TotalAccuracy => Math.Max(0, GetBaseAccuracy() + Accuracy + SumEquipmentBonus(part => part.BonusAccuracy));
-        public int TotalAvoidability => Math.Max(0, GetBaseAvoidability() + Avoidability + SumEquipmentBonus(part => part.BonusAvoidability));
+        public int TotalAccuracy => Math.Max(0, GetBaseAccuracy() + Accuracy + SumEquipmentBonus(part => part.BonusAccuracy) + GetSkillStatBonus(BuffStatType.Accuracy));
+        public int TotalAvoidability => Math.Max(0, GetBaseAvoidability() + Avoidability + SumEquipmentBonus(part => part.BonusAvoidability) + GetSkillStatBonus(BuffStatType.Avoidability));
         public int TotalHands => Math.Max(0, Hands + TotalDEX + TotalINT + TotalLUK);
-        public int TotalCriticalRate => Math.Max(0, CriticalRate);
-        public float TotalSpeed => Math.Max(0f, Speed + SumEquipmentBonus(part => part.BonusSpeed));
-        public float TotalJumpPower => Math.Max(0f, JumpPower + SumEquipmentBonus(part => part.BonusJump));
+        public int TotalCriticalRate => Math.Max(0, CriticalRate + GetSkillStatBonus(BuffStatType.CriticalRate));
+        public float TotalSpeed => Math.Max(0f, Speed + SumEquipmentBonus(part => part.BonusSpeed) + GetSkillStatBonus(BuffStatType.Speed));
+        public float TotalJumpPower => Math.Max(0f, JumpPower + SumEquipmentBonus(part => part.BonusJump) + GetSkillStatBonus(BuffStatType.Jump));
 
         public bool CanIncreaseMaxHp()
         {
@@ -989,6 +993,11 @@ namespace HaCreator.MapSimulator.Character
             return Job / 100;
         }
 
+        private int GetSkillStatBonus(BuffStatType stat)
+        {
+            return Math.Max(0, SkillStatBonusProvider?.Invoke(stat) ?? 0);
+        }
+
         /// <summary>
         /// Clone this build
         /// </summary>
@@ -1042,7 +1051,9 @@ namespace HaCreator.MapSimulator.Character
                 Hands = Hands,
                 CriticalRate = CriticalRate,
                 Speed = Speed,
-                JumpPower = JumpPower
+                JumpPower = JumpPower,
+                SkillStatBonusProvider = SkillStatBonusProvider,
+                SkillMasteryProvider = SkillMasteryProvider
             };
         }
     }

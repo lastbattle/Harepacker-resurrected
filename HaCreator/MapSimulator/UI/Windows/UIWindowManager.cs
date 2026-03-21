@@ -406,7 +406,7 @@ namespace HaCreator.MapSimulator.UI
             bool leftJustReleased = mouseState.LeftButton == ButtonState.Released && _previousMouseState.LeftButton == ButtonState.Pressed;
             bool rightJustPressed = mouseState.RightButton == ButtonState.Pressed && _previousMouseState.RightButton == ButtonState.Released;
 
-            if ((GetActiveSkillDragSource() != null || (InventoryWindow as InventoryUI)?.IsDraggingItem == true || QuickSlotWindow?.IsDraggingSlot == true || SkillMacroWindow?.IsDraggingMacroBinding == true ||
+            if ((GetActiveSkillDragSource() != null || (InventoryWindow as InventoryUI)?.IsDraggingItem == true || IsDraggingEquipment() || QuickSlotWindow?.IsDraggingSlot == true || SkillMacroWindow?.IsDraggingMacroBinding == true ||
                  SkillMacroWindow?.IsDraggingSkillSlot == true || (_draggingWindow != null && mouseState.LeftButton == ButtonState.Pressed))
                 && mouseCursor != null)
             {
@@ -420,6 +420,12 @@ namespace HaCreator.MapSimulator.UI
             }
 
             if (HandleInventoryInteraction(mouseState, leftJustPressed, leftJustReleased))
+            {
+                _previousMouseState = mouseState;
+                return false;
+            }
+
+            if (HandleEquipmentInteraction(mouseState, leftJustPressed, leftJustReleased))
             {
                 _previousMouseState = mouseState;
                 return false;
@@ -623,6 +629,91 @@ namespace HaCreator.MapSimulator.UI
             }
 
             return mouseState.LeftButton == ButtonState.Pressed;
+        }
+
+        private bool HandleEquipmentInteraction(MouseState mouseState, bool leftJustPressed, bool leftJustReleased)
+        {
+            switch (EquipWindow)
+            {
+                case EquipUI equipWindow when equipWindow.IsVisible:
+                    return HandleEquipmentInteraction(equipWindow, mouseState, leftJustPressed, leftJustReleased);
+                case EquipUIBigBang equipWindowBigBang when equipWindowBigBang.IsVisible:
+                    return HandleEquipmentInteraction(equipWindowBigBang, mouseState, leftJustPressed, leftJustReleased);
+                default:
+                    return false;
+            }
+        }
+
+        private bool HandleEquipmentInteraction(EquipUI equipWindow, MouseState mouseState, bool leftJustPressed, bool leftJustReleased)
+        {
+            equipWindow.OnEquipmentMouseMove(mouseState.X, mouseState.Y);
+
+            if (equipWindow.IsDraggingItem)
+            {
+                if (leftJustReleased)
+                    equipWindow.OnEquipmentMouseUp(mouseState.X, mouseState.Y);
+
+                return true;
+            }
+
+            if (!equipWindow.ContainsPoint(mouseState.X, mouseState.Y) ||
+                !equipWindow.HandlesEquipmentInteractionPoint(mouseState.X, mouseState.Y))
+            {
+                return false;
+            }
+
+            if (leftJustPressed)
+            {
+                BringToFront(equipWindow);
+                equipWindow.OnEquipmentMouseDown(mouseState.X, mouseState.Y);
+                if (equipWindow.IsDraggingItem)
+                    _draggingWindow = null;
+
+                return equipWindow.IsDraggingItem;
+            }
+
+            return mouseState.LeftButton == ButtonState.Pressed;
+        }
+
+        private bool HandleEquipmentInteraction(EquipUIBigBang equipWindow, MouseState mouseState, bool leftJustPressed, bool leftJustReleased)
+        {
+            equipWindow.OnEquipmentMouseMove(mouseState.X, mouseState.Y);
+
+            if (equipWindow.IsDraggingItem)
+            {
+                if (leftJustReleased)
+                    equipWindow.OnEquipmentMouseUp(mouseState.X, mouseState.Y);
+
+                return true;
+            }
+
+            if (!equipWindow.ContainsPoint(mouseState.X, mouseState.Y) ||
+                !equipWindow.HandlesEquipmentInteractionPoint(mouseState.X, mouseState.Y))
+            {
+                return false;
+            }
+
+            if (leftJustPressed)
+            {
+                BringToFront(equipWindow);
+                equipWindow.OnEquipmentMouseDown(mouseState.X, mouseState.Y);
+                if (equipWindow.IsDraggingItem)
+                    _draggingWindow = null;
+
+                return equipWindow.IsDraggingItem;
+            }
+
+            return mouseState.LeftButton == ButtonState.Pressed;
+        }
+
+        private bool IsDraggingEquipment()
+        {
+            return EquipWindow switch
+            {
+                EquipUI equipWindow => equipWindow.IsDraggingItem,
+                EquipUIBigBang equipWindow => equipWindow.IsDraggingItem,
+                _ => false
+            };
         }
 
         private bool HandleSkillMacroInteraction(MouseState mouseState, bool leftJustPressed, bool leftJustReleased, bool rightJustPressed)

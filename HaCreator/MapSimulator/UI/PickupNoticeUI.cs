@@ -18,6 +18,12 @@ namespace HaCreator.MapSimulator.UI
         Unknown = -1            // Unknown/default
     }
 
+    public enum PickupNoticeSource
+    {
+        Player = 0,
+        Pet = 1
+    }
+
     /// <summary>
     /// A single pickup notice message with animation state
     /// Based on CUIScreenMsg from MapleStory client analysis
@@ -107,10 +113,12 @@ namespace HaCreator.MapSimulator.UI
         /// Official format: "You have gained X meso(s)." (StringPool ID 0x12F / 303)
         /// Always uses "(s)" suffix regardless of amount, matching official MapleStory client.
         /// </summary>
-        public void AddMesoPickup(int amount, int currentTime)
+        public void AddMesoPickup(int amount, int currentTime, PickupNoticeSource source = PickupNoticeSource.Player, string sourceName = null)
         {
-            // Official MapleStory format - always "meso(s)" with parenthetical s
-            string message = $"You have gained {amount} meso(s).";
+            string message = FormatPickupSourceMessage(
+                $"You have gained {amount} meso(s).",
+                source,
+                sourceName);
 
             AddNotice(new PickupNotice
             {
@@ -129,8 +137,15 @@ namespace HaCreator.MapSimulator.UI
         /// - ID 5443 (single): "You have gained a(n) %s (%s)." - ItemTypeName, ItemName
         /// - ID 5442 (multiple): "You have gained a(n) %s (%s) x %d." - ItemTypeName, ItemName, Quantity
         /// </summary>
-        public void AddItemPickup(string itemName, int quantity, int currentTime, Texture2D icon = null,
-            bool isRare = false, string itemTypeName = null)
+        public void AddItemPickup(
+            string itemName,
+            int quantity,
+            int currentTime,
+            Texture2D icon = null,
+            bool isRare = false,
+            string itemTypeName = null,
+            PickupNoticeSource source = PickupNoticeSource.Player,
+            string sourceName = null)
         {
             string message;
             if (string.IsNullOrEmpty(itemTypeName))
@@ -147,6 +162,8 @@ namespace HaCreator.MapSimulator.UI
                     ? $"You have gained a(n) {itemTypeName} ({itemName}) x {quantity}."
                     : $"You have gained a(n) {itemTypeName} ({itemName}).";
             }
+
+            message = FormatPickupSourceMessage(message, source, sourceName);
 
             var notice = new PickupNotice
             {
@@ -166,9 +183,14 @@ namespace HaCreator.MapSimulator.UI
         /// Add a quest item pickup message.
         /// Uses same format as regular items but with quest-specific color.
         /// </summary>
-        public void AddQuestItemPickup(string itemName, int currentTime, Texture2D icon = null)
+        public void AddQuestItemPickup(
+            string itemName,
+            int currentTime,
+            Texture2D icon = null,
+            PickupNoticeSource source = PickupNoticeSource.Player,
+            string sourceName = null)
         {
-            string message = $"You have gained an item ({itemName}).";
+            string message = FormatPickupSourceMessage($"You have gained an item ({itemName}).", source, sourceName);
 
             AddNotice(new PickupNotice
             {
@@ -205,7 +227,7 @@ namespace HaCreator.MapSimulator.UI
         {
             AddNotice(new PickupNotice
             {
-                Message = reason ?? "Unable to pick up item.",
+                Message = reason ?? "Unable to pick up the item.",
                 Type = PickupMessageType.CantPickup,
                 TextColor = new Color(255, 100, 100), // Red for error
                 OutlineColor = Color.Black,
@@ -247,6 +269,19 @@ namespace HaCreator.MapSimulator.UI
             }
 
             _notices.Add(notice);
+        }
+
+        private static string FormatPickupSourceMessage(string message, PickupNoticeSource source, string sourceName)
+        {
+            if (source != PickupNoticeSource.Pet || string.IsNullOrWhiteSpace(message))
+            {
+                return message;
+            }
+
+            string label = string.IsNullOrWhiteSpace(sourceName)
+                ? "Your pet"
+                : $"{sourceName}";
+            return $"{label} picked up this item for you. {message}";
         }
         #endregion
 

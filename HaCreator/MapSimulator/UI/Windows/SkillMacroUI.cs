@@ -168,6 +168,23 @@ namespace HaCreator.MapSimulator.UI
         /// </summary>
         public IReadOnlyList<SkillMacro> Macros => _macros;
 
+        public void LoadMacros(IReadOnlyList<SkillMacro> macros)
+        {
+            for (int i = 0; i < MAX_MACRO_SLOTS; i++)
+            {
+                SkillMacro sourceMacro = macros != null && i < macros.Count ? macros[i] : null;
+                _macros[i] = CloneMacro(sourceMacro, i);
+            }
+
+            _selectedMacroIndex = -1;
+            _editingMacroIndex = -1;
+            _editingMacroName = string.Empty;
+            _notifyPartyMembers = false;
+            _validationMessage = string.Empty;
+            Array.Clear(_editingSkillIds, 0, _editingSkillIds.Length);
+            CancelDrag();
+        }
+
         /// <summary>
         /// Callback when a macro is saved
         /// </summary>
@@ -191,11 +208,7 @@ namespace HaCreator.MapSimulator.UI
             // Initialize macro slots
             for (int i = 0; i < MAX_MACRO_SLOTS; i++)
             {
-                _macros[i] = new SkillMacro
-                {
-                    Name = $"Macro {i + 1}",
-                    SkillIds = new int[SKILLS_PER_MACRO]
-                };
+                _macros[i] = CreateDefaultMacro(i);
             }
 
             CreateSlotTextures(device);
@@ -627,12 +640,7 @@ namespace HaCreator.MapSimulator.UI
                 return;
 
             // Clear the macro
-            _macros[_selectedMacroIndex].Name = $"Macro {_selectedMacroIndex + 1}";
-            _macros[_selectedMacroIndex].NotifyParty = false;
-            for (int i = 0; i < SKILLS_PER_MACRO; i++)
-            {
-                _macros[_selectedMacroIndex].SkillIds[i] = 0;
-            }
+            _macros[_selectedMacroIndex] = CreateDefaultMacro(_selectedMacroIndex);
 
             OnMacroDeleted?.Invoke(_selectedMacroIndex);
 
@@ -730,6 +738,36 @@ namespace HaCreator.MapSimulator.UI
 
             _validationMessage = string.Empty;
             return new string(buffer[..length]).TrimEnd();
+        }
+
+        private static SkillMacro CreateDefaultMacro(int slotIndex)
+        {
+            return new SkillMacro
+            {
+                Name = $"Macro {slotIndex + 1}",
+                SkillIds = new int[SKILLS_PER_MACRO]
+            };
+        }
+
+        private static SkillMacro CloneMacro(SkillMacro source, int slotIndex)
+        {
+            SkillMacro clone = CreateDefaultMacro(slotIndex);
+            if (source == null)
+            {
+                return clone;
+            }
+
+            clone.Name = string.IsNullOrWhiteSpace(source.Name) ? clone.Name : source.Name;
+            clone.NotifyParty = source.NotifyParty;
+            if (source.SkillIds != null)
+            {
+                for (int i = 0; i < Math.Min(SKILLS_PER_MACRO, source.SkillIds.Length); i++)
+                {
+                    clone.SkillIds[i] = Math.Max(0, source.SkillIds[i]);
+                }
+            }
+
+            return clone;
         }
         #endregion
 

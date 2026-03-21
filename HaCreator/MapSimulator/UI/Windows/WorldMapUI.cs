@@ -11,6 +11,13 @@ namespace HaCreator.MapSimulator.UI
 {
     public sealed class WorldMapUI : UIWindowBase
     {
+        public enum SearchResultKind
+        {
+            Field,
+            Npc,
+            Mob
+        }
+
         public sealed class MapEntry
         {
             public int MapId { get; init; }
@@ -31,6 +38,14 @@ namespace HaCreator.MapSimulator.UI
                             : MapId.ToString();
         }
 
+        public sealed class SearchResultEntry
+        {
+            public SearchResultKind Kind { get; init; }
+            public int MapId { get; init; }
+            public string Label { get; init; } = string.Empty;
+            public string Description { get; init; } = string.Empty;
+        }
+
         private sealed class RegionButtonEntry
         {
             public RegionButtonEntry(string regionCode, UIObject button)
@@ -41,6 +56,12 @@ namespace HaCreator.MapSimulator.UI
 
             public string RegionCode { get; }
             public UIObject Button { get; }
+        }
+
+        private enum SearchFilterMode
+        {
+            All,
+            MobOnly
         }
 
         private const int MaxVisibleRows = 20;
@@ -54,44 +75,77 @@ namespace HaCreator.MapSimulator.UI
 
         private readonly Texture2D _sidePanelTexture;
         private readonly Point _sidePanelOffset;
+        private readonly Texture2D _searchNoticeTexture;
+        private readonly Point _searchNoticeOffset;
         private readonly Texture2D _selectionTexture;
         private readonly UIObject _allButton;
         private readonly UIObject _anotherButton;
         private readonly UIObject _searchButton;
+        private readonly UIObject _allSearchButton;
+        private readonly UIObject _levelMobButton;
         private readonly UIObject _prevButton;
         private readonly UIObject _nextButton;
+        private readonly Texture2D _resultFieldHoverTexture;
+        private readonly Texture2D _resultFieldIconTexture;
+        private readonly Texture2D _resultNpcHoverTexture;
+        private readonly Texture2D _resultNpcIconTexture;
+        private readonly Texture2D _resultMobHoverTexture;
+        private readonly Texture2D _resultMobIconTexture;
         private readonly List<RegionButtonEntry> _regionButtons = new List<RegionButtonEntry>();
         private readonly List<UIObject> _rowButtons = new List<UIObject>();
         private readonly List<MapEntry> _allEntries = new List<MapEntry>();
+        private readonly List<SearchResultEntry> _searchResults = new List<SearchResultEntry>();
         private SpriteFont _font;
         private bool _showAnotherWorld;
+        private bool _searchMode;
         private string _selectedRegionCode = string.Empty;
         private int _currentMapId;
         private int _selectedMapId;
         private int _pageIndex;
+        private SearchFilterMode _searchFilterMode;
 
         public WorldMapUI(
             IDXObject frame,
             Texture2D sidePanelTexture,
             Point sidePanelOffset,
+            Texture2D searchNoticeTexture,
+            Point searchNoticeOffset,
             Texture2D selectionTexture,
             UIObject allButton,
             UIObject anotherButton,
             UIObject searchButton,
+            UIObject allSearchButton,
+            UIObject levelMobButton,
             UIObject prevButton,
             UIObject nextButton,
+            Texture2D resultFieldHoverTexture,
+            Texture2D resultFieldIconTexture,
+            Texture2D resultNpcHoverTexture,
+            Texture2D resultNpcIconTexture,
+            Texture2D resultMobHoverTexture,
+            Texture2D resultMobIconTexture,
             IEnumerable<(string regionCode, UIObject button)> regionButtons,
             GraphicsDevice device)
             : base(frame)
         {
             _sidePanelTexture = sidePanelTexture;
             _sidePanelOffset = sidePanelOffset;
+            _searchNoticeTexture = searchNoticeTexture;
+            _searchNoticeOffset = searchNoticeOffset;
             _selectionTexture = selectionTexture;
             _allButton = allButton;
             _anotherButton = anotherButton;
             _searchButton = searchButton;
+            _allSearchButton = allSearchButton;
+            _levelMobButton = levelMobButton;
             _prevButton = prevButton;
             _nextButton = nextButton;
+            _resultFieldHoverTexture = resultFieldHoverTexture;
+            _resultFieldIconTexture = resultFieldIconTexture;
+            _resultNpcHoverTexture = resultNpcHoverTexture;
+            _resultNpcIconTexture = resultNpcIconTexture;
+            _resultMobHoverTexture = resultMobHoverTexture;
+            _resultMobIconTexture = resultMobIconTexture;
 
             if (_allButton != null)
             {
@@ -107,8 +161,20 @@ namespace HaCreator.MapSimulator.UI
 
             if (_searchButton != null)
             {
-                _searchButton.ButtonClickReleased += _ => FocusCurrentMap();
+                _searchButton.ButtonClickReleased += _ => ToggleSearchMode();
                 AddButton(_searchButton);
+            }
+
+            if (_allSearchButton != null)
+            {
+                _allSearchButton.ButtonClickReleased += _ => ExitSearchMode();
+                AddButton(_allSearchButton);
+            }
+
+            if (_levelMobButton != null)
+            {
+                _levelMobButton.ButtonClickReleased += _ => ToggleMobSearchFilter();
+                AddButton(_levelMobButton);
             }
 
             if (_prevButton != null)
@@ -128,7 +194,7 @@ namespace HaCreator.MapSimulator.UI
             {
                 _nextButton.ButtonClickReleased += _ =>
                 {
-                    if (_pageIndex < GetMaxPageIndex())
+                    if (_pageIndex < GetMaxPageIndexForCurrentMode())
                     {
                         _pageIndex++;
                     }
@@ -203,6 +269,24 @@ namespace HaCreator.MapSimulator.UI
             UpdateButtonStates();
         }
 
+        public void SetSearchResults(IReadOnlyList<SearchResultEntry> searchResults)
+        {
+            _searchResults.Clear();
+            if (searchResults != null)
+            {
+                _searchResults.AddRange(searchResults.Where(entry => entry != null));
+            }
+
+            if (_searchResults.Count == 0)
+            {
+                _searchMode = false;
+                _searchFilterMode = SearchFilterMode.All;
+            }
+
+            _pageIndex = 0;
+            UpdateButtonStates();
+        }
+
         protected override void DrawContents(
             SpriteBatch sprite,
             SkeletonMeshRenderer skeletonMeshRenderer,
@@ -222,6 +306,12 @@ namespace HaCreator.MapSimulator.UI
 
             if (_font == null)
             {
+                return;
+            }
+
+            if (_searchMode)
+            {
+                DrawSearchContents(sprite);
                 return;
             }
 
@@ -287,6 +377,7 @@ namespace HaCreator.MapSimulator.UI
         private void SetViewMode(bool anotherWorld)
         {
             _showAnotherWorld = anotherWorld;
+            _searchMode = false;
             _pageIndex = 0;
             EnsureSelectedEntryVisible();
             UpdateButtonStates();
@@ -300,6 +391,7 @@ namespace HaCreator.MapSimulator.UI
             }
 
             _showAnotherWorld = true;
+            _searchMode = false;
             _selectedRegionCode = regionCode;
             _pageIndex = 0;
             EnsureSelectedEntryVisible();
@@ -316,12 +408,19 @@ namespace HaCreator.MapSimulator.UI
             _selectedMapId = _currentMapId;
             _selectedRegionCode = GetRegionCodeForMapId(_currentMapId);
             _showAnotherWorld = !string.IsNullOrWhiteSpace(_selectedRegionCode);
+            _searchMode = false;
             EnsureSelectedEntryVisible();
             UpdateButtonStates();
         }
 
         private void ActivateRow(int rowIndex)
         {
+            if (_searchMode)
+            {
+                ActivateSearchRow(rowIndex);
+                return;
+            }
+
             IReadOnlyList<MapEntry> visibleEntries = GetVisibleEntries();
             if (rowIndex < 0 || rowIndex >= visibleEntries.Count)
             {
@@ -336,6 +435,36 @@ namespace HaCreator.MapSimulator.UI
             }
 
             _selectedMapId = entry.MapId;
+            UpdateButtonStates();
+        }
+
+        private void ActivateSearchRow(int rowIndex)
+        {
+            IReadOnlyList<SearchResultEntry> visibleResults = GetVisibleSearchResults();
+            if (rowIndex < 0 || rowIndex >= visibleResults.Count)
+            {
+                return;
+            }
+
+            SearchResultEntry entry = visibleResults[rowIndex];
+            if (entry.MapId <= 0)
+            {
+                return;
+            }
+
+            if (_selectedMapId == entry.MapId)
+            {
+                MapEntry mapEntry = _allEntries.FirstOrDefault(candidate => candidate.MapId == entry.MapId);
+                if (mapEntry != null)
+                {
+                    MapRequested?.Invoke(mapEntry);
+                }
+
+                return;
+            }
+
+            _selectedMapId = entry.MapId;
+            _selectedRegionCode = GetRegionCodeForMapId(entry.MapId);
             UpdateButtonStates();
         }
 
@@ -388,6 +517,27 @@ namespace HaCreator.MapSimulator.UI
                 .ToList();
         }
 
+        private IReadOnlyList<SearchResultEntry> GetVisibleSearchResults()
+        {
+            IReadOnlyList<SearchResultEntry> filteredResults = GetFilteredSearchResults();
+            return filteredResults
+                .Skip(_pageIndex * MaxVisibleRows)
+                .Take(MaxVisibleRows)
+                .ToArray();
+        }
+
+        private IReadOnlyList<SearchResultEntry> GetFilteredSearchResults()
+        {
+            if (_searchFilterMode != SearchFilterMode.MobOnly)
+            {
+                return _searchResults;
+            }
+
+            return _searchResults
+                .Where(entry => entry.Kind == SearchResultKind.Mob)
+                .ToArray();
+        }
+
         private int GetSelectedIndex(IReadOnlyList<MapEntry> visibleEntries)
         {
             for (int i = 0; i < visibleEntries.Count; i++)
@@ -415,10 +565,35 @@ namespace HaCreator.MapSimulator.UI
 
             if (_searchButton != null)
             {
-                _searchButton.SetEnabled(_currentMapId > 0);
+                bool hasSearchResults = _searchResults.Count > 0;
+                _searchButton.SetEnabled(hasSearchResults);
+                if (hasSearchResults)
+                {
+                    _searchButton.SetButtonState(_searchMode ? UIObjectState.Disabled : UIObjectState.Normal);
+                }
             }
 
-            int maxPageIndex = GetMaxPageIndex();
+            if (_allSearchButton != null)
+            {
+                _allSearchButton.SetVisible(_searchMode);
+                _allSearchButton.SetEnabled(_searchMode);
+            }
+
+            if (_levelMobButton != null)
+            {
+                bool hasMobResults = _searchResults.Any(entry => entry.Kind == SearchResultKind.Mob);
+                _levelMobButton.SetVisible(_searchMode && hasMobResults);
+                _levelMobButton.SetEnabled(hasMobResults);
+                if (hasMobResults)
+                {
+                    _levelMobButton.SetButtonState(
+                        _searchMode && _searchFilterMode == SearchFilterMode.MobOnly
+                            ? UIObjectState.Disabled
+                            : UIObjectState.Normal);
+                }
+            }
+
+            int maxPageIndex = GetMaxPageIndexForCurrentMode();
             if (_prevButton != null)
             {
                 _prevButton.SetEnabled(_pageIndex > 0);
@@ -436,7 +611,7 @@ namespace HaCreator.MapSimulator.UI
 
             foreach (RegionButtonEntry regionButton in _regionButtons)
             {
-                bool regionVisible = _showAnotherWorld;
+                bool regionVisible = _showAnotherWorld && !_searchMode;
                 regionButton.Button.SetVisible(regionVisible);
                 if (!regionVisible)
                 {
@@ -451,10 +626,10 @@ namespace HaCreator.MapSimulator.UI
                         : UIObjectState.Normal);
             }
 
-            IReadOnlyList<MapEntry> visibleEntries = GetVisibleEntries();
+            int visibleCount = _searchMode ? GetVisibleSearchResults().Count : GetVisibleEntries().Count;
             for (int i = 0; i < _rowButtons.Count; i++)
             {
-                bool visible = i < visibleEntries.Count;
+                bool visible = i < visibleCount;
                 _rowButtons[i].SetVisible(visible);
             }
         }
@@ -479,9 +654,25 @@ namespace HaCreator.MapSimulator.UI
             return $"Selected: {selectedEntry.DisplayName}\nCategory: {selectedEntry.CategoryName}\n{regionText}\nClick the selected row again to transfer through the world-map flow.";
         }
 
+        private string BuildSearchSummaryText()
+        {
+            int fieldCount = _searchResults.Count(entry => entry.Kind == SearchResultKind.Field);
+            int npcCount = _searchResults.Count(entry => entry.Kind == SearchResultKind.Npc);
+            int mobCount = _searchResults.Count(entry => entry.Kind == SearchResultKind.Mob);
+            string filterText = _searchFilterMode == SearchFilterMode.MobOnly ? "Mob-only filter active." : "All live result families are visible.";
+            return $"Current field search surface.\nFields: {fieldCount}  NPCs: {npcCount}  Mobs: {mobCount}\n{filterText}\nClick a result row to focus its map, then click again to queue transfer.";
+        }
+
         private int GetMaxPageIndex()
         {
             return GetMaxPageIndex(GetFilteredEntries().Count);
+        }
+
+        private int GetMaxPageIndexForCurrentMode()
+        {
+            return _searchMode
+                ? GetMaxPageIndex(GetFilteredSearchResults().Count)
+                : GetMaxPageIndex(GetFilteredEntries().Count);
         }
 
         private static int GetMaxPageIndex(int count)
@@ -571,6 +762,144 @@ namespace HaCreator.MapSimulator.UI
             return mapId <= 0
                 ? string.Empty
                 : (mapId / 10000000).ToString("D3");
+        }
+
+        private void ToggleSearchMode()
+        {
+            if (_searchResults.Count == 0)
+            {
+                return;
+            }
+
+            _searchMode = true;
+            _pageIndex = 0;
+            UpdateButtonStates();
+        }
+
+        private void ExitSearchMode()
+        {
+            _searchMode = false;
+            _searchFilterMode = SearchFilterMode.All;
+            _pageIndex = 0;
+            UpdateButtonStates();
+        }
+
+        private void ToggleMobSearchFilter()
+        {
+            if (_searchResults.All(entry => entry.Kind != SearchResultKind.Mob))
+            {
+                return;
+            }
+
+            _searchMode = true;
+            _searchFilterMode = _searchFilterMode == SearchFilterMode.MobOnly
+                ? SearchFilterMode.All
+                : SearchFilterMode.MobOnly;
+            _pageIndex = 0;
+            UpdateButtonStates();
+        }
+
+        private void DrawSearchContents(SpriteBatch sprite)
+        {
+            if (_searchNoticeTexture != null)
+            {
+                sprite.Draw(_searchNoticeTexture, new Vector2(Position.X + _searchNoticeOffset.X, Position.Y + _searchNoticeOffset.Y), Color.White);
+            }
+
+            SelectorWindowDrawing.DrawShadowedText(
+                sprite,
+                _font,
+                "World Map Search",
+                new Vector2(Position.X + SummaryX, Position.Y + 18),
+                Color.White);
+
+            SelectorWindowDrawing.DrawShadowedText(
+                sprite,
+                _font,
+                TrimToWidth($"Current: {ResolveCurrentMapText()}", SummaryWidth),
+                new Vector2(Position.X + SummaryX, Position.Y + 38),
+                new Color(220, 220, 220));
+
+            float textY = Position.Y + SummaryY;
+            foreach (string line in WrapText(BuildSearchSummaryText(), SummaryWidth))
+            {
+                SelectorWindowDrawing.DrawShadowedText(
+                    sprite,
+                    _font,
+                    line,
+                    new Vector2(Position.X + SummaryX, textY),
+                    new Color(226, 226, 226));
+                textY += _font.LineSpacing;
+            }
+
+            IReadOnlyList<SearchResultEntry> visibleResults = GetVisibleSearchResults();
+            for (int row = 0; row < visibleResults.Count; row++)
+            {
+                DrawSearchRow(sprite, visibleResults[row], row);
+            }
+
+            string pageText = $"{_pageIndex + 1}/{Math.Max(1, GetMaxPageIndexForCurrentMode() + 1)}";
+            SelectorWindowDrawing.DrawShadowedText(
+                sprite,
+                _font,
+                pageText,
+                new Vector2(Position.X + 586, Position.Y + 511),
+                new Color(214, 214, 214));
+        }
+
+        private void DrawSearchRow(SpriteBatch sprite, SearchResultEntry entry, int row)
+        {
+            Texture2D hoverTexture = GetHoverTexture(entry.Kind);
+            Rectangle rowBounds = new Rectangle(Position.X + ListStartX, Position.Y + ListStartY + (row * RowHeight), ListWidth, RowHeight);
+            if (entry.MapId == _selectedMapId)
+            {
+                if (hoverTexture != null)
+                {
+                    sprite.Draw(hoverTexture, rowBounds, Color.White);
+                }
+                else if (_selectionTexture != null)
+                {
+                    sprite.Draw(_selectionTexture, rowBounds, new Color(86, 120, 186, 165));
+                }
+            }
+
+            Texture2D iconTexture = GetIconTexture(entry.Kind);
+            int textStartX = rowBounds.X + 2;
+            if (iconTexture != null)
+            {
+                sprite.Draw(iconTexture, new Vector2(rowBounds.X + 2, rowBounds.Y + 1), Color.White);
+                textStartX += 15;
+            }
+
+            string label = TrimToWidth(entry.Label, ListWidth - (textStartX - rowBounds.X) - 2);
+            SelectorWindowDrawing.DrawShadowedText(
+                sprite,
+                _font,
+                label,
+                new Vector2(textStartX, rowBounds.Y + 1),
+                entry.MapId == _selectedMapId ? Color.White : new Color(228, 228, 228));
+        }
+
+        private Texture2D GetHoverTexture(SearchResultKind kind)
+        {
+            return kind switch
+            {
+                SearchResultKind.Field => _resultFieldHoverTexture,
+                SearchResultKind.Npc => _resultNpcHoverTexture,
+                SearchResultKind.Mob => _resultMobHoverTexture,
+                _ => null
+            };
+        }
+
+        private Texture2D GetIconTexture(SearchResultKind kind)
+        {
+            return kind switch
+            {
+                SearchResultKind.Field => _resultFieldIconTexture,
+                SearchResultKind.Npc => _resultNpcIconTexture,
+                SearchResultKind.Mob => _resultMobIconTexture,
+                _ => null
+            };
         }
     }
 }

@@ -19,7 +19,8 @@ namespace HaCreator.MapSimulator.Interaction
         None,
         QuestPrimary,
         OpenTrunk,
-        OpenItemMaker
+        OpenItemMaker,
+        OpenItemUpgrade
     }
 
     internal sealed class NpcInteractionEntry

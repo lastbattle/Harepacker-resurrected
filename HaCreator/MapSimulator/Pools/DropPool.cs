@@ -367,6 +367,8 @@ namespace HaCreator.MapSimulator.Pools
         private Action<DropItem> _onDropSpawned;
         private Action<DropItem> _onDropPickedUp;
         private Action<DropItem> _onDropExpired;
+        private Action<DropItem, int, bool> _onPickupResolved;
+        private Func<DropItem, DropPickupFailureReason> _pickupAvailabilityEvaluator;
 
         // Ground level lookup function
         private Func<float, float, float> _getGroundY;
@@ -386,6 +388,8 @@ namespace HaCreator.MapSimulator.Pools
         public void SetOnDropSpawned(Action<DropItem> callback) => _onDropSpawned = callback;
         public void SetOnDropPickedUp(Action<DropItem> callback) => _onDropPickedUp = callback;
         public void SetOnDropExpired(Action<DropItem> callback) => _onDropExpired = callback;
+        public void SetOnPickupResolved(Action<DropItem, int, bool> callback) => _onPickupResolved = callback;
+        public void SetPickupAvailabilityEvaluator(Func<DropItem, DropPickupFailureReason> callback) => _pickupAvailabilityEvaluator = callback;
         public void SetGroundLevelLookup(Func<float, float, float> getGroundY) => _getGroundY = getGroundY;
 
         // Pet pickup events
@@ -662,6 +666,7 @@ namespace HaCreator.MapSimulator.Pools
             drop.StartPickup(currentTime);
             RecordRecentPickupItem(drop, playerId, false, currentTime);
             _onDropPickedUp?.Invoke(drop);
+            _onPickupResolved?.Invoke(drop, playerId, false);
             return true;
         }
 
@@ -681,6 +686,7 @@ namespace HaCreator.MapSimulator.Pools
             float range = 40f,
             Func<DropItem, DropPickupFailureReason> pickupValidator = null)
         {
+            pickupValidator ??= _pickupAvailabilityEvaluator;
             float rangeSq = range * range;
             DropItem closestAvailable = null;
             float closestAvailableDistSq = float.MaxValue;
@@ -871,6 +877,10 @@ namespace HaCreator.MapSimulator.Pools
                 if (IsInExceptionList(drop))
                     continue;
 
+                DropPickupFailureReason validatorReason = _pickupAvailabilityEvaluator?.Invoke(drop) ?? DropPickupFailureReason.None;
+                if (validatorReason != DropPickupFailureReason.None)
+                    continue;
+
                 float dx = drop.X - petX;
                 float dy = drop.Y - petY;
                 float distSq = dx * dx + dy * dy;
@@ -899,6 +909,7 @@ namespace HaCreator.MapSimulator.Pools
 
                 // Invoke callbacks
                 _onDropPickedUp?.Invoke(closestDrop);
+                _onPickupResolved?.Invoke(closestDrop, petId, true);
                 _onPetPickedUp?.Invoke(closestDrop, petId);
 
                 return closestDrop;

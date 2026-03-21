@@ -55,6 +55,10 @@ namespace HaCreator.MapSimulator.UI
         private PetController _petController;
         private DragonEquipmentController _dragonEquipmentController;
         private EquipSlot? _hoveredSlot;
+        private bool _isDraggingItem;
+        private EquipSlot? _draggedSlot;
+        private CharacterPart _draggedPart;
+        private Point _draggedItemPosition;
         private int? _hoveredPetIndex;
         private DragonEquipSlot? _hoveredDragonSlot;
         private Point _lastMousePosition;
@@ -75,6 +79,7 @@ namespace HaCreator.MapSimulator.UI
             get => _characterBuild;
             set => _characterBuild = value;
         }
+        public bool IsDraggingItem => _isDraggingItem;
 
         public EquipUI(IDXObject frame, GraphicsDevice device) : base(frame)
         {
@@ -196,6 +201,7 @@ namespace HaCreator.MapSimulator.UI
         protected override void DrawOverlay(SpriteBatch sprite, SkeletonMeshRenderer skeletonMeshRenderer, GameTime gameTime, int mapShiftX, int mapShiftY, int centerX, int centerY, ReflectionDrawableBoundary drawReflectionInfo, RenderParameters renderParameters, int TickCount)
         {
             DrawHoverTooltip(sprite, renderParameters.RenderWidth, renderParameters.RenderHeight);
+            DrawDraggedItemOverlay(sprite);
         }
 
         public void EquipItem(EquipSlot slot, int itemId, Texture2D texture, string itemName = "")
@@ -217,9 +223,67 @@ namespace HaCreator.MapSimulator.UI
             base.Update(gameTime);
             MouseState mouseState = Mouse.GetState();
             _lastMousePosition = new Point(mouseState.X, mouseState.Y);
+            if (_isDraggingItem)
+                _draggedItemPosition = _lastMousePosition;
             _hoveredSlot = GetSlotAtPosition(mouseState.X, mouseState.Y);
             _hoveredPetIndex = GetHoveredPetIndex(mouseState.X, mouseState.Y);
             _hoveredDragonSlot = GetHoveredDragonSlot(mouseState.X, mouseState.Y);
+        }
+
+        public bool HandlesEquipmentInteractionPoint(int mouseX, int mouseY)
+        {
+            return _companionPaneMode == CompanionPaneMode.Hidden && GetSlotAtPosition(mouseX, mouseY).HasValue;
+        }
+
+        public void OnEquipmentMouseDown(int mouseX, int mouseY)
+        {
+            _lastMousePosition = new Point(mouseX, mouseY);
+            EquipSlot? slot = GetSlotAtPosition(mouseX, mouseY);
+            if (!slot.HasValue)
+                return;
+
+            CharacterPart part = ResolveEquippedPart(slot.Value);
+            CharacterEquipSlot? characterSlot = MapToCharacterEquipSlot(slot.Value);
+            if (part == null || !characterSlot.HasValue)
+                return;
+
+            EquipSlotVisualState visualState = EquipSlotStateResolver.ResolveVisualState(_characterBuild, characterSlot.Value);
+            if (visualState.IsDisabled)
+                return;
+
+            _isDraggingItem = true;
+            _draggedSlot = slot;
+            _draggedPart = part;
+            _draggedItemPosition = _lastMousePosition;
+            _hoveredSlot = null;
+        }
+
+        public void OnEquipmentMouseMove(int mouseX, int mouseY)
+        {
+            _lastMousePosition = new Point(mouseX, mouseY);
+            if (_isDraggingItem)
+                _draggedItemPosition = _lastMousePosition;
+        }
+
+        public bool OnEquipmentMouseUp(int mouseX, int mouseY)
+        {
+            _lastMousePosition = new Point(mouseX, mouseY);
+            if (!_isDraggingItem || _draggedPart == null)
+            {
+                CancelEquipmentDrag();
+                return false;
+            }
+
+            bool moved = TryDropDraggedEquipment(mouseX, mouseY);
+            CancelEquipmentDrag();
+            return moved;
+        }
+
+        public void CancelEquipmentDrag()
+        {
+            _isDraggingItem = false;
+            _draggedSlot = null;
+            _draggedPart = null;
         }
 
         public override bool CheckMouseEvent(int shiftCenteredX, int shiftCenteredY, MouseState mouseState, MouseCursorItem mouseCursor, int renderWidth, int renderHeight)
@@ -443,6 +507,12 @@ namespace HaCreator.MapSimulator.UI
             if (!_hoveredSlot.HasValue)
                 return;
 
+            if (_isDraggingItem && _draggedPart != null)
+            {
+                DrawDraggedComparisonTooltip(sprite, _hoveredSlot.Value, renderWidth, renderHeight);
+                return;
+            }
+
             string title;
             string line;
             CharacterPart part = ResolveEquippedPart(_hoveredSlot.Value);
@@ -475,6 +545,14 @@ namespace HaCreator.MapSimulator.UI
                 return;
 
             DrawTooltip(sprite, ResolveSlotLabel(_hoveredSlot.Value), emptyState.Message, null, null, renderWidth, renderHeight);
+        }
+
+        private void DrawDraggedComparisonTooltip(SpriteBatch sprite, EquipSlot hoveredSlot, int renderWidth, int renderHeight)
+        {
+            string title = string.IsNullOrWhiteSpace(_draggedPart.Name) ? $"Equip {_draggedPart.ItemId}" : _draggedPart.Name;
+            string line = $"Drop on {ResolveSlotLabel(hoveredSlot)}";
+            string description = BuildDragCompareDescription(hoveredSlot);
+            DrawTooltip(sprite, title, line, description, _draggedPart.IconRaw ?? _draggedPart.Icon, renderWidth, renderHeight);
         }
 
         private bool TryBuildPetTooltip(out string title, out string line, out IDXObject icon)
@@ -545,6 +623,20 @@ namespace HaCreator.MapSimulator.UI
             }
             if (!string.IsNullOrWhiteSpace(description))
                 DrawTooltipText(sprite, description, new Vector2(textX, currentY), new Color(216, 216, 216));
+        }
+
+        private void DrawDraggedItemOverlay(SpriteBatch sprite)
+        {
+            if (!_isDraggingItem || _draggedPart == null)
+                return;
+
+            IDXObject icon = _draggedPart.IconRaw ?? _draggedPart.Icon;
+            int slotX = _draggedItemPosition.X - (SLOT_SIZE / 2);
+            int slotY = _draggedItemPosition.Y - (SLOT_SIZE / 2);
+            if (icon != null)
+            {
+                icon.DrawBackground(sprite, null, null, slotX, slotY, Color.White * 0.85f, false, null);
+            }
         }
 
         private void DrawTooltipText(SpriteBatch sprite, string text, Vector2 position, Color color)
@@ -641,6 +733,91 @@ namespace HaCreator.MapSimulator.UI
         {
             CharacterEquipSlot? characterSlot = MapToCharacterEquipSlot(uiSlot);
             return characterSlot.HasValue ? EquipSlotStateResolver.ResolveDisplayedPart(_characterBuild, characterSlot.Value) : null;
+        }
+
+        private bool TryDropDraggedEquipment(int mouseX, int mouseY)
+        {
+            EquipSlot? targetUiSlot = GetSlotAtPosition(mouseX, mouseY);
+            if (!targetUiSlot.HasValue || _draggedPart == null)
+                return false;
+
+            CharacterEquipSlot? targetSlot = MapToCharacterEquipSlot(targetUiSlot.Value);
+            if (!targetSlot.HasValue)
+                return false;
+
+            EquipSlotVisualState targetState = EquipSlotStateResolver.ResolveVisualState(_characterBuild, targetSlot.Value);
+            if (targetState.IsDisabled || !CanDisplayPartInSlot(_draggedPart, targetUiSlot.Value))
+                return false;
+
+            CharacterPart targetPart = ResolveEquippedPart(targetUiSlot.Value);
+            if (targetPart != null && !CanDisplayPartInSlot(targetPart, _draggedSlot ?? targetUiSlot.Value))
+                return false;
+
+            if (_draggedPart.Slot == targetSlot.Value || (targetPart != null && ReferenceEquals(targetPart, _draggedPart)))
+                return true;
+
+            _characterBuild?.Unequip(_draggedPart.Slot);
+            if (targetPart != null)
+                _characterBuild?.Unequip(targetPart.Slot);
+
+            if (targetPart != null)
+            {
+                targetPart.Slot = _draggedPart.Slot;
+                _characterBuild?.Equip(targetPart);
+            }
+
+            _draggedPart.Slot = ResolveTargetSlot(targetUiSlot.Value, _draggedPart);
+            _characterBuild?.Equip(_draggedPart);
+            return true;
+        }
+
+        private static CharacterEquipSlot ResolveTargetSlot(EquipSlot uiSlot, CharacterPart part)
+        {
+            CharacterEquipSlot? mappedSlot = MapToCharacterEquipSlot(uiSlot);
+            if (!mappedSlot.HasValue)
+                return part.Slot;
+
+            if (mappedSlot.Value == CharacterEquipSlot.Coat && part.Slot == CharacterEquipSlot.Longcoat)
+                return CharacterEquipSlot.Longcoat;
+
+            return mappedSlot.Value;
+        }
+
+        private string BuildDragCompareDescription(EquipSlot hoveredSlot)
+        {
+            CharacterEquipSlot? targetSlot = MapToCharacterEquipSlot(hoveredSlot);
+            if (!targetSlot.HasValue)
+                return "This slot is decorative in the current simulator build.";
+
+            EquipSlotVisualState targetState = EquipSlotStateResolver.ResolveVisualState(_characterBuild, targetSlot.Value);
+            if (targetState.IsDisabled)
+                return targetState.Message;
+
+            if (!CanDisplayPartInSlot(_draggedPart, hoveredSlot))
+                return "This item cannot be placed in that slot.";
+
+            CharacterPart targetPart = ResolveEquippedPart(hoveredSlot);
+            if (targetPart == null || ReferenceEquals(targetPart, _draggedPart))
+                return "Release to move this equipment item.";
+
+            return $"Swap with {(string.IsNullOrWhiteSpace(targetPart.Name) ? $"Equip {targetPart.ItemId}" : targetPart.Name)}.";
+        }
+
+        private static bool CanDisplayPartInSlot(CharacterPart part, EquipSlot uiSlot)
+        {
+            if (part == null)
+                return false;
+
+            CharacterEquipSlot? mappedSlot = MapToCharacterEquipSlot(uiSlot);
+            if (!mappedSlot.HasValue)
+                return false;
+
+            return mappedSlot.Value switch
+            {
+                CharacterEquipSlot.Coat => part.Slot == CharacterEquipSlot.Coat || part.Slot == CharacterEquipSlot.Longcoat,
+                CharacterEquipSlot.Pendant => part.Slot == CharacterEquipSlot.Pendant,
+                _ => part.Slot == mappedSlot.Value
+            };
         }
 
         private static CharacterEquipSlot? MapToCharacterEquipSlot(EquipSlot uiSlot)

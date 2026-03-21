@@ -25,6 +25,7 @@ namespace HaCreator.MapSimulator.UI
             int totalChannels,
             int occupancyPercent,
             bool isSelectable,
+            bool hasAdultChannels = false,
             bool isRecommended = false,
             bool isLatestConnected = false)
         {
@@ -33,6 +34,7 @@ namespace HaCreator.MapSimulator.UI
             TotalChannels = Math.Max(0, totalChannels);
             OccupancyPercent = Math.Clamp(occupancyPercent, 0, 100);
             IsSelectable = isSelectable;
+            HasAdultChannels = hasAdultChannels;
             IsRecommended = isRecommended;
             IsLatestConnected = isLatestConnected;
         }
@@ -42,6 +44,7 @@ namespace HaCreator.MapSimulator.UI
         public int TotalChannels { get; }
         public int OccupancyPercent { get; }
         public bool IsSelectable { get; }
+        public bool HasAdultChannels { get; }
         public bool IsRecommended { get; }
         public bool IsLatestConnected { get; }
 
@@ -56,18 +59,20 @@ namespace HaCreator.MapSimulator.UI
 
     public sealed class ChannelSelectionState
     {
-        public ChannelSelectionState(int channelIndex, int userCount, int capacity, bool isSelectable)
+        public ChannelSelectionState(int channelIndex, int userCount, int capacity, bool isSelectable, bool requiresAdultAccount = false)
         {
             ChannelIndex = Math.Max(0, channelIndex);
             UserCount = Math.Max(0, userCount);
             Capacity = Math.Max(0, capacity);
             IsSelectable = isSelectable;
+            RequiresAdultAccount = requiresAdultAccount;
         }
 
         public int ChannelIndex { get; }
         public int UserCount { get; }
         public int Capacity { get; }
         public bool IsSelectable { get; }
+        public bool RequiresAdultAccount { get; }
 
         public int OccupancyPercent => Capacity <= 0
             ? 0
@@ -80,6 +85,11 @@ namespace HaCreator.MapSimulator.UI
                 : OccupancyPercent >= 70
                     ? SelectorAvailability.Busy
                     : SelectorAvailability.Available;
+
+        public bool CanSelect(bool hasAdultAccess)
+        {
+            return IsSelectable && (!RequiresAdultAccount || hasAdultAccess);
+        }
     }
 
     public sealed class WorldSelectWindow : UIWindowBase
@@ -104,6 +114,7 @@ namespace HaCreator.MapSimulator.UI
         private SpriteFont _font;
         private int _currentWorldId;
         private int _selectedWorldId;
+        private bool _hasAdultAccess;
         private bool _requestAllowed = true;
         private string _statusMessage;
 
@@ -148,6 +159,7 @@ namespace HaCreator.MapSimulator.UI
             IReadOnlyDictionary<int, WorldSelectionState> worldStates,
             int currentWorldId,
             int selectedWorldId,
+            bool hasAdultAccess,
             bool requestAllowed = true,
             string statusMessage = null)
         {
@@ -165,6 +177,7 @@ namespace HaCreator.MapSimulator.UI
 
             _currentWorldId = currentWorldId;
             _selectedWorldId = selectedWorldId;
+            _hasAdultAccess = hasAdultAccess;
             _requestAllowed = requestAllowed;
             _statusMessage = statusMessage;
             UpdateButtonStates();
@@ -240,6 +253,16 @@ namespace HaCreator.MapSimulator.UI
                         markerLabel,
                         new Vector2(Position.X + 18, Position.Y + 174),
                         new Color(163, 226, 255));
+                }
+
+                if (selectedState.HasAdultChannels)
+                {
+                    SelectorWindowDrawing.DrawShadowedText(
+                        sprite,
+                        _font,
+                        _hasAdultAccess ? "Adult channel access enabled" : "Adult channels require enabled access",
+                        new Vector2(Position.X + 18, Position.Y + 190),
+                        _hasAdultAccess ? new Color(186, 236, 186) : new Color(255, 204, 107));
                 }
             }
 
@@ -347,6 +370,7 @@ namespace HaCreator.MapSimulator.UI
         private int _currentChannelIndex;
         private int _selectedChannelIndex;
         private int _channelCount;
+        private bool _hasAdultAccess;
         private bool _requestAllowed = true;
         private string _statusMessage;
 
@@ -418,6 +442,7 @@ namespace HaCreator.MapSimulator.UI
             int currentWorldId,
             int currentChannelIndex,
             IReadOnlyList<ChannelSelectionState> channelStates,
+            bool hasAdultAccess,
             bool requestAllowed = true,
             string statusMessage = null)
         {
@@ -437,6 +462,7 @@ namespace HaCreator.MapSimulator.UI
             _currentWorldId = currentWorldId;
             _currentChannelIndex = Math.Max(0, currentChannelIndex);
             _channelCount = Math.Max(0, Math.Min(_channelStates.Count, _channelButtons.Count));
+            _hasAdultAccess = hasAdultAccess;
             _requestAllowed = requestAllowed;
             _statusMessage = statusMessage;
 
@@ -545,6 +571,15 @@ namespace HaCreator.MapSimulator.UI
                     $"Load: {selectedState.OccupancyPercent}% ({selectedState.Availability})",
                     new Vector2(Position.X + 104, Position.Y + 74),
                     SelectorWindowDrawing.GetAvailabilityColor(selectedState.Availability));
+                if (selectedState.RequiresAdultAccount)
+                {
+                    SelectorWindowDrawing.DrawShadowedText(
+                        sprite,
+                        _font,
+                        _hasAdultAccess ? "Adult-only channel" : "Adult-only channel: access denied",
+                        new Vector2(Position.X + 104, Position.Y + 90),
+                        _hasAdultAccess ? new Color(186, 236, 186) : new Color(255, 204, 107));
+                }
             }
 
             foreach (ChannelButtonEntry entry in _channelButtons)
@@ -608,14 +643,25 @@ namespace HaCreator.MapSimulator.UI
                         new Color(255, 228, 151));
                 }
                 else if (_channelStates.TryGetValue(entry.ChannelIndex, out ChannelSelectionState state) &&
-                         state.Availability != SelectorAvailability.Available)
+                         state.RequiresAdultAccount &&
+                         !_hasAdultAccess)
                 {
                     SelectorWindowDrawing.DrawShadowedText(
                         sprite,
                         _font,
-                        state.Availability.ToString(),
+                        "Adult",
                         new Vector2(Position.X + entry.Button.X + 29, Position.Y + entry.Button.Y + 1),
-                        SelectorWindowDrawing.GetAvailabilityColor(state.Availability));
+                        new Color(255, 204, 107));
+                }
+                else if (_channelStates.TryGetValue(entry.ChannelIndex, out ChannelSelectionState availabilityState) &&
+                         availabilityState.Availability != SelectorAvailability.Available)
+                {
+                    SelectorWindowDrawing.DrawShadowedText(
+                        sprite,
+                        _font,
+                        availabilityState.Availability.ToString(),
+                        new Vector2(Position.X + entry.Button.X + 29, Position.Y + entry.Button.Y + 1),
+                        SelectorWindowDrawing.GetAvailabilityColor(availabilityState.Availability));
                 }
             }
         }
@@ -627,7 +673,7 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
-            if (_channelStates.TryGetValue(channelIndex, out ChannelSelectionState state) && !state.IsSelectable)
+            if (_channelStates.TryGetValue(channelIndex, out ChannelSelectionState state) && !state.CanSelect(_hasAdultAccess))
             {
                 return;
             }
@@ -640,7 +686,7 @@ namespace HaCreator.MapSimulator.UI
         {
             foreach (ChannelButtonEntry entry in _channelButtons.OrderBy(button => button.ChannelIndex))
             {
-                if (_channelStates.TryGetValue(entry.ChannelIndex, out ChannelSelectionState state) && state.IsSelectable)
+                if (_channelStates.TryGetValue(entry.ChannelIndex, out ChannelSelectionState state) && state.CanSelect(_hasAdultAccess))
                 {
                     return entry.ChannelIndex;
                 }
@@ -655,7 +701,7 @@ namespace HaCreator.MapSimulator.UI
                    _selectedChannelIndex >= 0 &&
                    _selectedChannelIndex < _channelCount &&
                    _channelStates.TryGetValue(_selectedChannelIndex, out ChannelSelectionState state) &&
-                   state.IsSelectable &&
+                   state.CanSelect(_hasAdultAccess) &&
                    (_selectedWorldId != _currentWorldId || _selectedChannelIndex != _currentChannelIndex);
         }
 
@@ -665,7 +711,7 @@ namespace HaCreator.MapSimulator.UI
             {
                 bool hasState = _channelStates.TryGetValue(entry.ChannelIndex, out ChannelSelectionState state);
                 bool visible = hasState && state.Capacity > 0;
-                bool isSelectable = _requestAllowed && visible && state.IsSelectable;
+                bool isSelectable = _requestAllowed && visible && state.CanSelect(_hasAdultAccess);
                 entry.Button.SetVisible(visible);
                 entry.Button.SetEnabled(isSelectable);
                 entry.Button.SetButtonState(entry.ChannelIndex == _selectedChannelIndex
@@ -828,12 +874,21 @@ namespace HaCreator.MapSimulator.UI
 
             if (state.IsLatestConnected)
             {
-                return "Latest connected world";
+                return state.HasAdultChannels
+                    ? "Latest connected world with adult channels"
+                    : "Latest connected world";
             }
 
             if (state.IsRecommended)
             {
-                return "Recommended world";
+                return state.HasAdultChannels
+                    ? "Recommended world with adult channels"
+                    : "Recommended world";
+            }
+
+            if (state.HasAdultChannels)
+            {
+                return "Contains adult-only channels";
             }
 
             return null;

@@ -47,10 +47,18 @@ namespace HaCreator.MapSimulator.UI
             public Point IconOffset { get; set; }
         }
 
+        private sealed class ExceptionPopupVisual
+        {
+            public IDXObject Frame { get; set; }
+            public List<PageLayer> Layers { get; } = new List<PageLayer>();
+        }
+
         private readonly bool _isBigBang;
         private readonly IDXObject _defaultFrame;
         private readonly Dictionary<UserInfoPage, UIObject> _pageButtons = new Dictionary<UserInfoPage, UIObject>();
+        private readonly List<UIObject> _primaryButtons = new List<UIObject>();
         private readonly Dictionary<UserInfoPage, PageVisual> _pageVisuals = new Dictionary<UserInfoPage, PageVisual>();
+        private readonly List<string> _petExceptionEntries = new List<string> { "Meso Bag", "Throwing Star" };
 
         private IDXObject _foreground;
         private Point _foregroundOffset;
@@ -61,6 +69,18 @@ namespace HaCreator.MapSimulator.UI
         private PetController _petController;
         private UserInfoPage _currentPage = UserInfoPage.Character;
         private string _statusMessage = "Character actions are available from this profile window.";
+        private UIObject _petExceptionButton;
+        private UIObject _collectSortButton;
+        private UIObject _collectClaimButton;
+        private ExceptionPopupVisual _exceptionPopupVisual;
+        private UIObject _exceptionRegisterButton;
+        private UIObject _exceptionDeleteButton;
+        private UIObject _exceptionMesoButton;
+        private bool _exceptionPopupOpen;
+        private bool _petExceptionBlocksMeso = true;
+        private int _selectedPetExceptionIndex = -1;
+        private bool _collectSortByName;
+        private bool _collectRewardClaimed;
 
         private static readonly Color ValueColor = new Color(45, 45, 45);
         private static readonly Color SecondaryColor = new Color(96, 96, 96);
@@ -91,6 +111,7 @@ namespace HaCreator.MapSimulator.UI
 
         public override string WindowName => MapSimulatorWindowNames.CharacterInfo;
         public Action MiniRoomRequested { get; set; }
+        public Action PartyRequested { get; set; }
         public Action TradingRoomRequested { get; set; }
 
         public override CharacterBuild CharacterBuild
@@ -154,11 +175,11 @@ namespace HaCreator.MapSimulator.UI
 
         public void InitializePrimaryButtons(UIObject partyButton, UIObject tradeButton, UIObject itemButton, UIObject wishButton, UIObject familyButton)
         {
-            BindActionButton(partyButton, "Party invite is not simulated yet.");
-            BindActionButton(tradeButton, "Trading-room shell opened.", () => TradingRoomRequested?.Invoke());
-            BindActionButton(itemButton, "Mini-room shell opened.", () => MiniRoomRequested?.Invoke());
-            BindActionButton(wishButton, "Wishlist and present flow is not simulated yet.");
-            BindActionButton(familyButton, "Family chart flow is not simulated yet.");
+            BindActionButton(partyButton, "Party list opened from the profile window.", () => PartyRequested?.Invoke(), true);
+            BindActionButton(tradeButton, "Trading-room shell opened.", () => TradingRoomRequested?.Invoke(), true);
+            BindActionButton(itemButton, "Mini-room shell opened.", () => MiniRoomRequested?.Invoke(), true);
+            BindActionButton(wishButton, "Wishlist and present flow still needs the client packet-backed present flow.", null, true);
+            BindActionButton(familyButton, "Family chart flow still needs the dedicated family-tree owner.", null, true);
         }
 
         public void InitializePageButtons(UIObject rideButton, UIObject petButton, UIObject collectButton, UIObject personalityButton)
@@ -170,6 +191,51 @@ namespace HaCreator.MapSimulator.UI
             UpdateButtonStates();
         }
 
+        public void InitializePageActionButtons(UIObject petExceptionButton, UIObject collectSortButton, UIObject collectClaimButton)
+        {
+            _petExceptionButton = petExceptionButton;
+            _collectSortButton = collectSortButton;
+            _collectClaimButton = collectClaimButton;
+
+            BindActionButton(_petExceptionButton, "Pet exception list opened.", ToggleExceptionPopup);
+            BindActionButton(_collectSortButton, "Collection entries sorted by name.", ToggleCollectSortMode);
+            BindActionButton(_collectClaimButton, "Collection reward is not ready yet.", ClaimCollectReward);
+            UpdateButtonStates();
+        }
+
+        public void InitializeExceptionPopup(
+            IDXObject frame,
+            IEnumerable<(IDXObject layer, Point offset)> layers,
+            UIObject registerButton,
+            UIObject deleteButton,
+            UIObject mesoButton)
+        {
+            _exceptionPopupVisual = new ExceptionPopupVisual
+            {
+                Frame = frame
+            };
+
+            if (layers != null)
+            {
+                foreach ((IDXObject layer, Point offset) in layers)
+                {
+                    if (layer != null)
+                    {
+                        _exceptionPopupVisual.Layers.Add(new PageLayer(layer, offset));
+                    }
+                }
+            }
+
+            _exceptionRegisterButton = registerButton;
+            _exceptionDeleteButton = deleteButton;
+            _exceptionMesoButton = mesoButton;
+
+            BindActionButton(_exceptionRegisterButton, "Pet exception item registered.", RegisterPetExceptionEntry);
+            BindActionButton(_exceptionDeleteButton, "Pet exception item removed.", DeletePetExceptionEntry);
+            BindActionButton(_exceptionMesoButton, "Pet meso pickup preference updated.", TogglePetMesoException);
+            UpdateButtonStates();
+        }
+
         public void SetPetController(PetController petController)
         {
             _petController = petController;
@@ -177,6 +243,13 @@ namespace HaCreator.MapSimulator.UI
 
         public override void Update(GameTime gameTime)
         {
+            if (_currentPage != UserInfoPage.Character && !IsPageAvailable(_currentPage))
+            {
+                _currentPage = UserInfoPage.Character;
+                _exceptionPopupOpen = false;
+                ApplyCurrentPageFrame();
+            }
+
             UpdateButtonStates();
         }
 
@@ -218,6 +291,7 @@ namespace HaCreator.MapSimulator.UI
                     break;
             }
 
+            DrawExceptionPopup(sprite, skeletonMeshRenderer, gameTime, drawReflectionInfo);
             DrawStatusMessage(sprite);
         }
 
@@ -396,19 +470,24 @@ namespace HaCreator.MapSimulator.UI
 
         private void DrawCollectPage(SpriteBatch sprite)
         {
-            int equippedCount = _characterBuild?.Equipment?.Count ?? 0;
-            string weapon = _characterBuild?.GetWeapon()?.Name ?? "-";
-            string cap = GetEquippedItemName(EquipSlot.Cap);
-            string outfit = ResolveOutfitName();
-            string shoes = GetEquippedItemName(EquipSlot.Shoes);
+            List<(string Label, string Value)> entries = BuildCollectEntries();
 
             DrawSectionHeader(sprite, "Collect");
-            DrawLabeledRow(sprite, 40, "Equipped", equippedCount.ToString(), ValueColor);
-            DrawLabeledRow(sprite, 64, "Weapon", weapon, ValueColor, 144);
-            DrawLabeledRow(sprite, 88, "Cap", cap, ValueColor, 144);
-            DrawLabeledRow(sprite, 112, "Outfit", outfit, ValueColor, 144);
-            DrawLabeledRow(sprite, 136, "Shoes", shoes, ValueColor, 144);
-            DrawLabeledRow(sprite, 160, "EXP", _characterBuild?.ExpDisplayText ?? "-", MutedColor, 144);
+            for (int i = 0; i < entries.Count; i++)
+            {
+                (string label, string value) = entries[i];
+                DrawLabeledRow(sprite, 40 + (i * 24), label, value, ValueColor, 144);
+            }
+
+            string rewardStatus = CanClaimCollectReward()
+                ? (_collectRewardClaimed ? "Reward claimed" : "Reward ready")
+                : "Need 5 equipped items";
+            DrawPlainText(
+                sprite,
+                rewardStatus,
+                new Vector2(Position.X + 20, Position.Y + 188),
+                CanClaimCollectReward() && !_collectRewardClaimed ? SuccessColor : MutedColor,
+                0.58f);
         }
 
         private void DrawPersonalityPage(SpriteBatch sprite)
@@ -481,11 +560,86 @@ namespace HaCreator.MapSimulator.UI
                 0.55f);
         }
 
-        private void BindActionButton(UIObject button, string message, Action action = null)
+        private void DrawExceptionPopup(
+            SpriteBatch sprite,
+            SkeletonMeshRenderer skeletonMeshRenderer,
+            GameTime gameTime,
+            ReflectionDrawableBoundary drawReflectionInfo)
+        {
+            if (!_exceptionPopupOpen || _exceptionPopupVisual?.Frame == null)
+            {
+                return;
+            }
+
+            Point popupPosition = GetExceptionPopupPosition();
+            _exceptionPopupVisual.Frame.DrawBackground(
+                sprite,
+                skeletonMeshRenderer,
+                gameTime,
+                popupPosition.X,
+                popupPosition.Y,
+                Color.White,
+                false,
+                drawReflectionInfo);
+
+            foreach (PageLayer layer in _exceptionPopupVisual.Layers)
+            {
+                layer.Texture?.DrawBackground(
+                    sprite,
+                    skeletonMeshRenderer,
+                    gameTime,
+                    popupPosition.X + layer.Offset.X,
+                    popupPosition.Y + layer.Offset.Y,
+                    Color.White,
+                    false,
+                    drawReflectionInfo);
+            }
+
+            if (_font == null)
+            {
+                return;
+            }
+
+            DrawPlainText(sprite, "Pet exception", new Vector2(popupPosition.X + 12, popupPosition.Y + 10), HeaderColor, 0.7f);
+            DrawPlainText(sprite,
+                _petExceptionBlocksMeso ? "Meso pickup blocked" : "Meso pickup allowed",
+                new Vector2(popupPosition.X + 12, popupPosition.Y + 30),
+                _petExceptionBlocksMeso ? WarningColor : SuccessColor,
+                0.56f);
+
+            if (_petExceptionEntries.Count == 0)
+            {
+                DrawPlainText(sprite,
+                    "No exception entries.",
+                    new Vector2(popupPosition.X + 12, popupPosition.Y + 52),
+                    MutedColor,
+                    0.56f);
+                return;
+            }
+
+            for (int i = 0; i < Math.Min(3, _petExceptionEntries.Count); i++)
+            {
+                int entryIndex = i;
+                string entry = _petExceptionEntries[entryIndex];
+                Color color = entryIndex == _selectedPetExceptionIndex ? SuccessColor : ValueColor;
+                DrawPlainText(sprite,
+                    FitText($"[{entryIndex + 1}] {entry}", 118),
+                    new Vector2(popupPosition.X + 12, popupPosition.Y + 52 + (i * 18)),
+                    color,
+                    0.56f);
+            }
+        }
+
+        private void BindActionButton(UIObject button, string message, Action action = null, bool trackAsPrimary = false)
         {
             if (button == null)
             {
                 return;
+            }
+
+            if (trackAsPrimary)
+            {
+                _primaryButtons.Add(button);
             }
 
             AddButton(button);
@@ -514,6 +668,8 @@ namespace HaCreator.MapSimulator.UI
 
         private void SwitchPage(UserInfoPage page)
         {
+            _exceptionPopupOpen = false;
+
             if (_currentPage == page)
             {
                 _currentPage = UserInfoPage.Character;
@@ -544,7 +700,65 @@ namespace HaCreator.MapSimulator.UI
         {
             foreach ((UserInfoPage page, UIObject button) in _pageButtons)
             {
-                button.SetButtonState(_currentPage == page ? UIObjectState.Pressed : UIObjectState.Normal);
+                button.ButtonVisible = _isBigBang;
+                bool pageAvailable = IsPageAvailable(page);
+                button.SetEnabled(pageAvailable);
+                if (pageAvailable)
+                {
+                    button.SetButtonState(_currentPage == page ? UIObjectState.Pressed : UIObjectState.Normal);
+                }
+            }
+
+            bool characterPage = _currentPage == UserInfoPage.Character;
+            foreach (UIObject button in _primaryButtons)
+            {
+                if (button == null)
+                {
+                    continue;
+                }
+
+                button.ButtonVisible = characterPage;
+                button.SetEnabled(characterPage && !_exceptionPopupOpen);
+            }
+
+            if (_petExceptionButton != null)
+            {
+                bool showPetException = _currentPage == UserInfoPage.Pet;
+                _petExceptionButton.ButtonVisible = showPetException;
+                _petExceptionButton.SetEnabled(showPetException && HasActivePets() && !_exceptionPopupOpen);
+            }
+
+            if (_collectSortButton != null)
+            {
+                bool showCollectButtons = _currentPage == UserInfoPage.Collect;
+                _collectSortButton.ButtonVisible = showCollectButtons;
+                _collectSortButton.SetEnabled(showCollectButtons && !_exceptionPopupOpen);
+            }
+
+            if (_collectClaimButton != null)
+            {
+                bool showCollectButtons = _currentPage == UserInfoPage.Collect;
+                _collectClaimButton.ButtonVisible = showCollectButtons;
+                _collectClaimButton.SetEnabled(showCollectButtons && CanClaimCollectReward() && !_collectRewardClaimed && !_exceptionPopupOpen);
+            }
+
+            if (_exceptionRegisterButton != null)
+            {
+                _exceptionRegisterButton.ButtonVisible = _exceptionPopupOpen;
+                _exceptionRegisterButton.SetEnabled(_exceptionPopupOpen);
+            }
+
+            if (_exceptionDeleteButton != null)
+            {
+                _exceptionDeleteButton.ButtonVisible = _exceptionPopupOpen;
+                _exceptionDeleteButton.SetEnabled(_exceptionPopupOpen && _selectedPetExceptionIndex >= 0 && _selectedPetExceptionIndex < _petExceptionEntries.Count);
+            }
+
+            if (_exceptionMesoButton != null)
+            {
+                _exceptionMesoButton.ButtonVisible = _exceptionPopupOpen;
+                _exceptionMesoButton.SetEnabled(_exceptionPopupOpen);
+                _exceptionMesoButton.SetButtonState(_petExceptionBlocksMeso ? UIObjectState.Pressed : UIObjectState.Normal);
             }
         }
 
@@ -609,6 +823,158 @@ namespace HaCreator.MapSimulator.UI
             }
 
             return $"{coat} / {pants}";
+        }
+
+        private bool HasActivePets()
+        {
+            return _petController?.ActivePets?.Count > 0;
+        }
+
+        private bool IsPageAvailable(UserInfoPage page)
+        {
+            return page switch
+            {
+                UserInfoPage.Ride => _characterBuild?.HasMonsterRiding == true || !string.Equals(GetEquippedItemName(EquipSlot.TamingMob), "-", StringComparison.Ordinal),
+                UserInfoPage.Pet => HasActivePets(),
+                UserInfoPage.Collect => true,
+                UserInfoPage.Personality => true,
+                _ => true
+            };
+        }
+
+        private void ToggleExceptionPopup()
+        {
+            _exceptionPopupOpen = !_exceptionPopupOpen;
+            if (_exceptionPopupOpen && _petExceptionEntries.Count > 0 && _selectedPetExceptionIndex < 0)
+            {
+                _selectedPetExceptionIndex = 0;
+            }
+
+            UpdateButtonStates();
+        }
+
+        private void RegisterPetExceptionEntry()
+        {
+            string candidate = ResolveNextPetExceptionEntry();
+            if (_petExceptionEntries.Any(entry => string.Equals(entry, candidate, StringComparison.OrdinalIgnoreCase)))
+            {
+                _statusMessage = $"{candidate} is already in the pet exception list.";
+            }
+            else
+            {
+                _petExceptionEntries.Add(candidate);
+                _selectedPetExceptionIndex = _petExceptionEntries.Count - 1;
+                _statusMessage = $"{candidate} added to the pet exception list.";
+            }
+
+            UpdateButtonStates();
+        }
+
+        private void DeletePetExceptionEntry()
+        {
+            if (_selectedPetExceptionIndex < 0 || _selectedPetExceptionIndex >= _petExceptionEntries.Count)
+            {
+                _statusMessage = "No pet exception entry is selected.";
+                return;
+            }
+
+            string removed = _petExceptionEntries[_selectedPetExceptionIndex];
+            _petExceptionEntries.RemoveAt(_selectedPetExceptionIndex);
+            _selectedPetExceptionIndex = _petExceptionEntries.Count > 0 ? Math.Min(_selectedPetExceptionIndex, _petExceptionEntries.Count - 1) : -1;
+            _statusMessage = $"{removed} removed from the pet exception list.";
+            UpdateButtonStates();
+        }
+
+        private void TogglePetMesoException()
+        {
+            _petExceptionBlocksMeso = !_petExceptionBlocksMeso;
+            _statusMessage = _petExceptionBlocksMeso
+                ? "Pets will skip meso pickup while the exception list is active."
+                : "Pets may pick up meso while the exception list is active.";
+            UpdateButtonStates();
+        }
+
+        private void ToggleCollectSortMode()
+        {
+            _collectSortByName = !_collectSortByName;
+            _statusMessage = _collectSortByName
+                ? "Collection summary sorted by name."
+                : "Collection summary sorted by equipped slot order.";
+        }
+
+        private void ClaimCollectReward()
+        {
+            if (!CanClaimCollectReward())
+            {
+                _statusMessage = "Collection reward is not ready yet.";
+                return;
+            }
+
+            if (_collectRewardClaimed)
+            {
+                _statusMessage = "Collection reward has already been claimed in this simulator session.";
+                return;
+            }
+
+            _collectRewardClaimed = true;
+            _statusMessage = "Collection reward claim acknowledged locally.";
+            UpdateButtonStates();
+        }
+
+        private bool CanClaimCollectReward()
+        {
+            return (_characterBuild?.Equipment?.Count ?? 0) >= 5;
+        }
+
+        private List<(string Label, string Value)> BuildCollectEntries()
+        {
+            List<(string Label, string Value)> entries = new List<(string Label, string Value)>
+            {
+                ("Equipped", (_characterBuild?.Equipment?.Count ?? 0).ToString()),
+                ("Weapon", _characterBuild?.GetWeapon()?.Name ?? "-"),
+                ("Cap", GetEquippedItemName(EquipSlot.Cap)),
+                ("Outfit", ResolveOutfitName()),
+                ("Shoes", GetEquippedItemName(EquipSlot.Shoes)),
+                ("EXP", _characterBuild?.ExpDisplayText ?? "-")
+            };
+
+            return _collectSortByName
+                ? entries.OrderBy(entry => entry.Label, StringComparer.OrdinalIgnoreCase).ToList()
+                : entries;
+        }
+
+        private string ResolveNextPetExceptionEntry()
+        {
+            string[] candidates =
+            {
+                "Meso Bag",
+                "Arrow Bundle",
+                "Throwing Star",
+                "Pet Food",
+                "Return Scroll"
+            };
+
+            foreach (string candidate in candidates)
+            {
+                if (!_petExceptionEntries.Any(entry => string.Equals(entry, candidate, StringComparison.OrdinalIgnoreCase)))
+                {
+                    return candidate;
+                }
+            }
+
+            return $"Filtered Item {_petExceptionEntries.Count + 1}";
+        }
+
+        private Point GetExceptionPopupPosition()
+        {
+            if (_exceptionPopupVisual?.Frame == null)
+            {
+                return Position;
+            }
+
+            int x = Position.X + Math.Max(8, CurrentFrame.Width - _exceptionPopupVisual.Frame.Width - 8);
+            int y = Position.Y + 30;
+            return new Point(x, y);
         }
 
         private static string FormatRank(int rank)

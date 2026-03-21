@@ -5134,6 +5134,8 @@ namespace HaCreator.MapSimulator.Character.Skills
                     BuffStatType.MagicDefense => levelData.MDD,
                     BuffStatType.Accuracy => levelData.ACC,
                     BuffStatType.Avoidability => levelData.EVA,
+                    BuffStatType.Speed => levelData.Speed,
+                    BuffStatType.Jump => levelData.Jump,
                     BuffStatType.CriticalRate => levelData.CriticalRate,
                     BuffStatType.Booster => levelData.X, // Usually attack speed
                     _ => 0
@@ -5167,6 +5169,17 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
 
             return mastery;
+        }
+
+        public void LearnAllNonHiddenSkills()
+        {
+            foreach (var skill in _availableSkills)
+            {
+                if (skill == null || skill.Invisible)
+                    continue;
+
+                SetSkillLevel(skill.SkillId, Math.Max(1, skill.MaxLevel));
+            }
         }
 
         #endregion

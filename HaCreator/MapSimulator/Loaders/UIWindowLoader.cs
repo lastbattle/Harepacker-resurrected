@@ -68,7 +68,8 @@ namespace HaCreator.MapSimulator.Loaders
 
             UIObject btnGather = LoadButton(itemProperty, "BtGather", btClickSound, btOverSound, device);
             UIObject btnSort = LoadButton(itemProperty, "BtSort", btClickSound, btOverSound, device);
-            inventory.InitializeUtilityButtons(btnGather, btnSort);
+            UIObject btnCashShop = LoadButton(itemProperty, "BtCashshop", btClickSound, btOverSound, device);
+            inventory.InitializeUtilityButtons(btnGather, btnSort, btnCashShop);
 
             WzSubProperty skillMainProperty = uiWindowImage?["Skill"]?["main"] as WzSubProperty;
             if (skillMainProperty != null)
@@ -1556,9 +1557,10 @@ namespace HaCreator.MapSimulator.Loaders
             // Load Big Bang specific buttons
             UIObject btnGather = LoadButton(itemProperty, "BtGather", btClickSound, btOverSound, device);
             UIObject btnSort = LoadButton(itemProperty, "BtSort", btClickSound, btOverSound, device);
+            UIObject btnCashShop = LoadButton(itemProperty, "BtCashshop", btClickSound, btOverSound, device);
             UIObject btnFull = LoadButton(itemProperty, "BtFull", btClickSound, btOverSound, device);
             UIObject btnSmall = LoadButton(itemProperty, "BtSmall", btClickSound, btOverSound, device);
-            inventory.InitializeUtilityButtons(btnGather, btnSort);
+            inventory.InitializeUtilityButtons(btnGather, btnSort, btnCashShop);
             inventory.InitializeBigBangButtons(btnGather, btnSort, btnFull, btnSmall);
             inventory.SetRenderAssets(
                 LoadCanvasTexture(itemProperty, "activeIcon", device),
@@ -1727,9 +1729,20 @@ namespace HaCreator.MapSimulator.Loaders
                 window.SetBottomPanel(new DXObject(0, 0, panelTexture, 0), ResolveCanvasOffset(questInfoProperty, "backgrnd3", new Point(10, 27)));
             }
 
+            window.SetSectionTextures(
+                LoadCanvasTexture(questInfoProperty["summary_icon"] as WzSubProperty, "summary", device),
+                LoadCanvasTexture(questInfoProperty["summary_icon"] as WzSubProperty, "basic", device),
+                LoadCanvasTexture(questInfoProperty["summary_icon"] as WzSubProperty, "reward", device),
+                LoadCanvasTexture(questInfoProperty["summary_icon"] as WzSubProperty, "select", device));
+            window.SetProgressTextures(
+                LoadCanvasTexture(questInfoProperty["Gauge"] as WzSubProperty, "frame", device),
+                LoadCanvasTexture(questInfoProperty["Gauge"] as WzSubProperty, "gauge", device),
+                LoadCanvasTexture(questInfoProperty["Gauge"] as WzSubProperty, "spot", device),
+                new Point(30, 0));
+
             UIObject closeButton = CreateUserInfoCloseButton(basicImage, clickSound, overSound, device, frameTexture.Width);
             window.InitializeCloseButton(closeButton);
-            InitializeQuestDetailButtons(window, device, frameTexture.Width, frameTexture.Height);
+            InitializeQuestDetailButtons(window, questInfoProperty, clickSound, overSound, device, frameTexture.Width, frameTexture.Height, true);
             return window;
         }
 
@@ -1759,9 +1772,20 @@ namespace HaCreator.MapSimulator.Loaders
                 window.SetBottomPanel(new DXObject(0, 0, panelTexture, 0), ResolveCanvasOffset(questProperty, "backgrnd5", new Point(20, 252)));
             }
 
+            window.SetSectionTextures(
+                LoadCanvasTexture(questProperty, "summary", device),
+                LoadCanvasTexture(questProperty, "basic", device),
+                LoadCanvasTexture(questProperty, "reward", device),
+                LoadCanvasTexture(questProperty, "select", device));
+            window.SetProgressTextures(
+                LoadCanvasTexture(questProperty["Gauge"] as WzSubProperty, "frame", device),
+                LoadCanvasTexture(questProperty["Gauge"] as WzSubProperty, "gauge", device),
+                LoadCanvasTexture(questProperty["Gauge"] as WzSubProperty, "spot", device),
+                new Point(32, 0));
+
             UIObject closeButton = CreateUserInfoCloseButton(basicImage, clickSound, overSound, device, frameTexture.Width);
             window.InitializeCloseButton(closeButton);
-            InitializeQuestDetailButtons(window, device, frameTexture.Width, frameTexture.Height);
+            InitializeQuestDetailButtons(window, questProperty, clickSound, overSound, device, frameTexture.Width, frameTexture.Height, false);
             return window;
         }
 
@@ -1777,7 +1801,7 @@ namespace HaCreator.MapSimulator.Loaders
             WzBinaryProperty clickSound = soundUIImage?["BtMouseClick"] as WzBinaryProperty;
             WzBinaryProperty overSound = soundUIImage?["BtMouseOver"] as WzBinaryProperty;
             window.InitializeCloseButton(CreateUserInfoCloseButton(basicImage, clickSound, overSound, device, frameTexture.Width));
-            InitializeQuestDetailButtons(window, device, frameTexture.Width, frameTexture.Height);
+            InitializeQuestDetailButtons(window, null, clickSound, overSound, device, frameTexture.Width, frameTexture.Height, true);
             return window;
         }
 
@@ -1795,28 +1819,95 @@ namespace HaCreator.MapSimulator.Loaders
             };
         }
 
-        private static void InitializeQuestDetailButtons(QuestDetailWindow window, GraphicsDevice device, int frameWidth, int frameHeight)
+        private static void InitializeQuestDetailButtons(
+            QuestDetailWindow window,
+            WzSubProperty buttonSource,
+            WzBinaryProperty clickSound,
+            WzBinaryProperty overSound,
+            GraphicsDevice device,
+            int frameWidth,
+            int frameHeight,
+            bool isBigBang)
         {
-            UIObject primaryButton = UiButtonFactory.CreateSolidButton(
-                device, 78, 22,
+            bool hasAcceptArt = isBigBang
+                ? buttonSource?["BtQuestDeliveryAccept"] is WzSubProperty
+                : buttonSource?["BtOK"] is WzSubProperty;
+            bool hasCompleteArt = isBigBang
+                ? buttonSource?["BtQuestDeliveryComplete"] is WzSubProperty
+                : buttonSource?["BtOK"] is WzSubProperty;
+            bool hasTrackArt = (isBigBang ? buttonSource?["BtArlim"] : buttonSource?["BtAlert"]) is WzSubProperty;
+            bool hasGiveUpArt = buttonSource?["BtGiveup"] is WzSubProperty;
+
+            UIObject acceptButton = isBigBang
+                ? CreateQuestDetailActionButton(buttonSource?["BtQuestDeliveryAccept"] as WzSubProperty, clickSound, overSound, device)
+                : CreateQuestDetailActionButton(buttonSource?["BtOK"] as WzSubProperty, clickSound, overSound, device);
+            UIObject completeButton = isBigBang
+                ? CreateQuestDetailActionButton(buttonSource?["BtQuestDeliveryComplete"] as WzSubProperty, clickSound, overSound, device)
+                : CreateQuestDetailActionButton(buttonSource?["BtOK"] as WzSubProperty, clickSound, overSound, device);
+            UIObject trackButton = CreateQuestDetailActionButton(
+                (isBigBang ? buttonSource?["BtArlim"] : buttonSource?["BtAlert"]) as WzSubProperty,
+                clickSound, overSound, device);
+            UIObject giveUpButton = CreateQuestDetailActionButton(buttonSource?["BtGiveup"] as WzSubProperty, clickSound, overSound, device);
+
+            acceptButton ??= CreateFallbackQuestDetailButton(device, 117, 16);
+            completeButton ??= CreateFallbackQuestDetailButton(device, 117, 16);
+            trackButton ??= CreateFallbackQuestDetailButton(device, 86, 17);
+            giveUpButton ??= CreateFallbackQuestDetailButton(device, 60, 16);
+
+            PositionQuestDetailActionButton(acceptButton, frameWidth, frameHeight, 12, 8);
+            PositionQuestDetailActionButton(completeButton, frameWidth, frameHeight, 12, 8);
+            PositionQuestDetailActionButton(trackButton, frameWidth, frameHeight, 12, 8);
+            PositionQuestDetailActionButton(giveUpButton, frameWidth, frameHeight, 16, acceptButton?.CanvasSnapshotWidth ?? completeButton?.CanvasSnapshotWidth ?? trackButton?.CanvasSnapshotWidth ?? 78);
+
+            window.RegisterActionButton(QuestWindowActionKind.Accept, acceptButton, !hasAcceptArt);
+            window.RegisterActionButton(QuestWindowActionKind.Complete, completeButton, !hasCompleteArt);
+            window.RegisterActionButton(QuestWindowActionKind.Track, trackButton, !hasTrackArt);
+            window.RegisterActionButton(QuestWindowActionKind.GiveUp, giveUpButton, !hasGiveUpArt);
+            window.InitializeNavigationButtons(device);
+        }
+
+        private static UIObject CreateQuestDetailActionButton(
+            WzSubProperty buttonProperty,
+            WzBinaryProperty clickSound,
+            WzBinaryProperty overSound,
+            GraphicsDevice device)
+        {
+            if (buttonProperty == null)
+            {
+                return null;
+            }
+
+            try
+            {
+                return new UIObject(buttonProperty, clickSound, overSound, false, Point.Zero, device);
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        private static UIObject CreateFallbackQuestDetailButton(GraphicsDevice device, int width, int height)
+        {
+            return UiButtonFactory.CreateSolidButton(
+                device, width, height,
                 new Color(69, 95, 122, 230),
                 new Color(101, 131, 160, 240),
                 new Color(82, 110, 140, 240),
                 new Color(42, 42, 42, 170));
-            primaryButton.X = Math.Max(16, frameWidth - 96);
-            primaryButton.Y = Math.Max(16, frameHeight - 32);
+        }
 
-            UIObject secondaryButton = UiButtonFactory.CreateSolidButton(
-                device, 78, 22,
-                new Color(77, 63, 63, 225),
-                new Color(118, 88, 88, 235),
-                new Color(98, 75, 75, 235),
-                new Color(42, 42, 42, 170));
-            secondaryButton.X = Math.Max(16, frameWidth - 180);
-            secondaryButton.Y = primaryButton.Y;
+        private static void PositionQuestDetailActionButton(UIObject button, int frameWidth, int frameHeight, int rightMargin, int slotOffset)
+        {
+            if (button == null)
+            {
+                return;
+            }
 
-            window.InitializeActionButtons(primaryButton, secondaryButton);
-            window.InitializeNavigationButtons(device);
+            int buttonWidth = Math.Max(1, button.CanvasSnapshotWidth);
+            int buttonHeight = Math.Max(1, button.CanvasSnapshotHeight);
+            button.X = Math.Max(12, frameWidth - buttonWidth - rightMargin - slotOffset);
+            button.Y = Math.Max(16, frameHeight - buttonHeight - 10);
         }
 
         private static QuickSlotUI CreateQuickSlotWindow(WzImage uiWindow2Image, GraphicsDevice device, int screenWidth, int screenHeight)
@@ -2015,8 +2106,11 @@ namespace HaCreator.MapSimulator.Loaders
             WzBinaryProperty clickSound = soundUIImage?["BtMouseClick"] as WzBinaryProperty;
             WzBinaryProperty overSound = soundUIImage?["BtMouseOver"] as WzBinaryProperty;
 
-            Texture2D sidePanelTexture = LoadCanvasTexture(worldMapProperty["WorldMapSearch"] as WzSubProperty, "backgrnd", device);
-            Point sidePanelOffset = ResolveCanvasOffset(worldMapProperty["WorldMapSearch"] as WzSubProperty, "backgrnd", new Point(507, 0));
+            WzSubProperty worldMapSearchProperty = worldMapProperty["WorldMapSearch"] as WzSubProperty;
+            Texture2D sidePanelTexture = LoadCanvasTexture(worldMapSearchProperty, "backgrnd", device);
+            Point sidePanelOffset = ResolveCanvasOffset(worldMapSearchProperty, "backgrnd", new Point(507, 0));
+            Texture2D searchNoticeTexture = LoadCanvasTexture(worldMapSearchProperty, "notice", device);
+            Point searchNoticeOffset = ResolveCanvasOffset(worldMapSearchProperty, "notice", new Point(535, 220));
 
             Texture2D selectionTexture = new Texture2D(device, 1, 1);
             selectionTexture.SetData(new[] { Color.White });
@@ -2043,12 +2137,22 @@ namespace HaCreator.MapSimulator.Loaders
                 new DXObject(0, 0, frameTexture, 0),
                 sidePanelTexture,
                 sidePanelOffset,
+                searchNoticeTexture,
+                searchNoticeOffset,
                 selectionTexture,
                 LoadButton(worldMapProperty, "BtAll", clickSound, overSound, device),
                 LoadButton(worldMapProperty, "BtAnother", clickSound, overSound, device),
                 LoadButton(worldMapProperty, "BtSearch", clickSound, overSound, device),
+                LoadButton(worldMapSearchProperty, "BtAllsearch", clickSound, overSound, device),
+                LoadButton(worldMapSearchProperty, "BtLevelMob", clickSound, overSound, device),
                 LoadButton(worldMapProperty, "BtBefore", clickSound, overSound, device),
                 LoadButton(worldMapProperty, "BtNext", clickSound, overSound, device),
+                LoadCanvasTexture(worldMapSearchProperty?["resultField"] as WzSubProperty, "mouseOverBase", device),
+                LoadCanvasTexture(worldMapSearchProperty?["resultField"] as WzSubProperty, "icon", device),
+                LoadCanvasTexture(worldMapSearchProperty?["resultNpc"] as WzSubProperty, "mouseOverBase", device),
+                LoadCanvasTexture(worldMapSearchProperty?["resultNpc"] as WzSubProperty, "icon", device),
+                LoadCanvasTexture(worldMapSearchProperty?["resultMob"] as WzSubProperty, "mouseOverBase", device),
+                LoadCanvasTexture(worldMapSearchProperty?["resultMob"] as WzSubProperty, "icon", device),
                 regionButtons,
                 device)
             {
@@ -2203,11 +2307,16 @@ namespace HaCreator.MapSimulator.Loaders
                 LoadButton(characterProperty, "BtPet", clickSound, overSound, device),
                 LoadButton(characterProperty, "BtCollect", clickSound, overSound, device),
                 LoadButton(characterProperty, "BtPersonality", clickSound, overSound, device));
+            window.InitializePageActionButtons(
+                LoadButton(userInfoProperty?["pet"] as WzSubProperty, "BtException", clickSound, overSound, device),
+                LoadButton(userInfoProperty?["collect"] as WzSubProperty, "BtArrayName", clickSound, overSound, device),
+                LoadButton(userInfoProperty?["collect"] as WzSubProperty, "BtArrayGet", clickSound, overSound, device));
 
             RegisterUserInfoSubPage(window, "ride", userInfoProperty?["ride"] as WzSubProperty, device);
             RegisterUserInfoSubPage(window, "pet", userInfoProperty?["pet"] as WzSubProperty, device);
             RegisterUserInfoSubPage(window, "collect", userInfoProperty?["collect"] as WzSubProperty, device);
             RegisterUserInfoSubPage(window, "personality", userInfoProperty?["personality"] as WzSubProperty, device);
+            RegisterUserInfoExceptionPopup(window, userInfoProperty?["exception"] as WzSubProperty, clickSound, overSound, device);
             return window;
         }
 
@@ -2246,6 +2355,46 @@ namespace HaCreator.MapSimulator.Loaders
 
                 window.AddPageLayer(pageName, new DXObject(0, 0, layerTexture, 0), offset.X, offset.Y);
             }
+        }
+
+        private static void RegisterUserInfoExceptionPopup(
+            UserInfoUI window,
+            WzSubProperty exceptionProperty,
+            WzBinaryProperty clickSound,
+            WzBinaryProperty overSound,
+            GraphicsDevice device)
+        {
+            if (window == null || exceptionProperty == null)
+            {
+                return;
+            }
+
+            Texture2D frameTexture = LoadCanvasTexture(exceptionProperty, "backgrnd", device);
+            IDXObject frame = frameTexture != null ? new DXObject(0, 0, frameTexture, 0) : null;
+            List<(IDXObject layer, Point offset)> layers = new List<(IDXObject, Point)>();
+
+            foreach (WzCanvasProperty canvas in exceptionProperty.WzProperties.OfType<WzCanvasProperty>())
+            {
+                if (string.Equals(canvas.Name, "backgrnd", StringComparison.Ordinal))
+                {
+                    continue;
+                }
+
+                Texture2D layerTexture = canvas.GetLinkedWzCanvasBitmap()?.ToTexture2DAndDispose(device);
+                if (layerTexture == null)
+                {
+                    continue;
+                }
+
+                layers.Add((new DXObject(0, 0, layerTexture, 0), ResolveCanvasOffset(canvas, Point.Zero)));
+            }
+
+            window.InitializeExceptionPopup(
+                frame,
+                layers,
+                LoadButton(exceptionProperty, "BtRegist", clickSound, overSound, device),
+                LoadButton(exceptionProperty, "BtDelete", clickSound, overSound, device),
+                LoadButton(exceptionProperty, "BtMeso", clickSound, overSound, device));
         }
 
         private static UIObject CreateUserInfoCloseButton(
@@ -2915,6 +3064,7 @@ namespace HaCreator.MapSimulator.Loaders
 
             if (characterInfo != null)
             {
+                characterInfo.PartyRequested = () => manager.ShowWindow(MapSimulatorWindowNames.SocialList);
                 characterInfo.MiniRoomRequested = () => manager.ShowWindow(MapSimulatorWindowNames.MiniRoom);
                 characterInfo.TradingRoomRequested = () => manager.ShowWindow(MapSimulatorWindowNames.TradingRoom);
             }
@@ -4623,24 +4773,22 @@ namespace HaCreator.MapSimulator.Loaders
             IDXObject contentOverlay = LoadWindowCanvasLayerWithOffset(shopProperty, "backgrnd3", device, out Point contentOverlayOffset);
             Texture2D selectTexture = LoadCanvasTexture(shopProperty, "select", device);
             Texture2D mesoTexture = LoadCanvasTexture(shopProperty, "meso", device);
-            WzSubProperty tabBuyProperty = shopProperty["TabBuy"] as WzSubProperty;
-            WzSubProperty tabBuyEnabledProperty = tabBuyProperty?["enabled"] as WzSubProperty;
-            WzSubProperty tabBuyDisabledProperty = tabBuyProperty?["disabled"] as WzSubProperty;
-            WzSubProperty tabSellProperty = shopProperty["TabSell"] as WzSubProperty;
-            WzSubProperty tabSellEnabledProperty = tabSellProperty?["enabled"] as WzSubProperty;
-            WzSubProperty tabSellDisabledProperty = tabSellProperty?["disabled"] as WzSubProperty;
+            WzSubProperty tabShopProperty = shopProperty["TabShop"] as WzSubProperty;
+            WzSubProperty tabShopEnabledProperty = tabShopProperty?["enabled"] as WzSubProperty;
+            WzSubProperty tabShopDisabledProperty = tabShopProperty?["disabled"] as WzSubProperty;
             WzSubProperty fadeYesNoProperty = uiWindow2Image?["FadeYesNo"] as WzSubProperty;
             WzSubProperty basicYesProperty = basicImage?["BtYes"] as WzSubProperty;
             WzSubProperty basicNoProperty = basicImage?["BtNo"] as WzSubProperty;
 
-            Texture2D cashTabEnabled = LoadCanvasTexture(tabBuyEnabledProperty, "0", device);
-            Texture2D cashTabDisabled = LoadCanvasTexture(tabBuyDisabledProperty, "0", device);
-            Texture2D mtsTabEnabled = LoadCanvasTexture(tabBuyEnabledProperty, "1", device);
-            Texture2D mtsTabDisabled = LoadCanvasTexture(tabBuyDisabledProperty, "1", device);
-            Texture2D npcTabEnabled = LoadCanvasTexture(tabSellEnabledProperty, "0", device);
-            Texture2D npcTabDisabled = LoadCanvasTexture(tabSellDisabledProperty, "0", device);
-            Texture2D userTabEnabled = LoadCanvasTexture(tabSellEnabledProperty, "1", device);
-            Texture2D userTabDisabled = LoadCanvasTexture(tabSellDisabledProperty, "1", device);
+            Texture2D[] categoryEnabledTextures = new Texture2D[10];
+            Texture2D[] categoryDisabledTextures = new Texture2D[10];
+            for (int i = 0; i < categoryEnabledTextures.Length; i++)
+            {
+                string tabKey = i.ToString();
+                categoryEnabledTextures[i] = LoadCanvasTexture(tabShopEnabledProperty, tabKey, device);
+                categoryDisabledTextures[i] = LoadCanvasTexture(tabShopDisabledProperty, tabKey, device);
+            }
+
             Texture2D modalTexture = LoadCanvasTexture(fadeYesNoProperty, "backgrnd7", device);
 
             WzBinaryProperty btClickSound = soundUIImage?["BtMouseClick"] as WzBinaryProperty;
@@ -4684,15 +4832,7 @@ namespace HaCreator.MapSimulator.Loaders
                 Money = 0
             };
 
-            window.SetTabTextures(
-                cashTabEnabled,
-                cashTabDisabled,
-                mtsTabEnabled,
-                mtsTabDisabled,
-                npcTabEnabled,
-                npcTabDisabled,
-                userTabEnabled,
-                userTabDisabled);
+            window.SetCategoryTabTextures(categoryEnabledTextures, categoryDisabledTextures);
 
             return window;
         }
@@ -4808,6 +4948,46 @@ namespace HaCreator.MapSimulator.Loaders
             if (inventory.GetItemCount(InventoryType.USE, 2049300) <= 0)
             {
                 inventory.AddItem(InventoryType.USE, 2049300, null, 4); // Advanced Equipment Enhancement Scroll
+            }
+
+            if (inventory.GetItemCount(InventoryType.USE, 2049309) <= 0)
+            {
+                inventory.AddItem(InventoryType.USE, 2049309, null, 2); // 2-Star Enhancement Scroll
+            }
+
+            if (inventory.GetItemCount(InventoryType.USE, 2049304) <= 0)
+            {
+                inventory.AddItem(InventoryType.USE, 2049304, null, 1); // 3 Star Enhancement Scroll
+            }
+
+            if (inventory.GetItemCount(InventoryType.USE, 2049305) <= 0)
+            {
+                inventory.AddItem(InventoryType.USE, 2049305, null, 1); // 4 Star Enhancement Scroll
+            }
+
+            if (inventory.GetItemCount(InventoryType.USE, 2049308) <= 0)
+            {
+                inventory.AddItem(InventoryType.USE, 2049308, null, 1); // 5 Star Enhancement Scroll
+            }
+
+            if (inventory.GetItemCount(InventoryType.USE, 2049401) <= 0)
+            {
+                inventory.AddItem(InventoryType.USE, 2049401, null, 2); // Potential Scroll
+            }
+
+            if (inventory.GetItemCount(InventoryType.USE, 2049400) <= 0)
+            {
+                inventory.AddItem(InventoryType.USE, 2049400, null, 1); // Advanced Potential Scroll
+            }
+
+            if (inventory.GetItemCount(InventoryType.USE, 2049406) <= 0)
+            {
+                inventory.AddItem(InventoryType.USE, 2049406, null, 1); // Special Potential Scroll
+            }
+
+            if (inventory.GetItemCount(InventoryType.CASH, 5062000) <= 0)
+            {
+                inventory.AddItem(InventoryType.CASH, 5062000, null, 2); // Miracle Cube
             }
         }
         #endregion

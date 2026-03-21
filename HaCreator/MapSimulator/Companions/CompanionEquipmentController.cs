@@ -28,6 +28,15 @@ namespace HaCreator.MapSimulator.Companions
         Shoes
     }
 
+    public enum MechanicEquipSlot
+    {
+        Engine,
+        Frame,
+        Transistor,
+        Arm,
+        Leg
+    }
+
     public sealed class CompanionEquipItem
     {
         public int ItemId { get; init; }
@@ -155,6 +164,50 @@ namespace HaCreator.MapSimulator.Companions
         }
     }
 
+    public sealed class MechanicEquipmentController
+    {
+        private static readonly (MechanicEquipSlot Slot, int ItemId)[] DefaultItems =
+        {
+            (MechanicEquipSlot.Engine, 1612000),
+            (MechanicEquipSlot.Arm, 1622000),
+            (MechanicEquipSlot.Leg, 1632000),
+            (MechanicEquipSlot.Frame, 1642000),
+            (MechanicEquipSlot.Transistor, 1652000)
+        };
+
+        private readonly CompanionEquipmentLoader _loader;
+        private readonly Dictionary<MechanicEquipSlot, CompanionEquipItem> _equippedItems = new();
+
+        internal MechanicEquipmentController(CompanionEquipmentLoader loader)
+        {
+            _loader = loader ?? throw new ArgumentNullException(nameof(loader));
+        }
+
+        public IReadOnlyDictionary<MechanicEquipSlot, CompanionEquipItem> EquippedItems => _equippedItems;
+
+        public void EnsureDefaults()
+        {
+            if (_equippedItems.Count > 0)
+            {
+                return;
+            }
+
+            foreach ((MechanicEquipSlot slot, int itemId) in DefaultItems)
+            {
+                CompanionEquipItem item = _loader.LoadMechanicEquipment(itemId);
+                if (item != null)
+                {
+                    _equippedItems[slot] = item;
+                }
+            }
+        }
+
+        public bool TryGetItem(MechanicEquipSlot slot, out CompanionEquipItem item)
+        {
+            return _equippedItems.TryGetValue(slot, out item);
+        }
+    }
+
     public sealed class CompanionEquipmentController
     {
         public CompanionEquipmentController(GraphicsDevice device)
@@ -162,15 +215,18 @@ namespace HaCreator.MapSimulator.Companions
             var loader = new CompanionEquipmentLoader(device);
             Dragon = new DragonEquipmentController(loader);
             Android = new AndroidEquipmentController();
+            Mechanic = new MechanicEquipmentController(loader);
         }
 
         public DragonEquipmentController Dragon { get; }
         public AndroidEquipmentController Android { get; }
+        public MechanicEquipmentController Mechanic { get; }
 
         public void EnsureDefaults(CharacterLoader loader, CharacterBuild build)
         {
             Dragon.EnsureDefaults();
             Android.EnsureDefaults(loader, build);
+            Mechanic.EnsureDefaults();
         }
     }
 
@@ -178,6 +234,7 @@ namespace HaCreator.MapSimulator.Companions
     {
         private readonly GraphicsDevice _device;
         private readonly Dictionary<int, CompanionEquipItem> _dragonCache = new();
+        private readonly Dictionary<int, CompanionEquipItem> _mechanicCache = new();
 
         public CompanionEquipmentLoader(GraphicsDevice device)
         {
@@ -208,6 +265,33 @@ namespace HaCreator.MapSimulator.Companions
             };
 
             _dragonCache[itemId] = item;
+            return item;
+        }
+
+        public CompanionEquipItem LoadMechanicEquipment(int itemId)
+        {
+            if (_mechanicCache.TryGetValue(itemId, out CompanionEquipItem cached))
+            {
+                return cached;
+            }
+
+            WzImage image = global::HaCreator.Program.FindImage("Character", $"Mechanic/{itemId:D8}.img");
+            if (image == null)
+            {
+                return null;
+            }
+
+            image.ParseImage();
+            var item = new CompanionEquipItem
+            {
+                ItemId = itemId,
+                Name = LoadMechanicItemName(itemId) ?? $"Mechanic Equip {itemId}",
+                Description = LoadMechanicItemDescription(itemId),
+                Icon = LoadInfoIcon(image, "icon"),
+                IconRaw = LoadInfoIcon(image, "iconRaw")
+            };
+
+            _mechanicCache[itemId] = item;
             return item;
         }
 
@@ -247,6 +331,44 @@ namespace HaCreator.MapSimulator.Companions
             }
 
             return GetStringValue(dragonItem["desc"]);
+        }
+
+        private string LoadMechanicItemName(int itemId)
+        {
+            WzImage stringImage = global::HaCreator.Program.FindImage("String", "Eqp.img");
+            if (stringImage == null)
+            {
+                return null;
+            }
+
+            stringImage.ParseImage();
+            if (stringImage["Eqp"] is not WzSubProperty eqp
+                || eqp["Mechanic"] is not WzSubProperty mechanic
+                || mechanic[itemId.ToString()] is not WzSubProperty mechanicItem)
+            {
+                return null;
+            }
+
+            return GetStringValue(mechanicItem["name"]);
+        }
+
+        private string LoadMechanicItemDescription(int itemId)
+        {
+            WzImage stringImage = global::HaCreator.Program.FindImage("String", "Eqp.img");
+            if (stringImage == null)
+            {
+                return null;
+            }
+
+            stringImage.ParseImage();
+            if (stringImage["Eqp"] is not WzSubProperty eqp
+                || eqp["Mechanic"] is not WzSubProperty mechanic
+                || mechanic[itemId.ToString()] is not WzSubProperty mechanicItem)
+            {
+                return null;
+            }
+
+            return GetStringValue(mechanicItem["desc"]);
         }
 
         private IDXObject LoadInfoIcon(WzImage image, string iconName)
