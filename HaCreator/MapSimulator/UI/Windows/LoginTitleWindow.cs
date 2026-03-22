@@ -445,7 +445,7 @@ namespace HaCreator.MapSimulator.UI
                 sprite,
                 _font,
                 "Save ID",
-                new Vector2(Position.X + 318, Position.Y + 321),
+                new Vector2(Position.X + 388, Position.Y + 295),
                 color);
         }
 
@@ -456,7 +456,7 @@ namespace HaCreator.MapSimulator.UI
 
         private Rectangle GetPasswordFieldBounds()
         {
-            return new Rectangle(Position.X + 348, Position.Y + 274, 160, 23);
+            return new Rectangle(Position.X + 348, Position.Y + 266, 160, 23);
         }
 
         private void ToggleRememberId()

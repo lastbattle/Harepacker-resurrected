@@ -110,6 +110,40 @@ namespace UnitTest_MapSimulator
             Assert.Empty(profile.Entries);
         }
 
+        [Fact]
+        public void TryDecode_AvatarLookPreservesWeaponSticker()
+        {
+            LoginAvatarLook look = LoginAvatarLookCodec.CreateLook(
+                CharacterGender.Female,
+                SkinColor.Light,
+                21000,
+                31000,
+                new Dictionary<EquipSlot, int>
+                {
+                    [EquipSlot.Weapon] = 1322013
+                },
+                weaponStickerItemId: 1702174);
+
+            byte[] payload = BuildSelectWorldResultPacket(
+                resultCode: 0,
+                jobId: 111,
+                avatarLook: look,
+                characterId: 321,
+                name: "Sticker",
+                level: 12,
+                fieldMapId: 100000000,
+                portal: 0,
+                exp: 99,
+                fame: 1,
+                worldRank: 0,
+                jobRank: 0);
+
+            bool decoded = LoginSelectWorldResultCodec.TryDecode(payload, out LoginSelectWorldResultProfile profile, out string error);
+
+            Assert.True(decoded, error);
+            Assert.Equal(1702174, profile.Entries[0].AvatarLook.WeaponStickerItemId);
+        }
+
         private static byte[] BuildSelectWorldResultPacket(
             byte resultCode,
             int jobId,

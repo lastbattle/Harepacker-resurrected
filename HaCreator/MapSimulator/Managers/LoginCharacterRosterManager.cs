@@ -54,18 +54,30 @@ namespace HaCreator.MapSimulator.Managers
     /// </summary>
     public sealed class LoginCharacterRosterManager
     {
+        public const int EntriesPerPage = 3;
+        public const int MaxCharacterSlotCount = 15;
+
         private readonly List<LoginCharacterRosterEntry> _entries = new();
 
         public IReadOnlyList<LoginCharacterRosterEntry> Entries => _entries;
 
         public int SelectedIndex { get; private set; } = -1;
+        public int SlotCount { get; private set; }
+        public int BuyCharacterCount { get; private set; }
+        public int PageIndex { get; private set; }
+        public int PageCount => DisplaySlotCount == 0 ? 0 : ((DisplaySlotCount - 1) / EntriesPerPage) + 1;
+        public int DisplaySlotCount => Math.Max(_entries.Count, SlotCount);
+        public int EmptySlotCount => Math.Max(0, SlotCount - _entries.Count);
 
         public LoginCharacterRosterEntry SelectedEntry =>
             SelectedIndex >= 0 && SelectedIndex < _entries.Count
                 ? _entries[SelectedIndex]
                 : null;
 
-        public void SetEntries(IEnumerable<LoginCharacterRosterEntry> entries)
+        public void SetEntries(
+            IEnumerable<LoginCharacterRosterEntry> entries,
+            int slotCount = 0,
+            int buyCharacterCount = 0)
         {
             _entries.Clear();
             if (entries != null)
@@ -74,6 +86,9 @@ namespace HaCreator.MapSimulator.Managers
             }
 
             SelectedIndex = _entries.Count > 0 ? 0 : -1;
+            SlotCount = NormalizeSlotCount(slotCount, _entries.Count);
+            BuyCharacterCount = NormalizeBuyCharacterCount(buyCharacterCount);
+            PageIndex = GetPageIndexForSelection(SelectedIndex);
         }
 
         public bool Select(int index)
@@ -84,6 +99,31 @@ namespace HaCreator.MapSimulator.Managers
             }
 
             SelectedIndex = index;
+            PageIndex = GetPageIndexForSelection(index);
+            return true;
+        }
+
+        public bool SelectPage(int pageIndex)
+        {
+            if (PageCount <= 0)
+            {
+                return false;
+            }
+
+            int normalizedPageIndex = ((pageIndex % PageCount) + PageCount) % PageCount;
+            int pageStartIndex = normalizedPageIndex * EntriesPerPage;
+            int pageEntryCount = Math.Clamp(_entries.Count - pageStartIndex, 0, EntriesPerPage);
+
+            PageIndex = normalizedPageIndex;
+            if (pageEntryCount > 0)
+            {
+                SelectedIndex = pageStartIndex;
+            }
+            else
+            {
+                SelectedIndex = -1;
+            }
+
             return true;
         }
 
@@ -104,6 +144,8 @@ namespace HaCreator.MapSimulator.Managers
             {
                 SelectedIndex = _entries.Count - 1;
             }
+
+            PageIndex = GetPageIndexForSelection(SelectedIndex);
 
             return true;
         }
@@ -155,6 +197,27 @@ namespace HaCreator.MapSimulator.Managers
 
             message = $"Ready to enter with {SelectedEntry.Build.Name}.";
             return true;
+        }
+
+        private int GetPageIndexForSelection(int selectedIndex)
+        {
+            if (selectedIndex < 0 || DisplaySlotCount <= 0)
+            {
+                return 0;
+            }
+
+            return Math.Clamp(selectedIndex / EntriesPerPage, 0, Math.Max(0, PageCount - 1));
+        }
+
+        private static int NormalizeSlotCount(int slotCount, int entryCount)
+        {
+            int normalized = slotCount > 0 ? slotCount : entryCount;
+            return Math.Clamp(normalized, 0, MaxCharacterSlotCount);
+        }
+
+        private static int NormalizeBuyCharacterCount(int buyCharacterCount)
+        {
+            return Math.Clamp(buyCharacterCount, 0, MaxCharacterSlotCount);
         }
     }
 }

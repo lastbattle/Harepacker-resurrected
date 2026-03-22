@@ -64,6 +64,21 @@ namespace HaCreator.MapSimulator.Managers
                 build.Hair?.ItemId ?? 0,
                 equipmentBySlot);
 
+            look = new LoginAvatarLook
+            {
+                Gender = look.Gender,
+                Skin = look.Skin,
+                FaceId = look.FaceId,
+                HairId = look.HairId,
+                VisibleEquipmentByBodyPart = look.VisibleEquipmentByBodyPart,
+                HiddenEquipmentByBodyPart = CreateEquipmentMap(
+                    build.HiddenEquipment
+                        .Where(entry => entry.Value != null)
+                        .ToDictionary(entry => entry.Key, entry => entry.Value.ItemId)),
+                WeaponStickerItemId = look.WeaponStickerItemId,
+                PetIds = look.PetIds
+            };
+
             return Encode(look);
         }
 

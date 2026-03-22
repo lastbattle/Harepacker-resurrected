@@ -38,6 +38,7 @@ namespace HaCreator.MapSimulator.Character
         private readonly Dictionary<int, FacePart> _faceCache = new();
         private readonly Dictionary<int, HairPart> _hairCache = new();
         private readonly Dictionary<int, CharacterPart> _equipCache = new();
+        private readonly Dictionary<int, CharacterPart> _morphCache = new();
         private readonly Dictionary<int, PortableChair> _portableChairCache = new();
 
         // Standard actions to load
@@ -154,6 +155,43 @@ namespace HaCreator.MapSimulator.Character
 
         #region Portable Chair Loading
 
+        public CharacterPart LoadMorph(int morphTemplateId)
+        {
+            if (morphTemplateId <= 0)
+            {
+                return null;
+            }
+
+            if (_morphCache.TryGetValue(morphTemplateId, out CharacterPart cached))
+            {
+                return cached;
+            }
+
+            string imageName = morphTemplateId.ToString("D4") + ".img";
+            WzImage morphImage = Program.FindImage("Morph", imageName);
+            if (morphImage == null)
+            {
+                return null;
+            }
+
+            var morphPart = new CharacterPart
+            {
+                ItemId = morphTemplateId,
+                Name = $"Morph_{morphTemplateId:D4}",
+                Type = CharacterPartType.Morph,
+                Slot = EquipSlot.None
+            };
+
+            LoadPartAnimations(morphPart, morphImage, includeAttackActions: false);
+            if (morphPart.Animations.Count == 0)
+            {
+                return null;
+            }
+
+            _morphCache[morphTemplateId] = morphPart;
+            return morphPart;
+        }
+
         public PortableChair LoadPortableChair(int itemId)
         {
             if (_portableChairCache.TryGetValue(itemId, out PortableChair cached))
@@ -199,9 +237,9 @@ namespace HaCreator.MapSimulator.Character
             };
 
             LoadPortableChairLayers(itemProperty, chair.Layers);
-            LoadPortableChairItemEffectLayers(itemId, chair.Layers);
+            LoadPortableChairItemEffectLayers(itemId, chair);
 
-            if (chair.Layers.Count == 0)
+            if (chair.Layers.Count == 0 && chair.CoupleMidpointLayers.Count == 0)
             {
                 return null;
             }
@@ -232,9 +270,9 @@ namespace HaCreator.MapSimulator.Character
             }
         }
 
-        private void LoadPortableChairItemEffectLayers(int itemId, ICollection<PortableChairLayer> layers)
+        private void LoadPortableChairItemEffectLayers(int itemId, PortableChair chair)
         {
-            if (layers == null)
+            if (chair == null)
             {
                 return;
             }
@@ -260,11 +298,33 @@ namespace HaCreator.MapSimulator.Character
                 }
 
                 PortableChairLayer layer = LoadPortableChairLayer(layerProperty, $"itemEff/{child.Name}");
-                if (layer != null)
+                if (layer == null || IsPlaceholderPortableChairLayer(layer))
                 {
-                    layers.Add(layer);
+                    continue;
                 }
+
+                if (chair.IsCoupleChair && IsPortableChairCoupleMidpointLayer(child.Name))
+                {
+                    chair.CoupleMidpointLayers.Add(layer);
+                    continue;
+                }
+
+                chair.Layers.Add(layer);
             }
+        }
+
+        private static bool IsPortableChairCoupleMidpointLayer(string layerName)
+        {
+            return string.Equals(layerName, "0", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static bool IsPlaceholderPortableChairLayer(PortableChairLayer layer)
+        {
+            CharacterFrame frame = layer?.Animation?.Frames?.FirstOrDefault();
+            return frame?.Texture != null
+                   && layer.Animation.Frames.Count == 1
+                   && frame.Texture.Width <= 4
+                   && frame.Texture.Height <= 4;
         }
 
         private PortableChairLayer LoadPortableChairLayer(WzSubProperty layerProperty)
@@ -1135,6 +1195,7 @@ namespace HaCreator.MapSimulator.Character
                 118 => "Accessory",
                 166 => "Android",
                 167 => "Android",
+                170 => "Weapon",
                 >= 130 and < 170 => "Weapon",
                 180 => "TamingMob",
                 >= 190 and < 200 => "TamingMob",
@@ -1167,6 +1228,7 @@ namespace HaCreator.MapSimulator.Character
                 118 => EquipSlot.Badge,
                 166 => EquipSlot.Android,
                 167 => EquipSlot.AndroidHeart,
+                170 => EquipSlot.Weapon,
                 >= 130 and < 170 => EquipSlot.Weapon,
                 180 => EquipSlot.TamingMob,
                 >= 190 and < 200 => EquipSlot.TamingMob,
@@ -1199,7 +1261,7 @@ namespace HaCreator.MapSimulator.Character
 
         #region Animation Loading
 
-        private void LoadPartAnimations(CharacterPart part, WzImage img)
+        private void LoadPartAnimations(CharacterPart part, WzImage img, bool includeAttackActions = true)
         {
             if (img == null) return;
 
@@ -1227,7 +1289,7 @@ namespace HaCreator.MapSimulator.Character
                 }
             }
 
-            var actionsToLoad = BuildActionLoadOrder(img.WzProperties.Select(prop => prop.Name), includeAttackActions: true);
+            var actionsToLoad = BuildActionLoadOrder(img.WzProperties.Select(prop => prop.Name), includeAttackActions);
 
             foreach (var action in actionsToLoad)
             {
@@ -1298,6 +1360,11 @@ namespace HaCreator.MapSimulator.Character
         {
             if (node == null) return null;
 
+            if (node is WzUOLProperty actionUol && actionUol.LinkValue is WzImageProperty linkedActionNode)
+            {
+                return LoadAnimation(linkedActionNode, debugContext);
+            }
+
             var anim = new CharacterAnimation();
 
             // Debug: show what's inside the action node
@@ -1334,6 +1401,14 @@ namespace HaCreator.MapSimulator.Character
                     if (frameNode is WzCanvasProperty frameCanvas)
                     {
                         var frame = LoadFrame(frameCanvas, i.ToString());
+                        if (frame != null)
+                        {
+                            anim.Frames.Add(frame);
+                        }
+                    }
+                    else if (frameNode is WzUOLProperty frameUol && frameUol.LinkValue is WzCanvasProperty resolvedFrameCanvas)
+                    {
+                        var frame = LoadFrame(resolvedFrameCanvas, i.ToString());
                         if (frame != null)
                         {
                             anim.Frames.Add(frame);
@@ -1502,6 +1577,20 @@ namespace HaCreator.MapSimulator.Character
                         frame.Map[mapPoint.Name] = new Point(vec.X.Value, vec.Y.Value);
                     }
                 }
+            }
+
+            foreach (WzImageProperty child in canvas.WzProperties)
+            {
+                if (child is not WzVectorProperty vectorProperty
+                    || frame.Map.ContainsKey(child.Name)
+                    || string.Equals(child.Name, "origin", StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(child.Name, "lt", StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(child.Name, "rb", StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                frame.Map[child.Name] = new Point(vectorProperty.X.Value, vectorProperty.Y.Value);
             }
 
             // Calculate bounds
@@ -1941,8 +2030,10 @@ namespace HaCreator.MapSimulator.Character
             build.Face = LoadFace(avatarLook.FaceId) ?? LoadFace(fallbackSelection.FaceId);
             build.Hair = LoadHair(avatarLook.HairId) ?? LoadHair(fallbackSelection.HairId);
             build.Equipment = new Dictionary<EquipSlot, CharacterPart>();
+            build.HiddenEquipment = new Dictionary<EquipSlot, CharacterPart>();
 
             EquipAvatarLookGear(build, avatarLook);
+            build.WeaponSticker = LoadAvatarLookWeaponSticker(avatarLook.WeaponStickerItemId);
             if (build.Equipment.Count == 0)
             {
                 EquipDefaultSimulatorGear(build, fallbackSelection.EquipmentItemIdsBySlot);
@@ -2011,29 +2102,52 @@ namespace HaCreator.MapSimulator.Character
 
             foreach (KeyValuePair<byte, int> entry in avatarLook.VisibleEquipmentByBodyPart.OrderBy(entry => entry.Key))
             {
-                TryEquipAvatarLookItem(build, entry.Key, entry.Value);
+                TryEquipAvatarLookItem(build, entry.Key, entry.Value, false);
             }
 
             foreach (KeyValuePair<byte, int> entry in avatarLook.HiddenEquipmentByBodyPart.OrderBy(entry => entry.Key))
             {
-                if (LoginAvatarLookCodec.TryGetEquipSlot(entry.Key, out EquipSlot slot) && build.Equipment.ContainsKey(slot))
-                {
-                    continue;
-                }
-
-                TryEquipAvatarLookItem(build, entry.Key, entry.Value);
+                TryEquipAvatarLookItem(build, entry.Key, entry.Value, true);
             }
         }
 
-        private bool TryEquipAvatarLookItem(CharacterBuild build, byte bodyPart, int itemId)
+        private bool TryEquipAvatarLookItem(CharacterBuild build, byte bodyPart, int itemId, bool concealWhenOccupied)
         {
             if (!LoginAvatarLookCodec.TryGetEquipSlot(bodyPart, out EquipSlot slot))
             {
                 return false;
             }
 
-            EquipDefaultItem(build, itemId, $"AvatarLook {slot}");
+            CharacterPart equipment = LoadEquipment(itemId);
+            if (equipment == null)
+            {
+                return false;
+            }
+
+            if (concealWhenOccupied && build.Equipment.ContainsKey(slot))
+            {
+                build.EquipHidden(equipment);
+                return build.HiddenEquipment.ContainsKey(slot);
+            }
+
+            build.Equip(equipment);
             return build.Equipment.ContainsKey(slot);
+        }
+
+        private CharacterPart LoadAvatarLookWeaponSticker(int itemId)
+        {
+            if (itemId <= 0)
+            {
+                return null;
+            }
+
+            CharacterPart sticker = LoadEquipment(itemId);
+            if (sticker == null)
+            {
+                System.Diagnostics.Debug.WriteLine($"[CharacterLoader] Failed to load AvatarLook weapon sticker {itemId}");
+            }
+
+            return sticker;
         }
 
         #endregion

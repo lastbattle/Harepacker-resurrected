@@ -91,17 +91,10 @@ namespace HaCreator.MapSimulator.UI
             RenderParameters renderParameters,
             int TickCount)
         {
-            if (_font == null)
+            if (_font == null || string.IsNullOrWhiteSpace(_statusMessage))
             {
                 return;
             }
-
-            SelectorWindowDrawing.DrawShadowedText(
-                sprite,
-                _font,
-                "Character Select",
-                new Vector2(Position.X + 14, Position.Y + 12),
-                Color.White);
 
             SelectorWindowDrawing.DrawShadowedText(
                 sprite,
@@ -109,39 +102,6 @@ namespace HaCreator.MapSimulator.UI
                 _statusMessage,
                 new Vector2(Position.X + 18, Position.Y + 286),
                 new Color(224, 224, 224));
-        }
-
-        protected override void DrawOverlay(
-            SpriteBatch sprite,
-            SkeletonMeshRenderer skeletonMeshRenderer,
-            GameTime gameTime,
-            int mapShiftX,
-            int mapShiftY,
-            int centerX,
-            int centerY,
-            ReflectionDrawableBoundary drawReflectionInfo,
-            RenderParameters renderParameters,
-            int TickCount)
-        {
-            if (_font == null)
-            {
-                return;
-            }
-
-            DrawButtonHint(sprite, _enterButton, "Enter");
-        }
-
-        private void DrawButtonHint(SpriteBatch sprite, UIObject button, string text)
-        {
-            if (button == null || !button.ButtonVisible)
-            {
-                return;
-            }
-
-            Vector2 size = _font.MeasureString(text);
-            float x = Position.X + button.X + button.CanvasSnapshotWidth + 8f;
-            float y = Position.Y + button.Y + ((button.CanvasSnapshotHeight - size.Y) / 2f) - 1f;
-            SelectorWindowDrawing.DrawShadowedText(sprite, _font, text, new Vector2(x, y), new Color(232, 223, 189));
         }
     }
 }

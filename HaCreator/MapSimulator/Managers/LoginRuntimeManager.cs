@@ -82,6 +82,8 @@ namespace HaCreator.MapSimulator.Managers
         public LoginStep CurrentStep { get; private set; } = LoginStep.Title;
         public LoginStep BaseStep { get; private set; } = LoginStep.Title;
         public LoginStep? PendingStep { get; private set; }
+        public int StepChangeRequestedAt { get; private set; } = int.MinValue;
+        public int PendingStepDelayMs { get; private set; }
         public int StepChangeAt { get; private set; } = int.MinValue;
         public string PendingTransitionReason { get; private set; }
         public LoginPacketType? LastPacketType { get; private set; }
@@ -107,6 +109,8 @@ namespace HaCreator.MapSimulator.Managers
             CurrentStep = LoginStep.Title;
             BaseStep = LoginStep.Title;
             PendingStep = null;
+            StepChangeRequestedAt = int.MinValue;
+            PendingStepDelayMs = 0;
             StepChangeAt = int.MinValue;
             PendingTransitionReason = null;
             LastPacketType = null;
@@ -137,6 +141,8 @@ namespace HaCreator.MapSimulator.Managers
 
             string reason = PendingTransitionReason;
             PendingStep = null;
+            StepChangeRequestedAt = int.MinValue;
+            PendingStepDelayMs = 0;
             StepChangeAt = int.MinValue;
             PendingTransitionReason = null;
             LastEventSummary = string.IsNullOrWhiteSpace(reason)
@@ -154,6 +160,8 @@ namespace HaCreator.MapSimulator.Managers
             }
 
             PendingStep = null;
+            StepChangeRequestedAt = int.MinValue;
+            PendingStepDelayMs = 0;
             StepChangeAt = int.MinValue;
             PendingTransitionReason = null;
             FieldEntryRequested = step == LoginStep.EnteringField;
@@ -164,8 +172,11 @@ namespace HaCreator.MapSimulator.Managers
 
         public void ScheduleStepChange(LoginStep step, int currentTickCount, int delayMs, string reason = null)
         {
+            int normalizedDelay = Math.Max(0, delayMs);
             PendingStep = step;
-            StepChangeAt = currentTickCount + Math.Max(0, delayMs);
+            StepChangeRequestedAt = currentTickCount;
+            PendingStepDelayMs = normalizedDelay;
+            StepChangeAt = currentTickCount + normalizedDelay;
             PendingTransitionReason = reason;
         }
 

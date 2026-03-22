@@ -521,13 +521,22 @@ namespace HaCreator.MapSimulator.UI
                 title = string.IsNullOrWhiteSpace(part.Name) ? $"Equip {part.ItemId}" : part.Name;
                 line = $"Item ID: {part.ItemId}";
                 CharacterEquipSlot? characterSlot = MapToCharacterEquipSlot(_hoveredSlot.Value);
+                string description = null;
                 if (characterSlot.HasValue)
                 {
                     EquipSlotVisualState state = EquipSlotStateResolver.ResolveVisualState(_characterBuild, characterSlot.Value);
                     if (!string.IsNullOrWhiteSpace(state.Message))
                         line = $"{line}  {state.Message}";
+                    CharacterPart hiddenPart = EquipSlotStateResolver.ResolveUnderlyingPart(_characterBuild, characterSlot.Value);
+                    if (part.IsCash && hiddenPart != null)
+                    {
+                        string hiddenName = string.IsNullOrWhiteSpace(hiddenPart.Name)
+                            ? $"Equip {hiddenPart.ItemId}"
+                            : hiddenPart.Name;
+                        description = $"Cash appearance active. Base equip: {hiddenName}.";
+                    }
                 }
-                DrawTooltip(sprite, title, line, null, part.IconRaw ?? part.Icon, renderWidth, renderHeight);
+                DrawTooltip(sprite, title, line, description, part.IconRaw ?? part.Icon, renderWidth, renderHeight);
                 return;
             }
             if (equippedItems.TryGetValue(_hoveredSlot.Value, out EquipSlotData slotData))
@@ -803,7 +812,19 @@ namespace HaCreator.MapSimulator.UI
 
             CharacterPart targetPart = ResolveEquippedPart(hoveredSlot);
             if (targetPart == null || ReferenceEquals(targetPart, _draggedPart))
+            {
+                if (_draggedSlot.HasValue &&
+                    MapToCharacterEquipSlot(_draggedSlot.Value) is CharacterEquipSlot sourceSlot &&
+                    EquipSlotStateResolver.ResolveUnderlyingPart(_characterBuild, sourceSlot) is CharacterPart hiddenPart)
+                {
+                    string hiddenName = string.IsNullOrWhiteSpace(hiddenPart.Name)
+                        ? $"Equip {hiddenPart.ItemId}"
+                        : hiddenPart.Name;
+                    return $"Release to move this equipment item. {hiddenName} will remain equipped underneath.";
+                }
+
                 return "Release to move this equipment item.";
+            }
 
             return $"Swap with {(string.IsNullOrWhiteSpace(targetPart.Name) ? $"Equip {targetPart.ItemId}" : targetPart.Name)}.";
         }

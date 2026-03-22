@@ -111,6 +111,7 @@ namespace HaCreator.MapSimulator.Character
         HandOverHair,
         Ear,
         TamingMob,
+        Morph,
         PortableChair
     }
 
@@ -304,10 +305,16 @@ namespace HaCreator.MapSimulator.Character
         private static readonly IReadOnlyDictionary<string, string[]> ActionFallbackMap =
             new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase)
             {
-                ["stand2"] = new[] { "stand1" },
-                ["walk2"] = new[] { "walk1" },
+                ["stand1"] = new[] { "stand", "stand2" },
+                ["stand2"] = new[] { "stand1", "stand" },
+                ["stand"] = new[] { "stand1", "stand2" },
+                ["walk1"] = new[] { "walk", "move", "walk2" },
+                ["walk2"] = new[] { "walk1", "walk", "move" },
+                ["walk"] = new[] { "walk1", "walk2", "move" },
+                ["move"] = new[] { "walk1", "walk2", "walk" },
                 ["rope"] = new[] { "ladder" },
                 ["ladder"] = new[] { "rope" },
+                ["hit"] = new[] { "stand", "stand1" },
                 ["heal"] = new[] { "stand1" },
                 ["alert"] = new[] { "stand1" },
                 ["ghost"] = new[] { "dead", "stand1" },
@@ -773,10 +780,12 @@ namespace HaCreator.MapSimulator.Character
         public BodyPart Head { get; set; }
         public FacePart Face { get; set; }
         public HairPart Hair { get; set; }
+        public CharacterPart WeaponSticker { get; set; }
         public PortableChair ActivePortableChair { get; set; }
 
         // Equipment slots
         public Dictionary<EquipSlot, CharacterPart> Equipment { get; set; } = new();
+        public Dictionary<EquipSlot, CharacterPart> HiddenEquipment { get; set; } = new();
 
         // Stats
         public int Level { get; set; } = 1;
@@ -856,8 +865,8 @@ namespace HaCreator.MapSimulator.Character
         public int TotalDEX => DEX + SumEquipmentBonus(part => part.BonusDEX);
         public int TotalINT => INT + SumEquipmentBonus(part => part.BonusINT);
         public int TotalLUK => LUK + SumEquipmentBonus(part => part.BonusLUK);
-        public int TotalMaxHP => Math.Clamp(MaxHP + SumEquipmentBonus(part => part.BonusHP), 1, MaxHpMpStat);
-        public int TotalMaxMP => Math.Clamp(MaxMP + SumEquipmentBonus(part => part.BonusMP), 0, MaxHpMpStat);
+        public int TotalMaxHP => Math.Clamp(MaxHP + SumEquipmentBonus(part => part.BonusHP) + GetSkillStatBonus(BuffStatType.MaxHP), 1, MaxHpMpStat);
+        public int TotalMaxMP => Math.Clamp(MaxMP + SumEquipmentBonus(part => part.BonusMP) + GetSkillStatBonus(BuffStatType.MaxMP), 0, MaxHpMpStat);
         public int TotalHP => Math.Clamp(HP + SumEquipmentBonus(part => part.BonusHP), 0, TotalMaxHP);
         public int TotalMP => Math.Clamp(MP + SumEquipmentBonus(part => part.BonusMP), 0, TotalMaxMP);
         public int TotalMastery => Math.Clamp(SkillMasteryProvider?.Invoke() ?? MinimumMasteryPercent, MinimumMasteryPercent, 100);
@@ -998,6 +1007,12 @@ namespace HaCreator.MapSimulator.Character
             Equipment[part.Slot] = part;
         }
 
+        public void EquipHidden(CharacterPart part)
+        {
+            if (part == null) return;
+            HiddenEquipment[part.Slot] = part;
+        }
+
         /// <summary>
         /// Unequip an item
         /// </summary>
@@ -1006,8 +1021,31 @@ namespace HaCreator.MapSimulator.Character
             if (Equipment.TryGetValue(slot, out var part))
             {
                 Equipment.Remove(slot);
+                if (part.IsCash && HiddenEquipment.TryGetValue(slot, out CharacterPart hiddenPart))
+                {
+                    HiddenEquipment.Remove(slot);
+                    Equipment[slot] = hiddenPart;
+                }
                 return part;
             }
+
+            if (HiddenEquipment.TryGetValue(slot, out CharacterPart concealedPart))
+            {
+                HiddenEquipment.Remove(slot);
+                return concealedPart;
+            }
+
+            return null;
+        }
+
+        public CharacterPart UnequipHidden(EquipSlot slot)
+        {
+            if (HiddenEquipment.TryGetValue(slot, out CharacterPart hiddenPart))
+            {
+                HiddenEquipment.Remove(slot);
+                return hiddenPart;
+            }
+
             return null;
         }
 
@@ -1016,8 +1054,23 @@ namespace HaCreator.MapSimulator.Character
         /// </summary>
         public WeaponPart GetWeapon()
         {
-            if (Equipment.TryGetValue(EquipSlot.Weapon, out var weapon))
-                return weapon as WeaponPart;
+            if (Equipment.TryGetValue(EquipSlot.Weapon, out CharacterPart visibleWeapon) &&
+                visibleWeapon is WeaponPart visibleWeaponPart &&
+                !visibleWeaponPart.IsCash)
+            {
+                return visibleWeaponPart;
+            }
+
+            if (HiddenEquipment.TryGetValue(EquipSlot.Weapon, out CharacterPart hiddenWeapon))
+            {
+                return hiddenWeapon as WeaponPart;
+            }
+
+            if (Equipment.TryGetValue(EquipSlot.Weapon, out CharacterPart fallbackWeapon))
+            {
+                return fallbackWeapon as WeaponPart;
+            }
+
             return null;
         }
 
@@ -1031,6 +1084,14 @@ namespace HaCreator.MapSimulator.Character
             int total = 0;
 
             foreach (CharacterPart part in Equipment.Values)
+            {
+                if (part != null)
+                {
+                    total += selector(part);
+                }
+            }
+
+            foreach (CharacterPart part in HiddenEquipment.Values)
             {
                 if (part != null)
                 {
@@ -1255,8 +1316,10 @@ namespace HaCreator.MapSimulator.Character
                 Head = Head,
                 Face = Face,
                 Hair = Hair,
+                WeaponSticker = WeaponSticker,
                 ActivePortableChair = ActivePortableChair,
                 Equipment = new Dictionary<EquipSlot, CharacterPart>(Equipment),
+                HiddenEquipment = new Dictionary<EquipSlot, CharacterPart>(HiddenEquipment),
                 Level = Level,
                 MaxHP = MaxHP,
                 MaxMP = MaxMP,

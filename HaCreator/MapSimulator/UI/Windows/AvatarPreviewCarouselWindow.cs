@@ -19,6 +19,8 @@ namespace HaCreator.MapSimulator.UI
         private const int CardStartY = 46;
         private const int CardGap = 14;
         private const int AvatarFeetOffsetY = 106;
+        private const int NameTagBaselineOffsetY = 120;
+        private const float NameTagTextScale = 0.5f;
         private const int DoubleClickThresholdMs = 400;
 
         private readonly List<UIObject> _cardButtons = new();
@@ -28,6 +30,9 @@ namespace HaCreator.MapSimulator.UI
         private readonly Dictionary<LoginCharacterRosterEntry, CharacterAssembler> _previewAssemblers = new();
         private readonly Texture2D _normalCardTexture;
         private readonly Texture2D _selectedCardTexture;
+        private readonly PreviewNameTagStyle _normalNameTagStyle;
+        private readonly PreviewNameTagStyle _selectedNameTagStyle;
+        private readonly IReadOnlyDictionary<LoginJobDecorationStyle, PreviewCanvasFrame> _jobDecorations;
 
         private SpriteFont _font;
         private int _selectedIndex = -1;
@@ -39,6 +44,9 @@ namespace HaCreator.MapSimulator.UI
             IDXObject frame,
             Texture2D normalCardTexture,
             Texture2D selectedCardTexture,
+            PreviewNameTagStyle normalNameTagStyle,
+            PreviewNameTagStyle selectedNameTagStyle,
+            IReadOnlyDictionary<LoginJobDecorationStyle, PreviewCanvasFrame> jobDecorations,
             IEnumerable<UIObject> cardButtons,
             UIObject prevPageButton,
             UIObject nextPageButton)
@@ -46,6 +54,9 @@ namespace HaCreator.MapSimulator.UI
         {
             _normalCardTexture = normalCardTexture;
             _selectedCardTexture = selectedCardTexture ?? normalCardTexture;
+            _normalNameTagStyle = normalNameTagStyle;
+            _selectedNameTagStyle = selectedNameTagStyle;
+            _jobDecorations = jobDecorations ?? new Dictionary<LoginJobDecorationStyle, PreviewCanvasFrame>();
             _prevPageButton = prevPageButton;
             _nextPageButton = nextPageButton;
 
@@ -147,11 +158,6 @@ namespace HaCreator.MapSimulator.UI
 
         private void DrawPreviewCards(SpriteBatch sprite, SkeletonMeshRenderer skeletonMeshRenderer, int tickCount)
         {
-            if (_font == null)
-            {
-                return;
-            }
-
             for (int slotIndex = 0; slotIndex < _cardButtons.Count; slotIndex++)
             {
                 int entryIndex = GetEntryIndexForVisibleSlot(slotIndex);
@@ -175,41 +181,23 @@ namespace HaCreator.MapSimulator.UI
                     sprite.Draw(cardTexture, new Vector2(cardBounds.X, cardBounds.Y), Color.White);
                 }
 
+                int avatarAnchorX = cardBounds.Center.X;
+                int avatarAnchorY = cardBounds.Y + AvatarFeetOffsetY;
+                DrawJobDecoration(sprite, build, avatarAnchorX, avatarAnchorY);
+
                 if (_previewAssemblers.TryGetValue(entry, out CharacterAssembler assembler))
                 {
                     AssembledFrame previewFrame = assembler.GetFrameAtTime("stand1", tickCount);
                     if (previewFrame != null)
                     {
-                        previewFrame.Draw(sprite, skeletonMeshRenderer, cardBounds.Center.X, cardBounds.Y + AvatarFeetOffsetY, false, Color.White);
+                        previewFrame.Draw(sprite, skeletonMeshRenderer, avatarAnchorX, avatarAnchorY, false, Color.White);
                     }
                 }
 
-                Color headerColor = isSelected ? new Color(103, 53, 40) : new Color(89, 60, 42);
-                Color detailColor = isSelected ? new Color(122, 72, 50) : new Color(108, 79, 63);
-                SelectorWindowDrawing.DrawShadowedText(
-                    sprite,
-                    _font,
-                    build.Name,
-                    new Vector2(cardBounds.X + 10, cardBounds.Bottom - 48),
-                    headerColor);
-                SelectorWindowDrawing.DrawShadowedText(
-                    sprite,
-                    _font,
-                    $"Lv. {build.Level}",
-                    new Vector2(cardBounds.X + 10, cardBounds.Bottom - 32),
-                    detailColor);
-                SelectorWindowDrawing.DrawShadowedText(
-                    sprite,
-                    _font,
-                    build.JobName,
-                    new Vector2(cardBounds.X + 10, cardBounds.Bottom - 18),
-                    detailColor);
-                SelectorWindowDrawing.DrawShadowedText(
-                    sprite,
-                    _font,
-                    build.GuildDisplayText,
-                    new Vector2(cardBounds.X + 10, cardBounds.Bottom - 4),
-                    detailColor);
+                if (_font != null)
+                {
+                    DrawNameTag(sprite, build.Name, isSelected, cardBounds.X + 91, cardBounds.Y + NameTagBaselineOffsetY);
+                }
             }
         }
 
@@ -312,6 +300,152 @@ namespace HaCreator.MapSimulator.UI
             int x = Position.X + CardStartX + (visibleSlotIndex * (CardWidth + CardGap));
             int y = Position.Y + CardStartY;
             return new Rectangle(x, y, CardWidth, CardHeight);
+        }
+
+        private void DrawJobDecoration(SpriteBatch sprite, CharacterBuild build, int anchorX, int anchorY)
+        {
+            if (build == null || !_jobDecorations.TryGetValue(ResolveDecorationStyle(build.Job), out PreviewCanvasFrame frame))
+            {
+                return;
+            }
+
+            if (frame.Texture == null)
+            {
+                return;
+            }
+
+            sprite.Draw(
+                frame.Texture,
+                new Vector2(anchorX - frame.Origin.X, anchorY - frame.Origin.Y),
+                Color.White);
+        }
+
+        private void DrawNameTag(SpriteBatch sprite, string name, bool isSelected, int centerX, int y)
+        {
+            if (_font == null || string.IsNullOrWhiteSpace(name))
+            {
+                return;
+            }
+
+            PreviewNameTagStyle style = isSelected ? _selectedNameTagStyle : _normalNameTagStyle;
+            if (!style.IsReady)
+            {
+                Color fallbackColor = isSelected ? Color.White : new Color(153, 153, 153);
+                Vector2 fallbackSize = _font.MeasureString(name) * NameTagTextScale;
+                sprite.DrawString(
+                    _font,
+                    name,
+                    new Vector2(centerX - (fallbackSize.X * 0.5f), y + 4),
+                    fallbackColor,
+                    0f,
+                    Vector2.Zero,
+                    NameTagTextScale,
+                    SpriteEffects.None,
+                    0f);
+                return;
+            }
+
+            Vector2 scaledTextSize = _font.MeasureString(name) * NameTagTextScale;
+            int totalWidth = Math.Max(58, (int)Math.Ceiling(scaledTextSize.X) + 18);
+            int leftWidth = style.Left.Width;
+            int middleWidth = style.Middle.Width;
+            int rightWidth = style.Right.Width;
+            int stretchWidth = Math.Max(0, totalWidth - leftWidth - rightWidth);
+            int middleX = centerX - (totalWidth / 2) + leftWidth;
+            int leftX = middleX - leftWidth;
+            int rightX = middleX + stretchWidth;
+
+            sprite.Draw(style.Left, new Vector2(leftX, y), Color.White);
+            for (int offsetX = 0; offsetX < stretchWidth; offsetX += middleWidth)
+            {
+                int tileWidth = Math.Min(middleWidth, stretchWidth - offsetX);
+                sprite.Draw(
+                    style.Middle,
+                    new Rectangle(middleX + offsetX, y, tileWidth, style.Middle.Height),
+                    new Rectangle(0, 0, tileWidth, style.Middle.Height),
+                    Color.White);
+            }
+
+            sprite.Draw(style.Right, new Vector2(rightX, y), Color.White);
+
+            sprite.DrawString(
+                _font,
+                name,
+                new Vector2(centerX - (scaledTextSize.X * 0.5f) - 1f, y + 2f),
+                style.TextColor,
+                0f,
+                Vector2.Zero,
+                NameTagTextScale,
+                SpriteEffects.None,
+                0f);
+        }
+
+        private static LoginJobDecorationStyle ResolveDecorationStyle(int jobId)
+        {
+            if (jobId / 1000 == 1)
+            {
+                return LoginJobDecorationStyle.Knight;
+            }
+
+            if (jobId == 2000 || jobId / 100 == 21)
+            {
+                return LoginJobDecorationStyle.Aran;
+            }
+
+            if (IsEvanJob(jobId))
+            {
+                return LoginJobDecorationStyle.Evan;
+            }
+
+            if (jobId / 1000 == 3)
+            {
+                return LoginJobDecorationStyle.Resistance;
+            }
+
+            return LoginJobDecorationStyle.Adventure;
+        }
+
+        private static bool IsEvanJob(int jobId)
+        {
+            return jobId == 2001 || (jobId >= 2200 && jobId <= 2218);
+        }
+
+        public readonly struct PreviewCanvasFrame
+        {
+            public PreviewCanvasFrame(Texture2D texture, Point origin)
+            {
+                Texture = texture;
+                Origin = origin;
+            }
+
+            public Texture2D Texture { get; }
+            public Point Origin { get; }
+        }
+
+        public readonly struct PreviewNameTagStyle
+        {
+            public PreviewNameTagStyle(Texture2D left, Texture2D middle, Texture2D right, Color textColor)
+            {
+                Left = left;
+                Middle = middle;
+                Right = right;
+                TextColor = textColor;
+            }
+
+            public Texture2D Left { get; }
+            public Texture2D Middle { get; }
+            public Texture2D Right { get; }
+            public Color TextColor { get; }
+            public bool IsReady => Left != null && Middle != null && Right != null;
+        }
+
+        public enum LoginJobDecorationStyle
+        {
+            Adventure,
+            Knight,
+            Aran,
+            Evan,
+            Resistance
         }
     }
 }

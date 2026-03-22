@@ -17,6 +17,7 @@ namespace HaCreator.MapSimulator.Character
         public Rectangle Bounds { get; set; }
         public Point Origin { get; set; }
         public int Duration { get; set; }
+        public Dictionary<string, Point> MapPoints { get; set; } = new(StringComparer.OrdinalIgnoreCase);
 
         /// <summary>
         /// Offset from navel (anchor point) to feet (bottom of character).
@@ -108,12 +109,31 @@ namespace HaCreator.MapSimulator.Character
                 ["alert"] = new[] { "stand1", "stand2", "sit" },
                 ["heal"] = new[] { "stand1", "stand2", "sit" },
                 ["dead"] = new[] { "sit", "stand1" },
-                ["ghost"] = new[] { "sit", "stand1" }
+                ["ghost"] = new[] { "sit", "stand1" },
+                ["tank_jump"] = new[] { "jump", "fly", "stand1" },
+                ["tank_fly"] = new[] { "fly", "jump", "stand1" },
+                ["tank_swim"] = new[] { "fly", "jump", "stand1" },
+                ["tank_ladder"] = new[] { "ladder2", "rope2", "ladder", "rope", "stand1" },
+                ["tank_rope"] = new[] { "rope2", "ladder2", "rope", "ladder", "stand1" },
+                ["tank_hit"] = new[] { "alert3", "alert2", "alert", "stand1" },
+                ["siege_jump"] = new[] { "jump", "stand1" },
+                ["siege_fly"] = new[] { "fly", "stand1" },
+                ["siege_swim"] = new[] { "fly", "stand1" },
+                ["siege_ladder"] = new[] { "ladder2", "rope2", "ladder", "rope", "stand1" },
+                ["siege_rope"] = new[] { "rope2", "ladder2", "rope", "ladder", "stand1" },
+                ["siege_hit"] = new[] { "alert3", "alert2", "alert", "stand1" },
+                ["tank_siegejump"] = new[] { "jump", "stand1" },
+                ["tank_siegefly"] = new[] { "fly", "stand1" },
+                ["tank_siegeswim"] = new[] { "fly", "stand1" },
+                ["tank_siegeladder"] = new[] { "ladder2", "rope2", "ladder", "rope", "stand1" },
+                ["tank_siegerope"] = new[] { "rope2", "ladder2", "rope", "ladder", "stand1" },
+                ["tank_siegehit"] = new[] { "alert3", "alert2", "alert", "stand1" }
             };
 
         private readonly CharacterBuild _build;
         private readonly Dictionary<string, AssembledFrame[]> _cachedAnimations = new();
         private string _faceExpressionName = "default";
+        private CharacterPart _overrideAvatarPart;
         private CharacterPart _overrideTamingMobPart;
 
         // Map point names for alignment
@@ -156,6 +176,21 @@ namespace HaCreator.MapSimulator.Character
                 }
 
                 _overrideTamingMobPart = value;
+                ClearCache();
+            }
+        }
+
+        public CharacterPart OverrideAvatarPart
+        {
+            get => _overrideAvatarPart;
+            set
+            {
+                if (ReferenceEquals(_overrideAvatarPart, value))
+                {
+                    return;
+                }
+
+                _overrideAvatarPart = value;
                 ClearCache();
             }
         }
@@ -203,6 +238,17 @@ namespace HaCreator.MapSimulator.Character
                 return null;
 
             return GetFrameAtTime(frames, timeMs);
+        }
+
+        public int GetFrameIndexAtTime(string actionName, int timeMs)
+        {
+            var frames = GetAnimation(actionName);
+            if (frames == null || frames.Length == 0)
+            {
+                return -1;
+            }
+
+            return GetFrameIndexAtTime(frames, timeMs);
         }
 
         private static AssembledFrame GetFrameAtTime(AssembledFrame[] frames, int timeMs)
@@ -265,10 +311,75 @@ namespace HaCreator.MapSimulator.Character
             }
         }
 
+        private static int GetFrameIndexAtTime(AssembledFrame[] frames, int timeMs)
+        {
+            if (frames == null || frames.Length == 0)
+            {
+                return -1;
+            }
+
+            if (frames.Length == 1)
+            {
+                return 0;
+            }
+
+            int forwardDuration = frames.Sum(f => f.Duration);
+            if (forwardDuration <= 0)
+            {
+                return 0;
+            }
+
+            int backwardDuration = 0;
+            for (int i = frames.Length - 2; i >= 1; i--)
+            {
+                backwardDuration += frames[i].Duration;
+            }
+
+            int cycleDuration = forwardDuration + backwardDuration;
+            if (cycleDuration <= 0)
+            {
+                return 0;
+            }
+
+            int time = timeMs % cycleDuration;
+            if (time < forwardDuration)
+            {
+                int elapsed = 0;
+                for (int i = 0; i < frames.Length; i++)
+                {
+                    elapsed += frames[i].Duration;
+                    if (time < elapsed)
+                    {
+                        return i;
+                    }
+                }
+
+                return frames.Length - 1;
+            }
+
+            int backwardTime = time - forwardDuration;
+            int backwardElapsed = 0;
+            for (int i = frames.Length - 2; i >= 1; i--)
+            {
+                backwardElapsed += frames[i].Duration;
+                if (backwardTime < backwardElapsed)
+                {
+                    return i;
+                }
+            }
+
+            return Math.Min(1, frames.Length - 1);
+        }
+
         #region Assembly
 
         private AssembledFrame[] AssembleAnimation(string actionName)
         {
+            if (_overrideAvatarPart != null)
+            {
+                return AssembleStandaloneAnimation(_overrideAvatarPart, actionName);
+            }
+
             var frames = new List<AssembledFrame>();
             CharacterPart activeTamingMob = GetActiveTamingMobPart();
             bool suppressBaseAvatar = ShouldSuppressBaseAvatarForTamingMob(activeTamingMob, actionName);
@@ -303,6 +414,54 @@ namespace HaCreator.MapSimulator.Character
             return frames.ToArray();
         }
 
+        private AssembledFrame[] AssembleStandaloneAnimation(CharacterPart part, string actionName)
+        {
+            CharacterAnimation animation = GetPartAnimation(part, actionName)
+                ?? GetPartAnimation(part, CharacterPart.GetActionString(CharacterAction.Stand1))
+                ?? part?.Animations?.Values.FirstOrDefault(candidate => candidate?.Frames?.Count > 0);
+
+            if (animation == null || animation.Frames.Count == 0)
+            {
+                return new[] { new AssembledFrame { Duration = 100 } };
+            }
+
+            var frames = new AssembledFrame[animation.Frames.Count];
+            for (int i = 0; i < animation.Frames.Count; i++)
+            {
+                frames[i] = AssembleStandaloneFrame(part, animation.Frames[i]);
+            }
+
+            return frames;
+        }
+
+        private AssembledFrame AssembleStandaloneFrame(CharacterPart part, CharacterFrame frame)
+        {
+            var assembled = new AssembledFrame
+            {
+                Duration = frame?.Delay ?? 100
+            };
+
+            if (frame == null)
+            {
+                return assembled;
+            }
+
+            foreach (KeyValuePair<string, Point> mapPoint in frame.Map)
+            {
+                assembled.MapPoints[mapPoint.Key] = new Point(
+                    mapPoint.Value.X - frame.Origin.X,
+                    mapPoint.Value.Y - frame.Origin.Y);
+            }
+
+            var parts = new List<AssembledPart>();
+            AddPart(parts, frame, Point.Zero, part.Type, part);
+            parts.Sort((a, b) => a.ZIndex.CompareTo(b.ZIndex));
+            ApplyVisibility(parts);
+            assembled.Parts = parts;
+            CalculateBounds(assembled);
+            return assembled;
+        }
+
         private AssembledFrame AssembleFrame(string actionName, int frameIndex, CharacterFrame bodyFrame)
         {
             var assembled = new AssembledFrame
@@ -317,6 +476,12 @@ namespace HaCreator.MapSimulator.Character
             // Body is the anchor point - navel at origin
             Point bodyNavel = bodyFrame.GetMapPoint(MAP_NAVEL);
             Point baseOffset = new Point(-bodyNavel.X, -bodyNavel.Y);
+            foreach (KeyValuePair<string, Point> mapPoint in bodyFrame.Map)
+            {
+                assembled.MapPoints[mapPoint.Key] = new Point(
+                    baseOffset.X + mapPoint.Value.X,
+                    baseOffset.Y + mapPoint.Value.Y);
+            }
 
             if (!suppressBaseAvatar)
             {
@@ -414,11 +579,12 @@ namespace HaCreator.MapSimulator.Character
                     continue;
                 }
 
-                var equipFrame = GetPartFrame(kv.Value, actionName, frameIndex);
+                CharacterPart renderPart = ResolveDisplayedEquipmentPart(kv.Key, kv.Value, actionName, frameIndex);
+                var equipFrame = GetPartFrame(renderPart, actionName, frameIndex);
                 if (equipFrame == null) continue;
 
-                Point equipOffset = CalculateEquipOffset(equipFrame, bodyFrame, headFrame, baseOffset, headOffset, kv.Value.Type);
-                AddPart(parts, equipFrame, equipOffset, kv.Value.Type, kv.Value);
+                Point equipOffset = CalculateEquipOffset(equipFrame, bodyFrame, headFrame, baseOffset, headOffset, renderPart.Type);
+                AddPart(parts, equipFrame, equipOffset, renderPart.Type, renderPart);
             }
 
             if (!suppressBaseAvatar && IsPortableChairAction(actionName))
@@ -448,6 +614,17 @@ namespace HaCreator.MapSimulator.Character
                 && _build.Equipment.TryGetValue(EquipSlot.TamingMob, out CharacterPart tamingMobPart)
                 ? tamingMobPart
                 : null;
+        }
+
+        private CharacterPart ResolveDisplayedEquipmentPart(EquipSlot slot, CharacterPart equippedPart, string actionName, int frameIndex)
+        {
+            if (slot != EquipSlot.Weapon || _build.WeaponSticker == null)
+            {
+                return equippedPart;
+            }
+
+            CharacterFrame stickerFrame = GetPartFrame(_build.WeaponSticker, actionName, frameIndex);
+            return stickerFrame != null ? _build.WeaponSticker : equippedPart;
         }
 
         private void AddPortableChairLayers(List<AssembledPart> parts, int frameIndex)
@@ -507,6 +684,45 @@ namespace HaCreator.MapSimulator.Character
                 || !build.Equipment.TryGetValue(EquipSlot.TamingMob, out CharacterPart tamingMobPart))
             {
                 return false;
+            }
+
+            return ShouldSuppressBaseAvatarForTamingMob(tamingMobPart, actionName);
+        }
+
+        internal static bool SupportsTamingMobAction(CharacterPart tamingMobPart, string actionName)
+        {
+            if (tamingMobPart?.Type != CharacterPartType.TamingMob || string.IsNullOrWhiteSpace(actionName))
+            {
+                return false;
+            }
+
+            if (tamingMobPart.GetAnimation(actionName) != null)
+            {
+                return true;
+            }
+
+            foreach (string alias in GetPartActionAliases(tamingMobPart, actionName))
+            {
+                if (tamingMobPart.GetAnimation(alias) != null)
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        internal static bool IsTamingMobRenderOwnershipAction(CharacterPart tamingMobPart, string actionName)
+        {
+            if (tamingMobPart?.Type != CharacterPartType.TamingMob || string.IsNullOrWhiteSpace(actionName))
+            {
+                return false;
+            }
+
+            if (string.Equals(actionName, "ride2", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(actionName, "getoff2", StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
             }
 
             return ShouldSuppressBaseAvatarForTamingMob(tamingMobPart, actionName);

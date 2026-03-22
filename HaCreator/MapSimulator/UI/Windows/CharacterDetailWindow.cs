@@ -37,11 +37,18 @@ namespace HaCreator.MapSimulator.UI
         private const int JobRankIconY = 120;
         private const int StatusPaddingX = 8;
         private const int StatusPaddingY = 8;
+        private const int MetadataBlockHeight = 66;
+        private const int MetadataLabelX = 8;
+        private const int MetadataValueX = 39;
+        private const int MetadataFirstRowY = 10;
+        private const int MetadataRowSpacing = 14;
+        private const int MetadataSeparatorInset = 6;
         private static readonly XnaColor ValueColor = new XnaColor(97, 77, 63);
         private static readonly XnaColor StatusColor = new XnaColor(220, 220, 220);
+        private static readonly XnaColor MetadataLabelColor = new XnaColor(132, 108, 88);
+        private static readonly XnaColor MetadataValueColor = new XnaColor(79, 64, 53);
+        private static readonly XnaColor MetadataSeparatorColor = new XnaColor(108, 89, 74);
         private static readonly StringFormat TypographicStringFormat = StringFormat.GenericTypographic;
-
-        private SpriteFont _font;
         private LoginCharacterRosterEntry _entry;
         private string _statusMessage = "Select a character to inspect details.";
         private readonly Texture2D _panelTexture;
@@ -87,11 +94,6 @@ namespace HaCreator.MapSimulator.UI
             RenderParameters renderParameters,
             int TickCount)
         {
-            if (_font == null)
-            {
-                return;
-            }
-
             Texture2D panelTexture = EnsureComposedPanelTexture();
             if (panelTexture != null)
             {
@@ -116,7 +118,8 @@ namespace HaCreator.MapSimulator.UI
 
             try
             {
-                using Bitmap bitmap = CloneTextureBitmap(baseTexture);
+                bool drawMetadataBlock = ShouldDrawMetadataBlock();
+                using Bitmap bitmap = CreateCompositeBitmap(baseTexture, drawMetadataBlock);
                 using Graphics graphics = Graphics.FromImage(bitmap);
                 ConfigureGraphics(graphics);
 
@@ -127,6 +130,11 @@ namespace HaCreator.MapSimulator.UI
                 else
                 {
                     DrawPanelValues(graphics, _entry.Build);
+                }
+
+                if (drawMetadataBlock)
+                {
+                    DrawMetadataBlock(graphics, bitmap.Width, baseTexture.Height);
                 }
 
                 _composedPanelTexture = bitmap.ToTexture2DAndDispose(baseTexture.GraphicsDevice);
@@ -177,6 +185,11 @@ namespace HaCreator.MapSimulator.UI
         private Texture2D ResolvePanelTexture()
         {
             return HasRankInfo() ? _panelTextureWithRank : _panelTexture;
+        }
+
+        private bool ShouldDrawMetadataBlock()
+        {
+            return _entry?.Build != null;
         }
 
         private bool HasRankInfo()
@@ -302,6 +315,41 @@ namespace HaCreator.MapSimulator.UI
             graphics.DrawString(text, font, brush, x, y, TypographicStringFormat);
         }
 
+        private void DrawMetadataBlock(Graphics graphics, int width, int panelHeight)
+        {
+            CharacterBuild build = _entry?.Build;
+            if (build == null)
+            {
+                return;
+            }
+
+            int metadataTop = panelHeight;
+            using Pen separatorPen = new Pen(ToDrawingColor(MetadataSeparatorColor));
+            graphics.DrawLine(
+                separatorPen,
+                MetadataSeparatorInset,
+                metadataTop,
+                Math.Max(MetadataSeparatorInset, width - MetadataSeparatorInset - 1),
+                metadataTop);
+
+            DrawMetadataRow(graphics, metadataTop, 0, "NAME", build.Name);
+            DrawMetadataRow(graphics, metadataTop, 1, "GUILD", build.GuildDisplayText);
+            DrawMetadataRow(graphics, metadataTop, 2, "EXP", build.ExpDisplayText);
+            DrawMetadataRow(graphics, metadataTop, 3, "MAP", _entry.FieldDisplayName);
+        }
+
+        private void DrawMetadataRow(Graphics graphics, int metadataTop, int rowIndex, string label, string value)
+        {
+            int y = metadataTop + MetadataFirstRowY + (rowIndex * MetadataRowSpacing);
+            DrawText(graphics, label, MetadataLabelX, y, MetadataLabelColor);
+            DrawText(graphics, SanitizeMetadataValue(value), MetadataValueX, y, MetadataValueColor);
+        }
+
+        private static string SanitizeMetadataValue(string value)
+        {
+            return string.IsNullOrWhiteSpace(value) ? "-" : value.Trim();
+        }
+
         private static SizeF MeasureText(Graphics graphics, string text)
         {
             using Font font = CreatePanelFont();
@@ -332,6 +380,22 @@ namespace HaCreator.MapSimulator.UI
             return new Bitmap(source);
         }
 
+        private static Bitmap CreateCompositeBitmap(Texture2D texture, bool includeMetadataBlock)
+        {
+            using Bitmap baseBitmap = CloneTextureBitmap(texture);
+            if (!includeMetadataBlock)
+            {
+                return new Bitmap(baseBitmap);
+            }
+
+            Bitmap composite = new Bitmap(baseBitmap.Width, baseBitmap.Height + MetadataBlockHeight);
+            using Graphics graphics = Graphics.FromImage(composite);
+            ConfigureGraphics(graphics);
+            graphics.Clear(System.Drawing.Color.Transparent);
+            graphics.DrawImage(baseBitmap, 0, 0, baseBitmap.Width, baseBitmap.Height);
+            return composite;
+        }
+
         private static System.Drawing.Color ToDrawingColor(XnaColor color)
         {
             return System.Drawing.Color.FromArgb(color.A, color.R, color.G, color.B);
@@ -355,17 +419,6 @@ namespace HaCreator.MapSimulator.UI
             return false;
         }
 
-        private bool ShouldDrawStatusMessage()
-        {
-            if (string.IsNullOrWhiteSpace(_statusMessage))
-            {
-                return false;
-            }
-
-            return _entry?.Build == null ||
-                   _statusMessage.IndexOf("Client-backed detail view", StringComparison.OrdinalIgnoreCase) < 0;
-        }
-
         private static string FormatRank(int rank)
         {
             return rank > 0 ? rank.ToString() : "-";
@@ -373,7 +426,6 @@ namespace HaCreator.MapSimulator.UI
 
         public override void SetFont(SpriteFont font)
         {
-            _font = font;
             _isComposedPanelDirty = true;
         }
 

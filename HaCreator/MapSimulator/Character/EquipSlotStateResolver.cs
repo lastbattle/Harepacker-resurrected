@@ -42,10 +42,23 @@ namespace HaCreator.MapSimulator.Character
 
             return slot switch
             {
-                EquipSlot.Coat => GetEquippedPart(build, EquipSlot.Longcoat) ?? GetEquippedPart(build, EquipSlot.Coat),
-                EquipSlot.Pants => HasOverallEquipped(build) ? null : GetEquippedPart(build, EquipSlot.Pants),
-                _ => GetEquippedPart(build, slot)
+                EquipSlot.Coat => ResolveDisplayedSlotPart(build, EquipSlot.Longcoat) ?? ResolveDisplayedSlotPart(build, EquipSlot.Coat),
+                EquipSlot.Pants => HasDisplayedOverallEquipped(build) ? null : ResolveDisplayedSlotPart(build, EquipSlot.Pants),
+                _ => ResolveDisplayedSlotPart(build, slot)
             };
+        }
+
+        public static CharacterPart ResolveUnderlyingPart(CharacterBuild build, EquipSlot slot)
+        {
+            if (build?.HiddenEquipment == null)
+            {
+                return null;
+            }
+
+            CharacterPart visiblePart = GetEquippedPart(build, slot);
+            return visiblePart?.IsCash == true && build.HiddenEquipment.TryGetValue(slot, out CharacterPart hiddenPart)
+                ? hiddenPart
+                : null;
         }
 
         public static EquipSlotVisualState ResolveVisualState(CharacterBuild build, EquipSlot slot, DateTime? nowUtc = null)
@@ -55,7 +68,7 @@ namespace HaCreator.MapSimulator.Character
                 return default;
             }
 
-            if (slot == EquipSlot.Pants && HasOverallEquipped(build))
+            if (slot == EquipSlot.Pants && HasDisplayedOverallEquipped(build))
             {
                 return CreateDisabled(EquipSlotDisableReason.OverallOccupiesPantsSlot, "Overall equipped");
             }
@@ -112,9 +125,14 @@ namespace HaCreator.MapSimulator.Character
             return new EquipSlotVisualState(true, false, false, reason, message);
         }
 
-        private static bool HasOverallEquipped(CharacterBuild build)
+        private static CharacterPart ResolveDisplayedSlotPart(CharacterBuild build, EquipSlot slot)
         {
-            return GetEquippedPart(build, EquipSlot.Longcoat) != null;
+            return GetEquippedPart(build, slot) ?? GetHiddenPart(build, slot);
+        }
+
+        private static bool HasDisplayedOverallEquipped(CharacterBuild build)
+        {
+            return ResolveDisplayedSlotPart(build, EquipSlot.Longcoat) != null;
         }
 
         private static bool ShouldDisableShieldSlot(CharacterBuild build)
@@ -124,7 +142,22 @@ namespace HaCreator.MapSimulator.Character
 
         private static bool HasTwoHandedWeapon(CharacterBuild build)
         {
-            return GetEquippedPart(build, EquipSlot.Weapon) is WeaponPart weapon && weapon.IsTwoHanded;
+            CharacterPart visibleWeapon = GetEquippedPart(build, EquipSlot.Weapon);
+            CharacterPart actualWeapon = visibleWeapon?.IsCash == true
+                ? ResolveUnderlyingPart(build, EquipSlot.Weapon) ?? visibleWeapon
+                : visibleWeapon ?? GetHiddenPart(build, EquipSlot.Weapon);
+            return actualWeapon is WeaponPart weapon && weapon.IsTwoHanded;
+        }
+
+        private static CharacterPart GetHiddenPart(CharacterBuild build, EquipSlot slot)
+        {
+            if (build?.HiddenEquipment == null)
+            {
+                return null;
+            }
+
+            build.HiddenEquipment.TryGetValue(slot, out CharacterPart part);
+            return part;
         }
 
         private static bool IsBeginnerShieldRestriction(CharacterBuild build)

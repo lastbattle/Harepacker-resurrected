@@ -234,6 +234,13 @@ namespace HaCreator.MapSimulator.Loaders
                     {
                     };
                     PositionStatusBarButton(obj_Ui_chatOpen, subProperty_chatOpen, chatFrameAnchorOrigin);
+                    UIObject obj_Ui_chatClose = new UIObject(subProperty_chatClose, binaryProp_BtMouseClickSoundProperty, binaryProp_BtMouseOverSoundProperty,
+                        false,
+                        new Point(0, 0), device)
+                    {
+                    };
+                    PositionStatusBarButton(obj_Ui_chatClose, subProperty_chatClose, chatFrameAnchorOrigin);
+                    obj_Ui_chatClose.SetVisible(false);
 
                     // chat scroll up/ down
                     WzSubProperty subProperty_scrollUp = (WzSubProperty)mainBarProperties?["scrollUp"];
@@ -520,6 +527,7 @@ namespace HaCreator.MapSimulator.Loaders
                          new List<UIObject> {
                              obj_Ui_chatTarget,
                              obj_Ui_chatOpen,
+                             obj_Ui_chatClose,
                              obj_Ui_scrollUp, obj_Ui_scrollDown,
                              obj_Ui_BtChat, obj_Ui_BtClaim,
                              obj_Ui_MemoIcon,
@@ -539,7 +547,7 @@ namespace HaCreator.MapSimulator.Loaders
                     chatUI.SetPointNotificationAnimations(
                         LoadPointNotificationAnimation(mainBarProperties?["ApNotify"] as WzSubProperty, device),
                         LoadPointNotificationAnimation(mainBarProperties?["SpNotify"] as WzSubProperty, device));
-                    chatUI.BindControls(obj_Ui_chatTarget, obj_Ui_chatOpen, obj_Ui_scrollUp, obj_Ui_scrollDown, obj_Ui_BtCharacter, obj_Ui_MemoIcon);
+                    chatUI.BindControls(obj_Ui_chatTarget, obj_Ui_chatOpen, obj_Ui_chatClose, obj_Ui_scrollUp, obj_Ui_scrollDown, obj_Ui_BtCharacter, obj_Ui_MemoIcon);
 
                     return new Tuple<StatusBarUI, StatusBarChatUI>(statusBar, chatUI);
                 }
@@ -1404,6 +1412,7 @@ namespace HaCreator.MapSimulator.Loaders
             BaseDXDrawableItem npcListPanel = null;
             BaseDXDrawableItem portalMarker = null;
             Dictionary<MinimapUI.DirectionArrow, BaseDXDrawableItem> directionMarkers = new Dictionary<MinimapUI.DirectionArrow, BaseDXDrawableItem>();
+            Dictionary<MinimapUI.HelperMarkerType, BaseDXDrawableItem> helperMarkers = new Dictionary<MinimapUI.HelperMarkerType, BaseDXDrawableItem>();
 
             WzSubProperty minimapSimpleModeProperty = uiWindow2Image?["MiniMapSimpleMode"] as WzSubProperty;
             WzSubProperty defaultHelperProperty = minimapSimpleModeProperty?["DefaultHelper"] as WzSubProperty;
@@ -1485,6 +1494,36 @@ namespace HaCreator.MapSimulator.Loaders
                         Position = minimapImageOffset
                     };
                 }
+            }
+
+            var helperCanvasMap = new Dictionary<MinimapUI.HelperMarkerType, string>
+            {
+                { MinimapUI.HelperMarkerType.Another, "another" },
+                { MinimapUI.HelperMarkerType.Friend, "friend" },
+                { MinimapUI.HelperMarkerType.Guild, "guild" },
+                { MinimapUI.HelperMarkerType.GuildMaster, "guildmaster" },
+                { MinimapUI.HelperMarkerType.Match, "match" },
+                { MinimapUI.HelperMarkerType.Party, "party" },
+                { MinimapUI.HelperMarkerType.PartyMaster, "partymaster" },
+                { MinimapUI.HelperMarkerType.UserTrader, "usertrader" },
+                { MinimapUI.HelperMarkerType.AnotherTrader, "anothertrader" }
+            };
+
+            foreach (var helperEntry in helperCanvasMap)
+            {
+                WzCanvasProperty helperCanvas = defaultHelperProperty?[helperEntry.Value] as WzCanvasProperty;
+                if (helperCanvas == null)
+                    continue;
+
+                System.Drawing.Bitmap helperBitmap = helperCanvas.GetLinkedWzCanvasBitmap();
+                if (helperBitmap == null)
+                    continue;
+
+                IDXObject dxObjHelper = new DXObject(helperCanvas.GetCanvasOriginPosition(), helperBitmap.ToTexture2DAndDispose(device), 0);
+                helperMarkers[helperEntry.Key] = new BaseDXDrawableItem(dxObjHelper, false)
+                {
+                    Position = minimapImageOffset
+                };
             }
 
             var arrowCanvasMap = new Dictionary<MinimapUI.DirectionArrow, string>
@@ -1626,7 +1665,8 @@ namespace HaCreator.MapSimulator.Loaders
                 questEndNpcMarker,
                 npcListPanel,
                 portalMarker,
-                directionMarkers);
+                directionMarkers,
+                helperMarkers);
 
             minimapItem.Position = new Point(10, 10); // default position
 

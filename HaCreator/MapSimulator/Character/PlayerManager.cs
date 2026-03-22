@@ -34,6 +34,7 @@ namespace HaCreator.MapSimulator.Character
         public SkillManager Skills { get; private set; }
         public SkillLoader SkillLoader { get; private set; }
         public PetController Pets { get; }
+        internal DragonCompanionRuntime Dragon { get; }
         public CompanionEquipmentController CompanionEquipment { get; }
 
         public bool IsPlayerActive => Player != null && Player.IsAlive;
@@ -86,6 +87,7 @@ namespace HaCreator.MapSimulator.Character
             Input = new PlayerInput();
             Config = new CharacterConfigManager();
             Pets = new PetController(device);
+            Dragon = new DragonCompanionRuntime(device);
             CompanionEquipment = new CompanionEquipmentController(device);
         }
 
@@ -333,6 +335,7 @@ namespace HaCreator.MapSimulator.Character
             Player.SetLadderLookup(_findLadder);
             Player.SetSwimAreaCheck(_checkSwimArea);
             Player.SetPortableChairTamingMobLoader(Loader.LoadEquipment);
+            Player.SetSkillMorphLoader(Loader.LoadMorph);
             Player.SetJumpSoundCallback(_onJumpSound);
             Player.SetJumpRestrictionHandler(_jumpRestrictionMessageProvider, _onJumpRestricted);
             Player.Physics.IsFlyingMap = _isFlyingMap;
@@ -588,6 +591,7 @@ namespace HaCreator.MapSimulator.Character
             _mobStatusController = null;
             _currentMobStatusState = PlayerMobStatusFrameState.Default;
             Pets.Clear();
+            Dragon.Clear();
         }
 
         #endregion
@@ -721,6 +725,7 @@ namespace HaCreator.MapSimulator.Character
             // Update skills (projectiles, buffs, cooldowns)
             Skills?.Update(currentTime, deltaTime);
             Pets.Update(Player, _dropPool, currentTime, deltaTime);
+            Dragon.Update(Player, currentTime);
 
             // Check mob attacks
             if (Combat != null && _mobPool != null)
@@ -751,6 +756,7 @@ namespace HaCreator.MapSimulator.Character
 
             Pets.Draw(spriteBatch, skeletonRenderer, mapShiftX, mapShiftY, centerX, centerY, PetRenderPlane.BehindOwner);
             Skills?.DrawBackgroundEffects(spriteBatch, mapShiftX, mapShiftY, centerX, centerY, currentTime);
+            Dragon.Draw(spriteBatch, skeletonRenderer, mapShiftX, mapShiftY, centerX, centerY, currentTime);
             Player.Draw(
                 spriteBatch,
                 skeletonRenderer,
@@ -789,15 +795,40 @@ namespace HaCreator.MapSimulator.Character
             return Pets.TryExecuteCommand(message, currentTime);
         }
 
-        internal bool TryApplyMobSkillStatus(int skillId, MobSkillRuntimeData runtimeData, int currentTime)
+        internal bool TryApplyMobSkillStatus(int skillId, MobSkillRuntimeData runtimeData, int currentTime, float sourceX = 0f)
         {
-            return _mobStatusController?.TryApplyMobSkill(skillId, runtimeData, currentTime) == true;
+            if (Player == null)
+            {
+                return false;
+            }
+
+            if (skillId == 129)
+            {
+                TeleportToSpawn();
+                return true;
+            }
+
+            return _mobStatusController?.TryApplyMobSkill(skillId, runtimeData, currentTime, sourceX) == true;
+        }
+
+        internal int ClearMobStatuses(IEnumerable<PlayerMobStatusEffect> effects)
+        {
+            return _mobStatusController?.ClearStatuses(effects) ?? 0;
+        }
+
+        internal bool HasMobStatus(PlayerMobStatusEffect effect)
+        {
+            return _mobStatusController?.HasStatusEffect(effect) == true;
         }
 
         private void UpdateMobStatusState(int currentTime)
         {
             _currentMobStatusState = _mobStatusController?.Update(currentTime) ?? PlayerMobStatusFrameState.Default;
 
+            Player?.ApplyMobRecoveryModifiers(
+                _currentMobStatusState.HpRecoveryReversed,
+                _currentMobStatusState.MaxHpPercentCap,
+                _currentMobStatusState.MaxMpPercentCap);
             Player?.SetExternalMoveSpeedMultiplier(_currentMobStatusState.MoveSpeedMultiplier);
             Combat?.SetAdditionalPlayerMissChance(_currentMobStatusState.AdditionalMissChance);
         }
@@ -817,6 +848,24 @@ namespace HaCreator.MapSimulator.Character
                 inputState.Pickup = false;
                 inputState.PickupPressed = false;
                 return inputState;
+            }
+
+            if (_currentMobStatusState.InputReversed)
+            {
+                (inputState.Left, inputState.Right) = (inputState.Right, inputState.Left);
+                (inputState.Up, inputState.Down) = (inputState.Down, inputState.Up);
+            }
+
+            if (_currentMobStatusState.ForcedHorizontalDirection != 0)
+            {
+                inputState.Left = _currentMobStatusState.ForcedHorizontalDirection < 0;
+                inputState.Right = _currentMobStatusState.ForcedHorizontalDirection > 0;
+                inputState.Up = false;
+                inputState.Down = false;
+                inputState.Attack = false;
+                inputState.AttackPressed = false;
+                inputState.Pickup = false;
+                inputState.PickupPressed = false;
             }
 
             if (_currentMobStatusState.JumpBlocked)
@@ -970,6 +1019,17 @@ namespace HaCreator.MapSimulator.Character
             Player.SetPosition(x, snappedY);
         }
 
+        public void TeleportToSpawn()
+        {
+            if (Player == null)
+            {
+                return;
+            }
+
+            Player.ForceStand();
+            TeleportTo(_spawnPoint.X, _spawnPoint.Y);
+        }
+
         /// <summary>
         /// Set player stats
         /// </summary>
@@ -995,8 +1055,7 @@ namespace HaCreator.MapSimulator.Character
             if (Player == null)
                 return;
 
-            Player.HP = Math.Min(Player.MaxHP, Player.HP + hp);
-            Player.MP = Math.Min(Player.MaxMP, Player.MP + mp);
+            Player.Recover(hp, mp);
         }
 
         /// <summary>

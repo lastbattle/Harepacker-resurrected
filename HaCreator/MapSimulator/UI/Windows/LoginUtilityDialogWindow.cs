@@ -25,11 +25,13 @@ namespace HaCreator.MapSimulator.UI
         private readonly UIObject _laterButton;
         private readonly UIObject _restartButton;
         private readonly UIObject _exitButton;
+        private readonly IReadOnlyDictionary<int, Texture2D> _noticeTextTextures;
         private SpriteFont _font;
         private string _title = "Login Utility";
         private string _body = string.Empty;
         private string _primaryLabel = "OK";
         private string _secondaryLabel = "Cancel";
+        private int? _noticeTextIndex;
         private UIObject _activePrimaryButton;
         private UIObject _activeSecondaryButton;
         private LoginUtilityDialogButtonLayout _buttonLayout = LoginUtilityDialogButtonLayout.Ok;
@@ -43,7 +45,8 @@ namespace HaCreator.MapSimulator.UI
             UIObject nowButton,
             UIObject laterButton,
             UIObject restartButton,
-            UIObject exitButton)
+            UIObject exitButton,
+            IReadOnlyDictionary<int, Texture2D> noticeTextTextures)
             : base(frame)
         {
             _okButton = RegisterButton(okButton, true);
@@ -54,6 +57,7 @@ namespace HaCreator.MapSimulator.UI
             _laterButton = RegisterButton(laterButton, false);
             _restartButton = RegisterButton(restartButton, true);
             _exitButton = RegisterButton(exitButton, false);
+            _noticeTextTextures = noticeTextTextures ?? new Dictionary<int, Texture2D>();
         }
 
         public override string WindowName => MapSimulatorWindowNames.LoginUtilityDialog;
@@ -73,13 +77,15 @@ namespace HaCreator.MapSimulator.UI
             string body,
             string primaryLabel,
             string secondaryLabel,
-            LoginUtilityDialogButtonLayout buttonLayout)
+            LoginUtilityDialogButtonLayout buttonLayout,
+            int? noticeTextIndex = null)
         {
             _title = string.IsNullOrWhiteSpace(title) ? "Login Utility" : title;
             _body = body ?? string.Empty;
             _primaryLabel = string.IsNullOrWhiteSpace(primaryLabel) ? "OK" : primaryLabel;
             _secondaryLabel = string.IsNullOrWhiteSpace(secondaryLabel) ? "Cancel" : secondaryLabel;
             _buttonLayout = buttonLayout;
+            _noticeTextIndex = noticeTextIndex;
             ConfigureButtons();
         }
 
@@ -97,6 +103,17 @@ namespace HaCreator.MapSimulator.UI
         {
             if (_font == null)
             {
+                return;
+            }
+
+            if (_noticeTextIndex.HasValue &&
+                _noticeTextTextures.TryGetValue(_noticeTextIndex.Value, out Texture2D noticeTextTexture) &&
+                noticeTextTexture != null)
+            {
+                sprite.Draw(
+                    noticeTextTexture,
+                    new Vector2(Position.X + TextOffsetX, Position.Y + TextOffsetY),
+                    Color.White);
                 return;
             }
 

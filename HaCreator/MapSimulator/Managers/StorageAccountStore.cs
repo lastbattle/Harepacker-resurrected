@@ -22,6 +22,7 @@ namespace HaCreator.MapSimulator.Managers
             public string AccountLabel { get; set; }
             public int SlotLimit { get; set; } = 24;
             public long Meso { get; set; }
+            public List<string> AuthorizedCharacterNames { get; set; } = new();
             public Dictionary<string, List<PersistedStorageSlotRecord>> ItemsByType { get; set; } = new(StringComparer.OrdinalIgnoreCase);
         }
 
@@ -44,6 +45,7 @@ namespace HaCreator.MapSimulator.Managers
             public string AccountLabel { get; init; }
             public int SlotLimit { get; init; } = 24;
             public long Meso { get; init; }
+            public IReadOnlyList<string> AuthorizedCharacterNames { get; init; } = Array.Empty<string>();
             public Dictionary<InventoryType, List<InventorySlotData>> ItemsByType { get; init; } = new();
         }
 
@@ -130,11 +132,17 @@ namespace HaCreator.MapSimulator.Managers
                 AccountLabel = string.IsNullOrWhiteSpace(persisted.AccountLabel) ? accountLabel : persisted.AccountLabel,
                 SlotLimit = Math.Max(24, persisted.SlotLimit),
                 Meso = Math.Max(0, persisted.Meso),
+                AuthorizedCharacterNames = NormalizeCharacterNames(persisted.AuthorizedCharacterNames),
                 ItemsByType = itemsByType
             };
         }
 
-        public void SaveState(string accountLabel, int slotLimit, long meso, IReadOnlyDictionary<InventoryType, List<InventorySlotData>> itemsByType)
+        public void SaveState(
+            string accountLabel,
+            int slotLimit,
+            long meso,
+            IReadOnlyDictionary<InventoryType, List<InventorySlotData>> itemsByType,
+            IReadOnlyCollection<string> authorizedCharacterNames = null)
         {
             string normalizedLabel = string.IsNullOrWhiteSpace(accountLabel) ? "Simulator Account Storage" : accountLabel.Trim();
             string key = ResolveAccountKey(normalizedLabel);
@@ -181,6 +189,7 @@ namespace HaCreator.MapSimulator.Managers
                 AccountLabel = normalizedLabel,
                 SlotLimit = Math.Max(24, slotLimit),
                 Meso = Math.Max(0, meso),
+                AuthorizedCharacterNames = NormalizeCharacterNames(authorizedCharacterNames),
                 ItemsByType = persistedItems
             };
 
@@ -246,6 +255,24 @@ namespace HaCreator.MapSimulator.Managers
         private static bool TryParseInventoryType(string value, out InventoryType inventoryType)
         {
             return Enum.TryParse(value, true, out inventoryType);
+        }
+
+        private static List<string> NormalizeCharacterNames(IEnumerable<string> names)
+        {
+            HashSet<string> seen = new(StringComparer.OrdinalIgnoreCase);
+            List<string> normalized = new();
+            foreach (string name in names ?? Array.Empty<string>())
+            {
+                string trimmed = name?.Trim();
+                if (string.IsNullOrWhiteSpace(trimmed) || !seen.Add(trimmed))
+                {
+                    continue;
+                }
+
+                normalized.Add(trimmed);
+            }
+
+            return normalized;
         }
     }
 }

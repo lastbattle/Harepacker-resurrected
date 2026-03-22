@@ -77,7 +77,10 @@ namespace HaCreator.MapSimulator.Managers
 
         public void EnqueueLocal(LoginPacketType packetType, string source)
         {
-            _pendingMessages.Enqueue(new LoginPacketInboxMessage(packetType, source, packetType.ToString(), Array.Empty<string>()));
+            string packetSource = string.IsNullOrWhiteSpace(source) ? "login-ui" : source;
+            _pendingMessages.Enqueue(new LoginPacketInboxMessage(packetType, packetSource, packetType.ToString(), Array.Empty<string>()));
+            ReceivedCount++;
+            LastStatus = $"Queued {packetType} from {packetSource}.";
         }
 
         public bool TryDequeue(out LoginPacketInboxMessage message)
