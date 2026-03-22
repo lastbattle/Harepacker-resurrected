@@ -114,8 +114,17 @@ namespace HaCreator.MapSimulator.UI
                 109 => "Shield",
                 110 => "Cape",
                 111 => "Ring",
+                112 => "Accessory",
+                113 => "Accessory",
+                114 => "Accessory",
+                115 => "Accessory",
+                116 => "Accessory",
+                118 => "Accessory",
+                166 => "Android",
+                167 => "Android",
+                180 => "PetEquip",
+                181 => "PetEquip",
                 >= 130 and < 170 => "Weapon",
-                180 => "TamingMob",
                 >= 190 and < 200 => "TamingMob",
                 _ => null
             };

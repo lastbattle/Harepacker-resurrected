@@ -74,7 +74,9 @@ namespace HaCreator.MapSimulator.Interaction
         public string StatusText { get; init; } = string.Empty;
         public int CurrentProgress { get; init; }
         public int TotalProgress { get; init; }
+        public float ProgressRatio { get; init; }
         public bool IsReadyToComplete { get; init; }
+        public bool IsRecentlyUpdated { get; init; }
         public IReadOnlyList<QuestLogLineSnapshot> RequirementLines { get; init; } = Array.Empty<QuestLogLineSnapshot>();
         public IReadOnlyList<string> IssueLines { get; init; } = Array.Empty<string>();
         public string DemandText { get; init; } = string.Empty;
@@ -83,5 +85,6 @@ namespace HaCreator.MapSimulator.Interaction
     internal sealed class QuestAlarmSnapshot
     {
         public IReadOnlyList<QuestAlarmEntrySnapshot> Entries { get; init; } = Array.Empty<QuestAlarmEntrySnapshot>();
+        public bool HasAlertAnimation { get; init; }
     }
 }

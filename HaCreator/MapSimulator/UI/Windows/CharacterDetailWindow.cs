@@ -2,19 +2,22 @@ using HaCreator.MapSimulator.Character;
 using HaCreator.MapSimulator.Managers;
 using HaSharedLibrary.Render;
 using HaSharedLibrary.Render.DX;
+using HaSharedLibrary.Util;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using Spine;
 using System;
 using System.Collections.Generic;
+using System.Drawing;
+using System.Drawing.Drawing2D;
+using System.Drawing.Text;
+using System.IO;
+using XnaColor = Microsoft.Xna.Framework.Color;
 
 namespace HaCreator.MapSimulator.UI
 {
     public sealed class CharacterDetailWindow : UIWindowBase
     {
-        private const int PanelWidth = 183;
-        private const int PanelHeight = 151;
-        private const int MetaRowHeight = 12;
         private const int LeftValueX = 46;
         private const int RightValueX = 136;
         private const int JobValueY = 1;
@@ -32,7 +35,11 @@ namespace HaCreator.MapSimulator.UI
         private const int RankGlyphX = 170;
         private const int JobRankIconRightEdgeX = 83;
         private const int JobRankIconY = 120;
-        private const float MetaTextWidth = 167f;
+        private const int StatusPaddingX = 8;
+        private const int StatusPaddingY = 8;
+        private static readonly XnaColor ValueColor = new XnaColor(97, 77, 63);
+        private static readonly XnaColor StatusColor = new XnaColor(220, 220, 220);
+        private static readonly StringFormat TypographicStringFormat = StringFormat.GenericTypographic;
 
         private SpriteFont _font;
         private LoginCharacterRosterEntry _entry;
@@ -43,6 +50,8 @@ namespace HaCreator.MapSimulator.UI
         private readonly Texture2D _rankDownTexture;
         private readonly Texture2D _rankSameTexture;
         private readonly IReadOnlyDictionary<int, Texture2D> _jobBadgeTextures;
+        private Texture2D _composedPanelTexture;
+        private bool _isComposedPanelDirty = true;
 
         public CharacterDetailWindow(
             IDXObject frame,
@@ -66,17 +75,6 @@ namespace HaCreator.MapSimulator.UI
 
         public override bool SupportsDragging => false;
 
-        public override void SetFont(SpriteFont font)
-        {
-            _font = font;
-        }
-
-        public void SetEntry(LoginCharacterRosterEntry entry, string statusMessage)
-        {
-            _entry = entry;
-            _statusMessage = statusMessage ?? string.Empty;
-        }
-
         protected override void DrawContents(
             SpriteBatch sprite,
             SkeletonMeshRenderer skeletonMeshRenderer,
@@ -94,124 +92,86 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
-            Texture2D panelTexture = ResolvePanelTexture();
+            Texture2D panelTexture = EnsureComposedPanelTexture();
             if (panelTexture != null)
             {
-                sprite.Draw(panelTexture, new Vector2(Position.X, Position.Y), Color.White);
-            }
-
-            if (_entry?.Build == null)
-            {
-                SelectorWindowDrawing.DrawShadowedText(
-                    sprite,
-                    _font,
-                    _statusMessage,
-                    new Vector2(Position.X + 8, Position.Y + GetMetaStartY()),
-                    new Color(220, 220, 220));
-                return;
-            }
-
-            CharacterBuild build = _entry.Build;
-            DrawPanelValues(sprite, build);
-            DrawSupplementalRows(sprite, build);
-
-            if (ShouldDrawStatusMessage())
-            {
-                SelectorWindowDrawing.DrawShadowedText(
-                    sprite,
-                    _font,
-                    _statusMessage,
-                    new Vector2(Position.X + 8, Position.Y + GetStatusY()),
-                    new Color(97, 77, 63));
+                sprite.Draw(panelTexture, new Vector2(Position.X, Position.Y), XnaColor.White);
             }
         }
 
-        private void DrawPanelValues(SpriteBatch sprite, CharacterBuild build)
+        private Texture2D EnsureComposedPanelTexture()
         {
-            DrawValue(sprite, LeftValueX, JobValueY, build.JobName);
-            DrawValue(sprite, LeftValueX, LevelValueY, build.Level.ToString());
-            DrawValue(sprite, RightValueX, FameValueY, build.Fame.ToString());
-            DrawValue(sprite, LeftValueX, StrengthValueY, build.TotalSTR.ToString());
-            DrawValue(sprite, RightValueX, IntelligenceValueY, build.TotalINT.ToString());
-            DrawValue(sprite, LeftValueX, DexterityValueY, build.TotalDEX.ToString());
-            DrawValue(sprite, RightValueX, LuckValueY, build.TotalLUK.ToString());
+            if (!_isComposedPanelDirty)
+            {
+                return _composedPanelTexture;
+            }
+
+            DisposeComposedPanelTexture();
+            Texture2D baseTexture = ResolvePanelTexture();
+            if (baseTexture == null)
+            {
+                _isComposedPanelDirty = false;
+                return null;
+            }
+
+            try
+            {
+                using Bitmap bitmap = CloneTextureBitmap(baseTexture);
+                using Graphics graphics = Graphics.FromImage(bitmap);
+                ConfigureGraphics(graphics);
+
+                if (_entry?.Build == null)
+                {
+                    DrawStatusMessage(graphics, bitmap.Width, bitmap.Height);
+                }
+                else
+                {
+                    DrawPanelValues(graphics, _entry.Build);
+                }
+
+                _composedPanelTexture = bitmap.ToTexture2DAndDispose(baseTexture.GraphicsDevice);
+            }
+            catch
+            {
+                _composedPanelTexture = baseTexture;
+            }
+
+            _isComposedPanelDirty = false;
+            return _composedPanelTexture;
+        }
+
+        private void DrawPanelValues(Graphics graphics, CharacterBuild build)
+        {
+            DrawValue(graphics, LeftValueX, JobValueY, build.JobName);
+            DrawValue(graphics, LeftValueX, LevelValueY, build.Level.ToString());
+            DrawValue(graphics, RightValueX, FameValueY, build.Fame.ToString());
+            DrawValue(graphics, LeftValueX, StrengthValueY, build.TotalSTR.ToString());
+            DrawValue(graphics, RightValueX, IntelligenceValueY, build.TotalINT.ToString());
+            DrawValue(graphics, LeftValueX, DexterityValueY, build.TotalDEX.ToString());
+            DrawValue(graphics, RightValueX, LuckValueY, build.TotalLUK.ToString());
 
             if (!HasRankInfo())
             {
                 return;
             }
 
-            DrawRightAlignedValue(sprite, RankRightEdgeX, WorldRankValueY, FormatRank(build.WorldRank));
-            DrawRankGlyph(sprite, build.WorldRank, _entry.PreviousWorldRank, WorldRankGlyphY);
+            DrawRightAlignedValue(graphics, RankRightEdgeX, WorldRankValueY, FormatRank(build.WorldRank));
+            DrawRankGlyph(graphics, build.WorldRank, _entry.PreviousWorldRank, WorldRankGlyphY);
 
             Texture2D jobBadgeTexture = ResolveJobBadgeTexture(build);
             if (jobBadgeTexture != null)
             {
-                sprite.Draw(
-                    jobBadgeTexture,
-                    new Vector2(Position.X + JobRankIconRightEdgeX - jobBadgeTexture.Width, Position.Y + JobRankIconY),
-                    Color.White);
+                using Bitmap badgeBitmap = CloneTextureBitmap(jobBadgeTexture);
+                graphics.DrawImage(
+                    badgeBitmap,
+                    JobRankIconRightEdgeX - badgeBitmap.Width,
+                    JobRankIconY,
+                    badgeBitmap.Width,
+                    badgeBitmap.Height);
             }
 
-            DrawRightAlignedValue(sprite, RankRightEdgeX, JobRankValueY, FormatRank(build.JobRank));
-            DrawRankGlyph(sprite, build.JobRank, _entry.PreviousJobRank, JobRankGlyphY);
-        }
-
-        private void DrawSupplementalRows(SpriteBatch sprite, CharacterBuild build)
-        {
-            DrawSupplementalText(sprite, 0, build.Name, new Color(255, 234, 171));
-            DrawSupplementalText(sprite, 1, $"Guild  {build.GuildDisplayText}", new Color(122, 92, 63));
-            DrawSupplementalText(sprite, 2, $"EXP  {build.ExpDisplayText}", new Color(122, 92, 63));
-
-            string targetMap = string.IsNullOrWhiteSpace(_entry.FieldDisplayName)
-                ? _entry.FieldMapId.ToString()
-                : $"{_entry.FieldDisplayName} ({_entry.FieldMapId})";
-            DrawSupplementalText(sprite, 3, $"Map  {targetMap}", new Color(122, 92, 63));
-        }
-
-        private void DrawValue(SpriteBatch sprite, int x, int y, string value)
-        {
-            SelectorWindowDrawing.DrawShadowedText(
-                sprite,
-                _font,
-                string.IsNullOrWhiteSpace(value) ? "-" : value,
-                new Vector2(Position.X + x, Position.Y + y),
-                new Color(97, 77, 63));
-        }
-
-        private void DrawRightAlignedValue(SpriteBatch sprite, int rightEdgeX, int y, string value)
-        {
-            string safeValue = string.IsNullOrWhiteSpace(value) ? "-" : value;
-            float width = _font.MeasureString(safeValue).X;
-            DrawValue(sprite, rightEdgeX - (int)MathF.Ceiling(width), y, safeValue);
-        }
-
-        private void DrawRankGlyph(SpriteBatch sprite, int currentRank, int? previousRank, int y)
-        {
-            Texture2D glyphTexture = ResolveRankGlyph(currentRank, previousRank);
-            if (glyphTexture == null)
-            {
-                return;
-            }
-
-            int yOffset = glyphTexture == _rankSameTexture ? 0 : -4;
-            sprite.Draw(glyphTexture, new Vector2(Position.X + RankGlyphX, Position.Y + y + yOffset), Color.White);
-        }
-
-        private void DrawSupplementalText(SpriteBatch sprite, int rowIndex, string text, Color color)
-        {
-            string trimmed = TrimToWidth(text, MetaTextWidth);
-            if (string.IsNullOrWhiteSpace(trimmed))
-            {
-                return;
-            }
-
-            SelectorWindowDrawing.DrawShadowedText(
-                sprite,
-                _font,
-                trimmed,
-                new Vector2(Position.X + 8, Position.Y + GetMetaStartY() + (rowIndex * MetaRowHeight)),
-                color);
+            DrawRightAlignedValue(graphics, RankRightEdgeX, JobRankValueY, FormatRank(build.JobRank));
+            DrawRankGlyph(graphics, build.JobRank, _entry.PreviousJobRank, JobRankGlyphY);
         }
 
         private Texture2D ResolvePanelTexture()
@@ -224,14 +184,35 @@ namespace HaCreator.MapSimulator.UI
             return (_entry?.Build?.WorldRank ?? 0) > 0 || (_entry?.Build?.JobRank ?? 0) > 0;
         }
 
-        private int GetMetaStartY()
+        private void DrawValue(Graphics graphics, int x, int y, string value)
         {
-            return (ResolvePanelTexture()?.Height ?? PanelHeight) + 8;
+            string safeValue = string.IsNullOrWhiteSpace(value) ? "-" : value;
+            DrawText(graphics, safeValue, x, y, ValueColor);
         }
 
-        private int GetStatusY()
+        private void DrawRightAlignedValue(Graphics graphics, int rightEdgeX, int y, string value)
         {
-            return GetMetaStartY() + (MetaRowHeight * 4) + 10;
+            string safeValue = string.IsNullOrWhiteSpace(value) ? "-" : value;
+            SizeF size = MeasureText(graphics, safeValue);
+            DrawText(graphics, safeValue, rightEdgeX - (int)Math.Ceiling(size.Width), y, ValueColor);
+        }
+
+        private void DrawRankGlyph(Graphics graphics, int currentRank, int? previousRank, int y)
+        {
+            Texture2D glyphTexture = ResolveRankGlyph(currentRank, previousRank);
+            if (glyphTexture == null)
+            {
+                return;
+            }
+
+            using Bitmap glyphBitmap = CloneTextureBitmap(glyphTexture);
+            int yOffset = glyphTexture == _rankSameTexture ? 0 : -4;
+            graphics.DrawImage(
+                glyphBitmap,
+                RankGlyphX,
+                y + yOffset,
+                glyphBitmap.Width,
+                glyphBitmap.Height);
         }
 
         private Texture2D ResolveJobBadgeTexture(CharacterBuild build)
@@ -296,6 +277,66 @@ namespace HaCreator.MapSimulator.UI
             return currentRank < previousRank.Value ? _rankUpTexture : _rankDownTexture;
         }
 
+        private void DrawStatusMessage(Graphics graphics, int width, int height)
+        {
+            if (string.IsNullOrWhiteSpace(_statusMessage))
+            {
+                return;
+            }
+
+            string text = _statusMessage;
+            RectangleF layout = new RectangleF(
+                StatusPaddingX,
+                StatusPaddingY,
+                Math.Max(0, width - (StatusPaddingX * 2)),
+                Math.Max(0, height - (StatusPaddingY * 2)));
+            using Font font = CreatePanelFont();
+            using SolidBrush brush = new SolidBrush(ToDrawingColor(StatusColor));
+            graphics.DrawString(text, font, brush, layout, TypographicStringFormat);
+        }
+
+        private void DrawText(Graphics graphics, string text, int x, int y, XnaColor color)
+        {
+            using Font font = CreatePanelFont();
+            using SolidBrush brush = new SolidBrush(ToDrawingColor(color));
+            graphics.DrawString(text, font, brush, x, y, TypographicStringFormat);
+        }
+
+        private static SizeF MeasureText(Graphics graphics, string text)
+        {
+            using Font font = CreatePanelFont();
+            return graphics.MeasureString(text, font, PointF.Empty, TypographicStringFormat);
+        }
+
+        private static Font CreatePanelFont()
+        {
+            return new Font("Tahoma", 8f, FontStyle.Regular, GraphicsUnit.Pixel);
+        }
+
+        private static void ConfigureGraphics(Graphics graphics)
+        {
+            graphics.CompositingMode = CompositingMode.SourceOver;
+            graphics.CompositingQuality = CompositingQuality.HighQuality;
+            graphics.InterpolationMode = InterpolationMode.NearestNeighbor;
+            graphics.PixelOffsetMode = PixelOffsetMode.Half;
+            graphics.SmoothingMode = SmoothingMode.None;
+            graphics.TextRenderingHint = TextRenderingHint.SingleBitPerPixelGridFit;
+        }
+
+        private static Bitmap CloneTextureBitmap(Texture2D texture)
+        {
+            using MemoryStream stream = new MemoryStream();
+            texture.SaveAsPng(stream, texture.Width, texture.Height);
+            stream.Position = 0;
+            using Bitmap source = new Bitmap(stream);
+            return new Bitmap(source);
+        }
+
+        private static System.Drawing.Color ToDrawingColor(XnaColor color)
+        {
+            return System.Drawing.Color.FromArgb(color.A, color.R, color.G, color.B);
+        }
+
         private static bool IsJobName(string jobName, params string[] fragments)
         {
             if (string.IsNullOrWhiteSpace(jobName) || fragments == null)
@@ -330,26 +371,29 @@ namespace HaCreator.MapSimulator.UI
             return rank > 0 ? rank.ToString() : "-";
         }
 
-        private string TrimToWidth(string text, float maxWidth)
+        public override void SetFont(SpriteFont font)
         {
-            if (_font == null || string.IsNullOrWhiteSpace(text))
+            _font = font;
+            _isComposedPanelDirty = true;
+        }
+
+        public void SetEntry(LoginCharacterRosterEntry entry, string statusMessage)
+        {
+            _entry = entry;
+            _statusMessage = statusMessage ?? string.Empty;
+            _isComposedPanelDirty = true;
+        }
+
+        private void DisposeComposedPanelTexture()
+        {
+            if (_composedPanelTexture != null
+                && _composedPanelTexture != _panelTexture
+                && _composedPanelTexture != _panelTextureWithRank)
             {
-                return string.Empty;
+                _composedPanelTexture.Dispose();
             }
 
-            if (_font.MeasureString(text).X <= maxWidth)
-            {
-                return text;
-            }
-
-            const string ellipsis = "...";
-            string value = text;
-            while (value.Length > 0 && _font.MeasureString(value + ellipsis).X > maxWidth)
-            {
-                value = value[..^1];
-            }
-
-            return value.Length == 0 ? ellipsis : value + ellipsis;
+            _composedPanelTexture = null;
         }
     }
 }

@@ -700,7 +700,9 @@ namespace HaCreator.MapSimulator.Entities
                     IsRushAttack = isRushAttack,
                     IsJumpAttack = isJumpAttack,
                     Tremble = tremble,
-                    IsAngerAttack = attackInfo?.IsAngerAttack == true
+                    IsAngerAttack = attackInfo?.IsAngerAttack == true,
+                    DiseaseSkillId = attackMeta?.Disease ?? 0,
+                    DiseaseLevel = Math.Max(1, attackMeta?.Level ?? 1)
                 });
             }
 
@@ -1310,6 +1312,11 @@ namespace HaCreator.MapSimulator.Entities
                 return new Color(220, 180, 255) * pulse;
             }
 
+            if (AI.HasStatusEffect(MobStatusEffect.Blind) || AI.HasStatusEffect(MobStatusEffect.Darkness))
+            {
+                return new Color(95, 95, 145) * pulse;
+            }
+
             if (AI.HasStatusEffect(MobStatusEffect.Web) || AI.HasStatusEffect(MobStatusEffect.Weakness))
             {
                 return new Color(220, 220, 220) * pulse;
@@ -1328,6 +1335,13 @@ namespace HaCreator.MapSimulator.Entities
             if (AI.HasStatusEffect(MobStatusEffect.Ambush) || AI.HasStatusEffect(MobStatusEffect.Neutralise))
             {
                 return new Color(255, 205, 170) * pulse;
+            }
+
+            if (AI.HasStatusEffect(MobStatusEffect.PImmune) ||
+                AI.HasStatusEffect(MobStatusEffect.MImmune) ||
+                AI.HasStatusEffect(MobStatusEffect.Reflect))
+            {
+                return new Color(255, 245, 190) * pulse;
             }
 
             if (AI.HasStatusEffect(MobStatusEffect.Showdown) || AI.HasStatusEffect(MobStatusEffect.SealSkill))

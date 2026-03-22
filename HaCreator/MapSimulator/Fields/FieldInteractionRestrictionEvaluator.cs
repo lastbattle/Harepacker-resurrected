@@ -14,6 +14,13 @@ namespace HaCreator.MapSimulator.Fields
             return GetJumpRestrictionMessage(fieldLimit) == null;
         }
 
+        public static string GetTeleportItemRestrictionMessage(long fieldLimit)
+        {
+            return FieldLimitType.Unable_To_Use_Teleport_Item.Check(fieldLimit)
+                ? "Teleport items cannot be used in this map."
+                : null;
+        }
+
         public static string GetTransferRestrictionMessage(long fieldLimit)
         {
             return FieldLimitType.Unable_To_Migrate.Check(fieldLimit)
@@ -23,12 +30,7 @@ namespace HaCreator.MapSimulator.Fields
 
         public static string GetMapTransferRestrictionMessage(long fieldLimit)
         {
-            if (FieldLimitType.Unable_To_Use_Teleport_Item.Check(fieldLimit))
-            {
-                return "Teleport items cannot be used in this map.";
-            }
-
-            return GetTransferRestrictionMessage(fieldLimit);
+            return GetTeleportItemRestrictionMessage(fieldLimit) ?? GetTransferRestrictionMessage(fieldLimit);
         }
 
         public static string GetJumpRestrictionMessage(long fieldLimit)

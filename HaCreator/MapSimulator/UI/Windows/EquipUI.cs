@@ -779,6 +779,11 @@ namespace HaCreator.MapSimulator.UI
 
             if (mappedSlot.Value == CharacterEquipSlot.Coat && part.Slot == CharacterEquipSlot.Longcoat)
                 return CharacterEquipSlot.Longcoat;
+            if (IsRingSlot(mappedSlot.Value) && IsRingSlot(part.Slot))
+                return mappedSlot.Value;
+            if ((mappedSlot.Value == CharacterEquipSlot.Pendant || mappedSlot.Value == CharacterEquipSlot.Pendant2)
+                && (part.Slot == CharacterEquipSlot.Pendant || part.Slot == CharacterEquipSlot.Pendant2))
+                return mappedSlot.Value;
 
             return mappedSlot.Value;
         }
@@ -814,10 +819,18 @@ namespace HaCreator.MapSimulator.UI
 
             return mappedSlot.Value switch
             {
+                CharacterEquipSlot.Ring1 or CharacterEquipSlot.Ring2 or CharacterEquipSlot.Ring3 or CharacterEquipSlot.Ring4
+                    => IsRingSlot(part.Slot),
                 CharacterEquipSlot.Coat => part.Slot == CharacterEquipSlot.Coat || part.Slot == CharacterEquipSlot.Longcoat,
-                CharacterEquipSlot.Pendant => part.Slot == CharacterEquipSlot.Pendant,
+                CharacterEquipSlot.Pendant => part.Slot == CharacterEquipSlot.Pendant || part.Slot == CharacterEquipSlot.Pendant2,
+                CharacterEquipSlot.Pendant2 => part.Slot == CharacterEquipSlot.Pendant || part.Slot == CharacterEquipSlot.Pendant2,
                 _ => part.Slot == mappedSlot.Value
             };
+        }
+
+        private static bool IsRingSlot(CharacterEquipSlot slot)
+        {
+            return slot is CharacterEquipSlot.Ring1 or CharacterEquipSlot.Ring2 or CharacterEquipSlot.Ring3 or CharacterEquipSlot.Ring4;
         }
 
         private static CharacterEquipSlot? MapToCharacterEquipSlot(EquipSlot uiSlot)
@@ -829,7 +842,7 @@ namespace HaCreator.MapSimulator.UI
                 EquipSlot.Ring3 => CharacterEquipSlot.Ring3,
                 EquipSlot.Ring4 => CharacterEquipSlot.Ring4,
                 EquipSlot.Pendant1 => CharacterEquipSlot.Pendant,
-                EquipSlot.Pendant2 => CharacterEquipSlot.Pendant,
+                EquipSlot.Pendant2 => CharacterEquipSlot.Pendant2,
                 EquipSlot.Weapon => CharacterEquipSlot.Weapon,
                 EquipSlot.Belt => CharacterEquipSlot.Belt,
                 EquipSlot.Cap => CharacterEquipSlot.Cap,
@@ -855,7 +868,7 @@ namespace HaCreator.MapSimulator.UI
                 EquipSlot.FaceAccessory => "Face Accessory",
                 EquipSlot.EyeAccessory => "Eye Accessory",
                 EquipSlot.Pendant1 => "Pendant",
-                EquipSlot.Pendant2 => "Pendant",
+                EquipSlot.Pendant2 => "Pendant 2",
                 _ => slot.ToString()
             };
         }

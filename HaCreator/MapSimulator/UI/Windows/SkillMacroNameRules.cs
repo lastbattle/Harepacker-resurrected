@@ -1,4 +1,5 @@
 using System;
+using System.Globalization;
 using System.Text;
 
 namespace HaCreator.MapSimulator.UI
@@ -67,6 +68,56 @@ namespace HaCreator.MapSimulator.UI
 
             updatedText = currentText ?? string.Empty;
             return false;
+        }
+
+        internal static bool TryAppendBestEffort(string currentText, string appendedText, out string updatedText, out string error, Encoding encoding = null)
+        {
+            string original = currentText ?? string.Empty;
+            string incoming = appendedText ?? string.Empty;
+            if (incoming.Length == 0)
+            {
+                updatedText = original;
+                error = string.Empty;
+                return true;
+            }
+
+            string working = original;
+            string firstError = string.Empty;
+            bool appendedAny = false;
+            TextElementEnumerator enumerator = StringInfo.GetTextElementEnumerator(incoming);
+            while (enumerator.MoveNext())
+            {
+                string textElement = enumerator.GetTextElement();
+                if (TryAppend(working, textElement, out string candidate, out string candidateError, encoding))
+                {
+                    working = candidate;
+                    appendedAny = true;
+                    continue;
+                }
+
+                if (string.IsNullOrEmpty(firstError))
+                {
+                    firstError = candidateError;
+                }
+
+                if (candidateError == $"Macro names can use up to {MaxNameBytes} bytes.")
+                {
+                    break;
+                }
+
+                if (!appendedAny)
+                {
+                    updatedText = original;
+                    error = candidateError;
+                    return false;
+                }
+
+                break;
+            }
+
+            updatedText = working;
+            error = appendedAny ? string.Empty : firstError;
+            return appendedAny;
         }
 
         internal static bool TryNormalizeForEdit(string text, out string normalized, out string error, Encoding encoding = null)

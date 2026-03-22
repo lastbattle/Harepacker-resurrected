@@ -64,6 +64,9 @@ namespace HaCreator.MapSimulator.Managers
 
         // Map objects (layered)
         private BaseDXDrawableItem[][] _mapObjectsArray;
+        private BaseDXDrawableItem[] _visibleMapObjects;
+        private int _visibleMapObjectsCount;
+        private bool _useVisibleRenderSets;
 
         // Entities
         private MobItem[] _mobsArray;
@@ -71,6 +74,10 @@ namespace HaCreator.MapSimulator.Managers
         private PortalItem[] _portalsArray;
         private ReactorItem[] _reactorsArray;
         private TooltipItem[] _tooltipsArray;
+        private PortalItem[] _visiblePortals;
+        private int _visiblePortalsCount;
+        private ReactorItem[] _visibleReactors;
+        private int _visibleReactorsCount;
 
         #endregion
 
@@ -167,6 +174,23 @@ namespace HaCreator.MapSimulator.Managers
             _tooltipsArray = tooltips ?? Array.Empty<TooltipItem>();
         }
 
+        public void SetVisibleRenderSets(
+            BaseDXDrawableItem[] visibleMapObjects,
+            int visibleMapObjectsCount,
+            PortalItem[] visiblePortals,
+            int visiblePortalsCount,
+            ReactorItem[] visibleReactors,
+            int visibleReactorsCount)
+        {
+            _visibleMapObjects = visibleMapObjects;
+            _visibleMapObjectsCount = visibleMapObjectsCount;
+            _visiblePortals = visiblePortals;
+            _visiblePortalsCount = visiblePortalsCount;
+            _visibleReactors = visibleReactors;
+            _visibleReactorsCount = visibleReactorsCount;
+            _useVisibleRenderSets = visibleMapObjects != null || visiblePortals != null || visibleReactors != null;
+        }
+
         /// <summary>
         /// Set VR border rendering data
         /// </summary>
@@ -220,6 +244,24 @@ namespace HaCreator.MapSimulator.Managers
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void DrawMapObjects(in RenderContext context)
         {
+            if (_useVisibleRenderSets)
+            {
+                for (int i = 0; i < _visibleMapObjectsCount; i++)
+                {
+                    BaseDXDrawableItem item = _visibleMapObjects[i];
+                    if (item == null || !item.IsVisible)
+                        continue;
+
+                    item.Draw(context.SpriteBatch, context.SkeletonMeshRenderer, context.GameTime,
+                        context.MapShiftX, context.MapShiftY, context.MapCenterX, context.MapCenterY,
+                        null,
+                        context.RenderParams,
+                        context.TickCount);
+                }
+
+                return;
+            }
+
             if (_mapObjectsArray == null) return;
 
             for (int layer = 0; layer < _mapObjectsArray.Length; layer++)
@@ -293,6 +335,24 @@ namespace HaCreator.MapSimulator.Managers
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void DrawPortals(in RenderContext context)
         {
+            if (_useVisibleRenderSets)
+            {
+                for (int i = 0; i < _visiblePortalsCount; i++)
+                {
+                    PortalItem portalItem = _visiblePortals[i];
+                    if (portalItem == null || !portalItem.IsVisible)
+                        continue;
+
+                    portalItem.Draw(context.SpriteBatch, context.SkeletonMeshRenderer, context.GameTime,
+                        context.MapShiftX, context.MapShiftY, context.MapCenterX, context.MapCenterY,
+                        null,
+                        context.RenderParams,
+                        context.TickCount);
+                }
+
+                return;
+            }
+
             if (_portalsArray == null) return;
 
             for (int i = 0; i < _portalsArray.Length; i++)
@@ -315,6 +375,24 @@ namespace HaCreator.MapSimulator.Managers
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void DrawReactors(in RenderContext context)
         {
+            if (_useVisibleRenderSets)
+            {
+                for (int i = 0; i < _visibleReactorsCount; i++)
+                {
+                    ReactorItem reactorItem = _visibleReactors[i];
+                    if (reactorItem == null || !reactorItem.IsVisible)
+                        continue;
+
+                    reactorItem.Draw(context.SpriteBatch, context.SkeletonMeshRenderer, context.GameTime,
+                        context.MapShiftX, context.MapShiftY, context.MapCenterX, context.MapCenterY,
+                        null,
+                        context.RenderParams,
+                        context.TickCount);
+                }
+
+                return;
+            }
+
             if (_reactorsArray == null) return;
 
             for (int i = 0; i < _reactorsArray.Length; i++)

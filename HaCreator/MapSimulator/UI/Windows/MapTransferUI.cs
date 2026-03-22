@@ -2,6 +2,7 @@ using HaSharedLibrary.Render;
 using HaSharedLibrary.Render.DX;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
+using Microsoft.Xna.Framework.Input;
 using Spine;
 using System;
 using System.Collections.Generic;
@@ -29,6 +30,13 @@ namespace HaCreator.MapSimulator.UI
         private const int RowTextX = 25;
         private const int RowTextY = 41;
         private const int RowTextWidth = 110;
+        private const int EditTargetX = 14;
+        private const int EditTargetY = 231;
+        private const int EditTargetWidth = 120;
+        private const int EditTargetHeight = 13;
+        private const int EditTargetTextInsetX = 3;
+        private const int EditTargetTextInsetY = 1;
+        private const int EditTargetMaxLength = 12;
 
         private readonly IDXObject _innerFrame;
         private readonly IDXObject _listFrame;
@@ -44,9 +52,13 @@ namespace HaCreator.MapSimulator.UI
         private SpriteFont _font;
         private string _currentMapName = string.Empty;
         private string _statusMessage = "Register maps or select a route to transfer.";
+        private string _manualTargetText = string.Empty;
         private int _selectedIndex = -1;
         private int _scrollOffset;
         private int _previousScrollWheelValue;
+        private KeyboardState _previousKeyboardState;
+        private MouseState _previousMouseState;
+        private bool _editTargetFocused;
 
         public MapTransferUI(
             IDXObject frame,
@@ -76,17 +88,23 @@ namespace HaCreator.MapSimulator.UI
         }
 
         public override string WindowName => MapSimulatorWindowNames.MapTransfer;
+        public override bool CapturesKeyboardInput => IsVisible && _editTargetFocused;
         public int MaxSavedDestinations => _maxSavedDestinations;
+        public int SavedDestinationCount => _destinations.FindAll(entry => entry.IsSavedSlot && entry.MapId > 0).Count;
 
         public Action<DestinationEntry> RegisterCurrentMapRequested { get; set; }
         public Action<DestinationEntry> DeleteDestinationRequested { get; set; }
         public Action<DestinationEntry> MoveDestinationRequested { get; set; }
         public Action<DestinationEntry> WorldMapRequested { get; set; }
+        public Action<int> ManualMapMoveRequested { get; set; }
 
         public override void Show()
         {
             base.Show();
-            _previousScrollWheelValue = Microsoft.Xna.Framework.Input.Mouse.GetState().ScrollWheelValue;
+            MouseState mouseState = Mouse.GetState();
+            _previousMouseState = mouseState;
+            _previousScrollWheelValue = mouseState.ScrollWheelValue;
+            _previousKeyboardState = Keyboard.GetState();
         }
 
         public override void SetFont(SpriteFont font)
@@ -141,6 +159,7 @@ namespace HaCreator.MapSimulator.UI
             }
 
             _selectedIndex = index;
+            _editTargetFocused = false;
             ClampScrollOffset();
             UpdateRowButtons();
             UpdateButtonStates();
@@ -153,12 +172,16 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
-            Microsoft.Xna.Framework.Input.MouseState mouseState = Microsoft.Xna.Framework.Input.Mouse.GetState();
+            MouseState mouseState = Mouse.GetState();
             int wheelDelta = mouseState.ScrollWheelValue - _previousScrollWheelValue;
             _previousScrollWheelValue = mouseState.ScrollWheelValue;
 
+            HandleEditTargetMouseInput(mouseState);
+            HandleEditTargetKeyboardInput();
+
             if (wheelDelta == 0 || _destinations.Count <= MaxVisibleRows || !ContainsPoint(mouseState.X, mouseState.Y))
             {
+                _previousMouseState = mouseState;
                 return;
             }
 
@@ -173,6 +196,7 @@ namespace HaCreator.MapSimulator.UI
 
             ClampScrollOffset();
             UpdateRowButtons();
+            _previousMouseState = mouseState;
         }
 
         protected override void DrawContents(
@@ -203,6 +227,9 @@ namespace HaCreator.MapSimulator.UI
 
             sprite.DrawString(_font, "Map Transfer", new Vector2(Position.X + 12, Position.Y + 9), Color.White);
             sprite.DrawString(_font, TrimToWidth(_currentMapName, 134f), new Vector2(Position.X + 12, Position.Y + 24), new Color(220, 220, 220));
+            string countText = $"{SavedDestinationCount}/{_maxSavedDestinations}";
+            Vector2 countSize = _font.MeasureString(countText);
+            sprite.DrawString(_font, countText, new Vector2(Position.X + 144 - countSize.X, Position.Y + 9), new Color(200, 200, 200));
 
             int visibleCount = Math.Min(MaxVisibleRows, _destinations.Count - _scrollOffset);
             for (int row = 0; row < visibleCount; row++)
@@ -216,6 +243,8 @@ namespace HaCreator.MapSimulator.UI
                     textColor);
             }
 
+            DrawEditTarget(sprite, TickCount);
+
             if (_selectedIndex >= 0 && _selectedIndex < _destinations.Count)
             {
                 DestinationEntry entry = _destinations[_selectedIndex];
@@ -223,13 +252,6 @@ namespace HaCreator.MapSimulator.UI
             }
 
             sprite.DrawString(_font, TrimToWidth(_statusMessage, 132f), new Vector2(Position.X + 12, Position.Y + 286), new Color(208, 208, 208));
-
-            if (_destinations.Count > MaxVisibleRows)
-            {
-                string page = $"{_scrollOffset + 1}-{Math.Min(_scrollOffset + MaxVisibleRows, _destinations.Count)}/{_destinations.Count}";
-                Vector2 pageSize = _font.MeasureString(page);
-                sprite.DrawString(_font, page, new Vector2(Position.X + 144 - pageSize.X, Position.Y + 9), new Color(200, 200, 200));
-            }
         }
 
         private void InitializeCloseAndActionButtons(UIObject registerButton, UIObject deleteButton, UIObject moveButton, UIObject mapButton)
@@ -262,6 +284,12 @@ namespace HaCreator.MapSimulator.UI
                     if (entry != null)
                     {
                         MoveDestinationRequested?.Invoke(entry);
+                        return;
+                    }
+
+                    if (TryParseManualTargetMapId(out int targetMapId))
+                    {
+                        ManualMapMoveRequested?.Invoke(targetMapId);
                     }
                 };
             }
@@ -313,6 +341,7 @@ namespace HaCreator.MapSimulator.UI
             }
 
             _selectedIndex = actualIndex;
+            _editTargetFocused = false;
             UpdateButtonStates();
         }
 
@@ -330,7 +359,7 @@ namespace HaCreator.MapSimulator.UI
             DestinationEntry entry = GetSelectedEntry();
             if (_moveButton != null)
             {
-                _moveButton.SetEnabled(entry?.CanMove == true);
+                _moveButton.SetEnabled(entry?.CanMove == true || (_selectedIndex < 0 && !string.IsNullOrWhiteSpace(_manualTargetText)));
             }
 
             if (_deleteButton != null)
@@ -365,6 +394,183 @@ namespace HaCreator.MapSimulator.UI
                     _scrollOffset = Math.Max(0, _selectedIndex - MaxVisibleRows + 1);
                 }
             }
+        }
+
+        private void DrawEditTarget(SpriteBatch sprite, int tickCount)
+        {
+            if (_selectionTexture == null)
+            {
+                return;
+            }
+
+            Rectangle bounds = GetEditTargetBounds();
+            Color borderColor = _editTargetFocused ? new Color(247, 222, 112) : new Color(88, 88, 88);
+            sprite.Draw(_selectionTexture, new Rectangle(bounds.X, bounds.Y, bounds.Width, bounds.Height), new Color(20, 20, 20, 185));
+            sprite.Draw(_selectionTexture, new Rectangle(bounds.X, bounds.Y, bounds.Width, 1), borderColor);
+            sprite.Draw(_selectionTexture, new Rectangle(bounds.X, bounds.Bottom - 1, bounds.Width, 1), borderColor);
+            sprite.Draw(_selectionTexture, new Rectangle(bounds.X, bounds.Y, 1, bounds.Height), borderColor);
+            sprite.Draw(_selectionTexture, new Rectangle(bounds.Right - 1, bounds.Y, 1, bounds.Height), borderColor);
+
+            string displayText = string.IsNullOrEmpty(_manualTargetText) && !_editTargetFocused
+                ? "Target map ID"
+                : _manualTargetText;
+            Color textColor = string.IsNullOrEmpty(_manualTargetText) && !_editTargetFocused
+                ? new Color(136, 136, 136)
+                : Color.White;
+            sprite.DrawString(
+                _font,
+                TrimToWidth(displayText, EditTargetWidth - (EditTargetTextInsetX * 2)),
+                new Vector2(bounds.X + EditTargetTextInsetX, bounds.Y + EditTargetTextInsetY),
+                textColor);
+
+            if (_editTargetFocused && (tickCount / 450) % 2 == 0)
+            {
+                float textWidth = _font.MeasureString(_manualTargetText).X;
+                int caretX = bounds.X + EditTargetTextInsetX + Math.Min((int)textWidth, EditTargetWidth - 6);
+                sprite.Draw(_selectionTexture, new Rectangle(caretX, bounds.Y + 2, 1, bounds.Height - 4), Color.White);
+            }
+        }
+
+        private void HandleEditTargetMouseInput(MouseState mouseState)
+        {
+            bool leftClicked = mouseState.LeftButton == ButtonState.Pressed && _previousMouseState.LeftButton == ButtonState.Released;
+            if (!leftClicked)
+            {
+                return;
+            }
+
+            Point mousePoint = new Point(mouseState.X, mouseState.Y);
+            if (GetEditTargetBounds().Contains(mousePoint))
+            {
+                _editTargetFocused = true;
+                _selectedIndex = -1;
+                UpdateButtonStates();
+                return;
+            }
+
+            if (ContainsPoint(mousePoint.X, mousePoint.Y))
+            {
+                _editTargetFocused = false;
+                UpdateButtonStates();
+            }
+        }
+
+        private void HandleEditTargetKeyboardInput()
+        {
+            if (!_editTargetFocused)
+            {
+                _previousKeyboardState = Keyboard.GetState();
+                return;
+            }
+
+            KeyboardState keyboardState = Keyboard.GetState();
+            bool ctrl = keyboardState.IsKeyDown(Keys.LeftControl) || keyboardState.IsKeyDown(Keys.RightControl);
+
+            if (ctrl && WasPressed(keyboardState, Keys.V))
+            {
+                HandleClipboardPaste();
+            }
+            else if (WasPressed(keyboardState, Keys.Back) && _manualTargetText.Length > 0)
+            {
+                _manualTargetText = _manualTargetText[..^1];
+            }
+            else if (WasPressed(keyboardState, Keys.Enter))
+            {
+                if (TryParseManualTargetMapId(out int targetMapId))
+                {
+                    ManualMapMoveRequested?.Invoke(targetMapId);
+                }
+            }
+            else if (WasPressed(keyboardState, Keys.Escape))
+            {
+                _editTargetFocused = false;
+            }
+            else
+            {
+                foreach (Keys key in keyboardState.GetPressedKeys())
+                {
+                    if (!_previousKeyboardState.IsKeyUp(key))
+                    {
+                        continue;
+                    }
+
+                    char? digit = TranslateDigitKey(key);
+                    if (digit == null || _manualTargetText.Length >= EditTargetMaxLength)
+                    {
+                        continue;
+                    }
+
+                    _manualTargetText += digit.Value;
+                    break;
+                }
+            }
+
+            _previousKeyboardState = keyboardState;
+            UpdateButtonStates();
+        }
+
+        private void HandleClipboardPaste()
+        {
+            try
+            {
+                if (!System.Windows.Forms.Clipboard.ContainsText())
+                {
+                    return;
+                }
+
+                string clipboardText = System.Windows.Forms.Clipboard.GetText();
+                if (string.IsNullOrWhiteSpace(clipboardText))
+                {
+                    return;
+                }
+
+                foreach (char character in clipboardText)
+                {
+                    if (!char.IsDigit(character) || _manualTargetText.Length >= EditTargetMaxLength)
+                    {
+                        continue;
+                    }
+
+                    _manualTargetText += character;
+                }
+            }
+            catch
+            {
+            }
+        }
+
+        private bool TryParseManualTargetMapId(out int targetMapId)
+        {
+            return int.TryParse(_manualTargetText, out targetMapId) && targetMapId > 0;
+        }
+
+        private Rectangle GetEditTargetBounds()
+        {
+            return new Rectangle(
+                Position.X + EditTargetX,
+                Position.Y + EditTargetY,
+                EditTargetWidth,
+                EditTargetHeight);
+        }
+
+        private bool WasPressed(KeyboardState keyboardState, Keys key)
+        {
+            return keyboardState.IsKeyDown(key) && _previousKeyboardState.IsKeyUp(key);
+        }
+
+        private static char? TranslateDigitKey(Keys key)
+        {
+            if (key >= Keys.D0 && key <= Keys.D9)
+            {
+                return (char)('0' + (key - Keys.D0));
+            }
+
+            if (key >= Keys.NumPad0 && key <= Keys.NumPad9)
+            {
+                return (char)('0' + (key - Keys.NumPad0));
+            }
+
+            return null;
         }
 
         private void DrawFrameLayer(

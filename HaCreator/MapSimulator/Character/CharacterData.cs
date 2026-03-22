@@ -140,7 +140,13 @@ namespace HaCreator.MapSimulator.Character
         Saddle = 19,
         Medal = 49,
         Belt = 50,
-        Weapon = 11
+        Shoulder = 51,
+        Pocket = 52,
+        Badge = 53,
+        Pendant2 = 59,
+        Weapon = 11,
+        Android = 166,
+        AndroidHeart = 167
     }
 
     /// <summary>
@@ -366,6 +372,50 @@ namespace HaCreator.MapSimulator.Character
         // Icon for UI
         public IDXObject Icon { get; set; }
         public IDXObject IconRaw { get; set; }
+
+        public virtual CharacterPart Clone()
+        {
+            return new CharacterPart
+            {
+                ItemId = ItemId,
+                Name = Name,
+                Type = Type,
+                Slot = Slot,
+                Animations = new Dictionary<string, CharacterAnimation>(Animations),
+                VSlot = VSlot,
+                ISlot = ISlot,
+                IsCash = IsCash,
+                Description = Description,
+                ItemCategory = ItemCategory,
+                ExpirationDateUtc = ExpirationDateUtc,
+                Durability = Durability,
+                MaxDurability = MaxDurability,
+                RequiredJobMask = RequiredJobMask,
+                RequiredFame = RequiredFame,
+                RequiredLevel = RequiredLevel,
+                RequiredSTR = RequiredSTR,
+                RequiredDEX = RequiredDEX,
+                RequiredINT = RequiredINT,
+                RequiredLUK = RequiredLUK,
+                BonusSTR = BonusSTR,
+                BonusDEX = BonusDEX,
+                BonusINT = BonusINT,
+                BonusLUK = BonusLUK,
+                BonusHP = BonusHP,
+                BonusMP = BonusMP,
+                BonusWeaponAttack = BonusWeaponAttack,
+                BonusMagicAttack = BonusMagicAttack,
+                BonusWeaponDefense = BonusWeaponDefense,
+                BonusMagicDefense = BonusMagicDefense,
+                BonusAccuracy = BonusAccuracy,
+                BonusAvoidability = BonusAvoidability,
+                BonusSpeed = BonusSpeed,
+                BonusJump = BonusJump,
+                UpgradeSlots = UpgradeSlots,
+                Icon = Icon,
+                IconRaw = IconRaw
+            };
+        }
 
         /// <summary>
         /// Get animation for an action, with fallback
@@ -600,6 +650,55 @@ namespace HaCreator.MapSimulator.Character
         public string WeaponType { get; set; }           // "1h sword", "2h sword", "bow", etc.
         public int Range { get; set; } = 100;            // Attack range in pixels
         public bool IsTwoHanded { get; set; }
+
+        public override CharacterPart Clone()
+        {
+            return new WeaponPart
+            {
+                ItemId = ItemId,
+                Name = Name,
+                Type = Type,
+                Slot = Slot,
+                Animations = new Dictionary<string, CharacterAnimation>(Animations),
+                VSlot = VSlot,
+                ISlot = ISlot,
+                IsCash = IsCash,
+                Description = Description,
+                ItemCategory = ItemCategory,
+                ExpirationDateUtc = ExpirationDateUtc,
+                Durability = Durability,
+                MaxDurability = MaxDurability,
+                RequiredJobMask = RequiredJobMask,
+                RequiredFame = RequiredFame,
+                RequiredLevel = RequiredLevel,
+                RequiredSTR = RequiredSTR,
+                RequiredDEX = RequiredDEX,
+                RequiredINT = RequiredINT,
+                RequiredLUK = RequiredLUK,
+                BonusSTR = BonusSTR,
+                BonusDEX = BonusDEX,
+                BonusINT = BonusINT,
+                BonusLUK = BonusLUK,
+                BonusHP = BonusHP,
+                BonusMP = BonusMP,
+                BonusWeaponAttack = BonusWeaponAttack,
+                BonusMagicAttack = BonusMagicAttack,
+                BonusWeaponDefense = BonusWeaponDefense,
+                BonusMagicDefense = BonusMagicDefense,
+                BonusAccuracy = BonusAccuracy,
+                BonusAvoidability = BonusAvoidability,
+                BonusSpeed = BonusSpeed,
+                BonusJump = BonusJump,
+                UpgradeSlots = UpgradeSlots,
+                Icon = Icon,
+                IconRaw = IconRaw,
+                AttackSpeed = AttackSpeed,
+                Attack = Attack,
+                WeaponType = WeaponType,
+                Range = Range,
+                IsTwoHanded = IsTwoHanded
+            };
+        }
     }
 
     public sealed class PortableChairLayer
@@ -615,6 +714,8 @@ namespace HaCreator.MapSimulator.Character
         public int ItemId { get; set; }
         public string Name { get; set; }
         public string Description { get; set; }
+        public int RecoveryHp { get; set; }
+        public int RecoveryMp { get; set; }
         public int? SitActionId { get; set; }
         public int? TamingMobItemId { get; set; }
         public bool IsCoupleChair { get; set; }
@@ -623,6 +724,7 @@ namespace HaCreator.MapSimulator.Character
         public int? CoupleMaxDiff { get; set; }
         public int? CoupleDirection { get; set; }
         public List<PortableChairLayer> Layers { get; set; } = new();
+        public List<PortableChairLayer> CoupleMidpointLayers { get; set; } = new();
     }
 
     #endregion
@@ -640,6 +742,16 @@ namespace HaCreator.MapSimulator.Character
             int PrimaryStat,
             int SecondaryStat,
             float MasteryPrimaryScale);
+
+        private enum JobArchetype
+        {
+            Beginner,
+            Warrior,
+            Magician,
+            Bowman,
+            Thief,
+            Pirate
+        }
 
         public const int MaxPrimaryStat = 999;
         public const int MaxHpMpStat = 30000;
@@ -931,36 +1043,36 @@ namespace HaCreator.MapSimulator.Character
 
         private int GetBaseAccuracy()
         {
-            return GetJobGroup() switch
+            return ResolveJobArchetype() switch
             {
-                1 => (int)Math.Floor(TotalDEX * 0.8f + TotalLUK * 0.5f),
-                2 => (int)Math.Floor(TotalDEX * 0.8f + TotalLUK * 0.5f),
-                3 => (int)Math.Floor(TotalDEX * 1.2f + TotalLUK),
-                4 => (int)Math.Floor(TotalDEX * 0.6f + TotalLUK * 0.3f),
-                5 => (int)Math.Floor(TotalDEX * 0.8f + TotalSTR * 0.5f),
+                JobArchetype.Warrior => (int)Math.Floor(TotalDEX * 0.8f + TotalLUK * 0.5f),
+                JobArchetype.Magician => (int)Math.Floor(TotalDEX * 0.8f + TotalLUK * 0.5f),
+                JobArchetype.Bowman => (int)Math.Floor(TotalDEX * 1.2f + TotalLUK),
+                JobArchetype.Thief => (int)Math.Floor(TotalDEX * 0.6f + TotalLUK * 0.3f),
+                JobArchetype.Pirate => (int)Math.Floor(TotalDEX * 0.8f + TotalSTR * 0.5f),
                 _ => (int)Math.Floor(TotalDEX * 0.8f + TotalLUK * 0.5f)
             };
         }
 
         private int GetBaseAvoidability()
         {
-            return GetJobGroup() switch
+            return ResolveJobArchetype() switch
             {
-                4 => (int)Math.Floor(TotalDEX * 0.3f + TotalLUK * 0.6f),
-                2 => (int)Math.Floor(TotalDEX * 0.2f + TotalLUK * 0.5f),
+                JobArchetype.Thief => (int)Math.Floor(TotalDEX * 0.3f + TotalLUK * 0.6f),
+                JobArchetype.Magician => (int)Math.Floor(TotalDEX * 0.2f + TotalLUK * 0.5f),
                 _ => (int)Math.Floor(TotalDEX * 0.25f + TotalLUK * 0.5f)
             };
         }
 
         private int GetHpIncreaseAmount(Func<int, int, int> rollInclusive)
         {
-            (int min, int max) range = GetJobGroup() switch
+            (int min, int max) range = ResolveJobArchetype() switch
             {
-                1 => (20, 24),
-                2 => (6, 10),
-                3 => (16, 20),
-                4 => (16, 20),
-                5 => (18, 22),
+                JobArchetype.Warrior => (20, 24),
+                JobArchetype.Magician => (6, 10),
+                JobArchetype.Bowman => (16, 20),
+                JobArchetype.Thief => (16, 20),
+                JobArchetype.Pirate => (18, 22),
                 _ => (8, 12)
             };
 
@@ -969,22 +1081,31 @@ namespace HaCreator.MapSimulator.Character
 
         private int GetMpIncreaseAmount(Func<int, int, int> rollInclusive)
         {
-            (int min, int max) range = GetJobGroup() switch
+            (int min, int max) range = ResolveJobArchetype() switch
             {
-                1 => (2, 4),
-                2 => (18, 20),
-                3 => (10, 12),
-                4 => (10, 12),
-                5 => (14, 16),
+                JobArchetype.Warrior => (2, 4),
+                JobArchetype.Magician => (18, 20),
+                JobArchetype.Bowman => (10, 12),
+                JobArchetype.Thief => (10, 12),
+                JobArchetype.Pirate => (14, 16),
                 _ => (6, 8)
             };
 
             return rollInclusive(range.min, range.max);
         }
 
-        private int GetJobGroup()
+        private JobArchetype ResolveJobArchetype()
         {
-            return Job / 100;
+            int jobBranch = Math.Abs(Job) / 100;
+            return jobBranch switch
+            {
+                1 or 11 or 21 or 31 => JobArchetype.Warrior,
+                2 or 12 or 22 or 32 => JobArchetype.Magician,
+                3 or 13 or 23 or 33 => JobArchetype.Bowman,
+                4 or 14 or 24 => JobArchetype.Thief,
+                5 or 15 or 35 => JobArchetype.Pirate,
+                _ => JobArchetype.Beginner
+            };
         }
 
         private int ComputeDisplayedPhysicalAttack()
@@ -1014,13 +1135,13 @@ namespace HaCreator.MapSimulator.Character
 
         private int ComputeDisplayedPhysicalDefense()
         {
-            float statContribution = GetJobGroup() switch
+            float statContribution = ResolveJobArchetype() switch
             {
-                1 => TotalSTR * 0.35f + TotalDEX * 0.20f,
-                2 => TotalINT * 0.15f + TotalLUK * 0.10f,
-                3 => TotalDEX * 0.30f + TotalSTR * 0.15f,
-                4 => TotalLUK * 0.30f + TotalDEX * 0.20f,
-                5 => UsesDexDrivenPirateWeapon() ? TotalDEX * 0.30f + TotalSTR * 0.15f : TotalSTR * 0.30f + TotalDEX * 0.20f,
+                JobArchetype.Warrior => TotalSTR * 0.35f + TotalDEX * 0.20f,
+                JobArchetype.Magician => TotalINT * 0.15f + TotalLUK * 0.10f,
+                JobArchetype.Bowman => TotalDEX * 0.30f + TotalSTR * 0.15f,
+                JobArchetype.Thief => TotalLUK * 0.30f + TotalDEX * 0.20f,
+                JobArchetype.Pirate => UsesDexDrivenPirateWeapon() ? TotalDEX * 0.30f + TotalSTR * 0.15f : TotalSTR * 0.30f + TotalDEX * 0.20f,
                 _ => TotalSTR * 0.20f + TotalDEX * 0.20f + TotalLUK * 0.10f
             };
 
@@ -1029,13 +1150,13 @@ namespace HaCreator.MapSimulator.Character
 
         private int ComputeDisplayedMagicDefense()
         {
-            float statContribution = GetJobGroup() switch
+            float statContribution = ResolveJobArchetype() switch
             {
-                1 => TotalINT * 0.20f + TotalLUK * 0.10f,
-                2 => TotalINT * 0.45f + TotalLUK * 0.20f,
-                3 => TotalINT * 0.25f + TotalLUK * 0.12f,
-                4 => TotalINT * 0.25f + TotalLUK * 0.15f,
-                5 => TotalINT * 0.22f + TotalLUK * 0.12f,
+                JobArchetype.Warrior => TotalINT * 0.20f + TotalLUK * 0.10f,
+                JobArchetype.Magician => TotalINT * 0.45f + TotalLUK * 0.20f,
+                JobArchetype.Bowman => TotalINT * 0.25f + TotalLUK * 0.12f,
+                JobArchetype.Thief => TotalINT * 0.25f + TotalLUK * 0.15f,
+                JobArchetype.Pirate => TotalINT * 0.22f + TotalLUK * 0.12f,
                 _ => TotalINT * 0.20f + TotalLUK * 0.10f
             };
 
@@ -1045,7 +1166,7 @@ namespace HaCreator.MapSimulator.Character
         private AttackFormulaProfile ResolveAttackFormulaProfile()
         {
             WeaponPart weapon = GetWeapon();
-            int weaponCode = weapon != null ? Math.Abs(weapon.ItemId / 10000) % 100 : 0;
+            int weaponCode = GetWeaponCode(weapon?.ItemId ?? 0);
 
             return weaponCode switch
             {
@@ -1054,6 +1175,7 @@ namespace HaCreator.MapSimulator.Character
                 32 => new AttackFormulaProfile(false, 4.8f, TotalSTR, TotalDEX, 0.9f),
                 33 => ResolveDaggerFormulaProfile(),
                 34 => new AttackFormulaProfile(false, 3.6f, TotalLUK, TotalDEX, 0.9f),
+                36 => new AttackFormulaProfile(false, 3.6f, TotalLUK, TotalDEX, 0.9f),
                 37 => new AttackFormulaProfile(true, 1.0f, TotalINT, TotalLUK, 1.0f),
                 38 => new AttackFormulaProfile(true, 1.0f, TotalINT, TotalLUK, 1.0f),
                 40 => new AttackFormulaProfile(false, 4.6f, TotalSTR, TotalDEX, 0.9f),
@@ -1066,17 +1188,19 @@ namespace HaCreator.MapSimulator.Character
                 47 => new AttackFormulaProfile(false, 3.6f, TotalLUK, TotalDEX, 0.9f),
                 48 => new AttackFormulaProfile(false, 4.8f, TotalSTR, TotalDEX, 0.9f),
                 49 => new AttackFormulaProfile(false, 3.6f, TotalDEX, TotalSTR, 0.9f),
+                52 => new AttackFormulaProfile(false, 3.6f, TotalDEX, TotalSTR, 0.9f),
+                53 => new AttackFormulaProfile(false, 5.0f, TotalSTR, TotalDEX, 0.9f),
                 _ when UsesMagicFormulaByJob() => new AttackFormulaProfile(true, 1.0f, TotalINT, TotalLUK, 1.0f),
                 _ when UsesDexDrivenPirateWeapon() => new AttackFormulaProfile(false, 3.6f, TotalDEX, TotalSTR, 0.9f),
-                _ when GetJobGroup() == 3 => new AttackFormulaProfile(false, 3.4f, TotalDEX, TotalSTR, 0.9f),
-                _ when GetJobGroup() == 4 => new AttackFormulaProfile(false, 3.6f, TotalLUK, TotalDEX, 0.9f),
+                _ when ResolveJobArchetype() == JobArchetype.Bowman => new AttackFormulaProfile(false, 3.4f, TotalDEX, TotalSTR, 0.9f),
+                _ when ResolveJobArchetype() == JobArchetype.Thief => new AttackFormulaProfile(false, 3.6f, TotalLUK, TotalDEX, 0.9f),
                 _ => new AttackFormulaProfile(false, 4.0f, TotalSTR, TotalDEX, 0.9f)
             };
         }
 
         private AttackFormulaProfile ResolveDaggerFormulaProfile()
         {
-            return GetJobGroup() == 4
+            return ResolveJobArchetype() == JobArchetype.Thief
                 ? new AttackFormulaProfile(false, 3.6f, TotalLUK, TotalDEX, 0.9f)
                 : new AttackFormulaProfile(false, 4.0f, TotalSTR, TotalDEX, 0.9f);
         }
@@ -1085,16 +1209,14 @@ namespace HaCreator.MapSimulator.Character
         {
             if (GetWeapon() is WeaponPart weapon)
             {
-                int weaponCode = Math.Abs(weapon.ItemId / 10000) % 100;
+                int weaponCode = GetWeaponCode(weapon.ItemId);
                 if (weaponCode is 37 or 38)
                 {
                     return true;
                 }
             }
 
-            int jobBranch = Math.Abs(Job) / 100;
-            return GetJobGroup() == 2
-                || jobBranch is 12 or 22 or 32;
+            return ResolveJobArchetype() == JobArchetype.Magician;
         }
 
         private bool UsesDexDrivenPirateWeapon()
@@ -1104,8 +1226,13 @@ namespace HaCreator.MapSimulator.Character
                 return false;
             }
 
-            int weaponCode = Math.Abs(weapon.ItemId / 10000) % 100;
+            int weaponCode = GetWeaponCode(weapon.ItemId);
             return weaponCode == 49;
+        }
+
+        private static int GetWeaponCode(int itemId)
+        {
+            return itemId > 0 ? Math.Abs(itemId / 10000) % 100 : 0;
         }
 
         private int GetSkillStatBonus(BuffStatType stat)

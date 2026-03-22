@@ -108,6 +108,7 @@ namespace HaCreator.MapSimulator.UI
         private int _scrollOffset = 0;
         private int _hoveredSkillIndex = -1;
         private int _hoveredSpUpSkillIndex = -1;
+        private bool _hoveredSkillPointDisplay;
         private int _pressedSpUpSkillIndex = -1;
         private int _selectedSkillIndex = -1;
         private int _lastClickedSkillIndex = -1;
@@ -630,6 +631,18 @@ namespace HaCreator.MapSimulator.UI
             RenderParameters renderParameters,
             int TickCount)
         {
+            if (_hoveredSpUpSkillIndex >= 0)
+            {
+                DrawNativeHintTooltip(sprite, 1, renderParameters.RenderWidth, renderParameters.RenderHeight);
+                return;
+            }
+
+            if (_hoveredSkillPointDisplay)
+            {
+                DrawNativeHintTooltip(sprite, 2, renderParameters.RenderWidth, renderParameters.RenderHeight);
+                return;
+            }
+
             int windowX = this.Position.X;
             int windowY = this.Position.Y;
 
@@ -931,6 +944,21 @@ namespace HaCreator.MapSimulator.UI
                 Color.Black);
         }
 
+        private Rectangle GetSkillPointBounds()
+        {
+            float textWidth = 12f;
+            if (_font != null)
+            {
+                textWidth = Math.Max(textWidth, _font.MeasureString(GetCurrentSkillPoints().ToString()).X);
+            }
+
+            return new Rectangle(
+                Position.X + SP_DISPLAY_X_BASE - (int)Math.Ceiling(textWidth) - 4,
+                Position.Y + SP_DISPLAY_Y - 2,
+                (int)Math.Ceiling(textWidth) + 8,
+                _font?.LineSpacing ?? 14);
+        }
+
         private void DrawScrollBar(SpriteBatch sprite)
         {
             Rectangle upButtonBounds = GetScrollUpButtonBounds();
@@ -1183,6 +1211,36 @@ namespace HaCreator.MapSimulator.UI
             sprite.Draw(_debugPlaceholder, new Rectangle(rect.X - 1, rect.Bottom, rect.Width + 2, 1), TOOLTIP_BORDER_COLOR);
             sprite.Draw(_debugPlaceholder, new Rectangle(rect.X - 1, rect.Y, 1, rect.Height), TOOLTIP_BORDER_COLOR);
             sprite.Draw(_debugPlaceholder, new Rectangle(rect.Right, rect.Y, 1, rect.Height), TOOLTIP_BORDER_COLOR);
+        }
+
+        private void DrawNativeHintTooltip(SpriteBatch sprite, int tooltipFrameIndex, int renderWidth, int renderHeight)
+        {
+            if (tooltipFrameIndex < 0 || tooltipFrameIndex >= _tooltipFrames.Length)
+                return;
+
+            Texture2D tooltipFrame = _tooltipFrames[tooltipFrameIndex];
+            if (tooltipFrame == null)
+                return;
+
+            int tooltipX = _lastMousePosition.X + TOOLTIP_OFFSET_X;
+            int tooltipY = _lastMousePosition.Y + 20;
+
+            if (tooltipX + tooltipFrame.Width > renderWidth - TOOLTIP_PADDING)
+            {
+                tooltipX = _lastMousePosition.X - tooltipFrame.Width - TOOLTIP_OFFSET_X;
+            }
+
+            if (tooltipX < TOOLTIP_PADDING)
+            {
+                tooltipX = TOOLTIP_PADDING;
+            }
+
+            if (tooltipY + tooltipFrame.Height > renderHeight - TOOLTIP_PADDING)
+            {
+                tooltipY = Math.Max(TOOLTIP_PADDING, _lastMousePosition.Y - tooltipFrame.Height + TOOLTIP_OFFSET_Y);
+            }
+
+            sprite.Draw(tooltipFrame, new Vector2(tooltipX, tooltipY), Color.White);
         }
 
         private void DrawTooltipLines(SpriteBatch sprite, string[] lines, int x, float y, Color color)
@@ -1508,6 +1566,7 @@ namespace HaCreator.MapSimulator.UI
             _scrollOffset = 0;
             _hoveredSkillIndex = -1;
             _hoveredSpUpSkillIndex = -1;
+            _hoveredSkillPointDisplay = false;
             _pressedSpUpSkillIndex = -1;
             _selectedSkillIndex = -1;
         }
@@ -1617,6 +1676,18 @@ namespace HaCreator.MapSimulator.UI
             skillPointsByTab[tab] = Math.Max(0, points);
         }
 
+        public void AddSkillPoints(int jobAdvancement, int delta)
+        {
+            if (delta == 0)
+            {
+                return;
+            }
+
+            int tab = Math.Clamp(jobAdvancement, TAB_BEGINNER, TAB_4TH);
+            skillPointsByTab.TryGetValue(tab, out int currentPoints);
+            skillPointsByTab[tab] = Math.Max(0, currentPoints + delta);
+        }
+
         public void SetCharacterLevel(int level)
         {
             _characterLevel = Math.Max(1, level);
@@ -1718,6 +1789,7 @@ namespace HaCreator.MapSimulator.UI
 
             _hoveredSkillIndex = -1;
             _hoveredSpUpSkillIndex = -1;
+            _hoveredSkillPointDisplay = false;
             _pressedSpUpSkillIndex = -1;
             _selectedSkillIndex = -1;
         }
@@ -2163,6 +2235,7 @@ namespace HaCreator.MapSimulator.UI
             Rectangle skillListBounds = GetSkillListBounds();
             Rectangle scrollBarBounds = GetScrollBarBounds();
             _hoveredSpUpSkillIndex = GetSpUpSkillIndexAtPosition(mouseState.X, mouseState.Y);
+            _hoveredSkillPointDisplay = GetSkillPointBounds().Contains(mouseState.X, mouseState.Y);
 
             if (_isDraggingScrollThumb)
             {

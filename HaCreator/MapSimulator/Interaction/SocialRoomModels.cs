@@ -412,7 +412,10 @@ namespace HaCreator.MapSimulator.Interaction
             int guestScore,
             int currentTurnIndex,
             string statusMessage,
-            string roomState)
+            string roomState,
+            string ownerDetail = null,
+            string guestDetail = null,
+            IReadOnlyList<SocialRoomOccupant> extraOccupants = null)
         {
             RoomTitle = string.IsNullOrWhiteSpace(roomTitle) ? "Mini Room" : roomTitle.Trim();
             OwnerName = string.IsNullOrWhiteSpace(ownerName) ? "Player" : ownerName.Trim();
@@ -421,8 +424,28 @@ namespace HaCreator.MapSimulator.Interaction
             RoomState = roomState ?? string.Empty;
             MesoAmount = _miniRoomWagerAmount > 0 ? _miniRoomWagerAmount * 2 : 0;
 
-            EnsureMiniRoomOccupant(0, OwnerName, SocialRoomOccupantRole.Owner, BuildMiniRoomDetail(ownerScore, currentTurnIndex == 0, "Host seat"), ownerReady);
-            EnsureMiniRoomOccupant(1, guestName, SocialRoomOccupantRole.Guest, BuildMiniRoomDetail(guestScore, currentTurnIndex == 1, "Guest seat"), guestReady);
+            EnsureMiniRoomOccupant(0, OwnerName, SocialRoomOccupantRole.Owner, ownerDetail ?? BuildMiniRoomDetail(ownerScore, currentTurnIndex == 0, "Host seat"), ownerReady);
+            EnsureMiniRoomOccupant(1, guestName, SocialRoomOccupantRole.Guest, guestDetail ?? BuildMiniRoomDetail(guestScore, currentTurnIndex == 1, "Guest seat"), guestReady);
+
+            int occupantCount = 2;
+            if (extraOccupants != null)
+            {
+                foreach (SocialRoomOccupant occupant in extraOccupants)
+                {
+                    if (occupant == null)
+                    {
+                        continue;
+                    }
+
+                    EnsureMiniRoomOccupant(occupantCount, occupant.Name, occupant.Role, occupant.Detail, occupant.IsReady);
+                    occupantCount++;
+                }
+            }
+
+            if (_occupants.Count > occupantCount)
+            {
+                _occupants.RemoveRange(occupantCount, _occupants.Count - occupantCount);
+            }
 
             if (_items.Count > 0)
             {

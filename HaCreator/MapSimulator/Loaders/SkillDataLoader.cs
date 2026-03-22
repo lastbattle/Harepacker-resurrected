@@ -124,6 +124,11 @@ namespace HaCreator.MapSimulator.Loaders
             return skills;
         }
 
+        public static List<SkillDisplayData> LoadGuildSkills(GraphicsDevice device)
+        {
+            return LoadSkillsFromImageName("9100.img", device);
+        }
+
         public static IReadOnlyList<RecommendedSkillEntry> LoadRecommendedSkillEntries(
             int jobId,
             IEnumerable<int> validSkillIds = null)
@@ -264,6 +269,20 @@ namespace HaCreator.MapSimulator.Loaders
             return skills;
         }
 
+        private static List<SkillDisplayData> LoadSkillsFromImageName(string skillImageName, GraphicsDevice device)
+        {
+            List<SkillDisplayData> skills = new List<SkillDisplayData>();
+            if (string.IsNullOrWhiteSpace(skillImageName))
+                return skills;
+
+            WzImage skillImage = Program.FindImage("Skill", skillImageName);
+            if (skillImage == null)
+                return skills;
+
+            WzImage stringImage = Program.FindImage("String", "Skill.img");
+            return LoadSkillsFromImage(skillImage, stringImage, device);
+        }
+
         /// <summary>
         /// Load a single skill from WZ data
         /// </summary>
@@ -372,6 +391,18 @@ namespace HaCreator.MapSimulator.Loaders
                 RequiredSkillId = requiredSkillId,
                 RequiredSkillLevel = requiredSkillLevel
             };
+
+            string requiredGuildLevelFormula = GetStringValue(skillEntry["common"], "reqGuildLevel");
+            if (!string.IsNullOrWhiteSpace(requiredGuildLevelFormula))
+            {
+                for (int level = 1; level <= displayData.MaxLevel; level++)
+                {
+                    if (TryEvaluateFormula(requiredGuildLevelFormula, level, out int requiredGuildLevel))
+                    {
+                        displayData.RequiredGuildLevels[level] = Math.Max(0, requiredGuildLevel);
+                    }
+                }
+            }
 
             if (levelDescriptions != null)
             {

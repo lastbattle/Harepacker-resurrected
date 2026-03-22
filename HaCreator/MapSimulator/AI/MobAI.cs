@@ -81,6 +81,7 @@ namespace HaCreator.MapSimulator.AI
     public class PuppetInfo
     {
         public int ObjectId { get; set; }
+        public int SummonSlotIndex { get; set; } = -1;
         public float X { get; set; }
         public float Y { get; set; }
         public Rectangle Hitbox { get; set; }
@@ -143,6 +144,8 @@ namespace HaCreator.MapSimulator.AI
         public bool IsJumpAttack { get; set; }      // attackN/info/jumpAttack or info/attack/N/jumpAttack
         public bool Tremble { get; set; }           // attackN/info/tremble or info/attack/N/tremble
         public bool IsAngerAttack { get; set; }     // attackN/info/AngerAttack
+        public int DiseaseSkillId { get; set; }     // info/attack/N/disease -> MobSkill.img id
+        public int DiseaseLevel { get; set; }       // info/attack/N/level -> MobSkill.img level
 
         // Runtime state
         public int LastUseTime { get; set; }        // Tick when last used
@@ -216,6 +219,7 @@ namespace HaCreator.MapSimulator.AI
     public class MobTargetInfo
     {
         public int TargetId { get; set; }           // Target object ID
+        public int TargetSlotIndex { get; set; } = -1; // Summon slot index for client-style summoned targeting
         public MobTargetType TargetType { get; set; } = MobTargetType.Player;
         public float TargetX { get; set; }          // Target X position
         public float TargetY { get; set; }          // Target Y position
@@ -228,6 +232,7 @@ namespace HaCreator.MapSimulator.AI
             return new MobTargetInfo
             {
                 TargetId = TargetId,
+                TargetSlotIndex = TargetSlotIndex,
                 TargetType = TargetType,
                 TargetX = TargetX,
                 TargetY = TargetY,

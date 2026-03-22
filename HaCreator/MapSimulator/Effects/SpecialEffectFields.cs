@@ -70,6 +70,11 @@ namespace HaCreator.MapSimulator.Effects
         {
             _guildBoss.SetLocalPlayerHitbox(localPlayerHitbox ?? Rectangle.Empty);
         }
+
+        public void SetBattlefieldPlayerState(int? localCharacterId)
+        {
+            _battlefield.SetLocalPlayerState(localCharacterId);
+        }
         #endregion
 
         #region Initialization
@@ -1425,6 +1430,7 @@ namespace HaCreator.MapSimulator.Effects
         private int _lastScoreUpdateTimeMs = int.MinValue;
         private int _lastTeamChangeTimeMs = int.MinValue;
         private bool _clockVisible;
+        private int? _localCharacterId;
         private int? _localTeamId;
         private BattlefieldWinner _winner = BattlefieldWinner.None;
         private int _resultResolvedTimeMs = int.MinValue;
@@ -1435,6 +1441,7 @@ namespace HaCreator.MapSimulator.Effects
         private string _statusMessage;
         private int _statusMessageUntilMs;
         private readonly Dictionary<int, BattlefieldTeamLookPreset> _teamLookPresets = new();
+        private readonly Dictionary<int, int> _remoteUserTeams = new();
         private Texture2D _scoreboardTexture;
         private BattlefieldBitmapGlyph[] _wolvesDigitGlyphs = Array.Empty<BattlefieldBitmapGlyph>();
         private BattlefieldBitmapGlyph[] _sheepDigitGlyphs = Array.Empty<BattlefieldBitmapGlyph>();
@@ -1446,11 +1453,13 @@ namespace HaCreator.MapSimulator.Effects
         public int SheepScore => _sheepScore;
         public int DefaultDurationSeconds => _defaultDurationSeconds;
         public int FinishDurationSeconds => _finishDurationSeconds;
+        public int? LocalCharacterId => _localCharacterId;
         public int? LocalTeamId => _localTeamId;
         public BattlefieldWinner Winner => _winner;
         public string ResolvedEffectPath => _resolvedEffectPath;
         public int ResolvedRewardMapId => _resolvedRewardMapId;
         public IReadOnlyDictionary<int, BattlefieldTeamLookPreset> TeamLookPresets => _teamLookPresets;
+        public IReadOnlyDictionary<int, int> RemoteUserTeams => _remoteUserTeams;
         public int RemainingSeconds => !_clockVisible
             ? _defaultDurationSeconds
             : Math.Max(0, _clockDurationSeconds - Math.Max(0, _currentObservedTimeMs - _clockStartTimeMs) / 1000);
@@ -1481,6 +1490,7 @@ namespace HaCreator.MapSimulator.Effects
             _lastTeamChangeTimeMs = int.MinValue;
             _defaultDurationSeconds = 300;
             _finishDurationSeconds = 3;
+            _localCharacterId = null;
             _localTeamId = null;
             _winner = BattlefieldWinner.None;
             _resultResolvedTimeMs = int.MinValue;
@@ -1497,6 +1507,7 @@ namespace HaCreator.MapSimulator.Effects
             RewardMapLoseWolf = 0;
             RewardMapLoseSheep = 0;
             _teamLookPresets.Clear();
+            _remoteUserTeams.Clear();
         }
 
         public void Configure(MapInfo mapInfo)
@@ -1540,6 +1551,17 @@ namespace HaCreator.MapSimulator.Effects
             return _teamLookPresets.TryGetValue(teamId, out preset);
         }
 
+        public void SetLocalPlayerState(int? localCharacterId)
+        {
+            _localCharacterId = localCharacterId > 0 ? localCharacterId : null;
+            if (_localCharacterId.HasValue
+                && _remoteUserTeams.Remove(_localCharacterId.Value, out int promotedTeamId))
+            {
+                _localTeamId = promotedTeamId >= 0 ? promotedTeamId : null;
+                RefreshResolvedResult();
+            }
+        }
+
         public void OnScoreUpdate(int wolves, int sheep, int currentTimeMs)
         {
             if (!_isActive)
@@ -1581,10 +1603,20 @@ namespace HaCreator.MapSimulator.Effects
 
             _lastTeamChangeTimeMs = currentTimeMs;
 
-            if (characterId <= 0)
+            if (characterId <= 0
+                || (_localCharacterId.HasValue && characterId == _localCharacterId.Value))
             {
                 SetLocalTeam(teamId, currentTimeMs);
                 return;
+            }
+
+            if (teamId >= 0)
+            {
+                _remoteUserTeams[characterId] = teamId;
+            }
+            else
+            {
+                _remoteUserTeams.Remove(characterId);
             }
 
             ShowStatus($"Battlefield user {characterId} switched to {FormatTeamName(teamId)}.", currentTimeMs, 2500);
@@ -1730,7 +1762,10 @@ namespace HaCreator.MapSimulator.Effects
             string lookPresetText = _teamLookPresets.Count > 0
                 ? $", lookPresets={string.Join(";", _teamLookPresets.OrderBy(kvp => kvp.Key).Select(kvp => $"{kvp.Key}:{kvp.Value.EquipmentItemIds.Count}"))}"
                 : string.Empty;
-            return $"Battlefield active, wolves={_wolvesScore:D2}, sheep={_sheepScore:D2}, {clockText}, {teamText}, {resultText}{transferText}{lookPresetText}";
+            string remoteTeamText = _remoteUserTeams.Count > 0
+                ? $", remoteTeams={string.Join(";", _remoteUserTeams.OrderBy(kvp => kvp.Key).Select(kvp => $"{kvp.Key}:{FormatTeamName(kvp.Value)}"))}"
+                : string.Empty;
+            return $"Battlefield active, wolves={_wolvesScore:D2}, sheep={_sheepScore:D2}, {clockText}, {teamText}, {resultText}{transferText}{lookPresetText}{remoteTeamText}";
         }
 
         public void Reset()
@@ -1746,6 +1781,7 @@ namespace HaCreator.MapSimulator.Effects
             _lastTeamChangeTimeMs = int.MinValue;
             _defaultDurationSeconds = 300;
             _finishDurationSeconds = 3;
+            _localCharacterId = null;
             _localTeamId = null;
             _winner = BattlefieldWinner.None;
             _resultResolvedTimeMs = int.MinValue;
@@ -1762,6 +1798,7 @@ namespace HaCreator.MapSimulator.Effects
             RewardMapLoseWolf = 0;
             RewardMapLoseSheep = 0;
             _teamLookPresets.Clear();
+            _remoteUserTeams.Clear();
         }
 
         private static Rectangle GetScoreboardBounds(Viewport viewport)
@@ -2168,6 +2205,8 @@ namespace HaCreator.MapSimulator.Effects
             public int Delay { get; init; }
         }
 
+        public readonly record struct PulleyPacketRequest(int TickCount, int Sequence);
+
         #region State
         private bool _isActive = false;
         private GraphicsDevice _device;
@@ -2190,7 +2229,6 @@ namespace HaCreator.MapSimulator.Effects
         private float _healerX;
         private float _healerY;
         private float _healerTargetY;
-        private float _healerMoveSpeed = 100f;
         private List<GuildBossSpriteFrame> _healerFrames;
         private int _healerFrameIndex = 0;
         private int _lastHealerFrameTime = 0;
@@ -2207,6 +2245,8 @@ namespace HaCreator.MapSimulator.Effects
         private int _statusCueExpiresAt = int.MinValue;
         private string _statusCueText;
         private LocalPulleySequenceStage _localPulleySequenceStage = LocalPulleySequenceStage.None;
+        private PulleyPacketRequest? _pendingPulleyPacketRequest;
+        private int _pulleyPacketSequence;
         private List<GuildBossSpriteFrame> _pulleyFrames;
         private int _pulleyFrameIndex = 0;
         private int _lastPulleyFrameTime = 0;
@@ -2232,6 +2272,7 @@ namespace HaCreator.MapSimulator.Effects
         public float HealerTargetY => _healerTargetY;
         public bool IsHealEffectActive => _healEffectActive;
         public bool HasPendingLocalPulleySequence => _localPulleySequenceStage != LocalPulleySequenceStage.None;
+        public PulleyPacketRequest? PendingPulleyPacketRequest => _pendingPulleyPacketRequest;
         public bool IsLocalPlayerWithinPulleyArea => _pulleyEnabled && !_localPlayerHitbox.IsEmpty && _pulleyArea.Intersects(_localPlayerHitbox);
         #endregion
 
@@ -2386,10 +2427,12 @@ namespace HaCreator.MapSimulator.Effects
             }
 
             System.Diagnostics.Debug.WriteLine($"[GuildBossField] OnHealerMove: {_healerY} -> {newY}");
+            float previousY = _healerY;
+            _healerY = newY;
             _healerTargetY = newY;
 
             // Trigger heal effect when healer moves up
-            if (newY < _healerY)
+            if (newY < previousY)
             {
                 TriggerHealEffect(currentTimeMs);
             }
@@ -2416,19 +2459,23 @@ namespace HaCreator.MapSimulator.Effects
             _lastPulleyStateChangeTime = currentTimeMs;
         }
 
-        public bool TryHandleLocalPulleyInteract(Rectangle playerHitbox, int currentTimeMs, out string message)
+        public bool TryHandleLocalPulleyAttack(Rectangle attackBounds, int currentTimeMs, out string message)
         {
             message = null;
-            if (!_isActive || !_pulleyEnabled || playerHitbox.IsEmpty || !_pulleyArea.Intersects(playerHitbox))
+            if (!_isActive || !_pulleyEnabled || attackBounds.IsEmpty || !_pulleyArea.Intersects(attackBounds))
             {
                 return false;
             }
 
-            if (_localPulleySequenceStage != LocalPulleySequenceStage.None || currentTimeMs < _localPulleyCooldownUntil)
+            TriggerPulleyHitAnimation(currentTimeMs);
+
+            if (_pulleyState != 0 || _localPulleySequenceStage != LocalPulleySequenceStage.None || currentTimeMs < _localPulleyCooldownUntil)
             {
                 return true;
             }
 
+            _pulleyPacketSequence++;
+            _pendingPulleyPacketRequest = new PulleyPacketRequest(currentTimeMs, _pulleyPacketSequence);
             ApplyPulleyStateChange(1, currentTimeMs, GuildBossPacketSource.LocalPreview);
             if (_healerEnabled && _healerRise > 0)
             {
@@ -2441,6 +2488,19 @@ namespace HaCreator.MapSimulator.Effects
             SetStatusCue("Pulley engaged", currentTimeMs);
             message = "Guild boss pulley engaged.";
             return true;
+        }
+
+        public bool TryConsumePulleyPacketRequest(out PulleyPacketRequest request)
+        {
+            if (_pendingPulleyPacketRequest.HasValue)
+            {
+                request = _pendingPulleyPacketRequest.Value;
+                _pendingPulleyPacketRequest = null;
+                return true;
+            }
+
+            request = default;
+            return false;
         }
 
         private void TriggerHealEffect(int currentTimeMs)
@@ -2474,16 +2534,8 @@ namespace HaCreator.MapSimulator.Effects
 
             UpdateLocalPulleySequence(currentTimeMs);
 
-            // Move healer towards target
             if (_healerEnabled)
             {
-                float diff = _healerTargetY - _healerY;
-                if (Math.Abs(diff) > 0.5f)
-                {
-                    float move = Math.Sign(diff) * Math.Min(Math.Abs(diff), _healerMoveSpeed * deltaSeconds);
-                    _healerY += move;
-                }
-
                 AdvanceFrame(_healerFrames, ref _healerFrameIndex, ref _lastHealerFrameTime, currentTimeMs);
             }
 
@@ -2601,7 +2653,7 @@ namespace HaCreator.MapSimulator.Effects
 
                     if (_pulleyState == 0 && IsLocalPlayerWithinPulleyArea)
                     {
-                        const string interactPrompt = "Press Up";
+                        const string interactPrompt = "Attack pulley";
                         Vector2 promptSize = font.MeasureString(interactPrompt);
                         Vector2 promptPosition = new(
                             screenArea.Center.X - (promptSize.X / 2f),
@@ -2679,8 +2731,9 @@ namespace HaCreator.MapSimulator.Effects
                 _ => $"state {_pulleyState}"
             };
             string previewState = HasPendingLocalPulleySequence ? $", preview={_localPulleySequenceStage}" : string.Empty;
+            string pendingPacket = _pendingPulleyPacketRequest.HasValue ? $", request={_pendingPulleyPacketRequest.Value.Sequence}" : string.Empty;
 
-            return $"Guild boss map {_mapId}: healer {healerRange}, pulley {pulleyState}{previewState}, rise={_healerRise}, fall={_healerFall}, heal={_healerHealMin}..{_healerHealMax}, healer art={_healerPath ?? "none"}, pulley art={_pulleyPath ?? "none"}.";
+            return $"Guild boss map {_mapId}: healer {healerRange}, pulley {pulleyState}{previewState}{pendingPacket}, rise={_healerRise}, fall={_healerFall}, heal={_healerHealMin}..{_healerHealMax}, healer art={_healerPath ?? "none"}, pulley art={_pulleyPath ?? "none"}.";
         }
 
         #region Reset
@@ -2706,6 +2759,8 @@ namespace HaCreator.MapSimulator.Effects
             _localPulleySequenceStage = LocalPulleySequenceStage.None;
             _localPulleySequenceNextTransitionTick = int.MinValue;
             _localPulleyCooldownUntil = int.MinValue;
+            _pendingPulleyPacketRequest = null;
+            _pulleyPacketSequence = 0;
             _statusCueExpiresAt = int.MinValue;
             _statusCueText = null;
             _localPlayerHitbox = Rectangle.Empty;
@@ -2782,6 +2837,7 @@ namespace HaCreator.MapSimulator.Effects
         {
             _localPulleySequenceStage = LocalPulleySequenceStage.None;
             _localPulleySequenceNextTransitionTick = int.MinValue;
+            _pendingPulleyPacketRequest = null;
             if (!preserveCooldown)
             {
                 _localPulleyCooldownUntil = int.MinValue;
@@ -2812,6 +2868,13 @@ namespace HaCreator.MapSimulator.Effects
         {
             _statusCueText = text;
             _statusCueExpiresAt = unchecked(currentTimeMs + StatusCueDurationMs);
+        }
+
+        private void TriggerPulleyHitAnimation(int currentTimeMs)
+        {
+            _pulleyFrameIndex = 0;
+            _lastPulleyFrameTime = currentTimeMs;
+            SetStatusCue("Pulley hit", currentTimeMs);
         }
 
         private List<GuildBossSpriteFrame> LoadObjectAnimation(string objectPath)
@@ -4099,6 +4162,7 @@ namespace HaCreator.MapSimulator.Effects
     /// </summary>
     public class MassacreField
     {
+        private static readonly string[] UiImageNames = { "UIWindow2.img", "UIWindow.img" };
         private const int ComboTimeoutMs = 3000;
         private const int TimerboardWidth = 258;
         private const int TimerboardHeight = 61;
@@ -4112,6 +4176,7 @@ namespace HaCreator.MapSimulator.Effects
         private const int TimerDividerWidth = 17;
         private const int TimerDividerHeight = 38;
         private const int GaugeWidth = 262;
+        private const int GaugeFillWidth = 259;
         private const int GaugeHeight = 9;
         private const int GaugeOffsetX = -93;
         private const int GaugeY = 78;
@@ -4122,7 +4187,7 @@ namespace HaCreator.MapSimulator.Effects
         private const int KeyAnimationX = 7;
         private const int KeyAnimationY = 135;
         private const int ClearEffectDurationMs = 2200;
-        private const int DangerThresholdGauge = 25;
+        private const float DangerDepletionThreshold = 0.65f;
         private const int BonusEffectY = 190;
         private const int ResultBoardY = 115;
         private const int ResultScoreX = 180;
@@ -4165,6 +4230,7 @@ namespace HaCreator.MapSimulator.Effects
         private Texture2D _gaugeBackgroundTexture;
         private Texture2D _gaugeTextTexture;
         private Texture2D _gaugePixelTexture;
+        private Texture2D _timerboardSourceTexture;
         private Texture2D _timerboardEnabledTexture;
         private Texture2D _timerboardDisabledTexture;
         private readonly Texture2D[] _timerDigits = new Texture2D[10];
@@ -4572,7 +4638,6 @@ namespace HaCreator.MapSimulator.Effects
             _showedClearEffect = true;
             _clearEffectActive = true;
             _clearEffectStartTime = currentTimeMs;
-            ShowResultPresentation(ShouldTreatTimerExpiryAsClear(), currentTimeMs);
         }
 
         private void DrawTimerboard(SpriteBatch spriteBatch, Texture2D pixelTexture, SpriteFont font, Viewport viewport)
@@ -4583,7 +4648,8 @@ namespace HaCreator.MapSimulator.Effects
             }
 
             Rectangle bounds = new(viewport.Width / 2 + TimerboardOffsetX, TimerboardY, TimerboardWidth, TimerboardHeight);
-            Texture2D timerboardTexture = _disableSkill ? _timerboardDisabledTexture : _timerboardEnabledTexture;
+            Texture2D timerboardTexture = _timerboardSourceTexture
+                ?? (_disableSkill ? _timerboardDisabledTexture : _timerboardEnabledTexture);
             if (timerboardTexture != null)
             {
                 spriteBatch.Draw(timerboardTexture, new Vector2(bounds.X, bounds.Y), Color.White);
@@ -4598,11 +4664,6 @@ namespace HaCreator.MapSimulator.Effects
                 spriteBatch.Draw(pixelTexture, divider, new Color(44, 53, 66, 255));
             }
 
-            if (font == null)
-            {
-                return;
-            }
-
             int remaining = RemainingSeconds;
             string minuteText = $"{remaining / 60:00}";
             string secondText = $"{remaining % 60:00}";
@@ -4611,6 +4672,11 @@ namespace HaCreator.MapSimulator.Effects
             if (!TryDrawBitmapDigits(spriteBatch, _timerDigits, minuteText, new Vector2(bounds.X + TimerMinuteTextX, bounds.Y + TimerTextY))
                 || !TryDrawBitmapDigits(spriteBatch, _timerDigits, secondText, new Vector2(bounds.X + TimerSecondTextX, bounds.Y + TimerTextY)))
             {
+                if (font == null)
+                {
+                    return;
+                }
+
                 DrawDigitString(spriteBatch, font, minuteText, new Vector2(bounds.X + TimerMinuteTextX, bounds.Y + TimerTextY), timeColor);
                 DrawDigitString(spriteBatch, font, secondText, new Vector2(bounds.X + TimerSecondTextX, bounds.Y + TimerTextY), timeColor);
             }
@@ -4619,7 +4685,7 @@ namespace HaCreator.MapSimulator.Effects
         private void DrawGaugeHud(SpriteBatch spriteBatch, Texture2D pixelTexture, SpriteFont font, Viewport viewport)
         {
             int gaugeX = viewport.Width / 2 + GaugeOffsetX;
-            Rectangle fillBounds = new(gaugeX + GaugeFillOffsetX, GaugeY + GaugeFillOffsetY, GaugeWidth, GaugeFillHeight);
+            Rectangle fillBounds = new(gaugeX + GaugeFillOffsetX, GaugeY + GaugeFillOffsetY, GaugeFillWidth, GaugeFillHeight);
 
             if (_gaugeBackgroundTexture != null)
             {
@@ -4715,7 +4781,9 @@ namespace HaCreator.MapSimulator.Effects
             }
 
             spriteBatch.Draw(pixelTexture, new Rectangle(0, 0, viewport.Width, viewport.Height), Color.White * (0.16f * _clearEffectAlpha));
-            if (font != null)
+            Vector2 center = new(viewport.Width / 2f, viewport.Height / 2f);
+            if (!DrawAnimation(spriteBatch, _resultClearFrames, Environment.TickCount, _clearEffectStartTime, center, repeat: false)
+                && font != null)
             {
                 const string clearText = "CLEAR!";
                 Vector2 textSize = font.MeasureString(clearText) * 1.5f;
@@ -4808,8 +4876,19 @@ namespace HaCreator.MapSimulator.Effects
                 return;
             }
 
-            WzImage uiWindow = global::HaCreator.Program.FindImage("UI", "UIWindow2.img")
-                ?? global::HaCreator.Program.FindImage("UI", "UIWindow.img");
+            WzImage uiWindow = null;
+            foreach (string imageName in UiImageNames)
+            {
+                WzImage uiImage = global::HaCreator.Program.FindImage("UI", imageName);
+                if (uiImage?.WzProperties == null)
+                {
+                    continue;
+                }
+
+                uiWindow ??= uiImage;
+                _timerboardSourceTexture ??= LoadCanvasTexture(FindTimerboardSourceCanvas(uiImage));
+            }
+
             WzImage effectImage = global::HaCreator.Program.FindImage("Map", "Effect.img")
                 ?? global::HaCreator.Program.FindImage("Map", "effect.img");
 
@@ -5080,6 +5159,57 @@ namespace HaCreator.MapSimulator.Effects
             return frames.Count > 0 ? frames : null;
         }
 
+        private static WzCanvasProperty FindTimerboardSourceCanvas(WzImage image)
+        {
+            foreach (WzImageProperty property in EnumeratePropertiesDepthFirst(image))
+            {
+                if (property is not WzCanvasProperty canvas)
+                {
+                    continue;
+                }
+
+                if (TryMatchCanvasSize(canvas, TimerboardWidth, TimerboardHeight))
+                {
+                    return canvas;
+                }
+            }
+
+            return null;
+        }
+
+        private static bool TryMatchCanvasSize(WzCanvasProperty canvas, int width, int height)
+        {
+            try
+            {
+                using var bitmap = canvas.GetLinkedWzCanvasBitmap();
+                return bitmap?.Width == width && bitmap.Height == height;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        private static IEnumerable<WzImageProperty> EnumeratePropertiesDepthFirst(IPropertyContainer container)
+        {
+            if (container?.WzProperties == null)
+            {
+                yield break;
+            }
+
+            foreach (WzImageProperty child in container.WzProperties)
+            {
+                yield return child;
+                if (child is IPropertyContainer childContainer)
+                {
+                    foreach (WzImageProperty descendant in EnumeratePropertiesDepthFirst(childContainer))
+                    {
+                        yield return descendant;
+                    }
+                }
+            }
+        }
+
         private void LoadDigitTextures(WzImageProperty source, Texture2D[] destination)
         {
             LoadDigitTextures(source, destination, out _);
@@ -5157,13 +5287,13 @@ namespace HaCreator.MapSimulator.Effects
 
         private bool ShouldDrawDangerOverlay()
         {
-            return _currentGauge > 0 && _currentGauge <= DangerThresholdGauge;
-        }
+            if (_maxGauge <= 0)
+            {
+                return false;
+            }
 
-        private bool ShouldTreatTimerExpiryAsClear()
-        {
-            return _currentGauge >= _maxGauge
-                || (_countEffects.Count > 0 && _killCount >= _countEffects[^1].Threshold);
+            float depletion = 1f - Math.Clamp(_currentGauge / (float)_maxGauge, 0f, 1f);
+            return depletion >= DangerDepletionThreshold;
         }
 
         private char ComputeResultRank()

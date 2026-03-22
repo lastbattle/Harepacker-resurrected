@@ -55,6 +55,12 @@ namespace HaCreator.MapSimulator
         private static readonly Color WhisperMessageColor = new Color(255, 170, 255);
         private static readonly Color SystemMessageColor = new Color(255, 228, 151);
         private static readonly Color ErrorMessageColor = new Color(247, 75, 75);
+        private static readonly Color DefaultMessageColor = Color.White;
+        private static readonly Color PartyMessageColor = new Color(124, 255, 172);
+        private static readonly Color FriendMessageColor = new Color(255, 255, 120);
+        private static readonly Color GuildMessageColor = new Color(176, 255, 120);
+        private static readonly Color AllianceMessageColor = new Color(124, 236, 255);
+        private static readonly Color ExpeditionMessageColor = new Color(255, 216, 128);
 
         private const int CHAT_INPUT_X = 5;
         private const int CHAT_INPUT_Y_OFFSET = 55; // Offset from bottom of screen (just above status bar level indicator)
@@ -757,16 +763,16 @@ namespace HaCreator.MapSimulator
             }
 
             string prefix = GetTargetPrefix(_chatTarget);
-            Color color = GetTargetColor(_chatTarget);
-            int chatLogType = (int)GetTargetChatLogType(_chatTarget);
+            ClientChatLogType chatLogType = GetTargetChatLogType(_chatTarget);
+            Color color = ResolveClientChatLogColor(chatLogType);
             if (string.IsNullOrEmpty(prefix))
             {
-                AddMessage(message, color, tickCount, chatLogType);
+                AddMessage(message, color, tickCount, (int)chatLogType);
                 MessageSubmitted?.Invoke(message, tickCount);
                 return;
             }
 
-            AddMessage($"{prefix} {message}", color, tickCount, chatLogType);
+            AddMessage($"{prefix} {message}", color, tickCount, (int)chatLogType);
             MessageSubmitted?.Invoke(message, tickCount);
         }
 
@@ -886,14 +892,15 @@ namespace HaCreator.MapSimulator
             }
 
             string prefix = GetTargetPrefix(targetType);
-            Color color = GetTargetColor(targetType);
+            ClientChatLogType chatLogType = GetTargetChatLogType(targetType);
+            Color color = ResolveClientChatLogColor(chatLogType);
             if (string.IsNullOrEmpty(prefix))
             {
-                AddMessage(payload, color, tickCount, (int)GetTargetChatLogType(targetType));
+                AddMessage(payload, color, tickCount, (int)chatLogType);
             }
             else
             {
-                AddMessage($"{prefix} {payload}", color, tickCount, (int)GetTargetChatLogType(targetType));
+                AddMessage($"{prefix} {payload}", color, tickCount, (int)chatLogType);
             }
 
             MessageSubmitted?.Invoke(payload, tickCount);
@@ -917,17 +924,24 @@ namespace HaCreator.MapSimulator
 
         private void AddClientMessage(string text, int tickCount, ClientChatLogType chatLogType, Color? colorOverride = null)
         {
-            Color color = colorOverride ?? ResolveClientChatLogColor(chatLogType) ?? Color.White;
+            Color color = colorOverride ?? ResolveClientChatLogColor(chatLogType);
             AddMessage(text, color, tickCount, (int)chatLogType);
         }
 
-        private static Color? ResolveClientChatLogColor(ClientChatLogType chatLogType)
+        private static Color ResolveClientChatLogColor(ClientChatLogType chatLogType)
         {
             return chatLogType switch
             {
+                ClientChatLogType.All => DefaultMessageColor,
+                ClientChatLogType.Party => PartyMessageColor,
+                ClientChatLogType.Friend => FriendMessageColor,
+                ClientChatLogType.Guild => GuildMessageColor,
+                ClientChatLogType.Alliance => AllianceMessageColor,
+                ClientChatLogType.Expedition => ExpeditionMessageColor,
                 ClientChatLogType.Error => ErrorMessageColor,
                 ClientChatLogType.System => SystemMessageColor,
-                _ => null
+                ClientChatLogType.Whisper => WhisperMessageColor,
+                _ => DefaultMessageColor
             };
         }
 
@@ -1047,18 +1061,5 @@ namespace HaCreator.MapSimulator
             };
         }
 
-        private static Color GetTargetColor(MapSimulatorChatTargetType targetType)
-        {
-            return targetType switch
-            {
-                MapSimulatorChatTargetType.All => Color.White,
-                MapSimulatorChatTargetType.Friend => new Color(255, 255, 120),
-                MapSimulatorChatTargetType.Party => new Color(124, 255, 172),
-                MapSimulatorChatTargetType.Guild => new Color(176, 255, 120),
-                MapSimulatorChatTargetType.Association => new Color(124, 236, 255),
-                MapSimulatorChatTargetType.Expedition => new Color(255, 216, 128),
-                _ => Color.White
-            };
-        }
     }
 }

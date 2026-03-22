@@ -192,6 +192,14 @@ namespace HaCreator.MapSimulator.Managers
             return _packetCounts.TryGetValue(packetType, out int count) ? count : 0;
         }
 
+        public void OverrideLastEventSummary(string summary)
+        {
+            if (!string.IsNullOrWhiteSpace(summary))
+            {
+                LastEventSummary = summary;
+            }
+        }
+
         public string DescribeStatus()
         {
             var builder = new StringBuilder();

@@ -46,6 +46,7 @@ namespace HaCreator.MapSimulator.UI
         private UIObject _tabRecommended;
         private UIObject _myLevelButton;
         private UIObject _allLevelButton;
+        private UIObject _detailButton;
         private readonly Dictionary<int, List<QuestDisplayData>> _questsByTab;
         private Texture2D _selectionHighlight;
         private Texture2D _iconAvailable;
@@ -166,6 +167,26 @@ namespace HaCreator.MapSimulator.UI
             UpdateTabStates();
         }
 
+        public void InitializeDetailButton(UIObject detailButton)
+        {
+            _detailButton = detailButton;
+            if (detailButton == null)
+            {
+                return;
+            }
+
+            AddButton(detailButton);
+            detailButton.ButtonClickReleased += _ =>
+            {
+                if (_selectedQuestId > 0)
+                {
+                    QuestDetailRequested?.Invoke(_selectedQuestId);
+                }
+            };
+
+            UpdateTabStates();
+        }
+
         public void SetQuestIcons(Texture2D available, Texture2D inProgress, Texture2D completed)
         {
             _iconAvailable = available;
@@ -241,6 +262,12 @@ namespace HaCreator.MapSimulator.UI
             {
                 _allLevelButton.SetVisible(showLevelButtons);
                 _allLevelButton.SetButtonState(_showAllLevels ? UIObjectState.Pressed : UIObjectState.Normal);
+            }
+
+            if (_detailButton != null)
+            {
+                _detailButton.SetVisible(true);
+                _detailButton.SetButtonState(_selectedQuestId > 0 ? UIObjectState.Normal : UIObjectState.Disabled);
             }
         }
 
@@ -351,7 +378,10 @@ namespace HaCreator.MapSimulator.UI
             QuestLogEntrySnapshot selected = snapshot.Entries.FirstOrDefault(entry => entry.QuestId == _selectedQuestId);
             if (selected == null)
             {
-                DrawText(sprite, "Select a quest, then click it again to open the detail window.", new Vector2(footerRect.X + 8, footerRect.Y + 8), new Color(224, 228, 236), SMALL_TEXT_SCALE, footerRect.Width - 16);
+                string hint = _detailButton != null
+                    ? "Select a quest, then use the Detail button to inspect it."
+                    : "Select a quest, then click it again to open the detail window.";
+                DrawText(sprite, hint, new Vector2(footerRect.X + 8, footerRect.Y + 8), new Color(224, 228, 236), SMALL_TEXT_SCALE, footerRect.Width - 16);
                 return;
             }
 
@@ -523,7 +553,7 @@ namespace HaCreator.MapSimulator.UI
             if (rowIndex >= 0 && entryIndex >= 0 && entryIndex < snapshot.Entries.Count)
             {
                 int clickedQuestId = snapshot.Entries[entryIndex].QuestId;
-                bool openDetail = clickedQuestId == _selectedQuestId;
+                bool openDetail = _detailButton == null && clickedQuestId == _selectedQuestId;
                 _selectedQuestId = clickedQuestId;
                 if (openDetail)
                 {

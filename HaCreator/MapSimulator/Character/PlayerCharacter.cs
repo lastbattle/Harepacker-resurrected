@@ -51,6 +51,11 @@ namespace HaCreator.MapSimulator.Character
     /// </summary>
     public class PlayerCharacter
     {
+        private sealed class PlayerSkillBlockingStatusState
+        {
+            public int ExpireTime { get; set; }
+        }
+
         private sealed class SkillAvatarTransformState
         {
             public int SkillId { get; init; }
@@ -88,6 +93,7 @@ namespace HaCreator.MapSimulator.Character
             public SkillAnimation GroundOverlayFinishAnimation { get; init; }
             public SkillAnimation GroundUnderFaceFinishAnimation { get; init; }
             public SkillAnimation LadderOverlayFinishAnimation { get; init; }
+            public bool HideOnLadderOrRope { get; init; }
             public int AnimationStartTime { get; set; }
             public bool IsFinishing { get; set; }
             public SkillAvatarEffectMode Mode { get; set; }
@@ -153,6 +159,7 @@ namespace HaCreator.MapSimulator.Character
         private const int FACE_BLINK_DURATION_MS = 120;
         private const int FACE_BLINK_MIN_INTERVAL_MS = 2500;
         private const int FACE_BLINK_MAX_INTERVAL_MS = 4500;
+        private const int PORTABLE_CHAIR_RECOVERY_INTERVAL_MS = 10000;
 
         // Float idle should ignore the tiny passive sink applied by swim physics.
         private const float FLOAT_ANIMATION_MOVEMENT_THRESHOLD = 20f;
@@ -193,6 +200,12 @@ namespace HaCreator.MapSimulator.Character
         /// </summary>
         public bool GodMode { get; set; }
 
+        public bool HasActiveSkillBlockingStatus(int currentTime)
+        {
+            ClearExpiredSkillBlockingStatuses(currentTime);
+            return _activeSkillBlockingStatuses.Count > 0;
+        }
+
         // Position shortcuts
         public float X => (float)Physics.X;
         public float Y => (float)Physics.Y;
@@ -221,6 +234,10 @@ namespace HaCreator.MapSimulator.Character
         private int _nextBlinkTime = Environment.TickCount + FACE_BLINK_MIN_INTERVAL_MS;
         private int _blinkExpressionEndTime;
         private int _hitExpressionEndTime;
+        private int _nextPortableChairRecoveryTime = int.MaxValue;
+        private CharacterPart _observedTamingMobPart;
+        private bool _suppressAutomaticTamingMobTransition;
+        private readonly Dictionary<PlayerSkillBlockingStatus, PlayerSkillBlockingStatusState> _activeSkillBlockingStatuses = new();
 
         // Hit state tracking
         private int _hitStateStartTime;
@@ -242,6 +259,7 @@ namespace HaCreator.MapSimulator.Character
         private bool _wasJumpHeldLastFrame;
         private bool _jumpPressedThisFrame;
         private int _lastFloatJumpTime = int.MinValue;
+        private float _externalMoveSpeedMultiplier = 1f;
 
         // Callbacks
         public Action<PlayerCharacter, Rectangle> OnAttackHitbox;
@@ -281,6 +299,7 @@ namespace HaCreator.MapSimulator.Character
             Build = build ?? throw new ArgumentNullException(nameof(build));
             Assembler = new CharacterAssembler(build);
             Physics = new CVecCtrl();
+            _observedTamingMobPart = GetEquippedTamingMobPart();
 
             // Preload common animations
             Assembler.PreloadStandardAnimations();
@@ -298,6 +317,7 @@ namespace HaCreator.MapSimulator.Character
             {
                 Assembler = new CharacterAssembler(build);
                 Assembler.PreloadStandardAnimations();
+                _observedTamingMobPart = GetEquippedTamingMobPart();
             }
             // If build is null, we're a placeholder - just track position
         }
@@ -386,6 +406,7 @@ namespace HaCreator.MapSimulator.Character
             CurrentAction = CharacterAction.Sit;
             CurrentActionName = GetPortableChairActionName(chair);
             _animationStartTime = Environment.TickCount;
+            _nextPortableChairRecoveryTime = Environment.TickCount + PORTABLE_CHAIR_RECOVERY_INTERVAL_MS;
             ConfigurePortableChairPairPreview(chair);
             return true;
         }
@@ -400,6 +421,7 @@ namespace HaCreator.MapSimulator.Character
             Build.ActivePortableChair = null;
             ClearPortableChairPairPreview();
             ClearPortableChairMountState();
+            _nextPortableChairRecoveryTime = int.MaxValue;
             if (standUp && State == PlayerState.Sitting)
             {
                 State = Physics.IsOnFoothold() ? PlayerState.Standing : PlayerState.Falling;
@@ -424,6 +446,52 @@ namespace HaCreator.MapSimulator.Character
             _inputGmFlyToggle = false;
             _jumpPressedThisFrame = false;
             _wasJumpHeldLastFrame = false;
+        }
+
+        public void ApplySkillBlockingStatus(PlayerSkillBlockingStatus status, int durationMs, int currentTime)
+        {
+            if (durationMs <= 0)
+            {
+                return;
+            }
+
+            if (_activeSkillBlockingStatuses.TryGetValue(status, out PlayerSkillBlockingStatusState existingState))
+            {
+                existingState.ExpireTime = Math.Max(existingState.ExpireTime, currentTime + durationMs);
+                return;
+            }
+
+            _activeSkillBlockingStatuses[status] = new PlayerSkillBlockingStatusState
+            {
+                ExpireTime = currentTime + durationMs
+            };
+        }
+
+        public string GetSkillBlockingRestrictionMessage(int currentTime)
+        {
+            ClearExpiredSkillBlockingStatuses(currentTime);
+
+            if (_activeSkillBlockingStatuses.ContainsKey(PlayerSkillBlockingStatus.Stun))
+            {
+                return PlayerSkillBlockingStatusMapper.GetRestrictionMessage(PlayerSkillBlockingStatus.Stun);
+            }
+
+            if (_activeSkillBlockingStatuses.ContainsKey(PlayerSkillBlockingStatus.Seal))
+            {
+                return PlayerSkillBlockingStatusMapper.GetRestrictionMessage(PlayerSkillBlockingStatus.Seal);
+            }
+
+            if (_activeSkillBlockingStatuses.ContainsKey(PlayerSkillBlockingStatus.Attract))
+            {
+                return PlayerSkillBlockingStatusMapper.GetRestrictionMessage(PlayerSkillBlockingStatus.Attract);
+            }
+
+            return null;
+        }
+
+        public void ClearSkillBlockingStatuses()
+        {
+            _activeSkillBlockingStatuses.Clear();
         }
 
         /// <summary>
@@ -460,6 +528,11 @@ namespace HaCreator.MapSimulator.Character
             System.Diagnostics.Debug.WriteLine($"[PlayerCharacter] God Mode: {(GodMode ? "ON" : "OFF")}");
         }
 
+        public void SetExternalMoveSpeedMultiplier(float multiplier)
+        {
+            _externalMoveSpeedMultiplier = Math.Clamp(multiplier, 0.1f, 3f);
+        }
+
         #endregion
 
         #region Update
@@ -492,6 +565,7 @@ namespace HaCreator.MapSimulator.Character
             }
 
             RefreshSwimAreaState();
+            UpdateAutomaticTamingMobTransition();
             TryRegrabLadderWhileHoldingUp();
 
             // Process input and update state (pass deltaTime for proper acceleration scaling)
@@ -525,9 +599,47 @@ namespace HaCreator.MapSimulator.Character
             UpdateAnimation(currentTime);
             UpdateAvatarEffects(currentTime);
             UpdateFaceExpression(currentTime);
+            ApplyPortableChairRecovery(currentTime);
             RecordMovementSync(currentTime);
 
             _wasJumpHeldLastFrame = _inputJump;
+        }
+
+        private void ApplyPortableChairRecovery(int currentTime)
+        {
+            PortableChair chair = Build?.ActivePortableChair;
+            if (chair == null || State != PlayerState.Sitting)
+            {
+                _nextPortableChairRecoveryTime = int.MaxValue;
+                return;
+            }
+
+            if (_nextPortableChairRecoveryTime == int.MaxValue)
+            {
+                _nextPortableChairRecoveryTime = currentTime + PORTABLE_CHAIR_RECOVERY_INTERVAL_MS;
+                return;
+            }
+
+            if (currentTime < _nextPortableChairRecoveryTime)
+            {
+                return;
+            }
+
+            if (chair.RecoveryHp > 0)
+            {
+                HP = Math.Min(MaxHP, HP + chair.RecoveryHp);
+            }
+
+            if (chair.RecoveryMp > 0)
+            {
+                MP = Math.Min(MaxMP, MP + chair.RecoveryMp);
+            }
+
+            do
+            {
+                _nextPortableChairRecoveryTime += PORTABLE_CHAIR_RECOVERY_INTERVAL_MS;
+            }
+            while (_nextPortableChairRecoveryTime <= currentTime);
         }
 
         private void RefreshSwimAreaState()
@@ -732,7 +844,7 @@ namespace HaCreator.MapSimulator.Character
                 {
                     _physicsDebugLogged = true;
                     System.Diagnostics.Debug.WriteLine($"[PlayerCharacter Physics] maxSpeed={maxSpeed:F1} px/s, walkForce={walkForce:F1}, walkDrag={walkDrag:F1}, mass={entityMass}, tSec={tSec:F4}");
-                    System.Diagnostics.Debug.WriteLine($"[PlayerCharacter Physics] accel={walkForce/entityMass:F1} px/s², decel={walkDrag/entityMass:F1} px/s²");
+                    System.Diagnostics.Debug.WriteLine($"[PlayerCharacter Physics] accel={walkForce/entityMass:F1} px/sﾂｲ, decel={walkDrag/entityMass:F1} px/sﾂｲ");
                 }
 
                 if (_inputLeft && !_inputRight)
@@ -1675,6 +1787,13 @@ namespace HaCreator.MapSimulator.Character
             }
         }
 
+        public void NotifyTamingMobOwnershipHandledExternally()
+        {
+            _suppressAutomaticTamingMobTransition = true;
+            _observedTamingMobPart = GetEquippedTamingMobPart();
+            SetTransientTamingMobOverride(null);
+        }
+
         public void ClearAllSkillAvatarEffects(bool playFinish, int currentTime)
         {
             for (int i = _activeSkillAvatarEffects.Count - 1; i >= 0; i--)
@@ -1777,6 +1896,11 @@ namespace HaCreator.MapSimulator.Character
 
             if (mode == SkillAvatarEffectMode.LadderOrRope)
             {
+                if (effectState.HideOnLadderOrRope)
+                {
+                    return false;
+                }
+
                 return effectState.LadderOverlayAnimation != null
                        || effectState.GroundOverlayAnimation != null
                        || effectState.GroundUnderFaceAnimation != null;
@@ -1802,7 +1926,8 @@ namespace HaCreator.MapSimulator.Character
                 LadderOverlayAnimation = skill.AvatarLadderEffect,
                 GroundOverlayFinishAnimation = skill.AvatarOverlayFinishEffect,
                 GroundUnderFaceFinishAnimation = skill.AvatarUnderFaceFinishEffect,
-                LadderOverlayFinishAnimation = skill.AvatarLadderFinishEffect
+                LadderOverlayFinishAnimation = skill.AvatarLadderFinishEffect,
+                HideOnLadderOrRope = skill.HideAvatarEffectOnLadderOrRope
             };
 
             return effectState.HasLoopAnimation || effectState.HasFinishAnimation;
@@ -1841,6 +1966,11 @@ namespace HaCreator.MapSimulator.Character
 
             if (mode == SkillAvatarEffectMode.LadderOrRope)
             {
+                if (effectState.HideOnLadderOrRope)
+                {
+                    return false;
+                }
+
                 return effectState.LadderOverlayFinishAnimation != null
                        || effectState.GroundOverlayFinishAnimation != null
                        || effectState.GroundUnderFaceFinishAnimation != null;
@@ -1912,6 +2042,11 @@ namespace HaCreator.MapSimulator.Character
             if (effectState.Mode == SkillAvatarEffectMode.LadderOrRope && effectState.LadderOverlayAnimation != null)
             {
                 yield return effectState.LadderOverlayAnimation;
+                yield break;
+            }
+
+            if (effectState.Mode == SkillAvatarEffectMode.LadderOrRope && effectState.HideOnLadderOrRope)
+            {
                 yield break;
             }
 
@@ -2083,6 +2218,7 @@ namespace HaCreator.MapSimulator.Character
             if (!IsAlive) return;
 
             ClearPortableChair(standUp: false);
+            ClearSkillBlockingStatuses();
             HP = 0;
             State = PlayerState.Dead;
             CurrentAction = CharacterAction.Dead;
@@ -2124,6 +2260,7 @@ namespace HaCreator.MapSimulator.Character
         public void Respawn(float x, float y)
         {
             ClearPortableChair(standUp: false);
+            ClearSkillBlockingStatuses();
             HP = MaxHP;
             MP = MaxMP;
             State = PlayerState.Standing;
@@ -2163,6 +2300,36 @@ namespace HaCreator.MapSimulator.Character
             _inputUp = false;
             _inputDown = false;
             _inputJump = false;
+        }
+
+        private void ClearExpiredSkillBlockingStatuses(int currentTime)
+        {
+            if (_activeSkillBlockingStatuses.Count == 0)
+            {
+                return;
+            }
+
+            List<PlayerSkillBlockingStatus> expiredStatuses = null;
+            foreach (KeyValuePair<PlayerSkillBlockingStatus, PlayerSkillBlockingStatusState> entry in _activeSkillBlockingStatuses)
+            {
+                if (currentTime < entry.Value.ExpireTime)
+                {
+                    continue;
+                }
+
+                expiredStatuses ??= new List<PlayerSkillBlockingStatus>();
+                expiredStatuses.Add(entry.Key);
+            }
+
+            if (expiredStatuses == null)
+            {
+                return;
+            }
+
+            foreach (PlayerSkillBlockingStatus status in expiredStatuses)
+            {
+                _activeSkillBlockingStatuses.Remove(status);
+            }
         }
 
         #endregion
@@ -2222,6 +2389,22 @@ namespace HaCreator.MapSimulator.Character
                 // Fallback: draw simple rectangle
                 var rect = new Rectangle(screenX - 15, screenY - 60, 30, 60);
                 spriteBatch.Draw(GetPixelTexture(spriteBatch.GraphicsDevice), rect, Color.Blue * 0.5f);
+            }
+        }
+
+        public void TakeStatusDamage(int damage)
+        {
+            if (!IsAlive || GodMode || damage <= 0)
+            {
+                return;
+            }
+
+            HP -= damage;
+            OnDamaged?.Invoke(this, damage);
+
+            if (HP <= 0)
+            {
+                Die();
             }
         }
 
@@ -2540,6 +2723,7 @@ namespace HaCreator.MapSimulator.Character
             Build.Equipment.TryGetValue(EquipSlot.TamingMob, out _portableChairPreviousMount);
             Build.Equip(mountPart);
             _portableChairAppliedMount = true;
+            NotifyTamingMobOwnershipHandledExternally();
         }
 
         private void ClearPortableChairMountState()
@@ -2560,6 +2744,7 @@ namespace HaCreator.MapSimulator.Character
 
             _portableChairPreviousMount = null;
             _portableChairAppliedMount = false;
+            NotifyTamingMobOwnershipHandledExternally();
         }
 
         private void ClearTransientSkillAvatarEffect(int skillId)
@@ -2664,6 +2849,107 @@ namespace HaCreator.MapSimulator.Character
         {
             _sustainedSkillAnimation = false;
             _forcedActionName = null;
+            SetTransientTamingMobOverride(null);
+        }
+
+        private void UpdateAutomaticTamingMobTransition()
+        {
+            CharacterPart equippedMount = GetEquippedTamingMobPart();
+
+            if (_suppressAutomaticTamingMobTransition)
+            {
+                _observedTamingMobPart = equippedMount;
+                _suppressAutomaticTamingMobTransition = false;
+                return;
+            }
+
+            if (SameTamingMob(_observedTamingMobPart, equippedMount))
+            {
+                return;
+            }
+
+            if (_portableChairAppliedMount || Build?.ActivePortableChair != null)
+            {
+                _observedTamingMobPart = equippedMount;
+                return;
+            }
+
+            if (State == PlayerState.Attacking && !IsAutomaticTamingMobTransitionAction(CurrentActionName))
+            {
+                _observedTamingMobPart = equippedMount;
+                return;
+            }
+
+            if (equippedMount?.Slot == EquipSlot.TamingMob
+                && SupportsTamingMobTransitionAction(equippedMount, "ride2"))
+            {
+                TriggerAutomaticTamingMobTransition(equippedMount, "ride2", preserveUnmountedMount: false);
+            }
+            else if (_observedTamingMobPart?.Slot == EquipSlot.TamingMob
+                     && SupportsTamingMobTransitionAction(_observedTamingMobPart, "getoff2"))
+            {
+                TriggerAutomaticTamingMobTransition(_observedTamingMobPart, "getoff2", preserveUnmountedMount: true);
+            }
+            else
+            {
+                SetTransientTamingMobOverride(null);
+            }
+
+            _observedTamingMobPart = equippedMount;
+        }
+
+        private void TriggerAutomaticTamingMobTransition(CharacterPart mountPart, string actionName, bool preserveUnmountedMount)
+        {
+            if (mountPart?.Slot != EquipSlot.TamingMob || string.IsNullOrWhiteSpace(actionName))
+            {
+                return;
+            }
+
+            SetTransientTamingMobOverride(preserveUnmountedMount ? mountPart : null);
+            TriggerSkillAnimation(actionName);
+        }
+
+        private CharacterPart GetEquippedTamingMobPart()
+        {
+            return Build?.Equipment != null
+                && Build.Equipment.TryGetValue(EquipSlot.TamingMob, out CharacterPart mountPart)
+                ? mountPart
+                : null;
+        }
+
+        private void SetTransientTamingMobOverride(CharacterPart mountPart)
+        {
+            if (Assembler != null)
+            {
+                Assembler.OverrideTamingMobPart = mountPart?.Slot == EquipSlot.TamingMob ? mountPart : null;
+            }
+        }
+
+        private static bool SupportsTamingMobTransitionAction(CharacterPart mountPart, string actionName)
+        {
+            return mountPart?.Slot == EquipSlot.TamingMob
+                   && mountPart.GetAnimation(actionName) != null;
+        }
+
+        private static bool IsAutomaticTamingMobTransitionAction(string actionName)
+        {
+            return string.Equals(actionName, "ride2", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(actionName, "getoff2", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static bool SameTamingMob(CharacterPart left, CharacterPart right)
+        {
+            if (ReferenceEquals(left, right))
+            {
+                return true;
+            }
+
+            if (left == null || right == null)
+            {
+                return false;
+            }
+
+            return left.Slot == right.Slot && left.ItemId == right.ItemId;
         }
 
         private static CharacterAction GetCharacterActionForActionName(string actionName)
@@ -2816,6 +3102,9 @@ namespace HaCreator.MapSimulator.Character
                 case 33101005:
                     transform = CreateSingleActionTransform(skillId, "swallow_loop", "swallow");
                     return true;
+                case 33121006:
+                    transform = CreateSingleActionTransform(skillId, "wildbeast", exitActionName: null);
+                    return true;
                 case 5311002:
                     transform = CreateSingleActionTransform(skillId, "noiseWave_ing", "noiseWave");
                     return true;
@@ -2866,6 +3155,12 @@ namespace HaCreator.MapSimulator.Character
             if (string.Equals(normalizedAction, "swallow_loop", StringComparison.OrdinalIgnoreCase))
             {
                 transform = CreateSingleActionTransform(skillId, "swallow_loop", "swallow");
+                return true;
+            }
+
+            if (string.Equals(normalizedAction, "wildbeast", StringComparison.OrdinalIgnoreCase))
+            {
+                transform = CreateSingleActionTransform(skillId, "wildbeast", exitActionName: null);
                 return true;
             }
 
@@ -3013,7 +3308,7 @@ namespace HaCreator.MapSimulator.Character
         private float GetMoveSpeed()
         {
             // Get character Speed stat (default 100)
-            float characterSpeed = Build?.Speed ?? 100f;
+            float characterSpeed = (Build?.Speed ?? 100f) * _externalMoveSpeedMultiplier;
 
             // Official client formula:
             //   maxSpeed = CAttrShoe::walkSpeed * (dWalkSpeed * footholdDrag)

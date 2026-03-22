@@ -14,7 +14,8 @@ namespace HaCreator.MapSimulator.Managers
             bool canDelete = true,
             int? previousWorldRank = null,
             int? previousJobRank = null,
-            byte[] avatarLookPacket = null)
+            byte[] avatarLookPacket = null,
+            int portal = 0)
         {
             Build = build ?? throw new ArgumentNullException(nameof(build));
             FieldMapId = fieldMapId;
@@ -23,6 +24,7 @@ namespace HaCreator.MapSimulator.Managers
             PreviousWorldRank = previousWorldRank;
             PreviousJobRank = previousJobRank;
             AvatarLookPacket = avatarLookPacket != null ? (byte[])avatarLookPacket.Clone() : null;
+            Portal = portal;
         }
 
         public CharacterBuild Build { get; }
@@ -32,6 +34,7 @@ namespace HaCreator.MapSimulator.Managers
         public int? PreviousWorldRank { get; }
         public int? PreviousJobRank { get; }
         public byte[] AvatarLookPacket { get; }
+        public int Portal { get; }
 
         public CharacterBuild CreateRuntimeBuild(CharacterLoader loader)
         {

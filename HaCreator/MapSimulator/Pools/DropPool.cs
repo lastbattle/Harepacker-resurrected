@@ -72,6 +72,7 @@ namespace HaCreator.MapSimulator.Pools
     public sealed class DropPickupAttemptResult
     {
         public DropItem Drop { get; init; }
+        public DropItem ContextDrop { get; init; }
         public DropPickupFailureReason FailureReason { get; init; }
 
         public bool Success => Drop != null && FailureReason == DropPickupFailureReason.None;
@@ -700,6 +701,7 @@ namespace HaCreator.MapSimulator.Pools
             float rangeSq = range * range;
             DropItem closestAvailable = null;
             float closestAvailableDistSq = float.MaxValue;
+            DropItem closestFailureDrop = null;
             DropPickupFailureReason closestFailureReason = DropPickupFailureReason.NoDropInRange;
             float closestFailureDistSq = float.MaxValue;
 
@@ -722,6 +724,7 @@ namespace HaCreator.MapSimulator.Pools
                 {
                     if (distSq < closestFailureDistSq)
                     {
+                        closestFailureDrop = drop;
                         closestFailureDistSq = distSq;
                         closestFailureReason = DropPickupFailureReason.OwnershipRestricted;
                     }
@@ -734,6 +737,7 @@ namespace HaCreator.MapSimulator.Pools
                 {
                     if (distSq < closestFailureDistSq)
                     {
+                        closestFailureDrop = drop;
                         closestFailureDistSq = distSq;
                         closestFailureReason = validatorReason;
                     }
@@ -760,6 +764,7 @@ namespace HaCreator.MapSimulator.Pools
             return new DropPickupAttemptResult
             {
                 Drop = null,
+                ContextDrop = closestFailureDrop,
                 FailureReason = closestFailureReason
             };
         }
@@ -962,6 +967,7 @@ namespace HaCreator.MapSimulator.Pools
                 return new DropPickupAttemptResult
                 {
                     Drop = closestDrop,
+                    ContextDrop = closestDrop,
                     FailureReason = DropPickupFailureReason.None
                 };
             }
@@ -970,6 +976,7 @@ namespace HaCreator.MapSimulator.Pools
             return new DropPickupAttemptResult
             {
                 Drop = null,
+                ContextDrop = closestFailureDrop,
                 FailureReason = closestFailureReason
             };
         }
@@ -996,6 +1003,7 @@ namespace HaCreator.MapSimulator.Pools
             _onPickupFailed?.Invoke(new DropPickupAttemptResult
             {
                 Drop = null,
+                ContextDrop = drop,
                 FailureReason = reason
             }, pickerId, pickedByPet);
         }

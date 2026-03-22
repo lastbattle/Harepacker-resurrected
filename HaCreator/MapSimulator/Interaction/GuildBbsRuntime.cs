@@ -4,14 +4,33 @@ using System.Linq;
 
 namespace HaCreator.MapSimulator.Interaction
 {
+    internal enum GuildBbsEmoticonKind
+    {
+        None,
+        Basic,
+        Cash
+    }
+
     internal sealed class GuildBbsRuntime
     {
+        private const int VisibleThreadCount = 8;
+        private const int VisibleCommentCount = 4;
+        private const int BasicEmoticonCount = 3;
+        private const int CashEmoticonCount = 8;
+        private const int CashEmoticonPageCount = 2;
+        private const int MaxTitleLength = 40;
+        private const int MaxThreadBodyLength = 420;
+        private const int MaxReplyBodyLength = 120;
+
         private sealed class GuildBbsCommentState
         {
             public int CommentId { get; init; }
             public string Author { get; set; } = string.Empty;
             public string Body { get; set; } = string.Empty;
             public DateTimeOffset CreatedAt { get; set; }
+            public GuildBbsEmoticonKind EmoticonKind { get; set; }
+            public int EmoticonSlot { get; set; } = -1;
+            public int CashEmoticonPageIndex { get; set; }
         }
 
         private sealed class GuildBbsThreadState
@@ -22,6 +41,9 @@ namespace HaCreator.MapSimulator.Interaction
             public string Author { get; set; } = string.Empty;
             public DateTimeOffset CreatedAt { get; set; }
             public bool IsNotice { get; set; }
+            public GuildBbsEmoticonKind EmoticonKind { get; set; }
+            public int EmoticonSlot { get; set; } = -1;
+            public int CashEmoticonPageIndex { get; set; }
             public List<GuildBbsCommentState> Comments { get; } = new();
         }
 
@@ -31,14 +53,28 @@ namespace HaCreator.MapSimulator.Interaction
             public string Title { get; set; } = string.Empty;
             public string Body { get; set; } = string.Empty;
             public bool IsNotice { get; set; }
+            public GuildBbsEmoticonKind EmoticonKind { get; set; }
+            public int EmoticonSlot { get; set; } = -1;
+            public int CashEmoticonPageIndex { get; set; }
+        }
+
+        private sealed class GuildBbsReplyDraftState
+        {
+            public string Body { get; set; } = string.Empty;
+            public GuildBbsEmoticonKind EmoticonKind { get; set; }
+            public int EmoticonSlot { get; set; } = -1;
+            public int CashEmoticonPageIndex { get; set; }
         }
 
         private readonly List<GuildBbsThreadState> _threads = new();
         private GuildBbsComposeState _compose = new();
+        private readonly GuildBbsReplyDraftState _replyDraft = new();
         private string _localPlayerName = "Player";
         private string _guildName = "Maple Guild";
         private string _locationSummary = "Field";
         private int _selectedThreadId;
+        private int _threadPageIndex;
+        private int _commentPageIndex;
         private int _nextThreadId = 1;
         private int _nextCommentId = 1;
         private int _draftCounter = 1;
@@ -61,62 +97,114 @@ namespace HaCreator.MapSimulator.Interaction
         {
             IReadOnlyList<GuildBbsThreadState> orderedThreads = GetOrderedThreads();
             EnsureSelection(orderedThreads);
+            EnsureThreadPageInRange(orderedThreads.Count);
 
             GuildBbsThreadState selectedThread = orderedThreads.FirstOrDefault(thread => thread.ThreadId == _selectedThreadId);
+            int threadPageCount = Math.Max(1, (int)Math.Ceiling(orderedThreads.Count / (double)VisibleThreadCount));
+            IReadOnlyList<GuildBbsThreadEntrySnapshot> visibleThreads = orderedThreads
+                .Skip(_threadPageIndex * VisibleThreadCount)
+                .Take(VisibleThreadCount)
+                .Select(thread => new GuildBbsThreadEntrySnapshot
+                {
+                    ThreadId = thread.ThreadId,
+                    Title = thread.Title,
+                    Author = thread.Author,
+                    DateText = thread.CreatedAt.ToLocalTime().ToString("yyyy.MM.dd"),
+                    CommentCount = thread.Comments.Count,
+                    IsNotice = thread.IsNotice,
+                    Emoticon = CreateEmoticonSnapshot(thread.EmoticonKind, thread.EmoticonSlot, thread.CashEmoticonPageIndex)
+                })
+                .ToArray();
+
+            GuildBbsThreadSnapshot selectedThreadSnapshot = null;
+            if (selectedThread != null)
+            {
+                IReadOnlyList<GuildBbsCommentState> orderedComments = selectedThread.Comments
+                    .OrderBy(comment => comment.CreatedAt)
+                    .ToArray();
+                EnsureCommentPageInRange(orderedComments.Count);
+
+                int commentPageCount = Math.Max(1, (int)Math.Ceiling(orderedComments.Count / (double)VisibleCommentCount));
+                IReadOnlyList<GuildBbsCommentSnapshot> visibleComments = orderedComments
+                    .Skip(_commentPageIndex * VisibleCommentCount)
+                    .Take(VisibleCommentCount)
+                    .Select(comment => new GuildBbsCommentSnapshot
+                    {
+                        CommentId = comment.CommentId,
+                        Author = comment.Author,
+                        Body = comment.Body,
+                        DateText = comment.CreatedAt.ToLocalTime().ToString("MM.dd HH:mm"),
+                        Emoticon = CreateEmoticonSnapshot(comment.EmoticonKind, comment.EmoticonSlot, comment.CashEmoticonPageIndex)
+                    })
+                    .ToArray();
+
+                selectedThreadSnapshot = new GuildBbsThreadSnapshot
+                {
+                    ThreadId = selectedThread.ThreadId,
+                    Title = selectedThread.Title,
+                    Body = selectedThread.Body,
+                    Author = selectedThread.Author,
+                    DateText = selectedThread.CreatedAt.ToLocalTime().ToString("yyyy.MM.dd HH:mm"),
+                    IsNotice = selectedThread.IsNotice,
+                    Emoticon = CreateEmoticonSnapshot(selectedThread.EmoticonKind, selectedThread.EmoticonSlot, selectedThread.CashEmoticonPageIndex),
+                    Comments = visibleComments,
+                    TotalCommentCount = orderedComments.Count,
+                    CommentPageIndex = _commentPageIndex,
+                    CommentPageCount = commentPageCount
+                };
+            }
+            else
+            {
+                _commentPageIndex = 0;
+            }
+
             return new GuildBbsSnapshot
             {
                 GuildName = _guildName,
                 LocalPlayerName = _localPlayerName,
                 IsWriteMode = IsWriteMode,
                 SelectedThreadId = _selectedThreadId,
-                Threads = orderedThreads
-                    .Select(thread => new GuildBbsThreadEntrySnapshot
-                    {
-                        ThreadId = thread.ThreadId,
-                        Title = thread.Title,
-                        Author = thread.Author,
-                        DateText = thread.CreatedAt.ToLocalTime().ToString("yyyy.MM.dd"),
-                        CommentCount = thread.Comments.Count,
-                        IsNotice = thread.IsNotice
-                    })
-                    .ToArray(),
-                SelectedThread = selectedThread == null
-                    ? null
-                    : new GuildBbsThreadSnapshot
-                    {
-                        ThreadId = selectedThread.ThreadId,
-                        Title = selectedThread.Title,
-                        Body = selectedThread.Body,
-                        Author = selectedThread.Author,
-                        DateText = selectedThread.CreatedAt.ToLocalTime().ToString("yyyy.MM.dd HH:mm"),
-                        IsNotice = selectedThread.IsNotice,
-                        Comments = selectedThread.Comments
-                            .OrderBy(comment => comment.CreatedAt)
-                            .Select(comment => new GuildBbsCommentSnapshot
-                            {
-                                CommentId = comment.CommentId,
-                                Author = comment.Author,
-                                Body = comment.Body,
-                                DateText = comment.CreatedAt.ToLocalTime().ToString("MM.dd HH:mm")
-                            })
-                            .ToArray()
-                    },
+                Threads = visibleThreads,
+                TotalThreadCount = orderedThreads.Count,
+                ThreadPageIndex = _threadPageIndex,
+                ThreadPageCount = threadPageCount,
+                SelectedThread = selectedThreadSnapshot,
                 Compose = new GuildBbsComposeSnapshot
                 {
                     Title = _compose.Title,
                     Body = _compose.Body,
                     IsNotice = _compose.IsNotice,
-                    ModeText = _compose.EditThreadId > 0 ? "EDIT THREAD" : "WRITE THREAD"
+                    ModeText = _compose.EditThreadId > 0 ? "EDIT THREAD" : "WRITE THREAD",
+                    CashEmoticonPageIndex = _compose.CashEmoticonPageIndex,
+                    CashEmoticonPageCount = CashEmoticonPageCount,
+                    SelectedEmoticon = CreateEmoticonSnapshot(_compose.EmoticonKind, _compose.EmoticonSlot, _compose.CashEmoticonPageIndex)
+                },
+                ReplyDraft = new GuildBbsReplyDraftSnapshot
+                {
+                    Body = _replyDraft.Body,
+                    CashEmoticonPageIndex = _replyDraft.CashEmoticonPageIndex,
+                    CashEmoticonPageCount = CashEmoticonPageCount,
+                    SelectedEmoticon = CreateEmoticonSnapshot(_replyDraft.EmoticonKind, _replyDraft.EmoticonSlot, _replyDraft.CashEmoticonPageIndex)
                 }
             };
         }
 
         public void SelectThread(int threadId)
         {
-            if (_threads.Any(thread => thread.ThreadId == threadId))
+            IReadOnlyList<GuildBbsThreadState> orderedThreads = GetOrderedThreads();
+            if (!orderedThreads.Any(thread => thread.ThreadId == threadId))
             {
-                _selectedThreadId = threadId;
+                return;
             }
+
+            _selectedThreadId = threadId;
+            _commentPageIndex = 0;
+
+            int threadIndex = orderedThreads
+                .Select((thread, index) => new { thread.ThreadId, index })
+                .First(entry => entry.ThreadId == threadId)
+                .index;
+            _threadPageIndex = threadIndex / VisibleThreadCount;
         }
 
         public string BeginWrite()
@@ -140,7 +228,10 @@ namespace HaCreator.MapSimulator.Interaction
                 EditThreadId = selectedThread.ThreadId,
                 Title = selectedThread.Title,
                 Body = selectedThread.Body,
-                IsNotice = selectedThread.IsNotice
+                IsNotice = selectedThread.IsNotice,
+                EmoticonKind = selectedThread.EmoticonKind,
+                EmoticonSlot = selectedThread.EmoticonSlot,
+                CashEmoticonPageIndex = selectedThread.CashEmoticonPageIndex
             };
             return $"Editing thread #{selectedThread.ThreadId}.";
         }
@@ -186,7 +277,9 @@ namespace HaCreator.MapSimulator.Interaction
                 return "Guild BBS write mode is not active.";
             }
 
-            string resolvedTitle = string.IsNullOrWhiteSpace(_compose.Title) ? $"Guild update {_draftCounter}" : _compose.Title.Trim();
+            string resolvedTitle = string.IsNullOrWhiteSpace(_compose.Title)
+                ? $"Guild update {_draftCounter}"
+                : _compose.Title.Trim();
             string resolvedBody = string.IsNullOrWhiteSpace(_compose.Body)
                 ? $"Posting from {_locationSummary} for {_guildName} parity checks."
                 : _compose.Body.Trim();
@@ -205,6 +298,9 @@ namespace HaCreator.MapSimulator.Interaction
                 existingThread.Body = resolvedBody;
                 existingThread.IsNotice = _compose.IsNotice;
                 existingThread.CreatedAt = DateTimeOffset.Now;
+                existingThread.EmoticonKind = _compose.EmoticonKind;
+                existingThread.EmoticonSlot = _compose.EmoticonSlot;
+                existingThread.CashEmoticonPageIndex = _compose.CashEmoticonPageIndex;
                 _selectedThreadId = existingThread.ThreadId;
             }
             else
@@ -216,7 +312,10 @@ namespace HaCreator.MapSimulator.Interaction
                     Body = resolvedBody,
                     Author = _localPlayerName,
                     CreatedAt = DateTimeOffset.Now,
-                    IsNotice = _compose.IsNotice
+                    IsNotice = _compose.IsNotice,
+                    EmoticonKind = _compose.EmoticonKind,
+                    EmoticonSlot = _compose.EmoticonSlot,
+                    CashEmoticonPageIndex = _compose.CashEmoticonPageIndex
                 };
                 _threads.Add(newThread);
                 _selectedThreadId = newThread.ThreadId;
@@ -225,6 +324,7 @@ namespace HaCreator.MapSimulator.Interaction
 
             IsWriteMode = false;
             _compose = new GuildBbsComposeState();
+            SelectThread(_selectedThreadId);
             return "Guild BBS thread registered.";
         }
 
@@ -239,6 +339,7 @@ namespace HaCreator.MapSimulator.Interaction
             _threads.Remove(selectedThread);
             _selectedThreadId = 0;
             EnsureSelection(GetOrderedThreads());
+            _commentPageIndex = 0;
             return $"Deleted Guild BBS thread #{selectedThread.ThreadId}.";
         }
 
@@ -250,13 +351,27 @@ namespace HaCreator.MapSimulator.Interaction
                 return "Select a Guild BBS thread before replying.";
             }
 
+            string replyBody = string.IsNullOrWhiteSpace(_replyDraft.Body)
+                ? $"Checked in from {_locationSummary}."
+                : _replyDraft.Body.Trim();
             selectedThread.Comments.Add(new GuildBbsCommentState
             {
                 CommentId = _nextCommentId++,
                 Author = _localPlayerName,
-                Body = $"Checked in from {_locationSummary}.",
-                CreatedAt = DateTimeOffset.Now
+                Body = replyBody,
+                CreatedAt = DateTimeOffset.Now,
+                EmoticonKind = _replyDraft.EmoticonKind,
+                EmoticonSlot = _replyDraft.EmoticonSlot,
+                CashEmoticonPageIndex = _replyDraft.CashEmoticonPageIndex
             });
+
+            _replyDraft.Body = string.Empty;
+            _replyDraft.EmoticonKind = GuildBbsEmoticonKind.None;
+            _replyDraft.EmoticonSlot = -1;
+            _replyDraft.CashEmoticonPageIndex = 0;
+
+            IReadOnlyList<GuildBbsCommentState> orderedComments = selectedThread.Comments.OrderBy(comment => comment.CreatedAt).ToArray();
+            _commentPageIndex = Math.Max(0, (orderedComments.Count - 1) / VisibleCommentCount);
             return $"Added a Guild BBS reply to thread #{selectedThread.ThreadId}.";
         }
 
@@ -276,7 +391,105 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             selectedThread.Comments.Remove(comment);
+            EnsureCommentPageInRange(selectedThread.Comments.Count);
             return $"Removed the latest Guild BBS reply from thread #{selectedThread.ThreadId}.";
+        }
+
+        public string SetComposeTitle(string title)
+        {
+            _compose.Title = SanitizeText(title, MaxTitleLength);
+            return $"Compose title updated ({_compose.Title.Length}/{MaxTitleLength}).";
+        }
+
+        public string SetComposeBody(string body)
+        {
+            _compose.Body = SanitizeText(body, MaxThreadBodyLength);
+            return $"Compose body updated ({_compose.Body.Length}/{MaxThreadBodyLength}).";
+        }
+
+        public string SetReplyDraft(string body)
+        {
+            _replyDraft.Body = SanitizeText(body, MaxReplyBodyLength);
+            return $"Reply draft updated ({_replyDraft.Body.Length}/{MaxReplyBodyLength}).";
+        }
+
+        public string MoveThreadPage(int delta)
+        {
+            int pageCount = Math.Max(1, (int)Math.Ceiling(_threads.Count / (double)VisibleThreadCount));
+            int nextPage = Math.Clamp(_threadPageIndex + delta, 0, pageCount - 1);
+            if (nextPage == _threadPageIndex)
+            {
+                return $"Guild BBS thread page {_threadPageIndex + 1}/{pageCount}.";
+            }
+
+            _threadPageIndex = nextPage;
+            IReadOnlyList<GuildBbsThreadState> orderedThreads = GetOrderedThreads();
+            GuildBbsThreadState firstThread = orderedThreads.Skip(_threadPageIndex * VisibleThreadCount).FirstOrDefault();
+            if (firstThread != null)
+            {
+                _selectedThreadId = firstThread.ThreadId;
+                _commentPageIndex = 0;
+            }
+
+            return $"Guild BBS thread page {_threadPageIndex + 1}/{pageCount}.";
+        }
+
+        public string MoveCommentPage(int delta)
+        {
+            GuildBbsThreadState selectedThread = GetSelectedThread();
+            if (selectedThread == null)
+            {
+                return "Select a Guild BBS thread before paging its comments.";
+            }
+
+            int pageCount = Math.Max(1, (int)Math.Ceiling(selectedThread.Comments.Count / (double)VisibleCommentCount));
+            int nextPage = Math.Clamp(_commentPageIndex + delta, 0, pageCount - 1);
+            _commentPageIndex = nextPage;
+            return $"Guild BBS comment page {_commentPageIndex + 1}/{pageCount}.";
+        }
+
+        public string MoveComposeCashEmoticonPage(int delta)
+        {
+            int nextPage = Math.Clamp(_compose.CashEmoticonPageIndex + delta, 0, CashEmoticonPageCount - 1);
+            _compose.CashEmoticonPageIndex = nextPage;
+            return $"Guild BBS compose cash emoticon page {_compose.CashEmoticonPageIndex + 1}/{CashEmoticonPageCount}.";
+        }
+
+        public string MoveReplyCashEmoticonPage(int delta)
+        {
+            int nextPage = Math.Clamp(_replyDraft.CashEmoticonPageIndex + delta, 0, CashEmoticonPageCount - 1);
+            _replyDraft.CashEmoticonPageIndex = nextPage;
+            return $"Guild BBS reply cash emoticon page {_replyDraft.CashEmoticonPageIndex + 1}/{CashEmoticonPageCount}.";
+        }
+
+        public string SelectComposeEmoticon(GuildBbsEmoticonKind kind, int slotIndex, int cashPageIndex)
+        {
+            if (!TryResolveEmoticonSelection(kind, slotIndex, cashPageIndex, out GuildBbsEmoticonKind resolvedKind, out int resolvedSlot, out int resolvedPage))
+            {
+                _compose.EmoticonKind = GuildBbsEmoticonKind.None;
+                _compose.EmoticonSlot = -1;
+                return "Compose emoticon cleared.";
+            }
+
+            _compose.EmoticonKind = resolvedKind;
+            _compose.EmoticonSlot = resolvedSlot;
+            _compose.CashEmoticonPageIndex = resolvedPage;
+            return $"Compose emoticon set to {DescribeEmoticon(resolvedKind, resolvedSlot, resolvedPage)}.";
+        }
+
+        public string SelectReplyEmoticon(GuildBbsEmoticonKind kind, int slotIndex, int cashPageIndex)
+        {
+            if (!TryResolveEmoticonSelection(kind, slotIndex, cashPageIndex, out GuildBbsEmoticonKind resolvedKind, out int resolvedSlot, out int resolvedPage))
+            {
+                _replyDraft.EmoticonKind = GuildBbsEmoticonKind.None;
+                _replyDraft.EmoticonSlot = -1;
+                return "Reply emoticon cleared.";
+            }
+
+            _replyDraft.EmoticonKind = resolvedKind;
+            _replyDraft.EmoticonSlot = resolvedSlot;
+            _replyDraft.CashEmoticonPageIndex = resolvedPage;
+            return $"Reply emoticon set to {DescribeEmoticon(resolvedKind, resolvedSlot, resolvedPage)}.";
         }
 
         public string DescribeStatus()
@@ -285,7 +498,7 @@ namespace HaCreator.MapSimulator.Interaction
             string threadSummary = selectedThread == null
                 ? "none"
                 : $"#{selectedThread.ThreadId} \"{selectedThread.Title}\" ({selectedThread.Comments.Count} comment(s))";
-            return $"Guild BBS: threads={_threads.Count}, selected={threadSummary}, mode={(IsWriteMode ? "write" : "read")}, guild={_guildName}";
+            return $"Guild BBS: threads={_threads.Count}, threadPage={_threadPageIndex + 1}, commentPage={_commentPageIndex + 1}, selected={threadSummary}, mode={(IsWriteMode ? "write" : "read")}, guild={_guildName}";
         }
 
         private GuildBbsComposeState CreateDraftFromContext()
@@ -294,7 +507,8 @@ namespace HaCreator.MapSimulator.Interaction
             {
                 Title = $"{_guildName} Roll Call {_draftCounter}",
                 Body = $"Field check from {_locationSummary}. Reply here so guild-room and board parity can be validated together.",
-                IsNotice = false
+                IsNotice = false,
+                CashEmoticonPageIndex = 0
             };
         }
 
@@ -318,7 +532,96 @@ namespace HaCreator.MapSimulator.Interaction
                 return;
             }
 
-            _selectedThreadId = orderedThreads.FirstOrDefault()?.ThreadId ?? 0;
+            GuildBbsThreadState selectedThread = orderedThreads.Skip(_threadPageIndex * VisibleThreadCount).FirstOrDefault()
+                ?? orderedThreads.FirstOrDefault();
+            _selectedThreadId = selectedThread?.ThreadId ?? 0;
+        }
+
+        private void EnsureThreadPageInRange(int totalThreadCount)
+        {
+            int maxPageIndex = Math.Max(0, (int)Math.Ceiling(totalThreadCount / (double)VisibleThreadCount) - 1);
+            _threadPageIndex = Math.Clamp(_threadPageIndex, 0, maxPageIndex);
+        }
+
+        private void EnsureCommentPageInRange(int totalCommentCount)
+        {
+            int maxPageIndex = Math.Max(0, (int)Math.Ceiling(totalCommentCount / (double)VisibleCommentCount) - 1);
+            _commentPageIndex = Math.Clamp(_commentPageIndex, 0, maxPageIndex);
+        }
+
+        private static string SanitizeText(string value, int maxLength)
+        {
+            if (string.IsNullOrEmpty(value))
+            {
+                return string.Empty;
+            }
+
+            string trimmed = value.Replace("\r", string.Empty).TrimStart();
+            return trimmed.Length <= maxLength ? trimmed : trimmed[..maxLength];
+        }
+
+        private static bool TryResolveEmoticonSelection(
+            GuildBbsEmoticonKind kind,
+            int slotIndex,
+            int cashPageIndex,
+            out GuildBbsEmoticonKind resolvedKind,
+            out int resolvedSlot,
+            out int resolvedPage)
+        {
+            resolvedKind = GuildBbsEmoticonKind.None;
+            resolvedSlot = -1;
+            resolvedPage = 0;
+
+            switch (kind)
+            {
+                case GuildBbsEmoticonKind.Basic:
+                    if (slotIndex < 0 || slotIndex >= BasicEmoticonCount)
+                    {
+                        return false;
+                    }
+
+                    resolvedKind = GuildBbsEmoticonKind.Basic;
+                    resolvedSlot = slotIndex;
+                    return true;
+                case GuildBbsEmoticonKind.Cash:
+                    if (slotIndex < 0 || slotIndex >= CashEmoticonCount)
+                    {
+                        return false;
+                    }
+
+                    resolvedKind = GuildBbsEmoticonKind.Cash;
+                    resolvedSlot = slotIndex;
+                    resolvedPage = Math.Clamp(cashPageIndex, 0, CashEmoticonPageCount - 1);
+                    return true;
+                default:
+                    return false;
+            }
+        }
+
+        private static GuildBbsEmoticonSnapshot CreateEmoticonSnapshot(GuildBbsEmoticonKind kind, int slotIndex, int cashPageIndex)
+        {
+            if (kind == GuildBbsEmoticonKind.None || slotIndex < 0)
+            {
+                return null;
+            }
+
+            return new GuildBbsEmoticonSnapshot
+            {
+                Kind = kind,
+                SlotIndex = slotIndex,
+                CashPageIndex = cashPageIndex,
+                DisplayText = DescribeEmoticon(kind, slotIndex, cashPageIndex)
+            };
+        }
+
+        private static string DescribeEmoticon(GuildBbsEmoticonKind kind, int slotIndex, int cashPageIndex)
+        {
+            return kind switch
+            {
+                GuildBbsEmoticonKind.Basic => $"Basic {slotIndex + 1}",
+                GuildBbsEmoticonKind.Cash => $"Cash {cashPageIndex + 1}-{slotIndex + 1}",
+                _ => "None"
+            };
         }
 
         private void SeedDefaultThreads()
@@ -328,27 +631,38 @@ namespace HaCreator.MapSimulator.Interaction
                 "This simulator-owned board mirrors the dedicated Guild BBS surface instead of collapsing guild traffic into chat alone.",
                 "Shanks",
                 DateTimeOffset.Now.AddDays(-4),
-                isNotice: true);
+                isNotice: true,
+                GuildBbsEmoticonKind.Basic,
+                0,
+                0);
             welcomeThread.Comments.Add(new GuildBbsCommentState
             {
                 CommentId = _nextCommentId++,
                 Author = "Targa",
                 Body = "Use this thread to verify board selection and notice rendering.",
-                CreatedAt = DateTimeOffset.Now.AddDays(-3).AddHours(2)
+                CreatedAt = DateTimeOffset.Now.AddDays(-3).AddHours(2),
+                EmoticonKind = GuildBbsEmoticonKind.Basic,
+                EmoticonSlot = 1
             });
 
             GuildBbsThreadState parityThread = AddThread(
                 "Guild BBS parity checklist",
-                "Reply here after testing thread selection, write mode, and comment rows against the client-backed layout.",
+                "Reply here after testing thread selection, write mode, comment rows, and keyboard text entry against the dedicated board layout.",
                 "Rondo",
                 DateTimeOffset.Now.AddDays(-2),
-                isNotice: false);
+                isNotice: false,
+                GuildBbsEmoticonKind.Cash,
+                2,
+                0);
             parityThread.Comments.Add(new GuildBbsCommentState
             {
                 CommentId = _nextCommentId++,
                 Author = "Rin",
                 Body = "Date labels and author columns now have a dedicated board owner.",
-                CreatedAt = DateTimeOffset.Now.AddDays(-2).AddHours(1)
+                CreatedAt = DateTimeOffset.Now.AddDays(-2).AddHours(1),
+                EmoticonKind = GuildBbsEmoticonKind.Cash,
+                EmoticonSlot = 4,
+                CashEmoticonPageIndex = 0
             });
 
             AddThread(
@@ -356,10 +670,21 @@ namespace HaCreator.MapSimulator.Interaction
                 "Post your preferred channel and ready state before moving to El Nath.",
                 "Aria",
                 DateTimeOffset.Now.AddHours(-18),
-                isNotice: false);
+                isNotice: false,
+                GuildBbsEmoticonKind.None,
+                -1,
+                0);
         }
 
-        private GuildBbsThreadState AddThread(string title, string body, string author, DateTimeOffset createdAt, bool isNotice)
+        private GuildBbsThreadState AddThread(
+            string title,
+            string body,
+            string author,
+            DateTimeOffset createdAt,
+            bool isNotice,
+            GuildBbsEmoticonKind emoticonKind,
+            int emoticonSlot,
+            int cashEmoticonPageIndex)
         {
             var thread = new GuildBbsThreadState
             {
@@ -368,7 +693,10 @@ namespace HaCreator.MapSimulator.Interaction
                 Body = body,
                 Author = author,
                 CreatedAt = createdAt,
-                IsNotice = isNotice
+                IsNotice = isNotice,
+                EmoticonKind = emoticonKind,
+                EmoticonSlot = emoticonSlot,
+                CashEmoticonPageIndex = cashEmoticonPageIndex
             };
             _threads.Add(thread);
             if (_selectedThreadId == 0)
@@ -386,9 +714,13 @@ namespace HaCreator.MapSimulator.Interaction
         public string LocalPlayerName { get; init; } = string.Empty;
         public bool IsWriteMode { get; init; }
         public int SelectedThreadId { get; init; }
+        public int TotalThreadCount { get; init; }
+        public int ThreadPageIndex { get; init; }
+        public int ThreadPageCount { get; init; }
         public IReadOnlyList<GuildBbsThreadEntrySnapshot> Threads { get; init; } = Array.Empty<GuildBbsThreadEntrySnapshot>();
         public GuildBbsThreadSnapshot SelectedThread { get; init; }
         public GuildBbsComposeSnapshot Compose { get; init; } = new();
+        public GuildBbsReplyDraftSnapshot ReplyDraft { get; init; } = new();
     }
 
     internal sealed class GuildBbsThreadEntrySnapshot
@@ -399,6 +731,7 @@ namespace HaCreator.MapSimulator.Interaction
         public string DateText { get; init; } = string.Empty;
         public int CommentCount { get; init; }
         public bool IsNotice { get; init; }
+        public GuildBbsEmoticonSnapshot Emoticon { get; init; }
     }
 
     internal sealed class GuildBbsThreadSnapshot
@@ -409,6 +742,10 @@ namespace HaCreator.MapSimulator.Interaction
         public string Author { get; init; } = string.Empty;
         public string DateText { get; init; } = string.Empty;
         public bool IsNotice { get; init; }
+        public GuildBbsEmoticonSnapshot Emoticon { get; init; }
+        public int TotalCommentCount { get; init; }
+        public int CommentPageIndex { get; init; }
+        public int CommentPageCount { get; init; }
         public IReadOnlyList<GuildBbsCommentSnapshot> Comments { get; init; } = Array.Empty<GuildBbsCommentSnapshot>();
     }
 
@@ -418,6 +755,7 @@ namespace HaCreator.MapSimulator.Interaction
         public string Author { get; init; } = string.Empty;
         public string Body { get; init; } = string.Empty;
         public string DateText { get; init; } = string.Empty;
+        public GuildBbsEmoticonSnapshot Emoticon { get; init; }
     }
 
     internal sealed class GuildBbsComposeSnapshot
@@ -426,5 +764,24 @@ namespace HaCreator.MapSimulator.Interaction
         public string Body { get; init; } = string.Empty;
         public bool IsNotice { get; init; }
         public string ModeText { get; init; } = string.Empty;
+        public int CashEmoticonPageIndex { get; init; }
+        public int CashEmoticonPageCount { get; init; }
+        public GuildBbsEmoticonSnapshot SelectedEmoticon { get; init; }
+    }
+
+    internal sealed class GuildBbsReplyDraftSnapshot
+    {
+        public string Body { get; init; } = string.Empty;
+        public int CashEmoticonPageIndex { get; init; }
+        public int CashEmoticonPageCount { get; init; }
+        public GuildBbsEmoticonSnapshot SelectedEmoticon { get; init; }
+    }
+
+    internal sealed class GuildBbsEmoticonSnapshot
+    {
+        public GuildBbsEmoticonKind Kind { get; init; }
+        public int SlotIndex { get; init; }
+        public int CashPageIndex { get; init; }
+        public string DisplayText { get; init; } = string.Empty;
     }
 }

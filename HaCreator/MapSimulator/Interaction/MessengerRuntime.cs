@@ -11,6 +11,8 @@ namespace HaCreator.MapSimulator.Interaction
         private const int PresencePulseIntervalMs = 9000;
         private const int InviteResolutionDelayMs = 1800;
         private const int BubbleLifetimeMs = 4200;
+        private const int BlinkDurationMs = 3000;
+        private const int BlinkPulseIntervalMs = 180;
 
         private static readonly MessengerContactDefinition[] ContactDefinitions =
         {
@@ -30,6 +32,8 @@ namespace HaCreator.MapSimulator.Interaction
         private int _nextJoinContactIndex;
         private int _nextInviteId = 1;
         private int _nextClaimId = 1;
+        private int _blinkStartTick = int.MinValue;
+        private int _blinkEndTick = int.MinValue;
         private MessengerWindowState _windowState;
         private PendingMessengerInviteState _pendingInvite;
         private string _lastActionSummary = "Messenger opened.";
@@ -110,6 +114,9 @@ namespace HaCreator.MapSimulator.Interaction
             bool roomHasEmptySlot = _participants.Count < MaxParticipants;
             bool hasInvitableContact = _contacts.Values.Any(contact => contact.CanInvite && !ContainsParticipant(contact.Name));
             bool canReportChat = _logEntries.Any(entry => entry.CanClaim && !entry.IsClaimed);
+            string statusBarText = BuildStatusBarText();
+            bool showStatusBlink = ShouldShowBlink(tickCount);
+            string collapsedStatusText = BuildCollapsedStatusText(statusBarText);
 
             return new MessengerSnapshot
             {
@@ -125,7 +132,10 @@ namespace HaCreator.MapSimulator.Interaction
                 CanClaim = canReportChat,
                 PendingInviteSummary = BuildPendingInviteSummary(),
                 LastActionSummary = _lastActionSummary,
-                LastPacketSummary = _lastPacketSummary
+                LastPacketSummary = _lastPacketSummary,
+                StatusBarText = statusBarText,
+                CollapsedStatusText = collapsedStatusText,
+                ShowStatusBlink = showStatusBlink
             };
         }
 
@@ -233,6 +243,7 @@ namespace HaCreator.MapSimulator.Interaction
                     ? $"{contact.Name} rejected the packet-authored Messenger invite."
                     : $"{contact.Name} rejected the Messenger invite.";
                 AddSystemLog(_lastActionSummary);
+                StartBlink(Environment.TickCount);
                 RecordPacketSummary(packetDriven
                     ? $"Applied simulated Messenger invite-result packet: {contact.Name} rejected."
                     : $"Messenger invite to {contact.Name} was rejected.");
@@ -264,6 +275,7 @@ namespace HaCreator.MapSimulator.Interaction
             AddSystemLog(_lastActionSummary);
             AddParticipantLog(contact.Name, contact.JoinGreeting);
             SetParticipantBubble(contact.Name, contact.JoinGreeting, Environment.TickCount);
+            StartBlink(Environment.TickCount);
             RecordPacketSummary(packetDriven
                 ? $"Applied simulated Messenger invite-result packet: {contact.Name} accepted."
                 : $"{contact.Name} accepted a local Messenger invite.");
@@ -336,6 +348,7 @@ namespace HaCreator.MapSimulator.Interaction
             SetParticipantBubble(participant.Name, resolvedMessage, Environment.TickCount);
             _selectedSlot = participantIndex;
             _lastActionSummary = $"Received a Messenger whisper from {participant.Name}.";
+            StartBlink(Environment.TickCount);
             RecordPacketSummary($"Applied simulated Messenger whisper packet from {participant.Name}.");
             return _lastActionSummary;
         }
@@ -403,6 +416,7 @@ namespace HaCreator.MapSimulator.Interaction
             SetParticipantBubble(participant.Name, resolvedMessage, Environment.TickCount);
             _selectedSlot = participantIndex;
             _lastActionSummary = $"Received a Messenger room message from {participant.Name}.";
+            StartBlink(Environment.TickCount);
             RecordPacketSummary($"Applied simulated Messenger room-chat packet from {participant.Name}.");
             return _lastActionSummary;
         }
@@ -457,6 +471,7 @@ namespace HaCreator.MapSimulator.Interaction
                 ? $"{participant.Name} rejected the Messenger room and stayed out."
                 : $"{participant.Name} left the Messenger.";
             AddSystemLog(_lastActionSummary);
+            StartBlink(Environment.TickCount);
             RecordPacketSummary(rejectedInvite
                 ? $"Applied simulated Messenger reject packet from {participant.Name}."
                 : $"Applied simulated Messenger leave packet from {participant.Name}.");
@@ -489,6 +504,7 @@ namespace HaCreator.MapSimulator.Interaction
                 ? $"{contact.Name} came online in {contact.LocationSummary}, CH {contact.Channel}."
                 : $"{contact.Name} went offline.";
             AddSystemLog(_lastActionSummary);
+            StartBlink(Environment.TickCount);
             RecordPacketSummary($"Applied simulated Messenger presence update for {contact.Name}.");
             return _lastActionSummary;
         }
@@ -767,6 +783,58 @@ namespace HaCreator.MapSimulator.Interaction
                 : $"Invite #{_pendingInvite.InviteId} to {_pendingInvite.ContactName}";
         }
 
+        private string BuildStatusBarText()
+        {
+            string[] occupants = _participants
+                .Where(participant => !string.IsNullOrWhiteSpace(participant.Name))
+                .Select(participant => participant.Name)
+                .ToArray();
+            if (occupants.Length == 0)
+            {
+                return string.Empty;
+            }
+
+            return occupants.Length == 1
+                ? $"{occupants[0]} in Messenger"
+                : $"{string.Join(", ", occupants)} in Messenger";
+        }
+
+        private string BuildCollapsedStatusText(string statusBarText)
+        {
+            if (_pendingInvite != null)
+            {
+                return $"Inviting {_pendingInvite.ContactName}";
+            }
+
+            if (!string.IsNullOrWhiteSpace(statusBarText))
+            {
+                return statusBarText;
+            }
+
+            if (!string.IsNullOrWhiteSpace(_lastPacketSummary))
+            {
+                return _lastPacketSummary;
+            }
+
+            return _lastActionSummary;
+        }
+
+        private bool ShouldShowBlink(int tickCount)
+        {
+            if (_blinkStartTick == int.MinValue || tickCount < _blinkStartTick || tickCount > _blinkEndTick)
+            {
+                return false;
+            }
+
+            return ((tickCount - _blinkStartTick) / BlinkPulseIntervalMs) % 2 == 0;
+        }
+
+        private void StartBlink(int tickCount)
+        {
+            _blinkStartTick = tickCount;
+            _blinkEndTick = tickCount + BlinkDurationMs;
+        }
+
         private void AddLog(MessengerLogEntryState entry)
         {
             if (entry == null || string.IsNullOrWhiteSpace(entry.Message))
@@ -919,6 +987,9 @@ namespace HaCreator.MapSimulator.Interaction
         public string PendingInviteSummary { get; init; } = string.Empty;
         public string LastActionSummary { get; init; } = string.Empty;
         public string LastPacketSummary { get; init; } = string.Empty;
+        public string StatusBarText { get; init; } = string.Empty;
+        public string CollapsedStatusText { get; init; } = string.Empty;
+        public bool ShowStatusBlink { get; init; }
     }
 
     internal sealed class MessengerParticipantSnapshot

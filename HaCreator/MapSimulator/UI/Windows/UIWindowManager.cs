@@ -1,6 +1,7 @@
 using HaCreator.MapSimulator.UI;
 using HaSharedLibrary.Render;
 using HaSharedLibrary.Render.DX;
+using MapleLib.WzLib.WzStructure.Data.ItemStructure;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using Microsoft.Xna.Framework.Input;
@@ -722,7 +723,15 @@ namespace HaCreator.MapSimulator.UI
             if (equipWindow.IsDraggingItem)
             {
                 if (leftJustReleased)
+                {
+                    if (TryHandleEquipmentDropToInventory(equipWindow, mouseState.X, mouseState.Y))
+                    {
+                        equipWindow.CancelEquipmentDrag();
+                        return true;
+                    }
+
                     equipWindow.OnEquipmentMouseUp(mouseState.X, mouseState.Y);
+                }
 
                 return true;
             }
@@ -744,6 +753,38 @@ namespace HaCreator.MapSimulator.UI
             }
 
             return mouseState.LeftButton == ButtonState.Pressed;
+        }
+
+        private bool TryHandleEquipmentDropToInventory(EquipUIBigBang equipWindow, int mouseX, int mouseY)
+        {
+            if (equipWindow == null
+                || !equipWindow.HasDraggedCompanionItem
+                || InventoryWindow is not InventoryUI inventoryWindow
+                || !inventoryWindow.IsVisible
+                || !inventoryWindow.ContainsPoint(mouseX, mouseY))
+            {
+                return false;
+            }
+
+            InventorySlotData previewSlot = equipWindow.DraggedCompanionSlotData;
+            if (previewSlot == null)
+            {
+                return false;
+            }
+
+            InventoryType inventoryType = InventoryItemMetadataResolver.ResolveInventoryType(previewSlot.ItemId);
+            if (!inventoryWindow.CanAcceptItem(inventoryType, previewSlot.ItemId, Math.Max(1, previewSlot.Quantity), previewSlot.MaxStackSize))
+            {
+                return false;
+            }
+
+            if (!equipWindow.TryCommitDraggedCompanionRemoval(out InventorySlotData slotData) || slotData == null)
+            {
+                return false;
+            }
+
+            inventoryWindow.AddItem(inventoryType, slotData);
+            return true;
         }
 
         private bool IsDraggingEquipment()

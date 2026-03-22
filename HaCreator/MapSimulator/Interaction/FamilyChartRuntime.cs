@@ -9,11 +9,17 @@ namespace HaCreator.MapSimulator.Interaction
     internal sealed class FamilyChartRuntime
     {
         private const int LocalPlayerId = 120;
-        private const int FamilyHeadId = 100;
+        private const int DefaultFamilyHeadId = 100;
         private const int DirectJuniorSlotLeft = 5;
         private const int DirectJuniorSlotRight = 6;
         private const int GrandchildSlotStart = 7;
         private const int EntitlementDurationMs = 15 * 60 * 1000;
+        private const int ClientFamilyTreeTitleStringId = 4610;
+        private const int ClientFamilyTreeNoSelectionStringId = 4608;
+        private const int ClientFamilyTreeJuniorCountStringId = 4611;
+        private const int ClientFamilyTreeGrandchildCountStringId = 4612;
+        private const int ClientFamilyTreeEmptyBranchStringId = 0x11FD;
+        private const int ClientFamilyTreeJuniorEntryStringId = 0x1201;
 
         private readonly Dictionary<int, FamilyMemberState> _members = new();
         private readonly Queue<FamilyRecruitSeed> _juniorSeeds = new();
@@ -26,11 +32,14 @@ namespace HaCreator.MapSimulator.Interaction
         };
 
         private int _selectedMemberId = LocalPlayerId;
+        private int _familyHeadId = DefaultFamilyHeadId;
         private int _preceptIndex;
         private FamilyEntitlementType _entitlementType = FamilyEntitlementType.DropAndExpBuff;
         private int _entitlementUsesLeft = 3;
         private string _locationSummary = "Maple Island";
         private FamilyPrivilegeState _activePrivilege;
+
+        private int FamilyHeadId => _familyHeadId;
 
         internal FamilyChartRuntime()
         {
@@ -108,6 +117,8 @@ namespace HaCreator.MapSimulator.Interaction
                 Nodes = nodes,
                 TotalMembers = _members.Count,
                 FocusName = selectedMember?.Name ?? "Player",
+                TitleText = BuildTreeTitle(selectedMember),
+                JuniorCountText = BuildJuniorCountText(selectedMember),
                 SummaryLines = BuildTreeSummaryLines(selectedMember),
                 CanPageBackward = focusIndex > 0,
                 CanPageForward = focusIndex < focusOrder.Count - 1,
@@ -132,6 +143,18 @@ namespace HaCreator.MapSimulator.Interaction
 
             FamilyMemberState selectedMember = GetSelectedMember();
             return $"Focused family branch on {selectedMember?.Name ?? "Player"}.";
+        }
+
+        internal string SelectMemberById(int memberId)
+        {
+            if (!_members.ContainsKey(memberId))
+            {
+                return $"Family member id {memberId} is not present in the current simulator roster.";
+            }
+
+            _selectedMemberId = memberId;
+            FamilyMemberState selectedMember = GetSelectedMember();
+            return $"Selected {selectedMember?.Name ?? "family member"} in the family tree.";
         }
 
         internal string SelectNode(int slotIndex)
@@ -292,6 +315,140 @@ namespace HaCreator.MapSimulator.Interaction
             _entitlementType = entitlementType;
         }
 
+        internal string DescribeStatus()
+        {
+            FamilyMemberState selectedMember = GetSelectedMember();
+            FamilyMemberState head = GetMember(_familyHeadId);
+            string headName = head?.Name ?? "(missing)";
+            string selectedName = selectedMember?.Name ?? "(none)";
+            return $"Family roster: {_members.Count} members, head {headName} (#{_familyHeadId}), selected {selectedName} (#{selectedMember?.Id ?? 0}), entitlement {_entitlementUsesLeft} use(s) left on {GetEntitlementLabel(_entitlementType)}.";
+        }
+
+        internal string ResetToSeedFamily()
+        {
+            ResetRuntimeState();
+            SeedDefaultFamily();
+            return "Restored the seeded simulator family roster.";
+        }
+
+        internal string ClearRosterFromPacket()
+        {
+            ResetRuntimeState();
+            return "Cleared the simulator family roster. Sync packet members to rebuild it.";
+        }
+
+        internal string RemoveMemberFromPacket(int memberId)
+        {
+            if (!_members.TryGetValue(memberId, out FamilyMemberState selectedMember))
+            {
+                return $"Family member id {memberId} is not present in the current simulator roster.";
+            }
+
+            List<int> branchMembers = new();
+            CollectBranchMemberIds(memberId, branchMembers);
+            foreach (int branchMemberId in branchMembers.OrderByDescending(GetDepth))
+            {
+                if (!_members.TryGetValue(branchMemberId, out FamilyMemberState member))
+                {
+                    continue;
+                }
+
+                DetachFromParent(member);
+                _members.Remove(branchMemberId);
+            }
+
+            NormalizeRosterState();
+            return $"Removed synced family branch rooted at {selectedMember.Name} (#{memberId}).";
+        }
+
+        internal string UpsertMemberFromPacket(
+            int memberId,
+            int? parentId,
+            string name,
+            string jobName,
+            int level,
+            string locationSummary,
+            bool isOnline,
+            int currentReputation,
+            int todayReputation)
+        {
+            if (memberId <= 0)
+            {
+                return "Packet family sync requires a positive member id.";
+            }
+
+            if (parentId == memberId)
+            {
+                return $"Family member #{memberId} cannot parent itself.";
+            }
+
+            if (parentId.HasValue && !_members.ContainsKey(parentId.Value))
+            {
+                return $"Add parent #{parentId.Value} before syncing child #{memberId}.";
+            }
+
+            bool isHead = !parentId.HasValue;
+            FamilyMemberState member = GetMember(memberId);
+            int? previousParentId = member?.ParentId;
+            if (member == null)
+            {
+                member = new FamilyMemberState(
+                    memberId,
+                    string.IsNullOrWhiteSpace(name) ? $"Member {memberId}" : name.Trim(),
+                    string.IsNullOrWhiteSpace(jobName) ? "Adventurer" : jobName.Trim(),
+                    Math.Max(1, level),
+                    string.IsNullOrWhiteSpace(locationSummary) ? "Family Hall" : locationSummary.Trim(),
+                    parentId,
+                    Math.Max(0, currentReputation),
+                    Math.Max(0, todayReputation),
+                    isOnline,
+                    Vector2.Zero);
+                _members[memberId] = member;
+            }
+            else
+            {
+                member.Name = string.IsNullOrWhiteSpace(name) ? member.Name : name.Trim();
+                member.JobName = string.IsNullOrWhiteSpace(jobName) ? member.JobName : jobName.Trim();
+                member.Level = Math.Max(1, level);
+                member.LocationSummary = string.IsNullOrWhiteSpace(locationSummary) ? member.LocationSummary : locationSummary.Trim();
+                member.ParentId = parentId;
+                member.CurrentReputation = Math.Max(0, currentReputation);
+                member.TodayReputation = Math.Max(0, todayReputation);
+                member.IsOnline = isOnline;
+            }
+
+            if (previousParentId != parentId)
+            {
+                DetachFromParent(memberId, previousParentId);
+            }
+
+            if (parentId.HasValue && _members.TryGetValue(parentId.Value, out FamilyMemberState parent)
+                && !parent.Children.Contains(memberId))
+            {
+                parent.Children.Add(memberId);
+            }
+
+            if (isHead)
+            {
+                _familyHeadId = memberId;
+            }
+
+            NormalizeRosterState();
+            return $"Synced family member #{memberId} {member.Name} under {(parentId.HasValue ? $"#{parentId.Value}" : "the family head root")}.";
+        }
+
+        private void ResetRuntimeState()
+        {
+            _members.Clear();
+            _juniorSeeds.Clear();
+            _selectedMemberId = LocalPlayerId;
+            _familyHeadId = DefaultFamilyHeadId;
+            _preceptIndex = 0;
+            _entitlementType = FamilyEntitlementType.DropAndExpBuff;
+            _entitlementUsesLeft = 3;
+            _activePrivilege = null;
+        }
+
         private void SeedDefaultFamily()
         {
             AddMember(new FamilyMemberState(100, "Ephenia", "Bishop", 126, "Orbis  CH 8", null, 540, 42, true, new Vector2(260f, -20f)));
@@ -314,9 +471,17 @@ namespace HaCreator.MapSimulator.Interaction
         private void AddMember(FamilyMemberState member)
         {
             _members[member.Id] = member;
+            if (!member.ParentId.HasValue)
+            {
+                _familyHeadId = member.Id;
+            }
+
             if (member.ParentId.HasValue && _members.TryGetValue(member.ParentId.Value, out FamilyMemberState parent))
             {
-                parent.Children.Add(member.Id);
+                if (!parent.Children.Contains(member.Id))
+                {
+                    parent.Children.Add(member.Id);
+                }
             }
         }
 
@@ -334,7 +499,10 @@ namespace HaCreator.MapSimulator.Interaction
         {
             Queue<int> pending = new();
             List<int> ordered = new();
-            pending.Enqueue(FamilyHeadId);
+            if (_members.ContainsKey(_familyHeadId))
+            {
+                pending.Enqueue(_familyHeadId);
+            }
 
             while (pending.Count > 0)
             {
@@ -370,7 +538,7 @@ namespace HaCreator.MapSimulator.Interaction
         private Dictionary<int, int> BuildTreeLayout(FamilyMemberState focus)
         {
             Dictionary<int, int> layout = new();
-            FamilyMemberState head = GetMember(FamilyHeadId);
+            FamilyMemberState head = GetMember(_familyHeadId);
             if (head != null)
             {
                 layout[0] = head.Id;
@@ -381,7 +549,7 @@ namespace HaCreator.MapSimulator.Interaction
                 return layout;
             }
 
-            FamilyMemberState topBranchSibling = GetChildren(FamilyHeadId)
+            FamilyMemberState topBranchSibling = GetChildren(_familyHeadId)
                 .Select(GetMember)
                 .FirstOrDefault(member => member != null && member.Id != GetTopPathChildId(focus.Id));
             if (topBranchSibling != null)
@@ -398,7 +566,7 @@ namespace HaCreator.MapSimulator.Interaction
             layout[3] = focus.Id;
 
             FamilyMemberState sibling = parent == null
-                ? GetChildren(FamilyHeadId).Select(GetMember).FirstOrDefault(member => member != null && member.Id != focus.Id)
+                ? GetChildren(_familyHeadId).Select(GetMember).FirstOrDefault(member => member != null && member.Id != focus.Id)
                 : GetChildren(parent.Id).Select(GetMember).FirstOrDefault(member => member != null && member.Id != focus.Id);
             if (sibling != null)
             {
@@ -449,10 +617,10 @@ namespace HaCreator.MapSimulator.Interaction
                 {
                     SlotIndex = slotIndex,
                     PlaceholderText = slotIndex is DirectJuniorSlotLeft or DirectJuniorSlotRight
-                        ? "Open junior slot"
+                        ? GetClientPlaceholderText(slotIndex)
                         : slotIndex == 3
                             ? string.Empty
-                            : "Empty branch"
+                            : GetClientPlaceholderText(slotIndex)
                 };
             }
 
@@ -464,7 +632,7 @@ namespace HaCreator.MapSimulator.Interaction
                 Rank = GetRankLabel(member),
                 Detail = $"Lv.{member.Level} {member.JobName}",
                 StatisticText = slotIndex >= GrandchildSlotStart ? GetStatisticValue(member).ToString() : string.Empty,
-                IsLeader = member.Id == FamilyHeadId,
+                IsLeader = member.Id == _familyHeadId,
                 IsLocalPlayer = member.Id == LocalPlayerId,
                 IsSelected = member.Id == _selectedMemberId,
                 IsOnline = member.IsOnline,
@@ -486,7 +654,7 @@ namespace HaCreator.MapSimulator.Interaction
             {
                 previous = current;
                 current = GetMember(current.ParentId.Value);
-                if (current?.Id == FamilyHeadId)
+                if (current?.Id == _familyHeadId)
                 {
                     return previous.Id;
                 }
@@ -611,7 +779,7 @@ namespace HaCreator.MapSimulator.Interaction
                 return _members.Count;
             }
 
-            return member.Id == FamilyHeadId
+            return member.Id == _familyHeadId
                 ? _members.Count - 1
                 : member.Children.Count;
         }
@@ -644,12 +812,76 @@ namespace HaCreator.MapSimulator.Interaction
                 return "Member";
             }
 
-            if (member.Id == FamilyHeadId)
+            if (member.Id == _familyHeadId)
             {
                 return "Leader";
             }
 
             return member.Children.Count > 0 ? "Senior" : "Junior";
+        }
+
+        private string BuildTreeTitle(FamilyMemberState selectedMember)
+        {
+            return selectedMember == null
+                ? $"Family Tree [{ClientFamilyTreeNoSelectionStringId}]"
+                : $"{selectedMember.Name}'s Family Tree [{ClientFamilyTreeTitleStringId}]";
+        }
+
+        private string BuildJuniorCountText(FamilyMemberState selectedMember)
+        {
+            int juniorCount = Math.Max(0, GetStatisticValue(selectedMember) - (selectedMember != null && selectedMember.Id == _familyHeadId ? 0 : 0));
+            return $"{juniorCount} junior member(s) [{ClientFamilyTreeJuniorCountStringId}]";
+        }
+
+        private string GetClientPlaceholderText(int slotIndex)
+        {
+            return slotIndex is DirectJuniorSlotLeft or DirectJuniorSlotRight
+                ? $"Junior Entry [{ClientFamilyTreeJuniorEntryStringId}]"
+                : $"Empty Branch [{ClientFamilyTreeEmptyBranchStringId}]";
+        }
+
+        private void NormalizeRosterState()
+        {
+            if (_members.Count == 0)
+            {
+                _selectedMemberId = LocalPlayerId;
+                _familyHeadId = DefaultFamilyHeadId;
+                return;
+            }
+
+            if (!_members.ContainsKey(_familyHeadId))
+            {
+                FamilyMemberState head = _members.Values
+                    .FirstOrDefault(member => !member.ParentId.HasValue)
+                    ?? _members.Values.OrderBy(member => member.Id).First();
+                _familyHeadId = head.Id;
+                head.ParentId = null;
+            }
+
+            foreach (FamilyMemberState member in _members.Values)
+            {
+                member.Children.RemoveAll(childId => !_members.ContainsKey(childId));
+            }
+
+            if (!_members.ContainsKey(_selectedMemberId))
+            {
+                _selectedMemberId = _members.ContainsKey(LocalPlayerId) ? LocalPlayerId : _familyHeadId;
+            }
+        }
+
+        private void DetachFromParent(FamilyMemberState member)
+        {
+            DetachFromParent(member?.Id ?? 0, member?.ParentId);
+        }
+
+        private void DetachFromParent(int memberId, int? parentId)
+        {
+            if (!parentId.HasValue || !_members.TryGetValue(parentId.Value, out FamilyMemberState parent))
+            {
+                return;
+            }
+
+            parent.Children.Remove(memberId);
         }
 
         private static bool IsSameField(string left, string right)
@@ -709,7 +941,7 @@ namespace HaCreator.MapSimulator.Interaction
             public string JobName { get; set; }
             public int Level { get; set; }
             public string LocationSummary { get; set; }
-            public int? ParentId { get; }
+            public int? ParentId { get; set; }
             public int CurrentReputation { get; set; }
             public int TodayReputation { get; set; }
             public bool IsOnline { get; set; }
@@ -772,6 +1004,8 @@ namespace HaCreator.MapSimulator.Interaction
         public IReadOnlyList<FamilyTreeNodeSnapshot> Nodes { get; init; } = Array.Empty<FamilyTreeNodeSnapshot>();
         public int TotalMembers { get; init; }
         public string FocusName { get; init; } = string.Empty;
+        public string TitleText { get; init; } = string.Empty;
+        public string JuniorCountText { get; init; } = string.Empty;
         public IReadOnlyList<string> SummaryLines { get; init; } = Array.Empty<string>();
         public bool CanPageBackward { get; init; }
         public bool CanPageForward { get; init; }

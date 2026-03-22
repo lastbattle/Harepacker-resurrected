@@ -34,6 +34,7 @@ namespace HaCreator.MapSimulator.UI
             public string Text { get; set; }
             public Color Color { get; set; }
             public int Timestamp { get; set; }
+            public int ChatLogType { get; set; }
         }
 
         public sealed class ChatTargetLabelPlacement
@@ -64,11 +65,13 @@ namespace HaCreator.MapSimulator.UI
         private const int ChatLogLineHeight = 14;
         private const int ChatLogWidth = 452;
         private const int ChatWrapIndentSpaces = 5;
+        private const int ChatSpecialFirstLineWidthReduction = 38;
         private const int ChatScrollRecentThresholdMs = 5000;
-        private static readonly Point PointNotificationAnchor = new Point(512, 60);
-        private static readonly Vector2 ChatTargetLabelPos = new Vector2(17, 7);
-        private static readonly Vector2 ChatInputPos = new Vector2(74, 5);
-        private static readonly Vector2 ChatWhisperPromptPos = new Vector2(74, -13);
+        private Point _pointNotificationAnchor = new Point(512, 60);
+        private Vector2 _chatTargetLabelPos = new Vector2(17, 7);
+        private Vector2 _chatEnterPos = new Vector2(4, 2);
+        private Vector2 _chatInputPos = new Vector2(74, 5);
+        private Vector2 _chatWhisperPromptPos = new Vector2(74, -13);
 
         public Action ToggleChatRequested { get; set; }
         public Action<int> CycleChatTargetRequested { get; set; }
@@ -153,6 +156,17 @@ namespace HaCreator.MapSimulator.UI
         {
             _abilityPointNotificationAnimation = abilityPointAnimation ?? new StatusBarPointNotificationAnimation();
             _skillPointNotificationAnimation = skillPointAnimation ?? new StatusBarPointNotificationAnimation();
+        }
+
+        public void SetLayoutMetrics(Point frameAnchor, Vector2 chatTargetLabelPos, Vector2 chatEnterPos)
+        {
+            _pointNotificationAnchor = frameAnchor;
+            _chatTargetLabelPos = chatTargetLabelPos;
+            _chatEnterPos = chatEnterPos;
+
+            Vector2 inputDelta = new Vector2(70, 3);
+            _chatInputPos = _chatEnterPos + inputDelta;
+            _chatWhisperPromptPos = _chatEnterPos + new Vector2(inputDelta.X, -15);
         }
 
         public void BindControls(UIObject chatTargetButton, UIObject chatToggleButton, UIObject scrollUpButton, UIObject scrollDownButton, UIObject characterInfoButton = null, UIObject memoButton = null)
@@ -294,8 +308,8 @@ namespace HaCreator.MapSimulator.UI
             }
 
             Vector2 drawPosition = new Vector2(
-                this.Position.X + PointNotificationAnchor.X - origin.X,
-                this.Position.Y + PointNotificationAnchor.Y - origin.Y);
+                this.Position.X + _pointNotificationAnchor.X - origin.X,
+                this.Position.Y + _pointNotificationAnchor.Y - origin.Y);
             sprite.Draw(frame, drawPosition, Color.White);
         }
 
@@ -368,8 +382,8 @@ namespace HaCreator.MapSimulator.UI
                 Point originDelta = ResolveChatTargetOriginDelta(targetType, labelPlacement.Origin);
                 sprite.Draw(labelPlacement.Texture,
                     new Vector2(
-                        this.Position.X + ChatTargetLabelPos.X + originDelta.X,
-                        this.Position.Y + ChatTargetLabelPos.Y + originDelta.Y),
+                        this.Position.X + _chatTargetLabelPos.X + originDelta.X,
+                        this.Position.Y + _chatTargetLabelPos.Y + originDelta.Y),
                     Color.White);
             }
         }
@@ -404,16 +418,18 @@ namespace HaCreator.MapSimulator.UI
                 }
 
                 Color lineColor = line.Color * alpha;
+                Color backgroundColor = GetClientChatLineBackgroundColor(line.ChatLogType) * alpha;
+                Color shadowColor = GetClientChatLineShadowColor(line.ChatLogType) * alpha;
                 Vector2 textSize = _font.MeasureString(line.Text);
                 if (_pixelTexture != null)
                 {
                     sprite.Draw(
                         _pixelTexture,
                         new Rectangle(this.Position.X + 2, (int)lineY - 1, (int)textSize.X + 6, (int)textSize.Y + 2),
-                        new Color((byte)0, (byte)0, (byte)0, (byte)(150 * alpha)));
+                        backgroundColor);
                 }
 
-                DrawTextWithShadow(sprite, line.Text, new Vector2(this.Position.X + 4, lineY), lineColor);
+                DrawTextWithShadow(sprite, line.Text, new Vector2(this.Position.X + 4, lineY), lineColor, shadowColor);
                 lineY -= ChatLogLineHeight;
                 drawnLines++;
                 lineIndex--;
@@ -449,7 +465,7 @@ namespace HaCreator.MapSimulator.UI
             if (_chatEnterTexture != null)
             {
                 sprite.Draw(_chatEnterTexture,
-                    new Rectangle(this.Position.X + 4, this.Position.Y + 2, _chatEnterTexture.Width, _chatEnterTexture.Height),
+                    new Rectangle(this.Position.X + (int)_chatEnterPos.X, this.Position.Y + (int)_chatEnterPos.Y, _chatEnterTexture.Width, _chatEnterTexture.Height),
                     Color.White);
             }
 
@@ -460,12 +476,13 @@ namespace HaCreator.MapSimulator.UI
             {
                 DrawTextWithShadow(sprite,
                     whisperPrompt,
-                    new Vector2(this.Position.X + ChatWhisperPromptPos.X, this.Position.Y + ChatWhisperPromptPos.Y),
-                    new Color(255, 170, 255));
+                    new Vector2(this.Position.X + _chatWhisperPromptPos.X, this.Position.Y + _chatWhisperPromptPos.Y),
+                    new Color(255, 170, 255),
+                    Color.Black);
             }
 
-            Vector2 inputPos = new Vector2(this.Position.X + ChatInputPos.X, this.Position.Y + ChatInputPos.Y);
-            DrawTextWithShadow(sprite, chatState.InputText, inputPos, Color.White);
+            Vector2 inputPos = new Vector2(this.Position.X + _chatInputPos.X, this.Position.Y + _chatInputPos.Y);
+            DrawTextWithShadow(sprite, chatState.InputText, inputPos, Color.White, Color.Black);
 
             if (_pixelTexture == null || ((tickCount / 500) % 2) != 0)
             {
@@ -494,13 +511,15 @@ namespace HaCreator.MapSimulator.UI
                 foreach (string lineText in WrapText(
                     message.Text ?? string.Empty,
                     ChatLogWidth,
+                    message.ChatLogType,
                     ShouldIndentWrappedContinuation(message.ChatLogType)))
                 {
                     wrappedLines.Add(new WrappedChatLine
                     {
                         Text = lineText,
                         Color = message.Color,
-                        Timestamp = message.Timestamp
+                        Timestamp = message.Timestamp,
+                        ChatLogType = message.ChatLogType
                     });
                 }
             }
@@ -508,7 +527,11 @@ namespace HaCreator.MapSimulator.UI
             return wrappedLines;
         }
 
-        private IEnumerable<string> WrapText(string text, float maxWidth, bool indentWrappedContinuation)
+        private IEnumerable<string> WrapText(
+            string text,
+            float maxWidth,
+            int chatLogType,
+            bool indentWrappedContinuation)
         {
             if (string.IsNullOrEmpty(text))
             {
@@ -522,8 +545,9 @@ namespace HaCreator.MapSimulator.UI
             bool isFirstLine = true;
             foreach (string word in words)
             {
+                float currentMaxWidth = ResolveLineMaxWidth(maxWidth, chatLogType, isFirstLine);
                 string candidate = currentLine.Length == 0 ? word : $"{currentLine} {word}";
-                if (_font.MeasureString(candidate).X <= maxWidth)
+                if (_font.MeasureString(candidate).X <= currentMaxWidth)
                 {
                     currentLine.Clear();
                     currentLine.Append(candidate);
@@ -537,7 +561,8 @@ namespace HaCreator.MapSimulator.UI
                     isFirstLine = false;
                 }
 
-                if (_font.MeasureString(word).X <= maxWidth)
+                currentMaxWidth = ResolveLineMaxWidth(maxWidth, chatLogType, isFirstLine);
+                if (_font.MeasureString(word).X <= currentMaxWidth)
                 {
                     if (!isFirstLine)
                     {
@@ -550,11 +575,13 @@ namespace HaCreator.MapSimulator.UI
                 StringBuilder fragment = new StringBuilder();
                 foreach (char c in word)
                 {
+                    currentMaxWidth = ResolveLineMaxWidth(maxWidth, chatLogType, isFirstLine);
                     string fragmentCandidate = fragment + c.ToString();
-                    if (_font.MeasureString(fragmentCandidate).X > maxWidth && fragment.Length > 0)
+                    if (_font.MeasureString(fragmentCandidate).X > currentMaxWidth && fragment.Length > 0)
                     {
                         yield return fragment.ToString();
                         fragment.Clear();
+                        isFirstLine = false;
                     }
 
                     fragment.Append(c);
@@ -576,10 +603,20 @@ namespace HaCreator.MapSimulator.UI
             }
         }
 
-        private void DrawTextWithShadow(SpriteBatch sprite, string text, Vector2 position, Color color)
+        private void DrawTextWithShadow(SpriteBatch sprite, string text, Vector2 position, Color color, Color shadowColor)
         {
-            sprite.DrawString(_font, text, position + new Vector2(1, 1), Color.Black);
+            sprite.DrawString(_font, text, position + new Vector2(1, 1), shadowColor);
             sprite.DrawString(_font, text, position, color);
+        }
+
+        private static float ResolveLineMaxWidth(float maxWidth, int chatLogType, bool isFirstLine)
+        {
+            if (isFirstLine && RequiresReducedFirstLineWidth(chatLogType))
+            {
+                return Math.Max(1f, maxWidth - ChatSpecialFirstLineWidthReduction);
+            }
+
+            return maxWidth;
         }
 
         private Point ResolveChatTargetOriginDelta(MapSimulatorChatTargetType targetType, Point targetOrigin)
@@ -603,6 +640,47 @@ namespace HaCreator.MapSimulator.UI
         private static bool ShouldIndentWrappedContinuation(int chatLogType)
         {
             return chatLogType < 7 || chatLogType > 12;
+        }
+
+        private static bool RequiresReducedFirstLineWidth(int chatLogType)
+        {
+            return chatLogType == 14
+                || chatLogType == 16
+                || chatLogType == 19
+                || chatLogType == 20;
+        }
+
+        private static Color GetClientChatLineBackgroundColor(int chatLogType)
+        {
+            return chatLogType switch
+            {
+                11 => new Color(0, 0, 0, 176),
+                13 => new Color(202, 231, 255, 176),
+                14 => new Color(255, 191, 221, 204),
+                15 => new Color(247, 75, 75, 255),
+                16 or 21 => new Color(255, 198, 0, 221),
+                18 => new Color(77, 26, 173, 44),
+                19 => new Color(255, 92, 89, 128),
+                20 => new Color(255, 92, 89, 128),
+                22 or 23 => new Color(153, 204, 51, 255),
+                _ => new Color(0, 0, 0, 150)
+            };
+        }
+
+        private static Color GetClientChatLineShadowColor(int chatLogType)
+        {
+            return chatLogType switch
+            {
+                11 => new Color(255, 255, 255, 176),
+                13 => new Color(202, 231, 255, 176),
+                14 => new Color(255, 191, 221, 204),
+                15 => new Color(247, 75, 75, 255),
+                16 or 21 => new Color(255, 198, 0, 221),
+                18 => new Color(77, 26, 173, 44),
+                19 or 20 => new Color(255, 92, 89, 128),
+                22 or 23 => new Color(153, 204, 51, 255),
+                _ => Color.Black
+            };
         }
 
         #region IClickableUIObject

@@ -85,6 +85,10 @@ namespace HaCreator.MapSimulator.Combat
         private readonly List<ScheduledMobVisualEffect> _scheduledMobVisualEffects = new List<ScheduledMobVisualEffect>();
         private readonly List<ScheduledMobFallingEffect> _scheduledMobFallingEffects = new List<ScheduledMobFallingEffect>();
         private readonly Dictionary<long, int> _scheduledMobActions = new Dictionary<long, int>();
+        private readonly List<long> _expiredScheduledActionKeys = new List<long>();
+        private readonly List<PuppetInfo> _puppetIterationBuffer = new List<PuppetInfo>();
+        private readonly List<MobItem> _mobIterationBuffer = new List<MobItem>();
+        private readonly Dictionary<List<IDXObject>, int> _frameCycleDurationCache = new Dictionary<List<IDXObject>, int>();
         private Func<float, float, float?> _groundResolver;
         private Func<IReadOnlyList<PuppetInfo>> _puppetAccessor;
         private Func<int, MobItem> _mobAccessor;
@@ -124,6 +128,10 @@ namespace HaCreator.MapSimulator.Combat
             _scheduledMobVisualEffects.Clear();
             _scheduledMobFallingEffects.Clear();
             _scheduledMobActions.Clear();
+            _expiredScheduledActionKeys.Clear();
+            _puppetIterationBuffer.Clear();
+            _mobIterationBuffer.Clear();
+            _frameCycleDurationCache.Clear();
         }
 
         public void QueueMobAttackActions(MobItem mobItem, int currentTime, float? playerX, float? playerY)
@@ -459,6 +467,13 @@ namespace HaCreator.MapSimulator.Combat
                     continue;
                 }
 
+                if (TryApplyLockedTargetImpact(projectile.SourceMob, projectile.Attack, projectile.TargetInfo, currentTime))
+                {
+                    SpawnMobWorldEffects(projectile.SourceMob, projectile.Attack, projectile.Target, currentTime, animationEffects);
+                    _activeMobProjectiles.RemoveAt(i);
+                    continue;
+                }
+
                 if (projectile.CreatesGroundHazard)
                 {
                     QueueGroundAttack(
@@ -790,7 +805,7 @@ namespace HaCreator.MapSimulator.Combat
                 float startY = endY - fallDistance;
                 float horizontalOffset = ResolveEffectNodeHorizontalOffset(effectNode, flip);
                 float startX = basePosition.X + horizontalOffset;
-                float durationMs = Math.Max(120, ResolveSequenceDuration(frames));
+                float durationMs = Math.Max(120, GetCachedSequenceDuration(frames));
                 float fallSpeed = fallDistance * 1000f / durationMs;
                 float horizontalDrift = horizontalOffset == 0f
                     ? 0f
@@ -1193,7 +1208,20 @@ namespace HaCreator.MapSimulator.Combat
             MobTargetInfo target = mobItem?.AI?.Target;
             if (target?.IsValid == true)
             {
-                return target.Clone();
+                MobTargetInfo resolvedTarget = target.Clone();
+                if (resolvedTarget.TargetType == MobTargetType.Summoned)
+                {
+                    PuppetInfo puppet = FindTargetPuppet(resolvedTarget);
+                    if (puppet != null)
+                    {
+                        resolvedTarget.TargetId = puppet.ObjectId;
+                        resolvedTarget.TargetSlotIndex = puppet.SummonSlotIndex;
+                        resolvedTarget.TargetX = puppet.X;
+                        resolvedTarget.TargetY = puppet.Y;
+                    }
+                }
+
+                return resolvedTarget;
             }
 
             if (playerX.HasValue && playerY.HasValue)
@@ -1230,6 +1258,48 @@ namespace HaCreator.MapSimulator.Combat
 
             _onPuppetHit?.Invoke(puppet, sourceMob, attack, currentTime);
             return true;
+        }
+
+        private bool TryApplyLockedTargetImpact(
+            MobItem sourceMob,
+            MobAttackEntry attack,
+            MobTargetInfo targetInfo,
+            int currentTime)
+        {
+            if (targetInfo == null)
+            {
+                return false;
+            }
+
+            if (targetInfo.TargetType == MobTargetType.Summoned)
+            {
+                PuppetInfo puppet = FindTargetPuppet(targetInfo);
+                if (puppet == null || !CanHitPuppetTarget(attack, puppet))
+                {
+                    return false;
+                }
+
+                _onPuppetHit?.Invoke(puppet, sourceMob, attack, currentTime);
+                return true;
+            }
+
+            if (targetInfo.TargetType != MobTargetType.Mob)
+            {
+                return false;
+            }
+
+            MobItem targetMob = _mobAccessor?.Invoke(targetInfo.TargetId);
+            if (targetMob?.AI == null || targetMob.AI.IsDead || ReferenceEquals(targetMob, sourceMob))
+            {
+                return false;
+            }
+
+            if (!CanApplyMobVsMobDamage(sourceMob, targetMob))
+            {
+                return false;
+            }
+
+            return ApplyMobDamage(sourceMob, attack, targetMob, currentTime);
         }
 
         private bool CanHitPlayerTarget(MobAttackEntry attack)
@@ -1294,8 +1364,10 @@ namespace HaCreator.MapSimulator.Combat
 
             int excludedTargetId = targetInfo?.TargetType == MobTargetType.Summoned ? targetInfo.TargetId : 0;
             bool hitAny = false;
-            foreach (PuppetInfo puppet in new List<PuppetInfo>(puppets))
+            CopyItems(puppets, _puppetIterationBuffer);
+            for (int i = 0; i < _puppetIterationBuffer.Count; i++)
             {
+                PuppetInfo puppet = _puppetIterationBuffer[i];
                 if (puppet == null || !puppet.IsActive || puppet.ObjectId == excludedTargetId)
                 {
                     continue;
@@ -1310,6 +1382,7 @@ namespace HaCreator.MapSimulator.Combat
                 hitAny = true;
             }
 
+            _puppetIterationBuffer.Clear();
             return hitAny;
         }
 
@@ -1333,8 +1406,10 @@ namespace HaCreator.MapSimulator.Combat
 
             int excludedTargetId = targetInfo?.TargetType == MobTargetType.Mob ? targetInfo.TargetId : 0;
             bool hitAny = false;
-            foreach (MobItem mob in new List<MobItem>(mobs))
+            CopyItems(mobs, _mobIterationBuffer);
+            for (int i = 0; i < _mobIterationBuffer.Count; i++)
             {
+                MobItem mob = _mobIterationBuffer[i];
                 if (mob?.AI == null || mob.AI.IsDead || ReferenceEquals(mob, sourceMob) || mob.PoolId == excludedTargetId)
                 {
                     continue;
@@ -1354,6 +1429,7 @@ namespace HaCreator.MapSimulator.Combat
                 hitAny |= ApplyMobDamage(sourceMob, attack, mob, currentTime);
             }
 
+            _mobIterationBuffer.Clear();
             return hitAny;
         }
 
@@ -1394,7 +1470,7 @@ namespace HaCreator.MapSimulator.Combat
         private PuppetInfo FindTargetPuppet(MobTargetInfo targetInfo)
         {
             IReadOnlyList<PuppetInfo> puppets = _puppetAccessor?.Invoke();
-            if (puppets == null)
+            if (puppets == null || targetInfo == null)
             {
                 return null;
             }
@@ -1402,6 +1478,20 @@ namespace HaCreator.MapSimulator.Combat
             foreach (PuppetInfo puppet in puppets)
             {
                 if (puppet != null && puppet.IsActive && puppet.ObjectId == targetInfo.TargetId)
+                {
+                    return puppet;
+                }
+            }
+
+            int slotIndex = targetInfo.TargetSlotIndex >= 0 ? targetInfo.TargetSlotIndex : targetInfo.TargetId;
+            if (slotIndex < 0)
+            {
+                return null;
+            }
+
+            foreach (PuppetInfo puppet in puppets)
+            {
+                if (puppet != null && puppet.IsActive && puppet.SummonSlotIndex == slotIndex)
                 {
                     return puppet;
                 }
@@ -1574,18 +1664,18 @@ namespace HaCreator.MapSimulator.Combat
                 return;
             }
 
-            var expiredKeys = new List<long>();
+            _expiredScheduledActionKeys.Clear();
             foreach (var pair in _scheduledMobActions)
             {
                 if (currentTime >= pair.Value)
                 {
-                    expiredKeys.Add(pair.Key);
+                    _expiredScheduledActionKeys.Add(pair.Key);
                 }
             }
 
-            foreach (long key in expiredKeys)
+            for (int i = 0; i < _expiredScheduledActionKeys.Count; i++)
             {
-                _scheduledMobActions.Remove(key);
+                _scheduledMobActions.Remove(_expiredScheduledActionKeys[i]);
             }
         }
 
@@ -1595,7 +1685,7 @@ namespace HaCreator.MapSimulator.Combat
             return ((long)actionType << 56) | ((long)(mobItem.PoolId & 0xFFFFFF) << 24) | (uint)stateStartTime;
         }
 
-        private static IDXObject GetProjectileFrame(ActiveMobProjectile projectile, int currentTime)
+        private IDXObject GetProjectileFrame(ActiveMobProjectile projectile, int currentTime)
         {
             if (projectile?.Frames == null || projectile.Frames.Count == 0)
             {
@@ -1608,37 +1698,10 @@ namespace HaCreator.MapSimulator.Combat
             }
 
             int relativeTime = Math.Max(0, currentTime - projectile.SpawnTime);
-            int total = 0;
-            foreach (IDXObject frame in projectile.Frames)
-            {
-                total += Math.Max(frame.Delay, 1);
-                if (relativeTime < total)
-                {
-                    return frame;
-                }
-            }
-
-            int cycleDuration = total;
-            if (cycleDuration <= 0)
-            {
-                return projectile.Frames[0];
-            }
-
-            relativeTime %= cycleDuration;
-            total = 0;
-            foreach (IDXObject frame in projectile.Frames)
-            {
-                total += Math.Max(frame.Delay, 1);
-                if (relativeTime < total)
-                {
-                    return frame;
-                }
-            }
-
-            return projectile.Frames[projectile.Frames.Count - 1];
+            return GetFrameAtTime(projectile.Frames, relativeTime, loop: true);
         }
 
-        private static IDXObject GetLoopingFrame(List<IDXObject> frames, int currentTime, int startTime)
+        private IDXObject GetLoopingFrame(List<IDXObject> frames, int currentTime, int startTime)
         {
             if (frames == null || frames.Count == 0)
             {
@@ -1651,21 +1714,30 @@ namespace HaCreator.MapSimulator.Combat
             }
 
             int relativeTime = Math.Max(0, currentTime - startTime);
-            int cycleDuration = 0;
-            foreach (IDXObject frame in frames)
-            {
-                cycleDuration += Math.Max(frame.Delay, 1);
-            }
+            return GetFrameAtTime(frames, relativeTime, loop: true);
+        }
 
+        private IDXObject GetFrameAtTime(List<IDXObject> frames, int relativeTime, bool loop)
+        {
+            int cycleDuration = GetCachedSequenceDuration(frames);
             if (cycleDuration <= 0)
             {
                 return frames[0];
             }
 
-            relativeTime %= cycleDuration;
-            int total = 0;
-            foreach (IDXObject frame in frames)
+            if (loop)
             {
+                relativeTime %= cycleDuration;
+            }
+            else if (relativeTime >= cycleDuration)
+            {
+                return frames[frames.Count - 1];
+            }
+
+            int total = 0;
+            for (int i = 0; i < frames.Count; i++)
+            {
+                IDXObject frame = frames[i];
                 total += Math.Max(frame.Delay, 1);
                 if (relativeTime < total)
                 {
@@ -1674,6 +1746,42 @@ namespace HaCreator.MapSimulator.Combat
             }
 
             return frames[frames.Count - 1];
+        }
+
+        private int GetCachedSequenceDuration(List<IDXObject> frames)
+        {
+            if (frames == null || frames.Count == 0)
+            {
+                return 0;
+            }
+
+            if (_frameCycleDurationCache.TryGetValue(frames, out int duration))
+            {
+                return duration;
+            }
+
+            duration = ResolveSequenceDuration(frames);
+            _frameCycleDurationCache[frames] = duration;
+            return duration;
+        }
+
+        private static void CopyItems<T>(IReadOnlyList<T> source, List<T> destination)
+        {
+            destination.Clear();
+            if (source == null || source.Count == 0)
+            {
+                return;
+            }
+
+            if (destination.Capacity < source.Count)
+            {
+                destination.Capacity = source.Count;
+            }
+
+            for (int i = 0; i < source.Count; i++)
+            {
+                destination.Add(source[i]);
+            }
         }
     }
 }

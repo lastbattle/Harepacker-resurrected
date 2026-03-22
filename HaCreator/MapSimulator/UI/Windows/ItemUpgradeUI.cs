@@ -156,6 +156,11 @@ namespace HaCreator.MapSimulator.UI
             return ConsumableDefinitions.ContainsKey(itemId);
         }
 
+        public static bool IsVegaSpellConsumable(int itemId)
+        {
+            return itemId == VegasSpellTenPercentId || itemId == VegasSpellSixtyPercentId;
+        }
+
         public static bool CanUpgrade(EquipSlot slot, CharacterPart part)
         {
             return part != null
@@ -432,19 +437,24 @@ namespace HaCreator.MapSimulator.UI
 
         private void TryApplyUpgrade()
         {
+            TryApplyPreparedUpgrade();
+        }
+
+        public ItemUpgradeAttemptResult TryApplyPreparedUpgrade()
+        {
             IReadOnlyList<KeyValuePair<EquipSlot, CharacterPart>> candidates = GetCandidates();
             if (candidates.Count == 0)
             {
                 _statusMessage = "No equipped item can be upgraded.";
                 _lastUpgradeSucceeded = null;
-                return;
+                return new ItemUpgradeAttemptResult(null, _statusMessage, 0);
             }
 
             if (_inventory == null)
             {
                 _statusMessage = "Inventory runtime is unavailable.";
                 _lastUpgradeSucceeded = false;
-                return;
+                return new ItemUpgradeAttemptResult(false, _statusMessage, 0);
             }
 
             KeyValuePair<EquipSlot, CharacterPart> selection = candidates[_selectedIndex];
@@ -457,7 +467,7 @@ namespace HaCreator.MapSimulator.UI
                     ? "No compatible enhancement scroll is available for the selected Vega modifier."
                     : "No enhancement scrolls are available in inventory.";
                 _lastUpgradeSucceeded = false;
-                return;
+                return new ItemUpgradeAttemptResult(false, _statusMessage, 0);
             }
 
             EnhancementConsumable modifier = ResolveModifier(consumable);
@@ -465,7 +475,7 @@ namespace HaCreator.MapSimulator.UI
             {
                 _statusMessage = BuildModifierCompatibilityMessage(consumable);
                 _lastUpgradeSucceeded = false;
-                return;
+                return new ItemUpgradeAttemptResult(false, _statusMessage, consumable.ItemId);
             }
 
             if (consumable.EffectType == ConsumableEffectType.Enhancement &&
@@ -473,7 +483,7 @@ namespace HaCreator.MapSimulator.UI
             {
                 _statusMessage = $"{ResolveItemName(selectedPart)} has no upgrade slots left.";
                 _lastUpgradeSucceeded = false;
-                return;
+                return new ItemUpgradeAttemptResult(false, _statusMessage, consumable.ItemId);
             }
 
             if (consumable.EffectType == ConsumableEffectType.Enhancement &&
@@ -481,7 +491,7 @@ namespace HaCreator.MapSimulator.UI
             {
                 _statusMessage = $"{consumable.Name} needs {consumable.SuccessCountGain} open slots on {ResolveItemName(selectedPart)}.";
                 _lastUpgradeSucceeded = false;
-                return;
+                return new ItemUpgradeAttemptResult(false, _statusMessage, consumable.ItemId);
             }
 
             if (consumable.EffectType == ConsumableEffectType.PotentialScroll && state.HasPotential)
@@ -490,7 +500,7 @@ namespace HaCreator.MapSimulator.UI
                 {
                     _statusMessage = $"{ResolveItemName(selectedPart)} already has revealed potential.";
                     _lastUpgradeSucceeded = false;
-                    return;
+                    return new ItemUpgradeAttemptResult(false, _statusMessage, consumable.ItemId);
                 }
             }
 
@@ -500,21 +510,21 @@ namespace HaCreator.MapSimulator.UI
                 {
                     _statusMessage = $"{ResolveItemName(selectedPart)} needs potential before using {consumable.Name}.";
                     _lastUpgradeSucceeded = false;
-                    return;
+                    return new ItemUpgradeAttemptResult(false, _statusMessage, consumable.ItemId);
                 }
 
                 if (state.PotentialLineCount >= UpgradeState.MaxPotentialLines)
                 {
                     _statusMessage = $"{ResolveItemName(selectedPart)} already has {UpgradeState.MaxPotentialLines} potential lines.";
                     _lastUpgradeSucceeded = false;
-                    return;
+                    return new ItemUpgradeAttemptResult(false, _statusMessage, consumable.ItemId);
                 }
 
                 if (state.PotentialLineCount > 2)
                 {
                     _statusMessage = $"{consumable.Name} only applies when {ResolveItemName(selectedPart)} has two potential lines or fewer.";
                     _lastUpgradeSucceeded = false;
-                    return;
+                    return new ItemUpgradeAttemptResult(false, _statusMessage, consumable.ItemId);
                 }
             }
 
@@ -525,14 +535,14 @@ namespace HaCreator.MapSimulator.UI
             {
                 _statusMessage = $"{consumable.Name} only applies to equipment that is Rare or below.";
                 _lastUpgradeSucceeded = false;
-                return;
+                return new ItemUpgradeAttemptResult(false, _statusMessage, consumable.ItemId);
             }
 
             if (consumable.EffectType == ConsumableEffectType.Cube && !state.HasPotential)
             {
                 _statusMessage = $"{ResolveItemName(selectedPart)} needs revealed potential before using {consumable.Name}.";
                 _lastUpgradeSucceeded = false;
-                return;
+                return new ItemUpgradeAttemptResult(false, _statusMessage, consumable.ItemId);
             }
 
             if (consumable.EffectType == ConsumableEffectType.Cube &&
@@ -541,21 +551,21 @@ namespace HaCreator.MapSimulator.UI
             {
                 _statusMessage = $"{consumable.Name} only applies to Rare through Unique equipment.";
                 _lastUpgradeSucceeded = false;
-                return;
+                return new ItemUpgradeAttemptResult(false, _statusMessage, consumable.ItemId);
             }
 
             if (!_inventory.TryConsumeItem(consumable.InventoryType, consumable.ItemId, 1))
             {
                 _statusMessage = $"{consumable.Name} could not be consumed.";
                 _lastUpgradeSucceeded = false;
-                return;
+                return new ItemUpgradeAttemptResult(false, _statusMessage, consumable.ItemId);
             }
 
             if (modifier != null && !_inventory.TryConsumeItem(modifier.InventoryType, modifier.ItemId, 1))
             {
                 _statusMessage = $"{modifier.Name} could not be consumed.";
                 _lastUpgradeSucceeded = false;
-                return;
+                return new ItemUpgradeAttemptResult(false, _statusMessage, consumable.ItemId, modifier.ItemId);
             }
 
             bool success = _random.NextDouble() < ResolveSuccessRate(consumable, state, modifier);
@@ -580,6 +590,8 @@ namespace HaCreator.MapSimulator.UI
 
             _lastUpgradeSucceeded = success;
             ClampSelection();
+            _preferredModifierItemId = null;
+            return new ItemUpgradeAttemptResult(success, _statusMessage, consumable.ItemId, modifier?.ItemId ?? 0);
         }
 
         private void ApplyUpgradeBonus(EquipSlot slot, UpgradeState state, int successCountGain)
@@ -853,12 +865,26 @@ namespace HaCreator.MapSimulator.UI
                 return null;
             }
 
+            EnhancementConsumable preparedModifierConsumable = null;
+            if (_preferredModifierItemId.HasValue &&
+                TryGetConsumableDefinition(_preferredModifierItemId.Value, out EnhancementConsumableDefinition modifierDefinition) &&
+                modifierDefinition.EffectType == ConsumableEffectType.Modifier)
+            {
+                preparedModifierConsumable = new EnhancementConsumable(modifierDefinition);
+                EnhancementConsumable compatibleConsumable = ResolveConsumableForModifier(state, modifierDefinition);
+                if (compatibleConsumable != null)
+                {
+                    return compatibleConsumable;
+                }
+            }
+
             if (_preferredConsumableItemId.HasValue)
             {
                 int preferredItemId = _preferredConsumableItemId.Value;
                 if (GetConsumableCount(preferredItemId) > 0 &&
                     TryGetConsumableDefinition(preferredItemId, out EnhancementConsumableDefinition preferredDefinition) &&
-                    preferredDefinition.EffectType != ConsumableEffectType.Modifier)
+                    preferredDefinition.EffectType != ConsumableEffectType.Modifier &&
+                    (preparedModifierConsumable == null || IsModifierCompatible(preparedModifierConsumable, new EnhancementConsumable(preferredDefinition))))
                 {
                     return new EnhancementConsumable(preferredDefinition);
                 }
@@ -936,6 +962,35 @@ namespace HaCreator.MapSimulator.UI
             return null;
         }
 
+        public bool TryGetModifierPreview(EquipSlot slot, int modifierItemId, out ModifierPreview preview)
+        {
+            preview = default;
+            if (_characterBuild?.Equipment == null ||
+                !_characterBuild.Equipment.TryGetValue(slot, out CharacterPart part) ||
+                !CanUpgrade(slot, part) ||
+                !TryGetConsumableDefinition(modifierItemId, out EnhancementConsumableDefinition modifierDefinition) ||
+                modifierDefinition.EffectType != ConsumableEffectType.Modifier)
+            {
+                return false;
+            }
+
+            UpgradeState state = GetOrCreateState(slot, part);
+            EnhancementConsumable consumable = ResolveConsumableForModifier(state, modifierDefinition);
+            if (consumable == null)
+            {
+                return false;
+            }
+
+            EnhancementConsumable modifier = new EnhancementConsumable(modifierDefinition);
+            preview = new ModifierPreview(
+                consumable.ItemId,
+                consumable.Name,
+                GetConsumableCount(consumable.ItemId),
+                ResolveSuccessRate(consumable, state, null),
+                ResolveSuccessRate(consumable, state, modifier));
+            return true;
+        }
+
         private EnhancementConsumable ResolveModifier(EnhancementConsumable consumable)
         {
             if (_inventory == null || !_preferredModifierItemId.HasValue || consumable == null)
@@ -970,6 +1025,16 @@ namespace HaCreator.MapSimulator.UI
                 ModifierBehavior.VegaTenPercent => consumable.Definition.UsesTieredSuccessRate && consumable.Definition.IsAdvancedFamily,
                 ModifierBehavior.VegaSixtyPercent => consumable.Definition.UsesTieredSuccessRate && !consumable.Definition.IsAdvancedFamily,
                 _ => false
+            };
+        }
+
+        private EnhancementConsumable ResolveConsumableForModifier(UpgradeState state, EnhancementConsumableDefinition modifierDefinition)
+        {
+            return modifierDefinition.ModifierBehavior switch
+            {
+                ModifierBehavior.VegaTenPercent => GetFirstAvailableConsumable(state, AdvancedEnhancementScrollId, AlternateAdvancedEnhancementScrollId, AlternateAdvancedEnhancementScrollId2),
+                ModifierBehavior.VegaSixtyPercent => GetFirstAvailableConsumable(state, EquipEnhancementScrollId, AlternateEquipEnhancementScrollId),
+                _ => null
             };
         }
 
@@ -1450,6 +1515,40 @@ namespace HaCreator.MapSimulator.UI
             string[] generatedLines = RollPotentialLines(tier, lineCount);
             lines[nextLineIndex] = generatedLines[nextLineIndex];
             return lines;
+        }
+
+        public readonly struct ItemUpgradeAttemptResult
+        {
+            public ItemUpgradeAttemptResult(bool? success, string statusMessage, int consumableItemId, int modifierItemId = 0)
+            {
+                Success = success;
+                StatusMessage = statusMessage ?? string.Empty;
+                ConsumableItemId = consumableItemId;
+                ModifierItemId = modifierItemId;
+            }
+
+            public bool? Success { get; }
+            public string StatusMessage { get; }
+            public int ConsumableItemId { get; }
+            public int ModifierItemId { get; }
+        }
+
+        public readonly struct ModifierPreview
+        {
+            public ModifierPreview(int consumableItemId, string consumableName, int consumableCount, float baseSuccessRate, float modifiedSuccessRate)
+            {
+                ConsumableItemId = consumableItemId;
+                ConsumableName = consumableName ?? string.Empty;
+                ConsumableCount = consumableCount;
+                BaseSuccessRate = baseSuccessRate;
+                ModifiedSuccessRate = modifiedSuccessRate;
+            }
+
+            public int ConsumableItemId { get; }
+            public string ConsumableName { get; }
+            public int ConsumableCount { get; }
+            public float BaseSuccessRate { get; }
+            public float ModifiedSuccessRate { get; }
         }
     }
 }

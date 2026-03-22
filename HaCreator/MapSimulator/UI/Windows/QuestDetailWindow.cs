@@ -16,6 +16,7 @@ namespace HaCreator.MapSimulator.UI
         private readonly string _windowName;
         private readonly List<ButtonLabel> _buttonLabels = new();
         private readonly Dictionary<QuestWindowActionKind, ActionButtonBinding> _actionButtons = new();
+        private readonly Dictionary<QuestDetailNpcButtonStyle, ActionButtonBinding> _npcButtons = new();
 
         private SpriteFont _font;
         private IDXObject _foreground;
@@ -29,8 +30,10 @@ namespace HaCreator.MapSimulator.UI
         private int _navigationCount;
         private UIObject _activePrimaryButton;
         private UIObject _activeSecondaryButton;
+        private UIObject _activeTertiaryButton;
         private bool _drawPrimaryLabel = true;
         private bool _drawSecondaryLabel = true;
+        private bool _drawTertiaryLabel = true;
         private Texture2D _summaryHeaderTexture;
         private Texture2D _requirementHeaderTexture;
         private Texture2D _rewardHeaderTexture;
@@ -44,6 +47,9 @@ namespace HaCreator.MapSimulator.UI
         private Texture2D _pixel;
         private HoveredQuestItemInfo _hoveredQuestItem;
         private Point _lastMousePosition;
+        private NoticeSurface[] _noticeSurfaces = Array.Empty<NoticeSurface>();
+        private NoticeAnimationFrame[] _noticeAnimationFrames = Array.Empty<NoticeAnimationFrame>();
+        private Point _noticeAnimationOffset;
 
         public QuestDetailWindow(IDXObject frame, string windowName)
             : base(frame)
@@ -89,6 +95,37 @@ namespace HaCreator.MapSimulator.UI
             _progressFrameOffset = frameOffset;
         }
 
+        public void SetNoticeTextures(Texture2D[] surfaces, Point[] surfaceOffsets, Texture2D[] animationFrames, int[] animationDelays, Point animationOffset)
+        {
+            if (surfaces != null && surfaceOffsets != null && surfaces.Length == surfaceOffsets.Length)
+            {
+                _noticeSurfaces = new NoticeSurface[surfaces.Length];
+                for (int i = 0; i < surfaces.Length; i++)
+                {
+                    _noticeSurfaces[i] = new NoticeSurface(surfaces[i], surfaceOffsets[i]);
+                }
+            }
+            else
+            {
+                _noticeSurfaces = Array.Empty<NoticeSurface>();
+            }
+
+            if (animationFrames != null && animationDelays != null && animationFrames.Length == animationDelays.Length)
+            {
+                _noticeAnimationFrames = new NoticeAnimationFrame[animationFrames.Length];
+                for (int i = 0; i < animationFrames.Length; i++)
+                {
+                    _noticeAnimationFrames[i] = new NoticeAnimationFrame(animationFrames[i], Math.Max(1, animationDelays[i]));
+                }
+            }
+            else
+            {
+                _noticeAnimationFrames = Array.Empty<NoticeAnimationFrame>();
+            }
+
+            _noticeAnimationOffset = animationOffset;
+        }
+
         public void SetItemIconProvider(Func<int, Texture2D> itemIconProvider)
         {
             _itemIconProvider = itemIconProvider;
@@ -117,6 +154,26 @@ namespace HaCreator.MapSimulator.UI
             };
 
             _actionButtons[action] = new ActionButtonBinding(button, drawLabel);
+        }
+
+        internal void RegisterNpcButton(QuestDetailNpcButtonStyle style, UIObject button, bool drawLabel = false)
+        {
+            if (style == QuestDetailNpcButtonStyle.None || button == null)
+            {
+                return;
+            }
+
+            button.SetVisible(false);
+            AddButton(button);
+            button.ButtonClickReleased += _ =>
+            {
+                if (_state?.TertiaryAction == QuestWindowActionKind.LocateNpc && _state.TertiaryActionEnabled)
+                {
+                    ActionRequested?.Invoke(QuestWindowActionKind.LocateNpc);
+                }
+            };
+
+            _npcButtons[style] = new ActionButtonBinding(button, drawLabel);
         }
 
         public void InitializeNavigationButtons(GraphicsDevice device)
@@ -156,10 +213,17 @@ namespace HaCreator.MapSimulator.UI
             _navigationCount = navigationCount;
             _activePrimaryButton = null;
             _activeSecondaryButton = null;
+            _activeTertiaryButton = null;
             _drawPrimaryLabel = true;
             _drawSecondaryLabel = true;
+            _drawTertiaryLabel = true;
 
             foreach (ActionButtonBinding binding in _actionButtons.Values)
+            {
+                binding.Button.SetVisible(false);
+            }
+
+            foreach (ActionButtonBinding binding in _npcButtons.Values)
             {
                 binding.Button.SetVisible(false);
             }
@@ -180,6 +244,12 @@ namespace HaCreator.MapSimulator.UI
                 secondaryBinding.Button.SetButtonState(state.SecondaryActionEnabled ? UIObjectState.Normal : UIObjectState.Disabled);
                 _activeSecondaryButton = secondaryBinding.Button;
                 _drawSecondaryLabel = secondaryBinding.DrawLabel;
+            }
+
+            if (state != null)
+            {
+                BindNpcButton(state);
+                LayoutActionButtons();
             }
 
             if (_previousButton != null)
@@ -260,6 +330,8 @@ namespace HaCreator.MapSimulator.UI
                 y += _font.LineSpacing + 6;
             }
 
+            y = DrawNoticeSurface(sprite, y, TickCount);
+
             DrawSummarySection(sprite, ref y, x, 258f);
             DrawRequirementSection(sprite, ref y, x, 258f);
             DrawRewardSection(sprite, ref y, x, 258f);
@@ -304,6 +376,11 @@ namespace HaCreator.MapSimulator.UI
             if (_activeSecondaryButton?.ButtonVisible == true && _drawSecondaryLabel)
             {
                 DrawCenteredButtonLabel(sprite, _activeSecondaryButton, _state.SecondaryActionLabel);
+            }
+
+            if (_activeTertiaryButton?.ButtonVisible == true && _drawTertiaryLabel)
+            {
+                DrawCenteredButtonLabel(sprite, _activeTertiaryButton, _state.TertiaryActionLabel);
             }
 
             if (_navigationCount > 1)
@@ -540,6 +617,7 @@ namespace HaCreator.MapSimulator.UI
                 y += _font.LineSpacing + 6;
             }
 
+            y = AdvanceNoticeLayout(y);
             y = AdvanceSummaryLayout(x, y, 258f);
 
             HoveredQuestItemInfo hovered = TryResolveHoveredConditionItem(mouseX, mouseY, _state.RequirementLines, x, ref y, 258f, false);
@@ -567,6 +645,40 @@ namespace HaCreator.MapSimulator.UI
             }
 
             return y;
+        }
+
+        private float DrawNoticeSurface(SpriteBatch sprite, float y, int tickCount)
+        {
+            NoticeSurface? surface = GetActiveNoticeSurface();
+            if (!surface.HasValue || surface.Value.Texture == null)
+            {
+                return y;
+            }
+
+            Vector2 surfacePosition = new(Position.X + surface.Value.Offset.X, Position.Y + surface.Value.Offset.Y);
+            sprite.Draw(surface.Value.Texture, surfacePosition, Color.White);
+
+            NoticeAnimationFrame? animationFrame = GetActiveNoticeAnimationFrame(tickCount);
+            if (animationFrame.HasValue && animationFrame.Value.Texture != null)
+            {
+                sprite.Draw(
+                    animationFrame.Value.Texture,
+                    new Vector2(Position.X + _noticeAnimationOffset.X, Position.Y + _noticeAnimationOffset.Y),
+                    Color.White);
+            }
+
+            return Math.Max(y, surfacePosition.Y + surface.Value.Texture.Height + 6f);
+        }
+
+        private float AdvanceNoticeLayout(float y)
+        {
+            NoticeSurface? surface = GetActiveNoticeSurface();
+            if (!surface.HasValue || surface.Value.Texture == null)
+            {
+                return y;
+            }
+
+            return Math.Max(y, Position.Y + surface.Value.Offset.Y + surface.Value.Texture.Height + 6f);
         }
 
         private HoveredQuestItemInfo TryResolveHoveredConditionItem(int mouseX, int mouseY, IReadOnlyList<QuestLogLineSnapshot> lines, float x, ref float y, float maxWidth, bool rewardSection)
@@ -776,6 +888,132 @@ namespace HaCreator.MapSimulator.UI
             sprite.DrawString(_font, text, new Vector2(x, y), Color.White);
         }
 
+        private void BindNpcButton(QuestWindowDetailState state)
+        {
+            if (state == null || state.TertiaryAction != QuestWindowActionKind.LocateNpc)
+            {
+                return;
+            }
+
+            ActionButtonBinding? npcBinding = null;
+            if (state.NpcButtonStyle != QuestDetailNpcButtonStyle.None &&
+                _npcButtons.TryGetValue(state.NpcButtonStyle, out ActionButtonBinding styledBinding))
+            {
+                npcBinding = styledBinding;
+            }
+            else if (_npcButtons.TryGetValue(QuestDetailNpcButtonStyle.GenericNpc, out ActionButtonBinding genericBinding))
+            {
+                npcBinding = genericBinding;
+            }
+            else if (_npcButtons.Count > 0)
+            {
+                npcBinding = _npcButtons.Values.First();
+            }
+
+            if (!npcBinding.HasValue)
+            {
+                return;
+            }
+
+            npcBinding.Value.Button.SetVisible(true);
+            npcBinding.Value.Button.SetButtonState(state.TertiaryActionEnabled ? UIObjectState.Normal : UIObjectState.Disabled);
+            _activeTertiaryButton = npcBinding.Value.Button;
+            _drawTertiaryLabel = npcBinding.Value.DrawLabel;
+        }
+
+        private void LayoutActionButtons()
+        {
+            List<UIObject> orderedButtons = new();
+            AppendDistinctVisibleButton(orderedButtons, _activeTertiaryButton);
+            AppendDistinctVisibleButton(orderedButtons, _activeSecondaryButton);
+            AppendDistinctVisibleButton(orderedButtons, _activePrimaryButton);
+
+            if (orderedButtons.Count == 0)
+            {
+                return;
+            }
+
+            int frameWidth = CurrentFrame?.Width ?? 296;
+            int frameHeight = CurrentFrame?.Height ?? 396;
+            int cursorX = frameWidth - 12;
+
+            for (int i = orderedButtons.Count - 1; i >= 0; i--)
+            {
+                UIObject button = orderedButtons[i];
+                int buttonWidth = Math.Max(1, button.CanvasSnapshotWidth);
+                int buttonHeight = Math.Max(1, button.CanvasSnapshotHeight);
+                button.X = Math.Max(12, cursorX - buttonWidth);
+                button.Y = Math.Max(16, frameHeight - buttonHeight - 10);
+                cursorX = button.X - 8;
+            }
+        }
+
+        private static void AppendDistinctVisibleButton(ICollection<UIObject> buttons, UIObject button)
+        {
+            if (button == null || !button.ButtonVisible || buttons.Contains(button))
+            {
+                return;
+            }
+
+            buttons.Add(button);
+        }
+
+        private NoticeSurface? GetActiveNoticeSurface()
+        {
+            if (_state == null || _noticeSurfaces.Length == 0)
+            {
+                return null;
+            }
+
+            int surfaceIndex = _state.State switch
+            {
+                MapleLib.WzLib.WzStructure.Data.QuestStructure.QuestStateType.Completed => 3,
+                MapleLib.WzLib.WzStructure.Data.QuestStructure.QuestStateType.Started when _state.PrimaryAction == QuestWindowActionKind.Complete && _state.PrimaryActionEnabled => 2,
+                MapleLib.WzLib.WzStructure.Data.QuestStructure.QuestStateType.Started => 1,
+                MapleLib.WzLib.WzStructure.Data.QuestStructure.QuestStateType.Not_Started => 0,
+                _ => -1
+            };
+
+            if (surfaceIndex < 0 || surfaceIndex >= _noticeSurfaces.Length)
+            {
+                return null;
+            }
+
+            return _noticeSurfaces[surfaceIndex];
+        }
+
+        private NoticeAnimationFrame? GetActiveNoticeAnimationFrame(int tickCount)
+        {
+            if (_noticeAnimationFrames.Length == 0)
+            {
+                return null;
+            }
+
+            int totalDuration = 0;
+            for (int i = 0; i < _noticeAnimationFrames.Length; i++)
+            {
+                totalDuration += _noticeAnimationFrames[i].DelayMs;
+            }
+
+            if (totalDuration <= 0)
+            {
+                return _noticeAnimationFrames[0];
+            }
+
+            int normalizedTick = ((tickCount % totalDuration) + totalDuration) % totalDuration;
+            int elapsed = 0;
+            for (int i = 0; i < _noticeAnimationFrames.Length; i++)
+            {
+                elapsed += _noticeAnimationFrames[i].DelayMs;
+                if (normalizedTick < elapsed)
+                {
+                    return _noticeAnimationFrames[i];
+                }
+            }
+
+            return _noticeAnimationFrames[_noticeAnimationFrames.Length - 1];
+        }
+
         private readonly struct ActionButtonBinding
         {
             public ActionButtonBinding(UIObject button, bool drawLabel)
@@ -798,6 +1036,30 @@ namespace HaCreator.MapSimulator.UI
 
             public UIObject Button { get; }
             public string Text { get; }
+        }
+
+        private readonly struct NoticeSurface
+        {
+            public NoticeSurface(Texture2D texture, Point offset)
+            {
+                Texture = texture;
+                Offset = offset;
+            }
+
+            public Texture2D Texture { get; }
+            public Point Offset { get; }
+        }
+
+        private readonly struct NoticeAnimationFrame
+        {
+            public NoticeAnimationFrame(Texture2D texture, int delayMs)
+            {
+                Texture = texture;
+                DelayMs = delayMs;
+            }
+
+            public Texture2D Texture { get; }
+            public int DelayMs { get; }
         }
     }
 }

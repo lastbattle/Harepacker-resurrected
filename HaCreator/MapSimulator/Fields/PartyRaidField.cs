@@ -56,6 +56,12 @@ namespace HaCreator.MapSimulator.Fields
         private const int FieldStageDrawY = 20;
         private const int FieldPointDrawX = 99;
         private const int FieldPointDrawY = 2;
+        private const int BatteryOffsetX = 44;
+        private const int BatteryOffsetY = 84;
+        private const int BatteryFillOffsetX = 15;
+        private const int BatteryFillOffsetY = 8;
+        private const int BatteryFillLength = 22;
+        private const int DefaultBatteryCapacity = 100;
         private const int BossHudX = 0;
         private const int BossHudY = 40;
         private const int BossGaugeBackgrdX = 54;
@@ -90,6 +96,8 @@ namespace HaCreator.MapSimulator.Fields
         private PartyRaidTeamColor _teamColor;
         private int _stage;
         private int _point;
+        private int _batteryCharge;
+        private int _batteryCapacity;
         private int _redDamage;
         private int _blueDamage;
         private int _gaugeCapacity;
@@ -104,6 +112,10 @@ namespace HaCreator.MapSimulator.Fields
         private CanvasSprite _fieldBoard;
         private CanvasSprite _redStateBackground;
         private CanvasSprite _blueStateBackground;
+        private CanvasSprite _batteryEnd;
+        private CanvasSprite _batteryMiddle;
+        private CanvasSprite _batteryTop;
+        private CanvasSprite _batteryChargeFill;
         private CanvasSprite _bossGaugeBackground;
         private CanvasSprite _bossGaugeText;
         private CanvasSprite _bossGaugeFillPixel;
@@ -134,6 +146,8 @@ namespace HaCreator.MapSimulator.Fields
         public PartyRaidTeamColor TeamColor => _teamColor;
         public int Stage => _stage;
         public int Point => _point;
+        public int BatteryCharge => _batteryCharge;
+        public int BatteryCapacity => _batteryCapacity;
         public int RedDamage => _redDamage;
         public int BlueDamage => _blueDamage;
         public int GaugeCapacity => _gaugeCapacity;
@@ -180,6 +194,8 @@ namespace HaCreator.MapSimulator.Fields
             _mapId = mapInfo.id;
             _mode = mode;
             _stage = 1;
+            _batteryCharge = 0;
+            _batteryCapacity = DefaultBatteryCapacity;
             _gaugeCapacity = DefaultGaugeCapacity;
             _teamColor = InferTeamColor(mapInfo.id);
             _resultSideBorder = Math.Max(0, mapInfo.LBSide ?? 0);
@@ -368,6 +384,19 @@ namespace HaCreator.MapSimulator.Fields
                 return true;
             }
 
+            if (MatchesAlias(key, "battery", "charge", "batteryCharge", "batteryPoint"))
+            {
+                _batteryCharge = Math.Clamp(parsedValue, 0, Math.Max(1, _batteryCapacity));
+                return true;
+            }
+
+            if (MatchesAlias(key, "batteryMax", "batteryCapacity", "chargeMax", "chargeCapacity"))
+            {
+                _batteryCapacity = Math.Max(1, parsedValue);
+                _batteryCharge = Math.Clamp(_batteryCharge, 0, _batteryCapacity);
+                return true;
+            }
+
             if (MatchesAlias(key, "gaugeCap", "maxhp", "gauge_capacity"))
             {
                 _gaugeCapacity = Math.Max(1, parsedValue);
@@ -387,6 +416,12 @@ namespace HaCreator.MapSimulator.Fields
             if (MatchesAlias(key, "point", "partyPoint", "pt"))
             {
                 _point = parsedValue;
+                return true;
+            }
+
+            if (MatchesAlias(key, "battery", "charge", "batteryCharge", "batteryPoint"))
+            {
+                _batteryCharge = Math.Clamp(parsedValue, 0, Math.Max(1, _batteryCapacity));
                 return true;
             }
 
@@ -435,7 +470,7 @@ namespace HaCreator.MapSimulator.Fields
             string timerText = HasRunningClock ? $", timer={FormatTimer(RemainingSeconds)}" : string.Empty;
             return _mode switch
             {
-                PartyRaidFieldMode.Field => $"Party Raid field map {_mapId}: team {GetTeamLabel(_teamColor)}, stage {_stage}, point {_point}{timerText}.",
+                PartyRaidFieldMode.Field => $"Party Raid field map {_mapId}: team {GetTeamLabel(_teamColor)}, stage {_stage}, point {_point}{DescribeBatteryStatus()}{timerText}.",
                 PartyRaidFieldMode.Boss => $"Party Raid boss map {_mapId}: point {_point}, red damage {_redDamage}, blue damage {_blueDamage}, gauge cap {_gaugeCapacity}{timerText}.",
                 PartyRaidFieldMode.Result => $"Party Raid result map {_mapId}: point {_resultPoint}, bonus {_resultBonus}, total {_resultTotal}, outcome {GetOutcomeLabel(_resultOutcome)}{timerText}.",
                 _ => "Party Raid runtime inactive."
@@ -455,6 +490,8 @@ namespace HaCreator.MapSimulator.Fields
             _teamColor = PartyRaidTeamColor.Red;
             _stage = 0;
             _point = 0;
+            _batteryCharge = 0;
+            _batteryCapacity = DefaultBatteryCapacity;
             _redDamage = 0;
             _blueDamage = 0;
             _gaugeCapacity = DefaultGaugeCapacity;
@@ -494,6 +531,7 @@ namespace HaCreator.MapSimulator.Fields
             WzImageProperty stage = partyRace?["Stage"];
             WzImageProperty state = partyRace?["State"];
             WzImageProperty result = partyRace?["Result"];
+            WzImageProperty battery = partyRace?["battery"];
             WzImageProperty dualMobGauge = uiWindow?["DualMobGauge"];
 
             _fieldBoard = LoadCanvas(stage?["backgrd"]);
@@ -507,6 +545,10 @@ namespace HaCreator.MapSimulator.Fields
             LoadAnimation(state?["Red"]?["effOther"], _redOtherFrames);
             LoadAnimation(state?["Blue"]?["effMine"], _blueMineFrames);
             LoadAnimation(state?["Blue"]?["effOther"], _blueOtherFrames);
+            _batteryEnd = LoadCanvas(battery?["backgrd_End"]);
+            _batteryMiddle = LoadCanvas(battery?["backgrd_Middle"]);
+            _batteryTop = LoadCanvas(battery?["backgrd_Top"]);
+            _batteryChargeFill = LoadCanvas(battery?["charge"]);
 
             _bossGaugeBackground = LoadCanvas(dualMobGauge?["backgrd"]);
             _bossGaugeText = LoadCanvas(dualMobGauge?["text"]);
@@ -616,6 +658,7 @@ namespace HaCreator.MapSimulator.Fields
 
             DrawAnimationFrame(spriteBatch, GetMineFrames(), _mineAnimation, centerX + StateMineOffsetX, StateMineY);
             DrawAnimationFrame(spriteBatch, GetOtherFrames(), _otherAnimation, centerX + StateOtherOffsetX, StateOtherY);
+            DrawBatteryHud(spriteBatch, centerX);
 
             if (_fieldBoard.IsLoaded)
             {
@@ -684,6 +727,34 @@ namespace HaCreator.MapSimulator.Fields
             {
                 DrawOutlinedString(spriteBatch, font, $"RED {_redDamage}", new Vector2(8, BossHudY + 10), Color.IndianRed);
                 DrawOutlinedString(spriteBatch, font, $"BLUE {_blueDamage}", new Vector2(270, BossHudY + 10), Color.LightSkyBlue);
+            }
+        }
+
+        private void DrawBatteryHud(SpriteBatch spriteBatch, int centerX)
+        {
+            if (!_batteryTop.IsLoaded || !_batteryMiddle.IsLoaded || !_batteryEnd.IsLoaded || !_batteryChargeFill.IsLoaded)
+            {
+                return;
+            }
+
+            int batteryX = centerX + BatteryOffsetX;
+            int batteryY = BatteryOffsetY;
+            DrawSprite(spriteBatch, _batteryTop, batteryX, batteryY);
+
+            int middleStartX = batteryX + (_batteryTop.Width - _batteryTop.Origin.X);
+            int middleCount = Math.Max(0, (BatteryFillLength - _batteryTop.Width - _batteryEnd.Width + _batteryTop.Origin.X + _batteryEnd.Origin.X + _batteryMiddle.Width - 1) / _batteryMiddle.Width);
+            for (int i = 0; i < middleCount; i++)
+            {
+                DrawSprite(spriteBatch, _batteryMiddle, middleStartX + (i * _batteryMiddle.Width), batteryY);
+            }
+
+            int batteryEndX = batteryX + BatteryFillLength + _batteryEnd.Origin.X - _batteryEnd.Width;
+            DrawSprite(spriteBatch, _batteryEnd, batteryEndX, batteryY);
+
+            int chargeWidth = GetBatteryFillWidth();
+            for (int x = 0; x < chargeWidth; x++)
+            {
+                DrawSprite(spriteBatch, _batteryChargeFill, batteryX + BatteryFillOffsetX + x, batteryY + BatteryFillOffsetY);
             }
         }
 
@@ -871,6 +942,13 @@ namespace HaCreator.MapSimulator.Fields
         private List<AnimationFrame> GetOtherFrames() => _teamColor == PartyRaidTeamColor.Blue ? _blueOtherFrames : _redOtherFrames;
         private List<AnimationFrame> GetResultEffectFrames(PartyRaidResultOutcome outcome) => outcome switch { PartyRaidResultOutcome.Lose => _timeoutResultFrames, PartyRaidResultOutcome.Win => _clearResultFrames, PartyRaidResultOutcome.Clear => _clearResultFrames, _ => null };
         private bool HasResultValues() => _resultPoint >= 0 && _resultBonus >= 0 && _resultTotal >= 0;
+        private int GetBatteryFillWidth()
+        {
+            int capacity = Math.Max(1, _batteryCapacity);
+            int clampedCharge = Math.Clamp(_batteryCharge, 0, capacity);
+            int width = (BatteryFillLength * clampedCharge) / capacity;
+            return clampedCharge > 0 && width == 0 ? 1 : Math.Clamp(width, 0, BatteryFillLength);
+        }
 
         private int GetRemainingGaugeWidth(int damage)
         {
@@ -918,6 +996,7 @@ namespace HaCreator.MapSimulator.Fields
         private static bool UsesWinBadge(PartyRaidResultOutcome outcome) => outcome == PartyRaidResultOutcome.Win || outcome == PartyRaidResultOutcome.Clear;
         private static string GetOutcomeLabel(PartyRaidResultOutcome outcome) => outcome switch { PartyRaidResultOutcome.Win => "WIN", PartyRaidResultOutcome.Lose => "LOSE", PartyRaidResultOutcome.Clear => "CLEAR", _ => "RESULT" };
         private static string GetTeamLabel(PartyRaidTeamColor teamColor) => teamColor == PartyRaidTeamColor.Blue ? "blue" : "red";
+        private string DescribeBatteryStatus() => _batteryCharge > 0 ? $", battery {_batteryCharge}/{Math.Max(1, _batteryCapacity)}" : string.Empty;
         private static string FormatTimer(int remainingSeconds) { int clamped = Math.Max(0, remainingSeconds); return string.Format(CultureInfo.InvariantCulture, "{0:D2}:{1:D2}", clamped / 60, clamped % 60); }
 
         private static bool TryParseTeamColor(string text, out PartyRaidTeamColor teamColor)

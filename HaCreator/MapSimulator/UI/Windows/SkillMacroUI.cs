@@ -1011,9 +1011,26 @@ namespace HaCreator.MapSimulator.UI
             _dragSourceSlot = -1;
         }
 
+        public void HandleCommittedText(string text)
+        {
+            if (!CapturesKeyboardInput || string.IsNullOrEmpty(text))
+            {
+                return;
+            }
+
+            if (SkillMacroNameRules.TryAppendBestEffort(_editingMacroName, text, out string updatedText, out string error))
+            {
+                _editingMacroName = updatedText;
+                _validationMessage = string.Empty;
+            }
+            else if (!string.IsNullOrEmpty(error))
+            {
+                _validationMessage = error;
+            }
+        }
+
         private void HandleKeyboardInput(KeyboardState keyboardState)
         {
-            bool shift = keyboardState.IsKeyDown(Keys.LeftShift) || keyboardState.IsKeyDown(Keys.RightShift);
             bool ctrl = keyboardState.IsKeyDown(Keys.LeftControl) || keyboardState.IsKeyDown(Keys.RightControl);
 
             if (keyboardState.IsKeyDown(Keys.Back) && _previousKeyboardState.IsKeyUp(Keys.Back) && _editingMacroName.Length > 0)
@@ -1026,33 +1043,6 @@ namespace HaCreator.MapSimulator.UI
             {
                 HandleClipboardPaste();
                 return;
-            }
-
-            foreach (Keys key in keyboardState.GetPressedKeys())
-            {
-                if (_previousKeyboardState.IsKeyDown(key))
-                    continue;
-
-                if (key == Keys.Back || key == Keys.Enter || key == Keys.Tab || key == Keys.Escape || key == Keys.V ||
-                    key == Keys.LeftShift || key == Keys.RightShift || key == Keys.LeftControl || key == Keys.RightControl ||
-                    key == Keys.LeftAlt || key == Keys.RightAlt)
-                {
-                    continue;
-                }
-
-                char? character = KeyToChar(key, shift);
-                if (!character.HasValue)
-                    continue;
-
-                if (SkillMacroNameRules.TryAppend(_editingMacroName, character.Value.ToString(), out string updatedText, out string error))
-                {
-                    _editingMacroName = updatedText;
-                    _validationMessage = string.Empty;
-                }
-                else
-                {
-                    _validationMessage = error;
-                }
             }
         }
 
@@ -1071,7 +1061,9 @@ namespace HaCreator.MapSimulator.UI
                     return;
                 }
 
-                if (SkillMacroNameRules.TryAppend(_editingMacroName, clipboardText, out string updatedText, out string error))
+                string normalizedClipboardText = clipboardText.Replace("\r", string.Empty).Replace("\n", string.Empty);
+
+                if (SkillMacroNameRules.TryAppendBestEffort(_editingMacroName, normalizedClipboardText, out string updatedText, out string error))
                 {
                     _editingMacroName = updatedText;
                     _validationMessage = string.Empty;
@@ -1085,35 +1077,6 @@ namespace HaCreator.MapSimulator.UI
             {
                 _validationMessage = "Clipboard paste is not available right now.";
             }
-        }
-
-        private static char? KeyToChar(Keys key, bool shift)
-        {
-            if (key >= Keys.A && key <= Keys.Z)
-            {
-                char c = (char)('a' + (key - Keys.A));
-                return shift ? char.ToUpperInvariant(c) : c;
-            }
-
-            if (key >= Keys.D0 && key <= Keys.D9)
-            {
-                const string normal = "0123456789";
-                const string shifted = ")!@#$%^&*(";
-                int index = key - Keys.D0;
-                return shift ? shifted[index] : normal[index];
-            }
-
-            return key switch
-            {
-                Keys.Space => ' ',
-                Keys.OemMinus => shift ? '_' : '-',
-                Keys.OemPlus => shift ? '+' : '=',
-                Keys.OemQuotes => shift ? '"' : '\'',
-                Keys.OemQuestion => shift ? '?' : '/',
-                Keys.OemPeriod => shift ? '>' : '.',
-                Keys.OemComma => shift ? '<' : ',',
-                _ => null
-            };
         }
         #endregion
     }

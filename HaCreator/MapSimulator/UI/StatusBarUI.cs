@@ -13,6 +13,12 @@ using System.Threading.Tasks;
 
 namespace HaCreator.MapSimulator.UI {
 
+    public enum PreparedSkillHudSurface
+    {
+        StatusBar,
+        World
+    }
+
     /// <summary>
     /// Character stats data for display on the status bar.
     /// Positions based on analysis of MapleStory client CUIStatusBar::SetNumberValue and CUIStatusBar::SetStatusValue functions.
@@ -48,6 +54,7 @@ namespace HaCreator.MapSimulator.UI {
         public int SkillId { get; set; }
         public string SkillName { get; set; }
         public string SkinKey { get; set; } = "KeyDownBar";
+        public PreparedSkillHudSurface Surface { get; set; } = PreparedSkillHudSurface.StatusBar;
         public int RemainingMs { get; set; }
         public int DurationMs { get; set; }
         public int GaugeDurationMs { get; set; }
@@ -56,6 +63,8 @@ namespace HaCreator.MapSimulator.UI {
         public bool IsHolding { get; set; }
         public int HoldElapsedMs { get; set; }
         public int MaxHoldDurationMs { get; set; }
+        public bool ShowText { get; set; } = true;
+        public Vector2 WorldAnchor { get; set; }
     }
 
     public class StatusBarCooldownRenderData
@@ -93,7 +102,9 @@ namespace HaCreator.MapSimulator.UI {
         private Func<CharacterStatsData> _getCharacterStats;
         private Func<int, IReadOnlyList<StatusBarBuffRenderData>> _getBuffStatus;
         private Func<int, IReadOnlyList<StatusBarCooldownRenderData>> _getCooldownStatus;
+        private Func<int, IReadOnlyList<StatusBarCooldownRenderData>> _getOffBarCooldownStatus;
         private Func<int, StatusBarPreparedSkillRenderData> _getPreparedSkillStatus;
+        private Func<int, StatusBarPreparedSkillRenderData> _getPreparedSkillOverlayStatus;
         private Texture2D _pixelTexture;
 
         // Gauge textures loaded from UI.wz/StatusBar2.img/mainBar/gauge/hp/0, mp/0, exp/0
@@ -193,6 +204,12 @@ namespace HaCreator.MapSimulator.UI {
         private const int COOLDOWN_TRAY_COLUMNS = 8;
         private const int COOLDOWN_TRAY_TOP_MARGIN = BUFF_TRAY_TOP_MARGIN + (BUFF_TRAY_ROWS * (BUFF_ICON_SIZE + BUFF_ICON_SPACING)) + 4;
         private const int COOLDOWN_TRAY_RIGHT_MARGIN = 8;
+        private const int OFFBAR_COOLDOWN_ICON_SIZE = 24;
+        private const int OFFBAR_COOLDOWN_ICON_SPACING = 2;
+        private const int OFFBAR_COOLDOWN_TRAY_COLUMNS = 6;
+        private const int OFFBAR_COOLDOWN_TRAY_ROWS = 2;
+        private const int OFFBAR_COOLDOWN_TRAY_TOP_MARGIN = COOLDOWN_TRAY_TOP_MARGIN + BUFF_ICON_SIZE + 4;
+        private const int OFFBAR_COOLDOWN_TRAY_RIGHT_MARGIN = 8;
         private const int TOOLTIP_FALLBACK_WIDTH = 320;
         private const int TOOLTIP_PADDING = 10;
         private const int TOOLTIP_ICON_GAP = 8;
@@ -274,9 +291,19 @@ namespace HaCreator.MapSimulator.UI {
             _getCooldownStatus = getCooldownStatus;
         }
 
+        public void SetOffBarCooldownStatusProvider(Func<int, IReadOnlyList<StatusBarCooldownRenderData>> getOffBarCooldownStatus)
+        {
+            _getOffBarCooldownStatus = getOffBarCooldownStatus;
+        }
+
         public void SetPreparedSkillProvider(Func<int, StatusBarPreparedSkillRenderData> getPreparedSkillStatus)
         {
             _getPreparedSkillStatus = getPreparedSkillStatus;
+        }
+
+        public void SetPreparedSkillOverlayProvider(Func<int, StatusBarPreparedSkillRenderData> getPreparedSkillStatus)
+        {
+            _getPreparedSkillOverlayStatus = getPreparedSkillStatus;
         }
 
         public Action<int> BuffCancelRequested { get; set; }
@@ -478,6 +505,34 @@ namespace HaCreator.MapSimulator.UI {
             DrawCharacterStats(sprite, renderParameters, TickCount);
             DrawHoveredBuffTooltip(sprite, renderParameters.RenderWidth, renderParameters.RenderHeight);
             DrawHoveredCooldownTooltip(sprite, renderParameters.RenderWidth, renderParameters.RenderHeight);
+        }
+
+        public void DrawPreparedSkillOverlay(
+            SpriteBatch sprite,
+            SkeletonMeshRenderer skeletonMeshRenderer,
+            GameTime gameTime,
+            int mapShiftX,
+            int mapShiftY,
+            int centerX,
+            int centerY,
+            RenderParameters renderParameters,
+            int currentTime)
+        {
+            if (_getPreparedSkillOverlayStatus == null)
+            {
+                return;
+            }
+
+            StatusBarPreparedSkillRenderData preparedSkill = _getPreparedSkillOverlayStatus(currentTime);
+            if (preparedSkill == null || preparedSkill.Surface != PreparedSkillHudSurface.World)
+            {
+                return;
+            }
+
+            Vector2 anchor = new Vector2(
+                preparedSkill.WorldAnchor.X - mapShiftX + centerX,
+                preparedSkill.WorldAnchor.Y - mapShiftY + centerY);
+            DrawPreparedSkillBar(sprite, anchor, currentTime, preparedSkill, anchorIsWorldPosition: true);
         }
 
         /// <summary>
@@ -909,55 +964,106 @@ namespace HaCreator.MapSimulator.UI {
         {
             _cooldownIconHitboxes.Clear();
             _cooldownTooltipEntries.Clear();
-            if (_getCooldownStatus == null)
+            DrawCooldownTrayGroup(
+                sprite,
+                renderParameters,
+                currentTime,
+                _getCooldownStatus,
+                COOLDOWN_TRAY_COLUMNS,
+                1,
+                BUFF_ICON_SIZE,
+                BUFF_ICON_SPACING,
+                COOLDOWN_TRAY_RIGHT_MARGIN,
+                COOLDOWN_TRAY_TOP_MARGIN);
+            DrawCooldownTrayGroup(
+                sprite,
+                renderParameters,
+                currentTime,
+                _getOffBarCooldownStatus,
+                OFFBAR_COOLDOWN_TRAY_COLUMNS,
+                OFFBAR_COOLDOWN_TRAY_ROWS,
+                OFFBAR_COOLDOWN_ICON_SIZE,
+                OFFBAR_COOLDOWN_ICON_SPACING,
+                OFFBAR_COOLDOWN_TRAY_RIGHT_MARGIN,
+                OFFBAR_COOLDOWN_TRAY_TOP_MARGIN);
+        }
+
+        private void DrawCooldownTrayGroup(
+            SpriteBatch sprite,
+            RenderParameters renderParameters,
+            int currentTime,
+            Func<int, IReadOnlyList<StatusBarCooldownRenderData>> provider,
+            int columns,
+            int rows,
+            int iconSize,
+            int iconSpacing,
+            int rightMargin,
+            int topMargin)
+        {
+            if (provider == null)
             {
                 return;
             }
 
-            IReadOnlyList<StatusBarCooldownRenderData> cooldownEntries = _getCooldownStatus(currentTime);
+            IReadOnlyList<StatusBarCooldownRenderData> cooldownEntries = provider(currentTime);
             if (cooldownEntries == null || cooldownEntries.Count == 0)
             {
                 return;
             }
 
-            int visibleCount = Math.Min(cooldownEntries.Count, COOLDOWN_TRAY_COLUMNS);
-            int trayWidth = (BUFF_ICON_SIZE * visibleCount) + (BUFF_ICON_SPACING * Math.Max(0, visibleCount - 1));
-            int startX = renderParameters.RenderWidth - COOLDOWN_TRAY_RIGHT_MARGIN - trayWidth;
+            int maxVisibleEntries = Math.Max(1, columns * rows);
+            int visibleCount = Math.Min(cooldownEntries.Count, maxVisibleEntries);
 
-            for (int i = 0; i < visibleCount; i++)
+            for (int row = 0; row < rows; row++)
             {
-                StatusBarCooldownRenderData cooldownEntry = cooldownEntries[i];
-                Rectangle iconRect = new Rectangle(
-                    startX + i * (BUFF_ICON_SIZE + BUFF_ICON_SPACING),
-                    COOLDOWN_TRAY_TOP_MARGIN,
-                    BUFF_ICON_SIZE,
-                    BUFF_ICON_SIZE);
-                _cooldownIconHitboxes[cooldownEntry.SkillId] = iconRect;
-                _cooldownTooltipEntries[cooldownEntry.SkillId] = cooldownEntry;
-
-                DrawBuffIconFrame(sprite, iconRect);
-                if (cooldownEntry.IconTexture != null)
+                int rowStartIndex = row * columns;
+                if (rowStartIndex >= visibleCount)
                 {
-                    sprite.Draw(cooldownEntry.IconTexture, iconRect, Color.White);
+                    break;
                 }
 
-                float remainingProgress = cooldownEntry.DurationMs > 0
-                    ? Math.Clamp(cooldownEntry.RemainingMs / (float)cooldownEntry.DurationMs, 0f, 1f)
-                    : 1f;
-                DrawCooldownOverlay(sprite, iconRect, remainingProgress);
+                int entriesInRow = Math.Min(columns, visibleCount - rowStartIndex);
+                int rowWidth = (iconSize * entriesInRow) + (iconSpacing * Math.Max(0, entriesInRow - 1));
+                int startX = renderParameters.RenderWidth - rightMargin - rowWidth;
 
-                if (_font == null || cooldownEntry.RemainingMs <= 0)
+                for (int col = 0; col < entriesInRow; col++)
                 {
-                    continue;
+                    int entryIndex = rowStartIndex + col;
+                    StatusBarCooldownRenderData cooldownEntry = cooldownEntries[entryIndex];
+                    Rectangle iconRect = new Rectangle(
+                        startX + col * (iconSize + iconSpacing),
+                        topMargin + row * (iconSize + iconSpacing),
+                        iconSize,
+                        iconSize);
+
+                    _cooldownIconHitboxes[cooldownEntry.SkillId] = iconRect;
+                    _cooldownTooltipEntries[cooldownEntry.SkillId] = cooldownEntry;
+
+                    DrawBuffIconFrame(sprite, iconRect);
+                    if (cooldownEntry.IconTexture != null)
+                    {
+                        sprite.Draw(cooldownEntry.IconTexture, iconRect, Color.White);
+                    }
+
+                    float remainingProgress = cooldownEntry.DurationMs > 0
+                        ? Math.Clamp(cooldownEntry.RemainingMs / (float)cooldownEntry.DurationMs, 0f, 1f)
+                        : 1f;
+                    DrawCooldownOverlay(sprite, iconRect, remainingProgress);
+
+                    if (_font == null || cooldownEntry.RemainingMs <= 0)
+                    {
+                        continue;
+                    }
+
+                    float textScale = iconSize < BUFF_ICON_SIZE ? 0.45f : 0.5f;
+                    string remainingText = Math.Max(1, (int)Math.Ceiling(cooldownEntry.RemainingMs / 1000f)).ToString();
+                    Vector2 textSize = _font.MeasureString(remainingText) * textScale;
+                    Vector2 textPosition = new Vector2(
+                        iconRect.Right - textSize.X - 2,
+                        iconRect.Bottom - textSize.Y - 1);
+
+                    DrawTextWithShadow(sprite, remainingText, textPosition, Color.White, Color.Black, textScale);
                 }
-
-                string remainingText = Math.Max(1, (int)Math.Ceiling(cooldownEntry.RemainingMs / 1000f)).ToString();
-                Vector2 textSize = _font.MeasureString(remainingText) * 0.5f;
-                Vector2 textPosition = new Vector2(
-                    iconRect.Right - textSize.X - 2,
-                    iconRect.Bottom - textSize.Y - 1);
-
-                DrawTextWithShadow(sprite, remainingText, textPosition, Color.White, Color.Black, 0.5f);
             }
         }
 
@@ -1011,6 +1117,16 @@ namespace HaCreator.MapSimulator.UI {
             }
 
             StatusBarPreparedSkillRenderData preparedSkill = _getPreparedSkillStatus(currentTime);
+            DrawPreparedSkillBar(sprite, basePosGauge, currentTime, preparedSkill, anchorIsWorldPosition: false);
+        }
+
+        private void DrawPreparedSkillBar(
+            SpriteBatch sprite,
+            Vector2 basePosGauge,
+            int currentTime,
+            StatusBarPreparedSkillRenderData preparedSkill,
+            bool anchorIsWorldPosition)
+        {
             if (preparedSkill == null)
             {
                 return;
@@ -1019,7 +1135,7 @@ namespace HaCreator.MapSimulator.UI {
             PreparedSkillHudProfile hudProfile = ResolvePreparedSkillHudProfile(preparedSkill);
             float progress = ResolvePreparedSkillHudProgress(preparedSkill, hudProfile);
             StatusBarKeyDownBarTextures textures = ResolveKeyDownBarTextures(hudProfile.SkinKey ?? preparedSkill.SkinKey);
-            Rectangle barRect = GetKeyDownBarRectangle(basePosGauge, textures);
+            Rectangle barRect = GetKeyDownBarRectangle(basePosGauge, textures, anchorIsWorldPosition);
 
             if (textures?.Bar != null)
             {
@@ -1037,7 +1153,10 @@ namespace HaCreator.MapSimulator.UI {
                 sprite.Draw(textures.Graduation, barRect, Color.White);
             }
 
-            DrawPreparedSkillHudText(sprite, preparedSkill, hudProfile, barRect, progress);
+            if (preparedSkill.ShowText)
+            {
+                DrawPreparedSkillHudText(sprite, preparedSkill, hudProfile, barRect, progress);
+            }
         }
 
         private void DrawPreparedSkillGauge(SpriteBatch sprite, Rectangle barRect, float progress, StatusBarKeyDownBarTextures textures)
@@ -1486,13 +1605,16 @@ namespace HaCreator.MapSimulator.UI {
             return _font.MeasureString(text).X * spriteFontScale;
         }
 
-        private Rectangle GetKeyDownBarRectangle(Vector2 basePosGauge, StatusBarKeyDownBarTextures textures)
+        private Rectangle GetKeyDownBarRectangle(Vector2 basePosGauge, StatusBarKeyDownBarTextures textures, bool anchorIsWorldPosition = false)
         {
             Texture2D barTexture = textures?.Bar;
             int width = barTexture?.Width ?? 72;
             int height = barTexture?.Height ?? 12;
             Point origin = textures?.BarOrigin ?? KEYDOWN_BAR_DEFAULT_ORIGIN;
-            Vector2 barPos = basePosGauge + KEYDOWN_BAR_ANCHOR_POS - origin.ToVector2();
+            Vector2 anchor = anchorIsWorldPosition
+                ? basePosGauge
+                : basePosGauge + KEYDOWN_BAR_ANCHOR_POS;
+            Vector2 barPos = anchor - origin.ToVector2();
             return new Rectangle((int)barPos.X, (int)barPos.Y, width, height);
         }
 

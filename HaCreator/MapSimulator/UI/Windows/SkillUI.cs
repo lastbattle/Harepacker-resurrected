@@ -787,6 +787,18 @@ namespace HaCreator.MapSimulator.UI
             skillPoints[tab] = Math.Max(0, points);
         }
 
+        public void AddSkillPoints(int jobAdvancement, int delta)
+        {
+            if (delta == 0)
+            {
+                return;
+            }
+
+            int tab = Math.Clamp(jobAdvancement, TAB_BEGINNER, TAB_4TH);
+            skillPoints.TryGetValue(tab, out int currentPoints);
+            skillPoints[tab] = Math.Max(0, currentPoints + delta);
+        }
+
         /// <summary>
         /// Clear all skills
         /// </summary>
@@ -1031,6 +1043,7 @@ namespace HaCreator.MapSimulator.UI
         public int RequiredSkillId { get; set; }
         public int RequiredSkillLevel { get; set; }
         public Dictionary<int, string> LevelDescriptions { get; } = new Dictionary<int, string>();
+        public Dictionary<int, int> RequiredGuildLevels { get; } = new Dictionary<int, int>();
 
         // Skill properties for tooltip
         public int Damage { get; set; }

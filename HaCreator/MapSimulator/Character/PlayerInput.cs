@@ -373,7 +373,11 @@ namespace HaCreator.MapSimulator.Character
         /// </summary>
         public void ApplyToPlayer(PlayerCharacter player)
         {
-            var state = GetState();
+            ApplyToPlayer(player, GetState());
+        }
+
+        public void ApplyToPlayer(PlayerCharacter player, InputState state)
+        {
             player.SetInput(
                 state.Left,
                 state.Right,

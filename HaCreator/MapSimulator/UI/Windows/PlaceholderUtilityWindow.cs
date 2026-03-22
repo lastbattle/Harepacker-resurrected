@@ -14,6 +14,19 @@ namespace HaCreator.MapSimulator.UI
     /// </summary>
     public sealed class PlaceholderUtilityWindow : UIWindowBase
     {
+        private readonly struct PageLayer
+        {
+            public PageLayer(IDXObject layer, Point offset)
+            {
+                Layer = layer;
+                Offset = offset;
+            }
+
+            public IDXObject Layer { get; }
+            public Point Offset { get; }
+        }
+
+        private readonly List<PageLayer> _layers = new();
         private readonly string _windowName;
         private readonly string _title;
         private readonly string _body;
@@ -34,6 +47,14 @@ namespace HaCreator.MapSimulator.UI
             _font = font;
         }
 
+        public void AddLayer(IDXObject layer, Point offset)
+        {
+            if (layer != null)
+            {
+                _layers.Add(new PageLayer(layer, offset));
+            }
+        }
+
         protected override void DrawContents(
             SpriteBatch sprite,
             SkeletonMeshRenderer skeletonMeshRenderer,
@@ -46,6 +67,19 @@ namespace HaCreator.MapSimulator.UI
             RenderParameters renderParameters,
             int TickCount)
         {
+            foreach (PageLayer layer in _layers)
+            {
+                layer.Layer.DrawBackground(
+                    sprite,
+                    skeletonMeshRenderer,
+                    gameTime,
+                    Position.X + layer.Offset.X,
+                    Position.Y + layer.Offset.Y,
+                    Color.White,
+                    false,
+                    drawReflectionInfo);
+            }
+
             if (_font == null)
             {
                 return;

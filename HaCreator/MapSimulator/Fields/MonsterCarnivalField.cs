@@ -40,6 +40,18 @@ namespace HaCreator.MapSimulator.Fields
         SummonedMobCount = 8
     }
 
+    public enum MonsterCarnivalRawPacketType
+    {
+        Enter = 346,
+        PersonalCp = 347,
+        TeamCp = 348,
+        RequestResult = 349,
+        RequestFailure = 350,
+        ProcessForDeath = 351,
+        ShowMemberOutMessage = 352,
+        GameResult = 353
+    }
+
     public sealed class MonsterCarnivalEntry
     {
         public MonsterCarnivalEntry(
@@ -441,6 +453,7 @@ namespace HaCreator.MapSimulator.Fields
         public MonsterCarnivalTab ActiveTab => _activeTab;
         public int PersonalCp => _personalCp;
         public int PersonalTotalCp => _personalTotalCp;
+        public string CurrentStatusMessage => _statusMessage;
         public MonsterCarnivalTeamState Team0 => _team0;
         public MonsterCarnivalTeamState Team1 => _team1;
         public IReadOnlyDictionary<int, int> MobSpellCounts => _mobSpellCounts;
@@ -506,6 +519,29 @@ namespace HaCreator.MapSimulator.Fields
             _team0.TotalCp = Math.Max(_team0.CurrentCp, team0TotalCp);
             _team1.CurrentCp = Math.Max(0, team1CurrentCp);
             _team1.TotalCp = Math.Max(_team1.CurrentCp, team1TotalCp);
+        }
+
+        public void UpdatePersonalCp(int personalCp, int personalTotalCp)
+        {
+            if (!_isVisible)
+            {
+                return;
+            }
+
+            _personalCp = Math.Max(0, personalCp);
+            _personalTotalCp = Math.Max(_personalCp, personalTotalCp);
+        }
+
+        public void UpdateTeamCp(MonsterCarnivalTeam team, int currentCp, int totalCp)
+        {
+            if (!_isVisible)
+            {
+                return;
+            }
+
+            MonsterCarnivalTeamState teamState = GetTeamState(team);
+            teamState.CurrentCp = Math.Max(0, currentCp);
+            teamState.TotalCp = Math.Max(teamState.CurrentCp, totalCp);
         }
 
         public void ApplyTeamCpDelta(
@@ -637,6 +673,20 @@ namespace HaCreator.MapSimulator.Fields
             ShowStatus($"{normalizedName} of {FormatTeam(team)} was defeated. {reviveSummary}{cpSummary}".Trim(), tickCount);
         }
 
+        public void OnShowMemberOutMessage(int messageType, MonsterCarnivalTeam team, string characterName, int tickCount)
+        {
+            if (!_isVisible)
+            {
+                return;
+            }
+
+            string normalizedName = string.IsNullOrWhiteSpace(characterName) ? "A party member" : characterName.Trim();
+            string summary = messageType == 6
+                ? $"Monster Carnival member-out update: {FormatTeam(team)} and {normalizedName} changed teams."
+                : $"Monster Carnival member-out update: {normalizedName} left {FormatTeam(team)}.";
+            ShowStatus(summary, tickCount);
+        }
+
         public bool TryApplyPacket(MonsterCarnivalPacketType packetType, byte[] payload, int currentTimeMs, out string errorMessage)
         {
             errorMessage = null;
@@ -707,6 +757,82 @@ namespace HaCreator.MapSimulator.Fields
 
                     default:
                         errorMessage = $"Unsupported Monster Carnival packet type: {packetType}";
+                        return false;
+                }
+            }
+            catch (Exception ex) when (ex is EndOfStreamException || ex is IOException || ex is InvalidDataException)
+            {
+                errorMessage = ex.Message;
+                return false;
+            }
+        }
+
+        public bool TryApplyRawPacket(int packetType, byte[] payload, int currentTimeMs, out string errorMessage)
+        {
+            errorMessage = null;
+
+            if (!_isVisible)
+            {
+                errorMessage = "Monster Carnival runtime inactive.";
+                return false;
+            }
+
+            payload ??= Array.Empty<byte>();
+
+            try
+            {
+                using var stream = new MemoryStream(payload, writable: false);
+                using var reader = new BinaryReader(stream, Encoding.Default, leaveOpen: false);
+                switch ((MonsterCarnivalRawPacketType)packetType)
+                {
+                    case MonsterCarnivalRawPacketType.Enter:
+                        OnEnter((MonsterCarnivalTeam)reader.ReadByte(), reader.ReadInt16(), reader.ReadInt16(), reader.ReadInt16(), reader.ReadInt16(), reader.ReadInt16(), reader.ReadInt16());
+
+                        for (int i = 0; i < (_definition?.MobEntries.Count ?? 0); i++)
+                        {
+                            SetEntryCount(_mobSpellCounts, _definition.MobEntries[i].Id, reader.ReadByte());
+                        }
+
+                        EnsurePacketConsumed(stream, "raw-enter");
+                        return true;
+
+                    case MonsterCarnivalRawPacketType.PersonalCp:
+                        UpdatePersonalCp(reader.ReadInt16(), reader.ReadInt16());
+                        EnsurePacketConsumed(stream, "raw-personal-cp");
+                        return true;
+
+                    case MonsterCarnivalRawPacketType.TeamCp:
+                        UpdateTeamCp((MonsterCarnivalTeam)reader.ReadByte(), reader.ReadInt16(), reader.ReadInt16());
+                        EnsurePacketConsumed(stream, "raw-team-cp");
+                        return true;
+
+                    case MonsterCarnivalRawPacketType.RequestResult:
+                        OnRequestResult(reader.ReadByte(), reader.ReadByte(), ReadPacketString(reader), currentTimeMs);
+                        EnsurePacketConsumed(stream, "raw-request-result");
+                        return true;
+
+                    case MonsterCarnivalRawPacketType.RequestFailure:
+                        OnRequestFailure(reader.ReadByte(), currentTimeMs);
+                        EnsurePacketConsumed(stream, "raw-request-failure");
+                        return true;
+
+                    case MonsterCarnivalRawPacketType.ProcessForDeath:
+                        OnProcessForDeath((MonsterCarnivalTeam)reader.ReadByte(), ReadPacketString(reader), reader.ReadByte(), currentTimeMs);
+                        EnsurePacketConsumed(stream, "raw-process-for-death");
+                        return true;
+
+                    case MonsterCarnivalRawPacketType.ShowMemberOutMessage:
+                        OnShowMemberOutMessage(reader.ReadByte(), (MonsterCarnivalTeam)reader.ReadByte(), ReadPacketString(reader), currentTimeMs);
+                        EnsurePacketConsumed(stream, "raw-show-member-out");
+                        return true;
+
+                    case MonsterCarnivalRawPacketType.GameResult:
+                        OnShowGameResult(reader.ReadByte(), currentTimeMs);
+                        EnsurePacketConsumed(stream, "raw-game-result");
+                        return true;
+
+                    default:
+                        errorMessage = $"Unsupported Monster Carnival raw packet type: {packetType}";
                         return false;
                 }
             }

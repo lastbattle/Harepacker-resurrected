@@ -187,6 +187,8 @@ namespace HaCreator.MapSimulator.Character
                 ItemId = itemId,
                 Name = ResolvePortableChairName(itemId),
                 Description = ResolvePortableChairDescription(itemId),
+                RecoveryHp = Math.Max(0, GetIntValue(info?["recoveryHP"]) ?? 0),
+                RecoveryMp = Math.Max(0, GetIntValue(info?["recoveryMP"]) ?? 0),
                 SitActionId = GetIntValue(info?["sitAction"]),
                 TamingMobItemId = GetIntValue(info?["tamingMob"]),
                 IsCoupleChair = itemId / 1000 == 3012,
@@ -727,7 +729,7 @@ namespace HaCreator.MapSimulator.Character
         public CharacterPart LoadEquipment(int itemId)
         {
             if (_equipCache.TryGetValue(itemId, out var cached))
-                return cached;
+                return cached?.Clone();
 
             // Determine equipment folder based on ID range
             string folder = GetEquipmentFolder(itemId);
@@ -783,7 +785,7 @@ namespace HaCreator.MapSimulator.Character
                 _equipCache[itemId] = part;
             }
 
-            return part;
+            return part?.Clone();
         }
 
         private WeaponPart LoadWeapon(WzImage img, int itemId)
@@ -1056,11 +1058,13 @@ namespace HaCreator.MapSimulator.Character
             part.VSlot = GetStringValue(info["vslot"]);
             part.ISlot = GetStringValue(info["islot"]);
             part.IsCash = GetIntValue(info["cash"]) == 1;
+            part.RequiredJobMask = GetIntValue(info["reqJob"]) ?? 0;
             part.RequiredLevel = GetIntValue(info["reqLevel"]) ?? 0;
             part.RequiredSTR = GetIntValue(info["reqSTR"]) ?? 0;
             part.RequiredDEX = GetIntValue(info["reqDEX"]) ?? 0;
             part.RequiredINT = GetIntValue(info["reqINT"]) ?? 0;
             part.RequiredLUK = GetIntValue(info["reqLUK"]) ?? 0;
+            part.RequiredFame = GetIntValue(info["reqPOP"]) ?? 0;
             part.BonusSTR = GetIntValue(info["incSTR"]) ?? 0;
             part.BonusDEX = GetIntValue(info["incDEX"]) ?? 0;
             part.BonusINT = GetIntValue(info["incINT"]) ?? 0;
@@ -1076,6 +1080,8 @@ namespace HaCreator.MapSimulator.Character
             part.BonusSpeed = GetIntValue(info["incSpeed"]) ?? 0;
             part.BonusJump = GetIntValue(info["incJump"]) ?? 0;
             part.UpgradeSlots = GetIntValue(info["tuc"]) ?? 0;
+            part.MaxDurability = GetIntValue(info["durability"]);
+            part.Durability = part.MaxDurability;
 
             if (Program.InfoManager?.ItemNameCache != null
                 && Program.InfoManager.ItemNameCache.TryGetValue(part.ItemId, out Tuple<string, string, string> itemInfo))
@@ -1121,6 +1127,14 @@ namespace HaCreator.MapSimulator.Character
                 109 => "Shield",
                 110 => "Cape",
                 111 => "Ring",
+                112 => "Accessory",
+                113 => "Accessory",
+                114 => "Accessory",
+                115 => "Accessory",
+                116 => "Accessory",
+                118 => "Accessory",
+                166 => "Android",
+                167 => "Android",
                 >= 130 and < 170 => "Weapon",
                 180 => "TamingMob",
                 >= 190 and < 200 => "TamingMob",
@@ -1144,6 +1158,15 @@ namespace HaCreator.MapSimulator.Character
                 108 => EquipSlot.Glove,
                 109 => EquipSlot.Shield,
                 110 => EquipSlot.Cape,
+                111 => EquipSlot.Ring1,
+                112 => EquipSlot.Pendant,
+                113 => EquipSlot.Belt,
+                114 => EquipSlot.Medal,
+                115 => EquipSlot.Shoulder,
+                116 => EquipSlot.Pocket,
+                118 => EquipSlot.Badge,
+                166 => EquipSlot.Android,
+                167 => EquipSlot.AndroidHeart,
                 >= 130 and < 170 => EquipSlot.Weapon,
                 180 => EquipSlot.TamingMob,
                 >= 190 and < 200 => EquipSlot.TamingMob,
@@ -1167,6 +1190,7 @@ namespace HaCreator.MapSimulator.Character
                 "Cape" => CharacterPartType.Cape,
                 "Weapon" => CharacterPartType.Weapon,
                 "TamingMob" => CharacterPartType.TamingMob,
+                "Android" => CharacterPartType.Accessory,
                 _ => CharacterPartType.Body
             };
         }
@@ -1786,6 +1810,8 @@ namespace HaCreator.MapSimulator.Character
                 31 => "1h axe",
                 32 => "1h blunt",
                 33 => "dagger",
+                34 => "katara",
+                36 => "cane",
                 37 => "wand",
                 38 => "staff",
                 40 => "2h sword",
@@ -1798,6 +1824,8 @@ namespace HaCreator.MapSimulator.Character
                 47 => "claw",
                 48 => "knuckle",
                 49 => "gun",
+                52 => "double bowgun",
+                53 => "cannon",
                 _ => "weapon"
             };
         }

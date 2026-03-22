@@ -12,6 +12,12 @@ namespace HaCreator.MapSimulator
 
         public int DurationMs { get; init; }
 
+        public int IntervalMs { get; init; }
+
+        public int PropPercent { get; init; }
+
+        public int Count { get; init; }
+
         public Point? Lt { get; init; }
 
         public Point? Rb { get; init; }

@@ -66,15 +66,41 @@ namespace HaCreator.MapSimulator.Fields
 
         private static bool CanEvaluate(PlayerCharacter player, FootholdLine playerFoothold, MobMovementInfo movement)
         {
-            return player?.IsAlive == true
-                   && !player.GmFlyMode
-                   && !player.Physics.IsOnLadderOrRope
-                   && !player.Physics.IsUserFlying()
-                   && !player.Physics.IsInSwimArea
+            return CanIssueFollowRequest(player)
                    && playerFoothold != null
                    && movement.CurrentFoothold != null
                    && movement.MoveType != MobMoveType.Fly
                    && !movement.IsInKnockback;
+        }
+
+        private static bool CanIssueFollowRequest(PlayerCharacter player)
+        {
+            return player?.IsAlive == true
+                   && player.Physics != null
+                   && !player.GmFlyMode
+                   && !player.Physics.IsOnLadderOrRope
+                   && !player.Physics.IsUserFlying()
+                   && !player.Physics.IsInSwimArea
+                   && player.State != PlayerState.Sitting
+                   && !player.IsMovementLockedBySkillTransform
+                   && !HasActiveRideState(player)
+                   && !string.Equals(player.CurrentActionName, CharacterPart.GetActionString(CharacterAction.Ghost), StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static bool HasActiveRideState(PlayerCharacter player)
+        {
+            if (player?.Build == null)
+            {
+                return false;
+            }
+
+            if (player.Build.HasMonsterRiding)
+            {
+                return true;
+            }
+
+            return player.Build.Equipment?.TryGetValue(EquipSlot.TamingMob, out CharacterPart mountPart) == true
+                   && mountPart != null;
         }
 
         private static FootholdLine ResolvePlayerFoothold(PlayerCharacter player, bool allowAirborneCarry)

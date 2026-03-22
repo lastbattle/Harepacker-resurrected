@@ -1,6 +1,9 @@
 using HaSharedLibrary.Render;
 using HaSharedLibrary.Render.DX;
+using HaSharedLibrary.Util;
+using MapleLib.WzLib;
 using MapleLib.WzLib.WzStructure.Data.ItemStructure;
+using MapleLib.WzLib.WzProperties;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using Microsoft.Xna.Framework.Input;
@@ -67,6 +70,7 @@ namespace HaCreator.MapSimulator.UI
             public string PriceLabel { get; init; } = string.Empty;
             public long Price { get; init; }
             public AdminShopCategory Category { get; init; }
+            public Texture2D IconTexture { get; set; }
             public bool SupportsWishlist { get; init; }
             public bool Wishlisted { get; set; }
             public AdminShopEntryState State { get; set; }
@@ -107,11 +111,16 @@ namespace HaCreator.MapSimulator.UI
         private const int HeaderX = 18;
         private const int HeaderY = 72;
         private const int PaneLabelY = 90;
-        private const int RowTextX = 14;
+        private const int RowIconX = 4;
+        private const int RowIconY = 1;
+        private const int RowIconSize = 32;
+        private const int RowTextX = 40;
         private const int RowTitleY = 8;
         private const int RowDetailY = 22;
         private const int DetailX = 18;
         private const int DetailY = 278;
+        private const int DetailIconSize = 32;
+        private const int DetailTextOffsetX = 40;
         private const int MoneyIconX = 335;
         private const int MoneyIconY = 299;
         private const int MoneyTextX = 353;
@@ -159,6 +168,8 @@ namespace HaCreator.MapSimulator.UI
         private readonly Texture2D _modalTexture;
         private readonly UIObject _modalConfirmButton;
         private readonly UIObject _modalCancelButton;
+        private readonly GraphicsDevice _device;
+        private readonly Dictionary<int, Texture2D> _itemIconCache = new();
 
         private IInventoryRuntime _inventory;
         private IStorageRuntime _storageRuntime;
@@ -206,6 +217,7 @@ namespace HaCreator.MapSimulator.UI
             _contentOverlayOffset = contentOverlayOffset;
             _selectionTexture = selectionTexture;
             _mesoTexture = mesoTexture;
+            _device = device;
             _pixelTexture = new Texture2D(device, 1, 1);
             _pixelTexture.SetData(new[] { Color.White });
             _buyButton = buyButton;
@@ -498,10 +510,11 @@ namespace HaCreator.MapSimulator.UI
                     sprite.Draw(_selectionTexture, new Vector2(rowX, rowY), Color.White);
                 }
 
+                DrawEntryIcon(sprite, entry, rowX + RowIconX, rowY + RowIconY, RowIconSize);
                 Color titleColor = GetTitleColor(entry, isSelected);
                 Color detailColor = GetDetailColor(entry, isSelected);
-                sprite.DrawString(_font, TrimToWidth(entry.Title, 130f), new Vector2(rowX + RowTextX, rowY + RowTitleY), titleColor);
-                sprite.DrawString(_font, TrimToWidth(entry.PriceLabel, 130f), new Vector2(rowX + RowTextX, rowY + RowDetailY), detailColor);
+                sprite.DrawString(_font, TrimToWidth(entry.Title, 104f), new Vector2(rowX + RowTextX, rowY + RowTitleY), titleColor);
+                sprite.DrawString(_font, TrimToWidth(entry.PriceLabel, 104f), new Vector2(rowX + RowTextX, rowY + RowDetailY), detailColor);
 
                 if (!string.IsNullOrWhiteSpace(entry.StateLabel))
                 {
@@ -563,9 +576,16 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
-            sprite.DrawString(_font, entry.Title, new Vector2(windowX + DetailX, windowY + DetailY), Color.White);
-            sprite.DrawString(_font, $"{entry.Seller}  |  {entry.PriceLabel}", new Vector2(windowX + DetailX, windowY + DetailY + 18), new Color(235, 224, 164));
-            sprite.DrawString(_font, BuildEntryStateText(entry), new Vector2(windowX + DetailX, windowY + DetailY + 36), GetStateColor(entry, false));
+            bool hasIcon = entry.IconTexture != null;
+            if (hasIcon)
+            {
+                DrawEntryIcon(sprite, entry, windowX + DetailX, windowY + DetailY, DetailIconSize);
+            }
+
+            int detailTextX = windowX + DetailX + (hasIcon ? DetailTextOffsetX : 0);
+            sprite.DrawString(_font, entry.Title, new Vector2(detailTextX, windowY + DetailY), Color.White);
+            sprite.DrawString(_font, $"{entry.Seller}  |  {entry.PriceLabel}", new Vector2(detailTextX, windowY + DetailY + 18), new Color(235, 224, 164));
+            sprite.DrawString(_font, BuildEntryStateText(entry), new Vector2(detailTextX, windowY + DetailY + 36), GetStateColor(entry, false));
 
             float detailY = windowY + DetailY + 54;
             foreach (string line in WrapText(entry.Detail, 400f))
@@ -748,6 +768,8 @@ namespace HaCreator.MapSimulator.UI
             _paneStates[AdminShopPane.User].SourceEntries.Clear();
             _paneStates[AdminShopPane.Npc].SourceEntries.AddRange(CreateNpcEntries(mode));
             _paneStates[AdminShopPane.User].SourceEntries.AddRange(CreateUserEntries(mode));
+            PopulateEntryIcons(_paneStates[AdminShopPane.Npc].SourceEntries);
+            PopulateEntryIcons(_paneStates[AdminShopPane.User].SourceEntries);
             ApplyCategoryFilter();
             _footerMessage = BuildSelectionMessage(GetSelectedEntry(), _activePane);
             UpdateRowButtons();
@@ -788,6 +810,96 @@ namespace HaCreator.MapSimulator.UI
         {
             UpdateRowButtonsForPane(_npcRowButtons, _paneStates[AdminShopPane.Npc]);
             UpdateRowButtonsForPane(_userRowButtons, _paneStates[AdminShopPane.User]);
+        }
+
+        private void PopulateEntryIcons(IEnumerable<AdminShopEntry> entries)
+        {
+            if (entries == null)
+            {
+                return;
+            }
+
+            foreach (AdminShopEntry entry in entries)
+            {
+                entry.IconTexture = ResolveEntryIcon(entry);
+            }
+        }
+
+        private Texture2D ResolveEntryIcon(AdminShopEntry entry)
+        {
+            if (entry == null || entry.RewardItemId <= 0)
+            {
+                return null;
+            }
+
+            if (_inventory != null && entry.RewardInventoryType != InventoryType.NONE)
+            {
+                Texture2D inventoryTexture = _inventory.GetItemTexture(entry.RewardInventoryType, entry.RewardItemId);
+                if (inventoryTexture != null)
+                {
+                    return inventoryTexture;
+                }
+            }
+
+            if (_itemIconCache.TryGetValue(entry.RewardItemId, out Texture2D cachedTexture))
+            {
+                return cachedTexture;
+            }
+
+            Texture2D loadedTexture = LoadItemIconTexture(entry.RewardItemId);
+            if (loadedTexture != null)
+            {
+                _itemIconCache[entry.RewardItemId] = loadedTexture;
+            }
+
+            return loadedTexture;
+        }
+
+        private Texture2D LoadItemIconTexture(int itemId)
+        {
+            if (_device == null || itemId <= 0 || !InventoryItemMetadataResolver.TryResolveImageSource(itemId, out string category, out string imagePath))
+            {
+                return null;
+            }
+
+            WzImage itemImage = global::HaCreator.Program.FindImage(category, imagePath);
+            if (itemImage == null)
+            {
+                return null;
+            }
+
+            itemImage.ParseImage();
+            string itemText = string.Equals(category, "Character", StringComparison.OrdinalIgnoreCase)
+                ? itemId.ToString("D8", CultureInfo.InvariantCulture)
+                : itemId.ToString("D7", CultureInfo.InvariantCulture);
+            WzSubProperty infoProperty = (itemImage[itemText] as WzSubProperty)?["info"] as WzSubProperty;
+            WzCanvasProperty iconCanvas = infoProperty?["iconRaw"] as WzCanvasProperty
+                                          ?? infoProperty?["icon"] as WzCanvasProperty;
+            return iconCanvas?.GetLinkedWzCanvasBitmap()?.ToTexture2DAndDispose(_device);
+        }
+
+        private void DrawEntryIcon(SpriteBatch sprite, AdminShopEntry entry, int x, int y, int size)
+        {
+            if (entry?.IconTexture == null)
+            {
+                return;
+            }
+
+            Rectangle destination = new Rectangle(x, y, size, size);
+            sprite.Draw(entry.IconTexture, destination, Color.White);
+
+            if (entry.RewardQuantity <= 1)
+            {
+                return;
+            }
+
+            string quantityText = $"x{entry.RewardQuantity}";
+            Vector2 quantitySize = _font.MeasureString(quantityText);
+            sprite.DrawString(
+                _font,
+                quantityText,
+                new Vector2(destination.Right - quantitySize.X, destination.Bottom - quantitySize.Y - 1f),
+                new Color(255, 235, 169));
         }
 
         private static void UpdateRowButtonsForPane(List<UIObject> buttons, AdminShopPaneState paneState)
@@ -1767,10 +1879,11 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
-            Texture2D itemTexture = _inventory.GetItemTexture(entry.RewardInventoryType, entry.RewardItemId);
+            Texture2D itemTexture = ResolveEntryIcon(entry);
             _inventory.AddItem(entry.RewardInventoryType, entry.RewardItemId, itemTexture, entry.RewardQuantity);
             entry.State = entry.LockAfterSuccess ? AdminShopEntryState.SoldOut : AdminShopEntryState.RequestAccepted;
             entry.StateLabel = entry.LockAfterSuccess ? "Purchased" : "Delivered";
+            entry.IconTexture = itemTexture;
             _footerMessage = $"{entry.Title} delivered to {entry.RewardInventoryType} inventory.";
             _pendingRequestEntry = null;
             Money = _inventory.GetMesoCount();

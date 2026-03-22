@@ -39,6 +39,12 @@ namespace HaCreator.MapSimulator.UI
         private readonly Point _collapsedContentOffset;
         private readonly Texture2D[] _nameBarTextures;
         private readonly Texture2D[] _chatBalloonFrames;
+        private readonly Texture2D _maxStatusIcon;
+        private readonly Point _maxStatusIconPosition;
+        private readonly Texture2D _minStatusIcon;
+        private readonly Point _minStatusIconPosition;
+        private readonly Texture2D _collapsedStatusIcon;
+        private readonly Point _collapsedStatusIconPosition;
         private readonly Texture2D _pixel;
         private readonly StringBuilder _inputText = new(80);
         private readonly Point _maxEnterButtonPosition;
@@ -94,6 +100,12 @@ namespace HaCreator.MapSimulator.UI
             Point collapsedContentOffset,
             Texture2D[] nameBarTextures,
             Texture2D[] chatBalloonFrames,
+            Texture2D maxStatusIcon,
+            Point maxStatusIconPosition,
+            Texture2D minStatusIcon,
+            Point minStatusIconPosition,
+            Texture2D collapsedStatusIcon,
+            Point collapsedStatusIconPosition,
             Point maxEnterButtonPosition,
             Point minEnterButtonPosition,
             Point maxClaimButtonPosition,
@@ -123,6 +135,12 @@ namespace HaCreator.MapSimulator.UI
             _collapsedContentOffset = collapsedContentOffset;
             _nameBarTextures = nameBarTextures ?? Array.Empty<Texture2D>();
             _chatBalloonFrames = chatBalloonFrames ?? Array.Empty<Texture2D>();
+            _maxStatusIcon = maxStatusIcon;
+            _maxStatusIconPosition = maxStatusIconPosition;
+            _minStatusIcon = minStatusIcon;
+            _minStatusIconPosition = minStatusIconPosition;
+            _collapsedStatusIcon = collapsedStatusIcon;
+            _collapsedStatusIconPosition = collapsedStatusIconPosition;
             _maxEnterButtonPosition = maxEnterButtonPosition;
             _minEnterButtonPosition = minEnterButtonPosition;
             _maxClaimButtonPosition = maxClaimButtonPosition;
@@ -310,6 +328,7 @@ namespace HaCreator.MapSimulator.UI
             sprite.DrawString(_font, "Messenger", new Vector2(Position.X + 26, Position.Y + 7), Color.White, 0f, Vector2.Zero, 0.5f, SpriteEffects.None, 0f);
             if (!IsCollapsed)
             {
+                DrawStatusBar(sprite, snapshot);
                 DrawLeaveControl(sprite, snapshot);
                 DrawParticipantSlots(sprite, snapshot);
                 DrawParticipantBalloons(sprite, snapshot, TickCount);
@@ -601,17 +620,64 @@ namespace HaCreator.MapSimulator.UI
 
         private void DrawCollapsedStatus(SpriteBatch sprite, MessengerSnapshot snapshot)
         {
-            string status = !string.IsNullOrWhiteSpace(snapshot.PendingInviteSummary) && !string.Equals(snapshot.PendingInviteSummary, "none", StringComparison.OrdinalIgnoreCase)
-                ? snapshot.PendingInviteSummary
-                : !string.IsNullOrWhiteSpace(snapshot.LastPacketSummary)
-                    ? snapshot.LastPacketSummary
-                    : snapshot.LastActionSummary;
+            Texture2D icon = _collapsedStatusIcon;
+            Point iconPosition = _collapsedStatusIconPosition;
+            if (icon != null)
+            {
+                Color iconTint = snapshot.ShowStatusBlink ? new Color(255, 236, 150) : Color.White;
+                sprite.Draw(icon, new Vector2(Position.X + iconPosition.X, Position.Y + iconPosition.Y), iconTint);
+            }
+
+            string status = snapshot.CollapsedStatusText;
             if (string.IsNullOrWhiteSpace(status))
             {
                 status = "Messenger idle";
             }
 
-            sprite.DrawString(_font, Truncate(status, 36), new Vector2(Position.X + 34, Position.Y + 6), new Color(212, 220, 231), 0f, Vector2.Zero, 0.34f, SpriteEffects.None, 0f);
+            int textStartX = Position.X + 34;
+            if (icon != null)
+            {
+                textStartX = Position.X + iconPosition.X + icon.Width + 6;
+            }
+
+            sprite.DrawString(_font, TruncateToWidth(status, 170, 0.34f), new Vector2(textStartX, Position.Y + 6), new Color(212, 220, 231), 0f, Vector2.Zero, 0.34f, SpriteEffects.None, 0f);
+        }
+
+        private void DrawStatusBar(SpriteBatch sprite, MessengerSnapshot snapshot)
+        {
+            Texture2D icon = IsCompact ? _minStatusIcon : _maxStatusIcon;
+            Point iconPosition = IsCompact ? _minStatusIconPosition : _maxStatusIconPosition;
+            string statusText = snapshot.StatusBarText;
+            if (string.IsNullOrWhiteSpace(statusText) && !string.IsNullOrWhiteSpace(snapshot.PendingInviteSummary) && !string.Equals(snapshot.PendingInviteSummary, "none", StringComparison.OrdinalIgnoreCase))
+            {
+                statusText = snapshot.PendingInviteSummary;
+            }
+
+            if (icon == null && string.IsNullOrWhiteSpace(statusText))
+            {
+                return;
+            }
+
+            int textX = Position.X + 17;
+            int textY = Position.Y + (IsCompact ? 219 : 331);
+            if (icon != null)
+            {
+                Color iconTint = snapshot.ShowStatusBlink ? new Color(255, 236, 150) : Color.White;
+                sprite.Draw(icon, new Vector2(Position.X + iconPosition.X, Position.Y + iconPosition.Y), iconTint);
+                textX = Position.X + iconPosition.X + icon.Width + 5;
+                textY = Position.Y + iconPosition.Y - 1;
+            }
+
+            sprite.DrawString(
+                _font,
+                TruncateToWidth(statusText, 252, 0.34f),
+                new Vector2(textX, textY),
+                new Color(66, 54, 30),
+                0f,
+                Vector2.Zero,
+                0.34f,
+                SpriteEffects.None,
+                0f);
         }
 
         private int GetSlotIndexAt(int mouseX, int mouseY)
@@ -716,6 +782,24 @@ namespace HaCreator.MapSimulator.UI
             }
 
             return $"{value.Substring(0, Math.Max(0, maxChars - 3))}...";
+        }
+
+        private string TruncateToWidth(string value, float maxWidth, float scale)
+        {
+            if (string.IsNullOrEmpty(value) || _font == null)
+            {
+                return value ?? string.Empty;
+            }
+
+            string truncated = value;
+            while (truncated.Length > 0 && _font.MeasureString(truncated).X * scale > maxWidth)
+            {
+                truncated = truncated.Length <= 4
+                    ? string.Empty
+                    : $"{truncated.Substring(0, truncated.Length - 4)}...";
+            }
+
+            return truncated;
         }
 
         private void ActivateInput(bool whisperMode, MessengerSnapshot snapshot, bool clearText)

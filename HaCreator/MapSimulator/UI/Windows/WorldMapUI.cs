@@ -83,6 +83,7 @@ namespace HaCreator.MapSimulator.UI
         private const int KeyRepeatInitialDelayMs = 360;
         private const int KeyRepeatIntervalMs = 42;
 
+        private readonly Texture2D _titleTexture;
         private readonly Texture2D _sidePanelTexture;
         private readonly Point _sidePanelOffset;
         private readonly Texture2D _searchNoticeTexture;
@@ -124,9 +125,11 @@ namespace HaCreator.MapSimulator.UI
         private string _selectedSearchResultKey = string.Empty;
         private int _pageIndex;
         private SearchFilterMode _searchFilterMode;
+        private MouseState _previousMouseState;
 
         public WorldMapUI(
             IDXObject frame,
+            Texture2D titleTexture,
             Texture2D sidePanelTexture,
             Point sidePanelOffset,
             Texture2D searchNoticeTexture,
@@ -149,6 +152,7 @@ namespace HaCreator.MapSimulator.UI
             GraphicsDevice device)
             : base(frame)
         {
+            _titleTexture = titleTexture;
             _sidePanelTexture = sidePanelTexture;
             _sidePanelOffset = sidePanelOffset;
             _searchNoticeTexture = searchNoticeTexture;
@@ -324,19 +328,60 @@ namespace HaCreator.MapSimulator.UI
             UpdateButtonStates();
         }
 
+        public bool FocusSearchResult(SearchResultKind kind, string label, int mapId, bool enterSearchMode = true)
+        {
+            if (string.IsNullOrWhiteSpace(label))
+            {
+                return false;
+            }
+
+            _searchFilterMode = SearchFilterMode.All;
+            if (enterSearchMode)
+            {
+                _searchMode = true;
+            }
+
+            _searchQuery = label.Trim();
+            _searchCursorPosition = _searchQuery.Length;
+            _selectedMapId = mapId;
+
+            IReadOnlyList<SearchResultEntry> results = GetFilteredSearchResults();
+            SearchResultEntry selectedEntry = results.FirstOrDefault(entry =>
+                entry.Kind == kind &&
+                entry.MapId == mapId &&
+                string.Equals(entry.Label, _searchQuery, StringComparison.OrdinalIgnoreCase));
+            if (selectedEntry == null)
+            {
+                selectedEntry = results.FirstOrDefault(entry =>
+                    entry.Kind == kind &&
+                    string.Equals(entry.Label, _searchQuery, StringComparison.OrdinalIgnoreCase));
+            }
+
+            _selectedSearchResultKey = selectedEntry != null
+                ? BuildSearchResultKey(selectedEntry)
+                : string.Empty;
+            EnsureSelectedSearchResultVisible();
+            UpdateButtonStates();
+            return selectedEntry != null;
+        }
+
         public override void Update(GameTime gameTime)
         {
             if (!IsVisible || !_searchMode)
             {
                 _previousSearchKeyboardState = Keyboard.GetState();
+                _previousMouseState = Mouse.GetState();
                 return;
             }
 
             KeyboardState keyboardState = Keyboard.GetState();
+            MouseState mouseState = Mouse.GetState();
             int tickCount = Environment.TickCount;
 
+            HandleSearchMouseInput(mouseState);
             HandleSearchKeyboardInput(keyboardState, tickCount);
             _previousSearchKeyboardState = keyboardState;
+            _previousMouseState = mouseState;
         }
 
         protected override void DrawContents(
@@ -377,12 +422,7 @@ namespace HaCreator.MapSimulator.UI
                     new Color(86, 120, 186, 165));
             }
 
-            SelectorWindowDrawing.DrawShadowedText(
-                sprite,
-                _font,
-                _showAnotherWorld ? "World Map - Another World" : "World Map - All Regions",
-                new Vector2(Position.X + SummaryX, Position.Y + 18),
-                Color.White);
+            DrawTitle(sprite, _showAnotherWorld ? "World Map - Another World" : "World Map - All Regions");
 
             string currentMapText = ResolveCurrentMapText();
             SelectorWindowDrawing.DrawShadowedText(
@@ -864,12 +904,7 @@ namespace HaCreator.MapSimulator.UI
                 sprite.Draw(_searchNoticeTexture, new Vector2(Position.X + _searchNoticeOffset.X, Position.Y + _searchNoticeOffset.Y), Color.White);
             }
 
-            SelectorWindowDrawing.DrawShadowedText(
-                sprite,
-                _font,
-                "World Map Search",
-                new Vector2(Position.X + SummaryX, Position.Y + 18),
-                Color.White);
+            DrawTitle(sprite, "World Map Search");
 
             SelectorWindowDrawing.DrawShadowedText(
                 sprite,
@@ -972,13 +1007,34 @@ namespace HaCreator.MapSimulator.UI
             };
         }
 
-        private void DrawSearchInput(SpriteBatch sprite, int tickCount)
+        private void DrawTitle(SpriteBatch sprite, string fallbackText)
         {
-            Rectangle bounds = new Rectangle(
+            if (_titleTexture != null)
+            {
+                sprite.Draw(_titleTexture, new Vector2(Position.X + SummaryX, Position.Y + 18), Color.White);
+                return;
+            }
+
+            SelectorWindowDrawing.DrawShadowedText(
+                sprite,
+                _font,
+                fallbackText,
+                new Vector2(Position.X + SummaryX, Position.Y + 18),
+                Color.White);
+        }
+
+        private Rectangle GetSearchInputBounds()
+        {
+            return new Rectangle(
                 Position.X + SearchInputBoxX,
                 Position.Y + SearchInputBoxY,
                 SearchInputBoxWidth,
                 SearchInputBoxHeight);
+        }
+
+        private void DrawSearchInput(SpriteBatch sprite, int tickCount)
+        {
+            Rectangle bounds = GetSearchInputBounds();
 
             sprite.Draw(_searchInputBackgroundTexture, bounds, new Color(16, 27, 43, 215));
             sprite.Draw(_searchInputOutlineTexture, new Rectangle(bounds.X, bounds.Y, bounds.Width, 1), new Color(117, 155, 220));
@@ -986,26 +1042,30 @@ namespace HaCreator.MapSimulator.UI
             sprite.Draw(_searchInputOutlineTexture, new Rectangle(bounds.X, bounds.Y, 1, bounds.Height), new Color(117, 155, 220));
             sprite.Draw(_searchInputOutlineTexture, new Rectangle(bounds.Right - 1, bounds.Y, 1, bounds.Height), new Color(117, 155, 220));
 
-            string prompt = string.IsNullOrEmpty(_searchQuery) ? "Type to search field, NPC, or mob names" : _searchQuery;
-            Color promptColor = string.IsNullOrEmpty(_searchQuery)
-                ? new Color(166, 184, 206)
-                : new Color(236, 236, 236);
-            Vector2 textPosition = new Vector2(bounds.X + SearchTextInsetX, bounds.Y + SearchTextInsetY);
-            SelectorWindowDrawing.DrawShadowedText(sprite, _font, prompt, textPosition, promptColor);
-
             if (string.IsNullOrEmpty(_searchQuery))
             {
+                SelectorWindowDrawing.DrawShadowedText(
+                    sprite,
+                    _font,
+                    "Type to search field, NPC, or mob names",
+                    new Vector2(bounds.X + SearchTextInsetX, bounds.Y + SearchTextInsetY),
+                    new Color(166, 184, 206));
                 return;
             }
+
+            (int visibleStart, string visibleText) = GetVisibleSearchText();
+            Vector2 textPosition = new Vector2(bounds.X + SearchTextInsetX, bounds.Y + SearchTextInsetY);
+            SelectorWindowDrawing.DrawShadowedText(sprite, _font, visibleText, textPosition, new Color(236, 236, 236));
 
             if (((tickCount - _caretBlinkTick) / 500) % 2 != 0)
             {
                 return;
             }
 
-            string caretPrefix = _searchCursorPosition <= 0
+            int visibleCaretIndex = Math.Clamp(_searchCursorPosition - visibleStart, 0, visibleText.Length);
+            string caretPrefix = visibleCaretIndex <= 0
                 ? string.Empty
-                : _searchQuery[..Math.Min(_searchCursorPosition, _searchQuery.Length)];
+                : visibleText[..visibleCaretIndex];
             int caretX = bounds.X + SearchTextInsetX + (int)_font.MeasureString(caretPrefix).X;
             int caretY = bounds.Y + 3;
             sprite.Draw(_caretTexture, new Rectangle(caretX, caretY, 1, Math.Max(12, _font.LineSpacing - 2)), new Color(255, 255, 255, 220));
@@ -1144,11 +1204,17 @@ namespace HaCreator.MapSimulator.UI
 
         private bool HandleSearchEditingKeys(KeyboardState keyboardState, int tickCount)
         {
+            bool ctrl = keyboardState.IsKeyDown(Keys.LeftControl) || keyboardState.IsKeyDown(Keys.RightControl);
+
             if (keyboardState.IsKeyDown(Keys.Back))
             {
                 if (_previousSearchKeyboardState.IsKeyUp(Keys.Back))
                 {
-                    if (_searchCursorPosition > 0)
+                    if (ctrl)
+                    {
+                        DeletePreviousSearchWord();
+                    }
+                    else if (_searchCursorPosition > 0)
                     {
                         _searchQuery = _searchQuery.Remove(_searchCursorPosition - 1, 1);
                         _searchCursorPosition--;
@@ -1165,7 +1231,11 @@ namespace HaCreator.MapSimulator.UI
             {
                 if (_previousSearchKeyboardState.IsKeyUp(Keys.Delete))
                 {
-                    if (_searchCursorPosition < _searchQuery.Length)
+                    if (ctrl)
+                    {
+                        DeleteNextSearchWord();
+                    }
+                    else if (_searchCursorPosition < _searchQuery.Length)
                     {
                         _searchQuery = _searchQuery.Remove(_searchCursorPosition, 1);
                         OnSearchQueryChanged();
@@ -1212,6 +1282,63 @@ namespace HaCreator.MapSimulator.UI
             }
 
             return false;
+        }
+
+        private void DeletePreviousSearchWord()
+        {
+            if (_searchCursorPosition <= 0 || string.IsNullOrEmpty(_searchQuery))
+            {
+                return;
+            }
+
+            int removalStart = _searchCursorPosition;
+            while (removalStart > 0 && char.IsWhiteSpace(_searchQuery[removalStart - 1]))
+            {
+                removalStart--;
+            }
+
+            while (removalStart > 0 && !char.IsWhiteSpace(_searchQuery[removalStart - 1]))
+            {
+                removalStart--;
+            }
+
+            int removalLength = _searchCursorPosition - removalStart;
+            if (removalLength <= 0)
+            {
+                return;
+            }
+
+            _searchQuery = _searchQuery.Remove(removalStart, removalLength);
+            _searchCursorPosition = removalStart;
+            OnSearchQueryChanged();
+        }
+
+        private void DeleteNextSearchWord()
+        {
+            if (_searchCursorPosition >= _searchQuery.Length || string.IsNullOrEmpty(_searchQuery))
+            {
+                return;
+            }
+
+            int removalEnd = _searchCursorPosition;
+            while (removalEnd < _searchQuery.Length && char.IsWhiteSpace(_searchQuery[removalEnd]))
+            {
+                removalEnd++;
+            }
+
+            while (removalEnd < _searchQuery.Length && !char.IsWhiteSpace(_searchQuery[removalEnd]))
+            {
+                removalEnd++;
+            }
+
+            int removalLength = removalEnd - _searchCursorPosition;
+            if (removalLength <= 0)
+            {
+                return;
+            }
+
+            _searchQuery = _searchQuery.Remove(_searchCursorPosition, removalLength);
+            OnSearchQueryChanged();
         }
 
         private bool TryInsertSearchCharacter(Keys key, bool shift, int tickCount)
@@ -1540,6 +1667,89 @@ namespace HaCreator.MapSimulator.UI
                 Keys.OemPlus => shift ? '+' : '=',
                 _ => null
             };
+        }
+
+        private void HandleSearchMouseInput(MouseState mouseState)
+        {
+            bool leftClicked = mouseState.LeftButton == ButtonState.Pressed
+                && _previousMouseState.LeftButton == ButtonState.Released;
+            if (!leftClicked)
+            {
+                return;
+            }
+
+            if (!GetSearchInputBounds().Contains(mouseState.X, mouseState.Y))
+            {
+                return;
+            }
+
+            _caretBlinkTick = Environment.TickCount;
+            _searchCursorPosition = ResolveSearchCursorFromMouse(mouseState.X);
+            ResetSearchKeyRepeat();
+        }
+
+        private int ResolveSearchCursorFromMouse(int mouseX)
+        {
+            if (_font == null || string.IsNullOrEmpty(_searchQuery))
+            {
+                return 0;
+            }
+
+            Rectangle bounds = GetSearchInputBounds();
+            (int visibleStart, string visibleText) = GetVisibleSearchText();
+            float localX = Math.Max(0, mouseX - bounds.X - SearchTextInsetX);
+            float bestDistance = float.MaxValue;
+            int bestCursor = visibleStart;
+
+            for (int i = 0; i <= visibleText.Length; i++)
+            {
+                string prefix = i == 0 ? string.Empty : visibleText[..i];
+                float prefixWidth = _font.MeasureString(prefix).X;
+                float distance = Math.Abs(prefixWidth - localX);
+                if (distance < bestDistance)
+                {
+                    bestDistance = distance;
+                    bestCursor = visibleStart + i;
+                }
+            }
+
+            return Math.Clamp(bestCursor, 0, _searchQuery.Length);
+        }
+
+        private (int visibleStart, string visibleText) GetVisibleSearchText()
+        {
+            if (_font == null || string.IsNullOrEmpty(_searchQuery))
+            {
+                return (0, string.Empty);
+            }
+
+            float maxWidth = SearchInputBoxWidth - (SearchTextInsetX * 2) - 2;
+            int caretIndex = Math.Clamp(_searchCursorPosition, 0, _searchQuery.Length);
+            int visibleStart = 0;
+
+            while (visibleStart < caretIndex)
+            {
+                if (_font.MeasureString(_searchQuery[visibleStart..caretIndex]).X <= maxWidth)
+                {
+                    break;
+                }
+
+                visibleStart++;
+            }
+
+            int visibleLength = Math.Max(0, Math.Min(_searchQuery.Length - visibleStart, Math.Max(1, caretIndex - visibleStart)));
+            while (visibleStart + visibleLength < _searchQuery.Length)
+            {
+                string candidate = _searchQuery.Substring(visibleStart, visibleLength + 1);
+                if (_font.MeasureString(candidate).X > maxWidth)
+                {
+                    break;
+                }
+
+                visibleLength++;
+            }
+
+            return (visibleStart, _searchQuery.Substring(visibleStart, visibleLength));
         }
     }
 }

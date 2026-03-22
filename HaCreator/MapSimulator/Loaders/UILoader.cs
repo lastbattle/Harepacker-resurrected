@@ -182,52 +182,36 @@ namespace HaCreator.MapSimulator.Loaders
 
 
                     // Draw Chat UI
-                    System.Drawing.Bitmap bitmap_chatSpace = ((WzCanvasProperty)mainBarProperties?["chatSpace"])?.GetLinkedWzCanvasBitmap(); // chat foreground
-                    System.Drawing.Bitmap bitmap_chatSpace2 = ((WzCanvasProperty)mainBarProperties?["chatSpace2"])?.GetLinkedWzCanvasBitmap(); // chat background
+                    WzCanvasProperty chatSpaceCanvas = mainBarProperties?["chatSpace"] as WzCanvasProperty;
+                    WzCanvasProperty chatSpace2Canvas = mainBarProperties?["chatSpace2"] as WzCanvasProperty;
+                    WzCanvasProperty chatCoverCanvas = mainBarProperties?["chatCover"] as WzCanvasProperty;
+                    WzCanvasProperty noticeCanvas = mainBarProperties?["notice"] as WzCanvasProperty;
+                    WzCanvasProperty chatEnterCanvas = mainBarProperties?["chatEnter"] as WzCanvasProperty;
 
-                    HaUIGrid grid_chat = new HaUIGrid(1, 1, new HaUIInfo()
-                    {
-                        Margins = new HaUIMargin()
-                        {
-                            //Bottom = 50, // Add this line to move it lower
-                        }
-                    });
-                    grid_chat.AddRenderable(0, 0, new HaUIImage(new HaUIInfo()
-                    {
-                        Bitmap = bitmap_chatSpace2,
-                        VerticalAlignment = HaUIAlignment.Center,
-                        HorizontalAlignment = HaUIAlignment.Start,
-                        Margins = new HaUIMargin()
-                        {
-                            Left = 4,
-                        }
-                    }));
-                    grid_chat.AddRenderable(0, 0, new HaUIImage(new HaUIInfo()
-                    {
-                        Bitmap = bitmap_chatSpace,
-                        VerticalAlignment = HaUIAlignment.Center,
-                        HorizontalAlignment = HaUIAlignment.Center,
-                        Padding = new HaUIMargin()
-                        {
-                        }
-                    }));
+                    System.Drawing.Bitmap bitmap_chatSpace = chatSpaceCanvas?.GetLinkedWzCanvasBitmap();
+                    System.Drawing.Bitmap bitmap_chatSpace2 = chatSpace2Canvas?.GetLinkedWzCanvasBitmap();
+                    System.Drawing.Bitmap bitmap_chatCover = chatCoverCanvas?.GetLinkedWzCanvasBitmap();
+                    System.Drawing.Bitmap bitmap_notice = noticeCanvas?.GetLinkedWzCanvasBitmap();
 
-                    // notice
-                    System.Drawing.Bitmap bitmap_notice = ((WzCanvasProperty)mainBarProperties?["notice"])?.GetLinkedWzCanvasBitmap();
-                    HaUIImage uiImage_notice = new HaUIImage(new HaUIInfo()
-                    {
-                        Bitmap = bitmap_notice,
-                        VerticalAlignment = HaUIAlignment.Start,
-                        HorizontalAlignment = HaUIAlignment.End,
-                        Margins = new HaUIMargin()
-                        {
-                            //Left= grid_chat.GetSize().Width,
-                        }
-                    });
-                    grid_chat.AddRenderable(0, 0, uiImage_notice);
+                    Point chatFrameAnchorOrigin = ResolveBigBangChatFrameAnchorOrigin(chatSpace2Canvas, chatSpaceCanvas);
+                    System.Drawing.Bitmap composedChatBar = ComposeBigBangStatusBarChatFrame(
+                        chatFrameAnchorOrigin,
+                        chatSpaceCanvas,
+                        bitmap_chatSpace,
+                        chatSpace2Canvas,
+                        bitmap_chatSpace2,
+                        chatCoverCanvas,
+                        bitmap_chatCover,
+                        noticeCanvas,
+                        bitmap_notice);
 
-                    Texture2D texture_chatUI = grid_chat.Render().ToTexture2DAndDispose(device);
-                    IDXObject dxObj_chatUI = new DXObject(UI_PADDING_PX, (int)(renderParams.RenderHeight / renderParams.RenderObjectScaling) - grid_chat.GetSize().Height - 36, texture_chatUI, 0);
+                    int composedChatBarHeight = composedChatBar.Height;
+                    Texture2D texture_chatUI = composedChatBar.ToTexture2DAndDispose(device);
+                    IDXObject dxObj_chatUI = new DXObject(
+                        UI_PADDING_PX,
+                        (int)(renderParams.RenderHeight / renderParams.RenderObjectScaling) - composedChatBarHeight - 36,
+                        texture_chatUI,
+                        0);
 
                     // Scroll up+down, Chat, report/ claim, notice, stat, quest, inventory, equip, skill, key set
                     System.Drawing.Bitmap bitmap_lvNumber1 = ((WzCanvasProperty)mainBarProperties?["lvNumber/1"])?.GetLinkedWzCanvasBitmap();
@@ -240,8 +224,7 @@ namespace HaCreator.MapSimulator.Loaders
                         new Point(0, 0), device)
                     {
                     };
-                    obj_Ui_chatTarget.X = 2;
-                    obj_Ui_chatTarget.Y = 0;
+                    PositionStatusBarButton(obj_Ui_chatTarget, subProperty_chatTargetBase, chatFrameAnchorOrigin);
 
                     WzSubProperty subProperty_chatOpen = (WzSubProperty)mainBarProperties?["chatOpen"];
                     WzSubProperty subProperty_chatClose = (WzSubProperty)mainBarProperties?["chatClose"];
@@ -250,8 +233,7 @@ namespace HaCreator.MapSimulator.Loaders
                         new Point(0, 0), device)
                     {
                     };
-                    obj_Ui_chatOpen.X = dxObj_chatUI.Width - obj_Ui_chatOpen.CanvasSnapshotWidth - 5;
-                    obj_Ui_chatOpen.Y -= obj_Ui_chatOpen.Y - 4;
+                    PositionStatusBarButton(obj_Ui_chatOpen, subProperty_chatOpen, chatFrameAnchorOrigin);
 
                     // chat scroll up/ down
                     WzSubProperty subProperty_scrollUp = (WzSubProperty)mainBarProperties?["scrollUp"];
@@ -261,15 +243,13 @@ namespace HaCreator.MapSimulator.Loaders
                         new Point(0, 0), device)
                     {
                     };
-                    obj_Ui_scrollUp.X = obj_Ui_chatOpen.X + obj_Ui_scrollUp.CanvasSnapshotWidth + 8;
-                    obj_Ui_scrollUp.Y = obj_Ui_chatOpen.Y - 2;
+                    PositionStatusBarButton(obj_Ui_scrollUp, subProperty_scrollUp, chatFrameAnchorOrigin);
                     UIObject obj_Ui_scrollDown = new UIObject(subProperty_scrollDown, binaryProp_BtMouseClickSoundProperty, binaryProp_BtMouseOverSoundProperty,
                         false,
                         new Point(0, 0), device)
                     {
                     };
-                    obj_Ui_scrollDown.X = obj_Ui_scrollUp.X;
-                    obj_Ui_scrollDown.Y = obj_Ui_scrollUp.Y + obj_Ui_scrollDown.CanvasSnapshotHeight + UI_PADDING_PX;
+                    PositionStatusBarButton(obj_Ui_scrollDown, subProperty_scrollDown, chatFrameAnchorOrigin);
 
                     // chat
                     WzSubProperty subProperty_BtChat = (WzSubProperty)mainBarProperties?["BtChat"];
@@ -278,8 +258,7 @@ namespace HaCreator.MapSimulator.Loaders
                         new Point(0, 0), device)
                     {
                     };
-                    obj_Ui_BtChat.X = obj_Ui_chatOpen.X + obj_Ui_BtChat.CanvasSnapshotWidth + 4;
-                    obj_Ui_BtChat.Y = obj_Ui_chatOpen.Y - 2;
+                    PositionStatusBarButton(obj_Ui_BtChat, subProperty_BtChat, chatFrameAnchorOrigin);
 
                     // report
                     WzSubProperty subProperty_BtClaim = (WzSubProperty)mainBarProperties?["BtClaim"]; // report
@@ -288,8 +267,7 @@ namespace HaCreator.MapSimulator.Loaders
                         new Point(0, 0), device)
                     {
                     };
-                    obj_Ui_BtClaim.X = obj_Ui_BtChat.X + obj_Ui_BtClaim.CanvasSnapshotWidth;
-                    obj_Ui_BtClaim.Y = obj_Ui_BtChat.Y;
+                    PositionStatusBarButton(obj_Ui_BtClaim, subProperty_BtClaim, chatFrameAnchorOrigin);
 
                     // notice
                     // this is rendered above
@@ -320,8 +298,7 @@ namespace HaCreator.MapSimulator.Loaders
                         new Point(0, 0), device)
                     {
                     };
-                    obj_Ui_BtCharacter.X = obj_Ui_BtClaim.X + obj_Ui_BtCharacter.CanvasSnapshotWidth + bitmap_notice.Width - 7;
-                    obj_Ui_BtCharacter.Y = obj_Ui_BtClaim.Y;
+                    PositionStatusBarButton(obj_Ui_BtCharacter, subProperty_BtCharacter, chatFrameAnchorOrigin);
 
                     // stat
                     WzSubProperty subProperty_BtStat = (WzSubProperty)mainBarProperties?["BtStat"];
@@ -330,8 +307,7 @@ namespace HaCreator.MapSimulator.Loaders
                         new Point(0, 0), device)
                     {
                     };
-                    obj_Ui_BtStat.X = obj_Ui_BtCharacter.X + obj_Ui_BtStat.CanvasSnapshotWidth;
-                    obj_Ui_BtStat.Y = obj_Ui_BtCharacter.Y;
+                    PositionStatusBarButton(obj_Ui_BtStat, subProperty_BtStat, chatFrameAnchorOrigin);
 
                     // quest
                     WzSubProperty subProperty_BtQuest = (WzSubProperty)mainBarProperties?["BtQuest"];
@@ -340,8 +316,7 @@ namespace HaCreator.MapSimulator.Loaders
                         new Point(0, 0), device)
                     {
                     };
-                    obj_Ui_BtQuest.X = obj_Ui_BtStat.X + obj_Ui_BtQuest.CanvasSnapshotWidth;
-                    obj_Ui_BtQuest.Y = obj_Ui_BtStat.Y;
+                    PositionStatusBarButton(obj_Ui_BtQuest, subProperty_BtQuest, chatFrameAnchorOrigin);
 
                     // inventory
                     WzSubProperty subProperty_BtInven = (WzSubProperty)mainBarProperties?["BtInven"];
@@ -350,8 +325,7 @@ namespace HaCreator.MapSimulator.Loaders
                         new Point(0, 0), device)
                     {
                     };
-                    obj_Ui_BtInven.X = obj_Ui_BtQuest.X + obj_Ui_BtInven.CanvasSnapshotWidth;
-                    obj_Ui_BtInven.Y = obj_Ui_BtQuest.Y;
+                    PositionStatusBarButton(obj_Ui_BtInven, subProperty_BtInven, chatFrameAnchorOrigin);
 
                     // equipment
                     WzSubProperty subProperty_BtEquip = (WzSubProperty)mainBarProperties?["BtEquip"];
@@ -360,8 +334,7 @@ namespace HaCreator.MapSimulator.Loaders
                         new Point(0, 0), device)
                     {
                     };
-                    obj_Ui_BtEquip.X = obj_Ui_BtInven.X + obj_Ui_BtEquip.CanvasSnapshotWidth;
-                    obj_Ui_BtEquip.Y = obj_Ui_BtInven.Y;
+                    PositionStatusBarButton(obj_Ui_BtEquip, subProperty_BtEquip, chatFrameAnchorOrigin);
 
                     // skill
                     WzSubProperty subProperty_BtSkill = (WzSubProperty)mainBarProperties?["BtSkill"];
@@ -370,8 +343,7 @@ namespace HaCreator.MapSimulator.Loaders
                         new Point(0, 0), device)
                     {
                     };
-                    obj_Ui_BtSkill.X = obj_Ui_BtEquip.X + obj_Ui_BtSkill.CanvasSnapshotWidth;
-                    obj_Ui_BtSkill.Y = obj_Ui_BtEquip.Y;
+                    PositionStatusBarButton(obj_Ui_BtSkill, subProperty_BtSkill, chatFrameAnchorOrigin);
 
                     // key setting
                     WzSubProperty subProperty_BtKeysetting = (WzSubProperty)mainBarProperties?["BtKeysetting"];
@@ -380,14 +352,17 @@ namespace HaCreator.MapSimulator.Loaders
                         new Point(0, 0), device)
                     {
                     };
-                    obj_Ui_BtKeysetting.X = obj_Ui_BtSkill.X + obj_Ui_BtSkill.CanvasSnapshotWidth + 4;/* + obj_Ui_BtKeysetting.CanvasSnapshotWidth*/;
-                    obj_Ui_BtKeysetting.Y = obj_Ui_BtSkill.Y;
+                    PositionStatusBarButton(obj_Ui_BtKeysetting, subProperty_BtKeysetting, chatFrameAnchorOrigin);
 
                     backgrnd?.Dispose();
                     bitmap_lvBacktrnd?.Dispose();
                     bitmap_lvCover?.Dispose();
                     bitmap_gaugeBackgrd?.Dispose();
                     bitmap_gaugeCover?.Dispose();
+                    bitmap_chatSpace?.Dispose();
+                    bitmap_chatSpace2?.Dispose();
+                    bitmap_chatCover?.Dispose();
+                    bitmap_notice?.Dispose();
 
                     int composedMainBarHeight = composedMainBar.Height;
                     Texture2D texture_backgrnd = composedMainBar.ToTexture2DAndDispose(device);
@@ -552,11 +527,15 @@ namespace HaCreator.MapSimulator.Loaders
                           }
                         );
                     chatUI.InitializeButtons();
-                    chatUI.SetChatEnterTexture(LoadCanvasTexture(mainBarProperties?["chatEnter"] as WzCanvasProperty, device));
+                    chatUI.SetChatEnterTexture(LoadCanvasTexture(chatEnterCanvas, device));
                     (Dictionary<MapSimulatorChatTargetType, Texture2D> chatTargetTextures,
                         Dictionary<MapSimulatorChatTargetType, Point> chatTargetOrigins) =
                         LoadChatTargetTextures(subProperty_chatTarget, device);
                     chatUI.SetChatTargetTextures(chatTargetTextures, chatTargetOrigins);
+                    chatUI.SetLayoutMetrics(
+                        chatFrameAnchorOrigin,
+                        ResolveCanvasPosition(chatFrameAnchorOrigin, subProperty_chatTarget?["all"] as WzCanvasProperty).ToVector2(),
+                        ResolveCanvasPosition(chatFrameAnchorOrigin, chatEnterCanvas).ToVector2());
                     chatUI.SetPointNotificationAnimations(
                         LoadPointNotificationAnimation(mainBarProperties?["ApNotify"] as WzSubProperty, device),
                         LoadPointNotificationAnimation(mainBarProperties?["SpNotify"] as WzSubProperty, device));
@@ -949,6 +928,97 @@ namespace HaCreator.MapSimulator.Loaders
             }
 
             return composed;
+        }
+
+        private static Point ResolveBigBangChatFrameAnchorOrigin(WzCanvasProperty chatSpace2Canvas, WzCanvasProperty chatSpaceCanvas)
+        {
+            if (chatSpace2Canvas != null)
+            {
+                return GetCanvasOrigin(chatSpace2Canvas);
+            }
+
+            return GetCanvasOrigin(chatSpaceCanvas);
+        }
+
+        private static System.Drawing.Bitmap ComposeBigBangStatusBarChatFrame(
+            Point anchorOrigin,
+            WzCanvasProperty chatSpaceCanvas,
+            System.Drawing.Bitmap chatSpace,
+            WzCanvasProperty chatSpace2Canvas,
+            System.Drawing.Bitmap chatSpace2,
+            WzCanvasProperty chatCoverCanvas,
+            System.Drawing.Bitmap chatCover,
+            WzCanvasProperty noticeCanvas,
+            System.Drawing.Bitmap notice)
+        {
+            var layers = new List<(int Z, WzCanvasProperty Canvas, System.Drawing.Bitmap Bitmap)>
+            {
+                (GetCanvasZ(chatSpaceCanvas), chatSpaceCanvas, chatSpace),
+                (GetCanvasZ(chatSpace2Canvas), chatSpace2Canvas, chatSpace2),
+                (GetCanvasZ(chatCoverCanvas), chatCoverCanvas, chatCover),
+                (GetCanvasZ(noticeCanvas), noticeCanvas, notice)
+            };
+
+            int minX = 0;
+            int minY = 0;
+            int maxX = 1;
+            int maxY = 1;
+
+            foreach ((int _, WzCanvasProperty canvas, System.Drawing.Bitmap bitmap) in layers)
+            {
+                if (canvas == null || bitmap == null)
+                {
+                    continue;
+                }
+
+                Point drawPosition = ResolveCanvasPosition(anchorOrigin, canvas);
+                minX = Math.Min(minX, drawPosition.X);
+                minY = Math.Min(minY, drawPosition.Y);
+                maxX = Math.Max(maxX, drawPosition.X + bitmap.Width);
+                maxY = Math.Max(maxY, drawPosition.Y + bitmap.Height);
+            }
+
+            var composed = new System.Drawing.Bitmap(Math.Max(1, maxX - minX), Math.Max(1, maxY - minY));
+            using (System.Drawing.Graphics graphics = System.Drawing.Graphics.FromImage(composed))
+            {
+                graphics.Clear(System.Drawing.Color.Transparent);
+                foreach ((int _, WzCanvasProperty canvas, System.Drawing.Bitmap bitmap) in layers.OrderBy(layer => layer.Z))
+                {
+                    if (canvas == null || bitmap == null)
+                    {
+                        continue;
+                    }
+
+                    Point drawPosition = ResolveCanvasPosition(anchorOrigin, canvas);
+                    graphics.DrawImage(bitmap, drawPosition.X - minX, drawPosition.Y - minY);
+                }
+            }
+
+            return composed;
+        }
+
+        private static void PositionStatusBarButton(UIObject button, WzSubProperty buttonProperty, Point anchorOrigin)
+        {
+            if (button == null || buttonProperty == null)
+            {
+                return;
+            }
+
+            button.X = ResolveCanvasPosition(anchorOrigin, buttonProperty?["normal"]?["0"] as WzCanvasProperty).X;
+            button.Y = ResolveCanvasPosition(anchorOrigin, buttonProperty?["normal"]?["0"] as WzCanvasProperty).Y;
+        }
+
+        private static Point ResolveCanvasPosition(Point anchorOrigin, WzCanvasProperty canvas)
+        {
+            if (canvas == null)
+            {
+                return Point.Zero;
+            }
+
+            Point canvasOrigin = GetCanvasOrigin(canvas);
+            return new Point(
+                anchorOrigin.X - canvasOrigin.X,
+                anchorOrigin.Y - canvasOrigin.Y);
         }
 
         private static StatusBarWarningAnimation LoadStatusBarWarningAnimation(WzSubProperty warningProperty, GraphicsDevice device)

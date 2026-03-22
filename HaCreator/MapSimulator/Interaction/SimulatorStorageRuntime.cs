@@ -1,4 +1,5 @@
 using HaCreator.MapSimulator.UI;
+using HaCreator.MapSimulator.Managers;
 using MapleLib.WzLib.WzStructure.Data.ItemStructure;
 using System;
 using System.Collections.Generic;
@@ -23,9 +24,12 @@ namespace HaCreator.MapSimulator.Interaction
         };
         private readonly List<string> _sharedCharacterNames = new();
         private readonly HashSet<string> _sharedCharacterLookup = new(StringComparer.OrdinalIgnoreCase);
+        private readonly StorageAccountStore _accountStore;
 
         private int _slotLimit = DefaultSlotLimit;
         private long _meso;
+        private string _currentAccountKey = StorageAccountStore.ResolveAccountKey("Simulator Account Storage");
+        private bool _suspendPersistence;
 
         public string AccountLabel { get; private set; } = "Simulator Account Storage";
         public string CurrentCharacterName { get; private set; } = string.Empty;
@@ -35,6 +39,12 @@ namespace HaCreator.MapSimulator.Interaction
             _sharedCharacterNames.Count == 0 ||
             string.IsNullOrWhiteSpace(CurrentCharacterName) ||
             _sharedCharacterLookup.Contains(CurrentCharacterName);
+
+        public SimulatorStorageRuntime(StorageAccountStore accountStore = null, string initialAccountLabel = null)
+        {
+            _accountStore = accountStore ?? new StorageAccountStore();
+            LoadAccountState(string.IsNullOrWhiteSpace(initialAccountLabel) ? AccountLabel : initialAccountLabel);
+        }
 
         public IReadOnlyList<InventorySlotData> GetSlots(InventoryType type)
         {
@@ -51,6 +61,7 @@ namespace HaCreator.MapSimulator.Interaction
         public void SetSlotLimit(int slotLimit)
         {
             _slotLimit = Math.Clamp(slotLimit, MinSlotLimit, MaxSlotLimit);
+            PersistCurrentState();
         }
 
         public int GetUsedSlotCount()
@@ -78,6 +89,7 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             _slotLimit += NormalizeSlotExpansionAmount(amount);
+            PersistCurrentState();
             return true;
         }
 
@@ -89,6 +101,7 @@ namespace HaCreator.MapSimulator.Interaction
         public void SetMeso(long amount)
         {
             _meso = Math.Max(0, amount);
+            PersistCurrentState();
         }
 
         public void AddItem(InventoryType type, InventorySlotData slotData)
@@ -116,6 +129,8 @@ namespace HaCreator.MapSimulator.Interaction
                 rows.Add(stack);
                 remainingQuantity -= stack.Quantity;
             }
+
+            PersistCurrentState();
         }
 
         public bool CanAcceptItem(InventoryType type, InventorySlotData slotData)
@@ -173,6 +188,7 @@ namespace HaCreator.MapSimulator.Interaction
 
             slotData = rows[slotIndex]?.Clone();
             rows.RemoveAt(slotIndex);
+            PersistCurrentState();
             return slotData != null;
         }
 
@@ -181,12 +197,23 @@ namespace HaCreator.MapSimulator.Interaction
             if (_storageItems.TryGetValue(type, out List<InventorySlotData> rows))
             {
                 rows.Sort(CompareSlots);
+                PersistCurrentState();
             }
         }
 
         public void ConfigureAccess(string accountLabel, string currentCharacterName, IEnumerable<string> sharedCharacterNames)
         {
-            AccountLabel = string.IsNullOrWhiteSpace(accountLabel) ? "Simulator Account Storage" : accountLabel;
+            string normalizedLabel = string.IsNullOrWhiteSpace(accountLabel) ? "Simulator Account Storage" : accountLabel.Trim();
+            string nextAccountKey = StorageAccountStore.ResolveAccountKey(normalizedLabel);
+            if (!string.Equals(_currentAccountKey, nextAccountKey, StringComparison.Ordinal))
+            {
+                LoadAccountState(normalizedLabel);
+            }
+            else
+            {
+                AccountLabel = normalizedLabel;
+            }
+
             CurrentCharacterName = currentCharacterName ?? string.Empty;
 
             _sharedCharacterNames.Clear();
@@ -200,6 +227,72 @@ namespace HaCreator.MapSimulator.Interaction
 
                 _sharedCharacterNames.Add(characterName);
             }
+        }
+
+        private void LoadAccountState(string accountLabel)
+        {
+            string normalizedLabel = string.IsNullOrWhiteSpace(accountLabel) ? "Simulator Account Storage" : accountLabel.Trim();
+            string nextAccountKey = StorageAccountStore.ResolveAccountKey(normalizedLabel);
+            StorageAccountStore.StorageAccountState state = _accountStore?.GetState(normalizedLabel);
+
+            _suspendPersistence = true;
+            try
+            {
+                AccountLabel = normalizedLabel;
+                _currentAccountKey = nextAccountKey;
+                _slotLimit = DefaultSlotLimit;
+                _meso = 0;
+
+                foreach (List<InventorySlotData> rows in _storageItems.Values)
+                {
+                    rows.Clear();
+                }
+
+                if (state == null)
+                {
+                    return;
+                }
+
+                AccountLabel = string.IsNullOrWhiteSpace(state.AccountLabel) ? normalizedLabel : state.AccountLabel;
+                _slotLimit = Math.Clamp(state.SlotLimit, MinSlotLimit, MaxSlotLimit);
+                _meso = Math.Max(0, state.Meso);
+                foreach (KeyValuePair<InventoryType, List<InventorySlotData>> entry in state.ItemsByType)
+                {
+                    foreach (InventorySlotData slot in entry.Value ?? new List<InventorySlotData>())
+                    {
+                        AddItem(entry.Key, slot);
+                    }
+                }
+            }
+            finally
+            {
+                _suspendPersistence = false;
+            }
+        }
+
+        private void PersistCurrentState()
+        {
+            if (_suspendPersistence || _accountStore == null)
+            {
+                return;
+            }
+
+            Dictionary<InventoryType, List<InventorySlotData>> snapshot = new();
+            foreach (KeyValuePair<InventoryType, List<InventorySlotData>> entry in _storageItems)
+            {
+                List<InventorySlotData> rows = new(entry.Value.Count);
+                foreach (InventorySlotData slot in entry.Value)
+                {
+                    if (slot != null)
+                    {
+                        rows.Add(slot.Clone());
+                    }
+                }
+
+                snapshot[entry.Key] = rows;
+            }
+
+            _accountStore.SaveState(AccountLabel, _slotLimit, _meso, snapshot);
         }
 
         private static int NormalizeSlotExpansionAmount(int amount)

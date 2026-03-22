@@ -91,6 +91,18 @@ namespace HaCreator.MapSimulator.Companions
             return _equippedItems.TryGetValue(slot, out item);
         }
 
+        public bool TryUnequipItem(DragonEquipSlot slot, out CompanionEquipItem item)
+        {
+            item = null;
+            if (!_equippedItems.TryGetValue(slot, out item))
+            {
+                return false;
+            }
+
+            _equippedItems.Remove(slot);
+            return true;
+        }
+
         public bool TryEquipItem(DragonEquipSlot targetSlot, int itemId, out IReadOnlyList<CompanionEquipItem> displacedItems)
         {
             displacedItems = Array.Empty<CompanionEquipItem>();
@@ -112,6 +124,103 @@ namespace HaCreator.MapSimulator.Companions
             }
 
             _equippedItems[targetSlot] = item;
+            return true;
+        }
+    }
+
+    public sealed class PetEquipmentController
+    {
+        private readonly CompanionEquipmentLoader _loader;
+        private readonly Dictionary<int, CompanionEquipItem> _equippedItems = new();
+
+        internal PetEquipmentController(CompanionEquipmentLoader loader)
+        {
+            _loader = loader ?? throw new ArgumentNullException(nameof(loader));
+        }
+
+        public bool TryGetItem(PetRuntime pet, out CompanionEquipItem item)
+        {
+            item = null;
+            return pet != null && _equippedItems.TryGetValue(pet.RuntimeId, out item);
+        }
+
+        public bool TryEquipItem(
+            PetRuntime pet,
+            int itemId,
+            out IReadOnlyList<CompanionEquipItem> displacedItems,
+            out string rejectReason)
+        {
+            displacedItems = Array.Empty<CompanionEquipItem>();
+            rejectReason = null;
+            if (pet == null)
+            {
+                rejectReason = "Summon a pet before equipping pet accessories.";
+                return false;
+            }
+
+            if (!CompanionEquipmentController.IsPetEquipmentItem(itemId))
+            {
+                rejectReason = "Only pet accessory items can be placed on this page.";
+                return false;
+            }
+
+            CompanionEquipItem item = _loader.LoadPetEquipment(itemId);
+            if (item == null)
+            {
+                rejectReason = "This pet accessory could not be loaded from Character/PetEquip.";
+                return false;
+            }
+
+            if (_equippedItems.TryGetValue(pet.RuntimeId, out CompanionEquipItem displacedItem))
+            {
+                displacedItems = new ReadOnlyCollection<CompanionEquipItem>(new[] { displacedItem });
+            }
+
+            _equippedItems[pet.RuntimeId] = item;
+            return true;
+        }
+
+        public bool TryUnequipItem(PetRuntime pet, out CompanionEquipItem item)
+        {
+            item = null;
+            if (pet == null || !_equippedItems.TryGetValue(pet.RuntimeId, out item))
+            {
+                return false;
+            }
+
+            _equippedItems.Remove(pet.RuntimeId);
+            return true;
+        }
+
+        public bool TryMoveItem(PetRuntime sourcePet, PetRuntime targetPet)
+        {
+            if (sourcePet == null || targetPet == null)
+            {
+                return false;
+            }
+
+            if (sourcePet.RuntimeId == targetPet.RuntimeId)
+            {
+                return true;
+            }
+
+            _equippedItems.TryGetValue(sourcePet.RuntimeId, out CompanionEquipItem sourceItem);
+            if (sourceItem == null)
+            {
+                return false;
+            }
+
+            _equippedItems.TryGetValue(targetPet.RuntimeId, out CompanionEquipItem targetItem);
+            _equippedItems[targetPet.RuntimeId] = sourceItem;
+            if (targetItem == null)
+            {
+                _equippedItems.Remove(sourcePet.RuntimeId);
+            }
+            else
+            {
+                _equippedItems[sourcePet.RuntimeId] = targetItem;
+            }
+
             return true;
         }
     }
@@ -160,6 +269,18 @@ namespace HaCreator.MapSimulator.Companions
         public bool TryGetItem(AndroidEquipSlot slot, out CompanionEquipItem item)
         {
             return _equippedItems.TryGetValue(slot, out item);
+        }
+
+        public bool TryUnequipItem(AndroidEquipSlot slot, out CompanionEquipItem item)
+        {
+            item = null;
+            if (!_equippedItems.TryGetValue(slot, out item))
+            {
+                return false;
+            }
+
+            _equippedItems.Remove(slot);
+            return true;
         }
 
         public bool TryEquipItem(
@@ -318,6 +439,18 @@ namespace HaCreator.MapSimulator.Companions
             return _equippedItems.TryGetValue(slot, out item);
         }
 
+        public bool TryUnequipItem(MechanicEquipSlot slot, out CompanionEquipItem item)
+        {
+            item = null;
+            if (!_equippedItems.TryGetValue(slot, out item))
+            {
+                return false;
+            }
+
+            _equippedItems.Remove(slot);
+            return true;
+        }
+
         public bool TryEquipItem(MechanicEquipSlot targetSlot, int itemId, out IReadOnlyList<CompanionEquipItem> displacedItems)
         {
             displacedItems = Array.Empty<CompanionEquipItem>();
@@ -348,14 +481,22 @@ namespace HaCreator.MapSimulator.Companions
         public CompanionEquipmentController(GraphicsDevice device)
         {
             var loader = new CompanionEquipmentLoader(device);
+            Pet = new PetEquipmentController(loader);
             Dragon = new DragonEquipmentController(loader);
             Android = new AndroidEquipmentController();
             Mechanic = new MechanicEquipmentController(loader);
         }
 
+        public PetEquipmentController Pet { get; }
         public DragonEquipmentController Dragon { get; }
         public AndroidEquipmentController Android { get; }
         public MechanicEquipmentController Mechanic { get; }
+
+        public static bool IsPetEquipmentItem(int itemId)
+        {
+            int category = itemId / 10000;
+            return category == 180 || category == 181;
+        }
 
         public static bool TryResolveDragonSlot(int itemId, out DragonEquipSlot slot)
         {
@@ -420,6 +561,7 @@ namespace HaCreator.MapSimulator.Companions
     internal sealed class CompanionEquipmentLoader
     {
         private readonly GraphicsDevice _device;
+        private readonly Dictionary<int, CompanionEquipItem> _petCache = new();
         private readonly Dictionary<int, CompanionEquipItem> _dragonCache = new();
         private readonly Dictionary<int, CompanionEquipItem> _mechanicCache = new();
 
@@ -453,6 +595,34 @@ namespace HaCreator.MapSimulator.Companions
             };
 
             _dragonCache[itemId] = item;
+            return item;
+        }
+
+        public CompanionEquipItem LoadPetEquipment(int itemId)
+        {
+            if (_petCache.TryGetValue(itemId, out CompanionEquipItem cached))
+            {
+                return cached;
+            }
+
+            WzImage image = global::HaCreator.Program.FindImage("Character", $"PetEquip/{itemId:D8}.img");
+            if (image == null)
+            {
+                return null;
+            }
+
+            image.ParseImage();
+            var item = new CompanionEquipItem
+            {
+                ItemId = itemId,
+                Name = LoadCachedItemName(itemId) ?? $"Pet Equip {itemId}",
+                Description = LoadCachedItemDescription(itemId),
+                ItemTexture = LoadInfoTexture(image, "iconRaw") ?? LoadInfoTexture(image, "icon"),
+                Icon = LoadInfoIcon(image, "icon"),
+                IconRaw = LoadInfoIcon(image, "iconRaw")
+            };
+
+            _petCache[itemId] = item;
             return item;
         }
 
@@ -591,6 +761,22 @@ namespace HaCreator.MapSimulator.Companions
                 WzNullProperty => null,
                 _ => null
             };
+        }
+
+        private static string LoadCachedItemName(int itemId)
+        {
+            return global::HaCreator.Program.InfoManager?.ItemNameCache != null
+                   && global::HaCreator.Program.InfoManager.ItemNameCache.TryGetValue(itemId, out Tuple<string, string, string> itemInfo)
+                ? itemInfo.Item2
+                : null;
+        }
+
+        private static string LoadCachedItemDescription(int itemId)
+        {
+            return global::HaCreator.Program.InfoManager?.ItemNameCache != null
+                   && global::HaCreator.Program.InfoManager.ItemNameCache.TryGetValue(itemId, out Tuple<string, string, string> itemInfo)
+                ? itemInfo.Item3
+                : null;
         }
     }
 }

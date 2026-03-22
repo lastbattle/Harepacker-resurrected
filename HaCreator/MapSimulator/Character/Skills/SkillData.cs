@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using HaCreator.MapSimulator.UI;
 using HaSharedLibrary.Render.DX;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
@@ -107,6 +108,15 @@ namespace HaCreator.MapSimulator.Character.Skills
         HoverAroundAnchor
     }
 
+    public enum SummonAssistType
+    {
+        PeriodicAttack = 1,
+        Support = 2,
+        TargetedAttack = 3,
+        SummonAction = 4,
+        ManualAttack = 5
+    }
+
     #endregion
 
     #region Skill Level Data
@@ -164,6 +174,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         // Projectile
         public int BulletCount { get; set; } = 1;    // Projectiles per attack
         public int BulletSpeed { get; set; }         // Projectile speed
+        public List<int> ProjectileSpawnDelaysMs { get; set; } = new();
 
         // Mastery
         public int Mastery { get; set; }             // Mastery %
@@ -316,6 +327,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         public IDXObject IconDisabled { get; set; }
         public IDXObject IconMouseOver { get; set; }
         public SkillAnimation Effect { get; set; }           // Effect on caster
+        public SkillAnimation EffectSecondary { get; set; }  // Secondary caster effect branch (e.g. effect0)
         public SkillAnimation PrepareEffect { get; set; }    // Startup effect for prepare/keydown skills
         public SkillAnimation PrepareSecondaryEffect { get; set; } // Secondary startup branch (e.g. prepare0) drawn alongside PrepareEffect
         public SkillAnimation KeydownEffect { get; set; }    // Looping effect while keydown skill is held
@@ -335,6 +347,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         public SkillAnimation AvatarOverlayFinishEffect { get; set; } // One-shot cleanup overlay
         public SkillAnimation AvatarUnderFaceFinishEffect { get; set; } // One-shot cleanup below face
         public SkillAnimation AvatarLadderFinishEffect { get; set; } // Ladder/rope cleanup override
+        public bool HideAvatarEffectOnLadderOrRope { get; set; }
         public int SummonMoveAbility { get; set; }
         public SummonMovementStyle SummonMovementStyle { get; set; } = SummonMovementStyle.Stationary;
         public float SummonSpawnDistanceX { get; set; } = 50f;
@@ -380,6 +393,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         public int RepeatDurationMs { get; set; }
         public int KeydownEndDurationMs { get; set; }
         public int KeydownRepeatIntervalMs { get; set; }
+        public int ClientDelayMs { get; set; }
         public bool CasterMove { get; set; }
         public bool AreaAttack { get; set; }
         public bool RectBasedOnTarget { get; set; }
@@ -974,6 +988,8 @@ namespace HaCreator.MapSimulator.Character.Skills
         public int HudGaugeDurationMs { get; set; }
         public string HudSkinKey { get; set; } = "KeyDownBar";
         public bool ShowHudBar { get; set; } = true;
+        public bool ShowHudText { get; set; } = true;
+        public PreparedSkillHudSurface HudSurface { get; set; } = PreparedSkillHudSurface.StatusBar;
         public SkillData SkillData { get; set; }
         public SkillLevelData LevelData { get; set; }
         public bool IsKeydownSkill { get; set; }
@@ -1003,6 +1019,7 @@ namespace HaCreator.MapSimulator.Character.Skills
     public class ActiveSummon
     {
         public int ObjectId { get; set; }
+        public int SummonSlotIndex { get; set; } = -1;
         public int SkillId { get; set; }
         public int Level { get; set; }
         public int StartTime { get; set; }
@@ -1020,6 +1037,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         public SkillData SkillData { get; set; }
         public SkillLevelData LevelData { get; set; }
         public bool FacingRight { get; set; }
+        public SummonAssistType AssistType { get; set; } = SummonAssistType.PeriodicAttack;
         public bool ManualAssistEnabled { get; set; } = true;
         public int NextSupportTime { get; set; }
         public int PendingRemovalTime { get; set; } = int.MaxValue;

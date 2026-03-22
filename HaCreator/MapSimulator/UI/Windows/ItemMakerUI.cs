@@ -67,6 +67,15 @@ namespace HaCreator.MapSimulator.UI
             public List<ItemMakerRecipe> Recipes { get; } = new();
         }
 
+        private enum MakerLaunchFilter
+        {
+            None,
+            ItemMaker,
+            GloveMaker,
+            ShoeMaker,
+            ToyMaker
+        }
+
         private readonly struct BackgroundLayer
         {
             public BackgroundLayer(IDXObject drawable, Point offset)
@@ -83,6 +92,7 @@ namespace HaCreator.MapSimulator.UI
         private const int SelectorDropdownRowHeight = 20;
         private const int CraftDurationMs = 1400;
         private const int VisibleRecipeCount = 6;
+        private const int AllCategoryKey = -1;
         private static readonly int[] ClientRecipeBuckets = { 0, 1, 2, 4, 8, 16 };
 
         private readonly List<BackgroundLayer> _backgroundLayers = new();
@@ -106,6 +116,7 @@ namespace HaCreator.MapSimulator.UI
         private Func<int, bool> _hasRequiredEquip;
         private Func<int, int, bool> _matchesQuestRequirement;
         private string _launchContextLabel;
+        private MakerLaunchFilter _launchFilter;
         private bool _isCrafting;
         private bool _isCategorySelectorExpanded;
         private bool _isItemSelectorExpanded;
@@ -156,6 +167,8 @@ namespace HaCreator.MapSimulator.UI
         public void ApplyLaunchContext(string npcFunctionText)
         {
             _launchContextLabel = npcFunctionText?.Trim();
+            _launchFilter = ResolveLaunchFilter(_launchContextLabel);
+            RebuildVisiblePages();
             FocusLaunchContext();
         }
 
@@ -1012,6 +1025,36 @@ namespace HaCreator.MapSimulator.UI
             return null;
         }
 
+        private static MakerLaunchFilter ResolveLaunchFilter(string npcFunctionText)
+        {
+            if (string.IsNullOrWhiteSpace(npcFunctionText))
+            {
+                return MakerLaunchFilter.None;
+            }
+
+            if (npcFunctionText.IndexOf("glove maker", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                return MakerLaunchFilter.GloveMaker;
+            }
+
+            if (npcFunctionText.IndexOf("shoemaker", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                return MakerLaunchFilter.ShoeMaker;
+            }
+
+            if (npcFunctionText.IndexOf("toy maker", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                return MakerLaunchFilter.ToyMaker;
+            }
+
+            if (npcFunctionText.IndexOf("item maker", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                return MakerLaunchFilter.ItemMaker;
+            }
+
+            return MakerLaunchFilter.None;
+        }
+
         private static string GetQuestRequirementText(ItemMakerQuestRequirement requirement)
         {
             if (requirement == null)
@@ -1284,20 +1327,32 @@ namespace HaCreator.MapSimulator.UI
                 .ThenBy(recipe => recipe.Title, StringComparer.OrdinalIgnoreCase)
                 .ToList();
 
+            List<ItemMakerRecipe> launchFilteredRecipes = ApplyLaunchFilter(visibleRecipes);
+
             _pages.Clear();
-            foreach (IGrouping<int, ItemMakerRecipe> group in visibleRecipes
-                         .GroupBy(recipe => recipe.CategoryKey)
-                         .OrderBy(group => GetCategorySortOrder(group.Key))
-                         .ThenBy(group => group.First().CategoryLabel, StringComparer.OrdinalIgnoreCase))
+            if (launchFilteredRecipes.Count > 0)
             {
-                ItemMakerPage page = new()
+                AddPage(AllCategoryKey, -1000, "All", launchFilteredRecipes);
+
+                Dictionary<int, List<ItemMakerRecipe>> groupedRecipes = launchFilteredRecipes
+                    .GroupBy(recipe => recipe.CategoryKey)
+                    .ToDictionary(group => group.Key, group => group.ToList());
+
+                AddCategoryPageIfPresent(groupedRecipes, 426, -900, "Gem");
+                AddCategoryPageIfPresent(groupedRecipes, 425, -890, "Monster Crystal");
+
+                foreach (IGrouping<int, ItemMakerRecipe> group in launchFilteredRecipes
+                             .Where(recipe => recipe.CategoryKey is not 200 and not 300 and not 400 and not 425 and not 426)
+                             .GroupBy(recipe => recipe.CategoryKey)
+                             .OrderBy(group => GetCategorySortOrder(group.Key))
+                             .ThenBy(group => group.First().CategoryLabel, StringComparer.OrdinalIgnoreCase))
                 {
-                    CategoryKey = group.Key,
-                    SortOrder = GetCategorySortOrder(group.Key),
-                    Label = group.First().CategoryLabel
-                };
-                page.Recipes.AddRange(group);
-                _pages.Add(page);
+                    AddPage(group.Key, GetCategorySortOrder(group.Key), group.First().CategoryLabel, group);
+                }
+
+                AddCategoryPageIfPresent(groupedRecipes, 200, 900, "Use");
+                AddCategoryPageIfPresent(groupedRecipes, 300, 910, "Setup");
+                AddCategoryPageIfPresent(groupedRecipes, 400, 920, "Etc");
             }
 
             if (_pages.Count == 0)
@@ -1323,6 +1378,62 @@ namespace HaCreator.MapSimulator.UI
 
             FocusLaunchContext();
             RefreshStatusMessage();
+        }
+
+        private List<ItemMakerRecipe> ApplyLaunchFilter(List<ItemMakerRecipe> visibleRecipes)
+        {
+            if (_launchFilter == MakerLaunchFilter.None || visibleRecipes.Count == 0)
+            {
+                return visibleRecipes;
+            }
+
+            List<ItemMakerRecipe> filteredRecipes = visibleRecipes
+                .Where(IsRecipeVisibleForLaunchFilter)
+                .ToList();
+
+            return filteredRecipes.Count > 0
+                ? filteredRecipes
+                : visibleRecipes;
+        }
+
+        private bool IsRecipeVisibleForLaunchFilter(ItemMakerRecipe recipe)
+        {
+            int fourDigitCategory = recipe.OutputItemId / 10000;
+            return _launchFilter switch
+            {
+                MakerLaunchFilter.ItemMaker => recipe.OutputInventoryType != InventoryType.EQUIP || recipe.CategoryKey is 425 or 426,
+                MakerLaunchFilter.GloveMaker => fourDigitCategory == 108,
+                MakerLaunchFilter.ShoeMaker => fourDigitCategory == 107,
+                MakerLaunchFilter.ToyMaker => recipe.OutputInventoryType == InventoryType.SETUP || recipe.Title.IndexOf("toy", StringComparison.OrdinalIgnoreCase) >= 0,
+                _ => true
+            };
+        }
+
+        private void AddCategoryPageIfPresent(
+            IReadOnlyDictionary<int, List<ItemMakerRecipe>> groupedRecipes,
+            int categoryKey,
+            int sortOrder,
+            string label)
+        {
+            if (groupedRecipes.TryGetValue(categoryKey, out List<ItemMakerRecipe> recipes) && recipes.Count > 0)
+            {
+                AddPage(categoryKey, sortOrder, label, recipes);
+            }
+        }
+
+        private void AddPage(int categoryKey, int sortOrder, string label, IEnumerable<ItemMakerRecipe> recipes)
+        {
+            ItemMakerPage page = new()
+            {
+                CategoryKey = categoryKey,
+                SortOrder = sortOrder,
+                Label = label
+            };
+            page.Recipes.AddRange(recipes);
+            if (page.Recipes.Count > 0)
+            {
+                _pages.Add(page);
+            }
         }
 
         private static HashSet<int> GetAllowedBucketKeys(int jobId)

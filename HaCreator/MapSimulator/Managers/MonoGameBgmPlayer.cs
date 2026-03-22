@@ -20,6 +20,20 @@ namespace HaCreator.MapSimulator.Managers
 
         public SoundState State => _instance?.State ?? SoundState.Stopped;
 
+        public float Volume
+        {
+            get => _instance?.Volume ?? 0f;
+            set
+            {
+                if (_disposed || _instance == null)
+                {
+                    return;
+                }
+
+                _instance.Volume = Math.Clamp(value, 0f, 1f);
+            }
+        }
+
         public void Play()
         {
             if (_disposed || _instance == null)

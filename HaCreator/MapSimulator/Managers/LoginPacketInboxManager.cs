@@ -10,16 +10,18 @@ namespace HaCreator.MapSimulator.Managers
 {
     public sealed class LoginPacketInboxMessage
     {
-        public LoginPacketInboxMessage(LoginPacketType packetType, string source, string rawText)
+        public LoginPacketInboxMessage(LoginPacketType packetType, string source, string rawText, string[] arguments)
         {
             PacketType = packetType;
             Source = string.IsNullOrWhiteSpace(source) ? "login-inbox" : source;
             RawText = rawText ?? string.Empty;
+            Arguments = arguments ?? Array.Empty<string>();
         }
 
         public LoginPacketType PacketType { get; }
         public string Source { get; }
         public string RawText { get; }
+        public string[] Arguments { get; }
     }
 
     /// <summary>
@@ -75,7 +77,7 @@ namespace HaCreator.MapSimulator.Managers
 
         public void EnqueueLocal(LoginPacketType packetType, string source)
         {
-            _pendingMessages.Enqueue(new LoginPacketInboxMessage(packetType, source, packetType.ToString()));
+            _pendingMessages.Enqueue(new LoginPacketInboxMessage(packetType, source, packetType.ToString(), Array.Empty<string>()));
         }
 
         public bool TryDequeue(out LoginPacketInboxMessage message)
@@ -130,13 +132,13 @@ namespace HaCreator.MapSimulator.Managers
                             break;
                         }
 
-                        if (!TryParsePacketLine(line, out LoginPacketType packetType))
+                        if (!TryParsePacketLine(line, out LoginPacketType packetType, out string[] arguments))
                         {
                             LastStatus = $"Ignored login inbox line from {remoteEndpoint}: {line}";
                             continue;
                         }
 
-                        _pendingMessages.Enqueue(new LoginPacketInboxMessage(packetType, remoteEndpoint, line));
+                        _pendingMessages.Enqueue(new LoginPacketInboxMessage(packetType, remoteEndpoint, line, arguments));
                         ReceivedCount++;
                         LastStatus = $"Queued {packetType} from {remoteEndpoint}.";
                     }
@@ -157,20 +159,37 @@ namespace HaCreator.MapSimulator.Managers
             }
         }
 
-        private static bool TryParsePacketLine(string text, out LoginPacketType packetType)
+        private static bool TryParsePacketLine(string text, out LoginPacketType packetType, out string[] arguments)
         {
             packetType = LoginPacketType.CheckPasswordResult;
+            arguments = Array.Empty<string>();
             if (string.IsNullOrWhiteSpace(text))
             {
                 return false;
             }
 
             string trimmed = text.Trim();
-            string token = trimmed;
-            int separatorIndex = trimmed.IndexOfAny(new[] { ' ', '\t', ':', '=' });
-            if (separatorIndex >= 0)
+            string[] tokens = trimmed.Split((char[])null, StringSplitOptions.RemoveEmptyEntries);
+            if (tokens.Length == 0)
             {
-                token = trimmed[..separatorIndex];
+                return false;
+            }
+
+            int packetTokenIndex = 0;
+            if (tokens[0].Equals("/loginpacket", StringComparison.OrdinalIgnoreCase))
+            {
+                if (tokens.Length < 2)
+                {
+                    return false;
+                }
+
+                packetTokenIndex = 1;
+            }
+
+            string token = tokens[packetTokenIndex];
+            if (tokens.Length > packetTokenIndex + 1)
+            {
+                arguments = tokens[(packetTokenIndex + 1)..];
             }
 
             if (LoginRuntimeManager.TryParsePacketType(token, out packetType))

@@ -65,6 +65,7 @@ namespace HaCreator.MapSimulator
         private const int ReactorCollisionCheckIntervalMs = 1000;
         private const int PetAutoSpeechPreLevelReminderCooldownMs = 420000;
         private const int PetAutoSpeechLowHpAlertCooldownMs = 60000;
+        private const int PetAutoSpeechPotionFailureMaxRepeats = 3;
         private static readonly string[] DirectionModeModalWindowNames =
         {
             MapSimulatorWindowNames.CashShop,
@@ -72,6 +73,10 @@ namespace HaCreator.MapSimulator
             MapSimulatorWindowNames.Trunk,
             MapSimulatorWindowNames.ItemMaker,
             MapSimulatorWindowNames.ItemUpgrade,
+            MapSimulatorWindowNames.MiniRoom,
+            MapSimulatorWindowNames.PersonalShop,
+            MapSimulatorWindowNames.EntrustedShop,
+            MapSimulatorWindowNames.TradingRoom,
             MapSimulatorWindowNames.MemoSend,
             MapSimulatorWindowNames.MemoGet,
             MapSimulatorWindowNames.MapleTv
@@ -117,6 +122,9 @@ namespace HaCreator.MapSimulator
         private PortalItem[] _portalsArray;
         private TooltipItem[] _tooltipsArray;
         private readonly List<MobMovementInfo> _groundMobMovementBuffer = new();
+        private readonly List<MobItem> _frameActiveMobs = new();
+        private readonly List<MobItem> _frameMovableMobs = new();
+        private MobItem _framePrimaryBossMob;
 
         // Mob pool for spawn/despawn management
         private MobPool _mobPool;
@@ -163,6 +171,7 @@ namespace HaCreator.MapSimulator
         private int _visiblePortalsCount;
         private ReactorItem[] _visibleReactors;
         private int _visibleReactorsCount;
+        private bool[] _reactorVisibilityBuffer;
 
         // Boundary, borders
         private Rectangle _vrFieldBoundary;
@@ -190,6 +199,19 @@ namespace HaCreator.MapSimulator
         private StatusBarChatUI statusBarChatUI { get => _uiManager.StatusBarChat; set => _uiManager.StatusBarChat = value; }
         private UIWindowManager uiWindowManager { get => _uiManager.WindowManager; set => _uiManager.WindowManager = value; }
         private MouseCursorItem mouseCursor { get => _uiManager.MouseCursor; set => _uiManager.MouseCursor = value; }
+        private readonly List<StatusBarBuffRenderData> _statusBarBuffRenderCache = new();
+        private int _statusBarBuffRenderCacheTime = int.MinValue;
+        private readonly List<(StatusBarCooldownRenderData RenderData, int CooldownStartTime, int SortKey)> _statusBarCooldownSortBuffer = new();
+        private readonly List<StatusBarCooldownRenderData> _statusBarCooldownRenderCache = new();
+        private readonly HashSet<int> _statusBarProcessedCooldownSkills = new();
+        private int _statusBarCooldownRenderCacheTime = int.MinValue;
+        private readonly List<(StatusBarCooldownRenderData RenderData, int CooldownStartTime, int SortKey)> _statusBarOffBarCooldownSortBuffer = new();
+        private readonly List<StatusBarCooldownRenderData> _statusBarOffBarCooldownRenderCache = new();
+        private int _statusBarOffBarCooldownRenderCacheTime = int.MinValue;
+        private readonly StatusBarPreparedSkillRenderData _preparedSkillStatusBarCache = new();
+        private readonly StatusBarPreparedSkillRenderData _preparedSkillWorldCache = new();
+        private int _preparedSkillStatusBarCacheTime = int.MinValue;
+        private int _preparedSkillWorldCacheTime = int.MinValue;
 
         // Audio
         private MonoGameBgmPlayer _audio;
@@ -226,9 +248,11 @@ namespace HaCreator.MapSimulator
         private readonly MemoMailboxManager _memoMailbox = new MemoMailboxManager();
         private readonly FamilyChartRuntime _familyChartRuntime = new FamilyChartRuntime();
         private readonly SocialListRuntime _socialListRuntime = new SocialListRuntime();
+        private readonly GuildSkillRuntime _guildSkillRuntime = new GuildSkillRuntime();
         private readonly MessengerRuntime _messengerRuntime = new MessengerRuntime();
         private readonly GuildBbsRuntime _guildBbsRuntime = new GuildBbsRuntime();
         private readonly MapleTvRuntime _mapleTvRuntime = new MapleTvRuntime();
+        private readonly Dictionary<int, int> _questGrantedSkillPointsByTab = new();
         private bool _questUiBindingsConfigured;
         private int _activeQuestDetailQuestId;
         private int _activeMemoAttachmentId = -1;
@@ -246,6 +270,8 @@ namespace HaCreator.MapSimulator
         private int _nextPetPreLevelSpeechTick;
         private int _lastPetHpAlertTick = int.MinValue;
         private bool _petHpAlertArmed = true;
+        private int _petHpPotionFailureSpeechCount;
+        private int _petMpPotionFailureSpeechCount;
         private int _lastReactorCollisionCheckTick = -ReactorCollisionCheckIntervalMs;
         private readonly Dictionary<(int skillId, int level), MobSummonSkillInfo> _mobSummonSkillCache = new();
         private readonly Dictionary<(int skillId, int level), MobSkillRuntimeData> _mobSkillRuntimeCache = new();
@@ -270,6 +296,7 @@ namespace HaCreator.MapSimulator
         private TemporaryPortalField _temporaryPortalField;
         private FieldRuleRuntime _fieldRuleRuntime;
         private readonly SpecialFieldRuntimeCoordinator _specialFieldRuntime = new SpecialFieldRuntimeCoordinator();
+        private readonly AriantArenaPacketInboxManager _ariantArenaPacketInbox = new AriantArenaPacketInboxManager();
         private int _cookieHouseContextPoint;
         private bool _bossHpBarAssetsLoaded;
         private static readonly EquipSlot[] BattlefieldAppearanceSlots =
@@ -292,6 +319,7 @@ namespace HaCreator.MapSimulator
         // Centralized game state management
         private readonly GameStateManager _gameState = new GameStateManager();
         private readonly LoginRuntimeManager _loginRuntime = new LoginRuntimeManager();
+        private readonly LoginPacketInboxManager _loginPacketInbox = new LoginPacketInboxManager();
 
         // Map state cache for maintaining entity positions across map transitions
         private readonly MapStateCache _mapStateCache = new MapStateCache();
@@ -317,7 +345,7 @@ namespace HaCreator.MapSimulator
         private float _tombVelocityY; // Current fall velocity
         private float _tombTargetY; // Ground Y position (death position)
         private bool _tombHasLanded; // Whether tombstone has hit ground
-        private const float TOMB_GRAVITY = 1200f; // Gravity acceleration (px/s²)
+        private const float TOMB_GRAVITY = 1200f; // Gravity acceleration (px/sﾂｲ)
         private const float TOMB_START_HEIGHT = 300f; // Height above death position to start falling
 
         // Debug
@@ -350,6 +378,7 @@ namespace HaCreator.MapSimulator
         private const int FIELD_RULE_DAMAGE_MIST_DURATION_MS = 650;
         private const int FIELD_RULE_MESSAGE_COOLDOWN_MS = 1200;
         private const int SKILL_COOLDOWN_BLOCKED_MESSAGE_COOLDOWN_MS = 600;
+        private const string SkillCooldownNoticeSoundKey = "SkillCooldownNotice";
         private const int DefaultSimulatorWorldId = 0;
         private const int DefaultSimulatorChannelIndex = 0;
         private const int DefaultSimulatorChannelCount = 20;
@@ -397,6 +426,7 @@ namespace HaCreator.MapSimulator
         private byte? _loginPacketSelectWorldResultCode;
         private int? _loginPacketSelectWorldTargetWorldId;
         private int? _loginPacketSelectWorldTargetChannelIndex;
+        private LoginSelectWorldResultProfile _loginPacketSelectWorldResultProfile;
         private readonly List<RecommendWorldEntry> _recommendWorldEntries = new();
         private int _recommendWorldIndex;
         private bool _recommendWorldDismissed;
@@ -439,6 +469,7 @@ namespace HaCreator.MapSimulator
             mapTransferWindow.DeleteDestinationRequested = DeleteMapTransferDestination;
             mapTransferWindow.MoveDestinationRequested = MoveToMapTransferDestination;
             mapTransferWindow.WorldMapRequested = HandleMapTransferWorldMapRequested;
+            mapTransferWindow.ManualMapMoveRequested = MoveToManualMapTransferDestination;
             mapTransferWindow.SetCurrentMapName(GetCurrentMapTransferDisplayName());
             mapTransferWindow.SetStatusMessage(GetMapTransferStatusMessage());
             mapTransferWindow.SetDestinations(BuildMapTransferDestinations());
@@ -653,8 +684,8 @@ namespace HaCreator.MapSimulator
                     destinations.Add(new MapTransferUI.DestinationEntry
                     {
                         MapId = saved.MapId,
-                        DisplayName = $"[Saved {slotIndex + 1}] {displayName}",
-                        DetailText = $"{saved.MapId}",
+                        DisplayName = displayName,
+                        DetailText = $"Saved slot {slotIndex + 1}    {saved.MapId}",
                         SavedSlotIndex = slotIndex,
                         CanDelete = true
                     });
@@ -664,8 +695,8 @@ namespace HaCreator.MapSimulator
                 destinations.Add(new MapTransferUI.DestinationEntry
                 {
                     MapId = 0,
-                    DisplayName = $"[Saved {slotIndex + 1}] Empty",
-                    DetailText = "Empty saved slot. Press Register to save the current map or the selected world-map target here.",
+                    DisplayName = "Empty",
+                    DetailText = $"Saved slot {slotIndex + 1} is empty. Press Register to save the current map or the selected world-map target here.",
                     SavedSlotIndex = slotIndex,
                     CanDelete = false
                 });
@@ -791,6 +822,11 @@ namespace HaCreator.MapSimulator
                 }
             }
 
+            if (!string.IsNullOrWhiteSpace(targetDisplayName))
+            {
+                _mapTransferTitleCache[targetMapId] = targetDisplayName;
+            }
+
             bool saved = _mapTransferDestinations.SetSlot(
                 activeBuild,
                 selectedSavedSlotIndex,
@@ -798,7 +834,7 @@ namespace HaCreator.MapSimulator
                 {
                     SlotIndex = selectedSavedSlotIndex,
                     MapId = targetMapId,
-                    DisplayName = targetDisplayName
+                    DisplayName = null
                 },
                 savedCapacity);
 
@@ -857,6 +893,29 @@ namespace HaCreator.MapSimulator
             }
 
             QueueMapTransfer(destination.MapId, destination.TargetPortalName);
+        }
+
+        private void MoveToManualMapTransferDestination(int targetMapId)
+        {
+            if (targetMapId <= 0)
+            {
+                return;
+            }
+
+            string mapTransferRestrictionMessage = FieldInteractionRestrictionEvaluator.GetMapTransferRestrictionMessage(_mapBoard?.MapInfo?.fieldLimit ?? 0);
+            if (!string.IsNullOrWhiteSpace(mapTransferRestrictionMessage))
+            {
+                ShowFieldRestrictionMessage(mapTransferRestrictionMessage);
+                return;
+            }
+
+            if (_loadMapCallback == null)
+            {
+                _chat.AddMessage("Map transfer is unavailable without a map loader.", new Color(255, 228, 151), Environment.TickCount);
+                return;
+            }
+
+            QueueMapTransfer(targetMapId, null);
         }
 
         private bool QueueMapTransfer(int targetMapId, string targetPortalName)
@@ -925,7 +984,7 @@ namespace HaCreator.MapSimulator
 
             string ownerName = GetActiveMapTransferCharacterBuild()?.Name;
             string ownerSuffix = string.IsNullOrWhiteSpace(ownerName) ? string.Empty : $" for {ownerName}";
-            return $"Register the current map or choose a listed route ({Math.Min(currentDestinations.Count, savedCapacity)}/{savedCapacity} saved{ownerSuffix}).";
+            return $"Register the current map, enter a map ID, or choose a listed route ({Math.Min(currentDestinations.Count, savedCapacity)}/{savedCapacity} saved{ownerSuffix}).";
         }
 
         private static string TrimMapTransferCategoryPrefix(string displayName)
@@ -975,13 +1034,18 @@ namespace HaCreator.MapSimulator
 
             CharacterBuild activeBuild = _playerManager?.Player?.Build ?? _loginCharacterRoster.SelectedEntry?.Build;
             string currentCharacterName = string.IsNullOrWhiteSpace(activeBuild?.Name) ? "ExplorerGM" : activeBuild.Name.Trim();
-            string accountLabel = "Simulator Account Storage";
+            string accountLabel = BuildStorageAccountLabel();
             IReadOnlyList<string> sharedCharacterNames = _loginCharacterRoster.Entries
                 .Select(entry => entry?.Build?.Name?.Trim())
                 .Where(name => !string.IsNullOrWhiteSpace(name))
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .ToArray();
             trunkWindow.ConfigureStorageAccess(accountLabel, currentCharacterName, sharedCharacterNames);
+        }
+
+        private string BuildStorageAccountLabel()
+        {
+            return $"Simulator Account Storage (World {_simulatorWorldId + 1})";
         }
 
         private void LoadPersistedSkillMacros()
@@ -1192,6 +1256,13 @@ namespace HaCreator.MapSimulator
                         return "Opened the dedicated guild search surface.";
                     }
 
+                    if (string.Equals(actionKey, "Guild.Skill", StringComparison.Ordinal))
+                    {
+                        WireGuildSkillWindowData();
+                        uiWindowManager?.ShowWindow(MapSimulatorWindowNames.GuildSkill);
+                        return "Opened the dedicated guild skill surface.";
+                    }
+
                     return _socialListRuntime.ExecuteAction(actionKey);
                 },
                 ShowUtilityFeedbackMessage);
@@ -1246,6 +1317,28 @@ namespace HaCreator.MapSimulator
                 },
                 ShowUtilityFeedbackMessage);
             guildSearchWindow.SetFont(_fontChat);
+        }
+
+        private void WireGuildSkillWindowData()
+        {
+            if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.GuildSkill) is not GuildSkillWindow guildSkillWindow)
+            {
+                return;
+            }
+
+            if (_guildSkillRuntime.BuildSnapshot().Entries.Count == 0)
+            {
+                _guildSkillRuntime.SetSkills(SkillDataLoader.LoadGuildSkills(_DxDeviceManager.GraphicsDevice));
+            }
+
+            _guildSkillRuntime.UpdateLocalContext(_playerManager?.Player?.Build);
+            guildSkillWindow.SetSnapshotProvider(_guildSkillRuntime.BuildSnapshot);
+            guildSkillWindow.SetHandlers(
+                visibleIndex => _guildSkillRuntime.SelectEntry(visibleIndex),
+                () => _guildSkillRuntime.RefreshRecommendation(),
+                () => _guildSkillRuntime.TryLevelSelectedSkill(),
+                ShowUtilityFeedbackMessage);
+            guildSkillWindow.SetFont(_fontChat);
         }
 
         private void WireFamilyChartWindowData()
@@ -1360,6 +1453,15 @@ namespace HaCreator.MapSimulator
                 () => _guildBbsRuntime.ToggleNotice(),
                 () => _guildBbsRuntime.AddReply(),
                 () => _guildBbsRuntime.DeleteLatestReply(),
+                value => _guildBbsRuntime.SetComposeTitle(value),
+                value => _guildBbsRuntime.SetComposeBody(value),
+                value => _guildBbsRuntime.SetReplyDraft(value),
+                delta => _guildBbsRuntime.MoveThreadPage(delta),
+                delta => _guildBbsRuntime.MoveCommentPage(delta),
+                delta => _guildBbsRuntime.MoveComposeCashEmoticonPage(delta),
+                delta => _guildBbsRuntime.MoveReplyCashEmoticonPage(delta),
+                (kind, slotIndex, pageIndex) => _guildBbsRuntime.SelectComposeEmoticon(kind, slotIndex, pageIndex),
+                (kind, slotIndex, pageIndex) => _guildBbsRuntime.SelectReplyEmoticon(kind, slotIndex, pageIndex),
                 ShowUtilityFeedbackMessage);
             guildBbsWindow.SetFont(_fontChat);
         }
@@ -1553,12 +1655,28 @@ namespace HaCreator.MapSimulator
 
         private void OpenItemUpgradeWindowForConsumable(int itemId)
         {
+            if (ItemUpgradeUI.IsVegaSpellConsumable(itemId))
+            {
+                OpenVegaSpellWindowForConsumable(itemId);
+                return;
+            }
+
             if (!TryShowItemUpgradeWindow(out ItemUpgradeUI itemUpgradeWindow))
             {
                 return;
             }
 
             itemUpgradeWindow.PrepareConsumableSelection(itemId);
+        }
+
+        private void OpenVegaSpellWindowForConsumable(int itemId)
+        {
+            if (!TryShowVegaSpellWindow(out VegaSpellUI vegaSpellWindow))
+            {
+                return;
+            }
+
+            vegaSpellWindow.PrepareModifierSelection(itemId);
         }
 
         private bool TryUseInventoryItem(int itemId, InventoryType inventoryType)
@@ -1572,8 +1690,38 @@ namespace HaCreator.MapSimulator
             {
                 InventoryType.SETUP => TryTogglePortableChair(itemId, out _),
                 InventoryType.USE => TryUseConsumableInventoryItem(itemId, currentTime),
+                InventoryType.CASH => TryUseCashInventoryItem(itemId),
                 _ => false
             };
+        }
+
+        private bool TryUseCashInventoryItem(int itemId)
+        {
+            if (itemId <= 0 || uiWindowManager == null)
+            {
+                return false;
+            }
+
+            InventoryItemMetadataResolver.TryResolveItemName(itemId, out string itemName);
+            InventoryItemMetadataResolver.TryResolveItemDescription(itemId, out string itemDescription);
+            if (!TeleportItemUsageEvaluator.IsTeleportItem(itemId, InventoryType.CASH, itemName, itemDescription))
+            {
+                return false;
+            }
+
+            string restrictionMessage = FieldInteractionRestrictionEvaluator.GetTeleportItemRestrictionMessage(_mapBoard?.MapInfo?.fieldLimit ?? 0);
+            if (!string.IsNullOrWhiteSpace(restrictionMessage))
+            {
+                ShowFieldRestrictionMessage(restrictionMessage);
+                return false;
+            }
+
+            _worldMapRequestMode = WorldMapRequestMode.DirectTransfer;
+            _mapTransferEditDestination = null;
+            RefreshMapTransferWindow();
+            uiWindowManager.HideWindow(MapSimulatorWindowNames.WorldMap);
+            uiWindowManager.ShowWindow(MapSimulatorWindowNames.MapTransfer);
+            return true;
         }
 
         private void ShowCashShopWindow()
@@ -1602,6 +1750,19 @@ namespace HaCreator.MapSimulator
 
             itemUpgradeWindow.Show();
             uiWindowManager.BringToFront(itemUpgradeWindow);
+            return true;
+        }
+
+        private bool TryShowVegaSpellWindow(out VegaSpellUI vegaSpellWindow)
+        {
+            vegaSpellWindow = uiWindowManager?.GetWindow(MapSimulatorWindowNames.VegaSpell) as VegaSpellUI;
+            if (vegaSpellWindow == null)
+            {
+                return false;
+            }
+
+            vegaSpellWindow.Show();
+            uiWindowManager.BringToFront(vegaSpellWindow);
             return true;
         }
 
@@ -1797,6 +1958,19 @@ namespace HaCreator.MapSimulator
             characterSelectWindow.NewCharacterRequested += HandleLoginNewCharacterRequested;
             characterSelectWindow.DeleteRequested -= HandleLoginCharacterDeleteRequested;
             characterSelectWindow.DeleteRequested += HandleLoginCharacterDeleteRequested;
+        }
+
+        private void WireAvatarPreviewCarouselWindow()
+        {
+            if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.AvatarPreviewCarousel) is not AvatarPreviewCarouselWindow previewWindow)
+            {
+                return;
+            }
+
+            previewWindow.CharacterSelected -= HandleLoginCharacterSelected;
+            previewWindow.CharacterSelected += HandleLoginCharacterSelected;
+            previewWindow.EnterRequested -= HandleLoginCharacterEnterRequested;
+            previewWindow.EnterRequested += HandleLoginCharacterEnterRequested;
         }
 
         private void WireRecommendWorldWindow()
@@ -2004,7 +2178,11 @@ namespace HaCreator.MapSimulator
             return _simulatorWorldId;
         }
 
-        private void DispatchLoginRuntimePacket(LoginPacketType packetType, out string message, bool applySelectorSideEffects = true)
+        private void DispatchLoginRuntimePacket(
+            LoginPacketType packetType,
+            out string message,
+            bool applySelectorSideEffects = true,
+            string summaryOverride = null)
         {
             if (applySelectorSideEffects &&
                 packetType == LoginPacketType.SelectWorldResult &&
@@ -2022,10 +2200,21 @@ namespace HaCreator.MapSimulator
             }
 
             _loginRuntime.TryDispatchPacket(packetType, currTickCount, out message);
+            if (!string.IsNullOrWhiteSpace(summaryOverride))
+            {
+                _loginRuntime.OverrideLastEventSummary(summaryOverride);
+                message = _loginRuntime.LastEventSummary;
+            }
+
             ApplyLoginWorldSelectorPacket(packetType, Array.Empty<string>());
             if (applySelectorSideEffects && packetType != LoginPacketType.SelectWorldResult)
             {
                 ApplyLoginWorldSelectorRuntimePacket(packetType);
+            }
+
+            if (packetType == LoginPacketType.SelectWorldResult && IsLoginRuntimeSceneActive)
+            {
+                InitializeLoginCharacterRoster();
             }
 
             ApplyLoginPacketDialogPrompt(packetType);
@@ -2285,11 +2474,19 @@ namespace HaCreator.MapSimulator
                     ResolveCheckUserLimitPacket(worldId, consumeOverride: true);
                 if (!ApplyLoginCheckUserLimitPacket(worldId, packetResultCode, populationLevel, fallbackCode, message))
                 {
-                    DispatchLoginRuntimePacket(LoginPacketType.CheckUserLimitResult, out _, applySelectorSideEffects: false);
+                    DispatchLoginRuntimePacket(
+                        LoginPacketType.CheckUserLimitResult,
+                        out _,
+                        applySelectorSideEffects: false,
+                        summaryOverride: message);
                     return;
                 }
 
-                DispatchLoginRuntimePacket(LoginPacketType.CheckUserLimitResult, out _, applySelectorSideEffects: false);
+                DispatchLoginRuntimePacket(
+                    LoginPacketType.CheckUserLimitResult,
+                    out _,
+                    applySelectorSideEffects: false,
+                    summaryOverride: message);
                 return;
             }
 
@@ -2300,7 +2497,11 @@ namespace HaCreator.MapSimulator
 
             if (IsLoginRuntimeSceneActive)
             {
-                DispatchLoginRuntimePacket(LoginPacketType.SelectWorldResult, out runtimeMessage, applySelectorSideEffects: false);
+                DispatchLoginRuntimePacket(
+                    LoginPacketType.SelectWorldResult,
+                    out _,
+                    applySelectorSideEffects: false,
+                    summaryOverride: runtimeMessage);
                 _loginCharacterStatusMessage = $"Requested world {_simulatorWorldId}, channel {_simulatorChannelIndex + 1}. {runtimeMessage}";
                 SyncLoginEntryDialogs();
                 return;
@@ -2438,7 +2639,8 @@ namespace HaCreator.MapSimulator
                 {
                     0 => (0, populationLevel, SelectorRequestResultCode.Success, null),
                     1 => (1, populationLevel, SelectorRequestResultCode.Success, $"CheckUserLimitResult warned that world {worldId} is busy, but channel browsing remains available."),
-                    _ => (overrideCode.Value, populationLevel, SelectorRequestResultCode.WorldUnavailable, $"CheckUserLimitResult denied world {worldId} with server code {overrideCode.Value}."),
+                    2 => (2, populationLevel, SelectorRequestResultCode.WorldUnavailable, $"CheckUserLimitResult denied world {worldId}: the client over-user-limit branch kept world selection active and blocked channel entry."),
+                    _ => (overrideCode.Value, populationLevel, SelectorRequestResultCode.WorldUnavailable, $"CheckUserLimitResult denied world {worldId} with server code {FormatSelectorPacketCode(overrideCode.Value)}."),
                 };
             }
 
@@ -2466,6 +2668,13 @@ namespace HaCreator.MapSimulator
             {
                 uiWindowManager?.HideWindow(MapSimulatorWindowNames.ChannelSelect);
                 SetSelectorRequestResult(fallbackCode, message);
+                if (IsLoginRuntimeSceneActive)
+                {
+                    _loginCharacterStatusMessage = string.IsNullOrWhiteSpace(message)
+                        ? $"World {worldId} was denied by CheckUserLimitResult."
+                        : message;
+                }
+
                 RefreshWorldChannelSelectorWindows();
                 SyncRecommendWorldWindow();
                 SyncLoginEntryDialogs();
@@ -2473,6 +2682,11 @@ namespace HaCreator.MapSimulator
             }
 
             SetSelectorRequestResult(SelectorRequestResultCode.Success, message);
+            if (IsLoginRuntimeSceneActive && !string.IsNullOrWhiteSpace(message))
+            {
+                _loginCharacterStatusMessage = message;
+            }
+
             RefreshWorldChannelSelectorWindows();
 
             if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.ChannelSelect) is ChannelSelectWindow channelSelectWindow)
@@ -2499,9 +2713,24 @@ namespace HaCreator.MapSimulator
             {
                 if (!IsSelectWorldSuccessCode(packetResultCode.Value))
                 {
+                    string rejectionMessage = BuildSelectWorldPacketResultMessage(packetResultCode.Value, worldId, channelIndex, out bool returnsToTitle);
                     SetSelectorRequestResult(
                         SelectorRequestResultCode.ServerRejected,
-                        $"SelectWorldResult denied world {worldId}, channel {channelIndex + 1} with server code {packetResultCode.Value}.");
+                        rejectionMessage);
+                    if (IsLoginRuntimeSceneActive)
+                    {
+                        _loginCharacterStatusMessage = rejectionMessage;
+                        if (returnsToTitle)
+                        {
+                            _loginRuntime.ForceStep(
+                                LoginStep.Title,
+                                $"SelectWorldResult code {FormatSelectorPacketCode(packetResultCode.Value)} returned to the title step.");
+                            uiWindowManager?.HideWindow(MapSimulatorWindowNames.WorldSelect);
+                            uiWindowManager?.HideWindow(MapSimulatorWindowNames.ChannelSelect);
+                            uiWindowManager?.HideWindow(MapSimulatorWindowNames.ChannelShift);
+                        }
+                    }
+
                     RefreshWorldChannelSelectorWindows();
                     SyncRecommendWorldWindow();
                     SyncLoginEntryDialogs();
@@ -2543,6 +2772,43 @@ namespace HaCreator.MapSimulator
         private static bool IsSelectWorldSuccessCode(byte resultCode)
         {
             return resultCode == 0 || resultCode == 12 || resultCode == 23;
+        }
+
+        private static string BuildSelectWorldPacketResultMessage(byte resultCode, int worldId, int channelIndex, out bool returnsToTitle)
+        {
+            returnsToTitle = false;
+            string codeLabel = FormatSelectorPacketCode(resultCode);
+            return unchecked((sbyte)resultCode) switch
+            {
+                -1 or 6 or 8 or 9 => $"SelectWorldResult denied world {worldId}, channel {channelIndex + 1}: the client mapped server code {codeLabel} to login error 15.",
+                2 or 3 => $"SelectWorldResult denied world {worldId}, channel {channelIndex + 1}: the client mapped server code {codeLabel} to login error 16.",
+                4 => $"SelectWorldResult denied world {worldId}, channel {channelIndex + 1}: the client mapped server code 4 to login error 3.",
+                5 => $"SelectWorldResult denied world {worldId}, channel {channelIndex + 1}: the client mapped server code 5 to login error 20.",
+                7 => BuildSelectWorldTitleResetMessage(worldId, channelIndex, codeLabel, out returnsToTitle),
+                10 => $"SelectWorldResult denied world {worldId}, channel {channelIndex + 1}: the client mapped server code 10 to login error 19.",
+                11 => $"SelectWorldResult denied world {worldId}, channel {channelIndex + 1}: the client mapped server code 11 to login error 14.",
+                13 => $"SelectWorldResult denied world {worldId}, channel {channelIndex + 1}: the client mapped server code 13 to login error 21.",
+                14 => $"SelectWorldResult denied world {worldId}, channel {channelIndex + 1}: the client opened the Yes/No dialog 27 and security website flow for server code 14.",
+                15 => $"SelectWorldResult denied world {worldId}, channel {channelIndex + 1}: the client opened the Yes/No dialog 26 and security website flow for server code 15.",
+                16 or 21 => $"SelectWorldResult denied world {worldId}, channel {channelIndex + 1}: the client mapped server code {codeLabel} to login error 33.",
+                17 => $"SelectWorldResult denied world {worldId}, channel {channelIndex + 1}: the client mapped server code 17 to login error 27.",
+                25 => $"SelectWorldResult denied world {worldId}, channel {channelIndex + 1}: the client mapped server code 25 to login error 40.",
+                _ => $"SelectWorldResult denied world {worldId}, channel {channelIndex + 1}: the server returned unmapped code {codeLabel}.",
+            };
+        }
+
+        private static string BuildSelectWorldTitleResetMessage(int worldId, int channelIndex, string codeLabel, out bool returnsToTitle)
+        {
+            returnsToTitle = true;
+            return $"SelectWorldResult denied world {worldId}, channel {channelIndex + 1}: server code {codeLabel} returned the client to the title step and raised login error 17.";
+        }
+
+        private static string FormatSelectorPacketCode(byte resultCode)
+        {
+            sbyte signedCode = unchecked((sbyte)resultCode);
+            return signedCode < 0
+                ? $"{signedCode} (0x{resultCode:X2})"
+                : resultCode.ToString();
         }
 
         private static byte DerivePopulationLevel(IReadOnlyList<ChannelSelectionState> channels)
@@ -2613,6 +2879,11 @@ namespace HaCreator.MapSimulator
 
         private void InitializeLoginCharacterRoster()
         {
+            if (TryInitializeLoginCharacterRosterFromPacket())
+            {
+                return;
+            }
+
             int targetMapId = ResolveLoginCharacterTargetMapId();
             string targetMapDisplayName = ResolveMapTransferDisplayName(targetMapId);
             List<LoginCharacterRosterEntry> entries = new();
@@ -2700,17 +2971,19 @@ namespace HaCreator.MapSimulator
             string targetMapDisplayName,
             bool canDelete = true,
             int? previousWorldRank = null,
-            int? previousJobRank = null)
+            int? previousJobRank = null,
+            byte[] avatarLookPacket = null,
+            int portal = 0)
         {
             if (entries == null || sourceBuild == null)
             {
                 return;
             }
 
-            byte[] avatarLookPacket = LoginAvatarLookCodec.Encode(sourceBuild);
+            byte[] rosterAvatarLookPacket = avatarLookPacket != null ? (byte[])avatarLookPacket.Clone() : LoginAvatarLookCodec.Encode(sourceBuild);
             CharacterBuild rosterBuild = sourceBuild.Clone();
             if (_playerManager?.Loader != null &&
-                LoginAvatarLookCodec.TryDecode(avatarLookPacket, out LoginAvatarLook avatarLook, out _))
+                LoginAvatarLookCodec.TryDecode(rosterAvatarLookPacket, out LoginAvatarLook avatarLook, out _))
             {
                 rosterBuild = _playerManager.Loader.LoadFromAvatarLook(avatarLook, sourceBuild);
             }
@@ -2722,7 +2995,76 @@ namespace HaCreator.MapSimulator
                 canDelete,
                 previousWorldRank,
                 previousJobRank,
-                avatarLookPacket));
+                rosterAvatarLookPacket,
+                portal));
+        }
+
+        private bool TryInitializeLoginCharacterRosterFromPacket()
+        {
+            if (!IsLoginRuntimeSceneActive ||
+                _loginRuntime.GetPacketCount(LoginPacketType.SelectWorldResult) <= 0 ||
+                _loginPacketSelectWorldResultProfile == null ||
+                !LoginSelectWorldResultCodec.IsSuccessCode(_loginPacketSelectWorldResultProfile.ResultCode) ||
+                _loginPacketSelectWorldResultProfile.Entries.Count == 0)
+            {
+                return false;
+            }
+
+            int fallbackMapId = ResolveLoginCharacterTargetMapId();
+            List<LoginCharacterRosterEntry> entries = new();
+            foreach (LoginSelectWorldCharacterEntry packetEntry in _loginPacketSelectWorldResultProfile.Entries)
+            {
+                CharacterBuild build = CreateLoginCharacterBuildFromPacket(packetEntry);
+                int targetMapId = packetEntry.FieldMapId > 0 ? packetEntry.FieldMapId : fallbackMapId;
+                string targetMapDisplayName = ResolveMapTransferDisplayName(targetMapId);
+                AddLoginCharacterRosterEntry(
+                    entries,
+                    build,
+                    targetMapId,
+                    targetMapDisplayName,
+                    avatarLookPacket: packetEntry.AvatarLookPacket,
+                    portal: packetEntry.Portal);
+            }
+
+            _loginCharacterRoster.SetEntries(entries);
+            _loginCharacterStatusMessage = entries.Count > 0
+                ? $"Loaded {entries.Count} packet-authored character entries from SelectWorldResult."
+                : "SelectWorldResult succeeded, but the packet did not carry any character entries.";
+            HideLoginUtilityDialog();
+
+            WireLoginCharacterSelectWindow();
+            SyncLoginCharacterSelectWindow();
+            SyncLoginEntryDialogs();
+            SyncStorageAccessContext();
+            return true;
+        }
+
+        private static CharacterBuild CreateLoginCharacterBuildFromPacket(LoginSelectWorldCharacterEntry packetEntry)
+        {
+            return new CharacterBuild
+            {
+                Id = packetEntry.CharacterId,
+                Name = string.IsNullOrWhiteSpace(packetEntry.Name) ? $"Character {packetEntry.CharacterId}" : packetEntry.Name,
+                Gender = packetEntry.Gender,
+                Skin = packetEntry.Skin,
+                Level = Math.Max(1, packetEntry.Level),
+                Job = packetEntry.JobId,
+                SubJob = packetEntry.SubJob,
+                JobName = SkillDataLoader.GetJobName(packetEntry.JobId),
+                Fame = packetEntry.Fame,
+                WorldRank = packetEntry.WorldRank ?? 0,
+                JobRank = packetEntry.JobRank ?? 0,
+                Exp = Math.Max(0L, packetEntry.Experience),
+                HP = Math.Max(0, packetEntry.HitPoints),
+                MaxHP = Math.Max(1, packetEntry.MaxHitPoints),
+                MP = Math.Max(0, packetEntry.ManaPoints),
+                MaxMP = Math.Max(0, packetEntry.MaxManaPoints),
+                STR = Math.Max(0, packetEntry.Strength),
+                DEX = Math.Max(0, packetEntry.Dexterity),
+                INT = Math.Max(0, packetEntry.Intelligence),
+                LUK = Math.Max(0, packetEntry.Luck),
+                AP = Math.Max(0, packetEntry.AbilityPoints)
+            };
         }
 
         private static void ApplyLoginCharacterDetailDefaults(
@@ -2790,9 +3132,11 @@ namespace HaCreator.MapSimulator
         private void SyncLoginCharacterSelectWindow()
         {
             WireLoginCharacterSelectWindow();
+            WireAvatarPreviewCarouselWindow();
 
             if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.CharacterSelect) is not CharacterSelectWindow characterSelectWindow)
             {
+                SyncAvatarPreviewCarouselWindow();
                 SyncLoginCharacterDetailWindow();
                 return;
             }
@@ -2803,6 +3147,7 @@ namespace HaCreator.MapSimulator
             if (!shouldShow)
             {
                 characterSelectWindow.Hide();
+                SyncAvatarPreviewCarouselWindow();
                 SyncLoginCharacterDetailWindow();
                 return;
             }
@@ -2819,7 +3164,29 @@ namespace HaCreator.MapSimulator
                 canDelete);
             characterSelectWindow.Show();
             uiWindowManager.BringToFront(characterSelectWindow);
+            SyncAvatarPreviewCarouselWindow();
             SyncLoginCharacterDetailWindow();
+        }
+
+        private void SyncAvatarPreviewCarouselWindow()
+        {
+            if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.AvatarPreviewCarousel) is not AvatarPreviewCarouselWindow previewWindow)
+            {
+                return;
+            }
+
+            bool shouldShow = IsLoginRuntimeSceneActive &&
+                              (_loginRuntime.CurrentStep == LoginStep.CharacterSelect ||
+                               _loginRuntime.CurrentStep == LoginStep.ViewAllCharacters);
+            if (!shouldShow)
+            {
+                previewWindow.Hide();
+                return;
+            }
+
+            previewWindow.SetRoster(_loginCharacterRoster.Entries, _loginCharacterRoster.SelectedIndex);
+            previewWindow.Show();
+            uiWindowManager.BringToFront(previewWindow);
         }
 
         private void SyncLoginEntryDialogs()
@@ -3306,6 +3673,7 @@ namespace HaCreator.MapSimulator
             _loginPacketSelectWorldResultCode = null;
             _loginPacketSelectWorldTargetWorldId = null;
             _loginPacketSelectWorldTargetChannelIndex = null;
+            _loginPacketSelectWorldResultProfile = null;
             _selectorLastResultCode = SelectorRequestResultCode.None;
             _selectorLastResultMessage = null;
             _nextLoginWorldPopulationUpdateAt = int.MinValue;
@@ -3589,6 +3957,7 @@ namespace HaCreator.MapSimulator
             Content.RootDirectory = "Content";
 
             Window.ClientSizeChanged += Window_ClientSizeChanged;
+            Window.TextInput += Window_TextInput;
             _chat.MessageSubmitted = HandleChatMessageSubmitted;
             _specialFieldRuntime.SetCookieHousePointProvider(ResolveCookieHouseContextPoint);
 
@@ -3672,13 +4041,23 @@ namespace HaCreator.MapSimulator
                 });
             _mobAttackSystem.SetMobTargeting(
                 mobId => _mobPool?.GetMob(mobId),
-                () => _mobPool?.ActiveMobs);
+                () => _frameActiveMobs);
             _mobAttackSystem.SetPlayerGroundedAccessor(() => _playerManager?.IsPlayerOnGround() ?? true);
         }
 
         #region Loading and unloading
         void graphics_DeviceCreated(object sender, EventArgs e)
         {
+        }
+
+        private void Window_TextInput(object sender, TextInputEventArgs e)
+        {
+            if (char.IsControl(e.Character))
+            {
+                return;
+            }
+
+            uiWindowManager?.SkillMacroWindow?.HandleCommittedText(e.Character.ToString());
         }
 
         private void InitialiseWindowAndMap_WidthHeight()
@@ -3865,6 +4244,13 @@ namespace HaCreator.MapSimulator
                 {
                     _soundManager.RegisterSound("PickUpItem", pickUpItemSound);
                 }
+            }
+
+            WzImage soundUiImage = Program.FindImage("Sound", "UI.img");
+            WzBinaryProperty cooldownNoticeSound = soundUiImage?["DlgNotice"] as WzBinaryProperty;
+            if (cooldownNoticeSound != null)
+            {
+                _soundManager.RegisterSound(SkillCooldownNoticeSoundKey, cooldownNoticeSound);
             }
 
             // Load meso icons from Item.wz/Special/0900.img
@@ -4095,7 +4481,7 @@ namespace HaCreator.MapSimulator
                     uiWindowManager = UIWindowLoader.CreateUIWindowManager(
                         uiWindow1Image, uiWindow2Image, uiBasicImage, soundUIImage,
                         skillWzFile, stringWzFile, uiMapleTvImage,
-                        GraphicsDevice, _renderParams.RenderWidth, _renderParams.RenderHeight, _gameState.IsBigBangUpdate);
+                        GraphicsDevice, _renderParams.RenderWidth, _renderParams.RenderHeight, _gameState.IsBigBangUpdate, storageAccountLabel: BuildStorageAccountLabel());
                     UIWindowLoader.RegisterGuildBbsWindow(
                         uiWindowManager,
                         uiGuildBbsImage,
@@ -4122,6 +4508,7 @@ namespace HaCreator.MapSimulator
             WireSocialListWindowData();
             WireSocialSearchWindowData();
             WireGuildSearchWindowData();
+            WireGuildSkillWindowData();
             WireGuildBbsWindowData();
             WireProgressionUtilityWindowLaunchers();
             if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.ItemMaker) is ItemMakerUI itemMakerWindow)
@@ -4196,6 +4583,7 @@ namespace HaCreator.MapSimulator
             }
             SetCookieHouseContextPoint(0);
             _specialFieldRuntime.BindMap(_mapBoard);
+            SyncAriantArenaPacketInboxState();
             SyncBattlefieldLocalAppearance();
 
             // Initialize camera controller
@@ -4311,10 +4699,12 @@ namespace HaCreator.MapSimulator
                 statusBarUi.SetCharacterStatsProvider(_fontDebugValues, GetCharacterStatsData);
                 statusBarUi.SetBuffStatusProvider(GetStatusBarBuffData);
                 statusBarUi.SetCooldownStatusProvider(GetStatusBarCooldownData);
-                statusBarUi.SetPreparedSkillProvider(GetPreparedSkillBarData);
+                statusBarUi.SetOffBarCooldownStatusProvider(GetStatusBarOffBarCooldownData);
+                statusBarUi.SetPreparedSkillProvider(currentTime => GetPreparedSkillBarData(currentTime, PreparedSkillHudSurface.StatusBar));
+                statusBarUi.SetPreparedSkillOverlayProvider(currentTime => GetPreparedSkillBarData(currentTime, PreparedSkillHudSurface.World));
                 statusBarUi.SetPixelTexture(_DxDeviceManager.GraphicsDevice);
                 statusBarUi.SetLowResourceWarningThresholds(_statusBarHpWarningThresholdPercent, _statusBarMpWarningThresholdPercent);
-                statusBarUi.BuffCancelRequested = skillId => _playerManager?.Skills?.CancelActiveBuff(skillId);
+                statusBarUi.BuffCancelRequested = skillId => _playerManager?.Skills?.RequestClientSkillCancel(skillId, currTickCount);
             }
             if (statusBarChatUI != null)
             {
@@ -4354,7 +4744,9 @@ namespace HaCreator.MapSimulator
                 }
                 if (uiWindowManager.EquipWindow is EquipUIBigBang equipBigBang)
                 {
+                    equipBigBang.SetCharacterLoader(_playerManager.Loader);
                     equipBigBang.SetPetController(_playerManager.Pets);
+                    equipBigBang.SetPetEquipmentController(_playerManager.CompanionEquipment?.Pet);
                     equipBigBang.SetDragonEquipmentController(_playerManager.CompanionEquipment?.Dragon);
                     equipBigBang.SetMechanicEquipmentController(_playerManager.CompanionEquipment?.Mechanic);
                     equipBigBang.SetAndroidEquipmentController(_playerManager.CompanionEquipment?.Android);
@@ -4365,6 +4757,12 @@ namespace HaCreator.MapSimulator
                 itemUpgradeWindow.CharacterBuild = _playerManager.Player.Build;
                 itemUpgradeWindow.SetFont(_fontChat);
                 itemUpgradeWindow.SetInventory(uiWindowManager.InventoryWindow as IInventoryRuntime);
+                if (uiWindowManager.GetWindow(MapSimulatorWindowNames.VegaSpell) is VegaSpellUI vegaSpellWindow)
+                {
+                    vegaSpellWindow.CharacterBuild = _playerManager.Player.Build;
+                    vegaSpellWindow.SetFont(_fontChat);
+                    vegaSpellWindow.SetItemUpgradeBackend(itemUpgradeWindow);
+                }
             }
             if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.CashShop) is AdminShopDialogUI cashShopWindowRebuild)
             {
@@ -4455,6 +4853,7 @@ namespace HaCreator.MapSimulator
             }
 
             _soundManager?.Dispose();
+            _ariantArenaPacketInbox.Dispose();
 
             _skeletonMeshRenderer?.End();
 
@@ -4542,6 +4941,9 @@ namespace HaCreator.MapSimulator
             _reactorsArray = null;
             _portalsArray = null;
             _tooltipsArray = null;
+            _frameActiveMobs.Clear();
+            _frameMovableMobs.Clear();
+            _framePrimaryBossMob = null;
             _backgroundsFrontArray = null;
             _backgroundsBackArray = null;
 
@@ -4552,6 +4954,7 @@ namespace HaCreator.MapSimulator
             _visibleMapObjects = null;
             _visiblePortals = null;
             _visibleReactors = null;
+            _reactorVisibilityBuffer = null;
             _useSpatialPartitioning = false;
 
             // Dispose VR border textures
@@ -4874,7 +5277,7 @@ namespace HaCreator.MapSimulator
                     uiWindowManager = UIWindowLoader.CreateUIWindowManager(
                         uiWindow1Image, uiWindow2Image, uiBasicImage, soundUIImage,
                         skillWzFile, stringWzFile, uiMapleTvImage,
-                        GraphicsDevice, _renderParams.RenderWidth, _renderParams.RenderHeight, _gameState.IsBigBangUpdate);
+                        GraphicsDevice, _renderParams.RenderWidth, _renderParams.RenderHeight, _gameState.IsBigBangUpdate, storageAccountLabel: BuildStorageAccountLabel());
                     UIWindowLoader.RegisterGuildBbsWindow(
                         uiWindowManager,
                         uiGuildBbsImage,
@@ -4899,6 +5302,7 @@ namespace HaCreator.MapSimulator
             WireSocialListWindowData();
             WireSocialSearchWindowData();
             WireGuildSearchWindowData();
+            WireGuildSkillWindowData();
             WireGuildBbsWindowData();
             WireProgressionUtilityWindowLaunchers();
             RefreshMapTransferWindow();
@@ -4910,10 +5314,12 @@ namespace HaCreator.MapSimulator
                 statusBarUi.SetCharacterStatsProvider(_fontDebugValues, GetCharacterStatsData);
                 statusBarUi.SetBuffStatusProvider(GetStatusBarBuffData);
                 statusBarUi.SetCooldownStatusProvider(GetStatusBarCooldownData);
-                statusBarUi.SetPreparedSkillProvider(GetPreparedSkillBarData);
+                statusBarUi.SetOffBarCooldownStatusProvider(GetStatusBarOffBarCooldownData);
+                statusBarUi.SetPreparedSkillProvider(currentTime => GetPreparedSkillBarData(currentTime, PreparedSkillHudSurface.StatusBar));
+                statusBarUi.SetPreparedSkillOverlayProvider(currentTime => GetPreparedSkillBarData(currentTime, PreparedSkillHudSurface.World));
                 statusBarUi.SetPixelTexture(_DxDeviceManager.GraphicsDevice);
                 statusBarUi.SetLowResourceWarningThresholds(_statusBarHpWarningThresholdPercent, _statusBarMpWarningThresholdPercent);
-                statusBarUi.BuffCancelRequested = skillId => _playerManager?.Skills?.CancelActiveBuff(skillId);
+                statusBarUi.BuffCancelRequested = skillId => _playerManager?.Skills?.RequestClientSkillCancel(skillId, currTickCount);
             }
             if (statusBarChatUI != null)
             {
@@ -4951,7 +5357,9 @@ namespace HaCreator.MapSimulator
                 }
                 if (uiWindowManager.EquipWindow is EquipUIBigBang equipBigBang)
                 {
+                    equipBigBang.SetCharacterLoader(_playerManager.Loader);
                     equipBigBang.SetPetController(_playerManager.Pets);
+                    equipBigBang.SetPetEquipmentController(_playerManager.CompanionEquipment?.Pet);
                     equipBigBang.SetDragonEquipmentController(_playerManager.CompanionEquipment?.Dragon);
                     equipBigBang.SetMechanicEquipmentController(_playerManager.CompanionEquipment?.Mechanic);
                     equipBigBang.SetAndroidEquipmentController(_playerManager.CompanionEquipment?.Android);
@@ -4962,6 +5370,12 @@ namespace HaCreator.MapSimulator
                 itemUpgradeWindow.CharacterBuild = _playerManager.Player.Build;
                 itemUpgradeWindow.SetFont(_fontChat);
                 itemUpgradeWindow.SetInventory(uiWindowManager.InventoryWindow as IInventoryRuntime);
+                if (uiWindowManager.GetWindow(MapSimulatorWindowNames.VegaSpell) is VegaSpellUI vegaSpellWindow)
+                {
+                    vegaSpellWindow.CharacterBuild = _playerManager.Player.Build;
+                    vegaSpellWindow.SetFont(_fontChat);
+                    vegaSpellWindow.SetItemUpgradeBackend(itemUpgradeWindow);
+                }
             }
             if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.CashShop) is AdminShopDialogUI cashShopWindow)
             {
@@ -5020,6 +5434,7 @@ namespace HaCreator.MapSimulator
             }
             SetCookieHouseContextPoint(0);
             _specialFieldRuntime.BindMap(_mapBoard);
+            SyncAriantArenaPacketInboxState();
             SyncBattlefieldLocalAppearance();
 
             // Initialize camera controller for smooth scrolling
@@ -5456,6 +5871,13 @@ namespace HaCreator.MapSimulator
                 _portalsArray,
                 _reactorsArray,
                 _tooltipsArray);
+            _renderingManager?.SetVisibleRenderSets(
+                _useSpatialPartitioning ? _visibleMapObjects : null,
+                _useSpatialPartitioning ? _visibleMapObjectsCount : 0,
+                _useSpatialPartitioning ? _visiblePortals : null,
+                _useSpatialPartitioning ? _visiblePortalsCount : 0,
+                _useSpatialPartitioning ? _visibleReactors : null,
+                _useSpatialPartitioning ? _visibleReactorsCount : 0);
         }
 
         /// <summary>
@@ -5633,16 +6055,19 @@ namespace HaCreator.MapSimulator
 
             // Advance scripted field state before mouse/world interaction handlers so
             // newly opened timed dialogs can claim direction mode on the same frame.
+            RefreshFrameMobSnapshot();
             _specialFieldRuntime.SetWeddingPlayerState(_playerManager?.Player?.Build?.Id, _playerManager?.Player?.Position);
+            _specialFieldRuntime.SetBattlefieldPlayerState(_playerManager?.Player?.Build?.Id);
             _specialFieldRuntime.SetSnowBallPlayerState(_playerManager?.Player?.Position);
             _specialFieldRuntime.SetDojoRuntimeState(
                 _playerManager?.Player?.HP,
                 _playerManager?.Player?.MaxHP,
-                _mobPool?.FindBossMob()?.AI?.HpPercent);
+                _framePrimaryBossMob?.AI?.HpPercent);
             _specialFieldRuntime.SetGuildBossPlayerState(_playerManager?.GetPlayerHitbox());
             _specialFieldRuntime.SetAriantArenaPlayerState(
                 _playerManager?.Player?.Build?.Name,
                 _playerManager?.Player?.Build?.Job);
+            DrainAriantArenaPacketInbox(currTickCount);
             _specialFieldRuntime.Update(gameTime, currTickCount);
             while (_specialFieldRuntime.Minigames.SnowBall.TryConsumeChatMessage(out string snowBallChatMessage))
             {
@@ -5710,7 +6135,6 @@ namespace HaCreator.MapSimulator
             if (isWindowActive)
             {
                 HandlePortalUpInteract(currTickCount);
-                HandleGuildBossPulleyInteract(currTickCount);
             }
 
             _temporaryPortalField?.Update(currTickCount);
@@ -6251,16 +6675,14 @@ namespace HaCreator.MapSimulator
         private IReadOnlyList<MobMovementInfo> CollectGroundMobMovementInfos()
         {
             _groundMobMovementBuffer.Clear();
-
-            IReadOnlyList<MobItem> activeMobs = _mobPool?.ActiveMobs;
-            if (activeMobs == null || activeMobs.Count == 0)
+            if (_frameMovableMobs.Count == 0)
             {
                 return _groundMobMovementBuffer;
             }
 
-            for (int i = 0; i < activeMobs.Count; i++)
+            for (int i = 0; i < _frameMovableMobs.Count; i++)
             {
-                MobMovementInfo movementInfo = activeMobs[i]?.MovementInfo;
+                MobMovementInfo movementInfo = _frameMovableMobs[i].MovementInfo;
                 if (movementInfo != null)
                 {
                     _groundMobMovementBuffer.Add(movementInfo);
@@ -6268,6 +6690,41 @@ namespace HaCreator.MapSimulator
             }
 
             return _groundMobMovementBuffer;
+        }
+
+        private void RefreshFrameMobSnapshot()
+        {
+            _frameActiveMobs.Clear();
+            _frameMovableMobs.Clear();
+            _framePrimaryBossMob = null;
+
+            IReadOnlyList<MobItem> activeMobs = _mobPool?.ActiveMobs;
+            if (activeMobs == null || activeMobs.Count == 0)
+            {
+                return;
+            }
+
+            int highestBossLevel = int.MinValue;
+            for (int i = 0; i < activeMobs.Count; i++)
+            {
+                MobItem mob = activeMobs[i];
+                if (mob?.AI == null || mob.AI.IsDead)
+                {
+                    continue;
+                }
+
+                _frameActiveMobs.Add(mob);
+                if (mob.MovementInfo != null)
+                {
+                    _frameMovableMobs.Add(mob);
+                }
+
+                if (mob.AI.IsBoss && mob.AI.Level > highestBossLevel)
+                {
+                    highestBossLevel = mob.AI.Level;
+                    _framePrimaryBossMob = mob;
+                }
+            }
         }
 
         private void SyncBgmPlaybackToWindowFocus()
@@ -6401,6 +6858,14 @@ namespace HaCreator.MapSimulator
             // Mobs and NPCs always visible (they handle their own position-based culling)
             // Backgrounds always visible (they tile/scroll and handle their own culling)
 
+            _renderingManager?.SetVisibleRenderSets(
+                _useSpatialPartitioning ? _visibleMapObjects : null,
+                _useSpatialPartitioning ? _visibleMapObjectsCount : 0,
+                _useSpatialPartitioning ? _visiblePortals : null,
+                _useSpatialPartitioning ? _visiblePortalsCount : 0,
+                _useSpatialPartitioning ? _visibleReactors : null,
+                _useSpatialPartitioning ? _visibleReactorsCount : 0);
+
             // Update mirror boundaries for mobs and NPCs (cached to avoid per-frame checks)
             UpdateMirrorBoundaries();
         }
@@ -6411,6 +6876,10 @@ namespace HaCreator.MapSimulator
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void UpdateObjectVisibilityStandard(int centerX, int centerY, int viewWidth, int viewHeight)
         {
+            _visibleMapObjectsCount = 0;
+            _visiblePortalsCount = 0;
+            _visibleReactorsCount = 0;
+
             // Update map objects visibility
             if (_mapObjectsArray != null)
             {
@@ -6445,6 +6914,8 @@ namespace HaCreator.MapSimulator
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void UpdateObjectVisibilitySpatial(int centerX, int centerY, int viewWidth, int viewHeight)
         {
+            ClearPreviousSpatialVisibility();
+
             // Calculate view bounds in world coordinates
             Rectangle viewBounds = new Rectangle(
                 mapShiftX - centerX - viewWidth / 2,
@@ -6480,6 +6951,31 @@ namespace HaCreator.MapSimulator
             }
         }
 
+        private void ClearPreviousSpatialVisibility()
+        {
+            for (int i = 0; i < _visibleMapObjectsCount; i++)
+            {
+                _visibleMapObjects[i]?.SetVisible(false);
+                _visibleMapObjects[i] = null;
+            }
+
+            for (int i = 0; i < _visiblePortalsCount; i++)
+            {
+                _visiblePortals[i]?.SetVisible(false);
+                _visiblePortals[i] = null;
+            }
+
+            for (int i = 0; i < _visibleReactorsCount; i++)
+            {
+                _visibleReactors[i]?.SetVisible(false);
+                _visibleReactors[i] = null;
+            }
+
+            _visibleMapObjectsCount = 0;
+            _visiblePortalsCount = 0;
+            _visibleReactorsCount = 0;
+        }
+
         /// <summary>
         /// Pre-calculates mirror boundaries for mobs and NPCs.
         /// Uses caching to avoid redundant checks every frame.
@@ -6495,11 +6991,9 @@ namespace HaCreator.MapSimulator
             };
 
             // Update mobs
-            for (int i = 0; i < _mobsArray.Length; i++)
+            for (int i = 0; i < _frameActiveMobs.Count; i++)
             {
-                if (_mobsArray[i] == null)
-                    continue;
-                _mobsArray[i].UpdateMirrorBoundary(_mirrorBottomRect, _mirrorBottomReflection, checkMirrorFieldData);
+                _frameActiveMobs[i].UpdateMirrorBoundary(_mirrorBottomRect, _mirrorBottomReflection, checkMirrorFieldData);
             }
 
             // Update NPCs (using npc mirror type)
@@ -6520,16 +7014,17 @@ namespace HaCreator.MapSimulator
         /// </summary>
         private void TestKnockbackRandomMob()
         {
-            if (_mobsArray == null || _mobsArray.Length == 0)
+            if (_frameMovableMobs.Count == 0)
                 return;
 
             // Find visible mob and knockback at 50% rate
             var random = new Random();
-            int startIndex = random.Next(_mobsArray.Length);
+            int startIndex = random.Next(_frameMovableMobs.Count);
 
-            for (int i = 0; i < _mobsArray.Length; i++)
+            for (int i = 0; i < _frameMovableMobs.Count; i++)
             {
-                MobItem mob = _mobsArray[i];
+                int mobIndex = (startIndex + i) % _frameMovableMobs.Count;
+                MobItem mob = _frameMovableMobs[mobIndex];
 
                 if (mob != null && mob.MovementInfo != null && mob.IsVisible && random.Next(10) < 5)
                 {
@@ -6649,11 +7144,9 @@ namespace HaCreator.MapSimulator
 
             EscortProgressionState escortProgressionState = EscortProgressionController.ResolveState(_mobsArray);
 
-            for (int i = 0; i < _mobsArray.Length; i++)
+            for (int i = 0; i < _frameMovableMobs.Count; i++)
             {
-                MobItem mobItem = _mobsArray[i];
-                if (mobItem == null || mobItem.MovementInfo == null)
-                    continue;
+                MobItem mobItem = _frameMovableMobs[i];
 
                 mobItem.MovementEnabled = _gameState.MobMovementEnabled;
                 bool escortFollowActive = mobItem.AI?.IsEscortMob == true
@@ -6792,14 +7285,28 @@ namespace HaCreator.MapSimulator
 
         private void ApplyMobStatusSkill(MobItem sourceMob, MobSkillEntry skill, int currentTick)
         {
-            if (sourceMob?.AI == null ||
-                !MobSkillStatusMapper.TryGetDefinition(skill.SkillId, out MobSkillStatusDefinition definition))
+            if (sourceMob?.AI == null)
             {
                 return;
             }
 
             MobSkillRuntimeData runtimeData = ResolveMobSkillRuntimeData(skill.SkillId, skill.Level);
-            if (runtimeData == null || runtimeData.DurationMs <= 0)
+            if (runtimeData == null)
+            {
+                return;
+            }
+
+            if (TryApplyPlayerTargetedMobSkill(sourceMob, skill, runtimeData, currentTick))
+            {
+                return;
+            }
+
+            if (!MobSkillStatusMapper.TryGetDefinition(skill.SkillId, out MobSkillStatusDefinition definition))
+            {
+                return;
+            }
+
+            if (runtimeData.DurationMs <= 0)
             {
                 return;
             }
@@ -6839,6 +7346,35 @@ namespace HaCreator.MapSimulator
             {
                 targetMob?.AI?.ApplyStatusEffect(definition.Effect, runtimeData.DurationMs, currentTick, value);
             }
+        }
+
+        private bool TryApplyPlayerTargetedMobSkill(MobItem sourceMob, MobSkillEntry skill, MobSkillRuntimeData runtimeData, int currentTick)
+        {
+            if (sourceMob == null
+                || skill == null
+                || _playerManager?.Player == null
+                || !_playerManager.Player.IsAlive)
+            {
+                return false;
+            }
+
+            Rectangle area = CreateMobSkillArea(sourceMob, runtimeData);
+            Rectangle playerHitbox = _playerManager.Player.GetHitbox();
+            if (playerHitbox.IsEmpty || !playerHitbox.Intersects(area))
+            {
+                return false;
+            }
+
+            bool applied = _playerManager.TryApplyMobSkillStatus(skill.SkillId, runtimeData, currentTick);
+
+            if (runtimeData.DurationMs > 0 &&
+                PlayerSkillBlockingStatusMapper.TryMapMobSkill(skill.SkillId, out PlayerSkillBlockingStatus status))
+            {
+                _playerManager.Player.ApplySkillBlockingStatus(status, runtimeData.DurationMs, currentTick);
+                applied = true;
+            }
+
+            return applied;
         }
 
         private void ApplyMobSkillVisualEffect(MobItem mobItem, MobSkillEntry skill, int currentTick)
@@ -7157,8 +7693,15 @@ namespace HaCreator.MapSimulator
             {
                 X = MapleLib.WzLib.WzStructure.InfoTool.GetInt(selectedLevel["x"], 0),
                 Y = MapleLib.WzLib.WzStructure.InfoTool.GetInt(selectedLevel["y"], 0),
-                Hp = MapleLib.WzLib.WzStructure.InfoTool.GetInt(selectedLevel["hp"], 0),
+                Hp = Math.Max(
+                    MapleLib.WzLib.WzStructure.InfoTool.GetInt(selectedLevel["hp"], 0),
+                    MapleLib.WzLib.WzStructure.InfoTool.GetInt(selectedLevel["HP"], 0)),
                 DurationMs = Math.Max(0, durationSeconds) * 1000,
+                IntervalMs = Math.Max(
+                    MapleLib.WzLib.WzStructure.InfoTool.GetInt(selectedLevel["interval"], 0),
+                    MapleLib.WzLib.WzStructure.InfoTool.GetInt(selectedLevel["inteval"], 0)) * 1000,
+                PropPercent = MapleLib.WzLib.WzStructure.InfoTool.GetInt(selectedLevel["prop"], 0),
+                Count = MapleLib.WzLib.WzStructure.InfoTool.GetInt(selectedLevel["count"], 0),
                 Lt = lt != null ? new Point(lt.X.Value, lt.Y.Value) : null,
                 Rb = rb != null ? new Point(rb.X.Value, rb.Y.Value) : null
             };
@@ -7602,6 +8145,8 @@ namespace HaCreator.MapSimulator
             _nextPetPreLevelSpeechTick = 0;
             _lastPetHpAlertTick = int.MinValue;
             _petHpAlertArmed = true;
+            _petHpPotionFailureSpeechCount = 0;
+            _petMpPotionFailureSpeechCount = 0;
         }
 
         private void LoadNpcQuestAlertIcons(WzImage uiWindow1Image, WzImage uiWindow2Image)
@@ -7715,6 +8260,121 @@ namespace HaCreator.MapSimulator
             if (uiWindowManager.InventoryWindow is IInventoryRuntime inventoryWindow)
             {
                 inventoryWindow.AddMeso(amount);
+            }
+        }
+
+        private int GetInventoryWindowItemCount(int itemId)
+        {
+            if (itemId <= 0 || uiWindowManager?.InventoryWindow is not IInventoryRuntime inventoryWindow)
+            {
+                return 0;
+            }
+
+            InventoryType inventoryType = InventoryItemMetadataResolver.ResolveInventoryType(itemId);
+            return inventoryType == InventoryType.NONE
+                ? 0
+                : inventoryWindow.GetItemCount(inventoryType, itemId);
+        }
+
+        private bool CanAcceptInventoryWindowItem(int itemId, int quantity)
+        {
+            if (itemId <= 0 || quantity <= 0 || uiWindowManager?.InventoryWindow is not IInventoryRuntime inventoryWindow)
+            {
+                return false;
+            }
+
+            InventoryType inventoryType = InventoryItemMetadataResolver.ResolveInventoryType(itemId);
+            return inventoryType != InventoryType.NONE &&
+                   inventoryWindow.CanAcceptItem(
+                       inventoryType,
+                       itemId,
+                       quantity,
+                       ResolveInventoryItemMaxStack(itemId, inventoryType));
+        }
+
+        private bool TryConsumeInventoryWindowItem(int itemId, int quantity)
+        {
+            if (itemId <= 0 || quantity <= 0 || uiWindowManager?.InventoryWindow is not IInventoryRuntime inventoryWindow)
+            {
+                return false;
+            }
+
+            InventoryType inventoryType = InventoryItemMetadataResolver.ResolveInventoryType(itemId);
+            return inventoryType != InventoryType.NONE && inventoryWindow.TryConsumeItem(inventoryType, itemId, quantity);
+        }
+
+        private bool TryAddItemToInventoryWindow(int itemId, int quantity)
+        {
+            if (itemId <= 0 || quantity <= 0 || !CanAcceptInventoryWindowItem(itemId, quantity))
+            {
+                return false;
+            }
+
+            AddItemToInventoryWindow(itemId.ToString(), quantity);
+            return true;
+        }
+
+        private string ResolveQuestSkillName(int skillId)
+        {
+            SkillData skill = _playerManager?.SkillLoader?.LoadSkill(skillId);
+            return !string.IsNullOrWhiteSpace(skill?.Name)
+                ? skill.Name
+                : $"Skill #{skillId}";
+        }
+
+        private void ApplyQuestSkillReward(int skillId, int targetLevel)
+        {
+            if (skillId <= 0 || targetLevel <= 0 || _playerManager?.Skills == null)
+            {
+                return;
+            }
+
+            _playerManager.Skills.SetSkillLevel(skillId, targetLevel);
+
+            SkillData skill = _playerManager.SkillLoader?.LoadSkill(skillId);
+            int maxLevel = Math.Max(targetLevel, skill?.MaxLevel ?? targetLevel);
+
+            if (uiWindowManager?.SkillWindow is SkillUIBigBang bigBangSkillWindow)
+            {
+                bigBangSkillWindow.UpdateSkillLevel(skillId, targetLevel, maxLevel);
+            }
+        }
+
+        private void AddQuestGrantedSkillPoints(int amount)
+        {
+            if (amount <= 0)
+            {
+                return;
+            }
+
+            int tab = SkillDataLoader.GetJobAdvancementLevel(_playerManager?.Player?.Build?.Job ?? 0);
+            _questGrantedSkillPointsByTab[tab] = (_questGrantedSkillPointsByTab.TryGetValue(tab, out int currentPoints) ? currentPoints : 0) + amount;
+            AddQuestGrantedSkillPointsToUi(tab, amount);
+        }
+
+        private void ApplyQuestGrantedSkillPointBonuses()
+        {
+            foreach ((int tab, int bonus) in _questGrantedSkillPointsByTab)
+            {
+                AddQuestGrantedSkillPointsToUi(tab, bonus);
+            }
+        }
+
+        private void AddQuestGrantedSkillPointsToUi(int tab, int amount)
+        {
+            if (amount == 0)
+            {
+                return;
+            }
+
+            if (uiWindowManager?.SkillWindow is SkillUIBigBang bigBangSkillWindow)
+            {
+                bigBangSkillWindow.AddSkillPoints(tab, amount);
+            }
+
+            if (uiWindowManager?.SkillWindow is SkillUI classicSkillWindow)
+            {
+                classicSkillWindow.AddSkillPoints(tab, amount);
             }
         }
 
@@ -7893,26 +8553,93 @@ namespace HaCreator.MapSimulator
 
             int currentTime = Environment.TickCount;
             string sourceName = ResolvePickupSourceName(pickerId, pickedByPet);
+            string itemName = ResolvePickupResultItemName(result.ContextDrop);
             switch (result.FailureReason)
             {
                 case Pools.DropPickupFailureReason.InventoryFull:
                     _pickupNoticeUI.AddInventoryFullMessage(currentTime);
                     break;
                 case Pools.DropPickupFailureReason.OwnershipRestricted:
-                    AddPickupFailureMessage("You may not loot this item yet.", "Unable to pick up the item.", currentTime);
+                    AddPickupFailureMessage(
+                        PickupNoticeTextFormatter.FormatFailure(
+                            result.FailureReason,
+                            itemName,
+                            pickedByPet,
+                            sourceName),
+                        currentTime);
                     break;
                 case Pools.DropPickupFailureReason.PetPickupBlocked:
                     AddPickupFailureMessage(
-                        pickedByPet && !string.IsNullOrWhiteSpace(sourceName)
-                            ? $"{sourceName} cannot pick up this item."
-                            : "Your pet cannot pick up this item.",
-                        "Unable to pick up the item.",
+                        PickupNoticeTextFormatter.FormatFailure(
+                            result.FailureReason,
+                            itemName,
+                            pickedByPet,
+                            sourceName),
                         currentTime);
                     break;
                 case Pools.DropPickupFailureReason.Unavailable:
-                    AddPickupFailureMessage("Unable to pick up the item.", "Unable to pick up the item.", currentTime);
+                    AddPickupFailureMessage(
+                        PickupNoticeTextFormatter.FormatFailure(
+                            result.FailureReason,
+                            itemName,
+                            pickedByPet,
+                            sourceName),
+                        currentTime);
                     break;
             }
+        }
+
+        private void HandleDropPickedUpByMob(DropItem drop, int mobId)
+        {
+            if (drop == null || !ShouldSurfaceMobPickupNotice(drop))
+            {
+                return;
+            }
+
+            string mobName = ResolveMobPickupSourceName(mobId);
+            string itemName = ResolvePickupResultItemName(drop);
+            PickupNoticeMessagePair messages = PickupNoticeTextFormatter.FormatMobPickup(
+                drop.Type,
+                mobName,
+                itemName,
+                drop.Quantity,
+                drop.MesoAmount);
+            AddPickupFailureMessage(messages, Environment.TickCount);
+        }
+
+        private bool ShouldSurfaceMobPickupNotice(DropItem drop)
+        {
+            if (drop == null)
+            {
+                return false;
+            }
+
+            int localPlayerId = _playerManager?.Player?.Build?.Id ?? 0;
+            return drop.OwnerId <= 0 || localPlayerId <= 0 || drop.OwnerId == localPlayerId;
+        }
+
+        private static string ResolveMobPickupSourceName(int mobId)
+        {
+            string key = mobId.ToString("D7");
+            return Program.InfoManager?.MobNameCache != null
+                   && Program.InfoManager.MobNameCache.TryGetValue(key, out string mobName)
+                   && !string.IsNullOrWhiteSpace(mobName)
+                ? mobName
+                : $"Monster {mobId}";
+        }
+
+        private static string ResolvePickupResultItemName(DropItem drop)
+        {
+            if (drop == null)
+            {
+                return null;
+            }
+
+            return drop.Type == Pools.DropType.Meso
+                ? null
+                : int.TryParse(drop.ItemId, out int itemId)
+                    ? ResolvePickupItemName(itemId)
+                    : null;
         }
 
         private void AddPickupFailureMessage(string screenMessage, string chatMessage, int currentTime)
@@ -7922,6 +8649,19 @@ namespace HaCreator.MapSimulator
             if (!string.IsNullOrWhiteSpace(chatMessage))
             {
                 _chat?.AddMessage(chatMessage, new Color(255, 228, 151), currentTime);
+            }
+        }
+
+        private void AddPickupFailureMessage(PickupNoticeMessagePair messagePair, int currentTime)
+        {
+            if (!string.IsNullOrWhiteSpace(messagePair.ScreenMessage))
+            {
+                _pickupNoticeUI.AddCantPickupMessage(messagePair.ScreenMessage, currentTime);
+            }
+
+            if (!string.IsNullOrWhiteSpace(messagePair.ChatMessage))
+            {
+                _chat?.AddMessage(messagePair.ChatMessage, new Color(255, 228, 151), currentTime);
             }
         }
 
@@ -7939,9 +8679,12 @@ namespace HaCreator.MapSimulator
             public int FlatMp { get; init; }
             public int PercentHp { get; init; }
             public int PercentMp { get; init; }
+            public int MoveToMapId { get; init; }
 
             public bool HasSupportedRecovery =>
                 FlatHp > 0 || FlatMp > 0 || PercentHp > 0 || PercentMp > 0;
+
+            public bool HasSupportedMovement => MoveToMapId > 0;
         }
 
         private int ResolveInventoryItemMaxStack(int itemId, InventoryType inventoryType)
@@ -7989,7 +8732,9 @@ namespace HaCreator.MapSimulator
             }
 
             ConsumableItemEffect effect = ResolveConsumableItemEffect(itemId);
-            if (!effect.HasSupportedRecovery)
+            bool supportsRecovery = effect.HasSupportedRecovery;
+            bool supportsMovement = effect.HasSupportedMovement;
+            if (!supportsRecovery && !supportsMovement)
             {
                 return false;
             }
@@ -8002,9 +8747,16 @@ namespace HaCreator.MapSimulator
             }
 
             PlayerCharacter player = _playerManager.Player;
-            int hpGain = ResolveConsumableRecoveryAmount(player.HP, player.MaxHP, effect.FlatHp, effect.PercentHp);
-            int mpGain = ResolveConsumableRecoveryAmount(player.MP, player.MaxMP, effect.FlatMp, effect.PercentMp);
-            if (hpGain <= 0 && mpGain <= 0)
+            int hpGain = supportsRecovery
+                ? ResolveConsumableRecoveryAmount(player.HP, player.MaxHP, effect.FlatHp, effect.PercentHp)
+                : 0;
+            int mpGain = supportsRecovery
+                ? ResolveConsumableRecoveryAmount(player.MP, player.MaxMP, effect.FlatMp, effect.PercentMp)
+                : 0;
+            int targetMapId = supportsMovement
+                ? ResolveConsumableMoveTargetMapId(effect.MoveToMapId)
+                : 0;
+            if (supportsRecovery && hpGain <= 0 && mpGain <= 0 && !supportsMovement)
             {
                 return false;
             }
@@ -8018,11 +8770,33 @@ namespace HaCreator.MapSimulator
             if (hpGain > 0)
             {
                 player.HP = Math.Min(player.MaxHP, player.HP + hpGain);
+                _petHpPotionFailureSpeechCount = 0;
             }
 
             if (mpGain > 0)
             {
                 player.MP = Math.Min(player.MaxMP, player.MP + mpGain);
+                _petMpPotionFailureSpeechCount = 0;
+            }
+
+            if (!supportsMovement)
+            {
+                return true;
+            }
+
+            if (targetMapId <= 0 || _loadMapCallback == null || !TryQueueConsumableMapTransfer(targetMapId))
+            {
+                inventoryWindow.AddItem(InventoryType.USE, new InventorySlotData
+                {
+                    ItemId = itemId,
+                    ItemTexture = inventoryWindow.GetItemTexture(InventoryType.USE, itemId) ?? LoadInventoryItemIcon(itemId),
+                    Quantity = 1,
+                    MaxStackSize = ResolveInventoryItemMaxStack(itemId, InventoryType.USE),
+                    ItemName = ResolvePickupItemName(itemId),
+                    ItemTypeName = ResolvePickupItemTypeName(itemId, InventoryType.USE),
+                    Description = ResolvePickupItemDescription(itemId)
+                });
+                return false;
             }
 
             return true;
@@ -8042,8 +8816,52 @@ namespace HaCreator.MapSimulator
                 FlatHp = Math.Max(0, GetWzIntValue(specProperty["hp"])),
                 FlatMp = Math.Max(0, GetWzIntValue(specProperty["mp"])),
                 PercentHp = ResolveConsumablePercentValue(specProperty, "hpR", "hpRatio", "hpPer"),
-                PercentMp = ResolveConsumablePercentValue(specProperty, "mpR", "mpRatio", "mpPer")
+                PercentMp = ResolveConsumablePercentValue(specProperty, "mpR", "mpRatio", "mpPer"),
+                MoveToMapId = Math.Max(0, GetWzIntValue(specProperty["moveTo"]))
             };
+        }
+
+        private bool TryQueueConsumableMapTransfer(int targetMapId)
+        {
+            string transferRestrictionMessage = FieldInteractionRestrictionEvaluator.GetMapTransferRestrictionMessage(_mapBoard?.MapInfo?.fieldLimit ?? 0);
+            if (!string.IsNullOrWhiteSpace(transferRestrictionMessage))
+            {
+                ShowFieldRestrictionMessage(transferRestrictionMessage);
+                return false;
+            }
+
+            return QueueMapTransfer(targetMapId, null);
+        }
+
+        private int ResolveConsumableMoveTargetMapId(int moveToMapId)
+        {
+            if (moveToMapId <= 0)
+            {
+                return 0;
+            }
+
+            return moveToMapId == 999999999
+                ? ResolveNearestTownMapId()
+                : moveToMapId;
+        }
+
+        private int ResolveNearestTownMapId()
+        {
+            if (_mapBoard?.MapInfo?.returnMap is int returnMapId &&
+                returnMapId > 0 &&
+                returnMapId != MapConstants.MaxMap)
+            {
+                return returnMapId;
+            }
+
+            if (_mapBoard?.MapInfo?.forcedReturn is int forcedReturnId &&
+                forcedReturnId > 0 &&
+                forcedReturnId != MapConstants.MaxMap)
+            {
+                return forcedReturnId;
+            }
+
+            return 0;
         }
 
         private static int ResolveConsumablePercentValue(WzSubProperty specProperty, params string[] propertyNames)
@@ -8082,12 +8900,27 @@ namespace HaCreator.MapSimulator
         {
             if (effect.FlatHp > 0 || effect.PercentHp > 0)
             {
-                TryTriggerPetSpeechEvent(PetAutoSpeechEvent.NoHpPotion, currentTime);
+                TryTriggerLimitedPetSpeechEvent(
+                    PetAutoSpeechEvent.NoHpPotion,
+                    ref _petHpPotionFailureSpeechCount,
+                    currentTime);
             }
 
             if (effect.FlatMp > 0 || effect.PercentMp > 0)
             {
-                TryTriggerPetSpeechEvent(PetAutoSpeechEvent.NoMpPotion, currentTime);
+                TryTriggerLimitedPetSpeechEvent(
+                    PetAutoSpeechEvent.NoMpPotion,
+                    ref _petMpPotionFailureSpeechCount,
+                    currentTime);
+            }
+        }
+
+        private void TryTriggerLimitedPetSpeechEvent(PetAutoSpeechEvent eventType, ref int failureCount, int currentTime)
+        {
+            failureCount++;
+            if (failureCount <= PetAutoSpeechPotionFailureMaxRepeats)
+            {
+                TryTriggerPetSpeechEvent(eventType, currentTime);
             }
         }
 
@@ -8153,6 +8986,14 @@ namespace HaCreator.MapSimulator
                 InventoryType.CASH => "cash item",
                 _ => "item"
             };
+        }
+
+        private static string ResolvePickupItemDescription(int itemId)
+        {
+            return InventoryItemMetadataResolver.TryResolveItemDescription(itemId, out string description)
+                && !string.IsNullOrWhiteSpace(description)
+                ? description
+                : string.Empty;
         }
 
         private void DrawNpcQuestAlerts(in Managers.RenderContext renderContext)
@@ -8790,13 +9631,18 @@ namespace HaCreator.MapSimulator
 
             _reactorPool.Update(currentTick, deltaSeconds);
 
-            bool[] visibleReactors = new bool[_reactorsArray.Length];
+            if (_reactorVisibilityBuffer == null || _reactorVisibilityBuffer.Length != _reactorsArray.Length)
+            {
+                _reactorVisibilityBuffer = new bool[_reactorsArray.Length];
+            }
+
+            Array.Clear(_reactorVisibilityBuffer, 0, _reactorsArray.Length);
             foreach (var (reactor, index, _) in _reactorPool.GetRenderableReactors())
             {
                 if (reactor == null || index < 0 || index >= _reactorsArray.Length)
                     continue;
 
-                visibleReactors[index] = true;
+                _reactorVisibilityBuffer[index] = true;
 
                 var (state, _) = _reactorPool.GetReactorAnimationState(index);
                 reactor.SetAnimationState(state, currentTick);
@@ -8807,7 +9653,7 @@ namespace HaCreator.MapSimulator
                 ReactorItem reactor = _reactorsArray[i];
                 if (reactor != null)
                 {
-                    reactor.SetVisible(visibleReactors[i]);
+                    reactor.SetVisible(_reactorVisibilityBuffer[i]);
                 }
             }
         }
@@ -8917,6 +9763,43 @@ namespace HaCreator.MapSimulator
                 index = 0; // Bronze (small)
 
             return _mesoAnimFrames[index];
+        }
+
+        private void SpawnMobDeathRewards(MobItem mob, int currentTick)
+        {
+            if (mob?.MovementInfo == null || _dropPool == null)
+            {
+                return;
+            }
+
+            float mobX = mob.MovementInfo.X;
+            float mobY = mob.MovementInfo.Y;
+            bool isBoss = mob.AI?.IsBoss ?? false;
+
+            int mesoMin = isBoss ? 1000 : 10;
+            int mesoMaxExclusive = isBoss ? 10000 : 500;
+            int mesoAmount = Random.Shared.Next(mesoMin, mesoMaxExclusive);
+
+            int showdownBonusPercent = Math.Max(0, mob.AI?.GetStatusEffectValue(MobStatusEffect.Showdown) ?? 0);
+            if (showdownBonusPercent > 0)
+            {
+                mesoAmount = (int)MathF.Round(mesoAmount * (1f + showdownBonusPercent / 100f));
+            }
+
+            DropItem mesoDrop = _dropPool.SpawnMesoDrop(mobX, mobY, mesoAmount, currentTick);
+            if (mesoDrop == null)
+            {
+                return;
+            }
+
+            List<IDXObject> frames = GetMesoFramesForAmount(mesoAmount);
+            if (frames == null || frames.Count == 0)
+            {
+                return;
+            }
+
+            mesoDrop.AnimFrames = frames;
+            mesoDrop.Icon = frames[0];
         }
 
         /// <summary>
@@ -9220,7 +10103,7 @@ namespace HaCreator.MapSimulator
             return false;
         }
 
-        private void HandleGuildBossPulleyInteract(int currentTime)
+        private void HandleSpecialFieldAttackHitbox(PlayerCharacter player, Rectangle attackHitbox, int currentTime)
         {
             GuildBossField guildBoss = _specialFieldRuntime?.SpecialEffects?.GuildBoss;
             if (guildBoss?.IsActive != true
@@ -9228,13 +10111,12 @@ namespace HaCreator.MapSimulator
                 || _sameMapTeleportPending
                 || !_gameState.IsPlayerInputEnabled
                 || _playerManager?.IsPlayerActive != true
-                || !_playerManager.Input.IsPressed(InputAction.Interact))
+                || player != _playerManager.Player)
             {
                 return;
             }
 
-            Rectangle playerHitbox = _playerManager.GetPlayerHitbox();
-            if (!guildBoss.TryHandleLocalPulleyInteract(playerHitbox, currentTime, out string message))
+            if (!guildBoss.TryHandleLocalPulleyAttack(attackHitbox, currentTime, out string message))
             {
                 return;
             }
@@ -9444,6 +10326,7 @@ namespace HaCreator.MapSimulator
             // Set up pickup sound and notice callbacks
             _dropPool.SetOnPickupResolved(HandleDropPickedUp);
             _dropPool.SetOnPickupFailed(HandlePickupAttemptFailed);
+            _dropPool.SetOnMobPickedUp(HandleDropPickedUpByMob);
 
             // Set up death effect and drop spawn callbacks
             _mobPool.SetOnMobDied(mob =>
@@ -9452,11 +10335,7 @@ namespace HaCreator.MapSimulator
                 _combatEffects.AddDeathEffectForMob(mob, currentTick);
                 _questRuntime.RecordMobKill(mob?.MobInstance);
 
-                bool suppressRewards = mob?.AI?.DeathType == MobDeathType.Bomb ||
-                                       mob?.AI?.DeathType == MobDeathType.Miss ||
-                                       mob?.AI?.DeathType == MobDeathType.Swallowed ||
-                                       mob?.AI?.DeathType == MobDeathType.Timeout ||
-                                       (mob?.MobInstance?.MobInfo?.MobData?.Escort ?? 0) > 0;
+                bool suppressRewards = SpecialMobInteractionRules.ShouldSuppressRewardDrops(mob);
                 if (suppressRewards)
                 {
                     return;
@@ -9465,30 +10344,7 @@ namespace HaCreator.MapSimulator
                 // Play drop item sound
                 PlayDropItemSE();
 
-                // Spawn drops from mob (demo: random meso amount)
-                if (mob?.MovementInfo != null)
-                {
-                    float mobX = mob.MovementInfo.X;
-                    float mobY = mob.MovementInfo.Y;
-                    bool isBoss = mob.AI?.IsBoss ?? false;
-
-                    // Spawn random meso drop (10-500 for normal, 1000-10000 for boss)
-                    int mesoMin = isBoss ? 1000 : 10;
-                    int mesoMax = isBoss ? 10000 : 500;
-                    int mesoAmount = new Random().Next(mesoMin, mesoMax);
-
-                    var mesoDrop = _dropPool.SpawnMesoDrop(mobX, mobY, mesoAmount, currentTick);
-                    if (mesoDrop != null)
-                    {
-                        // Set the animation frames based on meso amount
-                        var frames = GetMesoFramesForAmount(mesoAmount);
-                        if (frames != null && frames.Count > 0)
-                        {
-                            mesoDrop.AnimFrames = frames;
-                            mesoDrop.Icon = frames[0]; // First frame as default icon
-                        }
-                    }
-                }
+                SpawnMobDeathRewards(mob, currentTick);
             });
 
             // Set up removal callback to null out mob from array
@@ -9639,9 +10495,9 @@ namespace HaCreator.MapSimulator
                 return publishedState;
             }
 
-            if (_fieldEffects.TryIsObstacleOn(tag, out bool isOn))
+            if (_questRuntime.TryGetQuestLayerTagState(tag, out bool questLayerState))
             {
-                return isOn;
+                return questLayerState;
             }
 
             return _authoredDynamicObjectTagStates.TryGetValue(tag, out bool authoredState)
@@ -9768,6 +10624,7 @@ namespace HaCreator.MapSimulator
             _visibleMapObjects = new BaseDXDrawableItem[totalMapObjects];
             _visiblePortals = new PortalItem[_portalsArray.Length];
             _visibleReactors = new ReactorItem[_reactorsArray.Length];
+            _reactorVisibilityBuffer = new bool[_reactorsArray.Length];
 
 #if DEBUG
             var (totalCells, occupiedCells, maxPerCell) = _mapObjectsGrid.GetStats();
@@ -9865,6 +10722,7 @@ namespace HaCreator.MapSimulator
             _playerManager.SetSoundManager(_soundManager);
             _playerManager.SetCurrentMapIdProvider(() => _mapBoard?.MapInfo?.id ?? -1);
             _playerManager.SetReactorAttackAreaHandler(TriggerAttackReactors);
+            _playerManager.SetAttackHitboxHandler(HandleSpecialFieldAttackHitbox);
 
             // Set up sound callbacks
             _playerManager.SetJumpSoundCallback(PlayJumpSE);
@@ -10231,15 +11089,12 @@ namespace HaCreator.MapSimulator
             };
             skillWindow.OnGuildSkillRequested = () =>
             {
-                if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.SocialList) is not SocialListWindow socialListWindow)
+                if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.GuildSkill) is not GuildSkillWindow guildSkillWindow)
                     return;
 
-                WireSocialListWindowData();
-                WireSocialSearchWindowData();
-                WireGuildSearchWindowData();
-                socialListWindow.Show();
-                uiWindowManager.BringToFront(socialListWindow);
-                socialListWindow.ShowTab(SocialListTab.Guild);
+                WireGuildSkillWindowData();
+                guildSkillWindow.Show();
+                uiWindowManager.BringToFront(guildSkillWindow);
             };
             CharacterBuild build = _playerManager.Player?.Build;
             bool canOpenRidePage = build?.HasMonsterRiding == true ||
@@ -10262,6 +11117,7 @@ namespace HaCreator.MapSimulator
             }
 
             skillWindow.RecalculateSkillPointsFromCurrentLevels();
+            ApplyQuestGrantedSkillPointBonuses();
         }
 
         private void ConfigureQuestUiBindings()
@@ -10274,11 +11130,23 @@ namespace HaCreator.MapSimulator
             if (uiWindowManager.InventoryWindow is InventoryUI inventoryWindow)
             {
                 _questRuntime.ConfigureMesoRuntime(inventoryWindow.GetMesoCount, inventoryWindow.TryConsumeMeso, inventoryWindow.AddMeso);
+                _questRuntime.ConfigureInventoryRuntime(
+                    GetInventoryWindowItemCount,
+                    CanAcceptInventoryWindowItem,
+                    TryConsumeInventoryWindowItem,
+                    TryAddItemToInventoryWindow);
             }
             else
             {
                 _questRuntime.ConfigureMesoRuntime(null, null, null);
+                _questRuntime.ConfigureInventoryRuntime(null, null, null, null);
             }
+
+            _questRuntime.ConfigureSkillRuntime(
+                skillId => _playerManager?.Skills?.GetSkillLevel(skillId) ?? 0,
+                ApplyQuestSkillReward,
+                ResolveQuestSkillName,
+                AddQuestGrantedSkillPoints);
 
             if (uiWindowManager.QuestWindow is QuestUI questWindow)
             {
@@ -10301,7 +11169,9 @@ namespace HaCreator.MapSimulator
             {
                 questAlarmWindow.SetFont(_fontChat);
                 questAlarmWindow.SetSnapshotProvider(() => _questRuntime.BuildQuestAlarmSnapshot(_playerManager?.Player?.Build));
+                questAlarmWindow.SetItemIconProvider(LoadInventoryItemIcon);
                 questAlarmWindow.QuestRequested += OpenQuestFromAlarmWindow;
+                questAlarmWindow.QuestLogRequested += OpenQuestLogFromAlarmWindow;
             }
 
             _questUiBindingsConfigured = true;
@@ -10338,6 +11208,39 @@ namespace HaCreator.MapSimulator
             uiWindowManager.ShowWindow(MapSimulatorWindowNames.Quest);
             SelectQuestInActiveWindow(questId);
             OpenQuestDetailWindow(questId);
+        }
+
+        private void OpenQuestLogFromAlarmWindow(int questId, bool focusSelectedQuest)
+        {
+            if (uiWindowManager == null)
+            {
+                return;
+            }
+
+            if (focusSelectedQuest)
+            {
+                uiWindowManager.ShowWindow(MapSimulatorWindowNames.Quest);
+                if (questId > 0)
+                {
+                    SelectQuestInActiveWindow(questId);
+                    OpenQuestDetailWindow(questId);
+                }
+
+                return;
+            }
+
+            UIWindowBase questWindow = uiWindowManager.GetWindow(MapSimulatorWindowNames.Quest);
+            if (questWindow?.IsVisible == true)
+            {
+                uiWindowManager.HideWindow(MapSimulatorWindowNames.Quest);
+                return;
+            }
+
+            uiWindowManager.ShowWindow(MapSimulatorWindowNames.Quest);
+            if (questId > 0)
+            {
+                SelectQuestInActiveWindow(questId);
+            }
         }
 
         private void UpdateQuestDetailWindow()
@@ -10436,6 +11339,7 @@ namespace HaCreator.MapSimulator
                 QuestWindowActionKind.GiveUp => _questRuntime.TryGiveUpFromQuestWindow(_activeQuestDetailQuestId),
                 QuestWindowActionKind.Complete => _questRuntime.TryCompleteFromQuestWindow(_activeQuestDetailQuestId, _playerManager?.Player?.Build),
                 QuestWindowActionKind.Track => TrackQuestInAlarmWindow(_activeQuestDetailQuestId),
+                QuestWindowActionKind.LocateNpc => LocateQuestNpcFromDetailWindow(_activeQuestDetailQuestId),
                 _ => null
             };
 
@@ -10477,6 +11381,41 @@ namespace HaCreator.MapSimulator
             {
                 QuestId = questId,
                 Messages = new[] { "Tracking quest in the quest alarm window." }
+            };
+        }
+
+        private QuestWindowActionResult LocateQuestNpcFromDetailWindow(int questId)
+        {
+            QuestWindowDetailState state = _questRuntime.GetQuestWindowDetailState(questId, _playerManager?.Player?.Build);
+            if (state?.TargetNpcId is not int || string.IsNullOrWhiteSpace(state.TargetNpcName))
+            {
+                return new QuestWindowActionResult
+                {
+                    QuestId = questId,
+                    Messages = new[] { "This quest does not expose a target NPC in the loaded data." }
+                };
+            }
+
+            RefreshWorldMapWindow(_mapBoard?.MapInfo?.id ?? 0);
+            if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.WorldMap) is not WorldMapUI worldMapWindow)
+            {
+                return new QuestWindowActionResult
+                {
+                    QuestId = questId,
+                    Messages = new[] { "World map window is not available in this UI build." }
+                };
+            }
+
+            bool focused = worldMapWindow.FocusSearchResult(WorldMapUI.SearchResultKind.Npc, state.TargetNpcName, _mapBoard?.MapInfo?.id ?? 0);
+            uiWindowManager.ShowWindow(MapSimulatorWindowNames.WorldMap);
+            uiWindowManager.BringToFront(worldMapWindow);
+
+            return new QuestWindowActionResult
+            {
+                QuestId = questId,
+                Messages = focused
+                    ? new[] { $"Opened the world map search for {state.TargetNpcName}." }
+                    : new[] { $"Opened the world map, but {state.TargetNpcName} is not in the current field search results." }
             };
         }
 
@@ -10584,6 +11523,8 @@ namespace HaCreator.MapSimulator
         {
             if (string.IsNullOrWhiteSpace(message))
                 return;
+
+            _soundManager?.PlaySound(SkillCooldownNoticeSoundKey);
 
             if (addChat)
             {
@@ -10907,36 +11848,45 @@ namespace HaCreator.MapSimulator
 
         private IReadOnlyList<StatusBarBuffRenderData> GetStatusBarBuffData(int currentTime)
         {
+            if (_statusBarBuffRenderCacheTime == currentTime)
+            {
+                return _statusBarBuffRenderCache;
+            }
+
+            _statusBarBuffRenderCacheTime = currentTime;
             if (_playerManager?.Skills == null)
             {
+                _statusBarBuffRenderCache.Clear();
                 return Array.Empty<StatusBarBuffRenderData>();
             }
 
             IReadOnlyList<StatusBarBuffEntry> buffEntries = _playerManager.Skills.GetStatusBarBuffEntries(currentTime);
             if (buffEntries.Count == 0)
             {
+                _statusBarBuffRenderCache.Clear();
                 return Array.Empty<StatusBarBuffRenderData>();
             }
 
-            List<StatusBarBuffRenderData> renderData = new List<StatusBarBuffRenderData>(buffEntries.Count);
-            foreach (StatusBarBuffEntry buffEntry in buffEntries)
+            for (int i = 0; i < buffEntries.Count; i++)
             {
-                renderData.Add(new StatusBarBuffRenderData
-                {
-                    SkillId = buffEntry.SkillId,
-                    SkillName = buffEntry.SkillName,
-                    Description = buffEntry.Description,
-                    IconKey = buffEntry.IconKey,
-                    IconTexture = buffEntry.IconTexture,
-                    RemainingMs = buffEntry.RemainingMs,
-                    DurationMs = buffEntry.DurationMs,
-                    SortOrder = buffEntry.SortOrder,
-                    TemporaryStatLabels = buffEntry.TemporaryStatLabels,
-                    TemporaryStatDisplayNames = buffEntry.TemporaryStatDisplayNames
-                });
+                StatusBarBuffEntry buffEntry = buffEntries[i];
+                StatusBarBuffRenderData renderData = i < _statusBarBuffRenderCache.Count
+                    ? _statusBarBuffRenderCache[i]
+                    : CreateAndAppendStatusBarBuffRenderData(_statusBarBuffRenderCache);
+                renderData.SkillId = buffEntry.SkillId;
+                renderData.SkillName = buffEntry.SkillName;
+                renderData.Description = buffEntry.Description;
+                renderData.IconKey = buffEntry.IconKey;
+                renderData.IconTexture = buffEntry.IconTexture;
+                renderData.RemainingMs = buffEntry.RemainingMs;
+                renderData.DurationMs = buffEntry.DurationMs;
+                renderData.SortOrder = buffEntry.SortOrder;
+                renderData.TemporaryStatLabels = buffEntry.TemporaryStatLabels;
+                renderData.TemporaryStatDisplayNames = buffEntry.TemporaryStatDisplayNames;
             }
 
-            return renderData;
+            TrimReusableList(_statusBarBuffRenderCache, buffEntries.Count);
+            return _statusBarBuffRenderCache;
         }
 
         private StatusBarChatUI.StatusBarPointNotificationState GetStatusBarPointNotificationState()
@@ -10958,24 +11908,34 @@ namespace HaCreator.MapSimulator
 
         private IReadOnlyList<StatusBarCooldownRenderData> GetStatusBarCooldownData(int currentTime)
         {
+            if (_statusBarCooldownRenderCacheTime == currentTime)
+            {
+                return _statusBarCooldownRenderCache;
+            }
+
+            _statusBarCooldownRenderCacheTime = currentTime;
             if (_playerManager?.Skills == null || _playerManager.SkillLoader == null)
             {
+                _statusBarCooldownSortBuffer.Clear();
+                _statusBarCooldownRenderCache.Clear();
                 return Array.Empty<StatusBarCooldownRenderData>();
             }
 
             Dictionary<int, int> hotkeys = _playerManager.Skills.GetAllHotkeys();
             if (hotkeys.Count == 0)
             {
+                _statusBarCooldownSortBuffer.Clear();
+                _statusBarCooldownRenderCache.Clear();
                 return Array.Empty<StatusBarCooldownRenderData>();
             }
 
-            List<(StatusBarCooldownRenderData RenderData, int CooldownStartTime, int SlotIndex)> renderData =
-                new List<(StatusBarCooldownRenderData RenderData, int CooldownStartTime, int SlotIndex)>();
-            HashSet<int> processedSkills = new HashSet<int>();
-            foreach (KeyValuePair<int, int> hotkey in hotkeys.OrderBy(entry => entry.Key))
+            _statusBarCooldownSortBuffer.Clear();
+            _statusBarProcessedCooldownSkills.Clear();
+            int renderIndex = 0;
+            foreach (KeyValuePair<int, int> hotkey in hotkeys)
             {
                 int skillId = hotkey.Value;
-                if (skillId <= 0 || !processedSkills.Add(skillId))
+                if (skillId <= 0 || !_statusBarProcessedCooldownSkills.Add(skillId))
                 {
                     continue;
                 }
@@ -10996,51 +11956,219 @@ namespace HaCreator.MapSimulator
 
                 _playerManager.Skills.TryGetCooldownStartTime(skillId, out int cooldownStartTime);
 
-                renderData.Add((new StatusBarCooldownRenderData
-                {
-                    SkillId = skillId,
-                    SkillName = skill?.Name,
-                    Description = skill?.Description,
-                    IconTexture = skill?.IconTexture,
-                    RemainingMs = remainingMs,
-                    DurationMs = Math.Max(remainingMs, durationMs)
-                }, cooldownStartTime, hotkey.Key));
+                StatusBarCooldownRenderData renderData = renderIndex < _statusBarCooldownRenderCache.Count
+                    ? _statusBarCooldownRenderCache[renderIndex]
+                    : CreateAndAppendStatusBarCooldownRenderData(_statusBarCooldownRenderCache);
+                renderData.SkillId = skillId;
+                renderData.SkillName = skill?.Name;
+                renderData.Description = skill?.Description;
+                renderData.IconTexture = skill?.IconTexture;
+                renderData.RemainingMs = remainingMs;
+                renderData.DurationMs = Math.Max(remainingMs, durationMs);
+                _statusBarCooldownSortBuffer.Add((renderData, cooldownStartTime, hotkey.Key));
+                renderIndex++;
             }
 
-            return renderData
-                .OrderByDescending(entry => entry.CooldownStartTime)
-                .ThenBy(entry => entry.SlotIndex)
-                .Select(entry => entry.RenderData)
-                .ToList();
+            _statusBarCooldownSortBuffer.Sort(static (left, right) =>
+            {
+                int cooldownComparison = right.CooldownStartTime.CompareTo(left.CooldownStartTime);
+                return cooldownComparison != 0 ? cooldownComparison : left.SortKey.CompareTo(right.SortKey);
+            });
+
+            for (int i = 0; i < _statusBarCooldownSortBuffer.Count; i++)
+            {
+                _statusBarCooldownRenderCache[i] = _statusBarCooldownSortBuffer[i].RenderData;
+            }
+
+            TrimReusableList(_statusBarCooldownRenderCache, _statusBarCooldownSortBuffer.Count);
+            return _statusBarCooldownRenderCache;
         }
 
-        private StatusBarPreparedSkillRenderData GetPreparedSkillBarData(int currentTime)
+        private IReadOnlyList<StatusBarCooldownRenderData> GetStatusBarOffBarCooldownData(int currentTime)
         {
+            if (_statusBarOffBarCooldownRenderCacheTime == currentTime)
+            {
+                return _statusBarOffBarCooldownRenderCache;
+            }
+
+            _statusBarOffBarCooldownRenderCacheTime = currentTime;
+            if (_playerManager?.Skills == null)
+            {
+                _statusBarOffBarCooldownSortBuffer.Clear();
+                _statusBarOffBarCooldownRenderCache.Clear();
+                return Array.Empty<StatusBarCooldownRenderData>();
+            }
+
+            IReadOnlyList<int> activeCooldownSkillIds = _playerManager.Skills.GetActiveCooldownSkillIds(currentTime);
+            if (activeCooldownSkillIds.Count == 0)
+            {
+                _statusBarOffBarCooldownSortBuffer.Clear();
+                _statusBarOffBarCooldownRenderCache.Clear();
+                return Array.Empty<StatusBarCooldownRenderData>();
+            }
+
+            _statusBarOffBarCooldownSortBuffer.Clear();
+            int renderIndex = 0;
+            foreach (int skillId in activeCooldownSkillIds)
+            {
+                if (_playerManager.Skills.FindSkillSlot(skillId) >= 0)
+                {
+                    continue;
+                }
+
+                SkillData skill = _playerManager.Skills.GetSkillData(skillId);
+                int level = _playerManager.Skills.GetSkillLevel(skillId);
+                int remainingMs = _playerManager.Skills.GetCooldownRemaining(skillId, currentTime);
+                int durationMs = skill?.GetLevel(level)?.Cooldown ?? remainingMs;
+                if (remainingMs <= 0)
+                {
+                    continue;
+                }
+
+                _playerManager.Skills.TryGetCooldownStartTime(skillId, out int cooldownStartTime);
+                StatusBarCooldownRenderData renderData = renderIndex < _statusBarOffBarCooldownRenderCache.Count
+                    ? _statusBarOffBarCooldownRenderCache[renderIndex]
+                    : CreateAndAppendStatusBarCooldownRenderData(_statusBarOffBarCooldownRenderCache);
+                renderData.SkillId = skillId;
+                renderData.SkillName = skill?.Name ?? $"Skill {skillId}";
+                renderData.Description = skill?.Description ?? string.Empty;
+                renderData.IconTexture = skill?.IconTexture ?? skill?.Icon?.Texture;
+                renderData.RemainingMs = remainingMs;
+                renderData.DurationMs = Math.Max(remainingMs, durationMs);
+                _statusBarOffBarCooldownSortBuffer.Add((renderData, cooldownStartTime, skillId));
+                renderIndex++;
+            }
+
+            _statusBarOffBarCooldownSortBuffer.Sort(static (left, right) =>
+            {
+                int cooldownComparison = right.CooldownStartTime.CompareTo(left.CooldownStartTime);
+                return cooldownComparison != 0 ? cooldownComparison : left.SortKey.CompareTo(right.SortKey);
+            });
+
+            for (int i = 0; i < _statusBarOffBarCooldownSortBuffer.Count; i++)
+            {
+                _statusBarOffBarCooldownRenderCache[i] = _statusBarOffBarCooldownSortBuffer[i].RenderData;
+            }
+
+            TrimReusableList(_statusBarOffBarCooldownRenderCache, _statusBarOffBarCooldownSortBuffer.Count);
+            return _statusBarOffBarCooldownRenderCache;
+        }
+
+        private StatusBarPreparedSkillRenderData GetPreparedSkillBarData(int currentTime, PreparedSkillHudSurface surface)
+        {
+            if (surface == PreparedSkillHudSurface.StatusBar && _preparedSkillStatusBarCacheTime == currentTime)
+            {
+                return _preparedSkillStatusBarCache.SkillId == 0 ? null : _preparedSkillStatusBarCache;
+            }
+
+            if (surface == PreparedSkillHudSurface.World && _preparedSkillWorldCacheTime == currentTime)
+            {
+                return _preparedSkillWorldCache.SkillId == 0 ? null : _preparedSkillWorldCache;
+            }
+
             var preparedSkill = _playerManager?.Skills?.GetPreparedSkill();
             if (preparedSkill == null)
             {
+                ClearPreparedSkillBarCache(surface, currentTime);
                 return null;
             }
 
-            if (!preparedSkill.ShowHudBar)
+            if (!preparedSkill.ShowHudBar || preparedSkill.HudSurface != surface)
             {
+                ClearPreparedSkillBarCache(surface, currentTime);
                 return null;
             }
 
-            return new StatusBarPreparedSkillRenderData
+            StatusBarPreparedSkillRenderData renderData = surface == PreparedSkillHudSurface.World
+                ? _preparedSkillWorldCache
+                : _preparedSkillStatusBarCache;
+            renderData.SkillId = preparedSkill.SkillId;
+            renderData.SkillName = preparedSkill.SkillData?.Name;
+            renderData.SkinKey = preparedSkill.HudSkinKey;
+            renderData.Surface = preparedSkill.HudSurface;
+            renderData.RemainingMs = Math.Max(0, preparedSkill.Duration - preparedSkill.Elapsed(currentTime));
+            renderData.DurationMs = preparedSkill.Duration;
+            renderData.GaugeDurationMs = preparedSkill.HudGaugeDurationMs;
+            renderData.Progress = preparedSkill.Progress(currentTime);
+            renderData.IsKeydownSkill = preparedSkill.IsKeydownSkill;
+            renderData.IsHolding = preparedSkill.IsHolding;
+            renderData.HoldElapsedMs = preparedSkill.HoldElapsed(currentTime);
+            renderData.MaxHoldDurationMs = preparedSkill.MaxHoldDurationMs;
+            renderData.ShowText = preparedSkill.ShowHudText;
+            renderData.WorldAnchor = ResolvePreparedSkillWorldAnchor(preparedSkill);
+
+            if (surface == PreparedSkillHudSurface.World)
             {
-                SkillId = preparedSkill.SkillId,
-                SkillName = preparedSkill.SkillData?.Name,
-                SkinKey = preparedSkill.HudSkinKey,
-                RemainingMs = Math.Max(0, preparedSkill.Duration - preparedSkill.Elapsed(currentTime)),
-                DurationMs = preparedSkill.Duration,
-                GaugeDurationMs = preparedSkill.HudGaugeDurationMs,
-                Progress = preparedSkill.Progress(currentTime),
-                IsKeydownSkill = preparedSkill.IsKeydownSkill,
-                IsHolding = preparedSkill.IsHolding,
-                HoldElapsedMs = preparedSkill.HoldElapsed(currentTime),
-                MaxHoldDurationMs = preparedSkill.MaxHoldDurationMs
-            };
+                _preparedSkillWorldCacheTime = currentTime;
+            }
+            else
+            {
+                _preparedSkillStatusBarCacheTime = currentTime;
+            }
+
+            return renderData;
+        }
+
+        private static StatusBarBuffRenderData CreateAndAppendStatusBarBuffRenderData(List<StatusBarBuffRenderData> cache)
+        {
+            StatusBarBuffRenderData renderData = new StatusBarBuffRenderData();
+            cache.Add(renderData);
+            return renderData;
+        }
+
+        private static StatusBarCooldownRenderData CreateAndAppendStatusBarCooldownRenderData(List<StatusBarCooldownRenderData> cache)
+        {
+            StatusBarCooldownRenderData renderData = new StatusBarCooldownRenderData();
+            cache.Add(renderData);
+            return renderData;
+        }
+
+        private void ClearPreparedSkillBarCache(PreparedSkillHudSurface surface, int currentTime)
+        {
+            StatusBarPreparedSkillRenderData renderData = surface == PreparedSkillHudSurface.World
+                ? _preparedSkillWorldCache
+                : _preparedSkillStatusBarCache;
+            renderData.SkillId = 0;
+            renderData.SkillName = null;
+            renderData.SkinKey = "KeyDownBar";
+            renderData.Surface = surface;
+            renderData.RemainingMs = 0;
+            renderData.DurationMs = 0;
+            renderData.GaugeDurationMs = 0;
+            renderData.Progress = 0f;
+            renderData.IsKeydownSkill = false;
+            renderData.IsHolding = false;
+            renderData.HoldElapsedMs = 0;
+            renderData.MaxHoldDurationMs = 0;
+            renderData.ShowText = true;
+            renderData.WorldAnchor = Vector2.Zero;
+
+            if (surface == PreparedSkillHudSurface.World)
+            {
+                _preparedSkillWorldCacheTime = currentTime;
+            }
+            else
+            {
+                _preparedSkillStatusBarCacheTime = currentTime;
+            }
+        }
+
+        private static void TrimReusableList<T>(List<T> items, int count)
+        {
+            if (items.Count > count)
+            {
+                items.RemoveRange(count, items.Count - count);
+            }
+        }
+
+        private Vector2 ResolvePreparedSkillWorldAnchor(PreparedSkill preparedSkill)
+        {
+            if (preparedSkill?.HudSurface != PreparedSkillHudSurface.World || _playerManager?.Player == null)
+            {
+                return Vector2.Zero;
+            }
+
+            return new Vector2(_playerManager.Player.X, _playerManager.Player.Y - 80f);
         }
 
         private static string GetPreparedSkillBarSkin(PreparedSkill preparedSkill)
@@ -11437,6 +12565,17 @@ namespace HaCreator.MapSimulator
             // Status bar [layer below minimap]
             if (statusBarUi != null)
             {
+                statusBarUi.DrawPreparedSkillOverlay(
+                    _spriteBatch,
+                    _skeletonMeshRenderer,
+                    gameTime,
+                    mapShiftX,
+                    mapShiftY,
+                    minimapPos.X,
+                    minimapPos.Y,
+                    _renderParams,
+                    TickCount);
+
                 statusBarUi.Draw(_spriteBatch, _skeletonMeshRenderer, gameTime,
                             mapShiftX, mapShiftY, minimapPos.X, minimapPos.Y,
                             null,
@@ -11826,36 +12965,159 @@ namespace HaCreator.MapSimulator
                     return true;
 
                 case LoginPacketType.SelectWorldResult:
-                    byte selectWorldResultCode = 0;
-                    int selectWorldId = 0;
-                    int selectChannel = 0;
-                    if (args.Length > 0 && !byte.TryParse(args[0], out selectWorldResultCode))
-                    {
-                        error = "Usage: /loginpacket selectworld [resultCode] [worldId] [channel]";
-                        return false;
-                    }
+                    return TryConfigureSelectWorldPacketPayload(args, out error, out summary);
+            }
 
-                    if (args.Length > 1 && (!int.TryParse(args[1], out selectWorldId) || selectWorldId < 0))
-                    {
-                        error = "Usage: /loginpacket selectworld [resultCode] [worldId] [channel]";
-                        return false;
-                    }
+            return true;
+        }
 
-                    if (args.Length > 2 && (!int.TryParse(args[2], out selectChannel) || selectChannel < 1))
-                    {
-                        error = "Usage: /loginpacket selectworld [resultCode] [worldId] [channel]";
-                        return false;
-                    }
+        private bool TryConfigureSelectWorldPacketPayload(string[] args, out string error, out string summary)
+        {
+            error = null;
+            summary = null;
 
-                    _loginPacketSelectWorldResultCode = args.Length > 0 ? selectWorldResultCode : null;
-                    _loginPacketSelectWorldTargetWorldId = args.Length > 1 ? selectWorldId : null;
-                    _loginPacketSelectWorldTargetChannelIndex = args.Length > 2 ? selectChannel - 1 : null;
-                    summary = args.Length == 0
-                        ? "Using generated SelectWorldResult behavior."
-                        : $"Configured SelectWorldResult code {_loginPacketSelectWorldResultCode}"
-                          + (_loginPacketSelectWorldTargetWorldId.HasValue ? $" for world {_loginPacketSelectWorldTargetWorldId.Value}" : string.Empty)
-                          + (_loginPacketSelectWorldTargetChannelIndex.HasValue ? $", channel {_loginPacketSelectWorldTargetChannelIndex.Value + 1}." : ".");
-                    return true;
+            byte? configuredResultCode = null;
+            int? configuredWorldId = null;
+            int? configuredChannelIndex = null;
+            LoginSelectWorldResultProfile decodedProfile = null;
+
+            foreach (string arg in args)
+            {
+                if (string.IsNullOrWhiteSpace(arg))
+                {
+                    continue;
+                }
+
+                if (TryParseSelectWorldPacketPayloadArgument(arg, out decodedProfile, out string payloadError))
+                {
+                    continue;
+                }
+
+                if (payloadError != null)
+                {
+                    error = payloadError;
+                    return false;
+                }
+
+                if (!configuredResultCode.HasValue && byte.TryParse(arg, out byte resultCode))
+                {
+                    configuredResultCode = resultCode;
+                    continue;
+                }
+
+                if (!configuredWorldId.HasValue && int.TryParse(arg, out int worldId) && worldId >= 0)
+                {
+                    configuredWorldId = worldId;
+                    continue;
+                }
+
+                if (!configuredChannelIndex.HasValue && int.TryParse(arg, out int channel) && channel >= 1)
+                {
+                    configuredChannelIndex = channel - 1;
+                    continue;
+                }
+
+                error = "Usage: /loginpacket selectworld [resultCode] [worldId] [channel] [payloadhex=<hex>|payloadb64=<base64>|clearpayload]";
+                return false;
+            }
+
+            _loginPacketSelectWorldResultProfile = decodedProfile;
+            _loginPacketSelectWorldResultCode = decodedProfile != null
+                ? decodedProfile.ResultCode
+                : configuredResultCode;
+            _loginPacketSelectWorldTargetWorldId = configuredWorldId;
+            _loginPacketSelectWorldTargetChannelIndex = configuredChannelIndex;
+
+            if (args.Length == 0)
+            {
+                summary = "Using generated SelectWorldResult behavior.";
+                return true;
+            }
+
+            string profileSummary = decodedProfile == null
+                ? string.Empty
+                : $" with packet-authored roster ({decodedProfile.Entries.Count} entries, {decodedProfile.SlotCount} slots)";
+            summary = $"Configured SelectWorldResult code {FormatSelectorPacketCode(_loginPacketSelectWorldResultCode ?? 0)}"
+                      + (_loginPacketSelectWorldTargetWorldId.HasValue ? $" for world {_loginPacketSelectWorldTargetWorldId.Value}" : string.Empty)
+                      + (_loginPacketSelectWorldTargetChannelIndex.HasValue ? $", channel {_loginPacketSelectWorldTargetChannelIndex.Value + 1}" : string.Empty)
+                      + profileSummary
+                      + ".";
+            return true;
+        }
+
+        private static bool TryParseSelectWorldPacketPayloadArgument(
+            string arg,
+            out LoginSelectWorldResultProfile profile,
+            out string error)
+        {
+            profile = null;
+            error = null;
+
+            if (arg.Equals("clearpayload", StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+
+            const string payloadHexPrefix = "payloadhex=";
+            const string payloadBase64Prefix = "payloadb64=";
+
+            byte[] payloadBytes = null;
+            if (arg.StartsWith(payloadHexPrefix, StringComparison.OrdinalIgnoreCase))
+            {
+                if (!TryDecodeHexBytes(arg[payloadHexPrefix.Length..], out payloadBytes))
+                {
+                    error = "SelectWorldResult payloadhex must be valid hexadecimal bytes.";
+                    return false;
+                }
+            }
+            else if (arg.StartsWith(payloadBase64Prefix, StringComparison.OrdinalIgnoreCase))
+            {
+                try
+                {
+                    payloadBytes = Convert.FromBase64String(arg[payloadBase64Prefix.Length..]);
+                }
+                catch (FormatException)
+                {
+                    error = "SelectWorldResult payloadb64 must be valid Base64.";
+                    return false;
+                }
+            }
+            else
+            {
+                return false;
+            }
+
+            if (!LoginSelectWorldResultCodec.TryDecode(payloadBytes, out profile, out string decodeError))
+            {
+                error = decodeError;
+                return false;
+            }
+
+            return true;
+        }
+
+        private static bool TryDecodeHexBytes(string text, out byte[] bytes)
+        {
+            bytes = null;
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                return false;
+            }
+
+            string normalized = new string(text.Where(ch => !char.IsWhiteSpace(ch) && ch != '-').ToArray());
+            if ((normalized.Length & 1) != 0)
+            {
+                return false;
+            }
+
+            bytes = new byte[normalized.Length / 2];
+            for (int i = 0; i < bytes.Length; i++)
+            {
+                if (!byte.TryParse(normalized.Substring(i * 2, 2), System.Globalization.NumberStyles.HexNumber, null, out bytes[i]))
+                {
+                    bytes = null;
+                    return false;
+                }
             }
 
             return true;
@@ -12503,7 +13765,7 @@ namespace HaCreator.MapSimulator
             _chat.CommandHandler.RegisterCommand(
                 "battlefield",
                 "Inspect or drive the Battlefield timerboard and team score flow",
-                "/battlefield [clock [seconds]|score <wolves> <sheep>|team <wolves|sheep|0|1|2|clear>|result [wolves|sheep|draw|auto]]",
+                "/battlefield [clock [seconds]|score <wolves> <sheep>|team <wolves|sheep|0|1|2|clear> [characterId]|result [wolves|sheep|draw|auto]]",
                 args =>
                 {
                     BattlefieldField battlefield = _specialFieldRuntime.SpecialEffects.Battlefield;
@@ -12546,7 +13808,23 @@ namespace HaCreator.MapSimulator
                     {
                         if (args.Length < 2 || !TryParseBattlefieldTeam(args[1], out int? teamId))
                         {
-                            return ChatCommandHandler.CommandResult.Error("Usage: /battlefield team <wolves|sheep|0|1|2|clear>");
+                            return ChatCommandHandler.CommandResult.Error("Usage: /battlefield team <wolves|sheep|0|1|2|clear> [characterId]");
+                        }
+
+                        if (args.Length >= 3)
+                        {
+                            if (!int.TryParse(args[2], out int characterId) || characterId <= 0)
+                            {
+                                return ChatCommandHandler.CommandResult.Error($"Invalid Battlefield character id: {args[2]}");
+                            }
+
+                            if (!teamId.HasValue)
+                            {
+                                return ChatCommandHandler.CommandResult.Error("Remote Battlefield team changes require an explicit team id");
+                            }
+
+                            battlefield.OnTeamChanged(characterId, teamId.Value, currTickCount);
+                            return ChatCommandHandler.CommandResult.Ok(battlefield.DescribeStatus());
                         }
 
                         battlefield.SetLocalTeam(teamId, currTickCount);
@@ -12574,13 +13852,13 @@ namespace HaCreator.MapSimulator
                         return ChatCommandHandler.CommandResult.Ok(battlefield.DescribeStatus());
                     }
 
-                    return ChatCommandHandler.CommandResult.Error("Usage: /battlefield [clock [seconds]|score <wolves> <sheep>|team <wolves|sheep|0|1|2|clear>|result [wolves|sheep|draw|auto]]");
+                    return ChatCommandHandler.CommandResult.Error("Usage: /battlefield [clock [seconds]|score <wolves> <sheep>|team <wolves|sheep|0|1|2|clear> [characterId]|result [wolves|sheep|draw|auto]]");
                 });
 
             _chat.CommandHandler.RegisterCommand(
                 "ariantarena",
                 "Inspect or drive the Ariant Arena ranking/result HUD",
-                "/ariantarena [score <name> <score>|packet <name> <score> [<name> <score> ...]|raw <type> <hex>|remove <name>|result|clear]",
+                "/ariantarena [score <name> <score>|packet <name> <score> [<name> <score> ...]|raw <type> <hex>|inbox [status|start [port]|stop]|remove <name>|result|clear]",
                 args =>
                 {
                     AriantArenaField field = _specialFieldRuntime.Minigames.AriantArena;
@@ -12649,6 +13927,33 @@ namespace HaCreator.MapSimulator
 
                             return ChatCommandHandler.CommandResult.Ok(field.DescribeStatus());
 
+                        case "inbox":
+                            if (args.Length == 1 || string.Equals(args[1], "status", StringComparison.OrdinalIgnoreCase))
+                            {
+                                return ChatCommandHandler.CommandResult.Info(
+                                    $"{field.DescribeStatus()}{Environment.NewLine}{_ariantArenaPacketInbox.LastStatus}");
+                            }
+
+                            if (string.Equals(args[1], "start", StringComparison.OrdinalIgnoreCase))
+                            {
+                                int port = AriantArenaPacketInboxManager.DefaultPort;
+                                if (args.Length >= 3 && (!int.TryParse(args[2], out port) || port <= 0))
+                                {
+                                    return ChatCommandHandler.CommandResult.Error("Usage: /ariantarena inbox start [port]");
+                                }
+
+                                _ariantArenaPacketInbox.Start(port);
+                                return ChatCommandHandler.CommandResult.Ok(_ariantArenaPacketInbox.LastStatus);
+                            }
+
+                            if (string.Equals(args[1], "stop", StringComparison.OrdinalIgnoreCase))
+                            {
+                                _ariantArenaPacketInbox.Stop();
+                                return ChatCommandHandler.CommandResult.Ok(_ariantArenaPacketInbox.LastStatus);
+                            }
+
+                            return ChatCommandHandler.CommandResult.Error("Usage: /ariantarena inbox [status|start [port]|stop]");
+
                         case "remove":
                             if (args.Length < 2)
                             {
@@ -12667,7 +13972,7 @@ namespace HaCreator.MapSimulator
                             return ChatCommandHandler.CommandResult.Ok(field.DescribeStatus());
 
                         default:
-                            return ChatCommandHandler.CommandResult.Error("Usage: /ariantarena [score <name> <score>|packet <name> <score> [<name> <score> ...]|raw <type> <hex>|remove <name>|result|clear]");
+                            return ChatCommandHandler.CommandResult.Error("Usage: /ariantarena [score <name> <score>|packet <name> <score> [<name> <score> ...]|raw <type> <hex>|inbox [status|start [port]|stop]|remove <name>|result|clear]");
                     }
                 });
 
@@ -13158,7 +14463,7 @@ namespace HaCreator.MapSimulator
             _chat.CommandHandler.RegisterCommand(
                 "guildbbs",
                 "Inspect or drive the Guild BBS runtime",
-                "/guildbbs [open|status|write|edit|register|cancel|notice|reply|replydelete|delete|select <threadId>]",
+                "/guildbbs [open|status|write|edit|register|cancel|notice|reply|replydelete|delete|select <threadId>|title <text>|body <text>|replytext <text>|threadpage <prev|next>|commentpage <prev|next>]",
                 args =>
                 {
                     if (args.Length == 0 || string.Equals(args[0], "status", StringComparison.OrdinalIgnoreCase))
@@ -13187,6 +14492,61 @@ namespace HaCreator.MapSimulator
                         case "reply":
                             uiWindowManager?.ShowWindow(MapSimulatorWindowNames.GuildBbs);
                             return ChatCommandHandler.CommandResult.Ok(_guildBbsRuntime.AddReply());
+                        case "title":
+                            if (args.Length < 2)
+                            {
+                                return ChatCommandHandler.CommandResult.Error("Usage: /guildbbs title <text>");
+                            }
+
+                            return ChatCommandHandler.CommandResult.Ok(_guildBbsRuntime.SetComposeTitle(string.Join(" ", args.Skip(1))));
+                        case "body":
+                            if (args.Length < 2)
+                            {
+                                return ChatCommandHandler.CommandResult.Error("Usage: /guildbbs body <text>");
+                            }
+
+                            return ChatCommandHandler.CommandResult.Ok(_guildBbsRuntime.SetComposeBody(string.Join(" ", args.Skip(1))));
+                        case "replytext":
+                            if (args.Length < 2)
+                            {
+                                return ChatCommandHandler.CommandResult.Error("Usage: /guildbbs replytext <text>");
+                            }
+
+                            return ChatCommandHandler.CommandResult.Ok(_guildBbsRuntime.SetReplyDraft(string.Join(" ", args.Skip(1))));
+                        case "threadpage":
+                            if (args.Length < 2)
+                            {
+                                return ChatCommandHandler.CommandResult.Error("Usage: /guildbbs threadpage <prev|next>");
+                            }
+
+                            if (string.Equals(args[1], "prev", StringComparison.OrdinalIgnoreCase))
+                            {
+                                return ChatCommandHandler.CommandResult.Ok(_guildBbsRuntime.MoveThreadPage(-1));
+                            }
+
+                            if (string.Equals(args[1], "next", StringComparison.OrdinalIgnoreCase))
+                            {
+                                return ChatCommandHandler.CommandResult.Ok(_guildBbsRuntime.MoveThreadPage(1));
+                            }
+
+                            return ChatCommandHandler.CommandResult.Error("Usage: /guildbbs threadpage <prev|next>");
+                        case "commentpage":
+                            if (args.Length < 2)
+                            {
+                                return ChatCommandHandler.CommandResult.Error("Usage: /guildbbs commentpage <prev|next>");
+                            }
+
+                            if (string.Equals(args[1], "prev", StringComparison.OrdinalIgnoreCase))
+                            {
+                                return ChatCommandHandler.CommandResult.Ok(_guildBbsRuntime.MoveCommentPage(-1));
+                            }
+
+                            if (string.Equals(args[1], "next", StringComparison.OrdinalIgnoreCase))
+                            {
+                                return ChatCommandHandler.CommandResult.Ok(_guildBbsRuntime.MoveCommentPage(1));
+                            }
+
+                            return ChatCommandHandler.CommandResult.Error("Usage: /guildbbs commentpage <prev|next>");
                         case "replydelete":
                             return ChatCommandHandler.CommandResult.Ok(_guildBbsRuntime.DeleteLatestReply());
                         case "delete":
@@ -13200,7 +14560,7 @@ namespace HaCreator.MapSimulator
                             _guildBbsRuntime.SelectThread(threadId);
                             return ChatCommandHandler.CommandResult.Ok($"Selected Guild BBS thread #{threadId}.");
                         default:
-                            return ChatCommandHandler.CommandResult.Error("Usage: /guildbbs [open|status|write|edit|register|cancel|notice|reply|replydelete|delete|select <threadId>]");
+                            return ChatCommandHandler.CommandResult.Error("Usage: /guildbbs [open|status|write|edit|register|cancel|notice|reply|replydelete|delete|select <threadId>|title <text>|body <text>|replytext <text>|threadpage <prev|next>|commentpage <prev|next>]");
                     }
                 });
 
@@ -14446,6 +15806,42 @@ namespace HaCreator.MapSimulator
             return true;
         }
 
+        private void SyncAriantArenaPacketInboxState()
+        {
+            if (_specialFieldRuntime.Minigames.AriantArena.IsActive)
+            {
+                _ariantArenaPacketInbox.Start();
+            }
+            else
+            {
+                _ariantArenaPacketInbox.Stop();
+            }
+        }
+
+        private void DrainAriantArenaPacketInbox(int currentTickCount)
+        {
+            AriantArenaField field = _specialFieldRuntime.Minigames.AriantArena;
+            while (_ariantArenaPacketInbox.TryDequeue(out AriantArenaPacketInboxMessage message))
+            {
+                if (!field.IsActive)
+                {
+                    _ariantArenaPacketInbox.RecordDispatchResult(
+                        message.Source,
+                        message.PacketType,
+                        success: false,
+                        message: "runtime inactive");
+                    continue;
+                }
+
+                bool applied = field.TryApplyPacket(message.PacketType, message.Payload, currentTickCount, out string errorMessage);
+                _ariantArenaPacketInbox.RecordDispatchResult(
+                    message.Source,
+                    message.PacketType,
+                    applied,
+                    applied ? field.DescribeStatus() : errorMessage);
+            }
+        }
+
         private void SyncBattlefieldLocalAppearance()
         {
             BattlefieldField battlefield = _specialFieldRuntime.SpecialEffects.Battlefield;
@@ -14808,6 +16204,7 @@ namespace HaCreator.MapSimulator
             _recommendWorldEntries.Clear();
             _recommendWorldIndex = 0;
             _nextLoginWorldPopulationUpdateAt = currentTickCount + LoginWorldPopulationUpdateIntervalMs;
+            EnsureLoginPacketInboxState(_gameState.IsLoginMap);
 
             if (_gameState.IsLoginMap)
             {
@@ -14824,6 +16221,7 @@ namespace HaCreator.MapSimulator
 
         private void UpdateLoginRuntimeFrame(GameTime gameTime, KeyboardState newKeyboardState, MouseState newMouseState, bool isWindowActive)
         {
+            DrainLoginPacketInbox();
             _loginRuntime.Update(currTickCount);
             UpdateWorldChannelSelectorRequestState();
             UpdateLoginWorldPopulationDrift();
@@ -14853,6 +16251,92 @@ namespace HaCreator.MapSimulator
             _frameNumber++;
             UpdateObjectVisibility();
             FinalizeFrameInputState(newKeyboardState, newMouseState, gameTime);
+        }
+
+        private void EnsureLoginPacketInboxState(bool shouldRun)
+        {
+            if (shouldRun)
+            {
+                if (_loginPacketInbox.IsRunning)
+                {
+                    return;
+                }
+
+                try
+                {
+                    _loginPacketInbox.Start();
+                }
+                catch (Exception ex)
+                {
+                    Debug.WriteLine($"Unable to start login packet inbox: {ex.Message}");
+                    _loginPacketInbox.Stop();
+                }
+
+                return;
+            }
+
+            if (_loginPacketInbox.IsRunning)
+            {
+                _loginPacketInbox.Stop();
+            }
+        }
+
+        private void DrainLoginPacketInbox()
+        {
+            if (!IsLoginRuntimeSceneActive)
+            {
+                return;
+            }
+
+            while (_loginPacketInbox.TryDequeue(out LoginPacketInboxMessage message))
+            {
+                if (message == null)
+                {
+                    continue;
+                }
+
+                string[] args = ParseLoginPacketInboxArguments(message.RawText);
+                if (!TryConfigureLoginPacketPayload(message.PacketType, args, out _, out _))
+                {
+                    continue;
+                }
+
+                DispatchLoginRuntimePacket(message.PacketType, out _);
+            }
+        }
+
+        private static string[] ParseLoginPacketInboxArguments(string rawText)
+        {
+            if (string.IsNullOrWhiteSpace(rawText))
+            {
+                return Array.Empty<string>();
+            }
+
+            string trimmed = rawText.Trim();
+            int separatorIndex = trimmed.IndexOfAny(new[] { ' ', '\t', ':', '=' });
+            if (separatorIndex < 0)
+            {
+                return Array.Empty<string>();
+            }
+
+            int argumentStart = separatorIndex;
+            if (trimmed[argumentStart] == ':' || trimmed[argumentStart] == '=')
+            {
+                argumentStart++;
+            }
+
+            while (argumentStart < trimmed.Length && char.IsWhiteSpace(trimmed[argumentStart]))
+            {
+                argumentStart++;
+            }
+
+            if (argumentStart >= trimmed.Length)
+            {
+                return Array.Empty<string>();
+            }
+
+            return trimmed[argumentStart..]
+                .Split(new[] { ' ', '\t' }, StringSplitOptions.RemoveEmptyEntries);
         }
 
         private void UpdateLoginWorldPopulationDrift()

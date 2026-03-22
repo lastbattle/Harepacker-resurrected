@@ -15,6 +15,7 @@ using Microsoft.Xna.Framework.Graphics;
 using Spine;
 using HaCreator.MapSimulator.Effects;
 using HaCreator.MapSimulator.Managers;
+using HaCreator.MapSimulator;
 
 namespace HaCreator.MapSimulator.Character
 {
@@ -64,6 +65,9 @@ namespace HaCreator.MapSimulator.Character
         private MobSkillEffectLoader _mobSkillEffectLoader;
         private SoundManager _soundManager;
         private Action<Rectangle, int, int, int> _reactorAttackAreaHandler;
+        private PlayerMobStatusController _mobStatusController;
+        private PlayerMobStatusFrameState _currentMobStatusState = PlayerMobStatusFrameState.Default;
+        private Action<PlayerCharacter, Rectangle, int> _attackHitboxHandler;
 
         // Sound callbacks
         private Action _onJumpSound;
@@ -216,6 +220,11 @@ namespace HaCreator.MapSimulator.Character
             }
         }
 
+        public void SetAttackHitboxHandler(Action<PlayerCharacter, Rectangle, int> attackHitboxHandler)
+        {
+            _attackHitboxHandler = attackHitboxHandler;
+        }
+
         public MobSkillEffectData LoadMobSkillEffect(int skillId, int skillLevel = 1)
         {
             return _mobSkillEffectLoader?.LoadMobSkillEffect(skillId, skillLevel);
@@ -305,7 +314,7 @@ namespace HaCreator.MapSimulator.Character
                 Skills.SetTamingMobLoader(Loader.LoadEquipment);
                 Skills.OnAttackAreaResolved = _reactorAttackAreaHandler;
                 build.SkillStatBonusProvider = stat => Skills.GetPassiveBonus(stat) + Skills.GetBuffStat(stat);
-                build.SkillMasteryProvider = Skills.GetMastery;
+                build.SkillMasteryProvider = () => Skills.GetMastery(build.GetWeapon());
 
                 // Keep only the player's current job path resident at startup.
                 Skills.LoadSkillsForJob(build.Job);
@@ -313,6 +322,9 @@ namespace HaCreator.MapSimulator.Character
 
                 System.Diagnostics.Debug.WriteLine($"[PlayerManager] SkillManager created for job path {build.Job}");
             }
+
+            _mobStatusController = new PlayerMobStatusController(Player, Skills);
+            Skills?.SetExternalCastBlockedEvaluator(currentTime => _currentMobStatusState.SkillCastBlocked);
 
             Combat.SetDamageBlockedEvaluator(currentTime => Skills?.IsPlayerProtectedByClientSkillZone(currentTime) == true);
 
@@ -329,27 +341,30 @@ namespace HaCreator.MapSimulator.Character
             // Set up attack callback
             Player.OnAttackHitbox = (player, hitbox) =>
             {
-                if (_mobPool == null) return;
-
-                var results = Combat.ProcessAttack(_mobPool, hitbox);
-
-                // Add damage numbers to combat effects
-                if (_combatEffects != null)
+                int currentTime = Environment.TickCount;
+                if (_mobPool != null)
                 {
-                    int currentTime = Environment.TickCount;
-                    int comboIndex = 0;
-                    foreach (var result in results)
+                    var results = Combat.ProcessAttack(_mobPool, hitbox);
+
+                    // Add damage numbers to combat effects
+                    if (_combatEffects != null)
                     {
-                        _combatEffects.AddDamageNumber(
-                            result.Damage,
-                            result.HitX,
-                            result.HitY - 20,
-                            result.IsCritical,
-                            result.IsMiss,
-                            currentTime,
-                            comboIndex++);
+                        int comboIndex = 0;
+                        foreach (var result in results)
+                        {
+                            _combatEffects.AddDamageNumber(
+                                result.Damage,
+                                result.HitX,
+                                result.HitY - 20,
+                                result.IsCritical,
+                                result.IsMiss,
+                                currentTime,
+                                comboIndex++);
+                        }
                     }
                 }
+
+                _attackHitboxHandler?.Invoke(player, hitbox, currentTime);
             };
 
             // Set up death callback
@@ -417,6 +432,11 @@ namespace HaCreator.MapSimulator.Character
                     duration);
             };
 
+            Combat.OnMobSkillStatusApplied = (skillId, skillLevel, currentTime) =>
+            {
+                ApplyPlayerSkillBlockingStatus(skillId, skillLevel, currentTime);
+            };
+
             Combat.OnMobAttackMissPlayer = (x, y, currentTime) =>
             {
                 _combatEffects?.AddMiss(x, y, currentTime);
@@ -443,28 +463,28 @@ namespace HaCreator.MapSimulator.Character
 
             Player.OnAttackHitbox = (combatPlayer, hitbox) =>
             {
-                if (_mobPool == null)
+                int currentTime = Environment.TickCount;
+                if (_mobPool != null)
                 {
-                    return;
-                }
-
-                var results = Combat.ProcessAttack(_mobPool, hitbox);
-                if (_combatEffects != null)
-                {
-                    int currentTime = Environment.TickCount;
-                    int comboIndex = 0;
-                    foreach (var result in results)
+                    var results = Combat.ProcessAttack(_mobPool, hitbox);
+                    if (_combatEffects != null)
                     {
-                        _combatEffects.AddDamageNumber(
-                            result.Damage,
-                            result.HitX,
-                            result.HitY - 20,
-                            result.IsCritical,
-                            result.IsMiss,
-                            currentTime,
-                            comboIndex++);
+                        int comboIndex = 0;
+                        foreach (var result in results)
+                        {
+                            _combatEffects.AddDamageNumber(
+                                result.Damage,
+                                result.HitX,
+                                result.HitY - 20,
+                                result.IsCritical,
+                                result.IsMiss,
+                                currentTime,
+                                comboIndex++);
+                        }
                     }
                 }
+
+                _attackHitboxHandler?.Invoke(combatPlayer, hitbox, currentTime);
             };
 
             Player.OnDeath = combatPlayer =>
@@ -485,6 +505,23 @@ namespace HaCreator.MapSimulator.Character
                         currentTime);
                 }
             };
+        }
+
+        private void ApplyPlayerSkillBlockingStatus(int skillId, int skillLevel, int currentTime)
+        {
+            if (Player == null || !PlayerSkillBlockingStatusMapper.TryMapMobSkill(skillId, out PlayerSkillBlockingStatus status))
+            {
+                return;
+            }
+
+            MobSkillEffectData effectData = _mobSkillEffectLoader?.LoadMobSkillEffect(skillId, Math.Max(1, skillLevel));
+            int durationMs = Math.Max(0, (effectData?.Time ?? 0) * 1000);
+            if (durationMs <= 0)
+            {
+                return;
+            }
+
+            Player.ApplySkillBlockingStatus(status, durationMs, currentTime);
         }
 
         /// <summary>
@@ -548,6 +585,8 @@ namespace HaCreator.MapSimulator.Character
         {
             Player = null;
             Combat = null;
+            _mobStatusController = null;
+            _currentMobStatusState = PlayerMobStatusFrameState.Default;
             Pets.Clear();
         }
 
@@ -576,6 +615,8 @@ namespace HaCreator.MapSimulator.Character
             if (Player == null)
                 return;
 
+            UpdateMobStatusState(currentTime);
+
             // If player is dead, skip all input processing and combat
             if (!Player.IsAlive)
             {
@@ -587,11 +628,13 @@ namespace HaCreator.MapSimulator.Character
             // Apply input to player only if chat is not active
             if (IsPlayerControlEnabled && inputActive && !chatIsActive)
             {
-                Input.ApplyToPlayer(Player);
+                InputState inputState = Input.GetState();
+                InputState playerInputState = ApplyMobStatusToInput(inputState);
+                Input.ApplyToPlayer(Player, playerInputState);
 
                 // Handle pickup input separately
-                bool pickupHeld = Input.IsHeld(InputAction.Pickup);
-                bool pickupPressed = Input.IsPressed(InputAction.Pickup);
+                bool pickupHeld = !_currentMobStatusState.MovementLocked && Input.IsHeld(InputAction.Pickup);
+                bool pickupPressed = !_currentMobStatusState.MovementLocked && Input.IsPressed(InputAction.Pickup);
 
                 if (_dropPool != null && ShouldAttemptPickup(pickupHeld, pickupPressed, currentTime, _lastPickupAttemptTime))
                 {
@@ -616,10 +659,8 @@ namespace HaCreator.MapSimulator.Character
                 }
 
                 // Handle skill hotkeys
-                if (Skills != null)
+                if (Skills != null && !_currentMobStatusState.SkillCastBlocked)
                 {
-                    var inputState = Input.GetState();
-
                     // Primary skill hotkeys (Skill1-8, slots 0-7)
                     for (int i = 0; i < 8; i++)
                     {
@@ -667,6 +708,11 @@ namespace HaCreator.MapSimulator.Character
             {
                 Skills?.ReleaseActiveKeydownSkill(currentTime);
                 Player.ClearInput();
+            }
+
+            if (_currentMobStatusState.MovementLocked)
+            {
+                Player.Physics.VelocityX = 0;
             }
 
             // Update player
@@ -741,6 +787,45 @@ namespace HaCreator.MapSimulator.Character
         public bool TryExecutePetCommand(string message, int currentTime)
         {
             return Pets.TryExecuteCommand(message, currentTime);
+        }
+
+        internal bool TryApplyMobSkillStatus(int skillId, MobSkillRuntimeData runtimeData, int currentTime)
+        {
+            return _mobStatusController?.TryApplyMobSkill(skillId, runtimeData, currentTime) == true;
+        }
+
+        private void UpdateMobStatusState(int currentTime)
+        {
+            _currentMobStatusState = _mobStatusController?.Update(currentTime) ?? PlayerMobStatusFrameState.Default;
+
+            Player?.SetExternalMoveSpeedMultiplier(_currentMobStatusState.MoveSpeedMultiplier);
+            Combat?.SetAdditionalPlayerMissChance(_currentMobStatusState.AdditionalMissChance);
+        }
+
+        private InputState ApplyMobStatusToInput(InputState inputState)
+        {
+            if (_currentMobStatusState.MovementLocked)
+            {
+                inputState.Left = false;
+                inputState.Right = false;
+                inputState.Up = false;
+                inputState.Down = false;
+                inputState.Jump = false;
+                inputState.JumpPressed = false;
+                inputState.Attack = false;
+                inputState.AttackPressed = false;
+                inputState.Pickup = false;
+                inputState.PickupPressed = false;
+                return inputState;
+            }
+
+            if (_currentMobStatusState.JumpBlocked)
+            {
+                inputState.Jump = false;
+                inputState.JumpPressed = false;
+            }
+
+            return inputState;
         }
 
         #endregion

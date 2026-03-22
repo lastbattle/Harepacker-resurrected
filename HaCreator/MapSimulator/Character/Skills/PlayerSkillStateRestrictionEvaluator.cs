@@ -9,10 +9,20 @@ namespace HaCreator.MapSimulator.Character.Skills
     {
         public static bool CanUseSkill(PlayerCharacter player, SkillData skill)
         {
-            return GetRestrictionMessage(player, skill) == null;
+            return CanUseSkill(player, skill, System.Environment.TickCount);
+        }
+
+        public static bool CanUseSkill(PlayerCharacter player, SkillData skill, int currentTime)
+        {
+            return GetRestrictionMessage(player, skill, currentTime) == null;
         }
 
         public static string GetRestrictionMessage(PlayerCharacter player, SkillData skill)
+        {
+            return GetRestrictionMessage(player, skill, System.Environment.TickCount);
+        }
+
+        public static string GetRestrictionMessage(PlayerCharacter player, SkillData skill, int currentTime)
         {
             if (player == null)
                 return "Player state is unavailable.";
@@ -29,6 +39,10 @@ namespace HaCreator.MapSimulator.Character.Skills
             if (player.State == PlayerState.Prone)
                 return "Skills cannot be used while lying down.";
 
+            string statusRestrictionMessage = player.GetSkillBlockingRestrictionMessage(currentTime);
+            if (!string.IsNullOrWhiteSpace(statusRestrictionMessage))
+                return statusRestrictionMessage;
+
             if (IsSwallowSkill(skill) && player.Physics?.IsOnLadderOrRope == true)
                 return "Swallow skills cannot be used while on a ladder or rope.";
 
@@ -37,8 +51,8 @@ namespace HaCreator.MapSimulator.Character.Skills
 
         private static bool IsSwallowSkill(SkillData skill)
         {
-            return skill?.ActionName?.Contains("swallow", System.StringComparison.OrdinalIgnoreCase) == true
-                   || skill?.Name?.Contains("swallow", System.StringComparison.OrdinalIgnoreCase) == true;
+            return skill?.IsSwallowSkill == true
+                   || (skill?.DummySkillParents?.Length > 0);
         }
     }
 }

@@ -65,6 +65,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         private readonly HashSet<int> _skillsWithoutCastSound = new();
         private readonly HashSet<int> _skillsWithoutRepeatSound = new();
         private WzImage _skillSoundImage;
+        private WzImage _skillStringImage;
 
         public SkillLoader(WzFile skillWz, GraphicsDevice device, TexturePool texturePool)
         {
@@ -212,6 +213,8 @@ namespace HaCreator.MapSimulator.Character.Skills
                 Job = jobId
             };
 
+            LoadSkillStrings(skill);
+
             // Parse basic info
             ParseSkillInfo(skill, skillNode);
 
@@ -226,6 +229,21 @@ namespace HaCreator.MapSimulator.Character.Skills
             LoadSkillIcon(skill, skillNode);
 
             return skill;
+        }
+
+        private void LoadSkillStrings(SkillData skill)
+        {
+            if (skill == null)
+                return;
+
+            _skillStringImage ??= Program.FindImage("String", "Skill.img");
+
+            WzImageProperty stringNode = _skillStringImage?[skill.SkillId.ToString()];
+            if (stringNode == null)
+                return;
+
+            skill.Name = GetString(stringNode, "name");
+            skill.Description = GetString(stringNode, "desc");
         }
 
         private void ParseSkillInfo(SkillData skill, WzImageProperty skillNode)
@@ -252,6 +270,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 skill.MinionAbility = GetString(infoNode, "minionAbility");
                 skill.MinionAttack = GetString(infoNode, "minionAttack");
                 skill.ClientInfoType = GetInt(infoNode, "type");
+                skill.ClientDelayMs = GetInt(infoNode, "delay");
                 string condition = GetString(infoNode, "condition");
                 skill.SummonCondition = condition;
                 skill.TriggerCondition = condition;
@@ -644,6 +663,8 @@ namespace HaCreator.MapSimulator.Character.Skills
             {
                 skill.Effect = LoadSkillAnimation(effectNode, "effect");
             }
+
+            skill.EffectSecondary = LoadOptionalSkillAnimation(skillNode, "effect0", loop: false);
 
             // Load hit effect
             var hitNode = skillNode["hit"];
@@ -1746,6 +1767,7 @@ namespace HaCreator.MapSimulator.Character.Skills
 
             levelData.BulletCount = GetInt(node, "bulletCount", 1, level);
             levelData.BulletSpeed = GetInt(node, "bulletSpeed", 0, level);
+            levelData.ProjectileSpawnDelaysMs = ParseProjectileSpawnDelays(node, level);
 
             levelData.Mastery = GetInt(node, "mastery", 0, level);
             levelData.CriticalRate = GetInt(node, "cr", 0, level);
@@ -1794,6 +1816,24 @@ namespace HaCreator.MapSimulator.Character.Skills
                 levelData.RequiredSkillLevel = requiredSkillLevel;
                 break;
             }
+        }
+
+        private static List<int> ParseProjectileSpawnDelays(WzImageProperty node, int level)
+        {
+            var delays = new List<int>();
+            if (node == null)
+                return delays;
+
+            for (int index = 0; ; index++)
+            {
+                string propertyName = index == 0 ? "ballDelay" : $"ballDelay{index}";
+                if (node[propertyName] == null)
+                    break;
+
+                delays.Add(Math.Max(0, GetInt(node, propertyName, 0, level)));
+            }
+
+            return delays;
         }
 
         private static void ParseFinalAttackTriggers(SkillData skill, WzImageProperty skillNode)

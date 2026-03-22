@@ -10,6 +10,7 @@ using HaSharedLibrary.Wz;
 using MapleLib.WzLib;
 using MapleLib.WzLib.WzProperties;
 using MapleLib.WzLib.WzStructure.Data;
+using MapleLib.WzLib.WzStructure.Data.QuestStructure;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 
@@ -79,6 +80,20 @@ namespace HaCreator.MapSimulator.Pools
         public ReactorType ReactorType { get; set; } = ReactorType.UNKNOWN;
         public int ActivatingPlayerId { get; set; }
         public bool CanRespawn { get; set; } = true;
+        public int? RequiredItemId { get; set; }
+        public int? RequiredQuestId { get; set; }
+        public QuestStateType? RequiredQuestState { get; set; }
+        public string ScriptName { get; set; }
+    }
+
+    internal sealed class ReactorInteractionMetadata
+    {
+        public ReactorType ReactorType { get; init; } = ReactorType.UNKNOWN;
+        public ReactorActivationType ActivationType { get; init; } = ReactorActivationType.Touch;
+        public int? RequiredItemId { get; init; }
+        public int? RequiredQuestId { get; init; }
+        public QuestStateType? RequiredQuestState { get; init; }
+        public string ScriptName { get; init; }
     }
 
     /// <summary>
@@ -105,6 +120,7 @@ namespace HaCreator.MapSimulator.Pools
         private int _nextPoolId = 1;
         private int _lastUpdateTick = 0;
         private bool _respawnEnabled = true;
+        private Func<int, QuestStateType> _questStateProvider;
 
         // Callbacks
         private Action<ReactorItem, int> _onReactorActivated;
@@ -160,6 +176,7 @@ namespace HaCreator.MapSimulator.Pools
 
                 int poolId = _nextPoolId++;
                 var instance = reactor.ReactorInstance;
+                ReactorInteractionMetadata interactionMetadata = ResolveInteractionMetadata(instance);
 
                 // Create runtime data
                 var data = new ReactorRuntimeData
@@ -172,9 +189,13 @@ namespace HaCreator.MapSimulator.Pools
                     HitCount = 0,
                     RequiredHits = 1, // Default, could be loaded from reactor info
                     Alpha = 1f,
-                    ReactorType = ResolveReactorType(instance),
-                    ActivationType = ResolveActivationType(instance),
-                    CanRespawn = true
+                    ReactorType = interactionMetadata.ReactorType,
+                    ActivationType = interactionMetadata.ActivationType,
+                    CanRespawn = true,
+                    RequiredItemId = interactionMetadata.RequiredItemId,
+                    RequiredQuestId = interactionMetadata.RequiredQuestId,
+                    RequiredQuestState = interactionMetadata.RequiredQuestState,
+                    ScriptName = interactionMetadata.ScriptName
                 };
                 _reactorData[i] = data;
 
@@ -212,6 +233,11 @@ namespace HaCreator.MapSimulator.Pools
         public void SetReactorFactory(Func<ReactorSpawnPoint, GraphicsDevice, ReactorItem> factory)
         {
             _reactorFactory = factory;
+        }
+
+        public void SetQuestStateProvider(Func<int, QuestStateType> questStateProvider)
+        {
+            _questStateProvider = questStateProvider;
         }
 
         public void Clear()
@@ -333,6 +359,9 @@ namespace HaCreator.MapSimulator.Pools
                 if (data.ActivationType != ReactorActivationType.Touch)
                     continue;
 
+                if (!MeetsQuestRequirement(data))
+                    continue;
+
                 // Get reactor hitbox
                 var instance = reactor.ReactorInstance;
                 int reactorWidth = instance.Width;
@@ -395,6 +424,9 @@ namespace HaCreator.MapSimulator.Pools
                     data.ActivationType != ReactorActivationType.Hit)
                     continue;
 
+                if (!MeetsQuestRequirement(data))
+                    continue;
+
                 var instance = reactor.ReactorInstance;
                 float dx = instance.X - skillX;
                 float dy = instance.Y - skillY;
@@ -437,6 +469,9 @@ namespace HaCreator.MapSimulator.Pools
                 {
                     continue;
                 }
+
+                if (!MeetsQuestRequirement(data))
+                    continue;
 
                 if (!IsAttackDirectionValid(data.ReactorType, attackBounds, reactor.ReactorInstance))
                     continue;
@@ -530,6 +565,48 @@ namespace HaCreator.MapSimulator.Pools
 
             return triggeredReactors;
         }
+
+        public List<(ReactorItem reactor, int index)> FindItemReactors(int itemId)
+        {
+            var results = new List<(ReactorItem reactor, int index)>();
+
+            if (_reactors == null || itemId <= 0)
+                return results;
+
+            for (int i = 0; i < _reactors.Length; i++)
+            {
+                ReactorItem reactor = _reactors[i];
+                if (reactor?.ReactorInstance == null)
+                    continue;
+
+                ReactorRuntimeData data = GetReactorData(i);
+                if (data == null
+                    || data.State != ReactorState.Idle
+                    || data.ActivationType != ReactorActivationType.Item
+                    || !MatchesRequiredItem(data, itemId)
+                    || !MeetsQuestRequirement(data))
+                {
+                    continue;
+                }
+
+                results.Add((reactor, i));
+            }
+
+            return results;
+        }
+
+        public List<ReactorItem> TriggerItemReactors(int itemId, int playerId, int currentTick)
+        {
+            var triggeredReactors = new List<ReactorItem>();
+
+            foreach (var (reactor, index) in FindItemReactors(itemId))
+            {
+                ActivateReactor(index, playerId, currentTick, ReactorActivationType.Item);
+                triggeredReactors.Add(reactor);
+            }
+
+            return triggeredReactors;
+        }
         #endregion
 
         #region Reactor State Management
@@ -564,7 +641,7 @@ namespace HaCreator.MapSimulator.Pools
             // Invoke appropriate callback
             if (activationType == ReactorActivationType.Touch)
                 _onReactorTouched?.Invoke(reactor, playerId);
-            else
+            else if (activationType == ReactorActivationType.Hit || activationType == ReactorActivationType.Skill)
                 _onReactorHit?.Invoke(reactor, playerId);
 
             _onReactorActivated?.Invoke(reactor, playerId);
@@ -668,6 +745,123 @@ namespace HaCreator.MapSimulator.Pools
             data.VisualState = reactor?.GetInitialState() ?? 0;
             data.HitCount = 0;
             data.Alpha = 1f;
+        }
+
+        public void RefreshQuestReactors(int currentTick)
+        {
+            if (_questStateProvider == null || _reactors == null)
+                return;
+
+            foreach (var kvp in _reactorData)
+            {
+                int index = kvp.Key;
+                ReactorRuntimeData data = kvp.Value;
+                if (data?.RequiredQuestId is not int)
+                    continue;
+
+                bool matchesQuest = MeetsQuestRequirement(data);
+                if (data.ActivationType == ReactorActivationType.Quest)
+                {
+                    if (matchesQuest)
+                    {
+                        if (data.State == ReactorState.Idle)
+                        {
+                            ActivateReactor(index, playerId: 0, currentTick, ReactorActivationType.Quest);
+                        }
+                    }
+                    else if (data.State == ReactorState.Active || data.State == ReactorState.Activated)
+                    {
+                        ResetReactor(index, currentTick);
+                    }
+                }
+            }
+        }
+
+        private ReactorInteractionMetadata ResolveInteractionMetadata(ReactorInstance instance)
+        {
+            ReactorInfo reactorInfo = instance?.BaseInfo as ReactorInfo;
+            WzSubProperty infoProperty = reactorInfo?.LinkedWzImage?["info"] as WzSubProperty;
+
+            int? requiredItemId = TryGetOptionalInt(infoProperty?["itemID"])
+                ?? TryGetOptionalInt(infoProperty?["itemid"]);
+            int? requiredQuestId = TryGetOptionalInt(infoProperty?["quest"])
+                ?? TryGetOptionalInt(infoProperty?["reqQuest"]);
+            QuestStateType? requiredQuestState = TryGetOptionalQuestState(infoProperty?["state"])
+                ?? TryGetOptionalQuestState(infoProperty?["questState"]);
+            string scriptName = TryGetOptionalString(infoProperty?["script"]);
+            ReactorType reactorType = TryGetOptionalReactorType(infoProperty?["reactorType"])
+                ?? TryGetOptionalReactorType(infoProperty?["type"])
+                ?? ReactorType.UNKNOWN;
+
+            ReactorActivationType activationType = requiredItemId.HasValue
+                ? ReactorActivationType.Item
+                : requiredQuestId.HasValue
+                    ? ReactorActivationType.Quest
+                    : ReactorActivationType.Touch;
+
+            return new ReactorInteractionMetadata
+            {
+                ReactorType = reactorType,
+                ActivationType = activationType,
+                RequiredItemId = requiredItemId,
+                RequiredQuestId = requiredQuestId,
+                RequiredQuestState = requiredQuestState,
+                ScriptName = scriptName
+            };
+        }
+
+        private bool MeetsQuestRequirement(ReactorRuntimeData data)
+        {
+            if (data?.RequiredQuestId is not int questId)
+            {
+                return true;
+            }
+
+            if (_questStateProvider == null)
+            {
+                return false;
+            }
+
+            QuestStateType currentState = _questStateProvider(questId);
+            return !data.RequiredQuestState.HasValue || currentState == data.RequiredQuestState.Value;
+        }
+
+        private static bool MatchesRequiredItem(ReactorRuntimeData data, int itemId)
+        {
+            return data?.RequiredItemId is not int requiredItemId || requiredItemId == itemId;
+        }
+
+        private static int? TryGetOptionalInt(WzImageProperty property)
+        {
+            return property switch
+            {
+                WzIntProperty intProperty => intProperty.Value,
+                WzShortProperty shortProperty => shortProperty.Value,
+                WzLongProperty longProperty => (int)longProperty.Value,
+                WzStringProperty stringProperty when int.TryParse(stringProperty.Value, out int value) => value,
+                _ => null
+            };
+        }
+
+        private static string TryGetOptionalString(WzImageProperty property)
+        {
+            return (property as WzStringProperty)?.Value;
+        }
+
+        private static QuestStateType? TryGetOptionalQuestState(WzImageProperty property)
+        {
+            int? value = TryGetOptionalInt(property);
+            return value.HasValue && Enum.IsDefined(typeof(QuestStateType), value.Value)
+                ? (QuestStateType)value.Value
+                : null;
+        }
+
+        private static ReactorType? TryGetOptionalReactorType(WzImageProperty property)
+        {
+            int? value = TryGetOptionalInt(property);
+            return value.HasValue && Enum.IsDefined(typeof(ReactorType), value.Value)
+                ? (ReactorType)value.Value
+                : null;
         }
         #endregion
 

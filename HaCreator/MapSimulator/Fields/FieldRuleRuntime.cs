@@ -58,6 +58,7 @@ namespace HaCreator.MapSimulator.Fields
             _allowedItems.Count > 0 ||
             _levelLimit.HasValue ||
             FieldInteractionRestrictionEvaluator.GetJumpRestrictionMessage(_fieldLimit) != null ||
+            FieldInteractionRestrictionEvaluator.GetTeleportItemRestrictionMessage(_fieldLimit) != null ||
             FieldInteractionRestrictionEvaluator.GetTransferRestrictionMessage(_fieldLimit) != null ||
             FieldSkillRestrictionEvaluator.HasFieldEntryNotice(_fieldLimit) ||
             _moveLimit.HasValue ||
@@ -191,6 +192,12 @@ namespace HaCreator.MapSimulator.Fields
             if (_allowedItems.Count > 0)
             {
                 messages.Add($"Allowed-item rule active ({_allowedItems.Count} item(s)): {FormatItemPreview(_allowedItems)}.");
+            }
+
+            string teleportItemRestrictionNotice = FieldInteractionRestrictionEvaluator.GetTeleportItemRestrictionMessage(_fieldLimit);
+            if (!string.IsNullOrWhiteSpace(teleportItemRestrictionNotice))
+            {
+                messages.Add(teleportItemRestrictionNotice);
             }
 
             string transferRestrictionNotice = FieldInteractionRestrictionEvaluator.GetTransferRestrictionMessage(_fieldLimit);

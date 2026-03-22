@@ -70,6 +70,7 @@ namespace HaCreator.MapSimulator.UI
         private readonly bool _isBigBang;
         private readonly IDXObject _defaultFrame;
         private readonly Dictionary<UserInfoPage, UIObject> _pageButtons = new Dictionary<UserInfoPage, UIObject>();
+        private readonly List<UIObject> _petTabButtons = new List<UIObject>();
         private readonly List<UIObject> _primaryButtons = new List<UIObject>();
         private readonly Dictionary<UserInfoPage, PageVisual> _pageVisuals = new Dictionary<UserInfoPage, PageVisual>();
         private readonly List<string> _petExceptionEntries = new List<string> { "Meso Bag", "Throwing Star" };
@@ -97,6 +98,7 @@ namespace HaCreator.MapSimulator.UI
         private AuxiliaryPopupVisual _wishPopupVisual;
         private UIObject _wishPresentButton;
         private AuxiliaryPopupKind _activePopup;
+        private int _selectedPetTabIndex;
         private int _selectedItemPopupIndex;
         private int _selectedWishIndex;
         private bool _petExceptionBlocksMeso = true;
@@ -252,6 +254,44 @@ namespace HaCreator.MapSimulator.UI
             UpdateButtonStates();
         }
 
+        public void InitializePetTabButtons(IEnumerable<UIObject> petTabButtons)
+        {
+            _petTabButtons.Clear();
+            if (petTabButtons == null)
+            {
+                return;
+            }
+
+            int tabIndex = 0;
+            foreach (UIObject button in petTabButtons)
+            {
+                if (button == null)
+                {
+                    tabIndex++;
+                    continue;
+                }
+
+                int capturedIndex = tabIndex;
+                _petTabButtons.Add(button);
+                AddButton(button);
+                button.ButtonClickReleased += _ =>
+                {
+                    IReadOnlyList<PetRuntime> pets = _petController?.ActivePets;
+                    if (pets == null || capturedIndex >= pets.Count)
+                    {
+                        return;
+                    }
+
+                    _selectedPetTabIndex = capturedIndex;
+                    _statusMessage = $"Pet {capturedIndex + 1} tab selected.";
+                    UpdateButtonStates();
+                };
+                tabIndex++;
+            }
+
+            UpdateButtonStates();
+        }
+
         public void InitializeExceptionPopup(
             IDXObject frame,
             IEnumerable<(IDXObject layer, Point offset)> layers,
@@ -308,6 +348,8 @@ namespace HaCreator.MapSimulator.UI
 
         public override void Update(GameTime gameTime)
         {
+            ClampSelectedPetTabIndex();
+
             if (_currentPage != UserInfoPage.Character && !IsPageAvailable(_currentPage))
             {
                 _currentPage = UserInfoPage.Character;
@@ -526,21 +568,25 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
-            for (int i = 0; i < Math.Min(3, pets.Count); i++)
-            {
-                PetRuntime pet = pets[i];
-                int baseY = 48 + (i * 42);
-                DrawLayer(pet.Definition?.IconRaw ?? pet.Definition?.Icon,
-                    new Point(20, baseY),
-                    sprite,
-                    null,
-                    null,
-                    null);
-                DrawLabeledRow(sprite, baseY + 2, $"Pet {i + 1}", pet.Name, ValueColor, 120);
-                DrawLabeledRow(sprite, baseY + 16, "Level", $"Command Lv. {pet.CommandLevel}", MutedColor, 120);
-                DrawLabeledRow(sprite, baseY + 30, "Mode", $"{(pet.AutoLootEnabled ? "Auto-loot enabled" : "Auto-loot disabled")}  Balloon {pet.ChatBalloonStyle}",
-                    pet.AutoLootEnabled ? SuccessColor : WarningColor, 120);
-            }
+            PetRuntime pet = pets[Math.Clamp(_selectedPetTabIndex, 0, pets.Count - 1)];
+            DrawLayer(pet.Definition?.IconRaw ?? pet.Definition?.Icon,
+                new Point(20, 52),
+                sprite,
+                null,
+                null,
+                null);
+            DrawLabeledRow(sprite, 50, "Pet", pet.Name, ValueColor, 132);
+            DrawLabeledRow(sprite, 74, "Level", $"Command Lv. {pet.CommandLevel}", MutedColor, 132);
+            DrawLabeledRow(sprite, 98, "Loot", pet.AutoLootEnabled ? "Auto-loot enabled" : "Auto-loot disabled",
+                pet.AutoLootEnabled ? SuccessColor : WarningColor, 132);
+            DrawLabeledRow(sprite, 122, "Chat", $"Balloon {pet.ChatBalloonStyle}", MutedColor, 132);
+            DrawLabeledRow(sprite, 146, "Active", $"{Math.Min(3, pets.Count)} pet slot(s) populated", SecondaryColor, 132);
+            DrawPlainText(
+                sprite,
+                $"Viewing pet {_selectedPetTabIndex + 1} of {Math.Min(3, pets.Count)}.",
+                new Vector2(Position.X + 20, Position.Y + 174),
+                MutedColor,
+                0.56f);
         }
 
         private void DrawCollectPage(SpriteBatch sprite)
@@ -901,6 +947,21 @@ namespace HaCreator.MapSimulator.UI
                 _petExceptionButton.SetEnabled(showPetException && HasActivePets() && !_exceptionPopupOpen);
             }
 
+            IReadOnlyList<PetRuntime> pets = _petController?.ActivePets;
+            for (int i = 0; i < _petTabButtons.Count; i++)
+            {
+                UIObject button = _petTabButtons[i];
+                if (button == null)
+                {
+                    continue;
+                }
+
+                bool visible = _currentPage == UserInfoPage.Pet && pets != null && i < pets.Count;
+                button.ButtonVisible = visible;
+                button.SetEnabled(visible && !_exceptionPopupOpen);
+                button.SetButtonState(_selectedPetTabIndex == i ? UIObjectState.Pressed : UIObjectState.Normal);
+            }
+
             if (_collectSortButton != null)
             {
                 bool showCollectButtons = _currentPage == UserInfoPage.Collect;
@@ -1008,6 +1069,18 @@ namespace HaCreator.MapSimulator.UI
         private bool HasActivePets()
         {
             return _petController?.ActivePets?.Count > 0;
+        }
+
+        private void ClampSelectedPetTabIndex()
+        {
+            IReadOnlyList<PetRuntime> pets = _petController?.ActivePets;
+            if (pets == null || pets.Count == 0)
+            {
+                _selectedPetTabIndex = 0;
+                return;
+            }
+
+            _selectedPetTabIndex = Math.Clamp(_selectedPetTabIndex, 0, Math.Min(2, pets.Count - 1));
         }
 
         private bool IsPageAvailable(UserInfoPage page)
@@ -1202,7 +1275,18 @@ namespace HaCreator.MapSimulator.UI
             MouseState mouseState = Mouse.GetState();
             bool leftReleased = mouseState.LeftButton == ButtonState.Released &&
                                 _previousMouseState.LeftButton == ButtonState.Pressed;
-            if (!leftReleased || _currentPage != UserInfoPage.Character)
+            if (!leftReleased)
+            {
+                return;
+            }
+
+            if (_exceptionPopupOpen && _currentPage == UserInfoPage.Pet)
+            {
+                HandleExceptionPopupClick(mouseState.Position);
+                return;
+            }
+
+            if (_currentPage != UserInfoPage.Character)
             {
                 return;
             }
@@ -1215,6 +1299,22 @@ namespace HaCreator.MapSimulator.UI
                 case AuxiliaryPopupKind.Wish:
                     HandleWishPopupClick(mouseState.Position);
                     break;
+            }
+        }
+
+        private void HandleExceptionPopupClick(Point mousePosition)
+        {
+            for (int i = 0; i < Math.Min(3, _petExceptionEntries.Count); i++)
+            {
+                if (!GetExceptionPopupRowBounds(i).Contains(mousePosition))
+                {
+                    continue;
+                }
+
+                _selectedPetExceptionIndex = i;
+                _statusMessage = $"Selected pet exception entry {_petExceptionEntries[i]}.";
+                UpdateButtonStates();
+                return;
             }
         }
 
@@ -1301,6 +1401,12 @@ namespace HaCreator.MapSimulator.UI
         {
             Point popupPosition = GetAuxiliaryPopupPosition(_wishPopupVisual);
             return new Rectangle(popupPosition.X + 10, popupPosition.Y + 46 + (index * 20), 138, 18);
+        }
+
+        private Rectangle GetExceptionPopupRowBounds(int index)
+        {
+            Point popupPosition = GetExceptionPopupPosition();
+            return new Rectangle(popupPosition.X + 10, popupPosition.Y + 48 + (index * 18), 136, 16);
         }
 
         private static string GetItemPopupDescription(int index)

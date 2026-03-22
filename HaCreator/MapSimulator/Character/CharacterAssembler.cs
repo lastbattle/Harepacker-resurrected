@@ -114,6 +114,7 @@ namespace HaCreator.MapSimulator.Character
         private readonly CharacterBuild _build;
         private readonly Dictionary<string, AssembledFrame[]> _cachedAnimations = new();
         private string _faceExpressionName = "default";
+        private CharacterPart _overrideTamingMobPart;
 
         // Map point names for alignment
         private const string MAP_NAVEL = "navel";
@@ -140,6 +141,21 @@ namespace HaCreator.MapSimulator.Character
                 }
 
                 _faceExpressionName = normalized;
+                ClearCache();
+            }
+        }
+
+        public CharacterPart OverrideTamingMobPart
+        {
+            get => _overrideTamingMobPart;
+            set
+            {
+                if (ReferenceEquals(_overrideTamingMobPart, value))
+                {
+                    return;
+                }
+
+                _overrideTamingMobPart = value;
                 ClearCache();
             }
         }
@@ -423,6 +439,11 @@ namespace HaCreator.MapSimulator.Character
 
         private CharacterPart GetActiveTamingMobPart()
         {
+            if (_overrideTamingMobPart?.Slot == EquipSlot.TamingMob)
+            {
+                return _overrideTamingMobPart;
+            }
+
             return _build?.Equipment != null
                 && _build.Equipment.TryGetValue(EquipSlot.TamingMob, out CharacterPart tamingMobPart)
                 ? tamingMobPart

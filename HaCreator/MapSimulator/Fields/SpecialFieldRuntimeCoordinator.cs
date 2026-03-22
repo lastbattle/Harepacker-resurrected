@@ -151,6 +151,11 @@ namespace HaCreator.MapSimulator.Fields
             _specialEffects.SetWeddingPlayerState(localCharacterId, localWorldPosition);
         }
 
+        public void SetBattlefieldPlayerState(int? localCharacterId)
+        {
+            _specialEffects.SetBattlefieldPlayerState(localCharacterId);
+        }
+
         public void SetSnowBallPlayerState(Vector2? localWorldPosition)
         {
             _minigames.SetSnowBallPlayerState(localWorldPosition);

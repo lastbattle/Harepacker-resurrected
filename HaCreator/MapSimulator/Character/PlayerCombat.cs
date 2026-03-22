@@ -47,6 +47,7 @@ namespace HaCreator.MapSimulator.Character
         private int _lastHitTime;
         private readonly List<int> _recentlyHitMobs = new(); // Prevent multi-hit exploits
         private Func<int, bool> _damageBlockedEvaluator;
+        private float _additionalPlayerMissChance;
 
         // Callbacks
         public Action<DamageResult> OnDamageDealt;
@@ -61,6 +62,7 @@ namespace HaCreator.MapSimulator.Character
         /// Used to trigger the "affected" animation from MobSkill.img on the player.
         /// </summary>
         public Action<float, float, int, int> OnMobSkillHitPlayer;
+        public Action<int, int, int> OnMobSkillStatusApplied;
 
         /// <summary>
         /// Callback when player is hit by a mob's regular attack (attack1, attack2, etc.)
@@ -77,6 +79,11 @@ namespace HaCreator.MapSimulator.Character
         public void SetDamageBlockedEvaluator(Func<int, bool> damageBlockedEvaluator)
         {
             _damageBlockedEvaluator = damageBlockedEvaluator;
+        }
+
+        public void SetAdditionalPlayerMissChance(float additionalPlayerMissChance)
+        {
+            _additionalPlayerMissChance = Math.Clamp(additionalPlayerMissChance, 0f, 0.9f);
         }
 
         #region Player Attack
@@ -211,7 +218,7 @@ namespace HaCreator.MapSimulator.Character
 
         private bool ShouldPlayerAttackMiss(MobItem mob)
         {
-            float missChance = BASE_MISS_CHANCE;
+            float missChance = BASE_MISS_CHANCE + _additionalPlayerMissChance;
             MobAI mobAI = mob?.AI;
 
             if (mobAI != null)
@@ -385,6 +392,8 @@ namespace HaCreator.MapSimulator.Character
                 var currentSkill = skillOverride ?? mob.AI?.GetCurrentSkill();
                 if (currentSkill != null)
                 {
+                    OnMobSkillStatusApplied?.Invoke(currentSkill.SkillId, currentSkill.Level, currentTime);
+
                     // Trigger the "affected" animation from MobSkill.img on the player
                     // The animation plays at the player's position
                     OnMobSkillHitPlayer?.Invoke(_player.X, _player.Y, currentSkill.SkillId, currentSkill.Level);
@@ -393,6 +402,11 @@ namespace HaCreator.MapSimulator.Character
             }
             else
             {
+                if ((currentAttack?.DiseaseSkillId ?? 0) > 0)
+                {
+                    OnMobSkillStatusApplied?.Invoke(currentAttack.DiseaseSkillId, currentAttack.DiseaseLevel, currentTime);
+                }
+
                 // Trigger regular attack hit effect (from attack/info/hit in mob data)
                 // Reuse currentAttack from above (already retrieved at line 266)
                 if (currentAttack != null)
@@ -439,7 +453,7 @@ namespace HaCreator.MapSimulator.Character
                 hitChance -= Math.Min(0.85f, darknessPenalty / 100f);
             }
 
-            int playerAvoidability = Math.Max(0, _player.Build?.Avoidability ?? 0);
+            int playerAvoidability = Math.Max(0, _player.Build?.TotalAvoidability ?? _player.Build?.Avoidability ?? 0);
             hitChance -= Math.Min(0.45f, playerAvoidability / 400f);
 
             return Math.Clamp(hitChance, 0.05f, 0.99f);

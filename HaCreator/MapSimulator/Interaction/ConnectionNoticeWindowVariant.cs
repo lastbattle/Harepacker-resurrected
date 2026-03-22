@@ -3,6 +3,8 @@ namespace HaCreator.MapSimulator
     public enum ConnectionNoticeWindowVariant
     {
         Notice = 0,
-        Loading = 1,
+        NoticeCog = 1,
+        Loading = 2,
+        LoadingSingleGauge = 3,
     }
 }

@@ -112,7 +112,32 @@ namespace HaCreator.MapSimulator.Managers
             try
             {
                 var reader = new PacketReader(data);
+                return TryDecode(reader, out look, out error);
+            }
+            catch (EndOfStreamException)
+            {
+                error = "AvatarLook payload ended before decoding completed.";
+                return false;
+            }
+            catch (IOException)
+            {
+                error = "AvatarLook payload could not be read.";
+                return false;
+            }
+        }
 
+        public static bool TryDecode(PacketReader reader, out LoginAvatarLook look, out string error)
+        {
+            look = null;
+            error = string.Empty;
+            if (reader == null)
+            {
+                error = "AvatarLook reader is missing.";
+                return false;
+            }
+
+            try
+            {
                 CharacterGender gender = ReadGender(reader.ReadByte());
                 SkinColor skin = ReadSkin(reader.ReadByte());
                 int faceId = reader.ReadInt();
@@ -169,7 +194,8 @@ namespace HaCreator.MapSimulator.Managers
                 13 => EquipSlot.Ring2,
                 15 => EquipSlot.Ring3,
                 16 => EquipSlot.Ring4,
-                17 or 59 => EquipSlot.Pendant,
+                17 => EquipSlot.Pendant,
+                59 => EquipSlot.Pendant2,
                 18 => EquipSlot.TamingMob,
                 19 => EquipSlot.Saddle,
                 49 => EquipSlot.Medal,
@@ -299,7 +325,7 @@ namespace HaCreator.MapSimulator.Managers
                     EquipSlot.Ring4 => 16,
                     _ => 0
                 },
-                112 => 17,
+                112 => slot == EquipSlot.Pendant2 ? (byte)59 : (byte)17,
                 113 => 50,
                 114 => 49,
                 190 => 18,
