@@ -62,9 +62,13 @@ namespace HaCreator.MapSimulator.Fields
                 return;
             }
 
-            if (TryExtractTagState(property, out string tag, out bool state))
+            if (TryExtractTagStates(property, out IReadOnlyList<string> tags, out bool state))
             {
-                states[tag] = state;
+                for (int i = 0; i < tags.Count; i++)
+                {
+                    states[tags[i]] = state;
+                }
+
                 return;
             }
 
@@ -79,9 +83,9 @@ namespace HaCreator.MapSimulator.Fields
             }
         }
 
-        private static bool TryExtractTagState(WzImageProperty property, out string tag, out bool state)
+        private static bool TryExtractTagStates(WzImageProperty property, out IReadOnlyList<string> tags, out bool state)
         {
-            tag = null;
+            tags = null;
             state = false;
             if (property == null)
             {
@@ -95,7 +99,12 @@ namespace HaCreator.MapSimulator.Fields
 
             if (!string.IsNullOrWhiteSpace(explicitTag))
             {
-                tag = explicitTag.Trim();
+                tags = ParseTags(explicitTag);
+                if (tags.Count == 0)
+                {
+                    return false;
+                }
+
                 state = explicitState ?? true;
                 return true;
             }
@@ -105,7 +114,12 @@ namespace HaCreator.MapSimulator.Fields
                 string indexedTag = ReadString(property);
                 if (!string.IsNullOrWhiteSpace(indexedTag))
                 {
-                    tag = indexedTag.Trim();
+                    tags = ParseTags(indexedTag);
+                    if (tags.Count == 0)
+                    {
+                        return false;
+                    }
+
                     state = explicitState ?? true;
                     return true;
                 }
@@ -119,9 +133,20 @@ namespace HaCreator.MapSimulator.Fields
                 return false;
             }
 
-            tag = property.Name.Trim();
+            tags = new[] { property.Name.Trim() };
             state = stateFromName.Value;
             return true;
+        }
+
+        private static string[] ParseTags(string tags)
+        {
+            if (string.IsNullOrWhiteSpace(tags))
+            {
+                return Array.Empty<string>();
+            }
+
+            return tags
+                .Split(new[] { ',', ';' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
         }
 
         private static bool? ReadExplicitState(WzImageProperty property)

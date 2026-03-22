@@ -101,6 +101,8 @@ namespace HaRepacker.GUI.Panels
 			// build -> obj -> copy it over to HaRepacker-resurrected [Content]
 			font = Content.Load<SpriteFont>("XnaDefaultFont");
 			font_DebugValues = Content.Load<SpriteFont>("XnaFont_Debug");
+			font.DefaultCharacter = '?';
+			font_DebugValues.DefaultCharacter = '?';
 
 			base.Initialize();
 		}

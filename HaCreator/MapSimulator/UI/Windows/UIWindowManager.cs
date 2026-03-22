@@ -48,10 +48,10 @@ namespace HaCreator.MapSimulator.UI
             //{ Keys.N, MapSimulatorWindowNames.MemoMailbox }, // Simulator shortcut until a dedicated memo launcher is wired
             //{ Keys.B, MapSimulatorWindowNames.GuildBbs }, // Simulator shortcut until guild-board launch parity is wired
             //{ Keys.M, MapSimulatorWindowNames.ItemMaker }, // Simulator shortcut until inventory/NPC launch parity is wired
-            //{ Keys.T, MapSimulatorWindowNames.TradingRoom }, // Simulator shortcut until room launch parity is wired
-            //{ Keys.P, MapSimulatorWindowNames.PersonalShop }, // Simulator shortcut until room launch parity is wired
-            //{ Keys.H, MapSimulatorWindowNames.EntrustedShop }, // Simulator shortcut until room launch parity is wired
-            //{ Keys.O, MapSimulatorWindowNames.MiniRoom }, // Simulator shortcut until room launch parity is wired
+            { Keys.T, MapSimulatorWindowNames.TradingRoom },
+            { Keys.P, MapSimulatorWindowNames.PersonalShop },
+            { Keys.H, MapSimulatorWindowNames.EntrustedShop },
+            { Keys.O, MapSimulatorWindowNames.MiniRoom },
             //{ Keys.Y, MapSimulatorWindowNames.Trunk }, // Fallback shortcut in addition to storage-keeper NPC access
             //{ Keys.U, MapSimulatorWindowNames.ItemUpgrade }, // Simulator shortcut until inventory/NPC launch parity is wired
             //{ Keys.V, MapSimulatorWindowNames.MapleTv }, // Simulator shortcut until MapleTV launch parity is wired
@@ -357,8 +357,8 @@ namespace HaCreator.MapSimulator.UI
             }
             _previousKeyState = keyState;
 
-            // Update each visible window
-            foreach (var window in windows)
+            // Windows can change z-order or visibility during Update, so iterate a stable snapshot.
+            foreach (var window in windows.ToArray())
             {
                 if (window.IsVisible)
                 {
@@ -604,6 +604,12 @@ namespace HaCreator.MapSimulator.UI
             {
                 if (leftJustReleased)
                 {
+                    if (TryHandleInventoryDropToEquipment(inventoryWindow, mouseState.X, mouseState.Y))
+                    {
+                        inventoryWindow.CancelInventoryDrag();
+                        return true;
+                    }
+
                     inventoryWindow.OnInventoryMouseUp(mouseState.X, mouseState.Y);
                 }
 
@@ -629,6 +635,40 @@ namespace HaCreator.MapSimulator.UI
             }
 
             return mouseState.LeftButton == ButtonState.Pressed;
+        }
+
+        private bool TryHandleInventoryDropToEquipment(InventoryUI inventoryWindow, int mouseX, int mouseY)
+        {
+            if (inventoryWindow?.DraggedSlotData == null)
+            {
+                return false;
+            }
+
+            if (EquipWindow is not EquipUIBigBang equipWindow
+                || !equipWindow.IsVisible
+                || !equipWindow.TryHandleInventoryDrop(mouseX, mouseY, inventoryWindow.DraggedSlotData, out IReadOnlyList<InventorySlotData> displacedSlots))
+            {
+                return false;
+            }
+
+            if (!inventoryWindow.TryRemoveSlotAt(inventoryWindow.DraggedInventoryType, inventoryWindow.DraggedSlotIndex, out _))
+            {
+                return false;
+            }
+
+            if (displacedSlots != null)
+            {
+                for (int i = 0; i < displacedSlots.Count; i++)
+                {
+                    InventorySlotData displacedSlot = displacedSlots[i];
+                    if (displacedSlot != null)
+                    {
+                        inventoryWindow.AddItem(MapleLib.WzLib.WzStructure.Data.ItemStructure.InventoryType.EQUIP, displacedSlot);
+                    }
+                }
+            }
+
+            return true;
         }
 
         private bool HandleEquipmentInteraction(MouseState mouseState, bool leftJustPressed, bool leftJustReleased)

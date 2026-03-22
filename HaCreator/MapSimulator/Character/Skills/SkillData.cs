@@ -317,9 +317,13 @@ namespace HaCreator.MapSimulator.Character.Skills
         public IDXObject IconMouseOver { get; set; }
         public SkillAnimation Effect { get; set; }           // Effect on caster
         public SkillAnimation PrepareEffect { get; set; }    // Startup effect for prepare/keydown skills
+        public SkillAnimation PrepareSecondaryEffect { get; set; } // Secondary startup branch (e.g. prepare0) drawn alongside PrepareEffect
         public SkillAnimation KeydownEffect { get; set; }    // Looping effect while keydown skill is held
+        public SkillAnimation KeydownSecondaryEffect { get; set; } // Secondary hold branch (e.g. keydown0) drawn alongside KeydownEffect
         public SkillAnimation RepeatEffect { get; set; }     // Dedicated repeated hold-loop effect for charge/keydown skills
+        public SkillAnimation RepeatSecondaryEffect { get; set; } // Secondary repeated hold-loop branch (e.g. repeat0)
         public SkillAnimation KeydownEndEffect { get; set; } // Exit effect when keydown skill ends
+        public SkillAnimation KeydownEndSecondaryEffect { get; set; } // Secondary exit branch (e.g. keydownend0)
         public SkillAnimation HitEffect { get; set; }        // Effect on target
         public SkillAnimation AffectedEffect { get; set; }   // Effect while buff active
         public SkillAnimation SummonSpawnAnimation { get; set; } // Initial summon spawn sequence
@@ -334,7 +338,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         public int SummonMoveAbility { get; set; }
         public SummonMovementStyle SummonMovementStyle { get; set; } = SummonMovementStyle.Stationary;
         public float SummonSpawnDistanceX { get; set; } = 50f;
-        public int SummonAttackIntervalMs { get; set; } = 1000;
+        public int SummonAttackIntervalMs { get; set; }
         public int SummonAttackCountOverride { get; set; }
         public int SummonMobCountOverride { get; set; }
         public Point? SummonAttackCenterOffset { get; set; }
@@ -344,8 +348,14 @@ namespace HaCreator.MapSimulator.Character.Skills
         public int SummonAttackRangeTop { get; set; }
         public int SummonAttackRangeBottom { get; set; }
         public string MinionAbility { get; set; }
+        public string MinionAttack { get; set; }
         public string SummonCondition { get; set; }
+        public bool SelfDestructMinion { get; set; }
+        public string SummonSelfDestructionFormula { get; set; }
+        public string SummonSubTimeFormula { get; set; }
         public string TriggerCondition { get; set; }
+        public bool IsSwallowSkill { get; set; }
+        public int[] DummySkillParents { get; set; } = Array.Empty<int>();
         public ProjectileData Projectile { get; set; }       // Ball/projectile
         public string CastSoundKey { get; set; }             // Registered simulator sound key for cast SFX
         public string RepeatSoundKey { get; set; }           // Registered simulator sound key for repeated hits/shots
@@ -353,8 +363,11 @@ namespace HaCreator.MapSimulator.Character.Skills
         public bool IsMassSpell { get; set; }
         public string DebuffMessageToken { get; set; }
         public SkillAnimation ZoneAnimation { get; set; }
+        public int ClientInfoType { get; set; }
+        public bool IsPassiveSkillData { get; set; }
         public int AffectedSkillId { get; set; }
         public string AffectedSkillEffect { get; set; }
+        public string DotType { get; set; }
         public bool IsMagicDamageSkill { get; set; }
 
         // Action
@@ -522,6 +535,214 @@ namespace HaCreator.MapSimulator.Character.Skills
             return facingRight
                 ? center
                 : new Point(-center.X, center.Y);
+        }
+
+        public int ResolveSummonAttackIntervalMs(int level)
+        {
+            if (SummonAttackIntervalMs > 0)
+            {
+                return SummonAttackIntervalMs;
+            }
+
+            if (TryEvaluateSkillFormula(SummonSubTimeFormula, level, out int subTimeSeconds) && subTimeSeconds > 0)
+            {
+                return subTimeSeconds * 1000;
+            }
+
+            return 1000;
+        }
+
+        public int ResolveSummonSelfDestructionDamagePercent(int level)
+        {
+            return TryEvaluateSkillFormula(SummonSelfDestructionFormula, level, out int damagePercent)
+                ? Math.Max(0, damagePercent)
+                : 0;
+        }
+
+        private static bool TryEvaluateSkillFormula(string expression, int xValue, out int value)
+        {
+            value = 0;
+            if (string.IsNullOrWhiteSpace(expression))
+            {
+                return false;
+            }
+
+            try
+            {
+                var parser = new SkillFormulaParser(expression, xValue);
+                double result = parser.Parse();
+                value = (int)Math.Round(result, MidpointRounding.AwayFromZero);
+                return true;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        private sealed class SkillFormulaParser
+        {
+            private readonly string _expression;
+            private readonly int _xValue;
+            private int _index;
+
+            public SkillFormulaParser(string expression, int xValue)
+            {
+                _expression = expression ?? string.Empty;
+                _xValue = xValue;
+            }
+
+            public double Parse()
+            {
+                double value = ParseExpression();
+                SkipWhitespace();
+                if (_index < _expression.Length)
+                    throw new FormatException($"Unexpected token '{_expression[_index]}' in '{_expression}'.");
+
+                return value;
+            }
+
+            private double ParseExpression()
+            {
+                double value = ParseTerm();
+                while (true)
+                {
+                    SkipWhitespace();
+                    if (Match('+'))
+                    {
+                        value += ParseTerm();
+                    }
+                    else if (Match('-'))
+                    {
+                        value -= ParseTerm();
+                    }
+                    else
+                    {
+                        return value;
+                    }
+                }
+            }
+
+            private double ParseTerm()
+            {
+                double value = ParseFactor();
+                while (true)
+                {
+                    SkipWhitespace();
+                    if (Match('*'))
+                    {
+                        value *= ParseFactor();
+                    }
+                    else if (Match('/'))
+                    {
+                        double divisor = ParseFactor();
+                        value = Math.Abs(divisor) < double.Epsilon ? 0 : value / divisor;
+                    }
+                    else
+                    {
+                        return value;
+                    }
+                }
+            }
+
+            private double ParseFactor()
+            {
+                SkipWhitespace();
+
+                if (Match('+'))
+                    return ParseFactor();
+
+                if (Match('-'))
+                    return -ParseFactor();
+
+                if (Match('('))
+                {
+                    double value = ParseExpression();
+                    Expect(')');
+                    return value;
+                }
+
+                if (TryParseIdentifier(out string identifier))
+                {
+                    if (string.Equals(identifier, "x", StringComparison.OrdinalIgnoreCase))
+                        return _xValue;
+
+                    if (identifier.Equals("u", StringComparison.OrdinalIgnoreCase) ||
+                        identifier.Equals("d", StringComparison.OrdinalIgnoreCase))
+                    {
+                        Expect('(');
+                        double inner = ParseExpression();
+                        Expect(')');
+                        return identifier.Equals("u", StringComparison.OrdinalIgnoreCase)
+                            ? Math.Ceiling(inner)
+                            : Math.Floor(inner);
+                    }
+
+                    throw new FormatException($"Unsupported identifier '{identifier}' in '{_expression}'.");
+                }
+
+                return ParseNumber();
+            }
+
+            private double ParseNumber()
+            {
+                SkipWhitespace();
+                int start = _index;
+                while (_index < _expression.Length
+                       && (char.IsDigit(_expression[_index]) || _expression[_index] == '.'))
+                {
+                    _index++;
+                }
+
+                if (start == _index)
+                    throw new FormatException($"Expected number at index {_index} in '{_expression}'.");
+
+                string token = _expression.Substring(start, _index - start);
+                return double.Parse(token, System.Globalization.CultureInfo.InvariantCulture);
+            }
+
+            private bool TryParseIdentifier(out string identifier)
+            {
+                SkipWhitespace();
+                int start = _index;
+                while (_index < _expression.Length && char.IsLetter(_expression[_index]))
+                {
+                    _index++;
+                }
+
+                if (start == _index)
+                {
+                    identifier = string.Empty;
+                    return false;
+                }
+
+                identifier = _expression.Substring(start, _index - start);
+                return true;
+            }
+
+            private bool Match(char expected)
+            {
+                SkipWhitespace();
+                if (_index >= _expression.Length || _expression[_index] != expected)
+                    return false;
+
+                _index++;
+                return true;
+            }
+
+            private void Expect(char expected)
+            {
+                if (!Match(expected))
+                    throw new FormatException($"Expected '{expected}' at index {_index} in '{_expression}'.");
+            }
+
+            private void SkipWhitespace()
+            {
+                while (_index < _expression.Length && char.IsWhiteSpace(_expression[_index]))
+                {
+                    _index++;
+                }
+            }
         }
     }
 
@@ -719,6 +940,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         public SkillData SkillData { get; set; }
         public SkillLevelData LevelData { get; set; }
         public SkillAnimation EffectAnimation { get; set; }
+        public SkillAnimation SecondaryEffectAnimation { get; set; }
         public bool SuppressEffectAnimation { get; set; }
 
         public int CastTime { get; set; }
@@ -799,10 +1021,15 @@ namespace HaCreator.MapSimulator.Character.Skills
         public SkillLevelData LevelData { get; set; }
         public bool FacingRight { get; set; }
         public bool ManualAssistEnabled { get; set; } = true;
+        public int NextSupportTime { get; set; }
+        public int PendingRemovalTime { get; set; } = int.MaxValue;
+
+        public bool IsPendingRemoval => PendingRemovalTime != int.MaxValue;
 
         public bool IsExpired(int currentTime)
         {
-            return Duration > 0 && currentTime - StartTime >= Duration;
+            return (Duration > 0 && currentTime - StartTime >= Duration)
+                || (IsPendingRemoval && currentTime >= PendingRemovalTime);
         }
     }
 

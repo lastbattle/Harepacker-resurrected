@@ -88,8 +88,6 @@ namespace HaCreator.MapSimulator.UI
         private const int ROW_HIT_TOP_OFFSET = -34;
         private const int ROW_HIT_BOTTOM_OFFSET = 0;
 
-        // Tab positioning (from WZ origin data)
-        private const int TAB_Y = 27;
         private const int SCROLLBAR_X = 153;
         private const int SCROLLBAR_Y = 93;
         private const int SCROLLBAR_WIDTH = 12;
@@ -130,7 +128,8 @@ namespace HaCreator.MapSimulator.UI
         // Tab textures (0=Beginner, 1-4=Job advancements)
         private Texture2D[] _tabEnabled = new Texture2D[5];
         private Texture2D[] _tabDisabled = new Texture2D[5];
-        private Rectangle[] _tabRects = new Rectangle[5];
+        private Rectangle[] _tabEnabledRects = new Rectangle[5];
+        private Rectangle[] _tabDisabledRects = new Rectangle[5];
         private readonly bool[] _tabVisible = new bool[5];
 
         // SP Up button textures
@@ -156,6 +155,8 @@ namespace HaCreator.MapSimulator.UI
 
         // Macro button
         private UIObject _btnMacro;
+        private UIObject _btnRide;
+        private UIObject _btnGuildSkill;
         private readonly UIObject[] _aranGuideButtons = new UIObject[4];
         private int _aranGuideUnlockedGrade;
 
@@ -163,6 +164,8 @@ namespace HaCreator.MapSimulator.UI
         /// Gets the macro button for external event wiring
         /// </summary>
         public UIObject MacroButton => _btnMacro;
+        public UIObject RideButton => _btnRide;
+        public UIObject GuildSkillButton => _btnGuildSkill;
 
         // Skills organized by job advancement level
         private readonly Dictionary<int, List<SkillDisplayData>> skillsByTab;
@@ -203,6 +206,8 @@ namespace HaCreator.MapSimulator.UI
         public Action<SkillDisplayData> OnSkillSelected { get; set; }
         public Func<SkillDisplayData, bool> OnSkillLevelUpRequested { get; set; }
         public Action<int> OnSkillGuideRequested { get; set; }
+        public Action OnRideRequested { get; set; }
+        public Action OnGuildSkillRequested { get; set; }
         public bool IsDraggingSkill => _isDraggingSkill;
         public int DraggedSkillId => _isDraggingSkill ? _dragSkillId : 0;
         public Vector2 DragPosition => _dragPosition;
@@ -298,7 +303,8 @@ namespace HaCreator.MapSimulator.UI
             // Initialize tab rectangles (positions relative to window)
             for (int i = 0; i < 5; i++)
             {
-                _tabRects[i] = new Rectangle(10 + (i * 31), TAB_Y, 30, 20);
+                _tabEnabledRects[i] = CreateDefaultTabRect(i, enabled: true);
+                _tabDisabledRects[i] = CreateDefaultTabRect(i, enabled: false);
                 _tabVisible[i] = true;
             }
 
@@ -400,6 +406,21 @@ namespace HaCreator.MapSimulator.UI
             }
         }
 
+        public void SetTabLayout(Rectangle[] enabledRects, Rectangle[] disabledRects)
+        {
+            if (enabledRects != null)
+            {
+                for (int i = 0; i < Math.Min(5, enabledRects.Length); i++)
+                    _tabEnabledRects[i] = enabledRects[i];
+            }
+
+            if (disabledRects != null)
+            {
+                for (int i = 0; i < Math.Min(5, disabledRects.Length); i++)
+                    _tabDisabledRects[i] = disabledRects[i];
+            }
+        }
+
         public void SetScrollBarTextures(
             Texture2D prevNormal,
             Texture2D prevPressed,
@@ -468,6 +489,32 @@ namespace HaCreator.MapSimulator.UI
             {
                 AddButton(btnMacro);
             }
+        }
+
+        public void InitializeRideButton(UIObject btnRide)
+        {
+            _btnRide = btnRide;
+            if (btnRide == null)
+                return;
+
+            btnRide.ButtonClickReleased += sender => OnRideRequested?.Invoke();
+            AddButton(btnRide);
+        }
+
+        public void InitializeGuildSkillButton(UIObject btnGuildSkill)
+        {
+            _btnGuildSkill = btnGuildSkill;
+            if (btnGuildSkill == null)
+                return;
+
+            btnGuildSkill.ButtonClickReleased += sender => OnGuildSkillRequested?.Invoke();
+            AddButton(btnGuildSkill);
+        }
+
+        public void ConfigureShortcutButtons(bool canOpenRide, bool canOpenGuildSkill)
+        {
+            _btnRide?.SetEnabled(canOpenRide);
+            _btnGuildSkill?.SetEnabled(canOpenGuildSkill);
         }
 
         public void InitializeAranGuideButtons(UIObject[] buttons)
@@ -1439,12 +1486,20 @@ namespace HaCreator.MapSimulator.UI
         private Rectangle GetTabBounds(int windowX, int windowY, int tabIndex)
         {
             Texture2D tabTexture = (tabIndex == _currentTab) ? _tabEnabled[tabIndex] : _tabDisabled[tabIndex];
-            Rectangle tabRect = _tabRects[tabIndex];
+            Rectangle tabRect = tabIndex == _currentTab ? _tabEnabledRects[tabIndex] : _tabDisabledRects[tabIndex];
             return new Rectangle(
                 windowX + tabRect.X,
                 windowY + tabRect.Y,
                 tabTexture?.Width ?? tabRect.Width,
                 tabTexture?.Height ?? tabRect.Height);
+        }
+
+        private static Rectangle CreateDefaultTabRect(int tabIndex, bool enabled)
+        {
+            int x = 10 + (tabIndex * 31);
+            int y = enabled ? 27 : 29;
+            int height = enabled ? 20 : 18;
+            return new Rectangle(x, y, 30, height);
         }
 
         private void ApplyCurrentTab(int tabIndex)

@@ -161,7 +161,7 @@ namespace HaCreator.MapSimulator.Character
             };
 
             // Check for miss
-            if (_random.NextDouble() < BASE_MISS_CHANCE)
+            if (ShouldPlayerAttackMiss(mob))
             {
                 result.IsMiss = true;
                 result.Damage = 0;
@@ -169,8 +169,8 @@ namespace HaCreator.MapSimulator.Character
             }
 
             // Base damage calculation
-            int baseAttack = _player.Build.Attack;
-            var weapon = _player.Build.GetWeapon();
+            int baseAttack = _player.Build?.Attack ?? 10;
+            var weapon = _player.Build?.GetWeapon();
             if (weapon != null)
             {
                 baseAttack += weapon.Attack;
@@ -207,6 +207,22 @@ namespace HaCreator.MapSimulator.Character
             {
                 mob.MovementInfo.ApplyKnockback(MOB_HIT_KNOCKBACK_FORCE, result.KnockbackDirection > 0);
             }
+        }
+
+        private bool ShouldPlayerAttackMiss(MobItem mob)
+        {
+            float missChance = BASE_MISS_CHANCE;
+            MobAI mobAI = mob?.AI;
+
+            if (mobAI != null)
+            {
+                missChance += Math.Clamp(mobAI.GetStatusEffectValue(MobStatusEffect.EVA) / 100f, -0.2f, 0.3f);
+            }
+
+            int playerAccuracy = Math.Max(0, _player.Build?.TotalAccuracy ?? _player.Build?.Accuracy ?? 0);
+            missChance -= Math.Min(0.2f, playerAccuracy / 1000f);
+
+            return _random.NextDouble() < Math.Clamp(missChance, 0.01f, 0.65f);
         }
 
         #endregion
@@ -561,7 +577,7 @@ namespace HaCreator.MapSimulator.Character
         /// </summary>
         public int GetAttackRange()
         {
-            var weapon = _player.Build.GetWeapon();
+            var weapon = _player.Build?.GetWeapon();
             return weapon?.Range ?? 50;
         }
 
@@ -570,8 +586,8 @@ namespace HaCreator.MapSimulator.Character
         /// </summary>
         public float CalculateDPS()
         {
-            int baseAttack = _player.Build.Attack;
-            var weapon = _player.Build.GetWeapon();
+            int baseAttack = _player.Build?.Attack ?? 10;
+            var weapon = _player.Build?.GetWeapon();
             if (weapon != null)
             {
                 baseAttack += weapon.Attack;

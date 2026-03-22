@@ -7,16 +7,43 @@ namespace HaCreator.MapSimulator.Managers
 {
     public sealed class LoginCharacterRosterEntry
     {
-        public LoginCharacterRosterEntry(CharacterBuild build, int fieldMapId, bool canDelete = true)
+        public LoginCharacterRosterEntry(
+            CharacterBuild build,
+            int fieldMapId,
+            string fieldDisplayName,
+            bool canDelete = true,
+            int? previousWorldRank = null,
+            int? previousJobRank = null,
+            byte[] avatarLookPacket = null)
         {
             Build = build ?? throw new ArgumentNullException(nameof(build));
             FieldMapId = fieldMapId;
+            FieldDisplayName = fieldDisplayName ?? string.Empty;
             CanDelete = canDelete;
+            PreviousWorldRank = previousWorldRank;
+            PreviousJobRank = previousJobRank;
+            AvatarLookPacket = avatarLookPacket != null ? (byte[])avatarLookPacket.Clone() : null;
         }
 
         public CharacterBuild Build { get; }
         public int FieldMapId { get; }
+        public string FieldDisplayName { get; }
         public bool CanDelete { get; }
+        public int? PreviousWorldRank { get; }
+        public int? PreviousJobRank { get; }
+        public byte[] AvatarLookPacket { get; }
+
+        public CharacterBuild CreateRuntimeBuild(CharacterLoader loader)
+        {
+            if (loader != null &&
+                AvatarLookPacket?.Length > 0 &&
+                LoginAvatarLookCodec.TryDecode(AvatarLookPacket, out LoginAvatarLook avatarLook, out _))
+            {
+                return loader.LoadFromAvatarLook(avatarLook, Build);
+            }
+
+            return Build.Clone();
+        }
     }
 
     /// <summary>

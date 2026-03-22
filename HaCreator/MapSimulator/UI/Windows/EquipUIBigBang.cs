@@ -9,7 +9,9 @@ using Microsoft.Xna.Framework.Input;
 using Spine;
 using System;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.Globalization;
+using MapleLib.WzLib.WzStructure.Data.ItemStructure;
 using CharacterBuild = HaCreator.MapSimulator.Character.CharacterBuild;
 using CharacterEquipSlot = HaCreator.MapSimulator.Character.EquipSlot;
 using CharacterPart = HaCreator.MapSimulator.Character.CharacterPart;
@@ -511,6 +513,62 @@ namespace HaCreator.MapSimulator.UI
         public bool HandlesEquipmentInteractionPoint(int mouseX, int mouseY)
         {
             return _currentTab == TAB_CHARACTER && GetSlotAtPosition(mouseX, mouseY).HasValue;
+        }
+
+        public bool TryHandleInventoryDrop(int mouseX, int mouseY, InventorySlotData draggedSlotData, out IReadOnlyList<InventorySlotData> displacedSlots)
+        {
+            displacedSlots = Array.Empty<InventorySlotData>();
+            if (draggedSlotData == null
+                || draggedSlotData.IsDisabled
+                || InventoryItemMetadataResolver.ResolveInventoryType(draggedSlotData.ItemId) != InventoryType.EQUIP)
+            {
+                return false;
+            }
+
+            switch (_currentTab)
+            {
+                case TAB_DRAGON:
+                {
+                    DragonEquipSlot? targetSlot = GetDragonSlotAtPosition(mouseX, mouseY);
+                    if (!targetSlot.HasValue
+                        || _dragonEquipmentController == null
+                        || !_dragonEquipmentController.TryEquipItem(targetSlot.Value, draggedSlotData.ItemId, out IReadOnlyList<CompanionEquipItem> displacedItems))
+                    {
+                        return false;
+                    }
+
+                    displacedSlots = CreateInventorySlots(displacedItems);
+                    return true;
+                }
+                case TAB_MECHANIC:
+                {
+                    MechanicEquipSlot? targetSlot = GetMechanicSlotAtPosition(mouseX, mouseY);
+                    if (!targetSlot.HasValue
+                        || _mechanicEquipmentController == null
+                        || !_mechanicEquipmentController.TryEquipItem(targetSlot.Value, draggedSlotData.ItemId, out IReadOnlyList<CompanionEquipItem> displacedItems))
+                    {
+                        return false;
+                    }
+
+                    displacedSlots = CreateInventorySlots(displacedItems);
+                    return true;
+                }
+                case TAB_ANDROID:
+                {
+                    AndroidEquipSlot? targetSlot = GetAndroidSlotAtPosition(mouseX, mouseY);
+                    if (!targetSlot.HasValue
+                        || _androidEquipmentController == null
+                        || !_androidEquipmentController.TryEquipItem(targetSlot.Value, draggedSlotData.ItemId, out IReadOnlyList<CompanionEquipItem> displacedItems, out _))
+                    {
+                        return false;
+                    }
+
+                    displacedSlots = CreateInventorySlots(displacedItems);
+                    return true;
+                }
+                default:
+                    return false;
+            }
         }
 
         public void OnEquipmentMouseDown(int mouseX, int mouseY)
@@ -1333,6 +1391,21 @@ namespace HaCreator.MapSimulator.UI
 
         private DragonEquipSlot? GetHoveredDragonSlot(int mouseX, int mouseY)
         {
+            return GetDragonSlotAtPosition(mouseX, mouseY);
+        }
+
+        private AndroidEquipSlot? GetHoveredAndroidSlot(int mouseX, int mouseY)
+        {
+            return GetAndroidSlotAtPosition(mouseX, mouseY);
+        }
+
+        private MechanicEquipSlot? GetHoveredMechanicSlot(int mouseX, int mouseY)
+        {
+            return GetMechanicSlotAtPosition(mouseX, mouseY);
+        }
+
+        private DragonEquipSlot? GetDragonSlotAtPosition(int mouseX, int mouseY)
+        {
             if (_currentTab != TAB_DRAGON || !_companionLayouts.TryGetValue(TAB_DRAGON, out CompanionPaneLayout layout))
             {
                 return null;
@@ -1341,11 +1414,6 @@ namespace HaCreator.MapSimulator.UI
             Point panePosition = GetCompanionPanePosition(layout, Position.X, Position.Y);
             foreach ((DragonEquipSlot slot, Point slotPosition) in _dragonSlotPositions)
             {
-                if (_dragonEquipmentController == null || !_dragonEquipmentController.TryGetItem(slot, out _))
-                {
-                    continue;
-                }
-
                 Rectangle slotRect = new Rectangle(
                     panePosition.X + slotPosition.X,
                     panePosition.Y + slotPosition.Y,
@@ -1360,7 +1428,7 @@ namespace HaCreator.MapSimulator.UI
             return null;
         }
 
-        private AndroidEquipSlot? GetHoveredAndroidSlot(int mouseX, int mouseY)
+        private AndroidEquipSlot? GetAndroidSlotAtPosition(int mouseX, int mouseY)
         {
             if (_currentTab != TAB_ANDROID || !_companionLayouts.TryGetValue(TAB_ANDROID, out CompanionPaneLayout layout))
             {
@@ -1370,11 +1438,6 @@ namespace HaCreator.MapSimulator.UI
             Point panePosition = GetCompanionPanePosition(layout, Position.X, Position.Y);
             foreach ((AndroidEquipSlot slot, Point slotPosition) in _androidSlotPositions)
             {
-                if (_androidEquipmentController == null || !_androidEquipmentController.TryGetItem(slot, out _))
-                {
-                    continue;
-                }
-
                 Rectangle slotRect = new Rectangle(
                     panePosition.X + slotPosition.X,
                     panePosition.Y + slotPosition.Y,
@@ -1389,7 +1452,7 @@ namespace HaCreator.MapSimulator.UI
             return null;
         }
 
-        private MechanicEquipSlot? GetHoveredMechanicSlot(int mouseX, int mouseY)
+        private MechanicEquipSlot? GetMechanicSlotAtPosition(int mouseX, int mouseY)
         {
             if (_currentTab != TAB_MECHANIC || !_companionLayouts.TryGetValue(TAB_MECHANIC, out CompanionPaneLayout layout))
             {
@@ -1399,11 +1462,6 @@ namespace HaCreator.MapSimulator.UI
             Point panePosition = GetCompanionPanePosition(layout, Position.X, Position.Y);
             foreach ((MechanicEquipSlot slot, Point slotPosition) in _mechanicSlotPositions)
             {
-                if (_mechanicEquipmentController == null || !_mechanicEquipmentController.TryGetItem(slot, out _))
-                {
-                    continue;
-                }
-
                 Rectangle slotRect = new Rectangle(
                     panePosition.X + slotPosition.X,
                     panePosition.Y + slotPosition.Y,
@@ -1593,6 +1651,40 @@ namespace HaCreator.MapSimulator.UI
                 MechanicEquipSlot.Leg => "Leg",
                 _ => slot.ToString()
             };
+        }
+
+        private static IReadOnlyList<InventorySlotData> CreateInventorySlots(IReadOnlyList<CompanionEquipItem> items)
+        {
+            if (items == null || items.Count == 0)
+            {
+                return Array.Empty<InventorySlotData>();
+            }
+
+            List<InventorySlotData> slots = new(items.Count);
+            for (int i = 0; i < items.Count; i++)
+            {
+                CompanionEquipItem item = items[i];
+                if (item == null)
+                {
+                    continue;
+                }
+
+                slots.Add(new InventorySlotData
+                {
+                    ItemId = item.ItemId,
+                    ItemTexture = item.ItemTexture,
+                    Quantity = 1,
+                    MaxStackSize = 1,
+                    GradeFrameIndex = 0,
+                    ItemName = item.Name,
+                    ItemTypeName = "Equip",
+                    Description = BuildCompanionEquipmentDescription(item)
+                });
+            }
+
+            return slots.Count == 0
+                ? Array.Empty<InventorySlotData>()
+                : new ReadOnlyCollection<InventorySlotData>(slots);
         }
 
         private int ResolveTooltipWidth()

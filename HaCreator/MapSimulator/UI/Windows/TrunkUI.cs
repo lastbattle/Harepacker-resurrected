@@ -68,6 +68,7 @@ namespace HaCreator.MapSimulator.UI
         private readonly UIObject _depositMesoButton;
 
         private InventoryUI _inventory;
+        private IStorageRuntime _storageRuntime;
         private SpriteFont _font;
         private UIObject _tabEquip;
         private UIObject _tabUse;
@@ -142,6 +143,7 @@ namespace HaCreator.MapSimulator.UI
         {
             base.Show();
             CancelMesoEntry();
+            UpdateAccessStatusMessage();
             _previousScrollWheelValue = Mouse.GetState().ScrollWheelValue;
             _previousKeyboardState = Keyboard.GetState();
         }
@@ -174,9 +176,39 @@ namespace HaCreator.MapSimulator.UI
             UpdateButtonStates();
         }
 
+        public void SetStorageRuntime(IStorageRuntime storageRuntime)
+        {
+            if (ReferenceEquals(_storageRuntime, storageRuntime))
+            {
+                return;
+            }
+
+            _storageRuntime = storageRuntime;
+            SyncLocalStorageIntoRuntime();
+            ClampSelection();
+            UpdateAccessStatusMessage();
+            UpdateButtonStates();
+        }
+
+        public void ConfigureStorageAccess(string accountLabel, string currentCharacterName, IEnumerable<string> sharedCharacterNames)
+        {
+            _storageRuntime?.ConfigureAccess(accountLabel, currentCharacterName, sharedCharacterNames);
+            ClampSelection();
+            UpdateAccessStatusMessage();
+            UpdateButtonStates();
+        }
+
         public void SetStorageMeso(long meso)
         {
-            _storageMeso = Math.Max(0, meso);
+            if (_storageRuntime != null)
+            {
+                _storageRuntime.SetMeso(meso);
+            }
+            else
+            {
+                _storageMeso = Math.Max(0, meso);
+            }
+
             UpdateButtonStates();
         }
 
@@ -187,13 +219,29 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
-            _storageSlotLimits[type] = Math.Max(MaxVisibleRows, slotLimit);
+            if (_storageRuntime != null)
+            {
+                _storageRuntime.SetSlotLimit(slotLimit);
+            }
+            else
+            {
+                _storageSlotLimits[type] = Math.Max(MaxVisibleRows, slotLimit);
+            }
+
             ClampSelection();
             UpdateButtonStates();
         }
 
         public void AddStoredItem(InventoryType type, InventorySlotData slotData)
         {
+            if (_storageRuntime != null)
+            {
+                _storageRuntime.AddItem(type, slotData);
+                ClampSelection();
+                UpdateButtonStates();
+                return;
+            }
+
             if (type == InventoryType.NONE || slotData == null || !_storageItems.TryGetValue(type, out List<InventorySlotData> rows))
             {
                 return;
@@ -415,6 +463,13 @@ namespace HaCreator.MapSimulator.UI
         {
             InventoryType inventoryType = GetInventoryTypeFromTab(_currentTab);
             IReadOnlyList<InventorySlotData> storageRows = GetStorageRows(inventoryType);
+            if (!HasStorageAccess())
+            {
+                _statusMessage = BuildAccessDeniedMessage();
+                UpdateButtonStates();
+                return;
+            }
+
             if (_inventory == null ||
                 _storageSelectedIndex < 0 ||
                 _storageSelectedIndex >= storageRows.Count)
@@ -425,7 +480,7 @@ namespace HaCreator.MapSimulator.UI
             }
 
             InventorySlotData selected = storageRows[_storageSelectedIndex];
-            if (selected == null || !_inventory.CanAcceptItem(inventoryType, selected.ItemId, Math.Max(1, selected.Quantity)))
+            if (selected == null || !_inventory.CanAcceptItem(inventoryType, selected.ItemId, Math.Max(1, selected.Quantity), selected.MaxStackSize))
             {
                 _statusMessage = "Inventory cannot accept the selected item.";
                 UpdateButtonStates();
@@ -450,6 +505,13 @@ namespace HaCreator.MapSimulator.UI
         {
             InventoryType inventoryType = GetInventoryTypeFromTab(_currentTab);
             IReadOnlyList<InventorySlotData> inventoryRows = _inventory?.GetSlots(inventoryType) ?? Array.Empty<InventorySlotData>();
+            if (!HasStorageAccess())
+            {
+                _statusMessage = BuildAccessDeniedMessage();
+                UpdateButtonStates();
+                return;
+            }
+
             if (_inventory == null ||
                 _inventorySelectedIndex < 0 ||
                 _inventorySelectedIndex >= inventoryRows.Count)
@@ -483,7 +545,18 @@ namespace HaCreator.MapSimulator.UI
         private void SortCurrentTab()
         {
             InventoryType inventoryType = GetInventoryTypeFromTab(_currentTab);
-            if (_storageItems.TryGetValue(inventoryType, out List<InventorySlotData> storageRows))
+            if (!HasStorageAccess())
+            {
+                _statusMessage = BuildAccessDeniedMessage();
+                UpdateButtonStates();
+                return;
+            }
+
+            if (_storageRuntime != null)
+            {
+                _storageRuntime.SortSlots(inventoryType);
+            }
+            else if (_storageItems.TryGetValue(inventoryType, out List<InventorySlotData> storageRows))
             {
                 storageRows.Sort(CompareSlots);
             }
@@ -496,8 +569,16 @@ namespace HaCreator.MapSimulator.UI
 
         private void BeginMesoEntry(MesoEntryMode mode)
         {
+            if (!HasStorageAccess())
+            {
+                _statusMessage = BuildAccessDeniedMessage();
+                CancelMesoEntry();
+                UpdateButtonStates();
+                return;
+            }
+
             long maxValue = mode == MesoEntryMode.Withdraw
-                ? _storageMeso
+                ? GetStorageMesoCount()
                 : _inventory?.GetMesoCount() ?? 0;
             if (_inventory == null || maxValue <= 0)
             {
@@ -531,14 +612,14 @@ namespace HaCreator.MapSimulator.UI
             if (_mesoEntryMode == MesoEntryMode.Withdraw)
             {
                 _inventory.AddMeso(amount);
-                _storageMeso -= amount;
+                SetStorageMeso(GetStorageMesoCount() - amount);
                 _statusMessage = $"Withdrew {amount.ToString("N0", CultureInfo.InvariantCulture)} meso.";
             }
             else
             {
                 if (_inventory.TryConsumeMeso(amount))
                 {
-                    _storageMeso += amount;
+                    SetStorageMeso(GetStorageMesoCount() + amount);
                     _statusMessage = $"Deposited {amount.ToString("N0", CultureInfo.InvariantCulture)} meso.";
                 }
                 else
@@ -558,25 +639,32 @@ namespace HaCreator.MapSimulator.UI
             InventoryType inventoryType = GetInventoryTypeFromTab(_currentTab);
             IReadOnlyList<InventorySlotData> storageRows = GetStorageRows(inventoryType);
             IReadOnlyList<InventorySlotData> inventoryRows = _inventory?.GetSlots(inventoryType) ?? Array.Empty<InventorySlotData>();
+            bool hasStorageAccess = HasStorageAccess();
 
             _withdrawButton?.SetEnabled(
+                hasStorageAccess &&
                 _inventory != null &&
                 _storageSelectedIndex >= 0 &&
                 _storageSelectedIndex < storageRows.Count &&
                 storageRows[_storageSelectedIndex] != null &&
-                _inventory.CanAcceptItem(inventoryType, storageRows[_storageSelectedIndex].ItemId, Math.Max(1, storageRows[_storageSelectedIndex].Quantity)));
+                _inventory.CanAcceptItem(
+                    inventoryType,
+                    storageRows[_storageSelectedIndex].ItemId,
+                    Math.Max(1, storageRows[_storageSelectedIndex].Quantity),
+                    storageRows[_storageSelectedIndex].MaxStackSize));
 
             _depositButton?.SetEnabled(
+                hasStorageAccess &&
                 _inventory != null &&
                 _inventorySelectedIndex >= 0 &&
                 _inventorySelectedIndex < inventoryRows.Count &&
                 inventoryRows[_inventorySelectedIndex] != null &&
                 CanAcceptStorageItem(inventoryType, inventoryRows[_inventorySelectedIndex]));
 
-            _sortButton?.SetEnabled(storageRows.Count > 1 || inventoryRows.Count > 1);
+            _sortButton?.SetEnabled(hasStorageAccess && (storageRows.Count > 1 || inventoryRows.Count > 1));
             bool mesoEntryActive = _mesoEntryMode != MesoEntryMode.None;
-            _withdrawMesoButton?.SetEnabled(!mesoEntryActive && _inventory != null && _storageMeso > 0);
-            _depositMesoButton?.SetEnabled(!mesoEntryActive && _inventory != null && _inventory.GetMesoCount() > 0);
+            _withdrawMesoButton?.SetEnabled(!mesoEntryActive && hasStorageAccess && _inventory != null && GetStorageMesoCount() > 0);
+            _depositMesoButton?.SetEnabled(!mesoEntryActive && hasStorageAccess && _inventory != null && _inventory.GetMesoCount() > 0);
 
             for (int row = 0; row < MaxVisibleRows; row++)
             {
@@ -671,7 +759,7 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
-            DrawMoneyValue(sprite, _storageMeso, MoneyStorageRightX);
+            DrawMoneyValue(sprite, GetStorageMesoCount(), MoneyStorageRightX);
             DrawMoneyValue(sprite, _inventory?.GetMesoCount() ?? 0, MoneyInventoryRightX);
         }
 
@@ -754,6 +842,11 @@ namespace HaCreator.MapSimulator.UI
 
         private IReadOnlyList<InventorySlotData> GetStorageRows(InventoryType type)
         {
+            if (_storageRuntime != null)
+            {
+                return _storageRuntime.GetSlots(type);
+            }
+
             return _storageItems.TryGetValue(type, out List<InventorySlotData> rows)
                 ? rows
                 : Array.Empty<InventorySlotData>();
@@ -761,6 +854,13 @@ namespace HaCreator.MapSimulator.UI
 
         private InventorySlotData RemoveStorageSlot(InventoryType type, int slotIndex)
         {
+            if (_storageRuntime != null)
+            {
+                return _storageRuntime.TryRemoveSlotAt(type, slotIndex, out InventorySlotData removedFromRuntime)
+                    ? removedFromRuntime
+                    : null;
+            }
+
             if (!_storageItems.TryGetValue(type, out List<InventorySlotData> rows) ||
                 slotIndex < 0 ||
                 slotIndex >= rows.Count)
@@ -775,6 +875,11 @@ namespace HaCreator.MapSimulator.UI
 
         private int GetStorageSlotLimit(InventoryType type)
         {
+            if (_storageRuntime != null)
+            {
+                return Math.Max(MaxVisibleRows, _storageRuntime.GetSlotLimit());
+            }
+
             return _storageSlotLimits.TryGetValue(type, out int value)
                 ? Math.Max(MaxVisibleRows, value)
                 : MaxVisibleRows;
@@ -782,7 +887,8 @@ namespace HaCreator.MapSimulator.UI
 
         private bool CanAcceptStorageItem(InventoryType type, InventorySlotData slotData)
         {
-            if (slotData == null || !_storageItems.TryGetValue(type, out List<InventorySlotData> rows))
+            IReadOnlyList<InventorySlotData> rows = GetStorageRows(type);
+            if (slotData == null || type == InventoryType.NONE)
             {
                 return false;
             }
@@ -1040,6 +1146,120 @@ namespace HaCreator.MapSimulator.UI
         private bool IsPressed(KeyboardState keyboardState, Keys key)
         {
             return keyboardState.IsKeyDown(key) && _previousKeyboardState.IsKeyUp(key);
+        }
+
+        private long GetStorageMesoCount()
+        {
+            return _storageRuntime?.GetMesoCount() ?? _storageMeso;
+        }
+
+        private bool HasStorageAccess()
+        {
+            return _storageRuntime?.CanCurrentCharacterAccess ?? true;
+        }
+
+        private void SyncLocalStorageIntoRuntime()
+        {
+            if (_storageRuntime == null)
+            {
+                return;
+            }
+
+            bool hasLocalItems = false;
+            foreach (List<InventorySlotData> rows in _storageItems.Values)
+            {
+                if (rows.Count > 0)
+                {
+                    hasLocalItems = true;
+                    break;
+                }
+            }
+
+            bool hasNonDefaultSlotLimit = false;
+            foreach (int value in _storageSlotLimits.Values)
+            {
+                if (value != 24)
+                {
+                    hasNonDefaultSlotLimit = true;
+                    break;
+                }
+            }
+
+            if (!hasLocalItems && _storageMeso <= 0 && !hasNonDefaultSlotLimit)
+            {
+                return;
+            }
+
+            int slotLimit = MaxVisibleRows;
+            foreach (int value in _storageSlotLimits.Values)
+            {
+                slotLimit = Math.Max(slotLimit, value);
+            }
+
+            _storageRuntime.SetSlotLimit(slotLimit);
+            _storageRuntime.SetMeso(_storageMeso);
+            foreach ((InventoryType type, List<InventorySlotData> rows) in _storageItems)
+            {
+                foreach (InventorySlotData row in rows)
+                {
+                    _storageRuntime.AddItem(type, row);
+                }
+
+                rows.Clear();
+            }
+
+            _storageMeso = 0;
+        }
+
+        private void UpdateAccessStatusMessage()
+        {
+            if (_mesoEntryMode != MesoEntryMode.None)
+            {
+                return;
+            }
+
+            if (!HasStorageAccess())
+            {
+                _statusMessage = BuildAccessDeniedMessage();
+                return;
+            }
+
+            if (_storageRuntime == null)
+            {
+                if (string.IsNullOrWhiteSpace(_statusMessage))
+                {
+                    _statusMessage = "Select an item to deposit or withdraw.";
+                }
+
+                return;
+            }
+
+            string accountLabel = string.IsNullOrWhiteSpace(_storageRuntime.AccountLabel)
+                ? "storage"
+                : _storageRuntime.AccountLabel;
+            string currentCharacterName = string.IsNullOrWhiteSpace(_storageRuntime.CurrentCharacterName)
+                ? "current character"
+                : _storageRuntime.CurrentCharacterName;
+            int sharedCount = _storageRuntime.SharedCharacterNames?.Count ?? 0;
+            _statusMessage = sharedCount > 0
+                ? $"{currentCharacterName} is using {accountLabel}. Shared roster: {sharedCount} character(s)."
+                : $"{currentCharacterName} is using {accountLabel}.";
+        }
+
+        private string BuildAccessDeniedMessage()
+        {
+            if (_storageRuntime == null)
+            {
+                return "Storage access is unavailable.";
+            }
+
+            string accountLabel = string.IsNullOrWhiteSpace(_storageRuntime.AccountLabel)
+                ? "this storage"
+                : _storageRuntime.AccountLabel;
+            string currentCharacterName = string.IsNullOrWhiteSpace(_storageRuntime.CurrentCharacterName)
+                ? "This character"
+                : _storageRuntime.CurrentCharacterName;
+            return $"{currentCharacterName} is not authorized to access {accountLabel}.";
         }
 
         private static char? KeyToDigit(Keys key)

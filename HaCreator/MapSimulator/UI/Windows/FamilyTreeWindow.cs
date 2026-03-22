@@ -1,0 +1,342 @@
+using HaCreator.MapSimulator.Interaction;
+using HaSharedLibrary.Render;
+using HaSharedLibrary.Render.DX;
+using Microsoft.Xna.Framework;
+using Microsoft.Xna.Framework.Graphics;
+using Microsoft.Xna.Framework.Input;
+using Spine;
+using System;
+using System.Collections.Generic;
+using System.Linq;
+
+namespace HaCreator.MapSimulator.UI
+{
+    internal sealed class FamilyTreeWindow : UIWindowBase
+    {
+        private static readonly Point[] SlotPositions =
+        {
+            new(224, 42),
+            new(224, 93),
+            new(157, 143),
+            new(191, 193),
+            new(334, 193),
+            new(49, 250),
+            new(288, 250),
+            new(18, 304),
+            new(168, 304),
+            new(299, 304),
+            new(447, 304)
+        };
+
+        private readonly IDXObject _selectedOverlay;
+        private readonly Point _selectedOverlayOffset;
+        private readonly IDXObject _leaderOnlinePlate;
+        private readonly IDXObject _leaderOfflinePlate;
+        private readonly IDXObject _memberOnlinePlate;
+        private readonly IDXObject _memberOfflinePlate;
+        private readonly Texture2D _pixel;
+        private readonly Dictionary<int, Rectangle> _nodeBounds = new();
+
+        private Func<FamilyTreeSnapshot> _snapshotProvider;
+        private Action<int> _selectSlotHandler;
+        private Func<string> _addJuniorHandler;
+        private Func<string> _removeSelectedHandler;
+        private Action<int> _pageMoveHandler;
+        private Action<string> _feedbackHandler;
+        private UIObject _juniorButton;
+        private UIObject _byeButton;
+        private UIObject _leftButton;
+        private UIObject _rightButton;
+        private SpriteFont _font;
+        private MouseState _previousMouseState;
+
+        public FamilyTreeWindow(
+            IDXObject frame,
+            IDXObject selectedOverlay,
+            Point selectedOverlayOffset,
+            IDXObject leaderOnlinePlate,
+            IDXObject leaderOfflinePlate,
+            IDXObject memberOnlinePlate,
+            IDXObject memberOfflinePlate,
+            GraphicsDevice device)
+            : base(frame)
+        {
+            _selectedOverlay = selectedOverlay;
+            _selectedOverlayOffset = selectedOverlayOffset;
+            _leaderOnlinePlate = leaderOnlinePlate;
+            _leaderOfflinePlate = leaderOfflinePlate ?? leaderOnlinePlate;
+            _memberOnlinePlate = memberOnlinePlate;
+            _memberOfflinePlate = memberOfflinePlate ?? memberOnlinePlate;
+            _pixel = new Texture2D(device ?? throw new ArgumentNullException(nameof(device)), 1, 1);
+            _pixel.SetData(new[] { Color.White });
+        }
+
+        public override string WindowName => MapSimulatorWindowNames.FamilyTree;
+
+        internal void SetSnapshotProvider(Func<FamilyTreeSnapshot> snapshotProvider)
+        {
+            _snapshotProvider = snapshotProvider;
+            UpdateButtonStates(GetSnapshot());
+        }
+
+        internal void SetActionHandlers(
+            Action<int> selectSlotHandler,
+            Func<string> addJuniorHandler,
+            Func<string> removeSelectedHandler,
+            Action<int> pageMoveHandler,
+            Action<string> feedbackHandler)
+        {
+            _selectSlotHandler = selectSlotHandler;
+            _addJuniorHandler = addJuniorHandler;
+            _removeSelectedHandler = removeSelectedHandler;
+            _pageMoveHandler = pageMoveHandler;
+            _feedbackHandler = feedbackHandler;
+        }
+
+        internal void InitializeButtons(
+            UIObject closeButton,
+            UIObject juniorButton,
+            UIObject byeButton,
+            UIObject leftButton,
+            UIObject rightButton)
+        {
+            _juniorButton = juniorButton;
+            _byeButton = byeButton;
+            _leftButton = leftButton;
+            _rightButton = rightButton;
+
+            if (closeButton != null)
+            {
+                InitializeCloseButton(closeButton);
+            }
+
+            ConfigureButton(_juniorButton, () => ShowFeedback(_addJuniorHandler?.Invoke()));
+            ConfigureButton(_byeButton, () => ShowFeedback(_removeSelectedHandler?.Invoke()));
+            ConfigureButton(_leftButton, () => _pageMoveHandler?.Invoke(-1));
+            ConfigureButton(_rightButton, () => _pageMoveHandler?.Invoke(1));
+        }
+
+        public override void SetFont(SpriteFont font)
+        {
+            _font = font;
+        }
+
+        public override void Update(GameTime gameTime)
+        {
+            base.Update(gameTime);
+            FamilyTreeSnapshot snapshot = GetSnapshot();
+            UpdateButtonStates(snapshot);
+
+            MouseState mouseState = Mouse.GetState();
+            bool leftReleased = mouseState.LeftButton == ButtonState.Released
+                && _previousMouseState.LeftButton == ButtonState.Pressed;
+            if (leftReleased && ContainsPoint(mouseState.X, mouseState.Y))
+            {
+                HandleNodeSelection(mouseState.Position);
+            }
+
+            _previousMouseState = mouseState;
+        }
+
+        protected override void DrawContents(
+            SpriteBatch sprite,
+            SkeletonMeshRenderer skeletonMeshRenderer,
+            GameTime gameTime,
+            int mapShiftX,
+            int mapShiftY,
+            int centerX,
+            int centerY,
+            ReflectionDrawableBoundary drawReflectionInfo,
+            RenderParameters renderParameters,
+            int TickCount)
+        {
+            if (_font == null)
+            {
+                return;
+            }
+
+            FamilyTreeSnapshot snapshot = GetSnapshot();
+            DrawHeader(sprite, snapshot);
+            DrawNodes(sprite, skeletonMeshRenderer, gameTime, drawReflectionInfo, snapshot);
+            DrawFooter(sprite, snapshot);
+        }
+
+        private void ConfigureButton(UIObject button, Action action)
+        {
+            if (button == null)
+            {
+                return;
+            }
+
+            AddButton(button);
+            button.ButtonClickReleased += _ => action?.Invoke();
+        }
+
+        private FamilyTreeSnapshot GetSnapshot()
+        {
+            return _snapshotProvider?.Invoke() ?? new FamilyTreeSnapshot();
+        }
+
+        private void UpdateButtonStates(FamilyTreeSnapshot snapshot)
+        {
+            _juniorButton?.SetEnabled(snapshot.CanAddJunior);
+            _byeButton?.SetEnabled(snapshot.CanRemoveSelected);
+            _leftButton?.SetEnabled(snapshot.CanPageBackward);
+            _rightButton?.SetEnabled(snapshot.CanPageForward);
+        }
+
+        private void DrawHeader(SpriteBatch sprite, FamilyTreeSnapshot snapshot)
+        {
+            DrawText(sprite, snapshot.TotalMembers.ToString(), 26, 40, new Color(81, 58, 30), 0.55f);
+            DrawText(sprite, snapshot.FocusName, 222, 11, new Color(101, 79, 45), 0.48f);
+            DrawText(sprite, $"{snapshot.Page}/{snapshot.TotalPages}", 504, 363, new Color(184, 170, 145), 0.36f);
+        }
+
+        private void DrawNodes(
+            SpriteBatch sprite,
+            SkeletonMeshRenderer skeletonMeshRenderer,
+            GameTime gameTime,
+            ReflectionDrawableBoundary drawReflectionInfo,
+            FamilyTreeSnapshot snapshot)
+        {
+            _nodeBounds.Clear();
+
+            foreach (FamilyTreeNodeSnapshot node in snapshot.Nodes)
+            {
+                Point position = SlotPositions[node.SlotIndex];
+                IDXObject plate = ResolvePlate(node);
+
+                if (node.MemberId == 0 || plate == null)
+                {
+                    DrawPlaceholderNode(sprite, node, position);
+                    continue;
+                }
+
+                if (node.IsSelected)
+                {
+                    _selectedOverlay?.DrawBackground(
+                        sprite,
+                        skeletonMeshRenderer,
+                        gameTime,
+                        Position.X + position.X + _selectedOverlayOffset.X,
+                        Position.Y + position.Y + _selectedOverlayOffset.Y,
+                        Color.White,
+                        false,
+                        drawReflectionInfo);
+                }
+
+                plate.DrawBackground(
+                    sprite,
+                    skeletonMeshRenderer,
+                    gameTime,
+                    Position.X + position.X,
+                    Position.Y + position.Y,
+                    Color.White,
+                    false,
+                    drawReflectionInfo);
+
+                Rectangle bounds = new(Position.X + position.X, Position.Y + position.Y, plate.Width, plate.Height);
+                _nodeBounds[node.SlotIndex] = bounds;
+                DrawNodeText(sprite, node, bounds);
+            }
+        }
+
+        private IDXObject ResolvePlate(FamilyTreeNodeSnapshot node)
+        {
+            if (node.IsLeader)
+            {
+                return node.IsOnline ? _leaderOnlinePlate : _leaderOfflinePlate;
+            }
+
+            return node.IsOnline ? _memberOnlinePlate : _memberOfflinePlate;
+        }
+
+        private void DrawPlaceholderNode(SpriteBatch sprite, FamilyTreeNodeSnapshot node, Point position)
+        {
+            if (string.IsNullOrWhiteSpace(node.PlaceholderText))
+            {
+                return;
+            }
+
+            Rectangle bounds = new(Position.X + position.X, Position.Y + position.Y, 133, 34);
+            DrawCenteredText(sprite, node.PlaceholderText, bounds, new Color(165, 165, 165), 0.30f, 10);
+        }
+
+        private void DrawNodeText(SpriteBatch sprite, FamilyTreeNodeSnapshot node, Rectangle bounds)
+        {
+            Color nameColor = node.IsLocalPlayer
+                ? new Color(255, 240, 184)
+                : node.UseAlertNameColor
+                    ? new Color(255, 92, 92)
+                    : new Color(231, 231, 231);
+            Color detailColor = node.IsSelected ? new Color(247, 252, 255) : new Color(177, 184, 192);
+
+            int nameYOffset = node.IsLeader ? 1 : 0;
+            DrawCenteredText(sprite, node.Name, new Rectangle(bounds.X, bounds.Y + 5 + nameYOffset, 133, 12), nameColor, 0.38f, 0);
+            DrawCenteredText(sprite, node.Detail, new Rectangle(bounds.X - 10, bounds.Y + 20 + nameYOffset, 153, 12), detailColor, 0.30f, 0);
+
+            if (!string.IsNullOrWhiteSpace(node.StatisticText))
+            {
+                DrawCenteredText(sprite, node.StatisticText, new Rectangle(bounds.X, bounds.Y + 58, 133, 12), new Color(218, 216, 208), 0.30f, 0);
+            }
+        }
+
+        private void DrawFooter(SpriteBatch sprite, FamilyTreeSnapshot snapshot)
+        {
+            Rectangle footerBounds = new(Position.X + 150, Position.Y + 356, 282, 20);
+            sprite.Draw(_pixel, footerBounds, new Color(0, 0, 0, 90));
+            int drawY = 360;
+            foreach (string line in snapshot.SummaryLines.Take(2))
+            {
+                DrawText(sprite, line, 156, drawY, new Color(223, 223, 223), 0.30f);
+                drawY += 8;
+            }
+        }
+
+        private void HandleNodeSelection(Point mousePosition)
+        {
+            foreach ((int slotIndex, Rectangle bounds) in _nodeBounds)
+            {
+                if (!bounds.Contains(mousePosition))
+                {
+                    continue;
+                }
+
+                _selectSlotHandler?.Invoke(slotIndex);
+                break;
+            }
+        }
+
+        private void ShowFeedback(string message)
+        {
+            if (!string.IsNullOrWhiteSpace(message))
+            {
+                _feedbackHandler?.Invoke(message);
+            }
+        }
+
+        private void DrawText(SpriteBatch sprite, string text, int x, int y, Color color, float scale)
+        {
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                return;
+            }
+
+            sprite.DrawString(_font, text, new Vector2(Position.X + x, Position.Y + y), color, 0f, Vector2.Zero, scale, SpriteEffects.None, 0f);
+        }
+
+        private void DrawCenteredText(SpriteBatch sprite, string text, Rectangle bounds, Color color, float scale, int yOffset)
+        {
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                return;
+            }
+
+            Vector2 size = _font.MeasureString(text) * scale;
+            Vector2 origin = new(
+                bounds.X + Math.Max(0f, (bounds.Width - size.X) * 0.5f),
+                bounds.Y + Math.Max(0f, (bounds.Height - size.Y) * 0.5f) + yOffset);
+            sprite.DrawString(_font, text, origin, color, 0f, Vector2.Zero, scale, SpriteEffects.None, 0f);
+        }
+    }
+}

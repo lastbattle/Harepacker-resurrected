@@ -65,6 +65,7 @@ namespace HaCreator.MapSimulator.Companions
         private string _activeSpeechText;
         private int _activeSpeechExpiresAt;
         private bool _hangOnBack;
+        private bool _useClientMultiPetHangAction;
 
         internal PetRuntime(int runtimeId, int slotIndex, PetDefinition definition)
         {
@@ -209,7 +210,7 @@ namespace HaCreator.MapSimulator.Companions
             bool idleEligible = IsIdleEligible(owner, chasingDrop, followTarget, desiredTarget);
             UpdateIdleFeedback(currentTime, idleEligible);
             UpdateAutoSpeech(currentTime);
-            UpdateAction(owner, chasingDrop, desiredTarget, idleEligible);
+            UpdateAction(owner, chasingDrop, desiredTarget, idleEligible, activePetCount);
             _animation.UpdateFrame(currentTime);
         }
 
@@ -288,7 +289,7 @@ namespace HaCreator.MapSimulator.Companions
                 SlotIndex,
                 activePetCount,
                 out _hangOnBack,
-                out _);
+                out _useClientMultiPetHangAction);
         }
 
         internal static Vector2 ResolveAnchorTarget(
@@ -470,7 +471,7 @@ namespace HaCreator.MapSimulator.Companions
             }
         }
 
-        private void UpdateAction(PlayerCharacter owner, bool chasingDrop, Vector2 desiredTarget, bool idleEligible)
+        private void UpdateAction(PlayerCharacter owner, bool chasingDrop, Vector2 desiredTarget, bool idleEligible, int activePetCount)
         {
             string action = "stand1";
             float deltaX = desiredTarget.X - X;
@@ -478,7 +479,9 @@ namespace HaCreator.MapSimulator.Companions
 
             if (_hangOnBack)
             {
-                action = "hang";
+                action = ShouldUseClientMultiPetHangAction(activePetCount)
+                    ? PetDefinition.ClientMultiPetHangActionName
+                    : "hang";
             }
             else if (owner.State == PlayerState.Jumping || owner.State == PlayerState.Falling || owner.State == PlayerState.Flying || Math.Abs(deltaY) > 12f)
             {
@@ -494,6 +497,13 @@ namespace HaCreator.MapSimulator.Companions
             }
 
             _animation.SetAction(action);
+        }
+
+        private bool ShouldUseClientMultiPetHangAction(int activePetCount)
+        {
+            return _useClientMultiPetHangAction
+                   && activePetCount > 1
+                   && Definition.Animations.HasAnimation(PetDefinition.ClientMultiPetHangActionName);
         }
 
         private void SetTemporaryAction(string actionName, int expiresAt)

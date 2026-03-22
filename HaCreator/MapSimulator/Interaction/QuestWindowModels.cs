@@ -10,7 +10,16 @@ namespace HaCreator.MapSimulator.Interaction
         Accept,
         Complete,
         GiveUp,
-        Track
+        Track,
+        LocateNpc
+    }
+
+    internal enum QuestDetailNpcButtonStyle
+    {
+        None,
+        GenericNpc,
+        GotoNpc,
+        MarkNpc
     }
 
     internal sealed class QuestWindowListEntry
@@ -43,6 +52,12 @@ namespace HaCreator.MapSimulator.Interaction
         public QuestWindowActionKind SecondaryAction { get; init; }
         public bool SecondaryActionEnabled { get; init; }
         public string SecondaryActionLabel { get; init; } = string.Empty;
+        public QuestWindowActionKind TertiaryAction { get; init; }
+        public bool TertiaryActionEnabled { get; init; }
+        public string TertiaryActionLabel { get; init; } = string.Empty;
+        public int? TargetNpcId { get; init; }
+        public string TargetNpcName { get; init; } = string.Empty;
+        public QuestDetailNpcButtonStyle NpcButtonStyle { get; set; }
     }
 
     internal sealed class QuestWindowActionResult

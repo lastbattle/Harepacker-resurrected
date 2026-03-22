@@ -46,8 +46,25 @@ namespace HaCreator.MapSimulator.UI
         private const int FiveStarEnhancementScrollId = 2049308;
         private const int AdvancedPotentialScrollId = 2049400;
         private const int PotentialScrollId = 2049401;
+        private const int SpecialPotentialScrollIdLegacy = 2049402;
         private const int SpecialPotentialScrollId = 2049406;
+        private const int AdvancedPotentialScrollId2 = 2049407;
+        private const int PotentialScrollId2 = 2049408;
+        private const int CarvedGoldenSealId = 2049500;
+        private const int CarvedSilverSealId = 2049501;
+        private const int EpicPotentialScrollId = 2049700;
+        private const int EpicPotentialScrollId2 = 2049701;
+        private const int EpicPotentialScrollId3 = 2049702;
+        private const int EpicPotentialScrollId4 = 2049703;
         private const int MiracleCubeId = 5062000;
+        private const int PremiumMiracleCubeId = 5062001;
+        private const int SuperMiracleCubeId = 5062002;
+        private const int RevolutionaryMiracleCubeId = 5062003;
+        private const int GoldenMiracleCubeId = 5062004;
+        private const int EnlighteningMiracleCubeId = 5062005;
+        private const int UretesTimeLabId = 5534000;
+        private const int VegasSpellTenPercentId = 5610000;
+        private const int VegasSpellSixtyPercentId = 5610001;
 
         private readonly Random _random = new Random();
         private readonly Dictionary<EquipSlot, UpgradeState> _upgradeStates = new Dictionary<EquipSlot, UpgradeState>();
@@ -65,8 +82,25 @@ namespace HaCreator.MapSimulator.UI
                 [FiveStarEnhancementScrollId] = new(FiveStarEnhancementScrollId, "5 Star Enhancement Scroll", 5, false, false, 0.5f),
                 [AdvancedPotentialScrollId] = new(AdvancedPotentialScrollId, "Advanced Potential Scroll", 0, false, false, 0.9f, InventoryType.USE, ConsumableEffectType.PotentialScroll, PotentialTier.Epic, true),
                 [PotentialScrollId] = new(PotentialScrollId, "Potential Scroll", 0, false, false, 0.7f, InventoryType.USE, ConsumableEffectType.PotentialScroll, PotentialTier.Rare, true),
+                [SpecialPotentialScrollIdLegacy] = new(SpecialPotentialScrollIdLegacy, "Special Potential Scroll", 0, false, false, 1.0f, InventoryType.USE, ConsumableEffectType.PotentialScroll, PotentialTier.Epic, false),
                 [SpecialPotentialScrollId] = new(SpecialPotentialScrollId, "Special Potential Scroll", 0, false, false, 1.0f, InventoryType.USE, ConsumableEffectType.PotentialScroll, PotentialTier.Epic, false),
-                [MiracleCubeId] = new(MiracleCubeId, "Miracle Cube", 0, false, false, 1.0f, InventoryType.CASH, ConsumableEffectType.Cube, PotentialTier.Rare, false)
+                [AdvancedPotentialScrollId2] = new(AdvancedPotentialScrollId2, "Advanced Potential Scroll", 0, false, false, 0.9f, InventoryType.USE, ConsumableEffectType.PotentialScroll, PotentialTier.Epic, true),
+                [PotentialScrollId2] = new(PotentialScrollId2, "Potential Scroll", 0, false, false, 0.7f, InventoryType.USE, ConsumableEffectType.PotentialScroll, PotentialTier.Rare, true),
+                [EpicPotentialScrollId] = new(EpicPotentialScrollId, "Epic Potential Scroll 100%", 0, false, false, 1.0f, InventoryType.USE, ConsumableEffectType.PotentialScroll, PotentialTier.Epic, false),
+                [EpicPotentialScrollId2] = new(EpicPotentialScrollId2, "Epic Potential Scroll 80%", 0, false, false, 0.8f, InventoryType.USE, ConsumableEffectType.PotentialScroll, PotentialTier.Epic, true),
+                [EpicPotentialScrollId3] = new(EpicPotentialScrollId3, "Epic Potential Scroll 100%", 0, false, false, 1.0f, InventoryType.USE, ConsumableEffectType.PotentialScroll, PotentialTier.Epic, false),
+                [EpicPotentialScrollId4] = new(EpicPotentialScrollId4, "Epic Potential Scroll 100%", 0, false, false, 1.0f, InventoryType.USE, ConsumableEffectType.PotentialScroll, PotentialTier.Epic, false),
+                [CarvedGoldenSealId] = new(CarvedGoldenSealId, "Carved Golden Seal", 0, false, false, 0.8f, InventoryType.USE, ConsumableEffectType.PotentialStamp, PotentialTier.Rare, false),
+                [CarvedSilverSealId] = new(CarvedSilverSealId, "Carved Silver Seal", 0, false, false, 0.5f, InventoryType.USE, ConsumableEffectType.PotentialStamp, PotentialTier.Rare, false),
+                [UretesTimeLabId] = new(UretesTimeLabId, "Urete's Time Lab", 0, false, false, 1.0f, InventoryType.CASH, ConsumableEffectType.PotentialScroll, PotentialTier.Rare, false),
+                [MiracleCubeId] = new(MiracleCubeId, "Miracle Cube", 0, false, false, 1.0f, InventoryType.CASH, ConsumableEffectType.Cube, PotentialTier.Rare, false, CubeBehavior.Miracle),
+                [PremiumMiracleCubeId] = new(PremiumMiracleCubeId, "Premium Miracle Cube", 0, false, false, 1.0f, InventoryType.CASH, ConsumableEffectType.Cube, PotentialTier.Rare, false, CubeBehavior.Premium),
+                [SuperMiracleCubeId] = new(SuperMiracleCubeId, "Super Miracle Cube", 0, false, false, 1.0f, InventoryType.CASH, ConsumableEffectType.Cube, PotentialTier.Rare, false, CubeBehavior.Super),
+                [RevolutionaryMiracleCubeId] = new(RevolutionaryMiracleCubeId, "Revolutionary Miracle Cube", 0, false, false, 1.0f, InventoryType.CASH, ConsumableEffectType.Cube, PotentialTier.Rare, false, CubeBehavior.Revolutionary),
+                [GoldenMiracleCubeId] = new(GoldenMiracleCubeId, "Golden Miracle Cube", 0, false, false, 1.0f, InventoryType.CASH, ConsumableEffectType.Cube, PotentialTier.Rare, false, CubeBehavior.Golden),
+                [EnlighteningMiracleCubeId] = new(EnlighteningMiracleCubeId, "Enlightening Miracle Cube", 0, false, false, 1.0f, InventoryType.CASH, ConsumableEffectType.Cube, PotentialTier.Rare, false, CubeBehavior.Enlightening),
+                [VegasSpellTenPercentId] = new(VegasSpellTenPercentId, "Vega's Spell(10%)", 0, false, false, 1.0f, InventoryType.CASH, ConsumableEffectType.Modifier, PotentialTier.Rare, false, CubeBehavior.Miracle, ModifierBehavior.VegaTenPercent, 0.3f),
+                [VegasSpellSixtyPercentId] = new(VegasSpellSixtyPercentId, "Vega's Spell(60%)", 0, false, false, 1.0f, InventoryType.CASH, ConsumableEffectType.Modifier, PotentialTier.Rare, false, CubeBehavior.Miracle, ModifierBehavior.VegaSixtyPercent, 0.9f)
             };
 
         private Texture2D _backgroundOverlay;
@@ -85,6 +119,7 @@ namespace HaCreator.MapSimulator.UI
         private IInventoryRuntime _inventory;
         private int _selectedIndex;
         private int? _preferredConsumableItemId;
+        private int? _preferredModifierItemId;
         private string _statusMessage = "Select equipment and begin enhancement.";
         private bool? _lastUpgradeSucceeded;
 
@@ -135,8 +170,17 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
-            _preferredConsumableItemId = itemId;
-            _statusMessage = $"{definition.Name} ready. Choose equipment to enhance.";
+            if (definition.EffectType == ConsumableEffectType.Modifier)
+            {
+                _preferredModifierItemId = itemId;
+                _statusMessage = $"{definition.Name} ready. Choose equipment and a compatible scroll.";
+            }
+            else
+            {
+                _preferredConsumableItemId = itemId;
+                _statusMessage = $"{definition.Name} ready. Choose equipment to enhance.";
+            }
+
             _lastUpgradeSucceeded = null;
             UpdateButtonStates();
         }
@@ -144,6 +188,7 @@ namespace HaCreator.MapSimulator.UI
         public void PrepareNpcLaunch()
         {
             _preferredConsumableItemId = null;
+            _preferredModifierItemId = null;
             _lastUpgradeSucceeded = null;
             ClampSelection();
             _statusMessage = GetCandidates().Count > 0
@@ -288,6 +333,7 @@ namespace HaCreator.MapSimulator.UI
             CharacterPart selectedPart = selection.Value;
             UpgradeState state = GetOrCreateState(selection.Key, selectedPart);
             EnhancementConsumable consumable = ResolveConsumable(state);
+            EnhancementConsumable modifier = ResolveModifier(consumable);
 
             DrawSelectedItem(sprite, windowX + ItemIconX, windowY + ItemIconY, selectedPart);
 
@@ -300,7 +346,7 @@ namespace HaCreator.MapSimulator.UI
             DrawShadowedText(sprite, $"Success: {state.SuccessCount}   Fail: {state.FailCount}", new Vector2(windowX + DetailTextX, windowY + DetailTextY + DetailLineGap), Color.White);
             DrawShadowedText(sprite, $"Bonus: ATT +{state.AttackBonus}  DEF +{state.DefenseBonus}", new Vector2(windowX + DetailTextX, windowY + DetailTextY + (DetailLineGap * 2)), new Color(181, 224, 255));
             string potentialText = state.HasPotential
-                ? $"Potential: {state.PotentialTier}  {string.Join(" / ", state.PotentialLines.Where(line => !string.IsNullOrWhiteSpace(line)))}"
+                ? $"Potential: {state.PotentialTier} ({state.PotentialLineCount})  {string.Join(" / ", EnumerateVisiblePotentialLines(state))}"
                 : "Potential: None";
             DrawShadowedText(sprite, potentialText, new Vector2(windowX + DetailTextX, windowY + DetailTextY + (DetailLineGap * 3)), new Color(210, 198, 255));
             string scrollText = consumable != null
@@ -311,6 +357,11 @@ namespace HaCreator.MapSimulator.UI
                 state.RemainingSlots < consumable.SuccessCountGain)
             {
                 scrollText += $"  Need {consumable.SuccessCountGain} slots";
+            }
+
+            if (modifier != null)
+            {
+                scrollText += $" + {modifier.Name} x{GetConsumableCount(modifier.ItemId)}";
             }
 
             DrawShadowedText(sprite, scrollText, new Vector2(windowX + DetailTextX, windowY + DetailTextY + (DetailLineGap * 4)), new Color(255, 232, 173));
@@ -402,7 +453,17 @@ namespace HaCreator.MapSimulator.UI
             EnhancementConsumable consumable = ResolveConsumable(state);
             if (consumable == null)
             {
-                _statusMessage = "No enhancement scrolls are available in inventory.";
+                _statusMessage = _preferredModifierItemId.HasValue
+                    ? "No compatible enhancement scroll is available for the selected Vega modifier."
+                    : "No enhancement scrolls are available in inventory.";
+                _lastUpgradeSucceeded = false;
+                return;
+            }
+
+            EnhancementConsumable modifier = ResolveModifier(consumable);
+            if (_preferredModifierItemId.HasValue && modifier == null)
+            {
+                _statusMessage = BuildModifierCompatibilityMessage(consumable);
                 _lastUpgradeSucceeded = false;
                 return;
             }
@@ -425,7 +486,44 @@ namespace HaCreator.MapSimulator.UI
 
             if (consumable.EffectType == ConsumableEffectType.PotentialScroll && state.HasPotential)
             {
-                _statusMessage = $"{ResolveItemName(selectedPart)} already has revealed potential.";
+                if (consumable.PotentialTierOnSuccess != PotentialTier.Epic || state.PotentialTier > PotentialTier.Rare)
+                {
+                    _statusMessage = $"{ResolveItemName(selectedPart)} already has revealed potential.";
+                    _lastUpgradeSucceeded = false;
+                    return;
+                }
+            }
+
+            if (consumable.EffectType == ConsumableEffectType.PotentialStamp)
+            {
+                if (!state.HasPotential)
+                {
+                    _statusMessage = $"{ResolveItemName(selectedPart)} needs potential before using {consumable.Name}.";
+                    _lastUpgradeSucceeded = false;
+                    return;
+                }
+
+                if (state.PotentialLineCount >= UpgradeState.MaxPotentialLines)
+                {
+                    _statusMessage = $"{ResolveItemName(selectedPart)} already has {UpgradeState.MaxPotentialLines} potential lines.";
+                    _lastUpgradeSucceeded = false;
+                    return;
+                }
+
+                if (state.PotentialLineCount > 2)
+                {
+                    _statusMessage = $"{consumable.Name} only applies when {ResolveItemName(selectedPart)} has two potential lines or fewer.";
+                    _lastUpgradeSucceeded = false;
+                    return;
+                }
+            }
+
+            if (consumable.EffectType == ConsumableEffectType.PotentialScroll &&
+                consumable.PotentialTierOnSuccess == PotentialTier.Epic &&
+                state.HasPotential &&
+                state.PotentialTier > PotentialTier.Rare)
+            {
+                _statusMessage = $"{consumable.Name} only applies to equipment that is Rare or below.";
                 _lastUpgradeSucceeded = false;
                 return;
             }
@@ -437,6 +535,15 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
+            if (consumable.EffectType == ConsumableEffectType.Cube &&
+                consumable.CubeBehavior == CubeBehavior.Golden &&
+                state.PotentialTier > PotentialTier.Unique)
+            {
+                _statusMessage = $"{consumable.Name} only applies to Rare through Unique equipment.";
+                _lastUpgradeSucceeded = false;
+                return;
+            }
+
             if (!_inventory.TryConsumeItem(consumable.InventoryType, consumable.ItemId, 1))
             {
                 _statusMessage = $"{consumable.Name} could not be consumed.";
@@ -444,7 +551,14 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
-            bool success = _random.NextDouble() < ResolveSuccessRate(consumable, state);
+            if (modifier != null && !_inventory.TryConsumeItem(modifier.InventoryType, modifier.ItemId, 1))
+            {
+                _statusMessage = $"{modifier.Name} could not be consumed.";
+                _lastUpgradeSucceeded = false;
+                return;
+            }
+
+            bool success = _random.NextDouble() < ResolveSuccessRate(consumable, state, modifier);
             state.Attempts++;
 
             switch (consumable.EffectType)
@@ -452,12 +566,15 @@ namespace HaCreator.MapSimulator.UI
                 case ConsumableEffectType.PotentialScroll:
                     ApplyPotentialScroll(selection.Key, selectedPart, state, consumable, success);
                     break;
+                case ConsumableEffectType.PotentialStamp:
+                    ApplyPotentialStamp(selectedPart, state, consumable, success);
+                    break;
                 case ConsumableEffectType.Cube:
                     ApplyCube(selectedPart, state, consumable);
                     success = true;
                     break;
                 default:
-                    ApplyEnhancementScroll(selection.Key, selectedPart, state, consumable, success);
+                    ApplyEnhancementScroll(selection.Key, selectedPart, state, consumable, modifier, success);
                     break;
             }
 
@@ -489,8 +606,9 @@ namespace HaCreator.MapSimulator.UI
             }
         }
 
-        private void ApplyEnhancementScroll(EquipSlot slot, CharacterPart selectedPart, UpgradeState state, EnhancementConsumable consumable, bool success)
+        private void ApplyEnhancementScroll(EquipSlot slot, CharacterPart selectedPart, UpgradeState state, EnhancementConsumable consumable, EnhancementConsumable modifier, bool success)
         {
+            string modifierSuffix = modifier != null ? $" with {modifier.Name}" : string.Empty;
             if (success)
             {
                 state.RemainingSlots = Math.Max(0, state.RemainingSlots - consumable.SuccessCountGain);
@@ -498,7 +616,7 @@ namespace HaCreator.MapSimulator.UI
                 ApplyUpgradeBonus(slot, state, consumable.SuccessCountGain);
                 _statusMessage = $"{ResolveItemName(selectedPart)} gained {consumable.SuccessCountGain} enhancement" +
                                  (consumable.SuccessCountGain == 1 ? string.Empty : "s") +
-                                 $" with {consumable.Name}.";
+                                 $" with {consumable.Name}{modifierSuffix}.";
                 return;
             }
 
@@ -510,12 +628,12 @@ namespace HaCreator.MapSimulator.UI
             }
 
             state.RemainingSlots = Math.Max(0, state.RemainingSlots - 1);
-            _statusMessage = $"{ResolveItemName(selectedPart)} failed with {consumable.Name}. A slot was consumed.";
+            _statusMessage = $"{ResolveItemName(selectedPart)} failed with {consumable.Name}{modifierSuffix}. A slot was consumed.";
         }
 
         private void ApplyPotentialScroll(EquipSlot slot, CharacterPart selectedPart, UpgradeState state, EnhancementConsumable consumable, bool success)
         {
-            if (state.HasPotential)
+            if (state.HasPotential && (consumable.PotentialTierOnSuccess != PotentialTier.Epic || state.PotentialTier > PotentialTier.Rare))
             {
                 _statusMessage = $"{ResolveItemName(selectedPart)} already has revealed potential.";
                 return;
@@ -525,7 +643,8 @@ namespace HaCreator.MapSimulator.UI
             {
                 state.HasPotential = true;
                 state.PotentialTier = consumable.PotentialTierOnSuccess;
-                state.PotentialLines = RollPotentialLines(state.PotentialTier);
+                state.PotentialLineCount = Math.Max(2, state.PotentialLineCount);
+                state.PotentialLines = RollPotentialLines(state.PotentialTier, state.PotentialLineCount);
                 _statusMessage = $"{ResolveItemName(selectedPart)} gained {state.PotentialTier} potential with {consumable.Name}.";
                 return;
             }
@@ -540,6 +659,33 @@ namespace HaCreator.MapSimulator.UI
             _statusMessage = $"{ResolveItemName(selectedPart)} failed to gain potential with {consumable.Name}.";
         }
 
+        private void ApplyPotentialStamp(CharacterPart selectedPart, UpgradeState state, EnhancementConsumable consumable, bool success)
+        {
+            if (!state.HasPotential)
+            {
+                _statusMessage = $"{ResolveItemName(selectedPart)} needs potential before using {consumable.Name}.";
+                return;
+            }
+
+            if (state.PotentialLineCount >= UpgradeState.MaxPotentialLines)
+            {
+                _statusMessage = $"{ResolveItemName(selectedPart)} already has {UpgradeState.MaxPotentialLines} potential lines.";
+                return;
+            }
+
+            if (success)
+            {
+                string[] previousLines = CopyPotentialLines(state);
+                state.PotentialLineCount = Math.Min(UpgradeState.MaxPotentialLines, state.PotentialLineCount + 1);
+                state.PotentialLines = PreservePotentialLinesWithExtraLine(previousLines, state.PotentialTier, state.PotentialLineCount);
+                _statusMessage = $"{ResolveItemName(selectedPart)} gained an extra potential line with {consumable.Name}.";
+                return;
+            }
+
+            state.FailCount++;
+            _statusMessage = $"{ResolveItemName(selectedPart)} failed to gain an extra potential line with {consumable.Name}.";
+        }
+
         private void ApplyCube(CharacterPart selectedPart, UpgradeState state, EnhancementConsumable consumable)
         {
             if (!state.HasPotential)
@@ -548,13 +694,17 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
-            PotentialTier newTier = MaybeUpgradePotentialTier(state.PotentialTier);
+            PotentialTier previousTier = state.PotentialTier;
+            PotentialTier newTier = MaybeUpgradePotentialTier(state.PotentialTier, consumable.CubeBehavior);
             state.PotentialTier = newTier;
-            state.PotentialLines = RollPotentialLines(newTier);
-            _statusMessage = $"{ResolveItemName(selectedPart)} rerolled to {newTier} potential with {consumable.Name}.";
+            state.PotentialLineCount = ResolveCubePotentialLineCount(state.PotentialLineCount, consumable.CubeBehavior);
+            state.PotentialLines = RollPotentialLines(newTier, state.PotentialLineCount);
+            _statusMessage = newTier > previousTier
+                ? $"{ResolveItemName(selectedPart)} ranked up to {newTier} potential with {consumable.Name}."
+                : $"{ResolveItemName(selectedPart)} rerolled {state.PotentialLineCount} potential line(s) with {consumable.Name}.";
         }
 
-        private float ResolveSuccessRate(EnhancementConsumable consumable, UpgradeState state)
+        private float ResolveSuccessRate(EnhancementConsumable consumable, UpgradeState state, EnhancementConsumable modifier)
         {
             if (consumable == null)
             {
@@ -563,13 +713,16 @@ namespace HaCreator.MapSimulator.UI
 
             if (!consumable.Definition.UsesTieredSuccessRate)
             {
-                return consumable.Definition.FlatSuccessRate;
+                return modifier != null
+                    ? modifier.Definition.ModifiedSuccessRate
+                    : consumable.Definition.FlatSuccessRate;
             }
 
             int nextSuccessCount = state.SuccessCount + consumable.SuccessCountGain;
+            float baseRate;
             if (consumable.Definition.IsAdvancedFamily)
             {
-                return nextSuccessCount switch
+                baseRate = nextSuccessCount switch
                 {
                     <= 1 => 1.0f,
                     2 => 0.9f,
@@ -583,19 +736,30 @@ namespace HaCreator.MapSimulator.UI
                     _ => 0.1f
                 };
             }
-
-            return nextSuccessCount switch
+            else
             {
-                <= 1 => 0.8f,
-                2 => 0.7f,
-                3 => 0.6f,
-                4 => 0.5f,
-                5 => 0.4f,
-                6 => 0.3f,
-                7 => 0.2f,
-                8 => 0.1f,
-                _ => 0.05f
-            };
+                baseRate = nextSuccessCount switch
+                {
+                    <= 1 => 0.8f,
+                    2 => 0.7f,
+                    3 => 0.6f,
+                    4 => 0.5f,
+                    5 => 0.4f,
+                    6 => 0.3f,
+                    7 => 0.2f,
+                    8 => 0.1f,
+                    _ => 0.05f
+                };
+            }
+
+            if (modifier == null)
+            {
+                return baseRate;
+            }
+
+            return IsModifierCompatible(modifier, consumable)
+                ? Math.Max(baseRate, modifier.Definition.ModifiedSuccessRate)
+                : baseRate;
         }
 
         private void MoveSelection(int delta)
@@ -653,12 +817,15 @@ namespace HaCreator.MapSimulator.UI
             KeyValuePair<EquipSlot, CharacterPart> selection = candidates[_selectedIndex];
             UpgradeState state = GetOrCreateState(selection.Key, selection.Value);
             EnhancementConsumable consumable = ResolveConsumable(state);
+            bool modifierReady = !_preferredModifierItemId.HasValue || ResolveModifier(consumable) != null;
             bool canApply = consumable != null &&
+                            modifierReady &&
                             consumable switch
                             {
                                 { EffectType: ConsumableEffectType.Enhancement } => state.RemainingSlots > 0 && state.RemainingSlots >= consumable.SuccessCountGain,
-                                { EffectType: ConsumableEffectType.PotentialScroll } => !state.HasPotential,
-                                { EffectType: ConsumableEffectType.Cube } => state.HasPotential,
+                                { EffectType: ConsumableEffectType.PotentialScroll } => !state.HasPotential || (consumable.PotentialTierOnSuccess == PotentialTier.Epic && state.PotentialTier <= PotentialTier.Rare),
+                                { EffectType: ConsumableEffectType.PotentialStamp } => state.HasPotential && state.PotentialLineCount < UpgradeState.MaxPotentialLines && state.PotentialLineCount <= 2,
+                                { EffectType: ConsumableEffectType.Cube } => state.HasPotential && (consumable.CubeBehavior != CubeBehavior.Golden || state.PotentialTier <= PotentialTier.Unique),
                                 _ => false
                             };
             _startButton?.SetEnabled(canApply);
@@ -690,7 +857,8 @@ namespace HaCreator.MapSimulator.UI
             {
                 int preferredItemId = _preferredConsumableItemId.Value;
                 if (GetConsumableCount(preferredItemId) > 0 &&
-                    TryGetConsumableDefinition(preferredItemId, out EnhancementConsumableDefinition preferredDefinition))
+                    TryGetConsumableDefinition(preferredItemId, out EnhancementConsumableDefinition preferredDefinition) &&
+                    preferredDefinition.EffectType != ConsumableEffectType.Modifier)
                 {
                     return new EnhancementConsumable(preferredDefinition);
                 }
@@ -726,7 +894,103 @@ namespace HaCreator.MapSimulator.UI
                 return starConsumable;
             }
 
+            EnhancementConsumable potentialStamp = GetFirstAvailableConsumable(state, CarvedGoldenSealId, CarvedSilverSealId);
+            if (potentialStamp != null)
+            {
+                return potentialStamp;
+            }
+
+            EnhancementConsumable epicPotentialScroll = GetFirstAvailableConsumable(state, EpicPotentialScrollId, EpicPotentialScrollId2, EpicPotentialScrollId3, EpicPotentialScrollId4);
+            if (epicPotentialScroll != null)
+            {
+                return epicPotentialScroll;
+            }
+
+            EnhancementConsumable potentialConsumable = GetFirstAvailableConsumable(
+                state,
+                SpecialPotentialScrollIdLegacy,
+                SpecialPotentialScrollId,
+                AdvancedPotentialScrollId,
+                AdvancedPotentialScrollId2,
+                PotentialScrollId,
+                PotentialScrollId2,
+                UretesTimeLabId);
+            if (potentialConsumable != null)
+            {
+                return potentialConsumable;
+            }
+
+            EnhancementConsumable cubeConsumable = GetFirstAvailableConsumable(
+                state,
+                EnlighteningMiracleCubeId,
+                SuperMiracleCubeId,
+                PremiumMiracleCubeId,
+                RevolutionaryMiracleCubeId,
+                GoldenMiracleCubeId,
+                MiracleCubeId);
+            if (cubeConsumable != null)
+            {
+                return cubeConsumable;
+            }
+
             return null;
+        }
+
+        private EnhancementConsumable ResolveModifier(EnhancementConsumable consumable)
+        {
+            if (_inventory == null || !_preferredModifierItemId.HasValue || consumable == null)
+            {
+                return null;
+            }
+
+            int modifierItemId = _preferredModifierItemId.Value;
+            if (GetConsumableCount(modifierItemId) <= 0 ||
+                !TryGetConsumableDefinition(modifierItemId, out EnhancementConsumableDefinition definition) ||
+                definition.EffectType != ConsumableEffectType.Modifier)
+            {
+                _preferredModifierItemId = null;
+                return null;
+            }
+
+            EnhancementConsumable modifier = new EnhancementConsumable(definition);
+            return IsModifierCompatible(modifier, consumable)
+                ? modifier
+                : null;
+        }
+
+        private static bool IsModifierCompatible(EnhancementConsumable modifier, EnhancementConsumable consumable)
+        {
+            if (modifier == null || consumable == null || consumable.EffectType != ConsumableEffectType.Enhancement)
+            {
+                return false;
+            }
+
+            return modifier.Definition.ModifierBehavior switch
+            {
+                ModifierBehavior.VegaTenPercent => consumable.Definition.UsesTieredSuccessRate && consumable.Definition.IsAdvancedFamily,
+                ModifierBehavior.VegaSixtyPercent => consumable.Definition.UsesTieredSuccessRate && !consumable.Definition.IsAdvancedFamily,
+                _ => false
+            };
+        }
+
+        private string BuildModifierCompatibilityMessage(EnhancementConsumable consumable)
+        {
+            if (!_preferredModifierItemId.HasValue ||
+                !TryGetConsumableDefinition(_preferredModifierItemId.Value, out EnhancementConsumableDefinition definition))
+            {
+                return consumable != null
+                    ? $"{consumable.Name} is not compatible with the selected modifier."
+                    : "No compatible modifier could be applied.";
+            }
+
+            string requiredScroll = definition.ModifierBehavior switch
+            {
+                ModifierBehavior.VegaTenPercent => "Advanced Equip Enhancement Scroll",
+                ModifierBehavior.VegaSixtyPercent => "Equip Enhancement Scroll",
+                _ => "a compatible enhancement scroll"
+            };
+
+            return $"{definition.Name} requires {requiredScroll}.";
         }
 
         private bool ResolveDestroyOnFailure(EnhancementConsumable consumable)
@@ -869,9 +1133,24 @@ namespace HaCreator.MapSimulator.UI
             AppendConsumableSummary(segments, FourStarEnhancementScrollId, "4-Star");
             AppendConsumableSummary(segments, FiveStarEnhancementScrollId, "5-Star");
             AppendConsumableSummary(segments, PotentialScrollId, "Pot");
+            AppendConsumableSummary(segments, PotentialScrollId2, "Pot");
             AppendConsumableSummary(segments, AdvancedPotentialScrollId, "Adv Pot");
+            AppendConsumableSummary(segments, AdvancedPotentialScrollId2, "Adv Pot");
+            AppendConsumableSummary(segments, SpecialPotentialScrollIdLegacy, "Spec Pot");
             AppendConsumableSummary(segments, SpecialPotentialScrollId, "Spec Pot");
+            AppendConsumableSummary(segments, EpicPotentialScrollId, EpicPotentialScrollId2, "Epic Pot");
+            AppendConsumableSummary(segments, EpicPotentialScrollId3, EpicPotentialScrollId4, "Epic Pot");
+            AppendConsumableSummary(segments, CarvedGoldenSealId, "Gold Seal");
+            AppendConsumableSummary(segments, CarvedSilverSealId, "Silver Seal");
+            AppendConsumableSummary(segments, UretesTimeLabId, "Time Lab");
             AppendConsumableSummary(segments, MiracleCubeId, "Cube");
+            AppendConsumableSummary(segments, PremiumMiracleCubeId, "Premium");
+            AppendConsumableSummary(segments, SuperMiracleCubeId, "Super");
+            AppendConsumableSummary(segments, RevolutionaryMiracleCubeId, "Revo");
+            AppendConsumableSummary(segments, GoldenMiracleCubeId, "Golden");
+            AppendConsumableSummary(segments, EnlighteningMiracleCubeId, "Enlight");
+            AppendConsumableSummary(segments, VegasSpellTenPercentId, "Vega10");
+            AppendConsumableSummary(segments, VegasSpellSixtyPercentId, "Vega60");
             return segments.Count > 0 ? string.Join(" / ", segments) : "No stock";
         }
 
@@ -931,21 +1210,64 @@ namespace HaCreator.MapSimulator.UI
             return ConsumableDefinitions.TryGetValue(itemId, out definition);
         }
 
-        private PotentialTier MaybeUpgradePotentialTier(PotentialTier currentTier)
+        private PotentialTier MaybeUpgradePotentialTier(PotentialTier currentTier, CubeBehavior behavior)
         {
             double roll = _random.NextDouble();
+            (double rareToEpic, double epicToUnique, double uniqueToLegendary, PotentialTier maxTier, bool jumpToMaxTier) = behavior switch
+            {
+                CubeBehavior.Premium => (0.15d, 0.05d, 0.01d, PotentialTier.Legendary, false),
+                CubeBehavior.Super => (0.22d, 0.08d, 0.02d, PotentialTier.Legendary, false),
+                CubeBehavior.Revolutionary => (0.18d, 0.06d, 0.015d, PotentialTier.Legendary, false),
+                CubeBehavior.Golden => (0.10d, 0.03d, 0d, PotentialTier.Unique, false),
+                CubeBehavior.Enlightening => (0.28d, 0.12d, 0.05d, PotentialTier.Legendary, true),
+                _ => (0.12d, 0.04d, 0d, PotentialTier.Unique, false)
+            };
+
             return currentTier switch
             {
-                PotentialTier.Rare when roll < 0.12d => PotentialTier.Epic,
-                PotentialTier.Epic when roll < 0.04d => PotentialTier.Unique,
+                PotentialTier.Rare when roll < rareToEpic => jumpToMaxTier ? maxTier : PotentialTier.Epic,
+                PotentialTier.Epic when roll < epicToUnique => jumpToMaxTier ? maxTier : PotentialTier.Unique,
+                PotentialTier.Unique when maxTier >= PotentialTier.Legendary && roll < uniqueToLegendary => PotentialTier.Legendary,
                 _ => currentTier
             };
         }
 
-        private string[] RollPotentialLines(PotentialTier tier)
+        private int ResolveCubePotentialLineCount(int currentCount, CubeBehavior behavior)
+        {
+            return behavior switch
+            {
+                CubeBehavior.Premium => RollPotentialLineCount(),
+                CubeBehavior.Revolutionary => MathHelper.Clamp(currentCount + _random.Next(-1, 2), 1, UpgradeState.MaxPotentialLines),
+                _ => Math.Max(1, currentCount)
+            };
+        }
+
+        private int RollPotentialLineCount()
+        {
+            double roll = _random.NextDouble();
+            if (roll < 0.1d)
+            {
+                return 1;
+            }
+
+            if (roll < 0.75d)
+            {
+                return 2;
+            }
+
+            return UpgradeState.MaxPotentialLines;
+        }
+
+        private string[] RollPotentialLines(PotentialTier tier, int lineCount)
         {
             string[][] pool = tier switch
             {
+                PotentialTier.Legendary => new[]
+                {
+                    new[] { "STR +9%", "DEX +9%", "INT +9%", "LUK +9%", "ATT +9", "Boss +30%" },
+                    new[] { "HP +12%", "MP +12%", "Critical +9%", "All Stat +6%", "Damage +9%" },
+                    new[] { "Ignore DEF +15%", "ATT +6%", "M.ATT +6", "IED +10%", "Boss +20%" }
+                },
                 PotentialTier.Unique => new[]
                 {
                     new[] { "STR +6%", "DEX +6%", "INT +6%", "LUK +6%", "ATT +6", "Boss +15%" },
@@ -966,8 +1288,8 @@ namespace HaCreator.MapSimulator.UI
                 }
             };
 
-            var lines = new string[3];
-            for (int i = 0; i < lines.Length; i++)
+            var lines = new string[UpgradeState.MaxPotentialLines];
+            for (int i = 0; i < lineCount; i++)
             {
                 string[] candidates = pool[Math.Min(i, pool.Length - 1)];
                 lines[i] = candidates[_random.Next(candidates.Length)];
@@ -976,8 +1298,22 @@ namespace HaCreator.MapSimulator.UI
             return lines;
         }
 
+        private static IEnumerable<string> EnumerateVisiblePotentialLines(UpgradeState state)
+        {
+            if (state?.PotentialLines == null || state.PotentialLineCount <= 0)
+            {
+                return Enumerable.Empty<string>();
+            }
+
+            return state.PotentialLines
+                .Take(state.PotentialLineCount)
+                .Where(line => !string.IsNullOrWhiteSpace(line));
+        }
+
         private sealed class UpgradeState
         {
+            public const int MaxPotentialLines = 3;
+
             public int ItemId { get; set; }
             public int TotalSlots { get; set; }
             public int RemainingSlots { get; set; }
@@ -988,6 +1324,7 @@ namespace HaCreator.MapSimulator.UI
             public int DefenseBonus { get; set; }
             public bool HasPotential { get; set; }
             public PotentialTier PotentialTier { get; set; }
+            public int PotentialLineCount { get; set; }
             public string[] PotentialLines { get; set; } = Array.Empty<string>();
         }
 
@@ -995,14 +1332,34 @@ namespace HaCreator.MapSimulator.UI
         {
             Enhancement,
             PotentialScroll,
-            Cube
+            PotentialStamp,
+            Cube,
+            Modifier
         }
 
         private enum PotentialTier
         {
             Rare,
             Epic,
-            Unique
+            Unique,
+            Legendary
+        }
+
+        private enum CubeBehavior
+        {
+            Miracle,
+            Premium,
+            Super,
+            Revolutionary,
+            Golden,
+            Enlightening
+        }
+
+        private enum ModifierBehavior
+        {
+            None,
+            VegaTenPercent,
+            VegaSixtyPercent
         }
 
         private readonly struct EnhancementConsumableDefinition
@@ -1017,7 +1374,10 @@ namespace HaCreator.MapSimulator.UI
                 InventoryType inventoryType = InventoryType.USE,
                 ConsumableEffectType effectType = ConsumableEffectType.Enhancement,
                 PotentialTier potentialTierOnSuccess = PotentialTier.Rare,
-                bool destroysOnFailure = true)
+                bool destroysOnFailure = true,
+                CubeBehavior cubeBehavior = CubeBehavior.Miracle,
+                ModifierBehavior modifierBehavior = ModifierBehavior.None,
+                float modifiedSuccessRate = 0f)
             {
                 ItemId = itemId;
                 Name = name;
@@ -1029,6 +1389,9 @@ namespace HaCreator.MapSimulator.UI
                 EffectType = effectType;
                 PotentialTierOnSuccess = potentialTierOnSuccess;
                 DestroysOnFailure = destroysOnFailure;
+                CubeBehavior = cubeBehavior;
+                ModifierBehavior = modifierBehavior;
+                ModifiedSuccessRate = modifiedSuccessRate;
             }
 
             public int ItemId { get; }
@@ -1041,6 +1404,9 @@ namespace HaCreator.MapSimulator.UI
             public ConsumableEffectType EffectType { get; }
             public PotentialTier PotentialTierOnSuccess { get; }
             public bool DestroysOnFailure { get; }
+            public CubeBehavior CubeBehavior { get; }
+            public ModifierBehavior ModifierBehavior { get; }
+            public float ModifiedSuccessRate { get; }
         }
 
         private sealed class EnhancementConsumable
@@ -1057,6 +1423,33 @@ namespace HaCreator.MapSimulator.UI
             public InventoryType InventoryType => Definition.InventoryType;
             public ConsumableEffectType EffectType => Definition.EffectType;
             public PotentialTier PotentialTierOnSuccess => Definition.PotentialTierOnSuccess;
+            public CubeBehavior CubeBehavior => Definition.CubeBehavior;
+        }
+
+        private static string[] CopyPotentialLines(UpgradeState state)
+        {
+            string[] copy = new string[UpgradeState.MaxPotentialLines];
+            if (state?.PotentialLines == null)
+            {
+                return copy;
+            }
+
+            Array.Copy(state.PotentialLines, copy, Math.Min(state.PotentialLines.Length, copy.Length));
+            return copy;
+        }
+
+        private string[] PreservePotentialLinesWithExtraLine(string[] existingLines, PotentialTier tier, int lineCount)
+        {
+            string[] lines = new string[UpgradeState.MaxPotentialLines];
+            if (existingLines != null)
+            {
+                Array.Copy(existingLines, lines, Math.Min(existingLines.Length, lines.Length));
+            }
+
+            int nextLineIndex = Math.Clamp(lineCount - 1, 0, UpgradeState.MaxPotentialLines - 1);
+            string[] generatedLines = RollPotentialLines(tier, lineCount);
+            lines[nextLineIndex] = generatedLines[nextLineIndex];
+            return lines;
         }
     }
 }

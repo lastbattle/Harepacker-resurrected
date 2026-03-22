@@ -75,8 +75,6 @@ namespace HaCreator.MapSimulator.UI
         private const int NAME_FIELD_HEIGHT = 20;
         private const int NAME_FIELD_X = CONTENT_OFFSET_X;
         private const int NAME_FIELD_Y = CONTENT_OFFSET_Y - 30;
-        private const int MAX_MACRO_NAME_LENGTH = 12;
-
         // Button positions (relative to window)
         // BtOK button origin from UIWindow2: (-145, -255) means 145 from left, 255 from top
         private const int BUTTON_OK_X = 50;
@@ -488,12 +486,14 @@ namespace HaCreator.MapSimulator.UI
 
             // Draw current name
             string displayText = _editingMacroName ?? "";
-            if (displayText.Length > MAX_MACRO_NAME_LENGTH)
-                displayText = displayText.Substring(0, MAX_MACRO_NAME_LENGTH);
-
             sprite.DrawString(_font, displayText,
                 new Vector2(fieldX + 4, fieldY + 3),
                 Color.White);
+
+            string byteCountText = $"{SkillMacroNameRules.GetByteCount(displayText)}/{SkillMacroNameRules.MaxNameBytes} bytes";
+            sprite.DrawString(_font, byteCountText,
+                new Vector2(fieldX + 92, fieldY - 16),
+                Color.LightGray);
 
             if (!string.IsNullOrWhiteSpace(_validationMessage))
             {
@@ -702,42 +702,14 @@ namespace HaCreator.MapSimulator.UI
 
         private string ValidateMacroName(string name)
         {
-            string trimmed = (name ?? string.Empty).Trim();
-            if (trimmed.Length == 0)
+            if (SkillMacroNameRules.TryNormalize(name, out string normalized, out string error))
             {
-                _validationMessage = "Enter a macro name.";
-                return null;
+                _validationMessage = string.Empty;
+                return normalized;
             }
 
-            Span<char> buffer = stackalloc char[Math.Min(trimmed.Length, MAX_MACRO_NAME_LENGTH)];
-            int length = 0;
-            foreach (char ch in trimmed)
-            {
-                if (length >= MAX_MACRO_NAME_LENGTH)
-                    break;
-
-                if (char.IsControl(ch))
-                    continue;
-
-                if (char.IsLetterOrDigit(ch) || ch == ' ' || ch == '\'' || ch == '-' || ch == '!' || ch == '?')
-                {
-                    buffer[length++] = ch;
-                }
-                else
-                {
-                    _validationMessage = "Only letters, numbers, spaces, and - ' ! ? are allowed.";
-                    return null;
-                }
-            }
-
-            if (length == 0)
-            {
-                _validationMessage = "Enter a macro name.";
-                return null;
-            }
-
-            _validationMessage = string.Empty;
-            return new string(buffer[..length]).TrimEnd();
+            _validationMessage = error;
+            return null;
         }
 
         private static SkillMacro CreateDefaultMacro(int slotIndex)
@@ -1042,6 +1014,7 @@ namespace HaCreator.MapSimulator.UI
         private void HandleKeyboardInput(KeyboardState keyboardState)
         {
             bool shift = keyboardState.IsKeyDown(Keys.LeftShift) || keyboardState.IsKeyDown(Keys.RightShift);
+            bool ctrl = keyboardState.IsKeyDown(Keys.LeftControl) || keyboardState.IsKeyDown(Keys.RightControl);
 
             if (keyboardState.IsKeyDown(Keys.Back) && _previousKeyboardState.IsKeyUp(Keys.Back) && _editingMacroName.Length > 0)
             {
@@ -1049,12 +1022,18 @@ namespace HaCreator.MapSimulator.UI
                 _validationMessage = string.Empty;
             }
 
+            if (ctrl && keyboardState.IsKeyDown(Keys.V) && _previousKeyboardState.IsKeyUp(Keys.V))
+            {
+                HandleClipboardPaste();
+                return;
+            }
+
             foreach (Keys key in keyboardState.GetPressedKeys())
             {
                 if (_previousKeyboardState.IsKeyDown(key))
                     continue;
 
-                if (key == Keys.Back || key == Keys.Enter || key == Keys.Tab || key == Keys.Escape ||
+                if (key == Keys.Back || key == Keys.Enter || key == Keys.Tab || key == Keys.Escape || key == Keys.V ||
                     key == Keys.LeftShift || key == Keys.RightShift || key == Keys.LeftControl || key == Keys.RightControl ||
                     key == Keys.LeftAlt || key == Keys.RightAlt)
                 {
@@ -1062,11 +1041,49 @@ namespace HaCreator.MapSimulator.UI
                 }
 
                 char? character = KeyToChar(key, shift);
-                if (!character.HasValue || _editingMacroName.Length >= MAX_MACRO_NAME_LENGTH)
+                if (!character.HasValue)
                     continue;
 
-                _editingMacroName += character.Value;
-                _validationMessage = string.Empty;
+                if (SkillMacroNameRules.TryAppend(_editingMacroName, character.Value.ToString(), out string updatedText, out string error))
+                {
+                    _editingMacroName = updatedText;
+                    _validationMessage = string.Empty;
+                }
+                else
+                {
+                    _validationMessage = error;
+                }
+            }
+        }
+
+        private void HandleClipboardPaste()
+        {
+            try
+            {
+                if (!System.Windows.Forms.Clipboard.ContainsText())
+                {
+                    return;
+                }
+
+                string clipboardText = System.Windows.Forms.Clipboard.GetText();
+                if (string.IsNullOrEmpty(clipboardText))
+                {
+                    return;
+                }
+
+                if (SkillMacroNameRules.TryAppend(_editingMacroName, clipboardText, out string updatedText, out string error))
+                {
+                    _editingMacroName = updatedText;
+                    _validationMessage = string.Empty;
+                }
+                else
+                {
+                    _validationMessage = error;
+                }
+            }
+            catch
+            {
+                _validationMessage = "Clipboard paste is not available right now.";
             }
         }
 

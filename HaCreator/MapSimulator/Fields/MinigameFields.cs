@@ -4,6 +4,7 @@ using HaSharedLibrary.Wz;
 using HaCreator.MapSimulator.Interaction;
 using HaCreator.MapSimulator.Managers;
 using MapleLib.Converters;
+using MapleLib.PacketLib;
 using MapleLib.WzLib;
 using MapleLib.WzLib.WzProperties;
 using Microsoft.Xna.Framework;
@@ -11,7 +12,9 @@ using Microsoft.Xna.Framework.Graphics;
 using Spine;
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
+using System.Text;
 using System.Runtime.CompilerServices;
 
 namespace HaCreator.MapSimulator.Fields
@@ -185,6 +188,7 @@ namespace HaCreator.MapSimulator.Fields
         // Static configuration from WZ (set during Init)
         private static int ms_nDeltaX = 20;  // Movement per hit
         private static Rectangle ms_rgBall;  // Valid ball range
+        private static readonly int[] ms_anDelay = { 0, 90, 75, 60, 45, 30 };
         #endregion
 
         #region Nested Types
@@ -318,16 +322,12 @@ namespace HaCreator.MapSimulator.Fields
 
             private static int GetStepDelay(int speedDegree, int direction)
             {
-                return speedDegree switch
+                if ((uint)speedDegree < (uint)ms_anDelay.Length)
                 {
-                    0 => 0,
-                    1 => 90,
-                    2 => 75,
-                    3 => 60,
-                    4 => 45,
-                    5 => 30,
-                    _ => direction * 30
-                };
+                    return ms_anDelay[speedDegree];
+                }
+
+                return direction * 30;
             }
         }
 
@@ -437,6 +437,7 @@ namespace HaCreator.MapSimulator.Fields
         private int _damageSnowBall = 10;
         private readonly int[] _damageSnowMan = new[] { 15, 45 };
         private int _snowManWaitMs = 10000;
+        private readonly Queue<string> _pendingChatMessages = new();
         private bool _hasReceivedStateSnapshot;
         private int _lastTouchImpactTime;
         private Vector2? _localPlayerPosition;
@@ -595,12 +596,12 @@ namespace HaCreator.MapSimulator.Fields
                 case GameState.Team0Win:
                     _snowBalls[0]?.Win();
                     _team0Score++;
-                    ShowMessage("Team Maple wins the round!", 5000);
+                    ShowMessage("Team Story wins the round!", 5000);
                     break;
                 case GameState.Team1Win:
                     _snowBalls[1]?.Win();
                     _team1Score++;
-                    ShowMessage("Team Story wins the round!", 5000);
+                    ShowMessage("Team Maple wins the round!", 5000);
                     break;
             }
 
@@ -626,7 +627,12 @@ namespace HaCreator.MapSimulator.Fields
         /// </summary>
         public void OnSnowBallMsg(int msgType, string message)
         {
-            ShowMessage(message, 3000);
+            QueueChatMessage(FormatSnowBallMessage(null, msgType, message));
+        }
+
+        public void OnSnowBallMsg(int team, int msgType)
+        {
+            QueueChatMessage(FormatSnowBallMessage(team, msgType, null));
         }
 
         /// <summary>
@@ -653,6 +659,18 @@ namespace HaCreator.MapSimulator.Fields
             }
 
             request = default;
+            return false;
+        }
+
+        public bool TryConsumeChatMessage(out string message)
+        {
+            if (_pendingChatMessages.Count > 0)
+            {
+                message = _pendingChatMessages.Dequeue();
+                return true;
+            }
+
+            message = null;
             return false;
         }
 
@@ -816,6 +834,43 @@ namespace HaCreator.MapSimulator.Fields
             _messageEndTime = Environment.TickCount + durationMs;
         }
 
+        private void QueueChatMessage(string message)
+        {
+            if (!string.IsNullOrWhiteSpace(message))
+            {
+                _pendingChatMessages.Enqueue(message);
+            }
+        }
+
+        internal static string FormatSnowBallMessage(int? team, int msgType, string fallbackMessage)
+        {
+            if (!string.IsNullOrWhiteSpace(fallbackMessage))
+            {
+                return fallbackMessage;
+            }
+
+            string teamName = GetSnowBallTeamName(team);
+            string opposingTeamName = GetSnowBallTeamName(team.HasValue ? 1 - team.Value : null);
+
+            return msgType switch
+            {
+                1 or 2 or 3 => $"{teamName}'s snowball has advanced to stage {msgType}.",
+                4 => $"{opposingTeamName}'s snowman was broken by {teamName}.",
+                5 => $"{teamName} has stunned the opposing team's snowman.",
+                _ => string.Empty
+            };
+        }
+
+        private static string GetSnowBallTeamName(int? team)
+        {
+            return team switch
+            {
+                0 => "Story",
+                1 => "Maple",
+                _ => "Unknown"
+            };
+        }
+
         private void UpdateLocalTouchLoop(int tickCount)
         {
             if (!_localPlayerPosition.HasValue)
@@ -966,7 +1021,7 @@ namespace HaCreator.MapSimulator.Fields
             spriteBatch.Draw(pixel, bgRect, new Color(0, 0, 0, 150));
 
             // Team scores
-            string scoreText = $"Maple {_team0Score} : {_team1Score} Story";
+            string scoreText = $"Story {_team0Score} : {_team1Score} Maple";
             Vector2 scoreSize = font.MeasureString(scoreText);
             spriteBatch.DrawString(font, scoreText,
                 new Vector2((screenWidth - scoreSize.X) / 2, 25), Color.White);
@@ -976,8 +1031,8 @@ namespace HaCreator.MapSimulator.Fields
             {
                 GameState.NotStarted => "Waiting...",
                 GameState.Active => "FIGHT!",
-                GameState.Team0Win => "MAPLE WINS!",
-                GameState.Team1Win => "STORY WINS!",
+                GameState.Team0Win => "STORY WINS!",
+                GameState.Team1Win => "MAPLE WINS!",
                 _ => ""
             };
             if (!string.IsNullOrEmpty(stateText))
@@ -996,6 +1051,7 @@ namespace HaCreator.MapSimulator.Fields
         {
             _state = GameState.NotStarted;
             _damageQueue.Clear();
+            _pendingChatMessages.Clear();
             _currentMessage = null;
             _hasReceivedStateSnapshot = false;
             _lastTouchImpactTime = 0;
@@ -2064,6 +2120,16 @@ namespace HaCreator.MapSimulator.Fields
         private const int CardFaceTextureCount = 15;
         private const int CardBackTextureCount = 3;
         private const int DigitTextureCount = 10;
+        private const byte MiniRoomBaseGameplayPacketType = 6;
+        private const byte MiniRoomBaseLeavePacketType = 10;
+        private const byte MemoryGameTieRequestPacketType = 50;
+        private const byte MemoryGameTieResultPacketType = 51;
+        private const byte MemoryGameReadyPacketType = 58;
+        private const byte MemoryGameCancelReadyPacketType = 59;
+        private const byte MemoryGameStartPacketType = 61;
+        private const byte MemoryGameGameResultPacketType = 62;
+        private const byte MemoryGameTimeOverPacketType = 63;
+        private const byte MemoryGameTurnUpCardPacketType = 68;
 
         private readonly List<Card> _cards = new();
         private readonly List<int> _revealedCardIndices = new(2);
@@ -2109,6 +2175,7 @@ namespace HaCreator.MapSimulator.Fields
         private string _statusMessage = "Open a MiniRoom to begin.";
         private MemoryGamePacketType? _lastPacketType;
         private string _lastPacketSummary = "No Match Cards packet dispatched.";
+        private bool _waitingForTimeOverPacket;
 
         public enum RoomStage
         {
@@ -2206,6 +2273,7 @@ namespace HaCreator.MapSimulator.Fields
             ClearRoundState();
             _stage = RoomStage.Lobby;
             _statusMessage = "Ready the room, then start the board.";
+            _miniRoomRuntime?.AddMiniRoomSystemMessage("System : Match Cards room opened.");
             SyncMiniRoomRuntime();
         }
 
@@ -2232,6 +2300,7 @@ namespace HaCreator.MapSimulator.Fields
             _readyStates[playerIndex] = isReady;
             _statusMessage = $"{_playerNames[playerIndex]} is {(isReady ? "ready" : "not ready")}.";
             message = _statusMessage;
+            _miniRoomRuntime?.AddMiniRoomSystemMessage(_statusMessage);
             SyncMiniRoomRuntime();
             return true;
         }
@@ -2258,6 +2327,7 @@ namespace HaCreator.MapSimulator.Fields
             _turnDeadlineTick = tickCount + DefaultTurnSeconds * 1000;
             _statusMessage = $"{_playerNames[_currentTurnIndex]}'s turn.";
             message = _statusMessage;
+            _miniRoomRuntime?.AddMiniRoomSystemMessage("System : Match Cards round started.");
             SyncMiniRoomRuntime();
             return true;
         }
@@ -2307,6 +2377,7 @@ namespace HaCreator.MapSimulator.Fields
             {
                 _statusMessage = $"{_playerNames[_currentTurnIndex]} revealed card {cardIndex}.";
                 message = _statusMessage;
+                _miniRoomRuntime?.AddMiniRoomSpeakerMessage(_playerNames[_currentTurnIndex], $"turned up card {cardIndex}.", _currentTurnIndex == _localPlayerIndex);
                 SyncMiniRoomRuntime();
                 return true;
             }
@@ -2327,6 +2398,7 @@ namespace HaCreator.MapSimulator.Fields
                 else
                 {
                     _statusMessage = $"{_playerNames[_currentTurnIndex]} found a pair.";
+                    _miniRoomRuntime?.AddMiniRoomSystemMessage(_statusMessage);
                     SyncMiniRoomRuntime();
                 }
 
@@ -2337,6 +2409,7 @@ namespace HaCreator.MapSimulator.Fields
             _pendingHideTick = tickCount + DefaultMismatchHideDelayMs;
             _statusMessage = "Mismatch. Cards will flip back.";
             message = _statusMessage;
+            _miniRoomRuntime?.AddMiniRoomSystemMessage("System : Mismatch. Waiting for cards to flip back.");
             SyncMiniRoomRuntime();
             return true;
         }
@@ -2356,6 +2429,7 @@ namespace HaCreator.MapSimulator.Fields
             _resultExpireTick = Environment.TickCount + DefaultResultSeconds * 1000;
             _statusMessage = "The room settled as a draw.";
             message = _statusMessage;
+            _miniRoomRuntime?.AddMiniRoomSystemMessage("System : The round ended in a draw.");
             SyncMiniRoomRuntime();
             return true;
         }
@@ -2382,6 +2456,7 @@ namespace HaCreator.MapSimulator.Fields
             _resultExpireTick = Environment.TickCount + DefaultResultSeconds * 1000;
             _statusMessage = $"{_playerNames[playerIndex]} gave up. {_playerNames[winnerIndex]} wins.";
             message = _statusMessage;
+            _miniRoomRuntime?.AddMiniRoomSystemMessage($"System : {_playerNames[playerIndex]} gave up.");
             SyncMiniRoomRuntime();
             return true;
         }
@@ -2396,6 +2471,7 @@ namespace HaCreator.MapSimulator.Fields
 
             Reset();
             message = "Memory Game room closed.";
+            _miniRoomRuntime?.AddMiniRoomSystemMessage("System : Match Cards room closed.");
             return true;
         }
 
@@ -2431,6 +2507,66 @@ namespace HaCreator.MapSimulator.Fields
 
             _lastPacketSummary = $"{packetType}: {message}";
             return handled;
+        }
+
+        public bool TryDispatchMiniRoomPacket(byte[] packetBytes, int tickCount, out string message)
+        {
+            if (packetBytes == null || packetBytes.Length == 0)
+            {
+                message = "MiniRoom packet payload is empty.";
+                return false;
+            }
+
+            EnsureRoomOpenFromMiniRoomRuntime();
+
+            try
+            {
+                PacketReader reader = new(packetBytes);
+                byte basePacketType = reader.ReadByte();
+                return basePacketType switch
+                {
+                    MiniRoomBaseGameplayPacketType => TryDispatchMiniRoomGameplayPacket(reader, tickCount, out message),
+                    MiniRoomBaseLeavePacketType => TryDispatchMiniRoomLeavePacket(reader, out message),
+                    _ => FailMiniRoomPacket(basePacketType, out message)
+                };
+            }
+            catch (EndOfStreamException)
+            {
+                message = $"MiniRoom packet ended unexpectedly: {BitConverter.ToString(packetBytes)}";
+                return false;
+            }
+        }
+
+        public static bool TryParseMiniRoomPacketHex(string text, out byte[] packetBytes, out string error)
+        {
+            packetBytes = Array.Empty<byte>();
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                error = "Provide at least one hex byte.";
+                return false;
+            }
+
+            string[] tokens = text
+                .Replace(",", " ", StringComparison.Ordinal)
+                .Split(new[] { ' ', '\t', '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
+            List<byte> bytes = new(tokens.Length);
+            foreach (string token in tokens)
+            {
+                string normalized = token.StartsWith("0x", StringComparison.OrdinalIgnoreCase)
+                    ? token[2..]
+                    : token;
+                if (!byte.TryParse(normalized, System.Globalization.NumberStyles.HexNumber, null, out byte value))
+                {
+                    error = $"Invalid hex byte: {token}.";
+                    return false;
+                }
+
+                bytes.Add(value);
+            }
+
+            packetBytes = bytes.ToArray();
+            error = string.Empty;
+            return packetBytes.Length > 0;
         }
 
         public int GetPacketCount(MemoryGamePacketType packetType)
@@ -2655,6 +2791,7 @@ namespace HaCreator.MapSimulator.Fields
             _pendingHideTick = 0;
             _resultExpireTick = 0;
             _pendingRemoteActions.Clear();
+            _waitingForTimeOverPacket = false;
 
             int pairCount = (_rows * _columns) / 2;
             List<int> faceIds = new(pairCount * 2);
@@ -2693,6 +2830,7 @@ namespace HaCreator.MapSimulator.Fields
             _pendingHideTick = 0;
             AdvanceTurn(Environment.TickCount);
             _statusMessage = $"{_playerNames[_currentTurnIndex]}'s turn.";
+            _miniRoomRuntime?.AddMiniRoomSystemMessage("System : Turn passed after the mismatch.");
             SyncMiniRoomRuntime();
         }
 
@@ -2728,6 +2866,7 @@ namespace HaCreator.MapSimulator.Fields
                 _draws[0]++;
                 _draws[1]++;
                 _statusMessage = "Round complete. Draw.";
+                _miniRoomRuntime?.AddMiniRoomSystemMessage("System : Match Cards round complete. Draw.");
                 SyncMiniRoomRuntime();
                 return;
             }
@@ -2738,6 +2877,7 @@ namespace HaCreator.MapSimulator.Fields
             _wins[winnerIndex]++;
             _losses[loserIndex]++;
             _statusMessage = $"Round complete. {_playerNames[winnerIndex]} wins.";
+            _miniRoomRuntime?.AddMiniRoomSystemMessage($"System : {_playerNames[winnerIndex]} won the round.");
             SyncMiniRoomRuntime();
         }
 
@@ -2753,6 +2893,7 @@ namespace HaCreator.MapSimulator.Fields
             _lastWinnerIndex = -1;
             _stage = RoomStage.Lobby;
             _statusMessage = "Ready the room, then start the board.";
+            _waitingForTimeOverPacket = false;
             SyncMiniRoomRuntime();
         }
 
@@ -2770,6 +2911,304 @@ namespace HaCreator.MapSimulator.Fields
             _resultExpireTick = 0;
             _lastWinnerIndex = -1;
             _pendingRemoteActions.Clear();
+            _waitingForTimeOverPacket = false;
+        }
+
+        private bool TryDispatchMiniRoomGameplayPacket(PacketReader reader, int tickCount, out string message)
+        {
+            byte packetType = reader.ReadByte();
+            switch (packetType)
+            {
+                case MemoryGameReadyPacketType:
+                    return TryApplyRemoteReadyPacket(isReady: true, out message);
+                case MemoryGameCancelReadyPacketType:
+                    return TryApplyRemoteReadyPacket(isReady: false, out message);
+                case MemoryGameStartPacketType:
+                    return TryApplyStartPacket(reader, tickCount, out message);
+                case MemoryGameTurnUpCardPacketType:
+                    return TryApplyTurnUpCardPacket(reader, tickCount, out message);
+                case MemoryGameTimeOverPacketType:
+                    return TryApplyTimeOverPacket(reader, tickCount, out message);
+                case MemoryGameTieRequestPacketType:
+                    message = $"{ResolveRemotePlayerName()} requested a tie.";
+                    _statusMessage = message;
+                    _miniRoomRuntime?.AddMiniRoomSystemMessage($"System : {message}");
+                    SyncMiniRoomRuntime();
+                    return true;
+                case MemoryGameTieResultPacketType:
+                    return TryClaimTie(out message);
+                case MemoryGameGameResultPacketType:
+                    return TryApplyGameResultPacket(reader, tickCount, out message);
+                default:
+                    message = $"MiniRoom gameplay packet {packetType} is not modeled for Match Cards.";
+                    return false;
+            }
+        }
+
+        private bool TryDispatchMiniRoomLeavePacket(PacketReader reader, out string message)
+        {
+            int playerIndex = reader.ReadByte();
+            if (!IsValidPlayerIndex(playerIndex))
+            {
+                message = $"MiniRoom leave packet used invalid player index {playerIndex}.";
+                return false;
+            }
+
+            string playerName = _playerNames[playerIndex];
+            if (_stage == RoomStage.Playing || _stage == RoomStage.Result || _stage == RoomStage.Lobby)
+            {
+                Reset();
+            }
+
+            message = $"{playerName} left the Match Cards room.";
+            _miniRoomRuntime?.AddMiniRoomSystemMessage($"System : {message}", isWarning: true);
+            _statusMessage = message;
+            SyncMiniRoomRuntime();
+            return true;
+        }
+
+        private bool TryApplyRemoteReadyPacket(bool isReady, out string message)
+        {
+            int remotePlayerIndex = _localPlayerIndex == 0 ? 1 : 0;
+            bool handled = TrySetReady(remotePlayerIndex, isReady, out message);
+            if (handled)
+            {
+                _miniRoomRuntime?.AddMiniRoomSystemMessage($"System : {ResolveRemotePlayerName()} {(isReady ? "is ready." : "canceled ready.")}");
+            }
+
+            return handled;
+        }
+
+        private bool TryApplyStartPacket(PacketReader reader, int tickCount, out string message)
+        {
+            int currentTurnIndex = reader.ReadByte();
+            int cardCount = reader.ReadByte();
+            if (cardCount <= 0)
+            {
+                message = "Memory Game start packet did not include a card count.";
+                return false;
+            }
+
+            List<int> shuffle = new(cardCount);
+            for (int i = 0; i < cardCount; i++)
+            {
+                shuffle.Add(reader.ReadInt());
+            }
+
+            ResolveBoardDimensions(cardCount, out _rows, out _columns);
+            InitializeBoardFromPacket(shuffle);
+            _stage = RoomStage.Playing;
+            _currentTurnIndex = Math.Clamp(currentTurnIndex, 0, _playerNames.Length - 1);
+            _turnDeadlineTick = tickCount + (200 * cardCount) + 11500;
+            _resultExpireTick = 0;
+            _readyStates[0] = false;
+            _readyStates[1] = false;
+            _waitingForTimeOverPacket = false;
+            _statusMessage = $"{_playerNames[_currentTurnIndex]}'s turn.";
+            _miniRoomRuntime?.AddMiniRoomSystemMessage("System : Start packet applied from MiniRoom payload.");
+            SyncMiniRoomRuntime();
+            message = $"Applied start packet for {cardCount} cards. {_statusMessage}";
+            return true;
+        }
+
+        private bool TryApplyTurnUpCardPacket(PacketReader reader, int tickCount, out string message)
+        {
+            int firstRevealFlag = reader.ReadByte();
+            int cardIndex = reader.ReadByte();
+            if (!TryEnsureCardIndex(cardIndex, out message))
+            {
+                return false;
+            }
+
+            if (firstRevealFlag != 0)
+            {
+                _cards[cardIndex].IsFaceUp = true;
+                _revealedCardIndices.Clear();
+                _revealedCardIndices.Add(cardIndex);
+                _statusMessage = $"{_playerNames[_currentTurnIndex]} revealed card {cardIndex}.";
+                _miniRoomRuntime?.AddMiniRoomSpeakerMessage(_playerNames[_currentTurnIndex], $"turned up card {cardIndex}.", _currentTurnIndex == _localPlayerIndex);
+                SyncMiniRoomRuntime();
+                message = _statusMessage;
+                return true;
+            }
+
+            int pairedCardIndex = reader.ReadByte();
+            int resultOwner = reader.ReadByte();
+            if (!TryEnsureCardIndex(pairedCardIndex, out message))
+            {
+                return false;
+            }
+
+            _cards[cardIndex].IsFaceUp = true;
+            _cards[pairedCardIndex].IsFaceUp = true;
+            _revealedCardIndices.Clear();
+            _revealedCardIndices.Add(pairedCardIndex);
+            _revealedCardIndices.Add(cardIndex);
+
+            if (resultOwner < _playerNames.Length)
+            {
+                _currentTurnIndex = resultOwner;
+                _turnDeadlineTick = tickCount + 11600;
+                _waitingForTimeOverPacket = true;
+                _statusMessage = $"Mismatch pending. {_playerNames[_currentTurnIndex]} takes the next turn after flip-back.";
+                _miniRoomRuntime?.AddMiniRoomSystemMessage("System : Packet mismatch received. Waiting for time-over flip-back.");
+            }
+            else
+            {
+                int scoringPlayerIndex = resultOwner - _playerNames.Length;
+                if (!IsValidPlayerIndex(scoringPlayerIndex))
+                {
+                    message = $"Turn-up packet used invalid scoring owner {resultOwner}.";
+                    return false;
+                }
+
+                _cards[cardIndex].IsMatched = true;
+                _cards[pairedCardIndex].IsMatched = true;
+                _scores[scoringPlayerIndex]++;
+                _currentTurnIndex = scoringPlayerIndex;
+                _turnDeadlineTick = tickCount + 10000;
+                _revealedCardIndices.Clear();
+                _waitingForTimeOverPacket = false;
+                _statusMessage = $"{_playerNames[scoringPlayerIndex]} found a pair.";
+                _miniRoomRuntime?.AddMiniRoomSystemMessage($"System : {_playerNames[scoringPlayerIndex]} matched cards {pairedCardIndex} and {cardIndex}.");
+            }
+
+            SyncMiniRoomRuntime();
+            message = _statusMessage;
+            return true;
+        }
+
+        private bool TryApplyTimeOverPacket(PacketReader reader, int tickCount, out string message)
+        {
+            int currentTurnIndex = reader.ReadByte();
+            if (_revealedCardIndices.Count > 0)
+            {
+                foreach (int revealedIndex in _revealedCardIndices)
+                {
+                    if (revealedIndex >= 0 && revealedIndex < _cards.Count && !_cards[revealedIndex].IsMatched)
+                    {
+                        _cards[revealedIndex].IsFaceUp = false;
+                    }
+                }
+
+                _revealedCardIndices.Clear();
+            }
+
+            _currentTurnIndex = Math.Clamp(currentTurnIndex, 0, _playerNames.Length - 1);
+            _turnDeadlineTick = tickCount + 10000;
+            _waitingForTimeOverPacket = false;
+            _statusMessage = $"{_playerNames[_currentTurnIndex]}'s turn.";
+            _miniRoomRuntime?.AddMiniRoomSystemMessage("System : Time-over packet returned the board to the next turn.");
+            SyncMiniRoomRuntime();
+            message = _statusMessage;
+            return true;
+        }
+
+        private bool TryApplyGameResultPacket(PacketReader reader, int tickCount, out string message)
+        {
+            int resultType = reader.ReadByte();
+            _stage = RoomStage.Result;
+            _pendingHideTick = 0;
+            _turnDeadlineTick = 0;
+            _resultExpireTick = tickCount + DefaultResultSeconds * 1000;
+            _waitingForTimeOverPacket = false;
+
+            if (resultType == 1)
+            {
+                _lastWinnerIndex = -1;
+                _draws[0]++;
+                _draws[1]++;
+                _statusMessage = "Round complete. Draw.";
+                _miniRoomRuntime?.AddMiniRoomSystemMessage("System : Game-result packet ended the round in a draw.");
+                SyncMiniRoomRuntime();
+                message = _statusMessage;
+                return true;
+            }
+
+            int winnerIndex = reader.ReadByte();
+            if (!IsValidPlayerIndex(winnerIndex))
+            {
+                message = $"Game-result packet used invalid winner index {winnerIndex}.";
+                return false;
+            }
+
+            int loserIndex = winnerIndex == 0 ? 1 : 0;
+            _lastWinnerIndex = winnerIndex;
+            _wins[winnerIndex]++;
+            _losses[loserIndex]++;
+            _statusMessage = $"Round complete. {_playerNames[winnerIndex]} wins.";
+            _miniRoomRuntime?.AddMiniRoomSystemMessage($"System : Game-result packet declared {_playerNames[winnerIndex]} the winner.");
+            SyncMiniRoomRuntime();
+            message = _statusMessage;
+            return true;
+        }
+
+        private void InitializeBoardFromPacket(IReadOnlyList<int> shuffle)
+        {
+            _cards.Clear();
+            _revealedCardIndices.Clear();
+            _scores[0] = 0;
+            _scores[1] = 0;
+            _pendingHideTick = 0;
+            _resultExpireTick = 0;
+            _pendingRemoteActions.Clear();
+
+            for (int i = 0; i < shuffle.Count; i++)
+            {
+                _cards.Add(new Card
+                {
+                    FaceId = Math.Max(0, shuffle[i]),
+                    IsFaceUp = false,
+                    IsMatched = false
+                });
+            }
+        }
+
+        private static void ResolveBoardDimensions(int cardCount, out int rows, out int columns)
+        {
+            rows = 2;
+            columns = Math.Max(2, cardCount / 2);
+            int bestDifference = int.MaxValue;
+            for (int candidateRows = 2; candidateRows <= cardCount; candidateRows++)
+            {
+                if (cardCount % candidateRows != 0)
+                {
+                    continue;
+                }
+
+                int candidateColumns = cardCount / candidateRows;
+                int difference = Math.Abs(candidateColumns - candidateRows);
+                if (difference < bestDifference)
+                {
+                    bestDifference = difference;
+                    rows = Math.Min(candidateRows, candidateColumns);
+                    columns = Math.Max(candidateRows, candidateColumns);
+                }
+            }
+        }
+
+        private bool TryEnsureCardIndex(int cardIndex, out string message)
+        {
+            if (cardIndex < 0 || cardIndex >= _cards.Count)
+            {
+                message = $"Invalid card index: {cardIndex}.";
+                return false;
+            }
+
+            message = string.Empty;
+            return true;
+        }
+
+        private string ResolveRemotePlayerName()
+        {
+            int remotePlayerIndex = _localPlayerIndex == 0 ? 1 : 0;
+            return string.IsNullOrWhiteSpace(_playerNames[remotePlayerIndex]) ? "Opponent" : _playerNames[remotePlayerIndex];
+        }
+
+        private static bool FailMiniRoomPacket(byte basePacketType, out string message)
+        {
+            message = $"MiniRoom base packet {basePacketType} is not modeled for Match Cards.";
+            return false;
         }
 
         private void DrawBoard(SpriteBatch spriteBatch, Texture2D pixel, SpriteFont font, Rectangle area)
@@ -3250,10 +3689,13 @@ namespace HaCreator.MapSimulator.Fields
     {
         private const int MaxRankEntries = 6;
         private const int MaxScore = 9999;
+        private const int PacketTypeShowResult = 171;
+        private const int PacketTypeUserScore = 354;
         private const int IconX = 5;
         private const int NameX = 21;
         private const int ScoreX = 106;
-        private const int FirstRowY = 0;
+        private const int FirstIconY = 0;
+        private const int FirstTextY = 2;
         private const int RowSpacing = 17;
         private const int ResultOffsetY = 100;
         private const int ResultHoldDurationMs = 1200;
@@ -3275,6 +3717,7 @@ namespace HaCreator.MapSimulator.Fields
         private string _resultSoundKey;
         private string _lastResultMessage;
         private string _localPlayerName;
+        private int? _lastPacketType;
 
         public bool IsActive => _isActive;
         public IReadOnlyList<AriantArenaScoreEntry> Entries => _entries;
@@ -3297,6 +3740,7 @@ namespace HaCreator.MapSimulator.Fields
             _resultVisibleUntil = 0;
             _scoreRefreshSerial = 0;
             _lastResultMessage = null;
+            _lastPacketType = null;
             EnsureAssetsLoaded();
         }
 
@@ -3309,6 +3753,39 @@ namespace HaCreator.MapSimulator.Fields
         public void OnUserScore(string userName, int score)
         {
             ApplyUserScoreBatch(new[] { new AriantArenaScoreUpdate(userName, score) });
+        }
+
+        public bool TryApplyPacket(int packetType, byte[] payload, int currentTimeMs, out string errorMessage)
+        {
+            errorMessage = null;
+            _lastPacketType = packetType;
+
+            if (!_isActive)
+            {
+                errorMessage = "Ariant Arena runtime inactive.";
+                return false;
+            }
+
+            try
+            {
+                switch (packetType)
+                {
+                    case PacketTypeShowResult:
+                        OnShowResult(currentTimeMs);
+                        return true;
+                    case PacketTypeUserScore:
+                        ApplyUserScoreBatch(DecodeUserScorePacket(payload));
+                        return true;
+                    default:
+                        errorMessage = $"Unsupported Ariant packet type: {packetType}";
+                        return false;
+                }
+            }
+            catch (Exception ex) when (ex is InvalidDataException || ex is EndOfStreamException || ex is IOException)
+            {
+                errorMessage = ex.Message;
+                return false;
+            }
         }
 
         public void ApplyUserScoreBatch(IEnumerable<AriantArenaScoreUpdate> updates)
@@ -3355,7 +3832,7 @@ namespace HaCreator.MapSimulator.Fields
                 }
                 else
                 {
-                    _entries.Add(new AriantArenaScoreEntry(normalizedName, clampedScore));
+                    _entries.Add(new AriantArenaScoreEntry(normalizedName, clampedScore, GetNextIconIndex()));
                     changed = true;
                 }
             }
@@ -3411,6 +3888,7 @@ namespace HaCreator.MapSimulator.Fields
             _resultVisibleUntil = 0;
             _scoreRefreshSerial = 0;
             _lastResultMessage = null;
+            _lastPacketType = null;
         }
 
         public void Update(int currentTimeMs)
@@ -3481,6 +3959,7 @@ namespace HaCreator.MapSimulator.Fields
             _localPlayerJob = 0;
             _lastResultMessage = null;
             _localPlayerName = null;
+            _lastPacketType = null;
         }
 
         public string DescribeStatus()
@@ -3494,7 +3973,7 @@ namespace HaCreator.MapSimulator.Fields
                 ? "no scores"
                 : string.Join(", ", _entries.Take(MaxRankEntries).Select((entry, index) => $"{index + 1}.{entry.Name}={entry.Score}"));
 
-            return $"Ariant Arena active, {_entries.Count} score row(s), result={(_showResult ? "showing" : "idle")}, refresh={_scoreRefreshSerial}, {leaderText}";
+            return $"Ariant Arena active, {_entries.Count} score row(s), result={(_showResult ? "showing" : "idle")}, refresh={_scoreRefreshSerial}, lastPacket={(_lastPacketType?.ToString() ?? "None")}, {leaderText}";
         }
 
         private bool ShouldSuppressLocalRankEntry(string normalizedName)
@@ -3515,25 +3994,26 @@ namespace HaCreator.MapSimulator.Fields
             int rowCount = Math.Min(_entries.Count, MaxRankEntries);
             for (int i = 0; i < rowCount; i++)
             {
-                int rowY = FirstRowY + (i * RowSpacing);
+                int iconY = FirstIconY + (i * RowSpacing);
+                int textY = FirstTextY + (i * RowSpacing);
+                AriantArenaScoreEntry entry = _entries[i];
 
-                if (i < _rankIcons.Count)
+                if (entry.IconIndex >= 0 && entry.IconIndex < _rankIcons.Count)
                 {
-                    IDXObject icon = _rankIcons[i];
+                    IDXObject icon = _rankIcons[entry.IconIndex];
                     icon.DrawBackground(
                         spriteBatch,
                         skeletonMeshRenderer,
                         gameTime,
                         IconX + icon.X,
-                        rowY + icon.Y,
+                        iconY + icon.Y,
                         Color.White,
                         false,
                         null);
                 }
 
-                AriantArenaScoreEntry entry = _entries[i];
-                DrawOutlinedText(spriteBatch, font, entry.Name, new Vector2(NameX, rowY), new Color(20, 20, 20), new Color(204, 236, 255));
-                DrawOutlinedText(spriteBatch, font, entry.Score.ToString(), new Vector2(ScoreX, rowY), new Color(20, 20, 20), new Color(255, 222, 112));
+                DrawOutlinedText(spriteBatch, font, entry.Name, new Vector2(NameX, textY), new Color(20, 20, 20), new Color(204, 236, 255));
+                DrawOutlinedText(spriteBatch, font, entry.Score.ToString(), new Vector2(ScoreX, textY), new Color(20, 20, 20), new Color(255, 222, 112));
             }
         }
 
@@ -3620,9 +4100,12 @@ namespace HaCreator.MapSimulator.Fields
                 return;
             }
 
-            WzBinaryProperty sound = FindBestAriantResultSound(
-                global::HaCreator.Program.FindImage("Sound", "MiniGame.img"),
-                global::HaCreator.Program.FindImage("Sound", "Game.img"));
+            WzBinaryProperty sound =
+                WzInfoTools.GetRealProperty(global::HaCreator.Program.FindImage("Sound", "MiniGame.img")?["Show"]) as WzBinaryProperty
+                ?? WzInfoTools.GetRealProperty(global::HaCreator.Program.FindImage("Sound", "MiniGame.img")?["Win"]) as WzBinaryProperty
+                ?? FindBestAriantResultSound(
+                    global::HaCreator.Program.FindImage("Sound", "MiniGame.img"),
+                    global::HaCreator.Program.FindImage("Sound", "Game.img"));
             if (sound == null)
             {
                 return;
@@ -3711,6 +4194,55 @@ namespace HaCreator.MapSimulator.Fields
             }
         }
 
+        private static IEnumerable<AriantArenaScoreUpdate> DecodeUserScorePacket(byte[] payload)
+        {
+            if (payload == null)
+            {
+                throw new InvalidDataException("Ariant score packet payload is missing.");
+            }
+
+            using var stream = new MemoryStream(payload, writable: false);
+            using var reader = new BinaryReader(stream, Encoding.Default, leaveOpen: false);
+
+            int count = reader.ReadByte();
+            var updates = new List<AriantArenaScoreUpdate>(count);
+            for (int i = 0; i < count; i++)
+            {
+                string userName = ReadMapleString(reader);
+                int score = reader.ReadInt32();
+                updates.Add(new AriantArenaScoreUpdate(userName, score));
+            }
+
+            if (stream.Position != stream.Length)
+            {
+                throw new InvalidDataException($"Ariant score packet has {stream.Length - stream.Position} trailing byte(s).");
+            }
+
+            return updates;
+        }
+
+        private static string ReadMapleString(BinaryReader reader)
+        {
+            ushort length = reader.ReadUInt16();
+            byte[] bytes = reader.ReadBytes(length);
+            if (bytes.Length != length)
+            {
+                throw new EndOfStreamException("Ariant score packet ended before the player name was fully read.");
+            }
+
+            return Encoding.Default.GetString(bytes);
+        }
+
+        private int GetNextIconIndex()
+        {
+            if (MaxRankEntries <= 0)
+            {
+                return -1;
+            }
+
+            return Math.Clamp(_entries.Count, 0, MaxRankEntries - 1);
+        }
+
         private void LoadAnimatedFrames(WzImageProperty source, List<IDXObject> target)
         {
             target.Clear();
@@ -3777,7 +4309,7 @@ namespace HaCreator.MapSimulator.Fields
         }
     }
 
-    public readonly record struct AriantArenaScoreEntry(string Name, int Score);
+    public readonly record struct AriantArenaScoreEntry(string Name, int Score, int IconIndex = -1);
     public readonly record struct AriantArenaScoreUpdate(string UserName, int Score);
     #endregion
 }

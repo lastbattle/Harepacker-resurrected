@@ -65,6 +65,7 @@ namespace HaCreator.MapSimulator.Pools
         NoDropInRange,
         OwnershipRestricted,
         InventoryFull,
+        PetPickupBlocked,
         Unavailable
     }
 
@@ -118,6 +119,8 @@ namespace HaCreator.MapSimulator.Pools
         public float Alpha { get; set; } = 1.0f;
         public float Scale { get; set; } = 1.0f;
         public float Rotation { get; set; }             // For item icons
+        public int LastPickupFailureTime { get; set; } = int.MinValue;
+        public DropPickupFailureReason LastPickupFailureReason { get; set; } = DropPickupFailureReason.None;
         public int LastStateChangeTime { get; set; }
 
         // Visual
@@ -324,6 +327,7 @@ namespace HaCreator.MapSimulator.Pools
         private const float PET_LOOT_RANGE = 300f;              // Max range pet will travel to loot
         private const float PET_CHASE_SPEED = 150f;             // Pet movement speed when chasing drops
         private const int PET_PICKUP_COOLDOWN = 200;            // Cooldown between pet pickups (ms)
+        private const int PICKUP_FAILURE_REPORT_COOLDOWN = 1500;
 
         // Mob pickup constants
         private const float MOB_PICKUP_RANGE = 30f;             // Range for mob pickup detection
@@ -368,7 +372,9 @@ namespace HaCreator.MapSimulator.Pools
         private Action<DropItem> _onDropPickedUp;
         private Action<DropItem> _onDropExpired;
         private Action<DropItem, int, bool> _onPickupResolved;
+        private Action<DropPickupAttemptResult, int, bool> _onPickupFailed;
         private Func<DropItem, DropPickupFailureReason> _pickupAvailabilityEvaluator;
+        private Func<DropItem, DropPickupFailureReason> _petPickupAvailabilityEvaluator;
 
         // Ground level lookup function
         private Func<float, float, float> _getGroundY;
@@ -389,7 +395,9 @@ namespace HaCreator.MapSimulator.Pools
         public void SetOnDropPickedUp(Action<DropItem> callback) => _onDropPickedUp = callback;
         public void SetOnDropExpired(Action<DropItem> callback) => _onDropExpired = callback;
         public void SetOnPickupResolved(Action<DropItem, int, bool> callback) => _onPickupResolved = callback;
+        public void SetOnPickupFailed(Action<DropPickupAttemptResult, int, bool> callback) => _onPickupFailed = callback;
         public void SetPickupAvailabilityEvaluator(Func<DropItem, DropPickupFailureReason> callback) => _pickupAvailabilityEvaluator = callback;
+        public void SetPetPickupAvailabilityEvaluator(Func<DropItem, DropPickupFailureReason> callback) => _petPickupAvailabilityEvaluator = callback;
         public void SetGroundLevelLookup(Func<float, float, float> getGroundY) => _getGroundY = getGroundY;
 
         // Pet pickup events
@@ -592,6 +600,8 @@ namespace HaCreator.MapSimulator.Pools
             drop.Icon = null;
             drop.Quantity = 1;
             drop.MesoAmount = 0;
+            drop.LastPickupFailureTime = int.MinValue;
+            drop.LastPickupFailureReason = DropPickupFailureReason.None;
         }
         #endregion
 
@@ -850,6 +860,11 @@ namespace HaCreator.MapSimulator.Pools
         /// <returns>The picked up drop, or null if nothing picked up</returns>
         public DropItem TryPickUpDropByPet(int petId, float petX, float petY, int playerId, int currentTime, float petPickupRange = 0)
         {
+            return TryPickUpDropByPetDetailed(petId, petX, petY, playerId, currentTime, petPickupRange).Drop;
+        }
+
+        public DropPickupAttemptResult TryPickUpDropByPetDetailed(int petId, float petX, float petY, int playerId, int currentTime, float petPickupRange = 0)
+        {
             if (petPickupRange <= 0)
                 petPickupRange = PET_PICKUP_RANGE;
 
@@ -857,33 +872,65 @@ namespace HaCreator.MapSimulator.Pools
             if (_petLastPickupTime.TryGetValue(petId, out int lastPickup))
             {
                 if (currentTime - lastPickup < PET_PICKUP_COOLDOWN)
-                    return null;
+                {
+                    return new DropPickupAttemptResult
+                    {
+                        Drop = null,
+                        FailureReason = DropPickupFailureReason.NoDropInRange
+                    };
+                }
             }
 
-            // Find closest pickupable drop within range
+            float rangeSq = petPickupRange * petPickupRange;
             DropItem closestDrop = null;
-            float closestDistSq = petPickupRange * petPickupRange;
+            float closestDistSq = float.MaxValue;
+            DropItem closestFailureDrop = null;
+            float closestFailureDistSq = float.MaxValue;
+            DropPickupFailureReason closestFailureReason = DropPickupFailureReason.NoDropInRange;
 
             foreach (var drop in _activeDrops)
             {
                 if (drop.State != DropState.Idle || !drop.CanPickup)
                     continue;
 
+                float dx = drop.X - petX;
+                float dy = drop.Y - petY;
+                float distSq = dx * dx + dy * dy;
+                if (distSq > rangeSq)
+                    continue;
+
                 // Check ownership - pets can only pick up drops owned by their owner
                 if (drop.OwnerId > 0 && drop.OwnerId != playerId && currentTime < drop.OwnerExpireTime)
+                {
+                    if (distSq < closestFailureDistSq)
+                    {
+                        closestFailureDrop = drop;
+                        closestFailureDistSq = distSq;
+                        closestFailureReason = DropPickupFailureReason.OwnershipRestricted;
+                    }
+
                     continue;
+                }
 
                 // Check exception list
                 if (IsInExceptionList(drop))
                     continue;
 
-                DropPickupFailureReason validatorReason = _pickupAvailabilityEvaluator?.Invoke(drop) ?? DropPickupFailureReason.None;
+                DropPickupFailureReason validatorReason =
+                    _petPickupAvailabilityEvaluator?.Invoke(drop)
+                    ?? _pickupAvailabilityEvaluator?.Invoke(drop)
+                    ?? DropPickupFailureReason.None;
                 if (validatorReason != DropPickupFailureReason.None)
-                    continue;
+                {
+                    if (distSq < closestFailureDistSq)
+                    {
+                        closestFailureDrop = drop;
+                        closestFailureDistSq = distSq;
+                        closestFailureReason = validatorReason;
+                    }
 
-                float dx = drop.X - petX;
-                float dy = drop.Y - petY;
-                float distSq = dx * dx + dy * dy;
+                    continue;
+                }
 
                 if (distSq < closestDistSq)
                 {
@@ -912,10 +959,45 @@ namespace HaCreator.MapSimulator.Pools
                 _onPickupResolved?.Invoke(closestDrop, petId, true);
                 _onPetPickedUp?.Invoke(closestDrop, petId);
 
-                return closestDrop;
+                return new DropPickupAttemptResult
+                {
+                    Drop = closestDrop,
+                    FailureReason = DropPickupFailureReason.None
+                };
             }
 
-            return null;
+            ReportPickupFailure(closestFailureDrop, closestFailureReason, petId, true, currentTime);
+            return new DropPickupAttemptResult
+            {
+                Drop = null,
+                FailureReason = closestFailureReason
+            };
+        }
+
+        private void ReportPickupFailure(DropItem drop, DropPickupFailureReason reason, int pickerId, bool pickedByPet, int currentTime)
+        {
+            if (reason == DropPickupFailureReason.None || reason == DropPickupFailureReason.NoDropInRange)
+            {
+                return;
+            }
+
+            if (drop != null)
+            {
+                if (drop.LastPickupFailureReason == reason
+                    && currentTime - drop.LastPickupFailureTime < PICKUP_FAILURE_REPORT_COOLDOWN)
+                {
+                    return;
+                }
+
+                drop.LastPickupFailureReason = reason;
+                drop.LastPickupFailureTime = currentTime;
+            }
+
+            _onPickupFailed?.Invoke(new DropPickupAttemptResult
+            {
+                Drop = null,
+                FailureReason = reason
+            }, pickerId, pickedByPet);
         }
 
         /// <summary>

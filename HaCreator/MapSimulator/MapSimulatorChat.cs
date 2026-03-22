@@ -15,12 +15,14 @@ namespace HaCreator.MapSimulator
         public string Text;
         public Color Color;
         public int Timestamp;
+        public int ChatLogType;
 
-        public ChatMessage(string text, Color color, int timestamp)
+        public ChatMessage(string text, Color color, int timestamp, int chatLogType = -1)
         {
             Text = text;
             Color = color;
             Timestamp = timestamp;
+            ChatLogType = chatLogType;
         }
     }
 
@@ -52,6 +54,7 @@ namespace HaCreator.MapSimulator
         #region Constants
         private static readonly Color WhisperMessageColor = new Color(255, 170, 255);
         private static readonly Color SystemMessageColor = new Color(255, 228, 151);
+        private static readonly Color ErrorMessageColor = new Color(247, 75, 75);
 
         private const int CHAT_INPUT_X = 5;
         private const int CHAT_INPUT_Y_OFFSET = 55; // Offset from bottom of screen (just above status bar level indicator)
@@ -86,6 +89,7 @@ namespace HaCreator.MapSimulator
         private readonly ChatCommandHandler _commandHandler = new ChatCommandHandler();
         private MapSimulatorChatTargetType _chatTarget = MapSimulatorChatTargetType.All;
         private string _whisperTarget = string.Empty;
+        private string _replyTarget = string.Empty;
 
         // Key repeat tracking
         private Keys _lastHeldKey = Keys.None;
@@ -111,6 +115,26 @@ namespace HaCreator.MapSimulator
 
         public Action<string, int> MessageSubmitted { get; set; }
         #endregion
+
+        private enum ChatSubmitDisposition
+        {
+            NotHandled = 0,
+            CloseChat = 1,
+            KeepChatOpen = 2
+        }
+
+        private enum ClientChatLogType
+        {
+            All = 0,
+            Party = 2,
+            Friend = 3,
+            Guild = 4,
+            Alliance = 5,
+            System = 12,
+            Error = 15,
+            Whisper = 16,
+            Expedition = 26
+        }
 
         #region Initialization
         /// <summary>
@@ -147,6 +171,15 @@ namespace HaCreator.MapSimulator
         {
             _lastTickCount = tickCount;
 
+            if (!_isActive
+                && newKeyboardState.IsKeyDown(Keys.OemQuestion)
+                && oldKeyboardState.IsKeyUp(Keys.OemQuestion)
+                && !(newKeyboardState.IsKeyDown(Keys.LeftShift) || newKeyboardState.IsKeyDown(Keys.RightShift)))
+            {
+                Activate(tickCount, "/");
+                return true;
+            }
+
             // Toggle chat with Enter key
             if (newKeyboardState.IsKeyDown(Keys.Enter) && oldKeyboardState.IsKeyUp(Keys.Enter))
             {
@@ -164,11 +197,22 @@ namespace HaCreator.MapSimulator
                         _cursorPosition = 0;
                         ResetHistoryNavigation();
 
-                        if (TryHandleWhisperCommand(message, tickCount))
+                        ChatSubmitDisposition slashDisposition = TryHandleSlashCommand(message, tickCount);
+                        if (slashDisposition == ChatSubmitDisposition.KeepChatOpen)
                         {
+                            _isActive = true;
+                            _cursorBlinkTimer = tickCount;
+                            return true;
                         }
+
+                        if (slashDisposition == ChatSubmitDisposition.CloseChat)
+                        {
+                            _isActive = false;
+                            return true;
+                        }
+
                         // Check if it's a command
-                        else if (_commandHandler.IsCommand(message))
+                        if (_commandHandler.IsCommand(message))
                         {
                             var result = _commandHandler.ExecuteCommand(message);
                             if (!string.IsNullOrEmpty(result.Message))
@@ -544,9 +588,9 @@ namespace HaCreator.MapSimulator
         /// <param name="text">Message text</param>
         /// <param name="color">Message color</param>
         /// <param name="tickCount">Current tick count for timestamp</param>
-        public void AddMessage(string text, Color color, int tickCount)
+        public void AddMessage(string text, Color color, int tickCount, int chatLogType = -1)
         {
-            _messages.Add(new ChatMessage(text, color, tickCount));
+            _messages.Add(new ChatMessage(text, color, tickCount, chatLogType));
 
             // Remove old messages if exceeding limit
             while (_messages.Count > MAX_CHAT_MESSAGES)
@@ -565,11 +609,12 @@ namespace HaCreator.MapSimulator
             _cursorPosition = 0;
         }
 
-        public void Activate(int tickCount)
+        public void Activate(int tickCount, string initialText = null)
         {
             _isActive = true;
             _cursorBlinkTimer = tickCount;
             ResetHistoryNavigation();
+            SetInputText(initialText ?? string.Empty);
         }
 
         public void ToggleActive(int tickCount)
@@ -707,80 +752,119 @@ namespace HaCreator.MapSimulator
         {
             if (!string.IsNullOrWhiteSpace(_whisperTarget))
             {
-                AddMessage($"> {_whisperTarget}: {message}", WhisperMessageColor, tickCount);
-                MessageSubmitted?.Invoke(message, tickCount);
+                SendWhisperMessage(_whisperTarget, message, tickCount);
                 return;
             }
 
             string prefix = GetTargetPrefix(_chatTarget);
             Color color = GetTargetColor(_chatTarget);
+            int chatLogType = (int)GetTargetChatLogType(_chatTarget);
             if (string.IsNullOrEmpty(prefix))
             {
-                AddMessage(message, color, tickCount);
+                AddMessage(message, color, tickCount, chatLogType);
                 MessageSubmitted?.Invoke(message, tickCount);
                 return;
             }
 
-            AddMessage($"{prefix} {message}", color, tickCount);
+            AddMessage($"{prefix} {message}", color, tickCount, chatLogType);
             MessageSubmitted?.Invoke(message, tickCount);
         }
 
-        private bool TryHandleWhisperCommand(string message, int tickCount)
+        private ChatSubmitDisposition TryHandleSlashCommand(string message, int tickCount)
         {
             if (string.IsNullOrWhiteSpace(message) || message[0] != '/')
+            {
+                return ChatSubmitDisposition.NotHandled;
+            }
+
+            string trimmedMessage = message.Trim();
+            if (TryHandleWhisperCommand(trimmedMessage, tickCount, out ChatSubmitDisposition whisperDisposition))
+            {
+                return whisperDisposition;
+            }
+
+            if (TryHandleTargetModeCommand(trimmedMessage, tickCount, out ChatSubmitDisposition targetDisposition))
+            {
+                return targetDisposition;
+            }
+
+            return ChatSubmitDisposition.NotHandled;
+        }
+
+        private bool TryHandleWhisperCommand(string trimmedMessage, int tickCount, out ChatSubmitDisposition disposition)
+        {
+            disposition = ChatSubmitDisposition.NotHandled;
+            bool isWhisperCommand = string.Equals(trimmedMessage, "/w", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(trimmedMessage, "/whisper", StringComparison.OrdinalIgnoreCase)
+                || trimmedMessage.StartsWith("/w ", StringComparison.OrdinalIgnoreCase)
+                || trimmedMessage.StartsWith("/whisper ", StringComparison.OrdinalIgnoreCase);
+            bool isReplyCommand = string.Equals(trimmedMessage, "/r", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(trimmedMessage, "/reply", StringComparison.OrdinalIgnoreCase)
+                || trimmedMessage.StartsWith("/r ", StringComparison.OrdinalIgnoreCase)
+                || trimmedMessage.StartsWith("/reply ", StringComparison.OrdinalIgnoreCase);
+
+            if (!isWhisperCommand && !isReplyCommand)
             {
                 return false;
             }
 
-            string trimmedMessage = message.Trim();
-            if (trimmedMessage.StartsWith("/w ", StringComparison.OrdinalIgnoreCase)
-                || trimmedMessage.StartsWith("/whisper ", StringComparison.OrdinalIgnoreCase))
+            if (isWhisperCommand)
             {
                 string[] parts = trimmedMessage.Split(new[] { ' ' }, 3, StringSplitOptions.RemoveEmptyEntries);
-                if (parts.Length < 2)
+                if (parts.Length == 1)
                 {
-                    AddMessage("Usage: /w <name> [message]", Color.IndianRed, tickCount);
+                    if (string.IsNullOrWhiteSpace(_whisperTarget))
+                    {
+                        AddClientMessage("Usage: /w <name> [message]", tickCount, ClientChatLogType.Error);
+                    }
+                    else
+                    {
+                        AddClientMessage($"Whisper target set to {_whisperTarget}.", tickCount, ClientChatLogType.System);
+                    }
+
+                    disposition = ChatSubmitDisposition.KeepChatOpen;
                     return true;
                 }
 
                 _whisperTarget = parts[1];
+                _replyTarget = parts[1];
                 if (parts.Length >= 3)
                 {
-                    AddMessage($"> {_whisperTarget}: {parts[2]}", WhisperMessageColor, tickCount);
-                }
-                return true;
-            }
-
-            if (trimmedMessage.StartsWith("/r ", StringComparison.OrdinalIgnoreCase)
-                || trimmedMessage.StartsWith("/reply ", StringComparison.OrdinalIgnoreCase))
-            {
-                if (string.IsNullOrWhiteSpace(_whisperTarget))
-                {
-                    AddMessage("No whisper target selected.", Color.IndianRed, tickCount);
+                    SendWhisperMessage(_whisperTarget, parts[2], tickCount);
+                    disposition = ChatSubmitDisposition.CloseChat;
                     return true;
                 }
 
-                string[] parts = trimmedMessage.Split(new[] { ' ' }, 2, StringSplitOptions.RemoveEmptyEntries);
-                if (parts.Length < 2)
-                {
-                    AddMessage("Usage: /r <message>", Color.IndianRed, tickCount);
-                    return true;
-                }
-
-                AddMessage($"> {_whisperTarget}: {parts[1]}", WhisperMessageColor, tickCount);
+                AddClientMessage($"Whisper target set to {_whisperTarget}.", tickCount, ClientChatLogType.System);
+                disposition = ChatSubmitDisposition.KeepChatOpen;
                 return true;
             }
 
-            if (TryHandleTargetModeCommand(trimmedMessage, tickCount))
+            string replyTarget = !string.IsNullOrWhiteSpace(_replyTarget) ? _replyTarget : _whisperTarget;
+            if (string.IsNullOrWhiteSpace(replyTarget))
             {
+                AddClientMessage("No whisper target selected.", tickCount, ClientChatLogType.Error);
+                disposition = ChatSubmitDisposition.KeepChatOpen;
                 return true;
             }
 
-            return false;
+            _whisperTarget = replyTarget;
+            string[] replyParts = trimmedMessage.Split(new[] { ' ' }, 2, StringSplitOptions.RemoveEmptyEntries);
+            if (replyParts.Length < 2)
+            {
+                AddClientMessage($"Reply target set to {_whisperTarget}.", tickCount, ClientChatLogType.System);
+                disposition = ChatSubmitDisposition.KeepChatOpen;
+                return true;
+            }
+
+            SendWhisperMessage(_whisperTarget, replyParts[1], tickCount);
+            disposition = ChatSubmitDisposition.CloseChat;
+            return true;
         }
 
-        private bool TryHandleTargetModeCommand(string trimmedMessage, int tickCount)
+        private bool TryHandleTargetModeCommand(string trimmedMessage, int tickCount, out ChatSubmitDisposition disposition)
         {
+            disposition = ChatSubmitDisposition.NotHandled;
             if (!TryParseTargetModeCommand(trimmedMessage, out MapSimulatorChatTargetType targetType, out string payload))
             {
                 return false;
@@ -794,8 +878,10 @@ namespace HaCreator.MapSimulator
             {
                 if (targetChanged)
                 {
-                    AddMessage($"{GetTargetModeDisplayName(targetType)} chat selected.", SystemMessageColor, tickCount);
+                    AddClientMessage($"{GetTargetModeDisplayName(targetType)} chat selected.", tickCount, ClientChatLogType.System);
                 }
+
+                disposition = ChatSubmitDisposition.KeepChatOpen;
                 return true;
             }
 
@@ -803,16 +889,71 @@ namespace HaCreator.MapSimulator
             Color color = GetTargetColor(targetType);
             if (string.IsNullOrEmpty(prefix))
             {
-                AddMessage(payload, color, tickCount);
+                AddMessage(payload, color, tickCount, (int)GetTargetChatLogType(targetType));
             }
             else
             {
-                AddMessage($"{prefix} {payload}", color, tickCount);
+                AddMessage($"{prefix} {payload}", color, tickCount, (int)GetTargetChatLogType(targetType));
             }
 
             MessageSubmitted?.Invoke(payload, tickCount);
+            disposition = ChatSubmitDisposition.CloseChat;
 
             return true;
+        }
+
+        private void SendWhisperMessage(string whisperTarget, string message, int tickCount)
+        {
+            if (string.IsNullOrWhiteSpace(whisperTarget))
+            {
+                return;
+            }
+
+            _whisperTarget = whisperTarget;
+            _replyTarget = whisperTarget;
+            AddMessage($"> {whisperTarget}: {message}", WhisperMessageColor, tickCount, (int)ClientChatLogType.Whisper);
+            MessageSubmitted?.Invoke(message, tickCount);
+        }
+
+        private void AddClientMessage(string text, int tickCount, ClientChatLogType chatLogType, Color? colorOverride = null)
+        {
+            Color color = colorOverride ?? ResolveClientChatLogColor(chatLogType) ?? Color.White;
+            AddMessage(text, color, tickCount, (int)chatLogType);
+        }
+
+        private static Color? ResolveClientChatLogColor(ClientChatLogType chatLogType)
+        {
+            return chatLogType switch
+            {
+                ClientChatLogType.Error => ErrorMessageColor,
+                ClientChatLogType.System => SystemMessageColor,
+                _ => null
+            };
+        }
+
+        private static ClientChatLogType GetTargetChatLogType(MapSimulatorChatTargetType targetType)
+        {
+            return targetType switch
+            {
+                MapSimulatorChatTargetType.All => ClientChatLogType.All,
+                MapSimulatorChatTargetType.Friend => ClientChatLogType.Friend,
+                MapSimulatorChatTargetType.Party => ClientChatLogType.Party,
+                MapSimulatorChatTargetType.Guild => ClientChatLogType.Guild,
+                MapSimulatorChatTargetType.Association => ClientChatLogType.Alliance,
+                MapSimulatorChatTargetType.Expedition => ClientChatLogType.Expedition,
+                _ => ClientChatLogType.All
+            };
+        }
+
+        private void SetInputText(string text)
+        {
+            _inputText.Clear();
+            if (!string.IsNullOrEmpty(text))
+            {
+                _inputText.Append(text);
+            }
+
+            _cursorPosition = _inputText.Length;
         }
 
         private static bool TryParseTargetModeCommand(

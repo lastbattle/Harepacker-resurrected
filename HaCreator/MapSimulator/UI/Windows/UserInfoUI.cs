@@ -4,6 +4,7 @@ using HaSharedLibrary.Render;
 using HaSharedLibrary.Render.DX;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
+using Microsoft.Xna.Framework.Input;
 using Spine;
 using System;
 using System.Collections.Generic;
@@ -53,12 +54,27 @@ namespace HaCreator.MapSimulator.UI
             public List<PageLayer> Layers { get; } = new List<PageLayer>();
         }
 
+        private sealed class AuxiliaryPopupVisual
+        {
+            public IDXObject Frame { get; set; }
+            public List<PageLayer> Layers { get; } = new List<PageLayer>();
+        }
+
+        private enum AuxiliaryPopupKind
+        {
+            None,
+            Item,
+            Wish
+        }
+
         private readonly bool _isBigBang;
         private readonly IDXObject _defaultFrame;
         private readonly Dictionary<UserInfoPage, UIObject> _pageButtons = new Dictionary<UserInfoPage, UIObject>();
         private readonly List<UIObject> _primaryButtons = new List<UIObject>();
         private readonly Dictionary<UserInfoPage, PageVisual> _pageVisuals = new Dictionary<UserInfoPage, PageVisual>();
         private readonly List<string> _petExceptionEntries = new List<string> { "Meso Bag", "Throwing Star" };
+        private readonly string[] _itemPopupEntries = { "Mini Room", "Personal Shop", "Entrusted Shop" };
+        private readonly List<string> _wishEntries = new List<string> { "White Scroll", "Brown Work Gloves", "Ilbi Throwing-Star" };
 
         private IDXObject _foreground;
         private Point _foregroundOffset;
@@ -77,10 +93,17 @@ namespace HaCreator.MapSimulator.UI
         private UIObject _exceptionDeleteButton;
         private UIObject _exceptionMesoButton;
         private bool _exceptionPopupOpen;
+        private AuxiliaryPopupVisual _itemPopupVisual;
+        private AuxiliaryPopupVisual _wishPopupVisual;
+        private UIObject _wishPresentButton;
+        private AuxiliaryPopupKind _activePopup;
+        private int _selectedItemPopupIndex;
+        private int _selectedWishIndex;
         private bool _petExceptionBlocksMeso = true;
         private int _selectedPetExceptionIndex = -1;
         private bool _collectSortByName;
         private bool _collectRewardClaimed;
+        private MouseState _previousMouseState;
 
         private static readonly Color ValueColor = new Color(45, 45, 45);
         private static readonly Color SecondaryColor = new Color(96, 96, 96);
@@ -113,6 +136,9 @@ namespace HaCreator.MapSimulator.UI
         public Action MiniRoomRequested { get; set; }
         public Action PartyRequested { get; set; }
         public Action TradingRoomRequested { get; set; }
+        public Action FamilyRequested { get; set; }
+        public Action PersonalShopRequested { get; set; }
+        public Action EntrustedShopRequested { get; set; }
 
         public override CharacterBuild CharacterBuild
         {
@@ -177,9 +203,9 @@ namespace HaCreator.MapSimulator.UI
         {
             BindActionButton(partyButton, "Party list opened from the profile window.", () => PartyRequested?.Invoke(), true);
             BindActionButton(tradeButton, "Trading-room shell opened.", () => TradingRoomRequested?.Invoke(), true);
-            BindActionButton(itemButton, "Mini-room shell opened.", () => MiniRoomRequested?.Invoke(), true);
-            BindActionButton(wishButton, "Wishlist and present flow still needs the client packet-backed present flow.", null, true);
-            BindActionButton(familyButton, "Family chart flow still needs the dedicated family-tree owner.", null, true);
+            BindActionButton(itemButton, "Item list opened.", ToggleItemPopup, true);
+            BindActionButton(wishButton, "Wish list opened.", ToggleWishPopup, true);
+            BindActionButton(familyButton, "Family chart opened from the profile window.", () => FamilyRequested?.Invoke(), true);
         }
 
         public void InitializePageButtons(UIObject rideButton, UIObject petButton, UIObject collectButton, UIObject personalityButton)
@@ -189,6 +215,29 @@ namespace HaCreator.MapSimulator.UI
             BindPageButton(UserInfoPage.Collect, collectButton, "Collection page ready.");
             BindPageButton(UserInfoPage.Personality, personalityButton, "Personality page ready.");
             UpdateButtonStates();
+        }
+
+        public bool ShowPage(string pageName)
+        {
+            if (!TryGetPage(pageName, out UserInfoPage page) || !IsPageAvailable(page))
+            {
+                return false;
+            }
+
+            _statusMessage = page switch
+            {
+                UserInfoPage.Ride => "Ride page ready.",
+                UserInfoPage.Pet => "Pet page ready.",
+                UserInfoPage.Collect => "Collection page ready.",
+                UserInfoPage.Personality => "Personality page ready.",
+                _ => "Character actions are available from this profile window."
+            };
+
+            _currentPage = page;
+            _exceptionPopupOpen = false;
+            ApplyCurrentPageFrame();
+            UpdateButtonStates();
+            return true;
         }
 
         public void InitializePageActionButtons(UIObject petExceptionButton, UIObject collectSortButton, UIObject collectClaimButton)
@@ -236,6 +285,22 @@ namespace HaCreator.MapSimulator.UI
             UpdateButtonStates();
         }
 
+        public void InitializeItemPopup(IDXObject frame, IEnumerable<(IDXObject layer, Point offset)> layers)
+        {
+            _itemPopupVisual = CreateAuxiliaryPopupVisual(frame, layers);
+        }
+
+        public void InitializeWishPopup(
+            IDXObject frame,
+            IEnumerable<(IDXObject layer, Point offset)> layers,
+            UIObject presentButton)
+        {
+            _wishPopupVisual = CreateAuxiliaryPopupVisual(frame, layers);
+            _wishPresentButton = presentButton;
+            BindActionButton(_wishPresentButton, "Present flow still needs the packet-backed gifting path.", PresentWishEntry);
+            UpdateButtonStates();
+        }
+
         public void SetPetController(PetController petController)
         {
             _petController = petController;
@@ -247,10 +312,19 @@ namespace HaCreator.MapSimulator.UI
             {
                 _currentPage = UserInfoPage.Character;
                 _exceptionPopupOpen = false;
+                _activePopup = AuxiliaryPopupKind.None;
                 ApplyCurrentPageFrame();
             }
 
+            if (_currentPage != UserInfoPage.Character)
+            {
+                _activePopup = AuxiliaryPopupKind.None;
+            }
+
+            HandlePopupMouseInput();
+
             UpdateButtonStates();
+            _previousMouseState = Mouse.GetState();
         }
 
         protected override void DrawContents(
@@ -292,6 +366,7 @@ namespace HaCreator.MapSimulator.UI
             }
 
             DrawExceptionPopup(sprite, skeletonMeshRenderer, gameTime, drawReflectionInfo);
+            DrawAuxiliaryPopup(sprite, skeletonMeshRenderer, gameTime, drawReflectionInfo);
             DrawStatusMessage(sprite);
         }
 
@@ -630,6 +705,103 @@ namespace HaCreator.MapSimulator.UI
             }
         }
 
+        private void DrawAuxiliaryPopup(
+            SpriteBatch sprite,
+            SkeletonMeshRenderer skeletonMeshRenderer,
+            GameTime gameTime,
+            ReflectionDrawableBoundary drawReflectionInfo)
+        {
+            AuxiliaryPopupVisual visual = GetActivePopupVisual();
+            if (visual?.Frame == null)
+            {
+                return;
+            }
+
+            Point popupPosition = GetAuxiliaryPopupPosition(visual);
+            visual.Frame.DrawBackground(
+                sprite,
+                skeletonMeshRenderer,
+                gameTime,
+                popupPosition.X,
+                popupPosition.Y,
+                Color.White,
+                false,
+                drawReflectionInfo);
+
+            foreach (PageLayer layer in visual.Layers)
+            {
+                layer.Texture?.DrawBackground(
+                    sprite,
+                    skeletonMeshRenderer,
+                    gameTime,
+                    popupPosition.X + layer.Offset.X,
+                    popupPosition.Y + layer.Offset.Y,
+                    Color.White,
+                    false,
+                    drawReflectionInfo);
+            }
+
+            if (_font == null)
+            {
+                return;
+            }
+
+            switch (_activePopup)
+            {
+                case AuxiliaryPopupKind.Item:
+                    DrawItemPopupContents(sprite, popupPosition);
+                    break;
+                case AuxiliaryPopupKind.Wish:
+                    DrawWishPopupContents(sprite, popupPosition);
+                    break;
+            }
+        }
+
+        private void DrawItemPopupContents(SpriteBatch sprite, Point popupPosition)
+        {
+            DrawPlainText(sprite, "Preview windows", new Vector2(popupPosition.X + 12, popupPosition.Y + 28), SecondaryColor, 0.58f);
+            for (int i = 0; i < _itemPopupEntries.Length; i++)
+            {
+                Rectangle rowBounds = GetItemPopupRowBounds(i);
+                bool selected = i == _selectedItemPopupIndex;
+                DrawPlainText(
+                    sprite,
+                    FitText(_itemPopupEntries[i], 110),
+                    new Vector2(rowBounds.X + 6, rowBounds.Y + 3),
+                    selected ? SuccessColor : ValueColor,
+                    0.58f);
+                DrawPlainText(
+                    sprite,
+                    GetItemPopupDescription(i),
+                    new Vector2(rowBounds.X + 14, rowBounds.Y + 17),
+                    MutedColor,
+                    0.48f);
+            }
+        }
+
+        private void DrawWishPopupContents(SpriteBatch sprite, Point popupPosition)
+        {
+            DrawPlainText(sprite, "Selected gifts", new Vector2(popupPosition.X + 12, popupPosition.Y + 28), SecondaryColor, 0.58f);
+            for (int i = 0; i < _wishEntries.Count; i++)
+            {
+                Rectangle rowBounds = GetWishPopupRowBounds(i);
+                bool selected = i == _selectedWishIndex;
+                DrawPlainText(
+                    sprite,
+                    FitText(_wishEntries[i], 118),
+                    new Vector2(rowBounds.X + 6, rowBounds.Y + 3),
+                    selected ? SuccessColor : ValueColor,
+                    0.58f);
+            }
+
+            DrawPlainText(
+                sprite,
+                "Present sends a local preview only.",
+                new Vector2(popupPosition.X + 12, popupPosition.Y + 112),
+                MutedColor,
+                0.5f);
+        }
+
         private void BindActionButton(UIObject button, string message, Action action = null, bool trackAsPrimary = false)
         {
             if (button == null)
@@ -669,6 +841,7 @@ namespace HaCreator.MapSimulator.UI
         private void SwitchPage(UserInfoPage page)
         {
             _exceptionPopupOpen = false;
+            _activePopup = AuxiliaryPopupKind.None;
 
             if (_currentPage == page)
             {
@@ -760,6 +933,13 @@ namespace HaCreator.MapSimulator.UI
                 _exceptionMesoButton.SetEnabled(_exceptionPopupOpen);
                 _exceptionMesoButton.SetButtonState(_petExceptionBlocksMeso ? UIObjectState.Pressed : UIObjectState.Normal);
             }
+
+            if (_wishPresentButton != null)
+            {
+                bool wishOpen = _activePopup == AuxiliaryPopupKind.Wish;
+                _wishPresentButton.ButtonVisible = wishOpen;
+                _wishPresentButton.SetEnabled(wishOpen && _wishEntries.Count > 0);
+            }
         }
 
         private PageVisual GetOrCreateVisual(UserInfoPage page)
@@ -844,12 +1024,30 @@ namespace HaCreator.MapSimulator.UI
 
         private void ToggleExceptionPopup()
         {
+            _activePopup = AuxiliaryPopupKind.None;
             _exceptionPopupOpen = !_exceptionPopupOpen;
             if (_exceptionPopupOpen && _petExceptionEntries.Count > 0 && _selectedPetExceptionIndex < 0)
             {
                 _selectedPetExceptionIndex = 0;
             }
 
+            UpdateButtonStates();
+        }
+
+        private void ToggleItemPopup()
+        {
+            ToggleAuxiliaryPopup(AuxiliaryPopupKind.Item);
+        }
+
+        private void ToggleWishPopup()
+        {
+            ToggleAuxiliaryPopup(AuxiliaryPopupKind.Wish);
+        }
+
+        private void ToggleAuxiliaryPopup(AuxiliaryPopupKind popupKind)
+        {
+            _exceptionPopupOpen = false;
+            _activePopup = _activePopup == popupKind ? AuxiliaryPopupKind.None : popupKind;
             UpdateButtonStates();
         }
 
@@ -921,6 +1119,17 @@ namespace HaCreator.MapSimulator.UI
             UpdateButtonStates();
         }
 
+        private void PresentWishEntry()
+        {
+            if (_selectedWishIndex < 0 || _selectedWishIndex >= _wishEntries.Count)
+            {
+                _statusMessage = "Select a wish entry before previewing a present.";
+                return;
+            }
+
+            _statusMessage = $"Present preview prepared for {_wishEntries[_selectedWishIndex]}. Packet-backed gifting still remains.";
+        }
+
         private bool CanClaimCollectReward()
         {
             return (_characterBuild?.Equipment?.Count ?? 0) >= 5;
@@ -963,6 +1172,146 @@ namespace HaCreator.MapSimulator.UI
             }
 
             return $"Filtered Item {_petExceptionEntries.Count + 1}";
+        }
+
+        private AuxiliaryPopupVisual CreateAuxiliaryPopupVisual(IDXObject frame, IEnumerable<(IDXObject layer, Point offset)> layers)
+        {
+            AuxiliaryPopupVisual visual = new AuxiliaryPopupVisual
+            {
+                Frame = frame
+            };
+
+            if (layers == null)
+            {
+                return visual;
+            }
+
+            foreach ((IDXObject layer, Point offset) in layers)
+            {
+                if (layer != null)
+                {
+                    visual.Layers.Add(new PageLayer(layer, offset));
+                }
+            }
+
+            return visual;
+        }
+
+        private void HandlePopupMouseInput()
+        {
+            MouseState mouseState = Mouse.GetState();
+            bool leftReleased = mouseState.LeftButton == ButtonState.Released &&
+                                _previousMouseState.LeftButton == ButtonState.Pressed;
+            if (!leftReleased || _currentPage != UserInfoPage.Character)
+            {
+                return;
+            }
+
+            switch (_activePopup)
+            {
+                case AuxiliaryPopupKind.Item:
+                    HandleItemPopupClick(mouseState.Position);
+                    break;
+                case AuxiliaryPopupKind.Wish:
+                    HandleWishPopupClick(mouseState.Position);
+                    break;
+            }
+        }
+
+        private void HandleItemPopupClick(Point mousePosition)
+        {
+            for (int i = 0; i < _itemPopupEntries.Length; i++)
+            {
+                if (!GetItemPopupRowBounds(i).Contains(mousePosition))
+                {
+                    continue;
+                }
+
+                _selectedItemPopupIndex = i;
+                OpenItemPopupSelection(i);
+                return;
+            }
+        }
+
+        private void HandleWishPopupClick(Point mousePosition)
+        {
+            for (int i = 0; i < _wishEntries.Count; i++)
+            {
+                if (GetWishPopupRowBounds(i).Contains(mousePosition))
+                {
+                    _selectedWishIndex = i;
+                    return;
+                }
+            }
+        }
+
+        private void OpenItemPopupSelection(int index)
+        {
+            switch (index)
+            {
+                case 0:
+                    MiniRoomRequested?.Invoke();
+                    _statusMessage = "Mini-room preview opened from the item list.";
+                    break;
+                case 1:
+                    PersonalShopRequested?.Invoke();
+                    _statusMessage = "Personal-shop preview opened from the item list.";
+                    break;
+                case 2:
+                    EntrustedShopRequested?.Invoke();
+                    _statusMessage = "Entrusted-shop preview opened from the item list.";
+                    break;
+                default:
+                    return;
+            }
+
+            _activePopup = AuxiliaryPopupKind.None;
+            UpdateButtonStates();
+        }
+
+        private AuxiliaryPopupVisual GetActivePopupVisual()
+        {
+            return _activePopup switch
+            {
+                AuxiliaryPopupKind.Item => _itemPopupVisual,
+                AuxiliaryPopupKind.Wish => _wishPopupVisual,
+                _ => null
+            };
+        }
+
+        private Point GetAuxiliaryPopupPosition(AuxiliaryPopupVisual visual)
+        {
+            if (visual?.Frame == null)
+            {
+                return Position;
+            }
+
+            int x = Position.X + Math.Max(8, CurrentFrame.Width - visual.Frame.Width - 8);
+            int y = Position.Y + 30;
+            return new Point(x, y);
+        }
+
+        private Rectangle GetItemPopupRowBounds(int index)
+        {
+            Point popupPosition = GetAuxiliaryPopupPosition(_itemPopupVisual);
+            return new Rectangle(popupPosition.X + 10, popupPosition.Y + 46 + (index * 24), 134, 22);
+        }
+
+        private Rectangle GetWishPopupRowBounds(int index)
+        {
+            Point popupPosition = GetAuxiliaryPopupPosition(_wishPopupVisual);
+            return new Rectangle(popupPosition.X + 10, popupPosition.Y + 46 + (index * 20), 138, 18);
+        }
+
+        private static string GetItemPopupDescription(int index)
+        {
+            return index switch
+            {
+                0 => "Room shell",
+                1 => "Sale bundles",
+                2 => "Ledger",
+                _ => string.Empty
+            };
         }
 
         private Point GetExceptionPopupPosition()

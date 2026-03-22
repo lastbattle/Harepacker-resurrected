@@ -5,6 +5,7 @@ using Microsoft.Xna.Framework.Graphics;
 using Spine;
 using System;
 using System.Collections.Generic;
+using HaCreator.MapSimulator;
 
 namespace HaCreator.MapSimulator.UI
 {
@@ -13,35 +14,46 @@ namespace HaCreator.MapSimulator.UI
         private const int TextOffsetX = 17;
         private const int TextOffsetY = 13;
         private const float BodyWrapWidth = 248f;
+        private const int ButtonBottomMargin = 14;
+        private const int ButtonGap = 12;
 
-        private readonly UIObject _primaryButton;
-        private readonly UIObject _secondaryButton;
+        private readonly UIObject _okButton;
+        private readonly UIObject _yesButton;
+        private readonly UIObject _noButton;
+        private readonly UIObject _acceptButton;
+        private readonly UIObject _nowButton;
+        private readonly UIObject _laterButton;
+        private readonly UIObject _restartButton;
+        private readonly UIObject _exitButton;
         private SpriteFont _font;
         private string _title = "Login Utility";
         private string _body = string.Empty;
         private string _primaryLabel = "OK";
         private string _secondaryLabel = "Cancel";
+        private UIObject _activePrimaryButton;
+        private UIObject _activeSecondaryButton;
+        private LoginUtilityDialogButtonLayout _buttonLayout = LoginUtilityDialogButtonLayout.Ok;
 
         public LoginUtilityDialogWindow(
             IDXObject frame,
-            UIObject primaryButton,
-            UIObject secondaryButton)
+            UIObject okButton,
+            UIObject yesButton,
+            UIObject noButton,
+            UIObject acceptButton,
+            UIObject nowButton,
+            UIObject laterButton,
+            UIObject restartButton,
+            UIObject exitButton)
             : base(frame)
         {
-            _primaryButton = primaryButton;
-            _secondaryButton = secondaryButton;
-
-            if (_primaryButton != null)
-            {
-                _primaryButton.ButtonClickReleased += _ => PrimaryRequested?.Invoke();
-                AddButton(_primaryButton);
-            }
-
-            if (_secondaryButton != null)
-            {
-                _secondaryButton.ButtonClickReleased += _ => SecondaryRequested?.Invoke();
-                AddButton(_secondaryButton);
-            }
+            _okButton = RegisterButton(okButton, true);
+            _yesButton = RegisterButton(yesButton, true);
+            _noButton = RegisterButton(noButton, false);
+            _acceptButton = RegisterButton(acceptButton, true);
+            _nowButton = RegisterButton(nowButton, true);
+            _laterButton = RegisterButton(laterButton, false);
+            _restartButton = RegisterButton(restartButton, true);
+            _exitButton = RegisterButton(exitButton, false);
         }
 
         public override string WindowName => MapSimulatorWindowNames.LoginUtilityDialog;
@@ -61,25 +73,14 @@ namespace HaCreator.MapSimulator.UI
             string body,
             string primaryLabel,
             string secondaryLabel,
-            bool showPrimaryButton,
-            bool showSecondaryButton)
+            LoginUtilityDialogButtonLayout buttonLayout)
         {
             _title = string.IsNullOrWhiteSpace(title) ? "Login Utility" : title;
             _body = body ?? string.Empty;
             _primaryLabel = string.IsNullOrWhiteSpace(primaryLabel) ? "OK" : primaryLabel;
             _secondaryLabel = string.IsNullOrWhiteSpace(secondaryLabel) ? "Cancel" : secondaryLabel;
-
-            if (_primaryButton != null)
-            {
-                _primaryButton.SetVisible(showPrimaryButton);
-                _primaryButton.SetEnabled(showPrimaryButton);
-            }
-
-            if (_secondaryButton != null)
-            {
-                _secondaryButton.SetVisible(showSecondaryButton);
-                _secondaryButton.SetEnabled(showSecondaryButton);
-            }
+            _buttonLayout = buttonLayout;
+            ConfigureButtons();
         }
 
         protected override void DrawContents(
@@ -136,8 +137,8 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
-            DrawButtonLabel(sprite, _primaryButton, _primaryLabel);
-            DrawButtonLabel(sprite, _secondaryButton, _secondaryLabel);
+            DrawButtonLabel(sprite, _activePrimaryButton, _primaryLabel);
+            DrawButtonLabel(sprite, _activeSecondaryButton, _secondaryLabel);
         }
 
         private void DrawButtonLabel(SpriteBatch sprite, UIObject button, string text)
@@ -151,6 +152,107 @@ namespace HaCreator.MapSimulator.UI
             float x = Position.X + button.X + ((button.CanvasSnapshotWidth - size.X) / 2f);
             float y = Position.Y + button.Y + ((button.CanvasSnapshotHeight - size.Y) / 2f) - 1f;
             SelectorWindowDrawing.DrawShadowedText(sprite, _font, text, new Vector2(x, y), Color.White);
+        }
+
+        private UIObject RegisterButton(UIObject button, bool primaryButton)
+        {
+            if (button == null)
+            {
+                return null;
+            }
+
+            button.SetVisible(false);
+            button.SetEnabled(false);
+            button.ButtonClickReleased += _ =>
+            {
+                if (primaryButton)
+                {
+                    PrimaryRequested?.Invoke();
+                }
+                else
+                {
+                    SecondaryRequested?.Invoke();
+                }
+            };
+            AddButton(button);
+            return button;
+        }
+
+        private void ConfigureButtons()
+        {
+            _activePrimaryButton = null;
+            _activeSecondaryButton = null;
+
+            HideButton(_okButton);
+            HideButton(_yesButton);
+            HideButton(_noButton);
+            HideButton(_acceptButton);
+            HideButton(_nowButton);
+            HideButton(_laterButton);
+            HideButton(_restartButton);
+            HideButton(_exitButton);
+
+            switch (_buttonLayout)
+            {
+                case LoginUtilityDialogButtonLayout.YesNo:
+                    _activePrimaryButton = _yesButton ?? _okButton;
+                    _activeSecondaryButton = _noButton;
+                    break;
+                case LoginUtilityDialogButtonLayout.Accept:
+                    _activePrimaryButton = _acceptButton ?? _okButton;
+                    break;
+                case LoginUtilityDialogButtonLayout.NowLater:
+                    _activePrimaryButton = _nowButton ?? _okButton;
+                    _activeSecondaryButton = _laterButton;
+                    break;
+                case LoginUtilityDialogButtonLayout.RestartExit:
+                    _activePrimaryButton = _restartButton ?? _okButton;
+                    _activeSecondaryButton = _exitButton;
+                    break;
+                default:
+                    _activePrimaryButton = _okButton;
+                    break;
+            }
+
+            if (_activePrimaryButton != null && _activeSecondaryButton != null)
+            {
+                int totalWidth = _activePrimaryButton.CanvasSnapshotWidth + ButtonGap + _activeSecondaryButton.CanvasSnapshotWidth;
+                int startX = Math.Max(0, ((CurrentFrame?.Width ?? 312) - totalWidth) / 2);
+                int buttonY = Math.Max(0, (CurrentFrame?.Height ?? 132) - Math.Max(_activePrimaryButton.CanvasSnapshotHeight, _activeSecondaryButton.CanvasSnapshotHeight) - ButtonBottomMargin);
+
+                PositionButton(_activePrimaryButton, startX, buttonY);
+                PositionButton(_activeSecondaryButton, startX + _activePrimaryButton.CanvasSnapshotWidth + ButtonGap, buttonY);
+            }
+            else if (_activePrimaryButton != null)
+            {
+                int buttonX = Math.Max(0, ((CurrentFrame?.Width ?? 312) - _activePrimaryButton.CanvasSnapshotWidth) / 2);
+                int buttonY = Math.Max(0, (CurrentFrame?.Height ?? 132) - _activePrimaryButton.CanvasSnapshotHeight - ButtonBottomMargin);
+                PositionButton(_activePrimaryButton, buttonX, buttonY);
+            }
+        }
+
+        private static void HideButton(UIObject button)
+        {
+            if (button == null)
+            {
+                return;
+            }
+
+            button.SetVisible(false);
+            button.SetEnabled(false);
+        }
+
+        private static void PositionButton(UIObject button, int x, int y)
+        {
+            if (button == null)
+            {
+                return;
+            }
+
+            button.X = x;
+            button.Y = y;
+            button.SetVisible(true);
+            button.SetEnabled(true);
         }
 
         private IEnumerable<string> WrapText(string text, float maxWidth)

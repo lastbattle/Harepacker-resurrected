@@ -260,6 +260,10 @@ namespace HaCreator.MapSimulator.Character
         private Func<int, CharacterPart> _portableChairTamingMobLoader;
         private CharacterPart _portableChairPreviousMount;
         private bool _portableChairAppliedMount;
+        private CharacterAssembler _portableChairPairAssembler;
+        private Point _portableChairPairOffset;
+        private bool _portableChairPairFacingRight;
+        private string _portableChairPairActionName;
 
         // Preserve ladder context across hit knockback so holding UP can immediately re-grab it.
         private bool _pendingLadderRegrab;
@@ -380,8 +384,9 @@ namespace HaCreator.MapSimulator.Character
             ClearForcedActionName();
             State = PlayerState.Sitting;
             CurrentAction = CharacterAction.Sit;
-            CurrentActionName = CharacterPart.GetActionString(CharacterAction.Sit);
+            CurrentActionName = GetPortableChairActionName(chair);
             _animationStartTime = Environment.TickCount;
+            ConfigurePortableChairPairPreview(chair);
             return true;
         }
 
@@ -393,6 +398,7 @@ namespace HaCreator.MapSimulator.Character
             }
 
             Build.ActivePortableChair = null;
+            ClearPortableChairPairPreview();
             ClearPortableChairMountState();
             if (standUp && State == PlayerState.Sitting)
             {
@@ -1305,6 +1311,10 @@ namespace HaCreator.MapSimulator.Character
             {
                 newActionName = _forcedActionName;
             }
+            else if (State == PlayerState.Sitting)
+            {
+                newActionName = GetPortableChairActionName(Build?.ActivePortableChair);
+            }
             else
             {
                 newActionName = GetSkillTransformActionName(State) ?? CharacterPart.GetActionString(newAction);
@@ -2180,6 +2190,15 @@ namespace HaCreator.MapSimulator.Character
 
             if (frame != null)
             {
+                DrawPortableChairPairPreview(
+                    spriteBatch,
+                    skeletonRenderer,
+                    mapShiftX,
+                    mapShiftY,
+                    centerX,
+                    centerY,
+                    currentTime);
+
                 // Apply hit flash effect
                 Color tint = Color.White;
                 if (State == PlayerState.Hit)
@@ -2203,6 +2222,37 @@ namespace HaCreator.MapSimulator.Character
                 // Fallback: draw simple rectangle
                 var rect = new Rectangle(screenX - 15, screenY - 60, 30, 60);
                 spriteBatch.Draw(GetPixelTexture(spriteBatch.GraphicsDevice), rect, Color.Blue * 0.5f);
+            }
+        }
+
+        private void DrawPortableChairPairPreview(
+            SpriteBatch spriteBatch,
+            SkeletonMeshRenderer skeletonRenderer,
+            int mapShiftX,
+            int mapShiftY,
+            int centerX,
+            int centerY,
+            int currentTime)
+        {
+            if (_portableChairPairAssembler == null
+                || string.IsNullOrWhiteSpace(_portableChairPairActionName)
+                || Build?.ActivePortableChair?.IsCoupleChair != true)
+            {
+                return;
+            }
+
+            int partnerScreenX = (int)(X + _portableChairPairOffset.X) - mapShiftX + centerX;
+            int partnerScreenY = (int)(Y + _portableChairPairOffset.Y) - mapShiftY + centerY;
+            AssembledFrame partnerFrame = _portableChairPairAssembler.GetFrameAtTime(_portableChairPairActionName, GetRenderAnimationTime(currentTime));
+            if (partnerFrame == null)
+            {
+                return;
+            }
+
+            int adjustedY = partnerScreenY - partnerFrame.FeetOffset;
+            for (int i = 0; i < partnerFrame.Parts.Count; i++)
+            {
+                DrawAssembledPart(spriteBatch, skeletonRenderer, partnerFrame.Parts[i], partnerScreenX, adjustedY, _portableChairPairFacingRight, Color.White);
             }
         }
 
@@ -2417,6 +2467,58 @@ namespace HaCreator.MapSimulator.Character
         private bool ShouldCancelPortableChairFromInput()
         {
             return _inputLeft || _inputRight || _inputUp || _inputJump || _inputAttack;
+        }
+
+        private void ConfigurePortableChairPairPreview(PortableChair chair)
+        {
+            ClearPortableChairPairPreview();
+
+            if (chair?.IsCoupleChair != true || Build == null)
+            {
+                return;
+            }
+
+            CharacterBuild pairBuild = Build.Clone();
+            pairBuild.ActivePortableChair = null;
+            _portableChairPairAssembler = new CharacterAssembler(pairBuild);
+            _portableChairPairOffset = ResolvePortableChairPairOffset(chair, FacingRight);
+            _portableChairPairFacingRight = ResolvePortableChairPairFacingRight(FacingRight);
+            _portableChairPairActionName = GetPortableChairActionName(chair);
+        }
+
+        private void ClearPortableChairPairPreview()
+        {
+            _portableChairPairAssembler = null;
+            _portableChairPairOffset = Point.Zero;
+            _portableChairPairFacingRight = false;
+            _portableChairPairActionName = null;
+        }
+
+        internal static Point ResolvePortableChairPairOffset(PortableChair chair, bool facingRight)
+        {
+            if (chair?.IsCoupleChair != true)
+            {
+                return Point.Zero;
+            }
+
+            int distanceX = Math.Abs(chair.CoupleDistanceX ?? 0);
+            int distanceY = chair.CoupleDistanceY ?? 0;
+            return new Point(facingRight ? distanceX : -distanceX, distanceY);
+        }
+
+        internal static bool ResolvePortableChairPairFacingRight(bool facingRight)
+        {
+            return !facingRight;
+        }
+
+        private static string GetPortableChairActionName(PortableChair chair)
+        {
+            if (chair?.SitActionId is int sitActionId && sitActionId >= 0)
+            {
+                return $"sit{sitActionId}";
+            }
+
+            return CharacterPart.GetActionString(CharacterAction.Sit);
         }
 
         private void ApplyPortableChairMount(PortableChair chair)
@@ -2635,7 +2737,7 @@ namespace HaCreator.MapSimulator.Character
             }
 
             string tankActionName = $"tank_{actionName}";
-            return HasAvatarAction(tankActionName)
+            return HasAvatarAction(tankActionName) || HasMountedAction(tankActionName)
                 ? tankActionName
                 : actionName;
         }
@@ -2683,6 +2785,18 @@ namespace HaCreator.MapSimulator.Character
             return Build?.Body?.Animations?.ContainsKey(actionName) == true;
         }
 
+        private bool HasMountedAction(string actionName)
+        {
+            if (string.IsNullOrWhiteSpace(actionName)
+                || Build?.Equipment == null
+                || !Build.Equipment.TryGetValue(EquipSlot.TamingMob, out CharacterPart mountPart))
+            {
+                return false;
+            }
+
+            return mountPart.GetAnimation(actionName) != null;
+        }
+
         private static bool TryCreateSkillAvatarTransform(int skillId, string actionName, out SkillAvatarTransformState transform)
         {
             transform = null;
@@ -2690,8 +2804,17 @@ namespace HaCreator.MapSimulator.Character
 
             switch (skillId)
             {
+                case 22121000:
+                    transform = CreateSingleActionTransform(skillId, "icebreathe_prepare", "dragonIceBreathe");
+                    return true;
+                case 22151001:
+                    transform = CreateSingleActionTransform(skillId, "breathe_prepare", "dragonBreathe");
+                    return true;
                 case 32121003:
                     transform = CreateSingleActionTransform(skillId, "cyclone", "cyclone_after");
+                    return true;
+                case 33101005:
+                    transform = CreateSingleActionTransform(skillId, "swallow_loop", "swallow");
                     return true;
                 case 5311002:
                     transform = CreateSingleActionTransform(skillId, "noiseWave_ing", "noiseWave");
@@ -2722,9 +2845,27 @@ namespace HaCreator.MapSimulator.Character
                 return true;
             }
 
+            if (string.Equals(normalizedAction, "icebreathe_prepare", StringComparison.OrdinalIgnoreCase))
+            {
+                transform = CreateSingleActionTransform(skillId, "icebreathe_prepare", "dragonIceBreathe");
+                return true;
+            }
+
+            if (string.Equals(normalizedAction, "breathe_prepare", StringComparison.OrdinalIgnoreCase))
+            {
+                transform = CreateSingleActionTransform(skillId, "breathe_prepare", "dragonBreathe");
+                return true;
+            }
+
             if (string.Equals(normalizedAction, "cyclone_pre", StringComparison.OrdinalIgnoreCase))
             {
                 transform = CreateSingleActionTransform(skillId, "cyclone", "cyclone_after");
+                return true;
+            }
+
+            if (string.Equals(normalizedAction, "swallow_loop", StringComparison.OrdinalIgnoreCase))
+            {
+                transform = CreateSingleActionTransform(skillId, "swallow_loop", "swallow");
                 return true;
             }
 

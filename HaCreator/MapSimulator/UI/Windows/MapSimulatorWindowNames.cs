@@ -25,6 +25,7 @@ namespace HaCreator.MapSimulator.UI
         public const string ChannelSelect = "ChannelSelect";
         public const string ChannelShift = "ChannelShift";
         public const string CharacterSelect = "CharacterSelect";
+        public const string LoginTitle = "LoginTitle";
         public const string ConnectionNotice = "ConnectionNotice";
         public const string LoginUtilityDialog = "LoginUtilityDialog";
         public const string CharacterDetail = "CharacterDetail";
@@ -32,7 +33,11 @@ namespace HaCreator.MapSimulator.UI
         public const string ItemUpgrade = "ItemUpgrade";
         public const string Trunk = "Trunk";
         public const string CharacterInfo = "CharacterInfo";
+        public const string FamilyChart = "FamilyChart";
+        public const string FamilyTree = "FamilyTree";
         public const string SocialList = "SocialList";
+        public const string SocialSearch = "SocialSearch";
+        public const string GuildSearch = "GuildSearch";
         public const string GuildBbs = "GuildBbs";
         public const string Messenger = "Messenger";
         public const string MapleTv = "MapleTv";

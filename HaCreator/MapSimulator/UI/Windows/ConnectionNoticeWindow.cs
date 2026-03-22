@@ -5,6 +5,7 @@ using Microsoft.Xna.Framework.Graphics;
 using Spine;
 using System;
 using System.Collections.Generic;
+using HaCreator.MapSimulator;
 
 namespace HaCreator.MapSimulator.UI
 {
@@ -16,26 +17,29 @@ namespace HaCreator.MapSimulator.UI
         private const int BodyOffsetY = 44;
         private const int ProgressOffsetX = 87;
         private const int ProgressOffsetY = 34;
-        private const int ProgressWidth = 126;
+        private const int ProgressWidth = 109;
         private const int ProgressHeight = 8;
         private const float BodyWrapWidth = 250f;
 
-        private readonly Texture2D _progressTrackTexture;
-        private readonly Texture2D _progressFillTexture;
+        private readonly IDXObject _noticeFrame;
+        private readonly IDXObject _loadingFrame;
+        private readonly IReadOnlyList<Texture2D> _progressFrames;
         private SpriteFont _font;
         private string _title = "Connection Notice";
         private string _body = string.Empty;
         private float _progress;
         private bool _showProgress;
+        private ConnectionNoticeWindowVariant _variant = ConnectionNoticeWindowVariant.Notice;
 
         public ConnectionNoticeWindow(
-            IDXObject frame,
-            Texture2D progressTrackTexture,
-            Texture2D progressFillTexture)
-            : base(frame)
+            IDXObject noticeFrame,
+            IDXObject loadingFrame,
+            IReadOnlyList<Texture2D> progressFrames)
+            : base(noticeFrame ?? loadingFrame)
         {
-            _progressTrackTexture = progressTrackTexture;
-            _progressFillTexture = progressFillTexture;
+            _noticeFrame = noticeFrame ?? loadingFrame;
+            _loadingFrame = loadingFrame ?? noticeFrame;
+            _progressFrames = progressFrames;
         }
 
         public override string WindowName => MapSimulatorWindowNames.ConnectionNotice;
@@ -47,12 +51,21 @@ namespace HaCreator.MapSimulator.UI
             _font = font;
         }
 
-        public void Configure(string title, string body, bool showProgress, float progress)
+        public void Configure(
+            string title,
+            string body,
+            bool showProgress,
+            float progress,
+            ConnectionNoticeWindowVariant variant)
         {
             _title = string.IsNullOrWhiteSpace(title) ? "Connection Notice" : title;
             _body = body ?? string.Empty;
             _showProgress = showProgress;
             _progress = MathHelper.Clamp(progress, 0f, 1f);
+            _variant = variant;
+            Frame = _variant == ConnectionNoticeWindowVariant.Loading
+                ? _loadingFrame
+                : _noticeFrame;
         }
 
         protected override void DrawContents(
@@ -67,23 +80,25 @@ namespace HaCreator.MapSimulator.UI
             RenderParameters renderParameters,
             int TickCount)
         {
-            if (_showProgress && _progressTrackTexture != null)
+            if (_showProgress)
             {
                 Rectangle trackRect = new Rectangle(
                     Position.X + ProgressOffsetX,
                     Position.Y + ProgressOffsetY,
                     ProgressWidth,
                     ProgressHeight);
-                sprite.Draw(_progressTrackTexture, trackRect, new Color(30, 36, 48, 230));
 
-                if (_progressFillTexture != null)
+                Texture2D progressTexture = null;
+                if (_progressFrames != null && _progressFrames.Count > 0)
                 {
-                    int fillWidth = Math.Max(0, (int)Math.Round(ProgressWidth * _progress));
-                    if (fillWidth > 0)
-                    {
-                        Rectangle fillRect = new Rectangle(trackRect.X, trackRect.Y, fillWidth, ProgressHeight);
-                        sprite.Draw(_progressFillTexture, fillRect, new Color(127, 196, 255, 235));
-                    }
+                    int frameIndex = (int)Math.Round((_progressFrames.Count - 1) * _progress);
+                    frameIndex = Math.Max(0, Math.Min(frameIndex, _progressFrames.Count - 1));
+                    progressTexture = _progressFrames[frameIndex];
+                }
+
+                if (progressTexture != null)
+                {
+                    sprite.Draw(progressTexture, trackRect, Color.White);
                 }
             }
 

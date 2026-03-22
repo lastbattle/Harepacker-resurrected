@@ -1,6 +1,7 @@
 using HaCreator.MapSimulator.Interaction;
 using HaSharedLibrary.Render;
 using HaSharedLibrary.Render.DX;
+using HaSharedLibrary.Util;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using Spine;
@@ -39,6 +40,10 @@ namespace HaCreator.MapSimulator.UI
         private Texture2D _progressSpotTexture;
         private Point _progressFrameOffset;
         private Func<int, Texture2D> _itemIconProvider;
+        private readonly Dictionary<int, Texture2D> _itemIconCache = new();
+        private Texture2D _pixel;
+        private HoveredQuestItemInfo _hoveredQuestItem;
+        private Point _lastMousePosition;
 
         public QuestDetailWindow(IDXObject frame, string windowName)
             : base(frame)
@@ -116,6 +121,9 @@ namespace HaCreator.MapSimulator.UI
 
         public void InitializeNavigationButtons(GraphicsDevice device)
         {
+            _pixel ??= new Texture2D(device, 1, 1);
+            _pixel.SetData(new[] { Color.White });
+
             _previousButton = UiButtonFactory.CreateSolidButton(
                 device, 48, 18,
                 new Color(48, 61, 77, 220),
@@ -192,6 +200,21 @@ namespace HaCreator.MapSimulator.UI
         public override void SetFont(SpriteFont font)
         {
             _font = font;
+        }
+
+        public override void Update(GameTime gameTime)
+        {
+            base.Update(gameTime);
+
+            if (_font == null || _state == null || !IsVisible)
+            {
+                _hoveredQuestItem = null;
+                return;
+            }
+
+            Microsoft.Xna.Framework.Input.MouseState mouseState = Microsoft.Xna.Framework.Input.Mouse.GetState();
+            _lastMousePosition = new Point(mouseState.X, mouseState.Y);
+            _hoveredQuestItem = ResolveHoveredQuestItem(mouseState.X, mouseState.Y);
         }
 
         protected override void DrawContents(SpriteBatch sprite, SkeletonMeshRenderer skeletonMeshRenderer, GameTime gameTime,
@@ -288,6 +311,8 @@ namespace HaCreator.MapSimulator.UI
                 string navigationText = $"{_navigationIndex + 1}/{_navigationCount}";
                 sprite.DrawString(_font, navigationText, new Vector2(Position.X + 126, Position.Y + Math.Max(16, (CurrentFrame?.Height ?? 396) - 27)), new Color(220, 220, 220));
             }
+
+            DrawHoveredItemTooltip(sprite);
         }
 
         private void DrawSummarySection(SpriteBatch sprite, ref float y, float x, float maxWidth)
@@ -498,6 +523,242 @@ namespace HaCreator.MapSimulator.UI
                     yield return currentLine;
                 }
             }
+        }
+
+        private HoveredQuestItemInfo ResolveHoveredQuestItem(int mouseX, int mouseY)
+        {
+            if (_state == null || !ContainsPoint(mouseX, mouseY))
+            {
+                return null;
+            }
+
+            float x = Position.X + 16;
+            float y = Position.Y + 20 + _font.LineSpacing + 8;
+
+            if (!string.IsNullOrWhiteSpace(_state.NpcText))
+            {
+                y += _font.LineSpacing + 6;
+            }
+
+            y = AdvanceSummaryLayout(x, y, 258f);
+
+            HoveredQuestItemInfo hovered = TryResolveHoveredConditionItem(mouseX, mouseY, _state.RequirementLines, x, ref y, 258f, false);
+            if (hovered != null)
+            {
+                return hovered;
+            }
+
+            return TryResolveHoveredConditionItem(mouseX, mouseY, _state.RewardLines, x, ref y, 258f, true);
+        }
+
+        private float AdvanceSummaryLayout(float x, float y, float maxWidth)
+        {
+            y = AdvanceSectionHeader(_summaryHeaderTexture, y);
+            y = AdvanceWrappedText(_state.SummaryText, maxWidth, y);
+            y += 8;
+
+            if (_state.TotalProgress > 0)
+            {
+                y += _font.LineSpacing + 3;
+                if (_progressFrameTexture != null)
+                {
+                    y += _progressFrameTexture.Height + 8;
+                }
+            }
+
+            return y;
+        }
+
+        private HoveredQuestItemInfo TryResolveHoveredConditionItem(int mouseX, int mouseY, IReadOnlyList<QuestLogLineSnapshot> lines, float x, ref float y, float maxWidth, bool rewardSection)
+        {
+            if (lines == null || lines.Count == 0)
+            {
+                return null;
+            }
+
+            y = AdvanceSectionHeader(rewardSection ? _rewardHeaderTexture : _requirementHeaderTexture, y);
+
+            const float labelWidth = 38f;
+            const float iconSize = 18f;
+            foreach (QuestLogLineSnapshot line in lines.Where(line => line != null))
+            {
+                float lineX = x + labelWidth + 6f;
+                if (line.ItemId.HasValue)
+                {
+                    Rectangle iconRect = new Rectangle((int)lineX, (int)y, (int)iconSize, (int)iconSize);
+                    if (iconRect.Contains(mouseX, mouseY))
+                    {
+                        return CreateHoveredQuestItem(line.ItemId.Value, line.Text);
+                    }
+
+                    lineX += iconSize + 4f;
+                }
+
+                y = AdvanceWrappedText(line.Text, Math.Max(48f, maxWidth - (lineX - x)), y);
+                y += 4f;
+            }
+
+            y += 8f;
+            return null;
+        }
+
+        private float AdvanceSectionHeader(Texture2D texture, float y)
+        {
+            return y + ((texture?.Height ?? _font.LineSpacing) + 4f);
+        }
+
+        private float AdvanceWrappedText(string text, float maxWidth, float y)
+        {
+            int lineCount = Math.Max(1, WrapText(text, maxWidth).Count());
+            return y + (lineCount * _font.LineSpacing);
+        }
+
+        private HoveredQuestItemInfo CreateHoveredQuestItem(int itemId, string lineText)
+        {
+            return new HoveredQuestItemInfo
+            {
+                ItemId = itemId,
+                Title = ResolveItemName(itemId),
+                Subtitle = lineText,
+                Description = ResolveItemDescription(itemId),
+                Icon = ResolveItemIcon(itemId)
+            };
+        }
+
+        private Texture2D ResolveItemIcon(int itemId)
+        {
+            if (itemId <= 0)
+            {
+                return null;
+            }
+
+            Texture2D providerTexture = _itemIconProvider?.Invoke(itemId);
+            if (providerTexture != null)
+            {
+                return providerTexture;
+            }
+
+            if (_itemIconCache.TryGetValue(itemId, out Texture2D cachedTexture))
+            {
+                return cachedTexture;
+            }
+
+            if (!InventoryItemMetadataResolver.TryResolveImageSource(itemId, out string category, out string imagePath))
+            {
+                _itemIconCache[itemId] = null;
+                return null;
+            }
+
+            MapleLib.WzLib.WzImage itemImage = global::HaCreator.Program.FindImage(category, imagePath);
+            itemImage?.ParseImage();
+            string itemText = category == "Character" ? itemId.ToString("D8") : itemId.ToString("D7");
+            MapleLib.WzLib.WzProperties.WzSubProperty itemProperty = itemImage?[itemText] as MapleLib.WzLib.WzProperties.WzSubProperty;
+            MapleLib.WzLib.WzProperties.WzSubProperty infoProperty = itemProperty?["info"] as MapleLib.WzLib.WzProperties.WzSubProperty;
+            MapleLib.WzLib.WzProperties.WzCanvasProperty iconCanvas = infoProperty?["iconRaw"] as MapleLib.WzLib.WzProperties.WzCanvasProperty
+                                                                      ?? infoProperty?["icon"] as MapleLib.WzLib.WzProperties.WzCanvasProperty;
+            Texture2D texture = iconCanvas?.GetLinkedWzCanvasBitmap()?.ToTexture2DAndDispose(_pixel?.GraphicsDevice);
+            _itemIconCache[itemId] = texture;
+            return texture;
+        }
+
+        private static string ResolveItemName(int itemId)
+        {
+            if (itemId <= 0)
+            {
+                return string.Empty;
+            }
+
+            return InventoryItemMetadataResolver.TryResolveItemName(itemId, out string itemName)
+                ? itemName
+                : $"Item #{itemId}";
+        }
+
+        private static string ResolveItemDescription(int itemId)
+        {
+            return itemId > 0 && InventoryItemMetadataResolver.TryResolveItemDescription(itemId, out string description)
+                ? description
+                : string.Empty;
+        }
+
+        private void DrawHoveredItemTooltip(SpriteBatch sprite)
+        {
+            if (_hoveredQuestItem == null || _font == null || _pixel == null)
+            {
+                return;
+            }
+
+            string title = string.IsNullOrWhiteSpace(_hoveredQuestItem.Title) ? $"Item #{_hoveredQuestItem.ItemId}" : _hoveredQuestItem.Title;
+            const int tooltipWidth = 220;
+            const int padding = 8;
+            const int iconSize = 28;
+            const int gap = 8;
+            float titleWidth = tooltipWidth - (padding * 2);
+            float bodyWidth = tooltipWidth - ((padding * 2) + iconSize + gap);
+
+            string[] wrappedTitle = WrapTooltipText(title, titleWidth);
+            string[] wrappedSubtitle = WrapTooltipText(_hoveredQuestItem.Subtitle, bodyWidth);
+            string[] wrappedDescription = WrapTooltipText(_hoveredQuestItem.Description, bodyWidth);
+
+            float titleHeight = wrappedTitle.Length * _font.LineSpacing;
+            float subtitleHeight = wrappedSubtitle.Length * _font.LineSpacing;
+            float descriptionHeight = wrappedDescription.Length * _font.LineSpacing;
+            float bodyHeight = subtitleHeight + (descriptionHeight > 0f ? 4f + descriptionHeight : 0f);
+            int tooltipHeight = (int)Math.Ceiling((padding * 2) + titleHeight + 6f + Math.Max(iconSize, bodyHeight));
+
+            int viewportWidth = sprite.GraphicsDevice.Viewport.Width;
+            int viewportHeight = sprite.GraphicsDevice.Viewport.Height;
+            int tooltipX = _lastMousePosition.X + 18;
+            int tooltipY = _lastMousePosition.Y + 18;
+            if (tooltipX + tooltipWidth > viewportWidth - 4)
+            {
+                tooltipX = Math.Max(4, _lastMousePosition.X - tooltipWidth - 18);
+            }
+
+            if (tooltipY + tooltipHeight > viewportHeight - 4)
+            {
+                tooltipY = Math.Max(4, _lastMousePosition.Y - tooltipHeight - 18);
+            }
+
+            Rectangle backgroundRect = new Rectangle(tooltipX, tooltipY, tooltipWidth, tooltipHeight);
+            sprite.Draw(_pixel, backgroundRect, new Color(18, 24, 37, 235));
+            sprite.Draw(_pixel, new Rectangle(backgroundRect.X, backgroundRect.Y, backgroundRect.Width, 1), new Color(112, 146, 201));
+            sprite.Draw(_pixel, new Rectangle(backgroundRect.X, backgroundRect.Bottom - 1, backgroundRect.Width, 1), new Color(112, 146, 201));
+            sprite.Draw(_pixel, new Rectangle(backgroundRect.X, backgroundRect.Y, 1, backgroundRect.Height), new Color(112, 146, 201));
+            sprite.Draw(_pixel, new Rectangle(backgroundRect.Right - 1, backgroundRect.Y, 1, backgroundRect.Height), new Color(112, 146, 201));
+
+            float textY = tooltipY + padding;
+            DrawTooltipLines(sprite, wrappedTitle, new Vector2(tooltipX + padding, textY), new Color(255, 220, 120));
+            textY += titleHeight + 6f;
+
+            if (_hoveredQuestItem.Icon != null)
+            {
+                sprite.Draw(_hoveredQuestItem.Icon, new Rectangle(tooltipX + padding, (int)textY, iconSize, iconSize), Color.White);
+            }
+
+            float bodyX = tooltipX + padding + iconSize + gap;
+            DrawTooltipLines(sprite, wrappedSubtitle, new Vector2(bodyX, textY), new Color(228, 233, 242));
+            if (descriptionHeight > 0f)
+            {
+                DrawTooltipLines(sprite, wrappedDescription, new Vector2(bodyX, textY + subtitleHeight + 4f), new Color(199, 206, 218));
+            }
+        }
+
+        private void DrawTooltipLines(SpriteBatch sprite, IReadOnlyList<string> lines, Vector2 position, Color color)
+        {
+            for (int i = 0; i < lines.Count; i++)
+            {
+                sprite.DrawString(_font, lines[i], new Vector2(position.X, position.Y + (i * _font.LineSpacing)), color);
+            }
+        }
+
+        private string[] WrapTooltipText(string text, float maxWidth)
+        {
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                return Array.Empty<string>();
+            }
+
+            return WrapText(text, maxWidth).ToArray();
         }
 
         private void DrawCenteredButtonLabel(SpriteBatch sprite, UIObject button, string text)

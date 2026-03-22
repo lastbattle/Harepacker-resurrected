@@ -290,48 +290,8 @@ namespace HaCreator.MapSimulator.Character
         /// </summary>
         public void CreatePlayerFromBuild(CharacterBuild build)
         {
-            Player = new PlayerCharacter(build);
-            Combat = new PlayerCombat(Player);
+            InitializePlayer(new PlayerCharacter(build));
             CompanionEquipment.EnsureDefaults(Loader, build);
-
-            // Wire up attack hit effect callback
-            Combat.OnAttackHitPlayer = (x, y, hitFrames) =>
-            {
-                if (_combatEffects != null && hitFrames != null)
-                {
-                    _combatEffects.AddAttackHitEffect(x, y, hitFrames, Environment.TickCount);
-                }
-            };
-
-            Combat.OnMobSkillHitPlayer = (x, y, skillId, skillLevel) =>
-            {
-                if (_combatEffects == null || _mobSkillEffectLoader == null)
-                {
-                    return;
-                }
-
-                var effectData = _mobSkillEffectLoader.LoadMobSkillEffect(skillId, skillLevel);
-                if (effectData?.HasAffectedEffect != true)
-                {
-                    return;
-                }
-
-                int duration = effectData.Time > 0 ? effectData.Time : effectData.AffectedDuration;
-                _combatEffects.AddMobSkillHitEffect(
-                    x,
-                    y,
-                    effectData.AffectedFrames,
-                    skillId,
-                    skillLevel,
-                    Environment.TickCount,
-                    effectData.AffectedRepeat,
-                    duration);
-            };
-
-            Combat.OnMobAttackMissPlayer = (x, y, currentTime) =>
-            {
-                _combatEffects?.AddMiss(x, y, currentTime);
-            };
 
             // Create SkillManager if we have a SkillLoader
             if (SkillLoader != null)
@@ -419,6 +379,114 @@ namespace HaCreator.MapSimulator.Character
             Pets.EnsureDefaultPetActive(Player);
         }
 
+        private void InitializePlayer(PlayerCharacter player)
+        {
+            Player = player ?? throw new ArgumentNullException(nameof(player));
+            Combat = new PlayerCombat(Player);
+
+            Combat.OnAttackHitPlayer = (x, y, hitFrames) =>
+            {
+                if (_combatEffects != null && hitFrames != null)
+                {
+                    _combatEffects.AddAttackHitEffect(x, y, hitFrames, Environment.TickCount);
+                }
+            };
+
+            Combat.OnMobSkillHitPlayer = (x, y, skillId, skillLevel) =>
+            {
+                if (_combatEffects == null || _mobSkillEffectLoader == null)
+                {
+                    return;
+                }
+
+                var effectData = _mobSkillEffectLoader.LoadMobSkillEffect(skillId, skillLevel);
+                if (effectData?.HasAffectedEffect != true)
+                {
+                    return;
+                }
+
+                int duration = effectData.Time > 0 ? effectData.Time : effectData.AffectedDuration;
+                _combatEffects.AddMobSkillHitEffect(
+                    x,
+                    y,
+                    effectData.AffectedFrames,
+                    skillId,
+                    skillLevel,
+                    Environment.TickCount,
+                    effectData.AffectedRepeat,
+                    duration);
+            };
+
+            Combat.OnMobAttackMissPlayer = (x, y, currentTime) =>
+            {
+                _combatEffects?.AddMiss(x, y, currentTime);
+            };
+
+            Combat.OnDamageReceived = (combatPlayer, damage, mob) =>
+            {
+                Skills?.NotifyOwnerDamaged(mob, Environment.TickCount);
+            };
+
+            Combat.SetDamageBlockedEvaluator(currentTime => Skills?.IsPlayerProtectedByClientSkillZone(currentTime) == true);
+
+            Player.SetFootholdLookup(_findFoothold);
+            Player.SetLadderLookup(_findLadder);
+            Player.SetSwimAreaCheck(_checkSwimArea);
+            Func<int, CharacterPart> portableChairTamingMobLoader = Loader != null
+                ? new Func<int, CharacterPart>(Loader.LoadEquipment)
+                : null;
+            Player.SetPortableChairTamingMobLoader(portableChairTamingMobLoader);
+            Player.SetJumpSoundCallback(_onJumpSound);
+            Player.SetJumpRestrictionHandler(_jumpRestrictionMessageProvider, _onJumpRestricted);
+            Player.Physics.IsFlyingMap = _isFlyingMap;
+            Player.Physics.RequiresFlyingSkillForMap = _requiresFlyingSkillForMap;
+
+            Player.OnAttackHitbox = (combatPlayer, hitbox) =>
+            {
+                if (_mobPool == null)
+                {
+                    return;
+                }
+
+                var results = Combat.ProcessAttack(_mobPool, hitbox);
+                if (_combatEffects != null)
+                {
+                    int currentTime = Environment.TickCount;
+                    int comboIndex = 0;
+                    foreach (var result in results)
+                    {
+                        _combatEffects.AddDamageNumber(
+                            result.Damage,
+                            result.HitX,
+                            result.HitY - 20,
+                            result.IsCritical,
+                            result.IsMiss,
+                            currentTime,
+                            comboIndex++);
+                    }
+                }
+            };
+
+            Player.OnDeath = combatPlayer =>
+            {
+                // Could trigger death effect, etc.
+            };
+
+            Player.OnDamaged = (combatPlayer, damage) =>
+            {
+                if (_combatEffects != null && damage > 0)
+                {
+                    int currentTime = Environment.TickCount;
+                    _combatEffects.AddReceivedDamage(
+                        damage,
+                        combatPlayer.X,
+                        combatPlayer.Y - 50,
+                        false,
+                        currentTime);
+                }
+            };
+        }
+
         /// <summary>
         /// Create default player
         /// </summary>
@@ -463,20 +531,7 @@ namespace HaCreator.MapSimulator.Character
         public bool CreatePlaceholderPlayer()
         {
             // Create player with null build - will just be a position marker
-            Player = new PlayerCharacter(_device, _texturePool, null);
-
-            // Set up callbacks
-            if (_findFoothold != null)
-                Player.SetFootholdLookup(_findFoothold);
-            if (_findLadder != null)
-                Player.SetLadderLookup(_findLadder);
-            if (_onJumpSound != null)
-                Player.SetJumpSoundCallback(_onJumpSound);
-            Player.SetJumpRestrictionHandler(_jumpRestrictionMessageProvider, _onJumpRestricted);
-            if (_checkSwimArea != null)
-                Player.SetSwimAreaCheck(_checkSwimArea);
-            Player.Physics.IsFlyingMap = _isFlyingMap;
-            Player.Physics.RequiresFlyingSkillForMap = _requiresFlyingSkillForMap;
+            InitializePlayer(new PlayerCharacter(_device, _texturePool, null));
 
             // Set spawn position
             Player.SetPosition(_spawnPoint.X, _spawnPoint.Y);
@@ -649,6 +704,7 @@ namespace HaCreator.MapSimulator.Character
             }
 
             Pets.Draw(spriteBatch, skeletonRenderer, mapShiftX, mapShiftY, centerX, centerY, PetRenderPlane.BehindOwner);
+            Skills?.DrawBackgroundEffects(spriteBatch, mapShiftX, mapShiftY, centerX, centerY, currentTime);
             Player.Draw(
                 spriteBatch,
                 skeletonRenderer,

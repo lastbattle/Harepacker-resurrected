@@ -14,6 +14,7 @@ namespace HaCreator.MapSimulator.Entities
     {
         private readonly ReactorInstance _reactorInstance;
         private readonly Dictionary<int, IDXObject[]> _stateFrames;
+        private readonly int[] _availableStates;
         private int _activeState;
         private int _activeFrameIndex;
         private int _lastStateTick;
@@ -24,11 +25,14 @@ namespace HaCreator.MapSimulator.Entities
             private set { }
         }
 
+        public IReadOnlyList<int> AvailableStates => _availableStates;
+
         public ReactorItem(ReactorInstance reactorInstance, List<IDXObject> frames)
             : base(frames, reactorInstance.Flip)
         {
             _reactorInstance = reactorInstance;
             _stateFrames = new Dictionary<int, IDXObject[]>();
+            _availableStates = Array.Empty<int>();
         }
 
         public ReactorItem(ReactorInstance reactorInstance, Dictionary<int, List<IDXObject>> stateFrames)
@@ -47,6 +51,9 @@ namespace HaCreator.MapSimulator.Entities
                     }
                 }
             }
+
+            _availableStates = _stateFrames.Keys.OrderBy(state => state).ToArray();
+            _activeState = ResolveInitialState();
         }
 
         public ReactorItem(ReactorInstance reactorInstance, IDXObject frame0)
@@ -54,6 +61,7 @@ namespace HaCreator.MapSimulator.Entities
         {
             _reactorInstance = reactorInstance;
             _stateFrames = new Dictionary<int, IDXObject[]>();
+            _availableStates = Array.Empty<int>();
         }
 
         public void SetAnimationState(int state, int tickCount)
@@ -65,6 +73,46 @@ namespace HaCreator.MapSimulator.Entities
             _activeState = resolvedState;
             _activeFrameIndex = 0;
             _lastStateTick = tickCount;
+        }
+
+        public int GetInitialState()
+        {
+            return ResolveInitialState();
+        }
+
+        public bool TryGetNextState(int currentState, out int nextState)
+        {
+            nextState = currentState;
+
+            if (_availableStates.Length == 0)
+                return false;
+
+            int resolvedState = ResolveState(currentState);
+            for (int i = 0; i < _availableStates.Length; i++)
+            {
+                if (_availableStates[i] <= resolvedState)
+                    continue;
+
+                nextState = _availableStates[i];
+                return true;
+            }
+
+            return false;
+        }
+
+        public int GetStateDuration(int state)
+        {
+            int resolvedState = ResolveState(state);
+            if (!_stateFrames.TryGetValue(resolvedState, out IDXObject[] frames) || frames.Length == 0)
+                return 0;
+
+            int totalDuration = 0;
+            for (int i = 0; i < frames.Length; i++)
+            {
+                totalDuration += Math.Max(1, frames[i].Delay);
+            }
+
+            return totalDuration;
         }
 
         public override void Draw(SpriteBatch sprite, SkeletonMeshRenderer skeletonMeshRenderer, GameTime gameTime,
@@ -135,6 +183,14 @@ namespace HaCreator.MapSimulator.Entities
                 return lowerOrEqualState;
 
             return _stateFrames.Keys.OrderBy(key => key).First();
+        }
+
+        private int ResolveInitialState()
+        {
+            if (_availableStates.Length == 0)
+                return 0;
+
+            return _stateFrames.ContainsKey(0) ? 0 : _availableStates[0];
         }
 
         private static List<IDXObject> GetDefaultFrames(Dictionary<int, List<IDXObject>> stateFrames)

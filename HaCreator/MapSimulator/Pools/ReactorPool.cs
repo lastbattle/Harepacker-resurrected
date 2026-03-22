@@ -71,6 +71,7 @@ namespace HaCreator.MapSimulator.Pools
         public ReactorState State { get; set; }
         public int StateFrame { get; set; }
         public int StateStartTime { get; set; }
+        public int VisualState { get; set; }
         public int HitCount { get; set; }
         public int RequiredHits { get; set; }
         public float Alpha { get; set; } = 1f;
@@ -167,6 +168,7 @@ namespace HaCreator.MapSimulator.Pools
                     State = ReactorState.Idle,
                     StateFrame = 0,
                     StateStartTime = 0,
+                    VisualState = reactor.GetInitialState(),
                     HitCount = 0,
                     RequiredHits = 1, // Default, could be loaded from reactor info
                     Alpha = 1f,
@@ -549,6 +551,11 @@ namespace HaCreator.MapSimulator.Pools
             if (data.State != ReactorState.Idle)
                 return;
 
+            if (reactor.TryGetNextState(data.VisualState, out int nextVisualState))
+            {
+                data.VisualState = nextVisualState;
+            }
+
             data.State = ReactorState.Activated;
             data.StateStartTime = currentTick;
             data.StateFrame = 0;
@@ -592,8 +599,19 @@ namespace HaCreator.MapSimulator.Pools
                 }
                 else
                 {
-                    // Progress to next state or destroy
-                    DestroyReactor(index, playerId, currentTick);
+                    if (reactor.TryGetNextState(data.VisualState, out int nextVisualState))
+                    {
+                        data.VisualState = nextVisualState;
+                        data.State = ReactorState.Activated;
+                        data.StateStartTime = currentTick;
+                        data.StateFrame = 0;
+                        data.ActivatingPlayerId = playerId;
+                    }
+                    else
+                    {
+                        // Progress to terminal destroyed state when WZ does not expose another branch.
+                        DestroyReactor(index, playerId, currentTick);
+                    }
                 }
                 return true;
             }
@@ -639,6 +657,7 @@ namespace HaCreator.MapSimulator.Pools
         /// </summary>
         public void ResetReactor(int index, int currentTick)
         {
+            ReactorItem reactor = GetReactor(index);
             var data = GetReactorData(index);
             if (data == null)
                 return;
@@ -646,6 +665,7 @@ namespace HaCreator.MapSimulator.Pools
             data.State = ReactorState.Idle;
             data.StateStartTime = currentTick;
             data.StateFrame = 0;
+            data.VisualState = reactor?.GetInitialState() ?? 0;
             data.HitCount = 0;
             data.Alpha = 1f;
         }
@@ -683,6 +703,7 @@ namespace HaCreator.MapSimulator.Pools
                     data.State = ReactorState.Idle;
                     data.StateStartTime = currentTick;
                     data.StateFrame = 0;
+                    data.VisualState = newReactor.GetInitialState();
                     data.HitCount = 0;
                     data.Alpha = 1f;
                 }
@@ -731,6 +752,7 @@ namespace HaCreator.MapSimulator.Pools
                     State = ReactorState.Respawning,
                     StateFrame = 0,
                     StateStartTime = currentTick,
+                    VisualState = 0,
                     HitCount = 0,
                     RequiredHits = 1,
                     Alpha = 1f,
@@ -765,8 +787,7 @@ namespace HaCreator.MapSimulator.Pools
                 switch (data.State)
                 {
                     case ReactorState.Activated:
-                        // Check if activation animation is complete
-                        if (currentTick - data.StateStartTime >= ACTIVATION_ANIMATION_TIME)
+                        if (currentTick - data.StateStartTime >= GetActivationDuration(index))
                         {
                             data.State = ReactorState.Active;
                             data.StateStartTime = currentTick;
@@ -803,6 +824,7 @@ namespace HaCreator.MapSimulator.Pools
                             data.State = ReactorState.Idle;
                             data.StateStartTime = currentTick;
                             data.StateFrame = 0;
+                            data.VisualState = _reactors[i]?.GetInitialState() ?? 0;
                             data.HitCount = 0;
                             data.Alpha = 1f;
                             spawnPoint.IsActive = true;
@@ -854,17 +876,7 @@ namespace HaCreator.MapSimulator.Pools
             if (data == null)
                 return (0, 0);
 
-            int state = data.State switch
-            {
-                ReactorState.Idle => 0,
-                ReactorState.Activated => 1,
-                ReactorState.Active => 2,
-                ReactorState.Deactivating => 3,
-                ReactorState.Destroyed => 4,
-                _ => 0
-            };
-
-            return (state, data.StateFrame);
+            return (data.VisualState, data.StateFrame);
         }
         #endregion
 
@@ -974,6 +986,17 @@ namespace HaCreator.MapSimulator.Pools
                 return intValue;
 
             return int.TryParse(value.ToString(), out int parsedValue) ? parsedValue : null;
+        }
+
+        private int GetActivationDuration(int index)
+        {
+            ReactorItem reactor = GetReactor(index);
+            ReactorRuntimeData data = GetReactorData(index);
+            if (reactor == null || data == null)
+                return ACTIVATION_ANIMATION_TIME;
+
+            int stateDuration = reactor.GetStateDuration(data.VisualState);
+            return stateDuration > 0 ? stateDuration : ACTIVATION_ANIMATION_TIME;
         }
 
         private static Rectangle GetReactorBounds(ReactorInstance instance)

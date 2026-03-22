@@ -103,8 +103,8 @@ namespace HaCreator.MapSimulator.Character
                 ["prone"] = new[] { "sit", "stand1" },
                 ["swim"] = new[] { "fly", "sit", "move" },
                 ["fly"] = new[] { "walk1", "walk2", "sit", "move" },
-                ["ladder"] = new[] { "rope", "sit" },
-                ["rope"] = new[] { "ladder", "sit" },
+                ["ladder"] = new[] { "ladder2", "rope2", "rope", "sit" },
+                ["rope"] = new[] { "rope2", "ladder2", "ladder", "sit" },
                 ["alert"] = new[] { "stand1", "stand2", "sit" },
                 ["heal"] = new[] { "stand1", "stand2", "sit" },
                 ["dead"] = new[] { "sit", "stand1" },
@@ -495,10 +495,10 @@ namespace HaCreator.MapSimulator.Character
         {
             return tamingMobPart?.Type == CharacterPartType.TamingMob
                    && tamingMobPart.ItemId == MechanicTamingMobItemId
-                   && IsMechanicVehicleAction(actionName);
+                   && IsMechanicVehicleAction(tamingMobPart, actionName);
         }
 
-        private static bool IsMechanicVehicleAction(string actionName)
+        private static bool IsMechanicVehicleAction(CharacterPart tamingMobPart, string actionName)
         {
             if (string.IsNullOrWhiteSpace(actionName))
             {
@@ -516,10 +516,39 @@ namespace HaCreator.MapSimulator.Character
                    || actionName.StartsWith("mbooster", StringComparison.OrdinalIgnoreCase)
                    || actionName.StartsWith("msummon", StringComparison.OrdinalIgnoreCase)
                    || actionName.StartsWith("mRush", StringComparison.OrdinalIgnoreCase)
+                   || actionName.StartsWith("alert3", StringComparison.OrdinalIgnoreCase)
                    || string.Equals(actionName, "ride2", StringComparison.OrdinalIgnoreCase)
                    || string.Equals(actionName, "getoff2", StringComparison.OrdinalIgnoreCase)
                    || string.Equals(actionName, "herbalism_mechanic", StringComparison.OrdinalIgnoreCase)
-                   || string.Equals(actionName, "mining_mechanic", StringComparison.OrdinalIgnoreCase);
+                   || string.Equals(actionName, "mining_mechanic", StringComparison.OrdinalIgnoreCase)
+                   || IsMechanicMountOnlyAction(tamingMobPart, actionName);
+        }
+
+        private static bool IsMechanicMountOnlyAction(CharacterPart tamingMobPart, string actionName)
+        {
+            if (tamingMobPart?.GetAnimation(actionName) == null)
+            {
+                return false;
+            }
+
+            return !string.Equals(actionName, "stand1", StringComparison.OrdinalIgnoreCase)
+                   && !string.Equals(actionName, "stand2", StringComparison.OrdinalIgnoreCase)
+                   && !string.Equals(actionName, "walk1", StringComparison.OrdinalIgnoreCase)
+                   && !string.Equals(actionName, "walk2", StringComparison.OrdinalIgnoreCase)
+                   && !string.Equals(actionName, "jump", StringComparison.OrdinalIgnoreCase)
+                   && !string.Equals(actionName, "prone", StringComparison.OrdinalIgnoreCase)
+                   && !string.Equals(actionName, "proneStab", StringComparison.OrdinalIgnoreCase)
+                   && !string.Equals(actionName, "ladder", StringComparison.OrdinalIgnoreCase)
+                   && !string.Equals(actionName, "rope", StringComparison.OrdinalIgnoreCase)
+                   && !string.Equals(actionName, "fly", StringComparison.OrdinalIgnoreCase)
+                   && !string.Equals(actionName, "swim", StringComparison.OrdinalIgnoreCase)
+                   && !string.Equals(actionName, "sit", StringComparison.OrdinalIgnoreCase)
+                   && !string.Equals(actionName, "move", StringComparison.OrdinalIgnoreCase)
+                   && !string.Equals(actionName, "alert", StringComparison.OrdinalIgnoreCase)
+                   && !string.Equals(actionName, "heal", StringComparison.OrdinalIgnoreCase)
+                   && !string.Equals(actionName, "dead", StringComparison.OrdinalIgnoreCase)
+                   && !string.Equals(actionName, "ghost", StringComparison.OrdinalIgnoreCase)
+                   && !string.Equals(actionName, "tired", StringComparison.OrdinalIgnoreCase);
         }
 
         private void AddPart(

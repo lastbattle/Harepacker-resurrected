@@ -14,6 +14,7 @@ namespace HaCreator.MapSimulator.UI
     internal sealed class MessengerWindow : UIWindowBase
     {
         private const int SlotCount = 3;
+        private const int ChatBalloonFrameDelayMs = 120;
         private static readonly Point[] SlotOrigins =
         {
             new(11, 28),
@@ -23,6 +24,7 @@ namespace HaCreator.MapSimulator.UI
 
         private readonly IDXObject _maximizedFrame;
         private readonly IDXObject _minimizedFrame;
+        private readonly IDXObject _collapsedFrame;
         private readonly IDXObject _maxOverlay;
         private readonly Point _maxOverlayOffset;
         private readonly IDXObject _maxContentOverlay;
@@ -31,14 +33,28 @@ namespace HaCreator.MapSimulator.UI
         private readonly Point _minOverlayOffset;
         private readonly IDXObject _minContentOverlay;
         private readonly Point _minContentOffset;
+        private readonly IDXObject _collapsedOverlay;
+        private readonly Point _collapsedOverlayOffset;
+        private readonly IDXObject _collapsedContentOverlay;
+        private readonly Point _collapsedContentOffset;
         private readonly Texture2D[] _nameBarTextures;
+        private readonly Texture2D[] _chatBalloonFrames;
         private readonly Texture2D _pixel;
         private readonly StringBuilder _inputText = new(80);
+        private readonly Point _maxEnterButtonPosition;
+        private readonly Point _minEnterButtonPosition;
+        private readonly Point _maxClaimButtonPosition;
+        private readonly Point _minClaimButtonPosition;
+        private readonly Point _maxMaximizeButtonPosition;
+        private readonly Point _collapsedMaximizeButtonPosition;
+        private readonly Point _maxMinimizeButtonPosition;
+        private readonly Point _minMinimizeButtonPosition;
+        private readonly Point _collapsedMinimizeButtonPosition;
 
         private SpriteFont _font;
         private KeyboardState _previousKeyboardState;
         private MouseState _previousMouseState;
-        private bool _isMinimized;
+        private MessengerWindowState _windowState;
         private bool _inputActive;
         private bool _whisperMode;
         private int _cursorPosition;
@@ -49,9 +65,9 @@ namespace HaCreator.MapSimulator.UI
         private Point? _clickStartPoint;
         private Func<MessengerSnapshot> _snapshotProvider;
         private Action<int> _slotSelectionHandler;
-        private Func<string> _inviteHandler;
-        private Func<string> _whisperHandler;
+        private Func<string> _claimHandler;
         private Func<string> _leaveHandler;
+        private Func<bool, string> _stateCycleHandler;
         private Func<string, string> _sendMessageHandler;
         private Func<string, string> _sendWhisperHandler;
         private Action<string> _feedbackHandler;
@@ -71,12 +87,28 @@ namespace HaCreator.MapSimulator.UI
             Point minOverlayOffset,
             IDXObject minContentOverlay,
             Point minContentOffset,
+            IDXObject collapsedFrame,
+            IDXObject collapsedOverlay,
+            Point collapsedOverlayOffset,
+            IDXObject collapsedContentOverlay,
+            Point collapsedContentOffset,
             Texture2D[] nameBarTextures,
+            Texture2D[] chatBalloonFrames,
+            Point maxEnterButtonPosition,
+            Point minEnterButtonPosition,
+            Point maxClaimButtonPosition,
+            Point minClaimButtonPosition,
+            Point maxMaximizeButtonPosition,
+            Point collapsedMaximizeButtonPosition,
+            Point maxMinimizeButtonPosition,
+            Point minMinimizeButtonPosition,
+            Point collapsedMinimizeButtonPosition,
             GraphicsDevice device)
             : base(maximizedFrame)
         {
             _maximizedFrame = maximizedFrame ?? throw new ArgumentNullException(nameof(maximizedFrame));
             _minimizedFrame = minimizedFrame ?? maximizedFrame;
+            _collapsedFrame = collapsedFrame ?? minimizedFrame ?? maximizedFrame;
             _maxOverlay = maxOverlay;
             _maxOverlayOffset = maxOverlayOffset;
             _maxContentOverlay = maxContentOverlay;
@@ -85,7 +117,21 @@ namespace HaCreator.MapSimulator.UI
             _minOverlayOffset = minOverlayOffset;
             _minContentOverlay = minContentOverlay;
             _minContentOffset = minContentOffset;
+            _collapsedOverlay = collapsedOverlay;
+            _collapsedOverlayOffset = collapsedOverlayOffset;
+            _collapsedContentOverlay = collapsedContentOverlay;
+            _collapsedContentOffset = collapsedContentOffset;
             _nameBarTextures = nameBarTextures ?? Array.Empty<Texture2D>();
+            _chatBalloonFrames = chatBalloonFrames ?? Array.Empty<Texture2D>();
+            _maxEnterButtonPosition = maxEnterButtonPosition;
+            _minEnterButtonPosition = minEnterButtonPosition;
+            _maxClaimButtonPosition = maxClaimButtonPosition;
+            _minClaimButtonPosition = minClaimButtonPosition;
+            _maxMaximizeButtonPosition = maxMaximizeButtonPosition;
+            _collapsedMaximizeButtonPosition = collapsedMaximizeButtonPosition;
+            _maxMinimizeButtonPosition = maxMinimizeButtonPosition;
+            _minMinimizeButtonPosition = minMinimizeButtonPosition;
+            _collapsedMinimizeButtonPosition = collapsedMinimizeButtonPosition;
             _pixel = new Texture2D(device ?? throw new ArgumentNullException(nameof(device)), 1, 1);
             _pixel.SetData(new[] { Color.White });
 
@@ -102,17 +148,17 @@ namespace HaCreator.MapSimulator.UI
 
         internal void SetActionHandlers(
             Action<int> slotSelectionHandler,
-            Func<string> inviteHandler,
-            Func<string> whisperHandler,
+            Func<string> claimHandler,
             Func<string> leaveHandler,
+            Func<bool, string> stateCycleHandler,
             Func<string, string> sendMessageHandler,
             Func<string, string> sendWhisperHandler,
             Action<string> feedbackHandler)
         {
             _slotSelectionHandler = slotSelectionHandler;
-            _inviteHandler = inviteHandler;
-            _whisperHandler = whisperHandler;
+            _claimHandler = claimHandler;
             _leaveHandler = leaveHandler;
+            _stateCycleHandler = stateCycleHandler;
             _sendMessageHandler = sendMessageHandler;
             _sendWhisperHandler = sendWhisperHandler;
             _feedbackHandler = feedbackHandler;
@@ -129,10 +175,10 @@ namespace HaCreator.MapSimulator.UI
             _maximizeButton = maximizeButton;
             _minimizeButton = minimizeButton;
 
-            ConfigureButton(_enterButton, HandleInvite);
-            ConfigureButton(_claimButton, HandleWhisper);
-            ConfigureButton(_maximizeButton, () => SetMinimized(false));
-            ConfigureButton(_minimizeButton, () => SetMinimized(true));
+            ConfigureButton(_enterButton, HandleEnterButton);
+            ConfigureButton(_claimButton, HandleClaim);
+            ConfigureButton(_maximizeButton, () => CycleState(false));
+            ConfigureButton(_minimizeButton, () => CycleState(true));
 
             UpdateButtonStates(GetSnapshot());
         }
@@ -147,6 +193,7 @@ namespace HaCreator.MapSimulator.UI
             base.Update(gameTime);
 
             MessengerSnapshot snapshot = GetSnapshot();
+            ApplyWindowState(snapshot.WindowState);
             UpdateButtonStates(snapshot);
 
             KeyboardState keyboardState = Keyboard.GetState();
@@ -173,13 +220,13 @@ namespace HaCreator.MapSimulator.UI
             {
                 bool treatAsClick = !_clickStartPoint.HasValue
                     || Vector2.Distance(new Vector2(_clickStartPoint.Value.X, _clickStartPoint.Value.Y), new Vector2(mouseState.X, mouseState.Y)) <= 4f;
-                if (treatAsClick)
+                if (treatAsClick && !IsCollapsed)
                 {
                     if (GetLeaveButtonBounds().Contains(mouseState.X, mouseState.Y))
                     {
                         HandleLeave();
                     }
-                    else if (!_isMinimized && GetInputBounds().Contains(mouseState.X, mouseState.Y))
+                    else if (GetInputBounds().Contains(mouseState.X, mouseState.Y))
                     {
                         ActivateInput(whisperMode: false, snapshot, clearText: false);
                     }
@@ -189,6 +236,15 @@ namespace HaCreator.MapSimulator.UI
                         if (slot >= 0)
                         {
                             _slotSelectionHandler?.Invoke(slot);
+                            MessengerSnapshot updatedSnapshot = GetSnapshot();
+                            if (!IsCollapsed
+                                && updatedSnapshot.SelectedSlot == slot
+                                && updatedSnapshot.CanWhisper
+                                && updatedSnapshot.SelectedParticipantOnline)
+                            {
+                                ActivateInput(whisperMode: true, updatedSnapshot, clearText: true);
+                                ShowFeedback($"Whispering to {updatedSnapshot.SelectedParticipantName}.");
+                            }
                         }
                     }
                 }
@@ -215,10 +271,33 @@ namespace HaCreator.MapSimulator.UI
             RenderParameters renderParameters,
             int TickCount)
         {
-            IDXObject overlay = _isMinimized ? _minOverlay : _maxOverlay;
-            Point overlayOffset = _isMinimized ? _minOverlayOffset : _maxOverlayOffset;
-            IDXObject contentOverlay = _isMinimized ? _minContentOverlay : _maxContentOverlay;
-            Point contentOffset = _isMinimized ? _minContentOffset : _maxContentOffset;
+            MessengerSnapshot snapshot = GetSnapshot();
+            ApplyWindowState(snapshot.WindowState);
+
+            IDXObject overlay = _windowState switch
+            {
+                MessengerWindowState.Min => _minOverlay,
+                MessengerWindowState.Min2 => _collapsedOverlay,
+                _ => _maxOverlay
+            };
+            Point overlayOffset = _windowState switch
+            {
+                MessengerWindowState.Min => _minOverlayOffset,
+                MessengerWindowState.Min2 => _collapsedOverlayOffset,
+                _ => _maxOverlayOffset
+            };
+            IDXObject contentOverlay = _windowState switch
+            {
+                MessengerWindowState.Min => _minContentOverlay,
+                MessengerWindowState.Min2 => _collapsedContentOverlay,
+                _ => _maxContentOverlay
+            };
+            Point contentOffset = _windowState switch
+            {
+                MessengerWindowState.Min => _minContentOffset,
+                MessengerWindowState.Min2 => _collapsedContentOffset,
+                _ => _maxContentOffset
+            };
 
             DrawLayer(sprite, overlay, overlayOffset, drawReflectionInfo, skeletonMeshRenderer, gameTime);
             DrawLayer(sprite, contentOverlay, contentOffset, drawReflectionInfo, skeletonMeshRenderer, gameTime);
@@ -228,13 +307,19 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
-            MessengerSnapshot snapshot = GetSnapshot();
             sprite.DrawString(_font, "Messenger", new Vector2(Position.X + 26, Position.Y + 7), Color.White, 0f, Vector2.Zero, 0.5f, SpriteEffects.None, 0f);
-            DrawLeaveControl(sprite, snapshot);
-
-            DrawParticipantSlots(sprite, snapshot);
-            DrawLogEntries(sprite, snapshot, contentOffset);
-            DrawInputPanel(sprite, snapshot, Environment.TickCount);
+            if (!IsCollapsed)
+            {
+                DrawLeaveControl(sprite, snapshot);
+                DrawParticipantSlots(sprite, snapshot);
+                DrawParticipantBalloons(sprite, snapshot, TickCount);
+                DrawLogEntries(sprite, snapshot, contentOffset);
+                DrawInputPanel(sprite, snapshot, TickCount);
+            }
+            else
+            {
+                DrawCollapsedStatus(sprite, snapshot);
+            }
         }
 
         private void ConfigureButton(UIObject button, Action action)
@@ -251,27 +336,30 @@ namespace HaCreator.MapSimulator.UI
             }
         }
 
-        private void HandleInvite()
+        private void HandleEnterButton()
         {
-            ShowFeedback(_inviteHandler?.Invoke());
-        }
-
-        private void HandleWhisper()
-        {
-            MessengerSnapshot snapshot = GetSnapshot();
-            if (!snapshot.CanWhisper)
+            if (IsCollapsed)
             {
-                ShowFeedback(_whisperHandler?.Invoke());
                 return;
             }
 
-            if (_isMinimized)
+            MessengerSnapshot snapshot = GetSnapshot();
+            if (!_inputActive)
             {
-                SetMinimized(false);
+                ActivateInput(whisperMode: false, snapshot, clearText: false);
             }
 
-            ActivateInput(whisperMode: true, snapshot, clearText: true);
-            ShowFeedback($"Whispering to {snapshot.SelectedParticipantName}.");
+            if (_inputText.Length == 0)
+            {
+                return;
+            }
+
+            SendCurrentInput(snapshot);
+        }
+
+        private void HandleClaim()
+        {
+            ShowFeedback(_claimHandler?.Invoke());
         }
 
         private void ShowFeedback(string message)
@@ -282,20 +370,31 @@ namespace HaCreator.MapSimulator.UI
             }
         }
 
-        private void SetMinimized(bool minimized)
+        private void CycleState(bool forward)
         {
-            _isMinimized = minimized;
-            if (_isMinimized)
+            ShowFeedback(_stateCycleHandler?.Invoke(forward));
+            ApplyWindowState(GetSnapshot().WindowState);
+        }
+
+        private void ApplyWindowState(MessengerWindowState state)
+        {
+            _windowState = state;
+            if (IsCollapsed)
             {
                 DeactivateInput(clearText: false);
             }
+
             RefreshFrame();
-            UpdateButtonStates(GetSnapshot());
         }
 
         private void RefreshFrame()
         {
-            Frame = _isMinimized ? _minimizedFrame : _maximizedFrame;
+            Frame = _windowState switch
+            {
+                MessengerWindowState.Min => _minimizedFrame,
+                MessengerWindowState.Min2 => _collapsedFrame,
+                _ => _maximizedFrame
+            };
         }
 
         private MessengerSnapshot GetSnapshot()
@@ -303,19 +402,24 @@ namespace HaCreator.MapSimulator.UI
             return _snapshotProvider?.Invoke() ?? new MessengerSnapshot();
         }
 
+        private bool IsExpanded => _windowState == MessengerWindowState.Max;
+        private bool IsCompact => _windowState == MessengerWindowState.Min;
+        private bool IsCollapsed => _windowState == MessengerWindowState.Min2;
+
         private void UpdateButtonStates(MessengerSnapshot snapshot)
         {
-            _maximizeButton?.SetVisible(_isMinimized);
-            _minimizeButton?.SetVisible(!_isMinimized);
+            ApplyButtonLayout();
 
             if (_enterButton != null)
             {
-                _enterButton.SetButtonState(snapshot.CanInvite ? UIObjectState.Normal : UIObjectState.Disabled);
+                _enterButton.SetVisible(!IsCollapsed);
+                _enterButton.SetButtonState(!IsCollapsed && _inputText.Length > 0 ? UIObjectState.Normal : UIObjectState.Disabled);
             }
 
             if (_claimButton != null)
             {
-                _claimButton.SetButtonState(snapshot.CanWhisper ? UIObjectState.Normal : UIObjectState.Disabled);
+                _claimButton.SetVisible(!IsCollapsed);
+                _claimButton.SetButtonState(!IsCollapsed && snapshot.CanClaim ? UIObjectState.Normal : UIObjectState.Disabled);
             }
         }
 
@@ -331,7 +435,7 @@ namespace HaCreator.MapSimulator.UI
             for (int i = 0; i < SlotCount; i++)
             {
                 Point origin = SlotOrigins[i];
-                Rectangle slotBounds = new Rectangle(Position.X + origin.X, Position.Y + origin.Y, 89, _isMinimized ? 74 : 84);
+                Rectangle slotBounds = new Rectangle(Position.X + origin.X, Position.Y + origin.Y, 89, IsCompact ? 74 : 84);
                 bool selected = snapshot.SelectedSlot == i;
 
                 Texture2D nameBar = i < _nameBarTextures.Length ? _nameBarTextures[i] : null;
@@ -358,10 +462,52 @@ namespace HaCreator.MapSimulator.UI
                 DrawCentered(sprite, Truncate(participant.Name, 11), slotBounds.X, slotBounds.Y + 4, slotBounds.Width, participant.IsLocalPlayer ? new Color(255, 242, 178) : Color.White, 0.42f);
                 DrawCentered(sprite, participant.IsLocalPlayer ? "You" : $"CH {participant.Channel}", cardBounds.X, cardBounds.Y + 8, cardBounds.Width, new Color(156, 228, 188), 0.4f);
                 DrawCentered(sprite, Truncate(participant.LocationSummary, 13), cardBounds.X, cardBounds.Y + 22, cardBounds.Width, new Color(224, 228, 235), 0.38f);
-                if (!_isMinimized)
+                if (!IsCompact)
                 {
                     DrawCentered(sprite, Truncate(participant.StatusText, 15), cardBounds.X, cardBounds.Y + 40, cardBounds.Width, new Color(197, 205, 216), 0.35f);
                 }
+            }
+        }
+
+        private void DrawParticipantBalloons(SpriteBatch sprite, MessengerSnapshot snapshot, int tickCount)
+        {
+            if (_chatBalloonFrames.Length == 0)
+            {
+                return;
+            }
+
+            IReadOnlyList<MessengerParticipantSnapshot> participants = snapshot.Participants ?? Array.Empty<MessengerParticipantSnapshot>();
+            for (int i = 0; i < SlotCount && i < participants.Count; i++)
+            {
+                MessengerParticipantSnapshot participant = participants[i];
+                if (participant == null
+                    || string.IsNullOrWhiteSpace(participant.BubbleText)
+                    || tickCount < participant.BubbleStartTick
+                    || tickCount > participant.BubbleExpireTick)
+                {
+                    continue;
+                }
+
+                int frameIndex = ((tickCount - participant.BubbleStartTick) / ChatBalloonFrameDelayMs) % _chatBalloonFrames.Length;
+                Texture2D frame = _chatBalloonFrames[Math.Clamp(frameIndex, 0, _chatBalloonFrames.Length - 1)];
+                if (frame == null)
+                {
+                    continue;
+                }
+
+                Rectangle slotBounds = new Rectangle(Position.X + SlotOrigins[i].X, Position.Y + SlotOrigins[i].Y, 89, IsCompact ? 74 : 84);
+                Vector2 balloonPosition = new Vector2(
+                    slotBounds.X + ((slotBounds.Width - frame.Width) * 0.5f),
+                    slotBounds.Y - frame.Height + 10);
+                sprite.Draw(frame, balloonPosition, Color.White);
+                DrawCentered(
+                    sprite,
+                    Truncate(participant.BubbleText, 11),
+                    (int)balloonPosition.X + 4,
+                    (int)balloonPosition.Y + 11,
+                    frame.Width - 8,
+                    new Color(48, 36, 18),
+                    0.32f);
             }
         }
 
@@ -371,12 +517,12 @@ namespace HaCreator.MapSimulator.UI
                 Position.X + contentOffset.X + 8,
                 Position.Y + contentOffset.Y + 8,
                 258,
-                _isMinimized ? 130 : 155);
+                IsCompact ? 130 : 155);
 
             sprite.Draw(_pixel, panelBounds, new Color(7, 12, 20, 160));
 
             IReadOnlyList<MessengerLogEntrySnapshot> logEntries = snapshot.LogEntries ?? Array.Empty<MessengerLogEntrySnapshot>();
-            int visibleEntries = _isMinimized ? 5 : 6;
+            int visibleEntries = IsCompact ? 5 : 6;
             int startIndex = Math.Max(0, logEntries.Count - visibleEntries);
             int y = panelBounds.Y + 8;
             for (int i = startIndex; i < logEntries.Count; i++)
@@ -392,6 +538,11 @@ namespace HaCreator.MapSimulator.UI
                     : entry.IsWhisper
                         ? $"[W] {entry.Author} -> {entry.TargetName}: {entry.Message}"
                         : $"{entry.Author}: {entry.Message}";
+                if (entry.IsClaimed)
+                {
+                    color = new Color(155, 166, 181);
+                    line = $"[Claimed] {line}";
+                }
 
                 foreach (string wrappedLine in WrapText(line, panelBounds.Width - 10))
                 {
@@ -410,7 +561,7 @@ namespace HaCreator.MapSimulator.UI
 
         private void DrawInputPanel(SpriteBatch sprite, MessengerSnapshot snapshot, int tickCount)
         {
-            if (_isMinimized)
+            if (IsCollapsed)
             {
                 return;
             }
@@ -427,7 +578,7 @@ namespace HaCreator.MapSimulator.UI
                 ? _inputText.ToString()
                 : _whisperMode && !string.IsNullOrWhiteSpace(snapshot.SelectedParticipantName)
                     ? $"Send a whisper to {snapshot.SelectedParticipantName}"
-                    : "Click here to chat with the Messenger room";
+                    : "Type chat or /m <name> to invite";
             Color textColor = _inputText.Length > 0 ? Color.White : new Color(144, 156, 176);
             sprite.DrawString(_font, messageText, new Vector2(inputBounds.X + 6, inputBounds.Y + 6), textColor, 0f, Vector2.Zero, 0.38f, SpriteEffects.None, 0f);
 
@@ -448,11 +599,26 @@ namespace HaCreator.MapSimulator.UI
             DrawCentered(sprite, "Leave", leaveBounds.X, leaveBounds.Y + 4, leaveBounds.Width, text, 0.35f);
         }
 
+        private void DrawCollapsedStatus(SpriteBatch sprite, MessengerSnapshot snapshot)
+        {
+            string status = !string.IsNullOrWhiteSpace(snapshot.PendingInviteSummary) && !string.Equals(snapshot.PendingInviteSummary, "none", StringComparison.OrdinalIgnoreCase)
+                ? snapshot.PendingInviteSummary
+                : !string.IsNullOrWhiteSpace(snapshot.LastPacketSummary)
+                    ? snapshot.LastPacketSummary
+                    : snapshot.LastActionSummary;
+            if (string.IsNullOrWhiteSpace(status))
+            {
+                status = "Messenger idle";
+            }
+
+            sprite.DrawString(_font, Truncate(status, 36), new Vector2(Position.X + 34, Position.Y + 6), new Color(212, 220, 231), 0f, Vector2.Zero, 0.34f, SpriteEffects.None, 0f);
+        }
+
         private int GetSlotIndexAt(int mouseX, int mouseY)
         {
             for (int i = 0; i < SlotCount; i++)
             {
-                Rectangle bounds = new Rectangle(Position.X + SlotOrigins[i].X, Position.Y + SlotOrigins[i].Y, 89, _isMinimized ? 74 : 84);
+                Rectangle bounds = new Rectangle(Position.X + SlotOrigins[i].X, Position.Y + SlotOrigins[i].Y, 89, IsCompact ? 74 : 84);
                 if (bounds.Contains(mouseX, mouseY))
                 {
                     return i;
@@ -464,7 +630,12 @@ namespace HaCreator.MapSimulator.UI
 
         private Rectangle GetInputBounds()
         {
-            return new Rectangle(Position.X + 19, Position.Y + 225, 252, 26);
+            return _windowState switch
+            {
+                MessengerWindowState.Min => new Rectangle(Position.X + 19, Position.Y + 159, 252, 24),
+                MessengerWindowState.Min2 => Rectangle.Empty,
+                _ => new Rectangle(Position.X + 19, Position.Y + 225, 252, 26)
+            };
         }
 
         private Rectangle GetLeaveButtonBounds()
@@ -764,6 +935,44 @@ namespace HaCreator.MapSimulator.UI
             if (_whisperMode && !snapshot.CanWhisper)
             {
                 _whisperMode = false;
+            }
+        }
+
+        private void ApplyButtonLayout()
+        {
+            if (_enterButton != null)
+            {
+                Point position = _windowState == MessengerWindowState.Min ? _minEnterButtonPosition : _maxEnterButtonPosition;
+                _enterButton.X = position.X;
+                _enterButton.Y = position.Y;
+            }
+
+            if (_claimButton != null)
+            {
+                Point position = _windowState == MessengerWindowState.Min ? _minClaimButtonPosition : _maxClaimButtonPosition;
+                _claimButton.X = position.X;
+                _claimButton.Y = position.Y;
+            }
+
+            if (_maximizeButton != null)
+            {
+                Point position = _windowState == MessengerWindowState.Min2 ? _collapsedMaximizeButtonPosition : _maxMaximizeButtonPosition;
+                _maximizeButton.X = position.X;
+                _maximizeButton.Y = position.Y;
+                _maximizeButton.SetVisible(true);
+            }
+
+            if (_minimizeButton != null)
+            {
+                Point position = _windowState switch
+                {
+                    MessengerWindowState.Min => _minMinimizeButtonPosition,
+                    MessengerWindowState.Min2 => _collapsedMinimizeButtonPosition,
+                    _ => _maxMinimizeButtonPosition
+                };
+                _minimizeButton.X = position.X;
+                _minimizeButton.Y = position.Y;
+                _minimizeButton.SetVisible(true);
             }
         }
 

@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using HaCreator.MapSimulator.Character;
 
 namespace HaCreator.MapSimulator.Interaction
 {
@@ -14,6 +15,7 @@ namespace HaCreator.MapSimulator.Interaction
 
     internal sealed class MapleTvRuntime
     {
+        private const int DefaultMediaIndex = 1;
         private const int DefaultDurationMs = 12000;
         private const int MinDurationMs = 1000;
         private const int MaxDurationMs = 60000;
@@ -21,11 +23,16 @@ namespace HaCreator.MapSimulator.Interaction
 
         private readonly string[] _draftLines = new string[DisplayLineCount];
         private readonly string[] _displayLines = new string[DisplayLineCount];
+        private CharacterBuild _senderBuild;
+        private CharacterBuild _receiverBuild;
         private string _senderName = "Player";
         private string _receiverName = string.Empty;
         private string _itemName = "Maple TV";
+        private string _defaultItemName = "Maple TV";
         private string _statusMessage = "Prepare a MapleTV draft, then publish it through the simulator window or /mapletv.";
         private int _itemId;
+        private int _defaultItemId;
+        private int _defaultMediaIndex = DefaultMediaIndex;
         private int _messageType;
         private int _draftDurationMs = DefaultDurationMs;
         private int _messageStartedAt = int.MinValue;
@@ -43,11 +50,34 @@ namespace HaCreator.MapSimulator.Interaction
             _draftLines[4] = "Use /mapletv set to start the timed display.";
         }
 
-        internal void UpdateLocalContext(string playerName)
+        internal void UpdateLocalContext(CharacterBuild build)
         {
-            if (!string.IsNullOrWhiteSpace(playerName))
+            if (build == null)
             {
-                _senderName = playerName.Trim();
+                return;
+            }
+
+            _senderBuild = build.Clone();
+            _senderName = string.IsNullOrWhiteSpace(build.Name) ? _senderName : build.Name.Trim();
+
+            if (_useReceiver)
+            {
+                _receiverBuild = CreateReceiverBuild();
+            }
+            else
+            {
+                _receiverBuild = null;
+            }
+        }
+
+        internal void ConfigureDefaultMedia(int itemId, string itemName, int defaultMediaIndex = DefaultMediaIndex)
+        {
+            _defaultItemId = Math.Max(0, itemId);
+            _defaultItemName = string.IsNullOrWhiteSpace(itemName) ? "Maple TV" : itemName.Trim();
+            _defaultMediaIndex = Math.Max(0, defaultMediaIndex);
+            if (_itemId == 0)
+            {
+                _itemName = _defaultItemName;
             }
         }
 
@@ -64,9 +94,9 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             _showMessage = false;
-            _queueExists = false;
+            _queueExists = true;
             _messageStartedAt = int.MinValue;
-            _statusMessage = "MapleTV display interval elapsed.";
+            _statusMessage = "MapleTV display interval elapsed. The queue remains visible until it is dismissed.";
         }
 
         internal MapleTvSnapshot BuildSnapshot(int currentTick)
@@ -83,6 +113,10 @@ namespace HaCreator.MapSimulator.Interaction
                 ReceiverName = _receiverName,
                 ItemName = _itemName,
                 ItemId = _itemId,
+                DefaultItemId = _defaultItemId,
+                DefaultItemName = _defaultItemName,
+                DefaultMediaIndex = _defaultMediaIndex,
+                ResolvedMediaIndex = _defaultMediaIndex,
                 DraftLines = Array.AsReadOnly((string[])_draftLines.Clone()),
                 DisplayLines = Array.AsReadOnly((string[])_displayLines.Clone()),
                 StatusMessage = _statusMessage,
@@ -91,6 +125,8 @@ namespace HaCreator.MapSimulator.Interaction
                 QueueExists = _queueExists,
                 IsSelfMessage = _isSelfMessage,
                 MessageType = _messageType,
+                SenderBuild = _senderBuild,
+                ReceiverBuild = _receiverBuild,
                 RemainingMs = remainingMs,
                 TotalWaitMs = _draftDurationMs,
                 CanPublish = _draftLines.Any(line => !string.IsNullOrWhiteSpace(line)),
@@ -108,21 +144,26 @@ namespace HaCreator.MapSimulator.Interaction
             string timer = snapshot.IsShowingMessage
                 ? $"{snapshot.RemainingMs / 1000f:0.0}s remaining"
                 : $"{snapshot.TotalWaitMs / 1000f:0.0}s duration";
-            return $"MapleTV {mode}: {snapshot.SenderName} -> {receiver}, item {snapshot.ItemId} ({snapshot.ItemName}), {timer}. {snapshot.StatusMessage}";
+            string itemLabel = snapshot.ItemId > 0
+                ? $"{snapshot.ItemId} ({snapshot.ItemName})"
+                : $"{snapshot.DefaultItemId} ({snapshot.DefaultItemName})";
+            return $"MapleTV {mode}: {snapshot.SenderName} -> {receiver}, item {itemLabel}, {timer}. {snapshot.StatusMessage}";
         }
 
         internal string ToggleReceiverMode()
         {
             _useReceiver = !_useReceiver;
             _isSelfMessage = !_useReceiver;
-            _messageType = _useReceiver ? 2 : 0;
+            _messageType = _useReceiver ? 2 : 1;
             if (!_useReceiver)
             {
                 _receiverName = string.Empty;
+                _receiverBuild = null;
                 _statusMessage = "MapleTV receiver field disabled. Broadcast will target the sender only.";
             }
             else
             {
+                _receiverBuild = CreateReceiverBuild();
                 _statusMessage = "MapleTV receiver field enabled. Set a recipient with /mapletv receiver <name>.";
             }
 
@@ -138,7 +179,8 @@ namespace HaCreator.MapSimulator.Interaction
                 _useReceiver = false;
                 _receiverName = string.Empty;
                 _isSelfMessage = true;
-                _messageType = 0;
+                _messageType = 1;
+                _receiverBuild = null;
                 _statusMessage = "MapleTV receiver cleared. Broadcast will target the sender only.";
                 return _statusMessage;
             }
@@ -147,6 +189,7 @@ namespace HaCreator.MapSimulator.Interaction
             _receiverName = receiverName.Trim();
             _isSelfMessage = false;
             _messageType = 2;
+            _receiverBuild = CreateReceiverBuild();
             _statusMessage = $"MapleTV receiver set to {_receiverName}.";
             return _statusMessage;
         }
@@ -159,6 +202,17 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             _senderName = senderName.Trim();
+            if (_senderBuild != null)
+            {
+                _senderBuild = _senderBuild.Clone();
+                _senderBuild.Name = _senderName;
+            }
+
+            if (_useReceiver)
+            {
+                _receiverBuild = CreateReceiverBuild();
+            }
+
             _statusMessage = $"MapleTV sender set to {_senderName}.";
             return _statusMessage;
         }
@@ -172,11 +226,11 @@ namespace HaCreator.MapSimulator.Interaction
 
             _itemId = itemId;
             _itemName = string.IsNullOrWhiteSpace(itemName)
-                ? (itemId > 0 ? $"Item #{itemId}" : "Maple TV")
+                ? (itemId > 0 ? $"Item #{itemId}" : _defaultItemName)
                 : itemName.Trim();
             _statusMessage = itemId > 0
                 ? $"MapleTV media item set to {_itemName} ({itemId})."
-                : "MapleTV media item reset to the default simulator label.";
+                : $"MapleTV media item reset to default media {_defaultItemName} ({_defaultItemId}).";
             return _statusMessage;
         }
 
@@ -204,9 +258,9 @@ namespace HaCreator.MapSimulator.Interaction
             return _statusMessage;
         }
 
-        internal string LoadSample(string senderName, string locationSummary)
+        internal string LoadSample(CharacterBuild build, string locationSummary)
         {
-            UpdateLocalContext(senderName);
+            UpdateLocalContext(build);
             _draftLines[0] = $"{_senderName} is broadcasting from MapSimulator.";
             _draftLines[1] = string.IsNullOrWhiteSpace(locationSummary)
                 ? "Current field data is available in the simulator HUD."
@@ -235,18 +289,20 @@ namespace HaCreator.MapSimulator.Interaction
             _queueExists = true;
             _messageStartedAt = currentTick;
             _isSelfMessage = !_useReceiver;
-            _messageType = _useReceiver ? 2 : 0;
+            _messageType = _useReceiver ? 2 : 1;
             _statusMessage = $"MapleTV message set for {_draftDurationMs / 1000f:0.0}s.";
             return _statusMessage;
         }
 
-        internal string OnClearMessage()
+        internal string OnClearMessage(bool preserveQueue = true)
         {
             _showMessage = false;
-            _queueExists = false;
+            _queueExists = preserveQueue;
             _messageStartedAt = int.MinValue;
             Array.Clear(_displayLines, 0, _displayLines.Length);
-            _statusMessage = "MapleTV display cleared.";
+            _statusMessage = preserveQueue
+                ? "MapleTV display cleared. The queue remains active."
+                : "MapleTV display cleared.";
             return _statusMessage;
         }
 
@@ -262,6 +318,18 @@ namespace HaCreator.MapSimulator.Interaction
 
             return _statusMessage;
         }
+
+        private CharacterBuild CreateReceiverBuild()
+        {
+            if (_senderBuild == null)
+            {
+                return null;
+            }
+
+            CharacterBuild receiverBuild = _senderBuild.Clone();
+            receiverBuild.Name = string.IsNullOrWhiteSpace(_receiverName) ? "Receiver" : _receiverName;
+            return receiverBuild;
+        }
     }
 
     internal sealed class MapleTvSnapshot
@@ -270,6 +338,10 @@ namespace HaCreator.MapSimulator.Interaction
         public string ReceiverName { get; init; } = string.Empty;
         public string ItemName { get; init; } = string.Empty;
         public int ItemId { get; init; }
+        public string DefaultItemName { get; init; } = string.Empty;
+        public int DefaultItemId { get; init; }
+        public int DefaultMediaIndex { get; init; }
+        public int ResolvedMediaIndex { get; init; }
         public IReadOnlyList<string> DraftLines { get; init; } = Array.Empty<string>();
         public IReadOnlyList<string> DisplayLines { get; init; } = Array.Empty<string>();
         public string StatusMessage { get; init; } = string.Empty;
@@ -278,6 +350,8 @@ namespace HaCreator.MapSimulator.Interaction
         public bool QueueExists { get; init; }
         public bool IsSelfMessage { get; init; }
         public int MessageType { get; init; }
+        public CharacterBuild SenderBuild { get; init; }
+        public CharacterBuild ReceiverBuild { get; init; }
         public int RemainingMs { get; init; }
         public int TotalWaitMs { get; init; }
         public bool CanPublish { get; init; }

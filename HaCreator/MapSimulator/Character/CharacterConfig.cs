@@ -37,6 +37,9 @@ namespace HaCreator.MapSimulator.Character
         public int Defense { get; set; } = 5;
         public float Speed { get; set; } = 100;
         public float JumpPower { get; set; } = 100;
+        public int Job { get; set; }
+        public string JobName { get; set; } = "Beginner";
+        public string GuildName { get; set; } = string.Empty;
 
         // Skill hotkey configuration
         // Key: slot index (0-27), Value: skill ID
@@ -71,7 +74,10 @@ namespace HaCreator.MapSimulator.Character
                 Attack = build.Attack,
                 Defense = build.Defense,
                 Speed = build.Speed,
-                JumpPower = build.JumpPower
+                JumpPower = build.JumpPower,
+                Job = build.Job,
+                JobName = build.JobName,
+                GuildName = build.GuildName
             };
 
             // Save equipment IDs
@@ -109,7 +115,10 @@ namespace HaCreator.MapSimulator.Character
                 Attack = Attack,
                 Defense = Defense,
                 Speed = Speed,
-                JumpPower = JumpPower
+                JumpPower = JumpPower,
+                Job = Job,
+                JobName = string.IsNullOrWhiteSpace(JobName) ? "Beginner" : JobName,
+                GuildName = GuildName ?? string.Empty
             };
 
             // Load equipment
@@ -398,25 +407,7 @@ namespace HaCreator.MapSimulator.Character
         /// </summary>
         public CharacterPreset CreateDefaultMalePreset()
         {
-            var preset = new CharacterPreset
-            {
-                Id = _nextId++,
-                Name = "Default Male",
-                Created = DateTime.Now,
-                Modified = DateTime.Now,
-                Gender = CharacterGender.Male,
-                Skin = SkinColor.Light,
-                FaceId = 20000,
-                HairId = 30000,
-                Level = 1,
-                MaxHP = 50,
-                MaxMP = 50,
-                Attack = 10,
-                Defense = 5,
-                Speed = 100,
-                JumpPower = 100
-            };
-
+            var preset = CreateDefaultSimulatorPreset(CharacterGender.Male);
             _presets[preset.Id] = preset;
             return preset;
         }
@@ -426,25 +417,7 @@ namespace HaCreator.MapSimulator.Character
         /// </summary>
         public CharacterPreset CreateDefaultFemalePreset()
         {
-            var preset = new CharacterPreset
-            {
-                Id = _nextId++,
-                Name = "Default Female",
-                Created = DateTime.Now,
-                Modified = DateTime.Now,
-                Gender = CharacterGender.Female,
-                Skin = SkinColor.Light,
-                FaceId = 21000,
-                HairId = 31000,
-                Level = 1,
-                MaxHP = 50,
-                MaxMP = 50,
-                Attack = 10,
-                Defense = 5,
-                Speed = 100,
-                JumpPower = 100
-            };
-
+            var preset = CreateDefaultSimulatorPreset(CharacterGender.Female);
             _presets[preset.Id] = preset;
             return preset;
         }
@@ -477,6 +450,38 @@ namespace HaCreator.MapSimulator.Character
             };
 
             _presets[preset.Id] = preset;
+            return preset;
+        }
+
+        private CharacterPreset CreateDefaultSimulatorPreset(CharacterGender gender)
+        {
+            CharacterLoader.SimulatorDefaultAvatarSelection selection = CharacterLoader.GetDefaultAvatarSelection(gender);
+            var preset = new CharacterPreset
+            {
+                Id = _nextId++,
+                Name = selection.Name,
+                Created = DateTime.Now,
+                Modified = DateTime.Now,
+                Gender = selection.Gender,
+                Skin = selection.Skin,
+                FaceId = selection.FaceId,
+                HairId = selection.HairId,
+                Level = selection.Level,
+                MaxHP = 10000,
+                MaxMP = 10000,
+                Attack = 10,
+                Defense = 5,
+                Speed = 100,
+                JumpPower = 100,
+                Job = selection.JobId,
+                JobName = selection.JobName
+            };
+
+            foreach (KeyValuePair<EquipSlot, int> entry in selection.EquipmentItemIdsBySlot)
+            {
+                preset.Equipment[entry.Key.ToString()] = entry.Value;
+            }
+
             return preset;
         }
 

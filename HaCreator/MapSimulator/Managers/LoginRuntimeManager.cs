@@ -57,15 +57,25 @@ namespace HaCreator.MapSimulator.Managers
             _packetHandlers = new Dictionary<LoginPacketType, Action<int>>
             {
                 [LoginPacketType.CheckPasswordResult] = HandleCheckPasswordResult,
+                [LoginPacketType.GuestIdLoginResult] = HandleGuestIdLoginResult,
+                [LoginPacketType.AccountInfoResult] = HandleAccountInfoResult,
                 [LoginPacketType.CheckUserLimitResult] = HandleCheckUserLimitResult,
+                [LoginPacketType.SetAccountResult] = HandleSetAccountResult,
+                [LoginPacketType.ConfirmEulaResult] = HandleConfirmEulaResult,
+                [LoginPacketType.CheckPinCodeResult] = HandleCheckPinCodeResult,
+                [LoginPacketType.UpdatePinCodeResult] = HandleUpdatePinCodeResult,
                 [LoginPacketType.WorldInformation] = HandleWorldInformation,
                 [LoginPacketType.SelectWorldResult] = HandleSelectWorldResult,
                 [LoginPacketType.SelectCharacterResult] = HandleSelectCharacterResult,
                 [LoginPacketType.ViewAllCharResult] = HandleViewAllCharResult,
                 [LoginPacketType.SelectCharacterByVacResult] = HandleViewAllCharResult,
+                [LoginPacketType.CreateNewCharacterResult] = HandleCreateNewCharacterResult,
+                [LoginPacketType.DeleteCharacterResult] = HandleDeleteCharacterResult,
+                [LoginPacketType.EnableSpwResult] = HandleEnableSpwResult,
                 [LoginPacketType.RecommendWorldMessage] = HandleRecommendWorldMessage,
                 [LoginPacketType.LatestConnectedWorld] = HandleLatestConnectedWorld,
                 [LoginPacketType.ExtraCharInfoResult] = HandleExtraCharInfoResult,
+                [LoginPacketType.CheckSpwResult] = HandleCheckSpwResult,
             };
         }
 
@@ -243,13 +253,24 @@ namespace HaCreator.MapSimulator.Managers
             return normalized.ToLowerInvariant() switch
             {
                 "checkpassword" => Assign(LoginPacketType.CheckPasswordResult, out packetType),
+                "guestlogin" or "guestidlogin" => Assign(LoginPacketType.GuestIdLoginResult, out packetType),
+                "accountinfo" => Assign(LoginPacketType.AccountInfoResult, out packetType),
+                "checkuserlimit" or "userlimit" => Assign(LoginPacketType.CheckUserLimitResult, out packetType),
+                "setaccount" => Assign(LoginPacketType.SetAccountResult, out packetType),
+                "confirmeula" or "eula" => Assign(LoginPacketType.ConfirmEulaResult, out packetType),
+                "checkpincode" or "checkpin" or "pic" => Assign(LoginPacketType.CheckPinCodeResult, out packetType),
+                "updatepincode" or "updatepin" or "updatepic" => Assign(LoginPacketType.UpdatePinCodeResult, out packetType),
                 "worldinfo" or "worldinformation" => Assign(LoginPacketType.WorldInformation, out packetType),
                 "selectworld" => Assign(LoginPacketType.SelectWorldResult, out packetType),
                 "selectchar" or "selectcharacter" => Assign(LoginPacketType.SelectCharacterResult, out packetType),
+                "newcharresult" or "createnewcharacter" or "createnewcharacterresult" => Assign(LoginPacketType.CreateNewCharacterResult, out packetType),
+                "deletechar" or "deletecharacter" or "deletecharacterresult" => Assign(LoginPacketType.DeleteCharacterResult, out packetType),
+                "enablespw" => Assign(LoginPacketType.EnableSpwResult, out packetType),
                 "viewallchar" or "viewallcharacters" or "vac" => Assign(LoginPacketType.ViewAllCharResult, out packetType),
                 "recommendworld" => Assign(LoginPacketType.RecommendWorldMessage, out packetType),
                 "latestworld" or "latestconnectedworld" => Assign(LoginPacketType.LatestConnectedWorld, out packetType),
                 "extracharinfo" => Assign(LoginPacketType.ExtraCharInfoResult, out packetType),
+                "checkspw" => Assign(LoginPacketType.CheckSpwResult, out packetType),
                 _ => Enum.TryParse(text, true, out packetType),
             };
         }
@@ -258,6 +279,16 @@ namespace HaCreator.MapSimulator.Managers
         {
             ScheduleStepChange(LoginStep.WorldSelect, currentTickCount, DefaultStepChangeDelayMs, "CheckPasswordResult");
             LastEventSummary = "Received CheckPasswordResult and scheduled world-select transition.";
+        }
+
+        private void HandleGuestIdLoginResult(int currentTickCount)
+        {
+            LastEventSummary = "Received GuestIdLoginResult for the login bootstrap flow.";
+        }
+
+        private void HandleAccountInfoResult(int currentTickCount)
+        {
+            LastEventSummary = "Received AccountInfoResult for the login bootstrap flow.";
         }
 
         private void HandleWorldInformation(int currentTickCount)
@@ -269,6 +300,26 @@ namespace HaCreator.MapSimulator.Managers
         private void HandleCheckUserLimitResult(int currentTickCount)
         {
             LastEventSummary = "Received CheckUserLimitResult and unlocked channel selection for the chosen world.";
+        }
+
+        private void HandleSetAccountResult(int currentTickCount)
+        {
+            LastEventSummary = "Received SetAccountResult for the login bootstrap flow.";
+        }
+
+        private void HandleConfirmEulaResult(int currentTickCount)
+        {
+            LastEventSummary = "Received ConfirmEulaResult for the login bootstrap flow.";
+        }
+
+        private void HandleCheckPinCodeResult(int currentTickCount)
+        {
+            LastEventSummary = "Received CheckPinCodeResult for the login bootstrap flow.";
+        }
+
+        private void HandleUpdatePinCodeResult(int currentTickCount)
+        {
+            LastEventSummary = "Received UpdatePinCodeResult for the login bootstrap flow.";
         }
 
         private void HandleSelectWorldResult(int currentTickCount)
@@ -292,6 +343,21 @@ namespace HaCreator.MapSimulator.Managers
             LastEventSummary = "Received view-all-character data and scheduled the expanded roster step.";
         }
 
+        private void HandleCreateNewCharacterResult(int currentTickCount)
+        {
+            LastEventSummary = "Received CreateNewCharacterResult for the login bootstrap flow.";
+        }
+
+        private void HandleDeleteCharacterResult(int currentTickCount)
+        {
+            LastEventSummary = "Received DeleteCharacterResult for the login bootstrap flow.";
+        }
+
+        private void HandleEnableSpwResult(int currentTickCount)
+        {
+            LastEventSummary = "Received EnableSpwResult for the login bootstrap flow.";
+        }
+
         private void HandleRecommendWorldMessage(int currentTickCount)
         {
             LastEventSummary = "Received RecommendWorldMessage for the login bootstrap flow.";
@@ -305,6 +371,11 @@ namespace HaCreator.MapSimulator.Managers
         private void HandleExtraCharInfoResult(int currentTickCount)
         {
             LastEventSummary = "Received ExtraCharInfoResult for the login bootstrap flow.";
+        }
+
+        private void HandleCheckSpwResult(int currentTickCount)
+        {
+            LastEventSummary = "Received CheckSpwResult for the login bootstrap flow.";
         }
 
         private static bool Assign(LoginStep value, out LoginStep step)

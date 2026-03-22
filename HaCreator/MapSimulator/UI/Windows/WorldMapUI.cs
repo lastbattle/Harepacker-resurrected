@@ -2,6 +2,7 @@ using HaSharedLibrary.Render;
 using HaSharedLibrary.Render.DX;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
+using Microsoft.Xna.Framework.Input;
 using Spine;
 using System;
 using System.Collections.Generic;
@@ -72,12 +73,24 @@ namespace HaCreator.MapSimulator.UI
         private const int SummaryX = 19;
         private const int SummaryY = 64;
         private const int SummaryWidth = 460;
+        private const int SearchInputBoxX = SummaryX;
+        private const int SearchInputBoxY = 60;
+        private const int SearchInputBoxWidth = 454;
+        private const int SearchInputBoxHeight = 21;
+        private const int SearchTextInsetX = 6;
+        private const int SearchTextInsetY = 3;
+        private const int MaxSearchQueryLength = 48;
+        private const int KeyRepeatInitialDelayMs = 360;
+        private const int KeyRepeatIntervalMs = 42;
 
         private readonly Texture2D _sidePanelTexture;
         private readonly Point _sidePanelOffset;
         private readonly Texture2D _searchNoticeTexture;
         private readonly Point _searchNoticeOffset;
         private readonly Texture2D _selectionTexture;
+        private readonly Texture2D _searchInputBackgroundTexture;
+        private readonly Texture2D _searchInputOutlineTexture;
+        private readonly Texture2D _caretTexture;
         private readonly UIObject _allButton;
         private readonly UIObject _anotherButton;
         private readonly UIObject _searchButton;
@@ -99,8 +112,16 @@ namespace HaCreator.MapSimulator.UI
         private bool _showAnotherWorld;
         private bool _searchMode;
         private string _selectedRegionCode = string.Empty;
+        private string _searchQuery = string.Empty;
+        private int _searchCursorPosition;
+        private KeyboardState _previousSearchKeyboardState;
+        private Keys _lastHeldSearchKey = Keys.None;
+        private int _keyHoldStartTime = int.MinValue;
+        private int _lastKeyRepeatTime = int.MinValue;
+        private int _caretBlinkTick;
         private int _currentMapId;
         private int _selectedMapId;
+        private string _selectedSearchResultKey = string.Empty;
         private int _pageIndex;
         private SearchFilterMode _searchFilterMode;
 
@@ -133,6 +154,12 @@ namespace HaCreator.MapSimulator.UI
             _searchNoticeTexture = searchNoticeTexture;
             _searchNoticeOffset = searchNoticeOffset;
             _selectionTexture = selectionTexture;
+            _searchInputBackgroundTexture = new Texture2D(device, 1, 1);
+            _searchInputBackgroundTexture.SetData(new[] { Color.White });
+            _searchInputOutlineTexture = new Texture2D(device, 1, 1);
+            _searchInputOutlineTexture.SetData(new[] { Color.White });
+            _caretTexture = new Texture2D(device, 1, 1);
+            _caretTexture.SetData(new[] { Color.White });
             _allButton = allButton;
             _anotherButton = anotherButton;
             _searchButton = searchButton;
@@ -231,6 +258,7 @@ namespace HaCreator.MapSimulator.UI
         }
 
         public override string WindowName => MapSimulatorWindowNames.WorldMap;
+        public override bool CapturesKeyboardInput => IsVisible && _searchMode;
 
         public event Action<MapEntry> MapRequested;
 
@@ -265,26 +293,50 @@ namespace HaCreator.MapSimulator.UI
             _showAnotherWorld = focusedMapId.HasValue
                 && !string.IsNullOrWhiteSpace(selectedRegionCode)
                 && !string.Equals(selectedRegionCode, currentRegionCode, StringComparison.Ordinal);
+            _selectedSearchResultKey = string.Empty;
             EnsureSelectedEntryVisible();
             UpdateButtonStates();
         }
 
         public void SetSearchResults(IReadOnlyList<SearchResultEntry> searchResults)
         {
+            string previousSelectedKey = _selectedSearchResultKey;
             _searchResults.Clear();
             if (searchResults != null)
             {
                 _searchResults.AddRange(searchResults.Where(entry => entry != null));
             }
 
-            if (_searchResults.Count == 0)
+            if (_searchResults.Count == 0 && _allEntries.Count == 0)
             {
                 _searchMode = false;
                 _searchFilterMode = SearchFilterMode.All;
+                ClearSearchQuery();
             }
 
+            IReadOnlyList<SearchResultEntry> resolvedResults = GetFilteredSearchResults();
+            _selectedSearchResultKey = resolvedResults.Any(entry => string.Equals(BuildSearchResultKey(entry), previousSelectedKey, StringComparison.OrdinalIgnoreCase))
+                ? previousSelectedKey
+                : resolvedResults.FirstOrDefault() is SearchResultEntry firstEntry
+                    ? BuildSearchResultKey(firstEntry)
+                    : string.Empty;
             _pageIndex = 0;
             UpdateButtonStates();
+        }
+
+        public override void Update(GameTime gameTime)
+        {
+            if (!IsVisible || !_searchMode)
+            {
+                _previousSearchKeyboardState = Keyboard.GetState();
+                return;
+            }
+
+            KeyboardState keyboardState = Keyboard.GetState();
+            int tickCount = Environment.TickCount;
+
+            HandleSearchKeyboardInput(keyboardState, tickCount);
+            _previousSearchKeyboardState = keyboardState;
         }
 
         protected override void DrawContents(
@@ -452,7 +504,8 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
-            if (_selectedMapId == entry.MapId)
+            string entryKey = BuildSearchResultKey(entry);
+            if (string.Equals(_selectedSearchResultKey, entryKey, StringComparison.OrdinalIgnoreCase))
             {
                 MapEntry mapEntry = _allEntries.FirstOrDefault(candidate => candidate.MapId == entry.MapId);
                 if (mapEntry != null)
@@ -464,6 +517,7 @@ namespace HaCreator.MapSimulator.UI
             }
 
             _selectedMapId = entry.MapId;
+            _selectedSearchResultKey = entryKey;
             _selectedRegionCode = GetRegionCodeForMapId(entry.MapId);
             UpdateButtonStates();
         }
@@ -528,13 +582,13 @@ namespace HaCreator.MapSimulator.UI
 
         private IReadOnlyList<SearchResultEntry> GetFilteredSearchResults()
         {
-            if (_searchFilterMode != SearchFilterMode.MobOnly)
+            IEnumerable<SearchResultEntry> results = BuildResolvedSearchResults();
+            if (_searchFilterMode == SearchFilterMode.MobOnly)
             {
-                return _searchResults;
+                results = results.Where(entry => entry.Kind == SearchResultKind.Mob);
             }
 
-            return _searchResults
-                .Where(entry => entry.Kind == SearchResultKind.Mob)
+            return results
                 .ToArray();
         }
 
@@ -565,9 +619,9 @@ namespace HaCreator.MapSimulator.UI
 
             if (_searchButton != null)
             {
-                bool hasSearchResults = _searchResults.Count > 0;
-                _searchButton.SetEnabled(hasSearchResults);
-                if (hasSearchResults)
+                bool hasSearchSurface = _searchResults.Count > 0 || _allEntries.Count > 0;
+                _searchButton.SetEnabled(hasSearchSurface);
+                if (hasSearchSurface)
                 {
                     _searchButton.SetButtonState(_searchMode ? UIObjectState.Disabled : UIObjectState.Normal);
                 }
@@ -656,11 +710,15 @@ namespace HaCreator.MapSimulator.UI
 
         private string BuildSearchSummaryText()
         {
-            int fieldCount = _searchResults.Count(entry => entry.Kind == SearchResultKind.Field);
-            int npcCount = _searchResults.Count(entry => entry.Kind == SearchResultKind.Npc);
-            int mobCount = _searchResults.Count(entry => entry.Kind == SearchResultKind.Mob);
+            IReadOnlyList<SearchResultEntry> resolvedResults = BuildResolvedSearchResults();
+            int fieldCount = resolvedResults.Count(entry => entry.Kind == SearchResultKind.Field);
+            int npcCount = resolvedResults.Count(entry => entry.Kind == SearchResultKind.Npc);
+            int mobCount = resolvedResults.Count(entry => entry.Kind == SearchResultKind.Mob);
             string filterText = _searchFilterMode == SearchFilterMode.MobOnly ? "Mob-only filter active." : "All live result families are visible.";
-            return $"Current field search surface.\nFields: {fieldCount}  NPCs: {npcCount}  Mobs: {mobCount}\n{filterText}\nClick a result row to focus its map, then click again to queue transfer.";
+            string queryText = string.IsNullOrWhiteSpace(_searchQuery)
+                ? "Type a field, NPC, mob, or map id query."
+                : $"Query: {_searchQuery}";
+            return $"Current field search surface.\nFields: {fieldCount}  NPCs: {npcCount}  Mobs: {mobCount}\n{filterText}\n{queryText}\nClick a result row to focus its map, then click again to queue transfer.";
         }
 
         private int GetMaxPageIndex()
@@ -766,13 +824,13 @@ namespace HaCreator.MapSimulator.UI
 
         private void ToggleSearchMode()
         {
-            if (_searchResults.Count == 0)
+            if (_searchResults.Count == 0 && _allEntries.Count == 0)
             {
                 return;
             }
 
             _searchMode = true;
-            _pageIndex = 0;
+            EnsureSelectedSearchResultVisible();
             UpdateButtonStates();
         }
 
@@ -795,7 +853,7 @@ namespace HaCreator.MapSimulator.UI
             _searchFilterMode = _searchFilterMode == SearchFilterMode.MobOnly
                 ? SearchFilterMode.All
                 : SearchFilterMode.MobOnly;
-            _pageIndex = 0;
+            EnsureSelectedSearchResultVisible();
             UpdateButtonStates();
         }
 
@@ -820,7 +878,9 @@ namespace HaCreator.MapSimulator.UI
                 new Vector2(Position.X + SummaryX, Position.Y + 38),
                 new Color(220, 220, 220));
 
-            float textY = Position.Y + SummaryY;
+            DrawSearchInput(sprite, Environment.TickCount);
+
+            float textY = Position.Y + SummaryY + 26;
             foreach (string line in WrapText(BuildSearchSummaryText(), SummaryWidth))
             {
                 SelectorWindowDrawing.DrawShadowedText(
@@ -833,6 +893,16 @@ namespace HaCreator.MapSimulator.UI
             }
 
             IReadOnlyList<SearchResultEntry> visibleResults = GetVisibleSearchResults();
+            if (visibleResults.Count == 0)
+            {
+                SelectorWindowDrawing.DrawShadowedText(
+                    sprite,
+                    _font,
+                    "No matching results.",
+                    new Vector2(Position.X + ListStartX + 2, Position.Y + ListStartY + 1),
+                    new Color(206, 206, 206));
+            }
+
             for (int row = 0; row < visibleResults.Count; row++)
             {
                 DrawSearchRow(sprite, visibleResults[row], row);
@@ -851,7 +921,7 @@ namespace HaCreator.MapSimulator.UI
         {
             Texture2D hoverTexture = GetHoverTexture(entry.Kind);
             Rectangle rowBounds = new Rectangle(Position.X + ListStartX, Position.Y + ListStartY + (row * RowHeight), ListWidth, RowHeight);
-            if (entry.MapId == _selectedMapId)
+            if (IsSearchResultSelected(entry))
             {
                 if (hoverTexture != null)
                 {
@@ -877,7 +947,7 @@ namespace HaCreator.MapSimulator.UI
                 _font,
                 label,
                 new Vector2(textStartX, rowBounds.Y + 1),
-                entry.MapId == _selectedMapId ? Color.White : new Color(228, 228, 228));
+                IsSearchResultSelected(entry) ? Color.White : new Color(228, 228, 228));
         }
 
         private Texture2D GetHoverTexture(SearchResultKind kind)
@@ -898,6 +968,576 @@ namespace HaCreator.MapSimulator.UI
                 SearchResultKind.Field => _resultFieldIconTexture,
                 SearchResultKind.Npc => _resultNpcIconTexture,
                 SearchResultKind.Mob => _resultMobIconTexture,
+                _ => null
+            };
+        }
+
+        private void DrawSearchInput(SpriteBatch sprite, int tickCount)
+        {
+            Rectangle bounds = new Rectangle(
+                Position.X + SearchInputBoxX,
+                Position.Y + SearchInputBoxY,
+                SearchInputBoxWidth,
+                SearchInputBoxHeight);
+
+            sprite.Draw(_searchInputBackgroundTexture, bounds, new Color(16, 27, 43, 215));
+            sprite.Draw(_searchInputOutlineTexture, new Rectangle(bounds.X, bounds.Y, bounds.Width, 1), new Color(117, 155, 220));
+            sprite.Draw(_searchInputOutlineTexture, new Rectangle(bounds.X, bounds.Bottom - 1, bounds.Width, 1), new Color(117, 155, 220));
+            sprite.Draw(_searchInputOutlineTexture, new Rectangle(bounds.X, bounds.Y, 1, bounds.Height), new Color(117, 155, 220));
+            sprite.Draw(_searchInputOutlineTexture, new Rectangle(bounds.Right - 1, bounds.Y, 1, bounds.Height), new Color(117, 155, 220));
+
+            string prompt = string.IsNullOrEmpty(_searchQuery) ? "Type to search field, NPC, or mob names" : _searchQuery;
+            Color promptColor = string.IsNullOrEmpty(_searchQuery)
+                ? new Color(166, 184, 206)
+                : new Color(236, 236, 236);
+            Vector2 textPosition = new Vector2(bounds.X + SearchTextInsetX, bounds.Y + SearchTextInsetY);
+            SelectorWindowDrawing.DrawShadowedText(sprite, _font, prompt, textPosition, promptColor);
+
+            if (string.IsNullOrEmpty(_searchQuery))
+            {
+                return;
+            }
+
+            if (((tickCount - _caretBlinkTick) / 500) % 2 != 0)
+            {
+                return;
+            }
+
+            string caretPrefix = _searchCursorPosition <= 0
+                ? string.Empty
+                : _searchQuery[..Math.Min(_searchCursorPosition, _searchQuery.Length)];
+            int caretX = bounds.X + SearchTextInsetX + (int)_font.MeasureString(caretPrefix).X;
+            int caretY = bounds.Y + 3;
+            sprite.Draw(_caretTexture, new Rectangle(caretX, caretY, 1, Math.Max(12, _font.LineSpacing - 2)), new Color(255, 255, 255, 220));
+        }
+
+        private void HandleSearchKeyboardInput(KeyboardState keyboardState, int tickCount)
+        {
+            if (WasPressed(keyboardState, Keys.Escape))
+            {
+                if (!string.IsNullOrEmpty(_searchQuery))
+                {
+                    ClearSearchQuery();
+                    EnsureSelectedSearchResultVisible();
+                    UpdateButtonStates();
+                }
+                else
+                {
+                    ExitSearchMode();
+                }
+
+                return;
+            }
+
+            if (WasPressed(keyboardState, Keys.Enter))
+            {
+                ActivateSearchRow(GetSelectedSearchRowIndex());
+                return;
+            }
+
+            if (WasPressed(keyboardState, Keys.Up))
+            {
+                MoveSearchSelection(-1);
+                return;
+            }
+
+            if (WasPressed(keyboardState, Keys.Down))
+            {
+                MoveSearchSelection(1);
+                return;
+            }
+
+            if (WasPressed(keyboardState, Keys.PageUp))
+            {
+                if (_pageIndex > 0)
+                {
+                    _pageIndex--;
+                    EnsureSelectedSearchResultVisible();
+                    UpdateButtonStates();
+                }
+
+                return;
+            }
+
+            if (WasPressed(keyboardState, Keys.PageDown))
+            {
+                int maxPageIndex = GetMaxPageIndexForCurrentMode();
+                if (_pageIndex < maxPageIndex)
+                {
+                    _pageIndex++;
+                    EnsureSelectedSearchResultVisible();
+                    UpdateButtonStates();
+                }
+
+                return;
+            }
+
+            if (HandleSearchEditingKeys(keyboardState, tickCount))
+            {
+                return;
+            }
+
+            bool ctrl = keyboardState.IsKeyDown(Keys.LeftControl) || keyboardState.IsKeyDown(Keys.RightControl);
+            if (ctrl && WasPressed(keyboardState, Keys.V))
+            {
+                HandleSearchClipboardPaste();
+                return;
+            }
+
+            bool shift = keyboardState.IsKeyDown(Keys.LeftShift) || keyboardState.IsKeyDown(Keys.RightShift);
+            foreach (Keys key in keyboardState.GetPressedKeys())
+            {
+                if (ctrl)
+                {
+                    continue;
+                }
+
+                if (_previousSearchKeyboardState.IsKeyDown(key) || !TryInsertSearchCharacter(key, shift, tickCount))
+                {
+                    continue;
+                }
+
+                return;
+            }
+
+            if (_lastHeldSearchKey != Keys.None
+                && keyboardState.IsKeyDown(_lastHeldSearchKey)
+                && ShouldRepeatHeldKey(tickCount))
+            {
+                if (_lastHeldSearchKey == Keys.Back)
+                {
+                    if (_searchCursorPosition > 0)
+                    {
+                        _searchQuery = _searchQuery.Remove(_searchCursorPosition - 1, 1);
+                        _searchCursorPosition--;
+                        OnSearchQueryChanged();
+                    }
+                }
+                else if (_lastHeldSearchKey == Keys.Delete)
+                {
+                    if (_searchCursorPosition < _searchQuery.Length)
+                    {
+                        _searchQuery = _searchQuery.Remove(_searchCursorPosition, 1);
+                        OnSearchQueryChanged();
+                    }
+                }
+                else if (_lastHeldSearchKey == Keys.Left)
+                {
+                    _searchCursorPosition = Math.Max(0, _searchCursorPosition - 1);
+                }
+                else if (_lastHeldSearchKey == Keys.Right)
+                {
+                    _searchCursorPosition = Math.Min(_searchQuery.Length, _searchCursorPosition + 1);
+                }
+                else
+                {
+                    TryInsertSearchCharacter(_lastHeldSearchKey, shift, tickCount);
+                }
+
+                _lastKeyRepeatTime = tickCount;
+            }
+            else if (_lastHeldSearchKey != Keys.None && !keyboardState.IsKeyDown(_lastHeldSearchKey))
+            {
+                ResetSearchKeyRepeat();
+            }
+        }
+
+        private bool HandleSearchEditingKeys(KeyboardState keyboardState, int tickCount)
+        {
+            if (keyboardState.IsKeyDown(Keys.Back))
+            {
+                if (_previousSearchKeyboardState.IsKeyUp(Keys.Back))
+                {
+                    if (_searchCursorPosition > 0)
+                    {
+                        _searchQuery = _searchQuery.Remove(_searchCursorPosition - 1, 1);
+                        _searchCursorPosition--;
+                        OnSearchQueryChanged();
+                    }
+
+                    BeginHeldKey(Keys.Back, tickCount);
+                }
+
+                return true;
+            }
+
+            if (keyboardState.IsKeyDown(Keys.Delete))
+            {
+                if (_previousSearchKeyboardState.IsKeyUp(Keys.Delete))
+                {
+                    if (_searchCursorPosition < _searchQuery.Length)
+                    {
+                        _searchQuery = _searchQuery.Remove(_searchCursorPosition, 1);
+                        OnSearchQueryChanged();
+                    }
+
+                    BeginHeldKey(Keys.Delete, tickCount);
+                }
+
+                return true;
+            }
+
+            if (keyboardState.IsKeyDown(Keys.Left))
+            {
+                if (_previousSearchKeyboardState.IsKeyUp(Keys.Left))
+                {
+                    _searchCursorPosition = Math.Max(0, _searchCursorPosition - 1);
+                    BeginHeldKey(Keys.Left, tickCount);
+                }
+
+                return true;
+            }
+
+            if (keyboardState.IsKeyDown(Keys.Right))
+            {
+                if (_previousSearchKeyboardState.IsKeyUp(Keys.Right))
+                {
+                    _searchCursorPosition = Math.Min(_searchQuery.Length, _searchCursorPosition + 1);
+                    BeginHeldKey(Keys.Right, tickCount);
+                }
+
+                return true;
+            }
+
+            if (WasPressed(keyboardState, Keys.Home))
+            {
+                _searchCursorPosition = 0;
+                return true;
+            }
+
+            if (WasPressed(keyboardState, Keys.End))
+            {
+                _searchCursorPosition = _searchQuery.Length;
+                return true;
+            }
+
+            return false;
+        }
+
+        private bool TryInsertSearchCharacter(Keys key, bool shift, int tickCount)
+        {
+            char? character = KeyToChar(key, shift);
+            if (!character.HasValue || _searchQuery.Length >= MaxSearchQueryLength)
+            {
+                return false;
+            }
+
+            _searchQuery = _searchQuery.Insert(_searchCursorPosition, character.Value.ToString());
+            _searchCursorPosition++;
+            BeginHeldKey(key, tickCount);
+            OnSearchQueryChanged();
+            return true;
+        }
+
+        private void OnSearchQueryChanged()
+        {
+            _caretBlinkTick = Environment.TickCount;
+            EnsureSelectedSearchResultVisible();
+            UpdateButtonStates();
+        }
+
+        private void MoveSearchSelection(int direction)
+        {
+            IReadOnlyList<SearchResultEntry> results = GetFilteredSearchResults();
+            if (results.Count == 0)
+            {
+                return;
+            }
+
+            int currentIndex = GetSelectedSearchIndex(results);
+            int nextIndex = currentIndex < 0
+                ? 0
+                : Math.Clamp(currentIndex + direction, 0, results.Count - 1);
+            SearchResultEntry selectedEntry = results[nextIndex];
+            _selectedMapId = selectedEntry.MapId;
+            _selectedSearchResultKey = BuildSearchResultKey(selectedEntry);
+            _pageIndex = nextIndex / MaxVisibleRows;
+            UpdateButtonStates();
+        }
+
+        private int GetSelectedSearchRowIndex()
+        {
+            IReadOnlyList<SearchResultEntry> visibleResults = GetVisibleSearchResults();
+            for (int i = 0; i < visibleResults.Count; i++)
+            {
+                if (IsSearchResultSelected(visibleResults[i]))
+                {
+                    return i;
+                }
+            }
+
+            return visibleResults.Count > 0 ? 0 : -1;
+        }
+
+        private int GetSelectedSearchIndex(IReadOnlyList<SearchResultEntry> results)
+        {
+            for (int i = 0; i < results.Count; i++)
+            {
+                if (IsSearchResultSelected(results[i]))
+                {
+                    return i;
+                }
+            }
+
+            return -1;
+        }
+
+        private void EnsureSelectedSearchResultVisible()
+        {
+            IReadOnlyList<SearchResultEntry> filteredResults = GetFilteredSearchResults();
+            if (filteredResults.Count == 0)
+            {
+                _pageIndex = 0;
+                return;
+            }
+
+            int selectedIndex = GetSelectedSearchIndex(filteredResults);
+            if (selectedIndex < 0)
+            {
+                SearchResultEntry firstResult = filteredResults[0];
+                _selectedMapId = firstResult.MapId;
+                _selectedSearchResultKey = BuildSearchResultKey(firstResult);
+                selectedIndex = 0;
+            }
+
+            _pageIndex = Math.Clamp(selectedIndex / MaxVisibleRows, 0, GetMaxPageIndex(filteredResults.Count));
+        }
+
+        private IReadOnlyList<SearchResultEntry> BuildResolvedSearchResults()
+        {
+            List<SearchResultEntry> results = new();
+            HashSet<string> seen = new(StringComparer.OrdinalIgnoreCase);
+            string query = _searchQuery.Trim();
+
+            foreach (SearchResultEntry result in _searchResults)
+            {
+                if (result == null || !MatchesSearchQuery(result, query))
+                {
+                    continue;
+                }
+
+                if (seen.Add(BuildSearchResultKey(result)))
+                {
+                    results.Add(result);
+                }
+            }
+
+            if (string.IsNullOrWhiteSpace(query))
+            {
+                return results;
+            }
+
+            foreach (MapEntry entry in _allEntries
+                .Where(entry => entry != null && MatchesSearchQuery(entry, query))
+                .OrderByDescending(entry => ScoreMapEntryMatch(entry, query))
+                .ThenBy(entry => entry.MapId))
+            {
+                SearchResultEntry fieldResult = new SearchResultEntry
+                {
+                    Kind = SearchResultKind.Field,
+                    MapId = entry.MapId,
+                    Label = entry.DisplayName,
+                    Description = string.IsNullOrWhiteSpace(entry.CategoryName)
+                        ? $"Field {entry.MapId}"
+                        : $"{entry.CategoryName} ({entry.MapId})"
+                };
+
+                if (seen.Add(BuildSearchResultKey(fieldResult)))
+                {
+                    results.Add(fieldResult);
+                }
+            }
+
+            return results;
+        }
+
+        private static string BuildSearchResultKey(SearchResultEntry entry)
+        {
+            return $"{entry.Kind}:{entry.MapId}:{entry.Label}";
+        }
+
+        private bool IsSearchResultSelected(SearchResultEntry entry)
+        {
+            return entry != null
+                && string.Equals(BuildSearchResultKey(entry), _selectedSearchResultKey, StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static bool MatchesSearchQuery(SearchResultEntry entry, string query)
+        {
+            if (string.IsNullOrWhiteSpace(query))
+            {
+                return true;
+            }
+
+            return ContainsToken(entry.Label, query)
+                || ContainsToken(entry.Description, query)
+                || entry.MapId.ToString().Contains(query, StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static bool MatchesSearchQuery(MapEntry entry, string query)
+        {
+            if (string.IsNullOrWhiteSpace(query))
+            {
+                return true;
+            }
+
+            return ContainsToken(entry.DisplayName, query)
+                || ContainsToken(entry.MapName, query)
+                || ContainsToken(entry.StreetName, query)
+                || ContainsToken(entry.CategoryName, query)
+                || entry.MapId.ToString().Contains(query, StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static bool ContainsToken(string value, string query)
+        {
+            return !string.IsNullOrWhiteSpace(value)
+                && value.Contains(query, StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static int ScoreMapEntryMatch(MapEntry entry, string query)
+        {
+            if (entry == null)
+            {
+                return 0;
+            }
+
+            if (entry.MapId.ToString().Equals(query, StringComparison.OrdinalIgnoreCase))
+            {
+                return 400;
+            }
+
+            if (!string.IsNullOrWhiteSpace(entry.DisplayName) && entry.DisplayName.StartsWith(query, StringComparison.OrdinalIgnoreCase))
+            {
+                return 300;
+            }
+
+            if (!string.IsNullOrWhiteSpace(entry.MapName) && entry.MapName.StartsWith(query, StringComparison.OrdinalIgnoreCase))
+            {
+                return 260;
+            }
+
+            if (!string.IsNullOrWhiteSpace(entry.StreetName) && entry.StreetName.StartsWith(query, StringComparison.OrdinalIgnoreCase))
+            {
+                return 220;
+            }
+
+            if (ContainsToken(entry.DisplayName, query))
+            {
+                return 180;
+            }
+
+            if (ContainsToken(entry.CategoryName, query))
+            {
+                return 140;
+            }
+
+            return 100;
+        }
+
+        private void ClearSearchQuery()
+        {
+            _searchQuery = string.Empty;
+            _searchCursorPosition = 0;
+            _caretBlinkTick = Environment.TickCount;
+            ResetSearchKeyRepeat();
+        }
+
+        private void HandleSearchClipboardPaste()
+        {
+            try
+            {
+                if (!System.Windows.Forms.Clipboard.ContainsText())
+                {
+                    return;
+                }
+
+                string clipboardText = System.Windows.Forms.Clipboard.GetText();
+                if (string.IsNullOrWhiteSpace(clipboardText))
+                {
+                    return;
+                }
+
+                string normalized = clipboardText.Replace("\r", " ").Replace("\n", " ");
+                int remainingLength = MaxSearchQueryLength - _searchQuery.Length;
+                if (remainingLength <= 0)
+                {
+                    return;
+                }
+
+                if (normalized.Length > remainingLength)
+                {
+                    normalized = normalized[..remainingLength];
+                }
+
+                _searchQuery = _searchQuery.Insert(_searchCursorPosition, normalized);
+                _searchCursorPosition += normalized.Length;
+                OnSearchQueryChanged();
+            }
+            catch
+            {
+                // Clipboard access is optional for the search shell.
+            }
+        }
+
+        private void BeginHeldKey(Keys key, int tickCount)
+        {
+            _lastHeldSearchKey = key;
+            _keyHoldStartTime = tickCount;
+            _lastKeyRepeatTime = tickCount;
+            _caretBlinkTick = tickCount;
+        }
+
+        private void ResetSearchKeyRepeat()
+        {
+            _lastHeldSearchKey = Keys.None;
+            _keyHoldStartTime = int.MinValue;
+            _lastKeyRepeatTime = int.MinValue;
+        }
+
+        private bool ShouldRepeatHeldKey(int tickCount)
+        {
+            return _lastHeldSearchKey != Keys.None
+                && tickCount - _keyHoldStartTime >= KeyRepeatInitialDelayMs
+                && tickCount - _lastKeyRepeatTime >= KeyRepeatIntervalMs;
+        }
+
+        private bool WasPressed(KeyboardState keyboardState, Keys key)
+        {
+            return keyboardState.IsKeyDown(key) && _previousSearchKeyboardState.IsKeyUp(key);
+        }
+
+        private static char? KeyToChar(Keys key, bool shift)
+        {
+            if (key >= Keys.A && key <= Keys.Z)
+            {
+                char value = (char)('a' + (key - Keys.A));
+                return shift ? char.ToUpperInvariant(value) : value;
+            }
+
+            if (key >= Keys.D0 && key <= Keys.D9)
+            {
+                return (char)('0' + (key - Keys.D0));
+            }
+
+            if (key >= Keys.NumPad0 && key <= Keys.NumPad9)
+            {
+                return (char)('0' + (key - Keys.NumPad0));
+            }
+
+            return key switch
+            {
+                Keys.Space => ' ',
+                Keys.OemMinus => shift ? '_' : '-',
+                Keys.Subtract => '-',
+                Keys.OemPeriod or Keys.Decimal => '.',
+                Keys.OemComma => ',',
+                Keys.OemSemicolon => shift ? ':' : ';',
+                Keys.OemQuestion => shift ? '?' : '/',
+                Keys.OemQuotes => shift ? '"' : '\'',
+                Keys.OemOpenBrackets => shift ? '{' : '[',
+                Keys.OemCloseBrackets => shift ? '}' : ']',
+                Keys.OemPipe => shift ? '|' : '\\',
+                Keys.OemPlus => shift ? '+' : '=',
                 _ => null
             };
         }

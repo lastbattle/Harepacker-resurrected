@@ -10,5 +10,6 @@ namespace HaCreator.MapSimulator
         ChannelUnavailable = 5,
         ChannelFull = 6,
         AdultChannelRestricted = 7,
+        ServerRejected = 8,
     }
 }

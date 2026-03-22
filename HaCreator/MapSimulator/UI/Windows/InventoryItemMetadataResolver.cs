@@ -33,6 +33,26 @@ namespace HaCreator.MapSimulator.UI
             return resolved > 0 ? resolved : defaultValue;
         }
 
+        public static bool TryResolveItemName(int itemId, out string itemName)
+        {
+            itemName = null;
+            return global::HaCreator.Program.InfoManager?.ItemNameCache != null
+                   && global::HaCreator.Program.InfoManager.ItemNameCache.TryGetValue(itemId, out System.Tuple<string, string, string> itemInfo)
+                   && !string.IsNullOrWhiteSpace(itemInfo?.Item1)
+                ? (itemName = itemInfo.Item1) != null
+                : false;
+        }
+
+        public static bool TryResolveItemDescription(int itemId, out string description)
+        {
+            description = null;
+            return global::HaCreator.Program.InfoManager?.ItemNameCache != null
+                   && global::HaCreator.Program.InfoManager.ItemNameCache.TryGetValue(itemId, out System.Tuple<string, string, string> itemInfo)
+                   && !string.IsNullOrWhiteSpace(itemInfo?.Item3)
+                ? (description = itemInfo.Item3) != null
+                : false;
+        }
+
         public static bool TryResolveImageSource(int itemId, out string category, out string imagePath)
         {
             category = null;

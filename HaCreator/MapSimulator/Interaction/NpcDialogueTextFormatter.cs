@@ -9,7 +9,11 @@ namespace HaCreator.MapSimulator.Interaction
         private static readonly Regex SelectionRegex = new(@"#L\d+#", RegexOptions.Compiled);
         private static readonly Regex NpcRegex = new(@"#p(\d+)#", RegexOptions.Compiled);
         private static readonly Regex ItemNameRegex = new(@"#t(\d+)#", RegexOptions.Compiled);
-        private static readonly Regex ItemIconRegex = new(@"#i\d+#", RegexOptions.Compiled);
+        private static readonly Regex QuestNameRegex = new(@"#q(\d+)#", RegexOptions.Compiled);
+        private static readonly Regex SkillNameRegex = new(@"#s(\d+)#", RegexOptions.Compiled);
+        private static readonly Regex MapNameRegex = new(@"#m(\d+)#", RegexOptions.Compiled);
+        private static readonly Regex ItemNameAliasRegex = new(@"#z(\d+)#", RegexOptions.Compiled);
+        private static readonly Regex ItemIconRegex = new(@"#(?:i|v)\d+#", RegexOptions.Compiled | RegexOptions.IgnoreCase);
         private static readonly Regex PlayerNameRegex = new(@"#h\d*#", RegexOptions.Compiled);
         private static readonly Regex StyleTagRegex = new(@"#(?:[bkrgdenmc])", RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
@@ -29,6 +33,10 @@ namespace HaCreator.MapSimulator.Interaction
             formatted = ItemIconRegex.Replace(formatted, string.Empty);
             formatted = NpcRegex.Replace(formatted, static match => ResolveNpcName(match.Groups[1].Value));
             formatted = ItemNameRegex.Replace(formatted, static match => ResolveItemName(match.Groups[1].Value));
+            formatted = ItemNameAliasRegex.Replace(formatted, static match => ResolveItemName(match.Groups[1].Value));
+            formatted = QuestNameRegex.Replace(formatted, static match => ResolveQuestName(match.Groups[1].Value));
+            formatted = SkillNameRegex.Replace(formatted, static match => ResolveSkillName(match.Groups[1].Value));
+            formatted = MapNameRegex.Replace(formatted, static match => ResolveMapName(match.Groups[1].Value));
             formatted = StyleTagRegex.Replace(formatted, string.Empty);
 
             var builder = new StringBuilder(formatted.Length);
@@ -142,6 +150,39 @@ namespace HaCreator.MapSimulator.Interaction
                    !string.IsNullOrWhiteSpace(itemInfo?.Item2)
                 ? itemInfo.Item2
                 : $"Item #{itemIdText}";
+        }
+
+        private static string ResolveQuestName(string questIdText)
+        {
+            return Program.InfoManager?.QuestInfos != null &&
+                   Program.InfoManager.QuestInfos.TryGetValue(questIdText, out var questInfo) &&
+                   questInfo?["name"] is MapleLib.WzLib.WzProperties.WzStringProperty nameProperty &&
+                   !string.IsNullOrWhiteSpace(nameProperty.Value)
+                ? nameProperty.Value
+                : $"Quest #{questIdText}";
+        }
+
+        private static string ResolveSkillName(string skillIdText)
+        {
+            return Program.InfoManager?.SkillNameCache != null &&
+                   Program.InfoManager.SkillNameCache.TryGetValue(skillIdText, out var skillInfo) &&
+                   !string.IsNullOrWhiteSpace(skillInfo?.Item1)
+                ? skillInfo.Item1
+                : $"Skill #{skillIdText}";
+        }
+
+        private static string ResolveMapName(string mapIdText)
+        {
+            if (Program.InfoManager?.MapsNameCache == null)
+            {
+                return $"Map #{mapIdText}";
+            }
+
+            string normalizedMapId = mapIdText.Length == 9 ? mapIdText : mapIdText.PadLeft(9, '0');
+            return Program.InfoManager.MapsNameCache.TryGetValue(normalizedMapId, out var mapInfo) &&
+                   !string.IsNullOrWhiteSpace(mapInfo?.Item2)
+                ? mapInfo.Item2
+                : $"Map #{mapIdText}";
         }
     }
 }

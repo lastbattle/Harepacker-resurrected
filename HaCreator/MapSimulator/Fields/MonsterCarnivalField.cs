@@ -3,12 +3,15 @@ using MapleLib.WzLib;
 using MapleLib.WzLib.WzProperties;
 using MapleLib.WzLib.WzStructure;
 using MapleLib.WzLib.WzStructure.Data;
+using MapleLib.WzLib.WzStructure.Data.MobStructure;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.IO;
 using System.Linq;
+using System.Text;
 
 namespace HaCreator.MapSimulator.Fields
 {
@@ -25,9 +28,29 @@ namespace HaCreator.MapSimulator.Fields
         Team1 = 1
     }
 
+    public enum MonsterCarnivalPacketType
+    {
+        Enter = 1,
+        RequestResult = 2,
+        RequestFailure = 3,
+        GameResult = 4,
+        ProcessForDeath = 5,
+        CpUpdate = 6,
+        CpDelta = 7,
+        SummonedMobCount = 8
+    }
+
     public sealed class MonsterCarnivalEntry
     {
-        public MonsterCarnivalEntry(MonsterCarnivalTab tab, int index, int id, int cost, string name, string description)
+        public MonsterCarnivalEntry(
+            MonsterCarnivalTab tab,
+            int index,
+            int id,
+            int cost,
+            string name,
+            string description,
+            int rewardCp = 0,
+            IReadOnlyList<int> reviveMobIds = null)
         {
             Tab = tab;
             Index = index;
@@ -35,6 +58,8 @@ namespace HaCreator.MapSimulator.Fields
             Cost = cost;
             Name = string.IsNullOrWhiteSpace(name) ? $"{tab} {id}" : name.Trim();
             Description = string.IsNullOrWhiteSpace(description) ? string.Empty : description.Trim();
+            RewardCp = Math.Max(0, rewardCp);
+            ReviveMobIds = reviveMobIds ?? Array.Empty<int>();
         }
 
         public MonsterCarnivalTab Tab { get; }
@@ -43,6 +68,8 @@ namespace HaCreator.MapSimulator.Fields
         public int Cost { get; }
         public string Name { get; }
         public string Description { get; }
+        public int RewardCp { get; }
+        public IReadOnlyList<int> ReviveMobIds { get; }
     }
 
     public sealed class MonsterCarnivalTeamState
@@ -54,6 +81,7 @@ namespace HaCreator.MapSimulator.Fields
     public sealed class MonsterCarnivalFieldDefinition
     {
         public int MapId { get; init; }
+        public FieldType FieldType { get; init; }
         public int DefaultTimeSeconds { get; init; }
         public int ExpandTimeSeconds { get; init; }
         public int MessageTimeSeconds { get; init; }
@@ -70,6 +98,7 @@ namespace HaCreator.MapSimulator.Fields
         public IReadOnlyList<MonsterCarnivalEntry> MobEntries { get; init; } = Array.Empty<MonsterCarnivalEntry>();
         public IReadOnlyList<MonsterCarnivalEntry> SkillEntries { get; init; } = Array.Empty<MonsterCarnivalEntry>();
         public IReadOnlyList<MonsterCarnivalEntry> GuardianEntries { get; init; } = Array.Empty<MonsterCarnivalEntry>();
+        public bool IsReviveMode => FieldType == FieldType.FIELDTYPE_MONSTERCARNIVALREVIVE;
 
         public IReadOnlyList<MonsterCarnivalEntry> GetEntries(MonsterCarnivalTab tab)
         {
@@ -120,13 +149,15 @@ namespace HaCreator.MapSimulator.Fields
             {
                 return new MonsterCarnivalFieldDefinition
                 {
-                    MapId = mapInfo?.id ?? 0
+                    MapId = mapInfo?.id ?? 0,
+                    FieldType = mapInfo?.fieldType ?? FieldType.FIELDTYPE_DEFAULT
                 };
             }
 
             return new MonsterCarnivalFieldDefinition
             {
                 MapId = mapInfo?.id ?? 0,
+                FieldType = mapInfo?.fieldType ?? FieldType.FIELDTYPE_DEFAULT,
                 DefaultTimeSeconds = ReadInt(property["timeDefault"]),
                 ExpandTimeSeconds = ReadInt(property["timeExpand"]),
                 MessageTimeSeconds = ReadInt(property["timeMessage"]),
@@ -178,14 +209,17 @@ namespace HaCreator.MapSimulator.Fields
                 int mobId = ReadInt(child["id"]);
                 int cost = ReadInt(child["spendCP"]);
                 string name = ResolveMobName(mobId) ?? $"Mob {mobId}";
-                string description = $"Summon {name}.";
+                MonsterCarnivalMobMetadata metadata = ResolveMobMetadata(mobId);
+                string description = BuildMobDescription(name, metadata);
                 entries.Add(new MonsterCarnivalEntry(
                     MonsterCarnivalTab.Mob,
                     ParseChildIndex(child.Name, entries.Count),
                     mobId,
                     cost,
                     name,
-                    description));
+                    description,
+                    metadata?.RewardCp ?? 0,
+                    metadata?.ReviveMobIds ?? Array.Empty<int>()));
             }
 
             return entries;
@@ -257,6 +291,63 @@ namespace HaCreator.MapSimulator.Fields
             }
         }
 
+        private static MonsterCarnivalMobMetadata ResolveMobMetadata(int mobId)
+        {
+            if (mobId <= 0)
+            {
+                return null;
+            }
+
+            try
+            {
+                WzImage mobImage = FindImageSafe("Mob", mobId.ToString("D7", CultureInfo.InvariantCulture) + ".img");
+                if (mobImage != null && !mobImage.Parsed)
+                {
+                    mobImage.ParseImage();
+                }
+
+                MobData mobData = MobData.Parse(mobImage, mobId);
+                if (mobData == null)
+                {
+                    return null;
+                }
+
+                return new MonsterCarnivalMobMetadata(
+                    mobData.GetCP,
+                    mobData.ReviveData?.Where(id => id > 0).Distinct().ToArray() ?? Array.Empty<int>());
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        private static string BuildMobDescription(string name, MonsterCarnivalMobMetadata metadata)
+        {
+            if (metadata == null)
+            {
+                return $"Summon {name}.";
+            }
+
+            var parts = new List<string>
+            {
+                $"Summon {name}."
+            };
+
+            if (metadata.RewardCp > 0)
+            {
+                parts.Add($"Defeating it awards {metadata.RewardCp} CP.");
+            }
+
+            if (metadata.ReviveMobIds.Count > 0)
+            {
+                string reviveText = string.Join(", ", metadata.ReviveMobIds.Select(id => ResolveMobName(id) ?? id.ToString(CultureInfo.InvariantCulture)));
+                parts.Add($"Revives into {reviveText}.");
+            }
+
+            return string.Join(" ", parts);
+        }
+
         private static WzImage FindImageSafe(string category, string imageName)
         {
             try
@@ -302,6 +393,18 @@ namespace HaCreator.MapSimulator.Fields
                 return property.GetString();
             }
         }
+
+        private sealed class MonsterCarnivalMobMetadata
+        {
+            public MonsterCarnivalMobMetadata(int rewardCp, IReadOnlyList<int> reviveMobIds)
+            {
+                RewardCp = Math.Max(0, rewardCp);
+                ReviveMobIds = reviveMobIds ?? Array.Empty<int>();
+            }
+
+            public int RewardCp { get; }
+            public IReadOnlyList<int> ReviveMobIds { get; }
+        }
     }
 
     /// <summary>
@@ -314,6 +417,8 @@ namespace HaCreator.MapSimulator.Fields
         private const int StatusDurationMs = 4500;
 
         private readonly Dictionary<int, int> _mobSpellCounts = new();
+        private readonly Dictionary<int, int> _skillUseCounts = new();
+        private readonly Dictionary<int, int> _guardianCounts = new();
         private readonly MonsterCarnivalTeamState _team0 = new();
         private readonly MonsterCarnivalTeamState _team1 = new();
         private MonsterCarnivalFieldDefinition _definition;
@@ -342,8 +447,13 @@ namespace HaCreator.MapSimulator.Fields
 
         public void Configure(MapInfo mapInfo)
         {
+            Configure(MonsterCarnivalFieldDataLoader.Load(mapInfo));
+        }
+
+        public void Configure(MonsterCarnivalFieldDefinition definition)
+        {
             Reset();
-            _definition = MonsterCarnivalFieldDataLoader.Load(mapInfo);
+            _definition = definition;
             _isVisible = _definition != null;
             _activeTab = MonsterCarnivalTab.Mob;
         }
@@ -398,6 +508,32 @@ namespace HaCreator.MapSimulator.Fields
             _team1.TotalCp = Math.Max(_team1.CurrentCp, team1TotalCp);
         }
 
+        public void ApplyTeamCpDelta(
+            int personalCpDelta,
+            int personalTotalCpDelta,
+            int team0CurrentCpDelta,
+            int team0TotalCpDelta,
+            int team1CurrentCpDelta,
+            int team1TotalCpDelta,
+            int tickCount)
+        {
+            if (!_isVisible)
+            {
+                return;
+            }
+
+            _personalCp = Math.Max(0, _personalCp + personalCpDelta);
+            _personalTotalCp = Math.Max(_personalCp, _personalTotalCp + personalTotalCpDelta);
+            _team0.CurrentCp = Math.Max(0, _team0.CurrentCp + team0CurrentCpDelta);
+            _team0.TotalCp = Math.Max(_team0.CurrentCp, _team0.TotalCp + team0TotalCpDelta);
+            _team1.CurrentCp = Math.Max(0, _team1.CurrentCp + team1CurrentCpDelta);
+            _team1.TotalCp = Math.Max(_team1.CurrentCp, _team1.TotalCp + team1TotalCpDelta);
+
+            ShowStatus(
+                $"Monster Carnival CP delta applied: personal {FormatSignedDelta(personalCpDelta)}, team0 {FormatSignedDelta(team0CurrentCpDelta)}, team1 {FormatSignedDelta(team1CurrentCpDelta)}.",
+                tickCount);
+        }
+
         public bool TrySetActiveTab(string tabText, out string message)
         {
             if (!TryParseTab(tabText, out MonsterCarnivalTab tab))
@@ -421,8 +557,8 @@ namespace HaCreator.MapSimulator.Fields
                 return false;
             }
 
-            _mobSpellCounts[entry.Id] = Math.Max(0, count);
-            message = $"{entry.Name} spell count set to {_mobSpellCounts[entry.Id]}.";
+            SetEntryCount(_mobSpellCounts, entry.Id, count);
+            message = $"{entry.Name} summon count set to {GetEntryCount(_mobSpellCounts, entry.Id)}.";
             return true;
         }
 
@@ -435,36 +571,150 @@ namespace HaCreator.MapSimulator.Fields
                 return false;
             }
 
-            _selectedEntryIndex = entry.Index;
-            _lastRequestTab = (int)_activeTab;
-            _lastRequestIndex = entry.Index;
-
-            if (_activeTab == MonsterCarnivalTab.Mob)
+            if (!TryValidateRequest(entry, out int rejectionReason))
             {
-                _mobSpellCounts[entry.Id] = _mobSpellCounts.TryGetValue(entry.Id, out int currentCount)
-                    ? currentCount + 1
-                    : 1;
+                OnRequestFailure(rejectionReason, tickCount);
+                message = DescribeRequestFailure(rejectionReason);
+                return false;
             }
 
-            string suffix = string.IsNullOrWhiteSpace(requestMessage)
-                ? string.Empty
-                : $" {requestMessage.Trim()}";
-            ShowStatus($"Requested {entry.Name}.{suffix}".TrimEnd(), tickCount);
+            OnRequestResult((byte)_activeTab, entry.Index, requestMessage, tickCount);
             message = DescribeStatus();
             return true;
         }
 
+        public void OnRequestResult(byte tabCode, int entryIndex, string requestMessage, int tickCount)
+        {
+            MonsterCarnivalTab tab = TryParseTab(tabCode, out MonsterCarnivalTab parsedTab)
+                ? parsedTab
+                : _activeTab;
+            MonsterCarnivalEntry entry = GetEntry(tab, entryIndex);
+            if (entry == null)
+            {
+                string fallbackMessage = string.IsNullOrWhiteSpace(requestMessage)
+                    ? $"Monster Carnival request result received for tab {(int)tab}, index {entryIndex}."
+                    : requestMessage.Trim();
+                ShowStatus(fallbackMessage, tickCount);
+                return;
+            }
+
+            ApplySuccessfulRequest(entry);
+            string successMessage = string.IsNullOrWhiteSpace(requestMessage)
+                ? BuildRequestSuccessMessage(entry)
+                : requestMessage.Trim();
+            ShowStatus(successMessage, tickCount);
+        }
+
         public void OnRequestFailure(int reasonCode, int tickCount)
         {
-            ShowStatus($"Monster Carnival request rejected (reason {reasonCode}).", tickCount);
+            ShowStatus(DescribeRequestFailure(reasonCode), tickCount);
         }
 
         public void OnShowGameResult(int resultCode, int tickCount)
         {
-            string rewardText = _definition == null
-                ? string.Empty
-                : $" Win map {_definition.RewardMapWin}, lose map {_definition.RewardMapLose}.";
-            ShowStatus($"Monster Carnival result packet {resultCode} received.{rewardText}".Trim(), tickCount);
+            ShowStatus(DescribeGameResult(resultCode), tickCount);
+        }
+
+        public void OnProcessForDeath(MonsterCarnivalTeam team, string characterName, int remainingRevives, int tickCount)
+        {
+            if (!_isVisible)
+            {
+                return;
+            }
+
+            int deathCp = Math.Max(0, _definition?.DeathCp ?? 0);
+            MonsterCarnivalTeamState teamState = GetTeamState(team);
+            teamState.CurrentCp = Math.Max(0, teamState.CurrentCp - deathCp);
+
+            string normalizedName = string.IsNullOrWhiteSpace(characterName) ? "A party member" : characterName.Trim();
+            string reviveSummary = remainingRevives > 0
+                ? $"{remainingRevives} revive(s) remaining."
+                : "No revives remaining.";
+            string cpSummary = deathCp > 0
+                ? $" {deathCp} CP was removed from {FormatTeam(team)}."
+                : string.Empty;
+
+            ShowStatus($"{normalizedName} of {FormatTeam(team)} was defeated. {reviveSummary}{cpSummary}".Trim(), tickCount);
+        }
+
+        public bool TryApplyPacket(MonsterCarnivalPacketType packetType, byte[] payload, int currentTimeMs, out string errorMessage)
+        {
+            errorMessage = null;
+
+            if (!_isVisible)
+            {
+                errorMessage = "Monster Carnival runtime inactive.";
+                return false;
+            }
+
+            payload ??= Array.Empty<byte>();
+
+            try
+            {
+                using var stream = new MemoryStream(payload, writable: false);
+                using var reader = new BinaryReader(stream, Encoding.Default, leaveOpen: false);
+                switch (packetType)
+                {
+                    case MonsterCarnivalPacketType.Enter:
+                        OnEnter((MonsterCarnivalTeam)reader.ReadByte(), reader.ReadInt16(), reader.ReadInt16(), reader.ReadInt16(), reader.ReadInt16(), reader.ReadInt16(), reader.ReadInt16());
+
+                        for (int i = 0; i < (_definition?.MobEntries.Count ?? 0); i++)
+                        {
+                            SetEntryCount(_mobSpellCounts, _definition.MobEntries[i].Id, reader.ReadByte());
+                        }
+
+                        EnsurePacketConsumed(stream, "enter");
+                        return true;
+
+                    case MonsterCarnivalPacketType.RequestResult:
+                        OnRequestResult(reader.ReadByte(), reader.ReadByte(), ReadPacketString(reader), currentTimeMs);
+                        EnsurePacketConsumed(stream, "request-result");
+                        return true;
+
+                    case MonsterCarnivalPacketType.RequestFailure:
+                        OnRequestFailure(reader.ReadByte(), currentTimeMs);
+                        EnsurePacketConsumed(stream, "request-failure");
+                        return true;
+
+                    case MonsterCarnivalPacketType.GameResult:
+                        OnShowGameResult(reader.ReadByte(), currentTimeMs);
+                        EnsurePacketConsumed(stream, "game-result");
+                        return true;
+
+                    case MonsterCarnivalPacketType.ProcessForDeath:
+                        OnProcessForDeath((MonsterCarnivalTeam)reader.ReadByte(), ReadPacketString(reader), reader.ReadByte(), currentTimeMs);
+                        EnsurePacketConsumed(stream, "process-for-death");
+                        return true;
+
+                    case MonsterCarnivalPacketType.CpUpdate:
+                        UpdateTeamCp(reader.ReadInt16(), reader.ReadInt16(), reader.ReadInt16(), reader.ReadInt16(), reader.ReadInt16(), reader.ReadInt16());
+                        EnsurePacketConsumed(stream, "cp-update");
+                        return true;
+
+                    case MonsterCarnivalPacketType.CpDelta:
+                        ApplyTeamCpDelta(reader.ReadInt16(), reader.ReadInt16(), reader.ReadInt16(), reader.ReadInt16(), reader.ReadInt16(), reader.ReadInt16(), currentTimeMs);
+                        EnsurePacketConsumed(stream, "cp-delta");
+                        return true;
+
+                    case MonsterCarnivalPacketType.SummonedMobCount:
+                        if (!TrySetMobSpellCount(reader.ReadByte(), reader.ReadByte(), out errorMessage))
+                        {
+                            return false;
+                        }
+
+                        EnsurePacketConsumed(stream, "summoned-mob-count");
+                        return true;
+
+                    default:
+                        errorMessage = $"Unsupported Monster Carnival packet type: {packetType}";
+                        return false;
+                }
+            }
+            catch (Exception ex) when (ex is EndOfStreamException || ex is IOException || ex is InvalidDataException)
+            {
+                errorMessage = ex.Message;
+                return false;
+            }
         }
 
         public void Update(int tickCount)
@@ -495,7 +745,7 @@ namespace HaCreator.MapSimulator.Fields
             int timerY = panelY + 44;
             string headerText = _definition == null
                 ? "No WZ carnival definition loaded."
-                : $"Time {_definition.DefaultTimeSeconds}s +{_definition.ExpandTimeSeconds}s | Death CP {_definition.DeathCp}";
+                : $"Time {_definition.DefaultTimeSeconds}s +{_definition.ExpandTimeSeconds}s | Death CP {_definition.DeathCp} | {(_definition.IsReviveMode ? "Revive" : "Standard")}";
             DrawShadowedText(spriteBatch, font, headerText, new Vector2(panelX + 12, timerY), Color.Gainsboro, 0.85f);
 
             DrawCpRow(spriteBatch, pixelTexture, font, panelX + 12, panelY + 76, panelWidth - 24);
@@ -511,13 +761,15 @@ namespace HaCreator.MapSimulator.Fields
                 return "Monster Carnival runtime is inactive on this map.";
             }
 
-            return $"Monster Carnival: {( _enteredField ? "entered" : "configured")} | tab={_activeTab} | personalCP={_personalCp}/{_personalTotalCp} | team0={_team0.CurrentCp}/{_team0.TotalCp} | team1={_team1.CurrentCp}/{_team1.TotalCp}";
+            return $"Monster Carnival: {(_enteredField ? "entered" : "configured")} | mode={(_definition?.IsReviveMode == true ? "revive" : "standard")} | tab={_activeTab} | personalCP={_personalCp}/{_personalTotalCp} | team0={_team0.CurrentCp}/{_team0.TotalCp} | team1={_team1.CurrentCp}/{_team1.TotalCp} | mobs={GetTotalCount(_mobSpellCounts)}/{Math.Max(0, _definition?.MobGenMax ?? 0)} | guardians={GetTotalCount(_guardianCounts)}/{Math.Max(0, _definition?.GuardianGenMax ?? 0)}";
         }
 
         public void Reset()
         {
             _definition = null;
             _mobSpellCounts.Clear();
+            _skillUseCounts.Clear();
+            _guardianCounts.Clear();
             _team0.CurrentCp = 0;
             _team0.TotalCp = 0;
             _team1.CurrentCp = 0;
@@ -589,7 +841,8 @@ namespace HaCreator.MapSimulator.Fields
                     : new Color(31, 39, 49, 180);
                 spriteBatch.Draw(pixelTexture, rowRect, rowColor);
 
-                string countText = _activeTab == MonsterCarnivalTab.Mob && _mobSpellCounts.TryGetValue(entry.Id, out int count) && count > 0
+                int count = GetEntryUsageCount(entry);
+                string countText = count > 0
                     ? $"x{count}"
                     : string.Empty;
                 string line = $"{entry.Index + 1}. {entry.Name}";
@@ -622,7 +875,7 @@ namespace HaCreator.MapSimulator.Fields
             if (string.IsNullOrWhiteSpace(status))
             {
                 status = _enteredField
-                    ? "Use /mcarnival request <index> to simulate client RequestResult updates."
+                    ? "Use /mcarnival request, requestok, cpdelta, or death to drive the Monster Carnival runtime."
                     : "Use /mcarnival enter ... to populate the Carnival HUD like CField_MonsterCarnival::OnEnter.";
             }
 
@@ -675,6 +928,200 @@ namespace HaCreator.MapSimulator.Fields
                 default:
                     return false;
             }
+        }
+
+        private static bool TryParseTab(byte rawValue, out MonsterCarnivalTab tab)
+        {
+            tab = rawValue switch
+            {
+                0 => MonsterCarnivalTab.Mob,
+                1 => MonsterCarnivalTab.Skill,
+                2 => MonsterCarnivalTab.Guardian,
+                _ => MonsterCarnivalTab.Mob
+            };
+
+            return rawValue <= 2;
+        }
+
+        private bool TryValidateRequest(MonsterCarnivalEntry entry, out int reasonCode)
+        {
+            reasonCode = 0;
+            if (!_enteredField || entry == null)
+            {
+                reasonCode = 2;
+                return false;
+            }
+
+            if (_personalCp < entry.Cost)
+            {
+                reasonCode = 1;
+                return false;
+            }
+
+            if (entry.Tab == MonsterCarnivalTab.Mob
+                && _definition?.MobGenMax > 0
+                && GetTotalCount(_mobSpellCounts) >= _definition.MobGenMax)
+            {
+                reasonCode = 3;
+                return false;
+            }
+
+            if (entry.Tab == MonsterCarnivalTab.Guardian
+                && _definition?.GuardianGenMax > 0
+                && GetTotalCount(_guardianCounts) >= _definition.GuardianGenMax)
+            {
+                reasonCode = 4;
+                return false;
+            }
+
+            return true;
+        }
+
+        private void ApplySuccessfulRequest(MonsterCarnivalEntry entry)
+        {
+            _activeTab = entry.Tab;
+            _selectedEntryIndex = entry.Index;
+            _lastRequestTab = (int)entry.Tab;
+            _lastRequestIndex = entry.Index;
+
+            _personalCp = Math.Max(0, _personalCp - entry.Cost);
+            MonsterCarnivalTeamState teamState = GetTeamState(_localTeam);
+            teamState.CurrentCp = Math.Max(0, teamState.CurrentCp - entry.Cost);
+
+            Dictionary<int, int> counts = GetCountDictionary(entry.Tab);
+            SetEntryCount(counts, entry.Id, GetEntryCount(counts, entry.Id) + 1);
+        }
+
+        private int GetEntryUsageCount(MonsterCarnivalEntry entry)
+        {
+            if (entry == null)
+            {
+                return 0;
+            }
+
+            return GetEntryCount(GetCountDictionary(entry.Tab), entry.Id);
+        }
+
+        private Dictionary<int, int> GetCountDictionary(MonsterCarnivalTab tab)
+        {
+            return tab switch
+            {
+                MonsterCarnivalTab.Mob => _mobSpellCounts,
+                MonsterCarnivalTab.Skill => _skillUseCounts,
+                MonsterCarnivalTab.Guardian => _guardianCounts,
+                _ => _mobSpellCounts
+            };
+        }
+
+        private static int GetEntryCount(Dictionary<int, int> counts, int id)
+        {
+            return counts != null && counts.TryGetValue(id, out int value)
+                ? value
+                : 0;
+        }
+
+        private static void SetEntryCount(Dictionary<int, int> counts, int id, int count)
+        {
+            if (counts == null)
+            {
+                return;
+            }
+
+            if (count <= 0)
+            {
+                counts.Remove(id);
+                return;
+            }
+
+            counts[id] = count;
+        }
+
+        private static int GetTotalCount(Dictionary<int, int> counts)
+        {
+            return counts?.Values.Sum() ?? 0;
+        }
+
+        private string BuildRequestSuccessMessage(MonsterCarnivalEntry entry)
+        {
+            if (entry == null)
+            {
+                return "Monster Carnival request completed.";
+            }
+
+            return entry.Tab switch
+            {
+                MonsterCarnivalTab.Mob => $"Summoned {entry.Name}.",
+                MonsterCarnivalTab.Skill => $"Activated {entry.Name}.",
+                MonsterCarnivalTab.Guardian => $"Placed {entry.Name}.",
+                _ => $"Requested {entry.Name}."
+            };
+        }
+
+        private static string DescribeRequestFailure(int reasonCode)
+        {
+            return reasonCode switch
+            {
+                1 => "Monster Carnival request rejected: not enough CP.",
+                2 => "Monster Carnival request rejected: that action is not available right now.",
+                3 => "Monster Carnival request rejected: the monster summon limit has been reached.",
+                4 => "Monster Carnival request rejected: the guardian limit has been reached.",
+                5 => "Monster Carnival request rejected: that guardian slot is already occupied.",
+                _ => $"Monster Carnival request rejected (reason {reasonCode})."
+            };
+        }
+
+        private string DescribeGameResult(int resultCode)
+        {
+            string resultText = resultCode switch
+            {
+                8 => _definition?.IsReviveMode == true ? "Monster Carnival revive round ended in victory." : "Monster Carnival round ended in victory.",
+                9 => _definition?.IsReviveMode == true ? "Monster Carnival revive round ended in defeat." : "Monster Carnival round ended in defeat.",
+                10 => _definition?.IsReviveMode == true ? "Monster Carnival revive round ended in a draw." : "Monster Carnival round ended in a draw.",
+                11 => _definition?.IsReviveMode == true ? "Monster Carnival revive round ended." : "Monster Carnival round ended.",
+                _ => $"Monster Carnival result packet {resultCode} received."
+            };
+
+            if (_definition == null)
+            {
+                return resultText;
+            }
+
+            return resultCode switch
+            {
+                8 => $"{resultText} Reward map {_definition.RewardMapWin}.",
+                9 => $"{resultText} Reward map {_definition.RewardMapLose}.",
+                _ => resultText
+            };
+        }
+
+        private static string ReadPacketString(BinaryReader reader)
+        {
+            ushort length = reader.ReadUInt16();
+            if (length == 0)
+            {
+                return string.Empty;
+            }
+
+            byte[] data = reader.ReadBytes(length);
+            if (data.Length != length)
+            {
+                throw new EndOfStreamException("Unexpected end of Monster Carnival string payload.");
+            }
+
+            return Encoding.Default.GetString(data);
+        }
+
+        private static void EnsurePacketConsumed(Stream stream, string packetLabel)
+        {
+            if (stream.Position != stream.Length)
+            {
+                throw new InvalidDataException($"Unexpected trailing bytes in Monster Carnival {packetLabel} payload.");
+            }
+        }
+
+        private static string FormatSignedDelta(int value)
+        {
+            return value >= 0 ? $"+{value}" : value.ToString(CultureInfo.InvariantCulture);
         }
 
         private void ShowStatus(string message, int tickCount)

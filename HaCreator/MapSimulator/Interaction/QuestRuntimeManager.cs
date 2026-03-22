@@ -60,6 +60,28 @@ namespace HaCreator.MapSimulator.Interaction
             public QuestStateType State { get; init; }
         }
 
+        private enum QuestTraitType
+        {
+            Charisma,
+            Insight,
+            Will,
+            Craft,
+            Sense,
+            Charm
+        }
+
+        private sealed class QuestTraitRequirement
+        {
+            public QuestTraitType Trait { get; init; }
+            public int MinimumValue { get; init; }
+        }
+
+        private sealed class QuestTraitReward
+        {
+            public QuestTraitType Trait { get; init; }
+            public int Amount { get; init; }
+        }
+
         private sealed class QuestMobRequirement
         {
             public int MobId { get; init; }
@@ -91,6 +113,7 @@ namespace HaCreator.MapSimulator.Interaction
             public int FameReward { get; set; }
             public int? NextQuestId { get; set; }
             public List<QuestStateMutation> QuestMutations { get; } = new();
+            public List<QuestTraitReward> TraitRewards { get; } = new();
             public List<QuestRewardItem> RewardItems { get; } = new();
             public List<string> Messages { get; } = new();
         }
@@ -109,14 +132,23 @@ namespace HaCreator.MapSimulator.Interaction
             public int? EndNpcId { get; init; }
             public int? MinLevel { get; init; }
             public int? MaxLevel { get; init; }
+            public int? StartFameRequirement { get; init; }
+            public int EndMesoRequirement { get; init; }
             public IReadOnlyList<int> AllowedJobs { get; init; } = Array.Empty<int>();
             public IReadOnlyList<QuestStateRequirement> StartQuestRequirements { get; init; } = Array.Empty<QuestStateRequirement>();
+            public IReadOnlyList<QuestTraitRequirement> StartTraitRequirements { get; init; } = Array.Empty<QuestTraitRequirement>();
             public IReadOnlyList<QuestItemRequirement> StartItemRequirements { get; init; } = Array.Empty<QuestItemRequirement>();
             public IReadOnlyList<QuestStateRequirement> EndQuestRequirements { get; init; } = Array.Empty<QuestStateRequirement>();
             public IReadOnlyList<QuestMobRequirement> EndMobRequirements { get; init; } = Array.Empty<QuestMobRequirement>();
             public IReadOnlyList<QuestItemRequirement> EndItemRequirements { get; init; } = Array.Empty<QuestItemRequirement>();
             public IReadOnlyList<NpcInteractionPage> StartSayPages { get; init; } = Array.Empty<NpcInteractionPage>();
             public IReadOnlyList<NpcInteractionPage> EndSayPages { get; init; } = Array.Empty<NpcInteractionPage>();
+            public IReadOnlyDictionary<string, IReadOnlyList<NpcInteractionPage>> StartStopPages { get; init; } =
+                new Dictionary<string, IReadOnlyList<NpcInteractionPage>>(StringComparer.OrdinalIgnoreCase);
+            public IReadOnlyDictionary<string, IReadOnlyList<NpcInteractionPage>> EndStopPages { get; init; } =
+                new Dictionary<string, IReadOnlyList<NpcInteractionPage>>(StringComparer.OrdinalIgnoreCase);
+            public IReadOnlyList<NpcInteractionPage> StartLostPages { get; init; } = Array.Empty<NpcInteractionPage>();
+            public IReadOnlyList<NpcInteractionPage> EndLostPages { get; init; } = Array.Empty<NpcInteractionPage>();
             public QuestActionBundle StartActions { get; init; } = new();
             public QuestActionBundle EndActions { get; init; } = new();
         }
@@ -281,7 +313,7 @@ namespace HaCreator.MapSimulator.Interaction
                 _ => string.Empty
             };
 
-            string rewardText = NpcDialogueTextFormatter.Format(definition.RewardSummary);
+            string rewardText = BuildRewardText(definition);
             string hintText = BuildHintText(definition, state, startIssues, completionIssues);
             string npcText = BuildNpcText(definition);
             List<QuestLogLineSnapshot> requirementLines = BuildDetailRequirementLines(definition, state, build);
@@ -425,13 +457,19 @@ namespace HaCreator.MapSimulator.Interaction
                 };
             }
 
+            var messages = new List<string>();
+            if (!TryApplyCompletionMesoCost(definition, messages))
+            {
+                return new QuestWindowActionResult
+                {
+                    QuestId = questId,
+                    Messages = messages
+                };
+            }
+
             QuestProgress progress = GetOrCreateProgress(questId);
             progress.State = QuestStateType.Completed;
-
-            var messages = new List<string>
-            {
-                $"Completed quest: {definition.Name}"
-            };
+            messages.Insert(0, $"Completed quest: {definition.Name}");
             ApplyActions(definition.EndActions, build, messages);
 
             return new QuestWindowActionResult
@@ -675,13 +713,19 @@ namespace HaCreator.MapSimulator.Interaction
                     };
                 }
 
+                var messages = new List<string>();
+                if (!TryApplyCompletionMesoCost(definition, messages))
+                {
+                    return new QuestActionResult
+                    {
+                        Messages = messages
+                    };
+                }
+
                 QuestProgress progress = GetOrCreateProgress(questId);
                 progress.State = QuestStateType.Completed;
-
-                var messages = new List<string>
-                {
-                    $"Completed quest: {definition.Name}"
-                };
+                messages.Insert(0,
+                    $"Completed quest: {definition.Name}");
                 ApplyActions(definition.EndActions, build, messages);
                 return new QuestActionResult
                 {
@@ -773,7 +817,7 @@ namespace HaCreator.MapSimulator.Interaction
                     Kind = isAvailable ? NpcInteractionEntryKind.AvailableQuest : NpcInteractionEntryKind.LockedQuest,
                     Title = definition.Name,
                     Subtitle = isAvailable ? "Available" : "Locked",
-                    Pages = BuildQuestPages(definition, issues, state, false),
+                    Pages = BuildQuestPages(definition, issues, state, false, build),
                     PrimaryActionLabel = "Accept",
                     PrimaryActionEnabled = isAvailable,
                     PrimaryActionKind = NpcInteractionActionKind.QuestPrimary
@@ -792,7 +836,7 @@ namespace HaCreator.MapSimulator.Interaction
                     Kind = isCompletable ? NpcInteractionEntryKind.CompletableQuest : NpcInteractionEntryKind.InProgressQuest,
                     Title = definition.Name,
                     Subtitle = isCompletable ? "Ready to complete" : (matchesEndNpc ? "In progress" : "Started"),
-                    Pages = BuildQuestPages(definition, issues, state, true),
+                    Pages = BuildQuestPages(definition, issues, state, true, build),
                     PrimaryActionLabel = "Complete",
                     PrimaryActionEnabled = isCompletable,
                     PrimaryActionKind = NpcInteractionActionKind.QuestPrimary
@@ -847,7 +891,8 @@ namespace HaCreator.MapSimulator.Interaction
             QuestDefinition definition,
             IReadOnlyList<string> issues,
             QuestStateType state,
-            bool includeProgress)
+            bool includeProgress,
+            CharacterBuild build)
         {
             var pages = new List<NpcInteractionPage>();
 
@@ -860,6 +905,15 @@ namespace HaCreator.MapSimulator.Interaction
             IReadOnlyList<NpcInteractionPage> conversationPages = state == QuestStateType.Not_Started
                 ? definition.StartSayPages
                 : definition.EndSayPages;
+            IReadOnlyList<NpcInteractionPage> issueConversationPages =
+                issues != null && issues.Count > 0
+                    ? SelectIssueConversationPages(definition, state)
+                    : Array.Empty<NpcInteractionPage>();
+            if (issueConversationPages.Count > 0)
+            {
+                conversationPages = issueConversationPages;
+            }
+
             string fallbackStageText = state == QuestStateType.Not_Started
                 ? FirstNonEmpty(definition.StartDescription, definition.DemandSummary)
                 : FirstNonEmpty(definition.ProgressDescription, definition.CompletionDescription, definition.DemandSummary);
@@ -883,12 +937,13 @@ namespace HaCreator.MapSimulator.Interaction
 
             if (includeProgress)
             {
+                AppendMesoRequirement(-definition.EndMesoRequirement, details);
                 AppendMobProgress(definition, details);
                 AppendItemRequirements(definition.EndItemRequirements, details);
             }
             else
             {
-                AppendRequirementSummary(definition, details);
+                AppendRequirementSummary(definition, details, build);
             }
 
             if (issues != null && issues.Count > 0)
@@ -924,7 +979,69 @@ namespace HaCreator.MapSimulator.Interaction
             }
         }
 
-        private void AppendRequirementSummary(QuestDefinition definition, ICollection<string> details)
+        private IReadOnlyList<NpcInteractionPage> SelectIssueConversationPages(QuestDefinition definition, QuestStateType state)
+        {
+            IReadOnlyDictionary<string, IReadOnlyList<NpcInteractionPage>> stopPages = state == QuestStateType.Not_Started
+                ? definition.StartStopPages
+                : definition.EndStopPages;
+            IReadOnlyList<NpcInteractionPage> lostPages = state == QuestStateType.Not_Started
+                ? definition.StartLostPages
+                : definition.EndLostPages;
+
+            IReadOnlyList<QuestItemRequirement> itemRequirements = state == QuestStateType.Not_Started
+                ? definition.StartItemRequirements
+                : definition.EndItemRequirements;
+            IReadOnlyList<QuestStateRequirement> questRequirements = state == QuestStateType.Not_Started
+                ? definition.StartQuestRequirements
+                : definition.EndQuestRequirements;
+
+            if (state == QuestStateType.Started &&
+                HasMissingItems(itemRequirements) &&
+                AreAllRequiredItemsMissing(itemRequirements) &&
+                lostPages.Count > 0)
+            {
+                return lostPages;
+            }
+
+            if (HasMissingItems(itemRequirements) &&
+                TryGetStopPages(stopPages, "item", out IReadOnlyList<NpcInteractionPage> itemPages))
+            {
+                return itemPages;
+            }
+
+            if (state == QuestStateType.Started && HasMissingMobs(definition))
+            {
+                if (TryGetStopPages(stopPages, "mob", out IReadOnlyList<NpcInteractionPage> mobPages))
+                {
+                    return mobPages;
+                }
+
+                if (TryGetStopPages(stopPages, "monster", out IReadOnlyList<NpcInteractionPage> monsterPages))
+                {
+                    return monsterPages;
+                }
+            }
+
+            if (HasUnmetQuestRequirements(questRequirements) &&
+                TryGetStopPages(stopPages, "quest", out IReadOnlyList<NpcInteractionPage> questPages))
+            {
+                return questPages;
+            }
+
+            if (TryGetStopPages(stopPages, "default", out IReadOnlyList<NpcInteractionPage> defaultPages))
+            {
+                return defaultPages;
+            }
+
+            if (TryGetStopPages(stopPages, "info", out IReadOnlyList<NpcInteractionPage> infoPages))
+            {
+                return infoPages;
+            }
+
+            return Array.Empty<NpcInteractionPage>();
+        }
+
+        private void AppendRequirementSummary(QuestDefinition definition, ICollection<string> details, CharacterBuild build)
         {
             if (definition.MinLevel.HasValue && definition.MaxLevel.HasValue)
             {
@@ -944,6 +1061,17 @@ namespace HaCreator.MapSimulator.Interaction
                 details.Add($"Jobs: {string.Join(", ", definition.AllowedJobs.Select(FormatJobName))}");
             }
 
+            if (definition.StartFameRequirement.HasValue)
+            {
+                int currentFame = build == null
+                    ? 0
+                    : Math.Min(GetCurrentFame(build), definition.StartFameRequirement.Value);
+                details.Add(build == null
+                    ? $"Fame: {definition.StartFameRequirement.Value}+"
+                    : $"Fame: {currentFame}/{definition.StartFameRequirement.Value}");
+            }
+
+            AppendTraitRequirements(definition.StartTraitRequirements, details, build);
             AppendItemRequirements(definition.StartItemRequirements, details);
             AppendMesoRequirement(definition.StartActions.MesoReward, details);
         }
@@ -1015,6 +1143,19 @@ namespace HaCreator.MapSimulator.Interaction
                 });
             }
 
+            if (definition.StartFameRequirement.HasValue)
+            {
+                int currentFame = Math.Min(GetCurrentFame(build), definition.StartFameRequirement.Value);
+                lines.Add(new QuestLogLineSnapshot
+                {
+                    Label = "Fame",
+                    Text = $"{currentFame}/{definition.StartFameRequirement.Value}",
+                    IsComplete = currentFame >= definition.StartFameRequirement.Value
+                });
+            }
+
+            AppendTraitRequirementLines(definition.StartTraitRequirements, build, lines);
+
             for (int i = 0; i < definition.StartItemRequirements.Count; i++)
             {
                 QuestItemRequirement requirement = definition.StartItemRequirements[i];
@@ -1065,7 +1206,7 @@ namespace HaCreator.MapSimulator.Interaction
                 });
             }
 
-            AppendMesoRequirementLine(definition.EndActions.MesoReward, lines);
+            AppendMesoRequirementLine(-definition.EndMesoRequirement, lines);
 
             for (int i = 0; i < definition.EndMobRequirements.Count; i++)
             {
@@ -1111,6 +1252,17 @@ namespace HaCreator.MapSimulator.Interaction
             if (definition.EndActions.FameReward > 0)
             {
                 lines.Add(new QuestLogLineSnapshot { Label = "Fame", Text = $"+{definition.EndActions.FameReward}", IsComplete = true });
+            }
+
+            for (int i = 0; i < definition.EndActions.TraitRewards.Count; i++)
+            {
+                QuestTraitReward reward = definition.EndActions.TraitRewards[i];
+                lines.Add(new QuestLogLineSnapshot
+                {
+                    Label = "Trait",
+                    Text = $"{FormatTraitName(reward.Trait)} {reward.Amount:+#;-#;0}",
+                    IsComplete = true
+                });
             }
 
             for (int i = 0; i < definition.EndActions.RewardItems.Count; i++)
@@ -1165,6 +1317,12 @@ namespace HaCreator.MapSimulator.Interaction
                 }
             }
 
+            if (definition.StartFameRequirement.HasValue && GetCurrentFame(build) < definition.StartFameRequirement.Value)
+            {
+                issues.Add($"Reach fame {definition.StartFameRequirement.Value}.");
+            }
+
+            AppendTraitIssues(definition.StartTraitRequirements, build, issues);
             AppendQuestStateIssues(definition.StartQuestRequirements, issues);
             AppendItemIssues(definition.StartItemRequirements, issues);
             AppendMesoIssues(definition.StartActions.MesoReward, issues, "start");
@@ -1198,7 +1356,7 @@ namespace HaCreator.MapSimulator.Interaction
                 }
             }
 
-            AppendMesoIssues(definition.EndActions.MesoReward, issues, "complete");
+            AppendMesoIssues(-definition.EndMesoRequirement, issues, "complete");
 
             if (build != null && definition.MaxLevel.HasValue && build.Level > definition.MaxLevel.Value)
             {
@@ -1239,6 +1397,147 @@ namespace HaCreator.MapSimulator.Interaction
 
                 issues.Add($"Collect {GetItemName(requirement.ItemId)} x{requirement.RequiredCount - currentCount} more.");
             }
+        }
+
+        private static int GetCurrentFame(CharacterBuild build)
+        {
+            return Math.Max(0, build?.Fame ?? 0);
+        }
+
+        private static int GetCurrentTraitValue(CharacterBuild build, QuestTraitType trait)
+        {
+            if (build == null)
+            {
+                return 0;
+            }
+
+            return trait switch
+            {
+                QuestTraitType.Charisma => build.TraitCharisma,
+                QuestTraitType.Insight => build.TraitInsight,
+                QuestTraitType.Will => build.TraitWill,
+                QuestTraitType.Craft => build.TraitCraft,
+                QuestTraitType.Sense => build.TraitSense,
+                QuestTraitType.Charm => build.TraitCharm,
+                _ => 0
+            };
+        }
+
+        private static void SetCurrentTraitValue(CharacterBuild build, QuestTraitType trait, int value)
+        {
+            if (build == null)
+            {
+                return;
+            }
+
+            switch (trait)
+            {
+                case QuestTraitType.Charisma:
+                    build.TraitCharisma = value;
+                    break;
+                case QuestTraitType.Insight:
+                    build.TraitInsight = value;
+                    break;
+                case QuestTraitType.Will:
+                    build.TraitWill = value;
+                    break;
+                case QuestTraitType.Craft:
+                    build.TraitCraft = value;
+                    break;
+                case QuestTraitType.Sense:
+                    build.TraitSense = value;
+                    break;
+                case QuestTraitType.Charm:
+                    build.TraitCharm = value;
+                    break;
+            }
+        }
+
+        private static string FormatTraitName(QuestTraitType trait)
+        {
+            return trait switch
+            {
+                QuestTraitType.Charisma => "Charisma",
+                QuestTraitType.Insight => "Insight",
+                QuestTraitType.Will => "Will",
+                QuestTraitType.Craft => "Craft",
+                QuestTraitType.Sense => "Sense",
+                QuestTraitType.Charm => "Charm",
+                _ => trait.ToString()
+            };
+        }
+
+        private static void AppendTraitRequirements(
+            IReadOnlyList<QuestTraitRequirement> requirements,
+            ICollection<string> details,
+            CharacterBuild build)
+        {
+            for (int i = 0; i < requirements.Count; i++)
+            {
+                QuestTraitRequirement requirement = requirements[i];
+                if (build == null)
+                {
+                    details.Add($"{FormatTraitName(requirement.Trait)}: {requirement.MinimumValue}+");
+                    continue;
+                }
+
+                int currentValue = Math.Min(GetCurrentTraitValue(build, requirement.Trait), requirement.MinimumValue);
+                details.Add($"{FormatTraitName(requirement.Trait)}: {currentValue}/{requirement.MinimumValue}");
+            }
+        }
+
+        private static void AppendTraitRequirementLines(
+            IReadOnlyList<QuestTraitRequirement> requirements,
+            CharacterBuild build,
+            ICollection<QuestLogLineSnapshot> lines)
+        {
+            for (int i = 0; i < requirements.Count; i++)
+            {
+                QuestTraitRequirement requirement = requirements[i];
+                int currentValue = Math.Min(GetCurrentTraitValue(build, requirement.Trait), requirement.MinimumValue);
+                lines.Add(new QuestLogLineSnapshot
+                {
+                    Label = "Trait",
+                    Text = $"{FormatTraitName(requirement.Trait)} {currentValue}/{requirement.MinimumValue}",
+                    IsComplete = currentValue >= requirement.MinimumValue
+                });
+            }
+        }
+
+        private static void AppendTraitIssues(
+            IReadOnlyList<QuestTraitRequirement> requirements,
+            CharacterBuild build,
+            ICollection<string> issues)
+        {
+            for (int i = 0; i < requirements.Count; i++)
+            {
+                QuestTraitRequirement requirement = requirements[i];
+                int currentValue = GetCurrentTraitValue(build, requirement.Trait);
+                if (currentValue >= requirement.MinimumValue)
+                {
+                    continue;
+                }
+
+                issues.Add($"Raise {FormatTraitName(requirement.Trait)} to {requirement.MinimumValue}.");
+            }
+        }
+
+        private static void ApplyTraitReward(CharacterBuild build, QuestTraitReward reward, ICollection<string> messages)
+        {
+            if (reward.Amount == 0)
+            {
+                return;
+            }
+
+            if (build != null)
+            {
+                int updatedValue = Math.Max(0, GetCurrentTraitValue(build, reward.Trait) + reward.Amount);
+                SetCurrentTraitValue(build, reward.Trait, updatedValue);
+                messages.Add($"{FormatTraitName(reward.Trait)} {reward.Amount:+#;-#;0}");
+                return;
+            }
+
+            messages.Add($"{FormatTraitName(reward.Trait)} {reward.Amount:+#;-#;0} (trait runtime not tracked)");
         }
 
         private void ApplyActions(QuestActionBundle actions, CharacterBuild build, ICollection<string> messages)
@@ -1283,6 +1582,11 @@ namespace HaCreator.MapSimulator.Interaction
                 {
                     messages.Add($"Fame {actions.FameReward:+#;-#;0} (fame runtime not tracked)");
                 }
+            }
+
+            for (int i = 0; i < actions.TraitRewards.Count; i++)
+            {
+                ApplyTraitReward(build, actions.TraitRewards[i], messages);
             }
 
             for (int i = 0; i < actions.RewardItems.Count; i++)
@@ -1415,6 +1719,12 @@ namespace HaCreator.MapSimulator.Interaction
                 progress += MathHelper.Clamp((float)currentCount / requirement.RequiredCount, 0f, 1f);
             }
 
+            if (definition.EndMesoRequirement > 0)
+            {
+                totalSegments++;
+                progress += MathHelper.Clamp((float)Math.Min(GetCurrentMesoCount(), definition.EndMesoRequirement) / definition.EndMesoRequirement, 0f, 1f);
+            }
+
             return totalSegments == 0
                 ? 0f
                 : MathHelper.Clamp(progress / totalSegments, 0f, 1f);
@@ -1510,6 +1820,8 @@ namespace HaCreator.MapSimulator.Interaction
             WzSubProperty endCheck = checkProp?["1"] as WzSubProperty;
             WzSubProperty startAct = actProp?["0"] as WzSubProperty;
             WzSubProperty endAct = actProp?["1"] as WzSubProperty;
+            WzImageProperty startSay = sayProp?["0"];
+            WzImageProperty endSay = sayProp?["1"];
 
             return new QuestDefinition
             {
@@ -1525,14 +1837,21 @@ namespace HaCreator.MapSimulator.Interaction
                 EndNpcId = ParseNpcId(endCheck?["npc"]),
                 MinLevel = ParseInt(startCheck?["lvmin"]),
                 MaxLevel = ParseInt(startCheck?["lvmax"]) ?? ParseInt(endCheck?["lvmax"]),
+                StartFameRequirement = ParsePositiveInt(startCheck?["pop"]),
+                EndMesoRequirement = ParsePositiveInt(endCheck?["endmeso"]).GetValueOrDefault(),
                 AllowedJobs = ParseJobIds(startCheck?["job"]),
                 StartQuestRequirements = ParseQuestRequirements(startCheck?["quest"]),
+                StartTraitRequirements = ParseTraitRequirements(startCheck),
                 StartItemRequirements = ParseItemRequirements(startCheck?["item"]),
                 EndQuestRequirements = ParseQuestRequirements(endCheck?["quest"]),
                 EndMobRequirements = ParseMobRequirements(endCheck?["mob"]),
                 EndItemRequirements = ParseItemRequirements(endCheck?["item"]),
-                StartSayPages = ParseConversationPages(sayProp?["0"]),
-                EndSayPages = ParseConversationPages(sayProp?["1"]),
+                StartSayPages = ParseConversationPages(startSay),
+                EndSayPages = ParseConversationPages(endSay),
+                StartStopPages = ParseConversationStopPages(startSay),
+                EndStopPages = ParseConversationStopPages(endSay),
+                StartLostPages = ParseConversationLostPages(startSay),
+                EndLostPages = ParseConversationLostPages(endSay),
                 StartActions = ParseActions(startAct),
                 EndActions = ParseActions(endAct)
             };
@@ -1558,6 +1877,12 @@ namespace HaCreator.MapSimulator.Interaction
                 WzLongProperty longProp => checked((int)longProp.Value),
                 _ => null
             };
+        }
+
+        private static int? ParsePositiveInt(WzImageProperty property)
+        {
+            int? value = ParseInt(property);
+            return value.GetValueOrDefault() > 0 ? value : null;
         }
 
         private static IReadOnlyList<int> ParseJobIds(WzImageProperty property)
@@ -1670,6 +1995,38 @@ namespace HaCreator.MapSimulator.Interaction
             return requirements;
         }
 
+        private static IReadOnlyList<QuestTraitRequirement> ParseTraitRequirements(WzSubProperty property)
+        {
+            if (property == null)
+            {
+                return Array.Empty<QuestTraitRequirement>();
+            }
+
+            var requirements = new List<QuestTraitRequirement>();
+            AppendTraitRequirement(property["charismaMin"], QuestTraitType.Charisma, requirements);
+            AppendTraitRequirement(property["insightMin"], QuestTraitType.Insight, requirements);
+            AppendTraitRequirement(property["willMin"], QuestTraitType.Will, requirements);
+            AppendTraitRequirement(property["craftMin"], QuestTraitType.Craft, requirements);
+            AppendTraitRequirement(property["senseMin"], QuestTraitType.Sense, requirements);
+            AppendTraitRequirement(property["charmMin"], QuestTraitType.Charm, requirements);
+            return requirements;
+        }
+
+        private static void AppendTraitRequirement(WzImageProperty property, QuestTraitType trait, ICollection<QuestTraitRequirement> requirements)
+        {
+            int minimumValue = ParsePositiveInt(property).GetValueOrDefault();
+            if (minimumValue <= 0)
+            {
+                return;
+            }
+
+            requirements.Add(new QuestTraitRequirement
+            {
+                Trait = trait,
+                MinimumValue = minimumValue
+            });
+        }
+
         private static QuestActionBundle ParseActions(WzSubProperty property)
         {
             var actions = new QuestActionBundle();
@@ -1737,6 +2094,24 @@ namespace HaCreator.MapSimulator.Interaction
                             }
                         }
                         break;
+                    case "charismaEXP":
+                        AppendTraitReward(actions, child, QuestTraitType.Charisma);
+                        break;
+                    case "insightEXP":
+                        AppendTraitReward(actions, child, QuestTraitType.Insight);
+                        break;
+                    case "willEXP":
+                        AppendTraitReward(actions, child, QuestTraitType.Will);
+                        break;
+                    case "craftEXP":
+                        AppendTraitReward(actions, child, QuestTraitType.Craft);
+                        break;
+                    case "senseEXP":
+                        AppendTraitReward(actions, child, QuestTraitType.Sense);
+                        break;
+                    case "charmEXP":
+                        AppendTraitReward(actions, child, QuestTraitType.Charm);
+                        break;
                     case "info":
                     case "message":
                         if (child is WzStringProperty stringProp && !string.IsNullOrWhiteSpace(stringProp.Value))
@@ -1748,6 +2123,21 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             return actions;
+        }
+
+        private static void AppendTraitReward(QuestActionBundle actions, WzImageProperty property, QuestTraitType trait)
+        {
+            int amount = ParseInt(property).GetValueOrDefault();
+            if (amount == 0)
+            {
+                return;
+            }
+
+            actions.TraitRewards.Add(new QuestTraitReward
+            {
+                Trait = trait,
+                Amount = amount
+            });
         }
 
         internal static IReadOnlyList<NpcInteractionPage> ParseConversationPages(WzImageProperty property)
@@ -1807,6 +2197,49 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             return pages.Where(page => page != null).ToArray();
+        }
+
+        internal static IReadOnlyDictionary<string, IReadOnlyList<NpcInteractionPage>> ParseConversationStopPages(WzImageProperty property)
+        {
+            var pagesByBranch = new Dictionary<string, IReadOnlyList<NpcInteractionPage>>(StringComparer.OrdinalIgnoreCase);
+            foreach (WzImageProperty container in EnumerateConversationMetadataContainers(property))
+            {
+                if (container?["stop"] is not WzImageProperty stopProperty || stopProperty.WzProperties == null)
+                {
+                    continue;
+                }
+
+                for (int i = 0; i < stopProperty.WzProperties.Count; i++)
+                {
+                    WzImageProperty branchProperty = stopProperty.WzProperties[i];
+                    if (int.TryParse(branchProperty.Name, out _))
+                    {
+                        continue;
+                    }
+
+                    IReadOnlyList<NpcInteractionPage> branchPages = ParseBranchPages(branchProperty);
+                    if (branchPages.Count > 0)
+                    {
+                        pagesByBranch[branchProperty.Name] = branchPages;
+                    }
+                }
+            }
+
+            return pagesByBranch;
+        }
+
+        internal static IReadOnlyList<NpcInteractionPage> ParseConversationLostPages(WzImageProperty property)
+        {
+            foreach (WzImageProperty container in EnumerateConversationMetadataContainers(property))
+            {
+                IReadOnlyList<NpcInteractionPage> lostPages = ParseBranchPages(container?["lost"]);
+                if (lostPages.Count > 0)
+                {
+                    return lostPages;
+                }
+            }
+
+            return Array.Empty<NpcInteractionPage>();
         }
 
         private static void AppendConversationPage(WzImageProperty property, ICollection<NpcInteractionPage> pages)
@@ -1893,6 +2326,30 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             return null;
+        }
+
+        private static IEnumerable<WzImageProperty> EnumerateConversationMetadataContainers(WzImageProperty property)
+        {
+            if (property == null)
+            {
+                yield break;
+            }
+
+            yield return property;
+
+            if (property.WzProperties == null)
+            {
+                yield break;
+            }
+
+            for (int i = 0; i < property.WzProperties.Count; i++)
+            {
+                WzImageProperty child = property.WzProperties[i];
+                if (int.TryParse(child.Name, out int pageIndex) && pageIndex < 200)
+                {
+                    yield return child;
+                }
+            }
         }
 
         private static void AppendConversationChoices(WzImageProperty property, ICollection<NpcInteractionChoice> choices)
@@ -2009,6 +2466,97 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             return pages;
+        }
+
+        private static bool TryGetStopPages(
+            IReadOnlyDictionary<string, IReadOnlyList<NpcInteractionPage>> stopPages,
+            string key,
+            out IReadOnlyList<NpcInteractionPage> pages)
+        {
+            if (stopPages != null && stopPages.TryGetValue(key, out pages) && pages?.Count > 0)
+            {
+                return true;
+            }
+
+            pages = Array.Empty<NpcInteractionPage>();
+            return false;
+        }
+
+        private bool HasMissingItems(IReadOnlyList<QuestItemRequirement> requirements)
+        {
+            if (requirements == null)
+            {
+                return false;
+            }
+
+            for (int i = 0; i < requirements.Count; i++)
+            {
+                QuestItemRequirement requirement = requirements[i];
+                if (GetTrackedItemCount(requirement.ItemId) < requirement.RequiredCount)
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private bool AreAllRequiredItemsMissing(IReadOnlyList<QuestItemRequirement> requirements)
+        {
+            if (requirements == null || requirements.Count == 0)
+            {
+                return false;
+            }
+
+            for (int i = 0; i < requirements.Count; i++)
+            {
+                if (GetTrackedItemCount(requirements[i].ItemId) > 0)
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        private bool HasMissingMobs(QuestDefinition definition)
+        {
+            if (definition?.EndMobRequirements == null || definition.EndMobRequirements.Count == 0)
+            {
+                return false;
+            }
+
+            QuestProgress progress = GetOrCreateProgress(definition.QuestId);
+            for (int i = 0; i < definition.EndMobRequirements.Count; i++)
+            {
+                QuestMobRequirement requirement = definition.EndMobRequirements[i];
+                progress.MobKills.TryGetValue(requirement.MobId, out int currentCount);
+                if (currentCount < requirement.RequiredCount)
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private bool HasUnmetQuestRequirements(IReadOnlyList<QuestStateRequirement> requirements)
+        {
+            if (requirements == null)
+            {
+                return false;
+            }
+
+            for (int i = 0; i < requirements.Count; i++)
+            {
+                QuestStateRequirement requirement = requirements[i];
+                if (GetQuestState(requirement.QuestId) != requirement.State)
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         private static string FirstNonEmpty(params string[] values)
@@ -2243,12 +2791,18 @@ namespace HaCreator.MapSimulator.Interaction
                 currentProgress += Math.Min(count, requirement.RequiredCount);
                 totalProgress += requirement.RequiredCount;
             }
+
+            if (definition.EndMesoRequirement > 0)
+            {
+                currentProgress += (int)Math.Min(GetCurrentMesoCount(), definition.EndMesoRequirement);
+                totalProgress += definition.EndMesoRequirement;
+            }
         }
 
         private string BuildStartRequirementText(QuestDefinition definition, IReadOnlyList<string> issues)
         {
             var lines = new List<string>();
-            AppendRequirementSummary(definition, lines);
+            AppendRequirementSummary(definition, lines, null);
 
             if (!string.IsNullOrWhiteSpace(definition.DemandSummary))
             {
@@ -2269,7 +2823,7 @@ namespace HaCreator.MapSimulator.Interaction
             var lines = new List<string>();
             QuestProgress progress = GetOrCreateProgress(definition.QuestId);
 
-            AppendMesoRequirement(definition.EndActions.MesoReward, lines);
+            AppendMesoRequirement(-definition.EndMesoRequirement, lines);
 
             for (int i = 0; i < definition.EndMobRequirements.Count; i++)
             {
@@ -2346,6 +2900,25 @@ namespace HaCreator.MapSimulator.Interaction
             issues.Add($"Need {missing.ToString("N0", CultureInfo.InvariantCulture)} more meso to {actionLabel} this quest.");
         }
 
+        private bool TryApplyCompletionMesoCost(QuestDefinition definition, ICollection<string> messages)
+        {
+            if (definition == null || definition.EndMesoRequirement <= 0)
+            {
+                return true;
+            }
+
+            long mesoCost = definition.EndMesoRequirement;
+            bool consumed = _consumeMeso?.Invoke(mesoCost) == true;
+            if (!consumed)
+            {
+                messages.Add($"Need {mesoCost.ToString("N0", CultureInfo.InvariantCulture)} meso to complete this quest.");
+                return false;
+            }
+
+            messages.Add($"Meso -{mesoCost.ToString("N0", CultureInfo.InvariantCulture)}");
+            return true;
+        }
+
         private long GetCurrentMesoCount()
         {
             return Math.Max(0, _mesoCountProvider?.Invoke() ?? 0L);
@@ -2372,6 +2945,12 @@ namespace HaCreator.MapSimulator.Interaction
             if (definition.EndActions.FameReward != 0)
             {
                 rewards.Add($"Fame {definition.EndActions.FameReward:+#;-#;0}");
+            }
+
+            for (int i = 0; i < definition.EndActions.TraitRewards.Count; i++)
+            {
+                QuestTraitReward reward = definition.EndActions.TraitRewards[i];
+                rewards.Add($"{FormatTraitName(reward.Trait)} {reward.Amount:+#;-#;0}");
             }
 
             for (int i = 0; i < definition.EndActions.RewardItems.Count; i++)

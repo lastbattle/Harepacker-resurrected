@@ -7,23 +7,41 @@ namespace HaCreator.MapSimulator.Interaction
     internal sealed class MessengerRuntime
     {
         private const int MaxParticipants = 3;
+        private const int MaxClaimLogEntries = 6;
+        private const int PresencePulseIntervalMs = 9000;
+        private const int InviteResolutionDelayMs = 1800;
+        private const int BubbleLifetimeMs = 4200;
 
-        private static readonly MessengerSeedContact[] SeedContacts =
+        private static readonly MessengerContactDefinition[] ContactDefinitions =
         {
-            new("Rondo", "Lith Harbor", 4, "Ready to board."),
-            new("Rin", "Sleepywood", 7, "Grinding Jr. Boogies."),
-            new("Targa", "Free Market", 1, "Selling scrolls."),
-            new("Aria", "Orbis", 12, "Waiting at the station."),
-            new("Pia", "Henesys", 2, "Checking the market.")
+            new("Rondo", "Lith Harbor", 4, "Ready to board.", "Boarding soon. Meet me at the dock."),
+            new("Rin", "Sleepywood", 7, "Grinding Jr. Boogies.", "I'll keep the spot warm."),
+            new("Targa", "Free Market", 1, "Selling scrolls.", "Catch me before the room fills."),
+            new("Aria", "Orbis", 12, "Waiting at the station.", "The next ship is almost here."),
+            new("Pia", "Henesys", 2, "Checking the market.", "I'm still looking through stores.")
         };
 
-        private readonly List<MessengerParticipantSnapshot> _participants = new(MaxParticipants);
-        private readonly List<MessengerLogEntrySnapshot> _logEntries = new();
+        private readonly List<MessengerParticipantState> _participants = new(MaxParticipants);
+        private readonly List<MessengerLogEntryState> _logEntries = new();
+        private readonly Dictionary<string, MessengerContactState> _contacts = new(StringComparer.OrdinalIgnoreCase);
         private int _selectedSlot;
-        private int _nextSeedContactIndex;
+        private int _lastPulseTick = int.MinValue;
+        private int _nextPulseContactIndex;
+        private int _nextJoinContactIndex;
+        private int _nextInviteId = 1;
+        private int _nextClaimId = 1;
+        private MessengerWindowState _windowState;
+        private PendingMessengerInviteState _pendingInvite;
+        private string _lastActionSummary = "Messenger opened.";
+        private string _lastPacketSummary = "Messenger packet trace idle.";
 
         public MessengerRuntime()
         {
+            foreach (MessengerContactDefinition definition in ContactDefinitions)
+            {
+                _contacts[definition.Name] = new MessengerContactState(definition);
+            }
+
             UpdateLocalContext("Player", "Maple Island", 1);
         }
 
@@ -35,7 +53,7 @@ namespace HaCreator.MapSimulator.Interaction
 
             if (_participants.Count == 0)
             {
-                _participants.Add(new MessengerParticipantSnapshot
+                _participants.Add(new MessengerParticipantState
                 {
                     Name = resolvedName,
                     LocationSummary = resolvedLocation,
@@ -45,63 +63,99 @@ namespace HaCreator.MapSimulator.Interaction
                     IsOnline = true
                 });
                 AddSystemLog("Messenger opened.");
+                _lastActionSummary = "Messenger room created for the local player.";
                 return;
             }
 
-            MessengerParticipantSnapshot localPlayer = _participants[0];
+            MessengerParticipantState localPlayer = _participants[0];
             bool nameChanged = !string.Equals(localPlayer.Name, resolvedName, StringComparison.Ordinal);
             bool locationChanged = !string.Equals(localPlayer.LocationSummary, resolvedLocation, StringComparison.Ordinal)
                 || localPlayer.Channel != resolvedChannel;
 
-            _participants[0] = new MessengerParticipantSnapshot
+            _participants[0] = localPlayer with
             {
                 Name = resolvedName,
                 LocationSummary = resolvedLocation,
                 Channel = resolvedChannel,
-                StatusText = locationChanged ? "Updated current field." : localPlayer.StatusText,
-                IsLocalPlayer = true,
-                IsOnline = true
+                StatusText = locationChanged ? "Updated current field." : localPlayer.StatusText
             };
 
             if (nameChanged)
             {
                 AddSystemLog($"Messenger owner changed to {resolvedName}.");
+                _lastActionSummary = $"Messenger owner changed to {resolvedName}.";
             }
             else if (locationChanged)
             {
                 AddSystemLog($"{resolvedName} is now in {resolvedLocation}.");
+                _lastActionSummary = $"{resolvedName} moved to {resolvedLocation}.";
             }
         }
 
-        public MessengerSnapshot BuildSnapshot()
+        public MessengerSnapshot BuildSnapshot(int tickCount)
         {
+            Tick(tickCount);
+
             var participants = new MessengerParticipantSnapshot[MaxParticipants];
             for (int i = 0; i < participants.Length; i++)
             {
-                participants[i] = i < _participants.Count ? _participants[i] : null;
+                participants[i] = i < _participants.Count
+                    ? _participants[i].ToSnapshot()
+                    : null;
             }
 
-            MessengerParticipantSnapshot selectedParticipant =
+            MessengerParticipantState selectedParticipant =
                 _selectedSlot >= 0 && _selectedSlot < _participants.Count ? _participants[_selectedSlot] : null;
 
             bool roomHasEmptySlot = _participants.Count < MaxParticipants;
-            bool hasUninvitedSeedContact = SeedContacts.Any(contact => !ContainsParticipant(contact.Name));
+            bool hasInvitableContact = _contacts.Values.Any(contact => contact.CanInvite && !ContainsParticipant(contact.Name));
+            bool canReportChat = _logEntries.Any(entry => entry.CanClaim && !entry.IsClaimed);
 
             return new MessengerSnapshot
             {
                 Participants = participants,
-                LogEntries = _logEntries.ToArray(),
+                LogEntries = _logEntries.Select(entry => entry.ToSnapshot()).ToArray(),
                 SelectedSlot = _selectedSlot,
                 SelectedParticipantName = selectedParticipant?.Name ?? string.Empty,
-                CanInvite = roomHasEmptySlot && hasUninvitedSeedContact,
+                SelectedParticipantOnline = selectedParticipant?.IsOnline == true,
+                WindowState = _windowState,
+                CanInvite = roomHasEmptySlot && hasInvitableContact && _pendingInvite == null,
                 CanWhisper = selectedParticipant != null && !selectedParticipant.IsLocalPlayer,
-                CanLeave = _participants.Count > 1
+                CanLeave = _participants.Count > 1,
+                CanClaim = canReportChat,
+                PendingInviteSummary = BuildPendingInviteSummary(),
+                LastActionSummary = _lastActionSummary,
+                LastPacketSummary = _lastPacketSummary
             };
         }
 
         public void SelectSlot(int slotIndex)
         {
             _selectedSlot = Math.Clamp(slotIndex, 0, MaxParticipants - 1);
+        }
+
+        public string CycleState(bool forward)
+        {
+            int stateCount = Enum.GetValues(typeof(MessengerWindowState)).Length;
+            int nextState = ((int)_windowState + (forward ? 1 : -1)) % stateCount;
+            if (nextState < 0)
+            {
+                nextState += stateCount;
+            }
+
+            return SetWindowState((MessengerWindowState)nextState);
+        }
+
+        public string SetWindowState(MessengerWindowState state)
+        {
+            if (_windowState == state)
+            {
+                return $"Messenger already shows the {state.ToDisplayName()} layout.";
+            }
+
+            _windowState = state;
+            _lastActionSummary = $"Messenger switched to the {state.ToDisplayName()} layout.";
+            return _lastActionSummary;
         }
 
         public string InviteNextContact()
@@ -111,28 +165,109 @@ namespace HaCreator.MapSimulator.Interaction
                 return "Messenger room is already full.";
             }
 
-            MessengerSeedContact contact = FindNextInvitableContact();
+            if (_pendingInvite != null)
+            {
+                return $"Waiting for {_pendingInvite.ContactName} to answer the Messenger invite.";
+            }
+
+            MessengerContactState contact = FindNextInvitableContact();
             if (contact == null)
             {
                 return "No additional Messenger contacts are available in the simulator roster.";
             }
 
-            var participant = new MessengerParticipantSnapshot
+            return QueueInvite(contact);
+        }
+
+        public string InviteContact(string contactName)
+        {
+            string resolvedName = NormalizeParticipantName(contactName);
+            if (resolvedName == null)
+            {
+                return "Select a Messenger contact before sending an invite.";
+            }
+
+            if (_participants.Count >= MaxParticipants)
+            {
+                return "Messenger room is already full.";
+            }
+
+            if (_pendingInvite != null)
+            {
+                return $"Waiting for {_pendingInvite.ContactName} to answer the current Messenger invite.";
+            }
+
+            if (!_contacts.TryGetValue(resolvedName, out MessengerContactState contact))
+            {
+                return $"No simulator Messenger contact named {resolvedName} is available.";
+            }
+
+            if (!contact.CanInvite)
+            {
+                return contact.IsOnline
+                    ? $"{contact.Name} is already in the Messenger room."
+                    : $"{contact.Name} is offline and cannot receive a Messenger invite.";
+            }
+
+            return QueueInvite(contact);
+        }
+
+        public string ResolvePendingInvite(bool accepted, bool packetDriven)
+        {
+            if (_pendingInvite == null)
+            {
+                return "No Messenger invite is waiting for a response.";
+            }
+
+            PendingMessengerInviteState pendingInvite = _pendingInvite;
+            _pendingInvite = null;
+
+            if (!_contacts.TryGetValue(pendingInvite.ContactName, out MessengerContactState contact))
+            {
+                return $"Invite target {pendingInvite.ContactName} is no longer available.";
+            }
+
+            if (!accepted)
+            {
+                _lastActionSummary = packetDriven
+                    ? $"{contact.Name} rejected the packet-authored Messenger invite."
+                    : $"{contact.Name} rejected the Messenger invite.";
+                AddSystemLog(_lastActionSummary);
+                RecordPacketSummary(packetDriven
+                    ? $"Applied simulated Messenger invite-result packet: {contact.Name} rejected."
+                    : $"Messenger invite to {contact.Name} was rejected.");
+                return _lastActionSummary;
+            }
+
+            if (_participants.Count >= MaxParticipants)
+            {
+                _lastActionSummary = $"{contact.Name} accepted, but the Messenger room has no empty slot.";
+                AddSystemLog(_lastActionSummary);
+                return _lastActionSummary;
+            }
+
+            var participant = new MessengerParticipantState
             {
                 Name = contact.Name,
                 LocationSummary = contact.LocationSummary,
                 Channel = contact.Channel,
                 StatusText = contact.StatusText,
                 IsLocalPlayer = false,
-                IsOnline = true
+                IsOnline = contact.IsOnline
             };
 
             _participants.Add(participant);
             _selectedSlot = _participants.Count - 1;
-
-            AddSystemLog($"{contact.Name} joined the Messenger.");
-            AddParticipantLog(contact.Name, contact.StatusText);
-            return $"{contact.Name} joined the Messenger.";
+            _lastActionSummary = packetDriven
+                ? $"{contact.Name} accepted the packet-authored Messenger invite."
+                : $"{contact.Name} joined the Messenger.";
+            AddSystemLog(_lastActionSummary);
+            AddParticipantLog(contact.Name, contact.JoinGreeting);
+            SetParticipantBubble(contact.Name, contact.JoinGreeting, Environment.TickCount);
+            RecordPacketSummary(packetDriven
+                ? $"Applied simulated Messenger invite-result packet: {contact.Name} accepted."
+                : $"{contact.Name} accepted a local Messenger invite.");
+            return _lastActionSummary;
         }
 
         public string WhisperSelected()
@@ -147,10 +282,15 @@ namespace HaCreator.MapSimulator.Interaction
                 return "Select a Messenger member before whispering.";
             }
 
-            MessengerParticipantSnapshot participant = _participants[_selectedSlot];
+            MessengerParticipantState participant = _participants[_selectedSlot];
             if (participant.IsLocalPlayer)
             {
                 return "Select another Messenger member before whispering.";
+            }
+
+            if (!participant.IsOnline)
+            {
+                return $"{participant.Name} is offline and cannot receive whispers.";
             }
 
             string resolvedMessage = NormalizeMessage(message);
@@ -161,8 +301,56 @@ namespace HaCreator.MapSimulator.Interaction
 
             string author = _participants.Count > 0 ? _participants[0].Name : "Player";
             AddParticipantLog(author, resolvedMessage, isWhisper: true, targetName: participant.Name);
-            AddParticipantLog(participant.Name, BuildAutoReply(participant, resolvedMessage, whisper: true), isWhisper: true, targetName: author);
+            string autoReply = BuildAutoReply(participant, resolvedMessage, whisper: true);
+            AddParticipantLog(participant.Name, autoReply, isWhisper: true, targetName: author);
+            SetParticipantBubble(author, resolvedMessage, Environment.TickCount);
+            SetParticipantBubble(participant.Name, autoReply, Environment.TickCount);
+            _lastActionSummary = $"Whisper sent to {participant.Name}.";
+            RecordPacketSummary($"Simulated Messenger whisper dispatch {author} -> {participant.Name}.");
             return $"[Whisper] {author} -> {participant.Name}: {resolvedMessage}";
+        }
+
+        public string ReceiveRemoteWhisper(string author, string message)
+        {
+            string resolvedAuthor = NormalizeParticipantName(author);
+            string resolvedMessage = NormalizeMessage(message);
+            if (resolvedAuthor == null || resolvedMessage == null)
+            {
+                return "Messenger remote whisper needs a sender and message.";
+            }
+
+            int participantIndex = FindParticipantIndex(resolvedAuthor);
+            if (participantIndex < 0)
+            {
+                return $"{resolvedAuthor} is not in the Messenger room.";
+            }
+
+            MessengerParticipantState participant = _participants[participantIndex];
+            if (!participant.IsOnline)
+            {
+                return $"{participant.Name} is offline and cannot whisper.";
+            }
+
+            string localPlayerName = _participants.Count > 0 ? _participants[0].Name : "Player";
+            AddParticipantLog(participant.Name, resolvedMessage, isWhisper: true, targetName: localPlayerName);
+            SetParticipantBubble(participant.Name, resolvedMessage, Environment.TickCount);
+            _selectedSlot = participantIndex;
+            _lastActionSummary = $"Received a Messenger whisper from {participant.Name}.";
+            RecordPacketSummary($"Applied simulated Messenger whisper packet from {participant.Name}.");
+            return _lastActionSummary;
+        }
+
+        public string ProcessChatInput(string message)
+        {
+            string resolvedMessage = NormalizeMessage(message);
+            if (resolvedMessage == null)
+            {
+                return "Type a Messenger message before sending.";
+            }
+
+            return resolvedMessage.StartsWith("/", StringComparison.Ordinal)
+                ? HandleSlashCommand(resolvedMessage)
+                : SendMessage(resolvedMessage);
         }
 
         public string SendMessage(string message)
@@ -175,14 +363,48 @@ namespace HaCreator.MapSimulator.Interaction
 
             string author = _participants.Count > 0 ? _participants[0].Name : "Player";
             AddParticipantLog(author, resolvedMessage);
+            SetParticipantBubble(author, resolvedMessage, Environment.TickCount);
 
-            MessengerParticipantSnapshot responder = GetAutoReplyParticipant();
+            MessengerParticipantState responder = GetAutoReplyParticipant();
             if (responder != null)
             {
-                AddParticipantLog(responder.Name, BuildAutoReply(responder, resolvedMessage, whisper: false));
+                string autoReply = BuildAutoReply(responder, resolvedMessage, whisper: false);
+                AddParticipantLog(responder.Name, autoReply);
+                SetParticipantBubble(responder.Name, autoReply, Environment.TickCount);
             }
 
+            _lastActionSummary = "Messenger room chat sent.";
+            RecordPacketSummary($"Sent Messenger packet 0x8F/6 room chat from {author}.");
             return $"{author}: {resolvedMessage}";
+        }
+
+        public string ReceiveRoomMessage(string author, string message)
+        {
+            string resolvedAuthor = NormalizeParticipantName(author);
+            string resolvedMessage = NormalizeMessage(message);
+            if (resolvedAuthor == null || resolvedMessage == null)
+            {
+                return "Messenger remote room chat needs a sender and message.";
+            }
+
+            int participantIndex = FindParticipantIndex(resolvedAuthor);
+            if (participantIndex < 0)
+            {
+                return $"{resolvedAuthor} is not in the Messenger room.";
+            }
+
+            MessengerParticipantState participant = _participants[participantIndex];
+            if (!participant.IsOnline)
+            {
+                return $"{participant.Name} is offline and cannot chat right now.";
+            }
+
+            AddParticipantLog(participant.Name, resolvedMessage);
+            SetParticipantBubble(participant.Name, resolvedMessage, Environment.TickCount);
+            _selectedSlot = participantIndex;
+            _lastActionSummary = $"Received a Messenger room message from {participant.Name}.";
+            RecordPacketSummary($"Applied simulated Messenger room-chat packet from {participant.Name}.");
+            return _lastActionSummary;
         }
 
         public string LeaveMessenger()
@@ -192,26 +414,177 @@ namespace HaCreator.MapSimulator.Interaction
                 return "Messenger only has your local simulator profile right now.";
             }
 
-            MessengerParticipantSnapshot localPlayer = _participants[0];
+            MessengerParticipantState localPlayer = _participants[0];
             _participants.Clear();
             _participants.Add(localPlayer);
             _selectedSlot = 0;
+            _pendingInvite = null;
 
+            _lastActionSummary = $"{localPlayer.Name} left the Messenger.";
             AddSystemLog($"{localPlayer.Name} left the Messenger. Simulator room reset to a solo state.");
-            return $"{localPlayer.Name} left the Messenger.";
+            RecordPacketSummary("Simulated Messenger delete or leave lifecycle for the local player.");
+            return _lastActionSummary;
         }
 
-        private MessengerSeedContact FindNextInvitableContact()
+        public string RemoveParticipant(string name, bool rejectedInvite)
         {
-            for (int i = 0; i < SeedContacts.Length; i++)
+            string resolvedName = NormalizeParticipantName(name);
+            if (resolvedName == null)
             {
-                MessengerSeedContact candidate = SeedContacts[(_nextSeedContactIndex + i) % SeedContacts.Length];
-                if (ContainsParticipant(candidate.Name))
+                return rejectedInvite
+                    ? "Messenger reject flow needs a contact name."
+                    : "Messenger leave flow needs a participant name.";
+            }
+
+            if (_pendingInvite != null && string.Equals(_pendingInvite.ContactName, resolvedName, StringComparison.OrdinalIgnoreCase))
+            {
+                return ResolvePendingInvite(accepted: false, packetDriven: rejectedInvite);
+            }
+
+            int participantIndex = FindParticipantIndex(resolvedName);
+            if (participantIndex <= 0)
+            {
+                return rejectedInvite
+                    ? $"{resolvedName} does not have a pending Messenger invite to reject."
+                    : $"{resolvedName} is not a remote Messenger participant.";
+            }
+
+            MessengerParticipantState participant = _participants[participantIndex];
+            _participants.RemoveAt(participantIndex);
+            _selectedSlot = Math.Clamp(_selectedSlot, 0, Math.Max(0, _participants.Count - 1));
+
+            _lastActionSummary = rejectedInvite
+                ? $"{participant.Name} rejected the Messenger room and stayed out."
+                : $"{participant.Name} left the Messenger.";
+            AddSystemLog(_lastActionSummary);
+            RecordPacketSummary(rejectedInvite
+                ? $"Applied simulated Messenger reject packet from {participant.Name}."
+                : $"Applied simulated Messenger leave packet from {participant.Name}.");
+            return _lastActionSummary;
+        }
+
+        public string SetPresence(string contactName, bool isOnline)
+        {
+            string resolvedName = NormalizeParticipantName(contactName);
+            if (resolvedName == null || !_contacts.TryGetValue(resolvedName, out MessengerContactState contact))
+            {
+                return $"No simulator Messenger contact named {contactName?.Trim()} is available.";
+            }
+
+            contact.IsOnline = isOnline;
+            contact.AcceptsInvites = isOnline;
+
+            int participantIndex = FindParticipantIndex(contact.Name);
+            if (participantIndex > 0)
+            {
+                MessengerParticipantState participant = _participants[participantIndex];
+                _participants[participantIndex] = participant with
+                {
+                    IsOnline = isOnline,
+                    StatusText = isOnline ? participant.StatusText : "Offline"
+                };
+            }
+
+            _lastActionSummary = isOnline
+                ? $"{contact.Name} came online in {contact.LocationSummary}, CH {contact.Channel}."
+                : $"{contact.Name} went offline.";
+            AddSystemLog(_lastActionSummary);
+            RecordPacketSummary($"Applied simulated Messenger presence update for {contact.Name}.");
+            return _lastActionSummary;
+        }
+
+        public string SubmitClaim()
+        {
+            MessengerLogEntryState[] claimableEntries = _logEntries
+                .Where(entry => entry.CanClaim && !entry.IsClaimed)
+                .TakeLast(MaxClaimLogEntries)
+                .ToArray();
+            if (claimableEntries.Length == 0)
+            {
+                return "No Messenger chat lines are available for claim submission.";
+            }
+
+            int claimId = _nextClaimId++;
+            foreach (MessengerLogEntryState entry in claimableEntries)
+            {
+                entry.IsClaimed = true;
+            }
+
+            string subjects = string.Join(", ", claimableEntries.Select(entry => entry.Author).Distinct(StringComparer.OrdinalIgnoreCase));
+            _lastActionSummary = $"Submitted Messenger claim #{claimId} for {claimableEntries.Length} line(s) involving {subjects}.";
+            AddSystemLog(_lastActionSummary);
+            RecordPacketSummary($"Simulated CWvsContext Messenger claim request #{claimId}.");
+            return _lastActionSummary;
+        }
+
+        public string DescribeStatus()
+        {
+            string occupants = _participants.Count == 0
+                ? "none"
+                : string.Join(", ", _participants.Select((participant, index) =>
+                    $"{index + 1}:{participant.Name}{(participant.IsOnline ? string.Empty : " (offline)")}{(participant.IsLocalPlayer ? " [self]" : string.Empty)}"));
+            return $"Messenger {_windowState.ToDisplayName()} state. Occupants: {occupants}. Pending: {BuildPendingInviteSummary()}. Last action: {_lastActionSummary}. Packet: {_lastPacketSummary}";
+        }
+
+        private string QueueInvite(MessengerContactState contact)
+        {
+            int inviteId = _nextInviteId++;
+            _pendingInvite = new PendingMessengerInviteState(
+                inviteId,
+                contact.Name,
+                Environment.TickCount + InviteResolutionDelayMs,
+                contact.AcceptsInvites);
+            _lastActionSummary = $"Sent Messenger invite #{inviteId} to {contact.Name}.";
+            AddSystemLog($"Invite sent to {contact.Name}.");
+            RecordPacketSummary($"Sent Messenger packet 0x8F/3 invite to {contact.Name}.");
+            return _lastActionSummary;
+        }
+
+        private void Tick(int tickCount)
+        {
+            if (_pendingInvite != null && tickCount >= _pendingInvite.ResolveAtTick)
+            {
+                ResolvePendingInvite(_pendingInvite.WillAccept, packetDriven: true);
+            }
+
+            if (_lastPulseTick == int.MinValue)
+            {
+                _lastPulseTick = tickCount;
+                return;
+            }
+
+            if (tickCount - _lastPulseTick < PresencePulseIntervalMs || ContactDefinitions.Length == 0)
+            {
+                return;
+            }
+
+            _lastPulseTick = tickCount;
+            MessengerContactState contact = _contacts[ContactDefinitions[_nextPulseContactIndex % ContactDefinitions.Length].Name];
+            _nextPulseContactIndex++;
+            if (ContainsParticipant(contact.Name))
+            {
+                return;
+            }
+
+            contact.IsOnline = !contact.IsOnline;
+            contact.AcceptsInvites = contact.IsOnline;
+            _lastActionSummary = contact.IsOnline
+                ? $"{contact.Name} came online in {contact.LocationSummary}, CH {contact.Channel}."
+                : $"{contact.Name} went offline.";
+            AddSystemLog(_lastActionSummary);
+        }
+
+        private MessengerContactState FindNextInvitableContact()
+        {
+            for (int i = 0; i < ContactDefinitions.Length; i++)
+            {
+                MessengerContactState candidate = _contacts[ContactDefinitions[(_nextJoinContactIndex + i) % ContactDefinitions.Length].Name];
+                if (!candidate.CanInvite || ContainsParticipant(candidate.Name))
                 {
                     continue;
                 }
 
-                _nextSeedContactIndex = (_nextSeedContactIndex + i + 1) % SeedContacts.Length;
+                _nextJoinContactIndex = (_nextJoinContactIndex + i + 1) % ContactDefinitions.Length;
                 return candidate;
             }
 
@@ -233,7 +606,7 @@ namespace HaCreator.MapSimulator.Interaction
 
         private void AddSystemLog(string message)
         {
-            AddLog(new MessengerLogEntrySnapshot
+            AddLog(new MessengerLogEntryState
             {
                 Author = "System",
                 Message = message,
@@ -241,7 +614,7 @@ namespace HaCreator.MapSimulator.Interaction
             });
         }
 
-        private MessengerParticipantSnapshot GetAutoReplyParticipant()
+        private MessengerParticipantState GetAutoReplyParticipant()
         {
             if (_selectedSlot > 0 && _selectedSlot < _participants.Count)
             {
@@ -250,7 +623,7 @@ namespace HaCreator.MapSimulator.Interaction
 
             for (int i = 1; i < _participants.Count; i++)
             {
-                if (!_participants[i].IsLocalPlayer)
+                if (!_participants[i].IsLocalPlayer && _participants[i].IsOnline)
                 {
                     return _participants[i];
                 }
@@ -259,7 +632,7 @@ namespace HaCreator.MapSimulator.Interaction
             return null;
         }
 
-        private static string BuildAutoReply(MessengerParticipantSnapshot participant, string message, bool whisper)
+        private static string BuildAutoReply(MessengerParticipantState participant, string message, bool whisper)
         {
             string normalized = (message ?? string.Empty).Trim();
             if (normalized.IndexOf("where", StringComparison.OrdinalIgnoreCase) >= 0)
@@ -295,19 +668,106 @@ namespace HaCreator.MapSimulator.Interaction
             return string.IsNullOrWhiteSpace(trimmed) ? null : trimmed;
         }
 
+        private static string NormalizeParticipantName(string name)
+        {
+            string trimmed = name?.Trim();
+            return string.IsNullOrWhiteSpace(trimmed) ? null : trimmed;
+        }
+
+        private string HandleSlashCommand(string commandText)
+        {
+            string[] parts = commandText.Split(new[] { ' ' }, 2, StringSplitOptions.RemoveEmptyEntries);
+            string command = parts.Length > 0
+                ? parts[0].TrimStart('/').ToLowerInvariant()
+                : string.Empty;
+            string argument = parts.Length > 1 ? parts[1].Trim() : string.Empty;
+
+            switch (command)
+            {
+                case "m":
+                case "msn":
+                case "invite":
+                    return string.IsNullOrWhiteSpace(argument)
+                        ? InviteNextContact()
+                        : InviteContact(argument);
+                case "q":
+                case "quit":
+                case "leave":
+                case "exit":
+                case "close":
+                    return LeaveMessenger();
+                default:
+                    _lastActionSummary = $"Messenger command '{commandText}' is not modeled.";
+                    AddSystemLog(_lastActionSummary);
+                    return _lastActionSummary;
+            }
+        }
+
         private void AddParticipantLog(string author, string message, bool isWhisper = false, string targetName = null)
         {
-            AddLog(new MessengerLogEntrySnapshot
+            AddLog(new MessengerLogEntryState
             {
                 Author = author,
                 Message = message,
-                IsSystem = false,
                 IsWhisper = isWhisper,
-                TargetName = targetName ?? string.Empty
+                TargetName = targetName ?? string.Empty,
+                CanClaim = true
             });
         }
 
-        private void AddLog(MessengerLogEntrySnapshot entry)
+        private void SetParticipantBubble(string participantName, string message, int tickCount)
+        {
+            string resolvedName = NormalizeParticipantName(participantName);
+            string resolvedMessage = NormalizeMessage(message);
+            if (resolvedName == null || resolvedMessage == null)
+            {
+                return;
+            }
+
+            int participantIndex = FindParticipantIndex(resolvedName);
+            if (participantIndex < 0)
+            {
+                return;
+            }
+
+            MessengerParticipantState participant = _participants[participantIndex];
+            _participants[participantIndex] = participant with
+            {
+                BubbleText = resolvedMessage,
+                BubbleStartTick = tickCount,
+                BubbleExpireTick = tickCount + BubbleLifetimeMs
+            };
+        }
+
+        private void RecordPacketSummary(string summary)
+        {
+            if (!string.IsNullOrWhiteSpace(summary))
+            {
+                _lastPacketSummary = summary.Trim();
+            }
+        }
+
+        private int FindParticipantIndex(string name)
+        {
+            for (int i = 0; i < _participants.Count; i++)
+            {
+                if (string.Equals(_participants[i].Name, name, StringComparison.OrdinalIgnoreCase))
+                {
+                    return i;
+                }
+            }
+
+            return -1;
+        }
+
+        private string BuildPendingInviteSummary()
+        {
+            return _pendingInvite == null
+                ? "none"
+                : $"Invite #{_pendingInvite.InviteId} to {_pendingInvite.ContactName}";
+        }
+
+        private void AddLog(MessengerLogEntryState entry)
         {
             if (entry == null || string.IsNullOrWhiteSpace(entry.Message))
             {
@@ -315,26 +775,132 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             _logEntries.Add(entry);
-            if (_logEntries.Count > 12)
+            if (_logEntries.Count > 16)
             {
                 _logEntries.RemoveAt(0);
             }
         }
 
-        private sealed class MessengerSeedContact
+        private sealed class MessengerContactDefinition
         {
-            public MessengerSeedContact(string name, string locationSummary, int channel, string statusText)
+            public MessengerContactDefinition(string name, string locationSummary, int channel, string statusText, string joinGreeting)
             {
                 Name = name;
                 LocationSummary = locationSummary;
                 Channel = channel;
                 StatusText = statusText;
+                JoinGreeting = joinGreeting;
             }
 
             public string Name { get; }
             public string LocationSummary { get; }
             public int Channel { get; }
             public string StatusText { get; }
+            public string JoinGreeting { get; }
+        }
+
+        private sealed class MessengerContactState
+        {
+            public MessengerContactState(MessengerContactDefinition definition)
+            {
+                Name = definition.Name;
+                LocationSummary = definition.LocationSummary;
+                Channel = definition.Channel;
+                StatusText = definition.StatusText;
+                JoinGreeting = definition.JoinGreeting;
+                IsOnline = true;
+                AcceptsInvites = true;
+            }
+
+            public string Name { get; }
+            public string LocationSummary { get; }
+            public int Channel { get; }
+            public string StatusText { get; }
+            public string JoinGreeting { get; }
+            public bool IsOnline { get; set; }
+            public bool AcceptsInvites { get; set; }
+            public bool CanInvite => IsOnline && AcceptsInvites;
+        }
+
+        private sealed record PendingMessengerInviteState(
+            int InviteId,
+            string ContactName,
+            int ResolveAtTick,
+            bool WillAccept);
+
+        private sealed record MessengerParticipantState
+        {
+            public string Name { get; init; } = string.Empty;
+            public string LocationSummary { get; init; } = string.Empty;
+            public int Channel { get; init; }
+            public string StatusText { get; init; } = string.Empty;
+            public bool IsLocalPlayer { get; init; }
+            public bool IsOnline { get; init; }
+            public string BubbleText { get; init; } = string.Empty;
+            public int BubbleStartTick { get; init; }
+            public int BubbleExpireTick { get; init; }
+
+            public MessengerParticipantSnapshot ToSnapshot()
+            {
+                return new MessengerParticipantSnapshot
+                {
+                    Name = Name,
+                    LocationSummary = LocationSummary,
+                    Channel = Channel,
+                    StatusText = StatusText,
+                    IsLocalPlayer = IsLocalPlayer,
+                    IsOnline = IsOnline,
+                    BubbleText = BubbleText,
+                    BubbleStartTick = BubbleStartTick,
+                    BubbleExpireTick = BubbleExpireTick
+                };
+            }
+        }
+
+        private sealed class MessengerLogEntryState
+        {
+            public string Author { get; init; } = string.Empty;
+            public string Message { get; init; } = string.Empty;
+            public bool IsSystem { get; init; }
+            public bool IsWhisper { get; init; }
+            public string TargetName { get; init; } = string.Empty;
+            public bool CanClaim { get; init; }
+            public bool IsClaimed { get; set; }
+
+            public MessengerLogEntrySnapshot ToSnapshot()
+            {
+                return new MessengerLogEntrySnapshot
+                {
+                    Author = Author,
+                    Message = Message,
+                    IsSystem = IsSystem,
+                    IsWhisper = IsWhisper,
+                    TargetName = TargetName,
+                    CanClaim = CanClaim,
+                    IsClaimed = IsClaimed
+                };
+            }
+        }
+    }
+
+    internal enum MessengerWindowState
+    {
+        Max = 0,
+        Min = 1,
+        Min2 = 2
+    }
+
+    internal static class MessengerWindowStateExtensions
+    {
+        public static string ToDisplayName(this MessengerWindowState state)
+        {
+            return state switch
+            {
+                MessengerWindowState.Max => "max",
+                MessengerWindowState.Min => "min",
+                MessengerWindowState.Min2 => "min2",
+                _ => "unknown"
+            };
         }
     }
 
@@ -344,9 +910,15 @@ namespace HaCreator.MapSimulator.Interaction
         public IReadOnlyList<MessengerLogEntrySnapshot> LogEntries { get; init; } = Array.Empty<MessengerLogEntrySnapshot>();
         public int SelectedSlot { get; init; }
         public string SelectedParticipantName { get; init; } = string.Empty;
+        public bool SelectedParticipantOnline { get; init; }
+        public MessengerWindowState WindowState { get; init; }
         public bool CanInvite { get; init; }
         public bool CanWhisper { get; init; }
         public bool CanLeave { get; init; }
+        public bool CanClaim { get; init; }
+        public string PendingInviteSummary { get; init; } = string.Empty;
+        public string LastActionSummary { get; init; } = string.Empty;
+        public string LastPacketSummary { get; init; } = string.Empty;
     }
 
     internal sealed class MessengerParticipantSnapshot
@@ -357,6 +929,9 @@ namespace HaCreator.MapSimulator.Interaction
         public string StatusText { get; init; } = string.Empty;
         public bool IsLocalPlayer { get; init; }
         public bool IsOnline { get; init; }
+        public string BubbleText { get; init; } = string.Empty;
+        public int BubbleStartTick { get; init; }
+        public int BubbleExpireTick { get; init; }
     }
 
     internal sealed class MessengerLogEntrySnapshot
@@ -366,5 +941,7 @@ namespace HaCreator.MapSimulator.Interaction
         public bool IsSystem { get; init; }
         public bool IsWhisper { get; init; }
         public string TargetName { get; init; } = string.Empty;
+        public bool CanClaim { get; init; }
+        public bool IsClaimed { get; init; }
     }
 }

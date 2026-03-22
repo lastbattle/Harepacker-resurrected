@@ -11,6 +11,8 @@ namespace HaCreator.MapSimulator.Companions
 {
     public sealed class PetDefinition
     {
+        internal const string ClientMultiPetHangActionName = "hangMulti";
+
         public int ItemId { get; init; }
         public string Name { get; init; }
         public int ChatBalloonStyle { get; init; }
@@ -91,6 +93,7 @@ namespace HaCreator.MapSimulator.Companions
 
         private readonly GraphicsDevice _device;
         private readonly Dictionary<int, PetDefinition> _cache = new();
+        private List<IDXObject> _clientMultiPetHangFrames;
 
         public PetLoader(GraphicsDevice device)
         {
@@ -136,6 +139,12 @@ namespace HaCreator.MapSimulator.Companions
                         definition.Animations.AddAnimation(action, frames);
                     }
                 }
+            }
+
+            List<IDXObject> clientMultiPetHangFrames = LoadClientMultiPetHangFrames();
+            if (clientMultiPetHangFrames.Count > 0)
+            {
+                definition.Animations.AddAnimation(PetDefinition.ClientMultiPetHangActionName, clientMultiPetHangFrames);
             }
 
             if (definition.Animations.ActionCount == 0)
@@ -443,6 +452,28 @@ namespace HaCreator.MapSimulator.Companions
             }
 
             return frames;
+        }
+
+        private List<IDXObject> LoadClientMultiPetHangFrames()
+        {
+            if (_clientMultiPetHangFrames != null)
+            {
+                return _clientMultiPetHangFrames;
+            }
+
+            WzImage effectImage = global::HaCreator.Program.FindImage("Effect", "PetEff.img");
+            if (effectImage == null)
+            {
+                _clientMultiPetHangFrames = new List<IDXObject>();
+                return _clientMultiPetHangFrames;
+            }
+
+            effectImage.ParseImage();
+            _clientMultiPetHangFrames = effectImage["Basic"]?["hang"] is WzSubProperty multiPetHangNode
+                ? LoadActionFrames(multiPetHangNode)
+                : new List<IDXObject>();
+
+            return _clientMultiPetHangFrames;
         }
 
         private IDXObject LoadInfoIcon(WzImage petImage, string iconName)

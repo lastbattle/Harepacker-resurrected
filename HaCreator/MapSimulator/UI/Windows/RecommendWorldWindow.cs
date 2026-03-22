@@ -6,29 +6,27 @@ using Spine;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text;
 
 namespace HaCreator.MapSimulator.UI
 {
     public sealed class RecommendWorldEntry
     {
-        public RecommendWorldEntry(int worldId, IEnumerable<string> messages)
+        public RecommendWorldEntry(int worldId, string message)
         {
             WorldId = Math.Max(0, worldId);
-            Messages = (messages ?? Array.Empty<string>())
-                .Where(message => !string.IsNullOrWhiteSpace(message))
-                .Take(5)
-                .ToArray();
+            Message = string.IsNullOrWhiteSpace(message) ? string.Empty : message.Trim();
         }
 
         public int WorldId { get; }
-        public IReadOnlyList<string> Messages { get; }
+        public string Message { get; }
         public string WorldLabel => $"World {WorldId}";
     }
 
     public sealed class RecommendWorldWindow : UIWindowBase
     {
         private const int MessageAreaWidth = 125;
-        private readonly Texture2D _highlightTexture;
+        private readonly IReadOnlyDictionary<int, Texture2D> _worldNameTextures;
         private readonly UIObject _prevButton;
         private readonly UIObject _nextButton;
         private readonly UIObject _selectButton;
@@ -37,18 +35,17 @@ namespace HaCreator.MapSimulator.UI
         private SpriteFont _font;
         private int _selectedIndex;
         private bool _requestAllowed = true;
-        private string _statusMessage;
 
         public RecommendWorldWindow(
             IDXObject frame,
-            Texture2D highlightTexture,
+            IReadOnlyDictionary<int, Texture2D> worldNameTextures,
             UIObject prevButton,
             UIObject nextButton,
             UIObject selectButton,
             UIObject closeButton)
             : base(frame)
         {
-            _highlightTexture = highlightTexture;
+            _worldNameTextures = worldNameTextures ?? new Dictionary<int, Texture2D>();
             _prevButton = prevButton;
             _nextButton = nextButton;
             _selectButton = selectButton;
@@ -102,7 +99,7 @@ namespace HaCreator.MapSimulator.UI
             _font = font;
         }
 
-        public void Configure(IReadOnlyList<RecommendWorldEntry> entries, int selectedIndex, bool requestAllowed, string statusMessage = null)
+        public void Configure(IReadOnlyList<RecommendWorldEntry> entries, int selectedIndex, bool requestAllowed)
         {
             _entries.Clear();
             if (entries != null)
@@ -114,11 +111,11 @@ namespace HaCreator.MapSimulator.UI
                 ? -1
                 : Math.Clamp(selectedIndex, 0, _entries.Count - 1);
             _requestAllowed = requestAllowed;
-            _statusMessage = statusMessage;
 
             _prevButton?.SetEnabled(_entries.Count > 1 && _requestAllowed);
             _nextButton?.SetEnabled(_entries.Count > 1 && _requestAllowed);
             _selectButton?.SetEnabled(_entries.Count > 0 && _requestAllowed);
+            _closeButton?.SetEnabled(_requestAllowed);
         }
 
         protected override void DrawContents(
@@ -133,37 +130,28 @@ namespace HaCreator.MapSimulator.UI
             RenderParameters renderParameters,
             int TickCount)
         {
-            if (_highlightTexture != null)
-            {
-                sprite.Draw(
-                    _highlightTexture,
-                    new Rectangle(Position.X + 38, Position.Y + 32, MessageAreaWidth, 32),
-                    new Color(52, 70, 102, 200));
-            }
-
             if (_font == null)
             {
                 return;
             }
 
             RecommendWorldEntry selectedEntry = GetSelectedEntry();
-            string worldLabel = selectedEntry?.WorldLabel ?? "No Recommendation";
-            Vector2 labelSize = _font.MeasureString(worldLabel);
-            SelectorWindowDrawing.DrawShadowedText(
-                sprite,
-                _font,
-                worldLabel,
-                new Vector2(Position.X + 40 + Math.Max(0f, (MessageAreaWidth - labelSize.X) / 2f), Position.Y + 38),
-                Color.White);
-
-            if (!string.IsNullOrWhiteSpace(_statusMessage))
+            if (selectedEntry != null &&
+                _worldNameTextures.TryGetValue(selectedEntry.WorldId, out Texture2D worldTexture) &&
+                worldTexture != null)
             {
+                sprite.Draw(worldTexture, new Vector2(Position.X + 34, Position.Y + 35), Color.White);
+            }
+            else
+            {
+                string worldLabel = selectedEntry?.WorldLabel ?? "World";
+                Vector2 labelSize = _font.MeasureString(worldLabel);
                 SelectorWindowDrawing.DrawShadowedText(
                     sprite,
                     _font,
-                    _statusMessage,
-                    new Vector2(Position.X + 18, Position.Y + 78),
-                    _requestAllowed ? new Color(220, 220, 220) : new Color(255, 204, 107));
+                    worldLabel,
+                    new Vector2(Position.X + 40 + Math.Max(0f, (MessageAreaWidth - labelSize.X) / 2f), Position.Y + 38),
+                    Color.White);
             }
 
             if (selectedEntry == null)
@@ -171,50 +159,22 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
-            int messageIndex = 0;
-            foreach (string message in selectedEntry.Messages)
+            int lineHeight = Math.Max(1, _font.LineSpacing);
+            int maxLineCount = Math.Max(1, 70 / lineHeight);
+            IReadOnlyList<string> lines = WrapMessage(selectedEntry.Message, maxLineCount);
+            for (int i = 0; i < lines.Count; i++)
             {
-                Vector2 messageSize = _font.MeasureString(message);
-                float messageX = Position.X + 40 + Math.Max(0f, (MessageAreaWidth - messageSize.X) / 2f);
-                float messageY = Position.Y + 110 + (messageIndex * 14);
+                string line = lines[i];
+                Vector2 lineSize = _font.MeasureString(line);
+                float lineX = Position.X + 40 + Math.Max(0f, (MessageAreaWidth - lineSize.X) / 2f);
+                float lineY = Position.Y + 110 + (i * lineHeight);
                 SelectorWindowDrawing.DrawShadowedText(
                     sprite,
                     _font,
-                    message,
-                    new Vector2(messageX, messageY),
+                    line,
+                    new Vector2(lineX, lineY),
                     new Color(232, 232, 232));
-                messageIndex++;
             }
-
-            SelectorWindowDrawing.DrawShadowedText(
-                sprite,
-                _font,
-                $"{_selectedIndex + 1}/{_entries.Count}",
-                new Vector2(Position.X + 90, Position.Y + 90),
-                new Color(255, 228, 151));
-        }
-
-        protected override void DrawOverlay(
-            SpriteBatch sprite,
-            SkeletonMeshRenderer skeletonMeshRenderer,
-            GameTime gameTime,
-            int mapShiftX,
-            int mapShiftY,
-            int centerX,
-            int centerY,
-            ReflectionDrawableBoundary drawReflectionInfo,
-            RenderParameters renderParameters,
-            int TickCount)
-        {
-            if (_font == null)
-            {
-                return;
-            }
-
-            DrawButtonLabel(sprite, _prevButton, "Prev");
-            DrawButtonLabel(sprite, _nextButton, "Next");
-            DrawButtonLabel(sprite, _selectButton, "Select");
-            DrawButtonLabel(sprite, _closeButton, "Close");
         }
 
         private RecommendWorldEntry GetSelectedEntry()
@@ -224,17 +184,113 @@ namespace HaCreator.MapSimulator.UI
                 : null;
         }
 
-        private void DrawButtonLabel(SpriteBatch sprite, UIObject button, string text)
+        private IReadOnlyList<string> WrapMessage(string message, int maxLineCount)
         {
-            if (button == null || !button.ButtonVisible)
+            if (string.IsNullOrWhiteSpace(message) || _font == null || maxLineCount <= 0)
+            {
+                return Array.Empty<string>();
+            }
+
+            List<string> lines = new();
+            foreach (string paragraph in message
+                         .Replace("\r\n", "\n", StringComparison.Ordinal)
+                         .Replace('\r', '\n')
+                         .Split('\n'))
+            {
+                AppendWrappedParagraph(lines, paragraph.Trim(), maxLineCount);
+                if (lines.Count >= maxLineCount)
+                {
+                    break;
+                }
+            }
+
+            return lines;
+        }
+
+        private void AppendWrappedParagraph(List<string> lines, string paragraph, int maxLineCount)
+        {
+            if (lines.Count >= maxLineCount)
             {
                 return;
             }
 
-            Vector2 size = _font.MeasureString(text);
-            float x = Position.X + button.X + ((button.CanvasSnapshotWidth - size.X) / 2f);
-            float y = Position.Y + button.Y + ((button.CanvasSnapshotHeight - size.Y) / 2f) - 1f;
-            SelectorWindowDrawing.DrawShadowedText(sprite, _font, text, new Vector2(x, y), Color.White);
+            if (string.IsNullOrWhiteSpace(paragraph))
+            {
+                if (lines.Count == 0)
+                {
+                    lines.Add(string.Empty);
+                }
+
+                return;
+            }
+
+            string[] words = paragraph.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
+            StringBuilder builder = new();
+            foreach (string word in words)
+            {
+                string candidate = builder.Length == 0
+                    ? word
+                    : $"{builder} {word}";
+                if (_font.MeasureString(candidate).X <= MessageAreaWidth)
+                {
+                    builder.Clear();
+                    builder.Append(candidate);
+                    continue;
+                }
+
+                if (builder.Length > 0)
+                {
+                    lines.Add(builder.ToString());
+                    if (lines.Count >= maxLineCount)
+                    {
+                        return;
+                    }
+
+                    builder.Clear();
+                }
+
+                AppendBrokenWord(lines, word, maxLineCount, builder);
+                if (lines.Count >= maxLineCount)
+                {
+                    return;
+                }
+            }
+
+            if (builder.Length > 0 && lines.Count < maxLineCount)
+            {
+                lines.Add(builder.ToString());
+            }
+        }
+
+        private void AppendBrokenWord(List<string> lines, string word, int maxLineCount, StringBuilder carry)
+        {
+            if (_font.MeasureString(word).X <= MessageAreaWidth)
+            {
+                carry.Append(word);
+                return;
+            }
+
+            StringBuilder segment = new();
+            foreach (char ch in word)
+            {
+                string candidate = segment.ToString() + ch;
+                if (_font.MeasureString(candidate).X <= MessageAreaWidth || segment.Length == 0)
+                {
+                    segment.Append(ch);
+                    continue;
+                }
+
+                lines.Add(segment.ToString());
+                if (lines.Count >= maxLineCount)
+                {
+                    return;
+                }
+
+                segment.Clear();
+                segment.Append(ch);
+            }
+
+            carry.Append(segment);
         }
     }
 }

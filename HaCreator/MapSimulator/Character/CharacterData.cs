@@ -340,6 +340,8 @@ namespace HaCreator.MapSimulator.Character
         public DateTime? ExpirationDateUtc { get; set; }
         public int? Durability { get; set; }
         public int? MaxDurability { get; set; }
+        public int RequiredJobMask { get; set; }
+        public int RequiredFame { get; set; }
         public int RequiredLevel { get; set; }
         public int RequiredSTR { get; set; }
         public int RequiredDEX { get; set; }
@@ -421,6 +423,12 @@ namespace HaCreator.MapSimulator.Character
                 {
                     yield return fallbackAction;
                 }
+            }
+
+            if (actionName.StartsWith("sit", StringComparison.OrdinalIgnoreCase)
+                && !string.Equals(actionName, "sit", StringComparison.OrdinalIgnoreCase))
+            {
+                yield return "sit";
             }
 
             if (string.Equals(actionName, "swim", StringComparison.OrdinalIgnoreCase))
@@ -609,6 +617,11 @@ namespace HaCreator.MapSimulator.Character
         public string Description { get; set; }
         public int? SitActionId { get; set; }
         public int? TamingMobItemId { get; set; }
+        public bool IsCoupleChair { get; set; }
+        public int? CoupleDistanceX { get; set; }
+        public int? CoupleDistanceY { get; set; }
+        public int? CoupleMaxDiff { get; set; }
+        public int? CoupleDirection { get; set; }
         public List<PortableChairLayer> Layers { get; set; } = new();
     }
 
@@ -621,8 +634,16 @@ namespace HaCreator.MapSimulator.Character
     /// </summary>
     public class CharacterBuild
     {
+        private readonly record struct AttackFormulaProfile(
+            bool UsesMagicFormula,
+            float WeaponMultiplier,
+            int PrimaryStat,
+            int SecondaryStat,
+            float MasteryPrimaryScale);
+
         public const int MaxPrimaryStat = 999;
         public const int MaxHpMpStat = 30000;
+        private const int MinimumMasteryPercent = 10;
         private const int DefaultAttackValue = 10;
         private const int DefaultDefenseValue = 5;
         private const int DefaultMagicAttackValue = 5;
@@ -666,6 +687,7 @@ namespace HaCreator.MapSimulator.Character
         public string GuildName { get; set; } = string.Empty;
         public string AllianceName { get; set; } = string.Empty;
         public int Fame { get; set; } = 0;
+        public int CookieHousePoint { get; set; } = 0;
         public int WorldRank { get; set; }
         public int JobRank { get; set; }
         public bool HasMonsterRiding { get; set; }
@@ -726,43 +748,15 @@ namespace HaCreator.MapSimulator.Character
         public int TotalMaxMP => Math.Clamp(MaxMP + SumEquipmentBonus(part => part.BonusMP), 0, MaxHpMpStat);
         public int TotalHP => Math.Clamp(HP + SumEquipmentBonus(part => part.BonusHP), 0, TotalMaxHP);
         public int TotalMP => Math.Clamp(MP + SumEquipmentBonus(part => part.BonusMP), 0, TotalMaxMP);
-        public int TotalMastery => Math.Max(10, SkillMasteryProvider?.Invoke() ?? 10);
-
-        public int TotalAttack
-        {
-            get
-            {
-                int runtimeBonus = Math.Max(0, Attack - DefaultAttackValue);
-                return Math.Max(0, runtimeBonus + SumEquipmentBonus(part => part.BonusWeaponAttack) + GetSkillStatBonus(BuffStatType.Attack));
-            }
-        }
-
-        public int TotalDefense
-        {
-            get
-            {
-                int runtimeBonus = Math.Max(0, Defense - DefaultDefenseValue);
-                return Math.Max(0, runtimeBonus + SumEquipmentBonus(part => part.BonusWeaponDefense) + GetSkillStatBonus(BuffStatType.Defense));
-            }
-        }
-
-        public int TotalMagicAttack
-        {
-            get
-            {
-                int runtimeBonus = Math.Max(0, MagicAttack - DefaultMagicAttackValue);
-                return Math.Max(0, runtimeBonus + SumEquipmentBonus(part => part.BonusMagicAttack) + GetSkillStatBonus(BuffStatType.MagicAttack));
-            }
-        }
-
-        public int TotalMagicDefense
-        {
-            get
-            {
-                int runtimeBonus = Math.Max(0, MagicDefense - DefaultMagicDefenseValue);
-                return Math.Max(0, runtimeBonus + SumEquipmentBonus(part => part.BonusMagicDefense) + GetSkillStatBonus(BuffStatType.MagicDefense));
-            }
-        }
+        public int TotalMastery => Math.Clamp(SkillMasteryProvider?.Invoke() ?? MinimumMasteryPercent, MinimumMasteryPercent, 100);
+        public int TotalWeaponAttackStat => Math.Max(0, Math.Max(0, Attack - DefaultAttackValue) + SumEquipmentBonus(part => part.BonusWeaponAttack) + GetSkillStatBonus(BuffStatType.Attack));
+        public int TotalWeaponDefenseStat => Math.Max(0, Math.Max(0, Defense - DefaultDefenseValue) + SumEquipmentBonus(part => part.BonusWeaponDefense) + GetSkillStatBonus(BuffStatType.Defense));
+        public int TotalMagicAttackStat => Math.Max(0, Math.Max(0, MagicAttack - DefaultMagicAttackValue) + SumEquipmentBonus(part => part.BonusMagicAttack) + GetSkillStatBonus(BuffStatType.MagicAttack));
+        public int TotalMagicDefenseStat => Math.Max(0, Math.Max(0, MagicDefense - DefaultMagicDefenseValue) + SumEquipmentBonus(part => part.BonusMagicDefense) + GetSkillStatBonus(BuffStatType.MagicDefense));
+        public int TotalAttack => ComputeDisplayedPhysicalAttack();
+        public int TotalDefense => ComputeDisplayedPhysicalDefense();
+        public int TotalMagicAttack => ComputeDisplayedMagicAttack();
+        public int TotalMagicDefense => ComputeDisplayedMagicDefense();
 
         public int TotalAccuracy => Math.Max(0, GetBaseAccuracy() + Accuracy + SumEquipmentBonus(part => part.BonusAccuracy) + GetSkillStatBonus(BuffStatType.Accuracy));
         public int TotalAvoidability => Math.Max(0, GetBaseAvoidability() + Avoidability + SumEquipmentBonus(part => part.BonusAvoidability) + GetSkillStatBonus(BuffStatType.Avoidability));
@@ -993,6 +987,127 @@ namespace HaCreator.MapSimulator.Character
             return Job / 100;
         }
 
+        private int ComputeDisplayedPhysicalAttack()
+        {
+            AttackFormulaProfile profile = ResolveAttackFormulaProfile();
+            if (profile.UsesMagicFormula)
+            {
+                return ComputeDisplayedMagicAttack();
+            }
+
+            float attackStat = Math.Max(1f, TotalWeaponAttackStat);
+            float maxDamage = ((profile.PrimaryStat * profile.WeaponMultiplier) + profile.SecondaryStat) * attackStat / 100f;
+            float minDamage = ((((profile.PrimaryStat * profile.WeaponMultiplier) * profile.MasteryPrimaryScale) * (TotalMastery / 100f)) + profile.SecondaryStat) * attackStat / 100f;
+            return Math.Max(0, (int)MathF.Round((minDamage + maxDamage) * 0.5f));
+        }
+
+        private int ComputeDisplayedMagicAttack()
+        {
+            AttackFormulaProfile profile = ResolveAttackFormulaProfile();
+            int primaryStat = profile.UsesMagicFormula ? profile.PrimaryStat : TotalINT;
+            int secondaryStat = profile.UsesMagicFormula ? profile.SecondaryStat : TotalLUK;
+            float magicAttackStat = Math.Max(1f, TotalMagicAttackStat);
+            float maxDamage = ((primaryStat * 4f) + secondaryStat) * magicAttackStat / 100f;
+            float minDamage = (((primaryStat * 4f) * (TotalMastery / 100f)) + secondaryStat) * magicAttackStat / 100f;
+            return Math.Max(0, (int)MathF.Round((minDamage + maxDamage) * 0.5f));
+        }
+
+        private int ComputeDisplayedPhysicalDefense()
+        {
+            float statContribution = GetJobGroup() switch
+            {
+                1 => TotalSTR * 0.35f + TotalDEX * 0.20f,
+                2 => TotalINT * 0.15f + TotalLUK * 0.10f,
+                3 => TotalDEX * 0.30f + TotalSTR * 0.15f,
+                4 => TotalLUK * 0.30f + TotalDEX * 0.20f,
+                5 => UsesDexDrivenPirateWeapon() ? TotalDEX * 0.30f + TotalSTR * 0.15f : TotalSTR * 0.30f + TotalDEX * 0.20f,
+                _ => TotalSTR * 0.20f + TotalDEX * 0.20f + TotalLUK * 0.10f
+            };
+
+            return Math.Max(0, TotalWeaponDefenseStat + (int)MathF.Floor(statContribution));
+        }
+
+        private int ComputeDisplayedMagicDefense()
+        {
+            float statContribution = GetJobGroup() switch
+            {
+                1 => TotalINT * 0.20f + TotalLUK * 0.10f,
+                2 => TotalINT * 0.45f + TotalLUK * 0.20f,
+                3 => TotalINT * 0.25f + TotalLUK * 0.12f,
+                4 => TotalINT * 0.25f + TotalLUK * 0.15f,
+                5 => TotalINT * 0.22f + TotalLUK * 0.12f,
+                _ => TotalINT * 0.20f + TotalLUK * 0.10f
+            };
+
+            return Math.Max(0, TotalMagicDefenseStat + (int)MathF.Floor(statContribution));
+        }
+
+        private AttackFormulaProfile ResolveAttackFormulaProfile()
+        {
+            WeaponPart weapon = GetWeapon();
+            int weaponCode = weapon != null ? Math.Abs(weapon.ItemId / 10000) % 100 : 0;
+
+            return weaponCode switch
+            {
+                30 => new AttackFormulaProfile(false, 4.0f, TotalSTR, TotalDEX, 0.9f),
+                31 => new AttackFormulaProfile(false, 4.4f, TotalSTR, TotalDEX, 0.9f),
+                32 => new AttackFormulaProfile(false, 4.8f, TotalSTR, TotalDEX, 0.9f),
+                33 => ResolveDaggerFormulaProfile(),
+                34 => new AttackFormulaProfile(false, 3.6f, TotalLUK, TotalDEX, 0.9f),
+                37 => new AttackFormulaProfile(true, 1.0f, TotalINT, TotalLUK, 1.0f),
+                38 => new AttackFormulaProfile(true, 1.0f, TotalINT, TotalLUK, 1.0f),
+                40 => new AttackFormulaProfile(false, 4.6f, TotalSTR, TotalDEX, 0.9f),
+                41 => new AttackFormulaProfile(false, 4.8f, TotalSTR, TotalDEX, 0.9f),
+                42 => new AttackFormulaProfile(false, 5.0f, TotalSTR, TotalDEX, 0.9f),
+                43 => new AttackFormulaProfile(false, 5.0f, TotalSTR, TotalDEX, 0.9f),
+                44 => new AttackFormulaProfile(false, 5.0f, TotalSTR, TotalDEX, 0.9f),
+                45 => new AttackFormulaProfile(false, 3.4f, TotalDEX, TotalSTR, 0.9f),
+                46 => new AttackFormulaProfile(false, 3.6f, TotalDEX, TotalSTR, 0.9f),
+                47 => new AttackFormulaProfile(false, 3.6f, TotalLUK, TotalDEX, 0.9f),
+                48 => new AttackFormulaProfile(false, 4.8f, TotalSTR, TotalDEX, 0.9f),
+                49 => new AttackFormulaProfile(false, 3.6f, TotalDEX, TotalSTR, 0.9f),
+                _ when UsesMagicFormulaByJob() => new AttackFormulaProfile(true, 1.0f, TotalINT, TotalLUK, 1.0f),
+                _ when UsesDexDrivenPirateWeapon() => new AttackFormulaProfile(false, 3.6f, TotalDEX, TotalSTR, 0.9f),
+                _ when GetJobGroup() == 3 => new AttackFormulaProfile(false, 3.4f, TotalDEX, TotalSTR, 0.9f),
+                _ when GetJobGroup() == 4 => new AttackFormulaProfile(false, 3.6f, TotalLUK, TotalDEX, 0.9f),
+                _ => new AttackFormulaProfile(false, 4.0f, TotalSTR, TotalDEX, 0.9f)
+            };
+        }
+
+        private AttackFormulaProfile ResolveDaggerFormulaProfile()
+        {
+            return GetJobGroup() == 4
+                ? new AttackFormulaProfile(false, 3.6f, TotalLUK, TotalDEX, 0.9f)
+                : new AttackFormulaProfile(false, 4.0f, TotalSTR, TotalDEX, 0.9f);
+        }
+
+        private bool UsesMagicFormulaByJob()
+        {
+            if (GetWeapon() is WeaponPart weapon)
+            {
+                int weaponCode = Math.Abs(weapon.ItemId / 10000) % 100;
+                if (weaponCode is 37 or 38)
+                {
+                    return true;
+                }
+            }
+
+            int jobBranch = Math.Abs(Job) / 100;
+            return GetJobGroup() == 2
+                || jobBranch is 12 or 22 or 32;
+        }
+
+        private bool UsesDexDrivenPirateWeapon()
+        {
+            if (GetWeapon() is not WeaponPart weapon)
+            {
+                return false;
+            }
+
+            int weaponCode = Math.Abs(weapon.ItemId / 10000) % 100;
+            return weaponCode == 49;
+        }
+
         private int GetSkillStatBonus(BuffStatType stat)
         {
             return Math.Max(0, SkillStatBonusProvider?.Invoke(stat) ?? 0);
@@ -1031,6 +1146,7 @@ namespace HaCreator.MapSimulator.Character
                 GuildName = GuildName,
                 AllianceName = AllianceName,
                 Fame = Fame,
+                CookieHousePoint = CookieHousePoint,
                 WorldRank = WorldRank,
                 JobRank = JobRank,
                 HasMonsterRiding = HasMonsterRiding,

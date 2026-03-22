@@ -64,7 +64,9 @@ namespace HaCreator.MapSimulator.Pools
         private readonly List<MobItem> _deadMobs = new List<MobItem>();       // Mobs ready for cleanup/respawn
         private readonly Dictionary<int, MobItem> _mobById = new Dictionary<int, MobItem>();
         private readonly List<MobSpawnPoint> _spawnPoints = new List<MobSpawnPoint>();
+        private readonly Dictionary<MobItem, MobSpawnPoint> _spawnPointByMob = new Dictionary<MobItem, MobSpawnPoint>();
         private readonly Queue<string> _bossAnnouncements = new Queue<string>();
+        private readonly List<MobSpawnPoint> _respawnCandidates = new List<MobSpawnPoint>();
         #endregion
 
         #region State
@@ -130,8 +132,7 @@ namespace HaCreator.MapSimulator.Pools
                 // Create spawn point for respawning
                 var spawnPoint = CreateSpawnPointFromMob(mob, mobId);
                 _spawnPoints.Add(spawnPoint);
-                spawnPoint.CurrentMob = mob;
-                spawnPoint.IsActive = true;
+                AssignMobToSpawnPoint(spawnPoint, mob);
             }
         }
 
@@ -184,7 +185,9 @@ namespace HaCreator.MapSimulator.Pools
             _deadMobs.Clear();
             _mobById.Clear();
             _spawnPoints.Clear();
+            _spawnPointByMob.Clear();
             _bossAnnouncements.Clear();
+            _respawnCandidates.Clear();
             _nextMobId = 1;
             _nextRespawnTime = -1;
             _globalRespawnIntervalMs = DEFAULT_CREATE_MOB_INTERVAL;
@@ -372,15 +375,9 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             // Find spawn point and mark death time
-            var spawnPoint = _spawnPoints.FirstOrDefault(sp => sp.CurrentMob == mob);
-            if (spawnPoint != null)
+            if (_spawnPointByMob.TryGetValue(mob, out MobSpawnPoint spawnPoint))
             {
-                spawnPoint.IsActive = false;
-                spawnPoint.DeathTime = _lastUpdateTick;
-                spawnPoint.NextSpawnTime = spawnPoint.RespawnTimeMs < 0
-                    ? int.MaxValue
-                    : _lastUpdateTick + DEATH_ANIMATION_TIME + spawnPoint.RespawnTimeMs;
-                spawnPoint.CurrentMob = null;
+                MarkSpawnPointInactive(spawnPoint, _lastUpdateTick);
             }
 
             _onMobDied?.Invoke(mob);
@@ -406,6 +403,7 @@ namespace HaCreator.MapSimulator.Pools
             _dyingMobs.Remove(mob);
             _deadMobs.Remove(mob);
             _mobById.Remove(mob.PoolId);
+            _spawnPointByMob.Remove(mob);
 
             // Notify listeners so they can clean up references (e.g., MapSimulator nulls array entry)
             _onMobRemoved?.Invoke(mob);
@@ -423,6 +421,7 @@ namespace HaCreator.MapSimulator.Pools
             _dyingMobs.Remove(mob);
             _deadMobs.Remove(mob);
             _mobById.Remove(mob.PoolId);
+            _spawnPointByMob.Remove(mob);
 
             spawnPoint.CurrentMob = null;
             spawnPoint.IsActive = false;
@@ -450,8 +449,7 @@ namespace HaCreator.MapSimulator.Pools
             _mobById[mobId] = newMob;
             _activeMobs.Add(newMob);
 
-            spawnPoint.CurrentMob = newMob;
-            spawnPoint.IsActive = true;
+            AssignMobToSpawnPoint(spawnPoint, newMob);
             newMob.StartSpawnFadeIn(_lastUpdateTick);
 
             // Boss announcement
@@ -506,15 +504,9 @@ namespace HaCreator.MapSimulator.Pools
                     _dyingMobs.Add(mob);
 
                     // Update spawn point
-                    var spawnPoint = _spawnPoints.FirstOrDefault(sp => sp.CurrentMob == mob);
-                    if (spawnPoint != null)
+                    if (_spawnPointByMob.TryGetValue(mob, out MobSpawnPoint spawnPoint))
                     {
-                        spawnPoint.IsActive = false;
-                        spawnPoint.DeathTime = currentTick;
-                        spawnPoint.NextSpawnTime = spawnPoint.RespawnTimeMs < 0
-                            ? int.MaxValue
-                            : currentTick + DEATH_ANIMATION_TIME + spawnPoint.RespawnTimeMs;
-                        spawnPoint.CurrentMob = null;
+                        MarkSpawnPointInactive(spawnPoint, currentTick);
                     }
 
                     _onMobDied?.Invoke(mob);
@@ -657,19 +649,26 @@ namespace HaCreator.MapSimulator.Pools
                 }
             }
 
-            List<MobSpawnPoint> regularSpawnPoints = _spawnPoints
-                .Where(sp => !sp.IsBoss && IsSpawnPointReady(sp, currentTick))
-                .ToList();
+            _respawnCandidates.Clear();
+            for (int i = 0; i < _spawnPoints.Count; i++)
+            {
+                MobSpawnPoint spawnPoint = _spawnPoints[i];
+                if (!spawnPoint.IsBoss && IsSpawnPointReady(spawnPoint, currentTick))
+                {
+                    _respawnCandidates.Add(spawnPoint);
+                }
+            }
 
-            ShuffleSpawnPoints(regularSpawnPoints);
+            ShuffleSpawnPoints(_respawnCandidates);
 
-            foreach (var spawnPoint in regularSpawnPoints)
+            for (int i = 0; i < _respawnCandidates.Count; i++)
             {
                 if (numShouldSpawn <= 0)
                 {
                     break;
                 }
 
+                MobSpawnPoint spawnPoint = _respawnCandidates[i];
                 if (SpawnMobAtPoint(spawnPoint, mobFactory) != null)
                 {
                     numShouldSpawn--;
@@ -695,6 +694,51 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             return currentTick >= spawnPoint.NextSpawnTime;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private void AssignMobToSpawnPoint(MobSpawnPoint spawnPoint, MobItem mob)
+        {
+            if (spawnPoint == null)
+            {
+                return;
+            }
+
+            MobItem previousMob = spawnPoint.CurrentMob;
+            if (previousMob != null)
+            {
+                _spawnPointByMob.Remove(previousMob);
+            }
+
+            spawnPoint.CurrentMob = mob;
+            spawnPoint.IsActive = mob != null;
+            spawnPoint.DeathTime = 0;
+            if (mob != null)
+            {
+                _spawnPointByMob[mob] = spawnPoint;
+            }
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private void MarkSpawnPointInactive(MobSpawnPoint spawnPoint, int currentTick)
+        {
+            if (spawnPoint == null)
+            {
+                return;
+            }
+
+            MobItem currentMob = spawnPoint.CurrentMob;
+            if (currentMob != null)
+            {
+                _spawnPointByMob.Remove(currentMob);
+            }
+
+            spawnPoint.IsActive = false;
+            spawnPoint.DeathTime = currentTick;
+            spawnPoint.NextSpawnTime = spawnPoint.RespawnTimeMs < 0
+                ? int.MaxValue
+                : currentTick + DEATH_ANIMATION_TIME + spawnPoint.RespawnTimeMs;
+            spawnPoint.CurrentMob = null;
         }
 
         private static void ShuffleSpawnPoints(List<MobSpawnPoint> spawnPoints)
@@ -817,6 +861,169 @@ namespace HaCreator.MapSimulator.Pools
                     puppet.Y,
                     currentTick);
             }
+        }
+
+        public void SyncHypnotizedTargets(int currentTick)
+        {
+            if (_activeMobs.Count < 2)
+            {
+                return;
+            }
+
+            foreach (MobItem mob in _activeMobs)
+            {
+                if (mob?.AI == null || !mob.AI.IsHypnotized || mob.AI.IsDead)
+                {
+                    continue;
+                }
+
+                MobItem target = FindNearestMobTarget(mob);
+                if (target == null)
+                {
+                    continue;
+                }
+
+                mob.AI.UpdateExternalTargetPosition(
+                    target.PoolId,
+                    MobTargetType.Mob,
+                    target.CurrentX,
+                    target.CurrentY,
+                    currentTick);
+            }
+        }
+
+        public void SyncEncounterTargets(int currentTick)
+        {
+            if (_activeMobs.Count < 2)
+            {
+                return;
+            }
+
+            bool hasEncounterObjectives = _activeMobs.Any(IsEncounterObjective);
+            if (!hasEncounterObjectives)
+            {
+                ClearStaleEncounterTargets(currentTick);
+                return;
+            }
+
+            foreach (MobItem mob in _activeMobs)
+            {
+                if (mob?.AI == null || mob.AI.IsDead)
+                {
+                    continue;
+                }
+
+                MobItem target = ResolveEncounterTarget(mob);
+                if (target == null)
+                {
+                    if (mob.AI.IsTargetingMob)
+                    {
+                        mob.AI.ClearExternalTarget(currentTick);
+                    }
+
+                    continue;
+                }
+
+                if (mob.AI.IsTargetingMob && mob.AI.Target.TargetId == target.PoolId)
+                {
+                    mob.AI.UpdateExternalTargetPosition(
+                        target.PoolId,
+                        MobTargetType.Mob,
+                        target.CurrentX,
+                        target.CurrentY,
+                        currentTick);
+                    continue;
+                }
+
+                mob.AI.ForceAggro(
+                    target.CurrentX,
+                    target.CurrentY,
+                    currentTick,
+                    target.PoolId,
+                    MobTargetType.Mob);
+            }
+        }
+
+        private MobItem FindNearestMobTarget(MobItem source)
+        {
+            return FindNearestMobTarget(source, _ => true, float.MaxValue);
+        }
+
+        private MobItem ResolveEncounterTarget(MobItem source)
+        {
+            if (source?.AI == null || source.AI.IsDead)
+            {
+                return null;
+            }
+
+            if (source.IsProtectedFromPlayerDamage)
+            {
+                return FindNearestMobTarget(source, candidate => !candidate.UsesMobCombatLane, Math.Max(320f, source.AI.AggroRange));
+            }
+
+            if ((source.MobData?.Escort ?? 0) > 0)
+            {
+                return null;
+            }
+
+            return FindNearestMobTarget(source, candidate => candidate.UsesMobCombatLane, Math.Max(320f, source.AI.AggroRange));
+        }
+
+        private MobItem FindNearestMobTarget(MobItem source, System.Predicate<MobItem> predicate, float maxDistance)
+        {
+            if (source == null)
+            {
+                return null;
+            }
+
+            MobItem nearest = null;
+            float nearestDistanceSq = maxDistance * maxDistance;
+
+            for (int i = 0; i < _activeMobs.Count; i++)
+            {
+                MobItem candidate = _activeMobs[i];
+                if (candidate == null ||
+                    candidate == source ||
+                    candidate.AI == null ||
+                    candidate.AI.IsDead)
+                {
+                    continue;
+                }
+
+                if (predicate != null && !predicate(candidate))
+                {
+                    continue;
+                }
+
+                float dx = candidate.CurrentX - source.CurrentX;
+                float dy = candidate.CurrentY - source.CurrentY;
+                float distanceSq = dx * dx + dy * dy;
+                if (distanceSq >= nearestDistanceSq)
+                {
+                    continue;
+                }
+
+                nearestDistanceSq = distanceSq;
+                nearest = candidate;
+            }
+
+            return nearest;
+        }
+
+        private void ClearStaleEncounterTargets(int currentTick)
+        {
+            foreach (MobItem mob in _activeMobs)
+            {
+                if (mob?.AI?.IsTargetingMob == true)
+                {
+                    mob.AI.ClearExternalTarget(currentTick);
+                }
+            }
+        }
+
+        private static bool IsEncounterObjective(MobItem mob)
+        {
+            return mob?.UsesMobCombatLane == true;
         }
 
         /// <summary>

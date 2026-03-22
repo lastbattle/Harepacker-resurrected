@@ -17,6 +17,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using HaCreator.MapSimulator.UI.Controls;
+using System.Linq;
 
 namespace HaCreator.MapSimulator.Loaders
 {
@@ -53,47 +54,23 @@ namespace HaCreator.MapSimulator.Loaders
                 WzSubProperty mainBarProperties = (uiStatusBar2?["mainBar"] as WzSubProperty);
                 if (mainBarProperties != null)
                 {
-                    HaUIGrid grid = new HaUIGrid(1, 1);
-
                     System.Drawing.Bitmap backgrnd = ((WzCanvasProperty)mainBarProperties?["backgrnd"])?.GetLinkedWzCanvasBitmap();
 
-                    grid.AddRenderable(0, 0, new HaUIImage(new HaUIInfo()
-                    {
-                        Bitmap = backgrnd,
-                        VerticalAlignment = HaUIAlignment.Start,
-                        HorizontalAlignment = HaUIAlignment.Start
-                    }));
-
                     const int UI_PADDING_PX = 2;
-
-                    // Draw level, name, job area
-                    HaUIStackPanel stackPanel_charStats = new HaUIStackPanel(HaUIStackOrientation.Horizontal, new HaUIInfo()
-                    {
-                        VerticalAlignment = HaUIAlignment.End
-                    });
 
                     System.Drawing.Bitmap bitmap_lvBacktrnd = ((WzCanvasProperty)mainBarProperties?["lvBacktrnd"])?.GetLinkedWzCanvasBitmap();
                     System.Drawing.Bitmap bitmap_lvCover = ((WzCanvasProperty)mainBarProperties?["lvCover"])?.GetLinkedWzCanvasBitmap();
 
-                    HaUIGrid grid_charInfo = new HaUIGrid(1, 1);
-                    if (bitmap_lvBacktrnd != null)
-                    {
-                        grid_charInfo.AddRenderable(0, 0, new HaUIImage(new HaUIInfo() { Bitmap = bitmap_lvBacktrnd }));
-                    }
-                    if (bitmap_lvCover != null)
-                    {
-                        grid_charInfo.AddRenderable(0, 0, new HaUIImage(new HaUIInfo() { Bitmap = bitmap_lvCover }));
-                    }
-
-                    stackPanel_charStats.AddRenderable(grid_charInfo);
-
                     // Draw HP, MP, EXP area
                     System.Drawing.Bitmap bitmap_gaugeBackgrd = ((WzCanvasProperty)mainBarProperties?["gaugeBackgrd"])?.GetLinkedWzCanvasBitmap();
                     System.Drawing.Bitmap bitmap_gaugeCover = ((WzCanvasProperty)mainBarProperties?["gaugeCover"])?.GetLinkedWzCanvasBitmap();
-
-                    HaUIGrid grid_hpMpExp = new HaUIGrid(1, 1);
-                    grid_hpMpExp.AddRenderable(0, 0, new HaUIImage(new HaUIInfo() { Bitmap = bitmap_gaugeCover }));
-                    grid_hpMpExp.AddRenderable(0, 0, new HaUIImage(new HaUIInfo() { Bitmap = bitmap_gaugeBackgrd }));
+                    System.Drawing.Bitmap composedMainBar = ComposeBigBangStatusBarFrame(
+                        mainBarProperties,
+                        backgrnd,
+                        bitmap_lvBacktrnd,
+                        bitmap_lvCover,
+                        bitmap_gaugeBackgrd,
+                        bitmap_gaugeCover);
 
                     // Load gauge fill images for HP, MP, EXP bars
                     // WZ structure: mainBar/gauge/hp/0, mainBar/gauge/mp/0, mainBar/gauge/exp/0
@@ -148,9 +125,6 @@ namespace HaCreator.MapSimulator.Loaders
                             }
                         }
                     }
-
-                    // add HP, MP, EXP area to the [level, name, job area stackpanel]
-                    stackPanel_charStats.AddRenderable(grid_hpMpExp);
 
                     // Cash shop, MTS, menu, system, channel UI
                     WzBinaryProperty binaryProp_BtMouseClickSoundProperty = (WzBinaryProperty)soundUIImage["BtMouseClick"];
@@ -409,12 +383,19 @@ namespace HaCreator.MapSimulator.Loaders
                     obj_Ui_BtKeysetting.X = obj_Ui_BtSkill.X + obj_Ui_BtSkill.CanvasSnapshotWidth + 4;/* + obj_Ui_BtKeysetting.CanvasSnapshotWidth*/;
                     obj_Ui_BtKeysetting.Y = obj_Ui_BtSkill.Y;
 
-                    // Add all items to the main grid
-                    grid.AddRenderable(0, 0, stackPanel_charStats);
+                    backgrnd?.Dispose();
+                    bitmap_lvBacktrnd?.Dispose();
+                    bitmap_lvCover?.Dispose();
+                    bitmap_gaugeBackgrd?.Dispose();
+                    bitmap_gaugeCover?.Dispose();
 
-                    Texture2D texture_backgrnd = grid.Render().ToTexture2DAndDispose(device);
-
-                    IDXObject dxObj_backgrnd = new DXObject(0, (int)(renderParams.RenderHeight / renderParams.RenderObjectScaling) - grid.GetSize().Height, texture_backgrnd, 0);
+                    int composedMainBarHeight = composedMainBar.Height;
+                    Texture2D texture_backgrnd = composedMainBar.ToTexture2DAndDispose(device);
+                    IDXObject dxObj_backgrnd = new DXObject(
+                        0,
+                        (int)(renderParams.RenderHeight / renderParams.RenderObjectScaling) - composedMainBarHeight,
+                        texture_backgrnd,
+                        0);
                     StatusBarUI statusBar = new StatusBarUI(dxObj_backgrnd, obj_Ui_BtCashShop, obj_Ui_BtMTS, obj_Ui_BtMenu, obj_Ui_BtSystem, obj_Ui_BtChannel,
                         new Point(dxObj_backgrnd.X, dxObj_backgrnd.Y),
                         new List<UIObject> { });
@@ -572,7 +553,10 @@ namespace HaCreator.MapSimulator.Loaders
                         );
                     chatUI.InitializeButtons();
                     chatUI.SetChatEnterTexture(LoadCanvasTexture(mainBarProperties?["chatEnter"] as WzCanvasProperty, device));
-                    chatUI.SetChatTargetTextures(LoadChatTargetTextures(subProperty_chatTarget, device));
+                    (Dictionary<MapSimulatorChatTargetType, Texture2D> chatTargetTextures,
+                        Dictionary<MapSimulatorChatTargetType, Point> chatTargetOrigins) =
+                        LoadChatTargetTextures(subProperty_chatTarget, device);
+                    chatUI.SetChatTargetTextures(chatTargetTextures, chatTargetOrigins);
                     chatUI.SetPointNotificationAnimations(
                         LoadPointNotificationAnimation(mainBarProperties?["ApNotify"] as WzSubProperty, device),
                         LoadPointNotificationAnimation(mainBarProperties?["SpNotify"] as WzSubProperty, device));
@@ -922,6 +906,51 @@ namespace HaCreator.MapSimulator.Loaders
             return keyDownBarTextures;
         }
 
+        private static System.Drawing.Bitmap ComposeBigBangStatusBarFrame(
+            WzSubProperty mainBarProperties,
+            System.Drawing.Bitmap backgrnd,
+            System.Drawing.Bitmap lvBacktrnd,
+            System.Drawing.Bitmap lvCover,
+            System.Drawing.Bitmap gaugeBackgrd,
+            System.Drawing.Bitmap gaugeCover)
+        {
+            if (backgrnd == null)
+            {
+                return new System.Drawing.Bitmap(1, 1);
+            }
+
+            Point frameOrigin = GetCanvasOrigin(mainBarProperties?["backgrnd"] as WzCanvasProperty);
+            var layers = new List<(int Z, WzCanvasProperty Canvas, System.Drawing.Bitmap Bitmap)>
+            {
+                (GetCanvasZ(mainBarProperties?["lvBacktrnd"] as WzCanvasProperty), mainBarProperties?["lvBacktrnd"] as WzCanvasProperty, lvBacktrnd),
+                (GetCanvasZ(mainBarProperties?["gaugeBackgrd"] as WzCanvasProperty), mainBarProperties?["gaugeBackgrd"] as WzCanvasProperty, gaugeBackgrd),
+                (GetCanvasZ(mainBarProperties?["lvCover"] as WzCanvasProperty), mainBarProperties?["lvCover"] as WzCanvasProperty, lvCover),
+                (GetCanvasZ(mainBarProperties?["gaugeCover"] as WzCanvasProperty), mainBarProperties?["gaugeCover"] as WzCanvasProperty, gaugeCover)
+            };
+
+            var composed = new System.Drawing.Bitmap(backgrnd.Width, backgrnd.Height);
+            using (System.Drawing.Graphics graphics = System.Drawing.Graphics.FromImage(composed))
+            {
+                graphics.Clear(System.Drawing.Color.Transparent);
+                graphics.DrawImage(backgrnd, 0, 0);
+
+                foreach (var layer in layers.OrderBy(layer => layer.Z))
+                {
+                    if (layer.Canvas == null || layer.Bitmap == null)
+                    {
+                        continue;
+                    }
+
+                    Point layerOrigin = GetCanvasOrigin(layer.Canvas);
+                    int drawX = frameOrigin.X - layerOrigin.X;
+                    int drawY = frameOrigin.Y - layerOrigin.Y;
+                    graphics.DrawImage(layer.Bitmap, drawX, drawY);
+                }
+            }
+
+            return composed;
+        }
+
         private static StatusBarWarningAnimation LoadStatusBarWarningAnimation(WzSubProperty warningProperty, GraphicsDevice device)
         {
             var animation = new StatusBarWarningAnimation();
@@ -959,21 +988,23 @@ namespace HaCreator.MapSimulator.Loaders
             return animation;
         }
 
-        private static Dictionary<MapSimulatorChatTargetType, Texture2D> LoadChatTargetTextures(WzSubProperty chatTargetProperty, GraphicsDevice device)
+        private static (Dictionary<MapSimulatorChatTargetType, Texture2D> Textures, Dictionary<MapSimulatorChatTargetType, Point> Origins)
+            LoadChatTargetTextures(WzSubProperty chatTargetProperty, GraphicsDevice device)
         {
             var textures = new Dictionary<MapSimulatorChatTargetType, Texture2D>();
+            var origins = new Dictionary<MapSimulatorChatTargetType, Point>();
             if (chatTargetProperty == null || device == null)
             {
-                return textures;
+                return (textures, origins);
             }
 
-            AddChatTargetTexture(textures, chatTargetProperty, "all", MapSimulatorChatTargetType.All, device);
-            AddChatTargetTexture(textures, chatTargetProperty, "friend", MapSimulatorChatTargetType.Friend, device);
-            AddChatTargetTexture(textures, chatTargetProperty, "party", MapSimulatorChatTargetType.Party, device);
-            AddChatTargetTexture(textures, chatTargetProperty, "guild", MapSimulatorChatTargetType.Guild, device);
-            AddChatTargetTexture(textures, chatTargetProperty, "association", MapSimulatorChatTargetType.Association, device);
-            AddChatTargetTexture(textures, chatTargetProperty, "expedition", MapSimulatorChatTargetType.Expedition, device);
-            return textures;
+            AddChatTargetTexture(textures, origins, chatTargetProperty, "all", MapSimulatorChatTargetType.All, device);
+            AddChatTargetTexture(textures, origins, chatTargetProperty, "friend", MapSimulatorChatTargetType.Friend, device);
+            AddChatTargetTexture(textures, origins, chatTargetProperty, "party", MapSimulatorChatTargetType.Party, device);
+            AddChatTargetTexture(textures, origins, chatTargetProperty, "guild", MapSimulatorChatTargetType.Guild, device);
+            AddChatTargetTexture(textures, origins, chatTargetProperty, "association", MapSimulatorChatTargetType.Association, device);
+            AddChatTargetTexture(textures, origins, chatTargetProperty, "expedition", MapSimulatorChatTargetType.Expedition, device);
+            return (textures, origins);
         }
 
         private static StatusBarChatUI.StatusBarPointNotificationAnimation LoadPointNotificationAnimation(
@@ -1030,17 +1061,40 @@ namespace HaCreator.MapSimulator.Loaders
             return animation;
         }
 
+        private static Point GetCanvasOrigin(WzCanvasProperty canvas)
+        {
+            if (!(canvas?["origin"] is WzVectorProperty origin))
+            {
+                return Point.Zero;
+            }
+
+            return new Point(origin.X.Value, origin.Y.Value);
+        }
+
+        private static int GetCanvasZ(WzCanvasProperty canvas)
+        {
+            if (!(canvas?["z"] is WzIntProperty z))
+            {
+                return 0;
+            }
+
+            return z.Value;
+        }
+
         private static void AddChatTargetTexture(
             Dictionary<MapSimulatorChatTargetType, Texture2D> textures,
+            Dictionary<MapSimulatorChatTargetType, Point> origins,
             WzSubProperty chatTargetProperty,
             string propertyName,
             MapSimulatorChatTargetType targetType,
             GraphicsDevice device)
         {
-            Texture2D texture = LoadCanvasTexture(chatTargetProperty?[propertyName] as WzCanvasProperty, device);
+            WzCanvasProperty chatTargetCanvas = chatTargetProperty?[propertyName] as WzCanvasProperty;
+            Texture2D texture = LoadCanvasTexture(chatTargetCanvas, device);
             if (texture != null)
             {
                 textures[targetType] = texture;
+                origins[targetType] = GetCanvasOrigin(chatTargetCanvas);
             }
         }
 

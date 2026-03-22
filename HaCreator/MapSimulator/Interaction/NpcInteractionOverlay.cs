@@ -1,8 +1,13 @@
 using System;
 using System.Collections.Generic;
+using System.Text;
+using HaSharedLibrary.Util;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using Microsoft.Xna.Framework.Input;
+using SD = System.Drawing;
+using SDText = System.Drawing.Text;
+using XnaColor = Microsoft.Xna.Framework.Color;
 
 namespace HaCreator.MapSimulator.Interaction
 {
@@ -21,6 +26,11 @@ namespace HaCreator.MapSimulator.Interaction
         private readonly Texture2D _pixel;
         private readonly List<NpcInteractionEntry> _entries = new();
         private readonly Stack<PageContext> _pageContextStack = new();
+        private readonly Dictionary<TextRenderCacheKey, Texture2D> _textTextureCache = new();
+        private readonly SD.Bitmap _measureBitmap;
+        private readonly SD.Graphics _measureGraphics;
+        private readonly SD.Font _fallbackFont;
+        private readonly float _fallbackLineHeight;
 
         private SpriteFont _font;
         private string _npcName = "NPC";
@@ -40,10 +50,42 @@ namespace HaCreator.MapSimulator.Interaction
             public int PageIndex { get; }
         }
 
+        private readonly struct TextRenderCacheKey : IEquatable<TextRenderCacheKey>
+        {
+            public TextRenderCacheKey(string text, XnaColor color)
+            {
+                Text = text ?? string.Empty;
+                Color = color.PackedValue;
+            }
+
+            public string Text { get; }
+            public uint Color { get; }
+
+            public bool Equals(TextRenderCacheKey other)
+            {
+                return Color == other.Color && string.Equals(Text, other.Text, StringComparison.Ordinal);
+            }
+
+            public override bool Equals(object obj)
+            {
+                return obj is TextRenderCacheKey other && Equals(other);
+            }
+
+            public override int GetHashCode()
+            {
+                return HashCode.Combine(Text, Color);
+            }
+        }
+
         public NpcInteractionOverlay(GraphicsDevice device)
         {
             _pixel = new Texture2D(device, 1, 1);
             _pixel.SetData(new[] { Color.White });
+            _measureBitmap = new SD.Bitmap(1, 1);
+            _measureGraphics = SD.Graphics.FromImage(_measureBitmap);
+            _measureGraphics.TextRenderingHint = SDText.TextRenderingHint.AntiAliasGridFit;
+            _fallbackFont = new SD.Font("Segoe UI", 13f, SD.FontStyle.Regular, SD.GraphicsUnit.Point);
+            _fallbackLineHeight = MeasureFallbackText("Ag").Y;
         }
 
         public bool IsVisible { get; private set; }
@@ -58,6 +100,7 @@ namespace HaCreator.MapSimulator.Interaction
 
         public void Open(NpcInteractionState state)
         {
+            ClearTextTextureCache();
             _npcName = string.IsNullOrWhiteSpace(state?.NpcName) ? "NPC" : state.NpcName;
             _entries.Clear();
 
@@ -381,17 +424,18 @@ namespace HaCreator.MapSimulator.Interaction
                 return;
             }
 
-            string[] paragraphs = text.Replace("\r", string.Empty).Split('\n');
+            string normalizedText = NormalizePunctuation(text);
+            string[] paragraphs = normalizedText.Replace("\r", string.Empty).Split('\n');
             float y = bounds.Y;
 
             for (int i = 0; i < paragraphs.Length; i++)
             {
                 foreach (string line in WrapLine(paragraphs[i], bounds.Width))
                 {
-                    spriteBatch.DrawString(_font, line, new Vector2(bounds.X, y), color);
-                    y += _font.LineSpacing;
+                    DrawText(spriteBatch, line, new Vector2(bounds.X, y), color);
+                    y += GetLineHeight(line);
 
-                    if (y > bounds.Bottom - _font.LineSpacing)
+                    if (y > bounds.Bottom - GetLineHeight(line))
                     {
                         return;
                     }
@@ -415,13 +459,13 @@ namespace HaCreator.MapSimulator.Interaction
                 yield break;
             }
 
-            string[] words = text.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            string[] words = NormalizePunctuation(text).Split(' ', StringSplitOptions.RemoveEmptyEntries);
             string currentLine = string.Empty;
 
             for (int i = 0; i < words.Length; i++)
             {
                 string candidate = string.IsNullOrEmpty(currentLine) ? words[i] : $"{currentLine} {words[i]}";
-                if (_font.MeasureString(candidate).X <= maxWidth)
+                if (MeasureText(candidate).X <= maxWidth)
                 {
                     currentLine = candidate;
                     continue;
@@ -461,12 +505,178 @@ namespace HaCreator.MapSimulator.Interaction
                 return;
             }
 
-            spriteBatch.DrawString(_font, text, position, color);
+            string normalizedText = NormalizePunctuation(text);
+            if (ContainsUnsupportedFontCharacters(normalizedText))
+            {
+                DrawFallbackText(spriteBatch, normalizedText, position, color);
+                return;
+            }
+
+            spriteBatch.DrawString(_font, normalizedText, position, color);
         }
 
         private Vector2 MeasureText(string text)
         {
-            return _font?.MeasureString(text) ?? Vector2.Zero;
+            if (_font == null)
+            {
+                return Vector2.Zero;
+            }
+
+            string normalizedText = NormalizePunctuation(text);
+            return ContainsUnsupportedFontCharacters(normalizedText)
+                ? MeasureFallbackText(normalizedText)
+                : _font.MeasureString(normalizedText);
+        }
+
+        private string NormalizePunctuation(string text)
+        {
+            if (string.IsNullOrEmpty(text))
+            {
+                return text ?? string.Empty;
+            }
+
+            var builder = new StringBuilder(text.Length);
+            for (int i = 0; i < text.Length; i++)
+            {
+                builder.Append(NormalizeCharacter(text[i]));
+            }
+
+            return builder.ToString();
+        }
+
+        private bool ContainsUnsupportedFontCharacters(string text)
+        {
+            if (_font == null || string.IsNullOrEmpty(text))
+            {
+                return false;
+            }
+
+            for (int i = 0; i < text.Length; i++)
+            {
+                if (!FontSupportsCharacter(text[i]))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private bool FontSupportsCharacter(char character)
+        {
+            IReadOnlyList<char> supportedCharacters = _font.Characters;
+            if (supportedCharacters == null)
+            {
+                return true;
+            }
+
+            for (int i = 0; i < supportedCharacters.Count; i++)
+            {
+                if (supportedCharacters[i] == character)
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private float GetLineHeight(string text)
+        {
+            return ContainsUnsupportedFontCharacters(NormalizePunctuation(text))
+                ? _fallbackLineHeight
+                : _font.LineSpacing;
+        }
+
+        private Vector2 MeasureFallbackText(string text)
+        {
+            if (string.IsNullOrEmpty(text))
+            {
+                return Vector2.Zero;
+            }
+
+            SD.SizeF size = _measureGraphics.MeasureString(text, _fallbackFont, SD.PointF.Empty, SD.StringFormat.GenericTypographic);
+            if (size.Width <= 0f || size.Height <= 0f)
+            {
+                size = _measureGraphics.MeasureString(text, _fallbackFont);
+            }
+
+            return new Vector2((float)Math.Ceiling(size.Width), (float)Math.Ceiling(size.Height));
+        }
+
+        private void DrawFallbackText(SpriteBatch spriteBatch, string text, Vector2 position, XnaColor color)
+        {
+            if (string.IsNullOrEmpty(text))
+            {
+                return;
+            }
+
+            Texture2D texture = GetOrCreateFallbackTexture(text, color);
+            if (texture == null)
+            {
+                return;
+            }
+
+            spriteBatch.Draw(texture, position, color: XnaColor.White);
+        }
+
+        private Texture2D GetOrCreateFallbackTexture(string text, XnaColor color)
+        {
+            var cacheKey = new TextRenderCacheKey(text, color);
+            if (_textTextureCache.TryGetValue(cacheKey, out Texture2D cachedTexture) && cachedTexture != null && !cachedTexture.IsDisposed)
+            {
+                return cachedTexture;
+            }
+
+            Vector2 size = MeasureFallbackText(text);
+            int width = Math.Max(1, (int)size.X);
+            int height = Math.Max(1, (int)size.Y);
+
+            using var bitmap = new SD.Bitmap(width, height);
+            using SD.Graphics graphics = SD.Graphics.FromImage(bitmap);
+            graphics.Clear(SD.Color.Transparent);
+            graphics.TextRenderingHint = SDText.TextRenderingHint.AntiAliasGridFit;
+            using var brush = new SD.SolidBrush(SD.Color.FromArgb(color.A, color.R, color.G, color.B));
+            graphics.DrawString(text, _fallbackFont, brush, 0f, 0f, SD.StringFormat.GenericTypographic);
+
+            Texture2D texture = bitmap.ToTexture2D(_pixel.GraphicsDevice);
+            _textTextureCache[cacheKey] = texture;
+            return texture;
+        }
+
+        private void ClearTextTextureCache()
+        {
+            foreach (Texture2D texture in _textTextureCache.Values)
+            {
+                texture?.Dispose();
+            }
+
+            _textTextureCache.Clear();
+        }
+
+        private static char NormalizeCharacter(char character)
+        {
+            return character switch
+            {
+                '\u2018' => '\'',
+                '\u2019' => '\'',
+                '\u201A' => '\'',
+                '\u201B' => '\'',
+                '\u201C' => '"',
+                '\u201D' => '"',
+                '\u201E' => '"',
+                '\u201F' => '"',
+                '\u2032' => '\'',
+                '\u2033' => '"',
+                '\u00B4' => '\'',
+                '\u0060' => '\'',
+                '\u2013' => '-',
+                '\u2014' => '-',
+                '\u2212' => '-',
+                '\u2026' => '.',
+                '\u00A0' => ' ',
+                _ => character
+            };
         }
 
         private static Rectangle GetWindowRectangle(int renderWidth, int renderHeight)

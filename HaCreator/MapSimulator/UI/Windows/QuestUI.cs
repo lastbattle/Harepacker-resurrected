@@ -19,7 +19,8 @@ namespace HaCreator.MapSimulator.UI
     public class QuestUI : UIWindowBase
     {
         private const int QUEST_ENTRY_HEIGHT = 24;
-        private const int VISIBLE_QUESTS = 7;
+        private const int MIN_VISIBLE_QUESTS = 4;
+        private const int FOOTER_HEIGHT = 42;
         private const int TAB_AVAILABLE = 0;
         private const int TAB_IN_PROGRESS = 1;
         private const int TAB_COMPLETED = 2;
@@ -202,9 +203,13 @@ namespace HaCreator.MapSimulator.UI
                 {
                     _scrollOffset = i;
                 }
-                else if (i >= _scrollOffset + VISIBLE_QUESTS)
+                else
                 {
-                    _scrollOffset = Math.Max(0, i - (VISIBLE_QUESTS - 1));
+                    int visibleQuestCount = GetVisibleQuestCount(GetListArea());
+                    if (i >= _scrollOffset + visibleQuestCount)
+                    {
+                        _scrollOffset = Math.Max(0, i - (visibleQuestCount - 1));
+                    }
                 }
 
                 return true;
@@ -255,11 +260,9 @@ namespace HaCreator.MapSimulator.UI
 
             Rectangle tabRect = GetTabArea();
             Rectangle listRect = GetListArea();
-            Rectangle detailRect = GetDetailArea(listRect);
-
             DrawTabs(sprite, tabRect);
             DrawQuestList(sprite, listRect, snapshot);
-            DrawQuestDetail(sprite, detailRect, snapshot);
+            DrawQuestFooter(sprite, GetFooterArea(), snapshot);
         }
 
         protected override void DrawOverlay(SpriteBatch sprite, SkeletonMeshRenderer skeletonMeshRenderer, GameTime gameTime,
@@ -306,7 +309,8 @@ namespace HaCreator.MapSimulator.UI
         {
             sprite.Draw(_pixel, listRect, new Color(10, 22, 41, 155));
             IReadOnlyList<QuestLogEntrySnapshot> entries = snapshot.Entries;
-            int visibleCount = Math.Min(VISIBLE_QUESTS, Math.Max(0, entries.Count - _scrollOffset));
+            int visibleQuestCount = GetVisibleQuestCount(listRect);
+            int visibleCount = Math.Min(visibleQuestCount, Math.Max(0, entries.Count - _scrollOffset));
 
             for (int i = 0; i < visibleCount; i++)
             {
@@ -333,87 +337,46 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
-            if (entries.Count > VISIBLE_QUESTS)
+            if (entries.Count > visibleQuestCount)
             {
-                string scrollText = $"{_scrollOffset + 1}-{Math.Min(entries.Count, _scrollOffset + VISIBLE_QUESTS)} / {entries.Count}";
+                string scrollText = $"{_scrollOffset + 1}-{Math.Min(entries.Count, _scrollOffset + visibleQuestCount)} / {entries.Count}";
                 DrawText(sprite, scrollText, new Vector2(listRect.Right - 64, listRect.Bottom - 16), new Color(210, 214, 224), 0.42f);
             }
         }
 
-        private void DrawQuestDetail(SpriteBatch sprite, Rectangle detailRect, QuestLogSnapshot snapshot)
+        private void DrawQuestFooter(SpriteBatch sprite, Rectangle footerRect, QuestLogSnapshot snapshot)
         {
-            sprite.Draw(_pixel, detailRect, new Color(9, 18, 33, 165));
+            sprite.Draw(_pixel, footerRect, new Color(9, 18, 33, 165));
 
             QuestLogEntrySnapshot selected = snapshot.Entries.FirstOrDefault(entry => entry.QuestId == _selectedQuestId);
             if (selected == null)
             {
-                DrawText(sprite, "Select a quest to inspect its conditions and rewards.", new Vector2(detailRect.X + 8, detailRect.Y + 8), new Color(224, 228, 236), SMALL_TEXT_SCALE, detailRect.Width - 16);
+                DrawText(sprite, "Select a quest, then click it again to open the detail window.", new Vector2(footerRect.X + 8, footerRect.Y + 8), new Color(224, 228, 236), SMALL_TEXT_SCALE, footerRect.Width - 16);
                 return;
             }
 
-            int y = detailRect.Y + 8;
-            DrawText(sprite, selected.Name, new Vector2(detailRect.X + 8, y), Color.White, TEXT_SCALE, detailRect.Width - 16);
-            y += 18;
-            DrawText(sprite, selected.StatusText, new Vector2(detailRect.X + 8, y), GetRowSubtitleColor(selected), SMALL_TEXT_SCALE);
+            int y = footerRect.Y + 7;
+            DrawText(sprite, selected.Name, new Vector2(footerRect.X + 8, y), Color.White, TEXT_SCALE, footerRect.Width - 16);
+            y += 16;
+            DrawText(sprite, selected.StatusText, new Vector2(footerRect.X + 8, y), GetRowSubtitleColor(selected), SMALL_TEXT_SCALE);
             if (!string.IsNullOrWhiteSpace(selected.NpcText))
             {
-                DrawText(sprite, selected.NpcText, new Vector2(detailRect.Right - 96, y), new Color(199, 208, 223), 0.46f, 88);
+                DrawText(sprite, selected.NpcText, new Vector2(footerRect.Right - 96, y), new Color(199, 208, 223), 0.46f, 88);
             }
 
-            y += 18;
-            DrawProgressBar(sprite, new Rectangle(detailRect.X + 8, y, detailRect.Width - 16, 8), selected.ProgressRatio);
             y += 14;
+            DrawProgressBar(sprite, new Rectangle(footerRect.X + 8, y, footerRect.Width - 16, 8), selected.ProgressRatio);
+            y += 12;
 
-            y = DrawSection(sprite, detailRect, y, "Summary", selected.SummaryText);
-            y = DrawSection(sprite, detailRect, y, "Details", selected.StageText);
-            y = DrawLineSection(sprite, detailRect, y, "Requirements", selected.RequirementLines);
-            y = DrawLineSection(sprite, detailRect, y, "Rewards", selected.RewardLines);
-
-            if (selected.IssueLines.Count > 0 && y < detailRect.Bottom - 24)
+            string hintText = selected.IssueLines.Count > 0
+                ? selected.IssueLines[0]
+                : string.IsNullOrWhiteSpace(selected.StageText)
+                    ? selected.SummaryText
+                    : selected.StageText;
+            if (!string.IsNullOrWhiteSpace(hintText))
             {
-                DrawText(sprite, "Outstanding", new Vector2(detailRect.X + 8, y), new Color(255, 221, 126), SMALL_TEXT_SCALE);
-                y += 14;
-                for (int i = 0; i < selected.IssueLines.Count && y < detailRect.Bottom - 14; i++)
-                {
-                    DrawText(sprite, $"- {selected.IssueLines[i]}", new Vector2(detailRect.X + 14, y), new Color(255, 230, 172), 0.44f, detailRect.Width - 24);
-                    y += 14;
-                }
+                DrawText(sprite, Truncate(hintText, 68), new Vector2(footerRect.X + 8, y), new Color(228, 233, 240), 0.44f, footerRect.Width - 16);
             }
-        }
-
-        private int DrawSection(SpriteBatch sprite, Rectangle detailRect, int y, string title, string text)
-        {
-            if (string.IsNullOrWhiteSpace(text) || y >= detailRect.Bottom - 16)
-            {
-                return y;
-            }
-
-            DrawText(sprite, title, new Vector2(detailRect.X + 8, y), new Color(160, 210, 255), SMALL_TEXT_SCALE);
-            y += 14;
-            DrawText(sprite, text, new Vector2(detailRect.X + 8, y), new Color(229, 233, 240), 0.45f, detailRect.Width - 16);
-            return y + (MeasureWrappedLineCount(text, detailRect.Width - 16, 0.45f) * 12) + 4;
-        }
-
-        private int DrawLineSection(SpriteBatch sprite, Rectangle detailRect, int y, string title, IReadOnlyList<QuestLogLineSnapshot> lines)
-        {
-            if (lines == null || lines.Count == 0 || y >= detailRect.Bottom - 16)
-            {
-                return y;
-            }
-
-            DrawText(sprite, title, new Vector2(detailRect.X + 8, y), new Color(160, 210, 255), SMALL_TEXT_SCALE);
-            y += 14;
-            for (int i = 0; i < lines.Count && y < detailRect.Bottom - 14; i++)
-            {
-                QuestLogLineSnapshot line = lines[i];
-                Color iconColor = line.IsComplete ? new Color(114, 209, 108) : new Color(214, 146, 90);
-                Rectangle iconRect = new Rectangle(detailRect.X + 8, y, DETAIL_LINE_ICON_SIZE, DETAIL_LINE_ICON_SIZE);
-                DrawQuestLineIcon(sprite, iconRect, line, iconColor);
-                DrawText(sprite, $"{line.Label}: {line.Text}", new Vector2(detailRect.X + 24, y - 2), new Color(229, 233, 240), 0.44f, detailRect.Width - 34);
-                y += 14;
-            }
-
-            return y + 2;
         }
 
         private void DrawProgressBar(SpriteBatch sprite, Rectangle rect, float ratio)
@@ -489,7 +452,7 @@ namespace HaCreator.MapSimulator.UI
             _lastMousePosition = new Point(mouseState.X, mouseState.Y);
             bool leftReleased = mouseState.LeftButton == ButtonState.Released && _previousMouseState.LeftButton == ButtonState.Pressed;
             int wheelDelta = mouseState.ScrollWheelValue - _previousMouseState.ScrollWheelValue;
-            _hoveredQuestItem = ResolveHoveredQuestItem(mouseState.X, mouseState.Y, snapshot);
+            _hoveredQuestItem = null;
 
             if (ContainsPoint(mouseState.X, mouseState.Y))
             {
@@ -559,8 +522,13 @@ namespace HaCreator.MapSimulator.UI
             int entryIndex = _scrollOffset + rowIndex;
             if (rowIndex >= 0 && entryIndex >= 0 && entryIndex < snapshot.Entries.Count)
             {
-                _selectedQuestId = snapshot.Entries[entryIndex].QuestId;
-                QuestDetailRequested?.Invoke(_selectedQuestId);
+                int clickedQuestId = snapshot.Entries[entryIndex].QuestId;
+                bool openDetail = clickedQuestId == _selectedQuestId;
+                _selectedQuestId = clickedQuestId;
+                if (openDetail)
+                {
+                    QuestDetailRequested?.Invoke(_selectedQuestId);
+                }
             }
         }
 
@@ -582,7 +550,8 @@ namespace HaCreator.MapSimulator.UI
         private Rectangle GetListArea()
         {
             int top = Position.Y + (_currentTab == TAB_AVAILABLE ? 66 : 48);
-            return new Rectangle(Position.X + 8, top, (CurrentFrame?.Width ?? 240) - 16, VISIBLE_QUESTS * QUEST_ENTRY_HEIGHT + 8);
+            int bottom = GetFooterArea().Y - 8;
+            return new Rectangle(Position.X + 8, top, (CurrentFrame?.Width ?? 240) - 16, Math.Max(QUEST_ENTRY_HEIGHT + 8, bottom - top));
         }
 
         private bool HasClientTabButtons()
@@ -595,11 +564,21 @@ namespace HaCreator.MapSimulator.UI
             return _myLevelButton != null || _allLevelButton != null;
         }
 
-        private Rectangle GetDetailArea(Rectangle listRect)
+        private Rectangle GetFooterArea()
         {
             int windowWidth = CurrentFrame?.Width ?? 240;
             int windowHeight = CurrentFrame?.Height ?? 396;
-            return new Rectangle(Position.X + 8, listRect.Bottom + 8, windowWidth - 16, windowHeight - (listRect.Bottom - Position.Y) - 16);
+            return new Rectangle(Position.X + 8, Position.Y + windowHeight - FOOTER_HEIGHT - 8, windowWidth - 16, FOOTER_HEIGHT);
+        }
+
+        private int GetVisibleQuestCount(Rectangle listRect)
+        {
+            return Math.Max(MIN_VISIBLE_QUESTS, Math.Max(1, (listRect.Height - 8) / QUEST_ENTRY_HEIGHT));
+        }
+
+        private Rectangle GetDetailArea(Rectangle listRect)
+        {
+            return GetFooterArea();
         }
 
         private void EnsureSelection(QuestLogSnapshot snapshot)
@@ -621,7 +600,7 @@ namespace HaCreator.MapSimulator.UI
 
         private void ClampScroll(QuestLogSnapshot snapshot)
         {
-            int maxScroll = Math.Max(0, snapshot.Entries.Count - VISIBLE_QUESTS);
+            int maxScroll = Math.Max(0, snapshot.Entries.Count - GetVisibleQuestCount(GetListArea()));
             _scrollOffset = Math.Clamp(_scrollOffset, 0, maxScroll);
         }
 
@@ -1164,7 +1143,7 @@ namespace HaCreator.MapSimulator.UI
         public void ScrollDown()
         {
             QuestLogSnapshot snapshot = GetCurrentSnapshot();
-            int maxScroll = Math.Max(0, snapshot.Entries.Count - VISIBLE_QUESTS);
+            int maxScroll = Math.Max(0, snapshot.Entries.Count - GetVisibleQuestCount(GetListArea()));
             if (_scrollOffset < maxScroll)
             {
                 _scrollOffset++;

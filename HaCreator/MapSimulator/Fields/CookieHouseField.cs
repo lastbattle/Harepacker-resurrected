@@ -6,7 +6,6 @@ using MapleLib.WzLib.WzProperties;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using System;
-using System.Collections.Generic;
 
 namespace HaCreator.MapSimulator.Fields
 {
@@ -47,8 +46,12 @@ namespace HaCreator.MapSimulator.Fields
         private int _mapId;
         private int _point;
         private int _gradeIndex;
+        private Func<int> _pointProvider;
         private bool _assetsLoaded;
         private GraphicsDevice _graphicsDevice;
+        private SpriteBatch _hudSpriteBatch;
+        private RenderTarget2D _hudRenderTarget;
+        private bool _hudDirty;
         private CookieCanvasSprite _backgroundTopLeft;
         private CookieCanvasSprite _backgroundTopCenter;
         private CookieCanvasSprite _backgroundTopRight;
@@ -65,18 +68,34 @@ namespace HaCreator.MapSimulator.Fields
         public int Point => _point;
         public int GradeIndex => _gradeIndex;
 
-        public void Enable(int mapId)
+        public void Enable(int mapId, Func<int> pointProvider = null)
         {
             _isActive = true;
             _mapId = mapId;
-            _point = 0;
-            _gradeIndex = 0;
+            _pointProvider = pointProvider;
+            _hudDirty = true;
+            OnPointUpdate(pointProvider?.Invoke() ?? 0);
+        }
+
+        public void Update()
+        {
+            if (!_isActive || _pointProvider == null)
+            {
+                return;
+            }
+
+            int nextPoint = Math.Max(0, _pointProvider());
+            if (nextPoint != _point)
+            {
+                OnPointUpdate(nextPoint);
+            }
         }
 
         public void OnPointUpdate(int newPoint)
         {
             _point = Math.Max(0, newPoint);
             _gradeIndex = FindGrade(_point);
+            _hudDirty = true;
         }
 
         public string DescribeStatus()
@@ -92,28 +111,14 @@ namespace HaCreator.MapSimulator.Fields
             }
 
             EnsureAssetsLoaded(spriteBatch.GraphicsDevice);
+            EnsureHudRenderTarget(spriteBatch.GraphicsDevice);
 
             int left = centerX + LayerOffsetX;
-            Rectangle panelBounds = new(left, LayerTopY, LayerWidth, LayerHeight);
+            RedrawHudTextureIfNeeded(pixelTexture, font);
 
-            if (TryDrawBackground(spriteBatch, panelBounds))
+            if (_hudRenderTarget != null)
             {
-                DrawGradeBadge(spriteBatch, panelBounds);
-            }
-            else if (pixelTexture != null)
-            {
-                spriteBatch.Draw(pixelTexture, panelBounds, new Color(37, 26, 18, 220));
-            }
-
-            if (font != null)
-            {
-                string scoreText = _point.ToString();
-                Vector2 textSize = font.MeasureString(scoreText);
-                Vector2 textPosition = new(
-                    left + ScoreDrawX - (textSize.X / 2f),
-                    LayerTopY + ScoreDrawY);
-
-                spriteBatch.DrawString(font, scoreText, textPosition, new Color(56, 32, 20));
+                spriteBatch.Draw(_hudRenderTarget, new Vector2(left, LayerTopY), Color.White);
             }
         }
 
@@ -123,6 +128,8 @@ namespace HaCreator.MapSimulator.Fields
             _mapId = 0;
             _point = 0;
             _gradeIndex = 0;
+            _pointProvider = null;
+            _hudDirty = true;
         }
 
         private static int FindGrade(int point)
@@ -146,6 +153,7 @@ namespace HaCreator.MapSimulator.Fields
             }
 
             _graphicsDevice = graphicsDevice;
+            _hudSpriteBatch ??= new SpriteBatch(graphicsDevice);
 
             WzImage uiWindow = global::HaCreator.Program.FindImage("UI", "UIWindow2.img")
                 ?? global::HaCreator.Program.FindImage("UI", "UIWindow.img");
@@ -164,6 +172,7 @@ namespace HaCreator.MapSimulator.Fields
 
             LoadGradeBadges(raiseRoot?["30"]);
             _assetsLoaded = true;
+            _hudDirty = true;
         }
 
         private void LoadGradeBadges(WzImageProperty source)
@@ -252,6 +261,76 @@ namespace HaCreator.MapSimulator.Fields
             int badgeX = bounds.Left + 12;
             int badgeY = bounds.Center.Y - (badge.Texture.Height / 2);
             spriteBatch.Draw(badge.Texture, new Vector2(badgeX, badgeY), Color.White);
+        }
+
+        private void EnsureHudRenderTarget(GraphicsDevice graphicsDevice)
+        {
+            if (graphicsDevice == null)
+            {
+                return;
+            }
+
+            if (_hudRenderTarget != null
+                && !_hudRenderTarget.IsDisposed
+                && _hudRenderTarget.GraphicsDevice == graphicsDevice
+                && _hudRenderTarget.Width == LayerWidth
+                && _hudRenderTarget.Height == LayerHeight)
+            {
+                return;
+            }
+
+            _hudRenderTarget?.Dispose();
+            _hudRenderTarget = new RenderTarget2D(
+                graphicsDevice,
+                LayerWidth,
+                LayerHeight,
+                false,
+                SurfaceFormat.Color,
+                DepthFormat.None);
+            _hudDirty = true;
+        }
+
+        private void RedrawHudTextureIfNeeded(Texture2D pixelTexture, SpriteFont font)
+        {
+            if (!_hudDirty || _hudRenderTarget == null || _graphicsDevice == null || _hudSpriteBatch == null)
+            {
+                return;
+            }
+
+            RenderTargetBinding[] previousTargets = _graphicsDevice.GetRenderTargets();
+            Viewport previousViewport = _graphicsDevice.Viewport;
+
+            _graphicsDevice.SetRenderTarget(_hudRenderTarget);
+            _graphicsDevice.Clear(Color.Transparent);
+
+            Rectangle panelBounds = new(0, 0, LayerWidth, LayerHeight);
+
+            _hudSpriteBatch.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.PointClamp, DepthStencilState.None, RasterizerState.CullNone);
+
+            if (TryDrawBackground(_hudSpriteBatch, panelBounds))
+            {
+                DrawGradeBadge(_hudSpriteBatch, panelBounds);
+            }
+            else if (pixelTexture != null)
+            {
+                _hudSpriteBatch.Draw(pixelTexture, panelBounds, new Color(37, 26, 18, 220));
+            }
+
+            if (font != null)
+            {
+                string scoreText = _point.ToString();
+                Vector2 textSize = font.MeasureString(scoreText);
+                Vector2 textPosition = new(
+                    ScoreDrawX - (textSize.X / 2f),
+                    ScoreDrawY);
+                _hudSpriteBatch.DrawString(font, scoreText, textPosition, new Color(56, 32, 20));
+            }
+
+            _hudSpriteBatch.End();
+
+            _graphicsDevice.SetRenderTargets(previousTargets);
+            _graphicsDevice.Viewport = previousViewport;
+            _hudDirty = false;
         }
     }
 }

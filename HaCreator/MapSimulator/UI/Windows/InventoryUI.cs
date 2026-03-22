@@ -74,6 +74,7 @@ namespace HaCreator.MapSimulator.UI
         private int _hoveredSlotIndex = -1;
         private MouseState _previousInteractionMouseState;
         private bool _isDraggingItem;
+        private Func<InventoryType, int, int, string> _itemConsumptionGuard;
         private InventoryType _draggedInventoryType = InventoryType.NONE;
         private int _draggedSlotIndex = -1;
         private InventorySlotData _draggedSlotData;
@@ -89,6 +90,8 @@ namespace HaCreator.MapSimulator.UI
         public override string WindowName => "Inventory";
         public Action<int> ItemUpgradeRequested { get; set; }
         public Action CashShopRequested { get; set; }
+        public Action<string> ItemConsumptionBlocked { get; set; }
+        public Func<int, InventoryType, bool> ItemUseRequested { get; set; }
 
         public int CurrentTab
         {
@@ -112,6 +115,9 @@ namespace HaCreator.MapSimulator.UI
         }
 
         public bool IsDraggingItem => _isDraggingItem;
+        public InventoryType DraggedInventoryType => _draggedInventoryType;
+        public int DraggedSlotIndex => _draggedSlotIndex;
+        public InventorySlotData DraggedSlotData => _draggedSlotData?.Clone();
         #endregion
 
         #region Constructor
@@ -454,6 +460,11 @@ namespace HaCreator.MapSimulator.UI
             return true;
         }
 
+        public void SetItemConsumptionGuard(Func<InventoryType, int, int, string> itemConsumptionGuard)
+        {
+            _itemConsumptionGuard = itemConsumptionGuard;
+        }
+
         public void AddItem(InventoryType type, int itemId, Texture2D texture, int quantity = 1)
         {
             AddItem(type, new InventorySlotData
@@ -543,6 +554,9 @@ namespace HaCreator.MapSimulator.UI
                     existing.ItemTexture = incoming.ItemTexture;
                 }
 
+                existing.ItemName = string.IsNullOrWhiteSpace(existing.ItemName) ? incoming.ItemName : existing.ItemName;
+                existing.ItemTypeName = string.IsNullOrWhiteSpace(existing.ItemTypeName) ? incoming.ItemTypeName : existing.ItemTypeName;
+                existing.Description = string.IsNullOrWhiteSpace(existing.Description) ? incoming.Description : existing.Description;
                 existing.GradeFrameIndex = incoming.GradeFrameIndex ?? existing.GradeFrameIndex;
                 existing.IsActiveBullet = incoming.IsActiveBullet || existing.IsActiveBullet;
                 remainingQuantity -= quantityToMerge;
@@ -670,7 +684,7 @@ namespace HaCreator.MapSimulator.UI
             return total;
         }
 
-        public bool CanAcceptItem(InventoryType type, int itemId, int quantity = 1)
+        public bool CanAcceptItem(InventoryType type, int itemId, int quantity = 1, int? maxStackSize = null)
         {
             if (type == InventoryType.NONE || quantity <= 0 || !_inventoryData.TryGetValue(type, out List<InventorySlotData> slots))
             {
@@ -678,8 +692,8 @@ namespace HaCreator.MapSimulator.UI
             }
 
             int remainingQuantity = quantity;
-            int defaultMaxStack = InventoryItemMetadataResolver.ResolveMaxStack(type);
-            if (IsStackable(type, defaultMaxStack))
+            int resolvedMaxStack = InventoryItemMetadataResolver.ResolveMaxStack(type, maxStackSize);
+            if (IsStackable(type, resolvedMaxStack))
             {
                 for (int i = 0; i < slots.Count && remainingQuantity > 0; i++)
                 {
@@ -689,8 +703,8 @@ namespace HaCreator.MapSimulator.UI
                         continue;
                     }
 
-                    int maxStackSize = InventoryItemMetadataResolver.ResolveMaxStack(type, slot.MaxStackSize);
-                    int capacity = maxStackSize - Math.Max(1, slot.Quantity);
+                    int maxStackSize_slot = InventoryItemMetadataResolver.ResolveMaxStack(type, slot.MaxStackSize);
+                    int capacity = maxStackSize_slot - Math.Max(1, slot.Quantity);
                     if (capacity > 0)
                     {
                         remainingQuantity -= capacity;
@@ -709,12 +723,12 @@ namespace HaCreator.MapSimulator.UI
                 return false;
             }
 
-            if (!IsStackable(type, defaultMaxStack))
+            if (!IsStackable(type, resolvedMaxStack))
             {
                 return freeSlotCount >= remainingQuantity;
             }
 
-            int neededStacks = (remainingQuantity + defaultMaxStack - 1) / defaultMaxStack;
+            int neededStacks = (remainingQuantity + resolvedMaxStack - 1) / resolvedMaxStack;
             return freeSlotCount >= neededStacks;
         }
 
@@ -723,6 +737,13 @@ namespace HaCreator.MapSimulator.UI
             if (quantity <= 0)
             {
                 return true;
+            }
+
+            string restrictionMessage = _itemConsumptionGuard?.Invoke(type, itemId, quantity);
+            if (!string.IsNullOrWhiteSpace(restrictionMessage))
+            {
+                ItemConsumptionBlocked?.Invoke(restrictionMessage);
+                return false;
             }
 
             if (!_inventoryData.TryGetValue(type, out List<InventorySlotData> slots) || GetItemCount(type, itemId) < quantity)
@@ -1059,25 +1080,27 @@ namespace HaCreator.MapSimulator.UI
         {
             bool rightJustPressed = mouseState.RightButton == ButtonState.Pressed &&
                                     _previousInteractionMouseState.RightButton == ButtonState.Released;
-            if (!rightJustPressed)
-            {
-                return;
-            }
-
-            if (!TryGetSlotsForType(inventoryType, out List<InventorySlotData> slots) ||
-                slotIndex < 0 ||
-                slotIndex >= slots.Count)
+            if (!rightJustPressed
+                || !TryGetSlotsForType(inventoryType, out List<InventorySlotData> slots)
+                || slotIndex < 0
+                || slotIndex >= slots.Count)
             {
                 return;
             }
 
             InventorySlotData slot = slots[slotIndex];
-            if (slot == null || !ItemUpgradeUI.IsSupportedConsumable(slot.ItemId))
+            if (slot == null)
             {
                 return;
             }
 
-            ItemUpgradeRequested?.Invoke(slot.ItemId);
+            if (ItemUpgradeUI.IsSupportedConsumable(slot.ItemId))
+            {
+                ItemUpgradeRequested?.Invoke(slot.ItemId);
+                return;
+            }
+
+            ItemUseRequested?.Invoke(slot.ItemId, inventoryType);
         }
 
         protected override void DrawOverlay(SpriteBatch sprite, SkeletonMeshRenderer skeletonMeshRenderer, GameTime gameTime,

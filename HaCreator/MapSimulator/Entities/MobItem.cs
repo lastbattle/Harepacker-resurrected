@@ -64,6 +64,18 @@ namespace HaCreator.MapSimulator.Entities
         public bool IsProtectedFromPlayerDamage => _mobInstance?.MobInfo?.MobData?.Friendly == true;
 
         /// <summary>
+        /// Escort and damagedByMob mobs participate in the encounter mob-vs-mob combat lane.
+        /// </summary>
+        public bool UsesMobCombatLane
+        {
+            get
+            {
+                MobData mobData = _mobInstance?.MobInfo?.MobData;
+                return mobData?.Friendly == true || (mobData?.Escort ?? 0) > 0;
+            }
+        }
+
+        /// <summary>
         /// Whether AI is enabled for this mob
         /// </summary>
         public bool AIEnabled { get; set; } = true;
@@ -720,8 +732,9 @@ namespace HaCreator.MapSimulator.Entities
                 return;
             }
 
-            foreach (var skillData in mobData.SkillData)
+            for (int skillIndex = 0; skillIndex < mobData.SkillData.Count; skillIndex++)
             {
+                var skillData = mobData.SkillData[skillIndex];
                 string animationName = ResolveSkillAnimationName(skillData.Action);
                 if (animationName == null)
                 {
@@ -738,7 +751,13 @@ namespace HaCreator.MapSimulator.Entities
                     SkillAfter = skillData.SkillAfter > 0 ? skillData.SkillAfter : 350,
                     AnimationName = animationName,
                     Range = DetermineSkillRange(skillData, isBoss),
-                    Cooldown = DetermineSkillCooldown(skillData, isBoss)
+                    Cooldown = DetermineSkillCooldown(skillData, isBoss),
+                    SourceIndex = skillIndex,
+                    Priority = skillData.Priority,
+                    PreSkillIndex = skillData.PreSkillCount > 0 ? skillData.PreSkillIndex : -1,
+                    PreSkillCount = skillData.PreSkillCount,
+                    OnlyFsm = skillData.OnlyFsm,
+                    SkillForbid = skillData.SkillForbid
                 });
             }
         }
@@ -1294,6 +1313,21 @@ namespace HaCreator.MapSimulator.Entities
             if (AI.HasStatusEffect(MobStatusEffect.Web) || AI.HasStatusEffect(MobStatusEffect.Weakness))
             {
                 return new Color(220, 220, 220) * pulse;
+            }
+
+            if (AI.HasStatusEffect(MobStatusEffect.Doom))
+            {
+                return new Color(210, 190, 255) * pulse;
+            }
+
+            if (AI.HasStatusEffect(MobStatusEffect.Hypnotize))
+            {
+                return new Color(255, 170, 230) * pulse;
+            }
+
+            if (AI.HasStatusEffect(MobStatusEffect.Ambush) || AI.HasStatusEffect(MobStatusEffect.Neutralise))
+            {
+                return new Color(255, 205, 170) * pulse;
             }
 
             if (AI.HasStatusEffect(MobStatusEffect.Showdown) || AI.HasStatusEffect(MobStatusEffect.SealSkill))

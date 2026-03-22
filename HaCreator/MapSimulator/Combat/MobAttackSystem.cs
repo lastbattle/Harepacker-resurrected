@@ -88,6 +88,7 @@ namespace HaCreator.MapSimulator.Combat
         private Func<float, float, float?> _groundResolver;
         private Func<IReadOnlyList<PuppetInfo>> _puppetAccessor;
         private Func<int, MobItem> _mobAccessor;
+        private Func<IReadOnlyList<MobItem>> _mobListAccessor;
         private Func<bool> _playerGroundedAccessor;
         private Action<PuppetInfo, MobItem, MobAttackEntry, int> _onPuppetHit;
 
@@ -104,9 +105,10 @@ namespace HaCreator.MapSimulator.Combat
             _onPuppetHit = onPuppetHit;
         }
 
-        public void SetMobTargeting(Func<int, MobItem> mobAccessor)
+        public void SetMobTargeting(Func<int, MobItem> mobAccessor, Func<IReadOnlyList<MobItem>> mobListAccessor = null)
         {
             _mobAccessor = mobAccessor;
+            _mobListAccessor = mobListAccessor;
         }
 
         public void SetPlayerGroundedAccessor(Func<bool> playerGroundedAccessor)
@@ -493,10 +495,12 @@ namespace HaCreator.MapSimulator.Combat
                     groundAttack.Triggered = true;
 
                     bool targetedSummoned = groundAttack.TargetInfo?.TargetType == MobTargetType.Summoned;
-                    if (!TryApplyPuppetHit(groundAttack.SourceMob, groundAttack.Attack, groundAttack.TargetInfo, groundAttack.Area, currentTime) &&
-                        !TryApplyTargetMobHit(groundAttack.SourceMob, groundAttack.Attack, groundAttack.TargetInfo, groundAttack.Area, currentTime) &&
-                        !targetedSummoned &&
-                        groundAttack.TargetInfo?.TargetType != MobTargetType.Mob &&
+                    bool targetedMob = groundAttack.TargetInfo?.TargetType == MobTargetType.Mob;
+                    TryApplyPuppetHit(groundAttack.SourceMob, groundAttack.Attack, groundAttack.TargetInfo, groundAttack.Area, currentTime);
+                    TryApplyTargetMobHit(groundAttack.SourceMob, groundAttack.Attack, groundAttack.TargetInfo, groundAttack.Area, currentTime);
+
+                    if (!targetedSummoned &&
+                        !targetedMob &&
                         playerManager?.Combat != null &&
                         playerManager.IsPlayerActive &&
                         CanHitPlayerTarget(groundAttack.Attack))
@@ -506,6 +510,12 @@ namespace HaCreator.MapSimulator.Combat
                             groundAttack.Area,
                             currentTime,
                             groundAttack.Attack);
+                    }
+
+                    if (!targetedSummoned && !targetedMob)
+                    {
+                        ApplyAreaPuppetHits(groundAttack.SourceMob, groundAttack.Attack, groundAttack.Area, groundAttack.TargetInfo, currentTime);
+                        ApplyAreaMobHits(groundAttack.SourceMob, groundAttack.Attack, groundAttack.Area, groundAttack.TargetInfo, currentTime);
                     }
 
                     SpawnMobWorldEffects(groundAttack.SourceMob, groundAttack.Attack, groundAttack.EffectPosition, currentTime, animationEffects);
@@ -543,10 +553,12 @@ namespace HaCreator.MapSimulator.Combat
                         attackArea.Y + attackArea.Height);
 
                     bool targetedSummoned = directAttack.TargetInfo?.TargetType == MobTargetType.Summoned;
-                    if (!TryApplyPuppetHit(directAttack.SourceMob, directAttack.Attack, directAttack.TargetInfo, attackArea, currentTime) &&
-                        !TryApplyTargetMobHit(directAttack.SourceMob, directAttack.Attack, directAttack.TargetInfo, attackArea, currentTime) &&
-                        !targetedSummoned &&
-                        directAttack.TargetInfo?.TargetType != MobTargetType.Mob &&
+                    bool targetedMob = directAttack.TargetInfo?.TargetType == MobTargetType.Mob;
+                    TryApplyPuppetHit(directAttack.SourceMob, directAttack.Attack, directAttack.TargetInfo, attackArea, currentTime);
+                    TryApplyTargetMobHit(directAttack.SourceMob, directAttack.Attack, directAttack.TargetInfo, attackArea, currentTime);
+
+                    if (!targetedSummoned &&
+                        !targetedMob &&
                         playerManager?.Combat != null &&
                         playerManager.IsPlayerActive &&
                         CanHitPlayerTarget(directAttack.Attack) &&
@@ -557,6 +569,12 @@ namespace HaCreator.MapSimulator.Combat
                             attackArea,
                             currentTime,
                             directAttack.Attack);
+                    }
+
+                    if (!targetedSummoned && !targetedMob && !attackArea.IsEmpty)
+                    {
+                        ApplyAreaPuppetHits(directAttack.SourceMob, directAttack.Attack, attackArea, directAttack.TargetInfo, currentTime);
+                        ApplyAreaMobHits(directAttack.SourceMob, directAttack.Attack, attackArea, directAttack.TargetInfo, currentTime);
                     }
 
                     SpawnMobWorldEffects(
@@ -673,7 +691,7 @@ namespace HaCreator.MapSimulator.Combat
 
             for (int i = 0; i < positions.Count; i++)
             {
-                List<IDXObject> frames = effectNode.Sequences[Math.Min(i, effectNode.Sequences.Count - 1)];
+                List<IDXObject> frames = ResolveEffectNodeSequence(effectNode, i);
                 if (frames == null || frames.Count == 0)
                 {
                     continue;
@@ -831,7 +849,9 @@ namespace HaCreator.MapSimulator.Combat
             if (effectNode.EffectType == 1)
             {
                 int sequenceCount = Math.Max(1, effectNode.Sequences.Count);
-                int spawnCount = sequenceCount;
+                int spawnCount = effectNode.Count > 0
+                    ? effectNode.Count
+                    : sequenceCount;
                 float left = GetRelativeLeft(mobItem, effectNode.HasRangeBounds, effectNode.RangeBounds.Left, effectNode.RangeBounds.Right);
                 float right = GetRelativeRight(mobItem, effectNode.HasRangeBounds, effectNode.RangeBounds.Left, effectNode.RangeBounds.Right);
                 if (!effectNode.HasRangeBounds)
@@ -1038,12 +1058,38 @@ namespace HaCreator.MapSimulator.Combat
 
         private static int ResolveEffectNodeInterval(MobAnimationSet.AttackEffectNode effectNode, int spawnCount)
         {
-            if (effectNode == null || spawnCount <= 1 || effectNode.Duration <= 0)
+            if (effectNode == null || spawnCount <= 1)
+            {
+                return 0;
+            }
+
+            if (effectNode.Interval > 0)
+            {
+                return effectNode.Interval;
+            }
+
+            if (effectNode.Duration <= 0)
             {
                 return 0;
             }
 
             return Math.Max(1, effectNode.Duration / (spawnCount - 1));
+        }
+
+        private static List<IDXObject> ResolveEffectNodeSequence(MobAnimationSet.AttackEffectNode effectNode, int index)
+        {
+            if (effectNode?.Sequences == null || effectNode.Sequences.Count == 0)
+            {
+                return null;
+            }
+
+            int sequenceIndex = index % effectNode.Sequences.Count;
+            if (sequenceIndex < 0)
+            {
+                sequenceIndex += effectNode.Sequences.Count;
+            }
+
+            return effectNode.Sequences[sequenceIndex];
         }
 
         private Rectangle CreateGroundArea(Vector2 target, int width, int height)
@@ -1220,15 +1266,117 @@ namespace HaCreator.MapSimulator.Combat
                 return false;
             }
 
+            if (!CanApplyMobVsMobDamage(sourceMob, targetMob))
+            {
+                return false;
+            }
+
+            return ApplyMobDamage(sourceMob, attack, targetMob, currentTime);
+        }
+
+        private bool ApplyAreaPuppetHits(
+            MobItem sourceMob,
+            MobAttackEntry attack,
+            Rectangle hitbox,
+            MobTargetInfo targetInfo,
+            int currentTime)
+        {
+            if (hitbox.IsEmpty)
+            {
+                return false;
+            }
+
+            IReadOnlyList<PuppetInfo> puppets = _puppetAccessor?.Invoke();
+            if (puppets == null)
+            {
+                return false;
+            }
+
+            int excludedTargetId = targetInfo?.TargetType == MobTargetType.Summoned ? targetInfo.TargetId : 0;
+            bool hitAny = false;
+            foreach (PuppetInfo puppet in new List<PuppetInfo>(puppets))
+            {
+                if (puppet == null || !puppet.IsActive || puppet.ObjectId == excludedTargetId)
+                {
+                    continue;
+                }
+
+                if (!CanHitPuppetTarget(attack, puppet) || !CreatePuppetHitbox(puppet).Intersects(hitbox))
+                {
+                    continue;
+                }
+
+                _onPuppetHit?.Invoke(puppet, sourceMob, attack, currentTime);
+                hitAny = true;
+            }
+
+            return hitAny;
+        }
+
+        private bool ApplyAreaMobHits(
+            MobItem sourceMob,
+            MobAttackEntry attack,
+            Rectangle hitbox,
+            MobTargetInfo targetInfo,
+            int currentTime)
+        {
+            if (hitbox.IsEmpty)
+            {
+                return false;
+            }
+
+            IReadOnlyList<MobItem> mobs = _mobListAccessor?.Invoke();
+            if (mobs == null)
+            {
+                return false;
+            }
+
+            int excludedTargetId = targetInfo?.TargetType == MobTargetType.Mob ? targetInfo.TargetId : 0;
+            bool hitAny = false;
+            foreach (MobItem mob in new List<MobItem>(mobs))
+            {
+                if (mob?.AI == null || mob.AI.IsDead || ReferenceEquals(mob, sourceMob) || mob.PoolId == excludedTargetId)
+                {
+                    continue;
+                }
+
+                Rectangle targetHitbox = mob.GetBodyHitbox(currentTime);
+                if (targetHitbox.IsEmpty || !targetHitbox.Intersects(hitbox))
+                {
+                    continue;
+                }
+
+                if (!CanApplyMobVsMobDamage(sourceMob, mob))
+                {
+                    continue;
+                }
+
+                hitAny |= ApplyMobDamage(sourceMob, attack, mob, currentTime);
+            }
+
+            return hitAny;
+        }
+
+        private static bool CanApplyMobVsMobDamage(MobItem sourceMob, MobItem targetMob)
+        {
+            if (sourceMob == null || targetMob == null || ReferenceEquals(sourceMob, targetMob))
+            {
+                return false;
+            }
+
+            return sourceMob.UsesMobCombatLane || targetMob.UsesMobCombatLane;
+        }
+
+        private static bool ApplyMobDamage(MobItem sourceMob, MobAttackEntry attack, MobItem targetMob, int currentTime)
+        {
             int baseDamage = attack?.Damage ?? 0;
             int damage = sourceMob?.AI?.CalculateOutgoingDamage(baseDamage, MobDamageType.Physical) ?? Math.Max(1, baseDamage);
             damage = Math.Max(1, damage);
 
-            bool isCritical = false;
             bool died = targetMob.ApplyDamage(
                 damage,
                 currentTime,
-                isCritical,
+                false,
                 sourceMob?.CurrentX,
                 sourceMob?.CurrentY,
                 originatedFromPlayer: false);

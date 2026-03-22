@@ -14,7 +14,7 @@ namespace HaCreator.MapSimulator.Interaction
         Blacklist = 4
     }
 
-    internal sealed class SocialListRuntime
+    internal sealed partial class SocialListRuntime
     {
         private const int PageSize = 8;
 
@@ -168,9 +168,14 @@ namespace HaCreator.MapSimulator.Interaction
             return actionKey switch
             {
                 "Friend.AddFriend" => AddFriend(),
+                "Friend.AddGroup" => "Friend-group folders are visible in the WZ shell, but packet-backed group editing still remains out of scope.",
                 "Friend.Party" => InviteFriendToParty(),
+                "Friend.Chat" => SendFriendChat(),
                 "Friend.Whisper" => WhisperSelected("friend"),
+                "Friend.GroupWhisper" => GroupWhisperFriend(),
+                "Friend.Mate" => "Couple and mate flows still need their own dedicated relationship runtime.",
                 "Friend.Message" => MemoSelectedFriend(),
+                "Friend.Mod" => ModifyFriendMemo(),
                 "Friend.Delete" => DeleteFriend(),
                 "Friend.Block" => BlockFriend(),
                 "Friend.UnBlock" => UnblockFriend(),
@@ -181,22 +186,32 @@ namespace HaCreator.MapSimulator.Interaction
                 "Party.Whisper" => WhisperSelected("party"),
                 "Party.Chat" => SendPartyChat(),
                 "Party.ChangeBoss" => ChangePartyLeader(),
-                "Party.Search" => "Party search parity still needs the packet-driven finder list behind CUIUserList::Draw.",
+                "Party.Search" => null,
                 "Guild.Board" => "Guild BBS has its own backlog item and is not wired from the member list yet.",
                 "Guild.Invite" => AddGuildMember(),
                 "Guild.Withdraw" => RemoveGuildMember("guild"),
                 "Guild.PartyInvite" => "Guild party invite forwarded from the member list shell.",
+                "Guild.GradeUp" => AdjustGuildGrade(1),
+                "Guild.GradeDown" => AdjustGuildGrade(-1),
                 "Guild.Kick" => RemoveGuildMember("guild"),
                 "Guild.Where" => LocateSelected("guild"),
                 "Guild.Whisper" => WhisperSelected("guild"),
                 "Guild.Info" => ShowSelectedInfo("guild"),
+                "Guild.Skill" => "Guild skill management remains a separate `GuildSkill` surface, but the button now resolves as a dedicated social action.",
+                "Guild.Search" => null,
+                "Guild.Manage" => "Guild management uses a separate `GuildManage` window family that still remains unmodeled.",
+                "Guild.Change" => "Guild notice and emblem change tools still need their dedicated edit flow.",
                 "Alliance.Invite" => AddAllianceMember(),
                 "Alliance.Withdraw" => RemoveGuildMember("alliance"),
                 "Alliance.PartyInvite" => "Alliance party invite forwarded from the union tab.",
+                "Alliance.GradeUp" => "Alliance grade promotion still needs the packet-authored union rank model.",
+                "Alliance.GradeDown" => "Alliance grade demotion still needs the packet-authored union rank model.",
                 "Alliance.Kick" => RemoveGuildMember("alliance"),
                 "Alliance.Change" => "Alliance notice and grade tools still need their dedicated edit flow.",
+                "Alliance.Chat" => SendAllianceChat(),
                 "Alliance.Whisper" => WhisperSelected("alliance"),
                 "Alliance.Info" => ShowSelectedInfo("alliance"),
+                "Alliance.Notice" => "Alliance notice editing still needs the dedicated notice editor behind the union tab.",
                 "Blacklist.Add" => AddBlacklistEntry(),
                 "Blacklist.Delete" => DeleteBlacklistEntry(),
                 _ => "That social action is not modeled yet."
@@ -385,13 +400,18 @@ namespace HaCreator.MapSimulator.Interaction
                     yield return "Friend.AddFriend";
                     if (selectedEntry != null)
                     {
+                        yield return "Friend.Chat";
                         yield return "Friend.Whisper";
+                        yield return "Friend.GroupWhisper";
                         yield return "Friend.Message";
+                        yield return "Friend.Mod";
                         yield return _entriesByTab[SocialListTab.Blacklist].Any(entry => string.Equals(entry.Name, selectedEntry.Name, StringComparison.OrdinalIgnoreCase))
                             ? "Friend.UnBlock"
                             : "Friend.Block";
                         if (!selectedEntry.IsLocalPlayer)
                         {
+                            yield return "Friend.AddGroup";
+                            yield return "Friend.Mate";
                             yield return "Friend.Party";
                             yield return "Friend.Delete";
                         }
@@ -419,11 +439,17 @@ namespace HaCreator.MapSimulator.Interaction
                 case SocialListTab.Guild:
                     yield return "Guild.Board";
                     yield return "Guild.Invite";
+                    yield return "Guild.Search";
                     if (selectedEntry != null)
                     {
+                        yield return "Guild.GradeUp";
+                        yield return "Guild.GradeDown";
                         yield return "Guild.Where";
                         yield return "Guild.Whisper";
                         yield return "Guild.Info";
+                        yield return "Guild.Skill";
+                        yield return "Guild.Manage";
+                        yield return "Guild.Change";
                         if (!selectedEntry.IsLocalPlayer)
                         {
                             yield return "Guild.PartyInvite";
@@ -439,9 +465,13 @@ namespace HaCreator.MapSimulator.Interaction
                     yield return "Alliance.Invite";
                     if (selectedEntry != null)
                     {
+                        yield return "Alliance.Chat";
                         yield return "Alliance.Whisper";
                         yield return "Alliance.Info";
                         yield return "Alliance.Change";
+                        yield return "Alliance.Notice";
+                        yield return "Alliance.GradeUp";
+                        yield return "Alliance.GradeDown";
                         if (!selectedEntry.IsLocalPlayer)
                         {
                             yield return "Alliance.PartyInvite";
@@ -476,6 +506,39 @@ namespace HaCreator.MapSimulator.Interaction
             _selectedIndexByTab[SocialListTab.Friend] = GetFilteredEntries(SocialListTab.Friend).Count - 1;
             ClampPage(SocialListTab.Friend, GetFilteredEntries(SocialListTab.Friend).Count);
             return $"{nextFriend.Name} was added to the friend roster.";
+        }
+
+        private string SendFriendChat()
+        {
+            SocialEntryState selectedFriend = GetSelectedEntry(SocialListTab.Friend);
+            if (selectedFriend == null)
+            {
+                return "Select a friend entry before opening friend chat.";
+            }
+
+            return $"[Friend] {_playerName} -> {selectedFriend.Name}: Checking in from {_locationSummary}.";
+        }
+
+        private string GroupWhisperFriend()
+        {
+            SocialEntryState selectedFriend = GetSelectedEntry(SocialListTab.Friend);
+            if (selectedFriend == null)
+            {
+                return "Select a friend entry before using group whisper.";
+            }
+
+            return $"Group whisper queued for {selectedFriend.Name}. Dedicated friend-group membership still remains packet-driven.";
+        }
+
+        private string ModifyFriendMemo()
+        {
+            SocialEntryState selectedFriend = GetSelectedEntry(SocialListTab.Friend);
+            if (selectedFriend == null)
+            {
+                return "Select a friend entry before editing its note.";
+            }
+
+            return $"Friend note for {selectedFriend.Name} updated to \"Seen in {_locationSummary}\".";
         }
 
         private string InviteFriendToParty()
@@ -733,6 +796,53 @@ namespace HaCreator.MapSimulator.Interaction
             return $"{owner} info: {selectedEntry.Name}  {selectedEntry.PrimaryText}  {selectedEntry.SecondaryText}.";
         }
 
+        private string AdjustGuildGrade(int delta)
+        {
+            SocialEntryState selectedEntry = GetSelectedEntry(SocialListTab.Guild);
+            if (selectedEntry == null)
+            {
+                return "Select a guild member before changing its rank.";
+            }
+
+            string[] grades =
+            {
+                "Member",
+                "Jr. Master",
+                "Master"
+            };
+
+            int currentIndex = Array.FindIndex(grades, grade => string.Equals(grade, selectedEntry.PrimaryText, StringComparison.OrdinalIgnoreCase));
+            if (currentIndex < 0)
+            {
+                currentIndex = 0;
+            }
+
+            int nextIndex = Math.Clamp(currentIndex + delta, 0, grades.Length - 1);
+            if (nextIndex == currentIndex)
+            {
+                return delta > 0
+                    ? $"{selectedEntry.Name} already has the highest simulated guild grade."
+                    : $"{selectedEntry.Name} already has the lowest simulated guild grade.";
+            }
+
+            ReplaceEntry(
+                SocialListTab.Guild,
+                selectedEntry.Name,
+                new SocialEntryState(
+                    selectedEntry.Name,
+                    grades[nextIndex],
+                    selectedEntry.SecondaryText,
+                    selectedEntry.LocationSummary,
+                    selectedEntry.Channel,
+                    selectedEntry.IsOnline,
+                    selectedEntry.IsLeader,
+                    selectedEntry.IsBlocked)
+                {
+                    IsLocalPlayer = selectedEntry.IsLocalPlayer
+                });
+            return $"{selectedEntry.Name} now has simulated guild grade {grades[nextIndex]}.";
+        }
+
         private string AddAllianceMember()
         {
             SocialEntryState recruit = DequeueNextUnique(_allianceInviteSeeds, SocialListTab.Alliance);
@@ -743,6 +853,12 @@ namespace HaCreator.MapSimulator.Interaction
 
             _entriesByTab[SocialListTab.Alliance].Add(recruit);
             return $"{recruit.Name} joined alliance {_allianceName}.";
+        }
+
+        private string SendAllianceChat()
+        {
+            int onlineCount = _entriesByTab[SocialListTab.Alliance].Count(entry => entry.IsOnline);
+            return $"[Alliance] {_playerName}: Union notice check sent across {onlineCount} visible alliance entries.";
         }
 
         private string AddBlacklistEntry()
@@ -795,6 +911,21 @@ namespace HaCreator.MapSimulator.Interaction
             IReadOnlyList<SocialEntryState> entries = GetFilteredEntries(tab);
             int selectedIndex = GetSelectedIndex(tab, entries.Count);
             return selectedIndex >= 0 && selectedIndex < entries.Count ? entries[selectedIndex] : null;
+        }
+
+        private void ReplaceEntry(SocialListTab tab, string entryName, SocialEntryState replacement)
+        {
+            if (string.IsNullOrWhiteSpace(entryName) || replacement == null)
+            {
+                return;
+            }
+
+            List<SocialEntryState> entries = _entriesByTab[tab];
+            int index = entries.FindIndex(entry => string.Equals(entry.Name, entryName, StringComparison.OrdinalIgnoreCase));
+            if (index >= 0)
+            {
+                entries[index] = replacement;
+            }
         }
 
         private void ResetSelectionAfterMutation(SocialListTab tab)

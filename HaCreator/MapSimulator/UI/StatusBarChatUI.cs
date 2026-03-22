@@ -36,9 +36,15 @@ namespace HaCreator.MapSimulator.UI
             public int Timestamp { get; set; }
         }
 
+        public sealed class ChatTargetLabelPlacement
+        {
+            public Texture2D Texture { get; set; }
+            public Point Origin { get; set; }
+        }
+
         private readonly List<UIObject> uiButtons = new List<UIObject>();
-        private readonly Dictionary<MapSimulatorChatTargetType, Texture2D> _chatTargetTextures =
-            new Dictionary<MapSimulatorChatTargetType, Texture2D>();
+        private readonly Dictionary<MapSimulatorChatTargetType, ChatTargetLabelPlacement> _chatTargetLabels =
+            new Dictionary<MapSimulatorChatTargetType, ChatTargetLabelPlacement>();
 
         private Func<MapSimulatorChatRenderState> _chatStateProvider;
         private Func<StatusBarPointNotificationState> _pointNotificationStateProvider;
@@ -106,9 +112,11 @@ namespace HaCreator.MapSimulator.UI
             _chatEnterTexture = chatEnterTexture;
         }
 
-        public void SetChatTargetTextures(Dictionary<MapSimulatorChatTargetType, Texture2D> chatTargetTextures)
+        public void SetChatTargetTextures(
+            Dictionary<MapSimulatorChatTargetType, Texture2D> chatTargetTextures,
+            Dictionary<MapSimulatorChatTargetType, Point> chatTargetOrigins = null)
         {
-            _chatTargetTextures.Clear();
+            _chatTargetLabels.Clear();
             if (chatTargetTextures == null)
             {
                 return;
@@ -118,7 +126,13 @@ namespace HaCreator.MapSimulator.UI
             {
                 if (entry.Value != null)
                 {
-                    _chatTargetTextures[entry.Key] = entry.Value;
+                    _chatTargetLabels[entry.Key] = new ChatTargetLabelPlacement
+                    {
+                        Texture = entry.Value,
+                        Origin = chatTargetOrigins != null && chatTargetOrigins.TryGetValue(entry.Key, out Point origin)
+                            ? origin
+                            : Point.Zero
+                    };
                 }
             }
         }
@@ -348,10 +362,14 @@ namespace HaCreator.MapSimulator.UI
 
         private void DrawChatTargetLabel(SpriteBatch sprite, MapSimulatorChatTargetType targetType)
         {
-            if (_chatTargetTextures.TryGetValue(targetType, out Texture2D labelTexture) && labelTexture != null)
+            if (_chatTargetLabels.TryGetValue(targetType, out ChatTargetLabelPlacement labelPlacement)
+                && labelPlacement?.Texture != null)
             {
-                sprite.Draw(labelTexture,
-                    new Vector2(this.Position.X + ChatTargetLabelPos.X, this.Position.Y + ChatTargetLabelPos.Y),
+                Point originDelta = ResolveChatTargetOriginDelta(targetType, labelPlacement.Origin);
+                sprite.Draw(labelPlacement.Texture,
+                    new Vector2(
+                        this.Position.X + ChatTargetLabelPos.X + originDelta.X,
+                        this.Position.Y + ChatTargetLabelPos.Y + originDelta.Y),
                     Color.White);
             }
         }
@@ -473,7 +491,10 @@ namespace HaCreator.MapSimulator.UI
 
             foreach (ChatMessage message in messages)
             {
-                foreach (string lineText in WrapText(message.Text ?? string.Empty, ChatLogWidth))
+                foreach (string lineText in WrapText(
+                    message.Text ?? string.Empty,
+                    ChatLogWidth,
+                    ShouldIndentWrappedContinuation(message.ChatLogType)))
                 {
                     wrappedLines.Add(new WrappedChatLine
                     {
@@ -487,7 +508,7 @@ namespace HaCreator.MapSimulator.UI
             return wrappedLines;
         }
 
-        private IEnumerable<string> WrapText(string text, float maxWidth)
+        private IEnumerable<string> WrapText(string text, float maxWidth, bool indentWrappedContinuation)
         {
             if (string.IsNullOrEmpty(text))
             {
@@ -497,7 +518,7 @@ namespace HaCreator.MapSimulator.UI
 
             string[] words = text.Split(' ');
             StringBuilder currentLine = new StringBuilder();
-            string continuationIndent = new string(' ', ChatWrapIndentSpaces);
+            string continuationIndent = indentWrappedContinuation ? new string(' ', ChatWrapIndentSpaces) : string.Empty;
             bool isFirstLine = true;
             foreach (string word in words)
             {
@@ -559,6 +580,29 @@ namespace HaCreator.MapSimulator.UI
         {
             sprite.DrawString(_font, text, position + new Vector2(1, 1), Color.Black);
             sprite.DrawString(_font, text, position, color);
+        }
+
+        private Point ResolveChatTargetOriginDelta(MapSimulatorChatTargetType targetType, Point targetOrigin)
+        {
+            if (!_chatTargetLabels.TryGetValue(MapSimulatorChatTargetType.All, out ChatTargetLabelPlacement allLabel)
+                || allLabel == null)
+            {
+                return Point.Zero;
+            }
+
+            if (targetType == MapSimulatorChatTargetType.All)
+            {
+                return Point.Zero;
+            }
+
+            return new Point(
+                targetOrigin.X - allLabel.Origin.X,
+                targetOrigin.Y - allLabel.Origin.Y);
+        }
+
+        private static bool ShouldIndentWrappedContinuation(int chatLogType)
+        {
+            return chatLogType < 7 || chatLogType > 12;
         }
 
         #region IClickableUIObject

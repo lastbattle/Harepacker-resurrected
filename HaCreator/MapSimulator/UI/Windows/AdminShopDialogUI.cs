@@ -31,7 +31,18 @@ namespace HaCreator.MapSimulator.UI
             SoldOut,
             PreviewOnly,
             PendingResponse,
-            RequestAccepted
+            RequestAccepted,
+            RequestRejected
+        }
+
+        private enum AdminShopResponse
+        {
+            None,
+            GrantItem,
+            ListingSoldOut,
+            SellerUnavailable,
+            ListingExpired,
+            InventoryFull
         }
 
         private enum AdminShopCategory
@@ -59,8 +70,16 @@ namespace HaCreator.MapSimulator.UI
             public bool SupportsWishlist { get; init; }
             public bool Wishlisted { get; set; }
             public AdminShopEntryState State { get; set; }
-            public string StateLabel { get; init; } = string.Empty;
+            public string StateLabel { get; set; } = string.Empty;
+            public bool IsStorageExpansion { get; init; }
             public InventoryType InventoryExpansionType { get; init; } = InventoryType.NONE;
+            public InventoryType RewardInventoryType { get; init; } = InventoryType.NONE;
+            public int RewardItemId { get; init; }
+            public int RewardQuantity { get; init; } = 1;
+            public bool ConsumeOnSuccess { get; init; } = true;
+            public bool LockAfterSuccess { get; init; }
+            public AdminShopResponse Response { get; init; }
+            public string ResponseMessage { get; init; } = string.Empty;
         }
 
         private sealed class AdminShopPaneState
@@ -142,6 +161,7 @@ namespace HaCreator.MapSimulator.UI
         private readonly UIObject _modalCancelButton;
 
         private IInventoryRuntime _inventory;
+        private IStorageRuntime _storageRuntime;
         private SpriteFont _font;
         private AdminShopServiceMode _currentMode;
         private AdminShopPane _activePane = AdminShopPane.Npc;
@@ -249,6 +269,12 @@ namespace HaCreator.MapSimulator.UI
         {
             _inventory = inventory;
             Money = _inventory?.GetMesoCount() ?? Money;
+            UpdateActionButtonStates();
+        }
+
+        public void SetStorageRuntime(IStorageRuntime storageRuntime)
+        {
+            _storageRuntime = storageRuntime;
             UpdateActionButtonStates();
         }
 
@@ -405,9 +431,7 @@ namespace HaCreator.MapSimulator.UI
         private void DrawHeader(SpriteBatch sprite, int windowX, int windowY)
         {
             string modeLabel = _currentMode == AdminShopServiceMode.CashShop ? "Cash Shop" : "MTS";
-            string instruction = _pendingRequestEntry == null
-                ? "BtBuy submits a request, BtSell switches service, BtRecharge opens the wish-list dialog."
-                : $"Waiting for catalog response on {_pendingRequestEntry.Title}.";
+            string instruction = BuildHeaderInstruction();
 
             sprite.DrawString(_font, modeLabel + " dialog", new Vector2(windowX + HeaderX, windowY + HeaderY), Color.White);
             sprite.DrawString(_font, instruction, new Vector2(windowX + HeaderX, windowY + HeaderY + 18), new Color(215, 215, 215));
@@ -614,6 +638,7 @@ namespace HaCreator.MapSimulator.UI
             _pendingRequestEntry = entry;
             _requestResolveTick = Environment.TickCount + 900;
             entry.State = AdminShopEntryState.PendingResponse;
+            entry.StateLabel = "Pending";
             _footerMessage = $"Submitted a {_currentMode} request for {entry.Title}. Waiting for simulator response.";
             UpdateActionButtonStates();
         }
@@ -717,6 +742,7 @@ namespace HaCreator.MapSimulator.UI
             _activePane = AdminShopPane.Npc;
             _activeCategory = AdminShopCategory.All;
             _pendingWishlistEntry = null;
+            _pendingRequestEntry = null;
             _wishlistModalVisible = false;
             _paneStates[AdminShopPane.Npc].SourceEntries.Clear();
             _paneStates[AdminShopPane.User].SourceEntries.Clear();
@@ -891,7 +917,11 @@ namespace HaCreator.MapSimulator.UI
             Texture2D npcEnabled,
             Texture2D npcDisabled,
             Texture2D userEnabled,
-            Texture2D userDisabled)
+            Texture2D userDisabled,
+            Point? cashOffset = null,
+            Point? mtsOffset = null,
+            Point? npcOffset = null,
+            Point? userOffset = null)
         {
             _serviceTabs[0].EnabledTexture = cashEnabled;
             _serviceTabs[0].DisabledTexture = cashDisabled;
@@ -901,6 +931,26 @@ namespace HaCreator.MapSimulator.UI
             _paneTabs[0].DisabledTexture = npcDisabled;
             _paneTabs[1].EnabledTexture = userEnabled;
             _paneTabs[1].DisabledTexture = userDisabled;
+
+            if (cashOffset.HasValue)
+            {
+                _serviceTabs[0].Offset = cashOffset.Value;
+            }
+
+            if (mtsOffset.HasValue)
+            {
+                _serviceTabs[1].Offset = mtsOffset.Value;
+            }
+
+            if (npcOffset.HasValue)
+            {
+                _paneTabs[0].Offset = npcOffset.Value;
+            }
+
+            if (userOffset.HasValue)
+            {
+                _paneTabs[1].Offset = userOffset.Value;
+            }
         }
 
         public void SetCategoryTabTextures(
@@ -1221,26 +1271,26 @@ namespace HaCreator.MapSimulator.UI
                     CreateInventoryExpansionEntry("Extending Use Inventory", InventoryType.USE, "Cash Manager"),
                     CreateInventoryExpansionEntry("Extending Set-Up Inventory", InventoryType.SETUP, "Cash Manager"),
                     CreateInventoryExpansionEntry("Extending Etc. Inventory", InventoryType.ETC, "Cash Manager"),
-                    CreateEntry("Royal Hair Coupon", "Rotating salon coupon preview from the featured cash-service board.", "Cash Manager", 3400, AdminShopCategory.Special, true),
-                    CreateEntry("Royal Face Coupon", "Premium face coupon entry with the same preview flow the client routes into wish-list dialogs.", "Cash Manager", 2900, AdminShopCategory.Special, true),
-                    CreateEntry("Pet Snack Bundle", "Utility bundle with snack and pet-tag support for multi-pet sessions.", "Cash Manager", 1900, AdminShopCategory.Use, true),
-                    CreateEntry("Storage Slot Expansion", "Convenience service for storage and shared account inventory capacity.", "Cash Manager", 2800, AdminShopCategory.Etc, true, AdminShopEntryState.PreviewOnly, "Preview"),
-                    CreateEntry("Hyper Teleport Rock", "Navigation-heavy service entry used to compare convenience bundles.", "Cash Manager", 900, AdminShopCategory.Use, true),
-                    CreateEntry("Surprise Style Box", "Random cosmetic box surfaced through the featured rotation.", "Cash Manager", 3400, AdminShopCategory.Package, true),
-                    CreateEntry("Cosmetic Lens Coupon", "Style utility item staged for wish-list confirmation tests.", "Cash Manager", 1600, AdminShopCategory.Button, true),
+                    CreateItemEntry("Royal Hair Coupon", "Rotating salon coupon preview from the featured cash-service board.", "Cash Manager", 3400, AdminShopCategory.Special, true, InventoryType.CASH, 5050000),
+                    CreateItemEntry("Royal Face Coupon", "Premium face coupon entry with the same preview flow the client routes into wish-list dialogs.", "Cash Manager", 2900, AdminShopCategory.Special, true, InventoryType.CASH, 5150040),
+                    CreateItemEntry("Pet Snack Bundle", "Utility bundle with snack and pet-tag support for multi-pet sessions.", "Cash Manager", 1900, AdminShopCategory.Use, true, InventoryType.CASH, 2120000, 3),
+                    CreateStorageExpansionEntry("Storage Slot Expansion", "Convenience service for storage and shared account inventory capacity.", "Cash Manager"),
+                    CreateItemEntry("Hyper Teleport Rock", "Navigation-heavy service entry used to compare convenience bundles.", "Cash Manager", 900, AdminShopCategory.Use, true, InventoryType.CASH, 5040004),
+                    CreateItemEntry("Surprise Style Box", "Random cosmetic box surfaced through the featured rotation.", "Cash Manager", 3400, AdminShopCategory.Package, true, InventoryType.CASH, 5222000),
+                    CreateItemEntry("Cosmetic Lens Coupon", "Style utility item staged for wish-list confirmation tests.", "Cash Manager", 1600, AdminShopCategory.Button, true, InventoryType.CASH, 5152057),
                     CreateEntry("Pet Equip Bundle", "Pet equipment and accessory bundle bound to the NPC-side catalog.", "Cash Manager", 2200, AdminShopCategory.Equip, true, AdminShopEntryState.SoldOut, "Sold out")
                 };
             }
 
             return new[]
             {
-                CreateEntry("Zakum Helmet Listing", "Admin MTS preview of a high-demand helmet sold from the NPC-owned catalog view.", "MTS Clerk", 12500000, AdminShopCategory.Equip, false),
-                CreateEntry("Maple Kandayo", "MTS equipment board seeded to exercise request submission and price display.", "MTS Clerk", 9800000, AdminShopCategory.Equip, false),
-                CreateEntry("Steely Throwing-Knives", "Consumable trade board sample that mirrors a browse-first MTS flow.", "MTS Clerk", 3200000, AdminShopCategory.Use, false),
+                CreateItemEntry("Zakum Helmet Listing", "Admin MTS preview of a high-demand helmet sold from the NPC-owned catalog view.", "MTS Clerk", 12500000, AdminShopCategory.Equip, false, InventoryType.EQUIP, 1002357, response: AdminShopResponse.ListingSoldOut, responseMessage: "The listing refreshed before the purchase could be confirmed."),
+                CreateItemEntry("Maple Kandayo", "MTS equipment board seeded to exercise request submission and price display.", "MTS Clerk", 9800000, AdminShopCategory.Equip, false, InventoryType.EQUIP, 1332027),
+                CreateItemEntry("Steely Throwing-Knives", "Consumable trade board sample that mirrors a browse-first MTS flow.", "MTS Clerk", 3200000, AdminShopCategory.Use, false, InventoryType.USE, 2070005, 1, response: AdminShopResponse.InventoryFull, responseMessage: "The MTS clerk rejected delivery because the destination inventory tab is full."),
                 CreateEntry("Chaos Scroll 60%", "Scroll listing preview staged for user-vs-NPC comparison.", "MTS Clerk", 21000000, AdminShopCategory.Scroll, false, AdminShopEntryState.SoldOut, "Sold out"),
-                CreateEntry("Brown Work Gloves", "Common MTS browse row with seller and price labels only.", "MTS Clerk", 4700000, AdminShopCategory.Equip, false),
-                CreateEntry("Pink Adventurer Cape", "Apparel listing in the MTS catalog pane.", "MTS Clerk", 15000000, AdminShopCategory.Setup, false),
-                CreateEntry("Ilbi Throwing-Stars", "Projectile listing to keep the pane scrollable.", "MTS Clerk", 6100000, AdminShopCategory.Use, false),
+                CreateItemEntry("Brown Work Gloves", "Common MTS browse row with seller and price labels only.", "MTS Clerk", 4700000, AdminShopCategory.Equip, false, InventoryType.EQUIP, 1082002),
+                CreateItemEntry("Pink Adventurer Cape", "Apparel listing in the MTS catalog pane.", "MTS Clerk", 15000000, AdminShopCategory.Setup, false, InventoryType.EQUIP, 1102041, response: AdminShopResponse.SellerUnavailable, responseMessage: "The seller did not answer the trade relay request."),
+                CreateItemEntry("Ilbi Throwing-Stars", "Projectile listing to keep the pane scrollable.", "MTS Clerk", 6100000, AdminShopCategory.Use, false, InventoryType.USE, 2070000),
                 CreateEntry("Bathrobe for Men", "Popular dex robe listing inside the scrollable MTS pane.", "MTS Clerk", 8700000, AdminShopCategory.Equip, false, AdminShopEntryState.PreviewOnly, "Preview")
             };
         }
@@ -1251,24 +1301,24 @@ namespace HaCreator.MapSimulator.UI
             {
                 return new[]
                 {
-                    CreateUserEntry("NX Outfit Bundle", "Preview of a user-side recommendation row surfaced next to the NPC catalog.", "FashionMuse", 5200, AdminShopCategory.Equip),
-                    CreateUserEntry("Pet Accessory Package", "User listing used to test trade-request submission from the secondary pane.", "PetCrafter", 2400, AdminShopCategory.Equip),
+                    CreateUserItemEntry("NX Outfit Bundle", "Preview of a user-side recommendation row surfaced next to the NPC catalog.", "FashionMuse", 5200, AdminShopCategory.Equip, InventoryType.CASH, 1050101, response: AdminShopResponse.SellerUnavailable, responseMessage: "The recommendation slot resolved to an offline seller profile."),
+                    CreateUserItemEntry("Pet Accessory Package", "User listing used to test trade-request submission from the secondary pane.", "PetCrafter", 2400, AdminShopCategory.Equip, InventoryType.CASH, 1802000, 1, true),
                     CreateUserEntry("Chair Showcase", "Decorative listing for mixed cosmetic browsing.", "ChairMerchant", 1800, AdminShopCategory.Setup, AdminShopEntryState.PreviewOnly, "Preview"),
-                    CreateUserEntry("Android Coupon Pack", "Secondary-pane listing for user catalog parity.", "AndroidDealer", 4100, AdminShopCategory.Special),
-                    CreateUserEntry("Damage Skin Coupon", "Cash-market listing with its own seller label and request target.", "SkinBroker", 2700, AdminShopCategory.Use),
-                    CreateUserEntry("Label Ring Pair", "Small cosmetic listing that keeps the right pane scrollable.", "RingSeller", 900, AdminShopCategory.Button),
+                    CreateUserItemEntry("Android Coupon Pack", "Secondary-pane listing for user catalog parity.", "AndroidDealer", 4100, AdminShopCategory.Special, InventoryType.CASH, 5680150, response: AdminShopResponse.ListingExpired, responseMessage: "The coupon pack expired before the simulator session confirmed delivery."),
+                    CreateUserItemEntry("Damage Skin Coupon", "Cash-market listing with its own seller label and request target.", "SkinBroker", 2700, AdminShopCategory.Use, InventoryType.CASH, 2431965),
+                    CreateUserItemEntry("Label Ring Pair", "Small cosmetic listing that keeps the right pane scrollable.", "RingSeller", 900, AdminShopCategory.Button, InventoryType.CASH, 1112900, 1, true),
                     CreateUserEntry("Megaphone Stack", "Bulk utility listing staged for user-row browsing.", "WorldShout", 600, AdminShopCategory.Etc, AdminShopEntryState.SoldOut, "Sold out")
                 };
             }
 
             return new[]
             {
-                CreateUserEntry("Dragon Khanjar", "Player-listed equipment sale with a direct trade-request seam.", "NightLancer", 11200000, AdminShopCategory.Equip),
-                CreateUserEntry("PAC 4 ATT", "Popular cape listing to stress-test page movement.", "WindDeal", 34500000, AdminShopCategory.Equip),
-                CreateUserEntry("Pink Gaia Cape", "Secondary-pane seller row for MTS browsing parity.", "CapeShop", 9100000, AdminShopCategory.Setup),
-                CreateUserEntry("Dep Star", "Accessory listing used to test selecting user rows before sending a request.", "StarFinder", 8600000, AdminShopCategory.Equip),
+                CreateUserItemEntry("Dragon Khanjar", "Player-listed equipment sale with a direct trade-request seam.", "NightLancer", 11200000, AdminShopCategory.Equip, InventoryType.EQUIP, 1342008, 1, true),
+                CreateUserItemEntry("PAC 4 ATT", "Popular cape listing to stress-test page movement.", "WindDeal", 34500000, AdminShopCategory.Equip, InventoryType.EQUIP, 1102041, response: AdminShopResponse.ListingExpired, responseMessage: "The seller withdrew the cape before the handoff completed."),
+                CreateUserItemEntry("Pink Gaia Cape", "Secondary-pane seller row for MTS browsing parity.", "CapeShop", 9100000, AdminShopCategory.Setup, InventoryType.EQUIP, 1102085),
+                CreateUserItemEntry("Dep Star", "Accessory listing used to test selecting user rows before sending a request.", "StarFinder", 8600000, AdminShopCategory.Equip, InventoryType.EQUIP, 1122000, response: AdminShopResponse.SellerUnavailable, responseMessage: "The seller did not acknowledge the trade bridge."),
                 CreateUserEntry("Crystal Ilbis", "Projectile listing with high-price formatting.", "ThrowKing", 25500000, AdminShopCategory.Use, AdminShopEntryState.SoldOut, "Sold out"),
-                CreateUserEntry("Brown Bamboo Hat", "Lower-tier listing that still participates in request flow.", "OldSchooler", 2800000, AdminShopCategory.Equip),
+                CreateUserItemEntry("Brown Bamboo Hat", "Lower-tier listing that still participates in request flow.", "OldSchooler", 2800000, AdminShopCategory.Equip, InventoryType.EQUIP, 1002019),
                 CreateUserEntry("Blue Anel Cape", "Additional listing to force scrollbar use.", "CapeCollector", 6400000, AdminShopCategory.Setup, AdminShopEntryState.PreviewOnly, "Preview")
             };
         }
@@ -1294,6 +1344,42 @@ namespace HaCreator.MapSimulator.UI
                 SupportsWishlist = supportsWishlist,
                 State = state,
                 StateLabel = stateLabel
+            };
+        }
+
+        private static AdminShopEntry CreateItemEntry(
+            string title,
+            string detail,
+            string seller,
+            long price,
+            AdminShopCategory category,
+            bool supportsWishlist,
+            InventoryType rewardInventoryType,
+            int rewardItemId,
+            int rewardQuantity = 1,
+            bool lockAfterSuccess = false,
+            AdminShopEntryState state = AdminShopEntryState.Available,
+            string stateLabel = "",
+            AdminShopResponse response = AdminShopResponse.GrantItem,
+            string responseMessage = "")
+        {
+            return new AdminShopEntry
+            {
+                Title = title,
+                Detail = detail,
+                Seller = seller,
+                Price = price,
+                PriceLabel = FormatPriceLabel(price),
+                Category = category,
+                SupportsWishlist = supportsWishlist,
+                State = state,
+                StateLabel = stateLabel,
+                RewardInventoryType = rewardInventoryType,
+                RewardItemId = rewardItemId,
+                RewardQuantity = Math.Max(1, rewardQuantity),
+                LockAfterSuccess = lockAfterSuccess,
+                Response = response,
+                ResponseMessage = responseMessage
             };
         }
 
@@ -1323,6 +1409,22 @@ namespace HaCreator.MapSimulator.UI
             };
         }
 
+        private static AdminShopEntry CreateStorageExpansionEntry(string title, string detail, string seller)
+        {
+            return new AdminShopEntry
+            {
+                Title = title,
+                Detail = detail,
+                Seller = seller,
+                Price = 2800,
+                PriceLabel = FormatPriceLabel(2800),
+                Category = AdminShopCategory.Etc,
+                SupportsWishlist = true,
+                State = AdminShopEntryState.Available,
+                IsStorageExpansion = true
+            };
+        }
+
         private static AdminShopEntry CreateUserEntry(
             string title,
             string detail,
@@ -1346,10 +1448,48 @@ namespace HaCreator.MapSimulator.UI
             };
         }
 
+        private static AdminShopEntry CreateUserItemEntry(
+            string title,
+            string detail,
+            string seller,
+            long price,
+            AdminShopCategory category,
+            InventoryType rewardInventoryType,
+            int rewardItemId,
+            int rewardQuantity = 1,
+            bool lockAfterSuccess = false,
+            AdminShopEntryState state = AdminShopEntryState.Available,
+            string stateLabel = "",
+            AdminShopResponse response = AdminShopResponse.GrantItem,
+            string responseMessage = "")
+        {
+            return CreateItemEntry(
+                title,
+                detail,
+                seller,
+                price,
+                category,
+                false,
+                rewardInventoryType,
+                rewardItemId,
+                rewardQuantity,
+                lockAfterSuccess,
+                state,
+                stateLabel,
+                response,
+                responseMessage);
+        }
+
         private void ResolvePendingRequest()
         {
             if (_pendingRequestEntry == null)
             {
+                return;
+            }
+
+            if (_pendingRequestEntry.IsStorageExpansion)
+            {
+                ResolveStorageExpansionRequest(_pendingRequestEntry);
                 return;
             }
 
@@ -1359,10 +1499,7 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
-            _pendingRequestEntry.State = AdminShopEntryState.RequestAccepted;
-            _footerMessage = $"Catalog response received for {_pendingRequestEntry.Title}. The simulator accepted the request.";
-            _pendingRequestEntry = null;
-            UpdateActionButtonStates();
+            ResolveCatalogRequest(_pendingRequestEntry);
         }
 
         private bool CanRequestEntry(AdminShopEntry entry)
@@ -1372,12 +1509,19 @@ namespace HaCreator.MapSimulator.UI
                 return false;
             }
 
+            if (entry.IsStorageExpansion)
+            {
+                return CanRequestStorageExpansion(entry);
+            }
+
             if (entry.InventoryExpansionType != InventoryType.NONE)
             {
                 return CanRequestInventoryExpansion(entry);
             }
 
-            return entry.State == AdminShopEntryState.Available || entry.State == AdminShopEntryState.RequestAccepted;
+            return entry.State == AdminShopEntryState.Available
+                   || entry.State == AdminShopEntryState.RequestAccepted
+                   || entry.State == AdminShopEntryState.RequestRejected;
         }
 
         private string BuildBlockedRequestMessage(AdminShopEntry entry)
@@ -1385,6 +1529,11 @@ namespace HaCreator.MapSimulator.UI
             if (_pendingRequestEntry != null)
             {
                 return $"A catalog request for {_pendingRequestEntry.Title} is already in flight.";
+            }
+
+            if (entry?.IsStorageExpansion == true)
+            {
+                return BuildStorageExpansionBlockedMessage(entry);
             }
 
             if (entry?.InventoryExpansionType != InventoryType.NONE)
@@ -1406,6 +1555,17 @@ namespace HaCreator.MapSimulator.UI
                    && _inventory.GetMesoCount() >= entry.Price;
         }
 
+        private bool CanRequestStorageExpansion(AdminShopEntry entry)
+        {
+            if (entry == null || !entry.IsStorageExpansion || _inventory == null || _storageRuntime == null)
+            {
+                return false;
+            }
+
+            return _storageRuntime.CanExpandSlotLimit()
+                   && _inventory.GetMesoCount() >= entry.Price;
+        }
+
         private string BuildInventoryExpansionBlockedMessage(AdminShopEntry entry)
         {
             if (_inventory == null)
@@ -1422,6 +1582,31 @@ namespace HaCreator.MapSimulator.UI
             if (_inventory.GetMesoCount() < entry.Price)
             {
                 return $"Need {FormatPriceLabel(entry.Price)} before extending this inventory tab.";
+            }
+
+            return BuildEntryStateText(entry);
+        }
+
+        private string BuildStorageExpansionBlockedMessage(AdminShopEntry entry)
+        {
+            if (_storageRuntime == null)
+            {
+                return "Storage runtime is unavailable for capacity updates.";
+            }
+
+            if (_inventory == null)
+            {
+                return "Inventory runtime is unavailable for cash-shop billing.";
+            }
+
+            if (!_storageRuntime.CanExpandSlotLimit())
+            {
+                return $"{entry.Title} is already at the simulator cap ({_storageRuntime.GetSlotLimit()} slots).";
+            }
+
+            if (_inventory.GetMesoCount() < entry.Price)
+            {
+                return $"Need {FormatPriceLabel(entry.Price)} before extending storage capacity.";
             }
 
             return BuildEntryStateText(entry);
@@ -1455,9 +1640,155 @@ namespace HaCreator.MapSimulator.UI
 
             _inventory.TryExpandSlotLimit(entry.InventoryExpansionType);
             entry.State = AdminShopEntryState.RequestAccepted;
+            entry.StateLabel = "Expanded";
             _footerMessage = $"{entry.Title} succeeded. {entry.InventoryExpansionType} inventory now has {_inventory.GetSlotLimit(entry.InventoryExpansionType)} slots.";
             _pendingRequestEntry = null;
             Money = _inventory.GetMesoCount();
+            UpdateActionButtonStates();
+        }
+
+        private void ResolveStorageExpansionRequest(AdminShopEntry entry)
+        {
+            if (_storageRuntime == null)
+            {
+                _footerMessage = "Storage runtime is unavailable for slot expansion.";
+                _pendingRequestEntry = null;
+                UpdateActionButtonStates();
+                return;
+            }
+
+            if (_inventory == null)
+            {
+                _footerMessage = "Inventory runtime is unavailable for cash-shop billing.";
+                _pendingRequestEntry = null;
+                UpdateActionButtonStates();
+                return;
+            }
+
+            if (!_storageRuntime.CanExpandSlotLimit())
+            {
+                _footerMessage = BuildStorageExpansionBlockedMessage(entry);
+                _pendingRequestEntry = null;
+                UpdateActionButtonStates();
+                return;
+            }
+
+            if (!_inventory.TryConsumeMeso(entry.Price))
+            {
+                _footerMessage = $"Need {FormatPriceLabel(entry.Price)} before extending storage capacity.";
+                _pendingRequestEntry = null;
+                UpdateActionButtonStates();
+                return;
+            }
+
+            _storageRuntime.TryExpandSlotLimit();
+            entry.State = AdminShopEntryState.RequestAccepted;
+            entry.StateLabel = "Expanded";
+            _footerMessage = $"{entry.Title} succeeded. Storage now has {_storageRuntime.GetSlotLimit()} slots.";
+            _pendingRequestEntry = null;
+            Money = _inventory.GetMesoCount();
+            UpdateActionButtonStates();
+        }
+
+        private void ResolveCatalogRequest(AdminShopEntry entry)
+        {
+            if (_inventory == null)
+            {
+                entry.State = AdminShopEntryState.RequestRejected;
+                entry.StateLabel = "No runtime";
+                _footerMessage = "Inventory runtime is unavailable for shop delivery.";
+                _pendingRequestEntry = null;
+                UpdateActionButtonStates();
+                return;
+            }
+
+            if (entry.ConsumeOnSuccess && !_inventory.TryConsumeMeso(entry.Price))
+            {
+                entry.State = AdminShopEntryState.RequestRejected;
+                entry.StateLabel = "Need mesos";
+                _footerMessage = $"Need {FormatPriceLabel(entry.Price)} before this request can complete.";
+                _pendingRequestEntry = null;
+                Money = _inventory.GetMesoCount();
+                UpdateActionButtonStates();
+                return;
+            }
+
+            switch (entry.Response)
+            {
+                case AdminShopResponse.GrantItem:
+                    ResolveGrantedItemRequest(entry);
+                    return;
+                case AdminShopResponse.ListingSoldOut:
+                    FinishRejectedRequest(entry, "Sold out", string.IsNullOrWhiteSpace(entry.ResponseMessage)
+                        ? $"{entry.Title} sold out before the simulator session completed the request."
+                        : entry.ResponseMessage, refundMeso: entry.ConsumeOnSuccess);
+                    return;
+                case AdminShopResponse.SellerUnavailable:
+                    FinishRejectedRequest(entry, "No reply", string.IsNullOrWhiteSpace(entry.ResponseMessage)
+                        ? $"{entry.Seller} did not answer the simulator trade relay."
+                        : entry.ResponseMessage, refundMeso: entry.ConsumeOnSuccess);
+                    return;
+                case AdminShopResponse.ListingExpired:
+                    FinishRejectedRequest(entry, "Expired", string.IsNullOrWhiteSpace(entry.ResponseMessage)
+                        ? $"{entry.Title} expired before delivery could be confirmed."
+                        : entry.ResponseMessage, refundMeso: entry.ConsumeOnSuccess);
+                    return;
+                case AdminShopResponse.InventoryFull:
+                    FinishRejectedRequest(entry, "Inventory full", string.IsNullOrWhiteSpace(entry.ResponseMessage)
+                        ? $"The destination {entry.RewardInventoryType} inventory tab cannot accept {entry.Title}."
+                        : entry.ResponseMessage, refundMeso: entry.ConsumeOnSuccess);
+                    return;
+                default:
+                    FinishRejectedRequest(entry, "Rejected", $"The simulator rejected the request for {entry.Title}.", refundMeso: entry.ConsumeOnSuccess);
+                    return;
+            }
+        }
+
+        private void ResolveGrantedItemRequest(AdminShopEntry entry)
+        {
+            if (entry.RewardInventoryType == InventoryType.NONE || entry.RewardItemId <= 0)
+            {
+                entry.State = AdminShopEntryState.RequestAccepted;
+                entry.StateLabel = "Accepted";
+                _footerMessage = $"Catalog response received for {entry.Title}. The simulator accepted the request.";
+                _pendingRequestEntry = null;
+                Money = _inventory?.GetMesoCount() ?? Money;
+                UpdateActionButtonStates();
+                return;
+            }
+
+            if (!_inventory.CanAcceptItem(entry.RewardInventoryType, entry.RewardItemId, entry.RewardQuantity))
+            {
+                FinishRejectedRequest(
+                    entry,
+                    "Inventory full",
+                    $"The destination {entry.RewardInventoryType} inventory tab cannot accept {entry.Title}.",
+                    refundMeso: entry.ConsumeOnSuccess);
+                return;
+            }
+
+            Texture2D itemTexture = _inventory.GetItemTexture(entry.RewardInventoryType, entry.RewardItemId);
+            _inventory.AddItem(entry.RewardInventoryType, entry.RewardItemId, itemTexture, entry.RewardQuantity);
+            entry.State = entry.LockAfterSuccess ? AdminShopEntryState.SoldOut : AdminShopEntryState.RequestAccepted;
+            entry.StateLabel = entry.LockAfterSuccess ? "Purchased" : "Delivered";
+            _footerMessage = $"{entry.Title} delivered to {entry.RewardInventoryType} inventory.";
+            _pendingRequestEntry = null;
+            Money = _inventory.GetMesoCount();
+            UpdateActionButtonStates();
+        }
+
+        private void FinishRejectedRequest(AdminShopEntry entry, string stateLabel, string footerMessage, bool refundMeso)
+        {
+            if (refundMeso && _inventory != null && entry.Price > 0)
+            {
+                _inventory.AddMeso(entry.Price);
+            }
+
+            entry.State = AdminShopEntryState.RequestRejected;
+            entry.StateLabel = stateLabel;
+            _footerMessage = footerMessage;
+            _pendingRequestEntry = null;
+            Money = _inventory?.GetMesoCount() ?? Money;
             UpdateActionButtonStates();
         }
 
@@ -1470,6 +1801,7 @@ namespace HaCreator.MapSimulator.UI
                 AdminShopEntryState.PreviewOnly => "Status: preview-only row until full session data is wired.",
                 AdminShopEntryState.PendingResponse => "Status: waiting for the shop response.",
                 AdminShopEntryState.RequestAccepted => "Status: request acknowledged by the simulator session.",
+                AdminShopEntryState.RequestRejected => "Status: the simulator session rejected the latest request.",
                 _ => "Status: unavailable."
             };
         }
@@ -1484,6 +1816,11 @@ namespace HaCreator.MapSimulator.UI
             if (entry?.State == AdminShopEntryState.PendingResponse)
             {
                 return isSelected ? new Color(56, 38, 0) : new Color(255, 232, 142);
+            }
+
+            if (entry?.State == AdminShopEntryState.RequestRejected)
+            {
+                return isSelected ? new Color(70, 20, 20) : new Color(255, 188, 188);
             }
 
             return isSelected ? Color.Black : Color.White;
@@ -1501,6 +1838,11 @@ namespace HaCreator.MapSimulator.UI
                 return isSelected ? new Color(84, 58, 0) : new Color(230, 204, 104);
             }
 
+            if (entry?.State == AdminShopEntryState.RequestRejected)
+            {
+                return isSelected ? new Color(94, 44, 44) : new Color(240, 175, 175);
+            }
+
             return isSelected ? new Color(42, 42, 42) : new Color(210, 210, 210);
         }
 
@@ -1513,8 +1855,35 @@ namespace HaCreator.MapSimulator.UI
                 AdminShopEntryState.PreviewOnly => isSelected ? new Color(85, 74, 27) : new Color(228, 209, 142),
                 AdminShopEntryState.PendingResponse => isSelected ? new Color(84, 58, 0) : new Color(255, 229, 128),
                 AdminShopEntryState.RequestAccepted => isSelected ? new Color(24, 78, 88) : new Color(146, 223, 238),
+                AdminShopEntryState.RequestRejected => isSelected ? new Color(105, 36, 36) : new Color(255, 170, 170),
                 _ => isSelected ? new Color(42, 42, 42) : Color.White
             };
+        }
+
+        private string BuildHeaderInstruction()
+        {
+            if (_pendingRequestEntry != null)
+            {
+                return $"Waiting for catalog response on {_pendingRequestEntry.Title}.";
+            }
+
+            AdminShopEntry entry = GetSelectedEntry();
+            if (entry == null)
+            {
+                return "Select an offer, then use BtBuy, BtSell, or BtRecharge.";
+            }
+
+            if (_activePane == AdminShopPane.User)
+            {
+                return "BtBuy submits a relay request for the highlighted listing.";
+            }
+
+            if (entry.SupportsWishlist)
+            {
+                return "BtBuy submits the request. BtRecharge opens the wish-list confirmation.";
+            }
+
+            return "BtBuy submits the request. BtSell switches service pages.";
         }
 
         private static string FormatPriceLabel(long price)

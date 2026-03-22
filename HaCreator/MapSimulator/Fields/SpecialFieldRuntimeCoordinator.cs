@@ -69,6 +69,7 @@ namespace HaCreator.MapSimulator.Fields
         private readonly MinigameFields _minigames = new();
         private readonly CookieHouseField _cookieHouse = new();
         private readonly PartyRaidField _partyRaid = new();
+        private Func<int> _cookieHousePointProvider;
         private readonly List<SpecialFieldBacklogEntry> _catalog = new()
         {
             new(SpecialFieldBacklogArea.GuildBossEventFields, SpecialFieldBacklogStatus.Partial, "SpecialEffectFields.cs / GuildBossField", IsGuildBossMap),
@@ -93,11 +94,17 @@ namespace HaCreator.MapSimulator.Fields
         public MinigameFields Minigames => _minigames;
         public CookieHouseField CookieHouse => _cookieHouse;
         public PartyRaidField PartyRaid => _partyRaid;
-        public bool HasBlockingScriptedSequence => _specialEffects.HasBlockingScriptedSequence;
+        public bool HasBlockingScriptedSequence =>
+            _specialEffects.HasBlockingScriptedSequence
+            || _minigames.MemoryGame.IsVisible;
 
-        public void Initialize(GraphicsDevice graphicsDevice, SoundManager soundManager = null)
+        public void Initialize(
+            GraphicsDevice graphicsDevice,
+            SoundManager soundManager = null,
+            Action<string> requestBgmOverride = null,
+            Action clearBgmOverride = null)
         {
-            _specialEffects.Initialize(graphicsDevice);
+            _specialEffects.Initialize(graphicsDevice, requestBgmOverride, clearBgmOverride);
             _minigames.Initialize(graphicsDevice, soundManager);
             _partyRaid.Initialize(graphicsDevice);
         }
@@ -125,7 +132,7 @@ namespace HaCreator.MapSimulator.Fields
 
             if (IsCookieHouseMap(mapInfo))
             {
-                _cookieHouse.Enable(mapInfo.id);
+                _cookieHouse.Enable(mapInfo.id, _cookieHousePointProvider);
             }
 
             for (int i = 0; i < _catalog.Count; i++)
@@ -164,11 +171,29 @@ namespace HaCreator.MapSimulator.Fields
             _minigames.AriantArena.SetLocalPlayerState(localPlayerName, localPlayerJob ?? 0);
         }
 
+        public void SetCookieHousePointProvider(Func<int> pointProvider)
+        {
+            _cookieHousePointProvider = pointProvider;
+        }
+
         public void Update(GameTime gameTime, int currentTimeMs)
         {
             _specialEffects.Update(gameTime, currentTimeMs);
             _minigames.Update(currentTimeMs);
+            _cookieHouse.Update();
             _partyRaid.Update(currentTimeMs);
+        }
+
+        public int ConsumePendingTransferMapId()
+        {
+            int battlefieldTransferMapId = _specialEffects.Battlefield.ConsumePendingTransferMapId();
+            if (battlefieldTransferMapId > 0)
+            {
+                return battlefieldTransferMapId;
+            }
+
+            int dojoTransferMapId = _specialEffects.Dojo.ConsumePendingTransferMapId();
+            return dojoTransferMapId > 0 ? dojoTransferMapId : -1;
         }
 
         public void Draw(

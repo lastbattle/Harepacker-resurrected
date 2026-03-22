@@ -36,6 +36,7 @@ namespace HaCreator.MapSimulator.Effects
 
         // Field obstacles
         private readonly Dictionary<string, FieldObstacle> _obstacles = new();
+        private readonly Dictionary<string, PublishedFieldObjectState> _publishedObjectStates = new(StringComparer.OrdinalIgnoreCase);
 
         // Screen flash for field effects
         private bool _screenFlashActive = false;
@@ -400,6 +401,52 @@ namespace HaCreator.MapSimulator.Effects
             return _obstacles.Remove(obstacleName);
         }
 
+        /// <summary>
+        /// Publish an object-tag visibility state without routing through the obstacle runtime.
+        /// This mirrors the client distinction between generic object-state updates and obstacle
+        /// packets while keeping the simulator seam reusable for simple scripted toggles.
+        /// </summary>
+        public void PublishObjectState(string objectTag, bool isOn, int transitionTimeMs, int currentTimeMs)
+        {
+            if (string.IsNullOrWhiteSpace(objectTag))
+            {
+                return;
+            }
+
+            if (!_publishedObjectStates.TryGetValue(objectTag, out var objectState))
+            {
+                objectState = new PublishedFieldObjectState { Name = objectTag };
+                _publishedObjectStates[objectTag] = objectState;
+            }
+
+            objectState.TargetState = isOn;
+            objectState.TransitionDuration = transitionTimeMs;
+            objectState.TransitionStartTime = currentTimeMs;
+            objectState.IsTransitioning = transitionTimeMs > 0;
+        }
+
+        public bool TryGetPublishedObjectState(string objectTag, out bool isOn)
+        {
+            if (_publishedObjectStates.TryGetValue(objectTag, out var objectState))
+            {
+                isOn = objectState.TargetState;
+                return true;
+            }
+
+            isOn = false;
+            return false;
+        }
+
+        public bool ClearPublishedObjectState(string objectTag)
+        {
+            if (string.IsNullOrWhiteSpace(objectTag))
+            {
+                return false;
+            }
+
+            return _publishedObjectStates.Remove(objectTag);
+        }
+
         #endregion
 
         #region Screen Effects
@@ -695,6 +742,7 @@ namespace HaCreator.MapSimulator.Effects
             _damageMistActive = false;
             _objectEffects.Clear();
             _obstacles.Clear();
+            _publishedObjectStates.Clear();
         }
 
         /// <summary>
@@ -772,6 +820,15 @@ namespace HaCreator.MapSimulator.Effects
     /// Field obstacle state
     /// </summary>
     public class FieldObstacle
+    {
+        public string Name;
+        public bool TargetState;
+        public bool IsTransitioning;
+        public int TransitionStartTime;
+        public int TransitionDuration;
+    }
+
+    public class PublishedFieldObjectState
     {
         public string Name;
         public bool TargetState;

@@ -220,6 +220,7 @@ namespace HaCreator.MapSimulator.Character.Skills
 
             // Parse animations
             ParseSkillAnimations(skill, skillNode);
+            FinalizeMovementClassification(skill);
 
             // Load icon
             LoadSkillIcon(skill, skillNode);
@@ -230,6 +231,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         private void ParseSkillInfo(SkillData skill, WzImageProperty skillNode)
         {
             skill.ActionName = GetPrimaryActionName(skillNode);
+            skill.IsPassiveSkillData = GetInt(skillNode, "psd") == 1;
             ParseFinalAttackTriggers(skill, skillNode);
 
             // Basic properties from info node
@@ -248,14 +250,20 @@ namespace HaCreator.MapSimulator.Character.Skills
                 skill.ChainAttackPenalty = GetInt(infoNode, "chainattackPenalty") == 1;
                 skill.LandingEffectName = GetString(infoNode, "landingEffect");
                 skill.MinionAbility = GetString(infoNode, "minionAbility");
+                skill.MinionAttack = GetString(infoNode, "minionAttack");
+                skill.ClientInfoType = GetInt(infoNode, "type");
                 string condition = GetString(infoNode, "condition");
                 skill.SummonCondition = condition;
                 skill.TriggerCondition = condition;
+                skill.IsSwallowSkill = GetInt(infoNode, "swallow") == 1;
+                skill.DummySkillParents = ParseDummySkillParents(GetString(infoNode, "dummyOf"));
+                skill.SelfDestructMinion = GetInt(infoNode, "selfDestructMinion") == 1;
                 skill.ZoneType = GetString(infoNode, "zoneType");
                 skill.IsMassSpell = GetInt(infoNode, "massSpell") == 1;
                 skill.DebuffMessageToken = GetString(infoNode, "mes");
                 skill.AffectedSkillId = GetInt(infoNode, "affectedSkill");
                 skill.AffectedSkillEffect = GetString(infoNode, "affectedSkillEffect");
+                skill.DotType = GetString(infoNode, "dotType");
                 skill.IsMagicDamageSkill = GetInt(infoNode, "magicDamage") == 1;
                 skill.FixedState = GetInt(infoNode, "fixedState") == 1;
                 skill.CanNotMoveInState = GetInt(infoNode, "canNotMoveInState") == 1;
@@ -269,6 +277,8 @@ namespace HaCreator.MapSimulator.Character.Skills
             {
                 skill.MaxLevel = GetInt(commonNode, "maxLevel", 1);
                 skill.MorphId = GetInt(commonNode, "morph");
+                skill.SummonSubTimeFormula = GetString(commonNode, "subTime");
+                skill.SummonSelfDestructionFormula = GetString(commonNode, "selfDestruction");
             }
 
             if (skill.MorphId <= 0 && infoNode != null)
@@ -293,6 +303,38 @@ namespace HaCreator.MapSimulator.Character.Skills
             DetermineSkillType(skill, skillNode);
         }
 
+        private static void FinalizeMovementClassification(SkillData skill)
+        {
+            if (skill == null || skill.IsMovement || skill.IsKeydownSkill)
+            {
+                return;
+            }
+
+            if (ActionImpliesMovement(skill.PrepareActionName))
+            {
+                skill.IsMovement = true;
+            }
+        }
+
+        private static bool ActionImpliesMovement(string actionName)
+        {
+            if (string.IsNullOrWhiteSpace(actionName))
+            {
+                return false;
+            }
+
+            string[] movementTokens = { "teleport", "rush", "dash", "flash", "jump", "step", "fly" };
+            foreach (string token in movementTokens)
+            {
+                if (actionName.IndexOf(token, StringComparison.OrdinalIgnoreCase) >= 0)
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
         private void DetermineSkillType(SkillData skill, WzImageProperty skillNode)
         {
             if (skill.UsesAffectedSkillBodyAttack)
@@ -301,6 +343,13 @@ namespace HaCreator.MapSimulator.Character.Skills
                 skill.IsPassive = true;
                 skill.IsAttack = true;
                 skill.AttackType = skill.IsMagicDamageSkill ? SkillAttackType.Magic : SkillAttackType.Melee;
+                return;
+            }
+
+            if (skill.IsPassiveSkillData && skill.AffectedSkillId > 0)
+            {
+                skill.Type = SkillType.Passive;
+                skill.IsPassive = true;
                 return;
             }
 
@@ -534,6 +583,8 @@ namespace HaCreator.MapSimulator.Character.Skills
                 }
             }
 
+            skill.PrepareSecondaryEffect = LoadOptionalSkillAnimation(skillNode, "prepare0", loop: false);
+
             var keydownNode = skillNode["keydown"] ?? skillNode["keyDown"];
             if (keydownNode != null)
             {
@@ -549,6 +600,10 @@ namespace HaCreator.MapSimulator.Character.Skills
                 }
             }
 
+            skill.KeydownSecondaryEffect =
+                LoadOptionalSkillAnimation(skillNode, "keydown0", loop: true)
+                ?? LoadOptionalSkillAnimation(skillNode, "keyDown0", loop: true);
+
             var keydownEndNode = skillNode["keydownend"] ?? skillNode["keyDownEnd"];
             if (keydownEndNode != null)
             {
@@ -562,6 +617,10 @@ namespace HaCreator.MapSimulator.Character.Skills
                 }
             }
 
+            skill.KeydownEndSecondaryEffect =
+                LoadOptionalSkillAnimation(skillNode, "keydownend0", loop: false)
+                ?? LoadOptionalSkillAnimation(skillNode, "keyDownEnd0", loop: false);
+
             var repeatNode = skillNode["repeat"];
             if (repeatNode != null)
             {
@@ -574,6 +633,8 @@ namespace HaCreator.MapSimulator.Character.Skills
                     skill.RepeatEffect = repeatAnimation;
                 }
             }
+
+            skill.RepeatSecondaryEffect = LoadOptionalSkillAnimation(skillNode, "repeat0", loop: true);
 
             skill.IsKeydownSkill = keydownNode != null || keydownEndNode != null || skill.IsRapidAttack;
 
@@ -660,6 +721,29 @@ namespace HaCreator.MapSimulator.Character.Skills
                 animation.Loop = true;
             }
 
+            return animation;
+        }
+
+        private SkillAnimation LoadOptionalSkillAnimation(WzImageProperty skillNode, string branchName, bool loop)
+        {
+            if (skillNode == null || string.IsNullOrWhiteSpace(branchName))
+            {
+                return null;
+            }
+
+            WzImageProperty branch = skillNode[branchName];
+            if (branch == null)
+            {
+                return null;
+            }
+
+            SkillAnimation animation = LoadSkillAnimation(branch, branchName);
+            if (animation.Frames.Count == 0)
+            {
+                return null;
+            }
+
+            animation.Loop = loop || animation.Loop;
             return animation;
         }
 
@@ -913,6 +997,12 @@ namespace HaCreator.MapSimulator.Character.Skills
                 skill.SummonSpawnAnimation = summonAnimation;
             }
 
+            string supportBranchName = SelectPreferredSummonSupportBranch(branchNames);
+            if (supportBranchName != null)
+            {
+                PopulateSummonSupportMetadata(skill, summonNode[supportBranchName]);
+            }
+
             string attackBranchName = SelectPreferredSummonAttackBranch(branchNames);
             if (attackBranchName == null)
             {
@@ -990,6 +1080,38 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
         }
 
+        private static void PopulateSummonSupportMetadata(SkillData skill, WzImageProperty supportBranch)
+        {
+            if (skill == null || supportBranch == null)
+            {
+                return;
+            }
+
+            WzImageProperty infoNode = supportBranch["info"];
+            if (infoNode == null)
+            {
+                return;
+            }
+
+            WzImageProperty rangeNode = infoNode["range"];
+            if (rangeNode == null)
+            {
+                return;
+            }
+
+            Point? lt = GetVector(rangeNode, "lt");
+            Point? rb = GetVector(rangeNode, "rb");
+            if (!lt.HasValue && !rb.HasValue)
+            {
+                return;
+            }
+
+            skill.SummonAttackRangeLeft = Math.Abs(lt?.X ?? 0);
+            skill.SummonAttackRangeRight = rb?.X ?? 0;
+            skill.SummonAttackRangeTop = lt?.Y ?? 0;
+            skill.SummonAttackRangeBottom = rb?.Y ?? 0;
+        }
+
         public static string SelectPreferredSummonSpawnBranch(IEnumerable<string> branchNames)
         {
             return SelectPreferredSummonBranch(branchNames, PreferredSummonSpawnBranches);
@@ -998,6 +1120,27 @@ namespace HaCreator.MapSimulator.Character.Skills
         public static string SelectPreferredSummonIdleBranch(IEnumerable<string> branchNames)
         {
             return SelectPreferredSummonBranch(branchNames, PreferredSummonAnimationBranches);
+        }
+
+        public static string SelectPreferredSummonSupportBranch(IEnumerable<string> branchNames)
+        {
+            return SelectPreferredSummonBranch(branchNames, new[] { "heal", "support", "stand" });
+        }
+
+        private static int[] ParseDummySkillParents(string dummyOf)
+        {
+            if (string.IsNullOrWhiteSpace(dummyOf))
+            {
+                return Array.Empty<int>();
+            }
+
+            return dummyOf
+                .Split(new[] { '&' }, StringSplitOptions.RemoveEmptyEntries)
+                .Select(token => token.Trim())
+                .Where(token => int.TryParse(token, out _))
+                .Select(int.Parse)
+                .Distinct()
+                .ToArray();
         }
 
         public static string SelectPreferredSummonAttackBranch(IEnumerable<string> branchNames)

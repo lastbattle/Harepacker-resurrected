@@ -1,0 +1,350 @@
+using HaCreator.MapSimulator.Character;
+using MapleLib.PacketLib;
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+
+namespace HaCreator.MapSimulator.Managers
+{
+    public sealed class LoginAvatarLook
+    {
+        public CharacterGender Gender { get; init; }
+        public SkinColor Skin { get; init; }
+        public int FaceId { get; init; }
+        public int HairId { get; init; }
+        public IReadOnlyDictionary<byte, int> VisibleEquipmentByBodyPart { get; init; } = new Dictionary<byte, int>();
+        public IReadOnlyDictionary<byte, int> HiddenEquipmentByBodyPart { get; init; } = new Dictionary<byte, int>();
+        public int WeaponStickerItemId { get; init; }
+        public IReadOnlyList<int> PetIds { get; init; } = Array.Empty<int>();
+    }
+
+    public static class LoginAvatarLookCodec
+    {
+        private const byte EquipListTerminator = 0xFF;
+        private const byte ReservedHairFlag = 0;
+
+        public static LoginAvatarLook CreateLook(
+            CharacterGender gender,
+            SkinColor skin,
+            int faceId,
+            int hairId,
+            IEnumerable<KeyValuePair<EquipSlot, int>> equipmentBySlot,
+            int weaponStickerItemId = 0,
+            IEnumerable<int> petIds = null)
+        {
+            return new LoginAvatarLook
+            {
+                Gender = gender,
+                Skin = skin,
+                FaceId = faceId,
+                HairId = hairId,
+                VisibleEquipmentByBodyPart = CreateEquipmentMap(equipmentBySlot),
+                HiddenEquipmentByBodyPart = new Dictionary<byte, int>(),
+                WeaponStickerItemId = weaponStickerItemId,
+                PetIds = NormalizePetIds(petIds)
+            };
+        }
+
+        public static byte[] Encode(CharacterBuild build)
+        {
+            if (build == null)
+            {
+                throw new ArgumentNullException(nameof(build));
+            }
+
+            var equipmentBySlot = build.Equipment
+                .Where(entry => entry.Value != null)
+                .ToDictionary(entry => entry.Key, entry => entry.Value.ItemId);
+
+            LoginAvatarLook look = CreateLook(
+                build.Gender,
+                build.Skin,
+                build.Face?.ItemId ?? 0,
+                build.Hair?.ItemId ?? 0,
+                equipmentBySlot);
+
+            return Encode(look);
+        }
+
+        public static byte[] Encode(LoginAvatarLook look)
+        {
+            if (look == null)
+            {
+                throw new ArgumentNullException(nameof(look));
+            }
+
+            using var stream = new MemoryStream();
+            using var writer = new BinaryWriter(stream);
+
+            writer.Write((byte)look.Gender);
+            writer.Write((byte)look.Skin);
+            writer.Write(look.FaceId);
+            writer.Write(ReservedHairFlag);
+            writer.Write(look.HairId);
+
+            WriteEquipmentMap(writer, look.VisibleEquipmentByBodyPart);
+            WriteEquipmentMap(writer, look.HiddenEquipmentByBodyPart);
+
+            writer.Write(look.WeaponStickerItemId);
+
+            IReadOnlyList<int> petIds = NormalizePetIds(look.PetIds);
+            for (int i = 0; i < 3; i++)
+            {
+                writer.Write(petIds[i]);
+            }
+
+            writer.Flush();
+            return stream.ToArray();
+        }
+
+        public static bool TryDecode(byte[] data, out LoginAvatarLook look, out string error)
+        {
+            look = null;
+            error = string.Empty;
+
+            if (data == null || data.Length == 0)
+            {
+                error = "AvatarLook payload is empty.";
+                return false;
+            }
+
+            try
+            {
+                var reader = new PacketReader(data);
+
+                CharacterGender gender = ReadGender(reader.ReadByte());
+                SkinColor skin = ReadSkin(reader.ReadByte());
+                int faceId = reader.ReadInt();
+                reader.ReadByte();
+                int hairId = reader.ReadInt();
+
+                Dictionary<byte, int> visibleEquipment = ReadEquipmentMap(reader);
+                Dictionary<byte, int> hiddenEquipment = ReadEquipmentMap(reader);
+                int weaponStickerItemId = reader.ReadInt();
+                int[] petIds = { reader.ReadInt(), reader.ReadInt(), reader.ReadInt() };
+
+                look = new LoginAvatarLook
+                {
+                    Gender = gender,
+                    Skin = skin,
+                    FaceId = faceId,
+                    HairId = hairId,
+                    VisibleEquipmentByBodyPart = visibleEquipment,
+                    HiddenEquipmentByBodyPart = hiddenEquipment,
+                    WeaponStickerItemId = weaponStickerItemId,
+                    PetIds = petIds
+                };
+
+                return true;
+            }
+            catch (EndOfStreamException)
+            {
+                error = "AvatarLook payload ended before decoding completed.";
+                return false;
+            }
+            catch (IOException)
+            {
+                error = "AvatarLook payload could not be read.";
+                return false;
+            }
+        }
+
+        public static bool TryGetEquipSlot(byte bodyPart, out EquipSlot slot)
+        {
+            slot = bodyPart switch
+            {
+                1 => EquipSlot.Cap,
+                2 => EquipSlot.FaceAccessory,
+                3 => EquipSlot.EyeAccessory,
+                4 => EquipSlot.Earrings,
+                5 => EquipSlot.Coat,
+                6 => EquipSlot.Pants,
+                7 => EquipSlot.Shoes,
+                8 => EquipSlot.Glove,
+                9 => EquipSlot.Cape,
+                10 => EquipSlot.Shield,
+                11 => EquipSlot.Weapon,
+                12 => EquipSlot.Ring1,
+                13 => EquipSlot.Ring2,
+                15 => EquipSlot.Ring3,
+                16 => EquipSlot.Ring4,
+                17 or 59 => EquipSlot.Pendant,
+                18 => EquipSlot.TamingMob,
+                19 => EquipSlot.Saddle,
+                49 => EquipSlot.Medal,
+                50 => EquipSlot.Belt,
+                _ => EquipSlot.None
+            };
+
+            return slot != EquipSlot.None;
+        }
+
+        private static IReadOnlyDictionary<byte, int> CreateEquipmentMap(IEnumerable<KeyValuePair<EquipSlot, int>> equipmentBySlot)
+        {
+            var equipmentByBodyPart = new Dictionary<byte, int>();
+            if (equipmentBySlot == null)
+            {
+                return equipmentByBodyPart;
+            }
+
+            foreach (KeyValuePair<EquipSlot, int> entry in equipmentBySlot)
+            {
+                if (entry.Value <= 0 || !TryGetBodyPart(entry.Key, entry.Value, out byte bodyPart))
+                {
+                    continue;
+                }
+
+                equipmentByBodyPart[bodyPart] = entry.Value;
+            }
+
+            return equipmentByBodyPart;
+        }
+
+        private static IReadOnlyList<int> NormalizePetIds(IEnumerable<int> petIds)
+        {
+            int[] normalized = { 0, 0, 0 };
+            if (petIds == null)
+            {
+                return normalized;
+            }
+
+            int index = 0;
+            foreach (int petId in petIds)
+            {
+                if (index >= normalized.Length)
+                {
+                    break;
+                }
+
+                normalized[index++] = petId;
+            }
+
+            return normalized;
+        }
+
+        private static void WriteEquipmentMap(BinaryWriter writer, IReadOnlyDictionary<byte, int> equipmentByBodyPart)
+        {
+            if (equipmentByBodyPart != null)
+            {
+                foreach (KeyValuePair<byte, int> entry in equipmentByBodyPart.OrderBy(entry => entry.Key))
+                {
+                    writer.Write(entry.Key);
+                    writer.Write(entry.Value);
+                }
+            }
+
+            writer.Write(EquipListTerminator);
+        }
+
+        private static Dictionary<byte, int> ReadEquipmentMap(PacketReader reader)
+        {
+            var equipment = new Dictionary<byte, int>();
+            while (true)
+            {
+                byte bodyPart = reader.ReadByte();
+                if (bodyPart == EquipListTerminator)
+                {
+                    return equipment;
+                }
+
+                int itemId = reader.ReadInt();
+                if (IsCorrectBodyPart(itemId, bodyPart))
+                {
+                    equipment[bodyPart] = itemId;
+                }
+            }
+        }
+
+        private static CharacterGender ReadGender(byte rawGender)
+        {
+            return Enum.IsDefined(typeof(CharacterGender), (int)rawGender)
+                ? (CharacterGender)rawGender
+                : CharacterGender.Male;
+        }
+
+        private static SkinColor ReadSkin(byte rawSkin)
+        {
+            return Enum.IsDefined(typeof(SkinColor), (int)rawSkin)
+                ? (SkinColor)rawSkin
+                : SkinColor.Light;
+        }
+
+        private static bool TryGetBodyPart(EquipSlot slot, int itemId, out byte bodyPart)
+        {
+            bodyPart = 0;
+            if (itemId <= 0)
+            {
+                return false;
+            }
+
+            int category = itemId / 10000;
+            bodyPart = category switch
+            {
+                100 => 1,
+                101 => 2,
+                102 => 3,
+                103 => 4,
+                104 or 105 => 5,
+                106 => 6,
+                107 => 7,
+                108 => 8,
+                109 or 119 or 134 => 10,
+                110 => 9,
+                111 => slot switch
+                {
+                    EquipSlot.Ring1 => 12,
+                    EquipSlot.Ring2 => 13,
+                    EquipSlot.Ring3 => 15,
+                    EquipSlot.Ring4 => 16,
+                    _ => 0
+                },
+                112 => 17,
+                113 => 50,
+                114 => 49,
+                190 => 18,
+                191 => 19,
+                _ when IsWeaponCategory(category) => 11,
+                _ => 0
+            };
+
+            return bodyPart != 0 && IsCorrectBodyPart(itemId, bodyPart);
+        }
+
+        private static bool IsCorrectBodyPart(int itemId, byte bodyPart)
+        {
+            if (itemId <= 0)
+            {
+                return false;
+            }
+
+            int category = itemId / 10000;
+            return category switch
+            {
+                100 => bodyPart == 1,
+                101 => bodyPart == 2,
+                102 => bodyPart == 3,
+                103 => bodyPart == 4,
+                104 or 105 => bodyPart == 5,
+                106 => bodyPart == 6,
+                107 => bodyPart == 7,
+                108 => bodyPart == 8,
+                109 or 119 or 134 => bodyPart == 10,
+                110 => bodyPart == 9,
+                111 => bodyPart is 12 or 13 or 15 or 16,
+                112 => bodyPart is 17 or 59,
+                113 => bodyPart == 50,
+                114 => bodyPart == 49,
+                190 => bodyPart == 18,
+                191 => bodyPart == 19,
+                _ => IsWeaponCategory(category) && bodyPart == 11
+            };
+        }
+
+        private static bool IsWeaponCategory(int category)
+        {
+            int bucket = category / 10;
+            return bucket == 13 || bucket == 14 || bucket == 16 || bucket == 17;
+        }
+    }
+}

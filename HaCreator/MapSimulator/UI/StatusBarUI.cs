@@ -180,10 +180,9 @@ namespace HaCreator.MapSimulator.UI {
         private static readonly Color MP_GAUGE_BG_COLOR = new Color(20, 40, 80);     // Dark blue background
         private static readonly Color EXP_GAUGE_COLOR = new Color(255, 255, 50);     // Yellow for EXP
         private static readonly Color EXP_GAUGE_BG_COLOR = new Color(60, 60, 20);    // Dark yellow background
-        // These offsets are derived from the composed StatusBar2 mainBar frame:
-        // background origin Y=84, lv/gauge origin Y=33, which keeps the overlay
-        // content anchored 51px above the frame bottom instead of to the viewport.
-        private static readonly Point STATUS_BAR_LEFT_BASE_OFFSET = new Point(0, 43);
+        // These offsets are derived from the composed StatusBar2 mainBar frame
+        // plus the client SetStatusValue absolute text slots in the 800x578 HUD canvas.
+        private static readonly Point STATUS_BAR_LEFT_BASE_OFFSET = new Point(0, 49);
         private static readonly Point STATUS_BAR_GAUGE_BASE_OFFSET = new Point(155, 52);
         private const int BUFF_ICON_SIZE = 32;
         private const int BUFF_ICON_SPACING = 2;

@@ -270,6 +270,16 @@ namespace HaCreator.MapSimulator.UI
             }
         }
 
+        public bool IsCollapsed => _bIsCollapsedState;
+
+        public void EnsureExpanded()
+        {
+            if (_bIsCollapsedState)
+            {
+                ObjUIBtMax_ButtonClickReleased(null);
+            }
+        }
+
         #region IClickableUIObject
         private Point? mouseOffsetOnDragStart = null;
 

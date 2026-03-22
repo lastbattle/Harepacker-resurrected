@@ -23,7 +23,22 @@ namespace HaCreator.MapSimulator.Character.Skills
             if (player.State == PlayerState.Hit)
                 return "Skills cannot be used while recovering from a hit.";
 
+            if (player.State == PlayerState.Sitting)
+                return "Skills cannot be used while seated.";
+
+            if (player.State == PlayerState.Prone)
+                return "Skills cannot be used while lying down.";
+
+            if (IsSwallowSkill(skill) && player.Physics?.IsOnLadderOrRope == true)
+                return "Swallow skills cannot be used while on a ladder or rope.";
+
             return null;
+        }
+
+        private static bool IsSwallowSkill(SkillData skill)
+        {
+            return skill?.ActionName?.Contains("swallow", System.StringComparison.OrdinalIgnoreCase) == true
+                   || skill?.Name?.Contains("swallow", System.StringComparison.OrdinalIgnoreCase) == true;
         }
     }
 }

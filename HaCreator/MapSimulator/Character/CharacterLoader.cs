@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using HaCreator.MapSimulator.Managers;
 using HaCreator.MapSimulator.Pools;
 using HaCreator.MapSimulator.UI;
 using HaSharedLibrary.Render.DX;
@@ -17,28 +18,16 @@ namespace HaCreator.MapSimulator.Character
     /// </summary>
     public class CharacterLoader
     {
-        private const int DefaultWizetHatId = 1002140; // DO NOT CHANGE IT BACK TO BEGINNER! 
-        private const int DefaultWizetSuitId = 1042003; // DO NOT CHANGE IT BACK TO BEGINNER! 
-        private const int DefaultWizetPantsId = 1062007; // DO NOT CHANGE IT BACK TO BEGINNER! 
-        private const int DefaultWizetSuitcaseId = 1322013; // DO NOT CHANGE IT BACK TO BEGINNER! 
-        private const int DefaultPanLidShieldId = 1092008; // DO NOT CHANGE IT BACK TO BEGINNER! 
-        private const int DefaultBeginnerSwordId = 1302000;
-        private const int DefaultBeginnerCoatId = 1040002;
-        private const int DefaultBeginnerPantsId = 1060002;
-        private const int DefaultBeginnerShoesId = 1072005;
+        private const int DefaultWizetHatId = 1002140;
+        private const int DefaultWizetSuitId = 1042003;
+        private const int DefaultWizetPantsId = 1062007;
+        private const int DefaultWizetSuitcaseId = 1322013;
+        private const int DefaultPanLidShieldId = 1092008;
+        private const int DefaultLeatherSandalsId = 1072005;
         private const int DefaultMaleFaceId = 20000;
         private const int DefaultFemaleFaceId = 21000;
         private const int DefaultMaleHairId = 30000;
         private const int DefaultFemaleHairId = 31000;
-        private static readonly int[] DefaultStarterEquipmentIds =
-        {
-            DefaultPanLidShieldId,  // DO NOT CHANGE IT BACK TO BEGINNER! 
-            DefaultWizetHatId, // DO NOT CHANGE IT BACK TO BEGINNER! 
-            DefaultWizetSuitId, // DO NOT CHANGE IT BACK TO BEGINNER! 
-            DefaultWizetPantsId, // DO NOT CHANGE IT BACK TO BEGINNER! 
-            DefaultBeginnerShoesId, // DO NOT CHANGE IT BACK TO BEGINNER! 
-            DefaultWizetSuitcaseId // DO NOT CHANGE IT BACK TO BEGINNER! 
-        };
 
         private readonly WzFile _characterWz;
         private readonly GraphicsDevice _device;
@@ -199,22 +188,16 @@ namespace HaCreator.MapSimulator.Character
                 Name = ResolvePortableChairName(itemId),
                 Description = ResolvePortableChairDescription(itemId),
                 SitActionId = GetIntValue(info?["sitAction"]),
-                TamingMobItemId = GetIntValue(info?["tamingMob"])
+                TamingMobItemId = GetIntValue(info?["tamingMob"]),
+                IsCoupleChair = itemId / 1000 == 3012,
+                CoupleDistanceX = GetIntValue(info?["distanceX"]),
+                CoupleDistanceY = GetIntValue(info?["distanceY"]),
+                CoupleMaxDiff = GetIntValue(info?["maxDiff"]),
+                CoupleDirection = GetIntValue(info?["direction"])
             };
 
-            foreach (WzImageProperty child in itemProperty.WzProperties)
-            {
-                if (child is not WzSubProperty layerProperty || child.Name.Equals("info", StringComparison.OrdinalIgnoreCase))
-                {
-                    continue;
-                }
-
-                PortableChairLayer layer = LoadPortableChairLayer(layerProperty);
-                if (layer != null)
-                {
-                    chair.Layers.Add(layer);
-                }
-            }
+            LoadPortableChairLayers(itemProperty, chair.Layers);
+            LoadPortableChairItemEffectLayers(itemId, chair.Layers);
 
             if (chair.Layers.Count == 0)
             {
@@ -225,16 +208,79 @@ namespace HaCreator.MapSimulator.Character
             return chair;
         }
 
+        private void LoadPortableChairLayers(WzSubProperty chairProperty, ICollection<PortableChairLayer> layers)
+        {
+            if (chairProperty == null || layers == null)
+            {
+                return;
+            }
+
+            foreach (WzImageProperty child in chairProperty.WzProperties)
+            {
+                if (child is not WzSubProperty layerProperty || child.Name.Equals("info", StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                PortableChairLayer layer = LoadPortableChairLayer(layerProperty);
+                if (layer != null)
+                {
+                    layers.Add(layer);
+                }
+            }
+        }
+
+        private void LoadPortableChairItemEffectLayers(int itemId, ICollection<PortableChairLayer> layers)
+        {
+            if (layers == null)
+            {
+                return;
+            }
+
+            WzImage itemEffectImage = Program.FindImage("Effect", "ItemEff.img");
+            if (itemEffectImage == null)
+            {
+                return;
+            }
+
+            itemEffectImage.ParseImage();
+            WzSubProperty itemEffectProperty = itemEffectImage[itemId.ToString()] as WzSubProperty;
+            if (itemEffectProperty == null)
+            {
+                return;
+            }
+
+            foreach (WzImageProperty child in itemEffectProperty.WzProperties)
+            {
+                if (child is not WzSubProperty layerProperty)
+                {
+                    continue;
+                }
+
+                PortableChairLayer layer = LoadPortableChairLayer(layerProperty, $"itemEff/{child.Name}");
+                if (layer != null)
+                {
+                    layers.Add(layer);
+                }
+            }
+        }
+
         private PortableChairLayer LoadPortableChairLayer(WzSubProperty layerProperty)
+        {
+            return LoadPortableChairLayer(layerProperty, layerProperty?.Name);
+        }
+
+        private PortableChairLayer LoadPortableChairLayer(WzSubProperty layerProperty, string layerName)
         {
             var animation = new CharacterAnimation
             {
                 Action = CharacterAction.Custom,
-                ActionName = layerProperty.Name,
+                ActionName = layerName ?? layerProperty?.Name,
                 Loop = true
             };
 
             var orderedFrames = new List<(int Index, CharacterFrame Frame)>();
+            int? relativeZ = GetIntValue(layerProperty?["z"]);
             foreach (WzImageProperty child in layerProperty.WzProperties)
             {
                 if (child is not WzCanvasProperty canvas || !int.TryParse(child.Name, out int frameIndex))
@@ -248,6 +294,7 @@ namespace HaCreator.MapSimulator.Character
                     continue;
                 }
 
+                relativeZ ??= GetIntValue(canvas["z"]);
                 orderedFrames.Add((frameIndex, frame));
             }
 
@@ -265,9 +312,9 @@ namespace HaCreator.MapSimulator.Character
             animation.CalculateTotalDuration();
             return new PortableChairLayer
             {
-                Name = layerProperty.Name,
+                Name = layerName ?? layerProperty.Name,
                 Animation = animation,
-                RelativeZ = GetIntValue(layerProperty["z"]) ?? 0,
+                RelativeZ = relativeZ ?? 0,
                 PositionHint = GetIntValue(layerProperty["pos"]) ?? 0
             };
         }
@@ -763,8 +810,10 @@ namespace HaCreator.MapSimulator.Character
             var info = img["info"];
             if (info != null)
             {
+                LoadEquipInfo(weapon, img);
                 weapon.AttackSpeed = GetIntValue(info["attackSpeed"]) ?? 6;
-                weapon.Attack = GetIntValue(info["incPAD"]) ?? 0;
+                weapon.Attack = weapon.BonusWeaponAttack;
+                weapon.WeaponType = ResolveWeaponType(itemId);
                 weapon.IsTwoHanded = GetIntValue(info["twoHanded"]) == 1;
                 System.Diagnostics.Debug.WriteLine($"[CharacterLoader] Weapon info: attackSpeed={weapon.AttackSpeed}, PAD={weapon.Attack}, twoHanded={weapon.IsTwoHanded}");
             }
@@ -1715,7 +1764,7 @@ namespace HaCreator.MapSimulator.Character
 
         #region Presets
 
-        private sealed class DefaultAvatarPreset
+        public sealed class SimulatorDefaultAvatarSelection
         {
             public CharacterGender Gender { get; init; }
             public string Name { get; init; }
@@ -1725,7 +1774,32 @@ namespace HaCreator.MapSimulator.Character
             public int Level { get; init; }
             public int JobId { get; init; }
             public string JobName { get; init; }
-            public IReadOnlyList<int> EquipmentItemIds { get; init; }
+            public IReadOnlyDictionary<EquipSlot, int> EquipmentItemIdsBySlot { get; init; }
+        }
+
+        private static string ResolveWeaponType(int itemId)
+        {
+            int weaponCode = Math.Abs(itemId / 10000) % 100;
+            return weaponCode switch
+            {
+                30 => "1h sword",
+                31 => "1h axe",
+                32 => "1h blunt",
+                33 => "dagger",
+                37 => "wand",
+                38 => "staff",
+                40 => "2h sword",
+                41 => "2h axe",
+                42 => "2h blunt",
+                43 => "spear",
+                44 => "polearm",
+                45 => "bow",
+                46 => "crossbow",
+                47 => "claw",
+                48 => "knuckle",
+                49 => "gun",
+                _ => "weapon"
+            };
         }
 
         /// <summary>
@@ -1767,30 +1841,22 @@ namespace HaCreator.MapSimulator.Character
 
         private CharacterBuild LoadDefaultAvatar(CharacterGender gender)
         {
-            DefaultAvatarPreset preset = GetDefaultAvatarPreset(gender);
-            var build = new CharacterBuild
-            {
-                Gender = preset.Gender,
-                Skin = preset.Skin,
-                Body = LoadBody(preset.Skin),
-                Head = LoadHead(preset.Skin),
-                Face = LoadFace(preset.FaceId),
-                Hair = LoadHair(preset.HairId),
-                Name = preset.Name,
-                Level = preset.Level,
-                Job = preset.JobId,
-                JobName = preset.JobName
-            };
+            SimulatorDefaultAvatarSelection preset = GetDefaultAvatarSelection(gender);
+            LoginAvatarLook avatarLook = LoginAvatarLookCodec.CreateLook(
+                preset.Gender,
+                preset.Skin,
+                preset.FaceId,
+                preset.HairId,
+                preset.EquipmentItemIdsBySlot);
 
-            EquipDefaultStarterGear(build, preset.EquipmentItemIds);
-            return build;
+            return LoadFromAvatarLook(avatarLook, CreateDefaultAvatarMetadataTemplate(preset));
         }
 
-        private static DefaultAvatarPreset GetDefaultAvatarPreset(CharacterGender gender)
+        public static SimulatorDefaultAvatarSelection GetDefaultAvatarSelection(CharacterGender gender)
         {
             return gender switch
             {
-                CharacterGender.Female => new DefaultAvatarPreset
+                CharacterGender.Female => new SimulatorDefaultAvatarSelection
                 {
                     Gender = CharacterGender.Female,
                     Name = "Default Female",
@@ -1800,9 +1866,9 @@ namespace HaCreator.MapSimulator.Character
                     Level = 200,
                     JobId = 910,
                     JobName = "SuperGM",
-                    EquipmentItemIds = DefaultStarterEquipmentIds
+                    EquipmentItemIdsBySlot = CreateDefaultSimulatorEquipmentBySlot()
                 },
-                _ => new DefaultAvatarPreset
+                _ => new SimulatorDefaultAvatarSelection
                 {
                     Gender = CharacterGender.Male,
                     Name = "Default Male",
@@ -1812,19 +1878,59 @@ namespace HaCreator.MapSimulator.Character
                     Level = 200,
                     JobId = 910,
                     JobName = "SuperGM",
-                    EquipmentItemIds = DefaultStarterEquipmentIds
+                    EquipmentItemIdsBySlot = CreateDefaultSimulatorEquipmentBySlot()
                 }
             };
         }
 
-        private void EquipDefaultStarterGear(CharacterBuild build, IReadOnlyList<int> equipmentItemIds)
+        private static IReadOnlyDictionary<EquipSlot, int> CreateDefaultSimulatorEquipmentBySlot()
         {
-            if (build == null || equipmentItemIds == null)
+            return new Dictionary<EquipSlot, int>
+            {
+                [EquipSlot.Cap] = DefaultWizetHatId,
+                [EquipSlot.Coat] = DefaultWizetSuitId,
+                [EquipSlot.Pants] = DefaultWizetPantsId,
+                [EquipSlot.Shoes] = DefaultLeatherSandalsId,
+                [EquipSlot.Shield] = DefaultPanLidShieldId,
+                [EquipSlot.Weapon] = DefaultWizetSuitcaseId
+            };
+        }
+
+        public CharacterBuild LoadFromAvatarLook(LoginAvatarLook avatarLook, CharacterBuild template = null)
+        {
+            if (avatarLook == null)
+            {
+                throw new ArgumentNullException(nameof(avatarLook));
+            }
+
+            SimulatorDefaultAvatarSelection fallbackSelection = GetDefaultAvatarSelection(avatarLook.Gender);
+            CharacterBuild build = template?.Clone() ?? CreateDefaultAvatarMetadataTemplate(fallbackSelection);
+
+            build.Gender = avatarLook.Gender;
+            build.Skin = avatarLook.Skin;
+            build.Body = LoadBody(avatarLook.Skin) ?? LoadBody(fallbackSelection.Skin);
+            build.Head = LoadHead(avatarLook.Skin) ?? LoadHead(fallbackSelection.Skin);
+            build.Face = LoadFace(avatarLook.FaceId) ?? LoadFace(fallbackSelection.FaceId);
+            build.Hair = LoadHair(avatarLook.HairId) ?? LoadHair(fallbackSelection.HairId);
+            build.Equipment = new Dictionary<EquipSlot, CharacterPart>();
+
+            EquipAvatarLookGear(build, avatarLook);
+            if (build.Equipment.Count == 0)
+            {
+                EquipDefaultSimulatorGear(build, fallbackSelection.EquipmentItemIdsBySlot);
+            }
+
+            return build;
+        }
+
+        private void EquipDefaultSimulatorGear(CharacterBuild build, IReadOnlyDictionary<EquipSlot, int> equipmentItemIdsBySlot)
+        {
+            if (build == null || equipmentItemIdsBySlot == null)
                 return;
 
-            foreach (int itemId in equipmentItemIds)
+            foreach (KeyValuePair<EquipSlot, int> entry in equipmentItemIdsBySlot)
             {
-                EquipDefaultItem(build, itemId, itemId.ToString());
+                EquipDefaultItem(build, entry.Value, entry.Key.ToString());
             }
         }
 
@@ -1853,6 +1959,53 @@ namespace HaCreator.MapSimulator.Character
             }
 
             System.Diagnostics.Debug.WriteLine($"[CharacterLoader] Failed to load default {label} {itemId}");
+        }
+
+        private static CharacterBuild CreateDefaultAvatarMetadataTemplate(SimulatorDefaultAvatarSelection selection)
+        {
+            return new CharacterBuild
+            {
+                Gender = selection.Gender,
+                Skin = selection.Skin,
+                Name = selection.Name,
+                Level = selection.Level,
+                Job = selection.JobId,
+                JobName = selection.JobName
+            };
+        }
+
+        private void EquipAvatarLookGear(CharacterBuild build, LoginAvatarLook avatarLook)
+        {
+            if (build == null || avatarLook == null)
+            {
+                return;
+            }
+
+            foreach (KeyValuePair<byte, int> entry in avatarLook.VisibleEquipmentByBodyPart.OrderBy(entry => entry.Key))
+            {
+                TryEquipAvatarLookItem(build, entry.Key, entry.Value);
+            }
+
+            foreach (KeyValuePair<byte, int> entry in avatarLook.HiddenEquipmentByBodyPart.OrderBy(entry => entry.Key))
+            {
+                if (LoginAvatarLookCodec.TryGetEquipSlot(entry.Key, out EquipSlot slot) && build.Equipment.ContainsKey(slot))
+                {
+                    continue;
+                }
+
+                TryEquipAvatarLookItem(build, entry.Key, entry.Value);
+            }
+        }
+
+        private bool TryEquipAvatarLookItem(CharacterBuild build, byte bodyPart, int itemId)
+        {
+            if (!LoginAvatarLookCodec.TryGetEquipSlot(bodyPart, out EquipSlot slot))
+            {
+                return false;
+            }
+
+            EquipDefaultItem(build, itemId, $"AvatarLook {slot}");
+            return build.Equipment.ContainsKey(slot);
         }
 
         #endregion

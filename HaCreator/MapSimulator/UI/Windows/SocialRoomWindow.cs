@@ -105,6 +105,98 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
+            if (_runtime.Kind == SocialRoomKind.MiniRoom)
+            {
+                DrawMiniRoomContents(sprite);
+                return;
+            }
+
+            DrawDefaultContents(sprite);
+        }
+
+        private void DrawMiniRoomContents(SpriteBatch sprite)
+        {
+            Rectangle occupantPanel = new Rectangle(Position.X + 18, Position.Y + 80, 246, 136);
+            Rectangle statePanel = new Rectangle(Position.X + 278, Position.Y + 80, 188, 136);
+            Rectangle notePanel = new Rectangle(Position.X + 480, Position.Y + 80, 234, 136);
+            Rectangle chatPanel = new Rectangle(Position.X + 18, Position.Y + 227, 696, 148);
+
+            DrawPanel(sprite, occupantPanel);
+            DrawPanel(sprite, statePanel);
+            DrawPanel(sprite, notePanel);
+            DrawPanel(sprite, chatPanel);
+
+            DrawText(sprite, _runtime.RoomTitle, new Vector2(Position.X + 20, Position.Y + 18), HeaderColor, 0.82f);
+            DrawText(sprite, $"{_runtime.ModeName} | Owner {_runtime.OwnerName}", new Vector2(Position.X + 20, Position.Y + 42), AccentColor, 0.6f);
+
+            DrawText(sprite, "Players", new Vector2(occupantPanel.X + 12, occupantPanel.Y + 10), HeaderColor, 0.68f);
+            float occupantY = occupantPanel.Y + 34;
+            foreach (SocialRoomOccupant occupant in _runtime.Occupants)
+            {
+                Color color = occupant.IsReady ? SuccessColor : ValueColor;
+                DrawText(sprite, $"{occupant.Name} | {FormatRole(occupant.Role)}", new Vector2(occupantPanel.X + 12, occupantY), color, 0.6f);
+                occupantY += 17f;
+                DrawWrapped(sprite, occupant.Detail, occupantPanel.X + 18, ref occupantY, occupantPanel.Width - 28, MutedColor, 0.52f);
+                occupantY += 6f;
+                if (occupantY > occupantPanel.Bottom - 24)
+                {
+                    break;
+                }
+            }
+
+            DrawText(sprite, "Room State", new Vector2(statePanel.X + 12, statePanel.Y + 10), HeaderColor, 0.68f);
+            DrawKeyValue(sprite, statePanel.X + 12, statePanel.Y + 38, "Capacity", $"{_runtime.Occupants.Count}/{_runtime.Capacity}");
+            DrawKeyValue(sprite, statePanel.X + 12, statePanel.Y + 60, "Mode", _runtime.ModeName);
+            DrawKeyValue(sprite, statePanel.X + 12, statePanel.Y + 82, "State", _runtime.RoomState);
+            DrawKeyValue(sprite, statePanel.X + 12, statePanel.Y + 104, "Mesos", $"{_runtime.MesoAmount:N0}");
+
+            DrawText(sprite, "Notes", new Vector2(notePanel.X + 12, notePanel.Y + 10), HeaderColor, 0.68f);
+            float noteY = notePanel.Y + 32;
+            foreach (string note in _runtime.Notes)
+            {
+                DrawWrapped(sprite, note, notePanel.X + 12, ref noteY, notePanel.Width - 24, MutedColor, 0.5f);
+                noteY += 4f;
+                if (noteY > notePanel.Bottom - 20)
+                {
+                    break;
+                }
+            }
+
+            DrawText(sprite, "Chat", new Vector2(chatPanel.X + 12, chatPanel.Y + 10), HeaderColor, 0.68f);
+            float chatY = chatPanel.Bottom - 24;
+            for (int i = _runtime.ChatEntries.Count - 1; i >= 0; i--)
+            {
+                SocialRoomChatEntry chatEntry = _runtime.ChatEntries[i];
+                List<string> wrappedLines = new List<string>(WrapText(chatEntry.Text, chatPanel.Width - 24, 0.54f));
+                for (int lineIndex = wrappedLines.Count - 1; lineIndex >= 0; lineIndex--)
+                {
+                    DrawText(sprite, wrappedLines[lineIndex], new Vector2(chatPanel.X + 12, chatY), GetChatToneColor(chatEntry.Tone), 0.54f);
+                    chatY -= (_font.LineSpacing * 0.54f) + 1f;
+                    if (chatY < chatPanel.Y + 28)
+                    {
+                        break;
+                    }
+                }
+
+                if (chatY < chatPanel.Y + 28)
+                {
+                    break;
+                }
+            }
+
+            float statusY = Position.Y + (CurrentFrame?.Height ?? 240) - 34;
+            DrawWrapped(
+                sprite,
+                _runtime.StatusMessage,
+                Position.X + 20,
+                ref statusY,
+                Math.Max(180, (CurrentFrame?.Width ?? 320) - 40),
+                AccentColor,
+                0.55f);
+        }
+
+        private void DrawDefaultContents(SpriteBatch sprite)
+        {
             Rectangle occupantPanel = new Rectangle(
                 Position.X + 18,
                 Position.Y + 80,
@@ -269,6 +361,18 @@ namespace HaCreator.MapSimulator.UI
                 SocialRoomOccupantRole.Buyer => "Buyer",
                 SocialRoomOccupantRole.Trader => "Trader",
                 _ => "Occupant"
+            };
+        }
+
+        private static Color GetChatToneColor(SocialRoomChatTone tone)
+        {
+            return tone switch
+            {
+                SocialRoomChatTone.System => new Color(97, 69, 24),
+                SocialRoomChatTone.LocalSpeaker => new Color(59, 101, 153),
+                SocialRoomChatTone.RemoteSpeaker => new Color(120, 70, 32),
+                SocialRoomChatTone.Warning => new Color(153, 63, 32),
+                _ => ValueColor
             };
         }
 

@@ -16,7 +16,10 @@ namespace HaCreator.MapSimulator.UI
             public string DisplayName { get; init; }
             public string DetailText { get; init; }
             public string TargetPortalName { get; init; }
+            public int SavedSlotIndex { get; init; } = -1;
             public bool CanDelete { get; init; }
+            public bool CanMove => MapId > 0;
+            public bool IsSavedSlot => SavedSlotIndex >= 0;
         }
 
         private const int MaxVisibleRows = 5;
@@ -327,7 +330,7 @@ namespace HaCreator.MapSimulator.UI
             DestinationEntry entry = GetSelectedEntry();
             if (_moveButton != null)
             {
-                _moveButton.SetEnabled(entry != null);
+                _moveButton.SetEnabled(entry?.CanMove == true);
             }
 
             if (_deleteButton != null)

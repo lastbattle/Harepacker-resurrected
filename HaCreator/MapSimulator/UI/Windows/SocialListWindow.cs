@@ -107,6 +107,12 @@ namespace HaCreator.MapSimulator.UI
             _feedbackHandler = feedbackHandler;
         }
 
+        internal void ShowTab(SocialListTab tab)
+        {
+            _tabSelectionHandler?.Invoke(tab);
+            UpdateButtonStates(GetSnapshot());
+        }
+
         internal void RegisterHeaderLayer(SocialListTab tab, IDXObject layer, Point offset)
         {
             if (layer == null)

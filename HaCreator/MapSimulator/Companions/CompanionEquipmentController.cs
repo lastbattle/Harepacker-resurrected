@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using HaCreator.MapSimulator.Character;
 using HaSharedLibrary.Render.DX;
 using HaSharedLibrary.Util;
@@ -42,6 +43,7 @@ namespace HaCreator.MapSimulator.Companions
         public int ItemId { get; init; }
         public string Name { get; init; }
         public string Description { get; init; }
+        public Texture2D ItemTexture { get; init; }
         public IDXObject Icon { get; init; }
         public IDXObject IconRaw { get; init; }
         public CharacterPart CharacterPart { get; init; }
@@ -88,6 +90,30 @@ namespace HaCreator.MapSimulator.Companions
         {
             return _equippedItems.TryGetValue(slot, out item);
         }
+
+        public bool TryEquipItem(DragonEquipSlot targetSlot, int itemId, out IReadOnlyList<CompanionEquipItem> displacedItems)
+        {
+            displacedItems = Array.Empty<CompanionEquipItem>();
+            if (!CompanionEquipmentController.TryResolveDragonSlot(itemId, out DragonEquipSlot resolvedSlot)
+                || resolvedSlot != targetSlot)
+            {
+                return false;
+            }
+
+            CompanionEquipItem item = _loader.LoadDragonEquipment(itemId);
+            if (item == null)
+            {
+                return false;
+            }
+
+            if (_equippedItems.TryGetValue(targetSlot, out CompanionEquipItem displacedItem))
+            {
+                displacedItems = new ReadOnlyCollection<CompanionEquipItem>(new[] { displacedItem });
+            }
+
+            _equippedItems[targetSlot] = item;
+            return true;
+        }
     }
 
     public sealed class AndroidEquipmentController
@@ -105,11 +131,13 @@ namespace HaCreator.MapSimulator.Companions
         private const int FallbackAndroidPantsItemId = 1062007;
 
         private readonly Dictionary<AndroidEquipSlot, CompanionEquipItem> _equippedItems = new();
+        private CharacterLoader _loader;
 
         public IReadOnlyDictionary<AndroidEquipSlot, CompanionEquipItem> EquippedItems => _equippedItems;
 
         public void EnsureDefaults(CharacterLoader loader, CharacterBuild build)
         {
+            _loader = loader;
             _equippedItems.Clear();
             foreach ((AndroidEquipSlot slot, EquipSlot buildSlot, int fallbackItemId) in SharedSlotDefaults)
             {
@@ -134,6 +162,65 @@ namespace HaCreator.MapSimulator.Companions
             return _equippedItems.TryGetValue(slot, out item);
         }
 
+        public bool TryEquipItem(
+            AndroidEquipSlot targetSlot,
+            int itemId,
+            out IReadOnlyList<CompanionEquipItem> displacedItems,
+            out string rejectReason)
+        {
+            displacedItems = Array.Empty<CompanionEquipItem>();
+            rejectReason = null;
+
+            if (_loader == null)
+            {
+                rejectReason = "Android equipment loader is unavailable.";
+                return false;
+            }
+
+            CharacterPart part = _loader.LoadEquipment(itemId);
+            if (part == null)
+            {
+                rejectReason = "This item could not be loaded as android equipment.";
+                return false;
+            }
+
+            if (!CompanionEquipmentController.TryResolveAndroidSlot(part.Slot, out AndroidEquipSlot resolvedSlot))
+            {
+                rejectReason = "Androids can only equip cap, face accessory, top, pants, overall, gloves, shoes, and cape items.";
+                return false;
+            }
+
+            if (resolvedSlot != targetSlot)
+            {
+                rejectReason = $"Drop this item on the {ResolveSlotLabel(resolvedSlot)} slot.";
+                return false;
+            }
+
+            if (targetSlot == AndroidEquipSlot.Pants && HasOverallEquipped())
+            {
+                rejectReason = "Overall equipped";
+                return false;
+            }
+
+            List<CompanionEquipItem> displaced = new();
+            if (_equippedItems.TryGetValue(targetSlot, out CompanionEquipItem displacedItem))
+            {
+                displaced.Add(displacedItem);
+            }
+
+            if (part.Slot == EquipSlot.Longcoat && _equippedItems.TryGetValue(AndroidEquipSlot.Pants, out CompanionEquipItem pantsItem))
+            {
+                displaced.Add(pantsItem);
+                _equippedItems.Remove(AndroidEquipSlot.Pants);
+            }
+
+            _equippedItems[targetSlot] = CreateCompanionEquipItem(part);
+            displacedItems = displaced.Count == 0
+                ? Array.Empty<CompanionEquipItem>()
+                : new ReadOnlyCollection<CompanionEquipItem>(displaced);
+            return true;
+        }
+
         private static CharacterPart ResolveBuildPart(CharacterBuild build, EquipSlot slot)
         {
             if (build?.Equipment == null)
@@ -145,6 +232,12 @@ namespace HaCreator.MapSimulator.Companions
             return part;
         }
 
+        private bool HasOverallEquipped()
+        {
+            return _equippedItems.TryGetValue(AndroidEquipSlot.Clothes, out CompanionEquipItem item)
+                   && item?.CharacterPart?.Slot == EquipSlot.Longcoat;
+        }
+
         private void SetEquippedItem(AndroidEquipSlot slot, CharacterPart part)
         {
             if (part == null)
@@ -152,14 +245,32 @@ namespace HaCreator.MapSimulator.Companions
                 return;
             }
 
-            _equippedItems[slot] = new CompanionEquipItem
+            _equippedItems[slot] = CreateCompanionEquipItem(part);
+        }
+
+        private static CompanionEquipItem CreateCompanionEquipItem(CharacterPart part)
+        {
+            return new CompanionEquipItem
             {
                 ItemId = part.ItemId,
                 Name = part.Name,
                 Description = part.Description,
+                ItemTexture = part.IconRaw?.Texture ?? part.Icon?.Texture,
                 Icon = part.Icon,
                 IconRaw = part.IconRaw,
                 CharacterPart = part
+            };
+        }
+
+        private static string ResolveSlotLabel(AndroidEquipSlot slot)
+        {
+            return slot switch
+            {
+                AndroidEquipSlot.FaceAccessory => "Face Accessory",
+                AndroidEquipSlot.Clothes => "Clothes",
+                AndroidEquipSlot.Glove => "Gloves",
+                AndroidEquipSlot.Cape => "Mantle",
+                _ => slot.ToString()
             };
         }
     }
@@ -206,6 +317,30 @@ namespace HaCreator.MapSimulator.Companions
         {
             return _equippedItems.TryGetValue(slot, out item);
         }
+
+        public bool TryEquipItem(MechanicEquipSlot targetSlot, int itemId, out IReadOnlyList<CompanionEquipItem> displacedItems)
+        {
+            displacedItems = Array.Empty<CompanionEquipItem>();
+            if (!CompanionEquipmentController.TryResolveMechanicSlot(itemId, out MechanicEquipSlot resolvedSlot)
+                || resolvedSlot != targetSlot)
+            {
+                return false;
+            }
+
+            CompanionEquipItem item = _loader.LoadMechanicEquipment(itemId);
+            if (item == null)
+            {
+                return false;
+            }
+
+            if (_equippedItems.TryGetValue(targetSlot, out CompanionEquipItem displacedItem))
+            {
+                displacedItems = new ReadOnlyCollection<CompanionEquipItem>(new[] { displacedItem });
+            }
+
+            _equippedItems[targetSlot] = item;
+            return true;
+        }
     }
 
     public sealed class CompanionEquipmentController
@@ -221,6 +356,58 @@ namespace HaCreator.MapSimulator.Companions
         public DragonEquipmentController Dragon { get; }
         public AndroidEquipmentController Android { get; }
         public MechanicEquipmentController Mechanic { get; }
+
+        public static bool TryResolveDragonSlot(int itemId, out DragonEquipSlot slot)
+        {
+            slot = (itemId / 10000) switch
+            {
+                194 => DragonEquipSlot.Mask,
+                195 => DragonEquipSlot.Pendant,
+                196 => DragonEquipSlot.Wings,
+                197 => DragonEquipSlot.Tail,
+                _ => default
+            };
+            return itemId / 10000 is >= 194 and <= 197;
+        }
+
+        public static bool TryResolveMechanicSlot(int itemId, out MechanicEquipSlot slot)
+        {
+            slot = (itemId / 10000) switch
+            {
+                161 => MechanicEquipSlot.Engine,
+                162 => MechanicEquipSlot.Arm,
+                163 => MechanicEquipSlot.Leg,
+                164 => MechanicEquipSlot.Frame,
+                165 => MechanicEquipSlot.Transistor,
+                _ => default
+            };
+            return itemId / 10000 is >= 161 and <= 165;
+        }
+
+        public static bool TryResolveAndroidSlot(EquipSlot slot, out AndroidEquipSlot androidSlot)
+        {
+            androidSlot = slot switch
+            {
+                EquipSlot.Cap => AndroidEquipSlot.Cap,
+                EquipSlot.FaceAccessory => AndroidEquipSlot.FaceAccessory,
+                EquipSlot.Coat => AndroidEquipSlot.Clothes,
+                EquipSlot.Longcoat => AndroidEquipSlot.Clothes,
+                EquipSlot.Pants => AndroidEquipSlot.Pants,
+                EquipSlot.Glove => AndroidEquipSlot.Glove,
+                EquipSlot.Cape => AndroidEquipSlot.Cape,
+                EquipSlot.Shoes => AndroidEquipSlot.Shoes,
+                _ => default
+            };
+
+            return slot is EquipSlot.Cap
+                or EquipSlot.FaceAccessory
+                or EquipSlot.Coat
+                or EquipSlot.Longcoat
+                or EquipSlot.Pants
+                or EquipSlot.Glove
+                or EquipSlot.Cape
+                or EquipSlot.Shoes;
+        }
 
         public void EnsureDefaults(CharacterLoader loader, CharacterBuild build)
         {
@@ -260,6 +447,7 @@ namespace HaCreator.MapSimulator.Companions
                 ItemId = itemId,
                 Name = LoadDragonItemName(itemId) ?? $"Dragon Equip {itemId}",
                 Description = LoadDragonItemDescription(itemId),
+                ItemTexture = LoadInfoTexture(image, "iconRaw") ?? LoadInfoTexture(image, "icon"),
                 Icon = LoadInfoIcon(image, "icon"),
                 IconRaw = LoadInfoIcon(image, "iconRaw")
             };
@@ -287,6 +475,7 @@ namespace HaCreator.MapSimulator.Companions
                 ItemId = itemId,
                 Name = LoadMechanicItemName(itemId) ?? $"Mechanic Equip {itemId}",
                 Description = LoadMechanicItemDescription(itemId),
+                ItemTexture = LoadInfoTexture(image, "iconRaw") ?? LoadInfoTexture(image, "icon"),
                 Icon = LoadInfoIcon(image, "icon"),
                 IconRaw = LoadInfoIcon(image, "iconRaw")
             };
@@ -373,6 +562,12 @@ namespace HaCreator.MapSimulator.Companions
 
         private IDXObject LoadInfoIcon(WzImage image, string iconName)
         {
+            Texture2D texture = LoadInfoTexture(image, iconName);
+            return texture != null ? new DXObject(0, 0, texture, 0) : null;
+        }
+
+        private Texture2D LoadInfoTexture(WzImage image, string iconName)
+        {
             if (image?["info"] is not WzSubProperty info || info[iconName] is not WzCanvasProperty canvas)
             {
                 return null;
@@ -380,14 +575,7 @@ namespace HaCreator.MapSimulator.Companions
 
             try
             {
-                var bitmap = canvas.GetLinkedWzCanvasBitmap();
-                if (bitmap == null)
-                {
-                    return null;
-                }
-
-                var texture = bitmap.ToTexture2DAndDispose(_device);
-                return texture != null ? new DXObject(0, 0, texture, 0) : null;
+                return canvas.GetLinkedWzCanvasBitmap()?.ToTexture2DAndDispose(_device);
             }
             catch
             {

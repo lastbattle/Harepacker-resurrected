@@ -139,6 +139,21 @@ namespace HaCreator.MapSimulator.Fields
             return result;
         }
 
+        public bool CanUseItem(int itemId)
+        {
+            return GetItemUseRestrictionMessage(itemId) == null;
+        }
+
+        public string GetItemUseRestrictionMessage(int itemId)
+        {
+            if (itemId <= 0 || _allowedItems.Count == 0 || _allowedItems.Contains(itemId))
+            {
+                return null;
+            }
+
+            return $"Item {itemId} cannot be used in this field. Allowed item IDs: {FormatItemPreview(_allowedItems)}.";
+        }
+
         private IReadOnlyList<string> BuildEntryMessages()
         {
             List<string> messages = new List<string>();

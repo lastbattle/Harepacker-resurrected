@@ -8,8 +8,9 @@ using Microsoft.Xna.Framework.Graphics;
 using MapleLib.WzLib.WzStructure.Data;
 using Spine;
 using System;
+using System.Buffers.Binary;
 using System.Collections.Generic;
-using System.Runtime.CompilerServices;
+using System.Globalization;
 using System.Linq;
 using System.IO;
 using HaCreator.MapEditor;
@@ -72,9 +73,12 @@ namespace HaCreator.MapSimulator.Effects
         #endregion
 
         #region Initialization
-        public void Initialize(GraphicsDevice device)
+        public void Initialize(
+            GraphicsDevice device,
+            Action<string> requestBgmOverride = null,
+            Action clearBgmOverride = null)
         {
-            _wedding.Initialize(device);
+            _wedding.Initialize(device, requestBgmOverride, clearBgmOverride);
             _witchtower.Initialize(device);
             _battlefield.Initialize(device);
             _guildBoss.Initialize(device);
@@ -144,6 +148,11 @@ namespace HaCreator.MapSimulator.Effects
             if (_massacre.IsActive)
             {
                 _massacre.Configure(board?.MapInfo);
+            }
+
+            if (_dojo.IsActive)
+            {
+                _dojo.Configure(board?.MapInfo);
             }
         }
 
@@ -280,6 +289,9 @@ namespace HaCreator.MapSimulator.Effects
         private const string ChapelGuestBlessPromptText = "Would you like to give your blessing to the couple?";
         private const string BlessEffectImageName = "BasicEff.img";
         private const string BlessEffectPath = "Wedding";
+        private const string WeddingBgmPath = "BgmEvent/wedding";
+        private const string WeddingUiImageName = "UIWindow.img";
+        private const string CeremonyTextOverlayPath = "wedding/text/0";
 
         private static readonly Dictionary<int, Dictionary<int, string>> WeddingDialogFallbacks = new()
         {
@@ -317,11 +329,15 @@ namespace HaCreator.MapSimulator.Effects
         private bool _blessEffectActive = false;
         private float _blessEffectAlpha = 0f;
         private int _blessEffectStartTime;
+        private bool _ceremonyTextOverlayActive = false;
+        private float _ceremonyTextOverlayAlpha = 0f;
         #endregion
 
         #region Visual Effects
         private List<WeddingSparkle> _sparkles = new();
         private List<IDXObject> _blessFrames;
+        private Texture2D _ceremonyTextOverlayTexture;
+        private Point _ceremonyTextOverlayOrigin;
         private Random _random = new();
         #endregion
 
@@ -329,12 +345,15 @@ namespace HaCreator.MapSimulator.Effects
         private WeddingDialog _currentDialog;
         private readonly Queue<WeddingDialog> _dialogQueue = new();
         private WeddingPacketResponse? _lastPacketResponse;
+        private Action<string> _requestBgmOverride;
+        private Action _clearBgmOverride;
         #endregion
 
         #region Public Properties
         public bool IsActive => _isActive;
         public int CurrentStep => _currentStep;
         public bool IsBlessEffectActive => _blessEffectActive;
+        public bool IsCeremonyTextOverlayActive => _ceremonyTextOverlayActive;
         public bool HasActiveScriptedDialog => _currentDialog != null || _dialogQueue.Count > 0;
         public WeddingParticipantRole LocalParticipantRole { get; private set; } = WeddingParticipantRole.Guest;
         public string CurrentDialogMessage => _currentDialog?.Message;
@@ -349,9 +368,15 @@ namespace HaCreator.MapSimulator.Effects
         #endregion
 
         #region Initialization
-        public void Initialize(GraphicsDevice device)
+        public void Initialize(
+            GraphicsDevice device,
+            Action<string> requestBgmOverride = null,
+            Action clearBgmOverride = null)
         {
+            _requestBgmOverride = requestBgmOverride;
+            _clearBgmOverride = clearBgmOverride;
             _blessFrames = LoadBlessFrames(device);
+            LoadCeremonyOverlay(device);
         }
 
         public void Enable(int mapId)
@@ -368,6 +393,10 @@ namespace HaCreator.MapSimulator.Effects
             _bridePosition = null;
             _participantPositions.Clear();
             _lastPacketResponse = null;
+            _ceremonyTextOverlayActive = false;
+            _ceremonyTextOverlayAlpha = 0f;
+            _currentDialog = null;
+            _dialogQueue.Clear();
             LocalParticipantRole = WeddingParticipantRole.Guest;
 
             System.Diagnostics.Debug.WriteLine($"[WeddingField] Enabled for map {mapId}, NPC {_npcId}");
@@ -416,8 +445,12 @@ namespace HaCreator.MapSimulator.Effects
             if (step == 0)
             {
                 SetBlessEffect(false, currentTimeMs);
-                // Would trigger: CSoundMan::PlayBGM for wedding music
-                // Cathedral: 0x108E, Chapel: 0x108F from StringPool
+                SetCeremonyTextOverlay(true);
+                _requestBgmOverride?.Invoke(WeddingBgmPath);
+            }
+            else
+            {
+                SetCeremonyTextOverlay(false);
             }
 
             // Show dialog for current step
@@ -511,6 +544,39 @@ namespace HaCreator.MapSimulator.Effects
             {
                 _blessEffectAlpha = 0f;
                 _sparkles.Clear();
+            }
+        }
+
+        private void LoadCeremonyOverlay(GraphicsDevice device)
+        {
+            if (device == null)
+            {
+                return;
+            }
+
+            try
+            {
+                WzImage uiWindowImage = global::HaCreator.Program.FindImage("UI", WeddingUiImageName);
+                uiWindowImage?.ParseImage();
+                WzCanvasProperty overlayCanvas = WzInfoTools.GetRealProperty(uiWindowImage?.GetFromPath(CeremonyTextOverlayPath)) as WzCanvasProperty;
+                if (overlayCanvas == null)
+                {
+                    return;
+                }
+
+                using var bitmap = overlayCanvas.GetLinkedWzCanvasBitmap();
+                if (bitmap == null)
+                {
+                    return;
+                }
+
+                _ceremonyTextOverlayTexture = bitmap.ToTexture2D(device);
+                System.Drawing.PointF origin = overlayCanvas.GetCanvasOriginPosition();
+                _ceremonyTextOverlayOrigin = new Point((int)origin.X, (int)origin.Y);
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[WeddingField] Failed to load ceremony overlay: {ex.Message}");
             }
         }
 
@@ -707,7 +773,8 @@ namespace HaCreator.MapSimulator.Effects
             string lastPacket = _lastPacketResponse.HasValue
                 ? _lastPacketResponse.Value.ToString()
                 : "none";
-            return $"Wedding map {_mapId}: step {_currentStep}, role {role}, dialog {dialog}, groom {groomPosition}, bride {bridePosition}, last packet {lastPacket}.";
+            string scene = _ceremonyTextOverlayActive ? "declaration overlay active" : "no scene overlay";
+            return $"Wedding map {_mapId}: step {_currentStep}, role {role}, dialog {dialog}, scene {scene}, groom {groomPosition}, bride {bridePosition}, last packet {lastPacket}.";
         }
 
         private Vector2? TryGetBlessEffectWorldCenter()
@@ -753,6 +820,12 @@ namespace HaCreator.MapSimulator.Effects
         public void Update(int currentTimeMs, float deltaSeconds)
         {
             if (!_isActive) return;
+
+            float overlayTargetAlpha = _ceremonyTextOverlayActive ? 1f : 0f;
+            _ceremonyTextOverlayAlpha = MathHelper.Clamp(
+                _ceremonyTextOverlayAlpha + ((overlayTargetAlpha - _ceremonyTextOverlayAlpha) * Math.Min(deltaSeconds * 10f, 1f)),
+                0f,
+                1f);
 
             // Update bless effect
             if (_blessEffectActive && (_blessFrames == null || _blessFrames.Count == 0))
@@ -803,6 +876,8 @@ namespace HaCreator.MapSimulator.Effects
             Texture2D pixelTexture, SpriteFont font)
         {
             if (!_isActive) return;
+
+            DrawCeremonyOverlay(spriteBatch);
 
             // Draw bless effect sparkles
             if (_blessEffectActive && _blessEffectAlpha > 0)
@@ -857,6 +932,37 @@ namespace HaCreator.MapSimulator.Effects
             {
                 string info = $"Wedding: Step {_currentStep} | Role: {LocalParticipantRole} | Bless: {_blessEffectActive}";
                 spriteBatch.DrawString(font, info, new Vector2(10, 10), Color.Pink);
+            }
+        }
+
+        private void DrawCeremonyOverlay(SpriteBatch spriteBatch)
+        {
+            if (_ceremonyTextOverlayTexture == null || _ceremonyTextOverlayAlpha <= 0f)
+            {
+                return;
+            }
+
+            Viewport viewport = spriteBatch.GraphicsDevice.Viewport;
+            Vector2 center = new Vector2(viewport.Width * 0.5f, viewport.Height * 0.5f - 54f);
+            Color tint = Color.White * _ceremonyTextOverlayAlpha;
+            spriteBatch.Draw(
+                _ceremonyTextOverlayTexture,
+                center,
+                null,
+                tint,
+                0f,
+                new Vector2(_ceremonyTextOverlayOrigin.X, _ceremonyTextOverlayOrigin.Y),
+                1f,
+                SpriteEffects.None,
+                0f);
+        }
+
+        private void SetCeremonyTextOverlay(bool active)
+        {
+            _ceremonyTextOverlayActive = active;
+            if (!_ceremonyTextOverlayActive && _ceremonyTextOverlayAlpha < 0.001f)
+            {
+                _ceremonyTextOverlayAlpha = 0f;
             }
         }
 
@@ -932,9 +1038,12 @@ namespace HaCreator.MapSimulator.Effects
         #region Reset
         public void Reset()
         {
+            _clearBgmOverride?.Invoke();
             _isActive = false;
             _currentStep = 0;
             _blessEffectActive = false;
+            _ceremonyTextOverlayActive = false;
+            _ceremonyTextOverlayAlpha = 0f;
             _sparkles.Clear();
             _currentDialog = null;
             _dialogQueue.Clear();
@@ -1257,6 +1366,18 @@ namespace HaCreator.MapSimulator.Effects
     /// </summary>
     public class BattlefieldField
     {
+        private readonly struct BattlefieldBitmapGlyph
+        {
+            public BattlefieldBitmapGlyph(Texture2D texture, Point origin)
+            {
+                Texture = texture;
+                Origin = origin;
+            }
+
+            public Texture2D Texture { get; }
+            public Point Origin { get; }
+        }
+
         public sealed class BattlefieldTeamLookPreset
         {
             public BattlefieldTeamLookPreset(int teamId, IReadOnlyDictionary<EquipSlot, int> equipmentItemIds)
@@ -1282,8 +1403,18 @@ namespace HaCreator.MapSimulator.Effects
         private const int ScoreboardWidth = 258;
         private const int ScoreboardHeight = 73;
         private const int ScorePulseDurationMs = 800;
+        private const int ScoreboardBackgroundOffsetX = 21;
+        private const int LeftScoreOriginX = 43;
+        private const int RightScoreOriginX = 130;
+        private const int ScoreOriginY = 12;
+        private const int TimerOriginX = 104;
+        private const int TimerOriginY = 61;
+        private const int TimerDigitSpacing = -1;
+        private const int TimerGroupSpacing = 2;
 
         private bool _isActive;
+        private GraphicsDevice _device;
+        private bool _assetsLoaded;
         private int _wolvesScore;
         private int _sheepScore;
         private int _defaultDurationSeconds = 300;
@@ -1299,9 +1430,16 @@ namespace HaCreator.MapSimulator.Effects
         private int _resultResolvedTimeMs = int.MinValue;
         private string _resolvedEffectPath;
         private int _resolvedRewardMapId;
+        private int _pendingTransferMapId = -1;
+        private int _pendingTransferAtTick = int.MinValue;
         private string _statusMessage;
         private int _statusMessageUntilMs;
         private readonly Dictionary<int, BattlefieldTeamLookPreset> _teamLookPresets = new();
+        private Texture2D _scoreboardTexture;
+        private BattlefieldBitmapGlyph[] _wolvesDigitGlyphs = Array.Empty<BattlefieldBitmapGlyph>();
+        private BattlefieldBitmapGlyph[] _sheepDigitGlyphs = Array.Empty<BattlefieldBitmapGlyph>();
+        private BattlefieldBitmapGlyph[] _timerDigitGlyphs = Array.Empty<BattlefieldBitmapGlyph>();
+        private BattlefieldBitmapGlyph? _timerSeparatorGlyph;
 
         public bool IsActive => _isActive;
         public int WolvesScore => _wolvesScore;
@@ -1326,6 +1464,8 @@ namespace HaCreator.MapSimulator.Effects
 
         public void Initialize(GraphicsDevice device)
         {
+            _device = device;
+            EnsureAssetsLoaded();
         }
 
         public void Enable()
@@ -1346,6 +1486,8 @@ namespace HaCreator.MapSimulator.Effects
             _resultResolvedTimeMs = int.MinValue;
             _resolvedEffectPath = null;
             _resolvedRewardMapId = 0;
+            _pendingTransferMapId = -1;
+            _pendingTransferAtTick = int.MinValue;
             _statusMessage = null;
             _statusMessageUntilMs = 0;
             EffectWinPath = null;
@@ -1474,6 +1616,10 @@ namespace HaCreator.MapSimulator.Effects
             _resultResolvedTimeMs = currentTimeMs;
             _resolvedEffectPath = ResolveEffectPathForLocalOutcome(winner);
             _resolvedRewardMapId = ResolveRewardMapIdForLocalOutcome(winner);
+            _pendingTransferMapId = _resolvedRewardMapId > 0 ? _resolvedRewardMapId : -1;
+            _pendingTransferAtTick = _pendingTransferMapId > 0
+                ? currentTimeMs + Math.Max(0, _finishDurationSeconds * 1000)
+                : int.MinValue;
 
             string suffix = _resolvedRewardMapId > 0
                 ? $" reward map {_resolvedRewardMapId}"
@@ -1506,6 +1652,13 @@ namespace HaCreator.MapSimulator.Effects
                 ResolveResult(ComputeWinnerFromScore(), currentTimeMs);
             }
 
+            if (_pendingTransferMapId > 0
+                && _pendingTransferAtTick != int.MinValue
+                && currentTimeMs >= _pendingTransferAtTick)
+            {
+                _pendingTransferAtTick = int.MinValue;
+            }
+
             if (_statusMessage != null && currentTimeMs >= _statusMessageUntilMs)
             {
                 _statusMessage = null;
@@ -1519,42 +1672,43 @@ namespace HaCreator.MapSimulator.Effects
                 return;
             }
 
+            EnsureAssetsLoaded();
+
             Rectangle bounds = GetScoreboardBounds(spriteBatch.GraphicsDevice.Viewport);
-            Rectangle inner = new Rectangle(bounds.X + 2, bounds.Y + 2, bounds.Width - 4, bounds.Height - 4);
-            Rectangle wolvesPanel = new Rectangle(bounds.X + 10, bounds.Y + 28, 105, 28);
-            Rectangle sheepPanel = new Rectangle(bounds.Right - 115, bounds.Y + 28, 105, 28);
-            Rectangle timerPanel = new Rectangle(bounds.X + 92, bounds.Y + 9, 74, 18);
-            Rectangle footerPanel = new Rectangle(bounds.X + 8, bounds.Bottom - 19, bounds.Width - 16, 11);
-
             float pulse = GetScorePulseStrength();
-            Color frame = Color.Lerp(new Color(66, 56, 34), new Color(242, 229, 168), pulse);
-            Color fill = new Color(28, 25, 21, 226);
-            Color wolvesColor = Color.Lerp(new Color(110, 74, 31), new Color(212, 147, 62), pulse * 0.5f);
-            Color sheepColor = Color.Lerp(new Color(52, 76, 97), new Color(118, 181, 222), pulse * 0.5f);
-
-            spriteBatch.Draw(pixelTexture, bounds, frame);
-            spriteBatch.Draw(pixelTexture, inner, fill);
-            spriteBatch.Draw(pixelTexture, timerPanel, new Color(14, 14, 14, 220));
-            spriteBatch.Draw(pixelTexture, wolvesPanel, wolvesColor);
-            spriteBatch.Draw(pixelTexture, sheepPanel, sheepColor);
-            spriteBatch.Draw(pixelTexture, new Rectangle(bounds.X + 128, bounds.Y + 24, 2, 36), new Color(90, 85, 73, 220));
-            spriteBatch.Draw(pixelTexture, footerPanel, new Color(12, 12, 12, 180));
-
-            if (font != null)
+            Vector2 scoreboardOrigin = new Vector2(bounds.X + ScoreboardBackgroundOffsetX, bounds.Y);
+            if (_scoreboardTexture != null)
             {
-                string timerText = FormatTimer(RemainingSeconds);
-                string wolvesScore = _wolvesScore.ToString("D2");
-                string sheepScore = _sheepScore.ToString("D2");
-                string statusText = GetFooterText();
-                string teamText = _localTeamId.HasValue ? $"You: {FormatTeamName(_localTeamId.Value)}" : "You: unset";
+                spriteBatch.Draw(_scoreboardTexture, scoreboardOrigin, Color.White);
+            }
+            else
+            {
+                spriteBatch.Draw(pixelTexture, new Rectangle((int)scoreboardOrigin.X, (int)scoreboardOrigin.Y, 215, ScoreboardHeight), new Color(16, 62, 82, 255));
+            }
 
-                spriteBatch.DrawString(font, timerText, new Vector2(timerPanel.X + 9, timerPanel.Y + 1), Color.White);
-                spriteBatch.DrawString(font, "Wolves", new Vector2(wolvesPanel.X + 8, wolvesPanel.Y + 2), Color.White);
-                spriteBatch.DrawString(font, wolvesScore, new Vector2(wolvesPanel.Right - 26, wolvesPanel.Y + 2), Color.White);
-                spriteBatch.DrawString(font, "Sheep", new Vector2(sheepPanel.X + 10, sheepPanel.Y + 2), Color.White);
-                spriteBatch.DrawString(font, sheepScore, new Vector2(sheepPanel.Right - 26, sheepPanel.Y + 2), Color.White);
-                spriteBatch.DrawString(font, teamText, new Vector2(bounds.X + 10, bounds.Y + 10), new Color(225, 213, 161, 255), 0f, Vector2.Zero, 0.72f, SpriteEffects.None, 0f);
-                spriteBatch.DrawString(font, statusText, new Vector2(bounds.X + 10, bounds.Bottom - 19), GetFooterColor(), 0f, Vector2.Zero, 0.68f, SpriteEffects.None, 0f);
+            if (pulse > 0f)
+            {
+                spriteBatch.Draw(
+                    pixelTexture,
+                    new Rectangle((int)scoreboardOrigin.X, (int)scoreboardOrigin.Y, _scoreboardTexture?.Width ?? 215, _scoreboardTexture?.Height ?? ScoreboardHeight),
+                    Color.White * (pulse * 0.18f));
+            }
+
+            if (!TryDrawScore(spriteBatch, scoreboardOrigin, _sheepScore, _sheepDigitGlyphs, LeftScoreOriginX, ScoreOriginY)
+                && font != null)
+            {
+                spriteBatch.DrawString(font, _sheepScore.ToString(CultureInfo.InvariantCulture), scoreboardOrigin + new Vector2(LeftScoreOriginX, ScoreOriginY), Color.White);
+            }
+
+            if (!TryDrawScore(spriteBatch, scoreboardOrigin, _wolvesScore, _wolvesDigitGlyphs, RightScoreOriginX, ScoreOriginY)
+                && font != null)
+            {
+                spriteBatch.DrawString(font, _wolvesScore.ToString(CultureInfo.InvariantCulture), scoreboardOrigin + new Vector2(RightScoreOriginX, ScoreOriginY), Color.White);
+            }
+
+            if (!TryDrawTime(spriteBatch, scoreboardOrigin, RemainingSeconds) && font != null)
+            {
+                spriteBatch.DrawString(font, FormatTimerForFallback(RemainingSeconds), scoreboardOrigin + new Vector2(TimerOriginX, TimerOriginY - 6), Color.White);
             }
         }
 
@@ -1572,10 +1726,11 @@ namespace HaCreator.MapSimulator.Effects
             string resultText = _winner == BattlefieldWinner.None
                 ? "result=pending"
                 : $"result={GetWinnerLabel(_winner)}, rewardMap={(_resolvedRewardMapId > 0 ? _resolvedRewardMapId : 0)}, effect={(_resolvedEffectPath ?? "none")}";
+            string transferText = _pendingTransferMapId > 0 ? $", pendingTransfer={_pendingTransferMapId}" : string.Empty;
             string lookPresetText = _teamLookPresets.Count > 0
                 ? $", lookPresets={string.Join(";", _teamLookPresets.OrderBy(kvp => kvp.Key).Select(kvp => $"{kvp.Key}:{kvp.Value.EquipmentItemIds.Count}"))}"
                 : string.Empty;
-            return $"Battlefield active, wolves={_wolvesScore:D2}, sheep={_sheepScore:D2}, {clockText}, {teamText}, {resultText}{lookPresetText}";
+            return $"Battlefield active, wolves={_wolvesScore:D2}, sheep={_sheepScore:D2}, {clockText}, {teamText}, {resultText}{transferText}{lookPresetText}";
         }
 
         public void Reset()
@@ -1596,6 +1751,8 @@ namespace HaCreator.MapSimulator.Effects
             _resultResolvedTimeMs = int.MinValue;
             _resolvedEffectPath = null;
             _resolvedRewardMapId = 0;
+            _pendingTransferMapId = -1;
+            _pendingTransferAtTick = int.MinValue;
             _statusMessage = null;
             _statusMessageUntilMs = 0;
             EffectWinPath = null;
@@ -1712,40 +1869,144 @@ namespace HaCreator.MapSimulator.Effects
             return normalized * normalized;
         }
 
-        private string GetLeadingTeamLabel()
+        public int ConsumePendingTransferMapId()
         {
-            if (_wolvesScore == _sheepScore)
+            if (_pendingTransferMapId <= 0 || _pendingTransferAtTick != int.MinValue)
             {
-                return "Draw";
+                return -1;
             }
 
-            return _wolvesScore > _sheepScore ? "Wolves lead" : "Sheep lead";
+            int pendingTransferMapId = _pendingTransferMapId;
+            _pendingTransferMapId = -1;
+            return pendingTransferMapId;
         }
 
-        private string GetFooterText()
+        private void EnsureAssetsLoaded()
         {
-            if (!string.IsNullOrWhiteSpace(_statusMessage))
+            if (_assetsLoaded || _device == null)
             {
-                return _statusMessage;
+                return;
             }
 
-            if (_winner != BattlefieldWinner.None)
-            {
-                return $"Finish: {GetWinnerLabel(_winner)}";
-            }
-
-            return GetLeadingTeamLabel();
+            WzImage objImage = global::HaCreator.Program.FindImage("Map", "Obj/etc.img");
+            WzSubProperty battleField = objImage?["battleField"] as WzSubProperty;
+            _scoreboardTexture = LoadCanvasTexture(battleField?["backgrnd"] as WzCanvasProperty);
+            _wolvesDigitGlyphs = LoadGlyphSet(battleField?["fontScore0"] as WzSubProperty, 10);
+            _sheepDigitGlyphs = LoadGlyphSet(battleField?["fontScore1"] as WzSubProperty, 10);
+            _timerDigitGlyphs = LoadGlyphSet(battleField?["fontTime"] as WzSubProperty, 10);
+            _timerSeparatorGlyph = LoadGlyph(battleField?["fontTime"]?["comma"] as WzCanvasProperty);
+            _assetsLoaded = true;
         }
 
-        private Color GetFooterColor()
+        private Texture2D LoadCanvasTexture(WzCanvasProperty canvas)
         {
-            return _winner switch
+            if (_device == null || canvas == null)
             {
-                BattlefieldWinner.Wolves => new Color(239, 198, 131, 255),
-                BattlefieldWinner.Sheep => new Color(177, 221, 255, 255),
-                BattlefieldWinner.Draw => new Color(225, 213, 161, 255),
-                _ => new Color(225, 213, 161, 255)
+                return null;
+            }
+
+            using var bitmap = canvas.GetLinkedWzCanvasBitmap();
+            return bitmap?.ToTexture2DAndDispose(_device);
+        }
+
+        private BattlefieldBitmapGlyph[] LoadGlyphSet(WzSubProperty parent, int count)
+        {
+            BattlefieldBitmapGlyph[] glyphs = new BattlefieldBitmapGlyph[count];
+            for (int i = 0; i < count; i++)
+            {
+                glyphs[i] = LoadGlyph(parent?[i.ToString()] as WzCanvasProperty) ?? default;
+            }
+
+            return glyphs;
+        }
+
+        private BattlefieldBitmapGlyph? LoadGlyph(WzCanvasProperty canvas)
+        {
+            Texture2D texture = LoadCanvasTexture(canvas);
+            if (texture == null)
+            {
+                return null;
+            }
+
+            System.Drawing.Point canvasOrigin = canvas?[WzCanvasProperty.OriginPropertyName]?.GetPoint() ?? System.Drawing.Point.Empty;
+            return new BattlefieldBitmapGlyph(texture, new Point(canvasOrigin.X, canvasOrigin.Y));
+        }
+
+        private bool TryDrawScore(SpriteBatch spriteBatch, Vector2 scoreboardOrigin, int score, BattlefieldBitmapGlyph[] glyphs, int originX, int originY)
+        {
+            if (glyphs == null || glyphs.Length < 10 || glyphs.Any(glyph => glyph.Texture == null))
+            {
+                return false;
+            }
+
+            string scoreText = Math.Max(0, score).ToString(CultureInfo.InvariantCulture);
+            int totalWidth = 0;
+            for (int i = 0; i < scoreText.Length; i++)
+            {
+                int digit = scoreText[i] - '0';
+                if (digit < 0 || digit >= glyphs.Length || glyphs[digit].Texture == null)
+                {
+                    return false;
+                }
+
+                totalWidth += glyphs[digit].Texture.Width;
+            }
+
+            float drawX = scoreboardOrigin.X + originX + Math.Max(0f, (42 - totalWidth) / 2f);
+            for (int i = 0; i < scoreText.Length; i++)
+            {
+                BattlefieldBitmapGlyph glyph = glyphs[scoreText[i] - '0'];
+                spriteBatch.Draw(glyph.Texture, new Vector2(drawX - glyph.Origin.X, scoreboardOrigin.Y + originY - glyph.Origin.Y), Color.White);
+                drawX += glyph.Texture.Width;
+            }
+
+            return true;
+        }
+
+        private bool TryDrawTime(SpriteBatch spriteBatch, Vector2 scoreboardOrigin, int totalSeconds)
+        {
+            if (_timerDigitGlyphs == null
+                || _timerDigitGlyphs.Length < 10
+                || _timerDigitGlyphs.Any(glyph => glyph.Texture == null)
+                || !_timerSeparatorGlyph.HasValue
+                || _timerSeparatorGlyph.Value.Texture == null)
+            {
+                return false;
+            }
+
+            int safeSeconds = Math.Max(0, totalSeconds);
+            int hours = safeSeconds / 3600;
+            int minutes = (safeSeconds / 60) % 60;
+            int seconds = safeSeconds % 60;
+            string[] groups =
+            {
+                hours.ToString("D2", CultureInfo.InvariantCulture),
+                minutes.ToString("D2", CultureInfo.InvariantCulture),
+                seconds.ToString("D2", CultureInfo.InvariantCulture)
             };
+
+            float drawX = scoreboardOrigin.X + TimerOriginX;
+            for (int groupIndex = 0; groupIndex < groups.Length; groupIndex++)
+            {
+                string group = groups[groupIndex];
+                for (int i = 0; i < group.Length; i++)
+                {
+                    BattlefieldBitmapGlyph glyph = _timerDigitGlyphs[group[i] - '0'];
+                    spriteBatch.Draw(glyph.Texture, new Vector2(drawX - glyph.Origin.X, scoreboardOrigin.Y + TimerOriginY - glyph.Origin.Y), Color.White);
+                    drawX += glyph.Texture.Width + TimerDigitSpacing;
+                }
+
+                if (groupIndex == groups.Length - 1)
+                {
+                    continue;
+                }
+
+                BattlefieldBitmapGlyph separator = _timerSeparatorGlyph.Value;
+                spriteBatch.Draw(separator.Texture, new Vector2(drawX - separator.Origin.X, scoreboardOrigin.Y + TimerOriginY - separator.Origin.Y), Color.White);
+                drawX += separator.Texture.Width + TimerGroupSpacing;
+            }
+
+            return true;
         }
 
         private BattlefieldWinner ComputeWinnerFromScore()
@@ -1767,6 +2028,7 @@ namespace HaCreator.MapSimulator.Effects
 
             _resolvedEffectPath = ResolveEffectPathForLocalOutcome(_winner);
             _resolvedRewardMapId = ResolveRewardMapIdForLocalOutcome(_winner);
+            _pendingTransferMapId = _resolvedRewardMapId > 0 ? _resolvedRewardMapId : -1;
         }
 
         private void ClearResolvedResult()
@@ -1775,6 +2037,8 @@ namespace HaCreator.MapSimulator.Effects
             _resultResolvedTimeMs = int.MinValue;
             _resolvedEffectPath = null;
             _resolvedRewardMapId = 0;
+            _pendingTransferMapId = -1;
+            _pendingTransferAtTick = int.MinValue;
         }
 
         private void ShowStatus(string message, int currentTimeMs, int durationMs)
@@ -1855,6 +2119,15 @@ namespace HaCreator.MapSimulator.Effects
             int safeSeconds = Math.Max(0, totalSeconds);
             return $"{safeSeconds / 60}:{safeSeconds % 60:D2}";
         }
+
+        private static string FormatTimerForFallback(int totalSeconds)
+        {
+            int safeSeconds = Math.Max(0, totalSeconds);
+            int hours = safeSeconds / 3600;
+            int minutes = (safeSeconds / 60) % 60;
+            int seconds = safeSeconds % 60;
+            return $"{hours:D2}:{minutes:D2}:{seconds:D2}";
+        }
     }
     #endregion
 
@@ -1869,6 +2142,18 @@ namespace HaCreator.MapSimulator.Effects
     /// </summary>
     public class GuildBossField
     {
+        private enum GuildBossPacketType
+        {
+            HealerMove = 344,
+            PulleyStateChange = 345
+        }
+
+        private enum GuildBossPacketSource
+        {
+            External = 0,
+            LocalPreview = 1
+        }
+
         private enum LocalPulleySequenceStage
         {
             None = 0,
@@ -1944,7 +2229,9 @@ namespace HaCreator.MapSimulator.Effects
         public bool IsActive => _isActive;
         public int PulleyState => _pulleyState;
         public float HealerY => _healerY;
+        public float HealerTargetY => _healerTargetY;
         public bool IsHealEffectActive => _healEffectActive;
+        public bool HasPendingLocalPulleySequence => _localPulleySequenceStage != LocalPulleySequenceStage.None;
         public bool IsLocalPlayerWithinPulleyArea => _pulleyEnabled && !_localPlayerHitbox.IsEmpty && _pulleyArea.Intersects(_localPlayerHitbox);
         #endregion
 
@@ -2058,7 +2345,40 @@ namespace HaCreator.MapSimulator.Effects
         /// </summary>
         public void OnHealerMove(int newY, int currentTimeMs)
         {
+            ApplyHealerMove(newY, currentTimeMs, GuildBossPacketSource.External);
+        }
+
+        /// <summary>
+        /// Decodes and applies CField_GuildBoss packet payloads.
+        /// Packet 344: signed little-endian int16 healer Y.
+        /// Packet 345: unsigned byte pulley state.
+        /// </summary>
+        public bool TryApplyPacket(int packetType, byte[] payload, int currentTimeMs, out string error)
+        {
+            error = null;
+            if (!_isActive)
+            {
+                error = "Guild boss field inactive";
+                return false;
+            }
+
+            if (payload == null)
+            {
+                error = "Packet payload is required";
+                return false;
+            }
+
+            return TryApplyPacket(packetType, payload.AsSpan(), currentTimeMs, GuildBossPacketSource.External, out error);
+        }
+
+        private void ApplyHealerMove(int newY, int currentTimeMs, GuildBossPacketSource source)
+        {
             if (!_healerEnabled) return;
+
+            if (source == GuildBossPacketSource.External)
+            {
+                CancelLocalPulleySequence(preserveCooldown: true);
+            }
 
             if (_healerYMin != 0 || _healerYMax != 0)
             {
@@ -2081,6 +2401,16 @@ namespace HaCreator.MapSimulator.Effects
         /// </summary>
         public void OnPulleyStateChange(int newState, int currentTimeMs)
         {
+            ApplyPulleyStateChange(newState, currentTimeMs, GuildBossPacketSource.External);
+        }
+
+        private void ApplyPulleyStateChange(int newState, int currentTimeMs, GuildBossPacketSource source)
+        {
+            if (source == GuildBossPacketSource.External)
+            {
+                CancelLocalPulleySequence(preserveCooldown: true);
+            }
+
             System.Diagnostics.Debug.WriteLine($"[GuildBossField] OnPulleyStateChange: {_pulleyState} -> {newState}");
             _pulleyState = newState;
             _lastPulleyStateChangeTime = currentTimeMs;
@@ -2099,10 +2429,10 @@ namespace HaCreator.MapSimulator.Effects
                 return true;
             }
 
-            OnPulleyStateChange(1, currentTimeMs);
+            ApplyPulleyStateChange(1, currentTimeMs, GuildBossPacketSource.LocalPreview);
             if (_healerEnabled && _healerRise > 0)
             {
-                OnHealerMove(ClampHealerY((int)MathF.Round(_healerTargetY) - _healerRise), currentTimeMs);
+                ApplyHealerMove(ClampHealerY((int)MathF.Round(_healerTargetY) - _healerRise), currentTimeMs, GuildBossPacketSource.LocalPreview);
             }
 
             _localPulleySequenceStage = LocalPulleySequenceStage.Activating;
@@ -2348,8 +2678,9 @@ namespace HaCreator.MapSimulator.Effects
                 2 => "active",
                 _ => $"state {_pulleyState}"
             };
+            string previewState = HasPendingLocalPulleySequence ? $", preview={_localPulleySequenceStage}" : string.Empty;
 
-            return $"Guild boss map {_mapId}: healer {healerRange}, pulley {pulleyState}, rise={_healerRise}, fall={_healerFall}, heal={_healerHealMin}..{_healerHealMax}, healer art={_healerPath ?? "none"}, pulley art={_pulleyPath ?? "none"}.";
+            return $"Guild boss map {_mapId}: healer {healerRange}, pulley {pulleyState}{previewState}, rise={_healerRise}, fall={_healerFall}, heal={_healerHealMin}..{_healerHealMax}, healer art={_healerPath ?? "none"}, pulley art={_pulleyPath ?? "none"}.";
         }
 
         #region Reset
@@ -2393,7 +2724,7 @@ namespace HaCreator.MapSimulator.Effects
             switch (_localPulleySequenceStage)
             {
                 case LocalPulleySequenceStage.Activating:
-                    OnPulleyStateChange(2, currentTimeMs);
+                    TryApplyPacket((int)GuildBossPacketType.PulleyStateChange, stackalloc byte[] { 2 }, currentTimeMs, GuildBossPacketSource.LocalPreview, out _);
                     _lastHealAmount = RollHealAmount();
                     SetStatusCue($"Healer restored {_lastHealAmount}", currentTimeMs);
                     _localPulleySequenceStage = LocalPulleySequenceStage.Active;
@@ -2401,15 +2732,59 @@ namespace HaCreator.MapSimulator.Effects
                     break;
 
                 case LocalPulleySequenceStage.Active:
-                    OnPulleyStateChange(0, currentTimeMs);
+                    TryApplyPacket((int)GuildBossPacketType.PulleyStateChange, stackalloc byte[] { 0 }, currentTimeMs, GuildBossPacketSource.LocalPreview, out _);
                     if (_healerEnabled && _healerFall > 0)
                     {
-                        OnHealerMove(ClampHealerY((int)MathF.Round(_healerTargetY) + _healerFall), currentTimeMs);
+                        Span<byte> payload = stackalloc byte[2];
+                        short healerY = checked((short)ClampHealerY((int)MathF.Round(_healerTargetY) + _healerFall));
+                        BinaryPrimitives.WriteInt16LittleEndian(payload, healerY);
+                        TryApplyPacket((int)GuildBossPacketType.HealerMove, payload, currentTimeMs, GuildBossPacketSource.LocalPreview, out _);
                     }
 
                     _localPulleySequenceStage = LocalPulleySequenceStage.None;
                     _localPulleySequenceNextTransitionTick = int.MinValue;
                     break;
+            }
+        }
+
+        private bool TryApplyPacket(int packetType, ReadOnlySpan<byte> payload, int currentTimeMs, GuildBossPacketSource source, out string error)
+        {
+            error = null;
+            switch ((GuildBossPacketType)packetType)
+            {
+                case GuildBossPacketType.HealerMove:
+                    if (payload.Length < sizeof(short))
+                    {
+                        error = "Packet 344 requires a 2-byte healer Y payload";
+                        return false;
+                    }
+
+                    ApplyHealerMove(BinaryPrimitives.ReadInt16LittleEndian(payload), currentTimeMs, source);
+                    return true;
+
+                case GuildBossPacketType.PulleyStateChange:
+                    if (payload.IsEmpty)
+                    {
+                        error = "Packet 345 requires a 1-byte pulley state payload";
+                        return false;
+                    }
+
+                    ApplyPulleyStateChange(payload[0], currentTimeMs, source);
+                    return true;
+
+                default:
+                    error = $"Unsupported guild boss packet type {packetType}";
+                    return false;
+            }
+        }
+
+        private void CancelLocalPulleySequence(bool preserveCooldown)
+        {
+            _localPulleySequenceStage = LocalPulleySequenceStage.None;
+            _localPulleySequenceNextTransitionTick = int.MinValue;
+            if (!preserveCooldown)
+            {
+                _localPulleyCooldownUntil = int.MinValue;
             }
         }
 
@@ -2643,9 +3018,14 @@ namespace HaCreator.MapSimulator.Effects
         private int _timerDurationSec;
         private int _timeOverTick = int.MinValue;
         private int _lastClockUpdateTick = int.MinValue;
+        private int _returnMapId = -1;
+        private int _forcedReturnMapId = -1;
+        private int _pendingTransferMapId = -1;
+        private int _pendingTransferAtTick = int.MinValue;
         private int _playerHp;
         private int _playerMaxHp = 100;
         private float? _bossHpPercent;
+        private float? _lastBossHpPercent;
         private int _energy;
         private int _stageBannerStartTick = int.MinValue;
         private int _resultEffectStartTick = int.MinValue;
@@ -2703,14 +3083,25 @@ namespace HaCreator.MapSimulator.Effects
             _timerDurationSec = 0;
             _timeOverTick = int.MinValue;
             _lastClockUpdateTick = int.MinValue;
+            _returnMapId = -1;
+            _forcedReturnMapId = -1;
+            _pendingTransferMapId = -1;
+            _pendingTransferAtTick = int.MinValue;
             _playerHp = 0;
             _playerMaxHp = 100;
             _bossHpPercent = null;
+            _lastBossHpPercent = null;
             _energy = 0;
             EnsureAssetsLoaded();
             _stageBannerStartTick = Environment.TickCount;
             _resultEffectStartTick = int.MinValue;
             _resultEffect = DojoResultEffect.None;
+        }
+
+        public void Configure(MapInfo mapInfo)
+        {
+            _returnMapId = NormalizeTransferMapId(mapInfo?.returnMap);
+            _forcedReturnMapId = NormalizeTransferMapId(mapInfo?.forcedReturn);
         }
 
         public void OnClock(int clockType, int durationSec, int currentTimeMs)
@@ -2728,6 +3119,9 @@ namespace HaCreator.MapSimulator.Effects
                 _resultEffect = DojoResultEffect.None;
                 _resultEffectStartTick = int.MinValue;
             }
+
+            _pendingTransferMapId = -1;
+            _pendingTransferAtTick = int.MinValue;
         }
 
         public void SetRuntimeState(int? playerHp, int? playerMaxHp, float? bossHpPercent)
@@ -2745,16 +3139,36 @@ namespace HaCreator.MapSimulator.Effects
             if (bossHpPercent.HasValue)
             {
                 _bossHpPercent = Math.Clamp(bossHpPercent.Value, 0f, 1f);
+                if (_lastBossHpPercent.GetValueOrDefault() > 0f
+                    && _bossHpPercent.Value <= 0f
+                    && _resultEffect == DojoResultEffect.None)
+                {
+                    ShowClearResult(Environment.TickCount);
+                }
             }
             else
             {
                 _bossHpPercent = null;
             }
+
+            _lastBossHpPercent = _bossHpPercent;
         }
 
         public void SetEnergy(int energy)
         {
             _energy = Math.Clamp(energy, 0, EnergyMax);
+        }
+
+        public int ConsumePendingTransferMapId()
+        {
+            if (_pendingTransferMapId <= 0 || _pendingTransferAtTick != int.MinValue)
+            {
+                return -1;
+            }
+
+            int pendingTransferMapId = _pendingTransferMapId;
+            _pendingTransferMapId = -1;
+            return pendingTransferMapId;
         }
 
         public void SetStage(int stage, int currentTimeMs)
@@ -2767,6 +3181,8 @@ namespace HaCreator.MapSimulator.Effects
         {
             _resultEffect = DojoResultEffect.Clear;
             _resultEffectStartTick = currentTimeMs;
+            _pendingTransferMapId = -1;
+            _pendingTransferAtTick = int.MinValue;
         }
 
         public void ShowTimeOverResult(int currentTimeMs)
@@ -2775,6 +3191,10 @@ namespace HaCreator.MapSimulator.Effects
             _resultEffectStartTick = currentTimeMs;
             _timeOverTick = 0;
             _timerDurationSec = 0;
+            _pendingTransferMapId = ResolveExitMapId();
+            _pendingTransferAtTick = _pendingTransferMapId > 0
+                ? currentTimeMs + GetAnimationDurationMs(_timeOverFrames)
+                : int.MinValue;
         }
 
         public void Update(int currentTimeMs, float deltaSeconds)
@@ -2787,6 +3207,13 @@ namespace HaCreator.MapSimulator.Effects
             if (_timeOverTick != int.MinValue && _timeOverTick > 0 && currentTimeMs >= _timeOverTick && _resultEffect != DojoResultEffect.TimeOver)
             {
                 ShowTimeOverResult(currentTimeMs);
+            }
+
+            if (_pendingTransferMapId > 0
+                && _pendingTransferAtTick != int.MinValue
+                && currentTimeMs >= _pendingTransferAtTick)
+            {
+                _pendingTransferAtTick = int.MinValue;
             }
         }
 
@@ -2818,7 +3245,8 @@ namespace HaCreator.MapSimulator.Effects
                 ? $"{(int)MathF.Round(_bossHpPercent.Value * 100f)}%"
                 : "--";
             string timerText = _timeOverTick == int.MinValue ? "stopped" : FormatTimer(RemainingSeconds);
-            return $"Mu Lung Dojo floor {_stage}, timer={timerText}, boss={bossText}, player={_playerHp}/{_playerMaxHp}, energy={_energy}/{EnergyMax}";
+            string transferText = _pendingTransferMapId > 0 ? $", pendingReturn={_pendingTransferMapId}" : string.Empty;
+            return $"Mu Lung Dojo floor {_stage}, timer={timerText}, boss={bossText}, player={_playerHp}/{_playerMaxHp}, energy={_energy}/{EnergyMax}{transferText}";
         }
 
         public void Reset()
@@ -2829,9 +3257,14 @@ namespace HaCreator.MapSimulator.Effects
             _timerDurationSec = 0;
             _timeOverTick = int.MinValue;
             _lastClockUpdateTick = int.MinValue;
+            _returnMapId = -1;
+            _forcedReturnMapId = -1;
+            _pendingTransferMapId = -1;
+            _pendingTransferAtTick = int.MinValue;
             _playerHp = 0;
             _playerMaxHp = 100;
             _bossHpPercent = null;
+            _lastBossHpPercent = null;
             _energy = 0;
             _stageBannerStartTick = int.MinValue;
             _resultEffectStartTick = int.MinValue;
@@ -2854,6 +3287,34 @@ namespace HaCreator.MapSimulator.Effects
             int minutes = Math.Max(0, remainingSeconds) / 60;
             int seconds = Math.Max(0, remainingSeconds) % 60;
             return $"{minutes}:{seconds:00}";
+        }
+
+        private static int NormalizeTransferMapId(int? mapId)
+        {
+            return mapId.HasValue && mapId.Value > 0 && mapId.Value != MapConstants.MaxMap
+                ? mapId.Value
+                : -1;
+        }
+
+        private int ResolveExitMapId()
+        {
+            return _forcedReturnMapId > 0 ? _forcedReturnMapId : _returnMapId;
+        }
+
+        private static int GetAnimationDurationMs(IReadOnlyList<DojoFrame> frames)
+        {
+            if (frames == null || frames.Count == 0)
+            {
+                return 0;
+            }
+
+            int totalDuration = 0;
+            for (int i = 0; i < frames.Count; i++)
+            {
+                totalDuration += Math.Max(1, frames[i].Delay);
+            }
+
+            return totalDuration;
         }
 
         private void EnsureAssetsLoaded()
@@ -3235,12 +3696,18 @@ namespace HaCreator.MapSimulator.Effects
         private const int DividerWidth = 38;
         private const int DividerHeight = 36;
         private const int ResetPulseDurationMs = 600;
+        private static readonly string[] UiImageNames = { "UIWindow.img", "UIWindow2.img" };
 
         private bool _isActive;
         private int _mapId;
         private int _durationSec;
         private int _timeOverTick = int.MinValue;
         private int _lastResetTick = int.MinValue;
+        private GraphicsDevice _graphicsDevice;
+        private bool _assetsLoaded;
+        private Texture2D _backgroundTexture;
+        private Texture2D _colonTexture;
+        private readonly Texture2D[] _digitTextures = new Texture2D[10];
 
         public bool IsActive => _isActive;
         public int MapId => _mapId;
@@ -3266,6 +3733,8 @@ namespace HaCreator.MapSimulator.Effects
 
         public void Initialize(GraphicsDevice device)
         {
+            _graphicsDevice = device;
+            _assetsLoaded = false;
         }
 
         public void Enable(int mapId)
@@ -3304,29 +3773,44 @@ namespace HaCreator.MapSimulator.Effects
                 return;
             }
 
+            EnsureAssetsLoaded();
+
             Rectangle bounds = GetTimerboardBounds(spriteBatch.GraphicsDevice.Viewport);
-            Rectangle innerBounds = new(bounds.X + 2, bounds.Y + 2, bounds.Width - 4, bounds.Height - 4);
-            Rectangle faceBounds = new(bounds.X + 10, bounds.Y + 10, bounds.Width - 20, bounds.Height - 20);
-            Rectangle dividerBounds = new(bounds.X + DividerX, bounds.Y + DividerY, DividerWidth, DividerHeight);
 
             float pulse = GetResetPulseStrength();
             float urgency = RemainingSeconds <= 10 ? 1f - (RemainingSeconds / 10f) : 0f;
 
-            Color outerBorder = Color.Lerp(new Color(68, 120, 166, 255), new Color(255, 233, 158, 255), pulse * 0.65f);
-            Color innerFill = Color.Lerp(new Color(10, 22, 41, 232), new Color(25, 51, 84, 240), pulse * 0.35f);
-            Color faceFill = Color.Lerp(new Color(25, 53, 87, 230), new Color(123, 49, 33, 236), urgency * 0.75f);
-            Color faceHighlight = Color.Lerp(new Color(122, 193, 227, 255), new Color(255, 209, 122, 255), Math.Max(pulse, urgency));
-            Color dividerColor = Color.Lerp(new Color(188, 222, 244, 255), new Color(255, 212, 118, 255), Math.Max(pulse, urgency));
+            if (_backgroundTexture != null)
+            {
+                spriteBatch.Draw(_backgroundTexture, new Vector2(bounds.X, bounds.Y), Color.White);
+                if (pulse > 0f || urgency > 0f)
+                {
+                    float overlayStrength = Math.Clamp((pulse * 0.25f) + (urgency * 0.15f), 0f, 0.35f);
+                    spriteBatch.Draw(pixelTexture, bounds, new Color(255, 233, 158) * overlayStrength);
+                }
+            }
+            else
+            {
+                Rectangle innerBounds = new(bounds.X + 2, bounds.Y + 2, bounds.Width - 4, bounds.Height - 4);
+                Rectangle faceBounds = new(bounds.X + 10, bounds.Y + 10, bounds.Width - 20, bounds.Height - 20);
+                Rectangle dividerBounds = new(bounds.X + DividerX, bounds.Y + DividerY, DividerWidth, DividerHeight);
 
-            spriteBatch.Draw(pixelTexture, bounds, outerBorder);
-            spriteBatch.Draw(pixelTexture, innerBounds, innerFill);
-            spriteBatch.Draw(pixelTexture, faceBounds, faceFill);
-            spriteBatch.Draw(pixelTexture, new Rectangle(faceBounds.X, faceBounds.Y, faceBounds.Width, 2), faceHighlight);
-            spriteBatch.Draw(pixelTexture, new Rectangle(faceBounds.X, faceBounds.Bottom - 2, faceBounds.Width, 2), new Color(8, 14, 24, 255));
-            spriteBatch.Draw(pixelTexture, dividerBounds, dividerColor * 0.18f);
-            DrawDividerDots(spriteBatch, pixelTexture, bounds, dividerColor);
+                Color outerBorder = Color.Lerp(new Color(68, 120, 166, 255), new Color(255, 233, 158, 255), pulse * 0.65f);
+                Color innerFill = Color.Lerp(new Color(10, 22, 41, 232), new Color(25, 51, 84, 240), pulse * 0.35f);
+                Color faceFill = Color.Lerp(new Color(25, 53, 87, 230), new Color(123, 49, 33, 236), urgency * 0.75f);
+                Color faceHighlight = Color.Lerp(new Color(122, 193, 227, 255), new Color(255, 209, 122, 255), Math.Max(pulse, urgency));
+                Color dividerColor = Color.Lerp(new Color(188, 222, 244, 255), new Color(255, 212, 118, 255), Math.Max(pulse, urgency));
 
-            if (font != null)
+                spriteBatch.Draw(pixelTexture, bounds, outerBorder);
+                spriteBatch.Draw(pixelTexture, innerBounds, innerFill);
+                spriteBatch.Draw(pixelTexture, faceBounds, faceFill);
+                spriteBatch.Draw(pixelTexture, new Rectangle(faceBounds.X, faceBounds.Y, faceBounds.Width, 2), faceHighlight);
+                spriteBatch.Draw(pixelTexture, new Rectangle(faceBounds.X, faceBounds.Bottom - 2, faceBounds.Width, 2), new Color(8, 14, 24, 255));
+                spriteBatch.Draw(pixelTexture, dividerBounds, dividerColor * 0.18f);
+                DrawDividerDots(spriteBatch, pixelTexture, bounds, dividerColor);
+            }
+
+            if (!TryDrawBitmapTimer(spriteBatch, bounds) && font != null)
             {
                 string minutesText = (Math.Max(0, RemainingSeconds) / 60).ToString("00");
                 string secondsText = (Math.Max(0, RemainingSeconds) % 60).ToString("00");
@@ -3334,12 +3818,6 @@ namespace HaCreator.MapSimulator.Effects
 
                 DrawDigitString(spriteBatch, font, minutesText, new Vector2(bounds.X + MinuteTextX, bounds.Y + TextY), timeColor);
                 DrawDigitString(spriteBatch, font, secondsText, new Vector2(bounds.X + SecondTextX, bounds.Y + TextY), timeColor);
-
-                string title = GetTitleText();
-                Vector2 titleSize = font.MeasureString(title);
-                Vector2 titlePos = new(bounds.Center.X - (titleSize.X / 2f), bounds.Y + 5);
-                spriteBatch.DrawString(font, title, titlePos + Vector2.One, Color.Black);
-                spriteBatch.DrawString(font, title, titlePos, new Color(225, 243, 255));
             }
         }
 
@@ -3361,11 +3839,6 @@ namespace HaCreator.MapSimulator.Effects
             _durationSec = 0;
             _timeOverTick = int.MinValue;
             _lastResetTick = int.MinValue;
-        }
-
-        private string GetTitleText()
-        {
-            return _mapId == 922240100 ? "GAGA RESCUE" : "SPACE GAGA";
         }
 
         private float GetResetPulseStrength()
@@ -3405,6 +3878,202 @@ namespace HaCreator.MapSimulator.Effects
             spriteBatch.DrawString(font, text, position, color);
         }
 
+        private bool TryDrawBitmapTimer(SpriteBatch spriteBatch, Rectangle bounds)
+        {
+            if (_digitTextures.Any(texture => texture == null))
+            {
+                return false;
+            }
+
+            int minutes = Math.Clamp(RemainingSeconds / 60, 0, 99);
+            int seconds = Math.Clamp(RemainingSeconds % 60, 0, 59);
+
+            DrawTwoDigits(spriteBatch, bounds, MinuteTextX, TextY, minutes);
+            DrawTwoDigits(spriteBatch, bounds, SecondTextX, TextY, seconds);
+
+            if (_colonTexture != null)
+            {
+                spriteBatch.Draw(_colonTexture, new Vector2(bounds.X + DividerX, bounds.Y + DividerY), Color.White);
+            }
+
+            return true;
+        }
+
+        private void DrawTwoDigits(SpriteBatch spriteBatch, Rectangle bounds, int x, int y, int value)
+        {
+            int tens = (value / 10) % 10;
+            int ones = value % 10;
+            Texture2D tensTexture = _digitTextures[tens];
+            Texture2D onesTexture = _digitTextures[ones];
+            spriteBatch.Draw(tensTexture, new Vector2(bounds.X + x, bounds.Y + y), Color.White);
+            spriteBatch.Draw(onesTexture, new Vector2(bounds.X + x + tensTexture.Width, bounds.Y + y), Color.White);
+        }
+
+        private void EnsureAssetsLoaded()
+        {
+            if (_assetsLoaded || _graphicsDevice == null)
+            {
+                return;
+            }
+
+            foreach (string imageName in UiImageNames)
+            {
+                WzImage uiImage = global::HaCreator.Program.FindImage("UI", imageName);
+                if (uiImage?.WzProperties == null)
+                {
+                    continue;
+                }
+
+                if (_backgroundTexture == null && TryFindSpaceGagaBoardCanvas(uiImage, out WzCanvasProperty boardCanvas))
+                {
+                    _backgroundTexture = LoadCanvasTexture(boardCanvas);
+                }
+
+                if (_digitTextures.Any(texture => texture == null) && TryFindSpaceGagaDigitContainer(uiImage, out WzImageProperty digitContainer))
+                {
+                    LoadDigitTextures(digitContainer);
+                }
+
+                if (_backgroundTexture != null && _digitTextures.All(texture => texture != null))
+                {
+                    break;
+                }
+            }
+
+            _assetsLoaded = true;
+        }
+
+        private bool TryFindSpaceGagaBoardCanvas(WzImage image, out WzCanvasProperty boardCanvas)
+        {
+            boardCanvas = null;
+            foreach (WzImageProperty property in EnumeratePropertiesDepthFirst(image))
+            {
+                if (property is not WzCanvasProperty canvas)
+                {
+                    continue;
+                }
+
+                using var bitmap = canvas.GetLinkedWzCanvasBitmap();
+                if (bitmap == null || bitmap.Width != TimerboardWidth || bitmap.Height != TimerboardHeight)
+                {
+                    continue;
+                }
+
+                boardCanvas = canvas;
+                return true;
+            }
+
+            return false;
+        }
+
+        private bool TryFindSpaceGagaDigitContainer(WzImage image, out WzImageProperty digitContainer)
+        {
+            digitContainer = null;
+            foreach (WzImageProperty property in EnumeratePropertiesDepthFirst(image))
+            {
+                if (!LooksLikeClockDigitContainer(property))
+                {
+                    continue;
+                }
+
+                digitContainer = property;
+                return true;
+            }
+
+            return false;
+        }
+
+        private static IEnumerable<WzImageProperty> EnumeratePropertiesDepthFirst(IPropertyContainer container)
+        {
+            if (container?.WzProperties == null)
+            {
+                yield break;
+            }
+
+            foreach (WzImageProperty child in container.WzProperties)
+            {
+                yield return child;
+                if (child is IPropertyContainer childContainer)
+                {
+                    foreach (WzImageProperty descendant in EnumeratePropertiesDepthFirst(childContainer))
+                    {
+                        yield return descendant;
+                    }
+                }
+            }
+        }
+
+        private static bool LooksLikeClockDigitContainer(WzImageProperty property)
+        {
+            if (property?.WzProperties == null)
+            {
+                return false;
+            }
+
+            for (int i = 0; i < 10; i++)
+            {
+                if (ResolveCanvas(property[i.ToString()]) == null)
+                {
+                    return false;
+                }
+            }
+
+            return ResolveCanvas(property["bar"]) != null
+                || ResolveCanvas(property["colon"]) != null
+                || ResolveCanvas(property["comma"]) != null;
+        }
+
+        private void LoadDigitTextures(WzImageProperty digitContainer)
+        {
+            for (int i = 0; i < _digitTextures.Length; i++)
+            {
+                _digitTextures[i] ??= LoadCanvasTexture(ResolveCanvas(digitContainer?[i.ToString()]));
+            }
+
+            _colonTexture ??= LoadCanvasTexture(
+                ResolveCanvas(digitContainer?["bar"])
+                ?? ResolveCanvas(digitContainer?["colon"])
+                ?? ResolveCanvas(digitContainer?["comma"]));
+        }
+
+        private static WzCanvasProperty ResolveCanvas(WzImageProperty property)
+        {
+            if (property is WzCanvasProperty canvas)
+            {
+                return canvas;
+            }
+
+            if (property?.WzProperties == null)
+            {
+                return null;
+            }
+
+            if (property["0"] is WzCanvasProperty indexedCanvas)
+            {
+                return indexedCanvas;
+            }
+
+            return property.WzProperties.OfType<WzCanvasProperty>().FirstOrDefault();
+        }
+
+        private Texture2D LoadCanvasTexture(WzCanvasProperty canvas)
+        {
+            if (_graphicsDevice == null || canvas == null)
+            {
+                return null;
+            }
+
+            try
+            {
+                using var bitmap = canvas.GetLinkedWzCanvasBitmap();
+                return bitmap?.ToTexture2DAndDispose(_graphicsDevice);
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
         private static string FormatTimer(int remainingSeconds)
         {
             int minutes = Math.Max(0, remainingSeconds) / 60;
@@ -3442,17 +4111,26 @@ namespace HaCreator.MapSimulator.Effects
         private const int TimerDividerY = 10;
         private const int TimerDividerWidth = 17;
         private const int TimerDividerHeight = 38;
-        private const int GaugeWidth = 259;
-        private const int GaugeHeight = 24;
-        private const int GaugeOffsetX = -66;
-        private const int GaugeY = 71;
-        private const int GaugeFillOffsetX = 10;
-        private const int GaugeFillOffsetY = 8;
-        private const int GaugeFillHeight = 8;
+        private const int GaugeWidth = 262;
+        private const int GaugeHeight = 9;
+        private const int GaugeOffsetX = -93;
+        private const int GaugeY = 78;
+        private const int GaugeFillOffsetX = 4;
+        private const int GaugeFillOffsetY = 6;
+        private const int GaugeLabelOffsetY = -8;
+        private const int GaugeFillHeight = 9;
         private const int KeyAnimationX = 7;
         private const int KeyAnimationY = 135;
-        private const int KeyStageDurationMs = 180;
         private const int ClearEffectDurationMs = 2200;
+        private const int DangerThresholdGauge = 25;
+        private const int BonusEffectY = 190;
+        private const int ResultBoardY = 115;
+        private const int ResultScoreX = 180;
+        private const int ResultScoreY = 144;
+        private const int ResultRankX = 98;
+        private const int ResultRankY = 101;
+        private const int ResultBackdrop2X = 245;
+        private const int ResultBackdrop2Y = 28;
 
         private bool _isActive;
         private int _mapId;
@@ -3482,6 +4160,35 @@ namespace HaCreator.MapSimulator.Effects
         private readonly List<MassacreCountEffect> _countEffects = new();
         private string _countEffectBannerText;
         private int _countEffectBannerUntilMs = int.MinValue;
+        private GraphicsDevice _device;
+        private bool _assetsLoaded;
+        private Texture2D _gaugeBackgroundTexture;
+        private Texture2D _gaugeTextTexture;
+        private Texture2D _gaugePixelTexture;
+        private Texture2D _timerboardEnabledTexture;
+        private Texture2D _timerboardDisabledTexture;
+        private readonly Texture2D[] _timerDigits = new Texture2D[10];
+        private readonly Texture2D[] _resultDigits = new Texture2D[10];
+        private Texture2D _resultPlusTexture;
+        private Texture2D _resultBoardTexture;
+        private readonly Dictionary<char, MassacreCanvasFrame> _rankTextures = new();
+        private List<MassacreCanvasFrame> _keyOpenFrames;
+        private List<MassacreCanvasFrame> _keyLoopFrames;
+        private List<MassacreCanvasFrame> _keyCloseFrames;
+        private List<MassacreCanvasFrame> _dangerFrames;
+        private List<MassacreCanvasFrame> _dangerIconFrames;
+        private List<MassacreCanvasFrame> _dangerTextFrames;
+        private List<MassacreCanvasFrame> _dangerBackgroundFrames;
+        private List<MassacreCanvasFrame> _bonusStageFrames;
+        private List<MassacreCanvasFrame> _bonusFrames;
+        private List<MassacreCanvasFrame> _resultClearFrames;
+        private List<MassacreCanvasFrame> _resultFailFrames;
+        private List<MassacreCanvasFrame> _resultBoardPulseFrames;
+        private int _bonusPresentationStartTick = int.MinValue;
+        private int _resultPresentationStartTick = int.MinValue;
+        private MassacreResultPresentation _resultPresentation = MassacreResultPresentation.None;
+        private char _resultRank = 'D';
+        private int _resultScore;
 
         public bool IsActive => _isActive;
         public int CurrentGauge => _currentGauge;
@@ -3493,6 +4200,8 @@ namespace HaCreator.MapSimulator.Effects
         public int KillCount => _killCount;
         public int ComboCount => _comboCount;
         public int TimerRemain => RemainingSeconds;
+        public bool HasBonusPresentation => _bonusPresentationStartTick != int.MinValue;
+        public bool HasResultPresentation => _resultPresentation != MassacreResultPresentation.None;
         public float GaugeProgress => Math.Clamp(_maxGauge <= 0 ? 0f : _displayGauge / _maxGauge, 0f, 1f);
         public bool HasRunningTimerboard => _timeOverTick != int.MinValue;
         public int RemainingSeconds
@@ -3620,6 +4329,11 @@ namespace HaCreator.MapSimulator.Effects
             _keyAnimationQueued = false;
             _countEffectBannerText = null;
             _countEffectBannerUntilMs = int.MinValue;
+            _bonusPresentationStartTick = int.MinValue;
+            _resultPresentationStartTick = int.MinValue;
+            _resultPresentation = MassacreResultPresentation.None;
+            _resultRank = 'D';
+            _resultScore = 0;
         }
 
         public void OnClock(int clockType, int durationSec, int currentTimeMs)
@@ -3725,6 +4439,13 @@ namespace HaCreator.MapSimulator.Effects
             {
                 _comboCount = 0;
             }
+
+            if (_bonusPresentationStartTick != int.MinValue
+                && !IsAnimationPlaying(_bonusStageFrames, currentTimeMs, _bonusPresentationStartTick, repeat: false)
+                && !IsAnimationPlaying(_bonusFrames, currentTimeMs, _bonusPresentationStartTick, repeat: false))
+            {
+                _bonusPresentationStartTick = int.MinValue;
+            }
         }
 
         public void Draw(SpriteBatch spriteBatch, Texture2D pixelTexture, SpriteFont font)
@@ -3734,10 +4455,13 @@ namespace HaCreator.MapSimulator.Effects
                 return;
             }
 
+            EnsureAssetsLoaded();
             Viewport viewport = spriteBatch.GraphicsDevice.Viewport;
             DrawTimerboard(spriteBatch, pixelTexture, font, viewport);
             DrawGaugeHud(spriteBatch, pixelTexture, font, viewport);
             DrawKeyAnimation(spriteBatch, pixelTexture, font);
+            DrawBonusPresentation(spriteBatch, font, viewport, Environment.TickCount);
+            DrawResultPresentation(spriteBatch, font, viewport, Environment.TickCount);
             DrawClearEffect(spriteBatch, pixelTexture, font, viewport);
         }
 
@@ -3753,7 +4477,9 @@ namespace HaCreator.MapSimulator.Effects
                 ? $", nextCountEffect={threshold}"
                 : string.Empty;
             string disableSkillText = _disableSkill ? ", skills=disabled" : string.Empty;
-            return $"Massacre map {_mapId}, timer={timerText}, gauge={_currentGauge}/{_maxGauge}, inc={_incGauge}, hitAdd={_defaultGaugeIncrease}, decay={_gaugeDec}/s, kills={_killCount}, combo={_comboCount}{disableSkillText}{nextCountEffect}";
+            string bonusText = HasBonusPresentation ? ", bonusFx=active" : string.Empty;
+            string resultText = HasResultPresentation ? $", result={_resultPresentation}:{_resultRank}:{_resultScore}" : string.Empty;
+            return $"Massacre map {_mapId}, timer={timerText}, gauge={_currentGauge}/{_maxGauge}, inc={_incGauge}, hitAdd={_defaultGaugeIncrease}, decay={_gaugeDec}/s, kills={_killCount}, combo={_comboCount}{disableSkillText}{nextCountEffect}{bonusText}{resultText}";
         }
 
         public void Reset()
@@ -3768,6 +4494,7 @@ namespace HaCreator.MapSimulator.Effects
             _mapDistance = 0;
             _disableSkill = false;
             _countEffects.Clear();
+            _assetsLoaded = false;
             ResetRoundState();
         }
 
@@ -3817,7 +4544,8 @@ namespace HaCreator.MapSimulator.Effects
                 _keyAnimationStageStart = currentTimeMs;
             }
 
-            if (currentTimeMs - _keyAnimationStageStart < KeyStageDurationMs)
+            List<MassacreCanvasFrame> frames = GetKeyFramesForStage(_keyAnimationStage);
+            if (frames == null || IsAnimationPlaying(frames, currentTimeMs, _keyAnimationStageStart, repeat: false))
             {
                 return;
             }
@@ -3841,10 +4569,10 @@ namespace HaCreator.MapSimulator.Effects
 
         private void TriggerClearEffect(int currentTimeMs)
         {
-            System.Diagnostics.Debug.WriteLine("[MassacreField] Clear effect triggered!");
             _showedClearEffect = true;
             _clearEffectActive = true;
             _clearEffectStartTime = currentTimeMs;
+            ShowResultPresentation(ShouldTreatTimerExpiryAsClear(), currentTimeMs);
         }
 
         private void DrawTimerboard(SpriteBatch spriteBatch, Texture2D pixelTexture, SpriteFont font, Viewport viewport)
@@ -3855,12 +4583,20 @@ namespace HaCreator.MapSimulator.Effects
             }
 
             Rectangle bounds = new(viewport.Width / 2 + TimerboardOffsetX, TimerboardY, TimerboardWidth, TimerboardHeight);
-            spriteBatch.Draw(pixelTexture, bounds, new Color(18, 21, 24, 228));
-            spriteBatch.Draw(pixelTexture, new Rectangle(bounds.X, bounds.Y, bounds.Width, 2), new Color(95, 127, 160, 255));
-            spriteBatch.Draw(pixelTexture, new Rectangle(bounds.X, bounds.Bottom - 2, bounds.Width, 2), new Color(34, 45, 58, 255));
+            Texture2D timerboardTexture = _disableSkill ? _timerboardDisabledTexture : _timerboardEnabledTexture;
+            if (timerboardTexture != null)
+            {
+                spriteBatch.Draw(timerboardTexture, new Vector2(bounds.X, bounds.Y), Color.White);
+            }
+            else
+            {
+                spriteBatch.Draw(pixelTexture, bounds, new Color(18, 21, 24, 228));
+                spriteBatch.Draw(pixelTexture, new Rectangle(bounds.X, bounds.Y, bounds.Width, 2), new Color(95, 127, 160, 255));
+                spriteBatch.Draw(pixelTexture, new Rectangle(bounds.X, bounds.Bottom - 2, bounds.Width, 2), new Color(34, 45, 58, 255));
 
-            Rectangle divider = new(bounds.X + TimerDividerX, bounds.Y + TimerDividerY, TimerDividerWidth, TimerDividerHeight);
-            spriteBatch.Draw(pixelTexture, divider, new Color(44, 53, 66, 255));
+                Rectangle divider = new(bounds.X + TimerDividerX, bounds.Y + TimerDividerY, TimerDividerWidth, TimerDividerHeight);
+                spriteBatch.Draw(pixelTexture, divider, new Color(44, 53, 66, 255));
+            }
 
             if (font == null)
             {
@@ -3872,27 +4608,48 @@ namespace HaCreator.MapSimulator.Effects
             string secondText = $"{remaining % 60:00}";
             Color timeColor = remaining <= 10 ? new Color(255, 170, 120) : new Color(232, 242, 255);
 
-            DrawDigitString(spriteBatch, font, minuteText, new Vector2(bounds.X + TimerMinuteTextX, bounds.Y + TimerTextY), timeColor);
-            DrawDigitString(spriteBatch, font, secondText, new Vector2(bounds.X + TimerSecondTextX, bounds.Y + TimerTextY), timeColor);
+            if (!TryDrawBitmapDigits(spriteBatch, _timerDigits, minuteText, new Vector2(bounds.X + TimerMinuteTextX, bounds.Y + TimerTextY))
+                || !TryDrawBitmapDigits(spriteBatch, _timerDigits, secondText, new Vector2(bounds.X + TimerSecondTextX, bounds.Y + TimerTextY)))
+            {
+                DrawDigitString(spriteBatch, font, minuteText, new Vector2(bounds.X + TimerMinuteTextX, bounds.Y + TimerTextY), timeColor);
+                DrawDigitString(spriteBatch, font, secondText, new Vector2(bounds.X + TimerSecondTextX, bounds.Y + TimerTextY), timeColor);
+            }
         }
 
         private void DrawGaugeHud(SpriteBatch spriteBatch, Texture2D pixelTexture, SpriteFont font, Viewport viewport)
         {
-            Rectangle bounds = new(viewport.Width / 2 + GaugeOffsetX, GaugeY, GaugeWidth, GaugeHeight);
-            Rectangle fillBounds = new(bounds.X + GaugeFillOffsetX, bounds.Y + GaugeFillOffsetY, GaugeWidth - (GaugeFillOffsetX * 2), GaugeFillHeight);
+            int gaugeX = viewport.Width / 2 + GaugeOffsetX;
+            Rectangle fillBounds = new(gaugeX + GaugeFillOffsetX, GaugeY + GaugeFillOffsetY, GaugeWidth, GaugeFillHeight);
 
-            spriteBatch.Draw(pixelTexture, bounds, new Color(25, 18, 16, 224));
-            spriteBatch.Draw(pixelTexture, fillBounds, new Color(54, 34, 25, 255));
+            if (_gaugeBackgroundTexture != null)
+            {
+                spriteBatch.Draw(_gaugeBackgroundTexture, new Vector2(gaugeX, GaugeY), Color.White);
+            }
+            else
+            {
+                Rectangle fallbackBounds = new(gaugeX, GaugeY, GaugeWidth + (GaugeFillOffsetX * 2), GaugeHeight + GaugeFillOffsetY);
+                spriteBatch.Draw(pixelTexture, fallbackBounds, new Color(25, 18, 16, 224));
+            }
 
             int fillWidth = Math.Clamp((int)MathF.Round(fillBounds.Width * GaugeProgress), 0, fillBounds.Width);
             if (fillWidth > 0)
             {
-                Color fillColor = GetGaugeColor(GaugeProgress);
-                spriteBatch.Draw(pixelTexture, new Rectangle(fillBounds.X, fillBounds.Y, fillWidth, fillBounds.Height), fillColor);
+                Texture2D gaugeFillTexture = _gaugePixelTexture ?? pixelTexture;
+                Color fillColor = _gaugePixelTexture != null ? Color.White : GetGaugeColor(GaugeProgress);
+                spriteBatch.Draw(gaugeFillTexture, new Rectangle(fillBounds.X, fillBounds.Y, fillWidth, fillBounds.Height), fillColor);
             }
 
-            spriteBatch.Draw(pixelTexture, new Rectangle(bounds.X, bounds.Y, bounds.Width, 1), new Color(185, 145, 83, 255));
-            spriteBatch.Draw(pixelTexture, new Rectangle(bounds.X, bounds.Bottom - 1, bounds.Width, 1), new Color(78, 54, 31, 255));
+            if (ShouldDrawDangerOverlay())
+            {
+                DrawAnimation(spriteBatch, _dangerBackgroundFrames, Environment.TickCount, 0, new Vector2(fillBounds.X, fillBounds.Y), repeat: true);
+                DrawAnimation(spriteBatch, _dangerFrames, Environment.TickCount, 0, new Vector2(fillBounds.Right - 115f, GaugeY - 2f), repeat: true);
+                DrawAnimation(spriteBatch, _dangerTextFrames, Environment.TickCount, 0, new Vector2(gaugeX - 3f, GaugeY - 3f), repeat: true);
+                DrawAnimation(spriteBatch, _dangerIconFrames, Environment.TickCount, 0, new Vector2(gaugeX + 214f, GaugeY - 5f), repeat: true);
+            }
+            else if (_gaugeTextTexture != null)
+            {
+                spriteBatch.Draw(_gaugeTextTexture, new Vector2(gaugeX, GaugeY + GaugeLabelOffsetY), Color.White);
+            }
 
             if (font == null)
             {
@@ -3906,20 +4663,25 @@ namespace HaCreator.MapSimulator.Effects
                 ? $"next {threshold}"
                 : null;
 
-            spriteBatch.DrawString(font, "MASSACRE", new Vector2(bounds.X + 8, bounds.Y - 20), new Color(238, 220, 191));
-            Vector2 gaugeValueSize = font.MeasureString(gaugeText);
-            spriteBatch.DrawString(font, gaugeText, new Vector2(bounds.Right - gaugeValueSize.X - 8, bounds.Y - 20), Color.White);
-            spriteBatch.DrawString(font, statusText, new Vector2(bounds.X + 8, bounds.Bottom + 4), statusColor);
+            Vector2 gaugeTextPos = new(gaugeX + 180, GaugeY + 14);
+            spriteBatch.DrawString(font, gaugeText, gaugeTextPos + Vector2.One, Color.Black);
+            spriteBatch.DrawString(font, gaugeText, gaugeTextPos, Color.White);
+
+            Vector2 infoPos = new(gaugeX + 10, GaugeY + 18);
+            spriteBatch.DrawString(font, statusText, infoPos + Vector2.One, Color.Black);
+            spriteBatch.DrawString(font, statusText, infoPos, statusColor);
             if (!string.IsNullOrWhiteSpace(nextThresholdText))
             {
                 Vector2 nextThresholdSize = font.MeasureString(nextThresholdText);
-                spriteBatch.DrawString(font, nextThresholdText, new Vector2(bounds.Right - nextThresholdSize.X - 8, bounds.Bottom + 4), new Color(214, 197, 166));
+                Vector2 nextPos = new(gaugeX + GaugeWidth - nextThresholdSize.X, GaugeY + 18);
+                spriteBatch.DrawString(font, nextThresholdText, nextPos + Vector2.One, Color.Black);
+                spriteBatch.DrawString(font, nextThresholdText, nextPos, new Color(214, 197, 166));
             }
 
             if (!string.IsNullOrWhiteSpace(_countEffectBannerText) && Environment.TickCount < _countEffectBannerUntilMs)
             {
                 Vector2 bannerSize = font.MeasureString(_countEffectBannerText);
-                Vector2 bannerPos = new(bounds.Center.X - (bannerSize.X / 2f), bounds.Bottom + 24);
+                Vector2 bannerPos = new((viewport.Width - bannerSize.X) / 2f, GaugeY + 34);
                 spriteBatch.DrawString(font, _countEffectBannerText, bannerPos + Vector2.One, Color.Black);
                 spriteBatch.DrawString(font, _countEffectBannerText, bannerPos, new Color(255, 223, 132));
             }
@@ -3932,25 +4694,8 @@ namespace HaCreator.MapSimulator.Effects
                 return;
             }
 
-            int elapsed = Environment.TickCount - _keyAnimationStageStart;
-            float normalized = 1f - Math.Clamp(elapsed / (float)KeyStageDurationMs, 0f, 1f);
-            float alpha = 0.35f + (normalized * 0.65f);
-            float widthScale = 1f + (_keyAnimationStage * 0.22f);
-            Rectangle pulse = new(
-                KeyAnimationX - (int)((18 * widthScale) / 2f),
-                KeyAnimationY - (_keyAnimationStage * 6),
-                (int)(72 * widthScale),
-                16);
-
-            Color pulseColor = _keyAnimationStage switch
-            {
-                0 => new Color(255, 213, 112),
-                1 => new Color(255, 165, 66),
-                _ => new Color(255, 118, 68)
-            };
-
-            spriteBatch.Draw(pixelTexture, pulse, pulseColor * alpha);
-            if (font != null)
+            List<MassacreCanvasFrame> frames = GetKeyFramesForStage(_keyAnimationStage);
+            if (!DrawAnimation(spriteBatch, frames, Environment.TickCount, _keyAnimationStageStart, new Vector2(KeyAnimationX, KeyAnimationY), repeat: false) && font != null)
             {
                 string text = _keyAnimationStage switch
                 {
@@ -3958,13 +4703,13 @@ namespace HaCreator.MapSimulator.Effects
                     1 => "KEY!",
                     _ => "KEY!!"
                 };
-                spriteBatch.DrawString(font, text, new Vector2(KeyAnimationX, KeyAnimationY - 22 - (_keyAnimationStage * 6)), Color.White * alpha);
+                spriteBatch.DrawString(font, text, new Vector2(KeyAnimationX, KeyAnimationY), Color.White);
             }
         }
 
         private void DrawClearEffect(SpriteBatch spriteBatch, Texture2D pixelTexture, SpriteFont font, Viewport viewport)
         {
-            if (!_clearEffectActive)
+            if (!_clearEffectActive || HasResultPresentation)
             {
                 return;
             }
@@ -4038,11 +4783,422 @@ namespace HaCreator.MapSimulator.Effects
                 string effectText = _countEffects[i].RequiresSkillUse ? " skill" : " buff";
                 _countEffectBannerText = $"{_countEffects[i].Threshold} kills{effectText}";
                 _countEffectBannerUntilMs = currentTimeMs + 1800;
+                _bonusPresentationStartTick = currentTimeMs;
                 return;
             }
         }
 
+        public void ShowResultPresentation(bool clear, int currentTimeMs, int? scoreOverride = null, char? rankOverride = null)
+        {
+            _resultPresentation = clear ? MassacreResultPresentation.Clear : MassacreResultPresentation.Fail;
+            _resultPresentationStartTick = currentTimeMs;
+            _resultScore = Math.Max(0, scoreOverride ?? _killCount);
+            _resultRank = NormalizeRank(rankOverride ?? ComputeResultRank());
+        }
+
+        public void ShowBonusPresentation(int currentTimeMs)
+        {
+            _bonusPresentationStartTick = currentTimeMs;
+        }
+
+        private void EnsureAssetsLoaded()
+        {
+            if (_assetsLoaded || _device == null)
+            {
+                return;
+            }
+
+            WzImage uiWindow = global::HaCreator.Program.FindImage("UI", "UIWindow2.img")
+                ?? global::HaCreator.Program.FindImage("UI", "UIWindow.img");
+            WzImage effectImage = global::HaCreator.Program.FindImage("Map", "Effect.img")
+                ?? global::HaCreator.Program.FindImage("Map", "effect.img");
+
+            WzImageProperty monsterKilling = uiWindow?["MonsterKilling"];
+            WzImageProperty count = monsterKilling?["Count"];
+            WzImageProperty gauge = monsterKilling?["Gauge"];
+            WzImageProperty result = monsterKilling?["Result"];
+
+            _timerboardDisabledTexture = LoadCanvasTexture(count?["backgrd0"] as WzCanvasProperty);
+            _timerboardEnabledTexture = LoadCanvasTexture(count?["backgrd1"] as WzCanvasProperty);
+            LoadDigitTextures(count?["number"], _timerDigits);
+
+            _gaugeBackgroundTexture = LoadCanvasTexture(gauge?["backgrd"] as WzCanvasProperty);
+            _gaugeTextTexture = LoadCanvasTexture(gauge?["text"] as WzCanvasProperty);
+            _gaugePixelTexture = LoadCanvasTexture(gauge?["pixel"] as WzCanvasProperty);
+            _dangerFrames = LoadAnimationFrames(gauge?["danger"]);
+            _dangerIconFrames = LoadAnimationFrames(gauge?["iconD"]);
+            _dangerTextFrames = LoadAnimationFrames(gauge?["textD"]);
+            _dangerBackgroundFrames = LoadAnimationFrames(gauge?["backgrdD"]);
+
+            _keyOpenFrames = LoadAnimationFrames(count?["keyBackgrd"]?["open"]);
+            _keyLoopFrames = LoadAnimationFrames(count?["keyBackgrd"]?["ing"]);
+            _keyCloseFrames = LoadAnimationFrames(count?["keyBackgrd"]?["close"]);
+
+            _resultBoardTexture = LoadCanvasTexture(result?["backgrd"] as WzCanvasProperty);
+            _resultBoardPulseFrames = LoadAnimationFrames(result?["backgrd2"]);
+            LoadDigitTextures(result?["number2"], _resultDigits, out _resultPlusTexture);
+            LoadRankTextures(result?["Rank"]);
+
+            WzImageProperty killing = effectImage?["killing"];
+            _resultClearFrames = LoadAnimationFrames(killing?["clear"]);
+            _resultFailFrames = LoadAnimationFrames(killing?["fail"]);
+            _bonusStageFrames = LoadAnimationFrames(killing?["bonus"]?["stage"]);
+            _bonusFrames = LoadAnimationFrames(killing?["bonus"]?["bonus"]);
+            _assetsLoaded = true;
+        }
+
+        private void DrawBonusPresentation(SpriteBatch spriteBatch, SpriteFont font, Viewport viewport, int currentTimeMs)
+        {
+            if (_bonusPresentationStartTick == int.MinValue)
+            {
+                return;
+            }
+
+            Vector2 anchor = new(viewport.Width / 2f, BonusEffectY);
+            bool drewStage = DrawAnimation(spriteBatch, _bonusStageFrames, currentTimeMs, _bonusPresentationStartTick, anchor, repeat: false);
+            bool drewBonus = DrawAnimation(spriteBatch, _bonusFrames, currentTimeMs, _bonusPresentationStartTick, anchor, repeat: false);
+            if (!drewStage && !drewBonus && font != null)
+            {
+                const string text = "BONUS";
+                Vector2 textSize = font.MeasureString(text);
+                Vector2 drawPos = new((viewport.Width - textSize.X) / 2f, BonusEffectY);
+                spriteBatch.DrawString(font, text, drawPos + Vector2.One, Color.Black);
+                spriteBatch.DrawString(font, text, drawPos, new Color(255, 223, 132));
+            }
+        }
+
+        private void DrawResultPresentation(SpriteBatch spriteBatch, SpriteFont font, Viewport viewport, int currentTimeMs)
+        {
+            if (_resultPresentation == MassacreResultPresentation.None || _resultPresentationStartTick == int.MinValue)
+            {
+                return;
+            }
+
+            Vector2 center = new(viewport.Width / 2f, viewport.Height / 2f);
+            DrawAnimation(
+                spriteBatch,
+                _resultPresentation == MassacreResultPresentation.Clear ? _resultClearFrames : _resultFailFrames,
+                currentTimeMs,
+                _resultPresentationStartTick,
+                center,
+                repeat: false);
+
+            if (_resultBoardTexture != null)
+            {
+                Vector2 boardPos = new((viewport.Width - _resultBoardTexture.Width) / 2f, ResultBoardY);
+                spriteBatch.Draw(_resultBoardTexture, boardPos, Color.White);
+                DrawAnimation(spriteBatch, _resultBoardPulseFrames, currentTimeMs, _resultPresentationStartTick, boardPos + new Vector2(ResultBackdrop2X, ResultBackdrop2Y), repeat: false);
+                DrawResultRank(spriteBatch, boardPos + new Vector2(ResultRankX, ResultRankY));
+                DrawBitmapNumber(spriteBatch, _resultDigits, _resultScore.ToString(), boardPos + new Vector2(ResultScoreX, ResultScoreY), _resultPlusTexture, includePlus: false);
+                return;
+            }
+
+            if (font != null)
+            {
+                string fallback = $"{_resultPresentation} {_resultScore}";
+                Vector2 size = font.MeasureString(fallback);
+                Vector2 pos = new((viewport.Width - size.X) / 2f, ResultBoardY);
+                spriteBatch.DrawString(font, fallback, pos + Vector2.One, Color.Black);
+                spriteBatch.DrawString(font, fallback, pos, Color.White);
+            }
+        }
+
+        private void DrawResultRank(SpriteBatch spriteBatch, Vector2 topLeft)
+        {
+            if (_rankTextures.TryGetValue(_resultRank, out MassacreCanvasFrame rankTexture) && rankTexture.Texture != null)
+            {
+                spriteBatch.Draw(rankTexture.Texture, topLeft, Color.White);
+            }
+        }
+
+        private void DrawBitmapNumber(SpriteBatch spriteBatch, Texture2D[] digits, string text, Vector2 topLeft, Texture2D specialTexture = null, bool includePlus = false)
+        {
+            if (digits == null || digits.All(texture => texture == null))
+            {
+                return;
+            }
+
+            float x = topLeft.X;
+            if (includePlus && specialTexture != null)
+            {
+                spriteBatch.Draw(specialTexture, new Vector2(x, topLeft.Y), Color.White);
+                x += specialTexture.Width;
+            }
+
+            foreach (char digitChar in text)
+            {
+                if (digitChar is < '0' or > '9')
+                {
+                    continue;
+                }
+
+                Texture2D digitTexture = digits[digitChar - '0'];
+                if (digitTexture == null)
+                {
+                    continue;
+                }
+
+                spriteBatch.Draw(digitTexture, new Vector2(x, topLeft.Y), Color.White);
+                x += digitTexture.Width;
+            }
+        }
+
+        private static bool TryDrawBitmapDigits(SpriteBatch spriteBatch, Texture2D[] digits, string text, Vector2 position)
+        {
+            if (digits == null || text == null || digits.Any(texture => texture == null))
+            {
+                return false;
+            }
+
+            float x = position.X;
+            foreach (char digitChar in text)
+            {
+                if (digitChar is < '0' or > '9')
+                {
+                    return false;
+                }
+
+                Texture2D digitTexture = digits[digitChar - '0'];
+                spriteBatch.Draw(digitTexture, new Vector2(x, position.Y), Color.White);
+                x += digitTexture.Width;
+            }
+
+            return true;
+        }
+
+        private static bool IsAnimationPlaying(IReadOnlyList<MassacreCanvasFrame> frames, int currentTimeMs, int startTick, bool repeat)
+        {
+            if (frames == null || frames.Count == 0 || startTick == int.MinValue)
+            {
+                return false;
+            }
+
+            if (repeat)
+            {
+                return true;
+            }
+
+            int duration = frames.Sum(frame => Math.Max(1, frame.Delay));
+            return currentTimeMs - startTick < duration;
+        }
+
+        private bool DrawAnimation(SpriteBatch spriteBatch, IReadOnlyList<MassacreCanvasFrame> frames, int currentTimeMs, int startTick, Vector2 anchor, bool repeat)
+        {
+            if (frames == null || frames.Count == 0 || startTick == int.MinValue)
+            {
+                return false;
+            }
+
+            MassacreCanvasFrame frame = ResolveAnimationFrame(frames, currentTimeMs, startTick, repeat);
+            if (frame.Texture == null)
+            {
+                return false;
+            }
+
+            Vector2 drawPos = new(anchor.X - frame.Origin.X, anchor.Y - frame.Origin.Y);
+            spriteBatch.Draw(frame.Texture, drawPos, Color.White);
+            return true;
+        }
+
+        private static MassacreCanvasFrame ResolveAnimationFrame(IReadOnlyList<MassacreCanvasFrame> frames, int currentTimeMs, int startTick, bool repeat)
+        {
+            if (frames == null || frames.Count == 0)
+            {
+                return default;
+            }
+
+            long elapsed = Math.Max(0, currentTimeMs - startTick);
+            int totalDuration = frames.Sum(frame => Math.Max(1, frame.Delay));
+            if (repeat && totalDuration > 0)
+            {
+                elapsed %= totalDuration;
+            }
+
+            int cursor = 0;
+            foreach (MassacreCanvasFrame frame in frames)
+            {
+                cursor += Math.Max(1, frame.Delay);
+                if (elapsed < cursor)
+                {
+                    return frame;
+                }
+            }
+
+            return frames[^1];
+        }
+
+        private static MassacreCanvasFrame LoadFrame(WzCanvasProperty canvas, GraphicsDevice device)
+        {
+            if (device == null || canvas == null)
+            {
+                return default;
+            }
+
+            using var bitmap = canvas.GetLinkedWzCanvasBitmap();
+            Texture2D texture = bitmap?.ToTexture2DAndDispose(device);
+            if (texture == null)
+            {
+                return default;
+            }
+
+            System.Drawing.PointF origin = canvas.GetCanvasOriginPosition();
+            return new MassacreCanvasFrame(
+                texture,
+                new Point((int)origin.X, (int)origin.Y),
+                Math.Max(1, canvas["delay"]?.GetInt() ?? 100));
+        }
+
+        private Texture2D LoadCanvasTexture(WzCanvasProperty canvas)
+        {
+            MassacreCanvasFrame frame = LoadFrame(canvas, _device);
+            return frame.Texture;
+        }
+
+        private List<MassacreCanvasFrame> LoadAnimationFrames(WzImageProperty root)
+        {
+            if (_device == null || root?.WzProperties == null)
+            {
+                return null;
+            }
+
+            var frames = new List<MassacreCanvasFrame>();
+            foreach (WzImageProperty child in root.WzProperties.OrderBy(ParseFrameOrder))
+            {
+                WzCanvasProperty canvas = ResolveCanvas(child);
+                if (canvas == null)
+                {
+                    continue;
+                }
+
+                MassacreCanvasFrame frame = LoadFrame(canvas, _device);
+                if (frame.Texture != null)
+                {
+                    frames.Add(frame);
+                }
+            }
+
+            return frames.Count > 0 ? frames : null;
+        }
+
+        private void LoadDigitTextures(WzImageProperty source, Texture2D[] destination)
+        {
+            LoadDigitTextures(source, destination, out _);
+        }
+
+        private void LoadDigitTextures(WzImageProperty source, Texture2D[] destination, out Texture2D plusTexture)
+        {
+            plusTexture = null;
+            if (destination == null)
+            {
+                return;
+            }
+
+            for (int i = 0; i < destination.Length; i++)
+            {
+                destination[i] ??= LoadCanvasTexture(ResolveCanvas(source?[i.ToString()]));
+            }
+
+            plusTexture = LoadCanvasTexture(ResolveCanvas(source?["plus"]));
+        }
+
+        private void LoadRankTextures(WzImageProperty source)
+        {
+            foreach (char rank in new[] { 'S', 'A', 'B', 'C', 'D' })
+            {
+                if (_rankTextures.ContainsKey(rank))
+                {
+                    continue;
+                }
+
+                WzCanvasProperty canvas = ResolveCanvas(source?[char.ToLowerInvariant(rank).ToString()]);
+                MassacreCanvasFrame frame = LoadFrame(canvas, _device);
+                if (frame.Texture != null)
+                {
+                    _rankTextures[rank] = frame;
+                }
+            }
+        }
+
+        private static WzCanvasProperty ResolveCanvas(WzImageProperty property)
+        {
+            if (WzInfoTools.GetRealProperty(property) is WzCanvasProperty resolvedCanvas)
+            {
+                return resolvedCanvas;
+            }
+
+            if (property?.WzProperties == null)
+            {
+                return null;
+            }
+
+            if (property["0"] is WzCanvasProperty indexedCanvas)
+            {
+                return indexedCanvas;
+            }
+
+            return property.WzProperties.OfType<WzCanvasProperty>().FirstOrDefault();
+        }
+
+        private static int ParseFrameOrder(WzImageProperty property)
+        {
+            return int.TryParse(property?.Name, out int order) ? order : int.MaxValue;
+        }
+
+        private List<MassacreCanvasFrame> GetKeyFramesForStage(int stage)
+        {
+            return stage switch
+            {
+                0 => _keyOpenFrames,
+                1 => _keyLoopFrames,
+                2 => _keyCloseFrames,
+                _ => null
+            };
+        }
+
+        private bool ShouldDrawDangerOverlay()
+        {
+            return _currentGauge > 0 && _currentGauge <= DangerThresholdGauge;
+        }
+
+        private bool ShouldTreatTimerExpiryAsClear()
+        {
+            return _currentGauge >= _maxGauge
+                || (_countEffects.Count > 0 && _killCount >= _countEffects[^1].Threshold);
+        }
+
+        private char ComputeResultRank()
+        {
+            float progress = Math.Clamp(_maxGauge <= 0 ? 0f : _currentGauge / (float)_maxGauge, 0f, 1f);
+            return progress switch
+            {
+                >= 1f => 'S',
+                >= 0.8f => 'A',
+                >= 0.6f => 'B',
+                >= 0.35f => 'C',
+                _ => 'D'
+            };
+        }
+
+        private static char NormalizeRank(char rank)
+        {
+            return char.ToUpperInvariant(rank) switch
+            {
+                'S' => 'S',
+                'A' => 'A',
+                'B' => 'B',
+                'C' => 'C',
+                _ => 'D'
+            };
+        }
+
+        private readonly record struct MassacreCanvasFrame(Texture2D Texture, Point Origin, int Delay);
         private readonly record struct MassacreCountEffect(int Threshold, int? BuffItemId, bool RequiresSkillUse);
+        private enum MassacreResultPresentation
+        {
+            None,
+            Clear,
+            Fail
+        }
     }
     #endregion
 }

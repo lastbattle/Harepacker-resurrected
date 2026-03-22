@@ -183,6 +183,24 @@ namespace HaCreator.MapSimulator.AI
         /// <summary>Cooldown between uses (ms)</summary>
         public int Cooldown { get; set; }
 
+        /// <summary>Original WZ slot index from Mob.wz info/skill</summary>
+        public int SourceIndex { get; set; } = -1;
+
+        /// <summary>Priority hint from Mob.wz info/skill/priority</summary>
+        public int Priority { get; set; }
+
+        /// <summary>Prerequisite WZ slot index from preSkillIndex</summary>
+        public int PreSkillIndex { get; set; } = -1;
+
+        /// <summary>Required prerequisite use count from preSkillCount</summary>
+        public int PreSkillCount { get; set; }
+
+        /// <summary>True when the skill is marked onlyFsm and should not be chosen by generic AI</summary>
+        public bool OnlyFsm { get; set; }
+
+        /// <summary>Global skill lockout duration from skillForbid</summary>
+        public int SkillForbid { get; set; }
+
         /// <summary>Runtime: Last time this skill was used</summary>
         public int LastUseTime { get; set; }
 
@@ -281,6 +299,8 @@ namespace HaCreator.MapSimulator.AI
         private int _currentSkillIndex = -1;
         private MobTargetInfo _target = new MobTargetInfo();
         private readonly List<MobDamageInfo> _damageDisplays = new List<MobDamageInfo>();
+        private readonly Dictionary<int, int> _skillUseCounts = new Dictionary<int, int>();
+        private int _skillForbidUntil = 0;
 
         // Stats
         private int _maxHp = 100;
@@ -352,7 +372,7 @@ namespace HaCreator.MapSimulator.AI
         public int StateElapsed(int currentTick) => currentTick - _stateStartTime;
         public IReadOnlyDictionary<MobStatusEffect, MobStatusEntry> StatusEntries => _statusEntries;
         public bool IsEscortMob => _isEscortMob;
-        public bool CanTargetPlayer => _canTargetPlayer;
+        public bool CanTargetPlayer => CanTargetPlayerNow;
         public bool IsTargetingSummoned => _target.IsValid && _target.TargetType == MobTargetType.Summoned;
         public bool IsTargetingMob => _target.IsValid && _target.TargetType == MobTargetType.Mob;
         public bool HasAngerGauge => _hasAngerGauge && _angerChargeTarget > 0;
@@ -367,6 +387,7 @@ namespace HaCreator.MapSimulator.AI
         public bool IsFrozen => HasStatusEffect(MobStatusEffect.Freeze);
         public bool IsPoisoned => HasStatusEffect(MobStatusEffect.Poison);
         public bool IsSealed => HasStatusEffect(MobStatusEffect.Seal);
+        public bool IsDoomed => HasStatusEffect(MobStatusEffect.Doom);
         public bool IsHypnotized => HasStatusEffect(MobStatusEffect.Hypnotize);
 
         // Controller properties
@@ -634,7 +655,7 @@ namespace HaCreator.MapSimulator.AI
                 return;
             }
 
-            if (!_canTargetPlayer)
+            if (!CanTargetPlayerNow)
             {
                 _target.IsValid = false;
                 _target.Distance = float.MaxValue;
@@ -894,7 +915,7 @@ namespace HaCreator.MapSimulator.AI
             AddDamageDisplay(damage, currentTick, isCritical);
 
             // AGGRO: When hit, the mob should chase the attacker (unless boss aggro timed out)
-            if (_canTargetPlayer && attackerX.HasValue && attackerY.HasValue && !_bossAggroTimedOut)
+            if (CanTargetPlayerNow && attackerX.HasValue && attackerY.HasValue && !_bossAggroTimedOut)
             {
                 // Set/update target to attacker position - this triggers aggro
                 _target.TargetX = attackerX.Value;
@@ -919,7 +940,7 @@ namespace HaCreator.MapSimulator.AI
             {
                 SetState(MobAIState.Hit, currentTick);
             }
-            else if (_canTargetPlayer && _isBoss && attackerX.HasValue && !_bossAggroTimedOut)
+            else if (CanTargetPlayerNow && _isBoss && attackerX.HasValue && !_bossAggroTimedOut)
             {
                 // Bosses don't stun but still aggro - go straight to chase
                 if (_state == MobAIState.Idle || _state == MobAIState.Patrol)
@@ -954,7 +975,7 @@ namespace HaCreator.MapSimulator.AI
             if (IsDead)
                 return;
 
-            if (!_canTargetPlayer && targetType == MobTargetType.Player)
+            if (!CanTargetPlayerNow && targetType == MobTargetType.Player)
                 return;
 
             // Don't aggro if boss aggro has timed out
@@ -1209,6 +1230,11 @@ namespace HaCreator.MapSimulator.AI
                 slowPercent += GetStatusPercentOrDefault(MobStatusEffect.Weakness, 20);
             }
 
+            if (IsDoomed)
+            {
+                slowPercent += 65;
+            }
+
             float statusMultiplier = 1f + (speedPercent - slowPercent) / 100f;
             return Math.Max(0f, baseMultiplier * Math.Max(0f, statusMultiplier));
         }
@@ -1247,6 +1273,8 @@ namespace HaCreator.MapSimulator.AI
             _selfDestructTriggered = false;
             _selfDestructPending = false;
             _angerChargeCount = 0;
+            _skillUseCounts.Clear();
+            _skillForbidUntil = 0;
 
             // Reset boss aggro timeout state
             _bossAggroStartTime = 0;
@@ -1541,7 +1569,7 @@ namespace HaCreator.MapSimulator.AI
         #region Helpers
         private int FindAvailableAttackIndex(int currentTick)
         {
-            if (!_target.IsValid || (_target.TargetType == MobTargetType.Player && !_canTargetPlayer))
+            if (IsDoomed || !_target.IsValid || (_target.TargetType == MobTargetType.Player && !CanTargetPlayerNow))
             {
                 return -1;
             }
@@ -1578,20 +1606,46 @@ namespace HaCreator.MapSimulator.AI
 
         private int FindAvailableSkillIndex(int currentTick)
         {
-            if (IsSealed || HasStatusEffect(MobStatusEffect.SealSkill) || !_target.IsValid || (_target.TargetType == MobTargetType.Player && !_canTargetPlayer))
+            if (IsDoomed || IsSealed || HasStatusEffect(MobStatusEffect.SealSkill) || !_target.IsValid || (_target.TargetType == MobTargetType.Player && !CanTargetPlayerNow))
             {
                 return -1;
             }
 
+            if (currentTick < _skillForbidUntil)
+            {
+                return -1;
+            }
+
+            int bestSkillIndex = -1;
+            int bestPriority = int.MinValue;
+            bool bestHasPrerequisite = false;
+
             for (int i = 0; i < _skills.Count; i++)
             {
-                if (!_skills[i].IsOnCooldown(currentTick) && _target.Distance <= _skills[i].Range)
+                MobSkillEntry skill = _skills[i];
+                if (!CanAutoSelectSkill(skill, currentTick))
                 {
-                    return i;
+                    continue;
+                }
+
+                bool hasPrerequisite = skill.PreSkillCount > 0;
+                int priority = skill.Priority;
+                if (hasPrerequisite)
+                {
+                    priority += 100;
+                }
+
+                if (bestSkillIndex < 0 ||
+                    priority > bestPriority ||
+                    (priority == bestPriority && hasPrerequisite && !bestHasPrerequisite))
+                {
+                    bestSkillIndex = i;
+                    bestPriority = priority;
+                    bestHasPrerequisite = hasPrerequisite;
                 }
             }
 
-            return -1;
+            return bestSkillIndex;
         }
 
         private bool ShouldPreferSkill(MobSkillEntry skill, MobAttackEntry attack)
@@ -1602,6 +1656,16 @@ namespace HaCreator.MapSimulator.AI
             }
 
             if (attack == null)
+            {
+                return true;
+            }
+
+            if (skill.PreSkillCount > 0 || skill.SkillForbid > 0)
+            {
+                return true;
+            }
+
+            if (skill.Priority > 1)
             {
                 return true;
             }
@@ -1639,7 +1703,9 @@ namespace HaCreator.MapSimulator.AI
             }
 
             _currentSkillIndex = skillIndex;
-            _skills[skillIndex].LastUseTime = currentTick;
+            MobSkillEntry skill = _skills[skillIndex];
+            skill.LastUseTime = currentTick;
+            RegisterSkillUsage(skill, currentTick);
             TransitionToActionState(MobAIState.Skill, currentTick);
         }
 
@@ -1657,7 +1723,7 @@ namespace HaCreator.MapSimulator.AI
 
         private bool TryChainNextCombatAction(int currentTick)
         {
-            if (!_target.IsValid || (_target.TargetType == MobTargetType.Player && !_canTargetPlayer))
+            if (!_target.IsValid || (_target.TargetType == MobTargetType.Player && !CanTargetPlayerNow))
             {
                 return false;
             }
@@ -1726,12 +1792,68 @@ namespace HaCreator.MapSimulator.AI
             return 250;
         }
 
+        private bool CanAutoSelectSkill(MobSkillEntry skill, int currentTick)
+        {
+            if (skill == null ||
+                skill.OnlyFsm ||
+                skill.IsOnCooldown(currentTick) ||
+                _target.Distance > skill.Range)
+            {
+                return false;
+            }
+
+            return IsSkillPrerequisiteSatisfied(skill);
+        }
+
+        private bool IsSkillPrerequisiteSatisfied(MobSkillEntry skill)
+        {
+            if (skill == null || skill.PreSkillCount <= 0)
+            {
+                return true;
+            }
+
+            if (skill.PreSkillIndex < 0)
+            {
+                return false;
+            }
+
+            return _skillUseCounts.TryGetValue(skill.PreSkillIndex, out int useCount) &&
+                   useCount >= skill.PreSkillCount;
+        }
+
+        private void RegisterSkillUsage(MobSkillEntry skill, int currentTick)
+        {
+            if (skill == null)
+            {
+                return;
+            }
+
+            if (skill.SourceIndex >= 0)
+            {
+                _skillUseCounts[skill.SourceIndex] = _skillUseCounts.TryGetValue(skill.SourceIndex, out int useCount)
+                    ? useCount + 1
+                    : 1;
+            }
+
+            if (skill.PreSkillCount > 0 && skill.PreSkillIndex >= 0)
+            {
+                _skillUseCounts[skill.PreSkillIndex] = 0;
+            }
+
+            if (skill.SkillForbid > 0)
+            {
+                _skillForbidUntil = Math.Max(_skillForbidUntil, currentTick + skill.SkillForbid);
+            }
+        }
+
         private static bool IsDotEffect(MobStatusEffect effect)
         {
             return effect == MobStatusEffect.Poison ||
                    effect == MobStatusEffect.Venom ||
                    effect == MobStatusEffect.Burned;
         }
+
+        private bool CanTargetPlayerNow => _canTargetPlayer && !IsHypnotized;
 
         private int GetStatusPercent(MobStatusEffect effect)
         {

@@ -48,6 +48,7 @@ namespace HaCreator.MapSimulator.Managers
             string key = ResolveCharacterKey(build);
             if (_destinationsByCharacter.TryGetValue(key, out List<MapTransferDestinationRecord> destinations))
             {
+                destinations.Sort((left, right) => left.SlotIndex.CompareTo(right.SlotIndex));
                 return destinations;
             }
 
@@ -80,22 +81,91 @@ namespace HaCreator.MapSimulator.Managers
                 return false;
             }
 
+            int slotIndex = FindFirstEmptySlot(build, maxCapacity);
+            if (slotIndex < 0)
+            {
+                return false;
+            }
+
+            destination.SlotIndex = slotIndex;
+            return SetSlot(build, slotIndex, destination, maxCapacity);
+        }
+
+        public int FindSlot(CharacterBuild build, int mapId)
+        {
+            if (mapId <= 0)
+            {
+                return -1;
+            }
+
+            IReadOnlyList<MapTransferDestinationRecord> destinations = GetDestinations(build);
+            for (int i = 0; i < destinations.Count; i++)
+            {
+                if (destinations[i].MapId == mapId)
+                {
+                    return destinations[i].SlotIndex;
+                }
+            }
+
+            return -1;
+        }
+
+        public int FindFirstEmptySlot(CharacterBuild build, int maxCapacity)
+        {
+            if (maxCapacity <= 0)
+            {
+                return -1;
+            }
+
+            bool[] occupiedSlots = new bool[maxCapacity];
+            IReadOnlyList<MapTransferDestinationRecord> destinations = GetDestinations(build);
+            for (int i = 0; i < destinations.Count; i++)
+            {
+                int slotIndex = destinations[i].SlotIndex;
+                if (slotIndex >= 0 && slotIndex < maxCapacity)
+                {
+                    occupiedSlots[slotIndex] = true;
+                }
+            }
+
+            for (int slotIndex = 0; slotIndex < occupiedSlots.Length; slotIndex++)
+            {
+                if (!occupiedSlots[slotIndex])
+                {
+                    return slotIndex;
+                }
+            }
+
+            return -1;
+        }
+
+        public bool SetSlot(CharacterBuild build, int slotIndex, MapTransferDestinationRecord destination, int maxCapacity)
+        {
+            if (destination == null || destination.MapId <= 0 || maxCapacity <= 0 || slotIndex < 0 || slotIndex >= maxCapacity)
+            {
+                return false;
+            }
+
             string key = ResolveCharacterKey(build);
             List<MapTransferDestinationRecord> destinations = GetOrCreateBucket(key);
-            if (destinations.Count >= maxCapacity)
+            int existingSlotIndex = FindSlot(build, destination.MapId);
+            if (existingSlotIndex >= 0 && existingSlotIndex != slotIndex)
             {
                 return false;
             }
 
             for (int i = 0; i < destinations.Count; i++)
             {
-                if (destinations[i].MapId == destination.MapId)
+                if (destinations[i].SlotIndex == slotIndex)
                 {
-                    return false;
+                    destinations.RemoveAt(i);
+                    break;
                 }
             }
 
+            destination.SlotIndex = slotIndex;
             destinations.Add(destination);
+            destinations.Sort((left, right) => left.SlotIndex.CompareTo(right.SlotIndex));
             SaveToDisk();
             return true;
         }
@@ -127,6 +197,33 @@ namespace HaCreator.MapSimulator.Managers
             return removedCount > 0;
         }
 
+        public bool ClearSlot(CharacterBuild build, int slotIndex)
+        {
+            if (slotIndex < 0)
+            {
+                return false;
+            }
+
+            string key = ResolveCharacterKey(build);
+            if (!_destinationsByCharacter.TryGetValue(key, out List<MapTransferDestinationRecord> destinations))
+            {
+                return false;
+            }
+
+            int removedCount = destinations.RemoveAll(destination => destination.SlotIndex == slotIndex);
+            if (destinations.Count == 0)
+            {
+                _destinationsByCharacter.Remove(key);
+            }
+
+            if (removedCount > 0)
+            {
+                SaveToDisk();
+            }
+
+            return removedCount > 0;
+        }
+
         public bool Replace(CharacterBuild build, int existingMapId, MapTransferDestinationRecord destination, int maxCapacity)
         {
             if (destination == null || destination.MapId <= 0 || maxCapacity <= 0)
@@ -134,41 +231,15 @@ namespace HaCreator.MapSimulator.Managers
                 return false;
             }
 
-            string key = ResolveCharacterKey(build);
-            List<MapTransferDestinationRecord> destinations = GetOrCreateBucket(key);
-            int existingIndex = existingMapId > 0
-                ? destinations.FindIndex(record => record.MapId == existingMapId)
+            int slotIndex = existingMapId > 0
+                ? FindSlot(build, existingMapId)
                 : -1;
-
-            for (int i = 0; i < destinations.Count; i++)
+            if (slotIndex < 0)
             {
-                if (i == existingIndex)
-                {
-                    continue;
-                }
-
-                if (destinations[i].MapId == destination.MapId)
-                {
-                    return false;
-                }
+                slotIndex = FindFirstEmptySlot(build, maxCapacity);
             }
 
-            if (existingIndex >= 0)
-            {
-                destinations[existingIndex] = destination;
-            }
-            else
-            {
-                if (destinations.Count >= maxCapacity)
-                {
-                    return false;
-                }
-
-                destinations.Add(destination);
-            }
-
-            SaveToDisk();
-            return true;
+            return slotIndex >= 0 && SetSlot(build, slotIndex, destination, maxCapacity);
         }
 
         private List<MapTransferDestinationRecord> GetOrCreateBucket(string key)
@@ -226,9 +297,34 @@ namespace HaCreator.MapSimulator.Managers
                         continue;
                     }
 
-                    List<MapTransferDestinationRecord> destinations = entry.Value?
-                        .FindAll(destination => destination != null && destination.MapId > 0)
-                        ?? new List<MapTransferDestinationRecord>();
+                    List<MapTransferDestinationRecord> destinations = new List<MapTransferDestinationRecord>();
+                    HashSet<int> usedSlots = new HashSet<int>();
+                    int nextMigratedSlotIndex = 0;
+                    foreach (MapTransferDestinationRecord destination in entry.Value ?? new List<MapTransferDestinationRecord>())
+                    {
+                        if (destination == null || destination.MapId <= 0)
+                        {
+                            continue;
+                        }
+
+                        int slotIndex = destination.SlotIndex >= 0 && usedSlots.Add(destination.SlotIndex)
+                            ? destination.SlotIndex
+                            : nextMigratedSlotIndex;
+                        while (usedSlots.Contains(nextMigratedSlotIndex))
+                        {
+                            nextMigratedSlotIndex++;
+                        }
+
+                        usedSlots.Add(slotIndex);
+                        destinations.Add(new MapTransferDestinationRecord
+                        {
+                            SlotIndex = slotIndex,
+                            MapId = destination.MapId,
+                            DisplayName = destination.DisplayName
+                        });
+                    }
+
+                    destinations.Sort((left, right) => left.SlotIndex.CompareTo(right.SlotIndex));
 
                     if (destinations.Count > 0)
                     {
@@ -268,6 +364,7 @@ namespace HaCreator.MapSimulator.Managers
 
     public sealed class MapTransferDestinationRecord
     {
+        public int SlotIndex { get; set; } = -1;
         public int MapId { get; init; }
         public string DisplayName { get; init; }
     }
