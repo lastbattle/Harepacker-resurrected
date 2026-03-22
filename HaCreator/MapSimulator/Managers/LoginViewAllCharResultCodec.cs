@@ -104,7 +104,9 @@ namespace HaCreator.MapSimulator.Managers
                                 PlayTime = entry.PlayTime,
                                 OnFamily = entry.OnFamily,
                                 WorldRank = entry.WorldRank,
+                                WorldRankMove = entry.WorldRankMove,
                                 JobRank = entry.JobRank,
+                                JobRankMove = entry.JobRankMove,
                                 AvatarLook = entry.AvatarLook,
                                 AvatarLookPacket = entry.AvatarLookPacket
                             });

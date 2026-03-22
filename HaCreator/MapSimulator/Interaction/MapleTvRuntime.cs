@@ -272,7 +272,7 @@ namespace HaCreator.MapSimulator.Interaction
             return _statusMessage;
         }
 
-        internal string SetItem(int itemId, string itemName)
+        internal string SetItem(int itemId, string itemName, string itemDescription = null)
         {
             if (itemId < 0)
             {
@@ -283,7 +283,7 @@ namespace HaCreator.MapSimulator.Interaction
             _itemName = string.IsNullOrWhiteSpace(itemName)
                 ? (itemId > 0 ? $"Item #{itemId}" : _defaultItemName)
                 : itemName.Trim();
-            MapleTvItemProfile profile = MapleTvItemProfile.Resolve(itemId, _itemName, _defaultItemId, _defaultItemName, _defaultMediaIndex);
+            MapleTvItemProfile profile = MapleTvItemProfile.Resolve(itemId, _itemName, itemDescription, _defaultItemId, _defaultItemName, _defaultMediaIndex);
             ApplyItemProfile(profile, preserveReceiverSelection: false);
             _statusMessage = itemId > 0
                 ? $"MapleTV item {_itemName} ({itemId}) applied: media {_resolvedMediaIndex}, duration {_draftDurationMs} ms."
@@ -630,7 +630,7 @@ namespace HaCreator.MapSimulator.Interaction
             return new MapleTvItemProfile(Math.Max(0, itemId), name, Math.Max(0, defaultMediaIndex), defaultDurationMs, MapleTvAudienceMode.Flexible);
         }
 
-        internal static MapleTvItemProfile Resolve(int itemId, string itemName, int defaultItemId, string defaultItemName, int defaultMediaIndex)
+        internal static MapleTvItemProfile Resolve(int itemId, string itemName, string itemDescription, int defaultItemId, string defaultItemName, int defaultMediaIndex)
         {
             if (itemId <= 0)
             {
@@ -640,15 +640,43 @@ namespace HaCreator.MapSimulator.Interaction
             int alternateMediaA = defaultMediaIndex == 0 ? 1 : 0;
             int alternateMediaB = defaultMediaIndex <= 1 ? 2 : 1;
             string resolvedName = string.IsNullOrWhiteSpace(itemName) ? $"Item #{itemId}" : itemName.Trim();
+            string normalizedDescription = itemDescription ?? string.Empty;
 
+            MapleTvAudienceMode audienceMode =
+                normalizedDescription.IndexOf("only announcement type of message", StringComparison.OrdinalIgnoreCase) >= 0
+                || normalizedDescription.IndexOf("only supports sender-only", StringComparison.OrdinalIgnoreCase) >= 0
+                    ? MapleTvAudienceMode.SenderOnly
+                    : normalizedDescription.IndexOf("only allows dedication type", StringComparison.OrdinalIgnoreCase) >= 0
+                      || normalizedDescription.IndexOf("designated user also appears", StringComparison.OrdinalIgnoreCase) >= 0
+                        ? MapleTvAudienceMode.ReceiverRequired
+                        : MapleTvAudienceMode.Flexible;
+
+            int durationMs =
+                normalizedDescription.IndexOf("1 minute", StringComparison.OrdinalIgnoreCase) >= 0 ? 60000
+                : normalizedDescription.IndexOf("30 seconds", StringComparison.OrdinalIgnoreCase) >= 0 ? 30000
+                : 15000;
+
+            int mediaIndex =
+                normalizedDescription.IndexOf("star effect", StringComparison.OrdinalIgnoreCase) >= 0 ? alternateMediaA
+                : normalizedDescription.IndexOf("heart effect", StringComparison.OrdinalIgnoreCase) >= 0 ? alternateMediaB
+                : defaultMediaIndex;
+
+            MapleTvItemProfile inferredProfile = new(itemId, resolvedName, mediaIndex, durationMs, audienceMode);
             return itemId switch
             {
-                5075000 => new MapleTvItemProfile(itemId, resolvedName, defaultMediaIndex, 15000, MapleTvAudienceMode.Flexible),
-                5075001 => new MapleTvItemProfile(itemId, resolvedName, alternateMediaA, 30000, MapleTvAudienceMode.SenderOnly),
-                5075002 => new MapleTvItemProfile(itemId, resolvedName, alternateMediaB, 60000, MapleTvAudienceMode.ReceiverRequired),
-                5075003 => new MapleTvItemProfile(itemId, resolvedName, defaultMediaIndex, 15000, MapleTvAudienceMode.Flexible),
-                5075004 => new MapleTvItemProfile(itemId, resolvedName, alternateMediaA, 30000, MapleTvAudienceMode.SenderOnly),
-                5075005 => new MapleTvItemProfile(itemId, resolvedName, alternateMediaB, 60000, MapleTvAudienceMode.ReceiverRequired),
+                5075000 => inferredProfile with { MediaIndex = defaultMediaIndex, DurationMs = 15000, AudienceMode = MapleTvAudienceMode.Flexible },
+                5075001 => inferredProfile with { MediaIndex = alternateMediaA, DurationMs = 30000, AudienceMode = MapleTvAudienceMode.SenderOnly },
+                5075002 => inferredProfile with { MediaIndex = alternateMediaB, DurationMs = 60000, AudienceMode = MapleTvAudienceMode.ReceiverRequired },
+                5075003 => inferredProfile with { MediaIndex = defaultMediaIndex, DurationMs = 15000, AudienceMode = MapleTvAudienceMode.Flexible },
+                5075004 => inferredProfile with { MediaIndex = alternateMediaA, DurationMs = 30000, AudienceMode = MapleTvAudienceMode.SenderOnly },
+                5075005 => inferredProfile with { MediaIndex = alternateMediaB, DurationMs = 60000, AudienceMode = MapleTvAudienceMode.ReceiverRequired },
+                5290000 => inferredProfile,
+                5290001 => inferredProfile,
+                5290002 => inferredProfile,
+                5290003 => inferredProfile,
+                5290004 => inferredProfile,
+                5290005 => inferredProfile,
+                5290006 => inferredProfile,
                 _ => CreateDefault(itemId, resolvedName, defaultMediaIndex, DefaultItemDurationMs)
             };
         }

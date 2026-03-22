@@ -13,6 +13,7 @@ namespace HaCreator.MapSimulator.Interaction
         private static readonly Regex ItemNameRegex = new(@"#t(\d+)#", RegexOptions.Compiled);
         private static readonly Regex MobNameRegex = new(@"#o(\d+)#", RegexOptions.Compiled | RegexOptions.IgnoreCase);
         private static readonly Regex QuestNameRegex = new(@"#q(\d+)#", RegexOptions.Compiled);
+        private static readonly Regex QuestReferenceNameRegex = new(@"#y(\d+)#", RegexOptions.Compiled | RegexOptions.IgnoreCase);
         private static readonly Regex SkillNameRegex = new(@"#s(\d+)#", RegexOptions.Compiled);
         private static readonly Regex MapNameRegex = new(@"#m(\d+)#", RegexOptions.Compiled);
         private static readonly Regex SelectedMobRegex = new(@"#M(\d+)#", RegexOptions.Compiled);
@@ -22,6 +23,7 @@ namespace HaCreator.MapSimulator.Interaction
         private static readonly Regex ItemIconRegex = new(@"#(?:i|v)\d+#", RegexOptions.Compiled | RegexOptions.IgnoreCase);
         private static readonly Regex PlayerNameRegex = new(@"#h\d*#", RegexOptions.Compiled);
         private static readonly Regex StyleTagRegex = new(@"#(?:[bkrgdenmc])", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+        private static readonly Regex ClientPromptTagRegex = new(@"#(?:E|I)", RegexOptions.Compiled);
 
         public static string Format(string text)
         {
@@ -42,12 +44,14 @@ namespace HaCreator.MapSimulator.Interaction
             formatted = MobNameRegex.Replace(formatted, static match => ResolveMobName(match.Groups[1].Value));
             formatted = ItemNameAliasRegex.Replace(formatted, static match => ResolveItemName(match.Groups[1].Value));
             formatted = QuestNameRegex.Replace(formatted, static match => ResolveQuestName(match.Groups[1].Value));
+            formatted = QuestReferenceNameRegex.Replace(formatted, static match => ResolveQuestName(match.Groups[1].Value));
             formatted = SkillNameRegex.Replace(formatted, static match => ResolveSkillName(match.Groups[1].Value));
             formatted = MapNameRegex.Replace(formatted, static match => ResolveMapName(match.Groups[1].Value));
             formatted = SelectedMobRegex.Replace(formatted, static match => ResolveSelectedMobText(match.Groups[1].Value));
             formatted = QuestAmountRegex.Replace(formatted, static match => ResolveQuestAmountText(match.Groups[1].Value));
             formatted = QuestValueRegex.Replace(formatted, static match => ResolveQuestValueText(match.Groups[1].Value));
             formatted = StyleTagRegex.Replace(formatted, string.Empty);
+            formatted = ClientPromptTagRegex.Replace(formatted, string.Empty);
 
             var builder = new StringBuilder(formatted.Length);
             bool previousWasSpace = false;

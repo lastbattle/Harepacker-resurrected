@@ -50,7 +50,7 @@ namespace HaCreator.MapSimulator.Managers
             }
 
             bool onFamily = reader.ReadByte() != 0;
-            (int? worldRank, int? jobRank) = ReadRankBlock(reader);
+            LoginCharacterRankInfo rankInfo = ReadRankBlock(reader);
 
             return new LoginSelectWorldCharacterEntry
             {
@@ -78,8 +78,10 @@ namespace HaCreator.MapSimulator.Managers
                 Portal = portal,
                 PlayTime = playTime,
                 OnFamily = onFamily,
-                WorldRank = worldRank,
-                JobRank = jobRank,
+                WorldRank = rankInfo.WorldRank,
+                WorldRankMove = rankInfo.WorldRankMove,
+                JobRank = rankInfo.JobRank,
+                JobRankMove = rankInfo.JobRankMove,
                 AvatarLook = avatarLook,
                 AvatarLookPacket = LoginAvatarLookCodec.Encode(avatarLook)
             };
@@ -102,11 +104,11 @@ namespace HaCreator.MapSimulator.Managers
             return jobId / 1000 == 3 || jobId / 100 == 22 || jobId == 2001;
         }
 
-        private static (int? worldRank, int? jobRank) ReadRankBlock(PacketReader reader)
+        private static LoginCharacterRankInfo ReadRankBlock(PacketReader reader)
         {
             if (reader.ReadByte() == 0)
             {
-                return (null, null);
+                return LoginCharacterRankInfo.Empty;
             }
 
             byte[] rankBytes = reader.ReadBytes(RankBlockLength);
@@ -116,8 +118,23 @@ namespace HaCreator.MapSimulator.Managers
             }
 
             int worldRank = BitConverter.ToInt32(rankBytes, 0);
+            int worldRankMove = BitConverter.ToInt32(rankBytes, 4);
             int jobRank = BitConverter.ToInt32(rankBytes, 8);
-            return (worldRank > 0 ? worldRank : null, jobRank > 0 ? jobRank : null);
+            int jobRankMove = BitConverter.ToInt32(rankBytes, 12);
+            return new LoginCharacterRankInfo(
+                worldRank > 0 ? worldRank : null,
+                worldRank > 0 ? worldRankMove : null,
+                jobRank > 0 ? jobRank : null,
+                jobRank > 0 ? jobRankMove : null);
+        }
+
+        private readonly record struct LoginCharacterRankInfo(
+            int? WorldRank,
+            int? WorldRankMove,
+            int? JobRank,
+            int? JobRankMove)
+        {
+            public static LoginCharacterRankInfo Empty => new(null, null, null, null);
         }
 
         private static string ReadFixedAsciiString(PacketReader reader, int length)

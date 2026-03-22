@@ -66,7 +66,7 @@ namespace HaCreator.MapSimulator.Managers
         public int BuyCharacterCount { get; private set; }
         public int PageIndex { get; private set; }
         public int PageCount => DisplaySlotCount == 0 ? 0 : ((DisplaySlotCount - 1) / EntriesPerPage) + 1;
-        public int DisplaySlotCount => Math.Max(_entries.Count, SlotCount);
+        public int DisplaySlotCount => Math.Max(_entries.Count, SlotCount + BuyCharacterCount);
         public int EmptySlotCount => Math.Max(0, SlotCount - _entries.Count);
 
         public LoginCharacterRosterEntry SelectedEntry =>
@@ -150,6 +150,31 @@ namespace HaCreator.MapSimulator.Managers
             return true;
         }
 
+        public LoginCharacterRosterSlotKind GetDisplaySlotKind(int displayIndex)
+        {
+            if (displayIndex < 0 || displayIndex >= DisplaySlotCount)
+            {
+                return LoginCharacterRosterSlotKind.Hidden;
+            }
+
+            if (displayIndex < _entries.Count)
+            {
+                return LoginCharacterRosterSlotKind.Character;
+            }
+
+            if (displayIndex < SlotCount)
+            {
+                return LoginCharacterRosterSlotKind.Empty;
+            }
+
+            if (displayIndex < SlotCount + BuyCharacterCount)
+            {
+                return LoginCharacterRosterSlotKind.BuyCharacter;
+            }
+
+            return LoginCharacterRosterSlotKind.Hidden;
+        }
+
         public bool CanRequestSelection(LoginRuntimeManager runtime, out string message)
         {
             if (_entries.Count == 0)
@@ -219,5 +244,13 @@ namespace HaCreator.MapSimulator.Managers
         {
             return Math.Clamp(buyCharacterCount, 0, MaxCharacterSlotCount);
         }
+    }
+
+    public enum LoginCharacterRosterSlotKind
+    {
+        Hidden = 0,
+        Character = 1,
+        Empty = 2,
+        BuyCharacter = 3
     }
 }

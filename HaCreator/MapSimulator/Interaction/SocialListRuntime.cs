@@ -262,6 +262,16 @@ namespace HaCreator.MapSimulator.Interaction
                 : localGuildEntry.PrimaryText;
         }
 
+        internal bool HasPartyAdmissionContext()
+        {
+            if (!_entriesByTab.TryGetValue(SocialListTab.Party, out List<SocialEntryState> entries) || entries == null)
+            {
+                return false;
+            }
+
+            return entries.Any(entry => entry != null && !entry.IsLocalPlayer);
+        }
+
         private void SeedDefaultData()
         {
             foreach (SocialListTab tab in Enum.GetValues(typeof(SocialListTab)))

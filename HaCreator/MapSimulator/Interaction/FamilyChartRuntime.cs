@@ -23,6 +23,7 @@ namespace HaCreator.MapSimulator.Interaction
 
         private readonly Dictionary<int, FamilyMemberState> _members = new();
         private readonly Queue<FamilyRecruitSeed> _juniorSeeds = new();
+        private readonly FamilyChartTextResources _textResources = FamilyChartTextResources.CreateDefault();
         private readonly List<string> _precepts = new()
         {
             "Travel as one family and always answer a summon.",
@@ -837,21 +838,26 @@ namespace HaCreator.MapSimulator.Interaction
         private string BuildTreeTitle(FamilyMemberState selectedMember)
         {
             return selectedMember == null
-                ? "Family Tree"
-                : $"{selectedMember.Name}'s Family Tree";
+                ? _textResources.NoSelectionTitle
+                : _textResources.FormatTreeTitle(selectedMember.Name);
         }
 
         private string BuildJuniorCountText(FamilyMemberState selectedMember)
         {
             int juniorCount = Math.Max(0, GetStatisticValue(selectedMember));
-            return $"{juniorCount} junior member(s)";
+            int grandchildCount = selectedMember == null
+                ? 0
+                : GetChildren(selectedMember.Id)
+                    .SelectMany(childId => GetChildren(childId))
+                    .Count();
+            return _textResources.FormatJuniorCount(juniorCount, grandchildCount);
         }
 
         private string GetClientPlaceholderText(int slotIndex)
         {
             return slotIndex is DirectJuniorSlotLeft or DirectJuniorSlotRight
-                ? "Junior Entry"
-                : "Empty Branch";
+                ? _textResources.JuniorEntryPlaceholder
+                : _textResources.EmptyBranchPlaceholder;
         }
 
         private void NormalizeRosterState()
@@ -1052,6 +1058,40 @@ namespace HaCreator.MapSimulator.Interaction
         public bool IsOnline { get; init; }
         public Vector2 SimulatedPosition { get; init; }
         public bool IsLocalPlayer { get; init; }
+    }
+
+    internal sealed class FamilyChartTextResources
+    {
+        public string NoSelectionTitle { get; init; } = string.Empty;
+        public string JuniorEntryPlaceholder { get; init; } = string.Empty;
+        public string EmptyBranchPlaceholder { get; init; } = string.Empty;
+
+        public static FamilyChartTextResources CreateDefault()
+        {
+            return new FamilyChartTextResources
+            {
+                NoSelectionTitle = "Family Tree",
+                JuniorEntryPlaceholder = "Junior Entry",
+                EmptyBranchPlaceholder = "Empty Branch"
+            };
+        }
+
+        public string FormatTreeTitle(string memberName)
+        {
+            return string.IsNullOrWhiteSpace(memberName)
+                ? NoSelectionTitle
+                : $"{memberName.Trim()}'s Family Tree";
+        }
+
+        public string FormatJuniorCount(int juniorCount, int grandchildCount)
+        {
+            if (grandchildCount > 0)
+            {
+                return $"{juniorCount} junior / {grandchildCount} grandchild";
+            }
+
+            return $"{juniorCount} junior member(s)";
+        }
     }
 
     internal enum FamilyEntitlementType

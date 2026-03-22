@@ -27,6 +27,7 @@ namespace HaCreator.MapSimulator.Interaction
         private bool _guildSearchSeeded;
         private bool _searchSimilarLevelOnly = true;
         private bool _expeditionRegisterMode;
+        private bool _expeditionAdmissionActive;
         private SocialSearchTab _searchCurrentTab = SocialSearchTab.Party;
 
         internal void OpenSearchWindow(SocialSearchTab initialTab)
@@ -515,6 +516,7 @@ namespace HaCreator.MapSimulator.Interaction
 
         private string StartExpedition()
         {
+            _expeditionAdmissionActive = true;
             return "Expedition start staged locally from the search surface. Packet-authored expedition runtime still remains out of scope.";
         }
 
@@ -527,6 +529,7 @@ namespace HaCreator.MapSimulator.Interaction
         private string ConfirmExpeditionRegistration()
         {
             _expeditionRegisterMode = false;
+            _expeditionAdmissionActive = true;
             return $"Expedition registration drafted from {_locationSummary}.";
         }
 
@@ -551,6 +554,7 @@ namespace HaCreator.MapSimulator.Interaction
                 return "Select an expedition entry before quick-joining.";
             }
 
+            _expeditionAdmissionActive = true;
             return $"Quick-join request sent for {selectedEntry.Title}.";
         }
 
@@ -589,6 +593,11 @@ namespace HaCreator.MapSimulator.Interaction
             entries.Add(first);
             ClampSearchSelection(SocialSearchTab.Expedition);
             return "Expedition finder rotated to the next listing set.";
+        }
+
+        internal bool HasExpeditionAdmissionContext()
+        {
+            return _expeditionAdmissionActive;
         }
 
         private SocialSearchEntryState GetSelectedSearchEntry(SocialSearchTab tab)

@@ -323,22 +323,22 @@ namespace HaCreator.MapSimulator.Managers
 
         private void HandleSetAccountResult(int currentTickCount)
         {
-            LastEventSummary = "Received SetAccountResult for the login bootstrap flow.";
+            LastEventSummary = "Received SetAccountResult and opened the account-migration or account-choice flow.";
         }
 
         private void HandleConfirmEulaResult(int currentTickCount)
         {
-            LastEventSummary = "Received ConfirmEulaResult for the login bootstrap flow.";
+            LastEventSummary = "Received ConfirmEulaResult and opened the EULA confirmation flow.";
         }
 
         private void HandleCheckPinCodeResult(int currentTickCount)
         {
-            LastEventSummary = "Received CheckPinCodeResult for the login bootstrap flow.";
+            LastEventSummary = "Received CheckPinCodeResult and opened the PIC verification flow.";
         }
 
         private void HandleUpdatePinCodeResult(int currentTickCount)
         {
-            LastEventSummary = "Received UpdatePinCodeResult for the login bootstrap flow.";
+            LastEventSummary = "Received UpdatePinCodeResult and opened the PIC setup flow.";
         }
 
         private void HandleSelectWorldResult(int currentTickCount)
@@ -374,7 +374,7 @@ namespace HaCreator.MapSimulator.Managers
 
         private void HandleEnableSpwResult(int currentTickCount)
         {
-            LastEventSummary = "Received EnableSpwResult for the login bootstrap flow.";
+            LastEventSummary = "Received EnableSpwResult and opened the secondary-password setup choice.";
         }
 
         private void HandleRecommendWorldMessage(int currentTickCount)
@@ -394,7 +394,7 @@ namespace HaCreator.MapSimulator.Managers
 
         private void HandleCheckSpwResult(int currentTickCount)
         {
-            LastEventSummary = "Received CheckSpwResult for the login bootstrap flow.";
+            LastEventSummary = "Received CheckSpwResult and opened the secondary-password verification flow.";
         }
 
         private static bool Assign(LoginStep value, out LoginStep step)

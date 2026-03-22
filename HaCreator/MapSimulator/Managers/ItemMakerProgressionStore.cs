@@ -2,6 +2,7 @@ using HaCreator.MapSimulator.Character;
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Text.Json;
 
 namespace HaCreator.MapSimulator.Managers
@@ -33,7 +34,8 @@ namespace HaCreator.MapSimulator.Managers
             int shoeProgress,
             int toyProgress,
             int successfulCrafts,
-            int traitCraft)
+            int traitCraft,
+            IReadOnlyCollection<int> discoveredRecipeIds)
         {
             GenericLevel = genericLevel;
             GloveLevel = gloveLevel;
@@ -45,9 +47,10 @@ namespace HaCreator.MapSimulator.Managers
             ToyProgress = toyProgress;
             SuccessfulCrafts = successfulCrafts;
             TraitCraft = Math.Max(0, traitCraft);
+            DiscoveredRecipeIds = new HashSet<int>(discoveredRecipeIds ?? Array.Empty<int>());
         }
 
-        public static ItemMakerProgressionSnapshot Default { get; } = new(1, 1, 1, 1, 0, 0, 0, 0, 0, 0);
+        public static ItemMakerProgressionSnapshot Default { get; } = new(1, 1, 1, 1, 0, 0, 0, 0, 0, 0, Array.Empty<int>());
 
         public int GenericLevel { get; }
         public int GloveLevel { get; }
@@ -59,6 +62,7 @@ namespace HaCreator.MapSimulator.Managers
         public int ToyProgress { get; }
         public int SuccessfulCrafts { get; }
         public int TraitCraft { get; }
+        public IReadOnlySet<int> DiscoveredRecipeIds { get; }
 
         public int GetLevel(ItemMakerRecipeFamily family)
         {
@@ -97,6 +101,11 @@ namespace HaCreator.MapSimulator.Managers
                 _ => "Maker"
             };
         }
+
+        public bool IsRecipeDiscovered(int outputItemId)
+        {
+            return outputItemId > 0 && DiscoveredRecipeIds.Contains(outputItemId);
+        }
     }
 
     public sealed class ItemMakerProgressionStore
@@ -117,6 +126,7 @@ namespace HaCreator.MapSimulator.Managers
             public int ShoeProgress { get; set; }
             public int ToyProgress { get; set; }
             public int SuccessfulCrafts { get; set; }
+            public HashSet<int> DiscoveredRecipeIds { get; set; } = new();
         }
 
         private static readonly JsonSerializerOptions JsonOptions = new()
@@ -150,7 +160,30 @@ namespace HaCreator.MapSimulator.Managers
             string key = ResolveCharacterKey(build);
             if (!_progressionByCharacter.TryGetValue(key, out ProgressionRecord record) || record == null)
             {
-                return new ItemMakerProgressionSnapshot(1, 1, 1, 1, 0, 0, 0, 0, 0, build?.TraitCraft ?? 0);
+                return new ItemMakerProgressionSnapshot(1, 1, 1, 1, 0, 0, 0, 0, 0, build?.TraitCraft ?? 0, Array.Empty<int>());
+            }
+
+            record.DiscoveredRecipeIds ??= new HashSet<int>();
+            return CreateSnapshot(record, build?.TraitCraft ?? 0);
+        }
+
+        public ItemMakerProgressionSnapshot RecordDiscoveredRecipes(CharacterBuild build, IEnumerable<int> outputItemIds)
+        {
+            string key = ResolveCharacterKey(build);
+            ProgressionRecord record = GetOrCreateRecord(key);
+
+            bool changed = false;
+            foreach (int outputItemId in outputItemIds ?? Enumerable.Empty<int>())
+            {
+                if (outputItemId > 0 && record.DiscoveredRecipeIds.Add(outputItemId))
+                {
+                    changed = true;
+                }
+            }
+
+            if (changed)
+            {
+                SaveToDisk();
             }
 
             return CreateSnapshot(record, build?.TraitCraft ?? 0);
@@ -162,6 +195,10 @@ namespace HaCreator.MapSimulator.Managers
             ProgressionRecord record = GetOrCreateRecord(key);
 
             record.SuccessfulCrafts = Math.Max(0, record.SuccessfulCrafts + 1);
+            if (result?.OutputItemId > 0)
+            {
+                record.DiscoveredRecipeIds.Add(result.OutputItemId);
+            }
 
             int currentLevel = GetFamilyLevel(record, result?.Family ?? ItemMakerRecipeFamily.Generic);
             if (currentLevel < MaxMakerSkillLevel)
@@ -208,7 +245,8 @@ namespace HaCreator.MapSimulator.Managers
                 Math.Max(0, record.ShoeProgress),
                 Math.Max(0, record.ToyProgress),
                 Math.Max(0, record.SuccessfulCrafts),
-                traitCraft);
+                traitCraft,
+                record.DiscoveredRecipeIds != null ? record.DiscoveredRecipeIds : Array.Empty<int>());
         }
 
         private static int ClampLevel(int level)
@@ -228,6 +266,7 @@ namespace HaCreator.MapSimulator.Managers
             record.GloveLevel = ClampLevel(record.GloveLevel);
             record.ShoeLevel = ClampLevel(record.ShoeLevel);
             record.ToyLevel = ClampLevel(record.ToyLevel);
+            record.DiscoveredRecipeIds ??= new HashSet<int>();
             return record;
         }
 

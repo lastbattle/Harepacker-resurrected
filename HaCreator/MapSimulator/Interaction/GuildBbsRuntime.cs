@@ -23,9 +23,8 @@ namespace HaCreator.MapSimulator.Interaction
     {
         private const int VisibleThreadCount = 8;
         private const int VisibleCommentCount = 4;
-        private const int BasicEmoticonCount = 3;
-        private const int CashEmoticonCount = 7;
-        private const int CashEmoticonPageSize = 7;
+        private const int DefaultBasicEmoticonCount = 3;
+        private const int DefaultCashEmoticonCount = 7;
         private const int CashEmoticonItemIdStart = 5290000;
         private const int MaxTitleLength = 40;
         private const int MaxThreadBodyLength = 420;
@@ -90,6 +89,8 @@ namespace HaCreator.MapSimulator.Interaction
         private int _nextThreadId = 1;
         private int _nextCommentId = 1;
         private int _draftCounter = 1;
+        private int _basicEmoticonCount = DefaultBasicEmoticonCount;
+        private int _cashEmoticonCount = DefaultCashEmoticonCount;
 
         public GuildBbsRuntime()
         {
@@ -97,6 +98,13 @@ namespace HaCreator.MapSimulator.Interaction
         }
 
         public bool IsWriteMode { get; private set; }
+
+        public void ConfigureEmoticonCatalog(int basicEmoticonCount, int cashEmoticonCount)
+        {
+            _basicEmoticonCount = Math.Max(1, basicEmoticonCount);
+            _cashEmoticonCount = Math.Max(1, cashEmoticonCount);
+            NormalizeDraftState();
+        }
 
         public void UpdateLocalContext(string playerName, string guildName, string locationSummary, string guildRoleLabel, IEnumerable<int> ownedCashEmoticonItemIds)
         {
@@ -111,7 +119,7 @@ namespace HaCreator.MapSimulator.Interaction
             {
                 foreach (int itemId in ownedCashEmoticonItemIds)
                 {
-                    if (itemId >= CashEmoticonItemIdStart && itemId < CashEmoticonItemIdStart + CashEmoticonCount)
+                    if (itemId >= CashEmoticonItemIdStart && itemId < CashEmoticonItemIdStart + _cashEmoticonCount)
                     {
                         _ownedCashEmoticonIds.Add(itemId);
                     }
@@ -595,7 +603,7 @@ namespace HaCreator.MapSimulator.Interaction
             string threadSummary = selectedThread == null
                 ? "none"
                 : $"#{selectedThread.ThreadId} \"{selectedThread.Title}\" ({selectedThread.Comments.Count} comment(s))";
-            return $"Guild BBS: threads={_threads.Count}, threadPage={_threadPageIndex + 1}, commentPage={_commentPageIndex + 1}, selected={threadSummary}, mode={(IsWriteMode ? "write" : "read")}, guild={_guildName}, role={_guildRoleLabel}, cashEmoticons={_ownedCashEmoticonIds.Count}/{CashEmoticonCount}";
+            return $"Guild BBS: threads={_threads.Count}, threadPage={_threadPageIndex + 1}, commentPage={_commentPageIndex + 1}, selected={threadSummary}, mode={(IsWriteMode ? "write" : "read")}, guild={_guildName}, role={_guildRoleLabel}, cashEmoticons={_ownedCashEmoticonIds.Count}/{_cashEmoticonCount}";
         }
 
         private GuildBbsComposeState CreateDraftFromContext()
@@ -639,8 +647,8 @@ namespace HaCreator.MapSimulator.Interaction
 
         private IReadOnlyList<bool> BuildCashEmoticonOwnershipSnapshot()
         {
-            bool[] ownership = new bool[CashEmoticonCount];
-            for (int slotIndex = 0; slotIndex < CashEmoticonCount; slotIndex++)
+            bool[] ownership = new bool[_cashEmoticonCount];
+            for (int slotIndex = 0; slotIndex < _cashEmoticonCount; slotIndex++)
             {
                 ownership[slotIndex] = IsCashEmoticonOwned(slotIndex);
             }
@@ -683,7 +691,7 @@ namespace HaCreator.MapSimulator.Interaction
             return trimmed.Length <= maxLength ? trimmed : trimmed[..maxLength];
         }
 
-        private static bool TryResolveEmoticonSelection(
+        private bool TryResolveEmoticonSelection(
             GuildBbsEmoticonKind kind,
             int slotIndex,
             int cashPageIndex,
@@ -698,7 +706,7 @@ namespace HaCreator.MapSimulator.Interaction
             switch (kind)
             {
                 case GuildBbsEmoticonKind.Basic:
-                    if (slotIndex < 0 || slotIndex >= BasicEmoticonCount)
+                    if (slotIndex < 0 || slotIndex >= _basicEmoticonCount)
                     {
                         return false;
                     }
@@ -707,7 +715,7 @@ namespace HaCreator.MapSimulator.Interaction
                     resolvedSlot = slotIndex;
                     return true;
                 case GuildBbsEmoticonKind.Cash:
-                    if (slotIndex < 0 || slotIndex >= CashEmoticonCount)
+                    if (slotIndex < 0 || slotIndex >= _cashEmoticonCount)
                     {
                         return false;
                     }
@@ -797,7 +805,7 @@ namespace HaCreator.MapSimulator.Interaction
 
         private int GetCashEmoticonPageCount()
         {
-            return Math.Max(1, (int)Math.Ceiling(_ownedCashEmoticonIds.Count / (double)CashEmoticonPageSize));
+            return 1;
         }
 
         private bool IsCashEmoticonOwned(int slotIndex)

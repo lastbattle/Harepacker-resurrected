@@ -4,6 +4,7 @@ using MapleLib.WzLib.WzStructure.Data.ItemStructure;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text.RegularExpressions;
 
 namespace HaCreator.MapSimulator.Interaction
 {
@@ -27,10 +28,13 @@ namespace HaCreator.MapSimulator.Interaction
         private readonly List<string> _authorizedCharacterNames = new();
         private readonly HashSet<string> _authorizedCharacterLookup = new(StringComparer.OrdinalIgnoreCase);
         private readonly StorageAccountStore _accountStore;
+        private static readonly Regex SecondaryPasswordPattern = new("^[0-9]{4,8}$", RegexOptions.Compiled);
 
         private int _slotLimit = DefaultSlotLimit;
         private long _meso;
         private string _currentAccountKey = StorageAccountStore.ResolveAccountKey("Simulator Account Storage");
+        private string _secondaryPassword = string.Empty;
+        private bool _secondaryPasswordVerified;
         private bool _suspendPersistence;
 
         public string AccountLabel { get; private set; } = "Simulator Account Storage";
@@ -43,6 +47,8 @@ namespace HaCreator.MapSimulator.Interaction
                 ? _sharedCharacterNames.Count == 0
                   || (!string.IsNullOrWhiteSpace(CurrentCharacterName) && _sharedCharacterLookup.Contains(CurrentCharacterName))
                 : !string.IsNullOrWhiteSpace(CurrentCharacterName) && _authorizedCharacterLookup.Contains(CurrentCharacterName);
+        public bool HasSecondaryPassword => !string.IsNullOrWhiteSpace(_secondaryPassword);
+        public bool IsSecondaryPasswordVerified => !HasSecondaryPassword || _secondaryPasswordVerified;
 
         public SimulatorStorageRuntime(StorageAccountStore accountStore = null, string initialAccountLabel = null)
         {
@@ -235,6 +241,48 @@ namespace HaCreator.MapSimulator.Interaction
             ReconcileAuthorizedCharacters();
         }
 
+        public bool TrySetSecondaryPassword(string password)
+        {
+            if (!CanCurrentCharacterAccess)
+            {
+                return false;
+            }
+
+            string normalizedPassword = NormalizeSecondaryPassword(password);
+            if (!IsValidSecondaryPassword(normalizedPassword))
+            {
+                return false;
+            }
+
+            _secondaryPassword = normalizedPassword;
+            _secondaryPasswordVerified = true;
+            PersistCurrentState();
+            return true;
+        }
+
+        public bool TryVerifySecondaryPassword(string password)
+        {
+            if (!CanCurrentCharacterAccess)
+            {
+                _secondaryPasswordVerified = false;
+                return false;
+            }
+
+            if (!HasSecondaryPassword)
+            {
+                _secondaryPasswordVerified = true;
+                return true;
+            }
+
+            _secondaryPasswordVerified = string.Equals(_secondaryPassword, NormalizeSecondaryPassword(password), StringComparison.Ordinal);
+            return _secondaryPasswordVerified;
+        }
+
+        public void ClearSecondaryPasswordVerification()
+        {
+            _secondaryPasswordVerified = false;
+        }
+
         private void LoadAccountState(string accountLabel)
         {
             string normalizedLabel = string.IsNullOrWhiteSpace(accountLabel) ? "Simulator Account Storage" : accountLabel.Trim();
@@ -248,6 +296,8 @@ namespace HaCreator.MapSimulator.Interaction
                 _currentAccountKey = nextAccountKey;
                 _slotLimit = DefaultSlotLimit;
                 _meso = 0;
+                _secondaryPassword = string.Empty;
+                _secondaryPasswordVerified = false;
                 _authorizedCharacterNames.Clear();
                 _authorizedCharacterLookup.Clear();
 
@@ -264,6 +314,7 @@ namespace HaCreator.MapSimulator.Interaction
                 AccountLabel = string.IsNullOrWhiteSpace(state.AccountLabel) ? normalizedLabel : state.AccountLabel;
                 _slotLimit = Math.Clamp(state.SlotLimit, MinSlotLimit, MaxSlotLimit);
                 _meso = Math.Max(0, state.Meso);
+                _secondaryPassword = NormalizeSecondaryPassword(state.SecondaryPassword);
                 foreach (string authorizedCharacterName in state.AuthorizedCharacterNames ?? Array.Empty<string>())
                 {
                     AddAuthorizedCharacter(authorizedCharacterName);
@@ -305,7 +356,7 @@ namespace HaCreator.MapSimulator.Interaction
                 snapshot[entry.Key] = rows;
             }
 
-            _accountStore.SaveState(AccountLabel, _slotLimit, _meso, snapshot, _authorizedCharacterNames);
+            _accountStore.SaveState(AccountLabel, _slotLimit, _meso, snapshot, _authorizedCharacterNames, _secondaryPassword);
         }
 
         private void ReconcileAuthorizedCharacters()
@@ -364,6 +415,16 @@ namespace HaCreator.MapSimulator.Interaction
         private static bool IsStackable(InventoryType type, int maxStackSize)
         {
             return type != InventoryType.EQUIP && maxStackSize > 1;
+        }
+
+        private static string NormalizeSecondaryPassword(string password)
+        {
+            return string.IsNullOrWhiteSpace(password) ? string.Empty : password.Trim();
+        }
+
+        private static bool IsValidSecondaryPassword(string password)
+        {
+            return SecondaryPasswordPattern.IsMatch(password ?? string.Empty);
         }
 
         private static int FillExistingStacks(List<InventorySlotData> rows, InventorySlotData slotData, int remainingQuantity, int maxStackSize)

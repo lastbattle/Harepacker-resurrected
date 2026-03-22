@@ -118,6 +118,7 @@ namespace HaCreator.MapSimulator.Interaction
             public int JobClassBitfield { get; init; }
             public int JobExBitfield { get; init; }
             public int PeriodMinutes { get; init; }
+            public bool RemoveOnGiveUp { get; init; }
             public CharacterGenderType Gender { get; init; } = CharacterGenderType.Both;
         }
 
@@ -612,11 +613,14 @@ namespace HaCreator.MapSimulator.Interaction
             progress.MobKills.Clear();
             MarkQuestAlarmUpdated(questId);
 
+            List<string> messages = new() { $"Gave up quest: {definition.Name}" };
+            messages.AddRange(RemoveGiveUpItems(definition.StartActions));
+
             return new QuestWindowActionResult
             {
                 StateChanged = true,
                 QuestId = questId,
-                Messages = new[] { $"Gave up quest: {definition.Name}" }
+                Messages = messages
             };
         }
 
@@ -1602,7 +1606,7 @@ namespace HaCreator.MapSimulator.Interaction
                 lines.Add(new QuestLogLineSnapshot
                 {
                     Label = "Item",
-                    Text = $"{GetItemName(item.ItemId)} x{item.Count}",
+                    Text = GetRewardItemDescription(item),
                     IsComplete = true,
                     ItemId = item.ItemId
                 });
@@ -2867,6 +2871,7 @@ namespace HaCreator.MapSimulator.Interaction
                                     JobClassBitfield = ParseInt(itemReward["job"]).GetValueOrDefault(),
                                     JobExBitfield = ParseInt(itemReward["jobEx"]).GetValueOrDefault(),
                                     PeriodMinutes = ParsePositiveInt(itemReward["period"]).GetValueOrDefault(),
+                                    RemoveOnGiveUp = ParsePositiveInt(itemReward["resignRemove"]).GetValueOrDefault() > 0,
                                     Gender = ParseRewardGender(itemReward["gender"])
                                 });
                             }
@@ -3258,7 +3263,9 @@ namespace HaCreator.MapSimulator.Interaction
             {
                 NpcInlineSelection selection = inlineSelections[i];
                 IReadOnlyList<NpcInteractionPage> selectionPages = ParseStopSelectionPages(pageStopProperty, selection.SelectionId);
-                if (selectionPages.Count == 0 && nextPages.Count > 0)
+                if (selectionPages.Count == 0 &&
+                    nextPages.Count > 0 &&
+                    ShouldContinueToNextPages(pageStopProperty, selection.SelectionId))
                 {
                     selectionPages = nextPages;
                 }
@@ -3276,6 +3283,22 @@ namespace HaCreator.MapSimulator.Interaction
             }
         }
 
+        private static bool ShouldContinueToNextPages(WzImageProperty stopProperty, int selectionId)
+        {
+            if (stopProperty == null)
+            {
+                return true;
+            }
+
+            WzImageProperty answerProperty = stopProperty["answer"];
+            if (answerProperty == null)
+            {
+                return true;
+            }
+
+            return GetIntValue(answerProperty) == selectionId;
+        }
+
         private static IReadOnlyList<NpcInteractionPage> ParseStopSelectionPages(WzImageProperty stopProperty, int selectionId)
         {
             if (stopProperty == null)
@@ -3285,6 +3308,17 @@ namespace HaCreator.MapSimulator.Interaction
 
             WzImageProperty selectionProperty = stopProperty[selectionId.ToString()];
             return selectionProperty != null ? ParseBranchPages(selectionProperty) : Array.Empty<NpcInteractionPage>();
+        }
+
+        private static int GetIntValue(WzImageProperty property)
+        {
+            return property switch
+            {
+                WzIntProperty intProp => intProp.GetInt(),
+                WzShortProperty shortProp => shortProp.GetShort(),
+                WzLongProperty longProp => checked((int)longProp.Value),
+                _ => 0
+            };
         }
 
         private static IReadOnlyList<NpcInteractionPage> CreateUnavailableSelectionPages(string selectionLabel)
@@ -3444,7 +3478,35 @@ namespace HaCreator.MapSimulator.Interaction
             };
         }
 
-        internal static bool MatchesRewardItemFilterCore(int currentJob, CharacterGender currentGender, int jobClassBitfield, CharacterGenderType gender)
+        private static CharacterSubJobFlagType GetRewardSubJobFlags(int currentJob, int currentSubJob)
+        {
+            CharacterSubJobFlagType flags = CharacterSubJobFlagType.Any;
+            if (currentJob / 1000 != 0)
+            {
+                return flags;
+            }
+
+            flags |= CharacterSubJobFlagType.Adventurer;
+            if (currentSubJob == 1 || currentJob / 10 == 43)
+            {
+                flags |= CharacterSubJobFlagType.Adventurer_DualBlade;
+            }
+
+            if (currentSubJob == 2 || currentJob == 501 || currentJob / 10 == 53)
+            {
+                flags |= CharacterSubJobFlagType.Adventurer_Cannoner;
+            }
+
+            return flags;
+        }
+
+        internal static bool MatchesRewardItemFilterCore(
+            int currentJob,
+            int currentSubJob,
+            CharacterGender currentGender,
+            int jobClassBitfield,
+            int jobExBitfield,
+            CharacterGenderType gender)
         {
             bool matchesJob = true;
             if (jobClassBitfield > 0)
@@ -3458,11 +3520,13 @@ namespace HaCreator.MapSimulator.Interaction
                              MapleJobTypeExtensions.IsJobMatching(classInfo.Type, jobClassBitfield);
             }
 
+            bool matchesJobEx = jobExBitfield <= 0 ||
+                                (GetRewardSubJobFlags(currentJob, currentSubJob) & (CharacterSubJobFlagType)jobExBitfield) != 0;
             bool matchesGender = gender == CharacterGenderType.Both ||
                                  (gender == CharacterGenderType.Male && currentGender == CharacterGender.Male) ||
                                  (gender == CharacterGenderType.Female && currentGender == CharacterGender.Female);
 
-            return matchesJob && matchesGender;
+            return matchesJob && matchesJobEx && matchesGender;
         }
 
         internal static int SelectWeightedRewardIndexCore(IReadOnlyList<int> weights, int roll)
@@ -3508,7 +3572,13 @@ namespace HaCreator.MapSimulator.Interaction
                 return true;
             }
 
-            return MatchesRewardItemFilterCore(build.Job, build.Gender, reward.JobClassBitfield, reward.Gender);
+            return MatchesRewardItemFilterCore(
+                build.Job,
+                build.SubJob,
+                build.Gender,
+                reward.JobClassBitfield,
+                reward.JobExBitfield,
+                reward.Gender);
         }
 
         private IReadOnlyList<QuestRewardItem> ResolveGrantedRewardItems(
@@ -3629,7 +3699,7 @@ namespace HaCreator.MapSimulator.Interaction
 
             if (includeFilters && reward.JobExBitfield > 0)
             {
-                parts.Add("[jobEx]");
+                parts.Add($"[{FormatRewardSubJobText(reward.JobExBitfield)}]");
             }
 
             if (includeSelectionTag)
@@ -3697,6 +3767,28 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             return $"{periodMinutes}m";
+        }
+
+        private static string FormatRewardSubJobText(int jobExBitfield)
+        {
+            var labels = new List<string>();
+            CharacterSubJobFlagType flags = (CharacterSubJobFlagType)jobExBitfield;
+            if (flags.HasFlag(CharacterSubJobFlagType.Adventurer))
+            {
+                labels.Add("Explorer");
+            }
+
+            if (flags.HasFlag(CharacterSubJobFlagType.Adventurer_DualBlade))
+            {
+                labels.Add("Dual Blade");
+            }
+
+            if (flags.HasFlag(CharacterSubJobFlagType.Adventurer_Cannoner))
+            {
+                labels.Add("Cannoneer");
+            }
+
+            return labels.Count > 0 ? string.Join(", ", labels) : $"jobEx {jobExBitfield}";
         }
 
         private static string FormatJobName(int jobId)
@@ -4074,7 +4166,7 @@ namespace HaCreator.MapSimulator.Interaction
                 QuestRewardItem reward = definition.EndActions.RewardItems[i];
                 if (reward.Count > 0)
                 {
-                    rewards.Add($"{GetItemName(reward.ItemId)} x{reward.Count}");
+                    rewards.Add(GetRewardItemDescription(reward));
                 }
             }
 
@@ -4091,6 +4183,31 @@ namespace HaCreator.MapSimulator.Interaction
             return rewards.Count == 0
                 ? "No explicit rewards are registered for this quest in the loaded data."
                 : string.Join("\n", rewards);
+        }
+
+        private List<string> RemoveGiveUpItems(QuestActionBundle actions)
+        {
+            var messages = new List<string>();
+            if (actions?.RewardItems == null || actions.RewardItems.Count == 0)
+            {
+                return messages;
+            }
+
+            for (int i = 0; i < actions.RewardItems.Count; i++)
+            {
+                QuestRewardItem reward = actions.RewardItems[i];
+                if (reward == null || reward.Count <= 0 || !reward.RemoveOnGiveUp)
+                {
+                    continue;
+                }
+
+                if (TryConsumeResolvedItemCount(reward.ItemId, reward.Count))
+                {
+                    messages.Add($"Removed quest item: {GetItemName(reward.ItemId)} x{reward.Count}");
+                }
+            }
+
+            return messages;
         }
 
         private List<QuestLogLineSnapshot> BuildDetailRequirementLines(QuestDefinition definition, QuestStateType state, CharacterBuild build)

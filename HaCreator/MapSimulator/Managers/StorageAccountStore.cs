@@ -23,6 +23,7 @@ namespace HaCreator.MapSimulator.Managers
             public int SlotLimit { get; set; } = 24;
             public long Meso { get; set; }
             public List<string> AuthorizedCharacterNames { get; set; } = new();
+            public string SecondaryPassword { get; set; }
             public Dictionary<string, List<PersistedStorageSlotRecord>> ItemsByType { get; set; } = new(StringComparer.OrdinalIgnoreCase);
         }
 
@@ -46,6 +47,7 @@ namespace HaCreator.MapSimulator.Managers
             public int SlotLimit { get; init; } = 24;
             public long Meso { get; init; }
             public IReadOnlyList<string> AuthorizedCharacterNames { get; init; } = Array.Empty<string>();
+            public string SecondaryPassword { get; init; }
             public Dictionary<InventoryType, List<InventorySlotData>> ItemsByType { get; init; } = new();
         }
 
@@ -133,6 +135,7 @@ namespace HaCreator.MapSimulator.Managers
                 SlotLimit = Math.Max(24, persisted.SlotLimit),
                 Meso = Math.Max(0, persisted.Meso),
                 AuthorizedCharacterNames = NormalizeCharacterNames(persisted.AuthorizedCharacterNames),
+                SecondaryPassword = persisted.SecondaryPassword ?? string.Empty,
                 ItemsByType = itemsByType
             };
         }
@@ -142,7 +145,8 @@ namespace HaCreator.MapSimulator.Managers
             int slotLimit,
             long meso,
             IReadOnlyDictionary<InventoryType, List<InventorySlotData>> itemsByType,
-            IReadOnlyCollection<string> authorizedCharacterNames = null)
+            IReadOnlyCollection<string> authorizedCharacterNames = null,
+            string secondaryPassword = null)
         {
             string normalizedLabel = string.IsNullOrWhiteSpace(accountLabel) ? "Simulator Account Storage" : accountLabel.Trim();
             string key = ResolveAccountKey(normalizedLabel);
@@ -190,6 +194,7 @@ namespace HaCreator.MapSimulator.Managers
                 SlotLimit = Math.Max(24, slotLimit),
                 Meso = Math.Max(0, meso),
                 AuthorizedCharacterNames = NormalizeCharacterNames(authorizedCharacterNames),
+                SecondaryPassword = secondaryPassword ?? string.Empty,
                 ItemsByType = persistedItems
             };
 

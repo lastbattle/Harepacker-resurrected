@@ -34,9 +34,21 @@ namespace HaCreator.MapSimulator.Managers
         public int PlayTime { get; init; }
         public bool OnFamily { get; init; }
         public int? WorldRank { get; init; }
+        public int? WorldRankMove { get; init; }
         public int? JobRank { get; init; }
+        public int? JobRankMove { get; init; }
         public LoginAvatarLook AvatarLook { get; init; }
         public byte[] AvatarLookPacket { get; init; } = Array.Empty<byte>();
+
+        public int? PreviousWorldRank =>
+            WorldRank.HasValue && WorldRank.Value > 0 && WorldRankMove.HasValue
+                ? Math.Max(1, WorldRank.Value + WorldRankMove.Value)
+                : null;
+
+        public int? PreviousJobRank =>
+            JobRank.HasValue && JobRank.Value > 0 && JobRankMove.HasValue
+                ? Math.Max(1, JobRank.Value + JobRankMove.Value)
+                : null;
     }
 
     public sealed class LoginSelectWorldResultProfile

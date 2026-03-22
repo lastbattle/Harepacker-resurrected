@@ -16,6 +16,10 @@ namespace HaCreator.MapSimulator
         public LoginUtilityDialogButtonLayout? ButtonLayout { get; init; }
         public string PrimaryLabel { get; init; }
         public string SecondaryLabel { get; init; }
+        public string InputLabel { get; init; }
+        public string InputPlaceholder { get; init; }
+        public bool InputMasked { get; init; }
+        public int InputMaxLength { get; init; }
         public int DurationMs { get; init; } = 2400;
     }
 }
