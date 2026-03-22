@@ -118,6 +118,7 @@ namespace HaCreator.MapSimulator.AI
     public class MobAttackEntry
     {
         public int AttackId { get; set; }           // Attack index (attack1, attack2, etc.)
+        public int AttackType { get; set; } = -1;  // info/attack/N/type or attackN/info/type
         public int Damage { get; set; }             // Base damage
         public int Range { get; set; }              // Attack range in pixels
         public int Delay { get; set; }              // Delay before damage applies (ms)

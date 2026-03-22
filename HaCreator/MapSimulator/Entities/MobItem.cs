@@ -61,7 +61,7 @@ namespace HaCreator.MapSimulator.Entities
         /// Mobs with Mob.wz info/damagedByMob are encounter actors the client routes through mob-vs-mob damage.
         /// They should not be targetable by player attacks.
         /// </summary>
-        public bool IsProtectedFromPlayerDamage => _mobInstance?.MobInfo?.MobData?.Friendly == true;
+        public bool IsProtectedFromPlayerDamage => _mobInstance?.MobInfo?.MobData?.DamagedByMob == true;
 
         /// <summary>
         /// Escort and damagedByMob mobs participate in the encounter mob-vs-mob combat lane.
@@ -71,7 +71,7 @@ namespace HaCreator.MapSimulator.Entities
             get
             {
                 MobData mobData = _mobInstance?.MobInfo?.MobData;
-                return mobData?.Friendly == true || (mobData?.Escort ?? 0) > 0;
+                return mobData?.DamagedByMob == true || (mobData?.Escort ?? 0) > 0;
             }
         }
 
@@ -552,7 +552,7 @@ namespace HaCreator.MapSimulator.Entities
                 bool isBoss = mobData.IsBoss;
                 bool isUndead = mobData.Undead > 0;
                 bool isEscortMob = mobData.Escort > 0;
-                bool canTargetPlayer = !isEscortMob && !mobData.Friendly;
+                bool canTargetPlayer = !isEscortMob && !mobData.DamagedByMob;
                 bool autoAggro = canTargetPlayer && mobData.FirstAttack;  // FirstAttack = mob attacks first (auto-aggro)
 
                 AI.Initialize(maxHp, level, exp, isBoss, isUndead, autoAggro);
@@ -643,9 +643,9 @@ namespace HaCreator.MapSimulator.Entities
                         Math.Max(System.Math.Abs(attackInfo.RangeBounds.Left), System.Math.Abs(attackInfo.RangeBounds.Right)),
                         1)
                     : DetermineAttackRange(attackMeta, actionIndex, isBoss, isRanged, isArea);
-                int cooldown = DetermineAttackCooldown(attackMeta, actionIndex, isBoss, isRanged, isArea);
                 int effectAfter = attackInfo?.EffectAfter > 0 ? attackInfo.EffectAfter : (isArea ? 380 : isRanged ? 300 : 220);
                 int attackAfter = attackInfo?.AttackAfter > 0 ? attackInfo.AttackAfter : (isArea ? 520 : effectAfter + 80);
+                int cooldown = ResolveAttackCooldown(attackMeta, actionIndex, isBoss, isRanged, isArea, attackAfter);
                 int attackDelay = effectAfter > 0 ? effectAfter : (isArea ? 450 : isRanged ? 300 : 220);
                 int damage = basePhysicalDamage;
                 int areaWidth = attackInfo?.HasRangeBounds == true
@@ -675,6 +675,7 @@ namespace HaCreator.MapSimulator.Entities
                 AI.AddAttack(new MobAttackEntry
                 {
                     AttackId = actionIndex,
+                    AttackType = attackInfo?.AttackType >= 0 ? attackInfo.AttackType : attackMeta?.Type ?? -1,
                     AnimationName = animationName,
                     Damage = Math.Max(1, damage),
                     Range = range,
@@ -711,6 +712,7 @@ namespace HaCreator.MapSimulator.Entities
                 AI.AddAttack(new MobAttackEntry
                 {
                     AttackId = 1,
+                    AttackType = -1,
                     AnimationName = "skill1",
                     Damage = Math.Max(1, basePhysicalDamage),
                     Range = isBoss ? 220 : 160,
@@ -839,6 +841,17 @@ namespace HaCreator.MapSimulator.Entities
             }
 
             return isBoss ? 120 + (actionIndex * 15) : 60 + (actionIndex * 20);
+        }
+
+        internal static int ResolveAttackCooldown(MobAttackData attackMeta, int actionIndex, bool isBoss, bool isRanged, bool isArea, int attackAfter)
+        {
+            int cooldown = DetermineAttackCooldown(attackMeta, actionIndex, isBoss, isRanged, isArea);
+            if (attackAfter > 0)
+            {
+                cooldown = Math.Max(cooldown, attackAfter);
+            }
+
+            return cooldown;
         }
 
         private static int DetermineAttackCooldown(MobAttackData attackMeta, int actionIndex, bool isBoss, bool isRanged, bool isArea)

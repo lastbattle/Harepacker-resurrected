@@ -35,6 +35,7 @@ namespace HaCreator.MapSimulator.Animation
     {
         public sealed class AttackInfoMetadata
         {
+            public int AttackType { get; set; } = -1;
             public bool HasRangeBounds { get; set; }
             public Rectangle RangeBounds { get; set; }
             public int EffectAfter { get; set; }

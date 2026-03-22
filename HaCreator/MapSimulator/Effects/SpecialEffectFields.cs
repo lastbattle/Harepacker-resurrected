@@ -297,6 +297,11 @@ namespace HaCreator.MapSimulator.Effects
         private const string WeddingBgmPath = "BgmEvent/wedding";
         private const string WeddingUiImageName = "UIWindow.img";
         private const string CeremonyTextOverlayPath = "wedding/text/0";
+        private const string WeddingMapHelperImageName = "MapHelper.img";
+        private const string WeddingWeatherPath = "weather/wedding";
+        private const string WeddingHeartWeatherPath = "weather/heartWedding";
+        private const int CeremonyPetalCount = 28;
+        private const int CeremonyHeartCount = 14;
 
         private static readonly Dictionary<int, Dictionary<int, string>> WeddingDialogFallbacks = new()
         {
@@ -336,6 +341,7 @@ namespace HaCreator.MapSimulator.Effects
         private int _blessEffectStartTime;
         private bool _ceremonyTextOverlayActive = false;
         private float _ceremonyTextOverlayAlpha = 0f;
+        private bool _ceremonyCelebrationActive = false;
         #endregion
 
         #region Visual Effects
@@ -343,6 +349,10 @@ namespace HaCreator.MapSimulator.Effects
         private List<IDXObject> _blessFrames;
         private Texture2D _ceremonyTextOverlayTexture;
         private Point _ceremonyTextOverlayOrigin;
+        private readonly List<WeddingSceneFrame> _ceremonyPetalFrames = new();
+        private readonly List<WeddingSceneFrame> _ceremonyHeartFrames = new();
+        private readonly List<WeddingSceneParticle> _ceremonyPetals = new();
+        private readonly List<WeddingSceneParticle> _ceremonyHearts = new();
         private Random _random = new();
         #endregion
 
@@ -359,6 +369,7 @@ namespace HaCreator.MapSimulator.Effects
         public int CurrentStep => _currentStep;
         public bool IsBlessEffectActive => _blessEffectActive;
         public bool IsCeremonyTextOverlayActive => _ceremonyTextOverlayActive;
+        public bool IsCeremonyCelebrationActive => _ceremonyCelebrationActive;
         public bool HasActiveScriptedDialog => _currentDialog != null || _dialogQueue.Count > 0;
         public WeddingParticipantRole LocalParticipantRole { get; private set; } = WeddingParticipantRole.Guest;
         public string CurrentDialogMessage => _currentDialog?.Message;
@@ -382,6 +393,7 @@ namespace HaCreator.MapSimulator.Effects
             _clearBgmOverride = clearBgmOverride;
             _blessFrames = LoadBlessFrames(device);
             LoadCeremonyOverlay(device);
+            LoadCeremonyCelebrationAssets(device);
         }
 
         public void Enable(int mapId)
@@ -400,6 +412,9 @@ namespace HaCreator.MapSimulator.Effects
             _lastPacketResponse = null;
             _ceremonyTextOverlayActive = false;
             _ceremonyTextOverlayAlpha = 0f;
+            _ceremonyCelebrationActive = false;
+            _ceremonyPetals.Clear();
+            _ceremonyHearts.Clear();
             _currentDialog = null;
             _dialogQueue.Clear();
             LocalParticipantRole = WeddingParticipantRole.Guest;
@@ -451,6 +466,7 @@ namespace HaCreator.MapSimulator.Effects
             {
                 SetBlessEffect(false, currentTimeMs);
                 SetCeremonyTextOverlay(true);
+                SetCeremonyCelebration(active: false);
                 _requestBgmOverride?.Invoke(WeddingBgmPath);
             }
             else
@@ -470,6 +486,7 @@ namespace HaCreator.MapSimulator.Effects
         {
             System.Diagnostics.Debug.WriteLine("[WeddingField] OnWeddingCeremonyEnd - Starting bless effect");
             SetBlessEffect(true, currentTimeMs);
+            SetCeremonyCelebration(active: true);
         }
 
         public WeddingPacketResponse? RespondToCurrentDialog(bool accepted, int currentTimeMs)
@@ -642,6 +659,62 @@ namespace HaCreator.MapSimulator.Effects
             }
         }
 
+        private void LoadCeremonyCelebrationAssets(GraphicsDevice device)
+        {
+            if (device == null)
+            {
+                return;
+            }
+
+            try
+            {
+                WzImage mapHelperImage = global::HaCreator.Program.FindImage("Map", WeddingMapHelperImageName);
+                mapHelperImage?.ParseImage();
+                LoadSceneFrames(mapHelperImage?.GetFromPath(WeddingWeatherPath) as WzImageProperty, _ceremonyPetalFrames, device);
+                LoadSceneFrames(mapHelperImage?.GetFromPath(WeddingHeartWeatherPath) as WzImageProperty, _ceremonyHeartFrames, device);
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[WeddingField] Failed to load ceremony celebration assets: {ex.Message}");
+            }
+        }
+
+        private static void LoadSceneFrames(WzImageProperty sourceProperty, List<WeddingSceneFrame> destination, GraphicsDevice device)
+        {
+            destination.Clear();
+            if (sourceProperty == null)
+            {
+                return;
+            }
+
+            int frameIndex = 0;
+            while (true)
+            {
+                WzImageProperty frameProperty = WzInfoTools.GetRealProperty(sourceProperty[frameIndex.ToString()]);
+                if (frameProperty == null)
+                {
+                    break;
+                }
+
+                if (frameProperty is not WzCanvasProperty frameCanvas)
+                {
+                    frameIndex++;
+                    continue;
+                }
+
+                using var bitmap = frameCanvas.GetLinkedWzCanvasBitmap();
+                if (bitmap != null)
+                {
+                    Texture2D texture = bitmap.ToTexture2D(device);
+                    System.Drawing.PointF origin = frameCanvas.GetCanvasOriginPosition();
+                    int delay = InfoTool.GetOptionalInt(frameCanvas["delay"], 100) ?? 100;
+                    destination.Add(new WeddingSceneFrame(texture, new Vector2(origin.X, origin.Y), delay));
+                }
+
+                frameIndex++;
+            }
+        }
+
         private void ShowWeddingDialog(int step, int currentTimeMs)
         {
             _currentDialog = CreateDialogForStep(step, currentTimeMs);
@@ -778,7 +851,11 @@ namespace HaCreator.MapSimulator.Effects
             string lastPacket = _lastPacketResponse.HasValue
                 ? _lastPacketResponse.Value.ToString()
                 : "none";
-            string scene = _ceremonyTextOverlayActive ? "declaration overlay active" : "no scene overlay";
+            string scene = _ceremonyTextOverlayActive
+                ? "declaration overlay active"
+                : _ceremonyCelebrationActive
+                    ? "celebration particles active"
+                    : "no scene overlay";
             return $"Wedding map {_mapId}: step {_currentStep}, role {role}, dialog {dialog}, scene {scene}, groom {groomPosition}, bride {bridePosition}, last packet {lastPacket}.";
         }
 
@@ -831,6 +908,7 @@ namespace HaCreator.MapSimulator.Effects
                 _ceremonyTextOverlayAlpha + ((overlayTargetAlpha - _ceremonyTextOverlayAlpha) * Math.Min(deltaSeconds * 10f, 1f)),
                 0f,
                 1f);
+            UpdateCeremonyCelebration(deltaSeconds);
 
             // Update bless effect
             if (_blessEffectActive && (_blessFrames == null || _blessFrames.Count == 0))
@@ -883,6 +961,7 @@ namespace HaCreator.MapSimulator.Effects
             if (!_isActive) return;
 
             DrawCeremonyOverlay(spriteBatch);
+            DrawCeremonyCelebration(spriteBatch, mapShiftX, mapShiftY, centerX, centerY, tickCount);
 
             // Draw bless effect sparkles
             if (_blessEffectActive && _blessEffectAlpha > 0)
@@ -971,6 +1050,236 @@ namespace HaCreator.MapSimulator.Effects
             }
         }
 
+        private void SetCeremonyCelebration(bool active)
+        {
+            _ceremonyCelebrationActive = active;
+            _ceremonyPetals.Clear();
+            _ceremonyHearts.Clear();
+            if (!_ceremonyCelebrationActive)
+            {
+                return;
+            }
+
+            SpawnCeremonyPetals();
+            SpawnCeremonyHearts();
+        }
+
+        private void SpawnCeremonyPetals()
+        {
+            if (_ceremonyPetalFrames.Count == 0)
+            {
+                return;
+            }
+
+            for (int i = 0; i < CeremonyPetalCount; i++)
+            {
+                _ceremonyPetals.Add(new WeddingSceneParticle
+                {
+                    ScreenNormalizedPosition = new Vector2(
+                        (float)_random.NextDouble(),
+                        (float)(_random.NextDouble() * 1.15f)),
+                    Velocity = new Vector2(
+                        -0.015f + (float)_random.NextDouble() * 0.03f,
+                        0.05f + (float)_random.NextDouble() * 0.10f),
+                    Scale = 0.7f + (float)_random.NextDouble() * 0.65f,
+                    Rotation = (float)(_random.NextDouble() * Math.PI * 2.0),
+                    RotationSpeed = -0.7f + (float)_random.NextDouble() * 1.4f,
+                    Alpha = 0.45f + (float)_random.NextDouble() * 0.35f,
+                    FrameIndex = _random.Next(_ceremonyPetalFrames.Count),
+                    FrameTimeMs = _random.Next(0, 300),
+                    DrawAroundCouple = false
+                });
+            }
+        }
+
+        private void SpawnCeremonyHearts()
+        {
+            if (_ceremonyHeartFrames.Count == 0)
+            {
+                return;
+            }
+
+            for (int i = 0; i < CeremonyHeartCount; i++)
+            {
+                float angle = MathHelper.TwoPi * (i / (float)CeremonyHeartCount);
+                float radius = 18f + (float)_random.NextDouble() * 54f;
+                _ceremonyHearts.Add(new WeddingSceneParticle
+                {
+                    WorldOffset = new Vector2(
+                        (float)Math.Cos(angle) * radius,
+                        -12f + (float)Math.Sin(angle * 1.6f) * 14f),
+                    Velocity = new Vector2(
+                        -8f + (float)_random.NextDouble() * 16f,
+                        -18f - (float)_random.NextDouble() * 24f),
+                    Scale = 0.8f + (float)_random.NextDouble() * 0.55f,
+                    Rotation = -0.15f + (float)_random.NextDouble() * 0.30f,
+                    RotationSpeed = -0.5f + (float)_random.NextDouble() * 1.0f,
+                    Alpha = 0.68f + (float)_random.NextDouble() * 0.22f,
+                    FrameIndex = _random.Next(_ceremonyHeartFrames.Count),
+                    FrameTimeMs = _random.Next(0, 900),
+                    DrawAroundCouple = true
+                });
+            }
+        }
+
+        private void UpdateCeremonyCelebration(float deltaSeconds)
+        {
+            if (!_ceremonyCelebrationActive)
+            {
+                return;
+            }
+
+            for (int i = 0; i < _ceremonyPetals.Count; i++)
+            {
+                WeddingSceneParticle petal = _ceremonyPetals[i];
+                petal.ScreenNormalizedPosition += petal.Velocity * deltaSeconds;
+                petal.Rotation += petal.RotationSpeed * deltaSeconds;
+                petal.FrameTimeMs += (int)(deltaSeconds * 1000f);
+
+                if (petal.ScreenNormalizedPosition.Y > 1.12f)
+                {
+                    petal.ScreenNormalizedPosition = new Vector2(
+                        (float)_random.NextDouble(),
+                        -0.08f - (float)_random.NextDouble() * 0.12f);
+                    petal.Velocity = new Vector2(
+                        -0.015f + (float)_random.NextDouble() * 0.03f,
+                        0.05f + (float)_random.NextDouble() * 0.10f);
+                    petal.Scale = 0.7f + (float)_random.NextDouble() * 0.65f;
+                    petal.Alpha = 0.45f + (float)_random.NextDouble() * 0.35f;
+                    petal.FrameIndex = _random.Next(_ceremonyPetalFrames.Count);
+                    petal.FrameTimeMs = 0;
+                }
+
+                if (petal.ScreenNormalizedPosition.X < -0.15f)
+                {
+                    petal.ScreenNormalizedPosition = new Vector2(1.05f, petal.ScreenNormalizedPosition.Y);
+                }
+                else if (petal.ScreenNormalizedPosition.X > 1.15f)
+                {
+                    petal.ScreenNormalizedPosition = new Vector2(-0.05f, petal.ScreenNormalizedPosition.Y);
+                }
+
+                _ceremonyPetals[i] = petal;
+            }
+
+            for (int i = 0; i < _ceremonyHearts.Count; i++)
+            {
+                WeddingSceneParticle heart = _ceremonyHearts[i];
+                heart.WorldOffset += heart.Velocity * deltaSeconds;
+                heart.Rotation += heart.RotationSpeed * deltaSeconds;
+                heart.FrameTimeMs += (int)(deltaSeconds * 1000f);
+                heart.Alpha = MathHelper.Clamp(heart.Alpha - (deltaSeconds * 0.16f), 0.2f, 1f);
+
+                if (heart.WorldOffset.Y < -130f || heart.Alpha <= 0.21f)
+                {
+                    float angle = (float)(_random.NextDouble() * Math.PI * 2.0);
+                    float radius = 12f + (float)_random.NextDouble() * 46f;
+                    heart.WorldOffset = new Vector2((float)Math.Cos(angle) * radius, -8f + (float)Math.Sin(angle) * 10f);
+                    heart.Velocity = new Vector2(
+                        -8f + (float)_random.NextDouble() * 16f,
+                        -18f - (float)_random.NextDouble() * 24f);
+                    heart.Scale = 0.8f + (float)_random.NextDouble() * 0.55f;
+                    heart.Alpha = 0.68f + (float)_random.NextDouble() * 0.22f;
+                    heart.FrameIndex = _random.Next(_ceremonyHeartFrames.Count);
+                    heart.FrameTimeMs = 0;
+                }
+
+                _ceremonyHearts[i] = heart;
+            }
+        }
+
+        private void DrawCeremonyCelebration(SpriteBatch spriteBatch, int mapShiftX, int mapShiftY, int centerX, int centerY, int currentTimeMs)
+        {
+            if (!_ceremonyCelebrationActive)
+            {
+                return;
+            }
+
+            Viewport viewport = spriteBatch.GraphicsDevice.Viewport;
+            DrawSceneParticles(spriteBatch, _ceremonyPetals, _ceremonyPetalFrames, null, viewport, currentTimeMs);
+
+            Vector2 coupleCenter = GetBlessEffectScreenCenter(
+                mapShiftX,
+                mapShiftY,
+                centerX,
+                centerY,
+                viewport.Width,
+                viewport.Height);
+            DrawSceneParticles(spriteBatch, _ceremonyHearts, _ceremonyHeartFrames, coupleCenter, viewport, currentTimeMs);
+        }
+
+        private static void DrawSceneParticles(
+            SpriteBatch spriteBatch,
+            List<WeddingSceneParticle> particles,
+            List<WeddingSceneFrame> frames,
+            Vector2? coupleCenter,
+            Viewport viewport,
+            int currentTimeMs)
+        {
+            if (particles.Count == 0 || frames.Count == 0)
+            {
+                return;
+            }
+
+            foreach (WeddingSceneParticle particle in particles)
+            {
+                WeddingSceneFrame frame = ResolveSceneFrame(frames, particle.FrameIndex, particle.FrameTimeMs + currentTimeMs);
+                if (frame?.Texture == null)
+                {
+                    continue;
+                }
+
+                Vector2 position = particle.DrawAroundCouple && coupleCenter.HasValue
+                    ? coupleCenter.Value + particle.WorldOffset
+                    : new Vector2(
+                        particle.ScreenNormalizedPosition.X * viewport.Width,
+                        particle.ScreenNormalizedPosition.Y * viewport.Height);
+
+                spriteBatch.Draw(
+                    frame.Texture,
+                    position,
+                    null,
+                    Color.White * particle.Alpha,
+                    particle.Rotation,
+                    frame.Origin,
+                    particle.Scale,
+                    SpriteEffects.None,
+                    0f);
+            }
+        }
+
+        private static WeddingSceneFrame ResolveSceneFrame(List<WeddingSceneFrame> frames, int baseFrameIndex, int animationTimeMs)
+        {
+            if (frames.Count == 0)
+            {
+                return null;
+            }
+
+            int totalDuration = 0;
+            for (int i = 0; i < frames.Count; i++)
+            {
+                totalDuration += Math.Max(frames[i].Delay, 1);
+            }
+
+            if (totalDuration <= 0)
+            {
+                return frames[Math.Clamp(baseFrameIndex, 0, frames.Count - 1)];
+            }
+
+            int loopTime = Math.Abs(animationTimeMs) % totalDuration;
+            int accumulated = 0;
+            for (int i = 0; i < frames.Count; i++)
+            {
+                accumulated += Math.Max(frames[i].Delay, 1);
+                if (loopTime < accumulated)
+                {
+                    return frames[i];
+                }
+            }
+
+            return frames[Math.Clamp(baseFrameIndex, 0, frames.Count - 1)];
+        }
+
         private void DrawDialog(SpriteBatch spriteBatch, Texture2D pixelTexture, SpriteFont font, int currentTimeMs)
         {
             if (_currentDialog == null) return;
@@ -1049,7 +1358,10 @@ namespace HaCreator.MapSimulator.Effects
             _blessEffectActive = false;
             _ceremonyTextOverlayActive = false;
             _ceremonyTextOverlayAlpha = 0f;
+            _ceremonyCelebrationActive = false;
             _sparkles.Clear();
+            _ceremonyPetals.Clear();
+            _ceremonyHearts.Clear();
             _currentDialog = null;
             _dialogQueue.Clear();
             _groomId = 0;
@@ -1093,6 +1405,34 @@ namespace HaCreator.MapSimulator.Effects
         public int StartTime;
         public int Duration;
         public WeddingDialogMode Mode;
+    }
+
+    public sealed class WeddingSceneFrame
+    {
+        public WeddingSceneFrame(Texture2D texture, Vector2 origin, int delay)
+        {
+            Texture = texture;
+            Origin = origin;
+            Delay = Math.Max(delay, 1);
+        }
+
+        public Texture2D Texture { get; }
+        public Vector2 Origin { get; }
+        public int Delay { get; }
+    }
+
+    public struct WeddingSceneParticle
+    {
+        public Vector2 ScreenNormalizedPosition;
+        public Vector2 WorldOffset;
+        public Vector2 Velocity;
+        public float Scale;
+        public float Rotation;
+        public float RotationSpeed;
+        public float Alpha;
+        public int FrameIndex;
+        public int FrameTimeMs;
+        public bool DrawAroundCouple;
     }
 
     public enum WeddingPacketOpcode
@@ -1385,14 +1725,25 @@ namespace HaCreator.MapSimulator.Effects
 
         public sealed class BattlefieldTeamLookPreset
         {
-            public BattlefieldTeamLookPreset(int teamId, IReadOnlyDictionary<EquipSlot, int> equipmentItemIds)
+            public BattlefieldTeamLookPreset(
+                int teamId,
+                IReadOnlyDictionary<EquipSlot, int> equipmentItemIds,
+                float? moveSpeed,
+                int? moveSpeedCap,
+                IReadOnlyList<int> blockedItemIds)
             {
                 TeamId = teamId;
                 EquipmentItemIds = equipmentItemIds ?? new Dictionary<EquipSlot, int>();
+                MoveSpeed = moveSpeed;
+                MoveSpeedCap = moveSpeedCap;
+                BlockedItemIds = blockedItemIds ?? Array.Empty<int>();
             }
 
             public int TeamId { get; }
             public IReadOnlyDictionary<EquipSlot, int> EquipmentItemIds { get; }
+            public float? MoveSpeed { get; }
+            public int? MoveSpeedCap { get; }
+            public IReadOnlyList<int> BlockedItemIds { get; }
         }
 
         public enum BattlefieldWinner
@@ -1549,6 +1900,25 @@ namespace HaCreator.MapSimulator.Effects
         public bool TryGetTeamLookPreset(int teamId, out BattlefieldTeamLookPreset preset)
         {
             return _teamLookPresets.TryGetValue(teamId, out preset);
+        }
+
+        public bool TryGetAssignedTeamLookPreset(int characterId, out BattlefieldTeamLookPreset preset)
+        {
+            preset = null;
+            if (!_isActive || characterId <= 0)
+            {
+                return false;
+            }
+
+            if (_localCharacterId.HasValue
+                && characterId == _localCharacterId.Value
+                && _localTeamId.HasValue)
+            {
+                return _teamLookPresets.TryGetValue(_localTeamId.Value, out preset);
+            }
+
+            return _remoteUserTeams.TryGetValue(characterId, out int teamId)
+                && _teamLookPresets.TryGetValue(teamId, out preset);
         }
 
         public void SetLocalPlayerState(int? localCharacterId)
@@ -1846,7 +2216,26 @@ namespace HaCreator.MapSimulator.Effects
                     equipmentItemIds[slot] = itemId.Value;
                 }
 
-                _teamLookPresets[teamId.Value] = new BattlefieldTeamLookPreset(teamId.Value, equipmentItemIds);
+                float? moveSpeed = userEntry["stat"] is WzSubProperty statProperty
+                    ? InfoTool.GetOptionalInt(statProperty["speed"])
+                    : null;
+                int? moveSpeedCap = userEntry["stat"] is WzSubProperty statPropertyWithCap
+                    ? InfoTool.GetOptionalInt(statPropertyWithCap["speedmax"])
+                    : null;
+                IReadOnlyList<int> blockedItemIds = userEntry["noitem"] is WzSubProperty blockedItemsProperty
+                    ? blockedItemsProperty.WzProperties
+                        .Select(property => InfoTool.GetOptionalInt(property))
+                        .Where(itemId => itemId.HasValue && itemId.Value > 0)
+                        .Select(itemId => itemId.Value)
+                        .ToArray()
+                    : Array.Empty<int>();
+
+                _teamLookPresets[teamId.Value] = new BattlefieldTeamLookPreset(
+                    teamId.Value,
+                    equipmentItemIds,
+                    moveSpeed,
+                    moveSpeedCap,
+                    blockedItemIds);
             }
         }
 
@@ -2242,6 +2631,8 @@ namespace HaCreator.MapSimulator.Effects
         private int _lastHealAmount;
         private int _localPulleySequenceNextTransitionTick = int.MinValue;
         private int _localPulleyCooldownUntil = int.MinValue;
+        private int _pulleyRequestInFlightUntil = int.MinValue;
+        private int _pulleyRequestInFlightSequence;
         private int _statusCueExpiresAt = int.MinValue;
         private string _statusCueText;
         private LocalPulleySequenceStage _localPulleySequenceStage = LocalPulleySequenceStage.None;
@@ -2264,6 +2655,7 @@ namespace HaCreator.MapSimulator.Effects
         private const int PulleyActivationDelayMs = 450;
         private const int PulleyActiveDurationMs = 900;
         private const int PulleyReuseDelayMs = 1200;
+        private const int PulleyTransportRequestTimeoutMs = 1500;
         private const int StatusCueDurationMs = 1800;
 
         public bool IsActive => _isActive;
@@ -2273,6 +2665,7 @@ namespace HaCreator.MapSimulator.Effects
         public bool IsHealEffectActive => _healEffectActive;
         public bool HasPendingLocalPulleySequence => _localPulleySequenceStage != LocalPulleySequenceStage.None;
         public PulleyPacketRequest? PendingPulleyPacketRequest => _pendingPulleyPacketRequest;
+        public bool HasPulleyTransportRequestInFlight => _pulleyRequestInFlightUntil != int.MinValue;
         public bool IsLocalPlayerWithinPulleyArea => _pulleyEnabled && !_localPlayerHitbox.IsEmpty && _pulleyArea.Intersects(_localPlayerHitbox);
         #endregion
 
@@ -2418,6 +2811,7 @@ namespace HaCreator.MapSimulator.Effects
 
             if (source == GuildBossPacketSource.External)
             {
+                ClearPulleyTransportRequestInFlight();
                 CancelLocalPulleySequence(preserveCooldown: true);
             }
 
@@ -2451,6 +2845,7 @@ namespace HaCreator.MapSimulator.Effects
         {
             if (source == GuildBossPacketSource.External)
             {
+                ClearPulleyTransportRequestInFlight();
                 CancelLocalPulleySequence(preserveCooldown: true);
             }
 
@@ -2461,6 +2856,11 @@ namespace HaCreator.MapSimulator.Effects
 
         public bool TryHandleLocalPulleyAttack(Rectangle attackBounds, int currentTimeMs, out string message)
         {
+            return TryHandleLocalPulleyAttack(attackBounds, currentTimeMs, allowLocalPreview: true, out message);
+        }
+
+        public bool TryHandleLocalPulleyAttack(Rectangle attackBounds, int currentTimeMs, bool allowLocalPreview, out string message)
+        {
             message = null;
             if (!_isActive || !_pulleyEnabled || attackBounds.IsEmpty || !_pulleyArea.Intersects(attackBounds))
             {
@@ -2469,24 +2869,39 @@ namespace HaCreator.MapSimulator.Effects
 
             TriggerPulleyHitAnimation(currentTimeMs);
 
-            if (_pulleyState != 0 || _localPulleySequenceStage != LocalPulleySequenceStage.None || currentTimeMs < _localPulleyCooldownUntil)
+            if (_pulleyState != 0
+                || _localPulleySequenceStage != LocalPulleySequenceStage.None
+                || currentTimeMs < _localPulleyCooldownUntil
+                || (HasPulleyTransportRequestInFlight && currentTimeMs < _pulleyRequestInFlightUntil))
             {
                 return true;
             }
 
             _pulleyPacketSequence++;
             _pendingPulleyPacketRequest = new PulleyPacketRequest(currentTimeMs, _pulleyPacketSequence);
-            ApplyPulleyStateChange(1, currentTimeMs, GuildBossPacketSource.LocalPreview);
-            if (_healerEnabled && _healerRise > 0)
+            _pulleyRequestInFlightSequence = _pulleyPacketSequence;
+            _pulleyRequestInFlightUntil = unchecked(currentTimeMs + PulleyTransportRequestTimeoutMs);
+
+            if (allowLocalPreview)
             {
-                ApplyHealerMove(ClampHealerY((int)MathF.Round(_healerTargetY) - _healerRise), currentTimeMs, GuildBossPacketSource.LocalPreview);
+                ApplyPulleyStateChange(1, currentTimeMs, GuildBossPacketSource.LocalPreview);
+                if (_healerEnabled && _healerRise > 0)
+                {
+                    ApplyHealerMove(ClampHealerY((int)MathF.Round(_healerTargetY) - _healerRise), currentTimeMs, GuildBossPacketSource.LocalPreview);
+                }
+
+                _localPulleySequenceStage = LocalPulleySequenceStage.Activating;
+                _localPulleySequenceNextTransitionTick = unchecked(currentTimeMs + PulleyActivationDelayMs);
+                _localPulleyCooldownUntil = unchecked(currentTimeMs + PulleyActivationDelayMs + PulleyActiveDurationMs + PulleyReuseDelayMs);
+                SetStatusCue("Pulley engaged", currentTimeMs);
+                message = "Guild boss pulley engaged.";
+            }
+            else
+            {
+                SetStatusCue("Pulley request sent", currentTimeMs);
+                message = "Guild boss pulley request sent.";
             }
 
-            _localPulleySequenceStage = LocalPulleySequenceStage.Activating;
-            _localPulleySequenceNextTransitionTick = unchecked(currentTimeMs + PulleyActivationDelayMs);
-            _localPulleyCooldownUntil = unchecked(currentTimeMs + PulleyActivationDelayMs + PulleyActiveDurationMs + PulleyReuseDelayMs);
-            SetStatusCue("Pulley engaged", currentTimeMs);
-            message = "Guild boss pulley engaged.";
             return true;
         }
 
@@ -2533,6 +2948,14 @@ namespace HaCreator.MapSimulator.Effects
             if (!_isActive) return;
 
             UpdateLocalPulleySequence(currentTimeMs);
+            if (HasPulleyTransportRequestInFlight && currentTimeMs >= _pulleyRequestInFlightUntil)
+            {
+                ClearPulleyTransportRequestInFlight();
+                if (_localPulleySequenceStage == LocalPulleySequenceStage.None)
+                {
+                    SetStatusCue("Pulley response timeout", currentTimeMs);
+                }
+            }
 
             if (_healerEnabled)
             {
@@ -2732,8 +3155,9 @@ namespace HaCreator.MapSimulator.Effects
             };
             string previewState = HasPendingLocalPulleySequence ? $", preview={_localPulleySequenceStage}" : string.Empty;
             string pendingPacket = _pendingPulleyPacketRequest.HasValue ? $", request={_pendingPulleyPacketRequest.Value.Sequence}" : string.Empty;
+            string inFlightPacket = HasPulleyTransportRequestInFlight ? $", inflight={_pulleyRequestInFlightSequence}" : string.Empty;
 
-            return $"Guild boss map {_mapId}: healer {healerRange}, pulley {pulleyState}{previewState}{pendingPacket}, rise={_healerRise}, fall={_healerFall}, heal={_healerHealMin}..{_healerHealMax}, healer art={_healerPath ?? "none"}, pulley art={_pulleyPath ?? "none"}.";
+            return $"Guild boss map {_mapId}: healer {healerRange}, pulley {pulleyState}{previewState}{pendingPacket}{inFlightPacket}, rise={_healerRise}, fall={_healerFall}, heal={_healerHealMin}..{_healerHealMax}, healer art={_healerPath ?? "none"}, pulley art={_pulleyPath ?? "none"}.";
         }
 
         #region Reset
@@ -2759,6 +3183,8 @@ namespace HaCreator.MapSimulator.Effects
             _localPulleySequenceStage = LocalPulleySequenceStage.None;
             _localPulleySequenceNextTransitionTick = int.MinValue;
             _localPulleyCooldownUntil = int.MinValue;
+            _pulleyRequestInFlightUntil = int.MinValue;
+            _pulleyRequestInFlightSequence = 0;
             _pendingPulleyPacketRequest = null;
             _pulleyPacketSequence = 0;
             _statusCueExpiresAt = int.MinValue;
@@ -2842,6 +3268,12 @@ namespace HaCreator.MapSimulator.Effects
             {
                 _localPulleyCooldownUntil = int.MinValue;
             }
+        }
+
+        private void ClearPulleyTransportRequestInFlight()
+        {
+            _pulleyRequestInFlightUntil = int.MinValue;
+            _pulleyRequestInFlightSequence = 0;
         }
 
         private int RollHealAmount()
@@ -3735,6 +4167,9 @@ namespace HaCreator.MapSimulator.Effects
     /// WZ evidence:
     /// - Space Gaga maps 922240000, 922240100, and 922240200 all declare fieldType 20
     ///   (FIELDTYPE_SPACEGAGA) in map/Map\Map9.
+    /// - Map/Obj/etc.img/space exposes the dedicated SpaceGAGA timerboard art via backgrnd
+    ///   (228x69) plus fontTime digits and comma, which is the fixed WZ source this runtime now
+    ///   prefers before falling back to older heuristic discovery.
     ///
     /// Client evidence:
     /// - CField_SpaceGAGA::OnClock (0x5625d0) only reacts to clock type 2, destroys the
@@ -3743,7 +4178,8 @@ namespace HaCreator.MapSimulator.Effects
     ///   zero-padded minutes and seconds at fixed positions: (44, 23) and (131, 23).
     ///
     /// This simulator pass adds the dedicated timerboard flow and clock ownership seam.
-    /// Exact WZ canvas and timer font loading still need follow-up work.
+    /// The client still references this through StringPool id 0x140D in OnCreate, but the
+    /// runtime now pins the concrete WZ source node instead of scanning UIWindow trees by shape.
     /// </summary>
     public class SpaceGagaField
     {
@@ -3759,6 +4195,10 @@ namespace HaCreator.MapSimulator.Effects
         private const int DividerWidth = 38;
         private const int DividerHeight = 36;
         private const int ResetPulseDurationMs = 600;
+        private const string SpaceMapObjectImageName = "Obj/etc.img";
+        private const string SpaceTimerboardRootPath = "space";
+        private const string SpaceTimerboardBackgroundPath = "space/backgrnd";
+        private const string SpaceTimerboardDigitsPath = "space/fontTime";
         private static readonly string[] UiImageNames = { "UIWindow.img", "UIWindow2.img" };
 
         private bool _isActive;
@@ -3979,27 +4419,41 @@ namespace HaCreator.MapSimulator.Effects
                 return;
             }
 
-            foreach (string imageName in UiImageNames)
+            WzImage objImage = global::HaCreator.Program.FindImage("Map", SpaceMapObjectImageName);
+            WzImageProperty spaceRoot = objImage?[SpaceTimerboardRootPath];
+            if (spaceRoot != null)
             {
-                WzImage uiImage = global::HaCreator.Program.FindImage("UI", imageName);
-                if (uiImage?.WzProperties == null)
+                _backgroundTexture ??= LoadCanvasTexture(objImage?[SpaceTimerboardBackgroundPath] as WzCanvasProperty);
+                if (_digitTextures.Any(texture => texture == null))
                 {
-                    continue;
+                    LoadDigitTextures(objImage?[SpaceTimerboardDigitsPath]);
                 }
+            }
 
-                if (_backgroundTexture == null && TryFindSpaceGagaBoardCanvas(uiImage, out WzCanvasProperty boardCanvas))
+            if (_backgroundTexture == null || _digitTextures.Any(texture => texture == null))
+            {
+                foreach (string imageName in UiImageNames)
                 {
-                    _backgroundTexture = LoadCanvasTexture(boardCanvas);
-                }
+                    WzImage uiImage = global::HaCreator.Program.FindImage("UI", imageName);
+                    if (uiImage?.WzProperties == null)
+                    {
+                        continue;
+                    }
 
-                if (_digitTextures.Any(texture => texture == null) && TryFindSpaceGagaDigitContainer(uiImage, out WzImageProperty digitContainer))
-                {
-                    LoadDigitTextures(digitContainer);
-                }
+                    if (_backgroundTexture == null && TryFindSpaceGagaBoardCanvas(uiImage, out WzCanvasProperty boardCanvas))
+                    {
+                        _backgroundTexture = LoadCanvasTexture(boardCanvas);
+                    }
 
-                if (_backgroundTexture != null && _digitTextures.All(texture => texture != null))
-                {
-                    break;
+                    if (_digitTextures.Any(texture => texture == null) && TryFindSpaceGagaDigitContainer(uiImage, out WzImageProperty digitContainer))
+                    {
+                        LoadDigitTextures(digitContainer);
+                    }
+
+                    if (_backgroundTexture != null && _digitTextures.All(texture => texture != null))
+                    {
+                        break;
+                    }
                 }
             }
 
@@ -4163,6 +4617,11 @@ namespace HaCreator.MapSimulator.Effects
     public class MassacreField
     {
         private static readonly string[] UiImageNames = { "UIWindow2.img", "UIWindow.img" };
+        private const int TimerboardSourceStringPoolId = 0x14EE;
+        private const int ClearScreenEffectStringPoolId = 0x14EC;
+        private const int KeyAnimationOpenStringPoolId = 0x1512;
+        private const int KeyAnimationLoopStringPoolId = 0x1511;
+        private const int KeyAnimationCloseStringPoolId = 0x1510;
         private const int ComboTimeoutMs = 3000;
         private const int TimerboardWidth = 258;
         private const int TimerboardHeight = 61;
@@ -4231,8 +4690,6 @@ namespace HaCreator.MapSimulator.Effects
         private Texture2D _gaugeTextTexture;
         private Texture2D _gaugePixelTexture;
         private Texture2D _timerboardSourceTexture;
-        private Texture2D _timerboardEnabledTexture;
-        private Texture2D _timerboardDisabledTexture;
         private readonly Texture2D[] _timerDigits = new Texture2D[10];
         private readonly Texture2D[] _resultDigits = new Texture2D[10];
         private Texture2D _resultPlusTexture;
@@ -4291,6 +4748,8 @@ namespace HaCreator.MapSimulator.Effects
 
         public void Initialize(GraphicsDevice device)
         {
+            _device = device;
+            _assetsLoaded = false;
         }
 
         public void Enable(int mapId = 0)
@@ -4649,7 +5108,7 @@ namespace HaCreator.MapSimulator.Effects
 
             Rectangle bounds = new(viewport.Width / 2 + TimerboardOffsetX, TimerboardY, TimerboardWidth, TimerboardHeight);
             Texture2D timerboardTexture = _timerboardSourceTexture
-                ?? (_disableSkill ? _timerboardDisabledTexture : _timerboardEnabledTexture);
+                ;
             if (timerboardTexture != null)
             {
                 spriteBatch.Draw(timerboardTexture, new Vector2(bounds.X, bounds.Y), Color.White);
@@ -4897,8 +5356,6 @@ namespace HaCreator.MapSimulator.Effects
             WzImageProperty gauge = monsterKilling?["Gauge"];
             WzImageProperty result = monsterKilling?["Result"];
 
-            _timerboardDisabledTexture = LoadCanvasTexture(count?["backgrd0"] as WzCanvasProperty);
-            _timerboardEnabledTexture = LoadCanvasTexture(count?["backgrd1"] as WzCanvasProperty);
             LoadDigitTextures(count?["number"], _timerDigits);
 
             _gaugeBackgroundTexture = LoadCanvasTexture(gauge?["backgrd"] as WzCanvasProperty);

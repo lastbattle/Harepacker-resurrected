@@ -25,7 +25,7 @@ namespace HaCreator.MapSimulator.Entities
                 return true;
             }
 
-            return mobData?.Friendly == true || (mobData?.Escort ?? 0) > 0;
+            return mobData?.DamagedByMob == true || (mobData?.Escort ?? 0) > 0;
         }
     }
 }

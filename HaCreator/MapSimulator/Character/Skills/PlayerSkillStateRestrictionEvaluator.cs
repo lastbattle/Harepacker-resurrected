@@ -7,6 +7,13 @@ namespace HaCreator.MapSimulator.Character.Skills
     /// </summary>
     public static class PlayerSkillStateRestrictionEvaluator
     {
+        private const int WindWalkSkillId = 11101005;
+        private const int WildHunterJaguarJumpSkillId = 33001002;
+        private const int NightLordFlashJumpSkillId = 4111006;
+        private const int ShadowerFlashJumpSkillId = 4211009;
+        private const int DualBladeFlashJumpSkillId = 4321003;
+        private const int RocketBoosterSkillId = 35101004;
+
         public static bool CanUseSkill(PlayerCharacter player, SkillData skill)
         {
             return CanUseSkill(player, skill, System.Environment.TickCount);
@@ -46,6 +53,56 @@ namespace HaCreator.MapSimulator.Character.Skills
             if (IsSwallowSkill(skill) && player.Physics?.IsOnLadderOrRope == true)
                 return "Swallow skills cannot be used while on a ladder or rope.";
 
+            string movementRestrictionMessage = GetMovementRestrictionMessage(player, skill);
+            if (!string.IsNullOrWhiteSpace(movementRestrictionMessage))
+                return movementRestrictionMessage;
+
+            return null;
+        }
+
+        private static string GetMovementRestrictionMessage(PlayerCharacter player, SkillData skill)
+        {
+            if (player?.Physics == null || skill == null)
+            {
+                return null;
+            }
+
+            if (!UsesBoundJumpStateGate(skill))
+            {
+                return null;
+            }
+
+            if (player.Physics.IsOnLadderOrRope)
+            {
+                return "Bound-jump skills cannot be used while on a ladder or rope.";
+            }
+
+            if (RequiresGroundedBoundJumpStart(skill))
+            {
+                if (!player.Physics.IsOnFoothold())
+                {
+                    return "This movement skill must start from the ground.";
+                }
+
+                if (skill.SkillId == WildHunterJaguarJumpSkillId
+                    && (player.Physics.IsSwimming() || player.Physics.IsUserFlying()))
+                {
+                    return "This movement skill cannot be used while swimming or flying.";
+                }
+
+                return null;
+            }
+
+            if (!player.Physics.IsAirborne())
+            {
+                return "Bound-jump skills must be chained while airborne.";
+            }
+
+            if (player.Physics.IsFreeFalling() && player.Physics.IsFalling())
+            {
+                return "Bound-jump skills cannot be used after the jump has already turned into a fall.";
+            }
+
             return null;
         }
 
@@ -53,6 +110,45 @@ namespace HaCreator.MapSimulator.Character.Skills
         {
             return skill?.IsSwallowSkill == true
                    || (skill?.DummySkillParents?.Length > 0);
+        }
+
+        private static bool UsesBoundJumpStateGate(SkillData skill)
+        {
+            if (skill == null)
+            {
+                return false;
+            }
+
+            if (IsExplicitBoundJumpSkill(skill.SkillId))
+            {
+                return true;
+            }
+
+            return skill.ClientInfoType == 40
+                   && skill.CasterMove
+                   && skill.AvailableInJumpingState;
+        }
+
+        private static bool RequiresGroundedBoundJumpStart(SkillData skill)
+        {
+            if (skill == null)
+            {
+                return false;
+            }
+
+            return skill.SkillId == WindWalkSkillId
+                   || skill.SkillId == WildHunterJaguarJumpSkillId
+                   || skill.SkillId == RocketBoosterSkillId;
+        }
+
+        private static bool IsExplicitBoundJumpSkill(int skillId)
+        {
+            return skillId == WindWalkSkillId
+                   || skillId == WildHunterJaguarJumpSkillId
+                   || skillId == NightLordFlashJumpSkillId
+                   || skillId == ShadowerFlashJumpSkillId
+                   || skillId == DualBladeFlashJumpSkillId
+                   || skillId == RocketBoosterSkillId;
         }
     }
 }

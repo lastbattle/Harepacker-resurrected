@@ -55,6 +55,13 @@ namespace HaCreator.MapSimulator.Character.Skills
             "back_finish"
         };
 
+        private static readonly HashSet<int> ShadowPartnerSkillIds = new()
+        {
+            4111002,
+            4211008,
+            14111000
+        };
+
         private readonly WzFile _skillWz;
         private readonly GraphicsDevice _device;
         private readonly TexturePool _texturePool;
@@ -64,6 +71,8 @@ namespace HaCreator.MapSimulator.Character.Skills
         private readonly Dictionary<int, JobSkillBook> _jobCache = new();
         private readonly HashSet<int> _skillsWithoutCastSound = new();
         private readonly HashSet<int> _skillsWithoutRepeatSound = new();
+        private readonly Dictionary<string, MeleeAfterImageCatalog> _characterAfterImageCache = new(StringComparer.OrdinalIgnoreCase);
+        private readonly HashSet<string> _missingCharacterAfterImageKeys = new(StringComparer.OrdinalIgnoreCase);
         private WzImage _skillSoundImage;
         private WzImage _skillStringImage;
 
@@ -271,6 +280,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 skill.MinionAttack = GetString(infoNode, "minionAttack");
                 skill.ClientInfoType = GetInt(infoNode, "type");
                 skill.ClientDelayMs = GetInt(infoNode, "delay");
+                skill.AvailableInJumpingState = GetInt(infoNode, "avaliableInJumpingState") == 1;
                 string condition = GetString(infoNode, "condition");
                 skill.SummonCondition = condition;
                 skill.TriggerCondition = condition;
@@ -284,10 +294,13 @@ namespace HaCreator.MapSimulator.Character.Skills
                 skill.AffectedSkillEffect = GetString(infoNode, "affectedSkillEffect");
                 skill.DotType = GetString(infoNode, "dotType");
                 skill.IsMagicDamageSkill = GetInt(infoNode, "magicDamage") == 1;
+                skill.RequireHighestJump = GetInt(infoNode, "requireHighestJump") == 1;
                 skill.FixedState = GetInt(infoNode, "fixedState") == 1;
                 skill.CanNotMoveInState = GetInt(infoNode, "canNotMoveInState") == 1;
                 skill.OnlyNormalAttackInState = GetInt(infoNode, "onlyNormalAttack") == 1;
                 skill.SpecialNormalAttackInState = GetInt(infoNode, "specialNormalAttack") == 1;
+                skill.ReflectsIncomingDamage = GetInt(infoNode, "PADReflect") == 1
+                                               || GetInt(infoNode, "MADReflect") == 1;
             }
 
             // Check common nodes
@@ -554,7 +567,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                     if (!int.TryParse(child.Name, out int level))
                         continue;
 
-                    var levelData = CreateLevelData(child, level);
+                    var levelData = CreateLevelData(skill, child, level);
                     if (eventTamingMobId > 0 && levelData.ItemConNo <= 0)
                     {
                         levelData.ItemConNo = eventTamingMobId;
@@ -572,7 +585,7 @@ namespace HaCreator.MapSimulator.Character.Skills
 
                 for (int level = 1; level <= maxLevel; level++)
                 {
-                    var levelData = CreateLevelData(commonNode, level);
+                    var levelData = CreateLevelData(skill, commonNode, level);
                     if (eventTamingMobId > 0 && levelData.ItemConNo <= 0)
                     {
                         levelData.ItemConNo = eventTamingMobId;
@@ -681,6 +694,8 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
 
             LoadPersistentAvatarEffects(skill, skillNode);
+            LoadShadowPartnerActionAnimations(skill, skillNode);
+            LoadAfterImages(skill, skillNode);
 
             var summonNode = skillNode["summon"];
             if (summonNode != null)
@@ -702,6 +717,38 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
         }
 
+        public bool TryResolveMeleeAfterImageAction(
+            SkillData skill,
+            WeaponPart weapon,
+            string actionName,
+            int characterLevel,
+            int masteryPercent,
+            out MeleeAfterImageAction afterImageAction)
+        {
+            afterImageAction = null;
+            if (string.IsNullOrWhiteSpace(actionName))
+            {
+                return false;
+            }
+
+            string weaponTypeKey = ResolveAfterImageWeaponTypeKey(weapon);
+            if (string.IsNullOrWhiteSpace(weaponTypeKey))
+            {
+                return false;
+            }
+
+            MeleeAfterImageCatalog skillCatalog = skill?.GetAfterImageCatalogForCharacterLevel(weaponTypeKey, characterLevel);
+            if (skillCatalog != null && skillCatalog.TryGetAction(actionName, out afterImageAction))
+            {
+                return true;
+            }
+
+            MeleeAfterImageCatalog weaponCatalog = GetOrLoadCharacterAfterImageCatalog(
+                weaponTypeKey,
+                GetWeaponAfterImageMasteryIndex(masteryPercent));
+            return weaponCatalog != null && weaponCatalog.TryGetAction(actionName, out afterImageAction);
+        }
+
         private void LoadPersistentAvatarEffects(SkillData skill, WzImageProperty skillNode)
         {
             if (skill == null || skillNode == null)
@@ -716,6 +763,231 @@ namespace HaCreator.MapSimulator.Character.Skills
             skill.AvatarOverlayFinishEffect = LoadAvatarEffectAnimation(skillNode, "finish");
             skill.AvatarUnderFaceFinishEffect = LoadAvatarEffectAnimation(skillNode, "finish0");
             skill.AvatarLadderFinishEffect = LoadAvatarEffectAnimation(skillNode, "back_finish");
+        }
+
+        private void LoadAfterImages(SkillData skill, WzImageProperty skillNode)
+        {
+            if (skill == null || skillNode == null)
+            {
+                return;
+            }
+
+            PopulateAfterImageCatalogMap(skill.AfterImageCatalogsByWeaponType, skillNode["afterimage"]);
+
+            WzImageProperty charLevelNode = skillNode["CharLevel"];
+            if (charLevelNode == null)
+            {
+                return;
+            }
+
+            foreach (WzImageProperty child in charLevelNode.WzProperties)
+            {
+                if (child == null || !int.TryParse(child.Name, out int requiredLevel))
+                {
+                    continue;
+                }
+
+                var catalogMap = new Dictionary<string, MeleeAfterImageCatalog>(StringComparer.OrdinalIgnoreCase);
+                PopulateAfterImageCatalogMap(catalogMap, child["afterimage"]);
+                if (catalogMap.Count > 0)
+                {
+                    skill.CharacterLevelAfterImageCatalogsByWeaponType[requiredLevel] = catalogMap;
+                }
+            }
+        }
+
+        private void PopulateAfterImageCatalogMap(
+            Dictionary<string, MeleeAfterImageCatalog> destination,
+            WzImageProperty afterImageNode)
+        {
+            if (destination == null || afterImageNode == null)
+            {
+                return;
+            }
+
+            foreach (WzImageProperty weaponNode in afterImageNode.WzProperties)
+            {
+                if (weaponNode == null || string.IsNullOrWhiteSpace(weaponNode.Name))
+                {
+                    continue;
+                }
+
+                MeleeAfterImageCatalog catalog = LoadAfterImageCatalog(weaponNode);
+                if (catalog.Actions.Count > 0)
+                {
+                    destination[weaponNode.Name] = catalog;
+                }
+            }
+        }
+
+        private MeleeAfterImageCatalog GetOrLoadCharacterAfterImageCatalog(string weaponTypeKey, int masteryIndex)
+        {
+            string cacheKey = $"{weaponTypeKey}/{masteryIndex}";
+            if (_characterAfterImageCache.TryGetValue(cacheKey, out MeleeAfterImageCatalog cachedCatalog))
+            {
+                return cachedCatalog;
+            }
+
+            if (_missingCharacterAfterImageKeys.Contains(cacheKey))
+            {
+                return null;
+            }
+
+            WzImage image = Program.FindImage("Character", $"Afterimage/{weaponTypeKey}");
+            if (image == null)
+            {
+                _missingCharacterAfterImageKeys.Add(cacheKey);
+                return null;
+            }
+
+            image.ParseImage();
+            WzImageProperty masteryNode = image[masteryIndex.ToString(CultureInfo.InvariantCulture)];
+            if (masteryNode == null)
+            {
+                _missingCharacterAfterImageKeys.Add(cacheKey);
+                return null;
+            }
+
+            MeleeAfterImageCatalog catalog = LoadAfterImageCatalog(masteryNode);
+            if (catalog.Actions.Count == 0)
+            {
+                _missingCharacterAfterImageKeys.Add(cacheKey);
+                return null;
+            }
+
+            _characterAfterImageCache[cacheKey] = catalog;
+            return catalog;
+        }
+
+        private MeleeAfterImageCatalog LoadAfterImageCatalog(WzImageProperty rootNode)
+        {
+            var catalog = new MeleeAfterImageCatalog();
+            if (rootNode == null)
+            {
+                return catalog;
+            }
+
+            foreach (WzImageProperty child in rootNode.WzProperties)
+            {
+                if (child == null || string.IsNullOrWhiteSpace(child.Name))
+                {
+                    continue;
+                }
+
+                MeleeAfterImageAction action = LoadAfterImageAction(child);
+                if (action.HasRange || action.FrameSets.Count > 0)
+                {
+                    catalog.Actions[child.Name] = action;
+                }
+            }
+
+            return catalog;
+        }
+
+        private MeleeAfterImageAction LoadAfterImageAction(WzImageProperty actionNode)
+        {
+            var action = new MeleeAfterImageAction();
+            if (actionNode == null)
+            {
+                return action;
+            }
+
+            Point? lt = GetVector(actionNode, "lt");
+            Point? rb = GetVector(actionNode, "rb");
+            if (lt.HasValue || rb.HasValue)
+            {
+                int left = lt?.X ?? 0;
+                int top = lt?.Y ?? 0;
+                int right = rb?.X ?? left;
+                int bottom = rb?.Y ?? top;
+                action.Range = new Rectangle(left, top, Math.Max(1, right - left), Math.Max(1, bottom - top));
+            }
+
+            foreach (WzImageProperty child in actionNode.WzProperties)
+            {
+                if (child == null || !int.TryParse(child.Name, NumberStyles.Integer, CultureInfo.InvariantCulture, out int frameIndex))
+                {
+                    continue;
+                }
+
+                MeleeAfterImageFrameSet frameSet = LoadAfterImageFrameSet(child);
+                if (frameSet.Frames.Count > 0)
+                {
+                    action.FrameSets[frameIndex] = frameSet;
+                }
+            }
+
+            return action;
+        }
+
+        private MeleeAfterImageFrameSet LoadAfterImageFrameSet(WzImageProperty frameSetNode)
+        {
+            var frameSet = new MeleeAfterImageFrameSet();
+            if (frameSetNode == null)
+            {
+                return frameSet;
+            }
+
+            if (frameSetNode is WzCanvasProperty)
+            {
+                SkillFrame directFrame = LoadSkillFrame(frameSetNode);
+                if (directFrame != null)
+                {
+                    frameSet.Frames.Add(directFrame);
+                }
+
+                return frameSet;
+            }
+
+            foreach (WzImageProperty child in frameSetNode.WzProperties)
+            {
+                if (child == null)
+                {
+                    continue;
+                }
+
+                SkillFrame frame = LoadSkillFrame(child);
+                if (frame != null)
+                {
+                    frameSet.Frames.Add(frame);
+                }
+            }
+
+            return frameSet;
+        }
+
+        private static int GetWeaponAfterImageMasteryIndex(int masteryPercent)
+        {
+            return Math.Max(0, (Math.Max(10, masteryPercent) - 10) / 5);
+        }
+
+        private static string ResolveAfterImageWeaponTypeKey(WeaponPart weapon)
+        {
+            if (weapon == null)
+            {
+                return "barehands";
+            }
+
+            int weaponCode = Math.Abs(weapon.ItemId / 10000) % 100;
+            return weaponCode switch
+            {
+                30 => "swordOL",
+                31 or 41 => "axe",
+                32 or 42 => "mace",
+                33 or 34 or 36 => null,
+                37 or 38 => null,
+                40 => "swordTL",
+                43 => "spear",
+                44 => "poleArm",
+                45 => "bow",
+                46 => "crossBow",
+                47 => null,
+                48 => "knuckle",
+                49 => "gun",
+                52 => "dualBow",
+                53 => "cannon",
+                _ => null
+            };
         }
 
         private SkillAnimation LoadAvatarEffectAnimation(WzImageProperty skillNode, string branchName)
@@ -766,6 +1038,74 @@ namespace HaCreator.MapSimulator.Character.Skills
 
             animation.Loop = loop || animation.Loop;
             return animation;
+        }
+
+        private void LoadShadowPartnerActionAnimations(SkillData skill, WzImageProperty skillNode)
+        {
+            if (!IsShadowPartnerSkill(skill, skillNode))
+            {
+                return;
+            }
+
+            WzImageProperty specialNode = skillNode["special"];
+            if (specialNode == null)
+            {
+                return;
+            }
+
+            foreach (WzImageProperty child in specialNode.WzProperties)
+            {
+                if (child == null || string.IsNullOrWhiteSpace(child.Name))
+                {
+                    continue;
+                }
+
+                SkillAnimation animation = LoadSkillAnimation(child, child.Name);
+                if (animation.Frames.Count == 0)
+                {
+                    continue;
+                }
+
+                animation.Loop = ShouldLoopShadowPartnerAction(child.Name);
+                skill.ShadowPartnerActionAnimations[child.Name] = animation;
+            }
+        }
+
+        private static bool IsShadowPartnerSkill(SkillData skill, WzImageProperty skillNode)
+        {
+            if (skill == null || skillNode?["special"] == null)
+            {
+                return false;
+            }
+
+            if (ShadowPartnerSkillIds.Contains(skill.SkillId))
+            {
+                return true;
+            }
+
+            return skill.IsBuff
+                   && !string.IsNullOrWhiteSpace(skill.Name)
+                   && skill.Name.IndexOf("shadow partner", StringComparison.OrdinalIgnoreCase) >= 0;
+        }
+
+        private static bool ShouldLoopShadowPartnerAction(string actionName)
+        {
+            if (string.IsNullOrWhiteSpace(actionName))
+            {
+                return false;
+            }
+
+            if (actionName.StartsWith("create", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(actionName, "dead", StringComparison.OrdinalIgnoreCase)
+                || actionName.StartsWith("swing", StringComparison.OrdinalIgnoreCase)
+                || actionName.StartsWith("stab", StringComparison.OrdinalIgnoreCase)
+                || actionName.StartsWith("shoot", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(actionName, "proneStab", StringComparison.OrdinalIgnoreCase))
+            {
+                return false;
+            }
+
+            return true;
         }
 
         private SkillAnimation LoadSuddenDeathRepeatAnimation(SkillData skill, WzImageProperty skillNode)
@@ -1723,7 +2063,7 @@ namespace HaCreator.MapSimulator.Character.Skills
 
         #region Utility
 
-        private static SkillLevelData CreateLevelData(WzImageProperty node, int level)
+        private static SkillLevelData CreateLevelData(SkillData skill, WzImageProperty node, int level)
         {
             var levelData = new SkillLevelData { Level = level };
 
@@ -1773,9 +2113,64 @@ namespace HaCreator.MapSimulator.Character.Skills
             levelData.CriticalRate = GetInt(node, "cr", 0, level);
 
             levelData.RequiredLevel = GetInt(node, "reqLevel", 0, level);
+            NormalizePassiveStatAliases(skill, node, level, levelData);
             PopulateSkillLevelRequirements(levelData, node);
 
             return levelData;
+        }
+
+        private static void NormalizePassiveStatAliases(SkillData skill, WzImageProperty node, int level, SkillLevelData levelData)
+        {
+            if (levelData == null || node == null)
+                return;
+
+            levelData.ACC = PreferPrimaryStat(levelData.ACC, GetInt(node, "accX", 0, level));
+            levelData.PAD = PreferPrimaryStat(levelData.PAD, GetInt(node, "padX", 0, level));
+
+            if (levelData.ACC == 0 && UsesAccuracyXAlias(skill, node))
+            {
+                levelData.ACC = GetInt(node, "x", 0, level);
+            }
+
+            if (levelData.PAD == 0 && UsesWeaponAttackXAlias(skill, node))
+            {
+                levelData.PAD = GetInt(node, "x", 0, level);
+            }
+
+            levelData.EnhancedPAD = GetInt(node, "epad", 0, level);
+            levelData.EnhancedPDD = GetInt(node, "epdd", 0, level);
+            levelData.EnhancedMDD = GetInt(node, "emdd", 0, level);
+            levelData.EnhancedMaxHP = GetInt(node, "emhp", 0, level);
+            levelData.EnhancedMaxMP = GetInt(node, "emmp", 0, level);
+        }
+
+        private static int PreferPrimaryStat(int currentValue, int aliasValue)
+        {
+            return currentValue != 0 ? currentValue : aliasValue;
+        }
+
+        private static bool UsesAccuracyXAlias(SkillData skill, WzImageProperty node)
+        {
+            if (node?["x"] == null || node["acc"] != null || node["accX"] != null)
+                return false;
+
+            string description = (skill?.Description ?? string.Empty).ToLowerInvariant();
+            string name = (skill?.Name ?? string.Empty).ToLowerInvariant();
+            return description.Contains("accuracy")
+                   || description.Contains("accurary")
+                   || name.Contains("mastery");
+        }
+
+        private static bool UsesWeaponAttackXAlias(SkillData skill, WzImageProperty node)
+        {
+            if (node?["x"] == null || node["pad"] != null || node["padX"] != null)
+                return false;
+
+            string description = (skill?.Description ?? string.Empty).ToLowerInvariant();
+            return description.Contains("weapon attack")
+                   || description.Contains("att,")
+                   || description.Contains("att ")
+                   || description.Contains("attack power");
         }
 
         private static void PopulateSkillLevelRequirements(SkillLevelData levelData, WzImageProperty node)

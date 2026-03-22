@@ -120,6 +120,65 @@ namespace HaCreator.MapSimulator.UI
             return appendedAny;
         }
 
+        internal static bool TryInsertBestEffort(string currentText, int insertionIndex, string insertedText, out string updatedText, out int insertedLength, out string error, Encoding encoding = null)
+        {
+            string original = currentText ?? string.Empty;
+            string incoming = insertedText ?? string.Empty;
+            int safeInsertionIndex = Math.Clamp(insertionIndex, 0, original.Length);
+
+            if (incoming.Length == 0)
+            {
+                updatedText = original;
+                insertedLength = 0;
+                error = string.Empty;
+                return true;
+            }
+
+            string working = original;
+            int workingInsertionIndex = safeInsertionIndex;
+            string firstError = string.Empty;
+            bool insertedAny = false;
+
+            TextElementEnumerator enumerator = StringInfo.GetTextElementEnumerator(incoming);
+            while (enumerator.MoveNext())
+            {
+                string textElement = enumerator.GetTextElement();
+                string candidate = working.Insert(workingInsertionIndex, textElement);
+                if (TryNormalizeForEdit(candidate, out string normalizedCandidate, out string candidateError, encoding))
+                {
+                    working = normalizedCandidate;
+                    workingInsertionIndex += textElement.Length;
+                    insertedAny = true;
+                    continue;
+                }
+
+                if (string.IsNullOrEmpty(firstError))
+                {
+                    firstError = candidateError;
+                }
+
+                if (candidateError == $"Macro names can use up to {MaxNameBytes} bytes.")
+                {
+                    break;
+                }
+
+                if (!insertedAny)
+                {
+                    updatedText = original;
+                    insertedLength = 0;
+                    error = candidateError;
+                    return false;
+                }
+
+                break;
+            }
+
+            updatedText = working;
+            insertedLength = workingInsertionIndex - safeInsertionIndex;
+            error = insertedAny ? string.Empty : firstError;
+            return insertedAny;
+        }
+
         internal static bool TryNormalizeForEdit(string text, out string normalized, out string error, Encoding encoding = null)
         {
             string candidate = text ?? string.Empty;

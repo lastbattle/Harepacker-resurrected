@@ -508,29 +508,42 @@ namespace HaCreator.MapSimulator.Combat
                 if (!groundAttack.Triggered && currentTime >= groundAttack.TriggerTime)
                 {
                     groundAttack.Triggered = true;
+                    bool usesLockedTarget = UsesLockedTargetResolution(groundAttack.Attack, groundAttack.TargetInfo);
 
-                    bool targetedSummoned = groundAttack.TargetInfo?.TargetType == MobTargetType.Summoned;
-                    bool targetedMob = groundAttack.TargetInfo?.TargetType == MobTargetType.Mob;
-                    TryApplyPuppetHit(groundAttack.SourceMob, groundAttack.Attack, groundAttack.TargetInfo, groundAttack.Area, currentTime);
-                    TryApplyTargetMobHit(groundAttack.SourceMob, groundAttack.Attack, groundAttack.TargetInfo, groundAttack.Area, currentTime);
-
-                    if (!targetedSummoned &&
-                        !targetedMob &&
-                        playerManager?.Combat != null &&
-                        playerManager.IsPlayerActive &&
-                        CanHitPlayerTarget(groundAttack.Attack))
+                    if (usesLockedTarget)
                     {
-                        playerManager.Combat.TryApplyMobHit(
+                        TryApplyLockedTargetImpact(
                             groundAttack.SourceMob,
-                            groundAttack.Area,
+                            groundAttack.Attack,
+                            groundAttack.TargetInfo,
                             currentTime,
-                            groundAttack.Attack);
+                            playerManager);
                     }
-
-                    if (!targetedSummoned && !targetedMob)
+                    else
                     {
-                        ApplyAreaPuppetHits(groundAttack.SourceMob, groundAttack.Attack, groundAttack.Area, groundAttack.TargetInfo, currentTime);
-                        ApplyAreaMobHits(groundAttack.SourceMob, groundAttack.Attack, groundAttack.Area, groundAttack.TargetInfo, currentTime);
+                        bool targetedSummoned = groundAttack.TargetInfo?.TargetType == MobTargetType.Summoned;
+                        bool targetedMob = groundAttack.TargetInfo?.TargetType == MobTargetType.Mob;
+                        TryApplyPuppetHit(groundAttack.SourceMob, groundAttack.Attack, groundAttack.TargetInfo, groundAttack.Area, currentTime);
+                        TryApplyTargetMobHit(groundAttack.SourceMob, groundAttack.Attack, groundAttack.TargetInfo, groundAttack.Area, currentTime);
+
+                        if (!targetedSummoned &&
+                            !targetedMob &&
+                            playerManager?.Combat != null &&
+                            playerManager.IsPlayerActive &&
+                            CanHitPlayerTarget(groundAttack.Attack))
+                        {
+                            playerManager.Combat.TryApplyMobHit(
+                                groundAttack.SourceMob,
+                                groundAttack.Area,
+                                currentTime,
+                                groundAttack.Attack);
+                        }
+
+                        if (!targetedSummoned && !targetedMob)
+                        {
+                            ApplyAreaPuppetHits(groundAttack.SourceMob, groundAttack.Attack, groundAttack.Area, groundAttack.TargetInfo, currentTime);
+                            ApplyAreaMobHits(groundAttack.SourceMob, groundAttack.Attack, groundAttack.Area, groundAttack.TargetInfo, currentTime);
+                        }
                     }
 
                     SpawnMobWorldEffects(groundAttack.SourceMob, groundAttack.Attack, groundAttack.EffectPosition, currentTime, animationEffects);
@@ -566,30 +579,43 @@ namespace HaCreator.MapSimulator.Combat
                     Vector2 effectPosition = new Vector2(
                         attackArea.X + attackArea.Width / 2f,
                         attackArea.Y + attackArea.Height);
+                    bool usesLockedTarget = UsesLockedTargetResolution(directAttack.Attack, directAttack.TargetInfo);
 
-                    bool targetedSummoned = directAttack.TargetInfo?.TargetType == MobTargetType.Summoned;
-                    bool targetedMob = directAttack.TargetInfo?.TargetType == MobTargetType.Mob;
-                    TryApplyPuppetHit(directAttack.SourceMob, directAttack.Attack, directAttack.TargetInfo, attackArea, currentTime);
-                    TryApplyTargetMobHit(directAttack.SourceMob, directAttack.Attack, directAttack.TargetInfo, attackArea, currentTime);
-
-                    if (!targetedSummoned &&
-                        !targetedMob &&
-                        playerManager?.Combat != null &&
-                        playerManager.IsPlayerActive &&
-                        CanHitPlayerTarget(directAttack.Attack) &&
-                        !attackArea.IsEmpty)
+                    if (usesLockedTarget)
                     {
-                        playerManager.Combat.TryApplyMobHit(
+                        TryApplyLockedTargetImpact(
                             directAttack.SourceMob,
-                            attackArea,
+                            directAttack.Attack,
+                            directAttack.TargetInfo,
                             currentTime,
-                            directAttack.Attack);
+                            playerManager);
                     }
-
-                    if (!targetedSummoned && !targetedMob && !attackArea.IsEmpty)
+                    else
                     {
-                        ApplyAreaPuppetHits(directAttack.SourceMob, directAttack.Attack, attackArea, directAttack.TargetInfo, currentTime);
-                        ApplyAreaMobHits(directAttack.SourceMob, directAttack.Attack, attackArea, directAttack.TargetInfo, currentTime);
+                        bool targetedSummoned = directAttack.TargetInfo?.TargetType == MobTargetType.Summoned;
+                        bool targetedMob = directAttack.TargetInfo?.TargetType == MobTargetType.Mob;
+                        TryApplyPuppetHit(directAttack.SourceMob, directAttack.Attack, directAttack.TargetInfo, attackArea, currentTime);
+                        TryApplyTargetMobHit(directAttack.SourceMob, directAttack.Attack, directAttack.TargetInfo, attackArea, currentTime);
+
+                        if (!targetedSummoned &&
+                            !targetedMob &&
+                            playerManager?.Combat != null &&
+                            playerManager.IsPlayerActive &&
+                            CanHitPlayerTarget(directAttack.Attack) &&
+                            !attackArea.IsEmpty)
+                        {
+                            playerManager.Combat.TryApplyMobHit(
+                                directAttack.SourceMob,
+                                attackArea,
+                                currentTime,
+                                directAttack.Attack);
+                        }
+
+                        if (!targetedSummoned && !targetedMob && !attackArea.IsEmpty)
+                        {
+                            ApplyAreaPuppetHits(directAttack.SourceMob, directAttack.Attack, attackArea, directAttack.TargetInfo, currentTime);
+                            ApplyAreaMobHits(directAttack.SourceMob, directAttack.Attack, attackArea, directAttack.TargetInfo, currentTime);
+                        }
                     }
 
                     SpawnMobWorldEffects(
@@ -1264,11 +1290,26 @@ namespace HaCreator.MapSimulator.Combat
             MobItem sourceMob,
             MobAttackEntry attack,
             MobTargetInfo targetInfo,
-            int currentTime)
+            int currentTime,
+            PlayerManager playerManager = null)
         {
             if (targetInfo == null)
             {
                 return false;
+            }
+
+            if (targetInfo.TargetType == MobTargetType.Player)
+            {
+                if (playerManager?.Combat == null || !playerManager.IsPlayerActive || !CanHitPlayerTarget(attack))
+                {
+                    return false;
+                }
+
+                return playerManager.Combat.TryApplyMobHit(
+                    sourceMob,
+                    playerManager.Player.GetHitbox(),
+                    currentTime,
+                    attack);
             }
 
             if (targetInfo.TargetType == MobTargetType.Summoned)
@@ -1300,6 +1341,11 @@ namespace HaCreator.MapSimulator.Combat
             }
 
             return ApplyMobDamage(sourceMob, attack, targetMob, currentTime);
+        }
+
+        private static bool UsesLockedTargetResolution(MobAttackEntry attack, MobTargetInfo targetInfo)
+        {
+            return attack?.AttackType == 1 && targetInfo != null && targetInfo.IsValid;
         }
 
         private bool CanHitPlayerTarget(MobAttackEntry attack)

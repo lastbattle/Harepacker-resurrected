@@ -114,7 +114,8 @@ namespace HaCreator.MapSimulator.Character.Skills
         Support = 2,
         TargetedAttack = 3,
         SummonAction = 4,
-        ManualAttack = 5
+        ManualAttack = 5,
+        OwnerAttackTargeted = 6
     }
 
     #endregion
@@ -179,6 +180,11 @@ namespace HaCreator.MapSimulator.Character.Skills
         // Mastery
         public int Mastery { get; set; }             // Mastery %
         public int CriticalRate { get; set; }        // Critical rate boost
+        public int EnhancedPAD { get; set; }         // Mechanic-only weapon attack boost
+        public int EnhancedPDD { get; set; }         // Mechanic-only defense boost
+        public int EnhancedMDD { get; set; }         // Mechanic-only magic defense boost
+        public int EnhancedMaxHP { get; set; }       // Mechanic-only max HP boost
+        public int EnhancedMaxMP { get; set; }       // Mechanic-only max MP boost
 
         // Requirements
         public int RequiredLevel { get; set; }       // Level required
@@ -251,6 +257,37 @@ namespace HaCreator.MapSimulator.Character.Skills
 
     #endregion
 
+    #region Melee Afterimage
+
+    public class MeleeAfterImageFrameSet
+    {
+        public List<SkillFrame> Frames { get; set; } = new();
+    }
+
+    public class MeleeAfterImageAction
+    {
+        public Rectangle Range { get; set; } = Rectangle.Empty;
+        public Dictionary<int, MeleeAfterImageFrameSet> FrameSets { get; set; } = new();
+
+        public bool HasRange => Range.Width > 0 && Range.Height > 0;
+    }
+
+    public class MeleeAfterImageCatalog
+    {
+        public Dictionary<string, MeleeAfterImageAction> Actions { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+
+        public bool TryGetAction(string actionName, out MeleeAfterImageAction action)
+        {
+            action = null;
+            return !string.IsNullOrWhiteSpace(actionName)
+                && Actions != null
+                && Actions.TryGetValue(actionName, out action)
+                && action != null;
+        }
+    }
+
+    #endregion
+
     #region Projectile Data
 
     /// <summary>
@@ -317,6 +354,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         public bool OnlyNormalAttackInState { get; set; }
         public bool SpecialNormalAttackInState { get; set; }
         public int MorphId { get; set; }
+        public bool ReflectsIncomingDamage { get; set; }
 
         // Level data
         public Dictionary<int, SkillLevelData> Levels { get; set; } = new();
@@ -347,6 +385,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         public SkillAnimation AvatarOverlayFinishEffect { get; set; } // One-shot cleanup overlay
         public SkillAnimation AvatarUnderFaceFinishEffect { get; set; } // One-shot cleanup below face
         public SkillAnimation AvatarLadderFinishEffect { get; set; } // Ladder/rope cleanup override
+        public Dictionary<string, SkillAnimation> ShadowPartnerActionAnimations { get; set; } = new(StringComparer.OrdinalIgnoreCase);
         public bool HideAvatarEffectOnLadderOrRope { get; set; }
         public int SummonMoveAbility { get; set; }
         public SummonMovementStyle SummonMovementStyle { get; set; } = SummonMovementStyle.Stationary;
@@ -377,11 +416,15 @@ namespace HaCreator.MapSimulator.Character.Skills
         public string DebuffMessageToken { get; set; }
         public SkillAnimation ZoneAnimation { get; set; }
         public int ClientInfoType { get; set; }
+        public bool AvailableInJumpingState { get; set; }
+        public bool RequireHighestJump { get; set; }
         public bool IsPassiveSkillData { get; set; }
         public int AffectedSkillId { get; set; }
         public string AffectedSkillEffect { get; set; }
         public string DotType { get; set; }
         public bool IsMagicDamageSkill { get; set; }
+        public Dictionary<string, MeleeAfterImageCatalog> AfterImageCatalogsByWeaponType { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+        public SortedDictionary<int, Dictionary<string, MeleeAfterImageCatalog>> CharacterLevelAfterImageCatalogsByWeaponType { get; set; } = new();
 
         // Action
         public string ActionName { get; set; }       // Animation action to play
@@ -414,6 +457,41 @@ namespace HaCreator.MapSimulator.Character.Skills
             AffectedSkillId > 0
             && !string.IsNullOrWhiteSpace(AffectedSkillEffect)
             && AffectedSkillEffect.IndexOf("bodyAttack", StringComparison.OrdinalIgnoreCase) >= 0;
+
+        public bool HasShadowPartnerActionAnimations => ShadowPartnerActionAnimations != null && ShadowPartnerActionAnimations.Count > 0;
+
+        public MeleeAfterImageCatalog GetAfterImageCatalogForCharacterLevel(string weaponTypeKey, int characterLevel)
+        {
+            MeleeAfterImageCatalog resolvedCatalog = null;
+            if (!string.IsNullOrWhiteSpace(weaponTypeKey) && CharacterLevelAfterImageCatalogsByWeaponType != null)
+            {
+                foreach ((int requiredLevel, Dictionary<string, MeleeAfterImageCatalog> catalogMap) in CharacterLevelAfterImageCatalogsByWeaponType)
+                {
+                    if (requiredLevel > characterLevel)
+                    {
+                        break;
+                    }
+
+                    if (catalogMap != null
+                        && catalogMap.TryGetValue(weaponTypeKey, out MeleeAfterImageCatalog catalog)
+                        && catalog != null)
+                    {
+                        resolvedCatalog = catalog;
+                    }
+                }
+            }
+
+            if (resolvedCatalog != null)
+            {
+                return resolvedCatalog;
+            }
+
+            return !string.IsNullOrWhiteSpace(weaponTypeKey)
+                && AfterImageCatalogsByWeaponType != null
+                && AfterImageCatalogsByWeaponType.TryGetValue(weaponTypeKey, out MeleeAfterImageCatalog baseCatalog)
+                ? baseCatalog
+                : null;
+        }
 
         /// <summary>
         /// Get data for a specific level
@@ -844,6 +922,8 @@ namespace HaCreator.MapSimulator.Character.Skills
         // Position and movement
         public float X { get; set; }
         public float Y { get; set; }
+        public float PreviousX { get; set; }
+        public float PreviousY { get; set; }
         public float VelocityX { get; set; }
         public float VelocityY { get; set; }
         public bool FacingRight { get; set; }
@@ -866,6 +946,9 @@ namespace HaCreator.MapSimulator.Character.Skills
         public void Update(float deltaTime, int currentTime)
         {
             if (IsExpired) return;
+
+            PreviousX = X;
+            PreviousY = Y;
 
             // Check lifetime
             if (currentTime - SpawnTime >= Data.LifeTime)

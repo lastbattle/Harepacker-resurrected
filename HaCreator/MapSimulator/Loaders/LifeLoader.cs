@@ -160,6 +160,12 @@ namespace HaCreator.MapSimulator.Loaders
                                     {
                                         foreach (WzImageProperty infoChild in infoNode.WzProperties)
                                         {
+                                            if (effectHandledAsStructuredNode &&
+                                                string.Equals(infoChild.Name, "effect", StringComparison.OrdinalIgnoreCase))
+                                            {
+                                                continue;
+                                            }
+
                                             if (!TryBuildAttackEffectNode(texturePool, infoChild, device, usedProps, out var extraEffectNode))
                                             {
                                                 continue;
@@ -304,6 +310,7 @@ namespace HaCreator.MapSimulator.Loaders
 
             var metadata = new MobAnimationSet.AttackInfoMetadata
             {
+                AttackType = InfoTool.GetInt(infoNode["type"], -1),
                 EffectAfter = InfoTool.GetInt(infoNode["effectAfter"], 0),
                 AttackAfter = InfoTool.GetInt(infoNode["attackAfter"], 0),
                 HasPrimaryEffect = infoNode["effect"] != null,

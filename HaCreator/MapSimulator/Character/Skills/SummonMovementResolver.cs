@@ -49,6 +49,8 @@ namespace HaCreator.MapSimulator.Character.Skills
             35121011
         };
 
+        private const int TeslaCoilSkillId = 35111002;
+
         public static SummonMovementProfile Resolve(int skillId, IEnumerable<string> branchNames)
         {
             var normalizedBranches = new HashSet<string>(
@@ -148,6 +150,31 @@ namespace HaCreator.MapSimulator.Character.Skills
                     playerPosition.X + facingDistanceX,
                     playerPosition.Y - 25f)
             };
+        }
+
+        public static Vector2 ResolveSpawnPositionForInstance(
+            int skillId,
+            SummonMovementStyle style,
+            float spawnDistanceX,
+            Vector2 playerPosition,
+            bool facingRight,
+            int instanceIndex,
+            int instanceCount)
+        {
+            Vector2 basePosition = ResolveSpawnPosition(style, spawnDistanceX, playerPosition, facingRight);
+            if (instanceCount <= 1)
+            {
+                return basePosition;
+            }
+
+            if (skillId == TeslaCoilSkillId)
+            {
+                int clampedIndex = Math.Clamp(instanceIndex, 0, 2);
+                float[] offsets = { -120f, 0f, 120f };
+                return new Vector2(playerPosition.X + offsets[clampedIndex], basePosition.Y);
+            }
+
+            return basePosition;
         }
 
         public static bool IsAnchorBound(SummonMovementStyle style)

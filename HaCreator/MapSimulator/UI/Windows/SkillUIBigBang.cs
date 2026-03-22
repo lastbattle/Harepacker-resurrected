@@ -72,8 +72,6 @@ namespace HaCreator.MapSimulator.UI
         private const int TOOLTIP_ICON_GAP = 8;
         private const int TOOLTIP_TITLE_GAP = 8;
         private const int TOOLTIP_SECTION_GAP = 6;
-        private const int TOOLTIP_OFFSET_X = 12;
-        private const int TOOLTIP_OFFSET_Y = -4;
         private const float COOLDOWN_TEXT_SCALE = 0.55f;
         private static readonly Color TOOLTIP_BACKGROUND_COLOR = new Color(28, 28, 28, 228);
         private static readonly Color TOOLTIP_BORDER_COLOR = new Color(112, 112, 112, 235);
@@ -100,6 +98,11 @@ namespace HaCreator.MapSimulator.UI
         private const int TAB_2ND = 2;
         private const int TAB_3RD = 3;
         private const int TAB_4TH = 4;
+        private const int TAB_DUAL_5TH = 5;
+        private const int TAB_DUAL_6TH = 6;
+        private const int STANDARD_TAB_COUNT = 5;
+        private const int DUAL_TAB_COUNT = 7;
+        private const int MAX_TAB_INDEX = DUAL_TAB_COUNT - 1;
         #endregion
 
         #region Fields
@@ -126,12 +129,17 @@ namespace HaCreator.MapSimulator.UI
         private Texture2D _recommendTexture;
         private Texture2D _skillRowLine;
 
-        // Tab textures (0=Beginner, 1-4=Job advancements)
-        private Texture2D[] _tabEnabled = new Texture2D[5];
-        private Texture2D[] _tabDisabled = new Texture2D[5];
-        private Rectangle[] _tabEnabledRects = new Rectangle[5];
-        private Rectangle[] _tabDisabledRects = new Rectangle[5];
-        private readonly bool[] _tabVisible = new bool[5];
+        // Tab textures (standard 5-tab path plus Dual Blade's 7-tab strip)
+        private readonly Texture2D[] _standardTabEnabled = new Texture2D[STANDARD_TAB_COUNT];
+        private readonly Texture2D[] _standardTabDisabled = new Texture2D[STANDARD_TAB_COUNT];
+        private readonly Rectangle[] _standardTabEnabledRects = new Rectangle[STANDARD_TAB_COUNT];
+        private readonly Rectangle[] _standardTabDisabledRects = new Rectangle[STANDARD_TAB_COUNT];
+        private readonly Texture2D[] _dualTabEnabled = new Texture2D[DUAL_TAB_COUNT];
+        private readonly Texture2D[] _dualTabDisabled = new Texture2D[DUAL_TAB_COUNT];
+        private readonly Rectangle[] _dualTabEnabledRects = new Rectangle[DUAL_TAB_COUNT];
+        private readonly Rectangle[] _dualTabDisabledRects = new Rectangle[DUAL_TAB_COUNT];
+        private readonly bool[] _tabVisible = new bool[DUAL_TAB_COUNT];
+        private bool _useDualTabStrip;
 
         // SP Up button textures
         private Texture2D _spUpNormal;
@@ -263,7 +271,9 @@ namespace HaCreator.MapSimulator.UI
                 { TAB_1ST, new List<SkillDisplayData>() },
                 { TAB_2ND, new List<SkillDisplayData>() },
                 { TAB_3RD, new List<SkillDisplayData>() },
-                { TAB_4TH, new List<SkillDisplayData>() }
+                { TAB_4TH, new List<SkillDisplayData>() },
+                { TAB_DUAL_5TH, new List<SkillDisplayData>() },
+                { TAB_DUAL_6TH, new List<SkillDisplayData>() }
             };
 
             skillPointsByTab = new Dictionary<int, int>
@@ -272,7 +282,9 @@ namespace HaCreator.MapSimulator.UI
                 { TAB_1ST, 0 },
                 { TAB_2ND, 0 },
                 { TAB_3RD, 0 },
-                { TAB_4TH, 0 }
+                { TAB_4TH, 0 },
+                { TAB_DUAL_5TH, 0 },
+                { TAB_DUAL_6TH, 0 }
             };
             _recommendedSkillsByTab = new Dictionary<int, List<SkillDataLoader.RecommendedSkillEntry>>
             {
@@ -280,7 +292,9 @@ namespace HaCreator.MapSimulator.UI
                 { TAB_1ST, new List<SkillDataLoader.RecommendedSkillEntry>() },
                 { TAB_2ND, new List<SkillDataLoader.RecommendedSkillEntry>() },
                 { TAB_3RD, new List<SkillDataLoader.RecommendedSkillEntry>() },
-                { TAB_4TH, new List<SkillDataLoader.RecommendedSkillEntry>() }
+                { TAB_4TH, new List<SkillDataLoader.RecommendedSkillEntry>() },
+                { TAB_DUAL_5TH, new List<SkillDataLoader.RecommendedSkillEntry>() },
+                { TAB_DUAL_6TH, new List<SkillDataLoader.RecommendedSkillEntry>() }
             };
 
             // Initialize job header data
@@ -290,7 +304,9 @@ namespace HaCreator.MapSimulator.UI
                 { TAB_1ST, null },
                 { TAB_2ND, null },
                 { TAB_3RD, null },
-                { TAB_4TH, null }
+                { TAB_4TH, null },
+                { TAB_DUAL_5TH, null },
+                { TAB_DUAL_6TH, null }
             };
             _jobNamesByTab = new Dictionary<int, string>
             {
@@ -298,15 +314,27 @@ namespace HaCreator.MapSimulator.UI
                 { TAB_1ST, "1st Job" },
                 { TAB_2ND, "2nd Job" },
                 { TAB_3RD, "3rd Job" },
-                { TAB_4TH, "4th Job" }
+                { TAB_4TH, "4th Job" },
+                { TAB_DUAL_5TH, "5th Tab" },
+                { TAB_DUAL_6TH, "6th Tab" }
             };
 
             // Initialize tab rectangles (positions relative to window)
-            for (int i = 0; i < 5; i++)
+            for (int i = 0; i < STANDARD_TAB_COUNT; i++)
             {
-                _tabEnabledRects[i] = CreateDefaultTabRect(i, enabled: true);
-                _tabDisabledRects[i] = CreateDefaultTabRect(i, enabled: false);
+                _standardTabEnabledRects[i] = CreateDefaultTabRect(i, enabled: true, dualTab: false);
+                _standardTabDisabledRects[i] = CreateDefaultTabRect(i, enabled: false, dualTab: false);
                 _tabVisible[i] = true;
+            }
+
+            for (int i = 0; i < DUAL_TAB_COUNT; i++)
+            {
+                _dualTabEnabledRects[i] = CreateDefaultTabRect(i, enabled: true, dualTab: true);
+                _dualTabDisabledRects[i] = CreateDefaultTabRect(i, enabled: false, dualTab: true);
+                if (i >= STANDARD_TAB_COUNT)
+                {
+                    _tabVisible[i] = false;
+                }
             }
 
             // Create debug placeholder texture (1x1 white pixel)
@@ -376,12 +404,12 @@ namespace HaCreator.MapSimulator.UI
             if (enabled != null)
             {
                 for (int i = 0; i < Math.Min(5, enabled.Length); i++)
-                    _tabEnabled[i] = enabled[i];
+                    _standardTabEnabled[i] = enabled[i];
             }
             if (disabled != null)
             {
                 for (int i = 0; i < Math.Min(5, disabled.Length); i++)
-                    _tabDisabled[i] = disabled[i];
+                    _standardTabDisabled[i] = disabled[i];
             }
         }
 
@@ -412,13 +440,13 @@ namespace HaCreator.MapSimulator.UI
             if (enabledRects != null)
             {
                 for (int i = 0; i < Math.Min(5, enabledRects.Length); i++)
-                    _tabEnabledRects[i] = enabledRects[i];
+                    _standardTabEnabledRects[i] = enabledRects[i];
             }
 
             if (disabledRects != null)
             {
                 for (int i = 0; i < Math.Min(5, disabledRects.Length); i++)
-                    _tabDisabledRects[i] = disabledRects[i];
+                    _standardTabDisabledRects[i] = disabledRects[i];
             }
         }
 
@@ -1081,41 +1109,30 @@ namespace HaCreator.MapSimulator.UI
                 + TOOLTIP_TITLE_GAP
                 + iconBlockHeight);
 
-            int tooltipX = _lastMousePosition.X + TOOLTIP_OFFSET_X;
-            int tooltipY = _lastMousePosition.Y + 20;
-            int tooltipFrameIndex = 1;
-
-            if (tooltipX + tooltipWidth > renderWidth - TOOLTIP_PADDING)
-            {
-                tooltipX = _lastMousePosition.X - tooltipWidth - TOOLTIP_OFFSET_X;
-                tooltipFrameIndex = 0;
-            }
-
-            if (tooltipX < TOOLTIP_PADDING)
-                tooltipX = TOOLTIP_PADDING;
-
-            if (tooltipY + tooltipHeight > renderHeight - TOOLTIP_PADDING)
-            {
-                tooltipY = Math.Max(TOOLTIP_PADDING, _lastMousePosition.Y - tooltipHeight + TOOLTIP_OFFSET_Y);
-                tooltipFrameIndex = 2;
-            }
-
-            Rectangle backgroundRect = new Rectangle(tooltipX, tooltipY, tooltipWidth, tooltipHeight);
+            Point anchorPoint = new Point(_lastMousePosition.X, _lastMousePosition.Y + 20);
+            Rectangle backgroundRect = ResolveTooltipRect(
+                anchorPoint,
+                tooltipWidth,
+                tooltipHeight,
+                renderWidth,
+                renderHeight,
+                stackalloc[] { 1, 0, 2 },
+                out int tooltipFrameIndex);
             DrawTooltipBackground(sprite, backgroundRect, tooltipFrameIndex);
 
-            int titleX = tooltipX + TOOLTIP_PADDING;
-            int titleY = tooltipY + TOOLTIP_PADDING;
+            int titleX = backgroundRect.X + TOOLTIP_PADDING;
+            int titleY = backgroundRect.Y + TOOLTIP_PADDING;
             DrawTooltipLines(sprite, wrappedName, titleX, titleY, new Color(255, 220, 120));
 
-            int contentY = tooltipY + TOOLTIP_PADDING + (int)Math.Ceiling(titleHeight) + TOOLTIP_TITLE_GAP;
-            int iconX = tooltipX + TOOLTIP_PADDING;
+            int contentY = backgroundRect.Y + TOOLTIP_PADDING + (int)Math.Ceiling(titleHeight) + TOOLTIP_TITLE_GAP;
+            int iconX = backgroundRect.X + TOOLTIP_PADDING;
             Texture2D icon = skill.GetIconForState(false, true) ?? skill.IconTexture;
             if (icon != null)
             {
                 sprite.Draw(icon, new Rectangle(iconX, contentY, SKILL_ICON_SIZE, SKILL_ICON_SIZE), Color.White);
             }
 
-            int textX = tooltipX + textLeftOffset;
+            int textX = backgroundRect.X + textLeftOffset;
             float sectionY = contentY;
             if (descriptionHeight > 0f)
             {
@@ -1189,6 +1206,83 @@ namespace HaCreator.MapSimulator.UI
             return textureWidth > 0 ? textureWidth : TOOLTIP_FALLBACK_WIDTH;
         }
 
+        private static Rectangle CreateTooltipRectFromAnchor(Point anchorPoint, int tooltipWidth, int tooltipHeight, int tooltipFrameIndex)
+        {
+            return tooltipFrameIndex switch
+            {
+                0 => new Rectangle(anchorPoint.X - tooltipWidth + 1, anchorPoint.Y - tooltipHeight + 1, tooltipWidth, tooltipHeight),
+                2 => new Rectangle(anchorPoint.X - tooltipWidth + 1, anchorPoint.Y, tooltipWidth, tooltipHeight),
+                _ => new Rectangle(anchorPoint.X, anchorPoint.Y - tooltipHeight + 1, tooltipWidth, tooltipHeight)
+            };
+        }
+
+        private static int ComputeTooltipOverflow(Rectangle rect, int renderWidth, int renderHeight)
+        {
+            int overflow = 0;
+
+            if (rect.Left < TOOLTIP_PADDING)
+                overflow += TOOLTIP_PADDING - rect.Left;
+            if (rect.Top < TOOLTIP_PADDING)
+                overflow += TOOLTIP_PADDING - rect.Top;
+            if (rect.Right > renderWidth - TOOLTIP_PADDING)
+                overflow += rect.Right - (renderWidth - TOOLTIP_PADDING);
+            if (rect.Bottom > renderHeight - TOOLTIP_PADDING)
+                overflow += rect.Bottom - (renderHeight - TOOLTIP_PADDING);
+
+            return overflow;
+        }
+
+        private static Rectangle ClampTooltipRect(Rectangle rect, int renderWidth, int renderHeight)
+        {
+            int minX = TOOLTIP_PADDING;
+            int minY = TOOLTIP_PADDING;
+            int maxX = Math.Max(minX, renderWidth - TOOLTIP_PADDING - rect.Width);
+            int maxY = Math.Max(minY, renderHeight - TOOLTIP_PADDING - rect.Height);
+
+            return new Rectangle(
+                Math.Clamp(rect.X, minX, maxX),
+                Math.Clamp(rect.Y, minY, maxY),
+                rect.Width,
+                rect.Height);
+        }
+
+        private Rectangle ResolveTooltipRect(
+            Point anchorPoint,
+            int tooltipWidth,
+            int tooltipHeight,
+            int renderWidth,
+            int renderHeight,
+            ReadOnlySpan<int> framePreference,
+            out int tooltipFrameIndex)
+        {
+            Rectangle bestRect = Rectangle.Empty;
+            int bestFrame = framePreference.Length > 0 ? framePreference[0] : 1;
+            int bestOverflow = int.MaxValue;
+
+            for (int i = 0; i < framePreference.Length; i++)
+            {
+                int frameIndex = framePreference[i];
+                Rectangle candidate = CreateTooltipRectFromAnchor(anchorPoint, tooltipWidth, tooltipHeight, frameIndex);
+                int overflow = ComputeTooltipOverflow(candidate, renderWidth, renderHeight);
+
+                if (overflow == 0)
+                {
+                    tooltipFrameIndex = frameIndex;
+                    return candidate;
+                }
+
+                if (overflow < bestOverflow)
+                {
+                    bestOverflow = overflow;
+                    bestFrame = frameIndex;
+                    bestRect = candidate;
+                }
+            }
+
+            tooltipFrameIndex = bestFrame;
+            return ClampTooltipRect(bestRect, renderWidth, renderHeight);
+        }
+
         private void DrawTooltipBackground(SpriteBatch sprite, Rectangle rect, int tooltipFrameIndex)
         {
             Texture2D tooltipFrame = tooltipFrameIndex >= 0 && tooltipFrameIndex < _tooltipFrames.Length
@@ -1222,25 +1316,25 @@ namespace HaCreator.MapSimulator.UI
             if (tooltipFrame == null)
                 return;
 
-            int tooltipX = _lastMousePosition.X + TOOLTIP_OFFSET_X;
-            int tooltipY = _lastMousePosition.Y + 20;
-
-            if (tooltipX + tooltipFrame.Width > renderWidth - TOOLTIP_PADDING)
+            Point anchorPoint = tooltipFrameIndex switch
             {
-                tooltipX = _lastMousePosition.X - tooltipFrame.Width - TOOLTIP_OFFSET_X;
-            }
+                1 when _hoveredSpUpSkillIndex >= _scrollOffset =>
+                    new Point(
+                        GetSpUpButtonBounds(_hoveredSpUpSkillIndex - _scrollOffset).Left,
+                        GetSpUpButtonBounds(_hoveredSpUpSkillIndex - _scrollOffset).Bottom),
+                2 => new Point(GetSkillPointBounds().Right, GetSkillPointBounds().Top),
+                _ => new Point(_lastMousePosition.X, _lastMousePosition.Y + 20)
+            };
 
-            if (tooltipX < TOOLTIP_PADDING)
-            {
-                tooltipX = TOOLTIP_PADDING;
-            }
-
-            if (tooltipY + tooltipFrame.Height > renderHeight - TOOLTIP_PADDING)
-            {
-                tooltipY = Math.Max(TOOLTIP_PADDING, _lastMousePosition.Y - tooltipFrame.Height + TOOLTIP_OFFSET_Y);
-            }
-
-            sprite.Draw(tooltipFrame, new Vector2(tooltipX, tooltipY), Color.White);
+            Rectangle tooltipRect = ResolveTooltipRect(
+                anchorPoint,
+                tooltipFrame.Width,
+                tooltipFrame.Height,
+                renderWidth,
+                renderHeight,
+                stackalloc[] { tooltipFrameIndex },
+                out _);
+            sprite.Draw(tooltipFrame, tooltipRect, Color.White);
         }
 
         private void DrawTooltipLines(SpriteBatch sprite, string[] lines, int x, float y, Color color)
@@ -1533,7 +1627,7 @@ namespace HaCreator.MapSimulator.UI
                 if (!_tabVisible[i])
                     continue;
 
-                Texture2D tabTexture = (i == _currentTab) ? _tabEnabled[i] : _tabDisabled[i];
+                Texture2D tabTexture = (i == _currentTab) ? _standardTabEnabled[i] : _standardTabDisabled[i];
                 if (tabTexture != null)
                 {
                     sprite.Draw(tabTexture, GetTabBounds(windowX, windowY, i), Color.White);
@@ -1543,8 +1637,8 @@ namespace HaCreator.MapSimulator.UI
 
         private Rectangle GetTabBounds(int windowX, int windowY, int tabIndex)
         {
-            Texture2D tabTexture = (tabIndex == _currentTab) ? _tabEnabled[tabIndex] : _tabDisabled[tabIndex];
-            Rectangle tabRect = tabIndex == _currentTab ? _tabEnabledRects[tabIndex] : _tabDisabledRects[tabIndex];
+            Texture2D tabTexture = (tabIndex == _currentTab) ? _standardTabEnabled[tabIndex] : _standardTabDisabled[tabIndex];
+            Rectangle tabRect = tabIndex == _currentTab ? _standardTabEnabledRects[tabIndex] : _standardTabDisabledRects[tabIndex];
             return new Rectangle(
                 windowX + tabRect.X,
                 windowY + tabRect.Y,
@@ -1552,12 +1646,34 @@ namespace HaCreator.MapSimulator.UI
                 tabTexture?.Height ?? tabRect.Height);
         }
 
-        private static Rectangle CreateDefaultTabRect(int tabIndex, bool enabled)
+        private static Rectangle CreateDefaultTabRect(int tabIndex, bool enabled, bool dualTab)
         {
-            int x = 10 + (tabIndex * 31);
-            int y = enabled ? 27 : 29;
-            int height = enabled ? 20 : 18;
-            return new Rectangle(x, y, 30, height);
+            int width = 30;
+
+            if (!dualTab)
+            {
+                int x = 10 + (tabIndex * 31);
+                int y = enabled ? 27 : 29;
+                int height = enabled ? 20 : 18;
+
+                return new Rectangle(x, y, width, height);
+            }
+
+            // Dual-tab layout: two tabs per column
+            int column = tabIndex / 2;
+            bool isBottomTab = (tabIndex % 2) == 1;
+
+            int xDual = 10 + (column * 31);
+            int yDual;
+
+            if (enabled)
+                yDual = isBottomTab ? 47 : 27;
+            else
+                yDual = isBottomTab ? 49 : 29;
+
+            int heightDual = enabled ? 20 : 18;
+
+            return new Rectangle(xDual, yDual, width, heightDual);
         }
 
         private void ApplyCurrentTab(int tabIndex)
