@@ -13,6 +13,7 @@ using MapleLib.WzLib.WzStructure;
 using Microsoft.Xna.Framework.Graphics;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Runtime.CompilerServices;
 using HaCreator.MapSimulator.Pools;
 using Rectangle = Microsoft.Xna.Framework.Rectangle;
 
@@ -24,6 +25,20 @@ namespace HaCreator.MapSimulator.Loaders
     /// </summary>
     public static class LifeLoader
     {
+        private sealed class CachedMobAttackAssets
+        {
+            public readonly Dictionary<string, MobAnimationSet.AttackInfoMetadata> AttackMetadata = new(StringComparer.OrdinalIgnoreCase);
+            public readonly Dictionary<string, List<IDXObject>> AttackHitEffects = new(StringComparer.OrdinalIgnoreCase);
+            public readonly Dictionary<string, List<IDXObject>> AttackProjectileEffects = new(StringComparer.OrdinalIgnoreCase);
+            public readonly Dictionary<string, List<IDXObject>> AttackEffects = new(StringComparer.OrdinalIgnoreCase);
+            public readonly Dictionary<string, List<IDXObject>> AttackWarningEffects = new(StringComparer.OrdinalIgnoreCase);
+            public readonly Dictionary<string, List<MobAnimationSet.AttackEffectNode>> AttackExtraEffects = new(StringComparer.OrdinalIgnoreCase);
+            public readonly Dictionary<int, List<IDXObject>> AngerGaugeAnimations = new();
+            public List<IDXObject> AngerGaugeEffect;
+        }
+
+        private static readonly ConditionalWeakTable<GraphicsDevice, ConcurrentDictionary<string, Lazy<CachedMobAttackAssets>>> _cachedMobAttackAssetsByDevice = new();
+
         #region Mob
         /// <summary>
         /// Creates a MobItem with separate animations for each action (stand, move, fly, etc.)
@@ -43,6 +58,8 @@ namespace HaCreator.MapSimulator.Loaders
 
             // Create animation set to store frames per action
             MobAnimationSet animationSet = new MobAnimationSet();
+            CachedMobAttackAssets cachedAttackAssets = GetOrBuildCachedMobAttackAssets(texturePool, mobInfo, source, device, usedProps);
+            ApplyCachedMobAttackAssets(animationSet, cachedAttackAssets);
 
             foreach (WzImageProperty childProperty in source.WzProperties)
             {
@@ -56,32 +73,10 @@ namespace HaCreator.MapSimulator.Loaders
                             break;
 
                         case "angergaugeeffect":
-                            {
-                                List<IDXObject> effectFrames = MapSimulatorLoader.LoadFrames(texturePool, mobStateProperty, 0, 0, device, usedProps);
-                                if (effectFrames.Count > 0)
-                                {
-                                    animationSet.SetAngerGaugeEffect(effectFrames);
-                                }
-                                break;
-                            }
+                            break;
 
                         case "angergaugeanimation":
-                            {
-                                foreach (WzImageProperty gaugeStageProperty in mobStateProperty.WzProperties)
-                                {
-                                    if (!int.TryParse(gaugeStageProperty.Name, out int stageIndex))
-                                    {
-                                        continue;
-                                    }
-
-                                    List<IDXObject> gaugeFrames = MapSimulatorLoader.LoadFrames(texturePool, gaugeStageProperty, 0, 0, device, usedProps);
-                                    if (gaugeFrames.Count > 0)
-                                    {
-                                        animationSet.SetAngerGaugeAnimation(stageIndex, gaugeFrames);
-                                    }
-                                }
-                                break;
-                            }
+                            break;
 
                         case "stand":
                         case "move":
@@ -110,80 +105,7 @@ namespace HaCreator.MapSimulator.Loaders
                                 // Load hit effect frames for attack actions (attack1/info/hit, attack2/info/hit, etc.)
                                 if (actionName.StartsWith("attack"))
                                 {
-                                    WzSubProperty infoNode = mobStateProperty["info"] as WzSubProperty;
-                                    var attackInfo = BuildAttackInfoMetadata(infoNode);
-                                    if (attackInfo != null)
-                                    {
-                                        animationSet.SetAttackInfoMetadata(actionName, attackInfo);
-                                    }
-
-                                    WzSubProperty hitNode = infoNode?["hit"] as WzSubProperty;
-                                    if (hitNode != null)
-                                    {
-                                        List<IDXObject> hitFrames = MapSimulatorLoader.LoadFrames(texturePool, hitNode, 0, 0, device, usedProps);
-                                        if (hitFrames.Count > 0)
-                                        {
-                                            animationSet.AddAttackHitEffect(actionName, hitFrames);
-                                            System.Diagnostics.Debug.WriteLine($"[LifeLoader] Loaded {hitFrames.Count} hit effect frames for mob {mobInfo.ID} {actionName}");
-                                        }
-                                    }
-
-                                    WzImageProperty ballNode = infoNode?["ball"] ?? mobStateProperty["ball"];
-                                    if (ballNode != null)
-                                    {
-                                        List<IDXObject> ballFrames = MapSimulatorLoader.LoadFrames(texturePool, ballNode, 0, 0, device, usedProps);
-                                        if (ballFrames.Count > 0)
-                                        {
-                                            animationSet.AddAttackProjectileEffect(actionName, ballFrames);
-                                            System.Diagnostics.Debug.WriteLine($"[LifeLoader] Loaded {ballFrames.Count} projectile frames for mob {mobInfo.ID} {actionName}");
-                                        }
-                                    }
-
-                                    WzImageProperty effectNode = infoNode?["effect"];
-                                    bool effectHandledAsStructuredNode = false;
-                                    if (TryBuildAttackEffectNode(texturePool, effectNode, device, usedProps, out var primaryStructuredEffectNode))
-                                    {
-                                        animationSet.AddAttackExtraEffect(actionName, primaryStructuredEffectNode);
-                                        effectHandledAsStructuredNode = true;
-                                    }
-
-                                    if (!effectHandledAsStructuredNode && effectNode != null)
-                                    {
-                                        List<IDXObject> effectFrames = MapSimulatorLoader.LoadFrames(texturePool, effectNode, 0, 0, device, usedProps);
-                                        if (effectFrames.Count > 0)
-                                        {
-                                            animationSet.AddAttackEffect(actionName, effectFrames);
-                                        }
-                                    }
-
-                                    if (infoNode != null)
-                                    {
-                                        foreach (WzImageProperty infoChild in infoNode.WzProperties)
-                                        {
-                                            if (effectHandledAsStructuredNode &&
-                                                string.Equals(infoChild.Name, "effect", StringComparison.OrdinalIgnoreCase))
-                                            {
-                                                continue;
-                                            }
-
-                                            if (!TryBuildAttackEffectNode(texturePool, infoChild, device, usedProps, out var extraEffectNode))
-                                            {
-                                                continue;
-                                            }
-
-                                            animationSet.AddAttackExtraEffect(actionName, extraEffectNode);
-                                        }
-                                    }
-
-                                    WzImageProperty warningNode = infoNode?["areaWarning"];
-                                    if (warningNode != null)
-                                    {
-                                        List<IDXObject> warningFrames = MapSimulatorLoader.LoadFrames(texturePool, warningNode, 0, 0, device, usedProps);
-                                        if (warningFrames.Count > 0)
-                                        {
-                                            animationSet.AddAttackWarningEffect(actionName, warningFrames);
-                                        }
-                                    }
+                                    // Attack support assets are cached per mob ID and applied above.
                                 }
                                 break;
                             }
@@ -219,6 +141,232 @@ namespace HaCreator.MapSimulator.Loaders
             LoadMobSounds(mobItem, mobInfo.ID, soundManager);
 
             return mobItem;
+        }
+
+        private static CachedMobAttackAssets GetOrBuildCachedMobAttackAssets(
+            TexturePool texturePool,
+            MobInfo mobInfo,
+            WzImage source,
+            GraphicsDevice device,
+            ConcurrentBag<WzObject> usedProps)
+        {
+            if (mobInfo == null || source == null || device == null)
+            {
+                return null;
+            }
+
+            ConcurrentDictionary<string, Lazy<CachedMobAttackAssets>> cacheByMobId =
+                _cachedMobAttackAssetsByDevice.GetValue(device, _ => new ConcurrentDictionary<string, Lazy<CachedMobAttackAssets>>(StringComparer.Ordinal));
+
+            Lazy<CachedMobAttackAssets> lazyAssets = cacheByMobId.GetOrAdd(
+                mobInfo.ID,
+                _ => new Lazy<CachedMobAttackAssets>(
+                    () => BuildCachedMobAttackAssets(texturePool, mobInfo, source, device, usedProps),
+                    System.Threading.LazyThreadSafetyMode.ExecutionAndPublication));
+
+            return lazyAssets.Value;
+        }
+
+        private static CachedMobAttackAssets BuildCachedMobAttackAssets(
+            TexturePool texturePool,
+            MobInfo mobInfo,
+            WzImage source,
+            GraphicsDevice device,
+            ConcurrentBag<WzObject> usedProps)
+        {
+            var cached = new CachedMobAttackAssets();
+
+            foreach (WzImageProperty childProperty in source.WzProperties)
+            {
+                if (childProperty is not WzSubProperty mobStateProperty)
+                {
+                    continue;
+                }
+
+                string actionName = mobStateProperty.Name.ToLowerInvariant();
+
+                if (actionName == "angergaugeeffect")
+                {
+                    List<IDXObject> effectFrames = MapSimulatorLoader.LoadFrames(texturePool, mobStateProperty, 0, 0, device, usedProps);
+                    if (effectFrames.Count > 0)
+                    {
+                        cached.AngerGaugeEffect = effectFrames;
+                    }
+
+                    continue;
+                }
+
+                if (actionName == "angergaugeanimation")
+                {
+                    foreach (WzImageProperty gaugeStageProperty in mobStateProperty.WzProperties)
+                    {
+                        if (!int.TryParse(gaugeStageProperty.Name, out int stageIndex))
+                        {
+                            continue;
+                        }
+
+                        List<IDXObject> gaugeFrames = MapSimulatorLoader.LoadFrames(texturePool, gaugeStageProperty, 0, 0, device, usedProps);
+                        if (gaugeFrames.Count > 0)
+                        {
+                            cached.AngerGaugeAnimations[stageIndex] = gaugeFrames;
+                        }
+                    }
+
+                    continue;
+                }
+
+                if (!actionName.StartsWith("attack", StringComparison.Ordinal))
+                {
+                    continue;
+                }
+
+                WzSubProperty infoNode = mobStateProperty["info"] as WzSubProperty;
+                MobAnimationSet.AttackInfoMetadata attackInfo = BuildAttackInfoMetadata(infoNode);
+                if (attackInfo != null)
+                {
+                    cached.AttackMetadata[actionName] = attackInfo;
+                }
+
+                WzSubProperty hitNode = infoNode?["hit"] as WzSubProperty;
+                if (hitNode != null)
+                {
+                    List<IDXObject> hitFrames = MapSimulatorLoader.LoadFrames(texturePool, hitNode, 0, 0, device, usedProps);
+                    if (hitFrames.Count > 0)
+                    {
+                        cached.AttackHitEffects[actionName] = hitFrames;
+                        System.Diagnostics.Debug.WriteLine($"[LifeLoader] Loaded {hitFrames.Count} hit effect frames for mob {mobInfo.ID} {actionName}");
+                    }
+                }
+
+                WzImageProperty ballNode = infoNode?["ball"] ?? mobStateProperty["ball"];
+                if (ballNode != null)
+                {
+                    List<IDXObject> ballFrames = MapSimulatorLoader.LoadFrames(texturePool, ballNode, 0, 0, device, usedProps);
+                    if (ballFrames.Count > 0)
+                    {
+                        cached.AttackProjectileEffects[actionName] = ballFrames;
+                        System.Diagnostics.Debug.WriteLine($"[LifeLoader] Loaded {ballFrames.Count} projectile frames for mob {mobInfo.ID} {actionName}");
+                    }
+                }
+
+                WzImageProperty effectNode = infoNode?["effect"];
+                bool effectHandledAsStructuredNode = false;
+                if (TryBuildAttackEffectNode(texturePool, effectNode, device, usedProps, out var primaryStructuredEffectNode))
+                {
+                    AddCachedAttackExtraEffect(cached, actionName, primaryStructuredEffectNode);
+                    effectHandledAsStructuredNode = true;
+                }
+
+                if (!effectHandledAsStructuredNode && effectNode != null)
+                {
+                    List<IDXObject> effectFrames = MapSimulatorLoader.LoadFrames(texturePool, effectNode, 0, 0, device, usedProps);
+                    if (effectFrames.Count > 0)
+                    {
+                        cached.AttackEffects[actionName] = effectFrames;
+                    }
+                }
+
+                if (infoNode != null)
+                {
+                    foreach (WzImageProperty infoChild in infoNode.WzProperties)
+                    {
+                        if (effectHandledAsStructuredNode &&
+                            string.Equals(infoChild.Name, "effect", StringComparison.OrdinalIgnoreCase))
+                        {
+                            continue;
+                        }
+
+                        if (!TryBuildAttackEffectNode(texturePool, infoChild, device, usedProps, out var extraEffectNode))
+                        {
+                            continue;
+                        }
+
+                        AddCachedAttackExtraEffect(cached, actionName, extraEffectNode);
+                    }
+                }
+
+                WzImageProperty warningNode = infoNode?["areaWarning"];
+                if (warningNode != null)
+                {
+                    List<IDXObject> warningFrames = MapSimulatorLoader.LoadFrames(texturePool, warningNode, 0, 0, device, usedProps);
+                    if (warningFrames.Count > 0)
+                    {
+                        cached.AttackWarningEffects[actionName] = warningFrames;
+                    }
+                }
+            }
+
+            return cached;
+        }
+
+        private static void ApplyCachedMobAttackAssets(MobAnimationSet animationSet, CachedMobAttackAssets cachedAssets)
+        {
+            if (animationSet == null || cachedAssets == null)
+            {
+                return;
+            }
+
+            foreach (KeyValuePair<int, List<IDXObject>> entry in cachedAssets.AngerGaugeAnimations)
+            {
+                animationSet.SetAngerGaugeAnimation(entry.Key, entry.Value);
+            }
+
+            if (cachedAssets.AngerGaugeEffect != null)
+            {
+                animationSet.SetAngerGaugeEffect(cachedAssets.AngerGaugeEffect);
+            }
+
+            foreach (KeyValuePair<string, MobAnimationSet.AttackInfoMetadata> entry in cachedAssets.AttackMetadata)
+            {
+                animationSet.SetAttackInfoMetadata(entry.Key, entry.Value);
+            }
+
+            foreach (KeyValuePair<string, List<IDXObject>> entry in cachedAssets.AttackHitEffects)
+            {
+                animationSet.AddAttackHitEffect(entry.Key, entry.Value);
+            }
+
+            foreach (KeyValuePair<string, List<IDXObject>> entry in cachedAssets.AttackProjectileEffects)
+            {
+                animationSet.AddAttackProjectileEffect(entry.Key, entry.Value);
+            }
+
+            foreach (KeyValuePair<string, List<IDXObject>> entry in cachedAssets.AttackEffects)
+            {
+                animationSet.AddAttackEffect(entry.Key, entry.Value);
+            }
+
+            foreach (KeyValuePair<string, List<IDXObject>> entry in cachedAssets.AttackWarningEffects)
+            {
+                animationSet.AddAttackWarningEffect(entry.Key, entry.Value);
+            }
+
+            foreach (KeyValuePair<string, List<MobAnimationSet.AttackEffectNode>> entry in cachedAssets.AttackExtraEffects)
+            {
+                foreach (MobAnimationSet.AttackEffectNode effectNode in entry.Value)
+                {
+                    animationSet.AddAttackExtraEffect(entry.Key, effectNode);
+                }
+            }
+        }
+
+        private static void AddCachedAttackExtraEffect(
+            CachedMobAttackAssets cachedAssets,
+            string actionName,
+            MobAnimationSet.AttackEffectNode effectNode)
+        {
+            if (cachedAssets == null || string.IsNullOrEmpty(actionName) || effectNode == null)
+            {
+                return;
+            }
+
+            if (!cachedAssets.AttackExtraEffects.TryGetValue(actionName, out List<MobAnimationSet.AttackEffectNode> effectNodes))
+            {
+                effectNodes = new List<MobAnimationSet.AttackEffectNode>();
+                cachedAssets.AttackExtraEffects[actionName] = effectNodes;
+            }
+
+            effectNodes.Add(effectNode);
         }
 
         /// <summary>
