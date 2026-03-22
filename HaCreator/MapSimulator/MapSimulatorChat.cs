@@ -16,13 +16,15 @@ namespace HaCreator.MapSimulator
         public Color Color;
         public int Timestamp;
         public int ChatLogType;
+        public string WhisperTargetCandidate;
 
-        public ChatMessage(string text, Color color, int timestamp, int chatLogType = -1)
+        public ChatMessage(string text, Color color, int timestamp, int chatLogType = -1, string whisperTargetCandidate = null)
         {
             Text = text;
             Color = color;
             Timestamp = timestamp;
             ChatLogType = chatLogType;
+            WhisperTargetCandidate = whisperTargetCandidate ?? string.Empty;
         }
     }
 
@@ -596,7 +598,12 @@ namespace HaCreator.MapSimulator
         /// <param name="tickCount">Current tick count for timestamp</param>
         public void AddMessage(string text, Color color, int tickCount, int chatLogType = -1)
         {
-            _messages.Add(new ChatMessage(text, color, tickCount, chatLogType));
+            AddMessage(text, color, tickCount, chatLogType, null);
+        }
+
+        public void AddMessage(string text, Color color, int tickCount, int chatLogType, string whisperTargetCandidate)
+        {
+            _messages.Add(new ChatMessage(text, color, tickCount, chatLogType, whisperTargetCandidate));
 
             // Remove old messages if exceeding limit
             while (_messages.Count > MAX_CHAT_MESSAGES)
@@ -645,6 +652,19 @@ namespace HaCreator.MapSimulator
 
             _chatTarget = (MapSimulatorChatTargetType)nextIndex;
             _whisperTarget = string.Empty;
+        }
+
+        public void BeginWhisperTo(string whisperTarget, int tickCount)
+        {
+            whisperTarget = whisperTarget?.Trim();
+            if (string.IsNullOrWhiteSpace(whisperTarget))
+            {
+                return;
+            }
+
+            _whisperTarget = whisperTarget;
+            _replyTarget = whisperTarget;
+            Activate(tickCount);
         }
 
         public MapSimulatorChatRenderState GetRenderState()
@@ -918,7 +938,12 @@ namespace HaCreator.MapSimulator
 
             _whisperTarget = whisperTarget;
             _replyTarget = whisperTarget;
-            AddMessage($"> {whisperTarget}: {message}", WhisperMessageColor, tickCount, (int)ClientChatLogType.Whisper);
+            AddMessage(
+                $"> {whisperTarget}: {message}",
+                WhisperMessageColor,
+                tickCount,
+                (int)ClientChatLogType.Whisper,
+                whisperTarget);
             MessageSubmitted?.Invoke(message, tickCount);
         }
 

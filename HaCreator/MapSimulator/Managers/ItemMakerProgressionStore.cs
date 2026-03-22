@@ -1,0 +1,383 @@
+using HaCreator.MapSimulator.Character;
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Text.Json;
+
+namespace HaCreator.MapSimulator.Managers
+{
+    public enum ItemMakerRecipeFamily
+    {
+        Generic,
+        Gloves,
+        Shoes,
+        Toys
+    }
+
+    public sealed class ItemMakerCraftResult
+    {
+        public ItemMakerRecipeFamily Family { get; init; } = ItemMakerRecipeFamily.Generic;
+        public int OutputItemId { get; init; }
+        public int OutputQuantity { get; init; } = 1;
+    }
+
+    public sealed class ItemMakerProgressionSnapshot
+    {
+        internal ItemMakerProgressionSnapshot(
+            int genericLevel,
+            int gloveLevel,
+            int shoeLevel,
+            int toyLevel,
+            int genericProgress,
+            int gloveProgress,
+            int shoeProgress,
+            int toyProgress,
+            int successfulCrafts,
+            int traitCraft)
+        {
+            GenericLevel = genericLevel;
+            GloveLevel = gloveLevel;
+            ShoeLevel = shoeLevel;
+            ToyLevel = toyLevel;
+            GenericProgress = genericProgress;
+            GloveProgress = gloveProgress;
+            ShoeProgress = shoeProgress;
+            ToyProgress = toyProgress;
+            SuccessfulCrafts = successfulCrafts;
+            TraitCraft = Math.Max(0, traitCraft);
+        }
+
+        public static ItemMakerProgressionSnapshot Default { get; } = new(1, 1, 1, 1, 0, 0, 0, 0, 0, 0);
+
+        public int GenericLevel { get; }
+        public int GloveLevel { get; }
+        public int ShoeLevel { get; }
+        public int ToyLevel { get; }
+        public int GenericProgress { get; }
+        public int GloveProgress { get; }
+        public int ShoeProgress { get; }
+        public int ToyProgress { get; }
+        public int SuccessfulCrafts { get; }
+        public int TraitCraft { get; }
+
+        public int GetLevel(ItemMakerRecipeFamily family)
+        {
+            return family switch
+            {
+                ItemMakerRecipeFamily.Gloves => GloveLevel,
+                ItemMakerRecipeFamily.Shoes => ShoeLevel,
+                ItemMakerRecipeFamily.Toys => ToyLevel,
+                _ => GenericLevel
+            };
+        }
+
+        public int GetProgress(ItemMakerRecipeFamily family)
+        {
+            return family switch
+            {
+                ItemMakerRecipeFamily.Gloves => GloveProgress,
+                ItemMakerRecipeFamily.Shoes => ShoeProgress,
+                ItemMakerRecipeFamily.Toys => ToyProgress,
+                _ => GenericProgress
+            };
+        }
+
+        public int GetProgressTarget(ItemMakerRecipeFamily family)
+        {
+            return ItemMakerProgressionStore.GetCraftsNeededForNextLevel(GetLevel(family));
+        }
+
+        public string GetFamilyLabel(ItemMakerRecipeFamily family)
+        {
+            return family switch
+            {
+                ItemMakerRecipeFamily.Gloves => "Glove",
+                ItemMakerRecipeFamily.Shoes => "Shoe",
+                ItemMakerRecipeFamily.Toys => "Toy",
+                _ => "Maker"
+            };
+        }
+    }
+
+    public sealed class ItemMakerProgressionStore
+    {
+        private sealed class PersistedStore
+        {
+            public Dictionary<string, ProgressionRecord> ProgressionByCharacter { get; set; } = new(StringComparer.Ordinal);
+        }
+
+        private sealed class ProgressionRecord
+        {
+            public int GenericLevel { get; set; } = 1;
+            public int GloveLevel { get; set; } = 1;
+            public int ShoeLevel { get; set; } = 1;
+            public int ToyLevel { get; set; } = 1;
+            public int GenericProgress { get; set; }
+            public int GloveProgress { get; set; }
+            public int ShoeProgress { get; set; }
+            public int ToyProgress { get; set; }
+            public int SuccessfulCrafts { get; set; }
+        }
+
+        private static readonly JsonSerializerOptions JsonOptions = new()
+        {
+            WriteIndented = true,
+            PropertyNamingPolicy = JsonNamingPolicy.CamelCase
+        };
+
+        private readonly Dictionary<string, ProgressionRecord> _progressionByCharacter = new(StringComparer.Ordinal);
+        private readonly string _storageFilePath;
+
+        public ItemMakerProgressionStore(string storageFilePath = null)
+        {
+            _storageFilePath = storageFilePath ?? Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+                "HaCreator",
+                "MapSimulator",
+                "item-maker-progression.json");
+
+            string directoryPath = Path.GetDirectoryName(_storageFilePath);
+            if (!string.IsNullOrWhiteSpace(directoryPath))
+            {
+                Directory.CreateDirectory(directoryPath);
+            }
+
+            LoadFromDisk();
+        }
+
+        public ItemMakerProgressionSnapshot GetSnapshot(CharacterBuild build)
+        {
+            string key = ResolveCharacterKey(build);
+            if (!_progressionByCharacter.TryGetValue(key, out ProgressionRecord record) || record == null)
+            {
+                return new ItemMakerProgressionSnapshot(1, 1, 1, 1, 0, 0, 0, 0, 0, build?.TraitCraft ?? 0);
+            }
+
+            return CreateSnapshot(record, build?.TraitCraft ?? 0);
+        }
+
+        public ItemMakerProgressionSnapshot RecordCraft(CharacterBuild build, ItemMakerCraftResult result)
+        {
+            string key = ResolveCharacterKey(build);
+            ProgressionRecord record = GetOrCreateRecord(key);
+
+            record.SuccessfulCrafts = Math.Max(0, record.SuccessfulCrafts + 1);
+
+            int currentLevel = GetFamilyLevel(record, result?.Family ?? ItemMakerRecipeFamily.Generic);
+            if (currentLevel < MaxMakerSkillLevel)
+            {
+                int progress = GetFamilyProgress(record, result?.Family ?? ItemMakerRecipeFamily.Generic) + 1;
+                int target = GetCraftsNeededForNextLevel(currentLevel);
+                if (target > 0 && progress >= target)
+                {
+                    SetFamilyLevel(record, result?.Family ?? ItemMakerRecipeFamily.Generic, currentLevel + 1);
+                    SetFamilyProgress(record, result?.Family ?? ItemMakerRecipeFamily.Generic, 0);
+                }
+                else
+                {
+                    SetFamilyProgress(record, result?.Family ?? ItemMakerRecipeFamily.Generic, progress);
+                }
+            }
+
+            SaveToDisk();
+            return CreateSnapshot(record, build?.TraitCraft ?? 0);
+        }
+
+        internal const int MaxMakerSkillLevel = 3;
+
+        internal static int GetCraftsNeededForNextLevel(int currentLevel)
+        {
+            return currentLevel switch
+            {
+                <= 0 => 0,
+                1 => 3,
+                2 => 6,
+                _ => 0
+            };
+        }
+
+        private static ItemMakerProgressionSnapshot CreateSnapshot(ProgressionRecord record, int traitCraft)
+        {
+            return new ItemMakerProgressionSnapshot(
+                ClampLevel(record.GenericLevel),
+                ClampLevel(record.GloveLevel),
+                ClampLevel(record.ShoeLevel),
+                ClampLevel(record.ToyLevel),
+                Math.Max(0, record.GenericProgress),
+                Math.Max(0, record.GloveProgress),
+                Math.Max(0, record.ShoeProgress),
+                Math.Max(0, record.ToyProgress),
+                Math.Max(0, record.SuccessfulCrafts),
+                traitCraft);
+        }
+
+        private static int ClampLevel(int level)
+        {
+            return Math.Clamp(level, 1, MaxMakerSkillLevel);
+        }
+
+        private ProgressionRecord GetOrCreateRecord(string key)
+        {
+            if (!_progressionByCharacter.TryGetValue(key, out ProgressionRecord record) || record == null)
+            {
+                record = new ProgressionRecord();
+                _progressionByCharacter[key] = record;
+            }
+
+            record.GenericLevel = ClampLevel(record.GenericLevel);
+            record.GloveLevel = ClampLevel(record.GloveLevel);
+            record.ShoeLevel = ClampLevel(record.ShoeLevel);
+            record.ToyLevel = ClampLevel(record.ToyLevel);
+            return record;
+        }
+
+        private static int GetFamilyLevel(ProgressionRecord record, ItemMakerRecipeFamily family)
+        {
+            return family switch
+            {
+                ItemMakerRecipeFamily.Gloves => ClampLevel(record.GloveLevel),
+                ItemMakerRecipeFamily.Shoes => ClampLevel(record.ShoeLevel),
+                ItemMakerRecipeFamily.Toys => ClampLevel(record.ToyLevel),
+                _ => ClampLevel(record.GenericLevel)
+            };
+        }
+
+        private static void SetFamilyLevel(ProgressionRecord record, ItemMakerRecipeFamily family, int level)
+        {
+            int clamped = ClampLevel(level);
+            switch (family)
+            {
+                case ItemMakerRecipeFamily.Gloves:
+                    record.GloveLevel = clamped;
+                    break;
+                case ItemMakerRecipeFamily.Shoes:
+                    record.ShoeLevel = clamped;
+                    break;
+                case ItemMakerRecipeFamily.Toys:
+                    record.ToyLevel = clamped;
+                    break;
+                default:
+                    record.GenericLevel = clamped;
+                    break;
+            }
+        }
+
+        private static int GetFamilyProgress(ProgressionRecord record, ItemMakerRecipeFamily family)
+        {
+            return family switch
+            {
+                ItemMakerRecipeFamily.Gloves => Math.Max(0, record.GloveProgress),
+                ItemMakerRecipeFamily.Shoes => Math.Max(0, record.ShoeProgress),
+                ItemMakerRecipeFamily.Toys => Math.Max(0, record.ToyProgress),
+                _ => Math.Max(0, record.GenericProgress)
+            };
+        }
+
+        private static void SetFamilyProgress(ProgressionRecord record, ItemMakerRecipeFamily family, int progress)
+        {
+            int normalized = Math.Max(0, progress);
+            switch (family)
+            {
+                case ItemMakerRecipeFamily.Gloves:
+                    record.GloveProgress = normalized;
+                    break;
+                case ItemMakerRecipeFamily.Shoes:
+                    record.ShoeProgress = normalized;
+                    break;
+                case ItemMakerRecipeFamily.Toys:
+                    record.ToyProgress = normalized;
+                    break;
+                default:
+                    record.GenericProgress = normalized;
+                    break;
+            }
+        }
+
+        private static string ResolveCharacterKey(CharacterBuild build)
+        {
+            if (build == null)
+            {
+                return "session:default";
+            }
+
+            if (build.Id > 0)
+            {
+                return $"id:{build.Id}";
+            }
+
+            if (!string.IsNullOrWhiteSpace(build.Name))
+            {
+                return $"name:{build.Name.Trim().ToLowerInvariant()}";
+            }
+
+            return "session:default";
+        }
+
+        private void LoadFromDisk()
+        {
+            if (string.IsNullOrWhiteSpace(_storageFilePath) || !File.Exists(_storageFilePath))
+            {
+                return;
+            }
+
+            try
+            {
+                string json = File.ReadAllText(_storageFilePath);
+                PersistedStore persisted = JsonSerializer.Deserialize<PersistedStore>(json, JsonOptions);
+                if (persisted?.ProgressionByCharacter == null)
+                {
+                    return;
+                }
+
+                _progressionByCharacter.Clear();
+                foreach (KeyValuePair<string, ProgressionRecord> entry in persisted.ProgressionByCharacter)
+                {
+                    if (string.IsNullOrWhiteSpace(entry.Key) || entry.Value == null)
+                    {
+                        continue;
+                    }
+
+                    _progressionByCharacter[entry.Key] = new ProgressionRecord
+                    {
+                        GenericLevel = ClampLevel(entry.Value.GenericLevel),
+                        GloveLevel = ClampLevel(entry.Value.GloveLevel),
+                        ShoeLevel = ClampLevel(entry.Value.ShoeLevel),
+                        ToyLevel = ClampLevel(entry.Value.ToyLevel),
+                        GenericProgress = Math.Max(0, entry.Value.GenericProgress),
+                        GloveProgress = Math.Max(0, entry.Value.GloveProgress),
+                        ShoeProgress = Math.Max(0, entry.Value.ShoeProgress),
+                        ToyProgress = Math.Max(0, entry.Value.ToyProgress),
+                        SuccessfulCrafts = Math.Max(0, entry.Value.SuccessfulCrafts)
+                    };
+                }
+            }
+            catch
+            {
+                _progressionByCharacter.Clear();
+            }
+        }
+
+        private void SaveToDisk()
+        {
+            if (string.IsNullOrWhiteSpace(_storageFilePath))
+            {
+                return;
+            }
+
+            PersistedStore persisted = new()
+            {
+                ProgressionByCharacter = new Dictionary<string, ProgressionRecord>(_progressionByCharacter, StringComparer.Ordinal)
+            };
+
+            try
+            {
+                string json = JsonSerializer.Serialize(persisted, JsonOptions);
+                File.WriteAllText(_storageFilePath, json);
+            }
+            catch
+            {
+                // Ignore persistence failures so maker progression remains usable in restricted environments.
+            }
+        }
+    }
+}

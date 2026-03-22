@@ -48,4 +48,24 @@ public sealed class FieldInteractionRestrictionEvaluatorTests
             "The Teleport Rock",
             "Remembers 5 maps of your choice."));
     }
+
+    [Theory]
+    [InlineData(100000000, true)]
+    [InlineData(230040000, true)]
+    [InlineData(910000000, true)]
+    [InlineData(109000000, false)]
+    [InlineData(980000000, false)]
+    [InlineData(99999999, false)]
+    public void CanRegisterMapTransferDestination_MatchesClientCategoryGate(int mapId, bool expected)
+    {
+        Assert.Equal(expected, FieldInteractionRestrictionEvaluator.CanRegisterMapTransferDestination(mapId));
+    }
+
+    [Fact]
+    public void GetMapTransferRegistrationRestrictionMessage_ReturnsClientShapedNotice_ForBlockedCategory()
+    {
+        string message = FieldInteractionRestrictionEvaluator.GetMapTransferRegistrationRestrictionMessage(109000000);
+
+        Assert.Equal("This destination cannot be saved in a teleport slot.", message);
+    }
 }

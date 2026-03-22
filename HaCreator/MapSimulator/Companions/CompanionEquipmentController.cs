@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.Text;
 using HaCreator.MapSimulator.Character;
 using HaSharedLibrary.Render.DX;
 using HaSharedLibrary.Util;
@@ -43,6 +44,7 @@ namespace HaCreator.MapSimulator.Companions
         public int ItemId { get; init; }
         public string Name { get; init; }
         public string Description { get; init; }
+        public IReadOnlyList<string> ExcludedPetNames { get; init; } = Array.Empty<string>();
         public Texture2D ItemTexture { get; init; }
         public IDXObject Icon { get; init; }
         public IDXObject IconRaw { get; init; }
@@ -171,6 +173,11 @@ namespace HaCreator.MapSimulator.Companions
                 return false;
             }
 
+            if (!CompanionEquipmentController.CanEquipPetItem(item, pet, out rejectReason))
+            {
+                return false;
+            }
+
             if (_equippedItems.TryGetValue(pet.RuntimeId, out CompanionEquipItem displacedItem))
             {
                 displacedItems = new ReadOnlyCollection<CompanionEquipItem>(new[] { displacedItem });
@@ -211,6 +218,12 @@ namespace HaCreator.MapSimulator.Companions
             }
 
             _equippedItems.TryGetValue(targetPet.RuntimeId, out CompanionEquipItem targetItem);
+            if (!CompanionEquipmentController.CanEquipPetItem(sourceItem, targetPet, out _)
+                || (targetItem != null && !CompanionEquipmentController.CanEquipPetItem(targetItem, sourcePet, out _)))
+            {
+                return false;
+            }
+
             _equippedItems[targetPet.RuntimeId] = sourceItem;
             if (targetItem == null)
             {
@@ -498,6 +511,131 @@ namespace HaCreator.MapSimulator.Companions
             return category == 180 || category == 181;
         }
 
+        internal static bool CanEquipPetItem(CompanionEquipItem item, PetRuntime pet, out string rejectReason)
+        {
+            rejectReason = null;
+            if (item == null || pet == null)
+            {
+                return false;
+            }
+
+            if (item.ExcludedPetNames == null || item.ExcludedPetNames.Count == 0)
+            {
+                return true;
+            }
+
+            string normalizedPetName = NormalizePetCompatibilityName(pet.Name);
+            for (int i = 0; i < item.ExcludedPetNames.Count; i++)
+            {
+                string excludedPetName = item.ExcludedPetNames[i];
+                if (normalizedPetName.Length > 0
+                    && string.Equals(normalizedPetName, NormalizePetCompatibilityName(excludedPetName), StringComparison.Ordinal))
+                {
+                    string petName = string.IsNullOrWhiteSpace(pet.Name) ? $"Pet {pet.RuntimeId}" : pet.Name;
+                    rejectReason = $"{item.Name ?? "This pet accessory"} cannot be equipped on {petName}.";
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        internal static IReadOnlyList<string> ParseExcludedPetNames(string description)
+        {
+            if (string.IsNullOrWhiteSpace(description))
+            {
+                return Array.Empty<string>();
+            }
+
+            int markerStart = description.IndexOf("#c", StringComparison.OrdinalIgnoreCase);
+            if (markerStart < 0)
+            {
+                return Array.Empty<string>();
+            }
+
+            markerStart += 2;
+            int markerEnd = description.IndexOf('#', markerStart);
+            if (markerEnd <= markerStart)
+            {
+                return Array.Empty<string>();
+            }
+
+            string namesBlock = description.Substring(markerStart, markerEnd - markerStart);
+            if (string.IsNullOrWhiteSpace(namesBlock))
+            {
+                return Array.Empty<string>();
+            }
+
+            string[] segments = namesBlock.Split(',');
+            List<string> names = new(segments.Length);
+            for (int i = 0; i < segments.Length; i++)
+            {
+                string cleaned = CleanPetCompatibilityName(segments[i]);
+                if (!string.IsNullOrWhiteSpace(cleaned))
+                {
+                    names.Add(cleaned);
+                }
+            }
+
+            return names.Count == 0
+                ? Array.Empty<string>()
+                : new ReadOnlyCollection<string>(names);
+        }
+
+        internal static string NormalizePetCompatibilityName(string petName)
+        {
+            if (string.IsNullOrWhiteSpace(petName))
+            {
+                return string.Empty;
+            }
+
+            string cleaned = CleanPetCompatibilityName(petName);
+            if (cleaned.Length == 0)
+            {
+                return string.Empty;
+            }
+
+            StringBuilder builder = new(cleaned.Length);
+            bool previousWasSpace = false;
+            for (int i = 0; i < cleaned.Length; i++)
+            {
+                char character = cleaned[i];
+                if (char.IsLetterOrDigit(character))
+                {
+                    builder.Append(char.ToLowerInvariant(character));
+                    previousWasSpace = false;
+                }
+                else if (char.IsWhiteSpace(character) && !previousWasSpace)
+                {
+                    builder.Append(' ');
+                    previousWasSpace = true;
+                }
+            }
+
+            return builder.ToString().Trim();
+        }
+
+        private static string CleanPetCompatibilityName(string petName)
+        {
+            if (string.IsNullOrWhiteSpace(petName))
+            {
+                return string.Empty;
+            }
+
+            string cleaned = petName.Trim();
+            if (cleaned.StartsWith("the ", StringComparison.OrdinalIgnoreCase))
+            {
+                cleaned = cleaned.Substring(4).TrimStart();
+            }
+
+            if (cleaned.EndsWith(" pet", StringComparison.OrdinalIgnoreCase))
+            {
+                cleaned = cleaned.Substring(0, cleaned.Length - 4).TrimEnd();
+            }
+
+            return cleaned.Trim();
+        }
+
         public static bool TryResolveDragonSlot(int itemId, out DragonEquipSlot slot)
         {
             slot = (itemId / 10000) switch
@@ -617,6 +755,7 @@ namespace HaCreator.MapSimulator.Companions
                 ItemId = itemId,
                 Name = LoadCachedItemName(itemId) ?? $"Pet Equip {itemId}",
                 Description = LoadCachedItemDescription(itemId),
+                ExcludedPetNames = CompanionEquipmentController.ParseExcludedPetNames(LoadCachedItemDescription(itemId)),
                 ItemTexture = LoadInfoTexture(image, "iconRaw") ?? LoadInfoTexture(image, "icon"),
                 Icon = LoadInfoIcon(image, "icon"),
                 IconRaw = LoadInfoIcon(image, "iconRaw")

@@ -106,6 +106,40 @@ namespace HaCreator.MapSimulator.Interaction
             };
         }
 
+        internal IReadOnlyList<SocialTrackedEntrySnapshot> BuildTrackedEntriesSnapshot()
+        {
+            List<SocialTrackedEntrySnapshot> entries = new();
+            foreach (SocialListTab tab in new[] { SocialListTab.Friend, SocialListTab.Party, SocialListTab.Guild })
+            {
+                if (!_entriesByTab.TryGetValue(tab, out List<SocialEntryState> tabEntries) || tabEntries == null)
+                {
+                    continue;
+                }
+
+                for (int i = 0; i < tabEntries.Count; i++)
+                {
+                    SocialEntryState entry = tabEntries[i];
+                    if (entry == null)
+                    {
+                        continue;
+                    }
+
+                    entries.Add(new SocialTrackedEntrySnapshot
+                    {
+                        Tab = tab,
+                        Name = entry.Name,
+                        LocationSummary = entry.LocationSummary,
+                        Channel = entry.Channel,
+                        IsOnline = entry.IsOnline,
+                        IsLeader = entry.IsLeader,
+                        IsLocalPlayer = entry.IsLocalPlayer
+                    });
+                }
+            }
+
+            return entries;
+        }
+
         internal void SelectTab(SocialListTab tab)
         {
             _currentTab = tab;
@@ -216,6 +250,16 @@ namespace HaCreator.MapSimulator.Interaction
                 "Blacklist.Delete" => DeleteBlacklistEntry(),
                 _ => "That social action is not modeled yet."
             };
+        }
+
+        internal string GetLocalGuildRoleLabel()
+        {
+            SocialEntryState localGuildEntry = _entriesByTab.TryGetValue(SocialListTab.Guild, out List<SocialEntryState> entries)
+                ? entries.FirstOrDefault(entry => entry.IsLocalPlayer)
+                : null;
+            return string.IsNullOrWhiteSpace(localGuildEntry?.PrimaryText)
+                ? "Member"
+                : localGuildEntry.PrimaryText;
         }
 
         private void SeedDefaultData()
@@ -1000,6 +1044,17 @@ namespace HaCreator.MapSimulator.Interaction
         public string Name { get; init; } = string.Empty;
         public string PrimaryText { get; init; } = string.Empty;
         public string SecondaryText { get; init; } = string.Empty;
+        public string LocationSummary { get; init; } = string.Empty;
+        public int Channel { get; init; }
+        public bool IsOnline { get; init; }
+        public bool IsLeader { get; init; }
+        public bool IsLocalPlayer { get; init; }
+    }
+
+    internal sealed class SocialTrackedEntrySnapshot
+    {
+        public SocialListTab Tab { get; init; }
+        public string Name { get; init; } = string.Empty;
         public string LocationSummary { get; init; } = string.Empty;
         public int Channel { get; init; }
         public bool IsOnline { get; init; }

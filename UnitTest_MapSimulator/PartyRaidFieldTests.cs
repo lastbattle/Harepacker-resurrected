@@ -1,4 +1,5 @@
 using HaCreator.MapSimulator.Fields;
+using HaCreator.MapSimulator.Managers;
 using MapleLib.WzLib.WzStructure;
 using MapleLib.WzLib.WzStructure.Data;
 
@@ -6,6 +7,38 @@ namespace UnitTest_MapSimulator;
 
 public sealed class PartyRaidFieldTests
 {
+    [Fact]
+    public void TryParsePacketLine_SessionAlias_ParsesOutcomePayload()
+    {
+        bool parsed = PartyRaidPacketInboxManager.TryParsePacketLine(
+            "session outcome win",
+            out PartyRaidPacketScope scope,
+            out string key,
+            out string value,
+            out string error);
+
+        Assert.True(parsed, error);
+        Assert.Equal(PartyRaidPacketScope.Session, scope);
+        Assert.Equal("outcome", key);
+        Assert.Equal("win", value);
+    }
+
+    [Fact]
+    public void TryParsePacketLine_ClockClear_AllowsEmptyValue()
+    {
+        bool parsed = PartyRaidPacketInboxManager.TryParsePacketLine(
+            "clock clear",
+            out PartyRaidPacketScope scope,
+            out string key,
+            out string value,
+            out string error);
+
+        Assert.True(parsed, error);
+        Assert.Equal(PartyRaidPacketScope.Clock, scope);
+        Assert.Equal("clear", key);
+        Assert.Equal(string.Empty, value);
+    }
+
     [Fact]
     public void BindMap_UsesOnUserEnterToInferResultOutcome()
     {
@@ -75,5 +108,21 @@ public sealed class PartyRaidFieldTests
         Assert.Equal(1200, field.ResultPoint);
         Assert.Equal(300, field.ResultBonus);
         Assert.Equal(1500, field.ResultTotal);
+    }
+
+    [Fact]
+    public void OnSessionValue_AcceptsOutcomeAlias()
+    {
+        PartyRaidField field = new();
+        field.BindMap(new MapInfo
+        {
+            id = 923020010,
+            fieldType = FieldType.FIELDTYPE_PARTYRAID_RESULT,
+            onUserEnter = "PRaid_WinEnter"
+        });
+
+        Assert.True(field.OnSessionValue("result", "fail"));
+
+        Assert.Equal(PartyRaidResultOutcome.Lose, field.ResultOutcome);
     }
 }

@@ -10,12 +10,14 @@ namespace HaCreator.MapSimulator
             int worldId,
             IReadOnlyList<ChannelSelectionState> channels,
             bool requiresAdultAccount,
+            bool hasAuthoritativePopulationData = false,
             string recommendMessage = null,
             int? recommendOrder = null)
         {
             WorldId = Math.Max(0, worldId);
             Channels = channels ?? Array.Empty<ChannelSelectionState>();
             RequiresAdultAccount = requiresAdultAccount;
+            HasAuthoritativePopulationData = hasAuthoritativePopulationData;
             RecommendMessage = string.IsNullOrWhiteSpace(recommendMessage) ? null : recommendMessage.Trim();
             RecommendOrder = recommendOrder;
         }
@@ -25,6 +27,8 @@ namespace HaCreator.MapSimulator
         public IReadOnlyList<ChannelSelectionState> Channels { get; }
 
         public bool RequiresAdultAccount { get; }
+
+        public bool HasAuthoritativePopulationData { get; }
 
         public string RecommendMessage { get; }
 

@@ -36,6 +36,7 @@ namespace HaCreator.MapSimulator.Interaction
         private int _blinkEndTick = int.MinValue;
         private MessengerWindowState _windowState;
         private PendingMessengerInviteState _pendingInvite;
+        private PendingMessengerInviteState _incomingInvite;
         private string _lastActionSummary = "Messenger opened.";
         private string _lastPacketSummary = "Messenger packet trace idle.";
 
@@ -130,6 +131,8 @@ namespace HaCreator.MapSimulator.Interaction
                 CanWhisper = selectedParticipant != null && !selectedParticipant.IsLocalPlayer,
                 CanLeave = _participants.Count > 1,
                 CanClaim = canReportChat,
+                HasIncomingInvite = _incomingInvite != null,
+                IncomingInviteFrom = _incomingInvite?.ContactName ?? string.Empty,
                 PendingInviteSummary = BuildPendingInviteSummary(),
                 LastActionSummary = _lastActionSummary,
                 LastPacketSummary = _lastPacketSummary,
@@ -175,6 +178,11 @@ namespace HaCreator.MapSimulator.Interaction
                 return "Messenger room is already full.";
             }
 
+            if (_incomingInvite != null)
+            {
+                return $"Respond to {_incomingInvite.ContactName}'s Messenger invite before sending another invite.";
+            }
+
             if (_pendingInvite != null)
             {
                 return $"Waiting for {_pendingInvite.ContactName} to answer the Messenger invite.";
@@ -202,6 +210,11 @@ namespace HaCreator.MapSimulator.Interaction
                 return "Messenger room is already full.";
             }
 
+            if (_incomingInvite != null)
+            {
+                return $"Respond to {_incomingInvite.ContactName}'s Messenger invite before sending another invite.";
+            }
+
             if (_pendingInvite != null)
             {
                 return $"Waiting for {_pendingInvite.ContactName} to answer the current Messenger invite.";
@@ -220,6 +233,99 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             return QueueInvite(contact);
+        }
+
+        public string ReceiveInvite(string contactName)
+        {
+            string resolvedName = NormalizeParticipantName(contactName);
+            if (resolvedName == null)
+            {
+                return "Messenger remote invite flow needs a contact name.";
+            }
+
+            if (!_contacts.TryGetValue(resolvedName, out MessengerContactState contact))
+            {
+                return $"No simulator Messenger contact named {resolvedName} is available.";
+            }
+
+            if (_participants.Count > 1)
+            {
+                _lastActionSummary = $"{contact.Name} invited you, but the Messenger room is already occupied.";
+                AddSystemLog(_lastActionSummary);
+                RecordPacketSummary($"Rejected simulated Messenger invite packet from {contact.Name} because the room is busy.");
+                return _lastActionSummary;
+            }
+
+            if (_pendingInvite != null)
+            {
+                return $"Waiting for {_pendingInvite.ContactName} to answer the current Messenger invite.";
+            }
+
+            if (_incomingInvite != null)
+            {
+                return $"Messenger invite from {_incomingInvite.ContactName} is already waiting.";
+            }
+
+            _incomingInvite = new PendingMessengerInviteState(
+                _nextInviteId++,
+                contact.Name,
+                0,
+                true);
+            _lastActionSummary = $"Received Messenger invite #{_incomingInvite.InviteId} from {contact.Name}.";
+            AddSystemLog(_lastActionSummary);
+            StartBlink(Environment.TickCount);
+            RecordPacketSummary($"Applied simulated Messenger invite packet from {contact.Name}.");
+            return _lastActionSummary;
+        }
+
+        public string AcceptIncomingInvite()
+        {
+            if (_incomingInvite == null)
+            {
+                return "No Messenger invite is waiting for acceptance.";
+            }
+
+            PendingMessengerInviteState incomingInvite = _incomingInvite;
+            _incomingInvite = null;
+
+            if (!_contacts.TryGetValue(incomingInvite.ContactName, out MessengerContactState contact))
+            {
+                return $"Invite target {incomingInvite.ContactName} is no longer available.";
+            }
+
+            if (!contact.IsOnline)
+            {
+                _lastActionSummary = $"{contact.Name} is offline, so the Messenger invite expired.";
+                AddSystemLog(_lastActionSummary);
+                RecordPacketSummary($"Rejected simulated Messenger invite packet from {contact.Name} because the sender is offline.");
+                return _lastActionSummary;
+            }
+
+            if (_participants.Count > 1)
+            {
+                _lastActionSummary = $"Cannot join {contact.Name}'s Messenger while another room is active.";
+                AddSystemLog(_lastActionSummary);
+                RecordPacketSummary($"Rejected simulated Messenger invite from {contact.Name} because the local room is busy.");
+                return _lastActionSummary;
+            }
+
+            return JoinContact(contact, packetDriven: true, joinedViaIncomingInvite: true);
+        }
+
+        public string RejectIncomingInvite()
+        {
+            if (_incomingInvite == null)
+            {
+                return "No Messenger invite is waiting for rejection.";
+            }
+
+            PendingMessengerInviteState incomingInvite = _incomingInvite;
+            _incomingInvite = null;
+            _lastActionSummary = $"Rejected Messenger invite from {incomingInvite.ContactName}.";
+            AddSystemLog(_lastActionSummary);
+            StartBlink(Environment.TickCount);
+            RecordPacketSummary($"Sent simulated Messenger invite-reject packet to {incomingInvite.ContactName}.");
+            return _lastActionSummary;
         }
 
         public string ResolvePendingInvite(bool accepted, bool packetDriven)
@@ -250,36 +356,7 @@ namespace HaCreator.MapSimulator.Interaction
                 return _lastActionSummary;
             }
 
-            if (_participants.Count >= MaxParticipants)
-            {
-                _lastActionSummary = $"{contact.Name} accepted, but the Messenger room has no empty slot.";
-                AddSystemLog(_lastActionSummary);
-                return _lastActionSummary;
-            }
-
-            var participant = new MessengerParticipantState
-            {
-                Name = contact.Name,
-                LocationSummary = contact.LocationSummary,
-                Channel = contact.Channel,
-                StatusText = contact.StatusText,
-                IsLocalPlayer = false,
-                IsOnline = contact.IsOnline
-            };
-
-            _participants.Add(participant);
-            _selectedSlot = _participants.Count - 1;
-            _lastActionSummary = packetDriven
-                ? $"{contact.Name} accepted the packet-authored Messenger invite."
-                : $"{contact.Name} joined the Messenger.";
-            AddSystemLog(_lastActionSummary);
-            AddParticipantLog(contact.Name, contact.JoinGreeting);
-            SetParticipantBubble(contact.Name, contact.JoinGreeting, Environment.TickCount);
-            StartBlink(Environment.TickCount);
-            RecordPacketSummary(packetDriven
-                ? $"Applied simulated Messenger invite-result packet: {contact.Name} accepted."
-                : $"{contact.Name} accepted a local Messenger invite.");
-            return _lastActionSummary;
+            return JoinContact(contact, packetDriven, joinedViaIncomingInvite: false);
         }
 
         public string WhisperSelected()
@@ -440,6 +517,33 @@ namespace HaCreator.MapSimulator.Interaction
             return _lastActionSummary;
         }
 
+        public string TryDeleteMessenger()
+        {
+            if (_incomingInvite != null)
+            {
+                return RejectIncomingInvite();
+            }
+
+            if (_pendingInvite != null)
+            {
+                string contactName = _pendingInvite.ContactName;
+                _pendingInvite = null;
+                _lastActionSummary = $"Canceled Messenger invite to {contactName}.";
+                AddSystemLog(_lastActionSummary);
+                RecordPacketSummary($"Sent simulated Messenger invite-cancel packet to {contactName}.");
+                return _lastActionSummary;
+            }
+
+            if (_participants.Count > 1)
+            {
+                return LeaveMessenger();
+            }
+
+            _lastActionSummary = "Messenger close requested with only the local profile present.";
+            RecordPacketSummary("Simulated Messenger TryDelete with no remote participants.");
+            return _lastActionSummary;
+        }
+
         public string RemoveParticipant(string name, bool rejectedInvite)
         {
             string resolvedName = NormalizeParticipantName(name);
@@ -553,6 +657,44 @@ namespace HaCreator.MapSimulator.Interaction
             _lastActionSummary = $"Sent Messenger invite #{inviteId} to {contact.Name}.";
             AddSystemLog($"Invite sent to {contact.Name}.");
             RecordPacketSummary($"Sent Messenger packet 0x8F/3 invite to {contact.Name}.");
+            return _lastActionSummary;
+        }
+
+        private string JoinContact(MessengerContactState contact, bool packetDriven, bool joinedViaIncomingInvite)
+        {
+            if (_participants.Count >= MaxParticipants)
+            {
+                _lastActionSummary = $"{contact.Name} accepted, but the Messenger room has no empty slot.";
+                AddSystemLog(_lastActionSummary);
+                return _lastActionSummary;
+            }
+
+            var participant = new MessengerParticipantState
+            {
+                Name = contact.Name,
+                LocationSummary = contact.LocationSummary,
+                Channel = contact.Channel,
+                StatusText = contact.StatusText,
+                IsLocalPlayer = false,
+                IsOnline = contact.IsOnline
+            };
+
+            _participants.Add(participant);
+            _selectedSlot = _participants.Count - 1;
+            _lastActionSummary = joinedViaIncomingInvite
+                ? $"Joined {contact.Name}'s Messenger room."
+                : packetDriven
+                    ? $"{contact.Name} accepted the packet-authored Messenger invite."
+                    : $"{contact.Name} joined the Messenger.";
+            AddSystemLog(_lastActionSummary);
+            AddParticipantLog(contact.Name, contact.JoinGreeting);
+            SetParticipantBubble(contact.Name, contact.JoinGreeting, Environment.TickCount);
+            StartBlink(Environment.TickCount);
+            RecordPacketSummary(joinedViaIncomingInvite
+                ? $"Sent simulated Messenger invite-accept packet to {contact.Name}."
+                : packetDriven
+                    ? $"Applied simulated Messenger invite-result packet: {contact.Name} accepted."
+                    : $"{contact.Name} accepted a local Messenger invite.");
             return _lastActionSummary;
         }
 
@@ -700,6 +842,14 @@ namespace HaCreator.MapSimulator.Interaction
 
             switch (command)
             {
+                case "accept":
+                case "yes":
+                case "join":
+                    return AcceptIncomingInvite();
+                case "reject":
+                case "decline":
+                case "no":
+                    return RejectIncomingInvite();
                 case "m":
                 case "msn":
                 case "invite":
@@ -778,6 +928,11 @@ namespace HaCreator.MapSimulator.Interaction
 
         private string BuildPendingInviteSummary()
         {
+            if (_incomingInvite != null)
+            {
+                return $"Invite #{_incomingInvite.InviteId} from {_incomingInvite.ContactName}";
+            }
+
             return _pendingInvite == null
                 ? "none"
                 : $"Invite #{_pendingInvite.InviteId} to {_pendingInvite.ContactName}";
@@ -785,6 +940,16 @@ namespace HaCreator.MapSimulator.Interaction
 
         private string BuildStatusBarText()
         {
+            if (_incomingInvite != null)
+            {
+                return $"{_incomingInvite.ContactName} invited you to Messenger";
+            }
+
+            if (_pendingInvite != null && _participants.Count <= 1)
+            {
+                return $"Inviting {_pendingInvite.ContactName}";
+            }
+
             string[] occupants = _participants
                 .Where(participant => !string.IsNullOrWhiteSpace(participant.Name))
                 .Select(participant => participant.Name)
@@ -801,6 +966,11 @@ namespace HaCreator.MapSimulator.Interaction
 
         private string BuildCollapsedStatusText(string statusBarText)
         {
+            if (_incomingInvite != null)
+            {
+                return $"{_incomingInvite.ContactName} invited you";
+            }
+
             if (_pendingInvite != null)
             {
                 return $"Inviting {_pendingInvite.ContactName}";
@@ -984,6 +1154,8 @@ namespace HaCreator.MapSimulator.Interaction
         public bool CanWhisper { get; init; }
         public bool CanLeave { get; init; }
         public bool CanClaim { get; init; }
+        public bool HasIncomingInvite { get; init; }
+        public string IncomingInviteFrom { get; init; } = string.Empty;
         public string PendingInviteSummary { get; init; } = string.Empty;
         public string LastActionSummary { get; init; } = string.Empty;
         public string LastPacketSummary { get; init; } = string.Empty;

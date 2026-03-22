@@ -43,6 +43,22 @@ namespace UnitTest_MapSimulator
         }
 
         [Fact]
+        public void TryDispatchMiniRoomPacket_GameMessageUsesClientBackedStringPoolMapping()
+        {
+            MemoryGameField field = CreateFieldWithRuntime(out SocialRoomRuntime runtime);
+
+            bool handled = field.TryDispatchMiniRoomPacket(
+                BuildMiniRoomGameMessagePacket(4, "Opponent"),
+                tickCount: 1000,
+                out string message);
+
+            Assert.True(handled, message);
+            Assert.Contains("Opponent left the room.", message);
+            Assert.Contains("StringPool 0x1C5", message);
+            Assert.Contains("Opponent left the room.", runtime.ChatEntries[^1].Text);
+        }
+
+        [Fact]
         public void TryDispatchMiniRoomPacket_AvatarPacketRefreshesParticipantDetail()
         {
             MemoryGameField field = CreateFieldWithRuntime(out SocialRoomRuntime runtime);
@@ -82,6 +98,27 @@ namespace UnitTest_MapSimulator
             Assert.True(handled, message);
             Assert.Equal(MemoryGameField.RoomStage.Lobby, field.Stage);
             Assert.DoesNotContain(runtime.Occupants, occupant => occupant.Name == "Watcher");
+        }
+
+        [Fact]
+        public void TryDispatchMiniRoomPacket_LeaveReasonPromotesClientLeaveMessage()
+        {
+            MemoryGameField field = CreateFieldWithRuntime(out SocialRoomRuntime runtime);
+            field.OpenRoom("Match Cards", "Player", "Opponent");
+
+            Assert.True(field.TryDispatchMiniRoomPacket(
+                BuildMiniRoomEnterPacket(1, "Opponent", 211, CreateLook(faceId: 20000, hairId: 30000)),
+                tickCount: 1000,
+                out _));
+
+            bool handled = field.TryDispatchMiniRoomPacket(
+                BuildMiniRoomLeavePacket(1, reason: 3),
+                tickCount: 1200,
+                out string message);
+
+            Assert.True(handled, message);
+            Assert.Contains("reason 3", message);
+            Assert.Contains("StringPool 0x1D0", runtime.ChatEntries[^1].Text);
         }
 
         private static MemoryGameField CreateFieldWithRuntime(out SocialRoomRuntime runtime)
@@ -134,9 +171,25 @@ namespace UnitTest_MapSimulator
             return stream.ToArray();
         }
 
-        private static byte[] BuildMiniRoomLeavePacket(int slot)
+        private static byte[] BuildMiniRoomGameMessagePacket(int gameMessageCode, string characterName)
         {
-            return new byte[] { 10, (byte)slot };
+            using MemoryStream stream = new();
+            using BinaryWriter writer = new(stream);
+            writer.Write((byte)7);
+            writer.Write((byte)7);
+            writer.Write((byte)gameMessageCode);
+            WriteMapleString(writer, characterName);
+            return stream.ToArray();
+        }
+
+        private static byte[] BuildMiniRoomLeavePacket(int slot, int? reason = null)
+        {
+            if (!reason.HasValue)
+            {
+                return new byte[] { 10, (byte)slot };
+            }
+
+            return new byte[] { 10, (byte)slot, (byte)reason.Value };
         }
 
         private static void WriteMapleString(BinaryWriter writer, string text)

@@ -35,6 +35,7 @@ namespace HaCreator.MapSimulator.Pools
         public int PickupTime { get; set; }
         public int PickerId { get; set; }       // Player or pet ID
         public bool PickedByPet { get; set; }
+        public DropPickupActorKind ActorKind { get; set; } = DropPickupActorKind.Other;
     }
 
     /// <summary>
@@ -69,11 +70,20 @@ namespace HaCreator.MapSimulator.Pools
         Unavailable
     }
 
+    public enum DropPickupActorKind
+    {
+        Player = 0,
+        Pet,
+        Mob,
+        Other
+    }
+
     public sealed class DropPickupAttemptResult
     {
         public DropItem Drop { get; init; }
         public DropItem ContextDrop { get; init; }
         public DropPickupFailureReason FailureReason { get; init; }
+        public RecentPickupRecord RecentPickup { get; init; }
 
         public bool Success => Drop != null && FailureReason == DropPickupFailureReason.None;
     }
@@ -675,7 +685,7 @@ namespace HaCreator.MapSimulator.Pools
                 return false;
 
             drop.StartPickup(currentTime);
-            RecordRecentPickupItem(drop, playerId, false, currentTime);
+            RecordRecentPickupItem(drop, playerId, false, currentTime, DropPickupActorKind.Player);
             _onDropPickedUp?.Invoke(drop);
             _onPickupResolved?.Invoke(drop, playerId, false);
             return true;
@@ -758,6 +768,17 @@ namespace HaCreator.MapSimulator.Pools
                 {
                     Drop = closestAvailable,
                     FailureReason = DropPickupFailureReason.None
+                };
+            }
+
+            if (closestAvailable != null)
+            {
+                return new DropPickupAttemptResult
+                {
+                    Drop = null,
+                    ContextDrop = closestAvailable,
+                    FailureReason = DropPickupFailureReason.Unavailable,
+                    RecentPickup = FindRecentPickup(closestAvailable.PoolId, currentTime)
                 };
             }
 
@@ -951,7 +972,7 @@ namespace HaCreator.MapSimulator.Pools
                 _petLastPickupTime[petId] = currentTime;
 
                 // Record pickup
-                RecordRecentPickupItem(closestDrop, petId, true, currentTime);
+                RecordRecentPickupItem(closestDrop, petId, true, currentTime, DropPickupActorKind.Pet);
 
                 // Clear chase target if this was it
                 if (_petTargets.TryGetValue(petId, out var target) && target.DropId == closestDrop.PoolId)
@@ -1211,7 +1232,7 @@ namespace HaCreator.MapSimulator.Pools
                 closestDrop.LastStateChangeTime = currentTime;
 
                 // Record pickup
-                RecordRecentPickupItem(closestDrop, mobId, false, currentTime);
+                RecordRecentPickupItem(closestDrop, mobId, false, currentTime, DropPickupActorKind.Mob);
 
                 // Invoke callback
                 _onMobPickedUp?.Invoke(closestDrop, mobId);
@@ -1403,24 +1424,17 @@ namespace HaCreator.MapSimulator.Pools
         /// Record a recently picked up item for history tracking.
         /// Based on CDropPool::RecordRecentPickupItem from MapleStory client.
         /// </summary>
-        public void RecordRecentPickupItem(DropItem drop, int pickerId, bool pickedByPet, int currentTime)
+        public void RecordRecentPickupItem(
+            DropItem drop,
+            int pickerId,
+            bool pickedByPet,
+            int currentTime,
+            DropPickupActorKind actorKind = DropPickupActorKind.Other)
         {
             if (drop == null)
                 return;
 
-            // Clean up old records first
-            while (_recentPickups.Count > 0)
-            {
-                var oldest = _recentPickups.Peek();
-                if (currentTime - oldest.PickupTime > RECENT_PICKUP_LIFETIME)
-                {
-                    _recentPickups.Dequeue();
-                }
-                else
-                {
-                    break;
-                }
-            }
+            PruneRecentPickupHistory(currentTime);
 
             // Enforce max size
             while (_recentPickups.Count >= MAX_RECENT_PICKUPS)
@@ -1438,10 +1452,27 @@ namespace HaCreator.MapSimulator.Pools
                 Quantity = drop.Quantity,
                 PickupTime = currentTime,
                 PickerId = pickerId,
-                PickedByPet = pickedByPet
+                PickedByPet = pickedByPet,
+                ActorKind = actorKind
             };
 
             _recentPickups.Enqueue(record);
+        }
+
+        public RecentPickupRecord FindRecentPickup(int dropId, int currentTime)
+        {
+            PruneRecentPickupHistory(currentTime);
+
+            RecentPickupRecord latestRecord = null;
+            foreach (RecentPickupRecord record in _recentPickups)
+            {
+                if (record.DropId == dropId)
+                {
+                    latestRecord = record;
+                }
+            }
+
+            return latestRecord;
         }
 
         /// <summary>
@@ -1474,6 +1505,21 @@ namespace HaCreator.MapSimulator.Pools
         public void ClearRecentPickups()
         {
             _recentPickups.Clear();
+        }
+
+        private void PruneRecentPickupHistory(int currentTime)
+        {
+            while (_recentPickups.Count > 0)
+            {
+                RecentPickupRecord oldest = _recentPickups.Peek();
+                if (currentTime - oldest.PickupTime > RECENT_PICKUP_LIFETIME)
+                {
+                    _recentPickups.Dequeue();
+                    continue;
+                }
+
+                break;
+            }
         }
 
         #endregion

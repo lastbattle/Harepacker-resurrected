@@ -8,6 +8,7 @@ namespace HaCreator.MapSimulator.UI
         string AccountLabel { get; }
         string CurrentCharacterName { get; }
         IReadOnlyList<string> SharedCharacterNames { get; }
+        IReadOnlyList<string> AuthorizedCharacterNames { get; }
         bool CanCurrentCharacterAccess { get; }
 
         IReadOnlyList<InventorySlotData> GetSlots(InventoryType type);

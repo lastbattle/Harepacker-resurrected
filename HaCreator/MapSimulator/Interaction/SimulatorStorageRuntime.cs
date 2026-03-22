@@ -24,6 +24,8 @@ namespace HaCreator.MapSimulator.Interaction
         };
         private readonly List<string> _sharedCharacterNames = new();
         private readonly HashSet<string> _sharedCharacterLookup = new(StringComparer.OrdinalIgnoreCase);
+        private readonly List<string> _authorizedCharacterNames = new();
+        private readonly HashSet<string> _authorizedCharacterLookup = new(StringComparer.OrdinalIgnoreCase);
         private readonly StorageAccountStore _accountStore;
 
         private int _slotLimit = DefaultSlotLimit;
@@ -34,11 +36,13 @@ namespace HaCreator.MapSimulator.Interaction
         public string AccountLabel { get; private set; } = "Simulator Account Storage";
         public string CurrentCharacterName { get; private set; } = string.Empty;
         public IReadOnlyList<string> SharedCharacterNames => _sharedCharacterNames;
+        public IReadOnlyList<string> AuthorizedCharacterNames => _authorizedCharacterNames;
 
         public bool CanCurrentCharacterAccess =>
-            _sharedCharacterNames.Count == 0 ||
-            string.IsNullOrWhiteSpace(CurrentCharacterName) ||
-            _sharedCharacterLookup.Contains(CurrentCharacterName);
+            _authorizedCharacterNames.Count == 0
+                ? _sharedCharacterNames.Count == 0
+                  || (!string.IsNullOrWhiteSpace(CurrentCharacterName) && _sharedCharacterLookup.Contains(CurrentCharacterName))
+                : !string.IsNullOrWhiteSpace(CurrentCharacterName) && _authorizedCharacterLookup.Contains(CurrentCharacterName);
 
         public SimulatorStorageRuntime(StorageAccountStore accountStore = null, string initialAccountLabel = null)
         {
@@ -227,6 +231,8 @@ namespace HaCreator.MapSimulator.Interaction
 
                 _sharedCharacterNames.Add(characterName);
             }
+
+            ReconcileAuthorizedCharacters();
         }
 
         private void LoadAccountState(string accountLabel)
@@ -242,6 +248,8 @@ namespace HaCreator.MapSimulator.Interaction
                 _currentAccountKey = nextAccountKey;
                 _slotLimit = DefaultSlotLimit;
                 _meso = 0;
+                _authorizedCharacterNames.Clear();
+                _authorizedCharacterLookup.Clear();
 
                 foreach (List<InventorySlotData> rows in _storageItems.Values)
                 {
@@ -256,6 +264,11 @@ namespace HaCreator.MapSimulator.Interaction
                 AccountLabel = string.IsNullOrWhiteSpace(state.AccountLabel) ? normalizedLabel : state.AccountLabel;
                 _slotLimit = Math.Clamp(state.SlotLimit, MinSlotLimit, MaxSlotLimit);
                 _meso = Math.Max(0, state.Meso);
+                foreach (string authorizedCharacterName in state.AuthorizedCharacterNames ?? Array.Empty<string>())
+                {
+                    AddAuthorizedCharacter(authorizedCharacterName);
+                }
+
                 foreach (KeyValuePair<InventoryType, List<InventorySlotData>> entry in state.ItemsByType)
                 {
                     foreach (InventorySlotData slot in entry.Value ?? new List<InventorySlotData>())
@@ -292,7 +305,49 @@ namespace HaCreator.MapSimulator.Interaction
                 snapshot[entry.Key] = rows;
             }
 
-            _accountStore.SaveState(AccountLabel, _slotLimit, _meso, snapshot);
+            _accountStore.SaveState(AccountLabel, _slotLimit, _meso, snapshot, _authorizedCharacterNames);
+        }
+
+        private void ReconcileAuthorizedCharacters()
+        {
+            bool changed = false;
+            if (_authorizedCharacterNames.Count == 0)
+            {
+                IEnumerable<string> bootstrapNames = _sharedCharacterNames.Count > 0
+                    ? _sharedCharacterNames
+                    : string.IsNullOrWhiteSpace(CurrentCharacterName)
+                        ? Array.Empty<string>()
+                        : new[] { CurrentCharacterName };
+
+                foreach (string bootstrapName in bootstrapNames)
+                {
+                    changed |= AddAuthorizedCharacter(bootstrapName);
+                }
+            }
+            else if (!string.IsNullOrWhiteSpace(CurrentCharacterName) && _authorizedCharacterLookup.Contains(CurrentCharacterName))
+            {
+                foreach (string sharedCharacterName in _sharedCharacterNames)
+                {
+                    changed |= AddAuthorizedCharacter(sharedCharacterName);
+                }
+            }
+
+            if (changed)
+            {
+                PersistCurrentState();
+            }
+        }
+
+        private bool AddAuthorizedCharacter(string characterName)
+        {
+            string normalizedName = characterName?.Trim();
+            if (string.IsNullOrWhiteSpace(normalizedName) || !_authorizedCharacterLookup.Add(normalizedName))
+            {
+                return false;
+            }
+
+            _authorizedCharacterNames.Add(normalizedName);
+            return true;
         }
 
         private static int NormalizeSlotExpansionAmount(int amount)

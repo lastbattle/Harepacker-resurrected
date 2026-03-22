@@ -1,5 +1,6 @@
 using MapleLib.WzLib.WzStructure;
 using MapleLib.WzLib.WzStructure.Data;
+using MapleLib.WzLib.WzStructure.Data.ItemStructure;
 using System;
 using System.Collections.Generic;
 using System.Globalization;
@@ -24,12 +25,13 @@ namespace HaCreator.MapSimulator.Fields
         private readonly int? _moveLimit;
         private readonly bool _partyOnly;
         private readonly bool _expeditionOnly;
-        private readonly bool _consumeItemCoolTime;
+        private readonly int _consumeItemCoolTimeSeconds;
         private readonly Func<int, bool> _hasItem;
 
         private readonly HashSet<int> _announcedThresholds = new HashSet<int>();
         private int _enteredAt;
         private int _nextDamageAt;
+        private int _nextConsumableItemUseAt;
         private bool _initialized;
         private bool _timeExpired;
 
@@ -47,7 +49,7 @@ namespace HaCreator.MapSimulator.Fields
             _moveLimit = mapInfo?.moveLimit;
             _partyOnly = mapInfo?.partyOnly == true;
             _expeditionOnly = mapInfo?.expeditionOnly == true;
-            _consumeItemCoolTime = mapInfo?.consumeItemCoolTime == true;
+            _consumeItemCoolTimeSeconds = Math.Max(0, mapInfo?.consumeItemCoolTime ?? 0);
             _hasItem = hasItem;
         }
 
@@ -64,12 +66,13 @@ namespace HaCreator.MapSimulator.Fields
             _moveLimit.HasValue ||
             _partyOnly ||
             _expeditionOnly ||
-            _consumeItemCoolTime;
+            _consumeItemCoolTimeSeconds > 0;
 
         public IReadOnlyList<string> Reset(int currentTimeMs)
         {
             _enteredAt = currentTimeMs;
             _nextDamageAt = _decHp > 0 ? currentTimeMs + _decIntervalMs : int.MaxValue;
+            _nextConsumableItemUseAt = currentTimeMs;
             _initialized = true;
             _timeExpired = false;
             _announcedThresholds.Clear();
@@ -142,17 +145,33 @@ namespace HaCreator.MapSimulator.Fields
 
         public bool CanUseItem(int itemId)
         {
-            return GetItemUseRestrictionMessage(itemId) == null;
+            return GetItemUseRestrictionMessage(InventoryType.NONE, itemId, 0) == null;
         }
 
-        public string GetItemUseRestrictionMessage(int itemId)
+        public string GetItemUseRestrictionMessage(InventoryType inventoryType, int itemId, int currentTimeMs)
         {
+            string consumeCooldownMessage = GetConsumeItemCooldownRestrictionMessage(inventoryType, currentTimeMs);
+            if (!string.IsNullOrWhiteSpace(consumeCooldownMessage))
+            {
+                return consumeCooldownMessage;
+            }
+
             if (itemId <= 0 || _allowedItems.Count == 0 || _allowedItems.Contains(itemId))
             {
                 return null;
             }
 
             return $"Item {itemId} cannot be used in this field. Allowed item IDs: {FormatItemPreview(_allowedItems)}.";
+        }
+
+        public void RegisterSuccessfulItemUse(InventoryType inventoryType, int currentTimeMs)
+        {
+            if (inventoryType != InventoryType.USE || _consumeItemCoolTimeSeconds <= 0)
+            {
+                return;
+            }
+
+            _nextConsumableItemUseAt = currentTimeMs + (_consumeItemCoolTimeSeconds * 1000);
         }
 
         private IReadOnlyList<string> BuildEntryMessages()
@@ -194,6 +213,11 @@ namespace HaCreator.MapSimulator.Fields
                 messages.Add($"Allowed-item rule active ({_allowedItems.Count} item(s)): {FormatItemPreview(_allowedItems)}.");
             }
 
+            if (_consumeItemCoolTimeSeconds > 0)
+            {
+                messages.Add($"Consumable item cooldown active: {_consumeItemCoolTimeSeconds}s between use-item activations.");
+            }
+
             string teleportItemRestrictionNotice = FieldInteractionRestrictionEvaluator.GetTeleportItemRestrictionMessage(_fieldLimit);
             if (!string.IsNullOrWhiteSpace(teleportItemRestrictionNotice))
             {
@@ -231,11 +255,6 @@ namespace HaCreator.MapSimulator.Fields
         {
             List<string> notices = new List<string>();
 
-            if (_levelLimit.HasValue)
-            {
-                notices.Add($"lvLimit={_levelLimit.Value}");
-            }
-
             if (_moveLimit.HasValue)
             {
                 notices.Add($"moveLimit={_moveLimit.Value}");
@@ -249,11 +268,6 @@ namespace HaCreator.MapSimulator.Fields
             if (_expeditionOnly)
             {
                 notices.Add("expeditionOnly");
-            }
-
-            if (_consumeItemCoolTime)
-            {
-                notices.Add("consumeItemCoolTime");
             }
 
             if (notices.Count == 0)
@@ -328,6 +342,19 @@ namespace HaCreator.MapSimulator.Fields
             }
 
             return false;
+        }
+
+        private string GetConsumeItemCooldownRestrictionMessage(InventoryType inventoryType, int currentTimeMs)
+        {
+            if (inventoryType != InventoryType.USE
+                || _consumeItemCoolTimeSeconds <= 0
+                || currentTimeMs >= _nextConsumableItemUseAt)
+            {
+                return null;
+            }
+
+            int remainingSeconds = Math.Max(1, (int)Math.Ceiling((_nextConsumableItemUseAt - currentTimeMs) / 1000d));
+            return $"Consumable items are on cooldown in this map. {FormatDurationSeconds(remainingSeconds)} remaining.";
         }
     }
 

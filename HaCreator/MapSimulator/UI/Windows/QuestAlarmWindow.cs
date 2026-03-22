@@ -13,11 +13,12 @@ namespace HaCreator.MapSimulator.UI
 {
     internal sealed class QuestAlarmWindow : UIWindowBase
     {
-        private const int MaxVisibleEntries = 3;
-        private const int HeaderRepeats = 1;
-        private const int RepeatsPerEntry = 3;
+        private const int MaxVisibleEntries = 5;
         private const int DeleteButtonSize = 11;
         private const int RowDoubleClickWindowMs = 450;
+        private const int RowGap = 3;
+        private const int HeaderActionMargin = 6;
+        private const int HeaderActionSpacing = 4;
 
         private readonly string _windowName;
         private readonly GraphicsDevice _device;
@@ -33,6 +34,7 @@ namespace HaCreator.MapSimulator.UI
 
         private SpriteFont _font;
         private MouseState _previousMouseState;
+        private KeyboardState _previousKeyboardState;
         private Func<QuestAlarmSnapshot> _snapshotProvider;
         private Func<int, Texture2D> _itemIconProvider;
         private UIObject _autoButton;
@@ -44,8 +46,11 @@ namespace HaCreator.MapSimulator.UI
         private bool _autoTrackEnabled;
         private int _hoveredDeleteQuestId = -1;
         private int _pressedDeleteQuestId = -1;
+        private bool _pressedDeleteAll;
         private int _lastRowClickQuestId = -1;
         private long _lastRowClickTick;
+        private int _scrollOffset;
+        private Rectangle _deleteAllBounds = Rectangle.Empty;
 
         private Texture2D _selectionBarTexture;
         private Texture2D _progressFrameTexture;
@@ -75,7 +80,7 @@ namespace HaCreator.MapSimulator.UI
             _pixel = new Texture2D(device, 1, 1);
             _pixel.SetData(new[] { Color.White });
 
-            RefreshFrame(0);
+            RefreshFrame(new QuestAlarmSnapshot());
             UpdateButtonStates();
         }
 
@@ -156,6 +161,7 @@ namespace HaCreator.MapSimulator.UI
             _dismissedQuestIds.Remove(questId);
             _selectedQuestId = questId;
             _autoTrackEnabled = false;
+            EnsureSelectionVisible(GetFilteredSnapshot());
             SetMinimized(false);
             UpdateButtonStates();
         }
@@ -166,24 +172,38 @@ namespace HaCreator.MapSimulator.UI
 
             QuestAlarmSnapshot snapshot = GetFilteredSnapshot();
             EnsureSelection(snapshot);
-            RefreshFrame(snapshot.Entries.Count);
+            EnsureSelectionVisible(snapshot);
+            ClampScrollOffset(snapshot);
+            RefreshFrame(snapshot);
             UpdateButtonStates();
 
             MouseState mouseState = Mouse.GetState();
+            KeyboardState keyboardState = Keyboard.GetState();
             bool leftPressed = mouseState.LeftButton == ButtonState.Pressed && _previousMouseState.LeftButton == ButtonState.Released;
             bool leftReleased = mouseState.LeftButton == ButtonState.Released && _previousMouseState.LeftButton == ButtonState.Pressed;
+            int wheelDelta = mouseState.ScrollWheelValue - _previousMouseState.ScrollWheelValue;
+
+            if (!_isMinimized && wheelDelta != 0 && ContainsPoint(mouseState.X, mouseState.Y))
+            {
+                ScrollEntries(wheelDelta > 0 ? -1 : 1, snapshot);
+            }
 
             if (!_isMinimized && ContainsPoint(mouseState.X, mouseState.Y))
             {
                 _hoveredDeleteQuestId = GetDeleteQuestIdAtPoint(mouseState.X, mouseState.Y);
                 if (leftPressed)
                 {
+                    _pressedDeleteAll = _deleteAllBounds.Contains(mouseState.X, mouseState.Y);
                     _pressedDeleteQuestId = _hoveredDeleteQuestId;
                 }
 
                 if (leftReleased)
                 {
-                    if (_pressedDeleteQuestId > 0 && _pressedDeleteQuestId == _hoveredDeleteQuestId)
+                    if (_pressedDeleteAll && _deleteAllBounds.Contains(mouseState.X, mouseState.Y))
+                    {
+                        DismissAll(snapshot);
+                    }
+                    else if (_pressedDeleteQuestId > 0 && _pressedDeleteQuestId == _hoveredDeleteQuestId)
                     {
                         DismissQuest(_pressedDeleteQuestId);
                     }
@@ -193,6 +213,7 @@ namespace HaCreator.MapSimulator.UI
                     }
 
                     _pressedDeleteQuestId = -1;
+                    _pressedDeleteAll = false;
                 }
             }
             else
@@ -201,10 +222,13 @@ namespace HaCreator.MapSimulator.UI
                 if (leftReleased)
                 {
                     _pressedDeleteQuestId = -1;
+                    _pressedDeleteAll = false;
                 }
             }
 
+            HandleKeyboardInput(keyboardState, snapshot);
             _previousMouseState = mouseState;
+            _previousKeyboardState = keyboardState;
         }
 
         protected override void DrawContents(
@@ -226,11 +250,14 @@ namespace HaCreator.MapSimulator.UI
 
             QuestAlarmSnapshot snapshot = GetFilteredSnapshot();
             EnsureSelection(snapshot);
-            RefreshFrame(snapshot.Entries.Count);
+            EnsureSelectionVisible(snapshot);
+            ClampScrollOffset(snapshot);
+            RefreshFrame(snapshot);
 
             Vector2 titlePosition = new Vector2(Position.X + 8, Position.Y + 5);
             string title = $"Quest Alarm ({snapshot.Entries.Count})";
             sprite.DrawString(_font, title, titlePosition, Color.White, 0f, Vector2.Zero, 0.48f, SpriteEffects.None, 0f);
+            DrawHeaderActions(sprite, snapshot);
 
             if (snapshot.HasAlertAnimation)
             {
@@ -251,18 +278,16 @@ namespace HaCreator.MapSimulator.UI
 
             int y = Position.Y + 27;
             int availableWidth = _maxTopTexture.Width - 8;
-            int displayedEntries = Math.Min(MaxVisibleEntries, snapshot.Entries.Count);
+            IReadOnlyList<QuestAlarmEntrySnapshot> visibleEntries = snapshot.Entries
+                .Skip(_scrollOffset)
+                .Take(MaxVisibleEntries)
+                .ToList();
 
-            for (int i = 0; i < displayedEntries; i++)
+            for (int i = 0; i < visibleEntries.Count; i++)
             {
-                QuestAlarmEntrySnapshot entry = snapshot.Entries[i];
-                int rowHeight = 36;
+                QuestAlarmEntrySnapshot entry = visibleEntries[i];
+                int rowHeight = GetRowHeight(entry);
                 int requirementLines = Math.Min(2, entry.RequirementLines.Count);
-                rowHeight += requirementLines * 16;
-                if (!string.IsNullOrWhiteSpace(entry.DemandText))
-                {
-                    rowHeight += 14;
-                }
 
                 Rectangle rowRect = new Rectangle(Position.X + 4, y, availableWidth, rowHeight);
                 Rectangle deleteRect = new Rectangle(rowRect.Right - DeleteButtonSize - 4, rowRect.Y + 4, DeleteButtonSize, DeleteButtonSize);
@@ -297,13 +322,22 @@ namespace HaCreator.MapSimulator.UI
                     sprite.DrawString(_font, Truncate(entry.DemandText, 32), new Vector2(rowRect.X + 6, lineY), new Color(201, 207, 221), 0f, Vector2.Zero, 0.4f, SpriteEffects.None, 0f);
                 }
 
-                y += rowHeight + 4;
+                y += rowHeight + RowGap;
             }
 
-            if (snapshot.Entries.Count > displayedEntries)
+            if (snapshot.Entries.Count > visibleEntries.Count)
             {
-                int hiddenCount = snapshot.Entries.Count - displayedEntries;
-                sprite.DrawString(_font, $"+{hiddenCount} more active quest(s)", new Vector2(Position.X + 8, y + 2), new Color(214, 218, 226), 0f, Vector2.Zero, 0.42f, SpriteEffects.None, 0f);
+                int pageEnd = Math.Min(snapshot.Entries.Count, _scrollOffset + visibleEntries.Count);
+                sprite.DrawString(
+                    _font,
+                    $"{_scrollOffset + 1}-{pageEnd}/{snapshot.Entries.Count}",
+                    new Vector2(Position.X + 8, y + 2),
+                    new Color(214, 218, 226),
+                    0f,
+                    Vector2.Zero,
+                    0.42f,
+                    SpriteEffects.None,
+                    0f);
             }
         }
 
@@ -338,7 +372,7 @@ namespace HaCreator.MapSimulator.UI
         private void SetMinimized(bool minimized)
         {
             _isMinimized = minimized;
-            RefreshFrame(GetFilteredSnapshot().Entries.Count);
+            RefreshFrame(GetFilteredSnapshot());
             UpdateButtonStates();
         }
 
@@ -360,6 +394,7 @@ namespace HaCreator.MapSimulator.UI
                 _autoTrackEnabled = false;
                 _lastRowClickQuestId = row.QuestId;
                 _lastRowClickTick = Environment.TickCount64;
+                EnsureSelectionVisible(GetFilteredSnapshot());
                 UpdateButtonStates();
 
                 if (repeatedClick)
@@ -399,6 +434,7 @@ namespace HaCreator.MapSimulator.UI
             if (snapshot.Entries.Count == 0)
             {
                 _selectedQuestId = -1;
+                _scrollOffset = 0;
                 return;
             }
 
@@ -419,7 +455,39 @@ namespace HaCreator.MapSimulator.UI
             _selectedQuestId = snapshot.Entries[0].QuestId;
         }
 
-        private void RefreshFrame(int entryCount)
+        private void EnsureSelectionVisible(QuestAlarmSnapshot snapshot)
+        {
+            if (_selectedQuestId <= 0 || snapshot?.Entries == null || snapshot.Entries.Count == 0)
+            {
+                return;
+            }
+
+            int selectedIndex = -1;
+            for (int i = 0; i < snapshot.Entries.Count; i++)
+            {
+                if (snapshot.Entries[i].QuestId == _selectedQuestId)
+                {
+                    selectedIndex = i;
+                    break;
+                }
+            }
+
+            if (selectedIndex < 0)
+            {
+                return;
+            }
+
+            if (selectedIndex < _scrollOffset)
+            {
+                _scrollOffset = selectedIndex;
+            }
+            else if (selectedIndex >= _scrollOffset + MaxVisibleEntries)
+            {
+                _scrollOffset = selectedIndex - MaxVisibleEntries + 1;
+            }
+        }
+
+        private void RefreshFrame(QuestAlarmSnapshot snapshot)
         {
             if (_isMinimized)
             {
@@ -427,13 +495,43 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
-            int visibleEntries = Math.Max(1, Math.Min(MaxVisibleEntries, entryCount));
-            if (!_maximizedFrames.TryGetValue(visibleEntries, out IDXObject frame))
+            snapshot ??= new QuestAlarmSnapshot();
+            ClampScrollOffset(snapshot);
+            int displayedEntries = Math.Max(1, Math.Min(MaxVisibleEntries, snapshot.Entries.Count));
+            int contentHeight = 16;
+            if (snapshot.Entries.Count == 0)
             {
-                int centerRepeats = HeaderRepeats + (visibleEntries * RepeatsPerEntry);
+                contentHeight += 20;
+            }
+            else
+            {
+                IReadOnlyList<QuestAlarmEntrySnapshot> visibleEntries = snapshot.Entries
+                    .Skip(_scrollOffset)
+                    .Take(displayedEntries)
+                    .ToList();
+                for (int i = 0; i < visibleEntries.Count; i++)
+                {
+                    if (i > 0)
+                    {
+                        contentHeight += RowGap;
+                    }
+
+                    contentHeight += GetRowHeight(visibleEntries[i]);
+                }
+
+                if (snapshot.Entries.Count > visibleEntries.Count)
+                {
+                    contentHeight += 18;
+                }
+            }
+
+            int bodyHeight = Math.Max(_centerTexture.Height, contentHeight + 8);
+            int centerRepeats = Math.Max(1, (int)Math.Ceiling(bodyHeight / (double)_centerTexture.Height));
+            if (!_maximizedFrames.TryGetValue(centerRepeats, out IDXObject frame))
+            {
                 Texture2D texture = BuildFrameTexture(_device, _maxTopTexture, _centerTexture, _bottomTexture, centerRepeats);
                 frame = new DXObject(0, 0, texture, 0);
-                _maximizedFrames[visibleEntries] = frame;
+                _maximizedFrames[centerRepeats] = frame;
             }
 
             Frame = frame;
@@ -475,6 +573,36 @@ namespace HaCreator.MapSimulator.UI
                     ? new Color(83, 154, 219, 170)
                     : new Color(77, 90, 102, 150);
             DrawBorder(sprite, rowRect, borderColor);
+        }
+
+        private void DrawHeaderActions(SpriteBatch sprite, QuestAlarmSnapshot snapshot)
+        {
+            if (_font == null)
+            {
+                _deleteAllBounds = Rectangle.Empty;
+                return;
+            }
+
+            string deleteAllLabel = "Delete all";
+            Vector2 labelSize = _font.MeasureString(deleteAllLabel) * 0.4f;
+            int x = Position.X + _maxTopTexture.Width - HeaderActionMargin - (int)Math.Ceiling(labelSize.X);
+            int y = Position.Y + 7;
+            _deleteAllBounds = new Rectangle(x - 2, y - 1, (int)Math.Ceiling(labelSize.X) + 4, (int)Math.Ceiling(labelSize.Y) + 2);
+
+            Color deleteAllColor = snapshot.Entries.Count == 0
+                ? new Color(114, 121, 133)
+                : _pressedDeleteAll
+                    ? new Color(255, 205, 137)
+                    : new Color(223, 228, 238);
+            sprite.DrawString(_font, deleteAllLabel, new Vector2(x, y), deleteAllColor, 0f, Vector2.Zero, 0.4f, SpriteEffects.None, 0f);
+
+            if (_scrollOffset > 0 || snapshot.Entries.Count > MaxVisibleEntries)
+            {
+                string pageLabel = $"{_scrollOffset + 1}-{Math.Min(snapshot.Entries.Count, _scrollOffset + MaxVisibleEntries)}";
+                Vector2 pageSize = _font.MeasureString(pageLabel) * 0.38f;
+                float pageX = x - HeaderActionSpacing - pageSize.X;
+                sprite.DrawString(_font, pageLabel, new Vector2(pageX, Position.Y + 7), new Color(166, 176, 192), 0f, Vector2.Zero, 0.38f, SpriteEffects.None, 0f);
+            }
         }
 
         private void DrawRequirementLine(SpriteBatch sprite, Rectangle rowRect, QuestLogLineSnapshot line, ref int lineY)
@@ -588,7 +716,123 @@ namespace HaCreator.MapSimulator.UI
                 _selectedQuestId = -1;
             }
 
+            ClampScrollOffset(GetFilteredSnapshot());
             UpdateButtonStates();
+        }
+
+        private void DismissAll(QuestAlarmSnapshot snapshot)
+        {
+            if (snapshot?.Entries == null || snapshot.Entries.Count == 0)
+            {
+                return;
+            }
+
+            for (int i = 0; i < snapshot.Entries.Count; i++)
+            {
+                _dismissedQuestIds.Add(snapshot.Entries[i].QuestId);
+            }
+
+            _selectedQuestId = -1;
+            _scrollOffset = 0;
+            UpdateButtonStates();
+        }
+
+        private void HandleKeyboardInput(KeyboardState keyboardState, QuestAlarmSnapshot snapshot)
+        {
+            if (_isMinimized || snapshot?.Entries == null || snapshot.Entries.Count == 0)
+            {
+                return;
+            }
+
+            if (WasPressed(keyboardState, Keys.Up))
+            {
+                MoveSelection(-1, snapshot);
+            }
+
+            if (WasPressed(keyboardState, Keys.Down))
+            {
+                MoveSelection(1, snapshot);
+            }
+
+            if (WasPressed(keyboardState, Keys.PageUp))
+            {
+                ScrollEntries(-MaxVisibleEntries, snapshot);
+            }
+
+            if (WasPressed(keyboardState, Keys.PageDown))
+            {
+                ScrollEntries(MaxVisibleEntries, snapshot);
+            }
+
+            if (WasPressed(keyboardState, Keys.Enter) && _selectedQuestId > 0)
+            {
+                QuestRequested?.Invoke(_selectedQuestId);
+            }
+
+            if (WasPressed(keyboardState, Keys.Delete))
+            {
+                if (keyboardState.IsKeyDown(Keys.LeftShift) || keyboardState.IsKeyDown(Keys.RightShift))
+                {
+                    DismissAll(snapshot);
+                }
+                else if (_selectedQuestId > 0)
+                {
+                    DismissQuest(_selectedQuestId);
+                }
+            }
+        }
+
+        private void MoveSelection(int direction, QuestAlarmSnapshot snapshot)
+        {
+            if (snapshot?.Entries == null || snapshot.Entries.Count == 0 || direction == 0)
+            {
+                return;
+            }
+
+            int currentIndex = 0;
+            for (int i = 0; i < snapshot.Entries.Count; i++)
+            {
+                if (snapshot.Entries[i].QuestId == _selectedQuestId)
+                {
+                    currentIndex = i;
+                    break;
+                }
+            }
+
+            int nextIndex = Math.Clamp(currentIndex + direction, 0, snapshot.Entries.Count - 1);
+            _selectedQuestId = snapshot.Entries[nextIndex].QuestId;
+            _autoTrackEnabled = false;
+            EnsureSelectionVisible(snapshot);
+            UpdateButtonStates();
+        }
+
+        private void ScrollEntries(int delta, QuestAlarmSnapshot snapshot)
+        {
+            if (snapshot?.Entries == null)
+            {
+                return;
+            }
+
+            int maxOffset = Math.Max(0, snapshot.Entries.Count - MaxVisibleEntries);
+            _scrollOffset = Math.Clamp(_scrollOffset + delta, 0, maxOffset);
+        }
+
+        private void ClampScrollOffset(QuestAlarmSnapshot snapshot)
+        {
+            int maxOffset = Math.Max(0, (snapshot?.Entries?.Count ?? 0) - MaxVisibleEntries);
+            _scrollOffset = Math.Clamp(_scrollOffset, 0, maxOffset);
+        }
+
+        private int GetRowHeight(QuestAlarmEntrySnapshot entry)
+        {
+            int rowHeight = 36;
+            rowHeight += Math.Min(2, entry?.RequirementLines?.Count ?? 0) * 16;
+            if (!string.IsNullOrWhiteSpace(entry?.DemandText))
+            {
+                rowHeight += 14;
+            }
+
+            return rowHeight;
         }
 
         private Texture2D GetItemIcon(int itemId)
@@ -662,6 +906,11 @@ namespace HaCreator.MapSimulator.UI
             }
 
             return $"{text.Substring(0, Math.Max(0, maxChars - 3))}...";
+        }
+
+        private bool WasPressed(KeyboardState keyboardState, Keys key)
+        {
+            return keyboardState.IsKeyDown(key) && !_previousKeyboardState.IsKeyDown(key);
         }
 
         private readonly struct RowLayout

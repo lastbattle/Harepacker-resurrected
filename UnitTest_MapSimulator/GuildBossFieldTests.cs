@@ -23,6 +23,7 @@ public sealed class GuildBossFieldTests
         Assert.True(field.HasPendingLocalPulleySequence);
         Assert.True(field.PendingPulleyPacketRequest.HasValue);
         Assert.Equal(1, field.PendingPulleyPacketRequest.Value.Sequence);
+        Assert.True(field.HasPulleyTransportRequestInFlight);
     }
 
     [Fact]
@@ -60,5 +61,32 @@ public sealed class GuildBossFieldTests
         Assert.Equal(-500f, field.HealerY);
         Assert.Equal(-500f, field.HealerTargetY);
         Assert.True(field.IsHealEffectActive);
+    }
+
+    [Fact]
+    public void TryHandleLocalPulleyAttack_TransportOwnedPath_WaitsForExternalPacket()
+    {
+        GuildBossField field = new();
+        field.Enable();
+        field.InitPulley(-59, -394, "Map/Obj/guild.img/syarenian/boss/1");
+        field.InitHealer(295, -564, "Map/Obj/guild.img/syarenian/boss/0");
+
+        bool handled = field.TryHandleLocalPulleyAttack(
+            new Rectangle(-240, -300, 120, 90),
+            1000,
+            allowLocalPreview: false,
+            out string message);
+
+        Assert.True(handled);
+        Assert.Equal("Guild boss pulley request sent.", message);
+        Assert.Equal(0, field.PulleyState);
+        Assert.False(field.HasPendingLocalPulleySequence);
+        Assert.True(field.PendingPulleyPacketRequest.HasValue);
+        Assert.True(field.HasPulleyTransportRequestInFlight);
+
+        field.OnPulleyStateChange(1, 1100);
+
+        Assert.Equal(1, field.PulleyState);
+        Assert.False(field.HasPulleyTransportRequestInFlight);
     }
 }

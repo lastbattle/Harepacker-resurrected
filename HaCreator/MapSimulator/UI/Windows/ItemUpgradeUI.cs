@@ -62,6 +62,8 @@ namespace HaCreator.MapSimulator.UI
         private const int RevolutionaryMiracleCubeId = 5062003;
         private const int GoldenMiracleCubeId = 5062004;
         private const int EnlighteningMiracleCubeId = 5062005;
+        private const int MiracleCubeFragmentId = 2430112;
+        private const int SuperMiracleCubeFragmentId = 2430481;
         private const int UretesTimeLabId = 5534000;
         private const int VegasSpellTenPercentId = 5610000;
         private const int VegasSpellSixtyPercentId = 5610001;
@@ -554,6 +556,13 @@ namespace HaCreator.MapSimulator.UI
                 return new ItemUpgradeAttemptResult(false, _statusMessage, consumable.ItemId);
             }
 
+            if (TryGetCubeRewardBlockReason(consumable, out string cubeRewardBlockReason))
+            {
+                _statusMessage = cubeRewardBlockReason;
+                _lastUpgradeSucceeded = false;
+                return new ItemUpgradeAttemptResult(false, _statusMessage, consumable.ItemId);
+            }
+
             if (!_inventory.TryConsumeItem(consumable.InventoryType, consumable.ItemId, 1))
             {
                 _statusMessage = $"{consumable.Name} could not be consumed.";
@@ -711,9 +720,17 @@ namespace HaCreator.MapSimulator.UI
             state.PotentialTier = newTier;
             state.PotentialLineCount = ResolveCubePotentialLineCount(state.PotentialLineCount, consumable.CubeBehavior);
             state.PotentialLines = RollPotentialLines(newTier, state.PotentialLineCount);
-            _statusMessage = newTier > previousTier
+            string baseMessage = newTier > previousTier
                 ? $"{ResolveItemName(selectedPart)} ranked up to {newTier} potential with {consumable.Name}."
                 : $"{ResolveItemName(selectedPart)} rerolled {state.PotentialLineCount} potential line(s) with {consumable.Name}.";
+
+            if (TryGrantCubeReward(consumable, out int rewardItemId))
+            {
+                _statusMessage = $"{baseMessage} Obtained {ResolveConsumableName(rewardItemId)}.";
+                return;
+            }
+
+            _statusMessage = baseMessage;
         }
 
         private float ResolveSuccessRate(EnhancementConsumable consumable, UpgradeState state, EnhancementConsumable modifier)
@@ -837,7 +854,9 @@ namespace HaCreator.MapSimulator.UI
                                 { EffectType: ConsumableEffectType.Enhancement } => state.RemainingSlots > 0 && state.RemainingSlots >= consumable.SuccessCountGain,
                                 { EffectType: ConsumableEffectType.PotentialScroll } => !state.HasPotential || (consumable.PotentialTierOnSuccess == PotentialTier.Epic && state.PotentialTier <= PotentialTier.Rare),
                                 { EffectType: ConsumableEffectType.PotentialStamp } => state.HasPotential && state.PotentialLineCount < UpgradeState.MaxPotentialLines && state.PotentialLineCount <= 2,
-                                { EffectType: ConsumableEffectType.Cube } => state.HasPotential && (consumable.CubeBehavior != CubeBehavior.Golden || state.PotentialTier <= PotentialTier.Unique),
+                                { EffectType: ConsumableEffectType.Cube } => state.HasPotential &&
+                                                                              (consumable.CubeBehavior != CubeBehavior.Golden || state.PotentialTier <= PotentialTier.Unique) &&
+                                                                              !TryGetCubeRewardBlockReason(consumable, out _),
                                 _ => false
                             };
             _startButton?.SetEnabled(canApply);
@@ -1273,6 +1292,51 @@ namespace HaCreator.MapSimulator.UI
         private static bool TryGetConsumableDefinition(int itemId, out EnhancementConsumableDefinition definition)
         {
             return ConsumableDefinitions.TryGetValue(itemId, out definition);
+        }
+
+        private bool TryGetCubeRewardBlockReason(EnhancementConsumable consumable, out string reason)
+        {
+            reason = null;
+            int rewardItemId = ResolveCubeRewardItemId(consumable);
+            if (rewardItemId <= 0 || _inventory == null)
+            {
+                return false;
+            }
+
+            if (_inventory.CanAcceptItem(InventoryType.USE, rewardItemId, 1))
+            {
+                return false;
+            }
+
+            reason = $"{ResolveConsumableName(rewardItemId)} cannot be received because the USE inventory is full.";
+            return true;
+        }
+
+        private bool TryGrantCubeReward(EnhancementConsumable consumable, out int rewardItemId)
+        {
+            rewardItemId = ResolveCubeRewardItemId(consumable);
+            if (rewardItemId <= 0 || _inventory == null)
+            {
+                return false;
+            }
+
+            _inventory.AddItem(InventoryType.USE, rewardItemId, null, 1);
+            return true;
+        }
+
+        private static int ResolveCubeRewardItemId(EnhancementConsumable consumable)
+        {
+            if (consumable == null || consumable.EffectType != ConsumableEffectType.Cube)
+            {
+                return 0;
+            }
+
+            return consumable.CubeBehavior switch
+            {
+                CubeBehavior.Golden => MiracleCubeFragmentId,
+                CubeBehavior.Revolutionary => SuperMiracleCubeFragmentId,
+                _ => 0
+            };
         }
 
         private PotentialTier MaybeUpgradePotentialTier(PotentialTier currentTier, CubeBehavior behavior)

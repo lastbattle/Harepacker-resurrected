@@ -595,11 +595,72 @@ namespace HaCreator.MapSimulator.Pools
             return results;
         }
 
+        public List<(ReactorItem reactor, int index)> FindItemReactorsAroundLocalUser(
+            float playerX,
+            float playerY,
+            int itemId,
+            int playerWidth = 40,
+            int playerHeight = 60)
+        {
+            var results = new List<(ReactorItem reactor, int index)>();
+
+            if (_reactors == null || itemId <= 0)
+                return results;
+
+            var playerRect = new Rectangle(
+                (int)(playerX - playerWidth / 2f),
+                (int)(playerY - playerHeight),
+                playerWidth,
+                playerHeight);
+
+            for (int i = 0; i < _reactors.Length; i++)
+            {
+                ReactorItem reactor = _reactors[i];
+                if (reactor?.ReactorInstance == null)
+                    continue;
+
+                ReactorRuntimeData data = GetReactorData(i);
+                if (data == null
+                    || data.State != ReactorState.Idle
+                    || data.ActivationType != ReactorActivationType.Item
+                    || !MatchesRequiredItem(data, itemId)
+                    || !MeetsQuestRequirement(data))
+                {
+                    continue;
+                }
+
+                if (!GetReactorBounds(reactor.ReactorInstance).Intersects(playerRect))
+                    continue;
+
+                results.Add((reactor, i));
+            }
+
+            return results;
+        }
+
         public List<ReactorItem> TriggerItemReactors(int itemId, int playerId, int currentTick)
         {
             var triggeredReactors = new List<ReactorItem>();
 
             foreach (var (reactor, index) in FindItemReactors(itemId))
+            {
+                ActivateReactor(index, playerId, currentTick, ReactorActivationType.Item);
+                triggeredReactors.Add(reactor);
+            }
+
+            return triggeredReactors;
+        }
+
+        public List<ReactorItem> TriggerItemReactorsAroundLocalUser(
+            float playerX,
+            float playerY,
+            int itemId,
+            int playerId,
+            int currentTick)
+        {
+            var triggeredReactors = new List<ReactorItem>();
+
+            foreach (var (reactor, index) in FindItemReactorsAroundLocalUser(playerX, playerY, itemId))
             {
                 ActivateReactor(index, playerId, currentTick, ReactorActivationType.Item);
                 triggeredReactors.Add(reactor);
@@ -797,7 +858,18 @@ namespace HaCreator.MapSimulator.Pools
                 ? ReactorActivationType.Item
                 : requiredQuestId.HasValue
                     ? ReactorActivationType.Quest
-                    : ReactorActivationType.Touch;
+                    : reactorType switch
+                    {
+                        ReactorType.ActivatedByAnyHit => ReactorActivationType.Hit,
+                        ReactorType.ActivatedLeftHit => ReactorActivationType.Hit,
+                        ReactorType.ActivatedRightHit => ReactorActivationType.Hit,
+                        ReactorType.ActivatedByHarvesting => ReactorActivationType.Hit,
+                        ReactorType.ActivatedBySkill => ReactorActivationType.Skill,
+                        ReactorType.ActivatedByTouch => ReactorActivationType.Touch,
+                        ReactorType.ActivatedbyItem => ReactorActivationType.Item,
+                        ReactorType.AnimationOnly => ReactorActivationType.None,
+                        _ => ReactorActivationType.Touch
+                    };
 
             return new ReactorInteractionMetadata
             {

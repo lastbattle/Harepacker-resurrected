@@ -31,13 +31,16 @@ namespace HaCreator.MapSimulator.UI
         private UIObject _activePrimaryButton;
         private UIObject _activeSecondaryButton;
         private UIObject _activeTertiaryButton;
+        private UIObject _activeQuaternaryButton;
         private bool _drawPrimaryLabel = true;
         private bool _drawSecondaryLabel = true;
         private bool _drawTertiaryLabel = true;
+        private bool _drawQuaternaryLabel = true;
         private Texture2D _summaryHeaderTexture;
         private Texture2D _requirementHeaderTexture;
         private Texture2D _rewardHeaderTexture;
         private Texture2D _selectionBarTexture;
+        private Texture2D _incompleteSelectionBarTexture;
         private Texture2D _progressFrameTexture;
         private Texture2D _progressGaugeTexture;
         private Texture2D _progressSpotTexture;
@@ -79,12 +82,14 @@ namespace HaCreator.MapSimulator.UI
             Texture2D summaryHeaderTexture,
             Texture2D requirementHeaderTexture,
             Texture2D rewardHeaderTexture,
-            Texture2D selectionBarTexture)
+            Texture2D selectionBarTexture,
+            Texture2D incompleteSelectionBarTexture)
         {
             _summaryHeaderTexture = summaryHeaderTexture;
             _requirementHeaderTexture = requirementHeaderTexture;
             _rewardHeaderTexture = rewardHeaderTexture;
             _selectionBarTexture = selectionBarTexture;
+            _incompleteSelectionBarTexture = incompleteSelectionBarTexture;
         }
 
         public void SetProgressTextures(Texture2D frameTexture, Texture2D gaugeTexture, Texture2D spotTexture, Point frameOffset)
@@ -147,7 +152,9 @@ namespace HaCreator.MapSimulator.UI
                     return;
                 }
 
-                if (_state.PrimaryAction == action || _state.SecondaryAction == action)
+                if (_state.PrimaryAction == action ||
+                    _state.SecondaryAction == action ||
+                    _state.QuaternaryAction == action)
                 {
                     ActionRequested?.Invoke(action);
                 }
@@ -214,9 +221,11 @@ namespace HaCreator.MapSimulator.UI
             _activePrimaryButton = null;
             _activeSecondaryButton = null;
             _activeTertiaryButton = null;
+            _activeQuaternaryButton = null;
             _drawPrimaryLabel = true;
             _drawSecondaryLabel = true;
             _drawTertiaryLabel = true;
+            _drawQuaternaryLabel = true;
 
             foreach (ActionButtonBinding binding in _actionButtons.Values)
             {
@@ -249,6 +258,7 @@ namespace HaCreator.MapSimulator.UI
             if (state != null)
             {
                 BindNpcButton(state);
+                BindQuaternaryActionButton(state);
                 LayoutActionButtons();
             }
 
@@ -381,6 +391,11 @@ namespace HaCreator.MapSimulator.UI
             if (_activeTertiaryButton?.ButtonVisible == true && _drawTertiaryLabel)
             {
                 DrawCenteredButtonLabel(sprite, _activeTertiaryButton, _state.TertiaryActionLabel);
+            }
+
+            if (_activeQuaternaryButton?.ButtonVisible == true && _drawQuaternaryLabel)
+            {
+                DrawCenteredButtonLabel(sprite, _activeQuaternaryButton, _state.QuaternaryActionLabel);
             }
 
             if (_navigationCount > 1)
@@ -521,9 +536,12 @@ namespace HaCreator.MapSimulator.UI
 
             foreach (QuestLogLineSnapshot line in lines.Where(line => line != null))
             {
-                if (_selectionBarTexture != null)
+                Texture2D rowTexture = !rewardSection && !line.IsComplete
+                    ? _incompleteSelectionBarTexture ?? _selectionBarTexture
+                    : _selectionBarTexture;
+                if (rowTexture != null)
                 {
-                    sprite.Draw(_selectionBarTexture, new Rectangle((int)x, (int)y, Math.Min((int)maxWidth, _selectionBarTexture.Width), _selectionBarTexture.Height), Color.White);
+                    sprite.Draw(rowTexture, new Rectangle((int)x, (int)y, Math.Min((int)maxWidth, rowTexture.Width), rowTexture.Height), Color.White);
                 }
 
                 Color labelColor = rewardSection
@@ -921,9 +939,28 @@ namespace HaCreator.MapSimulator.UI
             _drawTertiaryLabel = npcBinding.Value.DrawLabel;
         }
 
+        private void BindQuaternaryActionButton(QuestWindowDetailState state)
+        {
+            if (state == null || state.QuaternaryAction == QuestWindowActionKind.None)
+            {
+                return;
+            }
+
+            if (!_actionButtons.TryGetValue(state.QuaternaryAction, out ActionButtonBinding binding))
+            {
+                return;
+            }
+
+            binding.Button.SetVisible(true);
+            binding.Button.SetButtonState(state.QuaternaryActionEnabled ? UIObjectState.Normal : UIObjectState.Disabled);
+            _activeQuaternaryButton = binding.Button;
+            _drawQuaternaryLabel = binding.DrawLabel;
+        }
+
         private void LayoutActionButtons()
         {
             List<UIObject> orderedButtons = new();
+            AppendDistinctVisibleButton(orderedButtons, _activeQuaternaryButton);
             AppendDistinctVisibleButton(orderedButtons, _activeTertiaryButton);
             AppendDistinctVisibleButton(orderedButtons, _activeSecondaryButton);
             AppendDistinctVisibleButton(orderedButtons, _activePrimaryButton);

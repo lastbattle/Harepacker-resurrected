@@ -69,6 +69,18 @@ public sealed class EscortFollowControllerTests
         Assert.True(controller.UpdateEscortFollow(player, movement));
     }
 
+    [Fact]
+    public void UpdateEscortFollow_DoesNotAttachWhenMapDisablesFollowCharacter()
+    {
+        FootholdLine foothold = CreateFoothold(0, 100, 260, 100);
+        PlayerCharacter player = CreatePlayer(100f, 100f, foothold);
+        MobMovementInfo movement = CreateGroundMob(170f, 118f, foothold);
+
+        EscortFollowController controller = new EscortFollowController();
+
+        Assert.False(controller.UpdateEscortFollow(player, movement, followAllowed: false));
+    }
+
     private static PlayerCharacter CreatePlayer(float x, float y, FootholdLine foothold, CharacterBuild build = null)
     {
         build ??= new CharacterBuild();

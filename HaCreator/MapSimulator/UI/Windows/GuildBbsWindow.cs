@@ -269,6 +269,7 @@ namespace HaCreator.MapSimulator.UI
             GuildBbsSnapshot snapshot = GetSnapshot();
             sprite.DrawString(_font, "Guild BBS", new Vector2(Position.X + 54, Position.Y + 7), Color.White, 0f, Vector2.Zero, 0.52f, SpriteEffects.None, 0f);
             sprite.DrawString(_font, snapshot.GuildName, new Vector2(Position.X + 58, Position.Y + 22), new Color(59, 58, 54), 0f, Vector2.Zero, 0.45f, SpriteEffects.None, 0f);
+            DrawString(sprite, $"{snapshot.GuildRoleLabel}  Cash {snapshot.Permission?.OwnedCashEmoticonCount ?? 0}", Position.X + 58, Position.Y + 34, new Color(92, 95, 102), 0.33f);
             DrawGuildMark(sprite, snapshot.GuildName);
             DrawThreadList(sprite, snapshot);
 
@@ -303,20 +304,32 @@ namespace HaCreator.MapSimulator.UI
 
         private void HandleBeginWrite()
         {
-            ShowFeedback(_writeHandler?.Invoke());
-            ActivateInput(InputTarget.ComposeTitle, GetSnapshot(), clearExisting: false);
+            string message = _writeHandler?.Invoke();
+            ShowFeedback(message);
+            if (GetSnapshot().IsWriteMode)
+            {
+                ActivateInput(InputTarget.ComposeTitle, GetSnapshot(), clearExisting: false);
+            }
         }
 
         private void HandleEditSelected()
         {
-            ShowFeedback(_editHandler?.Invoke());
-            ActivateInput(InputTarget.ComposeTitle, GetSnapshot(), clearExisting: false);
+            string message = _editHandler?.Invoke();
+            ShowFeedback(message);
+            if (GetSnapshot().IsWriteMode)
+            {
+                ActivateInput(InputTarget.ComposeTitle, GetSnapshot(), clearExisting: false);
+            }
         }
 
         private void HandleSubmitCompose()
         {
-            ShowFeedback(_submitHandler?.Invoke());
-            DeactivateInput(clearText: true);
+            string message = _submitHandler?.Invoke();
+            ShowFeedback(message);
+            if (!GetSnapshot().IsWriteMode)
+            {
+                DeactivateInput(clearText: true);
+            }
         }
 
         private void HandleCancelCompose()
@@ -327,8 +340,12 @@ namespace HaCreator.MapSimulator.UI
 
         private void HandleSubmitReply()
         {
-            ShowFeedback(_replyHandler?.Invoke());
-            DeactivateInput(clearText: true);
+            string message = _replyHandler?.Invoke();
+            ShowFeedback(message);
+            if (string.IsNullOrEmpty(GetSnapshot().ReplyDraft?.Body))
+            {
+                DeactivateInput(clearText: true);
+            }
         }
 
         private void HandleMouseClick(GuildBbsSnapshot snapshot, Point mousePosition)
@@ -703,6 +720,7 @@ namespace HaCreator.MapSimulator.UI
         {
             bool hasSelectedThread = snapshot.SelectedThread != null;
             bool writeMode = snapshot.IsWriteMode;
+            GuildBbsPermissionSnapshot permission = snapshot.Permission ?? new GuildBbsPermissionSnapshot();
 
             _registerButton?.SetVisible(writeMode);
             _cancelButton?.SetVisible(writeMode);
@@ -716,20 +734,33 @@ namespace HaCreator.MapSimulator.UI
             _emoticonLeftButton?.SetVisible(writeMode || hasSelectedThread);
             _emoticonRightButton?.SetVisible(writeMode || hasSelectedThread);
 
-            _registerButton?.SetButtonState(writeMode ? UIObjectState.Normal : UIObjectState.Disabled);
+            _registerButton?.SetButtonState(writeMode && permission.CanWrite ? UIObjectState.Normal : UIObjectState.Disabled);
             _cancelButton?.SetButtonState(writeMode ? UIObjectState.Normal : UIObjectState.Disabled);
-            _writeButton?.SetButtonState(!writeMode ? UIObjectState.Normal : UIObjectState.Disabled);
-            _retouchButton?.SetButtonState(!writeMode && hasSelectedThread ? UIObjectState.Normal : UIObjectState.Disabled);
-            _deleteButton?.SetButtonState(!writeMode && hasSelectedThread ? UIObjectState.Normal : UIObjectState.Disabled);
-            _replyButton?.SetButtonState(!writeMode && hasSelectedThread ? UIObjectState.Normal : UIObjectState.Disabled);
-            _replyDeleteButton?.SetButtonState(!writeMode && hasSelectedThread ? UIObjectState.Normal : UIObjectState.Disabled);
-            _noticeButton?.SetButtonState(writeMode || hasSelectedThread ? UIObjectState.Normal : UIObjectState.Disabled);
+            _writeButton?.SetButtonState(!writeMode && permission.CanWrite ? UIObjectState.Normal : UIObjectState.Disabled);
+            _retouchButton?.SetButtonState(!writeMode && hasSelectedThread && permission.CanEditSelectedThread ? UIObjectState.Normal : UIObjectState.Disabled);
+            _deleteButton?.SetButtonState(!writeMode && hasSelectedThread && permission.CanDeleteSelectedThread ? UIObjectState.Normal : UIObjectState.Disabled);
+            _replyButton?.SetButtonState(!writeMode && hasSelectedThread && permission.CanReply ? UIObjectState.Normal : UIObjectState.Disabled);
+            _replyDeleteButton?.SetButtonState(!writeMode && hasSelectedThread && permission.CanDeleteReply ? UIObjectState.Normal : UIObjectState.Disabled);
+            _noticeButton?.SetButtonState(permission.CanWriteNotice ? UIObjectState.Normal : UIObjectState.Disabled);
 
             bool canPageCash = writeMode
                 ? (snapshot.Compose?.CashEmoticonPageCount ?? 0) > 1
                 : (snapshot.ReplyDraft?.CashEmoticonPageCount ?? 0) > 1;
             _emoticonLeftButton?.SetButtonState(canPageCash ? UIObjectState.Normal : UIObjectState.Disabled);
             _emoticonRightButton?.SetButtonState(canPageCash ? UIObjectState.Normal : UIObjectState.Disabled);
+        }
+
+        private static string DescribePermissions(GuildBbsPermissionSnapshot permission, GuildBbsThreadSnapshot selectedThread)
+        {
+            if (permission == null)
+            {
+                return string.Empty;
+            }
+
+            string threadAccess = selectedThread == null
+                ? "No thread selected"
+                : $"Edit {(permission.CanEditSelectedThread ? "Y" : "N")}  Delete {(permission.CanDeleteSelectedThread ? "Y" : "N")}  Reply {(permission.CanReply ? "Y" : "N")}";
+            return $"{permission.PermissionLabel} authority  Notice {(permission.CanWriteNotice ? "Y" : "N")}  {threadAccess}";
         }
 
         private void UpdateDynamicButtonLayout(GuildBbsSnapshot snapshot)
@@ -855,7 +886,7 @@ namespace HaCreator.MapSimulator.UI
 
             DrawString(sprite, "Title", titleBounds.X, titleBounds.Y - 16, new Color(101, 106, 115), 0.35f);
             DrawString(sprite, "Body", bodyBounds.X, bodyBounds.Y - 16, new Color(101, 106, 115), 0.35f);
-            DrawEmoticonStrip(sprite, compose.SelectedEmoticon, compose.CashEmoticonPageIndex, compose.CashEmoticonPageCount);
+            DrawEmoticonStrip(sprite, compose.SelectedEmoticon, compose.CashEmoticonPageIndex, compose.CashEmoticonPageCount, compose.CashEmoticonOwnership);
             DrawString(sprite, "TAB switches fields. REGISTER posts the current draft.", detailBounds.X, detailBounds.Bottom - 16, new Color(111, 117, 127), 0.36f);
         }
 
@@ -907,10 +938,14 @@ namespace HaCreator.MapSimulator.UI
             DrawTextInputBox(sprite, replyBounds, _activeInputTarget == InputTarget.ReplyBody);
             DrawEditableText(sprite, snapshot.ReplyDraft.Body, replyBounds, 0.39f, new Color(78, 82, 91), InputTarget.ReplyBody, tickCount);
             DrawString(sprite, "Reply draft", replyBounds.X, replyBounds.Y - 15, new Color(101, 106, 115), 0.34f);
-            DrawEmoticonStrip(sprite, snapshot.ReplyDraft.SelectedEmoticon, snapshot.ReplyDraft.CashEmoticonPageIndex, snapshot.ReplyDraft.CashEmoticonPageCount);
+            DrawEmoticonStrip(sprite, snapshot.ReplyDraft.SelectedEmoticon, snapshot.ReplyDraft.CashEmoticonPageIndex, snapshot.ReplyDraft.CashEmoticonPageCount, snapshot.ReplyDraft.CashEmoticonOwnership);
+            if (snapshot.Permission != null)
+            {
+                DrawString(sprite, DescribePermissions(snapshot.Permission, snapshot.SelectedThread), detailBounds.X, detailBounds.Bottom - 10, new Color(111, 117, 127), 0.33f);
+            }
         }
 
-        private void DrawEmoticonStrip(SpriteBatch sprite, GuildBbsEmoticonSnapshot selectedEmoticon, int cashPageIndex, int cashPageCount)
+        private void DrawEmoticonStrip(SpriteBatch sprite, GuildBbsEmoticonSnapshot selectedEmoticon, int cashPageIndex, int cashPageCount, IReadOnlyList<bool> cashOwnership)
         {
             for (int i = 0; i < _basicEmoticonTextures.Length; i++)
             {
@@ -919,18 +954,20 @@ namespace HaCreator.MapSimulator.UI
 
             for (int i = 0; i < _cashEmoticonTextures.Length; i++)
             {
+                bool isOwned = cashOwnership != null && i < cashOwnership.Count && cashOwnership[i];
                 DrawEmoticonSlot(
                     sprite,
                     _cashEmoticonTextures[i],
                     GetCashEmoticonBounds(i),
-                    selectedEmoticon?.Kind == GuildBbsEmoticonKind.Cash && selectedEmoticon.SlotIndex == i && selectedEmoticon.CashPageIndex == cashPageIndex);
+                    selectedEmoticon?.Kind == GuildBbsEmoticonKind.Cash && selectedEmoticon.SlotIndex == i && selectedEmoticon.CashPageIndex == cashPageIndex,
+                    isOwned);
             }
 
             Rectangle cashRow = GetCashEmoticonRowBounds();
             DrawString(sprite, $"Cash {cashPageIndex + 1}/{Math.Max(1, cashPageCount)}", cashRow.X + 45, cashRow.Y - 16, new Color(101, 106, 115), 0.33f);
         }
 
-        private void DrawEmoticonSlot(SpriteBatch sprite, Texture2D texture, Rectangle bounds, bool selected)
+        private void DrawEmoticonSlot(SpriteBatch sprite, Texture2D texture, Rectangle bounds, bool selected, bool isOwned = true)
         {
             if (texture == null)
             {
@@ -938,7 +975,13 @@ namespace HaCreator.MapSimulator.UI
             }
             else
             {
-                sprite.Draw(texture, bounds, Color.White);
+                sprite.Draw(texture, bounds, isOwned ? Color.White : new Color(255, 255, 255, 72));
+            }
+
+            if (!isOwned)
+            {
+                sprite.Draw(_pixel, bounds, new Color(11, 13, 18, 140));
+                DrawString(sprite, "X", bounds.X + 6, bounds.Y + 1, new Color(229, 232, 237), 0.30f);
             }
 
             if (selected && _emoticonSelectTexture != null)

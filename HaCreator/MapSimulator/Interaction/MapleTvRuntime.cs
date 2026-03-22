@@ -1,7 +1,10 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using HaCreator.MapSimulator.Character;
+using HaCreator.MapSimulator.Managers;
+using MapleLib.PacketLib;
 
 namespace HaCreator.MapSimulator.Interaction
 {
@@ -16,7 +19,7 @@ namespace HaCreator.MapSimulator.Interaction
     internal sealed class MapleTvRuntime
     {
         private const int DefaultMediaIndex = 1;
-        private const int DefaultDurationMs = 12000;
+        private const int DefaultDurationMs = 15000;
         private const int MinDurationMs = 1000;
         private const int MaxDurationMs = 60000;
         private const int DisplayLineCount = 5;
@@ -33,6 +36,7 @@ namespace HaCreator.MapSimulator.Interaction
         private int _itemId;
         private int _defaultItemId;
         private int _defaultMediaIndex = DefaultMediaIndex;
+        private int _resolvedMediaIndex = DefaultMediaIndex;
         private int _messageType;
         private int _draftDurationMs = DefaultDurationMs;
         private int _messageStartedAt = int.MinValue;
@@ -40,6 +44,7 @@ namespace HaCreator.MapSimulator.Interaction
         private bool _showMessage;
         private bool _queueExists;
         private bool _isSelfMessage = true;
+        private MapleTvItemProfile _itemProfile;
 
         internal MapleTvRuntime()
         {
@@ -75,6 +80,12 @@ namespace HaCreator.MapSimulator.Interaction
             _defaultItemId = Math.Max(0, itemId);
             _defaultItemName = string.IsNullOrWhiteSpace(itemName) ? "Maple TV" : itemName.Trim();
             _defaultMediaIndex = Math.Max(0, defaultMediaIndex);
+            _itemProfile = MapleTvItemProfile.CreateDefault(_defaultItemId, _defaultItemName, _defaultMediaIndex, DefaultDurationMs);
+            if (_itemId == 0)
+            {
+                ApplyItemProfile(_itemProfile, preserveReceiverSelection: true);
+            }
+
             if (_itemId == 0)
             {
                 _itemName = _defaultItemName;
@@ -116,7 +127,7 @@ namespace HaCreator.MapSimulator.Interaction
                 DefaultItemId = _defaultItemId,
                 DefaultItemName = _defaultItemName,
                 DefaultMediaIndex = _defaultMediaIndex,
-                ResolvedMediaIndex = _defaultMediaIndex,
+                ResolvedMediaIndex = _resolvedMediaIndex,
                 DraftLines = Array.AsReadOnly((string[])_draftLines.Clone()),
                 DisplayLines = Array.AsReadOnly((string[])_displayLines.Clone()),
                 StatusMessage = _statusMessage,
@@ -152,11 +163,33 @@ namespace HaCreator.MapSimulator.Interaction
 
         internal string ToggleReceiverMode()
         {
+            MapleTvAudienceMode audienceMode = GetCurrentAudienceMode();
+            if (audienceMode == MapleTvAudienceMode.SenderOnly)
+            {
+                _useReceiver = false;
+                _isSelfMessage = true;
+                _messageType = 1;
+                _receiverName = string.Empty;
+                _receiverBuild = null;
+                _statusMessage = "This MapleTV item only supports sender-only broadcasts.";
+                return _statusMessage;
+            }
+
             _useReceiver = !_useReceiver;
             _isSelfMessage = !_useReceiver;
             _messageType = _useReceiver ? 2 : 1;
             if (!_useReceiver)
             {
+                if (audienceMode == MapleTvAudienceMode.ReceiverRequired)
+                {
+                    _useReceiver = true;
+                    _isSelfMessage = false;
+                    _messageType = 2;
+                    _receiverBuild = CreateReceiverBuild();
+                    _statusMessage = "This MapleTV item requires a receiver.";
+                    return _statusMessage;
+                }
+
                 _receiverName = string.Empty;
                 _receiverBuild = null;
                 _statusMessage = "MapleTV receiver field disabled. Broadcast will target the sender only.";
@@ -172,16 +205,38 @@ namespace HaCreator.MapSimulator.Interaction
 
         internal string SetReceiver(string receiverName)
         {
+            MapleTvAudienceMode audienceMode = GetCurrentAudienceMode();
             if (string.IsNullOrWhiteSpace(receiverName) ||
                 string.Equals(receiverName, "self", StringComparison.OrdinalIgnoreCase) ||
                 string.Equals(receiverName, "clear", StringComparison.OrdinalIgnoreCase))
             {
+                if (audienceMode == MapleTvAudienceMode.ReceiverRequired)
+                {
+                    _useReceiver = true;
+                    _isSelfMessage = false;
+                    _messageType = 2;
+                    _receiverBuild = CreateReceiverBuild();
+                    _statusMessage = "This MapleTV item requires a receiver.";
+                    return _statusMessage;
+                }
+
                 _useReceiver = false;
                 _receiverName = string.Empty;
                 _isSelfMessage = true;
                 _messageType = 1;
                 _receiverBuild = null;
                 _statusMessage = "MapleTV receiver cleared. Broadcast will target the sender only.";
+                return _statusMessage;
+            }
+
+            if (audienceMode == MapleTvAudienceMode.SenderOnly)
+            {
+                _useReceiver = false;
+                _receiverName = string.Empty;
+                _isSelfMessage = true;
+                _messageType = 1;
+                _receiverBuild = null;
+                _statusMessage = "This MapleTV item only supports sender-only broadcasts.";
                 return _statusMessage;
             }
 
@@ -228,8 +283,10 @@ namespace HaCreator.MapSimulator.Interaction
             _itemName = string.IsNullOrWhiteSpace(itemName)
                 ? (itemId > 0 ? $"Item #{itemId}" : _defaultItemName)
                 : itemName.Trim();
+            MapleTvItemProfile profile = MapleTvItemProfile.Resolve(itemId, _itemName, _defaultItemId, _defaultItemName, _defaultMediaIndex);
+            ApplyItemProfile(profile, preserveReceiverSelection: false);
             _statusMessage = itemId > 0
-                ? $"MapleTV media item set to {_itemName} ({itemId})."
+                ? $"MapleTV item {_itemName} ({itemId}) applied: media {_resolvedMediaIndex}, duration {_draftDurationMs} ms."
                 : $"MapleTV media item reset to default media {_defaultItemName} ({_defaultItemId}).";
             return _statusMessage;
         }
@@ -279,6 +336,11 @@ namespace HaCreator.MapSimulator.Interaction
                 return "Set a MapleTV receiver or disable the receiver field before sending.";
             }
 
+            if (GetCurrentAudienceMode() == MapleTvAudienceMode.ReceiverRequired && string.IsNullOrWhiteSpace(_receiverName))
+            {
+                return "This MapleTV item requires a receiver before sending.";
+            }
+
             if (_draftLines.All(line => string.IsNullOrWhiteSpace(line)))
             {
                 return "At least one MapleTV draft line is required before sending.";
@@ -319,6 +381,135 @@ namespace HaCreator.MapSimulator.Interaction
             return _statusMessage;
         }
 
+        internal bool TryApplySetMessagePacket(
+            byte[] payload,
+            int currentTick,
+            Func<LoginAvatarLook, CharacterBuild> buildResolver,
+            out string message)
+        {
+            message = string.Empty;
+            if (payload == null || payload.Length == 0)
+            {
+                message = "MapleTV set-message packet payload is empty.";
+                return false;
+            }
+
+            try
+            {
+                PacketReader reader = new(payload);
+                byte flag = reader.ReadByte();
+                _messageType = reader.ReadByte();
+
+                if (!LoginAvatarLookCodec.TryDecode(reader, out LoginAvatarLook senderLook, out string senderError))
+                {
+                    message = senderError;
+                    return false;
+                }
+
+                string senderName = reader.ReadMapleString();
+                string receiverName = reader.ReadMapleString();
+                string[] lines = new string[DisplayLineCount];
+                for (int i = 0; i < lines.Length; i++)
+                {
+                    lines[i] = reader.ReadMapleString();
+                }
+
+                int totalWaitTime = reader.ReadInt();
+                bool hasReceiverAvatar = (flag & 2) != 0;
+                LoginAvatarLook receiverLook = null;
+                if (hasReceiverAvatar)
+                {
+                    if (!LoginAvatarLookCodec.TryDecode(reader, out receiverLook, out string receiverError))
+                    {
+                        message = receiverError;
+                        return false;
+                    }
+                }
+
+                _senderName = string.IsNullOrWhiteSpace(senderName) ? _senderName : senderName.Trim();
+                _receiverName = string.IsNullOrWhiteSpace(receiverName) ? string.Empty : receiverName.Trim();
+                Array.Copy(lines, _displayLines, DisplayLineCount);
+                _showMessage = true;
+                _queueExists = true;
+                _messageStartedAt = currentTick;
+                _draftDurationMs = Math.Clamp(totalWaitTime, 0, MaxDurationMs);
+                _isSelfMessage = !hasReceiverAvatar;
+                _useReceiver = hasReceiverAvatar || !string.IsNullOrWhiteSpace(_receiverName);
+                _senderBuild = buildResolver?.Invoke(senderLook);
+                if (_senderBuild != null)
+                {
+                    _senderBuild.Name = _senderName;
+                }
+
+                _receiverBuild = receiverLook != null ? buildResolver?.Invoke(receiverLook) : null;
+                if (_receiverBuild != null)
+                {
+                    _receiverBuild.Name = string.IsNullOrWhiteSpace(_receiverName) ? "Receiver" : _receiverName;
+                }
+
+                _statusMessage = $"Applied MapleTV set-message packet ({(_useReceiver ? "dedication" : "self")} type {_messageType}).";
+                message = _statusMessage;
+                return true;
+            }
+            catch (EndOfStreamException)
+            {
+                message = "MapleTV set-message packet ended before decoding completed.";
+                return false;
+            }
+            catch (IOException)
+            {
+                message = "MapleTV set-message packet could not be read.";
+                return false;
+            }
+        }
+
+        internal string ApplyClearMessagePacket()
+        {
+            return OnClearMessage(preserveQueue: true);
+        }
+
+        internal bool TryApplySendMessageResultPacket(byte[] payload, out string message)
+        {
+            message = string.Empty;
+            if (payload == null || payload.Length == 0)
+            {
+                message = "MapleTV send-result packet payload is empty.";
+                return false;
+            }
+
+            try
+            {
+                PacketReader reader = new(payload);
+                bool shouldShowFeedback = reader.ReadByte() != 0;
+                if (!shouldShowFeedback)
+                {
+                    message = "MapleTV send-result packet contained no client chat feedback.";
+                    return true;
+                }
+
+                byte resultCode = reader.ReadByte();
+                if (!TryResolveSendResult(resultCode, out MapleTvSendResultKind result))
+                {
+                    _statusMessage = $"MapleTV send-result packet used unsupported code {resultCode}.";
+                    message = _statusMessage;
+                    return false;
+                }
+
+                message = OnSendMessageResult(result);
+                return true;
+            }
+            catch (EndOfStreamException)
+            {
+                message = "MapleTV send-result packet ended before decoding completed.";
+                return false;
+            }
+            catch (IOException)
+            {
+                message = "MapleTV send-result packet could not be read.";
+                return false;
+            }
+        }
+
         private CharacterBuild CreateReceiverBuild()
         {
             if (_senderBuild == null)
@@ -329,6 +520,70 @@ namespace HaCreator.MapSimulator.Interaction
             CharacterBuild receiverBuild = _senderBuild.Clone();
             receiverBuild.Name = string.IsNullOrWhiteSpace(_receiverName) ? "Receiver" : _receiverName;
             return receiverBuild;
+        }
+
+        private MapleTvAudienceMode GetCurrentAudienceMode()
+        {
+            return (_itemProfile ?? MapleTvItemProfile.CreateDefault(_defaultItemId, _defaultItemName, _defaultMediaIndex, DefaultDurationMs)).AudienceMode;
+        }
+
+        private void ApplyItemProfile(MapleTvItemProfile profile, bool preserveReceiverSelection)
+        {
+            _itemProfile = profile ?? MapleTvItemProfile.CreateDefault(_defaultItemId, _defaultItemName, _defaultMediaIndex, DefaultDurationMs);
+            _resolvedMediaIndex = _itemProfile.MediaIndex;
+            _draftDurationMs = _itemProfile.DurationMs;
+
+            switch (_itemProfile.AudienceMode)
+            {
+                case MapleTvAudienceMode.SenderOnly:
+                    _useReceiver = false;
+                    _isSelfMessage = true;
+                    _messageType = 1;
+                    _receiverName = string.Empty;
+                    _receiverBuild = null;
+                    break;
+
+                case MapleTvAudienceMode.ReceiverRequired:
+                    _useReceiver = true;
+                    _isSelfMessage = false;
+                    _messageType = 2;
+                    if (!preserveReceiverSelection && string.IsNullOrWhiteSpace(_receiverName))
+                    {
+                        _receiverName = string.Empty;
+                    }
+
+                    _receiverBuild = CreateReceiverBuild();
+                    break;
+
+                default:
+                    if (!preserveReceiverSelection)
+                    {
+                        _useReceiver = false;
+                        _isSelfMessage = true;
+                        _messageType = 1;
+                        _receiverName = string.Empty;
+                        _receiverBuild = null;
+                    }
+                    else if (_useReceiver)
+                    {
+                        _receiverBuild = CreateReceiverBuild();
+                    }
+
+                    break;
+            }
+        }
+
+        private static bool TryResolveSendResult(byte resultCode, out MapleTvSendResultKind result)
+        {
+            result = resultCode switch
+            {
+                1 => MapleTvSendResultKind.Busy,
+                2 => MapleTvSendResultKind.RecipientOffline,
+                3 => MapleTvSendResultKind.Failed,
+                _ => MapleTvSendResultKind.Failed
+            };
+
+            return resultCode is >= 1 and <= 3;
         }
     }
 
@@ -356,5 +611,46 @@ namespace HaCreator.MapSimulator.Interaction
         public int TotalWaitMs { get; init; }
         public bool CanPublish { get; init; }
         public bool CanClear { get; init; }
+    }
+
+    internal enum MapleTvAudienceMode
+    {
+        Flexible,
+        SenderOnly,
+        ReceiverRequired
+    }
+
+    internal sealed record MapleTvItemProfile(int ItemId, string ItemName, int MediaIndex, int DurationMs, MapleTvAudienceMode AudienceMode)
+    {
+        private const int DefaultItemDurationMs = 15000;
+
+        internal static MapleTvItemProfile CreateDefault(int itemId, string itemName, int defaultMediaIndex, int defaultDurationMs)
+        {
+            string name = string.IsNullOrWhiteSpace(itemName) ? "Maple TV" : itemName.Trim();
+            return new MapleTvItemProfile(Math.Max(0, itemId), name, Math.Max(0, defaultMediaIndex), defaultDurationMs, MapleTvAudienceMode.Flexible);
+        }
+
+        internal static MapleTvItemProfile Resolve(int itemId, string itemName, int defaultItemId, string defaultItemName, int defaultMediaIndex)
+        {
+            if (itemId <= 0)
+            {
+                return CreateDefault(defaultItemId, defaultItemName, defaultMediaIndex, DefaultItemDurationMs);
+            }
+
+            int alternateMediaA = defaultMediaIndex == 0 ? 1 : 0;
+            int alternateMediaB = defaultMediaIndex <= 1 ? 2 : 1;
+            string resolvedName = string.IsNullOrWhiteSpace(itemName) ? $"Item #{itemId}" : itemName.Trim();
+
+            return itemId switch
+            {
+                5075000 => new MapleTvItemProfile(itemId, resolvedName, defaultMediaIndex, 15000, MapleTvAudienceMode.Flexible),
+                5075001 => new MapleTvItemProfile(itemId, resolvedName, alternateMediaA, 30000, MapleTvAudienceMode.SenderOnly),
+                5075002 => new MapleTvItemProfile(itemId, resolvedName, alternateMediaB, 60000, MapleTvAudienceMode.ReceiverRequired),
+                5075003 => new MapleTvItemProfile(itemId, resolvedName, defaultMediaIndex, 15000, MapleTvAudienceMode.Flexible),
+                5075004 => new MapleTvItemProfile(itemId, resolvedName, alternateMediaA, 30000, MapleTvAudienceMode.SenderOnly),
+                5075005 => new MapleTvItemProfile(itemId, resolvedName, alternateMediaB, 60000, MapleTvAudienceMode.ReceiverRequired),
+                _ => CreateDefault(itemId, resolvedName, defaultMediaIndex, DefaultItemDurationMs)
+            };
+        }
     }
 }

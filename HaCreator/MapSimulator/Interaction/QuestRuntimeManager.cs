@@ -5,8 +5,10 @@ using HaCreator.MapEditor.Instance;
 using HaCreator.MapSimulator.Character;
 using HaCreator.MapSimulator.Entities;
 using HaCreator.MapSimulator.Pools;
+using MapleLib.ClientLib;
 using MapleLib.WzLib;
 using MapleLib.WzLib.WzProperties;
+using MapleLib.WzLib.WzStructure.Data.CharacterStructure;
 using MapleLib.WzLib.WzStructure.Data.QuestStructure;
 using System.Text;
 using Microsoft.Xna.Framework;
@@ -110,6 +112,13 @@ namespace HaCreator.MapSimulator.Interaction
         {
             public int ItemId { get; init; }
             public int Count { get; init; }
+            public QuestRewardSelectionType SelectionType { get; init; }
+            public int SelectionWeight { get; init; }
+            public int SelectionGroup { get; init; }
+            public int JobClassBitfield { get; init; }
+            public int JobExBitfield { get; init; }
+            public int PeriodMinutes { get; init; }
+            public CharacterGenderType Gender { get; init; } = CharacterGenderType.Both;
         }
 
         private sealed class QuestSkillReward
@@ -117,7 +126,16 @@ namespace HaCreator.MapSimulator.Interaction
             public int SkillId { get; init; }
             public int SkillLevel { get; init; }
             public int MasterLevel { get; init; }
+            public bool OnlyMasterLevel { get; init; }
+            public bool RemoveSkill { get; init; }
             public IReadOnlyList<int> AllowedJobs { get; init; } = Array.Empty<int>();
+        }
+
+        private enum QuestRewardSelectionType
+        {
+            Guaranteed,
+            WeightedRandom,
+            PlayerSelection
         }
 
         private sealed class QuestSpReward
@@ -188,6 +206,7 @@ namespace HaCreator.MapSimulator.Interaction
         private readonly Dictionary<int, QuestProgress> _progress = new();
         private readonly Dictionary<int, int> _trackedItems = new();
         private readonly Dictionary<int, long> _questAlarmUpdateTicks = new();
+        private int _recentlyViewedQuestId;
         private Func<long> _mesoCountProvider;
         private Func<long, bool> _consumeMeso;
         private Action<long> _addMeso;
@@ -303,6 +322,20 @@ namespace HaCreator.MapSimulator.Interaction
             return GetQuestState(questId);
         }
 
+        public void RecordQuestDetailViewed(int questId)
+        {
+            if (questId <= 0)
+            {
+                return;
+            }
+
+            EnsureDefinitionsLoaded();
+            if (_definitions.ContainsKey(questId))
+            {
+                _recentlyViewedQuestId = questId;
+            }
+        }
+
         public IReadOnlyList<QuestWindowListEntry> GetQuestWindowEntries(CharacterBuild build)
         {
             EnsureDefinitionsLoaded();
@@ -386,6 +419,8 @@ namespace HaCreator.MapSimulator.Interaction
             (QuestWindowActionKind secondaryAction, bool secondaryEnabled, string secondaryLabel) = GetSecondaryAction(state);
             (QuestWindowActionKind tertiaryAction, bool tertiaryEnabled, string tertiaryLabel, int? targetNpcId, string targetNpcName, QuestDetailNpcButtonStyle npcButtonStyle) =
                 GetTertiaryAction(definition, state);
+            (QuestWindowActionKind quaternaryAction, bool quaternaryEnabled, string quaternaryLabel, int? targetMobId, string targetMobName) =
+                GetQuaternaryAction(definition, state);
 
             return new QuestWindowDetailState
             {
@@ -410,10 +445,95 @@ namespace HaCreator.MapSimulator.Interaction
                 TertiaryAction = tertiaryAction,
                 TertiaryActionEnabled = tertiaryEnabled,
                 TertiaryActionLabel = tertiaryLabel,
+                QuaternaryAction = quaternaryAction,
+                QuaternaryActionEnabled = quaternaryEnabled,
+                QuaternaryActionLabel = quaternaryLabel,
                 TargetNpcId = targetNpcId,
                 TargetNpcName = targetNpcName,
+                TargetMobId = targetMobId,
+                TargetMobName = targetMobName,
                 NpcButtonStyle = npcButtonStyle
             };
+        }
+
+        public int? GetPreferredQuestLogSelection(QuestLogTabType tab, CharacterBuild build, bool showAllLevels)
+        {
+            QuestLogSnapshot snapshot = BuildQuestLogSnapshot(tab, build, showAllLevels);
+            if (snapshot.Entries.Count == 0)
+            {
+                return null;
+            }
+
+            QuestLogEntrySnapshot preferredEntry = tab switch
+            {
+                QuestLogTabType.Available => ResolvePreferredAvailableQuest(snapshot.Entries, build, showAllLevels),
+                QuestLogTabType.InProgress => ResolvePreferredInProgressQuest(snapshot.Entries),
+                _ => snapshot.Entries[0]
+            };
+
+            return preferredEntry?.QuestId;
+        }
+
+        public bool TryGetQuestWorldMapTarget(int questId, CharacterBuild build, out QuestWorldMapTarget target)
+        {
+            EnsureDefinitionsLoaded();
+            target = null;
+            if (!_definitions.TryGetValue(questId, out QuestDefinition definition))
+            {
+                return false;
+            }
+
+            QuestStateType state = GetQuestState(questId);
+            QuestProgress progress = GetOrCreateProgress(questId);
+            int currentMapId = 0;
+
+            if (state == QuestStateType.Not_Started)
+            {
+                target = BuildNpcWorldMapTarget(definition, definition.StartNpcId, currentMapId, "Starter NPC");
+                return target != null;
+            }
+
+            if (state != QuestStateType.Started)
+            {
+                return false;
+            }
+
+            QuestMobRequirement incompleteMobRequirement = definition.EndMobRequirements
+                .FirstOrDefault(requirement => GetCurrentMobCount(progress, requirement.MobId) < requirement.RequiredCount);
+            if (incompleteMobRequirement != null)
+            {
+                target = new QuestWorldMapTarget
+                {
+                    Kind = QuestWorldMapTargetKind.Mob,
+                    QuestId = questId,
+                    MapId = currentMapId,
+                    EntityId = incompleteMobRequirement.MobId,
+                    Label = ResolveMobName(incompleteMobRequirement.MobId),
+                    Description = "Quest target mob",
+                    FallbackNpcName = ResolveNpcName(definition.EndNpcId ?? definition.StartNpcId ?? 0)
+                };
+                return true;
+            }
+
+            QuestItemRequirement incompleteItemRequirement = definition.EndItemRequirements
+                .FirstOrDefault(requirement => GetResolvedItemCount(requirement.ItemId) < requirement.RequiredCount);
+            if (incompleteItemRequirement != null)
+            {
+                target = new QuestWorldMapTarget
+                {
+                    Kind = QuestWorldMapTargetKind.Item,
+                    QuestId = questId,
+                    MapId = currentMapId,
+                    EntityId = incompleteItemRequirement.ItemId,
+                    Label = ResolveItemName(incompleteItemRequirement.ItemId),
+                    Description = "Quest delivery item",
+                    FallbackNpcName = ResolveNpcName(definition.EndNpcId ?? definition.StartNpcId ?? 0)
+                };
+                return true;
+            }
+
+            target = BuildNpcWorldMapTarget(definition, definition.EndNpcId ?? definition.StartNpcId, currentMapId, "Completion NPC");
+            return target != null;
         }
 
         public QuestWindowActionResult TryAcceptFromQuestWindow(int questId, CharacterBuild build)
@@ -1067,10 +1187,14 @@ namespace HaCreator.MapSimulator.Interaction
                 summary = $"{summary}\n\n{fallbackStageText}";
             }
 
-            pages.Add(new NpcInteractionPage
+            if (conversationPages.Count == 0)
             {
-                Text = NpcDialogueTextFormatter.Format(summary)
-            });
+                pages.Add(new NpcInteractionPage
+                {
+                    Text = NpcDialogueTextFormatter.Format(summary)
+                });
+            }
+
             AppendConversationPages(conversationPages, pages);
 
             var details = new List<string>();
@@ -1817,15 +1941,28 @@ namespace HaCreator.MapSimulator.Interaction
                 return "Skill reward";
             }
 
-            var parts = new List<string> { GetSkillName(reward.SkillId) };
-            if (reward.SkillLevel > 0)
+            var parts = new List<string>();
+            if (reward.RemoveSkill)
             {
-                parts.Add($"Lv. {reward.SkillLevel}");
+                parts.Add("Remove");
+                parts.Add(GetSkillName(reward.SkillId));
             }
-
-            if (reward.MasterLevel > 0)
+            else
             {
-                parts.Add($"Master Lv. {reward.MasterLevel}");
+                parts.Add(GetSkillName(reward.SkillId));
+                if (reward.SkillLevel > 0)
+                {
+                    parts.Add($"Lv. {reward.SkillLevel}");
+                }
+
+                if (reward.MasterLevel > 0)
+                {
+                    parts.Add($"Master Lv. {reward.MasterLevel}");
+                    if (reward.OnlyMasterLevel && reward.SkillLevel <= 0)
+                    {
+                        parts.Add("only");
+                    }
+                }
             }
 
             if (reward.AllowedJobs.Count > 0)
@@ -1860,6 +1997,21 @@ namespace HaCreator.MapSimulator.Interaction
                 return;
             }
 
+            if (reward.RemoveSkill)
+            {
+                if (_setSkillLevel != null)
+                {
+                    _setSkillLevel(reward.SkillId, 0);
+                    messages.Add($"Skill removed: {GetSkillName(reward.SkillId)}");
+                }
+                else
+                {
+                    messages.Add($"Skill removal: {GetSkillName(reward.SkillId)} (skill runtime unavailable)");
+                }
+
+                return;
+            }
+
             int currentLevel = _skillLevelProvider?.Invoke(reward.SkillId) ?? 0;
             int targetLevel = Math.Max(currentLevel, reward.SkillLevel);
             if (targetLevel > currentLevel)
@@ -1873,6 +2025,10 @@ namespace HaCreator.MapSimulator.Interaction
                 {
                     messages.Add($"Skill reward: {GetSkillName(reward.SkillId)} Lv. {targetLevel} (skill runtime unavailable)");
                 }
+            }
+            else if (reward.MasterLevel > 0 && reward.OnlyMasterLevel)
+            {
+                messages.Add($"Skill reward: {GetSkillName(reward.SkillId)} Master Lv. {reward.MasterLevel} only (master level not tracked)");
             }
             else if (reward.MasterLevel > 0)
             {
@@ -1952,23 +2108,28 @@ namespace HaCreator.MapSimulator.Interaction
                 ApplyTraitReward(build, actions.TraitRewards[i], messages);
             }
 
+            IReadOnlyList<QuestRewardItem> resolvedGrantedItems = ResolveGrantedRewardItems(actions.RewardItems, build, messages);
+            for (int i = 0; i < resolvedGrantedItems.Count; i++)
+            {
+                QuestRewardItem item = resolvedGrantedItems[i];
+                bool addedToInventory = TryGrantRewardItem(item.ItemId, item.Count);
+                messages.Add($"Item reward: {GetRewardItemDescription(item, includeSelectionTag: false, includeFilters: false)}");
+                if (!addedToInventory)
+                {
+                    messages.Add("Reward item was stored in quest progress because the inventory runtime could not accept it directly.");
+                }
+            }
+
             for (int i = 0; i < actions.RewardItems.Count; i++)
             {
                 QuestRewardItem item = actions.RewardItems[i];
-                if (item.Count > 0)
+                if (item.Count >= 0)
                 {
-                    bool addedToInventory = TryGrantRewardItem(item.ItemId, item.Count);
-                    messages.Add($"Item reward: {GetItemName(item.ItemId)} x{item.Count}");
-                    if (!addedToInventory)
-                    {
-                        messages.Add("Reward item was stored in quest progress because the inventory runtime could not accept it directly.");
-                    }
+                    continue;
                 }
-                else if (item.Count < 0)
-                {
-                    TryConsumeResolvedItemCount(item.ItemId, Math.Abs(item.Count));
-                    messages.Add($"Consumed item: {GetItemName(item.ItemId)} x{Math.Abs(item.Count)}");
-                }
+
+                TryConsumeResolvedItemCount(item.ItemId, Math.Abs(item.Count));
+                messages.Add($"Consumed item: {GetItemName(item.ItemId)} x{Math.Abs(item.Count)}");
             }
 
             for (int i = 0; i < actions.SkillRewards.Count; i++)
@@ -2211,6 +2372,95 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             return Environment.TickCount64 - lastUpdateTick <= QuestAlarmRecentUpdateWindowMs;
+        }
+
+        private QuestLogEntrySnapshot ResolvePreferredAvailableQuest(
+            IReadOnlyList<QuestLogEntrySnapshot> entries,
+            CharacterBuild build,
+            bool showAllLevels)
+        {
+            if (entries == null || entries.Count == 0)
+            {
+                return null;
+            }
+
+            if (showAllLevels)
+            {
+                QuestLogEntrySnapshot levelMatched = entries.FirstOrDefault(entry =>
+                    entry.CanStart &&
+                    _definitions.TryGetValue(entry.QuestId, out QuestDefinition definition) &&
+                    MatchesLevelFilter(definition, build));
+                if (levelMatched != null)
+                {
+                    return levelMatched;
+                }
+            }
+
+            return entries.FirstOrDefault(entry => entry.CanStart) ?? entries[0];
+        }
+
+        private QuestLogEntrySnapshot ResolvePreferredInProgressQuest(IReadOnlyList<QuestLogEntrySnapshot> entries)
+        {
+            if (entries == null || entries.Count == 0)
+            {
+                return null;
+            }
+
+            QuestLogEntrySnapshot recentlyUpdated = entries.FirstOrDefault(entry => IsQuestAlarmRecentlyUpdated(entry.QuestId));
+            if (recentlyUpdated != null)
+            {
+                return recentlyUpdated;
+            }
+
+            QuestLogEntrySnapshot recentlyViewed = entries.FirstOrDefault(entry => entry.QuestId == _recentlyViewedQuestId);
+            return recentlyViewed ?? entries[0];
+        }
+
+        private static int GetCurrentMobCount(QuestProgress progress, int mobId)
+        {
+            if (progress == null || mobId <= 0)
+            {
+                return 0;
+            }
+
+            return progress.MobKills.TryGetValue(mobId, out int count) ? count : 0;
+        }
+
+        private static QuestWorldMapTarget BuildNpcWorldMapTarget(QuestDefinition definition, int? npcId, int mapId, string description)
+        {
+            if (!npcId.HasValue || npcId.Value <= 0)
+            {
+                return null;
+            }
+
+            return new QuestWorldMapTarget
+            {
+                Kind = QuestWorldMapTargetKind.Npc,
+                QuestId = definition?.QuestId ?? 0,
+                MapId = mapId,
+                EntityId = npcId.Value,
+                Label = ResolveNpcName(npcId.Value),
+                Description = description
+            };
+        }
+
+        private static string ResolveMobName(int mobId)
+        {
+            string key = mobId.ToString();
+            return Program.InfoManager?.MobNameCache != null &&
+                   Program.InfoManager.MobNameCache.TryGetValue(key, out string mobName) &&
+                   !string.IsNullOrWhiteSpace(mobName)
+                ? mobName
+                : $"Mob #{mobId}";
+        }
+
+        private static string ResolveItemName(int itemId)
+        {
+            return Program.InfoManager?.ItemNameCache != null &&
+                   Program.InfoManager.ItemNameCache.TryGetValue(itemId, out Tuple<string, string, string> itemInfo) &&
+                   !string.IsNullOrWhiteSpace(itemInfo?.Item2)
+                ? itemInfo.Item2
+                : $"Item #{itemId}";
         }
 
         private void EnsureDefinitionsLoaded()
@@ -2601,6 +2851,7 @@ namespace HaCreator.MapSimulator.Interaction
                                 WzImageProperty itemReward = child.WzProperties[j];
                                 int itemId = ParseInt(itemReward["id"]).GetValueOrDefault();
                                 int count = ParseInt(itemReward["count"]).GetValueOrDefault();
+                                int prop = ParseInt(itemReward["prop"]).GetValueOrDefault();
                                 if (itemId == 0 || count == 0)
                                 {
                                     continue;
@@ -2609,7 +2860,14 @@ namespace HaCreator.MapSimulator.Interaction
                                 actions.RewardItems.Add(new QuestRewardItem
                                 {
                                     ItemId = itemId,
-                                    Count = count
+                                    Count = count,
+                                    SelectionType = ResolveRewardSelectionType(prop),
+                                    SelectionWeight = prop > 0 ? prop : 0,
+                                    SelectionGroup = ParseInt(itemReward["var"]).GetValueOrDefault(),
+                                    JobClassBitfield = ParseInt(itemReward["job"]).GetValueOrDefault(),
+                                    JobExBitfield = ParseInt(itemReward["jobEx"]).GetValueOrDefault(),
+                                    PeriodMinutes = ParsePositiveInt(itemReward["period"]).GetValueOrDefault(),
+                                    Gender = ParseRewardGender(itemReward["gender"])
                                 });
                             }
                         }
@@ -2664,7 +2922,10 @@ namespace HaCreator.MapSimulator.Interaction
                 int skillId = ParseInt(skillReward["id"]).GetValueOrDefault();
                 int skillLevel = ParsePositiveInt(skillReward["skillLevel"]).GetValueOrDefault();
                 int masterLevel = ParsePositiveInt(skillReward["masterLevel"]).GetValueOrDefault();
-                if (skillId <= 0 || (skillLevel <= 0 && masterLevel <= 0))
+                bool onlyMasterLevel = ParsePositiveInt(skillReward["onlyMasterLevel"]).GetValueOrDefault() > 0;
+                int acquireValue = ParseInt(skillReward["acquire"]).GetValueOrDefault();
+                bool removeSkill = acquireValue < 0;
+                if (skillId <= 0 || (skillLevel <= 0 && masterLevel <= 0 && !removeSkill))
                 {
                     continue;
                 }
@@ -2674,6 +2935,8 @@ namespace HaCreator.MapSimulator.Interaction
                     SkillId = skillId,
                     SkillLevel = skillLevel,
                     MasterLevel = masterLevel,
+                    OnlyMasterLevel = onlyMasterLevel,
+                    RemoveSkill = removeSkill,
                     AllowedJobs = ParseJobIds(skillReward["job"])
                 });
             }
@@ -2716,6 +2979,26 @@ namespace HaCreator.MapSimulator.Interaction
                 Trait = trait,
                 Amount = amount
             });
+        }
+
+        private static QuestRewardSelectionType ResolveRewardSelectionType(int prop)
+        {
+            if (prop < 0)
+            {
+                return QuestRewardSelectionType.PlayerSelection;
+            }
+
+            return prop > 0
+                ? QuestRewardSelectionType.WeightedRandom
+                : QuestRewardSelectionType.Guaranteed;
+        }
+
+        private static CharacterGenderType ParseRewardGender(WzImageProperty property)
+        {
+            int? value = ParseInt(property);
+            return Enum.IsDefined(typeof(CharacterGenderType), value.GetValueOrDefault(2))
+                ? (CharacterGenderType)value.GetValueOrDefault(2)
+                : CharacterGenderType.Both;
         }
 
         internal static IReadOnlyList<NpcInteractionPage> ParseConversationPages(WzImageProperty property)
@@ -3159,6 +3442,261 @@ namespace HaCreator.MapSimulator.Interaction
                 QuestStateType.Not_Started => "not started",
                 _ => state.ToString()
             };
+        }
+
+        internal static bool MatchesRewardItemFilterCore(int currentJob, CharacterGender currentGender, int jobClassBitfield, CharacterGenderType gender)
+        {
+            bool matchesJob = true;
+            if (jobClassBitfield > 0)
+            {
+                MapleStoryLocalisation localisation = Enum.IsDefined(typeof(MapleStoryLocalisation), ApplicationSettings.MapleStoryClientLocalisation)
+                    ? (MapleStoryLocalisation)ApplicationSettings.MapleStoryClientLocalisation
+                    : MapleStoryLocalisation.MapleStoryGlobal;
+                CharacterClassTypeInfo classInfo = CharacterClassTypeInfo.GetByJobId(currentJob, localisation);
+                matchesJob = classInfo != null &&
+                             classInfo.Type != CharacterClassType.NULL &&
+                             MapleJobTypeExtensions.IsJobMatching(classInfo.Type, jobClassBitfield);
+            }
+
+            bool matchesGender = gender == CharacterGenderType.Both ||
+                                 (gender == CharacterGenderType.Male && currentGender == CharacterGender.Male) ||
+                                 (gender == CharacterGenderType.Female && currentGender == CharacterGender.Female);
+
+            return matchesJob && matchesGender;
+        }
+
+        internal static int SelectWeightedRewardIndexCore(IReadOnlyList<int> weights, int roll)
+        {
+            if (weights == null || weights.Count == 0)
+            {
+                return -1;
+            }
+
+            int totalWeight = 0;
+            for (int i = 0; i < weights.Count; i++)
+            {
+                totalWeight += Math.Max(1, weights[i]);
+            }
+
+            if (totalWeight <= 0)
+            {
+                return weights.Count - 1;
+            }
+
+            int remaining = Math.Clamp(roll, 0, totalWeight - 1);
+            for (int i = 0; i < weights.Count; i++)
+            {
+                remaining -= Math.Max(1, weights[i]);
+                if (remaining < 0)
+                {
+                    return i;
+                }
+            }
+
+            return weights.Count - 1;
+        }
+
+        private static bool MatchesRewardItemFilter(QuestRewardItem reward, CharacterBuild build)
+        {
+            if (reward == null)
+            {
+                return false;
+            }
+
+            if (build == null)
+            {
+                return true;
+            }
+
+            return MatchesRewardItemFilterCore(build.Job, build.Gender, reward.JobClassBitfield, reward.Gender);
+        }
+
+        private IReadOnlyList<QuestRewardItem> ResolveGrantedRewardItems(
+            IReadOnlyList<QuestRewardItem> rewards,
+            CharacterBuild build,
+            ICollection<string> messages)
+        {
+            if (rewards == null || rewards.Count == 0)
+            {
+                return Array.Empty<QuestRewardItem>();
+            }
+
+            var granted = new List<QuestRewardItem>();
+            var weightedGroups = new Dictionary<int, List<QuestRewardItem>>();
+            var choiceGroups = new Dictionary<int, List<QuestRewardItem>>();
+
+            for (int i = 0; i < rewards.Count; i++)
+            {
+                QuestRewardItem reward = rewards[i];
+                if (reward == null || reward.Count <= 0 || !MatchesRewardItemFilter(reward, build))
+                {
+                    continue;
+                }
+
+                switch (reward.SelectionType)
+                {
+                    case QuestRewardSelectionType.WeightedRandom:
+                        AddRewardSelectionGroup(weightedGroups, reward.SelectionGroup, reward);
+                        break;
+                    case QuestRewardSelectionType.PlayerSelection:
+                        AddRewardSelectionGroup(choiceGroups, reward.SelectionGroup, reward);
+                        break;
+                    default:
+                        granted.Add(reward);
+                        break;
+                }
+            }
+
+            foreach ((int groupKey, List<QuestRewardItem> groupRewards) in weightedGroups.OrderBy(pair => pair.Key))
+            {
+                if (groupRewards.Count == 0)
+                {
+                    continue;
+                }
+
+                int totalWeight = groupRewards.Sum(reward => Math.Max(1, reward.SelectionWeight));
+                int selectedIndex = SelectWeightedRewardIndexCore(
+                    groupRewards.Select(reward => reward.SelectionWeight).ToArray(),
+                    Random.Shared.Next(Math.Max(1, totalWeight)));
+                if (selectedIndex >= 0 && selectedIndex < groupRewards.Count)
+                {
+                    QuestRewardItem selectedReward = groupRewards[selectedIndex];
+                    granted.Add(selectedReward);
+                    messages?.Add($"Random reward selected: {GetRewardItemDescription(selectedReward, includeSelectionTag: false, includeFilters: false)}");
+                }
+            }
+
+            foreach ((int groupKey, List<QuestRewardItem> groupRewards) in choiceGroups.OrderBy(pair => pair.Key))
+            {
+                if (groupRewards.Count == 0)
+                {
+                    continue;
+                }
+
+                QuestRewardItem selectedReward = groupRewards[0];
+                granted.Add(selectedReward);
+                messages?.Add($"Choice reward auto-selected: {GetRewardItemDescription(selectedReward, includeSelectionTag: false, includeFilters: false)}");
+            }
+
+            return granted;
+        }
+
+        private static void AddRewardSelectionGroup(IDictionary<int, List<QuestRewardItem>> groups, int groupKey, QuestRewardItem reward)
+        {
+            int resolvedGroupKey = groupKey > 0 ? groupKey : 0;
+            if (!groups.TryGetValue(resolvedGroupKey, out List<QuestRewardItem> rewards))
+            {
+                rewards = new List<QuestRewardItem>();
+                groups[resolvedGroupKey] = rewards;
+            }
+
+            rewards.Add(reward);
+        }
+
+        private static string GetRewardItemDescription(
+            QuestRewardItem reward,
+            bool includeSelectionTag = true,
+            bool includeFilters = true)
+        {
+            if (reward == null)
+            {
+                return "Item reward";
+            }
+
+            var parts = new List<string>
+            {
+                $"{GetItemName(reward.ItemId)} x{Math.Abs(reward.Count)}"
+            };
+
+            if (includeFilters && reward.JobClassBitfield > 0)
+            {
+                List<CharacterClassType> classes = MapleJobTypeExtensions.GetMatchingJobs(reward.JobClassBitfield);
+                if (classes.Count > 0)
+                {
+                    parts.Add($"[{string.Join(", ", classes.Select(FormatJobClassName))}]");
+                }
+            }
+
+            if (includeFilters && reward.Gender != CharacterGenderType.Both)
+            {
+                parts.Add(reward.Gender == CharacterGenderType.Male ? "[Male]" : "[Female]");
+            }
+
+            if (includeFilters && reward.PeriodMinutes > 0)
+            {
+                parts.Add($"[{FormatRewardDuration(reward.PeriodMinutes)}]");
+            }
+
+            if (includeFilters && reward.JobExBitfield > 0)
+            {
+                parts.Add("[jobEx]");
+            }
+
+            if (includeSelectionTag)
+            {
+                switch (reward.SelectionType)
+                {
+                    case QuestRewardSelectionType.WeightedRandom:
+                        parts.Add($"[Random {Math.Max(1, reward.SelectionWeight)}]");
+                        break;
+                    case QuestRewardSelectionType.PlayerSelection:
+                        parts.Add("[Choice]");
+                        break;
+                }
+            }
+
+            return string.Join(" ", parts);
+        }
+
+        private static string FormatJobClassName(CharacterClassType jobClass)
+        {
+            return jobClass switch
+            {
+                CharacterClassType.Adventurer => "Adventurer",
+                CharacterClassType.Cygnus => "Cygnus",
+                CharacterClassType.Aran => "Aran",
+                CharacterClassType.Evan => "Evan",
+                CharacterClassType.Resistance => "Resistance",
+                CharacterClassType.Mercedes => "Mercedes",
+                CharacterClassType.Demon => "Demon",
+                CharacterClassType.Phantom => "Phantom",
+                CharacterClassType.DualBlade => "Dual Blade",
+                CharacterClassType.Mihile => "Mihile",
+                CharacterClassType.Luminous => "Luminous",
+                CharacterClassType.Kaiser => "Kaiser",
+                CharacterClassType.AngelicBuster => "Angelic Buster",
+                CharacterClassType.Cannoneer => "Cannoneer",
+                CharacterClassType.Xenon => "Xenon",
+                CharacterClassType.Zero => "Zero",
+                CharacterClassType.Shade => "Shade",
+                CharacterClassType.ZenOrJett => "Jett",
+                CharacterClassType.Hayato => "Hayato",
+                CharacterClassType.Kanna => "Kanna",
+                CharacterClassType.BeastTamer => "Beast Tamer",
+                CharacterClassType.PinkBean => "Pink Bean",
+                CharacterClassType.Kinesis => "Kinesis",
+                _ => jobClass.ToString()
+            };
+        }
+
+        private static string FormatRewardDuration(int periodMinutes)
+        {
+            if (periodMinutes <= 0)
+            {
+                return "Timed";
+            }
+
+            if (periodMinutes % (60 * 24) == 0)
+            {
+                return $"{periodMinutes / (60 * 24)}d";
+            }
+
+            if (periodMinutes % 60 == 0)
+            {
+                return $"{periodMinutes / 60}h";
+            }
+
+            return $"{periodMinutes}m";
         }
 
         private static string FormatJobName(int jobId)
@@ -3662,6 +4200,35 @@ namespace HaCreator.MapSimulator.Interaction
                 ? "Go to NPC"
                 : "Mark NPC";
             return (QuestWindowActionKind.LocateNpc, true, label, targetNpcId, targetNpcName, buttonStyle);
+        }
+
+        private (QuestWindowActionKind action, bool enabled, string label, int? targetMobId, string targetMobName)
+            GetQuaternaryAction(QuestDefinition definition, QuestStateType state)
+        {
+            if (definition == null || state != QuestStateType.Started)
+            {
+                return (QuestWindowActionKind.None, false, string.Empty, null, string.Empty);
+            }
+
+            QuestProgress progress = GetOrCreateProgress(definition.QuestId);
+            for (int i = 0; i < definition.EndMobRequirements.Count; i++)
+            {
+                QuestMobRequirement requirement = definition.EndMobRequirements[i];
+                progress.MobKills.TryGetValue(requirement.MobId, out int currentCount);
+                if (currentCount >= requirement.RequiredCount)
+                {
+                    continue;
+                }
+
+                return (
+                    QuestWindowActionKind.LocateMob,
+                    true,
+                    "Locate Mob",
+                    requirement.MobId,
+                    GetMobName(requirement.MobId));
+            }
+
+            return (QuestWindowActionKind.None, false, string.Empty, null, string.Empty);
         }
 
         private static string ResolveNpcName(int npcId)

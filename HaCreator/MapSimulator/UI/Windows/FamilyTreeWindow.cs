@@ -7,7 +7,6 @@ using Microsoft.Xna.Framework.Input;
 using Spine;
 using System;
 using System.Collections.Generic;
-using System.Linq;
 
 namespace HaCreator.MapSimulator.UI
 {
@@ -34,7 +33,6 @@ namespace HaCreator.MapSimulator.UI
         private readonly IDXObject _leaderOfflinePlate;
         private readonly IDXObject _memberOnlinePlate;
         private readonly IDXObject _memberOfflinePlate;
-        private readonly Texture2D _pixel;
         private readonly Dictionary<int, Rectangle> _nodeBounds = new();
 
         private Func<FamilyTreeSnapshot> _snapshotProvider;
@@ -67,8 +65,7 @@ namespace HaCreator.MapSimulator.UI
             _leaderOfflinePlate = leaderOfflinePlate ?? leaderOnlinePlate;
             _memberOnlinePlate = memberOnlinePlate;
             _memberOfflinePlate = memberOfflinePlate ?? memberOnlinePlate;
-            _pixel = new Texture2D(device ?? throw new ArgumentNullException(nameof(device)), 1, 1);
-            _pixel.SetData(new[] { Color.White });
+            _ = device ?? throw new ArgumentNullException(nameof(device));
         }
 
         public override string WindowName => MapSimulatorWindowNames.FamilyTree;
@@ -187,9 +184,9 @@ namespace HaCreator.MapSimulator.UI
 
         private void DrawHeader(SpriteBatch sprite, FamilyTreeSnapshot snapshot)
         {
-            DrawText(sprite, snapshot.TotalMembers.ToString(), 26, 40, new Color(81, 58, 30), 0.55f);
-            DrawText(sprite, snapshot.FocusName, 222, 11, new Color(101, 79, 45), 0.48f);
-            DrawText(sprite, $"{snapshot.Page}/{snapshot.TotalPages}", 504, 363, new Color(184, 170, 145), 0.36f);
+            DrawRightAlignedText(sprite, snapshot.TotalMembers.ToString(), 29, 41, 72, new Color(81, 58, 30), 0.55f);
+            DrawCenteredText(sprite, snapshot.TitleText, new Rectangle(Position.X + 205, Position.Y + 10, 167, 16), Color.White, 0.38f, 0);
+            DrawText(sprite, snapshot.JuniorCountText, 295, 80, Color.White, 0.32f);
         }
 
         private void DrawNodes(
@@ -264,12 +261,10 @@ namespace HaCreator.MapSimulator.UI
 
         private void DrawNodeText(SpriteBatch sprite, FamilyTreeNodeSnapshot node, Rectangle bounds)
         {
-            Color nameColor = node.IsLocalPlayer
-                ? new Color(255, 240, 184)
-                : node.UseAlertNameColor
-                    ? new Color(255, 92, 92)
-                    : new Color(231, 231, 231);
-            Color detailColor = node.IsSelected ? new Color(247, 252, 255) : new Color(177, 184, 192);
+            Color nameColor = node.UseAlertNameColor
+                ? new Color(255, 92, 92)
+                : new Color(231, 231, 231);
+            Color detailColor = new Color(177, 184, 192);
 
             int nameYOffset = node.IsLeader ? 1 : 0;
             DrawCenteredText(sprite, node.Name, new Rectangle(bounds.X, bounds.Y + 5 + nameYOffset, 133, 12), nameColor, 0.38f, 0);
@@ -283,14 +278,8 @@ namespace HaCreator.MapSimulator.UI
 
         private void DrawFooter(SpriteBatch sprite, FamilyTreeSnapshot snapshot)
         {
-            Rectangle footerBounds = new(Position.X + 150, Position.Y + 356, 282, 20);
-            sprite.Draw(_pixel, footerBounds, new Color(0, 0, 0, 90));
-            int drawY = 360;
-            foreach (string line in snapshot.SummaryLines.Take(2))
-            {
-                DrawText(sprite, line, 156, drawY, new Color(223, 223, 223), 0.30f);
-                drawY += 8;
-            }
+            _ = sprite;
+            _ = snapshot;
         }
 
         private void HandleNodeSelection(Point mousePosition)
@@ -337,6 +326,18 @@ namespace HaCreator.MapSimulator.UI
                 bounds.X + Math.Max(0f, (bounds.Width - size.X) * 0.5f),
                 bounds.Y + Math.Max(0f, (bounds.Height - size.Y) * 0.5f) + yOffset);
             sprite.DrawString(_font, text, origin, color, 0f, Vector2.Zero, scale, SpriteEffects.None, 0f);
+        }
+
+        private void DrawRightAlignedText(SpriteBatch sprite, string text, int x, int y, int width, Color color, float scale)
+        {
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                return;
+            }
+
+            Vector2 size = _font.MeasureString(text) * scale;
+            float drawX = Position.X + x + Math.Max(0f, width - size.X);
+            sprite.DrawString(_font, text, new Vector2(drawX, Position.Y + y), color, 0f, Vector2.Zero, scale, SpriteEffects.None, 0f);
         }
     }
 }

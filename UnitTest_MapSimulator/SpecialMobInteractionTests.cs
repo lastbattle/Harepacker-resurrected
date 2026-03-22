@@ -8,10 +8,10 @@ namespace UnitTest_MapSimulator;
 public sealed class SpecialMobInteractionTests
 {
     [Fact]
-    public void RewardSuppression_CoversFriendlyEscortAndSpecialDeathLanes()
+    public void RewardSuppression_CoversDamagedByMobEscortAndSpecialDeathLanes()
     {
         Assert.True(SpecialMobInteractionRules.ShouldSuppressRewardDrops(
-            new MobData { Friendly = true },
+            new MobData { DamagedByMob = true },
             MobDeathType.Killed));
         Assert.True(SpecialMobInteractionRules.ShouldSuppressRewardDrops(
             new MobData { Escort = 1 },
@@ -22,6 +22,20 @@ public sealed class SpecialMobInteractionTests
         Assert.False(SpecialMobInteractionRules.ShouldSuppressRewardDrops(
             new MobData(),
             MobDeathType.Killed));
+    }
+
+    [Fact]
+    public void RewardSuppression_KeysEncounterProtectionOffDamagedByMobFlag()
+    {
+        MobData mobData = new MobData
+        {
+            Friendly = true
+        };
+
+        Assert.False(SpecialMobInteractionRules.ShouldSuppressRewardDrops(mobData, MobDeathType.Killed));
+
+        mobData.DamagedByMob = true;
+        Assert.True(SpecialMobInteractionRules.ShouldSuppressRewardDrops(mobData, MobDeathType.Killed));
     }
 
     [Fact]

@@ -129,6 +129,20 @@ namespace HaCreator.MapSimulator.Interaction
             };
         }
 
+        internal IReadOnlyList<FamilyTrackedMemberSnapshot> BuildTrackedMembersSnapshot()
+        {
+            return _members.Values
+                .Select(member => new FamilyTrackedMemberSnapshot
+                {
+                    Name = member.Name,
+                    LocationSummary = member.LocationSummary,
+                    IsOnline = member.IsOnline,
+                    SimulatedPosition = member.SimulatedPosition,
+                    IsLocalPlayer = member.Id == LocalPlayerId
+                })
+                .ToArray();
+        }
+
         internal string MoveFocus(int delta)
         {
             IReadOnlyList<int> focusOrder = BuildFocusOrder();
@@ -823,21 +837,21 @@ namespace HaCreator.MapSimulator.Interaction
         private string BuildTreeTitle(FamilyMemberState selectedMember)
         {
             return selectedMember == null
-                ? $"Family Tree [{ClientFamilyTreeNoSelectionStringId}]"
-                : $"{selectedMember.Name}'s Family Tree [{ClientFamilyTreeTitleStringId}]";
+                ? "Family Tree"
+                : $"{selectedMember.Name}'s Family Tree";
         }
 
         private string BuildJuniorCountText(FamilyMemberState selectedMember)
         {
-            int juniorCount = Math.Max(0, GetStatisticValue(selectedMember) - (selectedMember != null && selectedMember.Id == _familyHeadId ? 0 : 0));
-            return $"{juniorCount} junior member(s) [{ClientFamilyTreeJuniorCountStringId}]";
+            int juniorCount = Math.Max(0, GetStatisticValue(selectedMember));
+            return $"{juniorCount} junior member(s)";
         }
 
         private string GetClientPlaceholderText(int slotIndex)
         {
             return slotIndex is DirectJuniorSlotLeft or DirectJuniorSlotRight
-                ? $"Junior Entry [{ClientFamilyTreeJuniorEntryStringId}]"
-                : $"Empty Branch [{ClientFamilyTreeEmptyBranchStringId}]";
+                ? "Junior Entry"
+                : "Empty Branch";
         }
 
         private void NormalizeRosterState()
@@ -1029,6 +1043,15 @@ namespace HaCreator.MapSimulator.Interaction
         public bool IsSelected { get; init; }
         public bool IsOnline { get; init; }
         public bool UseAlertNameColor { get; init; }
+    }
+
+    internal sealed class FamilyTrackedMemberSnapshot
+    {
+        public string Name { get; init; } = string.Empty;
+        public string LocationSummary { get; init; } = string.Empty;
+        public bool IsOnline { get; init; }
+        public Vector2 SimulatedPosition { get; init; }
+        public bool IsLocalPlayer { get; init; }
     }
 
     internal enum FamilyEntitlementType

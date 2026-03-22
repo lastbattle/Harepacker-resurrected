@@ -1,3 +1,4 @@
+using HaCreator.MapSimulator.Character;
 using HaCreator.MapSimulator.UI;
 using MapleLib.WzLib.WzStructure.Data.ItemStructure;
 using System;
@@ -50,31 +51,35 @@ namespace HaCreator.MapSimulator.Interaction
 
     public sealed class SocialRoomOccupant
     {
-        public SocialRoomOccupant(string name, SocialRoomOccupantRole role, string detail, bool isReady = false)
+        public SocialRoomOccupant(string name, SocialRoomOccupantRole role, string detail, bool isReady = false, CharacterBuild avatarBuild = null)
         {
             Name = string.IsNullOrWhiteSpace(name) ? "Unknown" : name;
             Role = role;
             Detail = detail ?? string.Empty;
             IsReady = isReady;
+            AvatarBuild = avatarBuild;
         }
 
         public string Name { get; private set; }
         public SocialRoomOccupantRole Role { get; private set; }
         public string Detail { get; private set; }
         public bool IsReady { get; private set; }
+        public CharacterBuild AvatarBuild { get; private set; }
 
-        public void Update(string detail, bool isReady)
+        public void Update(string detail, bool isReady, CharacterBuild avatarBuild = null)
         {
             Detail = detail ?? string.Empty;
             IsReady = isReady;
+            AvatarBuild = avatarBuild;
         }
 
-        public void Update(string name, SocialRoomOccupantRole role, string detail, bool isReady)
+        public void Update(string name, SocialRoomOccupantRole role, string detail, bool isReady, CharacterBuild avatarBuild = null)
         {
             Name = string.IsNullOrWhiteSpace(name) ? "Unknown" : name;
             Role = role;
             Detail = detail ?? string.Empty;
             IsReady = isReady;
+            AvatarBuild = avatarBuild;
         }
     }
 
@@ -176,6 +181,11 @@ namespace HaCreator.MapSimulator.Interaction
         private int _miniRoomWagerAmount;
         private int _tradeLocalOfferMeso;
         private int _tradeRemoteOfferMeso;
+        private bool _tradeLocalLocked;
+        private bool _tradeRemoteLocked;
+        private bool _tradeLocalAccepted;
+        private bool _tradeRemoteAccepted;
+        private DateTime? _entrustedPermitExpiresAtUtc;
         private bool _inventoryBackedRows;
         private Action _miniRoomToggleReadyHandler;
         private Action _miniRoomStartHandler;
@@ -211,9 +221,10 @@ namespace HaCreator.MapSimulator.Interaction
             _inventoryEscrow = new List<InventoryEscrowEntry>();
             _defaultItems = items?.Select(item => new SocialRoomItemEntry(item.OwnerName, item.ItemName, item.Quantity, item.MesoAmount, item.Detail, item.IsLocked, item.IsClaimed)).ToList()
                 ?? new List<SocialRoomItemEntry>();
-            _defaultOccupants = occupants?.Select(occupant => new SocialRoomOccupant(occupant.Name, occupant.Role, occupant.Detail, occupant.IsReady)).ToList()
+            _defaultOccupants = occupants?.Select(occupant => new SocialRoomOccupant(occupant.Name, occupant.Role, occupant.Detail, occupant.IsReady, occupant.AvatarBuild)).ToList()
                 ?? new List<SocialRoomOccupant>();
             _tradeRemoteOfferMeso = kind == SocialRoomKind.TradingRoom ? 75000 : 0;
+            _entrustedPermitExpiresAtUtc = kind == SocialRoomKind.EntrustedShop ? DateTime.UtcNow.AddHours(24) : null;
             StatusMessage = statusMessage ?? string.Empty;
             RoomState = roomState ?? string.Empty;
             ModeName = modeName ?? string.Empty;
@@ -246,14 +257,23 @@ namespace HaCreator.MapSimulator.Interaction
 
         public string DescribeStatus()
         {
+            RefreshTimedState(DateTime.UtcNow);
             return Kind switch
             {
                 SocialRoomKind.MiniRoom => $"{RoomTitle}: state={RoomState}, mode={ModeName}, wager={_miniRoomWagerAmount:N0}, occupants={_occupants.Count}/{Capacity}",
                 SocialRoomKind.PersonalShop => $"{RoomTitle}: state={RoomState}, listed={_items.Count}, savedVisitors={_savedVisitors.Count}, blacklist={_blockedVisitors.Count}, ledger={MesoAmount:N0}",
-                SocialRoomKind.EntrustedShop => $"{RoomTitle}: state={RoomState}, listed={_items.Count}, ledger={MesoAmount:N0}",
-                SocialRoomKind.TradingRoom => $"{RoomTitle}: state={RoomState}, localMeso={MesoAmount:N0}, remoteMeso={_tradeRemoteOfferMeso:N0}, escrowRows={_inventoryEscrow.Count}",
+                SocialRoomKind.EntrustedShop => $"{RoomTitle}: state={RoomState}, listed={_items.Count}, ledger={MesoAmount:N0}, permit={FormatPermitStatus(DateTime.UtcNow)}",
+                SocialRoomKind.TradingRoom => $"{RoomTitle}: state={RoomState}, localMeso={MesoAmount:N0}, remoteMeso={_tradeRemoteOfferMeso:N0}, lock={FormatTradePartyState(_tradeLocalLocked, _tradeRemoteLocked)}, accept={FormatTradePartyState(_tradeLocalAccepted, _tradeRemoteAccepted)}, escrowRows={_inventoryEscrow.Count}",
                 _ => RoomState
             };
+        }
+
+        public void RefreshTimedState(DateTime utcNow)
+        {
+            if (Kind == SocialRoomKind.EntrustedShop)
+            {
+                UpdateEntrustedPermitState(utcNow);
+            }
         }
 
         public bool TryDispatchPacket(
@@ -368,10 +388,7 @@ namespace HaCreator.MapSimulator.Interaction
                 case SocialRoomPacketType.OfferTradeMeso:
                     return TryOfferTradeMeso(mesoAmount, out message);
                 case SocialRoomPacketType.LockTrade:
-                    ConfirmTradeLock();
-                    resolvedMessage = StatusMessage;
-                    message = resolvedMessage;
-                    return true;
+                    return ToggleTradeLock(out message);
                 case SocialRoomPacketType.CompleteTrade:
                     return TryCompleteTrade(out message);
                 case SocialRoomPacketType.ResetTrade:
@@ -415,6 +432,8 @@ namespace HaCreator.MapSimulator.Interaction
             string roomState,
             string ownerDetail = null,
             string guestDetail = null,
+            CharacterBuild ownerBuild = null,
+            CharacterBuild guestBuild = null,
             IReadOnlyList<SocialRoomOccupant> extraOccupants = null)
         {
             RoomTitle = string.IsNullOrWhiteSpace(roomTitle) ? "Mini Room" : roomTitle.Trim();
@@ -424,8 +443,8 @@ namespace HaCreator.MapSimulator.Interaction
             RoomState = roomState ?? string.Empty;
             MesoAmount = _miniRoomWagerAmount > 0 ? _miniRoomWagerAmount * 2 : 0;
 
-            EnsureMiniRoomOccupant(0, OwnerName, SocialRoomOccupantRole.Owner, ownerDetail ?? BuildMiniRoomDetail(ownerScore, currentTurnIndex == 0, "Host seat"), ownerReady);
-            EnsureMiniRoomOccupant(1, guestName, SocialRoomOccupantRole.Guest, guestDetail ?? BuildMiniRoomDetail(guestScore, currentTurnIndex == 1, "Guest seat"), guestReady);
+            EnsureMiniRoomOccupant(0, OwnerName, SocialRoomOccupantRole.Owner, ownerDetail ?? BuildMiniRoomDetail(ownerScore, currentTurnIndex == 0, "Host seat"), ownerReady, ownerBuild);
+            EnsureMiniRoomOccupant(1, guestName, SocialRoomOccupantRole.Guest, guestDetail ?? BuildMiniRoomDetail(guestScore, currentTurnIndex == 1, "Guest seat"), guestReady, guestBuild);
 
             int occupantCount = 2;
             if (extraOccupants != null)
@@ -437,7 +456,7 @@ namespace HaCreator.MapSimulator.Interaction
                         continue;
                     }
 
-                    EnsureMiniRoomOccupant(occupantCount, occupant.Name, occupant.Role, occupant.Detail, occupant.IsReady);
+                    EnsureMiniRoomOccupant(occupantCount, occupant.Name, occupant.Role, occupant.Detail, occupant.IsReady, occupant.AvatarBuild);
                     occupantCount++;
                 }
             }
@@ -600,10 +619,10 @@ namespace HaCreator.MapSimulator.Interaction
                 notes: new[]
                 {
                     "Hired-shop and entrusted-shop ledger controls use the dedicated entrusted button set.",
-                    "Ledger and restock controls now update a visible sale list while long-term persistence remains absent."
+                    "Ledger, restock, and a simulator-owned permit timer now update the merchant ledger while server uptime remains unmodeled."
                 },
                 chatEntries: null,
-                statusMessage: "Entrusted-shop shell open. Arrange and coin actions now drive visible merchant state.",
+                statusMessage: "Entrusted-shop shell open. Arrange, claim, and permit actions now drive visible merchant uptime.",
                 roomState: "Permit active",
                 modeName: "Ledger review");
         }
@@ -631,10 +650,10 @@ namespace HaCreator.MapSimulator.Interaction
                 notes: new[]
                 {
                     "Trade-room readiness, meso offers, and escrow rows are now visible in a dedicated shell.",
-                    "No packet-driven accept handshake or cross-session persistence is simulated yet."
+                    "Lock and accept state now track each trader separately while packet-authored trade sessions remain unmodeled."
                 },
                 chatEntries: null,
-                statusMessage: "Trading-room shell ready. Offer, lock, and reset actions now update the shared room state.",
+                statusMessage: "Trading-room shell ready. Offer, lock, accept, and reset actions now update the shared room state.",
                 roomState: "Negotiating",
                 modeName: "Open trade");
         }
@@ -1057,9 +1076,11 @@ namespace HaCreator.MapSimulator.Interaction
                 return;
             }
 
+            UpdateEntrustedPermitState(DateTime.UtcNow);
+
             bool isLedger = !string.Equals(ModeName, "Restock", StringComparison.Ordinal);
             ModeName = isLedger ? "Restock" : "Ledger review";
-            RoomState = isLedger ? "Updating sale list" : "Permit active";
+            RoomState = isLedger ? "Updating sale list" : IsEntrustedPermitExpired(DateTime.UtcNow) ? "Permit expired" : "Permit active";
             foreach (SocialRoomItemEntry item in _items)
             {
                 item.Update(
@@ -1098,6 +1119,11 @@ namespace HaCreator.MapSimulator.Interaction
                 return false;
             }
 
+            if (!EnsureEntrustedPermitActive(out message))
+            {
+                return false;
+            }
+
             if (!TryConsumeInventoryItem(itemId, quantity, out InventoryType inventoryType, out InventorySlotData slotData, out message))
             {
                 return false;
@@ -1117,6 +1143,11 @@ namespace HaCreator.MapSimulator.Interaction
         public void ArrangeEntrustedShop()
         {
             if (Kind != SocialRoomKind.EntrustedShop)
+            {
+                return;
+            }
+
+            if (!EnsureEntrustedPermitActive(out _))
             {
                 return;
             }
@@ -1165,6 +1196,43 @@ namespace HaCreator.MapSimulator.Interaction
                 : "No entrusted-shop mesos remain to claim.";
         }
 
+        public bool TryRenewEntrustedPermit(int minutes, out string message)
+        {
+            message = null;
+            if (Kind != SocialRoomKind.EntrustedShop)
+            {
+                message = "Permit uptime only applies to the entrusted shop shell.";
+                return false;
+            }
+
+            int normalizedMinutes = Math.Clamp(minutes <= 0 ? 24 * 60 : minutes, 1, 7 * 24 * 60);
+            _entrustedPermitExpiresAtUtc = DateTime.UtcNow.AddMinutes(normalizedMinutes);
+            RoomState = "Permit active";
+            if (string.Equals(ModeName, "Permit expired", StringComparison.Ordinal))
+            {
+                ModeName = "Ledger review";
+            }
+
+            StatusMessage = $"Entrusted-shop permit renewed for {normalizedMinutes} minute{(normalizedMinutes == 1 ? string.Empty : "s")}.";
+            message = StatusMessage;
+            return true;
+        }
+
+        public bool ExpireEntrustedPermit(out string message)
+        {
+            message = null;
+            if (Kind != SocialRoomKind.EntrustedShop)
+            {
+                message = "Permit uptime only applies to the entrusted shop shell.";
+                return false;
+            }
+
+            _entrustedPermitExpiresAtUtc = DateTime.UtcNow;
+            UpdateEntrustedPermitState(DateTime.UtcNow);
+            message = StatusMessage;
+            return true;
+        }
+
         public void IncreaseTradeOffer()
         {
             if (Kind != SocialRoomKind.TradingRoom)
@@ -1180,10 +1248,8 @@ namespace HaCreator.MapSimulator.Interaction
 
             MesoAmount += 50000;
             _tradeLocalOfferMeso += 50000;
-            if (_occupants.Count > 0)
-            {
-                _occupants[0].Update($"Offering {MesoAmount:N0} mesos with the item stack", false);
-            }
+            ClearTradeHandshake();
+            RefreshTradeOccupantsAndRows();
 
             StatusMessage = $"Raised the offered mesos to {MesoAmount:N0}.";
         }
@@ -1209,13 +1275,10 @@ namespace HaCreator.MapSimulator.Interaction
                 return false;
             }
 
+            ClearTradeHandshake();
             MesoAmount += mesoAmount;
             _tradeLocalOfferMeso += mesoAmount;
-            if (_occupants.Count > 0)
-            {
-                _occupants[0].Update($"Offering {MesoAmount:N0} mesos with the item stack", false);
-            }
-
+            RefreshTradeOccupantsAndRows();
             message = $"Escrowed {mesoAmount:N0} meso into the trading room.";
             return true;
         }
@@ -1240,37 +1303,133 @@ namespace HaCreator.MapSimulator.Interaction
                 _inventoryBackedRows = true;
             }
 
+            ClearTradeHandshake();
             SocialRoomItemEntry entry = new SocialRoomItemEntry(OwnerName, slotData.ItemName, quantity, 0, "Owner offer | Inventory escrowed");
             _items.Insert(Math.Min(2, _items.Count), entry);
             _inventoryEscrow.Add(new InventoryEscrowEntry(entry, inventoryType, slotData, returnOnReset: true, returnOnClose: true));
             RoomState = "Negotiating";
+            RefreshTradeOccupantsAndRows();
             StatusMessage = $"Added {slotData.ItemName} x{quantity} to the local trade escrow.";
             message = StatusMessage;
             return true;
         }
 
-        public void ConfirmTradeLock()
+        public bool TryOfferRemoteTradeItem(int itemId, int quantity, out string message)
         {
+            message = null;
             if (Kind != SocialRoomKind.TradingRoom)
             {
-                return;
+                message = "Remote trade preview only applies to the trading-room shell.";
+                return false;
             }
 
-            bool locked = RoomState != "Locked";
-            RoomState = locked ? "Locked" : "Negotiating";
+            InventoryType inventoryType = InventoryItemMetadataResolver.ResolveInventoryType(itemId);
+            if (inventoryType == InventoryType.NONE || quantity <= 0)
+            {
+                message = "A valid remote trade item id and quantity are required.";
+                return false;
+            }
+
+            ClearTradeHandshake();
+            string remoteName = ResolveRemoteTraderName();
+            SocialRoomItemEntry entry = new SocialRoomItemEntry(remoteName, ResolveItemName(itemId), quantity, 0, "Guest offer | Simulator-authored remote escrow");
+            int insertIndex = _items.FindLastIndex(item => string.Equals(item.OwnerName, OwnerName, StringComparison.OrdinalIgnoreCase));
+            _items.Insert(insertIndex < 0 ? _items.Count : insertIndex + 1, entry);
+            RoomState = "Negotiating";
+            RefreshTradeOccupantsAndRows();
+            StatusMessage = $"Remote trader added {entry.ItemName} x{quantity} to the preview offer.";
+            message = StatusMessage;
+            return true;
+        }
+
+        public bool TryOfferRemoteTradeMeso(int mesoAmount, out string message)
+        {
+            message = null;
+            if (Kind != SocialRoomKind.TradingRoom)
+            {
+                message = "Remote trade preview only applies to the trading-room shell.";
+                return false;
+            }
+
+            if (mesoAmount <= 0)
+            {
+                message = "Remote trade meso offers must be positive.";
+                return false;
+            }
+
+            ClearTradeHandshake();
+            _tradeRemoteOfferMeso += mesoAmount;
+            RoomState = "Negotiating";
+            RefreshTradeOccupantsAndRows();
+            StatusMessage = $"Remote trader escrowed {mesoAmount:N0} meso into the preview offer.";
+            message = StatusMessage;
+            return true;
+        }
+
+        public bool ToggleTradeLock(out string message, bool remoteParty = false)
+        {
+            message = null;
+            if (Kind != SocialRoomKind.TradingRoom)
+            {
+                message = "Trade lock only applies to the trading-room shell.";
+                return false;
+            }
+
+            if (remoteParty)
+            {
+                _tradeRemoteLocked = !_tradeRemoteLocked;
+            }
+            else
+            {
+                _tradeLocalLocked = !_tradeLocalLocked;
+            }
+
+            _tradeLocalAccepted = false;
+            _tradeRemoteAccepted = false;
+            RoomState = _tradeLocalLocked && _tradeRemoteLocked ? "Locked" : "Negotiating";
+            RefreshTradeOccupantsAndRows();
+            string actor = remoteParty ? ResolveRemoteTraderName() : OwnerName;
+            bool locked = remoteParty ? _tradeRemoteLocked : _tradeLocalLocked;
             StatusMessage = locked
-                ? "Both traders locked the exchange and are waiting for final confirmation."
-                : "Trade lock released so the offer can change again.";
+                ? $"{actor} locked their side of the trade."
+                : $"{actor} unlocked their side of the trade.";
+            message = StatusMessage;
+            return true;
+        }
 
-            foreach (SocialRoomOccupant occupant in _occupants)
+        public bool ToggleTradeAcceptance(out string message, bool remoteParty = false)
+        {
+            message = null;
+            if (Kind != SocialRoomKind.TradingRoom)
             {
-                occupant.Update(locked ? "Trade locked" : "Reviewing the offer", locked);
+                message = "Trade acceptance only applies to the trading-room shell.";
+                return false;
             }
 
-            foreach (SocialRoomItemEntry item in _items)
+            if (!_tradeLocalLocked || !_tradeRemoteLocked)
             {
-                item.Update(item.Detail, item.Quantity, item.MesoAmount, locked, false);
+                message = "Both traders must lock the exchange before final acceptance.";
+                return false;
             }
+
+            if (remoteParty)
+            {
+                _tradeRemoteAccepted = !_tradeRemoteAccepted;
+            }
+            else
+            {
+                _tradeLocalAccepted = !_tradeLocalAccepted;
+            }
+
+            RoomState = _tradeLocalAccepted && _tradeRemoteAccepted ? "Awaiting settlement" : "Locked";
+            RefreshTradeOccupantsAndRows();
+            string actor = remoteParty ? ResolveRemoteTraderName() : OwnerName;
+            bool accepted = remoteParty ? _tradeRemoteAccepted : _tradeLocalAccepted;
+            StatusMessage = accepted
+                ? $"{actor} accepted the locked trade."
+                : $"{actor} canceled their final trade acceptance.";
+            message = StatusMessage;
+            return true;
         }
 
         public void ResetTrade()
@@ -1289,6 +1448,10 @@ namespace HaCreator.MapSimulator.Interaction
             MesoAmount = 150000;
             _tradeLocalOfferMeso = 0;
             _tradeRemoteOfferMeso = 75000;
+            _tradeLocalLocked = false;
+            _tradeRemoteLocked = false;
+            _tradeLocalAccepted = false;
+            _tradeRemoteAccepted = false;
             RoomState = "Negotiating";
             StatusMessage = restoredRows > 0
                 ? $"Trade offer reset and {restoredRows} escrowed item entr{(restoredRows == 1 ? "y was" : "ies were")} returned to inventory."
@@ -1302,7 +1465,7 @@ namespace HaCreator.MapSimulator.Interaction
             _occupants.Clear();
             foreach (SocialRoomOccupant occupant in _defaultOccupants)
             {
-                _occupants.Add(new SocialRoomOccupant(occupant.Name, occupant.Role, occupant.Detail, false));
+                _occupants.Add(new SocialRoomOccupant(occupant.Name, occupant.Role, occupant.Detail, false, occupant.AvatarBuild));
             }
 
             _inventoryEscrow.Clear();
@@ -1318,9 +1481,15 @@ namespace HaCreator.MapSimulator.Interaction
                 return false;
             }
 
-            if (!string.Equals(RoomState, "Locked", StringComparison.Ordinal))
+            if (!_tradeLocalLocked || !_tradeRemoteLocked)
             {
-                message = "Lock the trade before completing the settlement.";
+                message = "Both traders must lock the exchange before completing the settlement.";
+                return false;
+            }
+
+            if (!_tradeLocalAccepted || !_tradeRemoteAccepted)
+            {
+                message = "Both traders must accept the locked trade before settlement.";
                 return false;
             }
 
@@ -1365,9 +1534,16 @@ namespace HaCreator.MapSimulator.Interaction
 
             _inventoryEscrow.Clear();
             _tradeLocalOfferMeso = 0;
+            int receivedRemoteMeso = _tradeRemoteOfferMeso;
+            _tradeRemoteOfferMeso = 0;
+            _tradeLocalLocked = true;
+            _tradeRemoteLocked = true;
+            _tradeLocalAccepted = true;
+            _tradeRemoteAccepted = true;
             MesoAmount = 0;
             RoomState = "Trade settled";
-            StatusMessage = $"Trade completed. Received {remoteEntries.Count} remote item entr{(remoteEntries.Count == 1 ? "y" : "ies")} and {_tradeRemoteOfferMeso:N0} meso.";
+            RefreshTradeOccupantsAndRows();
+            StatusMessage = $"Trade completed. Received {remoteEntries.Count} remote item entr{(remoteEntries.Count == 1 ? "y" : "ies")} and {receivedRemoteMeso:N0} meso.";
             message = StatusMessage;
             return true;
         }
@@ -1468,6 +1644,136 @@ namespace HaCreator.MapSimulator.Interaction
             return toReturn.Count;
         }
 
+        private bool EnsureEntrustedPermitActive(out string message)
+        {
+            UpdateEntrustedPermitState(DateTime.UtcNow);
+            if (!IsEntrustedPermitExpired(DateTime.UtcNow))
+            {
+                message = null;
+                return true;
+            }
+
+            message = "The entrusted-shop permit expired. Renew it before restocking or rearranging sale rows.";
+            return false;
+        }
+
+        private void UpdateEntrustedPermitState(DateTime utcNow)
+        {
+            if (Kind != SocialRoomKind.EntrustedShop)
+            {
+                return;
+            }
+
+            string permitNote = $"Simulator permit timer: {FormatPermitStatus(utcNow)}.";
+            if (_notes.Count < 3)
+            {
+                _notes.Add(permitNote);
+            }
+            else
+            {
+                _notes[2] = permitNote;
+            }
+
+            if (!IsEntrustedPermitExpired(utcNow))
+            {
+                if (string.Equals(RoomState, "Permit expired", StringComparison.Ordinal))
+                {
+                    RoomState = "Permit active";
+                    StatusMessage = $"Entrusted-shop permit restored. {FormatPermitStatus(utcNow)}.";
+                }
+
+                return;
+            }
+
+            RoomState = "Permit expired";
+            if (string.Equals(ModeName, "Restock", StringComparison.Ordinal))
+            {
+                ModeName = "Permit expired";
+            }
+
+            StatusMessage = "Entrusted-shop permit expired. Claim proceeds or renew the permit to keep selling.";
+        }
+
+        private bool IsEntrustedPermitExpired(DateTime utcNow)
+        {
+            return Kind == SocialRoomKind.EntrustedShop &&
+                   _entrustedPermitExpiresAtUtc.HasValue &&
+                   utcNow >= _entrustedPermitExpiresAtUtc.Value;
+        }
+
+        private string FormatPermitStatus(DateTime utcNow)
+        {
+            if (Kind != SocialRoomKind.EntrustedShop || !_entrustedPermitExpiresAtUtc.HasValue)
+            {
+                return "no timer";
+            }
+
+            TimeSpan remaining = _entrustedPermitExpiresAtUtc.Value - utcNow;
+            if (remaining <= TimeSpan.Zero)
+            {
+                return "expired";
+            }
+
+            return remaining.TotalHours >= 1
+                ? $"{(int)remaining.TotalHours}h {remaining.Minutes:D2}m left"
+                : $"{Math.Max(1, remaining.Minutes)}m left";
+        }
+
+        private void ClearTradeHandshake()
+        {
+            _tradeLocalLocked = false;
+            _tradeRemoteLocked = false;
+            _tradeLocalAccepted = false;
+            _tradeRemoteAccepted = false;
+            RefreshTradeOccupantsAndRows();
+        }
+
+        private void RefreshTradeOccupantsAndRows()
+        {
+            if (Kind != SocialRoomKind.TradingRoom)
+            {
+                return;
+            }
+
+            for (int i = 0; i < _occupants.Count; i++)
+            {
+                bool isLocal = i == 0;
+                bool locked = isLocal ? _tradeLocalLocked : _tradeRemoteLocked;
+                bool accepted = isLocal ? _tradeLocalAccepted : _tradeRemoteAccepted;
+                _occupants[i].Update(BuildTradeOccupantDetail(isLocal, locked, accepted), locked || accepted, _occupants[i].AvatarBuild);
+            }
+
+            foreach (SocialRoomItemEntry item in _items)
+            {
+                bool isLocalItem = string.Equals(item.OwnerName, OwnerName, StringComparison.OrdinalIgnoreCase);
+                bool isLocked = isLocalItem ? _tradeLocalLocked : _tradeRemoteLocked;
+                item.Update(item.Detail, item.Quantity, item.MesoAmount, isLocked, item.IsClaimed);
+            }
+        }
+
+        private string BuildTradeOccupantDetail(bool isLocal, bool locked, bool accepted)
+        {
+            string partyName = isLocal ? OwnerName : ResolveRemoteTraderName();
+            int meso = isLocal ? _tradeLocalOfferMeso : _tradeRemoteOfferMeso;
+            int itemCount = _items.Count(item => string.Equals(item.OwnerName, partyName, StringComparison.OrdinalIgnoreCase));
+            string stage = accepted
+                ? "Accepted"
+                : locked
+                    ? "Locked"
+                    : "Reviewing";
+            return $"{stage} | {itemCount} item entr{(itemCount == 1 ? "y" : "ies")} | {meso:N0} mesos";
+        }
+
+        private string ResolveRemoteTraderName()
+        {
+            return _occupants.Skip(1).FirstOrDefault()?.Name ?? "Trader";
+        }
+
+        private static string FormatTradePartyState(bool localState, bool remoteState)
+        {
+            return $"{(localState ? "Y" : "N")}/{(remoteState ? "Y" : "N")}";
+        }
+
         private static string NormalizeName(string value)
         {
             return string.IsNullOrWhiteSpace(value) ? "Visitor" : value.Trim();
@@ -1534,14 +1840,14 @@ namespace HaCreator.MapSimulator.Interaction
             return 0;
         }
 
-        private void EnsureMiniRoomOccupant(int index, string name, SocialRoomOccupantRole role, string detail, bool isReady)
+        private void EnsureMiniRoomOccupant(int index, string name, SocialRoomOccupantRole role, string detail, bool isReady, CharacterBuild avatarBuild = null)
         {
             while (_occupants.Count <= index)
             {
-                _occupants.Add(new SocialRoomOccupant(name, role, detail, isReady));
+                _occupants.Add(new SocialRoomOccupant(name, role, detail, isReady, avatarBuild));
             }
 
-            _occupants[index].Update(name, role, detail, isReady);
+            _occupants[index].Update(name, role, detail, isReady, avatarBuild);
         }
 
         private static string BuildMiniRoomDetail(int score, bool isCurrentTurn, string seat)

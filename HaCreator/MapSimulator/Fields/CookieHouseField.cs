@@ -21,6 +21,11 @@ namespace HaCreator.MapSimulator.Fields
         private sealed class CookieBitmapNumberStyle
         {
             public Texture2D[] Digits { get; } = new Texture2D[10];
+            public Point[] DigitOrigins { get; } = new Point[10];
+            public Texture2D SignPlus { get; set; }
+            public Point SignPlusOrigin { get; set; }
+            public Texture2D SignMinus { get; set; }
+            public Point SignMinusOrigin { get; set; }
 
             public bool IsLoaded => Digits.All(texture => texture != null);
         }
@@ -45,8 +50,10 @@ namespace HaCreator.MapSimulator.Fields
         public const int ScoreDrawX = 92;
         public const int ScoreDrawY = 9;
         public const int GradeCount = 5;
-        private const int ClientBitmapDigitWidthHint = 27;
-        private const int ClientBitmapDigitSpacingHint = 3;
+        private const int ClientBitmapDigitWidth = 27;
+        private const int ClientBitmapDigitCount = 3;
+        private static readonly string[] BitmapNumberSignPlusNames = { "plus", "signPlus", "Plus", "SignPlus" };
+        private static readonly string[] BitmapNumberSignMinusNames = { "minus", "signMinus", "Minus", "SignMinus" };
 
         // The client uses four thresholds to select five bitmap-number grades.
         // These values keep the grade-owned simulator path alive until the
@@ -196,6 +203,11 @@ namespace HaCreator.MapSimulator.Fields
             foreach (CookieBitmapNumberStyle style in _bitmapNumberStyles)
             {
                 Array.Clear(style.Digits, 0, style.Digits.Length);
+                Array.Clear(style.DigitOrigins, 0, style.DigitOrigins.Length);
+                style.SignPlus = null;
+                style.SignPlusOrigin = new Point(0, 0);
+                style.SignMinus = null;
+                style.SignMinusOrigin = new Point(0, 0);
             }
 
             _bitmapNumberSourcePath = null;
@@ -297,12 +309,28 @@ namespace HaCreator.MapSimulator.Fields
 
                 for (int digit = 0; digit < 10; digit++)
                 {
-                    _bitmapNumberStyles[i].Digits[digit] = LoadCanvasTexture(digitContainer[digit.ToString()]);
+                    WzCanvasProperty digitCanvas = ResolveCookieCanvas(digitContainer[digit.ToString()]);
+                    _bitmapNumberStyles[i].Digits[digit] = LoadCanvasTexture(digitCanvas);
+                    _bitmapNumberStyles[i].DigitOrigins[digit] = ResolveCanvasOrigin(digitCanvas);
                 }
 
                 if (!_bitmapNumberStyles[i].IsLoaded)
                 {
                     return false;
+                }
+
+                WzCanvasProperty plusCanvas = ResolveNamedCanvas(styleRoot, BitmapNumberSignPlusNames);
+                if (plusCanvas != null)
+                {
+                    _bitmapNumberStyles[i].SignPlus = LoadCanvasTexture(plusCanvas);
+                    _bitmapNumberStyles[i].SignPlusOrigin = ResolveCanvasOrigin(plusCanvas);
+                }
+
+                WzCanvasProperty minusCanvas = ResolveNamedCanvas(styleRoot, BitmapNumberSignMinusNames);
+                if (minusCanvas != null)
+                {
+                    _bitmapNumberStyles[i].SignMinus = LoadCanvasTexture(minusCanvas);
+                    _bitmapNumberStyles[i].SignMinusOrigin = ResolveCanvasOrigin(minusCanvas);
                 }
             }
 
@@ -389,54 +417,76 @@ namespace HaCreator.MapSimulator.Fields
                 return false;
             }
 
-            string text = Math.Max(0, value).ToString();
-            float totalWidth = 0f;
-            for (int i = 0; i < text.Length; i++)
+            int remaining = Math.Abs(value);
+            int slotIndex = ClientBitmapDigitCount - 1;
+            bool drewDigit = false;
+            do
             {
-                char digitChar = text[i];
-                if (digitChar is < '0' or > '9')
-                {
-                    return false;
-                }
-
-                Texture2D digitTexture = style.Digits[digitChar - '0'];
+                int digit = remaining % 10;
+                Texture2D digitTexture = style.Digits[digit];
                 if (digitTexture == null)
                 {
                     return false;
                 }
 
-                totalWidth += digitTexture.Width;
-                if (i < text.Length - 1)
-                {
-                    totalWidth -= ClientBitmapDigitSpacingHint;
-                }
-            }
+                Point origin = style.DigitOrigins[digit];
+                float drawX = topCenter.X + (slotIndex * ClientBitmapDigitWidth) - origin.X;
+                float drawY = topCenter.Y - origin.Y;
+                spriteBatch.Draw(digitTexture, new Vector2(drawX, drawY), Color.White);
 
-            float x = topCenter.X - (totalWidth / 2f);
-            for (int i = 0; i < text.Length; i++)
+                drewDigit = true;
+                remaining /= 10;
+                slotIndex--;
+            }
+            while (remaining > 0 && slotIndex >= 0);
+
+            if (value < 0)
             {
-                Texture2D digitTexture = style.Digits[text[i] - '0'];
-                spriteBatch.Draw(digitTexture, new Vector2(x, topCenter.Y), Color.White);
-                x += digitTexture.Width - ClientBitmapDigitSpacingHint;
+                Texture2D signTexture = style.SignMinus ?? style.SignPlus;
+                Point signOrigin = style.SignMinus != null ? style.SignMinusOrigin : style.SignPlusOrigin;
+                if (signTexture == null)
+                {
+                    return false;
+                }
+
+                float drawX = topCenter.X + (Math.Max(slotIndex, 0) * ClientBitmapDigitWidth) - signOrigin.X;
+                float drawY = topCenter.Y - signOrigin.Y;
+                spriteBatch.Draw(signTexture, new Vector2(drawX, drawY), Color.White);
             }
 
-            return true;
+            return drewDigit;
         }
 
         private Texture2D LoadCanvasTexture(WzImageProperty source)
+        {
+            return LoadCanvasTexture(ResolveCookieCanvas(source));
+        }
+
+        private Texture2D LoadCanvasTexture(WzCanvasProperty canvas)
         {
             if (_graphicsDevice == null)
             {
                 return null;
             }
 
-            if (ResolveCookieCanvas(source) is not WzCanvasProperty canvas)
+            if (canvas == null)
             {
                 return null;
             }
 
             var bitmap = canvas.GetLinkedWzCanvasBitmap();
             return bitmap?.ToTexture2DAndDispose(_graphicsDevice);
+        }
+
+        private static Point ResolveCanvasOrigin(WzCanvasProperty canvas)
+        {
+            if (canvas == null)
+            {
+                return new Point(0, 0);
+            }
+
+            System.Drawing.PointF origin = canvas.GetCanvasOriginPosition();
+            return new Point((int)origin.X, (int)origin.Y);
         }
 
         private static WzCanvasProperty ResolveCookieCanvas(WzImageProperty property)
@@ -465,6 +515,25 @@ namespace HaCreator.MapSimulator.Fields
             if (HasDigitRange(numberChild))
             {
                 return numberChild;
+            }
+
+            return null;
+        }
+
+        private static WzCanvasProperty ResolveNamedCanvas(WzImageProperty property, IEnumerable<string> names)
+        {
+            if (property == null || names == null)
+            {
+                return null;
+            }
+
+            foreach (string name in names)
+            {
+                WzCanvasProperty canvas = ResolveCookieCanvas(property[name]);
+                if (canvas != null)
+                {
+                    return canvas;
+                }
             }
 
             return null;
@@ -560,6 +629,7 @@ namespace HaCreator.MapSimulator.Fields
             }
 
             var digitContainers = new List<WzImageProperty>(GradeCount);
+            int signCanvasCount = 0;
             for (int i = 0; i < GradeCount; i++)
             {
                 WzImageProperty styleRoot = root[i.ToString()];
@@ -570,6 +640,10 @@ namespace HaCreator.MapSimulator.Fields
                 }
 
                 digitContainers.Add(digitContainer);
+                if (ResolveNamedCanvas(styleRoot, BitmapNumberSignPlusNames) != null)
+                {
+                    signCanvasCount++;
+                }
             }
 
             int totalWidth = 0;
@@ -593,9 +667,10 @@ namespace HaCreator.MapSimulator.Fields
             float averageHeight = totalHeight / (float)(GradeCount * 10);
 
             int score = 0;
-            score -= (int)Math.Abs(averageWidth - ClientBitmapDigitWidthHint) * 4;
+            score -= (int)Math.Abs(averageWidth - 27f) * 4;
             score -= (int)Math.Abs(averageHeight - 32f) * 2;
             score -= Math.Abs((root.WzProperties?.Count ?? 0) - GradeCount) * 3;
+            score += signCanvasCount * 8;
 
             if (path.Contains("raise", StringComparison.OrdinalIgnoreCase))
             {

@@ -11,13 +11,22 @@ namespace HaCreator.MapSimulator.Interaction
         Cash
     }
 
+    internal enum GuildBbsPermissionLevel
+    {
+        None,
+        Member,
+        JrMaster,
+        Master
+    }
+
     internal sealed class GuildBbsRuntime
     {
         private const int VisibleThreadCount = 8;
         private const int VisibleCommentCount = 4;
         private const int BasicEmoticonCount = 3;
-        private const int CashEmoticonCount = 8;
-        private const int CashEmoticonPageCount = 2;
+        private const int CashEmoticonCount = 7;
+        private const int CashEmoticonPageSize = 7;
+        private const int CashEmoticonItemIdStart = 5290000;
         private const int MaxTitleLength = 40;
         private const int MaxThreadBodyLength = 420;
         private const int MaxReplyBodyLength = 120;
@@ -67,11 +76,14 @@ namespace HaCreator.MapSimulator.Interaction
         }
 
         private readonly List<GuildBbsThreadState> _threads = new();
+        private readonly HashSet<int> _ownedCashEmoticonIds = new();
         private GuildBbsComposeState _compose = new();
         private readonly GuildBbsReplyDraftState _replyDraft = new();
         private string _localPlayerName = "Player";
         private string _guildName = "Maple Guild";
         private string _locationSummary = "Field";
+        private string _guildRoleLabel = "Master";
+        private GuildBbsPermissionLevel _permissionLevel = GuildBbsPermissionLevel.Master;
         private int _selectedThreadId;
         private int _threadPageIndex;
         private int _commentPageIndex;
@@ -86,11 +98,27 @@ namespace HaCreator.MapSimulator.Interaction
 
         public bool IsWriteMode { get; private set; }
 
-        public void UpdateLocalContext(string playerName, string guildName, string locationSummary)
+        public void UpdateLocalContext(string playerName, string guildName, string locationSummary, string guildRoleLabel, IEnumerable<int> ownedCashEmoticonItemIds)
         {
             _localPlayerName = string.IsNullOrWhiteSpace(playerName) ? "Player" : playerName.Trim();
             _guildName = string.IsNullOrWhiteSpace(guildName) ? "Maple Guild" : guildName.Trim();
             _locationSummary = string.IsNullOrWhiteSpace(locationSummary) ? "Field" : locationSummary.Trim();
+            _guildRoleLabel = string.IsNullOrWhiteSpace(guildRoleLabel) ? "Member" : guildRoleLabel.Trim();
+            _permissionLevel = ResolvePermissionLevel(_guildRoleLabel);
+
+            _ownedCashEmoticonIds.Clear();
+            if (ownedCashEmoticonItemIds != null)
+            {
+                foreach (int itemId in ownedCashEmoticonItemIds)
+                {
+                    if (itemId >= CashEmoticonItemIdStart && itemId < CashEmoticonItemIdStart + CashEmoticonCount)
+                    {
+                        _ownedCashEmoticonIds.Add(itemId);
+                    }
+                }
+            }
+
+            NormalizeDraftState();
         }
 
         public GuildBbsSnapshot BuildSnapshot()
@@ -134,7 +162,8 @@ namespace HaCreator.MapSimulator.Interaction
                         Author = comment.Author,
                         Body = comment.Body,
                         DateText = comment.CreatedAt.ToLocalTime().ToString("MM.dd HH:mm"),
-                        Emoticon = CreateEmoticonSnapshot(comment.EmoticonKind, comment.EmoticonSlot, comment.CashEmoticonPageIndex)
+                        Emoticon = CreateEmoticonSnapshot(comment.EmoticonKind, comment.EmoticonSlot, comment.CashEmoticonPageIndex),
+                        CanDelete = CanDeleteComment(comment)
                     })
                     .ToArray();
 
@@ -147,6 +176,8 @@ namespace HaCreator.MapSimulator.Interaction
                     DateText = selectedThread.CreatedAt.ToLocalTime().ToString("yyyy.MM.dd HH:mm"),
                     IsNotice = selectedThread.IsNotice,
                     Emoticon = CreateEmoticonSnapshot(selectedThread.EmoticonKind, selectedThread.EmoticonSlot, selectedThread.CashEmoticonPageIndex),
+                    CanEdit = CanEditThread(selectedThread),
+                    CanDelete = CanDeleteThread(selectedThread),
                     Comments = visibleComments,
                     TotalCommentCount = orderedComments.Count,
                     CommentPageIndex = _commentPageIndex,
@@ -162,6 +193,7 @@ namespace HaCreator.MapSimulator.Interaction
             {
                 GuildName = _guildName,
                 LocalPlayerName = _localPlayerName,
+                GuildRoleLabel = _guildRoleLabel,
                 IsWriteMode = IsWriteMode,
                 SelectedThreadId = _selectedThreadId,
                 Threads = visibleThreads,
@@ -169,6 +201,7 @@ namespace HaCreator.MapSimulator.Interaction
                 ThreadPageIndex = _threadPageIndex,
                 ThreadPageCount = threadPageCount,
                 SelectedThread = selectedThreadSnapshot,
+                Permission = BuildPermissionSnapshot(selectedThread),
                 Compose = new GuildBbsComposeSnapshot
                 {
                     Title = _compose.Title,
@@ -176,14 +209,16 @@ namespace HaCreator.MapSimulator.Interaction
                     IsNotice = _compose.IsNotice,
                     ModeText = _compose.EditThreadId > 0 ? "EDIT THREAD" : "WRITE THREAD",
                     CashEmoticonPageIndex = _compose.CashEmoticonPageIndex,
-                    CashEmoticonPageCount = CashEmoticonPageCount,
+                    CashEmoticonPageCount = GetCashEmoticonPageCount(),
+                    CashEmoticonOwnership = BuildCashEmoticonOwnershipSnapshot(),
                     SelectedEmoticon = CreateEmoticonSnapshot(_compose.EmoticonKind, _compose.EmoticonSlot, _compose.CashEmoticonPageIndex)
                 },
                 ReplyDraft = new GuildBbsReplyDraftSnapshot
                 {
                     Body = _replyDraft.Body,
                     CashEmoticonPageIndex = _replyDraft.CashEmoticonPageIndex,
-                    CashEmoticonPageCount = CashEmoticonPageCount,
+                    CashEmoticonPageCount = GetCashEmoticonPageCount(),
+                    CashEmoticonOwnership = BuildCashEmoticonOwnershipSnapshot(),
                     SelectedEmoticon = CreateEmoticonSnapshot(_replyDraft.EmoticonKind, _replyDraft.EmoticonSlot, _replyDraft.CashEmoticonPageIndex)
                 }
             };
@@ -209,6 +244,11 @@ namespace HaCreator.MapSimulator.Interaction
 
         public string BeginWrite()
         {
+            if (!CanWriteThread())
+            {
+                return "Guild BBS posting is locked for the current simulator guild role.";
+            }
+
             IsWriteMode = true;
             _compose = CreateDraftFromContext();
             return "Guild BBS write mode opened.";
@@ -220,6 +260,11 @@ namespace HaCreator.MapSimulator.Interaction
             if (selectedThread == null)
             {
                 return "Select a Guild BBS thread before editing.";
+            }
+
+            if (!CanEditThread(selectedThread))
+            {
+                return "Only your own Guild BBS thread or an officer-moderated thread can be edited here.";
             }
 
             IsWriteMode = true;
@@ -252,22 +297,36 @@ namespace HaCreator.MapSimulator.Interaction
         {
             if (IsWriteMode)
             {
+                if (!_compose.IsNotice && !CanWriteNotice())
+                {
+                    return "Only simulated Jr. Master or Master roles can register a guild notice.";
+                }
+
+                if (!_compose.IsNotice && HasExistingNotice(_compose.EditThreadId))
+                {
+                    return "A guild notice is already registered. Remove it before drafting another notice.";
+                }
+
                 _compose.IsNotice = !_compose.IsNotice;
                 return _compose.IsNotice
                     ? "Current Guild BBS draft is now marked as a notice."
                     : "Current Guild BBS draft is no longer marked as a notice.";
             }
 
-            GuildBbsThreadState selectedThread = GetSelectedThread();
-            if (selectedThread == null)
+            if (!CanWriteNotice())
             {
-                return "Select a Guild BBS thread before toggling notice state.";
+                return "Only simulated Jr. Master or Master roles can register a guild notice.";
             }
 
-            selectedThread.IsNotice = !selectedThread.IsNotice;
-            return selectedThread.IsNotice
-                ? $"Thread #{selectedThread.ThreadId} promoted to guild notice."
-                : $"Thread #{selectedThread.ThreadId} removed from guild notice.";
+            if (HasExistingNotice())
+            {
+                return "A guild notice is already registered. Remove it before drafting another notice.";
+            }
+
+            IsWriteMode = true;
+            _compose = CreateDraftFromContext();
+            _compose.IsNotice = true;
+            return "Guild BBS notice draft opened.";
         }
 
         public string SubmitCompose()
@@ -284,6 +343,19 @@ namespace HaCreator.MapSimulator.Interaction
                 ? $"Posting from {_locationSummary} for {_guildName} parity checks."
                 : _compose.Body.Trim();
 
+            if (_compose.IsNotice)
+            {
+                if (!CanWriteNotice())
+                {
+                    return "Only simulated Jr. Master or Master roles can register a guild notice.";
+                }
+
+                if (HasExistingNotice(_compose.EditThreadId))
+                {
+                    return "A guild notice is already registered. Remove it before drafting another notice.";
+                }
+            }
+
             if (_compose.EditThreadId > 0)
             {
                 GuildBbsThreadState existingThread = _threads.FirstOrDefault(thread => thread.ThreadId == _compose.EditThreadId);
@@ -292,6 +364,11 @@ namespace HaCreator.MapSimulator.Interaction
                     IsWriteMode = false;
                     _compose = new GuildBbsComposeState();
                     return "The selected Guild BBS thread no longer exists.";
+                }
+
+                if (!CanEditThread(existingThread))
+                {
+                    return "Only your own Guild BBS thread or an officer-moderated thread can be edited here.";
                 }
 
                 existingThread.Title = resolvedTitle;
@@ -336,6 +413,11 @@ namespace HaCreator.MapSimulator.Interaction
                 return "Select a Guild BBS thread before deleting it.";
             }
 
+            if (!CanDeleteThread(selectedThread))
+            {
+                return "Only your own Guild BBS thread or an officer-moderated thread can be deleted here.";
+            }
+
             _threads.Remove(selectedThread);
             _selectedThreadId = 0;
             EnsureSelection(GetOrderedThreads());
@@ -349,6 +431,11 @@ namespace HaCreator.MapSimulator.Interaction
             if (selectedThread == null)
             {
                 return "Select a Guild BBS thread before replying.";
+            }
+
+            if (!CanReplyToThread())
+            {
+                return "Guild BBS replies are locked for the current simulator guild role.";
             }
 
             string replyBody = string.IsNullOrWhiteSpace(_replyDraft.Body)
@@ -384,10 +471,10 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             GuildBbsCommentState comment = selectedThread.Comments
-                .LastOrDefault(entry => string.Equals(entry.Author, _localPlayerName, StringComparison.OrdinalIgnoreCase));
+                .LastOrDefault(CanDeleteComment);
             if (comment == null)
             {
-                return "No simulator-owned Guild BBS reply is available to delete on the selected thread.";
+                return "No deletable Guild BBS reply is available on the selected thread.";
             }
 
             selectedThread.Comments.Remove(comment);
@@ -450,16 +537,16 @@ namespace HaCreator.MapSimulator.Interaction
 
         public string MoveComposeCashEmoticonPage(int delta)
         {
-            int nextPage = Math.Clamp(_compose.CashEmoticonPageIndex + delta, 0, CashEmoticonPageCount - 1);
+            int nextPage = Math.Clamp(_compose.CashEmoticonPageIndex + delta, 0, GetCashEmoticonPageCount() - 1);
             _compose.CashEmoticonPageIndex = nextPage;
-            return $"Guild BBS compose cash emoticon page {_compose.CashEmoticonPageIndex + 1}/{CashEmoticonPageCount}.";
+            return $"Guild BBS compose cash emoticon page {_compose.CashEmoticonPageIndex + 1}/{GetCashEmoticonPageCount()}.";
         }
 
         public string MoveReplyCashEmoticonPage(int delta)
         {
-            int nextPage = Math.Clamp(_replyDraft.CashEmoticonPageIndex + delta, 0, CashEmoticonPageCount - 1);
+            int nextPage = Math.Clamp(_replyDraft.CashEmoticonPageIndex + delta, 0, GetCashEmoticonPageCount() - 1);
             _replyDraft.CashEmoticonPageIndex = nextPage;
-            return $"Guild BBS reply cash emoticon page {_replyDraft.CashEmoticonPageIndex + 1}/{CashEmoticonPageCount}.";
+            return $"Guild BBS reply cash emoticon page {_replyDraft.CashEmoticonPageIndex + 1}/{GetCashEmoticonPageCount()}.";
         }
 
         public string SelectComposeEmoticon(GuildBbsEmoticonKind kind, int slotIndex, int cashPageIndex)
@@ -471,9 +558,14 @@ namespace HaCreator.MapSimulator.Interaction
                 return "Compose emoticon cleared.";
             }
 
+            if (resolvedKind == GuildBbsEmoticonKind.Cash && !IsCashEmoticonOwned(resolvedSlot))
+            {
+                return $"Cash emoticon {resolvedSlot + 1} is not owned by the current simulator inventory.";
+            }
+
             _compose.EmoticonKind = resolvedKind;
             _compose.EmoticonSlot = resolvedSlot;
-            _compose.CashEmoticonPageIndex = resolvedPage;
+            _compose.CashEmoticonPageIndex = Math.Clamp(resolvedPage, 0, GetCashEmoticonPageCount() - 1);
             return $"Compose emoticon set to {DescribeEmoticon(resolvedKind, resolvedSlot, resolvedPage)}.";
         }
 
@@ -486,9 +578,14 @@ namespace HaCreator.MapSimulator.Interaction
                 return "Reply emoticon cleared.";
             }
 
+            if (resolvedKind == GuildBbsEmoticonKind.Cash && !IsCashEmoticonOwned(resolvedSlot))
+            {
+                return $"Cash emoticon {resolvedSlot + 1} is not owned by the current simulator inventory.";
+            }
+
             _replyDraft.EmoticonKind = resolvedKind;
             _replyDraft.EmoticonSlot = resolvedSlot;
-            _replyDraft.CashEmoticonPageIndex = resolvedPage;
+            _replyDraft.CashEmoticonPageIndex = Math.Clamp(resolvedPage, 0, GetCashEmoticonPageCount() - 1);
             return $"Reply emoticon set to {DescribeEmoticon(resolvedKind, resolvedSlot, resolvedPage)}.";
         }
 
@@ -498,7 +595,7 @@ namespace HaCreator.MapSimulator.Interaction
             string threadSummary = selectedThread == null
                 ? "none"
                 : $"#{selectedThread.ThreadId} \"{selectedThread.Title}\" ({selectedThread.Comments.Count} comment(s))";
-            return $"Guild BBS: threads={_threads.Count}, threadPage={_threadPageIndex + 1}, commentPage={_commentPageIndex + 1}, selected={threadSummary}, mode={(IsWriteMode ? "write" : "read")}, guild={_guildName}";
+            return $"Guild BBS: threads={_threads.Count}, threadPage={_threadPageIndex + 1}, commentPage={_commentPageIndex + 1}, selected={threadSummary}, mode={(IsWriteMode ? "write" : "read")}, guild={_guildName}, role={_guildRoleLabel}, cashEmoticons={_ownedCashEmoticonIds.Count}/{CashEmoticonCount}";
         }
 
         private GuildBbsComposeState CreateDraftFromContext()
@@ -523,6 +620,32 @@ namespace HaCreator.MapSimulator.Interaction
                 .OrderByDescending(thread => thread.IsNotice)
                 .ThenByDescending(thread => thread.CreatedAt)
                 .ToArray();
+        }
+
+        private GuildBbsPermissionSnapshot BuildPermissionSnapshot(GuildBbsThreadState selectedThread)
+        {
+            return new GuildBbsPermissionSnapshot
+            {
+                PermissionLabel = _guildRoleLabel,
+                CanWrite = CanWriteThread(),
+                CanWriteNotice = CanWriteNotice(),
+                CanReply = CanReplyToThread(),
+                CanEditSelectedThread = selectedThread != null && CanEditThread(selectedThread),
+                CanDeleteSelectedThread = selectedThread != null && CanDeleteThread(selectedThread),
+                CanDeleteReply = selectedThread != null && selectedThread.Comments.Any(CanDeleteComment),
+                OwnedCashEmoticonCount = _ownedCashEmoticonIds.Count
+            };
+        }
+
+        private IReadOnlyList<bool> BuildCashEmoticonOwnershipSnapshot()
+        {
+            bool[] ownership = new bool[CashEmoticonCount];
+            for (int slotIndex = 0; slotIndex < CashEmoticonCount; slotIndex++)
+            {
+                ownership[slotIndex] = IsCashEmoticonOwned(slotIndex);
+            }
+
+            return ownership;
         }
 
         private void EnsureSelection(IReadOnlyList<GuildBbsThreadState> orderedThreads)
@@ -591,7 +714,7 @@ namespace HaCreator.MapSimulator.Interaction
 
                     resolvedKind = GuildBbsEmoticonKind.Cash;
                     resolvedSlot = slotIndex;
-                    resolvedPage = Math.Clamp(cashPageIndex, 0, CashEmoticonPageCount - 1);
+                    resolvedPage = Math.Max(0, cashPageIndex);
                     return true;
                 default:
                     return false;
@@ -622,6 +745,121 @@ namespace HaCreator.MapSimulator.Interaction
                 GuildBbsEmoticonKind.Cash => $"Cash {cashPageIndex + 1}-{slotIndex + 1}",
                 _ => "None"
             };
+        }
+
+        private bool CanWriteThread()
+        {
+            return _permissionLevel >= GuildBbsPermissionLevel.Member;
+        }
+
+        private bool CanWriteNotice()
+        {
+            return _permissionLevel >= GuildBbsPermissionLevel.JrMaster;
+        }
+
+        private bool CanReplyToThread()
+        {
+            return _permissionLevel >= GuildBbsPermissionLevel.Member;
+        }
+
+        private bool CanModerateAnyThread()
+        {
+            return _permissionLevel >= GuildBbsPermissionLevel.JrMaster;
+        }
+
+        private bool CanEditThread(GuildBbsThreadState thread)
+        {
+            return thread != null
+                && (IsLocalAuthor(thread.Author) || CanModerateAnyThread());
+        }
+
+        private bool CanDeleteThread(GuildBbsThreadState thread)
+        {
+            return thread != null
+                && (IsLocalAuthor(thread.Author) || CanModerateAnyThread());
+        }
+
+        private bool CanDeleteComment(GuildBbsCommentState comment)
+        {
+            return comment != null
+                && (IsLocalAuthor(comment.Author) || CanModerateAnyThread());
+        }
+
+        private bool IsLocalAuthor(string author)
+        {
+            return string.Equals(author, _localPlayerName, StringComparison.OrdinalIgnoreCase);
+        }
+
+        private bool HasExistingNotice(int excludedThreadId = 0)
+        {
+            return _threads.Any(thread => thread.IsNotice && thread.ThreadId != excludedThreadId);
+        }
+
+        private int GetCashEmoticonPageCount()
+        {
+            return Math.Max(1, (int)Math.Ceiling(_ownedCashEmoticonIds.Count / (double)CashEmoticonPageSize));
+        }
+
+        private bool IsCashEmoticonOwned(int slotIndex)
+        {
+            int itemId = CashEmoticonItemIdStart + slotIndex;
+            return _ownedCashEmoticonIds.Contains(itemId);
+        }
+
+        private void NormalizeDraftState()
+        {
+            NormalizeCashSelection(_compose);
+            NormalizeCashSelection(_replyDraft);
+        }
+
+        private void NormalizeCashSelection(GuildBbsComposeState compose)
+        {
+            compose.CashEmoticonPageIndex = Math.Clamp(compose.CashEmoticonPageIndex, 0, GetCashEmoticonPageCount() - 1);
+            if (compose.EmoticonKind == GuildBbsEmoticonKind.Cash && !IsCashEmoticonOwned(compose.EmoticonSlot))
+            {
+                compose.EmoticonKind = GuildBbsEmoticonKind.None;
+                compose.EmoticonSlot = -1;
+                compose.CashEmoticonPageIndex = 0;
+            }
+        }
+
+        private void NormalizeCashSelection(GuildBbsReplyDraftState replyDraft)
+        {
+            replyDraft.CashEmoticonPageIndex = Math.Clamp(replyDraft.CashEmoticonPageIndex, 0, GetCashEmoticonPageCount() - 1);
+            if (replyDraft.EmoticonKind == GuildBbsEmoticonKind.Cash && !IsCashEmoticonOwned(replyDraft.EmoticonSlot))
+            {
+                replyDraft.EmoticonKind = GuildBbsEmoticonKind.None;
+                replyDraft.EmoticonSlot = -1;
+                replyDraft.CashEmoticonPageIndex = 0;
+            }
+        }
+
+        private static GuildBbsPermissionLevel ResolvePermissionLevel(string guildRoleLabel)
+        {
+            if (string.IsNullOrWhiteSpace(guildRoleLabel))
+            {
+                return GuildBbsPermissionLevel.Member;
+            }
+
+            string normalized = guildRoleLabel.Trim().ToLowerInvariant();
+            if (normalized.Contains("master"))
+            {
+                return normalized.Contains("jr")
+                    ? GuildBbsPermissionLevel.JrMaster
+                    : GuildBbsPermissionLevel.Master;
+            }
+
+            if (normalized.Contains("representative"))
+            {
+                return GuildBbsPermissionLevel.JrMaster;
+            }
+
+            if (normalized.Contains("member"))
+            {
+                return GuildBbsPermissionLevel.Member;
+            }
+
+            return GuildBbsPermissionLevel.Member;
         }
 
         private void SeedDefaultThreads()
@@ -712,6 +950,7 @@ namespace HaCreator.MapSimulator.Interaction
     {
         public string GuildName { get; init; } = string.Empty;
         public string LocalPlayerName { get; init; } = string.Empty;
+        public string GuildRoleLabel { get; init; } = string.Empty;
         public bool IsWriteMode { get; init; }
         public int SelectedThreadId { get; init; }
         public int TotalThreadCount { get; init; }
@@ -719,6 +958,7 @@ namespace HaCreator.MapSimulator.Interaction
         public int ThreadPageCount { get; init; }
         public IReadOnlyList<GuildBbsThreadEntrySnapshot> Threads { get; init; } = Array.Empty<GuildBbsThreadEntrySnapshot>();
         public GuildBbsThreadSnapshot SelectedThread { get; init; }
+        public GuildBbsPermissionSnapshot Permission { get; init; } = new();
         public GuildBbsComposeSnapshot Compose { get; init; } = new();
         public GuildBbsReplyDraftSnapshot ReplyDraft { get; init; } = new();
     }
@@ -743,6 +983,8 @@ namespace HaCreator.MapSimulator.Interaction
         public string DateText { get; init; } = string.Empty;
         public bool IsNotice { get; init; }
         public GuildBbsEmoticonSnapshot Emoticon { get; init; }
+        public bool CanEdit { get; init; }
+        public bool CanDelete { get; init; }
         public int TotalCommentCount { get; init; }
         public int CommentPageIndex { get; init; }
         public int CommentPageCount { get; init; }
@@ -756,6 +998,7 @@ namespace HaCreator.MapSimulator.Interaction
         public string Body { get; init; } = string.Empty;
         public string DateText { get; init; } = string.Empty;
         public GuildBbsEmoticonSnapshot Emoticon { get; init; }
+        public bool CanDelete { get; init; }
     }
 
     internal sealed class GuildBbsComposeSnapshot
@@ -766,6 +1009,7 @@ namespace HaCreator.MapSimulator.Interaction
         public string ModeText { get; init; } = string.Empty;
         public int CashEmoticonPageIndex { get; init; }
         public int CashEmoticonPageCount { get; init; }
+        public IReadOnlyList<bool> CashEmoticonOwnership { get; init; } = Array.Empty<bool>();
         public GuildBbsEmoticonSnapshot SelectedEmoticon { get; init; }
     }
 
@@ -774,7 +1018,20 @@ namespace HaCreator.MapSimulator.Interaction
         public string Body { get; init; } = string.Empty;
         public int CashEmoticonPageIndex { get; init; }
         public int CashEmoticonPageCount { get; init; }
+        public IReadOnlyList<bool> CashEmoticonOwnership { get; init; } = Array.Empty<bool>();
         public GuildBbsEmoticonSnapshot SelectedEmoticon { get; init; }
+    }
+
+    internal sealed class GuildBbsPermissionSnapshot
+    {
+        public string PermissionLabel { get; init; } = string.Empty;
+        public bool CanWrite { get; init; }
+        public bool CanWriteNotice { get; init; }
+        public bool CanReply { get; init; }
+        public bool CanEditSelectedThread { get; init; }
+        public bool CanDeleteSelectedThread { get; init; }
+        public bool CanDeleteReply { get; init; }
+        public int OwnedCashEmoticonCount { get; init; }
     }
 
     internal sealed class GuildBbsEmoticonSnapshot

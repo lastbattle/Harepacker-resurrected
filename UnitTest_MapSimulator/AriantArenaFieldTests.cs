@@ -1,5 +1,7 @@
 using HaCreator.MapSimulator.Fields;
 using HaCreator.MapSimulator.Managers;
+using HaCreator.MapSimulator.Character;
+using Microsoft.Xna.Framework;
 using System.IO;
 using System.Text;
 
@@ -57,6 +59,49 @@ namespace UnitTest_MapSimulator
             Assert.Equal(40, field.Entries[0].Score);
             Assert.Equal("Beta", field.Entries[1].Name);
             Assert.Equal(30, field.Entries[1].Score);
+        }
+
+        [Fact]
+        public void RemoteParticipant_AddMoveRemove_UpdatesFieldState()
+        {
+            AriantArenaField field = new AriantArenaField();
+            field.Enable();
+
+            CharacterBuild build = new CharacterBuild
+            {
+                Name = "RemoteOne"
+            };
+
+            field.UpsertRemoteParticipant(build, new Vector2(100, 200), facingRight: false, actionName: "walk1");
+
+            Assert.Equal(1, field.RemoteParticipantCount);
+            Assert.True(field.TryGetRemoteParticipant("RemoteOne", out AriantArenaRemoteParticipantSnapshot snapshot));
+            Assert.Equal(new Vector2(100, 200), snapshot.Position);
+            Assert.False(snapshot.FacingRight);
+            Assert.Equal("walk1", snapshot.ActionName);
+
+            bool moved = field.TryMoveRemoteParticipant("RemoteOne", new Vector2(120, 210), facingRight: true, actionName: "stand1", out string moveError);
+
+            Assert.True(moved, moveError);
+            Assert.True(field.TryGetRemoteParticipant("RemoteOne", out snapshot));
+            Assert.Equal(new Vector2(120, 210), snapshot.Position);
+            Assert.True(snapshot.FacingRight);
+            Assert.Equal("stand1", snapshot.ActionName);
+
+            Assert.True(field.RemoveRemoteParticipant("RemoteOne"));
+            Assert.Equal(0, field.RemoteParticipantCount);
+        }
+
+        [Fact]
+        public void TryMoveRemoteParticipant_MissingActor_ReturnsError()
+        {
+            AriantArenaField field = new AriantArenaField();
+            field.Enable();
+
+            bool moved = field.TryMoveRemoteParticipant("Missing", new Vector2(10, 10), facingRight: null, actionName: null, out string error);
+
+            Assert.False(moved);
+            Assert.Equal("Remote Ariant actor 'Missing' does not exist.", error);
         }
 
         private static byte[] BuildUserScorePayload(params (string Name, int Score)[] updates)

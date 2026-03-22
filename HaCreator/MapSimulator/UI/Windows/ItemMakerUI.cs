@@ -1,3 +1,4 @@
+using HaCreator.MapSimulator.Managers;
 using HaSharedLibrary.Render;
 using HaSharedLibrary.Render.DX;
 using MapleLib.WzLib;
@@ -41,6 +42,7 @@ namespace HaCreator.MapSimulator.UI
         {
             public int BucketKey { get; init; }
             public int CategoryKey { get; init; }
+            public ItemMakerRecipeFamily Family { get; init; }
             public string CategoryLabel { get; init; }
             public string Title { get; init; }
             public string Description { get; init; }
@@ -106,6 +108,8 @@ namespace HaCreator.MapSimulator.UI
         private Point _gaugePosition = new(18, 296);
         private SpriteFont _font;
         private IInventoryRuntime _inventory;
+        private Func<int, Texture2D> _itemIconProvider;
+        private readonly Dictionary<int, Texture2D> _itemIconCache = new();
         private MouseState _previousMouseState;
         private int _selectedRecipeIndex;
         private int _recipeScrollOffset;
@@ -113,6 +117,7 @@ namespace HaCreator.MapSimulator.UI
         private int _characterLevel = 1;
         private int _characterJobId;
         private int _makerSkillLevel;
+        private ItemMakerProgressionSnapshot _progression = ItemMakerProgressionSnapshot.Default;
         private Func<int, bool> _hasRequiredEquip;
         private Func<int, int, bool> _matchesQuestRequirement;
         private string _launchContextLabel;
@@ -132,6 +137,8 @@ namespace HaCreator.MapSimulator.UI
         }
 
         public override string WindowName => MapSimulatorWindowNames.ItemMaker;
+
+        public event Action<ItemMakerCraftResult> CraftCompleted;
 
         private IReadOnlyList<ItemMakerRecipe> CurrentRecipes =>
             _selectedPageIndex >= 0 && _selectedPageIndex < _pages.Count
@@ -153,15 +160,33 @@ namespace HaCreator.MapSimulator.UI
             int characterLevel,
             int makerSkillLevel,
             int characterJobId,
+            ItemMakerProgressionSnapshot progression = null,
             Func<int, bool> hasRequiredEquip = null,
             Func<int, int, bool> matchesQuestRequirement = null)
         {
             _characterLevel = Math.Max(1, characterLevel);
             _makerSkillLevel = Math.Max(0, makerSkillLevel);
             _characterJobId = Math.Max(0, characterJobId);
+            _progression = progression ?? ItemMakerProgressionSnapshot.Default;
             _hasRequiredEquip = hasRequiredEquip;
             _matchesQuestRequirement = matchesQuestRequirement;
             RebuildVisiblePages();
+        }
+
+        public void SetItemIconProvider(Func<int, Texture2D> itemIconProvider)
+        {
+            _itemIconProvider = itemIconProvider;
+            _itemIconCache.Clear();
+        }
+
+        public void UpdateProgression(ItemMakerProgressionSnapshot progression, string overrideStatusMessage = null)
+        {
+            _progression = progression ?? ItemMakerProgressionSnapshot.Default;
+            RebuildVisiblePages();
+            if (!string.IsNullOrWhiteSpace(overrideStatusMessage))
+            {
+                RefreshStatusMessage(overrideStatusMessage);
+            }
         }
 
         public void ApplyLaunchContext(string npcFunctionText)
@@ -378,7 +403,7 @@ namespace HaCreator.MapSimulator.UI
 
                 string requirementPrefix = recipe.RequiredLevel > 0
                     ? $"Lv {recipe.RequiredLevel}"
-                    : "Maker";
+                    : $"{_progression.GetFamilyLabel(recipe.Family)} L{GetEffectiveSkillLevel(recipe)}";
                 sprite.DrawString(_font, TruncateToWidth(recipe.Title, rowRect.Width - 16), new Vector2(rowRect.X + 8, rowRect.Y + 5), Color.White);
                 sprite.DrawString(_font, $"{requirementPrefix}  Output x{recipe.OutputQuantity}", new Vector2(rowRect.X + 8, rowRect.Y + 18), new Color(199, 211, 229));
             }
@@ -393,11 +418,17 @@ namespace HaCreator.MapSimulator.UI
             }
 
             ItemMakerRecipe selectedRecipe = recipes[Math.Clamp(_selectedRecipeIndex, 0, recipes.Count - 1)];
+            Texture2D resultIcon = ResolveItemIcon(selectedRecipe.OutputItemId, selectedRecipe.OutputInventoryType);
             Vector2 detailOrigin = new(Position.X + 18, Position.Y + 185);
-            sprite.DrawString(_font, selectedRecipe.Title, detailOrigin, Color.White);
-            sprite.DrawString(_font, selectedRecipe.Description, detailOrigin + new Vector2(0, 18), new Color(207, 214, 226));
+            DrawItemIcon(sprite, resultIcon, (int)detailOrigin.X, (int)detailOrigin.Y - 2, 34);
+            sprite.DrawString(_font, selectedRecipe.Title, detailOrigin + new Vector2(40, 0), Color.White);
+            sprite.DrawString(_font, selectedRecipe.Description, detailOrigin + new Vector2(40, 18), new Color(207, 214, 226));
 
             float y = detailOrigin.Y + 48;
+            string masteryText = BuildMasteryDisplayText(selectedRecipe);
+            sprite.DrawString(_font, masteryText, new Vector2(detailOrigin.X, y), new Color(153, 210, 255));
+            y += 18;
+
             if (selectedRecipe.RequiredLevel > 0 || selectedRecipe.RequiredSkillLevel > 0)
             {
                 string reqText = $"Req Lv {selectedRecipe.RequiredLevel}";
@@ -416,10 +447,11 @@ namespace HaCreator.MapSimulator.UI
             {
                 int owned = _inventory?.GetItemCount(material.InventoryType, material.ItemId) ?? 0;
                 Color color = owned >= material.Quantity ? new Color(194, 233, 193) : new Color(240, 155, 155);
+                DrawItemIcon(sprite, ResolveItemIcon(material.ItemId, material.InventoryType), (int)detailOrigin.X, (int)y - 2, 16);
                 sprite.DrawString(
                     _font,
                     $"{GetItemName(material.ItemId)} {Math.Min(owned, material.Quantity)}/{material.Quantity}",
-                    new Vector2(detailOrigin.X, y),
+                    new Vector2(detailOrigin.X + 20, y),
                     color);
                 y += 17;
             }
@@ -428,10 +460,11 @@ namespace HaCreator.MapSimulator.UI
             {
                 int owned = _inventory?.GetItemCount(ResolveInventoryType(selectedRecipe.CatalystItemId), selectedRecipe.CatalystItemId) ?? 0;
                 Color color = owned > 0 ? new Color(194, 233, 193) : new Color(240, 155, 155);
+                DrawItemIcon(sprite, ResolveItemIcon(selectedRecipe.CatalystItemId, ResolveInventoryType(selectedRecipe.CatalystItemId)), (int)detailOrigin.X, (int)y - 2, 16);
                 sprite.DrawString(
                     _font,
                     $"Catalyst: {GetItemName(selectedRecipe.CatalystItemId)} {Math.Min(owned, 1)}/1",
-                    new Vector2(detailOrigin.X, y),
+                    new Vector2(detailOrigin.X + 20, y),
                     color);
                 y += 17;
             }
@@ -440,10 +473,11 @@ namespace HaCreator.MapSimulator.UI
             {
                 int owned = _inventory?.GetItemCount(ResolveInventoryType(selectedRecipe.RequiredItemId), selectedRecipe.RequiredItemId) ?? 0;
                 Color color = owned > 0 ? new Color(194, 233, 193) : new Color(240, 155, 155);
+                DrawItemIcon(sprite, ResolveItemIcon(selectedRecipe.RequiredItemId, ResolveInventoryType(selectedRecipe.RequiredItemId)), (int)detailOrigin.X, (int)y - 2, 16);
                 sprite.DrawString(
                     _font,
                     $"Req Item: {GetItemName(selectedRecipe.RequiredItemId)} {Math.Min(owned, 1)}/1",
-                    new Vector2(detailOrigin.X, y),
+                    new Vector2(detailOrigin.X + 20, y),
                     color);
                 y += 17;
             }
@@ -496,10 +530,11 @@ namespace HaCreator.MapSimulator.UI
                 for (int i = 0; i < previewCount; i++)
                 {
                     ItemMakerReward reward = selectedRecipe.RandomRewards[i];
+                    DrawItemIcon(sprite, ResolveItemIcon(reward.ItemId, ResolveInventoryType(reward.ItemId)), (int)detailOrigin.X, (int)y - 2, 16);
                     sprite.DrawString(
                         _font,
                         $"- {GetItemName(reward.ItemId)} x{reward.Quantity}",
-                        new Vector2(detailOrigin.X, y),
+                        new Vector2(detailOrigin.X + 20, y),
                         new Color(205, 214, 232));
                     y += 17;
                 }
@@ -544,6 +579,57 @@ namespace HaCreator.MapSimulator.UI
             {
                 sprite.Draw(_pixel, fillRect, new Color(114, 201, 117));
             }
+        }
+
+        private void DrawItemIcon(SpriteBatch sprite, Texture2D icon, int x, int y, int size)
+        {
+            if (icon == null)
+            {
+                return;
+            }
+
+            sprite.Draw(icon, new Rectangle(x, y, size, size), Color.White);
+        }
+
+        private Texture2D ResolveItemIcon(int itemId, InventoryType inventoryType)
+        {
+            if (itemId <= 0)
+            {
+                return null;
+            }
+
+            Texture2D inventoryTexture = _inventory?.GetItemTexture(inventoryType, itemId);
+            if (inventoryTexture != null)
+            {
+                return inventoryTexture;
+            }
+
+            if (_itemIconCache.TryGetValue(itemId, out Texture2D cachedTexture))
+            {
+                return cachedTexture;
+            }
+
+            Texture2D texture = _itemIconProvider?.Invoke(itemId);
+            _itemIconCache[itemId] = texture;
+            return texture;
+        }
+
+        private int GetEffectiveSkillLevel(ItemMakerRecipe recipe)
+        {
+            return Math.Clamp(_progression?.GetLevel(recipe.Family) ?? 1, 1, ItemMakerProgressionStore.MaxMakerSkillLevel);
+        }
+
+        private string BuildMasteryDisplayText(ItemMakerRecipe recipe)
+        {
+            int familyLevel = GetEffectiveSkillLevel(recipe);
+            int progressTarget = _progression?.GetProgressTarget(recipe.Family) ?? 0;
+            if (progressTarget <= 0 || familyLevel >= ItemMakerProgressionStore.MaxMakerSkillLevel)
+            {
+                return $"{_progression.GetFamilyLabel(recipe.Family)} mastery Lv {familyLevel}/{ItemMakerProgressionStore.MaxMakerSkillLevel}  Craft trait {_makerSkillLevel}";
+            }
+
+            int progress = _progression?.GetProgress(recipe.Family) ?? 0;
+            return $"{_progression.GetFamilyLabel(recipe.Family)} mastery Lv {familyLevel}/{ItemMakerProgressionStore.MaxMakerSkillLevel}  {progress}/{progressTarget} toward Lv {familyLevel + 1}";
         }
 
         private void BeginCraft()
@@ -633,11 +719,17 @@ namespace HaCreator.MapSimulator.UI
 
             ItemMakerReward reward = ResolveCraftReward(recipe);
             InventoryType rewardInventoryType = ResolveInventoryType(reward.ItemId);
-            Texture2D outputTexture = _inventory.GetItemTexture(rewardInventoryType, reward.ItemId);
+            Texture2D outputTexture = _inventory.GetItemTexture(rewardInventoryType, reward.ItemId) ?? ResolveItemIcon(reward.ItemId, rewardInventoryType);
             _inventory.AddItem(rewardInventoryType, reward.ItemId, outputTexture, reward.Quantity);
             _craftingRecipeIndex = -1;
             RebuildVisiblePages();
             RefreshStatusMessage($"Created {GetItemName(reward.ItemId)} x{reward.Quantity}.");
+            CraftCompleted?.Invoke(new ItemMakerCraftResult
+            {
+                Family = recipe.Family,
+                OutputItemId = reward.ItemId,
+                OutputQuantity = reward.Quantity
+            });
         }
 
         private bool CanCraftRecipe(ItemMakerRecipe recipe, out string failureReason)
@@ -654,9 +746,9 @@ namespace HaCreator.MapSimulator.UI
                 return false;
             }
 
-            if (recipe.RequiredSkillLevel > 0 && _makerSkillLevel < recipe.RequiredSkillLevel)
+            if (recipe.RequiredSkillLevel > 0 && GetEffectiveSkillLevel(recipe) < recipe.RequiredSkillLevel)
             {
-                failureReason = $"Requires maker mastery {recipe.RequiredSkillLevel}.";
+                failureReason = $"Requires {_progression.GetFamilyLabel(recipe.Family)} mastery {recipe.RequiredSkillLevel}.";
                 return false;
             }
 
@@ -1224,6 +1316,7 @@ namespace HaCreator.MapSimulator.UI
             {
                 BucketKey = bucketKey,
                 CategoryKey = categoryKey,
+                Family = ResolveRecipeFamily(outputItemId, categoryKey, ResolveInventoryType(outputItemId), GetItemName(outputItemId)),
                 CategoryLabel = ResolveCategoryLabel(categoryKey, outputItemId),
                 Title = GetItemName(outputItemId),
                 Description = CreateRecipeDescription(outputItemId, usesRandomReward),
@@ -1258,6 +1351,28 @@ namespace HaCreator.MapSimulator.UI
             }
 
             return fourDigitCategory;
+        }
+
+        private static ItemMakerRecipeFamily ResolveRecipeFamily(int outputItemId, int categoryKey, InventoryType outputInventoryType, string title)
+        {
+            int fourDigitCategory = outputItemId / 10000;
+            if (fourDigitCategory == 108)
+            {
+                return ItemMakerRecipeFamily.Gloves;
+            }
+
+            if (fourDigitCategory == 107)
+            {
+                return ItemMakerRecipeFamily.Shoes;
+            }
+
+            if (outputInventoryType == InventoryType.SETUP ||
+                (!string.IsNullOrWhiteSpace(title) && title.IndexOf("toy", StringComparison.OrdinalIgnoreCase) >= 0))
+            {
+                return ItemMakerRecipeFamily.Toys;
+            }
+
+            return ItemMakerRecipeFamily.Generic;
         }
 
         private static int GetCategorySortOrder(int categoryKey)
@@ -1460,7 +1575,7 @@ namespace HaCreator.MapSimulator.UI
 
         private bool ShouldExposeRecipeInSelector(ItemMakerRecipe recipe)
         {
-            if (recipe.RequiredSkillLevel > 0 && _makerSkillLevel < recipe.RequiredSkillLevel)
+            if (recipe.RequiredSkillLevel > 0 && GetEffectiveSkillLevel(recipe) < recipe.RequiredSkillLevel)
             {
                 return false;
             }

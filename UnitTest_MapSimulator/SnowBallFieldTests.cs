@@ -36,12 +36,32 @@ public sealed class SnowBallFieldTests
         Assert.Equal(200, field.SnowBalls[0].PositionX);
         Assert.Equal(800, field.SnowBalls[1].PositionX);
 
-        field.Update(30);
+        field.Update(150);
         Assert.Equal(200, field.SnowBalls[0].PositionX);
         Assert.Equal(800, field.SnowBalls[1].PositionX);
 
-        field.Update(60);
+        field.Update(180);
         Assert.True(field.SnowBalls[0].PositionX > 200);
+        Assert.Equal(800, field.SnowBalls[1].PositionX);
+
+        field.Update(360);
+        Assert.True(field.SnowBalls[1].PositionX < 800);
+    }
+
+    [Fact]
+    public void OnSnowBallState_UsesClientCadenceTableForHigherSpeedDegrees()
+    {
+        var field = CreateField();
+        field.OnSnowBallState(1, 7500, 7500, 200, 9, 800, 8);
+
+        field.OnSnowBallState(1, 7500, 7500, 210, 9, 790, 8);
+
+        field.Update(330);
+        Assert.Equal(200, field.SnowBalls[0].PositionX);
+        Assert.Equal(800, field.SnowBalls[1].PositionX);
+
+        field.Update(360);
+        Assert.True(field.SnowBalls[0].PositionX < 200);
         Assert.True(field.SnowBalls[1].PositionX < 800);
     }
 

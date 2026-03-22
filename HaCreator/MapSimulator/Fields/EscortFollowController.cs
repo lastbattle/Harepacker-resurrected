@@ -26,10 +26,16 @@ namespace HaCreator.MapSimulator.Fields
 
         private readonly HashSet<MobMovementInfo> _attachedFollowers = new();
 
-        public bool UpdateEscortFollow(PlayerCharacter player, MobMovementInfo movement)
+        public bool UpdateEscortFollow(PlayerCharacter player, MobMovementInfo movement, bool followAllowed = true)
         {
             if (movement == null)
             {
+                return false;
+            }
+
+            if (!followAllowed)
+            {
+                _attachedFollowers.Remove(movement);
                 return false;
             }
 

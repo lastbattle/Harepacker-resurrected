@@ -15,6 +15,19 @@ namespace HaCreator.MapSimulator.UI
     /// </summary>
     public class MinimapUI : BaseDXDrawableItem, IUIObjectEvents
     {
+        public enum HelperMarkerType
+        {
+            Another,
+            Friend,
+            Guild,
+            GuildMaster,
+            Match,
+            Party,
+            PartyMaster,
+            UserTrader,
+            AnotherTrader
+        }
+
         public enum NpcMarkerType
         {
             Default,
@@ -43,6 +56,7 @@ namespace HaCreator.MapSimulator.UI
         private readonly BaseDXDrawableItem _portalMarker;
         private readonly BaseDXDrawableItem _npcListPanel;
         private readonly IReadOnlyDictionary<DirectionArrow, BaseDXDrawableItem> _directionMarkers;
+        private readonly IReadOnlyDictionary<HelperMarkerType, BaseDXDrawableItem> _helperMarkers;
         private readonly List<UIObject> uiButtons = new List<UIObject>();
 
         private UIObject _btnMin;
@@ -56,6 +70,7 @@ namespace HaCreator.MapSimulator.UI
         private readonly int _minimapImageHeight;
         private IReadOnlyList<NpcItem> _npcMarkers = Array.Empty<NpcItem>();
         private IReadOnlyList<PortalItem> _portalMarkers = Array.Empty<PortalItem>();
+        private IReadOnlyList<TrackedUserMarker> _trackedUserMarkers = Array.Empty<TrackedUserMarker>();
         private bool _showNpcMarkers;
 
         private int _lastMinimapToggleTime = 0;
@@ -70,6 +85,14 @@ namespace HaCreator.MapSimulator.UI
         public Action FullMapRequested { get; set; }
         public Action MapTransferRequested { get; set; }
         public Func<NpcItem, NpcMarkerType> ResolveNpcMarkerType { get; set; }
+
+        public sealed class TrackedUserMarker
+        {
+            public float WorldX { get; init; }
+            public float WorldY { get; init; }
+            public HelperMarkerType MarkerType { get; init; }
+            public bool ShowDirectionOverlay { get; init; } = true;
+        }
 
         /// <summary>
         /// Sets the player's position on the minimap.
@@ -107,7 +130,8 @@ namespace HaCreator.MapSimulator.UI
             BaseDXDrawableItem questEndNpcMarker = null,
             BaseDXDrawableItem npcListPanel = null,
             BaseDXDrawableItem portalMarker = null,
-            IReadOnlyDictionary<DirectionArrow, BaseDXDrawableItem> directionMarkers = null)
+            IReadOnlyDictionary<DirectionArrow, BaseDXDrawableItem> directionMarkers = null,
+            IReadOnlyDictionary<HelperMarkerType, BaseDXDrawableItem> helperMarkers = null)
             : base(frame, false)
         {
             this._pixelDot = _pixelDot;
@@ -121,6 +145,7 @@ namespace HaCreator.MapSimulator.UI
             _npcListPanel = npcListPanel;
             _portalMarker = portalMarker;
             _directionMarkers = directionMarkers ?? new Dictionary<DirectionArrow, BaseDXDrawableItem>();
+            _helperMarkers = helperMarkers ?? new Dictionary<HelperMarkerType, BaseDXDrawableItem>();
         }
 
         /// <summary>
@@ -177,6 +202,11 @@ namespace HaCreator.MapSimulator.UI
             _portalMarkers = portalMarkers ?? Array.Empty<PortalItem>();
         }
 
+        public void SetTrackedUserMarkers(IReadOnlyList<TrackedUserMarker> trackedUserMarkers)
+        {
+            _trackedUserMarkers = trackedUserMarkers ?? Array.Empty<TrackedUserMarker>();
+        }
+
         public override void Draw(SpriteBatch sprite, SkeletonMeshRenderer skeletonMeshRenderer, GameTime gameTime,
             int mapShiftX, int mapShiftY, int centerX, int centerY,
             ReflectionDrawableBoundary drawReflectionInfo,
@@ -225,6 +255,7 @@ namespace HaCreator.MapSimulator.UI
                     TickCount);
 
                 DrawPortalMarkers(sprite, skeletonMeshRenderer, gameTime, drawReflectionInfo, renderParameters, TickCount);
+                DrawTrackedUserMarkers(sprite, skeletonMeshRenderer, gameTime, drawReflectionInfo, renderParameters, TickCount);
                 DrawNpcMarkers(sprite, skeletonMeshRenderer, gameTime, drawReflectionInfo, renderParameters, TickCount);
                 DrawNpcListPanel(sprite, skeletonMeshRenderer, gameTime, centerX, centerY, renderParameters, TickCount);
                 DrawDirectionOverlays(sprite, skeletonMeshRenderer, gameTime, drawReflectionInfo, renderParameters, TickCount);
@@ -576,6 +607,21 @@ namespace HaCreator.MapSimulator.UI
                     renderParameters,
                     tickCount);
             }
+
+            foreach (TrackedUserMarker trackedUser in _trackedUserMarkers)
+            {
+                if (trackedUser == null || !trackedUser.ShowDirectionOverlay)
+                    continue;
+
+                DrawDirectionOverlayForPoint(
+                    WorldToMinimap((int)trackedUser.WorldX, (int)trackedUser.WorldY),
+                    sprite,
+                    skeletonMeshRenderer,
+                    gameTime,
+                    drawReflectionInfo,
+                    renderParameters,
+                    tickCount);
+            }
         }
 
         private void DrawDirectionOverlayForPoint(
@@ -618,6 +664,37 @@ namespace HaCreator.MapSimulator.UI
                 NpcMarkerType.QuestEnd when _questEndNpcMarker != null => _questEndNpcMarker,
                 _ => _npcMarker ?? _questStartNpcMarker ?? _questEndNpcMarker
             };
+        }
+
+        private void DrawTrackedUserMarkers(
+            SpriteBatch sprite,
+            SkeletonMeshRenderer skeletonMeshRenderer,
+            GameTime gameTime,
+            ReflectionDrawableBoundary drawReflectionInfo,
+            RenderParameters renderParameters,
+            int tickCount)
+        {
+            if (_bIsCollapsedState || _helperMarkers.Count == 0 || _trackedUserMarkers.Count == 0)
+                return;
+
+            foreach (TrackedUserMarker trackedUser in _trackedUserMarkers)
+            {
+                if (trackedUser == null)
+                    continue;
+
+                Point minimapPoint = WorldToMinimap((int)trackedUser.WorldX, (int)trackedUser.WorldY);
+                if (!IsWithinMinimapImage(minimapPoint))
+                    continue;
+
+                if (!_helperMarkers.TryGetValue(trackedUser.MarkerType, out BaseDXDrawableItem marker) || marker == null)
+                    continue;
+
+                marker.Draw(sprite, skeletonMeshRenderer, gameTime,
+                    -Position.X, -Position.Y, minimapPoint.X, minimapPoint.Y,
+                    drawReflectionInfo,
+                    renderParameters,
+                    tickCount);
+            }
         }
 
         private void DrawNpcListPanel(

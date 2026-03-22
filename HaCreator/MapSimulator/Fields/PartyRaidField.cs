@@ -430,6 +430,17 @@ namespace HaCreator.MapSimulator.Fields
 
         public bool OnSessionValue(string key, string value)
         {
+            if (MatchesAlias(key, "outcome", "result"))
+            {
+                if (TryParseOutcome(value, out PartyRaidResultOutcome outcome))
+                {
+                    SetResultOutcome(outcome);
+                    return true;
+                }
+
+                return false;
+            }
+
             if (!TryParseNonNegative(value, out int parsedValue))
             {
                 return false;

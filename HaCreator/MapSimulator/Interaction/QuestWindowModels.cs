@@ -11,7 +11,8 @@ namespace HaCreator.MapSimulator.Interaction
         Complete,
         GiveUp,
         Track,
-        LocateNpc
+        LocateNpc,
+        LocateMob
     }
 
     internal enum QuestDetailNpcButtonStyle
@@ -20,6 +21,14 @@ namespace HaCreator.MapSimulator.Interaction
         GenericNpc,
         GotoNpc,
         MarkNpc
+    }
+
+    internal enum QuestWorldMapTargetKind
+    {
+        None,
+        Npc,
+        Mob,
+        Item
     }
 
     internal sealed class QuestWindowListEntry
@@ -55,8 +64,13 @@ namespace HaCreator.MapSimulator.Interaction
         public QuestWindowActionKind TertiaryAction { get; init; }
         public bool TertiaryActionEnabled { get; init; }
         public string TertiaryActionLabel { get; init; } = string.Empty;
+        public QuestWindowActionKind QuaternaryAction { get; init; }
+        public bool QuaternaryActionEnabled { get; init; }
+        public string QuaternaryActionLabel { get; init; } = string.Empty;
         public int? TargetNpcId { get; init; }
         public string TargetNpcName { get; init; } = string.Empty;
+        public int? TargetMobId { get; init; }
+        public string TargetMobName { get; init; } = string.Empty;
         public QuestDetailNpcButtonStyle NpcButtonStyle { get; set; }
     }
 
@@ -65,6 +79,17 @@ namespace HaCreator.MapSimulator.Interaction
         public bool StateChanged { get; init; }
         public int? QuestId { get; init; }
         public IReadOnlyList<string> Messages { get; init; } = Array.Empty<string>();
+    }
+
+    internal sealed class QuestWorldMapTarget
+    {
+        public QuestWorldMapTargetKind Kind { get; init; }
+        public int QuestId { get; init; }
+        public int MapId { get; init; }
+        public int? EntityId { get; init; }
+        public string Label { get; init; } = string.Empty;
+        public string Description { get; init; } = string.Empty;
+        public string FallbackNpcName { get; init; } = string.Empty;
     }
 
     internal sealed class QuestAlarmEntrySnapshot

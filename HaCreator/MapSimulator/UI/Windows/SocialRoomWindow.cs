@@ -1,4 +1,5 @@
 using HaCreator.MapSimulator.Interaction;
+using HaCreator.MapSimulator.Character;
 using HaSharedLibrary.Render;
 using HaSharedLibrary.Render.DX;
 using Microsoft.Xna.Framework;
@@ -6,6 +7,7 @@ using Microsoft.Xna.Framework.Graphics;
 using Spine;
 using System;
 using System.Collections.Generic;
+using System.Linq;
 
 namespace HaCreator.MapSimulator.UI
 {
@@ -27,6 +29,8 @@ namespace HaCreator.MapSimulator.UI
         private readonly Texture2D _panelTexture;
         private readonly SocialRoomRuntime _runtime;
         private readonly List<LayerInfo> _layers = new List<LayerInfo>();
+        private readonly Dictionary<int, CharacterAssembler> _miniRoomAvatarAssemblers = new Dictionary<int, CharacterAssembler>();
+        private readonly Dictionary<int, string> _miniRoomAvatarKeys = new Dictionary<int, string>();
         private SpriteFont _font;
 
         private static readonly Color HeaderColor = new Color(79, 54, 18);
@@ -100,6 +104,8 @@ namespace HaCreator.MapSimulator.UI
                     drawReflectionInfo);
             }
 
+            _runtime.RefreshTimedState(DateTime.UtcNow);
+
             if (_font == null)
             {
                 return;
@@ -107,14 +113,14 @@ namespace HaCreator.MapSimulator.UI
 
             if (_runtime.Kind == SocialRoomKind.MiniRoom)
             {
-                DrawMiniRoomContents(sprite);
+                DrawMiniRoomContents(sprite, skeletonMeshRenderer, TickCount);
                 return;
             }
 
             DrawDefaultContents(sprite);
         }
 
-        private void DrawMiniRoomContents(SpriteBatch sprite)
+        private void DrawMiniRoomContents(SpriteBatch sprite, SkeletonMeshRenderer skeletonMeshRenderer, int tickCount)
         {
             Rectangle occupantPanel = new Rectangle(Position.X + 18, Position.Y + 80, 246, 136);
             Rectangle statePanel = new Rectangle(Position.X + 278, Position.Y + 80, 188, 136);
@@ -150,13 +156,15 @@ namespace HaCreator.MapSimulator.UI
             DrawKeyValue(sprite, statePanel.X + 12, statePanel.Y + 82, "State", _runtime.RoomState);
             DrawKeyValue(sprite, statePanel.X + 12, statePanel.Y + 104, "Mesos", $"{_runtime.MesoAmount:N0}");
 
-            DrawText(sprite, "Notes", new Vector2(notePanel.X + 12, notePanel.Y + 10), HeaderColor, 0.68f);
-            float noteY = notePanel.Y + 32;
+            DrawText(sprite, "Avatars", new Vector2(notePanel.X + 12, notePanel.Y + 10), HeaderColor, 0.68f);
+            DrawMiniRoomAvatarStrip(sprite, skeletonMeshRenderer, tickCount, notePanel);
+
+            float noteY = notePanel.Y + 100;
             foreach (string note in _runtime.Notes)
             {
                 DrawWrapped(sprite, note, notePanel.X + 12, ref noteY, notePanel.Width - 24, MutedColor, 0.5f);
-                noteY += 4f;
-                if (noteY > notePanel.Bottom - 20)
+                noteY += 2f;
+                if (noteY > notePanel.Bottom - 16)
                 {
                     break;
                 }
@@ -288,6 +296,70 @@ namespace HaCreator.MapSimulator.UI
                 0.55f);
         }
 
+        private void DrawMiniRoomAvatarStrip(SpriteBatch sprite, SkeletonMeshRenderer skeletonMeshRenderer, int tickCount, Rectangle panel)
+        {
+            RefreshMiniRoomAvatarAssemblers();
+            if (_runtime.Occupants.Count == 0)
+            {
+                DrawText(sprite, "No avatar payload yet", new Vector2(panel.X + 12, panel.Y + 44), MutedColor, 0.5f);
+                return;
+            }
+
+            int visibleCount = Math.Min(2, _runtime.Occupants.Count);
+            for (int i = 0; i < visibleCount; i++)
+            {
+                SocialRoomOccupant occupant = _runtime.Occupants[i];
+                int slotWidth = 104;
+                int slotX = panel.X + 14 + (i * 108);
+                int slotCenterX = slotX + (slotWidth / 2);
+                int avatarBaseY = panel.Y + 82;
+                AssembledFrame frame = ResolveMiniRoomAvatarFrame(i, tickCount);
+                frame?.Draw(sprite, skeletonMeshRenderer, slotCenterX, avatarBaseY, false, Color.White);
+
+                string displayName = Truncate(occupant.Name, 11);
+                DrawText(sprite, displayName, new Vector2(slotX, panel.Y + 34), occupant.IsReady ? SuccessColor : ValueColor, 0.5f);
+                DrawText(sprite, FormatRole(occupant.Role), new Vector2(slotX, panel.Y + 50), MutedColor, 0.44f);
+            }
+        }
+
+        private void RefreshMiniRoomAvatarAssemblers()
+        {
+            for (int i = 0; i < _runtime.Occupants.Count; i++)
+            {
+                CharacterBuild build = _runtime.Occupants[i].AvatarBuild;
+                string buildKey = CreateBuildKey(build);
+                if (string.IsNullOrEmpty(buildKey))
+                {
+                    _miniRoomAvatarAssemblers.Remove(i);
+                    _miniRoomAvatarKeys.Remove(i);
+                    continue;
+                }
+
+                if (_miniRoomAvatarKeys.TryGetValue(i, out string existingKey) &&
+                    string.Equals(existingKey, buildKey, StringComparison.Ordinal))
+                {
+                    continue;
+                }
+
+                _miniRoomAvatarKeys[i] = buildKey;
+                _miniRoomAvatarAssemblers[i] = new CharacterAssembler(build);
+            }
+
+            int maxIndex = _runtime.Occupants.Count;
+            foreach (int staleIndex in _miniRoomAvatarAssemblers.Keys.Where(index => index >= maxIndex).ToArray())
+            {
+                _miniRoomAvatarAssemblers.Remove(staleIndex);
+                _miniRoomAvatarKeys.Remove(staleIndex);
+            }
+        }
+
+        private AssembledFrame ResolveMiniRoomAvatarFrame(int occupantIndex, int tickCount)
+        {
+            return _miniRoomAvatarAssemblers.TryGetValue(occupantIndex, out CharacterAssembler assembler)
+                ? assembler?.GetFrameAtTime("stand1", tickCount)
+                : null;
+        }
+
         private void DrawPanel(SpriteBatch sprite, Rectangle rect)
         {
             if (_panelTexture != null)
@@ -348,6 +420,37 @@ namespace HaCreator.MapSimulator.UI
             }
 
             sprite.DrawString(_font, text, position, color, 0f, Vector2.Zero, scale, SpriteEffects.None, 0f);
+        }
+
+        private static string CreateBuildKey(CharacterBuild build)
+        {
+            if (build == null)
+            {
+                return string.Empty;
+            }
+
+            IEnumerable<string> equipmentKeys = build.Equipment
+                .OrderBy(kv => (int)kv.Key)
+                .Select(kv => $"{(int)kv.Key}:{kv.Value?.ItemId ?? 0}");
+            return string.Join(
+                "|",
+                build.Gender,
+                build.Skin,
+                build.Body?.ItemId ?? 0,
+                build.Head?.ItemId ?? 0,
+                build.Face?.ItemId ?? 0,
+                build.Hair?.ItemId ?? 0,
+                string.Join(",", equipmentKeys));
+        }
+
+        private static string Truncate(string text, int maxLength)
+        {
+            if (string.IsNullOrWhiteSpace(text) || maxLength <= 0 || text.Length <= maxLength)
+            {
+                return text ?? string.Empty;
+            }
+
+            return text[..Math.Max(1, maxLength - 3)] + "...";
         }
 
         private static string FormatRole(SocialRoomOccupantRole role)

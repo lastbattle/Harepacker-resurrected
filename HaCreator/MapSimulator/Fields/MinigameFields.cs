@@ -4,6 +4,7 @@ using HaSharedLibrary.Wz;
 using HaCreator.MapEditor;
 using HaCreator.MapEditor.Info;
 using HaCreator.MapEditor.Instance;
+using HaCreator.MapSimulator.Character;
 using HaCreator.MapSimulator.Interaction;
 using HaCreator.MapSimulator.Managers;
 using MapleLib.Converters;
@@ -197,7 +198,8 @@ namespace HaCreator.MapSimulator.Fields
         // Static configuration from WZ (set during Init)
         private static int ms_nDeltaX = 20;  // Movement per hit
         private static Rectangle ms_rgBall;  // Valid ball range
-        private static readonly int[] ms_anDelay = { 0, 90, 75, 60, 45, 30 };
+        // Client data symbol CSnowBall::ms_anDelay at MapleStory.exe RVA 0x8568E4.
+        private static readonly int[] ms_anDelay = { 150, 200, 250, 300, 350, 400, 450, 500, 0, -500 };
         private const string TeamStory = "Story";
         private const string TeamMaple = "Maple";
 
@@ -1150,7 +1152,6 @@ namespace HaCreator.MapSimulator.Fields
         public const int PacketTypeScore = 343;
 
         private const int LocalNormalAttackDelayMs = 120;
-        private const int FinalScoreGraceMs = 750;
         private const int ResultBannerTopY = 145;
         private const int BoardWidth = 258;
         private const int BoardHeight = 101;
@@ -1267,6 +1268,8 @@ namespace HaCreator.MapSimulator.Fields
             public int StartTime;   // When to apply
         }
 
+        public readonly record struct AttackPacketRequest(int TargetId, int DelayMs, int RequestedAtTick);
+
         #endregion
 
         #region Fields
@@ -1301,8 +1304,9 @@ namespace HaCreator.MapSimulator.Fields
         private RoundResult _lastRoundResult;
         private bool _runtimeActive;
         private bool _awaitingFinalScore;
-        private int _finalScoreDeadlineTick;
+        private readonly Queue<AttackPacketRequest> _pendingAttackPacketRequests = new();
         private int? _lastPacketType;
+        private int? _lastScorePacketTick;
 
         // Avatar appearances (from WZ)
         private int[,] _avatarEquip; // [team][gender] = equipment set
@@ -1321,9 +1325,11 @@ namespace HaCreator.MapSimulator.Fields
         public bool IsActive => _runtimeActive;
         public bool IsRoundActive => _gameActive;
         public bool AwaitingFinalScore => _awaitingFinalScore;
+        public int PendingAttackPacketRequestCount => _pendingAttackPacketRequests.Count;
         public IReadOnlyList<Coconut> Coconuts => _coconuts;
         public RoundResult LastRoundResult => _lastRoundResult;
         public int? LastPacketType => _lastPacketType;
+        public int? LastScorePacketTick => _lastScorePacketTick;
 
         #endregion
 
@@ -1418,8 +1424,8 @@ namespace HaCreator.MapSimulator.Fields
             _lastUpdateTime = Environment.TickCount;
             _localTeam = 0;
             _awaitingFinalScore = false;
-            _finalScoreDeadlineTick = 0;
             _lastPacketType = null;
+            _lastScorePacketTick = null;
             ClearRoundResult();
 
             System.Diagnostics.Debug.WriteLine($"[CoconutField] Initialized with {coconutCount} coconuts");
@@ -1442,6 +1448,7 @@ namespace HaCreator.MapSimulator.Fields
         {
             _runtimeActive = true;
             _lastPacketType = PacketTypeHit;
+            AcknowledgeAttackPacketRequest(targetId);
             int startTime = (currentTimeMs ?? Environment.TickCount) + delay;
 
             if (targetId < 0)
@@ -1477,10 +1484,11 @@ namespace HaCreator.MapSimulator.Fields
             _lastPacketType = PacketTypeScore;
             _team0Score = team0;
             _team1Score = team1;
+            _lastScorePacketTick = currentTimeMs ?? Environment.TickCount;
 
             if (_awaitingFinalScore || (!_gameActive && _timeRemaining <= 0))
             {
-                ResolveRoundResult(currentTimeMs ?? Environment.TickCount);
+                ResolveRoundResult(_lastScorePacketTick.Value);
             }
 
             System.Diagnostics.Debug.WriteLine($"[CoconutField] Score: Maple {team0} - Story {team1}");
@@ -1489,9 +1497,9 @@ namespace HaCreator.MapSimulator.Fields
         /// <summary>
         /// OnClock - Time update
         /// </summary>
-        public void OnClock(int timeSeconds)
+        public void OnClock(int timeSeconds, int? currentTimeMs = null)
         {
-            int now = Environment.TickCount;
+            int now = currentTimeMs ?? Environment.TickCount;
             int durationMs = Math.Max(0, timeSeconds) * 1000;
             _runtimeActive = true;
             _finishTick = durationMs > 0 ? now + durationMs : 1;
@@ -1501,13 +1509,14 @@ namespace HaCreator.MapSimulator.Fields
             {
                 _gameActive = true;
                 _awaitingFinalScore = false;
-                _finalScoreDeadlineTick = 0;
                 _lastUpdateTime = now;
+                _lastScorePacketTick = null;
+                _pendingAttackPacketRequests.Clear();
                 ClearRoundResult();
             }
             else if (_gameActive || _awaitingFinalScore)
             {
-                BeginFinalScoreWait(now);
+                BeginFinalScoreWait();
             }
         }
 
@@ -1555,10 +1564,10 @@ namespace HaCreator.MapSimulator.Fields
             string roundState = _gameActive
                 ? "active"
                 : _awaitingFinalScore
-                    ? "awaiting-final-score"
+                    ? "awaiting-score-packet"
                     : "idle";
 
-            return $"Coconut runtime active, coconuts={_coconuts.Count}, round={roundState}, score={_team0Score}-{_team1Score}, time={_timeRemaining}, result={_lastRoundResult}, lastPacket={(_lastPacketType?.ToString() ?? "None")}";
+            return $"Coconut runtime active, coconuts={_coconuts.Count}, round={roundState}, score={_team0Score}-{_team1Score}, time={_timeRemaining}, result={_lastRoundResult}, pendingRequests={_pendingAttackPacketRequests.Count}, lastPacket={(_lastPacketType?.ToString() ?? "None")}, lastScoreTick={(_lastScorePacketTick?.ToString() ?? "None")}";
         }
 
         #endregion
@@ -1573,7 +1582,8 @@ namespace HaCreator.MapSimulator.Fields
             _finishTick = Environment.TickCount + Math.Max(0, durationSeconds) * 1000;
             _lastUpdateTime = Environment.TickCount;
             _awaitingFinalScore = false;
-            _finalScoreDeadlineTick = 0;
+            _lastScorePacketTick = null;
+            _pendingAttackPacketRequests.Clear();
             ClearRoundResult();
             ShowMessage("Coconut harvest begins!", 3000);
         }
@@ -1631,23 +1641,52 @@ namespace HaCreator.MapSimulator.Fields
                 return false;
             }
 
+            QueueAttackPacketRequest(target.Id, LocalNormalAttackDelayMs, currentTick);
             QueueHit(target.Id, ResolveLocalAttackState(target, _localTeam), currentTick + LocalNormalAttackDelayMs);
             return true;
         }
 
-        private void BeginFinalScoreWait(int currentTick)
+        public bool TryConsumeAttackPacketRequest(out AttackPacketRequest request)
+        {
+            if (_pendingAttackPacketRequests.Count > 0)
+            {
+                request = _pendingAttackPacketRequests.Dequeue();
+                return true;
+            }
+
+            request = default;
+            return false;
+        }
+
+        public bool TryPeekAttackPacketRequest(out AttackPacketRequest request)
+        {
+            if (_pendingAttackPacketRequests.Count > 0)
+            {
+                request = _pendingAttackPacketRequests.Peek();
+                return true;
+            }
+
+            request = default;
+            return false;
+        }
+
+        public void ClearPendingAttackPacketRequests()
+        {
+            _pendingAttackPacketRequests.Clear();
+        }
+
+        private void BeginFinalScoreWait()
         {
             _gameActive = false;
             _finishTick = 0;
             _timeRemaining = 0;
             _awaitingFinalScore = true;
-            _finalScoreDeadlineTick = currentTick + FinalScoreGraceMs;
+            ShowMessage("Waiting for final score packet...", 3000);
         }
 
         private void ResolveRoundResult(int currentTick)
         {
             _awaitingFinalScore = false;
-            _finalScoreDeadlineTick = 0;
             ShowRoundResult(currentTick);
             string winner = _team0Score > _team1Score
                 ? "Team Maple wins!"
@@ -1686,7 +1725,7 @@ namespace HaCreator.MapSimulator.Fields
 
                     if (remainingMs <= 0)
                     {
-                        BeginFinalScoreWait(tickCount);
+                        BeginFinalScoreWait();
                     }
                 }
             }
@@ -1694,11 +1733,6 @@ namespace HaCreator.MapSimulator.Fields
             foreach (var coconut in _coconuts)
             {
                 coconut.Update(tickCount, _gravity, _groundY);
-            }
-
-            if (_awaitingFinalScore && tickCount >= _finalScoreDeadlineTick)
-            {
-                ResolveRoundResult(tickCount);
             }
 
             if (_currentMessage != null && tickCount >= _messageEndTime)
@@ -1733,6 +1767,44 @@ namespace HaCreator.MapSimulator.Fields
                 NewState = (int)newState,
                 StartTime = startTime
             });
+        }
+
+        private void QueueAttackPacketRequest(int targetId, int delayMs, int requestedAtTick)
+        {
+            _pendingAttackPacketRequests.Enqueue(new AttackPacketRequest(targetId, delayMs, requestedAtTick));
+        }
+
+        private void AcknowledgeAttackPacketRequest(int targetId)
+        {
+            if (_pendingAttackPacketRequests.Count == 0)
+            {
+                return;
+            }
+
+            if (targetId < 0)
+            {
+                _pendingAttackPacketRequests.Clear();
+                return;
+            }
+
+            Queue<AttackPacketRequest> remaining = new();
+            bool acknowledged = false;
+            while (_pendingAttackPacketRequests.Count > 0)
+            {
+                AttackPacketRequest request = _pendingAttackPacketRequests.Dequeue();
+                if (!acknowledged && request.TargetId == targetId)
+                {
+                    acknowledged = true;
+                    continue;
+                }
+
+                remaining.Enqueue(request);
+            }
+
+            while (remaining.Count > 0)
+            {
+                _pendingAttackPacketRequests.Enqueue(remaining.Dequeue());
+            }
         }
 
         private void ApplyPacketState(Coconut coconut, CoconutState newState)
@@ -2211,8 +2283,8 @@ namespace HaCreator.MapSimulator.Fields
             _runtimeActive = false;
             _gameActive = false;
             _awaitingFinalScore = false;
-            _finalScoreDeadlineTick = 0;
             _hitQueue.Clear();
+            _pendingAttackPacketRequests.Clear();
             _team0Score = 0;
             _team1Score = 0;
             _timeRemaining = 0;
@@ -2220,6 +2292,7 @@ namespace HaCreator.MapSimulator.Fields
             _currentMessage = null;
             _localTeam = 0;
             _lastPacketType = null;
+            _lastScorePacketTick = null;
             ClearRoundResult();
 
             foreach (var coconut in _coconuts)
@@ -2387,6 +2460,22 @@ namespace HaCreator.MapSimulator.Fields
         private const byte MemoryGameGameResultPacketType = 62;
         private const byte MemoryGameTimeOverPacketType = 63;
         private const byte MemoryGameTurnUpCardPacketType = 68;
+        private static readonly IReadOnlyDictionary<int, MiniRoomGameMessageDefinition> MiniRoomGameMessages = new Dictionary<int, MiniRoomGameMessageDefinition>
+        {
+            [0] = new MiniRoomGameMessageDefinition(0x1C8, "{0} requested a tie."),
+            [1] = new MiniRoomGameMessageDefinition(0x1CD, "{0} accepted the tie request."),
+            [2] = new MiniRoomGameMessageDefinition(0x1CA, "{0} declined the tie request."),
+            [3] = new MiniRoomGameMessageDefinition(0x1CB, "{0} is ready."),
+            [4] = new MiniRoomGameMessageDefinition(0x1C5, "{0} left the room."),
+            [5] = new MiniRoomGameMessageDefinition(0x1C6, "{0} entered the room."),
+            [6] = new MiniRoomGameMessageDefinition(0x1C7, "{0} is watching the game."),
+            [7] = new MiniRoomGameMessageDefinition(0x1C4, "{0} was removed from the room."),
+            [8] = new MiniRoomGameMessageDefinition(0x1CF, "{0} won the round."),
+            [9] = new MiniRoomGameMessageDefinition(0x1CE, "{0} lost the round."),
+            [101] = new MiniRoomGameMessageDefinition(0x1D2, "The round ended in a draw."),
+            [102] = new MiniRoomGameMessageDefinition(0x1D0, "The other player left the room."),
+            [103] = new MiniRoomGameMessageDefinition(0x1D1, "The game ended because a player left the room.")
+        };
 
         private readonly List<Card> _cards = new();
         private readonly List<int> _revealedCardIndices = new(2);
@@ -2434,6 +2523,8 @@ namespace HaCreator.MapSimulator.Fields
         private MemoryGamePacketType? _lastPacketType;
         private string _lastPacketSummary = "No Match Cards packet dispatched.";
         private bool _waitingForTimeOverPacket;
+        private Func<LoginAvatarLook, CharacterBuild> _miniRoomAvatarBuildFactory;
+        private CharacterBuild _localMiniRoomAvatarBuild;
 
         public enum RoomStage
         {
@@ -2461,6 +2552,19 @@ namespace HaCreator.MapSimulator.Fields
             public string Name { get; set; }
             public short JobCode { get; set; }
             public LoginAvatarLook AvatarLook { get; set; }
+            public CharacterBuild AvatarBuild { get; set; }
+        }
+
+        private readonly struct MiniRoomGameMessageDefinition
+        {
+            public MiniRoomGameMessageDefinition(int stringPoolId, string fallbackText)
+            {
+                StringPoolId = stringPoolId;
+                FallbackText = fallbackText ?? string.Empty;
+            }
+
+            public int StringPoolId { get; }
+            public string FallbackText { get; }
         }
 
         private readonly struct PendingRemoteAction
@@ -2516,6 +2620,23 @@ namespace HaCreator.MapSimulator.Fields
         {
             _miniRoomRuntime = runtime;
             _miniRoomRuntime?.BindMiniRoomHandlers(HandleMiniRoomReadyRequested, HandleMiniRoomStartRequested, HandleMiniRoomModeRequested);
+            SyncMiniRoomRuntime();
+        }
+
+        public void SetMiniRoomAvatarBuildFactory(Func<LoginAvatarLook, CharacterBuild> avatarBuildFactory)
+        {
+            _miniRoomAvatarBuildFactory = avatarBuildFactory;
+            foreach (MiniRoomParticipantState participant in _miniRoomParticipants.Values)
+            {
+                participant.AvatarBuild = CreateMiniRoomAvatarBuild(participant.AvatarLook);
+            }
+
+            SyncMiniRoomRuntime();
+        }
+
+        public void SetLocalMiniRoomAvatar(CharacterBuild build)
+        {
+            _localMiniRoomAvatarBuild = build?.Clone();
             SyncMiniRoomRuntime();
         }
 
@@ -3212,7 +3333,7 @@ namespace HaCreator.MapSimulator.Fields
             {
                 int gameMessageCode = reader.ReadByte();
                 string characterName = reader.ReadMapleString();
-                string gameMessage = $"Game message code {gameMessageCode} for {characterName}.";
+                string gameMessage = ResolveMiniRoomGameMessage(gameMessageCode, characterName);
                 _statusMessage = gameMessage;
                 _miniRoomRuntime?.AddMiniRoomSystemMessage($"System : {gameMessage}");
                 SyncMiniRoomRuntime();
@@ -3288,20 +3409,33 @@ namespace HaCreator.MapSimulator.Fields
             }
 
             string playerName = ResolveParticipantName(playerIndex);
+            int? leaveReason = null;
+            try
+            {
+                leaveReason = reader.ReadByte();
+            }
+            catch (EndOfStreamException)
+            {
+            }
+            string leaveStatusMessage = leaveReason.HasValue
+                ? ResolveMiniRoomGameMessage(TranslateLeaveReasonToGameMessageCode(leaveReason.Value), playerName)
+                : $"{playerName} left the Match Cards room.";
             _miniRoomParticipants.Remove(playerIndex);
             if (IsValidPlayerIndex(playerIndex) && (_stage == RoomStage.Playing || _stage == RoomStage.Result || _stage == RoomStage.Lobby))
             {
                 Reset();
+                _statusMessage = leaveStatusMessage;
             }
             else
             {
-                _statusMessage = $"{playerName} left the Match Cards room.";
+                _statusMessage = leaveStatusMessage;
                 SyncMiniRoomRuntime();
             }
 
-            message = $"{playerName} left the Match Cards room.";
-            _miniRoomRuntime?.AddMiniRoomSystemMessage($"System : {message}", isWarning: true);
-            _statusMessage = message;
+            message = leaveReason.HasValue
+                ? $"{playerName} left the Match Cards room (reason {leaveReason.Value})."
+                : $"{playerName} left the Match Cards room.";
+            _miniRoomRuntime?.AddMiniRoomSystemMessage($"System : {_statusMessage}", isWarning: true);
             SyncMiniRoomRuntime();
             return true;
         }
@@ -3680,6 +3814,8 @@ namespace HaCreator.MapSimulator.Fields
             };
 
             List<SocialRoomOccupant> extraOccupants = BuildMiniRoomExtraOccupants();
+            CharacterBuild ownerBuild = ResolveParticipantAvatarBuild(0);
+            CharacterBuild guestBuild = ResolveParticipantAvatarBuild(1);
 
             _miniRoomRuntime.SyncMiniRoomMatchCards(
                 _title,
@@ -3694,6 +3830,8 @@ namespace HaCreator.MapSimulator.Fields
                 roomState,
                 BuildParticipantDetail(0, includeScore: true),
                 BuildParticipantDetail(1, includeScore: true),
+                ownerBuild,
+                guestBuild,
                 extraOccupants);
         }
 
@@ -3712,7 +3850,8 @@ namespace HaCreator.MapSimulator.Fields
                     ResolveParticipantName(slot),
                     SocialRoomOccupantRole.Visitor,
                     BuildParticipantDetail(slot, includeScore: false),
-                    isReady: false));
+                    isReady: false,
+                    avatarBuild: entry.Value.AvatarBuild?.Clone()));
             }
 
             return occupants;
@@ -3785,6 +3924,7 @@ namespace HaCreator.MapSimulator.Fields
             if (avatarLook != null)
             {
                 participant.AvatarLook = avatarLook;
+                participant.AvatarBuild = CreateMiniRoomAvatarBuild(avatarLook);
             }
 
             return participant;
@@ -3846,6 +3986,38 @@ namespace HaCreator.MapSimulator.Fields
             return string.Join(" | ", detailParts);
         }
 
+        private CharacterBuild ResolveParticipantAvatarBuild(int slot)
+        {
+            if (slot == _localPlayerIndex && _localMiniRoomAvatarBuild != null)
+            {
+                return _localMiniRoomAvatarBuild.Clone();
+            }
+
+            if (_miniRoomParticipants.TryGetValue(slot, out MiniRoomParticipantState participant))
+            {
+                return participant.AvatarBuild?.Clone();
+            }
+
+            return null;
+        }
+
+        private CharacterBuild CreateMiniRoomAvatarBuild(LoginAvatarLook avatarLook)
+        {
+            if (avatarLook == null || _miniRoomAvatarBuildFactory == null)
+            {
+                return null;
+            }
+
+            try
+            {
+                return _miniRoomAvatarBuildFactory(avatarLook)?.Clone();
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
         private static string ResolveSeatLabel(int slot)
         {
             return slot switch
@@ -3880,6 +4052,30 @@ namespace HaCreator.MapSimulator.Fields
             }
 
             return rawText.Trim();
+        }
+
+        private static string ResolveMiniRoomGameMessage(int gameMessageCode, string characterName)
+        {
+            string resolvedName = string.IsNullOrWhiteSpace(characterName) ? "The other player" : characterName.Trim();
+            if (!MiniRoomGameMessages.TryGetValue(gameMessageCode, out MiniRoomGameMessageDefinition definition))
+            {
+                return $"MiniRoom game message {gameMessageCode} for {resolvedName}.";
+            }
+
+            string text = definition.FallbackText.Contains("{0}", StringComparison.Ordinal)
+                ? string.Format(CultureInfo.InvariantCulture, definition.FallbackText, resolvedName)
+                : definition.FallbackText;
+            return $"{text} [StringPool 0x{definition.StringPoolId:X}]";
+        }
+
+        private static int TranslateLeaveReasonToGameMessageCode(int leaveReason)
+        {
+            return leaveReason switch
+            {
+                2 => 103,
+                3 => 102,
+                _ => 4
+            };
         }
 
         private bool HandlePrimarySidebarAction(int tickCount, out string message)
@@ -4216,6 +4412,16 @@ namespace HaCreator.MapSimulator.Fields
     /// </summary>
     public class AriantArenaField
     {
+        private sealed class RemoteParticipant
+        {
+            public string Name { get; init; }
+            public CharacterBuild Build { get; init; }
+            public CharacterAssembler Assembler { get; init; }
+            public Vector2 Position { get; set; }
+            public bool FacingRight { get; set; } = true;
+            public string ActionName { get; set; } = CharacterPart.GetActionString(CharacterAction.Stand1);
+        }
+
         private const int MaxRankEntries = 6;
         private const int MaxScore = 9999;
         private const int PacketTypeShowResult = 171;
@@ -4232,6 +4438,7 @@ namespace HaCreator.MapSimulator.Fields
         private readonly List<AriantArenaScoreEntry> _entries = new();
         private readonly List<IDXObject> _resultFrames = new();
         private readonly List<IDXObject> _rankIcons = new();
+        private readonly Dictionary<string, RemoteParticipant> _remoteParticipants = new(StringComparer.OrdinalIgnoreCase);
         private GraphicsDevice _graphicsDevice;
         private bool _assetsLoaded;
         private bool _isActive;
@@ -4251,6 +4458,7 @@ namespace HaCreator.MapSimulator.Fields
         public bool IsActive => _isActive;
         public IReadOnlyList<AriantArenaScoreEntry> Entries => _entries;
         public int ScoreRefreshSerial => _scoreRefreshSerial;
+        public int RemoteParticipantCount => _remoteParticipants.Count;
 
         public void Initialize(GraphicsDevice graphicsDevice, SoundManager soundManager = null)
         {
@@ -4270,6 +4478,7 @@ namespace HaCreator.MapSimulator.Fields
             _scoreRefreshSerial = 0;
             _lastResultMessage = null;
             _lastPacketType = null;
+            _remoteParticipants.Clear();
             EnsureAssetsLoaded();
         }
 
@@ -4420,6 +4629,88 @@ namespace HaCreator.MapSimulator.Fields
             _lastPacketType = null;
         }
 
+        public void UpsertRemoteParticipant(CharacterBuild build, Vector2 position, bool facingRight = true, string actionName = null)
+        {
+            if (!_isActive || build == null || string.IsNullOrWhiteSpace(build.Name))
+            {
+                return;
+            }
+
+            string normalizedName = build.Name.Trim();
+            _remoteParticipants[normalizedName] = new RemoteParticipant
+            {
+                Name = normalizedName,
+                Build = build,
+                Assembler = new CharacterAssembler(build),
+                Position = position,
+                FacingRight = facingRight,
+                ActionName = NormalizeRemoteActionName(actionName)
+            };
+        }
+
+        public bool TryMoveRemoteParticipant(string name, Vector2 position, bool? facingRight, string actionName, out string message)
+        {
+            message = null;
+            if (!_isActive)
+            {
+                message = "Ariant Arena runtime inactive.";
+                return false;
+            }
+
+            string normalizedName = name?.Trim();
+            if (string.IsNullOrWhiteSpace(normalizedName))
+            {
+                message = "Remote Ariant actor name is required.";
+                return false;
+            }
+
+            if (!_remoteParticipants.TryGetValue(normalizedName, out RemoteParticipant participant))
+            {
+                message = $"Remote Ariant actor '{normalizedName}' does not exist.";
+                return false;
+            }
+
+            participant.Position = position;
+            if (facingRight.HasValue)
+            {
+                participant.FacingRight = facingRight.Value;
+            }
+
+            if (!string.IsNullOrWhiteSpace(actionName))
+            {
+                participant.ActionName = NormalizeRemoteActionName(actionName);
+            }
+
+            return true;
+        }
+
+        public bool RemoveRemoteParticipant(string name)
+        {
+            return !string.IsNullOrWhiteSpace(name) && _remoteParticipants.Remove(name.Trim());
+        }
+
+        public void ClearRemoteParticipants()
+        {
+            _remoteParticipants.Clear();
+        }
+
+        public bool TryGetRemoteParticipant(string name, out AriantArenaRemoteParticipantSnapshot snapshot)
+        {
+            if (!string.IsNullOrWhiteSpace(name)
+                && _remoteParticipants.TryGetValue(name.Trim(), out RemoteParticipant participant))
+            {
+                snapshot = new AriantArenaRemoteParticipantSnapshot(
+                    participant.Name,
+                    participant.Position,
+                    participant.FacingRight,
+                    participant.ActionName);
+                return true;
+            }
+
+            snapshot = default;
+            return false;
+        }
+
         public void Update(int currentTimeMs)
         {
             if (!_isActive || !_showResult || _resultFrames.Count == 0)
@@ -4464,6 +4755,8 @@ namespace HaCreator.MapSimulator.Fields
                 return;
             }
 
+            DrawRemoteParticipants(spriteBatch, skeletonMeshRenderer, mapShiftX, mapShiftY, centerX, centerY, tickCount, font);
+
             if (_showScoreboard && font != null)
             {
                 DrawScoreboard(spriteBatch, skeletonMeshRenderer, gameTime, font);
@@ -4489,6 +4782,7 @@ namespace HaCreator.MapSimulator.Fields
             _lastResultMessage = null;
             _localPlayerName = null;
             _lastPacketType = null;
+            _remoteParticipants.Clear();
         }
 
         public string DescribeStatus()
@@ -4502,7 +4796,7 @@ namespace HaCreator.MapSimulator.Fields
                 ? "no scores"
                 : string.Join(", ", _entries.Take(MaxRankEntries).Select((entry, index) => $"{index + 1}.{entry.Name}={entry.Score}"));
 
-            return $"Ariant Arena active, {_entries.Count} score row(s), result={(_showResult ? "showing" : "idle")}, refresh={_scoreRefreshSerial}, lastPacket={(_lastPacketType?.ToString() ?? "None")}, {leaderText}";
+            return $"Ariant Arena active, {_entries.Count} score row(s), remoteActors={_remoteParticipants.Count}, result={(_showResult ? "showing" : "idle")}, refresh={_scoreRefreshSerial}, lastPacket={(_lastPacketType?.ToString() ?? "None")}, {leaderText}";
         }
 
         private bool ShouldSuppressLocalRankEntry(string normalizedName)
@@ -4543,6 +4837,50 @@ namespace HaCreator.MapSimulator.Fields
 
                 DrawOutlinedText(spriteBatch, font, entry.Name, new Vector2(NameX, textY), new Color(20, 20, 20), new Color(204, 236, 255));
                 DrawOutlinedText(spriteBatch, font, entry.Score.ToString(), new Vector2(ScoreX, textY), new Color(20, 20, 20), new Color(255, 222, 112));
+            }
+        }
+
+        private void DrawRemoteParticipants(
+            SpriteBatch spriteBatch,
+            SkeletonMeshRenderer skeletonMeshRenderer,
+            int mapShiftX,
+            int mapShiftY,
+            int centerX,
+            int centerY,
+            int tickCount,
+            SpriteFont font)
+        {
+            if (_remoteParticipants.Count == 0)
+            {
+                return;
+            }
+
+            foreach (RemoteParticipant participant in _remoteParticipants.Values
+                .OrderBy(entry => entry.Position.Y)
+                .ThenBy(entry => entry.Name, StringComparer.OrdinalIgnoreCase))
+            {
+                AssembledFrame frame = participant.Assembler.GetFrameAtTime(participant.ActionName, tickCount)
+                    ?? participant.Assembler.GetFrameAtTime(CharacterPart.GetActionString(CharacterAction.Stand1), tickCount);
+                if (frame == null)
+                {
+                    continue;
+                }
+
+                int screenX = (int)MathF.Round(participant.Position.X) - mapShiftX + centerX;
+                int screenY = (int)MathF.Round(participant.Position.Y) - mapShiftY + centerY;
+                frame.Draw(spriteBatch, skeletonMeshRenderer, screenX, screenY, participant.FacingRight, Color.White);
+
+                if (font == null)
+                {
+                    continue;
+                }
+
+                Vector2 textSize = font.MeasureString(participant.Name);
+                float topY = screenY - frame.FeetOffset + frame.Bounds.Top;
+                Vector2 textPosition = new Vector2(
+                    screenX - (textSize.X * 0.5f),
+                    topY - textSize.Y - 6f);
+                DrawOutlinedText(spriteBatch, font, participant.Name, textPosition, Color.Black, new Color(255, 242, 178));
             }
         }
 
@@ -4772,6 +5110,14 @@ namespace HaCreator.MapSimulator.Fields
             return Math.Clamp(_entries.Count, 0, MaxRankEntries - 1);
         }
 
+        private static string NormalizeRemoteActionName(string actionName)
+        {
+            string normalized = string.IsNullOrWhiteSpace(actionName)
+                ? CharacterPart.GetActionString(CharacterAction.Stand1)
+                : actionName.Trim();
+            return normalized;
+        }
+
         private void LoadAnimatedFrames(WzImageProperty source, List<IDXObject> target)
         {
             target.Clear();
@@ -4840,5 +5186,6 @@ namespace HaCreator.MapSimulator.Fields
 
     public readonly record struct AriantArenaScoreEntry(string Name, int Score, int IconIndex = -1);
     public readonly record struct AriantArenaScoreUpdate(string UserName, int Score);
+    public readonly record struct AriantArenaRemoteParticipantSnapshot(string Name, Vector2 Position, bool FacingRight, string ActionName);
     #endregion
 }

@@ -33,6 +33,29 @@ namespace HaCreator.MapSimulator.Fields
             return GetTeleportItemRestrictionMessage(fieldLimit) ?? GetTransferRestrictionMessage(fieldLimit);
         }
 
+        public static bool CanRegisterMapTransferDestination(int mapId)
+        {
+            return GetMapTransferRegistrationRestrictionMessage(mapId) == null;
+        }
+
+        public static string GetMapTransferRegistrationRestrictionMessage(int mapId)
+        {
+            if (mapId <= 0 || mapId == MapConstants.MaxMap)
+            {
+                return "This destination cannot be saved in a teleport slot.";
+            }
+
+            if (mapId < 100_000_000)
+            {
+                return "Only regular field maps can be saved in a teleport slot.";
+            }
+
+            int millionGroup = (mapId / 1_000_000) % 100;
+            return millionGroup == 9
+                ? "This destination cannot be saved in a teleport slot."
+                : null;
+        }
+
         public static string GetJumpRestrictionMessage(long fieldLimit)
         {
             return FieldLimitType.Unable_To_Jump.Check(fieldLimit)

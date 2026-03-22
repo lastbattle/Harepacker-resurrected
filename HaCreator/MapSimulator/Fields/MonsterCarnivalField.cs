@@ -431,6 +431,7 @@ namespace HaCreator.MapSimulator.Fields
         private readonly Dictionary<int, int> _mobSpellCounts = new();
         private readonly Dictionary<int, int> _skillUseCounts = new();
         private readonly Dictionary<int, int> _guardianCounts = new();
+        private readonly HashSet<int> _occupiedGuardianSlots = new();
         private readonly MonsterCarnivalTeamState _team0 = new();
         private readonly MonsterCarnivalTeamState _team1 = new();
         private MonsterCarnivalFieldDefinition _definition;
@@ -485,6 +486,7 @@ namespace HaCreator.MapSimulator.Fields
                 return;
             }
 
+            ClearRoundState();
             _enteredField = true;
             _localTeam = localTeam;
             _personalCp = Math.Max(0, personalCp);
@@ -893,9 +895,7 @@ namespace HaCreator.MapSimulator.Fields
         public void Reset()
         {
             _definition = null;
-            _mobSpellCounts.Clear();
-            _skillUseCounts.Clear();
-            _guardianCounts.Clear();
+            ClearRoundState();
             _team0.CurrentCp = 0;
             _team0.TotalCp = 0;
             _team1.CurrentCp = 0;
@@ -904,13 +904,21 @@ namespace HaCreator.MapSimulator.Fields
             _activeTab = MonsterCarnivalTab.Mob;
             _statusMessage = null;
             _statusMessageUntil = 0;
-            _selectedEntryIndex = 0;
             _personalCp = 0;
             _personalTotalCp = 0;
-            _lastRequestTab = -1;
-            _lastRequestIndex = -1;
             _isVisible = false;
             _enteredField = false;
+        }
+
+        private void ClearRoundState()
+        {
+            _mobSpellCounts.Clear();
+            _skillUseCounts.Clear();
+            _guardianCounts.Clear();
+            _occupiedGuardianSlots.Clear();
+            _selectedEntryIndex = 0;
+            _lastRequestTab = -1;
+            _lastRequestIndex = -1;
         }
 
         private void DrawCpRow(SpriteBatch spriteBatch, Texture2D pixelTexture, SpriteFont font, int x, int y, int width)
@@ -1093,6 +1101,13 @@ namespace HaCreator.MapSimulator.Fields
             }
 
             if (entry.Tab == MonsterCarnivalTab.Guardian
+                && _occupiedGuardianSlots.Contains(entry.Index))
+            {
+                reasonCode = 5;
+                return false;
+            }
+
+            if (entry.Tab == MonsterCarnivalTab.Guardian
                 && _definition?.GuardianGenMax > 0
                 && GetTotalCount(_guardianCounts) >= _definition.GuardianGenMax)
             {
@@ -1116,6 +1131,10 @@ namespace HaCreator.MapSimulator.Fields
 
             Dictionary<int, int> counts = GetCountDictionary(entry.Tab);
             SetEntryCount(counts, entry.Id, GetEntryCount(counts, entry.Id) + 1);
+            if (entry.Tab == MonsterCarnivalTab.Guardian)
+            {
+                _occupiedGuardianSlots.Add(entry.Index);
+            }
         }
 
         private int GetEntryUsageCount(MonsterCarnivalEntry entry)

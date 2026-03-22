@@ -35,6 +35,15 @@ namespace HaCreator.MapSimulator.UI
             public Color Color { get; set; }
             public int Timestamp { get; set; }
             public int ChatLogType { get; set; }
+            public bool IsFirstWrappedLine { get; set; }
+            public string WhisperTargetCandidate { get; set; }
+            public string WhisperTargetDisplayText { get; set; }
+        }
+
+        private sealed class WhisperTargetHitRegion
+        {
+            public Rectangle Bounds { get; set; }
+            public string WhisperTarget { get; set; }
         }
 
         public sealed class ChatTargetLabelPlacement
@@ -48,6 +57,8 @@ namespace HaCreator.MapSimulator.UI
             new Dictionary<MapSimulatorChatTargetType, ChatTargetLabelPlacement>();
 
         private Func<MapSimulatorChatRenderState> _chatStateProvider;
+        private UIObject _chatOpenButton;
+        private UIObject _chatCloseButton;
         private Func<StatusBarPointNotificationState> _pointNotificationStateProvider;
         private SpriteFont _font;
         private Texture2D _pixelTexture;
@@ -58,6 +69,9 @@ namespace HaCreator.MapSimulator.UI
         private int _lastWrappedLineCount;
         private int _lastManualScrollTick = int.MinValue;
         private int? _previousScrollWheelValue;
+        private ButtonState _previousLeftButtonState = ButtonState.Released;
+        private string _pressedWhisperTarget;
+        private readonly List<WhisperTargetHitRegion> _whisperTargetHitRegions = new List<WhisperTargetHitRegion>();
 
         private const int ChatMessageDisplayTime = 10000;
         private const int ChatMessageFadeTime = 2000;
@@ -77,6 +91,7 @@ namespace HaCreator.MapSimulator.UI
         public Action<int> CycleChatTargetRequested { get; set; }
         public Action CharacterInfoRequested { get; set; }
         public Action MemoMailboxRequested { get; set; }
+        public Action<string> WhisperTargetRequested { get; set; }
 
         /// <summary>
         /// Constructor for the status bar chat window
@@ -171,14 +186,34 @@ namespace HaCreator.MapSimulator.UI
 
         public void BindControls(UIObject chatTargetButton, UIObject chatToggleButton, UIObject scrollUpButton, UIObject scrollDownButton, UIObject characterInfoButton = null, UIObject memoButton = null)
         {
+            BindControls(chatTargetButton, chatToggleButton, null, scrollUpButton, scrollDownButton, characterInfoButton, memoButton);
+        }
+
+        public void BindControls(
+            UIObject chatTargetButton,
+            UIObject chatOpenButton,
+            UIObject chatCloseButton,
+            UIObject scrollUpButton,
+            UIObject scrollDownButton,
+            UIObject characterInfoButton = null,
+            UIObject memoButton = null)
+        {
+            _chatOpenButton = chatOpenButton;
+            _chatCloseButton = chatCloseButton;
+
             if (chatTargetButton != null)
             {
                 chatTargetButton.ButtonClickReleased += _ => CycleChatTargetRequested?.Invoke(1);
             }
 
-            if (chatToggleButton != null)
+            if (chatOpenButton != null)
             {
-                chatToggleButton.ButtonClickReleased += _ => ToggleChatRequested?.Invoke();
+                chatOpenButton.ButtonClickReleased += _ => ToggleChatRequested?.Invoke();
+            }
+
+            if (chatCloseButton != null)
+            {
+                chatCloseButton.ButtonClickReleased += _ => ToggleChatRequested?.Invoke();
             }
 
             if (scrollUpButton != null)
@@ -225,6 +260,9 @@ namespace HaCreator.MapSimulator.UI
             RenderParameters renderParameters,
             int TickCount)
         {
+            MapSimulatorChatRenderState chatState = _chatStateProvider?.Invoke();
+            SyncChatToggleButtons(chatState?.IsActive == true);
+
             base.Draw(sprite, skeletonMeshRenderer, gameTime,
                 this.Position.X, this.Position.Y, centerX, centerY,
                 drawReflectionInfo,
@@ -233,6 +271,11 @@ namespace HaCreator.MapSimulator.UI
 
             foreach (UIObject uiBtn in uiButtons)
             {
+                if (uiBtn == null || !uiBtn.ButtonVisible)
+                {
+                    continue;
+                }
+
                 BaseDXDrawableItem buttonToDraw = uiBtn.GetBaseDXDrawableItemByState();
                 int drawRelativeX = -(this.Position.X) - uiBtn.X;
                 int drawRelativeY = -(this.Position.Y) - uiBtn.Y;
@@ -247,18 +290,17 @@ namespace HaCreator.MapSimulator.UI
                     TickCount);
             }
 
-            DrawChatOverlay(sprite, TickCount);
+            DrawChatOverlay(sprite, TickCount, chatState);
             DrawPointNotifications(sprite, TickCount);
         }
 
-        private void DrawChatOverlay(SpriteBatch sprite, int tickCount)
+        private void DrawChatOverlay(SpriteBatch sprite, int tickCount, MapSimulatorChatRenderState chatState)
         {
-            if (_font == null || _chatStateProvider == null)
+            if (_font == null)
             {
                 return;
             }
 
-            MapSimulatorChatRenderState chatState = _chatStateProvider();
             if (chatState == null)
             {
                 return;
@@ -270,6 +312,12 @@ namespace HaCreator.MapSimulator.UI
             {
                 DrawChatInput(sprite, chatState, tickCount);
             }
+        }
+
+        private void SyncChatToggleButtons(bool isChatActive)
+        {
+            _chatOpenButton?.SetVisible(!isChatActive);
+            _chatCloseButton?.SetVisible(isChatActive);
         }
 
         private void DrawPointNotifications(SpriteBatch sprite, int tickCount)
@@ -392,6 +440,7 @@ namespace HaCreator.MapSimulator.UI
         {
             List<WrappedChatLine> wrappedLines = BuildWrappedLines(chatState.Messages);
             AdjustScrollForNewLines(wrappedLines.Count, tickCount);
+            _whisperTargetHitRegions.Clear();
 
             int maxScrollOffset = Math.Max(0, wrappedLines.Count - ChatMaxVisibleLines);
             _scrollOffset = Math.Clamp(_scrollOffset, 0, maxScrollOffset);
@@ -430,6 +479,7 @@ namespace HaCreator.MapSimulator.UI
                 }
 
                 DrawTextWithShadow(sprite, line.Text, new Vector2(this.Position.X + 4, lineY), lineColor, shadowColor);
+                TryRegisterWhisperTargetHitRegion(line, lineY);
                 lineY -= ChatLogLineHeight;
                 drawnLines++;
                 lineIndex--;
@@ -508,6 +558,9 @@ namespace HaCreator.MapSimulator.UI
 
             foreach (ChatMessage message in messages)
             {
+                string whisperTargetCandidate = ResolveWhisperTargetCandidate(message);
+                string whisperTargetDisplayText = ResolveWhisperTargetDisplayText(message, whisperTargetCandidate);
+                bool isFirstWrappedLine = true;
                 foreach (string lineText in WrapText(
                     message.Text ?? string.Empty,
                     ChatLogWidth,
@@ -519,8 +572,12 @@ namespace HaCreator.MapSimulator.UI
                         Text = lineText,
                         Color = message.Color,
                         Timestamp = message.Timestamp,
-                        ChatLogType = message.ChatLogType
+                        ChatLogType = message.ChatLogType,
+                        IsFirstWrappedLine = isFirstWrappedLine,
+                        WhisperTargetCandidate = whisperTargetCandidate,
+                        WhisperTargetDisplayText = whisperTargetDisplayText
                     });
+                    isFirstWrappedLine = false;
                 }
             }
 
@@ -609,6 +666,34 @@ namespace HaCreator.MapSimulator.UI
             sprite.DrawString(_font, text, position, color);
         }
 
+        private void TryRegisterWhisperTargetHitRegion(WrappedChatLine line, float lineY)
+        {
+            if (line == null
+                || !line.IsFirstWrappedLine
+                || string.IsNullOrWhiteSpace(line.WhisperTargetCandidate)
+                || string.IsNullOrWhiteSpace(line.WhisperTargetDisplayText)
+                || _font == null)
+            {
+                return;
+            }
+
+            float textWidth = _font.MeasureString(line.WhisperTargetDisplayText).X;
+            if (textWidth <= 0f)
+            {
+                return;
+            }
+
+            _whisperTargetHitRegions.Add(new WhisperTargetHitRegion
+            {
+                Bounds = new Rectangle(
+                    this.Position.X + 4,
+                    (int)lineY - 1,
+                    (int)Math.Ceiling(textWidth) + 2,
+                    Math.Max(1, _font.LineSpacing)),
+                WhisperTarget = line.WhisperTargetCandidate
+            });
+        }
+
         private static float ResolveLineMaxWidth(float maxWidth, int chatLogType, bool isFirstLine)
         {
             if (isFirstLine && RequiresReducedFirstLineWidth(chatLogType))
@@ -689,8 +774,8 @@ namespace HaCreator.MapSimulator.UI
         public bool CheckMouseEvent(int shiftCenteredX, int shiftCenteredY, MouseState mouseState, MouseCursorItem mouseCursor, int renderWidth, int renderHeight)
         {
             HandleMouseWheel(mouseState);
-
-            return UIMouseEventHandler.CheckMouseEvent(
+            bool whisperHandled = HandleWhisperTargetClick(mouseState);
+            bool buttonHandled = !whisperHandled && UIMouseEventHandler.CheckMouseEvent(
                 shiftCenteredX,
                 shiftCenteredY,
                 this.Position.X,
@@ -699,6 +784,54 @@ namespace HaCreator.MapSimulator.UI
                 mouseCursor,
                 uiButtons,
                 false);
+            _previousLeftButtonState = mouseState.LeftButton;
+            return whisperHandled || buttonHandled;
+        }
+
+        private bool HandleWhisperTargetClick(MouseState mouseState)
+        {
+            WhisperTargetHitRegion hoveredRegion = FindWhisperTargetHitRegion(mouseState.X, mouseState.Y);
+            bool isPressStarted = mouseState.LeftButton == ButtonState.Pressed
+                && _previousLeftButtonState == ButtonState.Released;
+            bool isRelease = mouseState.LeftButton == ButtonState.Released
+                && _previousLeftButtonState == ButtonState.Pressed;
+
+            if (isPressStarted)
+            {
+                _pressedWhisperTarget = hoveredRegion?.WhisperTarget;
+                return hoveredRegion != null;
+            }
+
+            if (!isRelease)
+            {
+                return !string.IsNullOrWhiteSpace(_pressedWhisperTarget) && hoveredRegion != null;
+            }
+
+            string pressedWhisperTarget = _pressedWhisperTarget;
+            _pressedWhisperTarget = null;
+            if (string.IsNullOrWhiteSpace(pressedWhisperTarget)
+                || hoveredRegion == null
+                || !string.Equals(pressedWhisperTarget, hoveredRegion.WhisperTarget, StringComparison.OrdinalIgnoreCase))
+            {
+                return false;
+            }
+
+            WhisperTargetRequested?.Invoke(hoveredRegion.WhisperTarget);
+            return true;
+        }
+
+        private WhisperTargetHitRegion FindWhisperTargetHitRegion(int mouseX, int mouseY)
+        {
+            for (int i = 0; i < _whisperTargetHitRegions.Count; i++)
+            {
+                WhisperTargetHitRegion region = _whisperTargetHitRegions[i];
+                if (region.Bounds.Contains(mouseX, mouseY))
+                {
+                    return region;
+                }
+            }
+
+            return null;
         }
 
         private void HandleMouseWheel(MouseState mouseState)
@@ -746,6 +879,79 @@ namespace HaCreator.MapSimulator.UI
                 this.Position.Y - (ChatMaxVisibleLines * ChatLogLineHeight) - 18,
                 ChatLogWidth + 18,
                 (ChatMaxVisibleLines * ChatLogLineHeight) + 42);
+        }
+
+        private static string ResolveWhisperTargetCandidate(ChatMessage message)
+        {
+            if (!string.IsNullOrWhiteSpace(message.WhisperTargetCandidate))
+            {
+                return message.WhisperTargetCandidate.Trim();
+            }
+
+            if (!CanBeginWhisperFromChatLogType(message.ChatLogType))
+            {
+                return string.Empty;
+            }
+
+            string speakerToken = ExtractSpeakerToken(message.Text);
+            return string.IsNullOrWhiteSpace(speakerToken) ? string.Empty : speakerToken.Trim();
+        }
+
+        private static string ResolveWhisperTargetDisplayText(ChatMessage message, string whisperTargetCandidate)
+        {
+            if (string.IsNullOrWhiteSpace(whisperTargetCandidate))
+            {
+                return string.Empty;
+            }
+
+            int separatorIndex = (message.Text ?? string.Empty).IndexOf(':');
+            if (separatorIndex < 0)
+            {
+                return string.Empty;
+            }
+
+            string prefix = message.Text.Substring(0, separatorIndex + 1).TrimStart();
+            return string.IsNullOrWhiteSpace(prefix) ? string.Empty : prefix;
+        }
+
+        private static bool CanBeginWhisperFromChatLogType(int chatLogType)
+        {
+            return chatLogType == 14
+                || chatLogType == 15
+                || chatLogType == 16
+                || chatLogType == 18
+                || chatLogType == 19
+                || chatLogType == 20
+                || chatLogType == 21
+                || chatLogType == 22;
+        }
+
+        private static string ExtractSpeakerToken(string text)
+        {
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                return string.Empty;
+            }
+
+            int separatorIndex = text.IndexOf(':');
+            if (separatorIndex < 0)
+            {
+                return string.Empty;
+            }
+
+            string prefix = text.Substring(0, separatorIndex).Trim();
+            if (prefix.StartsWith(">", StringComparison.Ordinal))
+            {
+                prefix = prefix.Substring(1).TrimStart();
+            }
+
+            int closingBracketIndex = prefix.LastIndexOf(']');
+            if (closingBracketIndex >= 0 && closingBracketIndex + 1 < prefix.Length)
+            {
+                prefix = prefix.Substring(closingBracketIndex + 1).TrimStart();
+            }
+
+            return prefix.Trim();
         }
         #endregion
     }

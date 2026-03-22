@@ -58,6 +58,7 @@ namespace HaCreator.MapSimulator.UI
         private SpriteFont _font;
         private MouseState _previousMouseState;
         private Func<QuestLogTabType, bool, QuestLogSnapshot> _questLogProvider;
+        private Func<QuestLogTabType, bool, int?> _preferredQuestIdProvider;
         private Point _lastMousePosition;
         private HoveredQuestItemInfo _hoveredQuestItem;
 
@@ -80,6 +81,7 @@ namespace HaCreator.MapSimulator.UI
                     _currentTab = value;
                     _scrollOffset = 0;
                     _selectedQuestId = -1;
+                    UpdateTabStates();
                 }
             }
         }
@@ -197,6 +199,11 @@ namespace HaCreator.MapSimulator.UI
         internal void SetQuestLogProvider(Func<QuestLogTabType, bool, QuestLogSnapshot> provider)
         {
             _questLogProvider = provider;
+        }
+
+        internal void SetQuestPreferredSelectionProvider(Func<QuestLogTabType, bool, int?> provider)
+        {
+            _preferredQuestIdProvider = provider;
         }
 
         public int? GetSelectedQuestId()
@@ -622,6 +629,13 @@ namespace HaCreator.MapSimulator.UI
 
             if (snapshot.Entries.Any(entry => entry.QuestId == _selectedQuestId))
             {
+                return;
+            }
+
+            int? preferredQuestId = _preferredQuestIdProvider?.Invoke((QuestLogTabType)_currentTab, _showAllLevels);
+            if (preferredQuestId.HasValue && snapshot.Entries.Any(entry => entry.QuestId == preferredQuestId.Value))
+            {
+                _selectedQuestId = preferredQuestId.Value;
                 return;
             }
 

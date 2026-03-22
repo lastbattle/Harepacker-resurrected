@@ -484,6 +484,11 @@ namespace HaCreator.MapSimulator.UI {
 
             // draw other buttons
             foreach (UIObject uiBtn in uiButtons) {
+                if (uiBtn == null || !uiBtn.ButtonVisible)
+                {
+                    continue;
+                }
+
                 BaseDXDrawableItem buttonToDraw = uiBtn.GetBaseDXDrawableItemByState();
 
                 // Position drawn is relative to this UI
@@ -1230,6 +1235,14 @@ namespace HaCreator.MapSimulator.UI {
                 }
 
                 return preparedSkill.IsKeydownSkill ? "Maintaining" : "Ready";
+            }
+
+            if (preparedSkill.RemainingMs > 0
+                && hudProfile.GaugeDurationMs > 0
+                && preparedSkill.DurationMs > hudProfile.GaugeDurationMs
+                && preparedSkill.DurationMs - preparedSkill.RemainingMs >= hudProfile.GaugeDurationMs)
+            {
+                return $"Preparing {Math.Max(1, (int)Math.Ceiling(preparedSkill.RemainingMs / 1000f))} sec";
             }
 
             if (hudProfile.GaugeDurationMs > 0)
