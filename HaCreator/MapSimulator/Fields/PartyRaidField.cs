@@ -82,7 +82,13 @@ namespace HaCreator.MapSimulator.Fields
         private const int ResultTotalX = 137;
         private const int ResultTotalY = 194;
         private const int ResultEffectHoldMs = 1200;
-        private const int TimerTextY = 18;
+        private const int TimerBoardTop = 10;
+        private const int TimerBoardDigitsY = 7;
+        private const int TimerBoardMinuteTensX = 46;
+        private const int TimerBoardMinuteOnesX = 72;
+        private const int TimerBoardSeparatorX = 98;
+        private const int TimerBoardSecondTensX = 131;
+        private const int TimerBoardSecondOnesX = 157;
 
         private bool _isActive;
         private bool _assetsLoaded;
@@ -121,11 +127,14 @@ namespace HaCreator.MapSimulator.Fields
         private CanvasSprite _bossGaugeFillPixel;
         private CanvasSprite _bossGaugeMobIcon;
         private CanvasSprite _bossPointBoard;
+        private CanvasSprite _timerBoardBackground;
+        private CanvasSprite _timerSeparator;
         private CanvasSprite _resultBackground;
         private CanvasSprite _resultWinBadge;
         private CanvasSprite _resultLoseBadge;
         private readonly CanvasSprite[] _fieldStageDigits = new CanvasSprite[6];
         private readonly CanvasSprite[] _fieldPointDigits = new CanvasSprite[10];
+        private readonly CanvasSprite[] _timerDigits = new CanvasSprite[10];
         private readonly CanvasSprite[] _resultDigits = new CanvasSprite[10];
         private readonly CanvasSprite[] _resultBigDigits = new CanvasSprite[10];
         private readonly List<AnimationFrame> _redMineFrames = new();
@@ -535,8 +544,10 @@ namespace HaCreator.MapSimulator.Fields
             _graphicsDevice = graphicsDevice;
             WzImage uiWindow = global::HaCreator.Program.FindImage("UI", "UIWindow.img") ?? global::HaCreator.Program.FindImage("UI", "UIWindow2.img");
             WzImage effectImage = global::HaCreator.Program.FindImage("Map", "Effect.img");
+            WzImage mapEtcImage = global::HaCreator.Program.FindImage("Map", "etc.img");
             uiWindow?.ParseImage();
             effectImage?.ParseImage();
+            mapEtcImage?.ParseImage();
 
             WzImageProperty partyRace = uiWindow?["PartyRace"];
             WzImageProperty stage = partyRace?["Stage"];
@@ -544,6 +555,7 @@ namespace HaCreator.MapSimulator.Fields
             WzImageProperty result = partyRace?["Result"];
             WzImageProperty battery = partyRace?["battery"];
             WzImageProperty dualMobGauge = uiWindow?["DualMobGauge"];
+            WzImageProperty partyRaceTimer = mapEtcImage?["partyRace"];
 
             _fieldBoard = LoadCanvas(stage?["backgrd"]);
             _bossPointBoard = LoadCanvas(stage?["backgrd"]);
@@ -566,6 +578,9 @@ namespace HaCreator.MapSimulator.Fields
             _bossGaugeFillPixel = LoadCanvas(dualMobGauge?["gauge"]);
             CanvasSprite mobIcon = LoadCanvas(dualMobGauge?["Mob"]?["9700036"]);
             _bossGaugeMobIcon = mobIcon.IsLoaded ? mobIcon : LoadCanvas(dualMobGauge?["Mob"]?["9500401"]);
+            _timerBoardBackground = LoadCanvas(partyRaceTimer?["backgrnd"]);
+            _timerSeparator = LoadCanvas(partyRaceTimer?["fontTime"]?["comma"]);
+            LoadDigits(partyRaceTimer?["fontTime"], _timerDigits, 0, 9);
 
             _resultBackground = LoadCanvas(result?["backgrd"]);
             _resultWinBadge = LoadCanvas(result?["win"]);
@@ -827,14 +842,33 @@ namespace HaCreator.MapSimulator.Fields
 
         private void DrawTimer(SpriteBatch spriteBatch, SpriteFont font)
         {
-            if (!HasRunningClock || font == null)
+            if (!HasRunningClock)
             {
                 return;
             }
 
+            Viewport viewport = spriteBatch.GraphicsDevice.Viewport;
             string timerText = FormatTimer(RemainingSeconds);
+            if (_timerBoardBackground.IsLoaded && HasTimerDigits())
+            {
+                int boardLeft = (viewport.Width - _timerBoardBackground.Width) / 2;
+                int boardAnchorX = boardLeft + _timerBoardBackground.Origin.X;
+                DrawSprite(spriteBatch, _timerBoardBackground, boardAnchorX, TimerBoardTop);
+                DrawTimerDigit(spriteBatch, timerText[0], boardLeft + TimerBoardMinuteTensX, TimerBoardTop + TimerBoardDigitsY);
+                DrawTimerDigit(spriteBatch, timerText[1], boardLeft + TimerBoardMinuteOnesX, TimerBoardTop + TimerBoardDigitsY);
+                DrawSprite(spriteBatch, _timerSeparator, boardLeft + TimerBoardSeparatorX, TimerBoardTop + TimerBoardDigitsY + 7);
+                DrawTimerDigit(spriteBatch, timerText[3], boardLeft + TimerBoardSecondTensX, TimerBoardTop + TimerBoardDigitsY);
+                DrawTimerDigit(spriteBatch, timerText[4], boardLeft + TimerBoardSecondOnesX, TimerBoardTop + TimerBoardDigitsY);
+                return;
+            }
+
+            if (font == null)
+            {
+                return;
+            }
+
             Vector2 size = font.MeasureString(timerText);
-            DrawOutlinedString(spriteBatch, font, timerText, new Vector2((spriteBatch.GraphicsDevice.Viewport.Width - size.X) / 2f, TimerTextY), Color.White);
+            DrawOutlinedString(spriteBatch, font, timerText, new Vector2((viewport.Width - size.X) / 2f, TimerBoardTop + 8), Color.White);
         }
 
         private void DrawSprite(SpriteBatch spriteBatch, CanvasSprite sprite, int x, int y)
@@ -882,6 +916,17 @@ namespace HaCreator.MapSimulator.Fields
                 DrawSprite(spriteBatch, digits[digit], drawX, y);
                 drawX += digits[digit].Width;
             }
+        }
+
+        private void DrawTimerDigit(SpriteBatch spriteBatch, char digitChar, int x, int y)
+        {
+            int digit = digitChar - '0';
+            if (digit < 0 || digit >= _timerDigits.Length)
+            {
+                return;
+            }
+
+            DrawSprite(spriteBatch, _timerDigits[digit], x, y);
         }
 
         private void StartResultEffect(List<AnimationFrame> frames, int currentTimeMs)
@@ -952,6 +997,7 @@ namespace HaCreator.MapSimulator.Fields
         private List<AnimationFrame> GetMineFrames() => _teamColor == PartyRaidTeamColor.Blue ? _blueMineFrames : _redMineFrames;
         private List<AnimationFrame> GetOtherFrames() => _teamColor == PartyRaidTeamColor.Blue ? _blueOtherFrames : _redOtherFrames;
         private List<AnimationFrame> GetResultEffectFrames(PartyRaidResultOutcome outcome) => outcome switch { PartyRaidResultOutcome.Lose => _timeoutResultFrames, PartyRaidResultOutcome.Win => _clearResultFrames, PartyRaidResultOutcome.Clear => _clearResultFrames, _ => null };
+        private bool HasTimerDigits() => _timerSeparator.IsLoaded && AreDigitsLoaded(_timerDigits, 0, 9);
         private bool HasResultValues() => _resultPoint >= 0 && _resultBonus >= 0 && _resultTotal >= 0;
         private int GetBatteryFillWidth()
         {
@@ -1067,6 +1113,19 @@ namespace HaCreator.MapSimulator.Fields
             }
 
             parsedValue = Math.Max(0, parsedValue);
+            return true;
+        }
+
+        private static bool AreDigitsLoaded(CanvasSprite[] digits, int minDigit, int maxDigit)
+        {
+            for (int digit = minDigit; digit <= maxDigit && digit < digits.Length; digit++)
+            {
+                if (!digits[digit].IsLoaded)
+                {
+                    return false;
+                }
+            }
+
             return true;
         }
 

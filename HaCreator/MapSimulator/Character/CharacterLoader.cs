@@ -169,10 +169,6 @@ namespace HaCreator.MapSimulator.Character
 
             string imageName = morphTemplateId.ToString("D4") + ".img";
             WzImage morphImage = Program.FindImage("Morph", imageName);
-            if (morphImage == null)
-            {
-                return null;
-            }
 
             var morphPart = new CharacterPart
             {
@@ -182,7 +178,7 @@ namespace HaCreator.MapSimulator.Character
                 Slot = EquipSlot.None
             };
 
-            LoadPartAnimations(morphPart, morphImage, includeAttackActions: false);
+            PopulateMorphAnimations(morphPart, morphTemplateId, morphImage);
             if (morphPart.Animations.Count == 0)
             {
                 return null;
@@ -190,6 +186,79 @@ namespace HaCreator.MapSimulator.Character
 
             _morphCache[morphTemplateId] = morphPart;
             return morphPart;
+        }
+
+        private void PopulateMorphAnimations(CharacterPart morphPart, int morphTemplateId, WzImage exactMorphImage)
+        {
+            if (morphPart == null)
+            {
+                return;
+            }
+
+            var loadedTemplateIds = new HashSet<int>();
+            foreach (int candidateTemplateId in EnumerateMorphTemplateCandidates(morphTemplateId))
+            {
+                if (!loadedTemplateIds.Add(candidateTemplateId))
+                {
+                    continue;
+                }
+
+                WzImage candidateImage = candidateTemplateId == morphTemplateId
+                    ? exactMorphImage
+                    : Program.FindImage("Morph", candidateTemplateId.ToString("D4") + ".img");
+                if (candidateImage == null)
+                {
+                    continue;
+                }
+
+                var candidatePart = new CharacterPart
+                {
+                    ItemId = candidateTemplateId,
+                    Name = $"Morph_{candidateTemplateId:D4}",
+                    Type = CharacterPartType.Morph,
+                    Slot = EquipSlot.None
+                };
+
+                LoadPartAnimations(candidatePart, candidateImage, includeAttackActions: false);
+                MergeMissingAnimations(morphPart, candidatePart);
+            }
+        }
+
+        private static IEnumerable<int> EnumerateMorphTemplateCandidates(int morphTemplateId)
+        {
+            yield return morphTemplateId;
+
+            int[] familyBases =
+            {
+                (morphTemplateId / 10) * 10,
+                (morphTemplateId / 100) * 100,
+                (morphTemplateId / 1000) * 1000
+            };
+
+            var seen = new HashSet<int> { morphTemplateId };
+            foreach (int candidate in familyBases)
+            {
+                if (candidate > 0 && seen.Add(candidate))
+                {
+                    yield return candidate;
+                }
+            }
+        }
+
+        private static void MergeMissingAnimations(CharacterPart targetPart, CharacterPart sourcePart)
+        {
+            if (targetPart?.Animations == null || sourcePart?.Animations == null)
+            {
+                return;
+            }
+
+            foreach (KeyValuePair<string, CharacterAnimation> sourceAnimation in sourcePart.Animations)
+            {
+                if (!targetPart.Animations.ContainsKey(sourceAnimation.Key) && sourceAnimation.Value?.Frames?.Count > 0)
+                {
+                    targetPart.Animations[sourceAnimation.Key] = sourceAnimation.Value;
+                }
+            }
         }
 
         public PortableChair LoadPortableChair(int itemId)
@@ -876,6 +945,7 @@ namespace HaCreator.MapSimulator.Character
                 weapon.AttackSpeed = GetIntValue(info["attackSpeed"]) ?? 6;
                 weapon.Attack = weapon.BonusWeaponAttack;
                 weapon.WeaponType = ResolveWeaponType(itemId);
+                weapon.AfterImageType = GetStringValue(info["afterImage"]);
                 weapon.IsTwoHanded = GetIntValue(info["twoHanded"]) == 1;
                 System.Diagnostics.Debug.WriteLine($"[CharacterLoader] Weapon info: attackSpeed={weapon.AttackSpeed}, PAD={weapon.Attack}, twoHanded={weapon.IsTwoHanded}");
             }

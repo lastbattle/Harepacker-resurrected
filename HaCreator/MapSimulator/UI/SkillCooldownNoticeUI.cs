@@ -20,8 +20,6 @@ namespace HaCreator.MapSimulator.UI
         private const int SlideSpeed = 480;
         private const int TopMargin = 42;
         private const int NoticeSpacing = 6;
-        private const int PanelWidth = 266;
-        private const int PanelHeight = 92;
         private const int IconSize = 32;
         private const int IconX = 18;
         private const int IconY = 26;
@@ -29,6 +27,7 @@ namespace HaCreator.MapSimulator.UI
         private const int TitleY = 22;
         private const int MessageY = 43;
         private const int TextRightPadding = 14;
+        private const int TextBottomPadding = 14;
         private const float TitleScale = 0.78f;
         private const float MessageScale = 0.62f;
 
@@ -44,6 +43,8 @@ namespace HaCreator.MapSimulator.UI
             public float YOffset;
             public float TargetYOffset;
             public bool IsExpired;
+            public int Height;
+            public string[] WrappedMessageLines = Array.Empty<string>();
         }
 
         private readonly List<NoticeEntry> _notices = new List<NoticeEntry>();
@@ -54,6 +55,10 @@ namespace HaCreator.MapSimulator.UI
         private Texture2D _frameBottom;
         private int _screenWidth;
         private bool _initialized;
+        private int _panelWidth = 266;
+        private int _topHeight = 21;
+        private int _centerHeight = 20;
+        private int _bottomHeight = 55;
 
         public void Initialize(SpriteFont font, Texture2D pixelTexture, int screenWidth)
         {
@@ -73,6 +78,16 @@ namespace HaCreator.MapSimulator.UI
             _frameTop = frameTop;
             _frameCenter = frameCenter;
             _frameBottom = frameBottom;
+            _panelWidth = Math.Max(frameTop?.Width ?? 0, Math.Max(frameCenter?.Width ?? 0, frameBottom?.Width ?? 0));
+            if (_panelWidth <= 0)
+            {
+                _panelWidth = 266;
+            }
+
+            _topHeight = Math.Max(0, frameTop?.Height ?? 21);
+            _centerHeight = Math.Max(1, frameCenter?.Height ?? 20);
+            _bottomHeight = Math.Max(0, frameBottom?.Height ?? 55);
+            RecalculateNoticeLayouts();
         }
 
         public void AddNotice(int skillId, string title, string message, Texture2D iconTexture, SkillCooldownNoticeType type, int currentTime)
@@ -114,6 +129,7 @@ namespace HaCreator.MapSimulator.UI
             existingEntry.YOffset = 0f;
             existingEntry.TargetYOffset = 0f;
             existingEntry.IsExpired = false;
+            ApplyLayout(existingEntry);
 
             ReflowTargets();
         }
@@ -170,7 +186,7 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
-            int baseX = Math.Max(0, (_screenWidth - PanelWidth) / 2);
+            int baseX = Math.Max(0, (_screenWidth - _panelWidth) / 2);
 
             for (int i = 0; i < _notices.Count; i++)
             {
@@ -181,7 +197,8 @@ namespace HaCreator.MapSimulator.UI
                 }
 
                 int noticeY = (int)Math.Round(TopMargin + notice.YOffset);
-                Rectangle panelRect = new Rectangle(baseX, noticeY, PanelWidth, PanelHeight);
+                int noticeHeight = Math.Max(GetMinimumPanelHeight(), notice.Height);
+                Rectangle panelRect = new Rectangle(baseX, noticeY, _panelWidth, noticeHeight);
                 DrawNoticeFrame(spriteBatch, panelRect, notice.Alpha);
 
                 Rectangle iconRect = new Rectangle(panelRect.X + IconX, panelRect.Y + IconY, IconSize, IconSize);
@@ -197,16 +214,28 @@ namespace HaCreator.MapSimulator.UI
                 Color accentColor = GetAccentColor(notice.Type) * notice.Alpha;
                 if (_pixelTexture != null)
                 {
-                    Rectangle accentRect = new Rectangle(iconRect.Right + 8, panelRect.Y + 48, PanelWidth - iconRect.Right - 22, 2);
+                    Rectangle accentRect = new Rectangle(iconRect.Right + 8, panelRect.Y + 48, _panelWidth - iconRect.Right - 22, 2);
                     spriteBatch.Draw(_pixelTexture, accentRect, accentColor);
                 }
 
-                int textWidth = PanelWidth - TitleX - TextRightPadding;
+                int textWidth = _panelWidth - TitleX - TextRightPadding;
                 string title = TrimText(notice.Title, TitleScale, textWidth);
-                string message = TrimText(notice.Message, MessageScale, textWidth);
 
                 DrawTextWithShadow(spriteBatch, title, new Vector2(panelRect.X + TitleX, panelRect.Y + TitleY), Color.White * notice.Alpha, Color.Black * notice.Alpha, TitleScale);
-                DrawTextWithShadow(spriteBatch, message, new Vector2(panelRect.X + TitleX, panelRect.Y + MessageY), accentColor, Color.Black * notice.Alpha, MessageScale);
+
+                for (int lineIndex = 0; lineIndex < notice.WrappedMessageLines.Length; lineIndex++)
+                {
+                    Vector2 linePosition = new Vector2(
+                        panelRect.X + TitleX,
+                        panelRect.Y + MessageY + (lineIndex * _font.LineSpacing * MessageScale));
+                    DrawTextWithShadow(
+                        spriteBatch,
+                        notice.WrappedMessageLines[lineIndex],
+                        linePosition,
+                        accentColor,
+                        Color.Black * notice.Alpha,
+                        MessageScale);
+                }
             }
         }
 
@@ -220,14 +249,14 @@ namespace HaCreator.MapSimulator.UI
             Color color = Color.White * alpha;
             if (_frameTop != null && _frameCenter != null && _frameBottom != null)
             {
-                spriteBatch.Draw(_frameTop, new Rectangle(panelRect.X, panelRect.Y, PanelWidth, _frameTop.Height), color);
-                int centerHeight = Math.Max(0, PanelHeight - _frameTop.Height - _frameBottom.Height);
+                spriteBatch.Draw(_frameTop, new Rectangle(panelRect.X, panelRect.Y, _panelWidth, _topHeight), color);
+                int centerHeight = Math.Max(0, panelRect.Height - _topHeight - _bottomHeight);
                 if (centerHeight > 0)
                 {
-                    spriteBatch.Draw(_frameCenter, new Rectangle(panelRect.X, panelRect.Y + _frameTop.Height, PanelWidth, centerHeight), color);
+                    spriteBatch.Draw(_frameCenter, new Rectangle(panelRect.X, panelRect.Y + _topHeight, _panelWidth, centerHeight), color);
                 }
 
-                spriteBatch.Draw(_frameBottom, new Rectangle(panelRect.X, panelRect.Bottom - _frameBottom.Height, PanelWidth, _frameBottom.Height), color);
+                spriteBatch.Draw(_frameBottom, new Rectangle(panelRect.X, panelRect.Bottom - _bottomHeight, _panelWidth, _bottomHeight), color);
                 return;
             }
 
@@ -243,9 +272,12 @@ namespace HaCreator.MapSimulator.UI
 
         private void ReflowTargets()
         {
+            float accumulatedOffset = 0f;
             for (int i = 0; i < _notices.Count; i++)
             {
-                _notices[i].TargetYOffset = i * (PanelHeight + NoticeSpacing);
+                NoticeEntry notice = _notices[i];
+                notice.TargetYOffset = accumulatedOffset;
+                accumulatedOffset += Math.Max(GetMinimumPanelHeight(), notice.Height) + NoticeSpacing;
             }
         }
 
@@ -284,6 +316,94 @@ namespace HaCreator.MapSimulator.UI
             }
 
             return ellipsis;
+        }
+
+        private void RecalculateNoticeLayouts()
+        {
+            for (int i = 0; i < _notices.Count; i++)
+            {
+                ApplyLayout(_notices[i]);
+            }
+
+            ReflowTargets();
+        }
+
+        private void ApplyLayout(NoticeEntry entry)
+        {
+            if (entry == null)
+            {
+                return;
+            }
+
+            int availableWidth = Math.Max(32, _panelWidth - TitleX - TextRightPadding);
+            entry.WrappedMessageLines = WrapText(entry.Message, MessageScale, availableWidth);
+            int minimumHeight = GetMinimumPanelHeight();
+            if (_font == null || entry.WrappedMessageLines.Length == 0)
+            {
+                entry.Height = minimumHeight;
+                return;
+            }
+
+            float messageHeight = entry.WrappedMessageLines.Length * _font.LineSpacing * MessageScale;
+            int contentBottom = (int)Math.Ceiling(MessageY + messageHeight + TextBottomPadding);
+            entry.Height = Math.Max(minimumHeight, contentBottom);
+        }
+
+        private int GetMinimumPanelHeight()
+        {
+            return _topHeight + _centerHeight + _bottomHeight;
+        }
+
+        private string[] WrapText(string value, float scale, int maxWidth)
+        {
+            if (string.IsNullOrWhiteSpace(value) || _font == null)
+            {
+                return Array.Empty<string>();
+            }
+
+            string[] words = value.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
+            if (words.Length == 0)
+            {
+                return Array.Empty<string>();
+            }
+
+            List<string> lines = new List<string>();
+            string currentLine = string.Empty;
+            for (int i = 0; i < words.Length; i++)
+            {
+                string candidate = string.IsNullOrEmpty(currentLine)
+                    ? words[i]
+                    : currentLine + " " + words[i];
+                if (MeasureTextWidth(candidate, scale) <= maxWidth)
+                {
+                    currentLine = candidate;
+                    continue;
+                }
+
+                if (!string.IsNullOrEmpty(currentLine))
+                {
+                    lines.Add(currentLine);
+                    currentLine = string.Empty;
+                    i--;
+                    continue;
+                }
+
+                lines.Add(TrimText(words[i], scale, maxWidth));
+            }
+
+            if (!string.IsNullOrEmpty(currentLine))
+            {
+                lines.Add(currentLine);
+            }
+
+            return lines.ToArray();
+        }
+
+        private float MeasureTextWidth(string value, float scale)
+        {
+            return _font == null || string.IsNullOrWhiteSpace(value)
+                ? 0f
+                : _font.MeasureString(value).X * scale;
         }
 
         private void DrawTextWithShadow(SpriteBatch spriteBatch, string text, Vector2 position, Color textColor, Color shadowColor, float scale)

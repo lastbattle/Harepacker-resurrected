@@ -13,6 +13,11 @@ namespace HaCreator.MapSimulator.UI
 {
     internal sealed class MapleTvWindow : UIWindowBase
     {
+        private static readonly Point WorldOverlayAnchor = new(400, 70);
+        private static readonly Point WorldQueueAnchor = new(400, 118);
+        private static readonly Rectangle DefaultChatTextBounds = new(20, 17, 200, 58);
+        private static readonly Rectangle StarChatTextBounds = new(18, 16, 224, 72);
+        private static readonly Rectangle HeartChatTextBounds = new(18, 16, 224, 72);
         private static readonly Point ContextLinePosition = new(15, 55);
         private static readonly Point ItemNamePosition = new(39, 70);
         private static readonly Point ReceiverLinePosition = new(15, 88);
@@ -181,6 +186,43 @@ namespace HaCreator.MapSimulator.UI
             DrawPreview(sprite, skeletonMeshRenderer, drawReflectionInfo, gameTime, TickCount, snapshot);
         }
 
+        internal void DrawWorldOverlay(
+            SpriteBatch sprite,
+            SkeletonMeshRenderer skeletonMeshRenderer,
+            ReflectionDrawableBoundary drawReflectionInfo,
+            GameTime gameTime,
+            int renderWidth,
+            int tickCount)
+        {
+            MapleTvSnapshot snapshot = GetSnapshot();
+            if (_font == null || _visualAssets == null || (!snapshot.IsShowingMessage && !snapshot.QueueExists))
+            {
+                return;
+            }
+
+            RefreshAssemblers(snapshot);
+
+            Point overlayOrigin = snapshot.IsShowingMessage
+                ? new Point(Math.Max(0, (renderWidth / 2) - 120), WorldOverlayAnchor.Y)
+                : new Point(Math.Max(0, (renderWidth / 2) - 120), WorldQueueAnchor.Y);
+
+            if (!snapshot.IsShowingMessage)
+            {
+                MapleTvAnimationFrame idleFrame = SelectFrame(_visualAssets.OffFrames.Count > 0 ? _visualAssets.OffFrames : _visualAssets.BasicFrames, tickCount);
+                DrawAnimationFrame(sprite, idleFrame, overlayOrigin, drawReflectionInfo, skeletonMeshRenderer, gameTime);
+                return;
+            }
+
+            MapleTvAnimationFrame mediaFrame = SelectFrame(_visualAssets.GetMediaFrames(snapshot.ResolvedMediaIndex), tickCount);
+            DrawAnimationFrame(sprite, mediaFrame, overlayOrigin, drawReflectionInfo, skeletonMeshRenderer, gameTime);
+
+            MapleTvAnimationFrame chatFrame = SelectFrame(_visualAssets.GetChatFrames(snapshot.ResolvedMediaIndex), tickCount);
+            DrawAnimationFrame(sprite, chatFrame, overlayOrigin, drawReflectionInfo, skeletonMeshRenderer, gameTime);
+
+            DrawOverlayAvatars(sprite, skeletonMeshRenderer, tickCount, overlayOrigin, snapshot);
+            DrawChatText(sprite, snapshot.DisplayLines, overlayOrigin, ResolveChatBounds(snapshot.ResolvedMediaIndex), Color.White, 0.39f, 4, 28);
+        }
+
         private void ConfigureButton(UIObject button, Action action)
         {
             if (button == null)
@@ -306,15 +348,12 @@ namespace HaCreator.MapSimulator.UI
                     _visualAssets.GetMediaFrames(snapshot.ResolvedMediaIndex),
                     tickCount);
                 DrawAnimationFrame(sprite, mediaFrame, previewOrigin, drawReflectionInfo, skeletonMeshRenderer, gameTime);
+                MapleTvAnimationFrame chatFrame = SelectFrame(
+                    _visualAssets.GetChatFrames(snapshot.ResolvedMediaIndex),
+                    tickCount);
+                DrawAnimationFrame(sprite, chatFrame, previewOrigin, drawReflectionInfo, skeletonMeshRenderer, gameTime);
                 DrawPreviewAvatars(sprite, skeletonMeshRenderer, tickCount, previewOrigin, snapshot);
-
-                int lineY = previewOrigin.Y + PreviewTextOffset.Y;
-                foreach (string line in snapshot.DisplayLines.Take(4))
-                {
-                    string visibleLine = string.IsNullOrWhiteSpace(line) ? string.Empty : Truncate(line, 24);
-                    DrawShadowText(sprite, visibleLine, previewOrigin.X + PreviewTextOffset.X, lineY, Color.White, 0.4f);
-                    lineY += PreviewLineHeight;
-                }
+                DrawChatText(sprite, snapshot.DisplayLines, previewOrigin, ResolveChatBounds(snapshot.ResolvedMediaIndex), Color.White, 0.4f, 4, PreviewLineHeight);
             }
             else
             {
@@ -355,6 +394,25 @@ namespace HaCreator.MapSimulator.UI
 
             AssembledFrame receiverFrame = _receiverAssembler?.GetFrameAtTime(PreviewActionName, tickCount);
             receiverFrame?.Draw(sprite, skeletonMeshRenderer, previewOrigin.X + 170, previewOrigin.Y + 166, false, Color.White);
+        }
+
+        private void DrawOverlayAvatars(
+            SpriteBatch sprite,
+            SkeletonMeshRenderer skeletonMeshRenderer,
+            int tickCount,
+            Point overlayOrigin,
+            MapleTvSnapshot snapshot)
+        {
+            AssembledFrame senderFrame = _senderAssembler?.GetFrameAtTime(PreviewActionName, tickCount);
+            senderFrame?.Draw(sprite, skeletonMeshRenderer, overlayOrigin.X + 44, overlayOrigin.Y + 168, false, Color.White);
+
+            if (!snapshot.UseReceiver)
+            {
+                return;
+            }
+
+            AssembledFrame receiverFrame = _receiverAssembler?.GetFrameAtTime(PreviewActionName, tickCount);
+            receiverFrame?.Draw(sprite, skeletonMeshRenderer, overlayOrigin.X + 186, overlayOrigin.Y + 168, false, Color.White);
         }
 
         private static string CreateBuildKey(CharacterBuild build)
@@ -454,6 +512,46 @@ namespace HaCreator.MapSimulator.UI
             }
         }
 
+        private void DrawChatText(
+            SpriteBatch sprite,
+            IReadOnlyList<string> lines,
+            Point origin,
+            Rectangle bounds,
+            Color color,
+            float scale,
+            int maxLines,
+            int lineHeight)
+        {
+            int drawY = origin.Y + bounds.Y;
+            foreach (string line in lines.Take(maxLines))
+            {
+                string visibleLine = string.IsNullOrWhiteSpace(line) ? string.Empty : Truncate(line, ResolveMaxChars(bounds.Width, scale));
+                DrawShadowText(sprite, visibleLine, origin.X + bounds.X, drawY, color, scale);
+                drawY += lineHeight;
+            }
+        }
+
+        private int ResolveMaxChars(int width, float scale)
+        {
+            if (_font == null || width <= 0)
+            {
+                return 24;
+            }
+
+            float glyphWidth = Math.Max(1f, _font.MeasureString("W").X * scale);
+            return Math.Max(8, (int)(width / glyphWidth));
+        }
+
+        private static Rectangle ResolveChatBounds(int mediaIndex)
+        {
+            return mediaIndex switch
+            {
+                0 => StarChatTextBounds,
+                2 => HeartChatTextBounds,
+                _ => DefaultChatTextBounds
+            };
+        }
+
         private static string ResolveReceiverLabel(MapleTvSnapshot snapshot)
         {
             if (!snapshot.UseReceiver)
@@ -494,19 +592,37 @@ namespace HaCreator.MapSimulator.UI
         internal MapleTvVisualAssets(
             IReadOnlyList<MapleTvAnimationFrame> basicFrames,
             IReadOnlyList<MapleTvAnimationFrame> offFrames,
+            IReadOnlyDictionary<int, IReadOnlyList<MapleTvAnimationFrame>> chatFrames,
             IReadOnlyDictionary<int, IReadOnlyList<MapleTvAnimationFrame>> mediaFrames,
             int defaultMediaIndex)
         {
             BasicFrames = basicFrames ?? Array.Empty<MapleTvAnimationFrame>();
             OffFrames = offFrames ?? Array.Empty<MapleTvAnimationFrame>();
+            ChatFrames = chatFrames ?? new Dictionary<int, IReadOnlyList<MapleTvAnimationFrame>>();
             MediaFrames = mediaFrames ?? new Dictionary<int, IReadOnlyList<MapleTvAnimationFrame>>();
             DefaultMediaIndex = defaultMediaIndex;
         }
 
         internal IReadOnlyList<MapleTvAnimationFrame> BasicFrames { get; }
         internal IReadOnlyList<MapleTvAnimationFrame> OffFrames { get; }
+        internal IReadOnlyDictionary<int, IReadOnlyList<MapleTvAnimationFrame>> ChatFrames { get; }
         internal IReadOnlyDictionary<int, IReadOnlyList<MapleTvAnimationFrame>> MediaFrames { get; }
         internal int DefaultMediaIndex { get; }
+
+        internal IReadOnlyList<MapleTvAnimationFrame> GetChatFrames(int mediaIndex)
+        {
+            if (ChatFrames.TryGetValue(mediaIndex, out IReadOnlyList<MapleTvAnimationFrame> frames) && frames.Count > 0)
+            {
+                return frames;
+            }
+
+            if (ChatFrames.TryGetValue(DefaultMediaIndex, out frames) && frames.Count > 0)
+            {
+                return frames;
+            }
+
+            return Array.Empty<MapleTvAnimationFrame>();
+        }
 
         internal IReadOnlyList<MapleTvAnimationFrame> GetMediaFrames(int mediaIndex)
         {

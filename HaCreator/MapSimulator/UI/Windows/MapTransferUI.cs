@@ -47,6 +47,10 @@ namespace HaCreator.MapSimulator.UI
         private readonly UIObject _deleteButton;
         private readonly UIObject _moveButton;
         private readonly UIObject _mapButton;
+        private readonly Texture2D _confirmationTexture;
+        private readonly UIObject _confirmationOkButton;
+        private readonly UIObject _confirmationCancelButton;
+        private readonly List<UIObject> _confirmationButtons = new();
         private readonly int _maxSavedDestinations;
 
         private SpriteFont _font;
@@ -59,6 +63,9 @@ namespace HaCreator.MapSimulator.UI
         private KeyboardState _previousKeyboardState;
         private MouseState _previousMouseState;
         private bool _editTargetFocused;
+        private bool _confirmationVisible;
+        private string _confirmationMessage = string.Empty;
+        private Action _pendingConfirmationAction;
 
         public MapTransferUI(
             IDXObject frame,
@@ -69,6 +76,9 @@ namespace HaCreator.MapSimulator.UI
             UIObject deleteButton,
             UIObject moveButton,
             UIObject mapButton,
+            Texture2D confirmationTexture,
+            UIObject confirmationOkButton,
+            UIObject confirmationCancelButton,
             int maxSavedDestinations,
             GraphicsDevice device)
             : base(frame)
@@ -80,10 +90,14 @@ namespace HaCreator.MapSimulator.UI
             _deleteButton = deleteButton;
             _moveButton = moveButton;
             _mapButton = mapButton;
+            _confirmationTexture = confirmationTexture;
+            _confirmationOkButton = confirmationOkButton;
+            _confirmationCancelButton = confirmationCancelButton;
             _maxSavedDestinations = Math.Max(MaxVisibleRows, maxSavedDestinations);
 
             InitializeCloseAndActionButtons(registerButton, deleteButton, moveButton, mapButton);
             InitializeRowButtons(device);
+            InitializeConfirmationButtons();
             UpdateButtonStates();
         }
 
@@ -176,6 +190,19 @@ namespace HaCreator.MapSimulator.UI
             int wheelDelta = mouseState.ScrollWheelValue - _previousScrollWheelValue;
             _previousScrollWheelValue = mouseState.ScrollWheelValue;
 
+            if (_confirmationVisible)
+            {
+                KeyboardState keyboardState = Keyboard.GetState();
+                if (WasPressed(keyboardState, Keys.Escape))
+                {
+                    CancelMoveRequest();
+                }
+
+                _previousKeyboardState = keyboardState;
+                _previousMouseState = mouseState;
+                return;
+            }
+
             HandleEditTargetMouseInput(mouseState);
             HandleEditTargetKeyboardInput();
 
@@ -252,6 +279,11 @@ namespace HaCreator.MapSimulator.UI
             }
 
             sprite.DrawString(_font, TrimToWidth(_statusMessage, 132f), new Vector2(Position.X + 12, Position.Y + 286), new Color(208, 208, 208));
+
+            if (_confirmationVisible)
+            {
+                DrawConfirmation(sprite);
+            }
         }
 
         private void InitializeCloseAndActionButtons(UIObject registerButton, UIObject deleteButton, UIObject moveButton, UIObject mapButton)
@@ -280,16 +312,21 @@ namespace HaCreator.MapSimulator.UI
                 AddButton(moveButton);
                 moveButton.ButtonClickReleased += _ =>
                 {
+                    if (_confirmationVisible)
+                    {
+                        return;
+                    }
+
                     DestinationEntry entry = GetSelectedEntry();
                     if (entry != null)
                     {
-                        MoveDestinationRequested?.Invoke(entry);
+                        RequestMoveConfirmation(entry, null);
                         return;
                     }
 
                     if (TryParseManualTargetMapId(out int targetMapId))
                     {
-                        ManualMapMoveRequested?.Invoke(targetMapId);
+                        RequestMoveConfirmation(null, targetMapId);
                     }
                 };
             }
@@ -298,6 +335,25 @@ namespace HaCreator.MapSimulator.UI
             {
                 AddButton(mapButton);
                 mapButton.ButtonClickReleased += _ => WorldMapRequested?.Invoke(GetSelectedEntry());
+            }
+        }
+
+        private void InitializeConfirmationButtons()
+        {
+            if (_confirmationOkButton != null)
+            {
+                AddButton(_confirmationOkButton);
+                _confirmationButtons.Add(_confirmationOkButton);
+                _confirmationOkButton.SetVisible(false);
+                _confirmationOkButton.ButtonClickReleased += _ => ConfirmMoveRequest();
+            }
+
+            if (_confirmationCancelButton != null)
+            {
+                AddButton(_confirmationCancelButton);
+                _confirmationButtons.Add(_confirmationCancelButton);
+                _confirmationCancelButton.SetVisible(false);
+                _confirmationCancelButton.ButtonClickReleased += _ => CancelMoveRequest();
             }
         }
 
@@ -357,14 +413,31 @@ namespace HaCreator.MapSimulator.UI
         private void UpdateButtonStates()
         {
             DestinationEntry entry = GetSelectedEntry();
+            bool modalBlocked = _confirmationVisible;
+
             if (_moveButton != null)
             {
-                _moveButton.SetEnabled(entry?.CanMove == true || (_selectedIndex < 0 && !string.IsNullOrWhiteSpace(_manualTargetText)));
+                _moveButton.SetEnabled(!modalBlocked && (entry?.CanMove == true || (_selectedIndex < 0 && !string.IsNullOrWhiteSpace(_manualTargetText))));
             }
 
             if (_deleteButton != null)
             {
-                _deleteButton.SetEnabled(entry?.CanDelete == true);
+                _deleteButton.SetEnabled(!modalBlocked && entry?.CanDelete == true);
+            }
+
+            if (_registerButton != null)
+            {
+                _registerButton.SetEnabled(!modalBlocked);
+            }
+
+            if (_mapButton != null)
+            {
+                _mapButton.SetEnabled(!modalBlocked);
+            }
+
+            for (int i = 0; i < _rowButtons.Count; i++)
+            {
+                _rowButtons[i].SetEnabled(!modalBlocked);
             }
         }
 
@@ -439,6 +512,11 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
+            if (_confirmationVisible)
+            {
+                return;
+            }
+
             Point mousePoint = new Point(mouseState.X, mouseState.Y);
             if (GetEditTargetBounds().Contains(mousePoint))
             {
@@ -478,7 +556,7 @@ namespace HaCreator.MapSimulator.UI
             {
                 if (TryParseManualTargetMapId(out int targetMapId))
                 {
-                    ManualMapMoveRequested?.Invoke(targetMapId);
+                    RequestMoveConfirmation(null, targetMapId);
                 }
             }
             else if (WasPressed(keyboardState, Keys.Escape))
@@ -544,6 +622,142 @@ namespace HaCreator.MapSimulator.UI
             return int.TryParse(_manualTargetText, out targetMapId) && targetMapId > 0;
         }
 
+        private void RequestMoveConfirmation(DestinationEntry entry, int? manualTargetMapId)
+        {
+            string targetLabel;
+            Action confirmationAction;
+
+            if (entry != null)
+            {
+                targetLabel = TrimToWidth(entry.DisplayName, 150f);
+                confirmationAction = () => MoveDestinationRequested?.Invoke(entry);
+            }
+            else if (manualTargetMapId.HasValue && manualTargetMapId.Value > 0)
+            {
+                targetLabel = manualTargetMapId.Value.ToString();
+                confirmationAction = () => ManualMapMoveRequested?.Invoke(manualTargetMapId.Value);
+            }
+            else
+            {
+                return;
+            }
+
+            if (_confirmationTexture == null || _confirmationOkButton == null || _confirmationCancelButton == null)
+            {
+                confirmationAction.Invoke();
+                return;
+            }
+
+            _confirmationMessage = $"Move to {targetLabel}?";
+            _pendingConfirmationAction = confirmationAction;
+            _confirmationVisible = true;
+            _editTargetFocused = false;
+            UpdateConfirmationLayout();
+            UpdateButtonStates();
+        }
+
+        private void ConfirmMoveRequest()
+        {
+            Action action = _pendingConfirmationAction;
+            CancelMoveRequest();
+            action?.Invoke();
+        }
+
+        private void CancelMoveRequest()
+        {
+            _confirmationVisible = false;
+            _confirmationMessage = string.Empty;
+            _pendingConfirmationAction = null;
+            UpdateConfirmationLayout();
+            UpdateButtonStates();
+        }
+
+        private void UpdateConfirmationLayout()
+        {
+            Rectangle bounds = GetConfirmationBounds();
+            if (_confirmationOkButton != null)
+            {
+                _confirmationOkButton.X = bounds.X - Position.X + 34;
+                _confirmationOkButton.Y = bounds.Y - Position.Y + 28;
+                _confirmationOkButton.SetVisible(_confirmationVisible);
+                _confirmationOkButton.SetEnabled(_confirmationVisible);
+            }
+
+            if (_confirmationCancelButton != null)
+            {
+                _confirmationCancelButton.X = bounds.X - Position.X + 111;
+                _confirmationCancelButton.Y = bounds.Y - Position.Y + 28;
+                _confirmationCancelButton.SetVisible(_confirmationVisible);
+                _confirmationCancelButton.SetEnabled(_confirmationVisible);
+            }
+        }
+
+        private void DrawConfirmation(SpriteBatch sprite)
+        {
+            Rectangle bounds = GetConfirmationBounds();
+            if (_confirmationTexture != null)
+            {
+                sprite.Draw(_confirmationTexture, new Vector2(bounds.X, bounds.Y), Color.White);
+            }
+            else if (_selectionTexture != null)
+            {
+                sprite.Draw(_selectionTexture, bounds, new Color(38, 38, 38, 235));
+            }
+
+            if (_font == null)
+            {
+                return;
+            }
+
+            float lineY = bounds.Y + 12f;
+            foreach (string line in WrapText(_confirmationMessage, bounds.Width - 18f))
+            {
+                Vector2 size = _font.MeasureString(line);
+                float lineX = bounds.X + (bounds.Width - size.X) / 2f;
+                sprite.DrawString(_font, line, new Vector2(lineX, lineY), new Color(60, 45, 0));
+                lineY += Math.Max(12f, size.Y);
+            }
+        }
+
+        private Rectangle GetConfirmationBounds()
+        {
+            int width = _confirmationTexture?.Width ?? 206;
+            int height = _confirmationTexture?.Height ?? 60;
+            int x = Position.X + ((FrameWidth - width) / 2);
+            int y = Position.Y + 120;
+            return new Rectangle(x, y, width, height);
+        }
+
+        private IEnumerable<string> WrapText(string text, float maxWidth)
+        {
+            if (_font == null || string.IsNullOrWhiteSpace(text))
+            {
+                yield break;
+            }
+
+            string[] words = text.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
+            if (words.Length == 0)
+            {
+                yield break;
+            }
+
+            string currentLine = words[0];
+            for (int i = 1; i < words.Length; i++)
+            {
+                string candidate = $"{currentLine} {words[i]}";
+                if (_font.MeasureString(candidate).X <= maxWidth)
+                {
+                    currentLine = candidate;
+                    continue;
+                }
+
+                yield return currentLine;
+                currentLine = words[i];
+            }
+
+            yield return currentLine;
+        }
+
         private Rectangle GetEditTargetBounds()
         {
             return new Rectangle(
@@ -572,6 +786,8 @@ namespace HaCreator.MapSimulator.UI
 
             return null;
         }
+
+        private int FrameWidth => CurrentFrame?.Texture?.Width ?? _confirmationTexture?.Width ?? 0;
 
         private void DrawFrameLayer(
             SpriteBatch sprite,

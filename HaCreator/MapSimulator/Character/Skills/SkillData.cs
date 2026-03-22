@@ -181,6 +181,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         public int Mastery { get; set; }             // Mastery %
         public int CriticalRate { get; set; }        // Critical rate boost
         public int EnhancedPAD { get; set; }         // Mechanic-only weapon attack boost
+        public int EnhancedMAD { get; set; }         // Alias-backed magic attack boost
         public int EnhancedPDD { get; set; }         // Mechanic-only defense boost
         public int EnhancedMDD { get; set; }         // Mechanic-only magic defense boost
         public int EnhancedMaxHP { get; set; }       // Mechanic-only max HP boost
@@ -379,6 +380,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         public SkillAnimation SummonSpawnAnimation { get; set; } // Initial summon spawn sequence
         public SkillAnimation SummonAnimation { get; set; }  // Summon body/effect
         public SkillAnimation SummonAttackAnimation { get; set; } // Summon attack sequence
+        public string SummonAttackBranchName { get; set; }
         public SkillAnimation AvatarOverlayEffect { get; set; } // Avatar-bound looping overlay
         public SkillAnimation AvatarUnderFaceEffect { get; set; } // Avatar-bound layer below face/hair
         public SkillAnimation AvatarLadderEffect { get; set; } // Ladder/rope override for avatar overlay
@@ -393,6 +395,8 @@ namespace HaCreator.MapSimulator.Character.Skills
         public int SummonAttackIntervalMs { get; set; }
         public int SummonAttackCountOverride { get; set; }
         public int SummonMobCountOverride { get; set; }
+        public int SummonAttackHitDelayMs { get; set; }
+        public int SummonAttackProjectileSpeed { get; set; }
         public Point? SummonAttackCenterOffset { get; set; }
         public int SummonAttackRadius { get; set; }
         public int SummonAttackRangeLeft { get; set; }
@@ -440,6 +444,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         public bool CasterMove { get; set; }
         public bool AreaAttack { get; set; }
         public bool RectBasedOnTarget { get; set; }
+        public bool MultiTargeting { get; set; }
         public bool ChainAttack { get; set; }
         public bool ChainAttackPenalty { get; set; }
         public string LandingEffectName { get; set; }
@@ -1065,6 +1070,7 @@ namespace HaCreator.MapSimulator.Character.Skills
     {
         public int SkillId { get; set; }
         public int Level { get; set; }
+        public int OwnerHotkeySlot { get; set; } = -1;
         public int StartTime { get; set; }
         public int Duration { get; set; }
         public int MaxHoldDurationMs { get; set; }

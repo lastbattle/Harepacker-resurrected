@@ -56,9 +56,9 @@ namespace HaCreator.MapSimulator.Effects
         public MassacreField Massacre => _massacre;
         public bool HasBlockingScriptedSequence => _wedding.HasActiveScriptedDialog;
 
-        public void SetWeddingPlayerState(int? localCharacterId, Vector2? localWorldPosition)
+        public void SetWeddingPlayerState(int? localCharacterId, Vector2? localWorldPosition, CharacterBuild localPlayerBuild = null)
         {
-            _wedding.SetLocalPlayerState(localCharacterId, localWorldPosition);
+            _wedding.SetLocalPlayerState(localCharacterId, localWorldPosition, localPlayerBuild);
         }
 
         public void SetDojoRuntimeState(int? playerHp, int? playerMaxHp, float? bossHpPercent)
@@ -157,7 +157,9 @@ namespace HaCreator.MapSimulator.Effects
 
             if (_dojo.IsActive)
             {
-                _dojo.Configure(board?.MapInfo);
+                _dojo.Configure(
+                    board?.MapInfo,
+                    board?.BoardItems?.Portals?.Any(portal => string.Equals(portal?.script, "dojang_next", StringComparison.OrdinalIgnoreCase)) == true);
             }
         }
 
@@ -297,6 +299,7 @@ namespace HaCreator.MapSimulator.Effects
         private const string WeddingBgmPath = "BgmEvent/wedding";
         private const string WeddingUiImageName = "UIWindow.img";
         private const string CeremonyTextOverlayPath = "wedding/text/0";
+        private const string CeremonyCardOverlayPath = "wedding/card/0";
         private const string WeddingMapHelperImageName = "MapHelper.img";
         private const string WeddingWeatherPath = "weather/wedding";
         private const string WeddingHeartWeatherPath = "weather/heartWedding";
@@ -326,9 +329,11 @@ namespace HaCreator.MapSimulator.Effects
         private int _npcId;
         private int? _localCharacterId;
         private Vector2? _localPlayerPosition;
+        private CharacterBuild _localPlayerBuild;
         private Vector2? _groomPosition;
         private Vector2? _bridePosition;
         private readonly Dictionary<int, Vector2> _participantPositions = new();
+        private readonly Dictionary<int, WeddingRemoteParticipant> _participantActors = new();
 
         // Wedding step (from OnWeddingProgress)
         private int _currentStep = 0;
@@ -341,6 +346,8 @@ namespace HaCreator.MapSimulator.Effects
         private int _blessEffectStartTime;
         private bool _ceremonyTextOverlayActive = false;
         private float _ceremonyTextOverlayAlpha = 0f;
+        private bool _ceremonyCardOverlayActive = false;
+        private float _ceremonyCardOverlayAlpha = 0f;
         private bool _ceremonyCelebrationActive = false;
         #endregion
 
@@ -349,6 +356,8 @@ namespace HaCreator.MapSimulator.Effects
         private List<IDXObject> _blessFrames;
         private Texture2D _ceremonyTextOverlayTexture;
         private Point _ceremonyTextOverlayOrigin;
+        private Texture2D _ceremonyCardOverlayTexture;
+        private Point _ceremonyCardOverlayOrigin;
         private readonly List<WeddingSceneFrame> _ceremonyPetalFrames = new();
         private readonly List<WeddingSceneFrame> _ceremonyHeartFrames = new();
         private readonly List<WeddingSceneParticle> _ceremonyPetals = new();
@@ -369,6 +378,7 @@ namespace HaCreator.MapSimulator.Effects
         public int CurrentStep => _currentStep;
         public bool IsBlessEffectActive => _blessEffectActive;
         public bool IsCeremonyTextOverlayActive => _ceremonyTextOverlayActive;
+        public bool IsCeremonyCardOverlayActive => _ceremonyCardOverlayActive;
         public bool IsCeremonyCelebrationActive => _ceremonyCelebrationActive;
         public bool HasActiveScriptedDialog => _currentDialog != null || _dialogQueue.Count > 0;
         public WeddingParticipantRole LocalParticipantRole { get; private set; } = WeddingParticipantRole.Guest;
@@ -381,6 +391,7 @@ namespace HaCreator.MapSimulator.Effects
         public Vector2? GroomPosition => _groomPosition;
         public Vector2? BridePosition => _bridePosition;
         public WeddingPacketResponse? LastPacketResponse => _lastPacketResponse;
+        public int RemoteParticipantCount => _participantActors.Count;
         #endregion
 
         #region Initialization
@@ -409,9 +420,12 @@ namespace HaCreator.MapSimulator.Effects
             _groomPosition = null;
             _bridePosition = null;
             _participantPositions.Clear();
+            _participantActors.Clear();
             _lastPacketResponse = null;
             _ceremonyTextOverlayActive = false;
             _ceremonyTextOverlayAlpha = 0f;
+            _ceremonyCardOverlayActive = false;
+            _ceremonyCardOverlayAlpha = 0f;
             _ceremonyCelebrationActive = false;
             _ceremonyPetals.Clear();
             _ceremonyHearts.Clear();
@@ -427,10 +441,11 @@ namespace HaCreator.MapSimulator.Effects
             _blessFrames = frames;
         }
 
-        public void SetLocalPlayerState(int? localCharacterId, Vector2? localWorldPosition)
+        public void SetLocalPlayerState(int? localCharacterId, Vector2? localWorldPosition, CharacterBuild localPlayerBuild = null)
         {
             _localCharacterId = localCharacterId;
             _localPlayerPosition = localWorldPosition;
+            _localPlayerBuild = localPlayerBuild?.Clone();
             UpdateParticipantState();
         }
 
@@ -443,6 +458,24 @@ namespace HaCreator.MapSimulator.Effects
 
             _participantPositions[characterId] = worldPosition;
             UpdateParticipantState();
+        }
+
+        public bool TryGetRemoteParticipant(int characterId, out WeddingRemoteParticipantSnapshot snapshot)
+        {
+            if (_participantActors.TryGetValue(characterId, out WeddingRemoteParticipant participant))
+            {
+                snapshot = new WeddingRemoteParticipantSnapshot(
+                    participant.CharacterId,
+                    participant.Name,
+                    participant.Role,
+                    participant.Position,
+                    participant.FacingRight,
+                    participant.ActionName);
+                return true;
+            }
+
+            snapshot = default;
+            return false;
         }
         #endregion
 
@@ -466,12 +499,16 @@ namespace HaCreator.MapSimulator.Effects
             {
                 SetBlessEffect(false, currentTimeMs);
                 SetCeremonyTextOverlay(true);
+                SetCeremonyCardOverlay(false);
                 SetCeremonyCelebration(active: false);
                 _requestBgmOverride?.Invoke(WeddingBgmPath);
             }
             else
             {
                 SetCeremonyTextOverlay(false);
+                bool pronounced = IsPronouncementOrBlessingStep(step);
+                SetCeremonyCardOverlay(pronounced);
+                SetCeremonyCelebration(pronounced);
             }
 
             // Show dialog for current step
@@ -486,6 +523,7 @@ namespace HaCreator.MapSimulator.Effects
         {
             System.Diagnostics.Debug.WriteLine("[WeddingField] OnWeddingCeremonyEnd - Starting bless effect");
             SetBlessEffect(true, currentTimeMs);
+            SetCeremonyCardOverlay(active: true);
             SetCeremonyCelebration(active: true);
         }
 
@@ -595,6 +633,15 @@ namespace HaCreator.MapSimulator.Effects
                 _ceremonyTextOverlayTexture = bitmap.ToTexture2D(device);
                 System.Drawing.PointF origin = overlayCanvas.GetCanvasOriginPosition();
                 _ceremonyTextOverlayOrigin = new Point((int)origin.X, (int)origin.Y);
+
+                WzCanvasProperty cardCanvas = WzInfoTools.GetRealProperty(uiWindowImage?.GetFromPath(CeremonyCardOverlayPath)) as WzCanvasProperty;
+                using var cardBitmap = cardCanvas?.GetLinkedWzCanvasBitmap();
+                if (cardBitmap != null)
+                {
+                    _ceremonyCardOverlayTexture = cardBitmap.ToTexture2D(device);
+                    System.Drawing.PointF cardOrigin = cardCanvas.GetCanvasOriginPosition();
+                    _ceremonyCardOverlayOrigin = new Point((int)cardOrigin.X, (int)cardOrigin.Y);
+                }
             }
             catch (Exception ex)
             {
@@ -821,6 +868,9 @@ namespace HaCreator.MapSimulator.Effects
             {
                 _bridePosition = bridePosition;
             }
+
+            SyncParticipantActor(_groomId, WeddingParticipantRole.Groom, _groomPosition);
+            SyncParticipantActor(_brideId, WeddingParticipantRole.Bride, _bridePosition);
         }
 
         private bool ShouldSendParticipantAdvancePacket()
@@ -853,10 +903,12 @@ namespace HaCreator.MapSimulator.Effects
                 : "none";
             string scene = _ceremonyTextOverlayActive
                 ? "declaration overlay active"
+                : _ceremonyCardOverlayActive
+                    ? "ceremony card overlay active"
                 : _ceremonyCelebrationActive
                     ? "celebration particles active"
                     : "no scene overlay";
-            return $"Wedding map {_mapId}: step {_currentStep}, role {role}, dialog {dialog}, scene {scene}, groom {groomPosition}, bride {bridePosition}, last packet {lastPacket}.";
+            return $"Wedding map {_mapId}: step {_currentStep}, role {role}, dialog {dialog}, scene {scene}, remoteActors={_participantActors.Count}, groom {groomPosition}, bride {bridePosition}, last packet {lastPacket}.";
         }
 
         private Vector2? TryGetBlessEffectWorldCenter()
@@ -906,6 +958,11 @@ namespace HaCreator.MapSimulator.Effects
             float overlayTargetAlpha = _ceremonyTextOverlayActive ? 1f : 0f;
             _ceremonyTextOverlayAlpha = MathHelper.Clamp(
                 _ceremonyTextOverlayAlpha + ((overlayTargetAlpha - _ceremonyTextOverlayAlpha) * Math.Min(deltaSeconds * 10f, 1f)),
+                0f,
+                1f);
+            float cardOverlayTargetAlpha = _ceremonyCardOverlayActive ? 1f : 0f;
+            _ceremonyCardOverlayAlpha = MathHelper.Clamp(
+                _ceremonyCardOverlayAlpha + ((cardOverlayTargetAlpha - _ceremonyCardOverlayAlpha) * Math.Min(deltaSeconds * 8f, 1f)),
                 0f,
                 1f);
             UpdateCeremonyCelebration(deltaSeconds);
@@ -961,7 +1018,9 @@ namespace HaCreator.MapSimulator.Effects
             if (!_isActive) return;
 
             DrawCeremonyOverlay(spriteBatch);
+            DrawCeremonyCardOverlay(spriteBatch);
             DrawCeremonyCelebration(spriteBatch, mapShiftX, mapShiftY, centerX, centerY, tickCount);
+            DrawRemoteParticipants(spriteBatch, skeletonMeshRenderer, mapShiftX, mapShiftY, centerX, centerY, tickCount, font);
 
             // Draw bless effect sparkles
             if (_blessEffectActive && _blessEffectAlpha > 0)
@@ -1041,12 +1100,43 @@ namespace HaCreator.MapSimulator.Effects
                 0f);
         }
 
+        private void DrawCeremonyCardOverlay(SpriteBatch spriteBatch)
+        {
+            if (_ceremonyCardOverlayTexture == null || _ceremonyCardOverlayAlpha <= 0f)
+            {
+                return;
+            }
+
+            Viewport viewport = spriteBatch.GraphicsDevice.Viewport;
+            Vector2 center = new Vector2(viewport.Width * 0.5f, viewport.Height * 0.5f - 28f);
+            Color tint = Color.White * _ceremonyCardOverlayAlpha;
+            spriteBatch.Draw(
+                _ceremonyCardOverlayTexture,
+                center,
+                null,
+                tint,
+                0f,
+                new Vector2(_ceremonyCardOverlayOrigin.X, _ceremonyCardOverlayOrigin.Y),
+                1f,
+                SpriteEffects.None,
+                0f);
+        }
+
         private void SetCeremonyTextOverlay(bool active)
         {
             _ceremonyTextOverlayActive = active;
             if (!_ceremonyTextOverlayActive && _ceremonyTextOverlayAlpha < 0.001f)
             {
                 _ceremonyTextOverlayAlpha = 0f;
+            }
+        }
+
+        private void SetCeremonyCardOverlay(bool active)
+        {
+            _ceremonyCardOverlayActive = active;
+            if (!_ceremonyCardOverlayActive && _ceremonyCardOverlayAlpha < 0.001f)
+            {
+                _ceremonyCardOverlayAlpha = 0f;
             }
         }
 
@@ -1280,6 +1370,57 @@ namespace HaCreator.MapSimulator.Effects
             return frames[Math.Clamp(baseFrameIndex, 0, frames.Count - 1)];
         }
 
+        private void DrawRemoteParticipants(
+            SpriteBatch spriteBatch,
+            SkeletonMeshRenderer skeletonMeshRenderer,
+            int mapShiftX,
+            int mapShiftY,
+            int centerX,
+            int centerY,
+            int tickCount,
+            SpriteFont font)
+        {
+            if (_participantActors.Count == 0)
+            {
+                return;
+            }
+
+            foreach (WeddingRemoteParticipant participant in _participantActors.Values
+                .OrderBy(entry => entry.Position.Y)
+                .ThenBy(entry => entry.Role)
+                .ThenBy(entry => entry.Name, StringComparer.OrdinalIgnoreCase))
+            {
+                AssembledFrame frame = participant.Assembler.GetFrameAtTime(participant.ActionName, tickCount)
+                    ?? participant.Assembler.GetFrameAtTime(CharacterPart.GetActionString(CharacterAction.Stand1), tickCount);
+                if (frame == null)
+                {
+                    continue;
+                }
+
+                int screenX = (int)MathF.Round(participant.Position.X) - mapShiftX + centerX;
+                int screenY = (int)MathF.Round(participant.Position.Y) - mapShiftY + centerY;
+                frame.Draw(spriteBatch, skeletonMeshRenderer, screenX, screenY, participant.FacingRight, Color.White);
+
+                if (font == null)
+                {
+                    continue;
+                }
+
+                Vector2 textSize = font.MeasureString(participant.Name);
+                float topY = screenY - frame.FeetOffset + frame.Bounds.Top;
+                Vector2 textPosition = new Vector2(
+                    screenX - (textSize.X * 0.5f),
+                    topY - textSize.Y - 6f);
+                DrawOutlinedText(spriteBatch, font, participant.Name, textPosition, Color.Black, new Color(255, 242, 178));
+            }
+        }
+
+        private static void DrawOutlinedText(SpriteBatch spriteBatch, SpriteFont font, string text, Vector2 position, Color shadowColor, Color textColor)
+        {
+            spriteBatch.DrawString(font, text, position + Vector2.One, shadowColor);
+            spriteBatch.DrawString(font, text, position, textColor);
+        }
+
         private void DrawDialog(SpriteBatch spriteBatch, Texture2D pixelTexture, SpriteFont font, int currentTimeMs)
         {
             if (_currentDialog == null) return;
@@ -1347,6 +1488,62 @@ namespace HaCreator.MapSimulator.Effects
 
             return _blessFrames[_blessFrames.Count - 1];
         }
+
+        private bool IsPronouncementOrBlessingStep(int step)
+        {
+            return _mapId == ChapelWeddingMapId
+                ? step >= 3
+                : step >= 1;
+        }
+
+        private void SyncParticipantActor(int characterId, WeddingParticipantRole role, Vector2? position)
+        {
+            if (characterId <= 0 || !position.HasValue)
+            {
+                _participantActors.Remove(characterId);
+                return;
+            }
+
+            if (_localCharacterId.HasValue && _localCharacterId.Value == characterId)
+            {
+                _participantActors.Remove(characterId);
+                return;
+            }
+
+            if (!_participantActors.TryGetValue(characterId, out WeddingRemoteParticipant participant))
+            {
+                CharacterBuild build = CreateParticipantBuild(role, characterId);
+                if (build == null)
+                {
+                    return;
+                }
+
+                participant = new WeddingRemoteParticipant(
+                    characterId,
+                    role,
+                    build.Name,
+                    build,
+                    new CharacterAssembler(build));
+                _participantActors[characterId] = participant;
+            }
+
+            participant.Position = position.Value;
+            participant.FacingRight = role == WeddingParticipantRole.Groom;
+            participant.ActionName = CharacterPart.GetActionString(CharacterAction.Stand1);
+        }
+
+        private CharacterBuild CreateParticipantBuild(WeddingParticipantRole role, int characterId)
+        {
+            CharacterBuild build = _localPlayerBuild?.Clone();
+            if (build == null)
+            {
+                return null;
+            }
+
+            build.Id = characterId;
+            build.Name = role == WeddingParticipantRole.Groom ? "Groom" : "Bride";
+            return build;
+        }
         #endregion
 
         #region Reset
@@ -1358,6 +1555,8 @@ namespace HaCreator.MapSimulator.Effects
             _blessEffectActive = false;
             _ceremonyTextOverlayActive = false;
             _ceremonyTextOverlayAlpha = 0f;
+            _ceremonyCardOverlayActive = false;
+            _ceremonyCardOverlayAlpha = 0f;
             _ceremonyCelebrationActive = false;
             _sparkles.Clear();
             _ceremonyPetals.Clear();
@@ -1369,7 +1568,11 @@ namespace HaCreator.MapSimulator.Effects
             _groomPosition = null;
             _bridePosition = null;
             _participantPositions.Clear();
+            _participantActors.Clear();
             _lastPacketResponse = null;
+            _localCharacterId = null;
+            _localPlayerPosition = null;
+            _localPlayerBuild = null;
             LocalParticipantRole = WeddingParticipantRole.Guest;
         }
         #endregion
@@ -1405,6 +1608,36 @@ namespace HaCreator.MapSimulator.Effects
         public int StartTime;
         public int Duration;
         public WeddingDialogMode Mode;
+    }
+
+    public readonly record struct WeddingRemoteParticipantSnapshot(
+        int CharacterId,
+        string Name,
+        WeddingParticipantRole Role,
+        Vector2 Position,
+        bool FacingRight,
+        string ActionName);
+
+    public sealed class WeddingRemoteParticipant
+    {
+        public WeddingRemoteParticipant(int characterId, WeddingParticipantRole role, string name, CharacterBuild build, CharacterAssembler assembler)
+        {
+            CharacterId = characterId;
+            Role = role;
+            Name = name;
+            Build = build;
+            Assembler = assembler;
+            ActionName = CharacterPart.GetActionString(CharacterAction.Stand1);
+        }
+
+        public int CharacterId { get; }
+        public WeddingParticipantRole Role { get; }
+        public string Name { get; }
+        public CharacterBuild Build { get; }
+        public CharacterAssembler Assembler { get; }
+        public Vector2 Position { get; set; }
+        public bool FacingRight { get; set; } = true;
+        public string ActionName { get; set; }
     }
 
     public sealed class WeddingSceneFrame
@@ -1919,6 +2152,32 @@ namespace HaCreator.MapSimulator.Effects
 
             return _remoteUserTeams.TryGetValue(characterId, out int teamId)
                 && _teamLookPresets.TryGetValue(teamId, out preset);
+        }
+
+        public bool TryGetLocalTeamLookPreset(out BattlefieldTeamLookPreset preset)
+        {
+            preset = null;
+            return _isActive
+                && _localTeamId.HasValue
+                && _teamLookPresets.TryGetValue(_localTeamId.Value, out preset);
+        }
+
+        public bool IsItemBlockedForLocalTeam(int itemId)
+        {
+            return itemId > 0
+                && TryGetLocalTeamLookPreset(out BattlefieldTeamLookPreset preset)
+                && preset.BlockedItemIds.Contains(itemId);
+        }
+
+        public float ApplyLocalMoveSpeedCap(float speed)
+        {
+            if (!TryGetLocalTeamLookPreset(out BattlefieldTeamLookPreset preset)
+                || !preset.MoveSpeedCap.HasValue)
+            {
+                return speed;
+            }
+
+            return Math.Min(speed, preset.MoveSpeedCap.Value);
         }
 
         public void SetLocalPlayerState(int? localCharacterId)
@@ -3515,6 +3774,7 @@ namespace HaCreator.MapSimulator.Effects
         private int _lastClockUpdateTick = int.MinValue;
         private int _returnMapId = -1;
         private int _forcedReturnMapId = -1;
+        private bool _hasNextFloorPortal;
         private int _pendingTransferMapId = -1;
         private int _pendingTransferAtTick = int.MinValue;
         private int _playerHp;
@@ -3593,10 +3853,11 @@ namespace HaCreator.MapSimulator.Effects
             _resultEffect = DojoResultEffect.None;
         }
 
-        public void Configure(MapInfo mapInfo)
+        public void Configure(MapInfo mapInfo, bool hasNextFloorPortal = false)
         {
             _returnMapId = NormalizeTransferMapId(mapInfo?.returnMap);
             _forcedReturnMapId = NormalizeTransferMapId(mapInfo?.forcedReturn);
+            _hasNextFloorPortal = hasNextFloorPortal;
         }
 
         public void OnClock(int clockType, int durationSec, int currentTimeMs)
@@ -3638,7 +3899,7 @@ namespace HaCreator.MapSimulator.Effects
                     && _bossHpPercent.Value <= 0f
                     && _resultEffect == DojoResultEffect.None)
                 {
-                    ShowClearResult(Environment.TickCount);
+                    ShowClearResult(Environment.TickCount, ResolveNextFloorMapId());
                 }
             }
             else
@@ -3666,30 +3927,33 @@ namespace HaCreator.MapSimulator.Effects
             return pendingTransferMapId;
         }
 
+        public int PendingTransferMapId => _pendingTransferMapId;
+
         public void SetStage(int stage, int currentTimeMs)
         {
             _stage = Math.Clamp(stage, 0, 32);
             _stageBannerStartTick = currentTimeMs;
         }
 
-        public void ShowClearResult(int currentTimeMs)
+        public void ShowClearResult(int currentTimeMs, int nextMapId = -1)
         {
             _resultEffect = DojoResultEffect.Clear;
             _resultEffectStartTick = currentTimeMs;
-            _pendingTransferMapId = -1;
-            _pendingTransferAtTick = int.MinValue;
+            SchedulePresentationTransfer(nextMapId, _clearFrames, currentTimeMs);
         }
 
-        public void ShowTimeOverResult(int currentTimeMs)
+        public void ShowClearResultForNextFloor(int currentTimeMs)
+        {
+            ShowClearResult(currentTimeMs, ResolveNextFloorMapId());
+        }
+
+        public void ShowTimeOverResult(int currentTimeMs, int exitMapId = -1)
         {
             _resultEffect = DojoResultEffect.TimeOver;
             _resultEffectStartTick = currentTimeMs;
             _timeOverTick = 0;
             _timerDurationSec = 0;
-            _pendingTransferMapId = ResolveExitMapId();
-            _pendingTransferAtTick = _pendingTransferMapId > 0
-                ? currentTimeMs + GetAnimationDurationMs(_timeOverFrames)
-                : int.MinValue;
+            SchedulePresentationTransfer(exitMapId > 0 ? exitMapId : ResolveExitMapId(), _timeOverFrames, currentTimeMs);
         }
 
         public void Update(int currentTimeMs, float deltaSeconds)
@@ -3754,6 +4018,7 @@ namespace HaCreator.MapSimulator.Effects
             _lastClockUpdateTick = int.MinValue;
             _returnMapId = -1;
             _forcedReturnMapId = -1;
+            _hasNextFloorPortal = false;
             _pendingTransferMapId = -1;
             _pendingTransferAtTick = int.MinValue;
             _playerHp = 0;
@@ -3794,6 +4059,52 @@ namespace HaCreator.MapSimulator.Effects
         private int ResolveExitMapId()
         {
             return _forcedReturnMapId > 0 ? _forcedReturnMapId : _returnMapId;
+        }
+
+        private int ResolveNextFloorMapId()
+        {
+            if (!_hasNextFloorPortal || _mapId <= 0)
+            {
+                return -1;
+            }
+
+            int stage = ResolveStage(_mapId);
+            if (stage < 0 || stage >= 32)
+            {
+                return -1;
+            }
+
+            int preservedSuffixCandidate = _mapId + 100;
+            if (HasMapImage(preservedSuffixCandidate))
+            {
+                return preservedSuffixCandidate;
+            }
+
+            int baseCandidate = ((_mapId / 100) + 1) * 100;
+            return HasMapImage(baseCandidate) ? baseCandidate : -1;
+        }
+
+        private static bool HasMapImage(int mapId)
+        {
+            if (mapId <= 0)
+            {
+                return false;
+            }
+
+            if (global::HaCreator.Program.WzManager == null)
+            {
+                return true;
+            }
+
+            return WzInfoTools.FindMapImage(mapId.ToString(CultureInfo.InvariantCulture), global::HaCreator.Program.WzManager) != null;
+        }
+
+        private void SchedulePresentationTransfer(int targetMapId, IReadOnlyList<DojoFrame> frames, int currentTimeMs)
+        {
+            _pendingTransferMapId = NormalizeTransferMapId(targetMapId);
+            _pendingTransferAtTick = _pendingTransferMapId > 0
+                ? currentTimeMs + GetAnimationDurationMs(frames)
+                : int.MinValue;
         }
 
         private static int GetAnimationDurationMs(IReadOnlyList<DojoFrame> frames)
@@ -4179,7 +4490,7 @@ namespace HaCreator.MapSimulator.Effects
     ///
     /// This simulator pass adds the dedicated timerboard flow and clock ownership seam.
     /// The client still references this through StringPool id 0x140D in OnCreate, but the
-    /// runtime now pins the concrete WZ source node instead of scanning UIWindow trees by shape.
+    /// runtime now pins the concrete WZ source node instead of scanning unrelated UIWindow trees.
     /// </summary>
     public class SpaceGagaField
     {
@@ -4199,8 +4510,6 @@ namespace HaCreator.MapSimulator.Effects
         private const string SpaceTimerboardRootPath = "space";
         private const string SpaceTimerboardBackgroundPath = "space/backgrnd";
         private const string SpaceTimerboardDigitsPath = "space/fontTime";
-        private static readonly string[] UiImageNames = { "UIWindow.img", "UIWindow2.img" };
-
         private bool _isActive;
         private int _mapId;
         private int _durationSec;
@@ -4430,114 +4739,7 @@ namespace HaCreator.MapSimulator.Effects
                 }
             }
 
-            if (_backgroundTexture == null || _digitTextures.Any(texture => texture == null))
-            {
-                foreach (string imageName in UiImageNames)
-                {
-                    WzImage uiImage = global::HaCreator.Program.FindImage("UI", imageName);
-                    if (uiImage?.WzProperties == null)
-                    {
-                        continue;
-                    }
-
-                    if (_backgroundTexture == null && TryFindSpaceGagaBoardCanvas(uiImage, out WzCanvasProperty boardCanvas))
-                    {
-                        _backgroundTexture = LoadCanvasTexture(boardCanvas);
-                    }
-
-                    if (_digitTextures.Any(texture => texture == null) && TryFindSpaceGagaDigitContainer(uiImage, out WzImageProperty digitContainer))
-                    {
-                        LoadDigitTextures(digitContainer);
-                    }
-
-                    if (_backgroundTexture != null && _digitTextures.All(texture => texture != null))
-                    {
-                        break;
-                    }
-                }
-            }
-
             _assetsLoaded = true;
-        }
-
-        private bool TryFindSpaceGagaBoardCanvas(WzImage image, out WzCanvasProperty boardCanvas)
-        {
-            boardCanvas = null;
-            foreach (WzImageProperty property in EnumeratePropertiesDepthFirst(image))
-            {
-                if (property is not WzCanvasProperty canvas)
-                {
-                    continue;
-                }
-
-                using var bitmap = canvas.GetLinkedWzCanvasBitmap();
-                if (bitmap == null || bitmap.Width != TimerboardWidth || bitmap.Height != TimerboardHeight)
-                {
-                    continue;
-                }
-
-                boardCanvas = canvas;
-                return true;
-            }
-
-            return false;
-        }
-
-        private bool TryFindSpaceGagaDigitContainer(WzImage image, out WzImageProperty digitContainer)
-        {
-            digitContainer = null;
-            foreach (WzImageProperty property in EnumeratePropertiesDepthFirst(image))
-            {
-                if (!LooksLikeClockDigitContainer(property))
-                {
-                    continue;
-                }
-
-                digitContainer = property;
-                return true;
-            }
-
-            return false;
-        }
-
-        private static IEnumerable<WzImageProperty> EnumeratePropertiesDepthFirst(IPropertyContainer container)
-        {
-            if (container?.WzProperties == null)
-            {
-                yield break;
-            }
-
-            foreach (WzImageProperty child in container.WzProperties)
-            {
-                yield return child;
-                if (child is IPropertyContainer childContainer)
-                {
-                    foreach (WzImageProperty descendant in EnumeratePropertiesDepthFirst(childContainer))
-                    {
-                        yield return descendant;
-                    }
-                }
-            }
-        }
-
-        private static bool LooksLikeClockDigitContainer(WzImageProperty property)
-        {
-            if (property?.WzProperties == null)
-            {
-                return false;
-            }
-
-            for (int i = 0; i < 10; i++)
-            {
-                if (ResolveCanvas(property[i.ToString()]) == null)
-                {
-                    return false;
-                }
-            }
-
-            return ResolveCanvas(property["bar"]) != null
-                || ResolveCanvas(property["colon"]) != null
-                || ResolveCanvas(property["comma"]) != null;
         }
 
         private void LoadDigitTextures(WzImageProperty digitContainer)
@@ -4648,6 +4850,7 @@ namespace HaCreator.MapSimulator.Effects
         private const int ClearEffectDurationMs = 2200;
         private const float DangerDepletionThreshold = 0.65f;
         private const int BonusEffectY = 190;
+        private const int CountEffectY = 190;
         private const int ResultBoardY = 115;
         private const int ResultScoreX = 180;
         private const int ResultScoreY = 144;
@@ -4684,6 +4887,8 @@ namespace HaCreator.MapSimulator.Effects
         private readonly List<MassacreCountEffect> _countEffects = new();
         private string _countEffectBannerText;
         private int _countEffectBannerUntilMs = int.MinValue;
+        private int _countEffectPresentationStartTick = int.MinValue;
+        private int _countEffectPresentationStage;
         private GraphicsDevice _device;
         private bool _assetsLoaded;
         private Texture2D _gaugeBackgroundTexture;
@@ -4704,6 +4909,9 @@ namespace HaCreator.MapSimulator.Effects
         private List<MassacreCanvasFrame> _dangerBackgroundFrames;
         private List<MassacreCanvasFrame> _bonusStageFrames;
         private List<MassacreCanvasFrame> _bonusFrames;
+        private List<MassacreCanvasFrame> _countEffectFirstStartFrames;
+        private List<MassacreCanvasFrame> _countEffectStageFrames;
+        private readonly Dictionary<int, List<MassacreCanvasFrame>> _countEffectNumberFrames = new();
         private List<MassacreCanvasFrame> _resultClearFrames;
         private List<MassacreCanvasFrame> _resultFailFrames;
         private List<MassacreCanvasFrame> _resultBoardPulseFrames;
@@ -4724,6 +4932,8 @@ namespace HaCreator.MapSimulator.Effects
         public int ComboCount => _comboCount;
         public int TimerRemain => RemainingSeconds;
         public bool HasBonusPresentation => _bonusPresentationStartTick != int.MinValue;
+        public bool HasCountEffectPresentation => _countEffectPresentationStartTick != int.MinValue;
+        public int ActiveCountEffectStage => _countEffectPresentationStage;
         public bool HasResultPresentation => _resultPresentation != MassacreResultPresentation.None;
         public float GaugeProgress => Math.Clamp(_maxGauge <= 0 ? 0f : _displayGauge / _maxGauge, 0f, 1f);
         public bool HasRunningTimerboard => _timeOverTick != int.MinValue;
@@ -4854,6 +5064,8 @@ namespace HaCreator.MapSimulator.Effects
             _keyAnimationQueued = false;
             _countEffectBannerText = null;
             _countEffectBannerUntilMs = int.MinValue;
+            _countEffectPresentationStartTick = int.MinValue;
+            _countEffectPresentationStage = 0;
             _bonusPresentationStartTick = int.MinValue;
             _resultPresentationStartTick = int.MinValue;
             _resultPresentation = MassacreResultPresentation.None;
@@ -4971,6 +5183,14 @@ namespace HaCreator.MapSimulator.Effects
             {
                 _bonusPresentationStartTick = int.MinValue;
             }
+
+            if (_countEffectPresentationStartTick != int.MinValue
+                && !IsAnimationPlaying(GetCountEffectFramesForCurrentStage(), currentTimeMs, _countEffectPresentationStartTick, repeat: false)
+                && !IsAnimationPlaying(GetCountEffectNumberFrames(_countEffectPresentationStage), currentTimeMs, _countEffectPresentationStartTick, repeat: false))
+            {
+                _countEffectPresentationStartTick = int.MinValue;
+                _countEffectPresentationStage = 0;
+            }
         }
 
         public void Draw(SpriteBatch spriteBatch, Texture2D pixelTexture, SpriteFont font)
@@ -4985,6 +5205,7 @@ namespace HaCreator.MapSimulator.Effects
             DrawTimerboard(spriteBatch, pixelTexture, font, viewport);
             DrawGaugeHud(spriteBatch, pixelTexture, font, viewport);
             DrawKeyAnimation(spriteBatch, pixelTexture, font);
+            DrawCountEffectPresentation(spriteBatch, font, viewport, Environment.TickCount);
             DrawBonusPresentation(spriteBatch, font, viewport, Environment.TickCount);
             DrawResultPresentation(spriteBatch, font, viewport, Environment.TickCount);
             DrawClearEffect(spriteBatch, pixelTexture, font, viewport);
@@ -5002,9 +5223,10 @@ namespace HaCreator.MapSimulator.Effects
                 ? $", nextCountEffect={threshold}"
                 : string.Empty;
             string disableSkillText = _disableSkill ? ", skills=disabled" : string.Empty;
+            string countEffectText = HasCountEffectPresentation ? $", countFx=stage{_countEffectPresentationStage}" : string.Empty;
             string bonusText = HasBonusPresentation ? ", bonusFx=active" : string.Empty;
             string resultText = HasResultPresentation ? $", result={_resultPresentation}:{_resultRank}:{_resultScore}" : string.Empty;
-            return $"Massacre map {_mapId}, timer={timerText}, gauge={_currentGauge}/{_maxGauge}, inc={_incGauge}, hitAdd={_defaultGaugeIncrease}, decay={_gaugeDec}/s, kills={_killCount}, combo={_comboCount}{disableSkillText}{nextCountEffect}{bonusText}{resultText}";
+            return $"Massacre map {_mapId}, timer={timerText}, gauge={_currentGauge}/{_maxGauge}, inc={_incGauge}, hitAdd={_defaultGaugeIncrease}, decay={_gaugeDec}/s, kills={_killCount}, combo={_comboCount}{disableSkillText}{nextCountEffect}{countEffectText}{bonusText}{resultText}";
         }
 
         public void Reset()
@@ -5310,9 +5532,15 @@ namespace HaCreator.MapSimulator.Effects
                 string effectText = _countEffects[i].RequiresSkillUse ? " skill" : " buff";
                 _countEffectBannerText = $"{_countEffects[i].Threshold} kills{effectText}";
                 _countEffectBannerUntilMs = currentTimeMs + 1800;
-                _bonusPresentationStartTick = currentTimeMs;
+                TriggerCountEffectPresentation(i + 1, currentTimeMs);
                 return;
             }
+        }
+
+        private void TriggerCountEffectPresentation(int stage, int currentTimeMs)
+        {
+            _countEffectPresentationStage = Math.Max(1, stage);
+            _countEffectPresentationStartTick = currentTimeMs;
         }
 
         public void ShowResultPresentation(bool clear, int currentTimeMs, int? scoreOverride = null, char? rankOverride = null)
@@ -5376,11 +5604,34 @@ namespace HaCreator.MapSimulator.Effects
             LoadRankTextures(result?["Rank"]);
 
             WzImageProperty killing = effectImage?["killing"];
+            _countEffectFirstStartFrames = LoadAnimationFrames(killing?["first"]?["start"]);
+            _countEffectStageFrames = LoadAnimationFrames(killing?["first"]?["stage"]);
+            LoadCountEffectNumberFrames(killing?["number"]);
             _resultClearFrames = LoadAnimationFrames(killing?["clear"]);
             _resultFailFrames = LoadAnimationFrames(killing?["fail"]);
             _bonusStageFrames = LoadAnimationFrames(killing?["bonus"]?["stage"]);
             _bonusFrames = LoadAnimationFrames(killing?["bonus"]?["bonus"]);
             _assetsLoaded = true;
+        }
+
+        private void DrawCountEffectPresentation(SpriteBatch spriteBatch, SpriteFont font, Viewport viewport, int currentTimeMs)
+        {
+            if (_countEffectPresentationStartTick == int.MinValue || _countEffectPresentationStage <= 0)
+            {
+                return;
+            }
+
+            Vector2 anchor = new(viewport.Width / 2f, CountEffectY);
+            bool drewBase = DrawAnimation(spriteBatch, GetCountEffectFramesForCurrentStage(), currentTimeMs, _countEffectPresentationStartTick, anchor, repeat: false);
+            bool drewNumber = DrawAnimation(spriteBatch, GetCountEffectNumberFrames(_countEffectPresentationStage), currentTimeMs, _countEffectPresentationStartTick, anchor, repeat: false);
+            if (!drewBase && !drewNumber && font != null)
+            {
+                string fallback = $"STAGE {_countEffectPresentationStage}";
+                Vector2 size = font.MeasureString(fallback);
+                Vector2 pos = new((viewport.Width - size.X) / 2f, CountEffectY);
+                spriteBatch.DrawString(font, fallback, pos + Vector2.One, Color.Black);
+                spriteBatch.DrawString(font, fallback, pos, new Color(255, 223, 132));
+            }
         }
 
         private void DrawBonusPresentation(SpriteBatch spriteBatch, SpriteFont font, Viewport viewport, int currentTimeMs)
@@ -5706,6 +5957,29 @@ namespace HaCreator.MapSimulator.Effects
             }
         }
 
+        private void LoadCountEffectNumberFrames(WzImageProperty source)
+        {
+            _countEffectNumberFrames.Clear();
+            if (source?.WzProperties == null)
+            {
+                return;
+            }
+
+            foreach (WzImageProperty child in source.WzProperties)
+            {
+                if (!int.TryParse(child.Name, out int stage))
+                {
+                    continue;
+                }
+
+                List<MassacreCanvasFrame> frames = LoadAnimationFrames(child);
+                if (frames != null)
+                {
+                    _countEffectNumberFrames[stage] = frames;
+                }
+            }
+        }
+
         private static WzCanvasProperty ResolveCanvas(WzImageProperty property)
         {
             if (WzInfoTools.GetRealProperty(property) is WzCanvasProperty resolvedCanvas)
@@ -5740,6 +6014,20 @@ namespace HaCreator.MapSimulator.Effects
                 2 => _keyCloseFrames,
                 _ => null
             };
+        }
+
+        private List<MassacreCanvasFrame> GetCountEffectFramesForCurrentStage()
+        {
+            return _countEffectPresentationStage <= 1
+                ? _countEffectFirstStartFrames
+                : _countEffectStageFrames;
+        }
+
+        private List<MassacreCanvasFrame> GetCountEffectNumberFrames(int stage)
+        {
+            return _countEffectNumberFrames.TryGetValue(Math.Clamp(stage, 1, 5), out List<MassacreCanvasFrame> frames)
+                ? frames
+                : null;
         }
 
         private bool ShouldDrawDangerOverlay()

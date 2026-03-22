@@ -265,8 +265,11 @@ namespace HaCreator.MapSimulator.AI
         public MobStatusEffect Effect { get; set; }
         public int ExpirationTime { get; set; }
         public int Value { get; set; }
+        public int SecondaryValue { get; set; }
+        public int TertiaryValue { get; set; }
         public int TickIntervalMs { get; set; }
         public int NextTickTime { get; set; }
+        public int SourceSkillId { get; set; }
     }
 
     public enum MobDamageType
@@ -307,6 +310,8 @@ namespace HaCreator.MapSimulator.AI
         private readonly List<MobDamageInfo> _damageDisplays = new List<MobDamageInfo>();
         private readonly Dictionary<int, int> _skillUseCounts = new Dictionary<int, int>();
         private int _skillForbidUntil = 0;
+        private bool _actionAnimationCompleted;
+        private int _actionRecoveryUntil;
 
         // Stats
         private int _maxHp = 100;
@@ -570,6 +575,12 @@ namespace HaCreator.MapSimulator.AI
             {
                 _currentSkillIndex = -1;
             }
+
+            if (newState != MobAIState.Attack && newState != MobAIState.Skill)
+            {
+                _actionAnimationCompleted = false;
+                _actionRecoveryUntil = 0;
+            }
         }
 
         public void Update(int currentTick, float mobX, float mobY, float? playerX, float? playerY)
@@ -808,9 +819,10 @@ namespace HaCreator.MapSimulator.AI
                 return;
             }
 
-            // Attack state transition is now controlled by NotifyAttackAnimationComplete()
-            // which is called by MobItem when the animation controller signals completion.
-            // This ensures the mob finishes its attack animation before moving again.
+            if (_actionAnimationCompleted && currentTick >= _actionRecoveryUntil)
+            {
+                CompleteCurrentCombatAction(currentTick);
+            }
         }
 
         private void UpdateSkillState(int currentTick)
@@ -821,7 +833,10 @@ namespace HaCreator.MapSimulator.AI
                 return;
             }
 
-            // Skill completion is animation-driven, mirroring attack handling.
+            if (_actionAnimationCompleted && currentTick >= _actionRecoveryUntil)
+            {
+                CompleteCurrentCombatAction(currentTick);
+            }
         }
 
         /// <summary>
@@ -833,24 +848,11 @@ namespace HaCreator.MapSimulator.AI
         {
             if (_state == MobAIState.Attack || _state == MobAIState.Skill)
             {
-                if (_selfDestructPending)
+                _actionAnimationCompleted = true;
+                if (currentTick >= _actionRecoveryUntil)
                 {
-                    _selfDestructPending = false;
-                    Kill(currentTick, MobDeathType.Bomb);
-                    return;
+                    CompleteCurrentCombatAction(currentTick);
                 }
-
-                if (_state == MobAIState.Attack)
-                {
-                    ResolveAngerGaugeAfterAttack(_currentAttackIndex);
-                }
-
-                if (TryChainNextCombatAction(currentTick))
-                {
-                    return;
-                }
-
-                SetState(MobAIState.Chase, currentTick);
             }
         }
 
@@ -895,9 +897,9 @@ namespace HaCreator.MapSimulator.AI
         /// Apply damage to this mob (simple version without attacker info)
         /// </summary>
         /// <returns>True if mob died from this damage</returns>
-        public bool TakeDamage(int damage, int currentTick, bool isCritical = false)
+        public bool TakeDamage(int damage, int currentTick, bool isCritical = false, MobDamageType damageType = MobDamageType.Physical)
         {
-            return TakeDamage(damage, currentTick, isCritical, null, null);
+            return TakeDamage(damage, currentTick, isCritical, null, null, damageType);
         }
 
         /// <summary>
@@ -909,12 +911,13 @@ namespace HaCreator.MapSimulator.AI
         /// <param name="attackerX">Attacker X position (for aggro)</param>
         /// <param name="attackerY">Attacker Y position (for aggro)</param>
         /// <returns>True if mob died from this damage</returns>
-        public bool TakeDamage(int damage, int currentTick, bool isCritical, float? attackerX, float? attackerY)
+        public bool TakeDamage(int damage, int currentTick, bool isCritical, float? attackerX, float? attackerY, MobDamageType damageType = MobDamageType.Physical)
         {
             if (IsDead)
                 return false;
 
-            damage = CalculateIncomingDamage(damage, MobDamageType.Physical);
+            damage = CalculateIncomingDamage(damage, damageType);
+            LastDamageTaken = damage;
             _currentHp -= damage;
 
             // Add damage display
@@ -1272,6 +1275,7 @@ namespace HaCreator.MapSimulator.AI
             _currentSkillIndex = -1;
             _statusEffects = MobStatusEffect.None;
             _statusEntries.Clear();
+            LastDamageTaken = 0;
             _guidedTargetId = 0;
             _isGuidedTarget = false;
             _isAggroed = false;
@@ -1341,7 +1345,15 @@ namespace HaCreator.MapSimulator.AI
         /// <param name="effect">Effect to apply</param>
         /// <param name="durationMs">Duration in milliseconds</param>
         /// <param name="currentTick">Current tick count</param>
-        public void ApplyStatusEffect(MobStatusEffect effect, int durationMs, int currentTick, int value = 0, int tickIntervalMs = 1000)
+        public void ApplyStatusEffect(
+            MobStatusEffect effect,
+            int durationMs,
+            int currentTick,
+            int value = 0,
+            int tickIntervalMs = 1000,
+            int secondaryValue = 0,
+            int tertiaryValue = 0,
+            int sourceSkillId = 0)
         {
             _statusEffects |= effect;
             bool wasActive = _statusEntries.ContainsKey(effect);
@@ -1350,8 +1362,11 @@ namespace HaCreator.MapSimulator.AI
                 Effect = effect,
                 ExpirationTime = currentTick + durationMs,
                 Value = NormalizeStatusValue(effect, value),
+                SecondaryValue = secondaryValue,
+                TertiaryValue = tertiaryValue,
                 TickIntervalMs = Math.Max(1, tickIntervalMs),
-                NextTickTime = currentTick + Math.Max(1, tickIntervalMs)
+                NextTickTime = currentTick + Math.Max(1, tickIntervalMs),
+                SourceSkillId = sourceSkillId
             };
 
             // Special handling for certain effects
@@ -1697,7 +1712,10 @@ namespace HaCreator.MapSimulator.AI
             }
 
             _currentAttackIndex = attackIndex;
-            _attacks[attackIndex].LastUseTime = currentTick;
+            MobAttackEntry attack = _attacks[attackIndex];
+            attack.LastUseTime = currentTick;
+            _actionAnimationCompleted = false;
+            _actionRecoveryUntil = currentTick + GetActionRecoveryDelay(attack);
             TransitionToActionState(MobAIState.Attack, currentTick);
         }
 
@@ -1712,6 +1730,8 @@ namespace HaCreator.MapSimulator.AI
             MobSkillEntry skill = _skills[skillIndex];
             skill.LastUseTime = currentTick;
             RegisterSkillUsage(skill, currentTick);
+            _actionAnimationCompleted = false;
+            _actionRecoveryUntil = currentTick + GetActionRecoveryDelay(skill);
             TransitionToActionState(MobAIState.Skill, currentTick);
         }
 
@@ -1753,6 +1773,40 @@ namespace HaCreator.MapSimulator.AI
             return false;
         }
 
+        public int LastDamageTaken { get; private set; }
+
+        public int CalculateReflectedDamageToAttacker(int inflictedDamage, MobDamageType damageType)
+        {
+            if (inflictedDamage <= 0 || !_statusEntries.TryGetValue(MobStatusEffect.Reflect, out MobStatusEntry entry))
+            {
+                return 0;
+            }
+
+            int reflectPercent = Math.Clamp(entry.Value, 0, 100);
+            if (reflectPercent <= 0)
+            {
+                return 0;
+            }
+
+            int cap = entry.SourceSkillId switch
+            {
+                143 when damageType == MobDamageType.Physical => entry.SecondaryValue,
+                144 when damageType == MobDamageType.Magical => entry.TertiaryValue != 0 ? entry.TertiaryValue : entry.SecondaryValue,
+                145 when damageType == MobDamageType.Physical => entry.SecondaryValue,
+                145 when damageType == MobDamageType.Magical => entry.TertiaryValue != 0 ? entry.TertiaryValue : entry.SecondaryValue,
+                143 or 144 or 145 => 0,
+                _ => Math.Max(entry.SecondaryValue, entry.TertiaryValue)
+            };
+
+            if (cap <= 0)
+            {
+                return 0;
+            }
+
+            int reflectedDamage = (int)MathF.Round(inflictedDamage * (reflectPercent / 100f));
+            return Math.Max(1, Math.Min(cap, reflectedDamage));
+        }
+
         private static int GetAttackTriggerDelay(MobAttackEntry attack)
         {
             if (attack == null)
@@ -1778,6 +1832,41 @@ namespace HaCreator.MapSimulator.AI
             return 200;
         }
 
+        private void CompleteCurrentCombatAction(int currentTick)
+        {
+            _actionAnimationCompleted = false;
+            _actionRecoveryUntil = 0;
+
+            if (_selfDestructPending)
+            {
+                _selfDestructPending = false;
+                Kill(currentTick, MobDeathType.Bomb);
+                return;
+            }
+
+            if (_state == MobAIState.Attack)
+            {
+                ResolveAngerGaugeAfterAttack(_currentAttackIndex);
+            }
+
+            if (TryChainNextCombatAction(currentTick))
+            {
+                return;
+            }
+
+            SetState(MobAIState.Chase, currentTick);
+        }
+
+        private static int GetActionRecoveryDelay(MobAttackEntry attack)
+        {
+            if (attack == null)
+            {
+                return 0;
+            }
+
+            return Math.Max(0, Math.Max(attack.AttackAfter, attack.EffectAfter));
+        }
+
         private static int GetSkillTriggerDelay(MobSkillEntry skill)
         {
             if (skill == null)
@@ -1796,6 +1885,16 @@ namespace HaCreator.MapSimulator.AI
             }
 
             return 250;
+        }
+
+        private static int GetActionRecoveryDelay(MobSkillEntry skill)
+        {
+            if (skill == null)
+            {
+                return 0;
+            }
+
+            return Math.Max(0, Math.Max(skill.SkillAfter, skill.EffectAfter));
         }
 
         private bool CanAutoSelectSkill(MobSkillEntry skill, int currentTick)

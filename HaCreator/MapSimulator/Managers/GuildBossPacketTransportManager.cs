@@ -8,6 +8,7 @@ using System.Net.Sockets;
 using System.Threading;
 using System.Threading.Tasks;
 using HaCreator.MapSimulator.Effects;
+using MapleLib.PacketLib;
 
 namespace HaCreator.MapSimulator.Managers
 {
@@ -29,7 +30,8 @@ namespace HaCreator.MapSimulator.Managers
 
     /// <summary>
     /// Loopback transport seam for Guild Boss packet flow.
-    /// Inbound lines accept "344 <hex>", "345 <hex>", "healer <y>", or "pulley <state>".
+    /// Inbound lines accept "344 <hex>", "345 <hex>", "healer <y>", "pulley <state>",
+    /// or a decrypted Maple packet via "packetraw <hex>".
     /// Outbound pulley requests are emitted as "pulleyhit &lt;sequence&gt; &lt;tickCount&gt;".
     /// </summary>
     public sealed class GuildBossPacketTransportManager : IDisposable
@@ -213,6 +215,11 @@ namespace HaCreator.MapSimulator.Managers
                 return false;
             }
 
+            if (TryParseRawPacket(tokens, out packetType, out payload, out error))
+            {
+                return true;
+            }
+
             if (!TryParsePacketType(tokens[0], out packetType))
             {
                 error = $"Unsupported guild boss packet type: {tokens[0]}";
@@ -237,6 +244,53 @@ namespace HaCreator.MapSimulator.Managers
 
             error = "Guild boss pulley packet requires either a state byte or a hex payload.";
             return false;
+        }
+
+        private static bool TryParseRawPacket(string[] tokens, out int packetType, out byte[] payload, out string error)
+        {
+            packetType = 0;
+            payload = Array.Empty<byte>();
+            error = null;
+
+            if (tokens.Length == 0
+                || !string.Equals(tokens[0], "packetraw", StringComparison.OrdinalIgnoreCase))
+            {
+                return false;
+            }
+
+            if (!TryParseHexPayload(tokens, 1, out byte[] rawPacket))
+            {
+                error = "Guild boss raw packet requires a decrypted packet hex payload.";
+                return false;
+            }
+
+            if (rawPacket.Length < sizeof(short))
+            {
+                error = "Guild boss raw packet must include a 2-byte opcode.";
+                return false;
+            }
+
+            try
+            {
+                PacketReader reader = new PacketReader(rawPacket);
+                packetType = reader.ReadShort();
+                payload = reader.ReadBytes(rawPacket.Length - sizeof(short));
+            }
+            catch (Exception ex) when (ex is EndOfStreamException || ex is IOException)
+            {
+                error = $"Guild boss raw packet decode failed: {ex.Message}";
+                return false;
+            }
+
+            if (packetType != PacketTypeHealerMove && packetType != PacketTypePulleyStateChange)
+            {
+                error = $"Unsupported guild boss raw packet opcode: {packetType}";
+                packetType = 0;
+                payload = Array.Empty<byte>();
+                return false;
+            }
+
+            return true;
         }
 
         private async Task ListenLoopAsync(CancellationToken cancellationToken)

@@ -1,4 +1,5 @@
 using HaCreator.MapSimulator.Character;
+using System;
 
 namespace HaCreator.MapSimulator.Character.Skills
 {
@@ -7,6 +8,7 @@ namespace HaCreator.MapSimulator.Character.Skills
     /// </summary>
     public static class PlayerSkillStateRestrictionEvaluator
     {
+        private const double HighestJumpVelocityWindow = 80d;
         private const int WindWalkSkillId = 11101005;
         private const int WildHunterJaguarJumpSkillId = 33001002;
         private const int NightLordFlashJumpSkillId = 4111006;
@@ -67,7 +69,9 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return null;
             }
 
-            if (!UsesBoundJumpStateGate(skill))
+            bool usesBoundJumpStateGate = UsesBoundJumpStateGate(skill);
+            bool usesHighestJumpGate = UsesHighestJumpStateGate(skill);
+            if (!usesBoundJumpStateGate && !usesHighestJumpGate)
             {
                 return null;
             }
@@ -77,7 +81,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return "Bound-jump skills cannot be used while on a ladder or rope.";
             }
 
-            if (RequiresGroundedBoundJumpStart(skill))
+            if (usesBoundJumpStateGate && RequiresGroundedBoundJumpStart(skill))
             {
                 if (!player.Physics.IsOnFoothold())
                 {
@@ -95,12 +99,21 @@ namespace HaCreator.MapSimulator.Character.Skills
 
             if (!player.Physics.IsAirborne())
             {
-                return "Bound-jump skills must be chained while airborne.";
+                return usesHighestJumpGate
+                    ? "This skill must be used while airborne."
+                    : "Bound-jump skills must be chained while airborne.";
             }
 
             if (player.Physics.IsFreeFalling() && player.Physics.IsFalling())
             {
-                return "Bound-jump skills cannot be used after the jump has already turned into a fall.";
+                return usesHighestJumpGate
+                    ? "This skill cannot be used after the jump has already turned into a fall."
+                    : "Bound-jump skills cannot be used after the jump has already turned into a fall.";
+            }
+
+            if (usesHighestJumpGate && Math.Abs(player.Physics.VelocityY) > HighestJumpVelocityWindow)
+            {
+                return "This skill must be used near the top of a jump.";
             }
 
             return null;
@@ -126,6 +139,12 @@ namespace HaCreator.MapSimulator.Character.Skills
 
             return skill.ClientInfoType == 40
                    && skill.CasterMove
+                   && skill.AvailableInJumpingState;
+        }
+
+        private static bool UsesHighestJumpStateGate(SkillData skill)
+        {
+            return skill?.RequireHighestJump == true
                    && skill.AvailableInJumpingState;
         }
 

@@ -655,6 +655,7 @@ namespace HaCreator.MapSimulator.Character
         public int AttackSpeed { get; set; } = 6;       // Attack speed modifier
         public int Attack { get; set; }                  // Weapon attack
         public string WeaponType { get; set; }           // "1h sword", "2h sword", "bow", etc.
+        public string AfterImageType { get; set; }       // WZ info/afterImage family (e.g. swordOL, swordOS)
         public int Range { get; set; } = 100;            // Attack range in pixels
         public bool IsTwoHanded { get; set; }
 
@@ -702,6 +703,7 @@ namespace HaCreator.MapSimulator.Character
                 AttackSpeed = AttackSpeed,
                 Attack = Attack,
                 WeaponType = WeaponType,
+                AfterImageType = AfterImageType,
                 Range = Range,
                 IsTwoHanded = IsTwoHanded
             };
@@ -818,6 +820,8 @@ namespace HaCreator.MapSimulator.Character
         public int TraitCraft { get; set; }
         public int TraitSense { get; set; }
         public int TraitCharm { get; set; }
+        public bool HasPendantSlotExtension { get; set; }
+        public bool HasPocketSlot { get; set; }
 
         // Experience
         public long Exp { get; set; } = 0;
@@ -839,6 +843,10 @@ namespace HaCreator.MapSimulator.Character
 
         public string GuildDisplayText => string.IsNullOrWhiteSpace(GuildName) ? "-" : GuildName;
         public string AllianceDisplayText => string.IsNullOrWhiteSpace(AllianceName) ? "-" : AllianceName;
+        public bool IsPendantSlotExtensionActive =>
+            HasPendantSlotExtension || Equipment.ContainsKey(EquipSlot.Pendant2) || HiddenEquipment.ContainsKey(EquipSlot.Pendant2);
+        public bool IsPocketSlotAvailable =>
+            HasPocketSlot || TraitCharm >= 30 || Equipment.ContainsKey(EquipSlot.Pocket) || HiddenEquipment.ContainsKey(EquipSlot.Pocket);
 
         public int ExpPercent
         {
@@ -1011,6 +1019,65 @@ namespace HaCreator.MapSimulator.Character
         {
             if (part == null) return;
             HiddenEquipment[part.Slot] = part;
+        }
+
+        public IReadOnlyList<CharacterPart> PlaceEquipment(CharacterPart part, EquipSlot targetSlot)
+        {
+            if (part == null)
+            {
+                return Array.Empty<CharacterPart>();
+            }
+
+            List<CharacterPart> displacedParts = new();
+            part.Slot = targetSlot;
+            Equipment.TryGetValue(targetSlot, out CharacterPart visiblePart);
+            HiddenEquipment.TryGetValue(targetSlot, out CharacterPart hiddenPart);
+
+            if (part.IsCash)
+            {
+                if (visiblePart?.IsCash == true)
+                {
+                    displacedParts.Add(visiblePart);
+                }
+                else if (visiblePart != null)
+                {
+                    HiddenEquipment[targetSlot] = visiblePart;
+                }
+
+                Equipment[targetSlot] = part;
+                return displacedParts.Count == 0
+                    ? Array.Empty<CharacterPart>()
+                    : displacedParts.AsReadOnly();
+            }
+
+            if (visiblePart?.IsCash == true)
+            {
+                if (hiddenPart != null)
+                {
+                    displacedParts.Add(hiddenPart);
+                }
+
+                HiddenEquipment[targetSlot] = part;
+                return displacedParts.Count == 0
+                    ? Array.Empty<CharacterPart>()
+                    : displacedParts.AsReadOnly();
+            }
+
+            if (visiblePart != null)
+            {
+                displacedParts.Add(visiblePart);
+            }
+
+            if (hiddenPart != null)
+            {
+                displacedParts.Add(hiddenPart);
+                HiddenEquipment.Remove(targetSlot);
+            }
+
+            Equipment[targetSlot] = part;
+            return displacedParts.Count == 0
+                ? Array.Empty<CharacterPart>()
+                : displacedParts.AsReadOnly();
         }
 
         /// <summary>
@@ -1346,6 +1413,8 @@ namespace HaCreator.MapSimulator.Character
                 TraitCraft = TraitCraft,
                 TraitSense = TraitSense,
                 TraitCharm = TraitCharm,
+                HasPendantSlotExtension = HasPendantSlotExtension,
+                HasPocketSlot = HasPocketSlot,
                 Exp = Exp,
                 ExpToNextLevel = ExpToNextLevel,
                 Attack = Attack,

@@ -42,6 +42,7 @@ namespace HaCreator.MapSimulator.UI
         private const int BOOK_NAME_MULTI_LINE_FIRST_Y = 55;
         private const int BOOK_NAME_MULTI_LINE_SECOND_Y = 69;
         private const int BOOK_NAME_MAX_WIDTH = 110;
+        private const float BOOK_NAME_TEXT_SCALE = 0.42f;
 
         // Skill list positioning
         private const int FIRST_ROW_TOP = 112;
@@ -61,10 +62,15 @@ namespace HaCreator.MapSimulator.UI
         private const int SP_UP_BUTTON_Y_OFFSET = 1;
         private const int SP_UP_BUTTON_FALLBACK_WIDTH = 18;
         private const int SP_UP_BUTTON_FALLBACK_HEIGHT = 18;
+        private const int SKILL_NAME_MAX_WIDTH = 78;
+        private const int SKILL_LEVEL_MAX_WIDTH = 74;
+        private const float SKILL_NAME_TEXT_SCALE = 0.38f;
+        private const float SKILL_LEVEL_TEXT_SCALE = 0.34f;
 
         // SP display
         private const int SP_DISPLAY_X_BASE = 104;
         private const int SP_DISPLAY_Y = 256;
+        private const float SP_DISPLAY_TEXT_SCALE = 0.4f;
 
         // Hover tooltip layout
         private const int TOOLTIP_FALLBACK_WIDTH = 320;
@@ -379,7 +385,7 @@ namespace HaCreator.MapSimulator.UI
 
         public void SetRecommendedSkillEntries(int tab, IEnumerable<SkillDataLoader.RecommendedSkillEntry> entries)
         {
-            int tabIndex = Math.Clamp(tab, TAB_BEGINNER, TAB_4TH);
+            int tabIndex = Math.Clamp(tab, TAB_BEGINNER, MAX_TAB_INDEX);
             if (!_recommendedSkillsByTab.TryGetValue(tabIndex, out List<SkillDataLoader.RecommendedSkillEntry> list))
             {
                 list = new List<SkillDataLoader.RecommendedSkillEntry>();
@@ -403,13 +409,28 @@ namespace HaCreator.MapSimulator.UI
         {
             if (enabled != null)
             {
-                for (int i = 0; i < Math.Min(5, enabled.Length); i++)
+                for (int i = 0; i < Math.Min(STANDARD_TAB_COUNT, enabled.Length); i++)
                     _standardTabEnabled[i] = enabled[i];
             }
             if (disabled != null)
             {
-                for (int i = 0; i < Math.Min(5, disabled.Length); i++)
+                for (int i = 0; i < Math.Min(STANDARD_TAB_COUNT, disabled.Length); i++)
                     _standardTabDisabled[i] = disabled[i];
+            }
+        }
+
+        public void SetDualTabTextures(Texture2D[] enabled, Texture2D[] disabled)
+        {
+            if (enabled != null)
+            {
+                for (int i = 0; i < Math.Min(DUAL_TAB_COUNT, enabled.Length); i++)
+                    _dualTabEnabled[i] = enabled[i];
+            }
+
+            if (disabled != null)
+            {
+                for (int i = 0; i < Math.Min(DUAL_TAB_COUNT, disabled.Length); i++)
+                    _dualTabDisabled[i] = disabled[i];
             }
         }
 
@@ -439,15 +460,36 @@ namespace HaCreator.MapSimulator.UI
         {
             if (enabledRects != null)
             {
-                for (int i = 0; i < Math.Min(5, enabledRects.Length); i++)
+                for (int i = 0; i < Math.Min(STANDARD_TAB_COUNT, enabledRects.Length); i++)
                     _standardTabEnabledRects[i] = enabledRects[i];
             }
 
             if (disabledRects != null)
             {
-                for (int i = 0; i < Math.Min(5, disabledRects.Length); i++)
+                for (int i = 0; i < Math.Min(STANDARD_TAB_COUNT, disabledRects.Length); i++)
                     _standardTabDisabledRects[i] = disabledRects[i];
             }
+        }
+
+        public void SetDualTabLayout(Rectangle[] enabledRects, Rectangle[] disabledRects)
+        {
+            if (enabledRects != null)
+            {
+                for (int i = 0; i < Math.Min(DUAL_TAB_COUNT, enabledRects.Length); i++)
+                    _dualTabEnabledRects[i] = enabledRects[i];
+            }
+
+            if (disabledRects != null)
+            {
+                for (int i = 0; i < Math.Min(DUAL_TAB_COUNT, disabledRects.Length); i++)
+                    _dualTabDisabledRects[i] = disabledRects[i];
+            }
+        }
+
+        public void SetUseDualTabStrip(bool useDualTabStrip)
+        {
+            _useDualTabStrip = useDualTabStrip;
+            ApplyCurrentTab(CoerceVisibleTab(_currentTab));
         }
 
         public void SetScrollBarTextures(
@@ -483,7 +525,7 @@ namespace HaCreator.MapSimulator.UI
             {
                 foreach (int tab in visibleTabs)
                 {
-                    int tabIndex = Math.Clamp(tab, TAB_BEGINNER, TAB_4TH);
+                    int tabIndex = Math.Clamp(tab, TAB_BEGINNER, MAX_TAB_INDEX);
                     if (_tabVisible[tabIndex])
                         continue;
 
@@ -603,7 +645,7 @@ namespace HaCreator.MapSimulator.UI
         /// <param name="jobName">The job name to display</param>
         public void SetJobInfo(int tab, Texture2D jobIcon, string jobName)
         {
-            int tabIndex = Math.Clamp(tab, TAB_BEGINNER, TAB_4TH);
+            int tabIndex = Math.Clamp(tab, TAB_BEGINNER, MAX_TAB_INDEX);
             _jobIconsByTab[tabIndex] = jobIcon;
             if (!string.IsNullOrEmpty(jobName))
             {
@@ -804,19 +846,22 @@ namespace HaCreator.MapSimulator.UI
 
             if (_font != null)
             {
-                string skillName = SanitizeFontText(skill.SkillName);
-                sprite.DrawString(
-                    _font,
+                string skillName = FitTextToWidth(SanitizeFontText(skill.SkillName), SKILL_NAME_MAX_WIDTH, SKILL_NAME_TEXT_SCALE);
+                DrawSkillBookText(
+                    sprite,
                     skillName,
                     new Vector2(windowX + NAME_X, windowY + nTop + NAME_Y_OFFSET),
-                    Color.Black);
+                    Color.Black,
+                    SKILL_NAME_TEXT_SCALE);
 
+                string levelText = FitTextToWidth($"Lv. {skill.CurrentLevel}", SKILL_LEVEL_MAX_WIDTH, SKILL_LEVEL_TEXT_SCALE);
                 Color levelColor = canLevelUp ? new Color(0, 102, 255) : Color.Black;
-                sprite.DrawString(
-                    _font,
-                    skill.CurrentLevel.ToString(),
+                DrawSkillBookText(
+                    sprite,
+                    levelText,
                     new Vector2(windowX + LEVEL_X, windowY + nTop + LEVEL_Y_OFFSET),
-                    levelColor);
+                    levelColor,
+                    SKILL_LEVEL_TEXT_SCALE);
             }
 
             if (skill.CurrentLevel < skill.MaxLevel)
@@ -964,12 +1009,13 @@ namespace HaCreator.MapSimulator.UI
                 return;
 
             string spText = SanitizeFontText(GetCurrentSkillPoints().ToString());
-            float width = _font.MeasureString(spText).X;
-            sprite.DrawString(
-                _font,
+            float width = MeasureSkillBookText(spText, SP_DISPLAY_TEXT_SCALE).X;
+            DrawSkillBookText(
+                sprite,
                 spText,
                 new Vector2(windowX + SP_DISPLAY_X_BASE - width, windowY + SP_DISPLAY_Y),
-                Color.Black);
+                Color.Black,
+                SP_DISPLAY_TEXT_SCALE);
         }
 
         private Rectangle GetSkillPointBounds()
@@ -977,14 +1023,14 @@ namespace HaCreator.MapSimulator.UI
             float textWidth = 12f;
             if (_font != null)
             {
-                textWidth = Math.Max(textWidth, _font.MeasureString(GetCurrentSkillPoints().ToString()).X);
+                textWidth = Math.Max(textWidth, MeasureSkillBookText(GetCurrentSkillPoints().ToString(), SP_DISPLAY_TEXT_SCALE).X);
             }
 
             return new Rectangle(
                 Position.X + SP_DISPLAY_X_BASE - (int)Math.Ceiling(textWidth) - 4,
                 Position.Y + SP_DISPLAY_Y - 2,
                 (int)Math.Ceiling(textWidth) + 8,
-                _font?.LineSpacing ?? 14);
+                _font != null ? (int)Math.Ceiling(_font.LineSpacing * SP_DISPLAY_TEXT_SCALE) + 4 : 14);
         }
 
         private void DrawScrollBar(SpriteBatch sprite)
@@ -1495,37 +1541,45 @@ namespace HaCreator.MapSimulator.UI
                 return;
 
             jobName = SanitizeFontText(jobName);
-            float width = _font.MeasureString(jobName).X;
+            float width = MeasureSkillBookText(jobName, BOOK_NAME_TEXT_SCALE).X;
             if (width <= BOOK_NAME_MAX_WIDTH)
             {
-                sprite.DrawString(
-                    _font,
+                DrawSkillBookText(
+                    sprite,
                     jobName,
                     new Vector2(windowX + BOOK_NAME_CENTER_X - (width / 2f), windowY + BOOK_NAME_SINGLE_LINE_Y),
-                    Color.Black);
+                    Color.Black,
+                    BOOK_NAME_TEXT_SCALE);
                 return;
             }
 
             if (!TryResolveBookNameSplit(jobName, out string firstLine, out string secondLine))
             {
-                sprite.DrawString(
-                    _font,
-                    jobName,
-                    new Vector2(windowX + BOOK_NAME_MULTI_LINE_X, windowY + BOOK_NAME_MULTI_LINE_FIRST_Y),
-                    Color.Black);
+                string fitted = FitTextToWidth(jobName, BOOK_NAME_MAX_WIDTH, BOOK_NAME_TEXT_SCALE);
+                float fittedWidth = MeasureSkillBookText(fitted, BOOK_NAME_TEXT_SCALE).X;
+                DrawSkillBookText(
+                    sprite,
+                    fitted,
+                    new Vector2(windowX + BOOK_NAME_CENTER_X - (fittedWidth / 2f), windowY + BOOK_NAME_MULTI_LINE_FIRST_Y),
+                    Color.Black,
+                    BOOK_NAME_TEXT_SCALE);
                 return;
             }
 
-            sprite.DrawString(
-                _font,
+            float firstWidth = MeasureSkillBookText(firstLine, BOOK_NAME_TEXT_SCALE).X;
+            float secondWidth = MeasureSkillBookText(secondLine, BOOK_NAME_TEXT_SCALE).X;
+            DrawSkillBookText(
+                sprite,
                 firstLine,
-                new Vector2(windowX + BOOK_NAME_MULTI_LINE_X, windowY + BOOK_NAME_MULTI_LINE_FIRST_Y),
-                Color.Black);
-            sprite.DrawString(
-                _font,
+                new Vector2(windowX + BOOK_NAME_CENTER_X - (firstWidth / 2f), windowY + BOOK_NAME_MULTI_LINE_FIRST_Y),
+                Color.Black,
+                BOOK_NAME_TEXT_SCALE);
+            DrawSkillBookText(
+                sprite,
                 secondLine,
-                new Vector2(windowX + BOOK_NAME_MULTI_LINE_X, windowY + BOOK_NAME_MULTI_LINE_SECOND_Y),
-                Color.Black);
+                new Vector2(windowX + BOOK_NAME_CENTER_X - (secondWidth / 2f), windowY + BOOK_NAME_MULTI_LINE_SECOND_Y),
+                Color.Black,
+                BOOK_NAME_TEXT_SCALE);
         }
 
         private bool TryResolveBookNameSplit(string jobName, out string firstLine, out string secondLine)
@@ -1561,6 +1615,45 @@ namespace HaCreator.MapSimulator.UI
             firstLine = jobName.Substring(0, splitIndex);
             secondLine = jobName.Substring(splitIndex + 1);
             return !string.IsNullOrWhiteSpace(firstLine) && !string.IsNullOrWhiteSpace(secondLine);
+        }
+
+        private Vector2 MeasureSkillBookText(string text, float scale)
+        {
+            if (_font == null || string.IsNullOrWhiteSpace(text))
+                return Vector2.Zero;
+
+            return _font.MeasureString(text) * scale;
+        }
+
+        private void DrawSkillBookText(SpriteBatch sprite, string text, Vector2 position, Color color, float scale)
+        {
+            if (string.IsNullOrWhiteSpace(text))
+                return;
+
+            sprite.DrawString(_font, text, position + Vector2.One, Color.White, 0f, Vector2.Zero, scale, SpriteEffects.None, 0f);
+            sprite.DrawString(_font, text, position, color, 0f, Vector2.Zero, scale, SpriteEffects.None, 0f);
+        }
+
+        private string FitTextToWidth(string text, int maxWidth, float scale)
+        {
+            if (_font == null || string.IsNullOrWhiteSpace(text))
+                return string.Empty;
+
+            string sanitized = text.Trim();
+            if (MeasureSkillBookText(sanitized, scale).X <= maxWidth)
+                return sanitized;
+
+            const string ellipsis = "...";
+            string working = sanitized;
+            while (working.Length > 1)
+            {
+                working = working[..^1].TrimEnd();
+                string candidate = working + ellipsis;
+                if (MeasureSkillBookText(candidate, scale).X <= maxWidth)
+                    return candidate;
+            }
+
+            return ellipsis;
         }
 
         private static string SanitizeFontText(string text)
@@ -1622,12 +1715,13 @@ namespace HaCreator.MapSimulator.UI
         /// </summary>
         private void DrawTabs(SpriteBatch sprite, int windowX, int windowY)
         {
-            for (int i = 0; i < 5; i++)
+            int tabCount = _useDualTabStrip ? DUAL_TAB_COUNT : STANDARD_TAB_COUNT;
+            for (int i = 0; i < tabCount; i++)
             {
                 if (!_tabVisible[i])
                     continue;
 
-                Texture2D tabTexture = (i == _currentTab) ? _standardTabEnabled[i] : _standardTabDisabled[i];
+                Texture2D tabTexture = GetTabTexture(i);
                 if (tabTexture != null)
                 {
                     sprite.Draw(tabTexture, GetTabBounds(windowX, windowY, i), Color.White);
@@ -1637,13 +1731,33 @@ namespace HaCreator.MapSimulator.UI
 
         private Rectangle GetTabBounds(int windowX, int windowY, int tabIndex)
         {
-            Texture2D tabTexture = (tabIndex == _currentTab) ? _standardTabEnabled[tabIndex] : _standardTabDisabled[tabIndex];
-            Rectangle tabRect = tabIndex == _currentTab ? _standardTabEnabledRects[tabIndex] : _standardTabDisabledRects[tabIndex];
+            Texture2D tabTexture = GetTabTexture(tabIndex);
+            Rectangle tabRect = GetTabRect(tabIndex);
             return new Rectangle(
                 windowX + tabRect.X,
                 windowY + tabRect.Y,
                 tabTexture?.Width ?? tabRect.Width,
                 tabTexture?.Height ?? tabRect.Height);
+        }
+
+        private Texture2D GetTabTexture(int tabIndex)
+        {
+            if (_useDualTabStrip)
+            {
+                return tabIndex == _currentTab ? _dualTabEnabled[tabIndex] : _dualTabDisabled[tabIndex];
+            }
+
+            return tabIndex == _currentTab ? _standardTabEnabled[tabIndex] : _standardTabDisabled[tabIndex];
+        }
+
+        private Rectangle GetTabRect(int tabIndex)
+        {
+            if (_useDualTabStrip)
+            {
+                return tabIndex == _currentTab ? _dualTabEnabledRects[tabIndex] : _dualTabDisabledRects[tabIndex];
+            }
+
+            return tabIndex == _currentTab ? _standardTabEnabledRects[tabIndex] : _standardTabDisabledRects[tabIndex];
         }
 
         private static Rectangle CreateDefaultTabRect(int tabIndex, bool enabled, bool dualTab)
@@ -1689,7 +1803,8 @@ namespace HaCreator.MapSimulator.UI
 
         private int CoerceVisibleTab(int requestedTab)
         {
-            int clampedTab = Math.Clamp(requestedTab, TAB_BEGINNER, TAB_4TH);
+            int maxTab = _useDualTabStrip ? MAX_TAB_INDEX : TAB_4TH;
+            int clampedTab = Math.Clamp(requestedTab, TAB_BEGINNER, maxTab);
             if (_tabVisible[clampedTab])
                 return clampedTab;
 
@@ -1699,7 +1814,7 @@ namespace HaCreator.MapSimulator.UI
                     return tab;
             }
 
-            for (int tab = clampedTab + 1; tab <= TAB_4TH; tab++)
+            for (int tab = clampedTab + 1; tab <= maxTab; tab++)
             {
                 if (_tabVisible[tab])
                     return tab;
@@ -1724,7 +1839,7 @@ namespace HaCreator.MapSimulator.UI
         public void AddSkill(int jobAdvancement, int skillId, Texture2D iconTexture,
             string skillName, string description, int currentLevel = 0, int maxLevel = 10)
         {
-            int tab = Math.Clamp(jobAdvancement, TAB_BEGINNER, TAB_4TH);
+            int tab = Math.Clamp(jobAdvancement, TAB_BEGINNER, MAX_TAB_INDEX);
 
             if (skillsByTab.TryGetValue(tab, out var skills))
             {
@@ -1745,7 +1860,7 @@ namespace HaCreator.MapSimulator.UI
         /// </summary>
         public void AddSkill(int jobAdvancement, SkillDisplayData skillData)
         {
-            int tab = Math.Clamp(jobAdvancement, TAB_BEGINNER, TAB_4TH);
+            int tab = Math.Clamp(jobAdvancement, TAB_BEGINNER, MAX_TAB_INDEX);
 
             if (skillsByTab.TryGetValue(tab, out var skills))
             {
@@ -1758,7 +1873,7 @@ namespace HaCreator.MapSimulator.UI
         /// </summary>
         public void AddSkills(int jobAdvancement, IEnumerable<SkillDisplayData> skillDataList)
         {
-            int tab = Math.Clamp(jobAdvancement, TAB_BEGINNER, TAB_4TH);
+            int tab = Math.Clamp(jobAdvancement, TAB_BEGINNER, MAX_TAB_INDEX);
 
             if (skillsByTab.TryGetValue(tab, out var skills))
             {
@@ -1788,7 +1903,7 @@ namespace HaCreator.MapSimulator.UI
         /// </summary>
         public void SetSkillPoints(int jobAdvancement, int points)
         {
-            int tab = Math.Clamp(jobAdvancement, TAB_BEGINNER, TAB_4TH);
+            int tab = Math.Clamp(jobAdvancement, TAB_BEGINNER, MAX_TAB_INDEX);
             skillPointsByTab[tab] = Math.Max(0, points);
         }
 
@@ -1799,7 +1914,7 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
-            int tab = Math.Clamp(jobAdvancement, TAB_BEGINNER, TAB_4TH);
+            int tab = Math.Clamp(jobAdvancement, TAB_BEGINNER, MAX_TAB_INDEX);
             skillPointsByTab.TryGetValue(tab, out int currentPoints);
             skillPointsByTab[tab] = Math.Max(0, currentPoints + delta);
         }
@@ -1915,7 +2030,7 @@ namespace HaCreator.MapSimulator.UI
         /// </summary>
         public void ClearSkills(int jobAdvancement)
         {
-            int tab = Math.Clamp(jobAdvancement, TAB_BEGINNER, TAB_4TH);
+            int tab = Math.Clamp(jobAdvancement, TAB_BEGINNER, MAX_TAB_INDEX);
             if (skillsByTab.TryGetValue(tab, out var skills))
             {
                 skills.Clear();
@@ -2203,14 +2318,15 @@ namespace HaCreator.MapSimulator.UI
             if (step == 0)
                 return startTab;
 
-            for (int tab = startTab + step; tab >= TAB_BEGINNER && tab <= TAB_4TH; tab += step)
+            int maxTab = _useDualTabStrip ? MAX_TAB_INDEX : TAB_4TH;
+            for (int tab = startTab + step; tab >= TAB_BEGINNER && tab <= maxTab; tab += step)
             {
                 if (_tabVisible[tab])
                     return tab;
             }
 
-            for (int tab = step > 0 ? TAB_BEGINNER : TAB_4TH;
-                 tab >= TAB_BEGINNER && tab <= TAB_4TH;
+            for (int tab = step > 0 ? TAB_BEGINNER : maxTab;
+                 tab >= TAB_BEGINNER && tab <= maxTab;
                  tab += step)
             {
                 if (_tabVisible[tab])
@@ -2377,7 +2493,8 @@ namespace HaCreator.MapSimulator.UI
                     return;
                 }
 
-                for (int i = 0; i < 5; i++)
+                int tabCount = _useDualTabStrip ? DUAL_TAB_COUNT : STANDARD_TAB_COUNT;
+                for (int i = 0; i < tabCount; i++)
                 {
                     if (!_tabVisible[i])
                         continue;

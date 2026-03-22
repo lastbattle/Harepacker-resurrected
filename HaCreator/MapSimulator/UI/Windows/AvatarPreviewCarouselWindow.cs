@@ -33,10 +33,14 @@ namespace HaCreator.MapSimulator.UI
         private readonly PreviewNameTagStyle _normalNameTagStyle;
         private readonly PreviewNameTagStyle _selectedNameTagStyle;
         private readonly IReadOnlyDictionary<LoginJobDecorationStyle, PreviewCanvasFrame> _jobDecorations;
+        private readonly IReadOnlyList<PreviewCanvasFrame> _buyCharacterFrames;
+        private readonly Texture2D _emptySlotTexture;
 
         private SpriteFont _font;
         private int _selectedIndex = -1;
         private int _pageIndex;
+        private int _slotCount;
+        private int _buyCharacterCount;
         private int _lastActivatedEntryIndex = -1;
         private int _lastActivationTick = int.MinValue;
 
@@ -47,6 +51,8 @@ namespace HaCreator.MapSimulator.UI
             PreviewNameTagStyle normalNameTagStyle,
             PreviewNameTagStyle selectedNameTagStyle,
             IReadOnlyDictionary<LoginJobDecorationStyle, PreviewCanvasFrame> jobDecorations,
+            Texture2D emptySlotTexture,
+            IReadOnlyList<PreviewCanvasFrame> buyCharacterFrames,
             IEnumerable<UIObject> cardButtons,
             UIObject prevPageButton,
             UIObject nextPageButton)
@@ -57,6 +63,8 @@ namespace HaCreator.MapSimulator.UI
             _normalNameTagStyle = normalNameTagStyle;
             _selectedNameTagStyle = selectedNameTagStyle;
             _jobDecorations = jobDecorations ?? new Dictionary<LoginJobDecorationStyle, PreviewCanvasFrame>();
+            _emptySlotTexture = emptySlotTexture;
+            _buyCharacterFrames = buyCharacterFrames ?? Array.Empty<PreviewCanvasFrame>();
             _prevPageButton = prevPageButton;
             _nextPageButton = nextPageButton;
 
@@ -91,6 +99,7 @@ namespace HaCreator.MapSimulator.UI
         public override string WindowName => MapSimulatorWindowNames.AvatarPreviewCarousel;
 
         public event Action<int> CharacterSelected;
+        public event Action<int> PageRequested;
         public event Action EnterRequested;
 
         public override void SetFont(SpriteFont font)
@@ -100,7 +109,12 @@ namespace HaCreator.MapSimulator.UI
 
         public override bool SupportsDragging => false;
 
-        public void SetRoster(IReadOnlyList<LoginCharacterRosterEntry> entries, int selectedIndex)
+        public void SetRoster(
+            IReadOnlyList<LoginCharacterRosterEntry> entries,
+            int selectedIndex,
+            int slotCount,
+            int buyCharacterCount,
+            int pageIndex)
         {
             _entries.Clear();
             _previewAssemblers.Clear();
@@ -119,15 +133,18 @@ namespace HaCreator.MapSimulator.UI
             }
 
             _selectedIndex = selectedIndex;
-            _pageIndex = GetPageIndexForSelection(selectedIndex);
+            _slotCount = Math.Max(0, slotCount);
+            _buyCharacterCount = Math.Max(0, buyCharacterCount);
+            _pageIndex = Math.Clamp(pageIndex, 0, Math.Max(0, GetPageCount() - 1));
 
             for (int i = 0; i < _cardButtons.Count; i++)
             {
-                int entryIndex = GetEntryIndexForVisibleSlot(i);
-                bool visible = entryIndex >= 0 && entryIndex < _entries.Count;
+                int displaySlotIndex = GetDisplaySlotIndexForVisibleSlot(i);
+                LoginCharacterRosterSlotKind slotKind = GetSlotKind(displaySlotIndex);
+                bool visible = slotKind != LoginCharacterRosterSlotKind.Hidden;
                 _cardButtons[i].SetVisible(visible);
-                _cardButtons[i].SetEnabled(visible);
-                _cardButtons[i].SetButtonState(entryIndex == _selectedIndex ? UIObjectState.Pressed : UIObjectState.Normal);
+                _cardButtons[i].SetEnabled(slotKind == LoginCharacterRosterSlotKind.Character);
+                _cardButtons[i].SetButtonState(displaySlotIndex == _selectedIndex ? UIObjectState.Pressed : UIObjectState.Normal);
             }
 
             bool hasMultiplePages = GetPageCount() > 1;
@@ -160,25 +177,43 @@ namespace HaCreator.MapSimulator.UI
         {
             for (int slotIndex = 0; slotIndex < _cardButtons.Count; slotIndex++)
             {
-                int entryIndex = GetEntryIndexForVisibleSlot(slotIndex);
-                if (entryIndex < 0 || entryIndex >= _entries.Count)
-                {
-                    continue;
-                }
-
-                LoginCharacterRosterEntry entry = _entries[entryIndex];
-                CharacterBuild build = entry.Build;
-                if (build == null)
+                int displaySlotIndex = GetDisplaySlotIndexForVisibleSlot(slotIndex);
+                LoginCharacterRosterSlotKind slotKind = GetSlotKind(displaySlotIndex);
+                if (slotKind == LoginCharacterRosterSlotKind.Hidden)
                 {
                     continue;
                 }
 
                 Rectangle cardBounds = GetCardBounds(slotIndex);
-                bool isSelected = entryIndex == _selectedIndex;
+                bool isSelected = displaySlotIndex == _selectedIndex;
                 Texture2D cardTexture = isSelected ? _selectedCardTexture : _normalCardTexture;
                 if (cardTexture != null)
                 {
                     sprite.Draw(cardTexture, new Vector2(cardBounds.X, cardBounds.Y), Color.White);
+                }
+
+                if (slotKind == LoginCharacterRosterSlotKind.Empty)
+                {
+                    DrawEmptySlot(sprite, cardBounds);
+                    continue;
+                }
+
+                if (slotKind == LoginCharacterRosterSlotKind.BuyCharacter)
+                {
+                    DrawBuyCharacterCard(sprite, cardBounds, tickCount);
+                    continue;
+                }
+
+                if (displaySlotIndex < 0 || displaySlotIndex >= _entries.Count)
+                {
+                    continue;
+                }
+
+                LoginCharacterRosterEntry entry = _entries[displaySlotIndex];
+                CharacterBuild build = entry.Build;
+                if (build == null)
+                {
+                    continue;
                 }
 
                 int avatarAnchorX = cardBounds.Center.X;
@@ -223,8 +258,10 @@ namespace HaCreator.MapSimulator.UI
 
         private void ActivateCard(int visibleSlotIndex)
         {
-            int entryIndex = GetEntryIndexForVisibleSlot(visibleSlotIndex);
-            if (entryIndex < 0 || entryIndex >= _entries.Count)
+            int entryIndex = GetDisplaySlotIndexForVisibleSlot(visibleSlotIndex);
+            if (GetSlotKind(entryIndex) != LoginCharacterRosterSlotKind.Character ||
+                entryIndex < 0 ||
+                entryIndex >= _entries.Count)
             {
                 return;
             }
@@ -251,12 +288,7 @@ namespace HaCreator.MapSimulator.UI
             }
 
             int targetPage = (_pageIndex - 1 + pageCount) % pageCount;
-            int pageStartIndex = targetPage * EntriesPerPage;
-            int pageEndIndex = Math.Min(_entries.Count - 1, pageStartIndex + EntriesPerPage - 1);
-            if (pageEndIndex >= 0)
-            {
-                CharacterSelected?.Invoke(pageEndIndex);
-            }
+            PageRequested?.Invoke(targetPage);
         }
 
         private void SelectNextPage()
@@ -268,26 +300,23 @@ namespace HaCreator.MapSimulator.UI
             }
 
             int targetPage = (_pageIndex + 1) % pageCount;
-            int pageStartIndex = targetPage * EntriesPerPage;
-            if (pageStartIndex < _entries.Count)
-            {
-                CharacterSelected?.Invoke(pageStartIndex);
-            }
+            PageRequested?.Invoke(targetPage);
         }
 
-        private int GetEntryIndexForVisibleSlot(int visibleSlotIndex)
+        private int GetDisplaySlotIndexForVisibleSlot(int visibleSlotIndex)
         {
             return (_pageIndex * EntriesPerPage) + visibleSlotIndex;
         }
 
         private int GetPageCount()
         {
-            return _entries.Count == 0 ? 0 : ((_entries.Count - 1) / EntriesPerPage) + 1;
+            int displaySlotCount = GetDisplaySlotCount();
+            return displaySlotCount == 0 ? 0 : ((displaySlotCount - 1) / EntriesPerPage) + 1;
         }
 
         private int GetPageIndexForSelection(int selectedIndex)
         {
-            if (selectedIndex < 0 || _entries.Count == 0)
+            if (selectedIndex < 0 || GetDisplaySlotCount() == 0)
             {
                 return 0;
             }
@@ -295,11 +324,100 @@ namespace HaCreator.MapSimulator.UI
             return Math.Clamp(selectedIndex / EntriesPerPage, 0, Math.Max(0, GetPageCount() - 1));
         }
 
+        private int GetDisplaySlotCount()
+        {
+            return Math.Max(_entries.Count, _slotCount + _buyCharacterCount);
+        }
+
+        private LoginCharacterRosterSlotKind GetSlotKind(int displaySlotIndex)
+        {
+            if (displaySlotIndex < 0 || displaySlotIndex >= GetDisplaySlotCount())
+            {
+                return LoginCharacterRosterSlotKind.Hidden;
+            }
+
+            if (displaySlotIndex < _entries.Count)
+            {
+                return LoginCharacterRosterSlotKind.Character;
+            }
+
+            if (displaySlotIndex < _slotCount)
+            {
+                return LoginCharacterRosterSlotKind.Empty;
+            }
+
+            if (displaySlotIndex < _slotCount + _buyCharacterCount)
+            {
+                return LoginCharacterRosterSlotKind.BuyCharacter;
+            }
+
+            return LoginCharacterRosterSlotKind.Hidden;
+        }
+
         private Rectangle GetCardBounds(int visibleSlotIndex)
         {
             int x = Position.X + CardStartX + (visibleSlotIndex * (CardWidth + CardGap));
             int y = Position.Y + CardStartY;
             return new Rectangle(x, y, CardWidth, CardHeight);
+        }
+
+        private void DrawEmptySlot(SpriteBatch sprite, Rectangle cardBounds)
+        {
+            if (_emptySlotTexture == null)
+            {
+                return;
+            }
+
+            Vector2 position = new(
+                cardBounds.Center.X - (_emptySlotTexture.Width / 2f),
+                cardBounds.Y + 34f);
+            sprite.Draw(_emptySlotTexture, position, Color.White);
+        }
+
+        private void DrawBuyCharacterCard(SpriteBatch sprite, Rectangle cardBounds, int tickCount)
+        {
+            PreviewCanvasFrame frame = ResolveBuyCharacterFrame(tickCount);
+            if (frame.Texture == null)
+            {
+                return;
+            }
+
+            Vector2 position = new(
+                cardBounds.Center.X - frame.Origin.X,
+                cardBounds.Center.Y - frame.Origin.Y + 6f);
+            sprite.Draw(frame.Texture, position, Color.White);
+        }
+
+        private PreviewCanvasFrame ResolveBuyCharacterFrame(int tickCount)
+        {
+            if (_buyCharacterFrames == null || _buyCharacterFrames.Count == 0)
+            {
+                return default;
+            }
+
+            int totalDuration = 0;
+            foreach (PreviewCanvasFrame frame in _buyCharacterFrames)
+            {
+                totalDuration += Math.Max(1, frame.DelayMs);
+            }
+
+            if (totalDuration <= 0)
+            {
+                return _buyCharacterFrames[0];
+            }
+
+            int animationTick = Math.Abs(tickCount % totalDuration);
+            int elapsed = 0;
+            foreach (PreviewCanvasFrame frame in _buyCharacterFrames)
+            {
+                elapsed += Math.Max(1, frame.DelayMs);
+                if (animationTick < elapsed)
+                {
+                    return frame;
+                }
+            }
+
+            return _buyCharacterFrames[_buyCharacterFrames.Count - 1];
         }
 
         private void DrawJobDecoration(SpriteBatch sprite, CharacterBuild build, int anchorX, int anchorY)
@@ -412,14 +530,16 @@ namespace HaCreator.MapSimulator.UI
 
         public readonly struct PreviewCanvasFrame
         {
-            public PreviewCanvasFrame(Texture2D texture, Point origin)
+            public PreviewCanvasFrame(Texture2D texture, Point origin, int delayMs = 0)
             {
                 Texture = texture;
                 Origin = origin;
+                DelayMs = delayMs;
             }
 
             public Texture2D Texture { get; }
             public Point Origin { get; }
+            public int DelayMs { get; }
         }
 
         public readonly struct PreviewNameTagStyle

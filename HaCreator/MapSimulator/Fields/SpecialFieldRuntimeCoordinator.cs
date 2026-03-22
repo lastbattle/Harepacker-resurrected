@@ -1,5 +1,6 @@
 using HaCreator.MapSimulator.Effects;
 using HaCreator.MapSimulator.Managers;
+using HaCreator.MapSimulator.Character;
 using HaCreator.MapEditor;
 using HaSharedLibrary.Render.DX;
 using Microsoft.Xna.Framework;
@@ -146,9 +147,9 @@ namespace HaCreator.MapSimulator.Fields
             }
         }
 
-        public void SetWeddingPlayerState(int? localCharacterId, Vector2? localWorldPosition)
+        public void SetWeddingPlayerState(int? localCharacterId, Vector2? localWorldPosition, CharacterBuild localPlayerBuild = null)
         {
-            _specialEffects.SetWeddingPlayerState(localCharacterId, localWorldPosition);
+            _specialEffects.SetWeddingPlayerState(localCharacterId, localWorldPosition, localPlayerBuild);
         }
 
         public void SetBattlefieldPlayerState(int? localCharacterId)

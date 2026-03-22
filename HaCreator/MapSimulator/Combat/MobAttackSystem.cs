@@ -94,6 +94,7 @@ namespace HaCreator.MapSimulator.Combat
         private Func<int, MobItem> _mobAccessor;
         private Func<IReadOnlyList<MobItem>> _mobListAccessor;
         private Func<bool> _playerGroundedAccessor;
+        private Func<Rectangle> _playerHitboxAccessor;
         private Action<PuppetInfo, MobItem, MobAttackEntry, int> _onPuppetHit;
 
         public void SetGroundResolver(Func<float, float, float?> groundResolver)
@@ -118,6 +119,11 @@ namespace HaCreator.MapSimulator.Combat
         public void SetPlayerGroundedAccessor(Func<bool> playerGroundedAccessor)
         {
             _playerGroundedAccessor = playerGroundedAccessor;
+        }
+
+        public void SetPlayerHitboxAccessor(Func<Rectangle> playerHitboxAccessor)
+        {
+            _playerHitboxAccessor = playerHitboxAccessor;
         }
 
         public void Clear()
@@ -157,6 +163,12 @@ namespace HaCreator.MapSimulator.Combat
             MobTargetInfo targetInfo = ResolveAttackTarget(mobItem, playerX, playerY);
             float? targetX = targetInfo?.TargetX;
             float? targetY = targetInfo?.TargetY;
+            if (UsesLockedTargetResolution(attack, targetInfo) &&
+                !CanQueueLockedTargetAttack(mobItem, attack, targetInfo))
+            {
+                targetInfo = null;
+            }
+
             ScheduleSourceAttackEffects(mobItem, attack, currentTime, targetX);
 
             if (attack.IsAreaOfEffect)
@@ -726,7 +738,7 @@ namespace HaCreator.MapSimulator.Combat
                 return;
             }
 
-            int triggerTime = baseTime + Math.Max(0, effectNode.Delay);
+            int triggerTime = baseTime + Math.Max(0, effectNode.Delay) + Math.Max(0, effectNode.Start);
             List<Vector2> positions = BuildEffectNodePositions(mobItem, attack, effectNode, impactPosition);
             int interval = ResolveEffectNodeInterval(effectNode, positions.Count);
 
@@ -1343,6 +1355,29 @@ namespace HaCreator.MapSimulator.Combat
             return ApplyMobDamage(sourceMob, attack, targetMob, currentTime);
         }
 
+        private bool CanQueueLockedTargetAttack(MobItem sourceMob, MobAttackEntry attack, MobTargetInfo targetInfo)
+        {
+            if (sourceMob == null || attack == null || targetInfo?.IsValid != true)
+            {
+                return false;
+            }
+
+            Rectangle admissionArea = BuildAttackAdmissionArea(sourceMob, attack);
+            if (admissionArea.IsEmpty)
+            {
+                return true;
+            }
+
+            Rectangle targetHitbox = GetTargetHitbox(targetInfo);
+            if (!targetHitbox.IsEmpty)
+            {
+                return admissionArea.Intersects(targetHitbox);
+            }
+
+            Point targetPoint = new Point((int)MathF.Round(targetInfo.TargetX), (int)MathF.Round(targetInfo.TargetY));
+            return admissionArea.Contains(targetPoint);
+        }
+
         private static bool UsesLockedTargetResolution(MobAttackEntry attack, MobTargetInfo targetInfo)
         {
             return attack?.AttackType == 1 && targetInfo != null && targetInfo.IsValid;
@@ -1544,6 +1579,66 @@ namespace HaCreator.MapSimulator.Combat
             }
 
             return null;
+        }
+
+        private Rectangle GetTargetHitbox(MobTargetInfo targetInfo)
+        {
+            if (targetInfo == null)
+            {
+                return Rectangle.Empty;
+            }
+
+            if (targetInfo.TargetType == MobTargetType.Player)
+            {
+                return _playerHitboxAccessor?.Invoke() ?? Rectangle.Empty;
+            }
+
+            if (targetInfo.TargetType == MobTargetType.Summoned)
+            {
+                PuppetInfo puppet = FindTargetPuppet(targetInfo);
+                return puppet != null ? CreatePuppetHitbox(puppet) : Rectangle.Empty;
+            }
+
+            if (targetInfo.TargetType != MobTargetType.Mob)
+            {
+                return Rectangle.Empty;
+            }
+
+            MobItem targetMob = _mobAccessor?.Invoke(targetInfo.TargetId);
+            return targetMob?.AI != null && !targetMob.AI.IsDead
+                ? targetMob.GetBodyHitbox(Environment.TickCount)
+                : Rectangle.Empty;
+        }
+
+        private static Rectangle BuildAttackAdmissionArea(MobItem mobItem, MobAttackEntry attack)
+        {
+            if (mobItem == null || attack == null)
+            {
+                return Rectangle.Empty;
+            }
+
+            if (attack.HasRangeBounds)
+            {
+                return BuildDirectAttackArea(mobItem, attack);
+            }
+
+            if (attack.Range <= 0)
+            {
+                return Rectangle.Empty;
+            }
+
+            int width = Math.Max(attack.Range, 40);
+            int height = Math.Max(attack.AreaHeight, 100);
+            bool faceRight = mobItem.MovementInfo?.FlipX ?? true;
+            int left = faceRight
+                ? (int)MathF.Round(mobItem.CurrentX)
+                : (int)MathF.Round(mobItem.CurrentX - width);
+
+            return new Rectangle(
+                left,
+                (int)MathF.Round(mobItem.CurrentY - height),
+                width,
+                height);
         }
 
         private static Rectangle CreatePuppetHitbox(PuppetInfo puppet)

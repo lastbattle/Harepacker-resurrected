@@ -52,8 +52,15 @@ namespace HaCreator.MapSimulator.Fields
         public const int GradeCount = 5;
         private const int ClientBitmapDigitWidth = 27;
         private const int ClientBitmapDigitCount = 3;
+        private const string PreferredBackgroundPath = "raise/backgrnd";
         private static readonly string[] BitmapNumberSignPlusNames = { "plus", "signPlus", "Plus", "SignPlus" };
         private static readonly string[] BitmapNumberSignMinusNames = { "minus", "signMinus", "Minus", "SignMinus" };
+        private static readonly string[] PreferredUiWindowImages = { "UIWindow.img", "UIWindow2.img" };
+        private static readonly string[] PreferredBitmapRootPaths =
+        {
+            "raise",
+            "raise/number",
+        };
 
         // The client uses four thresholds to select five bitmap-number grades.
         // These values keep the grade-owned simulator path alive until the
@@ -82,6 +89,7 @@ namespace HaCreator.MapSimulator.Fields
         private readonly CookieBitmapNumberStyle[] _bitmapNumberStyles = Enumerable.Range(0, GradeCount)
             .Select(_ => new CookieBitmapNumberStyle())
             .ToArray();
+        private string _backgroundSourcePath;
         private string _bitmapNumberSourcePath;
 
         public bool IsActive => _isActive;
@@ -121,10 +129,13 @@ namespace HaCreator.MapSimulator.Fields
 
         public string DescribeStatus()
         {
+            string backgroundSourceSummary = string.IsNullOrWhiteSpace(_backgroundSourcePath)
+                ? "background=unresolved"
+                : $"background={_backgroundSourcePath}";
             string digitSourceSummary = string.IsNullOrWhiteSpace(_bitmapNumberSourcePath)
                 ? "bitmap=unresolved"
                 : $"bitmap={_bitmapNumberSourcePath}";
-            return $"Cookie House map={_mapId}, point={_point}, grade={_gradeIndex + 1}/{GradeCount}, {digitSourceSummary}";
+            return $"Cookie House map={_mapId}, point={_point}, grade={_gradeIndex + 1}/{GradeCount}, {backgroundSourceSummary}, {digitSourceSummary}";
         }
 
         public void Draw(SpriteBatch spriteBatch, Texture2D pixelTexture, SpriteFont font, int centerX)
@@ -179,10 +190,19 @@ namespace HaCreator.MapSimulator.Fields
             _graphicsDevice = graphicsDevice;
             _hudSpriteBatch ??= new SpriteBatch(graphicsDevice);
 
-            WzImage uiWindow = global::HaCreator.Program.FindImage("UI", "UIWindow2.img")
-                ?? global::HaCreator.Program.FindImage("UI", "UIWindow.img");
-            WzImageProperty raiseRoot = uiWindow?["raise"];
-            WzImageProperty background = raiseRoot?["backgrnd"];
+            WzImageProperty background = null;
+            _backgroundSourcePath = null;
+            foreach (string imageName in PreferredUiWindowImages)
+            {
+                WzImage uiWindow = global::HaCreator.Program.FindImage("UI", imageName);
+                WzImageProperty candidate = ResolvePropertyPath(uiWindow, PreferredBackgroundPath);
+                if (candidate != null)
+                {
+                    background = candidate;
+                    _backgroundSourcePath = $"UI/{imageName}/{PreferredBackgroundPath}";
+                    break;
+                }
+            }
 
             _backgroundTopLeft = LoadCanvas(background?["top"]?["left"]);
             _backgroundTopCenter = LoadCanvas(background?["top"]?["center"]);
@@ -211,7 +231,7 @@ namespace HaCreator.MapSimulator.Fields
             }
 
             _bitmapNumberSourcePath = null;
-            foreach (string imageName in new[] { "UIWindow2.img", "UIWindow.img", "UIPVP.img", "StatusBar2.img", "StatusBar.img" })
+            foreach (string imageName in PreferredUiWindowImages)
             {
                 WzImage image = global::HaCreator.Program.FindImage("UI", imageName);
                 if (image == null)
@@ -219,13 +239,24 @@ namespace HaCreator.MapSimulator.Fields
                     continue;
                 }
 
-                if (TryFindBitmapNumberRoot(image, image.Name, out WzImageProperty sourceRoot, out string sourcePath))
+                foreach (string preferredRootPath in PreferredBitmapRootPaths)
                 {
-                    if (TryLoadBitmapNumberStyles(sourceRoot))
+                    WzImageProperty preferredRoot = ResolvePropertyPath(image, preferredRootPath);
+                    if (preferredRoot != null
+                        && TryFindBitmapNumberRoot(preferredRoot, $"UI/{imageName}/{preferredRootPath}", out WzImageProperty sourceRoot, out string sourcePath)
+                        && TryLoadBitmapNumberStyles(sourceRoot))
                     {
                         _bitmapNumberSourcePath = sourcePath;
                         return;
                     }
+                }
+
+                WzImageProperty raiseRoot = image["raise"];
+                if (TryFindBitmapNumberRoot(raiseRoot, $"UI/{imageName}/raise", out WzImageProperty fallbackRoot, out string fallbackPath)
+                    && TryLoadBitmapNumberStyles(fallbackRoot))
+                {
+                    _bitmapNumberSourcePath = fallbackPath;
+                    return;
                 }
             }
         }
@@ -497,6 +528,30 @@ namespace HaCreator.MapSimulator.Fields
             }
 
             return property?.WzProperties?.OfType<WzCanvasProperty>().FirstOrDefault();
+        }
+
+        private static WzImageProperty ResolvePropertyPath(WzImage image, string path)
+        {
+            if (image == null || string.IsNullOrWhiteSpace(path))
+            {
+                return null;
+            }
+
+            WzImageProperty current = null;
+            string[] segments = path.Split(new[] { '/' }, StringSplitOptions.RemoveEmptyEntries);
+            for (int i = 0; i < segments.Length; i++)
+            {
+                current = i == 0
+                    ? image[segments[i]]
+                    : current?[segments[i]];
+
+                if (current == null)
+                {
+                    return null;
+                }
+            }
+
+            return current;
         }
 
         private static WzImageProperty ResolveCookieDigitContainer(WzImageProperty styleRoot)

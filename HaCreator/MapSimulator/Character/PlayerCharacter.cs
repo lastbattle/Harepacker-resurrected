@@ -59,6 +59,7 @@ namespace HaCreator.MapSimulator.Character
         private sealed class SkillAvatarTransformState
         {
             public int SkillId { get; init; }
+            public int SourceId { get; init; }
             public CharacterPart AvatarPart { get; init; }
             public IReadOnlyList<string> StandActionNames { get; init; }
             public IReadOnlyList<string> WalkActionNames { get; init; }
@@ -139,6 +140,8 @@ namespace HaCreator.MapSimulator.Character
             public string PendingActionName { get; set; }
             public int PendingActionReadyTime { get; set; }
             public bool PendingFacingRight { get; set; }
+            public string QueuedActionName { get; set; }
+            public bool QueuedFacingRight { get; set; }
         }
 
         private readonly struct AvatarEffectRenderable
@@ -214,7 +217,7 @@ namespace HaCreator.MapSimulator.Character
                                   State != PlayerState.Ladder && State != PlayerState.Rope &&
                                   State != PlayerState.Swimming; // Can't attack while swimming (official behavior)
         public bool IsRecordingMovementPath => Physics?.IsRecordingPath == true;
-        public bool IsMovementLockedBySkillTransform => _activeSkillAvatarTransform?.LocksMovement == true;
+        public bool IsMovementLockedBySkillTransform => GetActiveAvatarTransform()?.LocksMovement == true;
 
         /// <summary>
         /// GM Fly Mode - allows free flying around the map ignoring physics
@@ -254,6 +257,7 @@ namespace HaCreator.MapSimulator.Character
         private string _forcedActionName;
         private bool _sustainedSkillAnimation;
         private SkillAvatarTransformState _activeSkillAvatarTransform;
+        private SkillAvatarTransformState _activeExternalAvatarTransform;
         private readonly System.Collections.Generic.List<SkillAvatarEffectState> _activeSkillAvatarEffects = new();
         private readonly System.Collections.Generic.List<TransientSkillAvatarEffectState> _transientSkillAvatarEffects = new();
         private MeleeAfterImageState _activeMeleeAfterImage;
@@ -301,6 +305,7 @@ namespace HaCreator.MapSimulator.Character
         private Action _onJumpSound;
         private Func<string> _jumpRestrictionMessageProvider;
         private Action<string> _onJumpRestricted;
+        private Func<float, float> _moveSpeedCapResolver;
 
         // Foothold system reference
         private Func<float, float, float, FootholdLine> _findFoothold;
@@ -410,6 +415,11 @@ namespace HaCreator.MapSimulator.Character
             _onJumpRestricted = onJumpRestricted;
         }
 
+        public void SetMoveSpeedCapResolver(Func<float, float> moveSpeedCapResolver)
+        {
+            _moveSpeedCapResolver = moveSpeedCapResolver;
+        }
+
         #endregion
 
         #region Input
@@ -514,6 +524,11 @@ namespace HaCreator.MapSimulator.Character
             if (_activeSkillBlockingStatuses.ContainsKey(PlayerSkillBlockingStatus.Stun))
             {
                 return PlayerSkillBlockingStatusMapper.GetRestrictionMessage(PlayerSkillBlockingStatus.Stun);
+            }
+
+            if (_activeSkillBlockingStatuses.ContainsKey(PlayerSkillBlockingStatus.Freeze))
+            {
+                return PlayerSkillBlockingStatusMapper.GetRestrictionMessage(PlayerSkillBlockingStatus.Freeze);
             }
 
             if (_activeSkillBlockingStatuses.ContainsKey(PlayerSkillBlockingStatus.Seal))
@@ -1758,9 +1773,27 @@ namespace HaCreator.MapSimulator.Character
             return true;
         }
 
+        public bool ApplyExternalAvatarTransform(int sourceId, string actionName, int morphTemplateId = 0)
+        {
+            if (!TryCreateExternalAvatarTransform(sourceId, actionName, morphTemplateId, out SkillAvatarTransformState transform))
+            {
+                return false;
+            }
+
+            _activeExternalAvatarTransform = transform;
+            UpdateAssemblerAvatarOverride();
+            return true;
+        }
+
         public void ClearSkillAvatarTransform()
         {
             _activeSkillAvatarTransform = null;
+            UpdateAssemblerAvatarOverride();
+        }
+
+        public void ClearExternalAvatarTransform()
+        {
+            _activeExternalAvatarTransform = null;
             UpdateAssemblerAvatarOverride();
         }
 
@@ -1788,9 +1821,22 @@ namespace HaCreator.MapSimulator.Character
             }
         }
 
+        public void ClearExternalAvatarTransform(int sourceId)
+        {
+            if (_activeExternalAvatarTransform != null && _activeExternalAvatarTransform.SourceId == sourceId)
+            {
+                ClearExternalAvatarTransform();
+            }
+        }
+
         public bool HasSkillAvatarTransform(int skillId)
         {
             return _activeSkillAvatarTransform != null && _activeSkillAvatarTransform.SkillId == skillId;
+        }
+
+        public bool HasExternalAvatarTransform(int sourceId)
+        {
+            return _activeExternalAvatarTransform != null && _activeExternalAvatarTransform.SourceId == sourceId;
         }
 
         public bool ApplyShadowPartner(int skillId, SkillData skill, int currentTime)
@@ -1800,14 +1846,20 @@ namespace HaCreator.MapSimulator.Character
                 return false;
             }
 
+            string resolvedActionName = ResolveShadowPartnerActionName(skill.ShadowPartnerActionAnimations, CurrentActionName, null);
+            string spawnActionName = ResolveShadowPartnerCreateActionName(skill.ShadowPartnerActionAnimations);
+            bool useSpawnAction = !string.IsNullOrWhiteSpace(spawnActionName);
+
             _activeShadowPartner = new ShadowPartnerState
             {
                 SkillId = skillId,
                 ActionAnimations = skill.ShadowPartnerActionAnimations,
-                CurrentActionName = ResolveShadowPartnerActionName(CurrentActionName, null),
+                CurrentActionName = useSpawnAction ? spawnActionName : resolvedActionName,
                 CurrentActionStartTime = currentTime,
                 CurrentFacingRight = FacingRight,
-                ObservedPlayerActionName = CurrentActionName
+                ObservedPlayerActionName = CurrentActionName,
+                QueuedActionName = useSpawnAction ? resolvedActionName : null,
+                QueuedFacingRight = FacingRight
             };
 
             return !string.IsNullOrWhiteSpace(_activeShadowPartner.CurrentActionName);
@@ -2988,6 +3040,11 @@ namespace HaCreator.MapSimulator.Character
                 return;
             }
 
+            if (TryAdvanceShadowPartnerQueuedAction(currentTime))
+            {
+                return;
+            }
+
             string playerActionName = CurrentActionName;
             if (!string.Equals(playerActionName, _activeShadowPartner.ObservedPlayerActionName, StringComparison.OrdinalIgnoreCase))
             {
@@ -3004,7 +3061,17 @@ namespace HaCreator.MapSimulator.Character
                 }
                 else
                 {
-                    SetShadowPartnerAction(ResolveShadowPartnerActionName(playerActionName, _activeShadowPartner.CurrentActionName), currentTime, FacingRight);
+                    string resolvedAction = ResolveShadowPartnerActionName(playerActionName, _activeShadowPartner.CurrentActionName);
+                    if (ShouldHoldShadowPartnerCurrentAction(currentTime))
+                    {
+                        _activeShadowPartner.QueuedActionName = resolvedAction;
+                        _activeShadowPartner.QueuedFacingRight = FacingRight;
+                    }
+                    else
+                    {
+                        SetShadowPartnerAction(resolvedAction, currentTime, FacingRight);
+                    }
+
                     _activeShadowPartner.PendingActionName = null;
                 }
             }
@@ -3047,20 +3114,78 @@ namespace HaCreator.MapSimulator.Character
 
         private string ResolveShadowPartnerActionName(string playerActionName, string fallbackActionName)
         {
-            if (_activeShadowPartner?.ActionAnimations == null || _activeShadowPartner.ActionAnimations.Count == 0)
+            return ResolveShadowPartnerActionName(_activeShadowPartner?.ActionAnimations, playerActionName, fallbackActionName);
+        }
+
+        private string ResolveShadowPartnerActionName(
+            IReadOnlyDictionary<string, SkillAnimation> actionAnimations,
+            string playerActionName,
+            string fallbackActionName)
+        {
+            if (actionAnimations == null || actionAnimations.Count == 0)
             {
                 return null;
             }
 
             foreach (string candidate in EnumerateShadowPartnerActionCandidates(playerActionName, fallbackActionName))
             {
-                if (_activeShadowPartner.ActionAnimations.ContainsKey(candidate))
+                if (actionAnimations.ContainsKey(candidate))
                 {
                     return candidate;
                 }
             }
 
             return null;
+        }
+
+        private string ResolveShadowPartnerCreateActionName(IReadOnlyDictionary<string, SkillAnimation> actionAnimations)
+        {
+            if (actionAnimations == null || actionAnimations.Count == 0)
+            {
+                return null;
+            }
+
+            foreach (string candidate in EnumerateShadowPartnerCreateCandidates())
+            {
+                if (actionAnimations.ContainsKey(candidate))
+                {
+                    return candidate;
+                }
+            }
+
+            return null;
+        }
+
+        private IEnumerable<string> EnumerateShadowPartnerCreateCandidates()
+        {
+            var yielded = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            bool airborne = State is PlayerState.Jumping or PlayerState.Falling or PlayerState.Swimming or PlayerState.Flying;
+            bool stationary = State is PlayerState.Standing or PlayerState.Walking or PlayerState.Sitting or PlayerState.Prone;
+
+            foreach (string candidate in new[] { "create2", "create3", "create4" })
+            {
+                string stateVariant = airborne
+                    ? candidate + "_f"
+                    : stationary
+                        ? candidate + "_s"
+                        : null;
+
+                if (!string.IsNullOrWhiteSpace(stateVariant) && yielded.Add(stateVariant))
+                {
+                    yield return stateVariant;
+                }
+
+                if (yielded.Add(candidate))
+                {
+                    yield return candidate;
+                }
+
+                string alternateVariant = airborne ? candidate + "_s" : candidate + "_f";
+                if (yielded.Add(alternateVariant))
+                {
+                    yield return alternateVariant;
+                }
+            }
         }
 
         private IEnumerable<string> EnumerateShadowPartnerActionCandidates(string playerActionName, string fallbackActionName)
@@ -3155,6 +3280,52 @@ namespace HaCreator.MapSimulator.Character
             };
         }
 
+        private bool TryAdvanceShadowPartnerQueuedAction(int currentTime)
+        {
+            if (_activeShadowPartner == null || string.IsNullOrWhiteSpace(_activeShadowPartner.QueuedActionName))
+            {
+                return false;
+            }
+
+            if (ShouldHoldShadowPartnerCurrentAction(currentTime))
+            {
+                return false;
+            }
+
+            string queuedActionName = _activeShadowPartner.QueuedActionName;
+            bool queuedFacingRight = _activeShadowPartner.QueuedFacingRight;
+            _activeShadowPartner.QueuedActionName = null;
+            SetShadowPartnerAction(queuedActionName, currentTime, queuedFacingRight);
+            return true;
+        }
+
+        private bool ShouldHoldShadowPartnerCurrentAction(int currentTime)
+        {
+            if (_activeShadowPartner?.ActionAnimations == null
+                || string.IsNullOrWhiteSpace(_activeShadowPartner.CurrentActionName)
+                || !_activeShadowPartner.ActionAnimations.TryGetValue(_activeShadowPartner.CurrentActionName, out SkillAnimation currentAnimation)
+                || currentAnimation?.Frames == null
+                || currentAnimation.Frames.Count == 0)
+            {
+                return false;
+            }
+
+            if (!IsShadowPartnerBlockingAction(_activeShadowPartner.CurrentActionName))
+            {
+                return false;
+            }
+
+            int elapsedTime = Math.Max(0, currentTime - _activeShadowPartner.CurrentActionStartTime);
+            return !currentAnimation.IsComplete(elapsedTime);
+        }
+
+        private static bool IsShadowPartnerBlockingAction(string actionName)
+        {
+            return !string.IsNullOrWhiteSpace(actionName)
+                   && (IsShadowPartnerAttackAction(actionName)
+                       || actionName.StartsWith("create", StringComparison.OrdinalIgnoreCase));
+        }
+
         private static bool IsShadowPartnerAttackAction(string actionName)
         {
             if (string.IsNullOrWhiteSpace(actionName))
@@ -3194,7 +3365,7 @@ namespace HaCreator.MapSimulator.Character
             pairBuild.ActivePortableChair = null;
             _portableChairPairAssembler = new CharacterAssembler(pairBuild);
             _portableChairPairOffset = ResolvePortableChairPairOffset(chair, FacingRight);
-            _portableChairPairFacingRight = ResolvePortableChairPairFacingRight(FacingRight);
+            _portableChairPairFacingRight = ResolvePortableChairPairFacingRight(chair, FacingRight);
             _portableChairPairActionName = GetPortableChairActionName(chair);
         }
 
@@ -3215,12 +3386,43 @@ namespace HaCreator.MapSimulator.Character
 
             int distanceX = Math.Abs(chair.CoupleDistanceX ?? 0);
             int distanceY = chair.CoupleDistanceY ?? 0;
-            return new Point(facingRight ? distanceX : -distanceX, distanceY);
+            int directionSign = ResolvePortableChairPairDirectionSign(chair, facingRight);
+            return new Point(directionSign * distanceX, distanceY);
         }
 
         internal static bool ResolvePortableChairPairFacingRight(bool facingRight)
         {
-            return !facingRight;
+            return ResolvePortableChairPairFacingRight(null, facingRight);
+        }
+
+        internal static bool ResolvePortableChairPairFacingRight(PortableChair chair, bool facingRight)
+        {
+            if (chair?.IsCoupleChair != true)
+            {
+                return !facingRight;
+            }
+
+            return chair.CoupleDirection switch
+            {
+                0 => !facingRight,
+                1 => facingRight,
+                _ => !facingRight
+            };
+        }
+
+        internal static int ResolvePortableChairPairDirectionSign(PortableChair chair, bool facingRight)
+        {
+            if (chair?.IsCoupleChair != true)
+            {
+                return facingRight ? 1 : -1;
+            }
+
+            return chair.CoupleDirection switch
+            {
+                0 => facingRight ? 1 : -1,
+                1 => facingRight ? -1 : 1,
+                _ => facingRight ? 1 : -1
+            };
         }
 
         private static string GetPortableChairActionName(PortableChair chair)
@@ -3531,22 +3733,23 @@ namespace HaCreator.MapSimulator.Character
 
         private string GetSkillTransformActionName(PlayerState state)
         {
-            if (_activeSkillAvatarTransform == null)
+            SkillAvatarTransformState activeTransform = GetActiveAvatarTransform();
+            if (activeTransform == null)
             {
                 return null;
             }
 
             return state switch
             {
-                PlayerState.Walking => ResolveSkillTransformActionName(_activeSkillAvatarTransform.WalkActionNames, _activeSkillAvatarTransform.StandActionNames),
-                PlayerState.Jumping or PlayerState.Falling => ResolveSkillTransformActionName(_activeSkillAvatarTransform.JumpActionNames, _activeSkillAvatarTransform.StandActionNames),
-                PlayerState.Prone => ResolveSkillTransformActionName(_activeSkillAvatarTransform.ProneActionNames, _activeSkillAvatarTransform.StandActionNames),
-                PlayerState.Ladder or PlayerState.Rope => ResolveSkillTransformActionName(_activeSkillAvatarTransform.ClimbActionNames, _activeSkillAvatarTransform.StandActionNames),
-                PlayerState.Swimming or PlayerState.Flying => ResolveSkillTransformActionName(_activeSkillAvatarTransform.FloatActionNames, _activeSkillAvatarTransform.StandActionNames),
-                PlayerState.Attacking => ResolveSkillTransformActionName(_activeSkillAvatarTransform.AttackActionNames, _activeSkillAvatarTransform.StandActionNames),
-                PlayerState.Hit => ResolveSkillTransformActionName(_activeSkillAvatarTransform.HitActionNames, _activeSkillAvatarTransform.StandActionNames),
+                PlayerState.Walking => ResolveSkillTransformActionName(activeTransform.WalkActionNames, activeTransform.StandActionNames),
+                PlayerState.Jumping or PlayerState.Falling => ResolveSkillTransformActionName(activeTransform.JumpActionNames, activeTransform.StandActionNames),
+                PlayerState.Prone => ResolveSkillTransformActionName(activeTransform.ProneActionNames, activeTransform.StandActionNames),
+                PlayerState.Ladder or PlayerState.Rope => ResolveSkillTransformActionName(activeTransform.ClimbActionNames, activeTransform.StandActionNames),
+                PlayerState.Swimming or PlayerState.Flying => ResolveSkillTransformActionName(activeTransform.FloatActionNames, activeTransform.StandActionNames),
+                PlayerState.Attacking => ResolveSkillTransformActionName(activeTransform.AttackActionNames, activeTransform.StandActionNames),
+                PlayerState.Hit => ResolveSkillTransformActionName(activeTransform.HitActionNames, activeTransform.StandActionNames),
                 PlayerState.Dead => CharacterPart.GetActionString(CharacterAction.Dead),
-                _ => ResolveSkillTransformActionName(_activeSkillAvatarTransform.StandActionNames)
+                _ => ResolveSkillTransformActionName(activeTransform.StandActionNames)
             };
         }
 
@@ -3572,7 +3775,7 @@ namespace HaCreator.MapSimulator.Character
         {
             if (string.IsNullOrWhiteSpace(actionName)
                 || actionName.StartsWith("tank_", StringComparison.OrdinalIgnoreCase)
-                || _activeSkillAvatarTransform == null)
+                || GetActiveAvatarTransform() == null)
             {
                 return actionName;
             }
@@ -3590,7 +3793,7 @@ namespace HaCreator.MapSimulator.Character
 
         private bool HasTankSkillTransformPrefix()
         {
-            return EnumerateTransformActionNames(_activeSkillAvatarTransform?.StandActionNames)
+            return EnumerateTransformActionNames(GetActiveAvatarTransform()?.StandActionNames)
                 .Any(actionName => actionName.StartsWith("tank_", StringComparison.OrdinalIgnoreCase));
         }
 
@@ -3628,7 +3831,7 @@ namespace HaCreator.MapSimulator.Character
                 return false;
             }
 
-            CharacterPart avatarPart = _activeSkillAvatarTransform?.AvatarPart ?? Build?.Body;
+            CharacterPart avatarPart = GetActiveAvatarTransform()?.AvatarPart ?? Build?.Body;
             return avatarPart?.Animations?.ContainsKey(actionName) == true
                    || avatarPart?.GetAnimation(actionName) != null;
         }
@@ -3653,6 +3856,18 @@ namespace HaCreator.MapSimulator.Character
             }
 
             return TryCreateBuiltInSkillAvatarTransform(skillId, actionName, out transform);
+        }
+
+        private bool TryCreateExternalAvatarTransform(int sourceId, string actionName, int morphTemplateId, out SkillAvatarTransformState transform)
+        {
+            transform = null;
+            if (!TryCreateMorphAvatarTransform(sourceId, morphTemplateId, actionName, out transform))
+            {
+                return false;
+            }
+
+            transform = CloneTransform(transform, sourceId);
+            return true;
         }
 
         private bool TryCreateMorphAvatarTransform(int skillId, int morphTemplateId, string actionName, out SkillAvatarTransformState transform)
@@ -3695,9 +3910,18 @@ namespace HaCreator.MapSimulator.Character
                 case 33121006:
                     transform = CreateSingleActionTransform(skillId, "wildbeast", exitActionName: null);
                     return true;
+                case 4341002:
+                    transform = CreateSingleActionTransform(skillId, "finalCutPrepare", "finalCut");
+                    return true;
+                case 4341003:
+                    transform = CreateSingleActionTransform(skillId, "monsterBombPrepare", "monsterBombThrow");
+                    return true;
                 case 4001003:
                 case 14001003:
                     transform = CreateDarkSightTransform(skillId);
+                    return true;
+                case 23121000:
+                    transform = CreateSingleActionTransform(skillId, "dualVulcanLoop", "dualVulcanEnd");
                     return true;
                 case 5311002:
                     transform = CreateSingleActionTransform(skillId, "noiseWave_ing", "noiseWave");
@@ -3758,9 +3982,28 @@ namespace HaCreator.MapSimulator.Character
                 return true;
             }
 
+            if (string.Equals(normalizedAction, "finalCutPrepare", StringComparison.OrdinalIgnoreCase))
+            {
+                transform = CreateSingleActionTransform(skillId, "finalCutPrepare", "finalCut");
+                return true;
+            }
+
+            if (string.Equals(normalizedAction, "monsterBombPrepare", StringComparison.OrdinalIgnoreCase))
+            {
+                transform = CreateSingleActionTransform(skillId, "monsterBombPrepare", "monsterBombThrow");
+                return true;
+            }
+
             if (string.Equals(normalizedAction, "darksight", StringComparison.OrdinalIgnoreCase))
             {
                 transform = CreateDarkSightTransform(skillId);
+                return true;
+            }
+
+            if (string.Equals(normalizedAction, "dualVulcanPrep", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(normalizedAction, "dualVulcanLoop", StringComparison.OrdinalIgnoreCase))
+            {
+                transform = CreateSingleActionTransform(skillId, "dualVulcanLoop", "dualVulcanEnd");
                 return true;
             }
 
@@ -3812,6 +4055,7 @@ namespace HaCreator.MapSimulator.Character
             return new SkillAvatarTransformState
             {
                 SkillId = skillId,
+                SourceId = skillId,
                 AvatarPart = morphPart,
                 StandActionNames = CreateMorphActionVariants(morphPart, normalizedAction, "stand", "stand1", "stand2"),
                 WalkActionNames = CreateMorphActionVariants(morphPart, "walk", "move", "walk1", "walk2", "stand"),
@@ -3830,6 +4074,7 @@ namespace HaCreator.MapSimulator.Character
             return new SkillAvatarTransformState
             {
                 SkillId = skillId,
+                SourceId = skillId,
                 StandActionNames = CreateActionVariants(standActionName),
                 WalkActionNames = CreateActionVariants(walkActionName, standActionName),
                 JumpActionNames = CreateActionVariants(GetActionFamilyVariant(standActionName, "jump"), standActionName),
@@ -3848,6 +4093,7 @@ namespace HaCreator.MapSimulator.Character
             return new SkillAvatarTransformState
             {
                 SkillId = skillId,
+                SourceId = skillId,
                 StandActionNames = CreateActionVariants(actionName),
                 WalkActionNames = CreateActionVariants(actionName),
                 JumpActionNames = CreateActionVariants(actionName),
@@ -3874,6 +4120,7 @@ namespace HaCreator.MapSimulator.Character
             return new SkillAvatarTransformState
             {
                 SkillId = skillId,
+                SourceId = skillId,
                 StandActionNames = CreateActionVariants("ghoststand", "darksight"),
                 WalkActionNames = CreateActionVariants("ghostwalk", "ghoststand", "darksight"),
                 JumpActionNames = CreateActionVariants("ghostjump", "ghostfly", "ghoststand", "darksight"),
@@ -3884,6 +4131,36 @@ namespace HaCreator.MapSimulator.Character
                 HitActionNames = CreateActionVariants("ghoststand", "darksight"),
                 ExitActionName = null
             };
+        }
+
+        private static SkillAvatarTransformState CloneTransform(SkillAvatarTransformState transform, int sourceId)
+        {
+            if (transform == null)
+            {
+                return null;
+            }
+
+            return new SkillAvatarTransformState
+            {
+                SkillId = transform.SkillId,
+                SourceId = sourceId,
+                AvatarPart = transform.AvatarPart,
+                StandActionNames = transform.StandActionNames,
+                WalkActionNames = transform.WalkActionNames,
+                JumpActionNames = transform.JumpActionNames,
+                ProneActionNames = transform.ProneActionNames,
+                AttackActionNames = transform.AttackActionNames,
+                ClimbActionNames = transform.ClimbActionNames,
+                FloatActionNames = transform.FloatActionNames,
+                HitActionNames = transform.HitActionNames,
+                ExitActionName = transform.ExitActionName,
+                LocksMovement = transform.LocksMovement
+            };
+        }
+
+        private SkillAvatarTransformState GetActiveAvatarTransform()
+        {
+            return _activeExternalAvatarTransform ?? _activeSkillAvatarTransform;
         }
 
         private static IReadOnlyList<string> CreateActionVariants(params string[] actionNames)
@@ -3964,7 +4241,7 @@ namespace HaCreator.MapSimulator.Character
         {
             if (Assembler != null)
             {
-                Assembler.OverrideAvatarPart = _activeSkillAvatarTransform?.AvatarPart;
+                Assembler.OverrideAvatarPart = GetActiveAvatarTransform()?.AvatarPart;
             }
         }
 
@@ -3993,6 +4270,7 @@ namespace HaCreator.MapSimulator.Character
         {
             // Get character Speed stat (default 100)
             float characterSpeed = (Build?.Speed ?? 100f) * _externalMoveSpeedMultiplier;
+            characterSpeed = _moveSpeedCapResolver?.Invoke(characterSpeed) ?? characterSpeed;
 
             // Official client formula:
             //   maxSpeed = CAttrShoe::walkSpeed * (dWalkSpeed * footholdDrag)

@@ -202,6 +202,7 @@ namespace HaCreator.MapSimulator.UI
         private AdminShopEntry _pendingRequestEntry;
         private int _previousScrollWheelValue;
         private MouseState _previousMouseState;
+        private KeyboardState _previousKeyboardState;
         private AdminShopPane? _draggingScrollPane;
         private int _scrollThumbDragOffsetY;
         private bool _wishlistModalVisible;
@@ -315,6 +316,7 @@ namespace HaCreator.MapSimulator.UI
             MouseState mouseState = Mouse.GetState();
             _previousScrollWheelValue = mouseState.ScrollWheelValue;
             _previousMouseState = mouseState;
+            _previousKeyboardState = Keyboard.GetState();
             ResetMode(_defaultMode);
         }
 
@@ -343,12 +345,21 @@ namespace HaCreator.MapSimulator.UI
             MouseState mouseState = Mouse.GetState();
             int wheelDelta = mouseState.ScrollWheelValue - _previousScrollWheelValue;
             _previousScrollWheelValue = mouseState.ScrollWheelValue;
+            KeyboardState keyboardState = Keyboard.GetState();
+            HandleKeyboardInput(keyboardState);
+            if (!IsVisible)
+            {
+                _previousMouseState = mouseState;
+                _previousKeyboardState = keyboardState;
+                return;
+            }
 
             bool leftJustPressed = mouseState.LeftButton == ButtonState.Pressed && _previousMouseState.LeftButton == ButtonState.Released;
 
             if (_wishlistModalVisible)
             {
                 _previousMouseState = mouseState;
+                _previousKeyboardState = keyboardState;
                 return;
             }
 
@@ -369,6 +380,7 @@ namespace HaCreator.MapSimulator.UI
                 if (TryHandleCategoryTabClick(mouseState) || TryHandleBrowseTabClick(mouseState) || TryHandleQuickCategoryTabClick(mouseState) || TryHandleScrollBarMouseDown(mouseState))
                 {
                     _previousMouseState = mouseState;
+                    _previousKeyboardState = keyboardState;
                     return;
                 }
             }
@@ -376,6 +388,7 @@ namespace HaCreator.MapSimulator.UI
             if (wheelDelta == 0)
             {
                 _previousMouseState = mouseState;
+                _previousKeyboardState = keyboardState;
                 return;
             }
 
@@ -383,6 +396,7 @@ namespace HaCreator.MapSimulator.UI
             if (!hoveredPane.HasValue)
             {
                 _previousMouseState = mouseState;
+                _previousKeyboardState = keyboardState;
                 return;
             }
 
@@ -390,6 +404,7 @@ namespace HaCreator.MapSimulator.UI
             if (paneState.Entries.Count <= MaxVisibleRows)
             {
                 _previousMouseState = mouseState;
+                _previousKeyboardState = keyboardState;
                 return;
             }
 
@@ -397,6 +412,125 @@ namespace HaCreator.MapSimulator.UI
             ClampPaneState(paneState);
             UpdateRowButtons();
             _previousMouseState = mouseState;
+            _previousKeyboardState = keyboardState;
+        }
+
+        private void HandleKeyboardInput(KeyboardState keyboardState)
+        {
+            if (_wishlistModalVisible)
+            {
+                if (WasPressed(keyboardState, Keys.Enter) || WasPressed(keyboardState, Keys.Space))
+                {
+                    OnModalConfirmClicked(_modalConfirmButton);
+                }
+                else if (WasPressed(keyboardState, Keys.Escape))
+                {
+                    OnModalCancelClicked(_modalCancelButton);
+                }
+
+                return;
+            }
+
+            if (WasPressed(keyboardState, Keys.Escape))
+            {
+                Hide();
+                return;
+            }
+
+            if (WasPressed(keyboardState, Keys.Tab) || WasPressed(keyboardState, Keys.Left) || WasPressed(keyboardState, Keys.Right))
+            {
+                SwitchActivePane();
+            }
+
+            if (WasPressed(keyboardState, Keys.Up))
+            {
+                MoveSelection(-1);
+            }
+            else if (WasPressed(keyboardState, Keys.Down))
+            {
+                MoveSelection(1);
+            }
+            else if (WasPressed(keyboardState, Keys.PageUp))
+            {
+                MoveSelection(-MaxVisibleRows);
+            }
+            else if (WasPressed(keyboardState, Keys.PageDown))
+            {
+                MoveSelection(MaxVisibleRows);
+            }
+            else if (WasPressed(keyboardState, Keys.Home))
+            {
+                SelectAbsoluteIndex(0);
+            }
+            else if (WasPressed(keyboardState, Keys.End))
+            {
+                SelectAbsoluteIndex(_paneStates[_activePane].Entries.Count - 1);
+            }
+
+            if (WasPressed(keyboardState, Keys.Enter))
+            {
+                OnBuyButtonClicked(_buyButton);
+            }
+            else if (WasPressed(keyboardState, Keys.Space) && GetSelectedEntry()?.SupportsWishlist == true)
+            {
+                OnRechargeButtonClicked(_rechargeButton);
+            }
+        }
+
+        private bool WasPressed(KeyboardState keyboardState, Keys key)
+        {
+            return keyboardState.IsKeyDown(key) && _previousKeyboardState.IsKeyUp(key);
+        }
+
+        private void SwitchActivePane()
+        {
+            AdminShopPane nextPane = _activePane == AdminShopPane.Npc ? AdminShopPane.User : AdminShopPane.Npc;
+            if (_paneStates[nextPane].Entries.Count == 0)
+            {
+                return;
+            }
+
+            _activePane = nextPane;
+            AdminShopPaneState paneState = _paneStates[_activePane];
+            if (paneState.SelectedIndex < 0 && paneState.Entries.Count > 0)
+            {
+                paneState.SelectedIndex = 0;
+            }
+
+            ClampPaneState(paneState);
+            _pendingWishlistEntry = null;
+            _footerMessage = BuildSelectionMessage(GetSelectedEntry(), _activePane);
+            UpdateActionButtonStates();
+        }
+
+        private void MoveSelection(int delta)
+        {
+            AdminShopPaneState paneState = _paneStates[_activePane];
+            if (paneState.Entries.Count == 0)
+            {
+                return;
+            }
+
+            int targetIndex = paneState.SelectedIndex >= 0 ? paneState.SelectedIndex + delta : 0;
+            SelectAbsoluteIndex(targetIndex);
+        }
+
+        private void SelectAbsoluteIndex(int index)
+        {
+            AdminShopPaneState paneState = _paneStates[_activePane];
+            if (paneState.Entries.Count == 0)
+            {
+                paneState.SelectedIndex = -1;
+                _footerMessage = BuildSelectionMessage(null, _activePane);
+                UpdateActionButtonStates();
+                return;
+            }
+
+            paneState.SelectedIndex = Math.Clamp(index, 0, paneState.Entries.Count - 1);
+            _pendingWishlistEntry = null;
+            ClampPaneState(paneState);
+            _footerMessage = BuildSelectionMessage(paneState.Entries[paneState.SelectedIndex], _activePane);
+            UpdateActionButtonStates();
         }
 
         protected override void DrawContents(
@@ -1739,6 +1873,7 @@ namespace HaCreator.MapSimulator.UI
             }
 
             return _storageRuntime.CanCurrentCharacterAccess
+                   && _storageRuntime.IsSecondaryPasswordVerified
                    && _storageRuntime.CanExpandSlotLimit()
                    && _inventory.GetMesoCount() >= entry.Price;
         }
@@ -1790,6 +1925,13 @@ namespace HaCreator.MapSimulator.UI
                     ? "this storage"
                     : _storageRuntime.AccountLabel;
                 return $"{currentCharacterName} is not authorized to extend {accountLabel}.";
+            }
+
+            if (!_storageRuntime.IsSecondaryPasswordVerified)
+            {
+                return _storageRuntime.HasSecondaryPassword
+                    ? "Unlock trunk storage before purchasing storage-slot expansion."
+                    : "Open storage first and create a passcode before purchasing storage-slot expansion.";
             }
 
             if (_inventory.GetMesoCount() < entry.Price)

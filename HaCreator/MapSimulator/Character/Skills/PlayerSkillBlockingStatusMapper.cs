@@ -3,6 +3,7 @@ namespace HaCreator.MapSimulator.Character.Skills
     public enum PlayerSkillBlockingStatus
     {
         Stun,
+        Freeze,
         Seal,
         Attract
     }
@@ -16,8 +17,10 @@ namespace HaCreator.MapSimulator.Character.Skills
                 case 120:
                     status = PlayerSkillBlockingStatus.Seal;
                     return true;
-                case 123:
                 case 131:
+                    status = PlayerSkillBlockingStatus.Freeze;
+                    return true;
+                case 123:
                     status = PlayerSkillBlockingStatus.Stun;
                     return true;
                 case 128:
@@ -34,6 +37,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             return status switch
             {
                 PlayerSkillBlockingStatus.Stun => "Skills cannot be used while stunned.",
+                PlayerSkillBlockingStatus.Freeze => "Skills cannot be used while frozen.",
                 PlayerSkillBlockingStatus.Seal => "Skills cannot be used while sealed.",
                 PlayerSkillBlockingStatus.Attract => "Skills cannot be used while seduced.",
                 _ => null

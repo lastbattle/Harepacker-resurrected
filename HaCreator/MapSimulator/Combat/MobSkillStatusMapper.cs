@@ -65,6 +65,11 @@ namespace HaCreator.MapSimulator.Combat
                 case 142:
                     definition = new MobSkillStatusDefinition(skillId, MobSkillOperation.ApplyStatus, MobStatusEffect.HardSkin, MobSkillStatusTargetMode.Self);
                     return true;
+                case 143:
+                case 144:
+                case 145:
+                    definition = new MobSkillStatusDefinition(skillId, MobSkillOperation.ApplyStatus, MobStatusEffect.Reflect, MobSkillStatusTargetMode.Self);
+                    return true;
                 default:
                     definition = default;
                     return false;
@@ -83,6 +88,7 @@ namespace HaCreator.MapSimulator.Combat
                 MobStatusEffect.PImmune => x,
                 MobStatusEffect.MImmune => x,
                 MobStatusEffect.HardSkin => hp > 0 ? hp : x,
+                MobStatusEffect.Reflect => hp > 0 ? hp : 100,
                 _ => 0
             };
         }

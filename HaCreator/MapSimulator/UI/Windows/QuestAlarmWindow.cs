@@ -1,4 +1,6 @@
+using HaCreator.MapSimulator.Character;
 using HaCreator.MapSimulator.Interaction;
+using HaCreator.MapSimulator.Managers;
 using HaSharedLibrary.Render;
 using HaSharedLibrary.Render.DX;
 using Microsoft.Xna.Framework;
@@ -27,7 +29,8 @@ namespace HaCreator.MapSimulator.UI
         private readonly Texture2D _bottomTexture;
         private readonly IDXObject _minimizedFrame;
         private readonly Dictionary<int, IDXObject> _maximizedFrames = new();
-        private readonly HashSet<int> _dismissedQuestIds = new();
+        private readonly HashSet<int> _trackedQuestIds = new();
+        private readonly HashSet<int> _hiddenAutoQuestIds = new();
         private readonly List<RowLayout> _rowLayouts = new();
         private readonly Dictionary<int, Texture2D> _itemIconCache = new();
         private readonly Texture2D _pixel;
@@ -37,6 +40,8 @@ namespace HaCreator.MapSimulator.UI
         private KeyboardState _previousKeyboardState;
         private Func<QuestAlarmSnapshot> _snapshotProvider;
         private Func<int, Texture2D> _itemIconProvider;
+        private Func<CharacterBuild> _characterBuildProvider;
+        private QuestAlarmStore _stateStore;
         private UIObject _autoButton;
         private UIObject _questButton;
         private UIObject _maximizeButton;
@@ -61,6 +66,8 @@ namespace HaCreator.MapSimulator.UI
         private Texture2D _deleteDisabledTexture;
         private Texture2D _deleteMouseOverTexture;
         private IReadOnlyList<Texture2D> _questButtonAnimationFrames = Array.Empty<Texture2D>();
+        private string _loadedStateCharacterKey = string.Empty;
+        private bool _suppressStatePersistence;
 
         public QuestAlarmWindow(
             string windowName,
@@ -97,6 +104,13 @@ namespace HaCreator.MapSimulator.UI
         internal void SetItemIconProvider(Func<int, Texture2D> provider)
         {
             _itemIconProvider = provider;
+        }
+
+        internal void ConfigurePersistence(QuestAlarmStore stateStore, Func<CharacterBuild> characterBuildProvider)
+        {
+            _stateStore = stateStore;
+            _characterBuildProvider = characterBuildProvider;
+            _loadedStateCharacterKey = string.Empty;
         }
 
         internal void SetQuestChromeTextures(
@@ -158,12 +172,14 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
-            _dismissedQuestIds.Remove(questId);
+            EnsurePersistedStateLoaded();
+            _trackedQuestIds.Add(questId);
+            _hiddenAutoQuestIds.Remove(questId);
             _selectedQuestId = questId;
-            _autoTrackEnabled = false;
             EnsureSelectionVisible(GetFilteredSnapshot());
             SetMinimized(false);
             UpdateButtonStates();
+            SavePersistedState();
         }
 
         public override void Update(GameTime gameTime)
@@ -359,8 +375,10 @@ namespace HaCreator.MapSimulator.UI
 
         private void ToggleAutoTrack()
         {
+            EnsurePersistedStateLoaded();
             _autoTrackEnabled = !_autoTrackEnabled;
             UpdateButtonStates();
+            SavePersistedState();
         }
 
         private void OpenQuestLog()
@@ -374,6 +392,7 @@ namespace HaCreator.MapSimulator.UI
             _isMinimized = minimized;
             RefreshFrame(GetFilteredSnapshot());
             UpdateButtonStates();
+            SavePersistedState();
         }
 
         private void HandleRowSelection(int mouseX, int mouseY)
@@ -391,7 +410,6 @@ namespace HaCreator.MapSimulator.UI
                     && Environment.TickCount64 - _lastRowClickTick <= RowDoubleClickWindowMs;
 
                 _selectedQuestId = row.QuestId;
-                _autoTrackEnabled = false;
                 _lastRowClickQuestId = row.QuestId;
                 _lastRowClickTick = Environment.TickCount64;
                 EnsureSelectionVisible(GetFilteredSnapshot());
@@ -408,19 +426,33 @@ namespace HaCreator.MapSimulator.UI
 
         private QuestAlarmSnapshot GetFilteredSnapshot()
         {
+            EnsurePersistedStateLoaded();
             QuestAlarmSnapshot snapshot = _snapshotProvider?.Invoke() ?? new QuestAlarmSnapshot();
             if (snapshot.Entries.Count == 0)
             {
-                _dismissedQuestIds.Clear();
+                if (_trackedQuestIds.Count > 0 || _hiddenAutoQuestIds.Count > 0)
+                {
+                    _trackedQuestIds.Clear();
+                    _hiddenAutoQuestIds.Clear();
+                    SavePersistedState();
+                }
+
                 return snapshot;
             }
 
             HashSet<int> activeQuestIds = snapshot.Entries.Select(entry => entry.QuestId).ToHashSet();
-            _dismissedQuestIds.RemoveWhere(questId => !activeQuestIds.Contains(questId));
+            bool stateChanged = false;
+            stateChanged |= _trackedQuestIds.RemoveWhere(questId => !activeQuestIds.Contains(questId)) > 0;
+            stateChanged |= _hiddenAutoQuestIds.RemoveWhere(questId => !activeQuestIds.Contains(questId)) > 0;
 
             List<QuestAlarmEntrySnapshot> entries = snapshot.Entries
-                .Where(entry => !_dismissedQuestIds.Contains(entry.QuestId))
+                .Where(entry => ShouldDisplayEntry(entry.QuestId))
                 .ToList();
+
+            if (stateChanged)
+            {
+                SavePersistedState();
+            }
 
             return new QuestAlarmSnapshot
             {
@@ -438,21 +470,15 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
-            if (_autoTrackEnabled)
-            {
-                QuestAlarmEntrySnapshot autoEntry = snapshot.Entries.FirstOrDefault(entry => entry.IsReadyToComplete)
-                    ?? snapshot.Entries.FirstOrDefault(entry => entry.IsRecentlyUpdated)
-                    ?? snapshot.Entries[0];
-                _selectedQuestId = autoEntry.QuestId;
-                return;
-            }
-
             if (snapshot.Entries.Any(entry => entry.QuestId == _selectedQuestId))
             {
                 return;
             }
 
-            _selectedQuestId = snapshot.Entries[0].QuestId;
+            QuestAlarmEntrySnapshot preferredEntry = snapshot.Entries.FirstOrDefault(entry => entry.IsReadyToComplete)
+                ?? snapshot.Entries.FirstOrDefault(entry => entry.IsRecentlyUpdated)
+                ?? snapshot.Entries[0];
+            _selectedQuestId = preferredEntry.QuestId;
         }
 
         private void EnsureSelectionVisible(QuestAlarmSnapshot snapshot)
@@ -710,7 +736,13 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
-            _dismissedQuestIds.Add(questId);
+            EnsurePersistedStateLoaded();
+            _trackedQuestIds.Remove(questId);
+            if (_autoTrackEnabled)
+            {
+                _hiddenAutoQuestIds.Add(questId);
+            }
+
             if (_selectedQuestId == questId)
             {
                 _selectedQuestId = -1;
@@ -718,6 +750,7 @@ namespace HaCreator.MapSimulator.UI
 
             ClampScrollOffset(GetFilteredSnapshot());
             UpdateButtonStates();
+            SavePersistedState();
         }
 
         private void DismissAll(QuestAlarmSnapshot snapshot)
@@ -729,12 +762,17 @@ namespace HaCreator.MapSimulator.UI
 
             for (int i = 0; i < snapshot.Entries.Count; i++)
             {
-                _dismissedQuestIds.Add(snapshot.Entries[i].QuestId);
+                _trackedQuestIds.Remove(snapshot.Entries[i].QuestId);
+                if (_autoTrackEnabled)
+                {
+                    _hiddenAutoQuestIds.Add(snapshot.Entries[i].QuestId);
+                }
             }
 
             _selectedQuestId = -1;
             _scrollOffset = 0;
             UpdateButtonStates();
+            SavePersistedState();
         }
 
         private void HandleKeyboardInput(KeyboardState keyboardState, QuestAlarmSnapshot snapshot)
@@ -801,7 +839,6 @@ namespace HaCreator.MapSimulator.UI
 
             int nextIndex = Math.Clamp(currentIndex + direction, 0, snapshot.Entries.Count - 1);
             _selectedQuestId = snapshot.Entries[nextIndex].QuestId;
-            _autoTrackEnabled = false;
             EnsureSelectionVisible(snapshot);
             UpdateButtonStates();
         }
@@ -911,6 +948,93 @@ namespace HaCreator.MapSimulator.UI
         private bool WasPressed(KeyboardState keyboardState, Keys key)
         {
             return keyboardState.IsKeyDown(key) && !_previousKeyboardState.IsKeyDown(key);
+        }
+
+        private bool ShouldDisplayEntry(int questId)
+        {
+            if (questId <= 0)
+            {
+                return false;
+            }
+
+            if (_trackedQuestIds.Contains(questId))
+            {
+                return true;
+            }
+
+            return _autoTrackEnabled && !_hiddenAutoQuestIds.Contains(questId);
+        }
+
+        private void EnsurePersistedStateLoaded()
+        {
+            string currentCharacterKey = ResolveCharacterKey(_characterBuildProvider?.Invoke());
+            if (string.Equals(_loadedStateCharacterKey, currentCharacterKey, StringComparison.Ordinal))
+            {
+                return;
+            }
+
+            _suppressStatePersistence = true;
+            try
+            {
+                QuestAlarmPersistedState state = _stateStore?.GetState(_characterBuildProvider?.Invoke()) ?? new QuestAlarmPersistedState();
+                _trackedQuestIds.Clear();
+                foreach (int questId in state.TrackedQuestIds)
+                {
+                    _trackedQuestIds.Add(questId);
+                }
+
+                _hiddenAutoQuestIds.Clear();
+                foreach (int questId in state.HiddenAutoQuestIds)
+                {
+                    _hiddenAutoQuestIds.Add(questId);
+                }
+
+                _autoTrackEnabled = state.AutoRegisterEnabled;
+                _isMinimized = state.IsMinimized;
+            }
+            finally
+            {
+                _loadedStateCharacterKey = currentCharacterKey;
+                _suppressStatePersistence = false;
+            }
+        }
+
+        private void SavePersistedState()
+        {
+            if (_suppressStatePersistence || _stateStore == null)
+            {
+                return;
+            }
+
+            _stateStore.Save(
+                _characterBuildProvider?.Invoke(),
+                new QuestAlarmPersistedState
+                {
+                    AutoRegisterEnabled = _autoTrackEnabled,
+                    IsMinimized = _isMinimized,
+                    TrackedQuestIds = _trackedQuestIds.ToArray(),
+                    HiddenAutoQuestIds = _hiddenAutoQuestIds.ToArray()
+                });
+        }
+
+        private static string ResolveCharacterKey(CharacterBuild build)
+        {
+            if (build == null)
+            {
+                return "session:default";
+            }
+
+            if (build.Id > 0)
+            {
+                return $"id:{build.Id}";
+            }
+
+            if (!string.IsNullOrWhiteSpace(build.Name))
+            {
+                return $"name:{build.Name.Trim().ToLowerInvariant()}";
+            }
+
+            return "session:default";
         }
 
         private readonly struct RowLayout

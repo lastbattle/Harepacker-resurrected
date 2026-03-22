@@ -127,6 +127,8 @@ namespace HaCreator.MapSimulator.UI
 
         public override string WindowName => MapSimulatorWindowNames.GuildBbs;
         public override bool CapturesKeyboardInput => IsVisible && _activeInputTarget != InputTarget.None;
+        internal int BasicEmoticonSlotCount => _basicEmoticonTextures.Length;
+        internal int CashEmoticonSlotCount => _cashEmoticonTextures.Length;
 
         public override void SetFont(SpriteFont font)
         {
@@ -519,6 +521,12 @@ namespace HaCreator.MapSimulator.UI
                 if (_activeInputTarget == InputTarget.ComposeTitle)
                 {
                     ActivateInput(InputTarget.ComposeBody, snapshot, clearExisting: false);
+                }
+                else if (_activeInputTarget == InputTarget.ComposeBody)
+                {
+                    _inputBuffer.Insert(_cursorPosition, '\n');
+                    _cursorPosition++;
+                    SyncInputBuffer();
                 }
                 else if (_activeInputTarget == InputTarget.ReplyBody)
                 {

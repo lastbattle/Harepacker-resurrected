@@ -81,6 +81,7 @@ namespace HaCreator.MapSimulator.UI
         private int _playerMinimapY = 0;
         private int _minimapOriginX = 0;
         private int _minimapOriginY = 0;
+        private HelperMarkerType? _localPlayerHelperMarkerType;
 
         public Action FullMapRequested { get; set; }
         public Action MapTransferRequested { get; set; }
@@ -207,6 +208,11 @@ namespace HaCreator.MapSimulator.UI
             _trackedUserMarkers = trackedUserMarkers ?? Array.Empty<TrackedUserMarker>();
         }
 
+        public void SetLocalPlayerHelperMarker(HelperMarkerType? helperMarkerType)
+        {
+            _localPlayerHelperMarkerType = helperMarkerType;
+        }
+
         public override void Draw(SpriteBatch sprite, SkeletonMeshRenderer skeletonMeshRenderer, GameTime gameTime,
             int mapShiftX, int mapShiftY, int centerX, int centerY,
             ReflectionDrawableBoundary drawReflectionInfo,
@@ -238,9 +244,10 @@ namespace HaCreator.MapSimulator.UI
                 int minimapPosX = _playerMinimapX;
                 int minimapPosY = _playerMinimapY;
 
-                if (_userMarker != null)
+                BaseDXDrawableItem playerMarker = ResolveLocalPlayerMarker();
+                if (playerMarker != null)
                 {
-                    _userMarker.Draw(sprite, skeletonMeshRenderer, gameTime,
+                    playerMarker.Draw(sprite, skeletonMeshRenderer, gameTime,
                         -Position.X, -Position.Y, minimapPosX, minimapPosY,
                         drawReflectionInfo,
                         renderParameters,
@@ -664,6 +671,18 @@ namespace HaCreator.MapSimulator.UI
                 NpcMarkerType.QuestEnd when _questEndNpcMarker != null => _questEndNpcMarker,
                 _ => _npcMarker ?? _questStartNpcMarker ?? _questEndNpcMarker
             };
+        }
+
+        private BaseDXDrawableItem ResolveLocalPlayerMarker()
+        {
+            if (_localPlayerHelperMarkerType.HasValue
+                && _helperMarkers.TryGetValue(_localPlayerHelperMarkerType.Value, out BaseDXDrawableItem helperMarker)
+                && helperMarker != null)
+            {
+                return helperMarker;
+            }
+
+            return _userMarker;
         }
 
         private void DrawTrackedUserMarkers(

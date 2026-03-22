@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.IO;
+using System.Globalization;
 using System.Net;
 using System.Net.Sockets;
 using System.Threading;
@@ -24,8 +25,9 @@ namespace HaCreator.MapSimulator.Managers
 
     /// <summary>
     /// Optional loopback inbox for live MiniRoom Match Cards payloads.
-    /// Each line accepts either a raw hex payload or the command-shaped
-    /// "/memorygame packetraw <hex payload>" form.
+    /// Each line accepts a raw payload, a full opcode-wrapped packet, or the
+    /// command-shaped "/memorygame packetraw <hex payload>" and
+    /// "/memorygame packetrecv <opcode> <hex payload>" forms.
     /// </summary>
     public sealed class MemoryGamePacketInboxManager : IDisposable
     {
@@ -122,37 +124,67 @@ namespace HaCreator.MapSimulator.Managers
             if (trimmed.StartsWith("/memorygame", StringComparison.OrdinalIgnoreCase))
             {
                 string[] tokens = trimmed.Split((char[])null, StringSplitOptions.RemoveEmptyEntries);
-                if (tokens.Length < 3 || !tokens[1].Equals("packetraw", StringComparison.OrdinalIgnoreCase))
+                if (tokens.Length < 3)
                 {
-                    error = "Only /memorygame packetraw <hex> is accepted by the inbox.";
+                    error = "Only /memorygame packetraw <hex> and /memorygame packetrecv <opcode> <hex> are accepted by the inbox.";
                     return false;
                 }
 
-                trimmed = string.Join(string.Empty, tokens, 2, tokens.Length - 2);
+                if (tokens[1].Equals("packetraw", StringComparison.OrdinalIgnoreCase))
+                {
+                    trimmed = string.Join(string.Empty, tokens, 2, tokens.Length - 2);
+                }
+                else if (tokens[1].Equals("packetrecv", StringComparison.OrdinalIgnoreCase)
+                    || tokens[1].Equals("recv", StringComparison.OrdinalIgnoreCase))
+                {
+                    if (tokens.Length < 4 || !TryParseOpcode(tokens[2], out ushort opcode))
+                    {
+                        error = "Memory Game recv lines require '/memorygame packetrecv <opcode> <hex>'.";
+                        return false;
+                    }
+
+                    if (!TryParseHexPayload(string.Join(string.Empty, tokens, 3, tokens.Length - 3), out byte[] recvPayload, out error))
+                    {
+                        return false;
+                    }
+
+                    payload = BuildOpcodeWrappedPacket(opcode, recvPayload);
+                    return true;
+                }
+                else
+                {
+                    error = "Only /memorygame packetraw <hex> and /memorygame packetrecv <opcode> <hex> are accepted by the inbox.";
+                    return false;
+                }
             }
 
-            string compactHex = RemoveWhitespace(trimmed);
-            if (compactHex.StartsWith("0x", StringComparison.OrdinalIgnoreCase))
+            string[] recvTokens = trimmed.Split((char[])null, StringSplitOptions.RemoveEmptyEntries);
+            if (recvTokens.Length >= 3
+                && (recvTokens[0].Equals("recv", StringComparison.OrdinalIgnoreCase)
+                    || recvTokens[0].Equals("packetrecv", StringComparison.OrdinalIgnoreCase)
+                    || TryParseOpcode(recvTokens[0], out _)))
             {
-                compactHex = compactHex[2..];
-            }
+                int opcodeTokenIndex = recvTokens[0].Equals("recv", StringComparison.OrdinalIgnoreCase)
+                    || recvTokens[0].Equals("packetrecv", StringComparison.OrdinalIgnoreCase)
+                    ? 1
+                    : 0;
+                int payloadTokenIndex = opcodeTokenIndex + 1;
+                if (recvTokens.Length <= payloadTokenIndex || !TryParseOpcode(recvTokens[opcodeTokenIndex], out ushort opcode))
+                {
+                    error = "Memory Game recv lines require '<opcode> <hex>' or 'recv <opcode> <hex>'.";
+                    return false;
+                }
 
-            if (string.IsNullOrWhiteSpace(compactHex))
-            {
-                error = "MiniRoom payload requires hex bytes.";
-                return false;
-            }
+                if (!TryParseHexPayload(string.Join(string.Empty, recvTokens, payloadTokenIndex, recvTokens.Length - payloadTokenIndex), out byte[] recvPayload, out error))
+                {
+                    return false;
+                }
 
-            try
-            {
-                payload = Convert.FromHexString(compactHex);
+                payload = BuildOpcodeWrappedPacket(opcode, recvPayload);
                 return true;
             }
-            catch (FormatException)
-            {
-                error = $"Invalid MiniRoom hex payload: {text}";
-                return false;
-            }
+
+            return TryParseHexPayload(trimmed, out payload, out error);
         }
 
         private async Task ListenLoopAsync(CancellationToken cancellationToken)
@@ -240,6 +272,65 @@ namespace HaCreator.MapSimulator.Managers
             }
 
             return count == 0 ? string.Empty : new string(buffer, 0, count);
+        }
+
+        private static bool TryParseOpcode(string text, out ushort opcode)
+        {
+            opcode = 0;
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                return false;
+            }
+
+            string normalized = text.Trim().TrimEnd(':');
+            if (normalized.StartsWith("0x", StringComparison.OrdinalIgnoreCase))
+            {
+                normalized = normalized[2..];
+            }
+
+            return ushort.TryParse(normalized, NumberStyles.AllowHexSpecifier, CultureInfo.InvariantCulture, out opcode)
+                || ushort.TryParse(normalized, NumberStyles.Integer, CultureInfo.InvariantCulture, out opcode);
+        }
+
+        private static bool TryParseHexPayload(string text, out byte[] payload, out string error)
+        {
+            payload = Array.Empty<byte>();
+            string compactHex = RemoveWhitespace(text);
+            if (compactHex.StartsWith("0x", StringComparison.OrdinalIgnoreCase))
+            {
+                compactHex = compactHex[2..];
+            }
+
+            if (string.IsNullOrWhiteSpace(compactHex))
+            {
+                error = "MiniRoom payload requires hex bytes.";
+                return false;
+            }
+
+            try
+            {
+                payload = Convert.FromHexString(compactHex);
+                error = null;
+                return true;
+            }
+            catch (FormatException)
+            {
+                error = $"Invalid MiniRoom hex payload: {text}";
+                return false;
+            }
+        }
+
+        private static byte[] BuildOpcodeWrappedPacket(ushort opcode, byte[] payload)
+        {
+            byte[] packet = new byte[(payload?.Length ?? 0) + sizeof(ushort)];
+            packet[0] = (byte)(opcode & 0xFF);
+            packet[1] = (byte)((opcode >> 8) & 0xFF);
+            if (payload != null && payload.Length > 0)
+            {
+                Buffer.BlockCopy(payload, 0, packet, sizeof(ushort), payload.Length);
+            }
+
+            return packet;
         }
 
         private void StopInternal(bool clearPending)

@@ -16,6 +16,7 @@ namespace HaCreator.MapSimulator.UI
         private readonly IDXObject _header;
         private readonly Point _headerOffset;
         private readonly Texture2D[] _rightIcons;
+        private readonly string[] _entitlementLabels;
         private readonly Texture2D _pixel;
 
         private Func<FamilyChartSnapshot> _snapshotProvider;
@@ -44,6 +45,7 @@ namespace HaCreator.MapSimulator.UI
             IDXObject header,
             Point headerOffset,
             Texture2D[] rightIcons,
+            string[] entitlementLabels,
             GraphicsDevice device)
             : base(frame)
         {
@@ -52,6 +54,7 @@ namespace HaCreator.MapSimulator.UI
             _header = header;
             _headerOffset = headerOffset;
             _rightIcons = rightIcons ?? Array.Empty<Texture2D>();
+            _entitlementLabels = entitlementLabels ?? Array.Empty<string>();
             _pixel = new Texture2D(device ?? throw new ArgumentNullException(nameof(device)), 1, 1);
             _pixel.SetData(new[] { Color.White });
         }
@@ -189,12 +192,24 @@ namespace HaCreator.MapSimulator.UI
 
             DrawValue(sprite, snapshot.SpecialReputationCost.ToString("N0"), 24, 244, 0.42f);
             DrawValue(sprite, snapshot.SpecialUsesLeft.ToString(), 111, 244, 0.42f);
-            DrawText(sprite, snapshot.EntitlementLabel, 24, 197, new Color(74, 74, 74), 0.33f);
+            DrawText(sprite, ResolveEntitlementLabel(snapshot), 24, 197, new Color(74, 74, 74), 0.33f);
         }
 
         private Rectangle GetSpecialIconBounds()
         {
             return new Rectangle(Position.X + 137, Position.Y + 155, 32, 32);
+        }
+
+        private string ResolveEntitlementLabel(FamilyChartSnapshot snapshot)
+        {
+            int entitlementIndex = snapshot?.EntitlementIndex ?? -1;
+            if (entitlementIndex >= 0 && entitlementIndex < _entitlementLabels.Length
+                && !string.IsNullOrWhiteSpace(_entitlementLabels[entitlementIndex]))
+            {
+                return _entitlementLabels[entitlementIndex];
+            }
+
+            return snapshot?.EntitlementLabel ?? string.Empty;
         }
 
         private void DrawPreceptPanel(SpriteBatch sprite, FamilyChartSnapshot snapshot)

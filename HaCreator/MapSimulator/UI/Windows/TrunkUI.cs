@@ -37,6 +37,8 @@ namespace HaCreator.MapSimulator.UI
         private const int StatusTextY = 308;
         private const int StatusTextWidth = 430;
         private const int MaxMesoDigits = 10;
+        private const int MinSecondaryPasswordDigits = 4;
+        private const int MaxSecondaryPasswordDigits = 8;
 
         private readonly IDXObject _foreground;
         private readonly Point _foregroundOffset;
@@ -89,6 +91,7 @@ namespace HaCreator.MapSimulator.UI
         private long _mesoEntryMaxValue;
         private string _mesoEntryPrompt = string.Empty;
         private bool _mesoEntryReplaceOnDigit;
+        private string _secondaryPasswordConfirmationText = string.Empty;
 
         private enum TrunkPane
         {
@@ -101,7 +104,10 @@ namespace HaCreator.MapSimulator.UI
         {
             None,
             Withdraw,
-            Deposit
+            Deposit,
+            SetupSecondaryPassword,
+            ConfirmSecondaryPassword,
+            VerifySecondaryPassword
         }
 
         public TrunkUI(
@@ -142,6 +148,7 @@ namespace HaCreator.MapSimulator.UI
         public override void Show()
         {
             base.Show();
+            _storageRuntime?.ClearSecondaryPasswordVerification();
             CancelMesoEntry();
             UpdateAccessStatusMessage();
             _previousScrollWheelValue = Mouse.GetState().ScrollWheelValue;
@@ -463,9 +470,8 @@ namespace HaCreator.MapSimulator.UI
         {
             InventoryType inventoryType = GetInventoryTypeFromTab(_currentTab);
             IReadOnlyList<InventorySlotData> storageRows = GetStorageRows(inventoryType);
-            if (!HasStorageAccess())
+            if (!EnsureStorageAccess())
             {
-                _statusMessage = BuildAccessDeniedMessage();
                 UpdateButtonStates();
                 return;
             }
@@ -505,9 +511,8 @@ namespace HaCreator.MapSimulator.UI
         {
             InventoryType inventoryType = GetInventoryTypeFromTab(_currentTab);
             IReadOnlyList<InventorySlotData> inventoryRows = _inventory?.GetSlots(inventoryType) ?? Array.Empty<InventorySlotData>();
-            if (!HasStorageAccess())
+            if (!EnsureStorageAccess())
             {
-                _statusMessage = BuildAccessDeniedMessage();
                 UpdateButtonStates();
                 return;
             }
@@ -545,9 +550,8 @@ namespace HaCreator.MapSimulator.UI
         private void SortCurrentTab()
         {
             InventoryType inventoryType = GetInventoryTypeFromTab(_currentTab);
-            if (!HasStorageAccess())
+            if (!EnsureStorageAccess())
             {
-                _statusMessage = BuildAccessDeniedMessage();
                 UpdateButtonStates();
                 return;
             }
@@ -569,9 +573,9 @@ namespace HaCreator.MapSimulator.UI
 
         private void BeginMesoEntry(MesoEntryMode mode)
         {
-            if (!HasStorageAccess())
+            bool isMesoTransfer = mode == MesoEntryMode.Withdraw || mode == MesoEntryMode.Deposit;
+            if (isMesoTransfer && !EnsureStorageAccess())
             {
-                _statusMessage = BuildAccessDeniedMessage();
                 CancelMesoEntry();
                 UpdateButtonStates();
                 return;
@@ -579,8 +583,10 @@ namespace HaCreator.MapSimulator.UI
 
             long maxValue = mode == MesoEntryMode.Withdraw
                 ? GetStorageMesoCount()
-                : _inventory?.GetMesoCount() ?? 0;
-            if (_inventory == null || maxValue <= 0)
+                : mode == MesoEntryMode.Deposit
+                    ? _inventory?.GetMesoCount() ?? 0
+                    : 0;
+            if (isMesoTransfer && (_inventory == null || maxValue <= 0))
             {
                 _statusMessage = mode == MesoEntryMode.Withdraw
                     ? "No meso is stored."
@@ -592,16 +598,33 @@ namespace HaCreator.MapSimulator.UI
 
             _mesoEntryMode = mode;
             _mesoEntryMaxValue = maxValue;
-            _mesoEntryText = maxValue.ToString(CultureInfo.InvariantCulture);
-            _mesoEntryPrompt = mode == MesoEntryMode.Withdraw
-                ? "Withdraw meso amount"
-                : "Deposit meso amount";
+            _mesoEntryText = isMesoTransfer
+                ? maxValue.ToString(CultureInfo.InvariantCulture)
+                : "0";
+            _mesoEntryPrompt = mode switch
+            {
+                MesoEntryMode.Withdraw => "Withdraw meso amount",
+                MesoEntryMode.Deposit => "Deposit meso amount",
+                MesoEntryMode.SetupSecondaryPassword => "Create storage passcode",
+                MesoEntryMode.ConfirmSecondaryPassword => "Confirm storage passcode",
+                MesoEntryMode.VerifySecondaryPassword => "Enter storage passcode",
+                _ => string.Empty
+            };
             _mesoEntryReplaceOnDigit = true;
+            _secondaryPasswordConfirmationText ??= string.Empty;
             UpdateButtonStates();
         }
 
         private void ConfirmMesoEntry()
         {
+            if (_mesoEntryMode == MesoEntryMode.SetupSecondaryPassword ||
+                _mesoEntryMode == MesoEntryMode.ConfirmSecondaryPassword ||
+                _mesoEntryMode == MesoEntryMode.VerifySecondaryPassword)
+            {
+                ConfirmSecondaryPasswordEntry();
+                return;
+            }
+
             if (!TryParseMesoEntry(out long amount))
             {
                 _statusMessage = $"Enter a meso amount between 1 and {_mesoEntryMaxValue.ToString("N0", CultureInfo.InvariantCulture)}.";
@@ -1102,7 +1125,12 @@ namespace HaCreator.MapSimulator.UI
                     string source = _mesoEntryReplaceOnDigit ? digit.Value.ToString() : _mesoEntryText + digit.Value;
                     string rawValue = source.TrimStart('0');
                     string candidate = string.IsNullOrEmpty(rawValue) ? "0" : rawValue;
-                    if (candidate.Length > MaxMesoDigits)
+                    int maxDigits = (_mesoEntryMode == MesoEntryMode.SetupSecondaryPassword ||
+                                     _mesoEntryMode == MesoEntryMode.ConfirmSecondaryPassword ||
+                                     _mesoEntryMode == MesoEntryMode.VerifySecondaryPassword)
+                        ? MaxSecondaryPasswordDigits
+                        : MaxMesoDigits;
+                    if (candidate.Length > maxDigits)
                     {
                         continue;
                     }
@@ -1128,6 +1156,7 @@ namespace HaCreator.MapSimulator.UI
             _mesoEntryMaxValue = 0;
             _mesoEntryPrompt = string.Empty;
             _mesoEntryReplaceOnDigit = false;
+            _secondaryPasswordConfirmationText = string.Empty;
         }
 
         private bool TryParseMesoEntry(out long amount)
@@ -1155,7 +1184,8 @@ namespace HaCreator.MapSimulator.UI
 
         private bool HasStorageAccess()
         {
-            return _storageRuntime?.CanCurrentCharacterAccess ?? true;
+            return (_storageRuntime?.CanCurrentCharacterAccess ?? true) &&
+                   (_storageRuntime?.IsSecondaryPasswordVerified ?? true);
         }
 
         private void SyncLocalStorageIntoRuntime()
@@ -1218,9 +1248,17 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
-            if (!HasStorageAccess())
+            if (_storageRuntime != null && !_storageRuntime.CanCurrentCharacterAccess)
             {
                 _statusMessage = BuildAccessDeniedMessage();
+                return;
+            }
+
+            if (_storageRuntime != null && !_storageRuntime.IsSecondaryPasswordVerified)
+            {
+                _statusMessage = _storageRuntime.HasSecondaryPassword
+                    ? "Enter the storage passcode to unlock this trunk session."
+                    : "Create a storage passcode to secure this shared trunk.";
                 return;
             }
 
@@ -1260,6 +1298,115 @@ namespace HaCreator.MapSimulator.UI
                 ? "This character"
                 : _storageRuntime.CurrentCharacterName;
             return $"{currentCharacterName} is not authorized to access {accountLabel}.";
+        }
+
+        private bool EnsureStorageAccess()
+        {
+            if (_storageRuntime == null)
+            {
+                return true;
+            }
+
+            if (!_storageRuntime.CanCurrentCharacterAccess)
+            {
+                _statusMessage = BuildAccessDeniedMessage();
+                return false;
+            }
+
+            if (_storageRuntime.IsSecondaryPasswordVerified)
+            {
+                return true;
+            }
+
+            BeginSecondaryPasswordEntry();
+            return false;
+        }
+
+        private void BeginSecondaryPasswordEntry()
+        {
+            if (_storageRuntime == null || !_storageRuntime.CanCurrentCharacterAccess)
+            {
+                _statusMessage = BuildAccessDeniedMessage();
+                return;
+            }
+
+            BeginMesoEntry(_storageRuntime.HasSecondaryPassword
+                ? MesoEntryMode.VerifySecondaryPassword
+                : MesoEntryMode.SetupSecondaryPassword);
+            _statusMessage = _storageRuntime.HasSecondaryPassword
+                ? "Storage access is locked. Enter the 4-8 digit passcode."
+                : "Set a 4-8 digit storage passcode for this shared trunk.";
+        }
+
+        private void ConfirmSecondaryPasswordEntry()
+        {
+            string password = _mesoEntryText == "0" ? string.Empty : _mesoEntryText;
+            if (password.Length < MinSecondaryPasswordDigits || password.Length > MaxSecondaryPasswordDigits)
+            {
+                _statusMessage = $"Storage passcodes must be {MinSecondaryPasswordDigits}-{MaxSecondaryPasswordDigits} digits.";
+                UpdateButtonStates();
+                return;
+            }
+
+            if (_storageRuntime == null)
+            {
+                CancelMesoEntry();
+                UpdateButtonStates();
+                return;
+            }
+
+            if (_mesoEntryMode == MesoEntryMode.SetupSecondaryPassword)
+            {
+                _secondaryPasswordConfirmationText = password;
+                _mesoEntryMode = MesoEntryMode.ConfirmSecondaryPassword;
+                _mesoEntryText = "0";
+                _mesoEntryPrompt = "Confirm storage passcode";
+                _mesoEntryReplaceOnDigit = true;
+                _statusMessage = "Re-enter the storage passcode to confirm it.";
+                UpdateButtonStates();
+                return;
+            }
+
+            if (_mesoEntryMode == MesoEntryMode.ConfirmSecondaryPassword)
+            {
+                if (!string.Equals(_secondaryPasswordConfirmationText, password, StringComparison.Ordinal))
+                {
+                    _secondaryPasswordConfirmationText = string.Empty;
+                    _mesoEntryMode = MesoEntryMode.SetupSecondaryPassword;
+                    _mesoEntryText = "0";
+                    _mesoEntryPrompt = "Create storage passcode";
+                    _mesoEntryReplaceOnDigit = true;
+                    _statusMessage = "Storage passcode confirmation did not match. Try again.";
+                    UpdateButtonStates();
+                    return;
+                }
+
+                _statusMessage = _storageRuntime.TrySetSecondaryPassword(password)
+                    ? "Storage passcode saved. Trunk access is now unlocked for this session."
+                    : "Unable to save the storage passcode.";
+                if (_storageRuntime.IsSecondaryPasswordVerified)
+                {
+                    CancelMesoEntry();
+                }
+
+                UpdateButtonStates();
+                return;
+            }
+
+            _statusMessage = _storageRuntime.TryVerifySecondaryPassword(password)
+                ? "Storage passcode accepted."
+                : "Storage passcode rejected.";
+            if (_storageRuntime.IsSecondaryPasswordVerified)
+            {
+                CancelMesoEntry();
+            }
+            else
+            {
+                _mesoEntryText = "0";
+                _mesoEntryReplaceOnDigit = true;
+            }
+
+            UpdateButtonStates();
         }
 
         private static char? KeyToDigit(Keys key)

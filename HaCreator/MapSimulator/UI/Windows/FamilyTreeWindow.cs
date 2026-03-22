@@ -14,15 +14,15 @@ namespace HaCreator.MapSimulator.UI
     {
         private static readonly Point[] SlotPositions =
         {
-            new(224, 42),
-            new(224, 93),
-            new(157, 143),
-            new(191, 193),
-            new(334, 193),
-            new(49, 250),
+            new(224, 41),
+            new(223, 93),
+            new(156, 143),
+            new(190, 194),
+            new(334, 194),
+            new(50, 250),
             new(288, 250),
-            new(18, 304),
-            new(168, 304),
+            new(16, 304),
+            new(166, 304),
             new(299, 304),
             new(447, 304)
         };
@@ -232,7 +232,7 @@ namespace HaCreator.MapSimulator.UI
                     false,
                     drawReflectionInfo);
 
-                Rectangle bounds = new(Position.X + position.X, Position.Y + position.Y, plate.Width, plate.Height);
+                Rectangle bounds = CreateNodeBounds(new Point(Position.X + position.X, Position.Y + position.Y), plate.Width, plate.Height);
                 _nodeBounds[node.SlotIndex] = bounds;
                 DrawNodeText(sprite, node, bounds);
             }
@@ -255,7 +255,7 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
-            Rectangle bounds = new(Position.X + position.X, Position.Y + position.Y, 133, 34);
+            Rectangle bounds = CreateNodeBounds(position, _memberOnlinePlate?.Width ?? 133, _memberOnlinePlate?.Height ?? 34);
             DrawCenteredText(sprite, node.PlaceholderText, bounds, new Color(165, 165, 165), 0.30f, 10);
         }
 
@@ -294,6 +294,11 @@ namespace HaCreator.MapSimulator.UI
                 _selectSlotHandler?.Invoke(slotIndex);
                 break;
             }
+        }
+
+        private static Rectangle CreateNodeBounds(Point position, int width, int height)
+        {
+            return new Rectangle(position.X, position.Y, width, height);
         }
 
         private void ShowFeedback(string message)

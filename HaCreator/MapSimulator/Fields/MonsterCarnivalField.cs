@@ -90,6 +90,36 @@ namespace HaCreator.MapSimulator.Fields
         public int TotalCp { get; set; }
     }
 
+    public readonly record struct MonsterCarnivalSpawnPoint(int Index, int X, int Y, int Foothold, int Cy);
+
+    public readonly record struct MonsterCarnivalGuardianSpawnPoint(int Index, int X, int Y, int Facing);
+
+    public sealed class MonsterCarnivalSummonedMobState
+    {
+        public MonsterCarnivalSummonedMobState(MonsterCarnivalEntry entry, MonsterCarnivalSpawnPoint spawnPoint)
+        {
+            Entry = entry;
+            SpawnPoint = spawnPoint;
+        }
+
+        public MonsterCarnivalEntry Entry { get; }
+        public MonsterCarnivalSpawnPoint SpawnPoint { get; }
+    }
+
+    public sealed class MonsterCarnivalGuardianPlacement
+    {
+        public MonsterCarnivalGuardianPlacement(MonsterCarnivalEntry entry, MonsterCarnivalGuardianSpawnPoint spawnPoint, int reactorId)
+        {
+            Entry = entry;
+            SpawnPoint = spawnPoint;
+            ReactorId = reactorId;
+        }
+
+        public MonsterCarnivalEntry Entry { get; }
+        public MonsterCarnivalGuardianSpawnPoint SpawnPoint { get; }
+        public int ReactorId { get; }
+    }
+
     public sealed class MonsterCarnivalFieldDefinition
     {
         public int MapId { get; init; }
@@ -103,10 +133,14 @@ namespace HaCreator.MapSimulator.Fields
         public int RewardMapLose { get; init; }
         public int MobGenMax { get; init; }
         public int GuardianGenMax { get; init; }
+        public int ReactorRed { get; init; }
+        public int ReactorBlue { get; init; }
         public string EffectWin { get; init; }
         public string EffectLose { get; init; }
         public string SoundWin { get; init; }
         public string SoundLose { get; init; }
+        public IReadOnlyList<MonsterCarnivalSpawnPoint> MobSpawnPositions { get; init; } = Array.Empty<MonsterCarnivalSpawnPoint>();
+        public IReadOnlyList<MonsterCarnivalGuardianSpawnPoint> GuardianSpawnPositions { get; init; } = Array.Empty<MonsterCarnivalGuardianSpawnPoint>();
         public IReadOnlyList<MonsterCarnivalEntry> MobEntries { get; init; } = Array.Empty<MonsterCarnivalEntry>();
         public IReadOnlyList<MonsterCarnivalEntry> SkillEntries { get; init; } = Array.Empty<MonsterCarnivalEntry>();
         public IReadOnlyList<MonsterCarnivalEntry> GuardianEntries { get; init; } = Array.Empty<MonsterCarnivalEntry>();
@@ -179,10 +213,14 @@ namespace HaCreator.MapSimulator.Fields
                 RewardMapLose = ReadInt(property["rewardMapLose"]),
                 MobGenMax = ReadInt(property["mobGenMax"]),
                 GuardianGenMax = ReadInt(property["guardianGenMax"]),
+                ReactorRed = ReadInt(property["reactorRed"]),
+                ReactorBlue = ReadInt(property["reactorBlue"]),
                 EffectWin = ReadString(property["effectWin"]),
                 EffectLose = ReadString(property["effectLose"]),
                 SoundWin = ReadString(property["soundWin"]),
                 SoundLose = ReadString(property["soundLose"]),
+                MobSpawnPositions = LoadMobSpawnPositions(property["mobGenPos"]),
+                GuardianSpawnPositions = LoadGuardianSpawnPositions(property["guardianGenPos"]),
                 MobEntries = LoadMobEntries(property["mob"]),
                 SkillEntries = LoadNamedEntries(property["skill"], MonsterCarnivalTab.Skill, McSkillImageName),
                 GuardianEntries = LoadNamedEntries(property["guardian"], MonsterCarnivalTab.Guardian, McGuardianImageName)
@@ -263,6 +301,47 @@ namespace HaCreator.MapSimulator.Fields
             }
 
             return entries;
+        }
+
+        private static IReadOnlyList<MonsterCarnivalSpawnPoint> LoadMobSpawnPositions(WzImageProperty property)
+        {
+            var positions = new List<MonsterCarnivalSpawnPoint>();
+            if (property?.WzProperties == null)
+            {
+                return positions;
+            }
+
+            foreach (WzImageProperty child in EnumerateIndexedChildren(property))
+            {
+                positions.Add(new MonsterCarnivalSpawnPoint(
+                    ParseChildIndex(child.Name, positions.Count),
+                    ReadInt(child["x"]),
+                    ReadInt(child["y"]),
+                    ReadInt(child["fh"], -1),
+                    ReadInt(child["cy"], ReadInt(child["y"]))));
+            }
+
+            return positions;
+        }
+
+        private static IReadOnlyList<MonsterCarnivalGuardianSpawnPoint> LoadGuardianSpawnPositions(WzImageProperty property)
+        {
+            var positions = new List<MonsterCarnivalGuardianSpawnPoint>();
+            if (property?.WzProperties == null)
+            {
+                return positions;
+            }
+
+            foreach (WzImageProperty child in EnumerateIndexedChildren(property))
+            {
+                positions.Add(new MonsterCarnivalGuardianSpawnPoint(
+                    ParseChildIndex(child.Name, positions.Count),
+                    ReadInt(child["x"]),
+                    ReadInt(child["y"]),
+                    ReadInt(child["f"])));
+            }
+
+            return positions;
         }
 
         private static IEnumerable<WzImageProperty> EnumerateIndexedChildren(WzImageProperty property)
@@ -431,6 +510,8 @@ namespace HaCreator.MapSimulator.Fields
         private readonly Dictionary<int, int> _mobSpellCounts = new();
         private readonly Dictionary<int, int> _skillUseCounts = new();
         private readonly Dictionary<int, int> _guardianCounts = new();
+        private readonly List<MonsterCarnivalSummonedMobState> _summonedMobs = new();
+        private readonly Dictionary<int, MonsterCarnivalGuardianPlacement> _guardianPlacements = new();
         private readonly HashSet<int> _occupiedGuardianSlots = new();
         private readonly MonsterCarnivalTeamState _team0 = new();
         private readonly MonsterCarnivalTeamState _team1 = new();
@@ -442,6 +523,7 @@ namespace HaCreator.MapSimulator.Fields
         private int _selectedEntryIndex;
         private int _personalCp;
         private int _personalTotalCp;
+        private int _nextMobSpawnPointIndex;
         private int _lastRequestTab;
         private int _lastRequestIndex;
         private bool _isVisible;
@@ -458,6 +540,8 @@ namespace HaCreator.MapSimulator.Fields
         public MonsterCarnivalTeamState Team0 => _team0;
         public MonsterCarnivalTeamState Team1 => _team1;
         public IReadOnlyDictionary<int, int> MobSpellCounts => _mobSpellCounts;
+        public IReadOnlyList<MonsterCarnivalSummonedMobState> SummonedMobs => _summonedMobs;
+        public IReadOnlyDictionary<int, MonsterCarnivalGuardianPlacement> GuardianPlacements => _guardianPlacements;
 
         public void Configure(MapInfo mapInfo)
         {
@@ -915,7 +999,10 @@ namespace HaCreator.MapSimulator.Fields
             _mobSpellCounts.Clear();
             _skillUseCounts.Clear();
             _guardianCounts.Clear();
+            _summonedMobs.Clear();
+            _guardianPlacements.Clear();
             _occupiedGuardianSlots.Clear();
+            _nextMobSpawnPointIndex = 0;
             _selectedEntryIndex = 0;
             _lastRequestTab = -1;
             _lastRequestIndex = -1;
@@ -993,6 +1080,18 @@ namespace HaCreator.MapSimulator.Fields
                 }
 
                 DrawShadowedText(spriteBatch, font, costText, new Vector2(rowRect.Right - costSize.X - 6 - countOffset, rowRect.Y), Color.LightGray, 0.82f);
+            }
+
+            string summary = _activeTab switch
+            {
+                MonsterCarnivalTab.Mob => BuildMobPlacementSummary(),
+                MonsterCarnivalTab.Guardian => BuildGuardianPlacementSummary(),
+                _ => string.Empty
+            };
+
+            if (!string.IsNullOrWhiteSpace(summary))
+            {
+                DrawShadowedText(spriteBatch, font, summary, new Vector2(x + 8, y + height - 18), Color.LightSteelBlue, 0.75f);
             }
         }
 
@@ -1131,10 +1230,57 @@ namespace HaCreator.MapSimulator.Fields
 
             Dictionary<int, int> counts = GetCountDictionary(entry.Tab);
             SetEntryCount(counts, entry.Id, GetEntryCount(counts, entry.Id) + 1);
-            if (entry.Tab == MonsterCarnivalTab.Guardian)
+            if (entry.Tab == MonsterCarnivalTab.Mob)
+            {
+                _summonedMobs.Add(new MonsterCarnivalSummonedMobState(entry, ResolveNextMobSpawnPoint()));
+            }
+            else if (entry.Tab == MonsterCarnivalTab.Guardian)
             {
                 _occupiedGuardianSlots.Add(entry.Index);
+                _guardianPlacements[entry.Index] = new MonsterCarnivalGuardianPlacement(
+                    entry,
+                    ResolveGuardianSpawnPoint(entry.Index),
+                    ResolveGuardianReactorId());
             }
+        }
+
+        private MonsterCarnivalSpawnPoint ResolveNextMobSpawnPoint()
+        {
+            IReadOnlyList<MonsterCarnivalSpawnPoint> positions = _definition?.MobSpawnPositions;
+            if (positions == null || positions.Count == 0)
+            {
+                return default;
+            }
+
+            int normalizedIndex = Math.Abs(_nextMobSpawnPointIndex) % positions.Count;
+            _nextMobSpawnPointIndex = normalizedIndex + 1;
+            return positions[normalizedIndex];
+        }
+
+        private MonsterCarnivalGuardianSpawnPoint ResolveGuardianSpawnPoint(int slotIndex)
+        {
+            IReadOnlyList<MonsterCarnivalGuardianSpawnPoint> positions = _definition?.GuardianSpawnPositions;
+            if (positions == null || positions.Count == 0)
+            {
+                return default;
+            }
+
+            foreach (MonsterCarnivalGuardianSpawnPoint position in positions)
+            {
+                if (position.Index == slotIndex)
+                {
+                    return position;
+                }
+            }
+
+            return positions[Math.Clamp(slotIndex, 0, positions.Count - 1)];
+        }
+
+        private int ResolveGuardianReactorId()
+        {
+            return _localTeam == MonsterCarnivalTeam.Team0
+                ? Math.Max(0, _definition?.ReactorRed ?? 0)
+                : Math.Max(0, _definition?.ReactorBlue ?? 0);
         }
 
         private int GetEntryUsageCount(MonsterCarnivalEntry entry)
@@ -1267,6 +1413,35 @@ namespace HaCreator.MapSimulator.Fields
         private static string FormatSignedDelta(int value)
         {
             return value >= 0 ? $"+{value}" : value.ToString(CultureInfo.InvariantCulture);
+        }
+
+        private string BuildMobPlacementSummary()
+        {
+            MonsterCarnivalSummonedMobState lastSummon = _summonedMobs.Count > 0 ? _summonedMobs[^1] : null;
+            if (lastSummon?.Entry == null)
+            {
+                int spawnCount = _definition?.MobSpawnPositions.Count ?? 0;
+                return spawnCount > 0
+                    ? $"Spawn slots loaded: {spawnCount}."
+                    : string.Empty;
+            }
+
+            return $"Last summon: {lastSummon.Entry.Name} at slot {lastSummon.SpawnPoint.Index} ({lastSummon.SpawnPoint.X}, {lastSummon.SpawnPoint.Y}).";
+        }
+
+        private string BuildGuardianPlacementSummary()
+        {
+            if (_guardianPlacements.Count == 0)
+            {
+                int slotCount = _definition?.GuardianSpawnPositions.Count ?? 0;
+                return slotCount > 0
+                    ? $"Guardian slots loaded: {slotCount}."
+                    : string.Empty;
+            }
+
+            KeyValuePair<int, MonsterCarnivalGuardianPlacement> latestPlacement = _guardianPlacements.OrderBy(pair => pair.Key).Last();
+            MonsterCarnivalGuardianPlacement placement = latestPlacement.Value;
+            return $"Guardian slot {latestPlacement.Key + 1}: {placement.Entry.Name} at ({placement.SpawnPoint.X}, {placement.SpawnPoint.Y}) reactor {placement.ReactorId}.";
         }
 
         private void ShowStatus(string message, int tickCount)

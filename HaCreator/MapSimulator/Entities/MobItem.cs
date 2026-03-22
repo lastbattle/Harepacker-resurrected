@@ -230,11 +230,23 @@ namespace HaCreator.MapSimulator.Entities
         /// </summary>
         /// <param name="damage">Damage amount</param>
         /// <param name="currentTick">Current tick count</param>
-        /// <param name="isCritical">Whether this is a critical hit</param>
         /// <returns>True if mob died from this damage</returns>
         public bool ApplyDamage(int damage, int currentTick, bool isCritical = false)
         {
-            return ApplyDamage(damage, currentTick, isCritical, null, null);
+            return ApplyDamage(damage, currentTick, isCritical, null, null, true, MobDamageType.Physical);
+        }
+
+        /// <summary>
+        /// Apply damage to this mob with sound effects.
+        /// Use this instead of calling AI.TakeDamage directly.
+        /// </summary>
+        /// <param name="damage">Damage amount</param>
+        /// <param name="currentTick">Current tick count</param>
+        /// <param name="isCritical">Whether this is a critical hit</param>
+        /// <returns>True if mob died from this damage</returns>
+        public bool ApplyDamage(int damage, int currentTick, bool isCritical = false, MobDamageType damageType = MobDamageType.Physical)
+        {
+            return ApplyDamage(damage, currentTick, isCritical, null, null, true, damageType);
         }
 
         /// <summary>
@@ -247,7 +259,14 @@ namespace HaCreator.MapSimulator.Entities
         /// <param name="attackerX">Attacker X position for aggro</param>
         /// <param name="attackerY">Attacker Y position for aggro</param>
         /// <returns>True if mob died from this damage</returns>
-        public bool ApplyDamage(int damage, int currentTick, bool isCritical, float? attackerX, float? attackerY, bool originatedFromPlayer = true)
+        public bool ApplyDamage(
+            int damage,
+            int currentTick,
+            bool isCritical,
+            float? attackerX,
+            float? attackerY,
+            bool originatedFromPlayer = true,
+            MobDamageType damageType = MobDamageType.Physical)
         {
             if (AI == null)
                 return false;
@@ -255,7 +274,7 @@ namespace HaCreator.MapSimulator.Entities
             if (IsProtectedFromPlayerDamage && originatedFromPlayer)
                 return false;
 
-            bool died = AI.TakeDamage(damage, currentTick, isCritical, attackerX, attackerY);
+            bool died = AI.TakeDamage(damage, currentTick, isCritical, attackerX, attackerY, damageType);
 
             // Play damage sound on hit
             PlayDamageSound();

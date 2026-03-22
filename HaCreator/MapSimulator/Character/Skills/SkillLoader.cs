@@ -273,6 +273,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 skill.CasterMove = GetInt(infoNode, "casterMove") == 1;
                 skill.AreaAttack = GetInt(infoNode, "areaAttack") == 1;
                 skill.RectBasedOnTarget = GetInt(infoNode, "rectBasedOnTarget") == 1;
+                skill.MultiTargeting = GetInt(infoNode, "multiTargeting") == 1;
                 skill.ChainAttack = GetInt(infoNode, "chainAttack") == 1;
                 skill.ChainAttackPenalty = GetInt(infoNode, "chainattackPenalty") == 1;
                 skill.LandingEffectName = GetString(infoNode, "landingEffect");
@@ -316,6 +317,11 @@ namespace HaCreator.MapSimulator.Character.Skills
             if (skill.MorphId <= 0 && infoNode != null)
             {
                 skill.MorphId = GetInt(infoNode, "morph");
+            }
+
+            if (!skill.Invisible)
+            {
+                skill.Invisible = GetInt(skillNode, "invisible") == 1;
             }
 
             // Parse level nodes to find max level
@@ -731,22 +737,24 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return false;
             }
 
-            string weaponTypeKey = ResolveAfterImageWeaponTypeKey(weapon);
-            if (string.IsNullOrWhiteSpace(weaponTypeKey))
+            foreach (string weaponTypeKey in ResolveAfterImageWeaponTypeKeys(weapon))
             {
-                return false;
+                MeleeAfterImageCatalog skillCatalog = skill?.GetAfterImageCatalogForCharacterLevel(weaponTypeKey, characterLevel);
+                if (skillCatalog != null && skillCatalog.TryGetAction(actionName, out afterImageAction))
+                {
+                    return true;
+                }
+
+                MeleeAfterImageCatalog weaponCatalog = GetOrLoadCharacterAfterImageCatalog(
+                    weaponTypeKey,
+                    GetWeaponAfterImageMasteryIndex(masteryPercent));
+                if (weaponCatalog != null && weaponCatalog.TryGetAction(actionName, out afterImageAction))
+                {
+                    return true;
+                }
             }
 
-            MeleeAfterImageCatalog skillCatalog = skill?.GetAfterImageCatalogForCharacterLevel(weaponTypeKey, characterLevel);
-            if (skillCatalog != null && skillCatalog.TryGetAction(actionName, out afterImageAction))
-            {
-                return true;
-            }
-
-            MeleeAfterImageCatalog weaponCatalog = GetOrLoadCharacterAfterImageCatalog(
-                weaponTypeKey,
-                GetWeaponAfterImageMasteryIndex(masteryPercent));
-            return weaponCatalog != null && weaponCatalog.TryGetAction(actionName, out afterImageAction);
+            return false;
         }
 
         private void LoadPersistentAvatarEffects(SkillData skill, WzImageProperty skillNode)
@@ -961,15 +969,49 @@ namespace HaCreator.MapSimulator.Character.Skills
             return Math.Max(0, (Math.Max(10, masteryPercent) - 10) / 5);
         }
 
-        private static string ResolveAfterImageWeaponTypeKey(WeaponPart weapon)
+        private static IEnumerable<string> ResolveAfterImageWeaponTypeKeys(WeaponPart weapon)
         {
             if (weapon == null)
             {
-                return "barehands";
+                yield return "barehands";
+                yield break;
+            }
+
+            HashSet<string> seen = new(StringComparer.OrdinalIgnoreCase);
+            foreach (string candidate in EnumerateAfterImageWeaponTypeCandidates(weapon))
+            {
+                if (!string.IsNullOrWhiteSpace(candidate) && seen.Add(candidate))
+                {
+                    yield return candidate;
+                }
+            }
+        }
+
+        private static IEnumerable<string> EnumerateAfterImageWeaponTypeCandidates(WeaponPart weapon)
+        {
+            if (!string.IsNullOrWhiteSpace(weapon?.AfterImageType))
+            {
+                yield return weapon.AfterImageType;
+
+                switch (weapon.AfterImageType)
+                {
+                    case "swordOL":
+                        yield return "swordOS";
+                        break;
+                    case "swordOS":
+                        yield return "swordOL";
+                        break;
+                    case "swordTL":
+                        yield return "swordTS";
+                        break;
+                    case "swordTS":
+                        yield return "swordTL";
+                        break;
+                }
             }
 
             int weaponCode = Math.Abs(weapon.ItemId / 10000) % 100;
-            return weaponCode switch
+            string fallback = weaponCode switch
             {
                 30 => "swordOL",
                 31 or 41 => "axe",
@@ -988,6 +1030,11 @@ namespace HaCreator.MapSimulator.Character.Skills
                 53 => "cannon",
                 _ => null
             };
+
+            if (!string.IsNullOrWhiteSpace(fallback))
+            {
+                yield return fallback;
+            }
         }
 
         private SkillAnimation LoadAvatarEffectAnimation(WzImageProperty skillNode, string branchName)
@@ -1365,6 +1412,10 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
 
             string attackBranchName = SelectPreferredSummonAttackBranch(branchNames);
+            if (attackBranchName == null && skill.SelfDestructMinion)
+            {
+                attackBranchName = SelectPreferredSummonBranch(branchNames, new[] { "die", "die1" });
+            }
             if (attackBranchName == null)
             {
                 return;
@@ -1377,12 +1428,15 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
 
             PopulateSummonAttackMetadata(skill, attackBranch);
+            skill.SummonAttackBranchName = attackBranchName;
 
             var attackAnimation = LoadSkillAnimation(attackBranch, attackBranchName);
             if (attackAnimation.Frames.Count > 0)
             {
                 skill.SummonAttackAnimation = attackAnimation;
             }
+
+            PopulateSummonHitTimingMetadata(skill, attackBranchName, (summonNode.Parent as WzImageProperty)?["hit"]);
         }
 
         private static void PopulateSummonAttackMetadata(SkillData skill, WzImageProperty attackBranch)
@@ -1416,6 +1470,12 @@ namespace HaCreator.MapSimulator.Character.Skills
                 skill.SummonMobCountOverride = mobCount;
             }
 
+            int bulletSpeed = GetInt(infoNode, "bulletSpeed");
+            if (bulletSpeed > 0)
+            {
+                skill.SummonAttackProjectileSpeed = bulletSpeed;
+            }
+
             WzImageProperty rangeNode = infoNode["range"];
             if (rangeNode == null)
             {
@@ -1438,6 +1498,35 @@ namespace HaCreator.MapSimulator.Character.Skills
             {
                 skill.SummonAttackCenterOffset = center.Value;
                 skill.SummonAttackRadius = radius;
+            }
+        }
+
+        private static void PopulateSummonHitTimingMetadata(SkillData skill, string attackBranchName, WzImageProperty hitNode)
+        {
+            if (skill == null || hitNode == null)
+            {
+                return;
+            }
+
+            foreach (WzImageProperty child in hitNode.WzProperties)
+            {
+                if (!int.TryParse(child.Name, out _))
+                {
+                    continue;
+                }
+
+                int hitAfter = GetInt(child, "hitAfter");
+                if (hitAfter > 0)
+                {
+                    skill.SummonAttackHitDelayMs = hitAfter;
+                    return;
+                }
+            }
+
+            if (attackBranchName.StartsWith("die", StringComparison.OrdinalIgnoreCase)
+                && skill.SummonAttackAnimation?.TotalDuration > 0)
+            {
+                skill.SummonAttackHitDelayMs = skill.SummonAttackAnimation.TotalDuration;
             }
         }
 
@@ -2126,6 +2215,10 @@ namespace HaCreator.MapSimulator.Character.Skills
 
             levelData.ACC = PreferPrimaryStat(levelData.ACC, GetInt(node, "accX", 0, level));
             levelData.PAD = PreferPrimaryStat(levelData.PAD, GetInt(node, "padX", 0, level));
+            levelData.MAD = PreferPrimaryStat(levelData.MAD, GetInt(node, "madX", 0, level));
+            levelData.PDD = PreferPrimaryStat(levelData.PDD, GetInt(node, "pddX", 0, level));
+            levelData.MDD = PreferPrimaryStat(levelData.MDD, GetInt(node, "mddX", 0, level));
+            levelData.EVA = PreferPrimaryStat(levelData.EVA, GetInt(node, "evaX", 0, level));
 
             if (levelData.ACC == 0 && UsesAccuracyXAlias(skill, node))
             {
@@ -2138,6 +2231,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
 
             levelData.EnhancedPAD = GetInt(node, "epad", 0, level);
+            levelData.EnhancedMAD = GetInt(node, "emad", 0, level);
             levelData.EnhancedPDD = GetInt(node, "epdd", 0, level);
             levelData.EnhancedMDD = GetInt(node, "emdd", 0, level);
             levelData.EnhancedMaxHP = GetInt(node, "emhp", 0, level);

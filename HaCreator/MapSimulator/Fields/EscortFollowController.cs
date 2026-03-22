@@ -26,7 +26,11 @@ namespace HaCreator.MapSimulator.Fields
 
         private readonly HashSet<MobMovementInfo> _attachedFollowers = new();
 
-        public bool UpdateEscortFollow(PlayerCharacter player, MobMovementInfo movement, bool followAllowed = true)
+        public bool UpdateEscortFollow(
+            PlayerCharacter player,
+            MobMovementInfo movement,
+            bool movementLocked = false,
+            bool followAllowed = true)
         {
             if (movement == null)
             {
@@ -41,7 +45,7 @@ namespace HaCreator.MapSimulator.Fields
 
             bool attached = _attachedFollowers.Contains(movement);
             FootholdLine playerFoothold = ResolvePlayerFoothold(player, attached);
-            if (!CanEvaluate(player, playerFoothold, movement))
+            if (!CanEvaluate(player, playerFoothold, movement, movementLocked))
             {
                 _attachedFollowers.Remove(movement);
                 return false;
@@ -70,9 +74,14 @@ namespace HaCreator.MapSimulator.Fields
             _attachedFollowers.Clear();
         }
 
-        private static bool CanEvaluate(PlayerCharacter player, FootholdLine playerFoothold, MobMovementInfo movement)
+        private static bool CanEvaluate(
+            PlayerCharacter player,
+            FootholdLine playerFoothold,
+            MobMovementInfo movement,
+            bool movementLocked)
         {
             return CanIssueFollowRequest(player)
+                   && !movementLocked
                    && playerFoothold != null
                    && movement.CurrentFoothold != null
                    && movement.MoveType != MobMoveType.Fly

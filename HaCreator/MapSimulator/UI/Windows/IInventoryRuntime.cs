@@ -1,5 +1,6 @@
 using MapleLib.WzLib.WzStructure.Data.ItemStructure;
 using Microsoft.Xna.Framework.Graphics;
+using System.Collections.Generic;
 
 namespace HaCreator.MapSimulator.UI
 {
@@ -10,6 +11,7 @@ namespace HaCreator.MapSimulator.UI
         bool TryConsumeItem(InventoryType type, int itemId, int quantity);
         void AddItem(InventoryType type, int itemId, Texture2D texture, int quantity = 1);
         void AddItem(InventoryType type, InventorySlotData slotData);
+        IReadOnlyList<InventorySlotData> GetSlots(InventoryType type);
         Texture2D GetItemTexture(InventoryType type, int itemId);
         int GetSlotLimit(InventoryType type);
         bool CanExpandSlotLimit(InventoryType type, int amount = 4);

@@ -7,6 +7,7 @@ using HaSharedLibrary.Render.DX;
 using HaSharedLibrary.Util;
 using MapleLib.WzLib;
 using MapleLib.WzLib.WzProperties;
+using MapleLib.WzLib.WzStructure;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using Spine;
@@ -47,16 +48,35 @@ namespace HaCreator.MapSimulator.Companions
 
         private readonly GraphicsDevice _device;
         private readonly Dictionary<int, DragonAnimationSet> _animationCache = new();
+        private Func<MapInfo> _currentMapInfoProvider;
         private DragonAnimationSet _currentSet;
         private string _currentActionName;
         private int _currentActionStartTime;
         private string _observedOwnerActionName;
         private bool _facingRight = true;
         private Vector2 _worldAnchor;
+        private Vector2 _visualAnchor;
+        private float _alpha;
+        private int _lastUpdateTime = int.MinValue;
+        private bool _isSuppressed;
+
+        private const float SnapDistance = 140f;
+        private const float FollowLerpRate = 10f;
+        private const float AlphaFadeRate = 5.5f;
+        private const float GroundSideOffset = 42f;
+        private const float GroundVerticalOffset = -12f;
+        private const float LadderSideOffset = 34f;
+        private const float LadderVerticalOffset = 18f;
+        private const int ExplicitActionFadeLeadMs = 120;
 
         public DragonCompanionRuntime(GraphicsDevice device)
         {
             _device = device ?? throw new ArgumentNullException(nameof(device));
+        }
+
+        public void SetCurrentMapInfoProvider(Func<MapInfo> currentMapInfoProvider)
+        {
+            _currentMapInfoProvider = currentMapInfoProvider;
         }
 
         public void Update(PlayerCharacter owner, int currentTime)
@@ -77,7 +97,12 @@ namespace HaCreator.MapSimulator.Companions
             _currentSet = animationSet;
             _facingRight = owner.FacingRight;
             _worldAnchor = ResolveAnchor(owner, animationSet, currentTime);
+            _isSuppressed = ShouldSuppressForCurrentMap();
 
+            float deltaSeconds = GetDeltaSeconds(currentTime);
+            UpdateVisualAnchor(deltaSeconds);
+
+            bool explicitActionSelected = false;
             string ownerActionName = owner.CurrentActionName;
             if (!string.Equals(_observedOwnerActionName, ownerActionName, StringComparison.OrdinalIgnoreCase))
             {
@@ -86,21 +111,42 @@ namespace HaCreator.MapSimulator.Companions
                 if (!string.IsNullOrWhiteSpace(explicitActionName))
                 {
                     SetCurrentAction(explicitActionName, currentTime);
-                    return;
+                    explicitActionSelected = true;
                 }
             }
 
             string baseActionName = ResolveBaseActionName(owner, animationSet);
-            if (string.IsNullOrWhiteSpace(_currentActionName)
+            if (!explicitActionSelected
+                && (string.IsNullOrWhiteSpace(_currentActionName)
                 || string.Equals(_currentActionName, "stand", StringComparison.OrdinalIgnoreCase)
                 || string.Equals(_currentActionName, "move", StringComparison.OrdinalIgnoreCase)
                 || !animationSet.TryGetAnimation(_currentActionName, out SkillAnimation activeAnimation)
                 || !IsExplicitDragonAction(_currentActionName)
                 || (activeAnimation.IsComplete(Math.Max(0, currentTime - _currentActionStartTime))
-                    && !string.Equals(ownerActionName, _currentActionName, StringComparison.OrdinalIgnoreCase)))
+                    && !string.Equals(ownerActionName, _currentActionName, StringComparison.OrdinalIgnoreCase))))
             {
                 SetCurrentAction(baseActionName, currentTime, preserveStartTimeWhenUnchanged: true);
             }
+
+            float alphaTarget = _isSuppressed ? 0f : 1f;
+            if (!_isSuppressed
+                && _currentSet.TryGetAnimation(_currentActionName, out SkillAnimation activeAction)
+                && IsExplicitDragonAction(_currentActionName))
+            {
+                int elapsed = Math.Max(0, currentTime - _currentActionStartTime);
+                int fadeStart = Math.Max(0, activeAction.TotalDuration - ExplicitActionFadeLeadMs);
+                if (activeAction.IsComplete(elapsed))
+                {
+                    alphaTarget = 0f;
+                }
+                else if (elapsed >= fadeStart && activeAction.TotalDuration > fadeStart)
+                {
+                    float fadeProgress = (elapsed - fadeStart) / (float)(activeAction.TotalDuration - fadeStart);
+                    alphaTarget = MathHelper.Clamp(1f - fadeProgress, 0f, 1f);
+                }
+            }
+
+            _alpha = Approach(_alpha, alphaTarget, deltaSeconds * AlphaFadeRate);
         }
 
         public void Draw(
@@ -114,6 +160,7 @@ namespace HaCreator.MapSimulator.Companions
         {
             if (_currentSet == null
                 || string.IsNullOrWhiteSpace(_currentActionName)
+                || _alpha <= 0.01f
                 || !_currentSet.TryGetAnimation(_currentActionName, out SkillAnimation animation))
             {
                 return;
@@ -125,9 +172,35 @@ namespace HaCreator.MapSimulator.Companions
                 return;
             }
 
-            int screenX = (int)_worldAnchor.X - mapShiftX + centerX;
-            int screenY = (int)_worldAnchor.Y - mapShiftY + centerY;
-            frame.Texture.DrawBackground(spriteBatch, skeletonRenderer, null, screenX, screenY, Color.White, !_facingRight, null);
+            int screenX = (int)_visualAnchor.X - mapShiftX + centerX;
+            int screenY = (int)_visualAnchor.Y - mapShiftY + centerY;
+            frame.Texture.DrawBackground(spriteBatch, skeletonRenderer, null, screenX, screenY, Color.White * _alpha, !_facingRight, null);
+        }
+
+        public bool TryGetCurrentFrameTop(int currentTime, out Vector2 top)
+        {
+            top = Vector2.Zero;
+
+            if (_currentSet == null
+                || string.IsNullOrWhiteSpace(_currentActionName)
+                || _alpha <= 0.01f
+                || !_currentSet.TryGetAnimation(_currentActionName, out SkillAnimation animation))
+            {
+                return false;
+            }
+
+            SkillFrame frame = animation.GetFrameAtTime(Math.Max(0, currentTime - _currentActionStartTime));
+            if (frame == null)
+            {
+                return false;
+            }
+
+            float halfWidth = frame.Bounds.Width * 0.5f;
+            float left = _facingRight
+                ? _visualAnchor.X - frame.Origin.X
+                : _visualAnchor.X - (frame.Bounds.Width - frame.Origin.X);
+            top = new Vector2(left + halfWidth, _visualAnchor.Y - frame.Origin.Y);
+            return true;
         }
 
         public void Clear()
@@ -137,6 +210,10 @@ namespace HaCreator.MapSimulator.Companions
             _currentActionStartTime = 0;
             _observedOwnerActionName = null;
             _worldAnchor = Vector2.Zero;
+            _visualAnchor = Vector2.Zero;
+            _alpha = 0f;
+            _lastUpdateTime = int.MinValue;
+            _isSuppressed = false;
         }
 
         private DragonAnimationSet GetOrLoadAnimationSet(int dragonJob)
@@ -248,34 +325,16 @@ namespace HaCreator.MapSimulator.Companions
 
         private static Vector2 ResolveAnchor(PlayerCharacter owner, DragonAnimationSet animationSet, int currentTime)
         {
-            SkillFrame standFrame = animationSet.StandAnimation?.Frames?.Count > 0
-                ? animationSet.StandAnimation.Frames[0]
-                : null;
-
-            float side = owner.FacingRight ? -1f : 1f;
-            float horizontalOffset = Math.Max(18f, (standFrame?.Origin.X ?? 36) / 3f);
-            float verticalOffset = 10f;
-
             if (owner.State == PlayerState.Ladder || owner.State == PlayerState.Rope)
             {
                 Point? bodyOrigin = owner.TryGetCurrentBodyOrigin(currentTime);
                 if (bodyOrigin.HasValue)
                 {
-                    return new Vector2(bodyOrigin.Value.X + side * horizontalOffset, bodyOrigin.Value.Y + verticalOffset);
+                    return ResolveLadderAnchor(owner, animationSet, bodyOrigin.Value);
                 }
             }
 
-            Rectangle? ownerBounds = owner.TryGetCurrentFrameBounds(currentTime);
-            if (ownerBounds.HasValue && !ownerBounds.Value.IsEmpty)
-            {
-                Rectangle bounds = ownerBounds.Value;
-                float anchorX = owner.FacingRight
-                    ? bounds.Left + side * horizontalOffset
-                    : bounds.Right + side * horizontalOffset;
-                return new Vector2(anchorX, owner.Y - verticalOffset);
-            }
-
-            return new Vector2(owner.X + side * horizontalOffset, owner.Y - verticalOffset);
+            return ResolveGroundAnchor(owner, animationSet, currentTime);
         }
 
         private static bool TryResolveDragonJob(int jobId, out int dragonJob)
@@ -340,6 +399,10 @@ namespace HaCreator.MapSimulator.Companions
 
             _currentActionName = actionName;
             _currentActionStartTime = currentTime;
+            if (!_isSuppressed)
+            {
+                _alpha = Math.Max(_alpha, 0.15f);
+            }
         }
 
         private static IEnumerable<string> EnumerateActionCandidates(string ownerActionName)
@@ -392,6 +455,94 @@ namespace HaCreator.MapSimulator.Companions
                 WzLongProperty longProperty => (int)longProperty.Value,
                 _ => null
             };
+        }
+
+        private bool ShouldSuppressForCurrentMap()
+        {
+            MapInfo mapInfo = _currentMapInfoProvider?.Invoke();
+            return mapInfo?.vanishDragon == true;
+        }
+
+        private float GetDeltaSeconds(int currentTime)
+        {
+            if (_lastUpdateTime == int.MinValue)
+            {
+                _lastUpdateTime = currentTime;
+                return 1f / 60f;
+            }
+
+            int elapsedMs = Math.Max(0, currentTime - _lastUpdateTime);
+            _lastUpdateTime = currentTime;
+            return MathHelper.Clamp(elapsedMs / 1000f, 1f / 240f, 0.1f);
+        }
+
+        private void UpdateVisualAnchor(float deltaSeconds)
+        {
+            if (_visualAnchor == Vector2.Zero)
+            {
+                _visualAnchor = _worldAnchor;
+                return;
+            }
+
+            float distance = Vector2.Distance(_visualAnchor, _worldAnchor);
+            if (distance >= SnapDistance)
+            {
+                _visualAnchor = _worldAnchor;
+                return;
+            }
+
+            float amount = MathHelper.Clamp(deltaSeconds * FollowLerpRate, 0f, 1f);
+            _visualAnchor = Vector2.Lerp(_visualAnchor, _worldAnchor, amount);
+        }
+
+        private static Vector2 ResolveGroundAnchor(PlayerCharacter owner, DragonAnimationSet animationSet, int currentTime)
+        {
+            SkillFrame standFrame = animationSet.StandAnimation?.Frames?.Count > 0
+                ? animationSet.StandAnimation.Frames[0]
+                : null;
+
+            float side = owner.FacingRight ? -1f : 1f;
+            float horizontalOffset = Math.Max(GroundSideOffset, (standFrame?.Origin.X ?? 79) * 0.55f);
+            Point? bodyOrigin = owner.TryGetCurrentBodyOrigin(currentTime);
+            if (bodyOrigin.HasValue)
+            {
+                return new Vector2(bodyOrigin.Value.X + side * horizontalOffset, bodyOrigin.Value.Y + GroundVerticalOffset);
+            }
+
+            Rectangle? ownerBounds = owner.TryGetCurrentFrameBounds(currentTime);
+            if (ownerBounds.HasValue && !ownerBounds.Value.IsEmpty)
+            {
+                Rectangle bounds = ownerBounds.Value;
+                float anchorX = owner.FacingRight
+                    ? bounds.Left + side * horizontalOffset
+                    : bounds.Right + side * horizontalOffset;
+                return new Vector2(anchorX, owner.Y + GroundVerticalOffset);
+            }
+
+            return new Vector2(owner.X + side * horizontalOffset, owner.Y + GroundVerticalOffset);
+        }
+
+        private static Vector2 ResolveLadderAnchor(PlayerCharacter owner, DragonAnimationSet animationSet, Point bodyOrigin)
+        {
+            SkillFrame moveFrame = animationSet.MoveAnimation?.Frames?.Count > 0
+                ? animationSet.MoveAnimation.Frames[0]
+                : animationSet.StandAnimation?.Frames?.Count > 0
+                    ? animationSet.StandAnimation.Frames[0]
+                    : null;
+
+            float side = owner.FacingRight ? -1f : 1f;
+            float horizontalOffset = Math.Max(LadderSideOffset, (moveFrame?.Origin.X ?? 79) * 0.45f);
+            return new Vector2(bodyOrigin.X + side * horizontalOffset, bodyOrigin.Y + LadderVerticalOffset);
+        }
+
+        private static float Approach(float current, float target, float maxStep)
+        {
+            if (current < target)
+            {
+                return Math.Min(current + maxStep, target);
+            }
+
+            return Math.Max(current - maxStep, target);
         }
     }
 }

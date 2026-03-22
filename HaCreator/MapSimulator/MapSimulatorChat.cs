@@ -58,6 +58,7 @@ namespace HaCreator.MapSimulator
         private static readonly Color SystemMessageColor = new Color(255, 228, 151);
         private static readonly Color ErrorMessageColor = new Color(247, 75, 75);
         private static readonly Color DefaultMessageColor = Color.White;
+        private static readonly Color NoticeMessageColor = new Color(151, 221, 255);
         private static readonly Color PartyMessageColor = new Color(124, 255, 172);
         private static readonly Color FriendMessageColor = new Color(255, 255, 120);
         private static readonly Color GuildMessageColor = new Color(176, 255, 120);
@@ -138,6 +139,7 @@ namespace HaCreator.MapSimulator
             Friend = 3,
             Guild = 4,
             Alliance = 5,
+            Notice = 13,
             System = 12,
             Error = 15,
             Whisper = 16,
@@ -603,6 +605,11 @@ namespace HaCreator.MapSimulator
 
         public void AddMessage(string text, Color color, int tickCount, int chatLogType, string whisperTargetCandidate)
         {
+            if (chatLogType < 0)
+            {
+                chatLogType = InferClientChatLogType(text, color);
+            }
+
             _messages.Add(new ChatMessage(text, color, tickCount, chatLogType, whisperTargetCandidate));
 
             // Remove old messages if exceeding limit
@@ -665,6 +672,27 @@ namespace HaCreator.MapSimulator
             _whisperTarget = whisperTarget;
             _replyTarget = whisperTarget;
             Activate(tickCount);
+        }
+
+        public void AddIncomingTargetedMessage(
+            MapSimulatorChatTargetType targetType,
+            string speaker,
+            string message,
+            int tickCount)
+        {
+            if (string.IsNullOrWhiteSpace(message))
+            {
+                return;
+            }
+
+            string prefix = GetTargetPrefix(targetType);
+            string trimmedSpeaker = speaker?.Trim();
+            string trimmedMessage = message.Trim();
+            string text = string.IsNullOrWhiteSpace(trimmedSpeaker)
+                ? $"{prefix} {trimmedMessage}".Trim()
+                : $"{prefix} {trimmedSpeaker}: {trimmedMessage}".Trim();
+            ClientChatLogType chatLogType = GetTargetChatLogType(targetType);
+            AddMessage(text, ResolveClientChatLogColor(chatLogType), tickCount, (int)chatLogType);
         }
 
         public MapSimulatorChatRenderState GetRenderState()
@@ -963,11 +991,116 @@ namespace HaCreator.MapSimulator
                 ClientChatLogType.Guild => GuildMessageColor,
                 ClientChatLogType.Alliance => AllianceMessageColor,
                 ClientChatLogType.Expedition => ExpeditionMessageColor,
+                ClientChatLogType.Notice => NoticeMessageColor,
                 ClientChatLogType.Error => ErrorMessageColor,
                 ClientChatLogType.System => SystemMessageColor,
                 ClientChatLogType.Whisper => WhisperMessageColor,
                 _ => DefaultMessageColor
             };
+        }
+
+        private static int InferClientChatLogType(string text, Color color)
+        {
+            if (TryInferClientChatLogTypeFromPrefix(text, out ClientChatLogType prefixType))
+            {
+                return (int)prefixType;
+            }
+
+            if (ColorsMatch(color, PartyMessageColor))
+            {
+                return (int)ClientChatLogType.Party;
+            }
+
+            if (ColorsMatch(color, FriendMessageColor))
+            {
+                return (int)ClientChatLogType.Friend;
+            }
+
+            if (ColorsMatch(color, GuildMessageColor))
+            {
+                return (int)ClientChatLogType.Guild;
+            }
+
+            if (ColorsMatch(color, AllianceMessageColor))
+            {
+                return (int)ClientChatLogType.Alliance;
+            }
+
+            if (ColorsMatch(color, ExpeditionMessageColor))
+            {
+                return (int)ClientChatLogType.Expedition;
+            }
+
+            if (ColorsMatch(color, WhisperMessageColor))
+            {
+                return (int)ClientChatLogType.Whisper;
+            }
+
+            if (ColorsMatch(color, ErrorMessageColor))
+            {
+                return (int)ClientChatLogType.Error;
+            }
+
+            if (ColorsMatch(color, NoticeMessageColor))
+            {
+                return (int)ClientChatLogType.Notice;
+            }
+
+            if (ColorsMatch(color, SystemMessageColor))
+            {
+                return (int)ClientChatLogType.System;
+            }
+
+            return -1;
+        }
+
+        private static bool TryInferClientChatLogTypeFromPrefix(string text, out ClientChatLogType chatLogType)
+        {
+            chatLogType = ClientChatLogType.All;
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                return false;
+            }
+
+            if (text.StartsWith("[Friend]", StringComparison.OrdinalIgnoreCase))
+            {
+                chatLogType = ClientChatLogType.Friend;
+                return true;
+            }
+
+            if (text.StartsWith("[Party]", StringComparison.OrdinalIgnoreCase))
+            {
+                chatLogType = ClientChatLogType.Party;
+                return true;
+            }
+
+            if (text.StartsWith("[Guild]", StringComparison.OrdinalIgnoreCase))
+            {
+                chatLogType = ClientChatLogType.Guild;
+                return true;
+            }
+
+            if (text.StartsWith("[Alliance]", StringComparison.OrdinalIgnoreCase))
+            {
+                chatLogType = ClientChatLogType.Alliance;
+                return true;
+            }
+
+            if (text.StartsWith("[Expedition]", StringComparison.OrdinalIgnoreCase))
+            {
+                chatLogType = ClientChatLogType.Expedition;
+                return true;
+            }
+
+            return false;
+        }
+
+        private static bool ColorsMatch(Color left, Color right)
+        {
+            return left.R == right.R
+                && left.G == right.G
+                && left.B == right.B
+                && left.A == right.A;
         }
 
         private static ClientChatLogType GetTargetChatLogType(MapSimulatorChatTargetType targetType)

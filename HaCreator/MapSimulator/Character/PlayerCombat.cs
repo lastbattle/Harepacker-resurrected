@@ -207,12 +207,27 @@ namespace HaCreator.MapSimulator.Character
                 return;
 
             // Apply damage with sound effects and aggro (pass player position for chase)
-            mob.ApplyDamage(result.Damage, Environment.TickCount, result.IsCritical, _player.X, _player.Y);
+            mob.ApplyDamage(result.Damage, Environment.TickCount, result.IsCritical, _player.X, _player.Y, damageType: MobDamageType.Physical);
+            ApplyMobReflectDamage(mob, MobDamageType.Physical);
 
             // Apply knockback
             if (mob.MovementInfo != null && !result.IsMiss)
             {
                 mob.MovementInfo.ApplyKnockback(MOB_HIT_KNOCKBACK_FORCE, result.KnockbackDirection > 0);
+            }
+        }
+
+        private void ApplyMobReflectDamage(MobItem mob, MobDamageType damageType)
+        {
+            if (mob?.AI == null || !_player.IsAlive)
+            {
+                return;
+            }
+
+            int reflectedDamage = mob.AI.CalculateReflectedDamageToAttacker(mob.AI.LastDamageTaken, damageType);
+            if (reflectedDamage > 0)
+            {
+                _player.TakeDamage(reflectedDamage, 0f, 0f);
             }
         }
 

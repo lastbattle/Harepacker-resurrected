@@ -159,9 +159,10 @@ namespace HaCreator.MapSimulator.UI {
         //   Level: (45, 10), Job: (75, 7), Name: (75, 19)
 
         // lvBacktrnd area (left side - character info)
-        private static readonly Vector2 LEVEL_TEXT_POS = new Vector2(45, 10);  // Level number (offset adjusted for digit count)
-        private static readonly Vector2 JOB_TEXT_POS = new Vector2(75, 7);     // Job name
-        private static readonly Vector2 NAME_TEXT_POS = new Vector2(75, 19);   // Character name
+        private static readonly Vector2 LEVEL_TEXT_POS = new Vector2(44, 8);
+        private const float LEVEL_TEXT_CENTER_X = 50f;
+        private static readonly Vector2 JOB_TEXT_POS = new Vector2(74, 5);
+        private static readonly Vector2 NAME_TEXT_POS = new Vector2(74, 17);
         private const float JOB_TEXT_SCALE = 0.75f;
         private const float JOB_TEXT_MAX_WIDTH = 92f;
         private static readonly Color JOB_TEXT_COLOR = new Color(132, 182, 104);
@@ -169,9 +170,9 @@ namespace HaCreator.MapSimulator.UI {
         // gaugeBackgrd area - HP/MP/EXP text and gauges
         // lvBacktrnd is ~64px wide, so gauge area starts at X~64
         // HP/MP/EXP positions from SetNumberValue are relative to gauge layer
-        private static readonly Vector2 HP_TEXT_POS = new Vector2(163, 4);     // HP text [HP\MaxHP]
-        private static readonly Vector2 MP_TEXT_POS = new Vector2(332, 4);     // MP text [MP\MaxMP]
-        private static readonly Vector2 EXP_TEXT_POS = new Vector2(332, 20);   // EXP text
+        private static readonly Vector2 HP_TEXT_POS = new Vector2(95, 5);
+        private static readonly Vector2 MP_TEXT_POS = new Vector2(264, 5);
+        private static readonly Vector2 EXP_TEXT_POS = new Vector2(264, 21);
 
         // Gauge bar positions and sizes
         // From IDA Pro CUIStatusBar::CGauge::Create:
@@ -180,9 +181,9 @@ namespace HaCreator.MapSimulator.UI {
         // EXP Gauge: X=28 relative to gaugeBackgrd, Y=18, Length=308
         // gaugeBackgrd starts at ~64px, so absolute X positions:
         // HP: 64+28=92, MP: 64+197=261, EXP: 64+28=92
-        private static readonly Rectangle HP_GAUGE_RECT = new Rectangle(92, 3, 138, 12);    // HP gauge (red)
-        private static readonly Rectangle MP_GAUGE_RECT = new Rectangle(261, 3, 138, 12);   // MP gauge (blue)
-        private static readonly Rectangle EXP_GAUGE_RECT = new Rectangle(92, 20, 308, 10);  // EXP gauge (yellow)
+        private static readonly Rectangle HP_GAUGE_RECT = new Rectangle(28, 2, 138, 12);
+        private static readonly Rectangle MP_GAUGE_RECT = new Rectangle(197, 2, 138, 12);
+        private static readonly Rectangle EXP_GAUGE_RECT = new Rectangle(28, 18, 308, 10);
 
         // Gauge colors matching original MapleStory client
         private static readonly Color HP_GAUGE_COLOR = new Color(255, 50, 50);       // Red for HP
@@ -195,6 +196,8 @@ namespace HaCreator.MapSimulator.UI {
         // plus the client SetStatusValue absolute text slots in the 800x578 HUD canvas.
         private static readonly Point STATUS_BAR_LEFT_BASE_OFFSET = new Point(0, 49);
         private static readonly Point STATUS_BAR_GAUGE_BASE_OFFSET = new Point(155, 52);
+        private Point _statusBarLeftBaseOffset = STATUS_BAR_LEFT_BASE_OFFSET;
+        private Point _statusBarGaugeBaseOffset = STATUS_BAR_GAUGE_BASE_OFFSET;
         private const int BUFF_ICON_SIZE = 32;
         private const int BUFF_ICON_SPACING = 2;
         private const int BUFF_TRAY_COLUMNS = 10;
@@ -304,6 +307,12 @@ namespace HaCreator.MapSimulator.UI {
         public void SetPreparedSkillOverlayProvider(Func<int, StatusBarPreparedSkillRenderData> getPreparedSkillStatus)
         {
             _getPreparedSkillOverlayStatus = getPreparedSkillStatus;
+        }
+
+        public void SetLayoutMetrics(Point leftBaseOffset, Point gaugeBaseOffset)
+        {
+            _statusBarLeftBaseOffset = leftBaseOffset;
+            _statusBarGaugeBaseOffset = gaugeBaseOffset;
         }
 
         public Action<int> BuffCancelRequested { get; set; }
@@ -555,11 +564,11 @@ namespace HaCreator.MapSimulator.UI {
             // Anchor overlay content to the rendered status-bar frame so it follows
             // the UI's actual placement instead of re-deriving from viewport height.
             Vector2 basePosLeft = new Vector2(
-                this.Position.X + STATUS_BAR_LEFT_BASE_OFFSET.X,
-                this.Position.Y + STATUS_BAR_LEFT_BASE_OFFSET.Y);
+                this.Position.X + _statusBarLeftBaseOffset.X,
+                this.Position.Y + _statusBarLeftBaseOffset.Y);
             Vector2 basePosGauge = new Vector2(
-                this.Position.X + STATUS_BAR_GAUGE_BASE_OFFSET.X,
-                this.Position.Y + STATUS_BAR_GAUGE_BASE_OFFSET.Y);
+                this.Position.X + _statusBarGaugeBaseOffset.X,
+                this.Position.Y + _statusBarGaugeBaseOffset.Y);
 
             UpdateWarningFlashState(stats, currentTime);
 
@@ -574,11 +583,8 @@ namespace HaCreator.MapSimulator.UI {
                 return;
 
             // Draw character info section (left side) - use basePosLeft
-            // Level number - format from client: level number with image digits
             string levelText = stats.Level.ToString();
-            // Adjust X based on number of digits (from IDA: offset 0 for 1-9, 6 for 10-99, 12 for 100+)
-            int levelOffset = stats.Level <= 9 ? 0 : (stats.Level <= 99 ? 6 : 12);
-            Vector2 levelPos = basePosLeft + new Vector2(LEVEL_TEXT_POS.X - levelOffset, LEVEL_TEXT_POS.Y);
+            Vector2 levelPos = GetCenteredLevelTextPosition(basePosLeft, levelText);
             if (_useLevelBitmapFont)
             {
                 DrawDigitBitmapString(sprite, levelText, levelPos, _levelDigitTextures, _levelDigitOrigins, 1.0f);
@@ -1616,6 +1622,49 @@ namespace HaCreator.MapSimulator.UI {
             }
 
             return _font.MeasureString(text).X * spriteFontScale;
+        }
+
+        private Vector2 GetCenteredLevelTextPosition(Vector2 basePosLeft, string levelText)
+        {
+            float textWidth = MeasureLevelTextWidth(levelText, 1.0f);
+            return new Vector2(
+                basePosLeft.X + LEVEL_TEXT_CENTER_X - (textWidth * 0.5f),
+                basePosLeft.Y + LEVEL_TEXT_POS.Y);
+        }
+
+        private float MeasureLevelTextWidth(string text, float scale)
+        {
+            if (string.IsNullOrEmpty(text))
+            {
+                return 0f;
+            }
+
+            if (_useLevelBitmapFont && _levelDigitTextures != null)
+            {
+                float width = 0f;
+                foreach (char c in text)
+                {
+                    if (c < '0' || c > '9')
+                    {
+                        continue;
+                    }
+
+                    Texture2D texture = _levelDigitTextures[c - '0'];
+                    if (texture != null)
+                    {
+                        width += texture.Width * scale;
+                    }
+                }
+
+                return width;
+            }
+
+            if (_font == null)
+            {
+                return 0f;
+            }
+
+            return _font.MeasureString(text).X * scale;
         }
 
         private Rectangle GetKeyDownBarRectangle(Vector2 basePosGauge, StatusBarKeyDownBarTextures textures, bool anchorIsWorldPosition = false)

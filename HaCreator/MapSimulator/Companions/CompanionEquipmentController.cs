@@ -45,6 +45,9 @@ namespace HaCreator.MapSimulator.Companions
         public string Name { get; init; }
         public string Description { get; init; }
         public IReadOnlyList<string> ExcludedPetNames { get; init; } = Array.Empty<string>();
+        public bool IsCash { get; init; }
+        public int RequiredLevel { get; init; }
+        public int RequiredJobMask { get; init; }
         public Texture2D ItemTexture { get; init; }
         public IDXObject Icon { get; init; }
         public IDXObject IconRaw { get; init; }
@@ -63,6 +66,7 @@ namespace HaCreator.MapSimulator.Companions
 
         private readonly CompanionEquipmentLoader _loader;
         private readonly Dictionary<DragonEquipSlot, CompanionEquipItem> _equippedItems = new();
+        private CharacterBuild _ownerBuild;
 
         internal DragonEquipmentController(CompanionEquipmentLoader loader)
         {
@@ -70,9 +74,17 @@ namespace HaCreator.MapSimulator.Companions
         }
 
         public IReadOnlyDictionary<DragonEquipSlot, CompanionEquipItem> EquippedItems => _equippedItems;
+        public bool HasOwnerState => CompanionEquipmentController.HasDragonOwnerState(_ownerBuild);
 
-        public void EnsureDefaults()
+        public void EnsureDefaults(CharacterBuild ownerBuild)
         {
+            _ownerBuild = ownerBuild;
+            if (!HasOwnerState)
+            {
+                _equippedItems.Clear();
+                return;
+            }
+
             if (_equippedItems.Count > 0)
             {
                 return;
@@ -105,17 +117,35 @@ namespace HaCreator.MapSimulator.Companions
             return true;
         }
 
-        public bool TryEquipItem(DragonEquipSlot targetSlot, int itemId, out IReadOnlyList<CompanionEquipItem> displacedItems)
+        public bool TryEquipItem(
+            DragonEquipSlot targetSlot,
+            int itemId,
+            out IReadOnlyList<CompanionEquipItem> displacedItems,
+            out string rejectReason)
         {
             displacedItems = Array.Empty<CompanionEquipItem>();
+            rejectReason = null;
+            if (!HasOwnerState)
+            {
+                rejectReason = "Dragon equipment is only available to Evan builds with a live dragon companion.";
+                return false;
+            }
+
             if (!CompanionEquipmentController.TryResolveDragonSlot(itemId, out DragonEquipSlot resolvedSlot)
                 || resolvedSlot != targetSlot)
             {
+                rejectReason = "Drop this item on the matching dragon slot.";
                 return false;
             }
 
             CompanionEquipItem item = _loader.LoadDragonEquipment(itemId);
             if (item == null)
+            {
+                rejectReason = "This dragon item could not be loaded from Character/Dragon.";
+                return false;
+            }
+
+            if (!CompanionEquipmentController.MeetsEquipRequirements(item, _ownerBuild, out rejectReason))
             {
                 return false;
             }
@@ -134,10 +164,16 @@ namespace HaCreator.MapSimulator.Companions
     {
         private readonly CompanionEquipmentLoader _loader;
         private readonly Dictionary<int, CompanionEquipItem> _equippedItems = new();
+        private CharacterBuild _ownerBuild;
 
         internal PetEquipmentController(CompanionEquipmentLoader loader)
         {
             _loader = loader ?? throw new ArgumentNullException(nameof(loader));
+        }
+
+        public void SetOwnerBuild(CharacterBuild ownerBuild)
+        {
+            _ownerBuild = ownerBuild;
         }
 
         public bool TryGetItem(PetRuntime pet, out CompanionEquipItem item)
@@ -174,6 +210,11 @@ namespace HaCreator.MapSimulator.Companions
             }
 
             if (!CompanionEquipmentController.CanEquipPetItem(item, pet, out rejectReason))
+            {
+                return false;
+            }
+
+            if (!CompanionEquipmentController.MeetsEquipRequirements(item, _ownerBuild, out rejectReason))
             {
                 return false;
             }
@@ -254,13 +295,21 @@ namespace HaCreator.MapSimulator.Companions
 
         private readonly Dictionary<AndroidEquipSlot, CompanionEquipItem> _equippedItems = new();
         private CharacterLoader _loader;
+        private CharacterBuild _ownerBuild;
 
         public IReadOnlyDictionary<AndroidEquipSlot, CompanionEquipItem> EquippedItems => _equippedItems;
+        public bool HasOwnerState => CompanionEquipmentController.HasAndroidOwnerState(_ownerBuild);
 
         public void EnsureDefaults(CharacterLoader loader, CharacterBuild build)
         {
             _loader = loader;
+            _ownerBuild = build;
             _equippedItems.Clear();
+            if (!HasOwnerState)
+            {
+                return;
+            }
+
             foreach ((AndroidEquipSlot slot, EquipSlot buildSlot, int fallbackItemId) in SharedSlotDefaults)
             {
                 SetEquippedItem(slot, ResolveBuildPart(build, buildSlot) ?? loader?.LoadEquipment(fallbackItemId));
@@ -311,6 +360,12 @@ namespace HaCreator.MapSimulator.Companions
                 return false;
             }
 
+            if (!HasOwnerState)
+            {
+                rejectReason = "Equip an android in the character equipment window before using this page.";
+                return false;
+            }
+
             CharacterPart part = _loader.LoadEquipment(itemId);
             if (part == null)
             {
@@ -333,6 +388,11 @@ namespace HaCreator.MapSimulator.Companions
             if (targetSlot == AndroidEquipSlot.Pants && HasOverallEquipped())
             {
                 rejectReason = "Overall equipped";
+                return false;
+            }
+
+            if (!CompanionEquipmentController.MeetsEquipRequirements(part, _ownerBuild, out rejectReason))
+            {
                 return false;
             }
 
@@ -422,6 +482,7 @@ namespace HaCreator.MapSimulator.Companions
 
         private readonly CompanionEquipmentLoader _loader;
         private readonly Dictionary<MechanicEquipSlot, CompanionEquipItem> _equippedItems = new();
+        private CharacterBuild _ownerBuild;
 
         internal MechanicEquipmentController(CompanionEquipmentLoader loader)
         {
@@ -429,9 +490,17 @@ namespace HaCreator.MapSimulator.Companions
         }
 
         public IReadOnlyDictionary<MechanicEquipSlot, CompanionEquipItem> EquippedItems => _equippedItems;
+        public bool HasOwnerState => CompanionEquipmentController.HasMechanicOwnerState(_ownerBuild);
 
-        public void EnsureDefaults()
+        public void EnsureDefaults(CharacterBuild ownerBuild)
         {
+            _ownerBuild = ownerBuild;
+            if (!HasOwnerState)
+            {
+                _equippedItems.Clear();
+                return;
+            }
+
             if (_equippedItems.Count > 0)
             {
                 return;
@@ -464,17 +533,35 @@ namespace HaCreator.MapSimulator.Companions
             return true;
         }
 
-        public bool TryEquipItem(MechanicEquipSlot targetSlot, int itemId, out IReadOnlyList<CompanionEquipItem> displacedItems)
+        public bool TryEquipItem(
+            MechanicEquipSlot targetSlot,
+            int itemId,
+            out IReadOnlyList<CompanionEquipItem> displacedItems,
+            out string rejectReason)
         {
             displacedItems = Array.Empty<CompanionEquipItem>();
+            rejectReason = null;
+            if (!HasOwnerState)
+            {
+                rejectReason = "Mechanic equipment is only available to Mechanic job paths.";
+                return false;
+            }
+
             if (!CompanionEquipmentController.TryResolveMechanicSlot(itemId, out MechanicEquipSlot resolvedSlot)
                 || resolvedSlot != targetSlot)
             {
+                rejectReason = "Drop this item on the matching machine slot.";
                 return false;
             }
 
             CompanionEquipItem item = _loader.LoadMechanicEquipment(itemId);
             if (item == null)
+            {
+                rejectReason = "This machine part could not be loaded from Character/Mechanic.";
+                return false;
+            }
+
+            if (!CompanionEquipmentController.MeetsEquipRequirements(item, _ownerBuild, out rejectReason))
             {
                 return false;
             }
@@ -535,6 +622,52 @@ namespace HaCreator.MapSimulator.Companions
                     rejectReason = $"{item.Name ?? "This pet accessory"} cannot be equipped on {petName}.";
                     return false;
                 }
+            }
+
+            return true;
+        }
+
+        internal static bool MeetsEquipRequirements(CompanionEquipItem item, CharacterBuild build, out string rejectReason)
+        {
+            rejectReason = null;
+            if (item == null || build == null)
+            {
+                return true;
+            }
+
+            if (item.RequiredLevel > 0 && build.Level < item.RequiredLevel)
+            {
+                rejectReason = $"Requires level {item.RequiredLevel}.";
+                return false;
+            }
+
+            if (item.RequiredJobMask != 0 && !MatchesRequiredJobMask(item.RequiredJobMask, build.Job))
+            {
+                rejectReason = $"Requires {ResolveRequiredJobNames(item.RequiredJobMask)}.";
+                return false;
+            }
+
+            return true;
+        }
+
+        internal static bool MeetsEquipRequirements(CharacterPart part, CharacterBuild build, out string rejectReason)
+        {
+            rejectReason = null;
+            if (part == null || build == null)
+            {
+                return true;
+            }
+
+            if (part.RequiredLevel > 0 && build.Level < part.RequiredLevel)
+            {
+                rejectReason = $"Requires level {part.RequiredLevel}.";
+                return false;
+            }
+
+            if (part.RequiredJobMask != 0 && !MatchesRequiredJobMask(part.RequiredJobMask, build.Job))
+            {
+                rejectReason = $"Requires {ResolveRequiredJobNames(part.RequiredJobMask)}.";
+                return false;
             }
 
             return true;
@@ -690,9 +823,83 @@ namespace HaCreator.MapSimulator.Companions
 
         public void EnsureDefaults(CharacterLoader loader, CharacterBuild build)
         {
-            Dragon.EnsureDefaults();
+            Pet.SetOwnerBuild(build);
+            Dragon.EnsureDefaults(build);
             Android.EnsureDefaults(loader, build);
-            Mechanic.EnsureDefaults();
+            Mechanic.EnsureDefaults(build);
+        }
+
+        internal static bool HasDragonOwnerState(CharacterBuild build)
+        {
+            int jobId = Math.Abs(build?.Job ?? 0);
+            return jobId is >= 2200 and <= 2218;
+        }
+
+        internal static bool HasMechanicOwnerState(CharacterBuild build)
+        {
+            int jobBook = Math.Abs(build?.Job ?? 0) / 10;
+            return jobBook is >= 350 and <= 351;
+        }
+
+        internal static bool HasAndroidOwnerState(CharacterBuild build)
+        {
+            return build?.Equipment != null && build.Equipment.ContainsKey(EquipSlot.Android);
+        }
+
+        internal static bool MatchesRequiredJobMask(int requiredJobMask, int jobId)
+        {
+            if (requiredJobMask == 0)
+            {
+                return true;
+            }
+
+            int jobGroup = Math.Abs(jobId) / 100;
+            return jobGroup switch
+            {
+                0 => (requiredJobMask & 1) != 0,
+                1 => (requiredJobMask & 2) != 0,
+                2 => (requiredJobMask & 4) != 0,
+                3 => (requiredJobMask & 8) != 0,
+                4 => (requiredJobMask & 16) != 0,
+                5 => (requiredJobMask & 32) != 0,
+                _ => false
+            };
+        }
+
+        internal static string ResolveRequiredJobNames(int requiredJobMask)
+        {
+            List<string> names = new();
+            if ((requiredJobMask & 1) != 0)
+            {
+                names.Add("Beginner");
+            }
+
+            if ((requiredJobMask & 2) != 0)
+            {
+                names.Add("Warrior");
+            }
+
+            if ((requiredJobMask & 4) != 0)
+            {
+                names.Add("Magician");
+            }
+
+            if ((requiredJobMask & 8) != 0)
+            {
+                names.Add("Bowman");
+            }
+
+            if ((requiredJobMask & 16) != 0)
+            {
+                names.Add("Thief");
+            }
+
+            if ((requiredJobMask & 32) != 0)
+            {
+                names.Add("Pirate");
+            }
+
+            return names.Count == 0 ? "the required job" : string.Join("/", names);
         }
     }
 
@@ -727,6 +934,9 @@ namespace HaCreator.MapSimulator.Companions
                 ItemId = itemId,
                 Name = LoadDragonItemName(itemId) ?? $"Dragon Equip {itemId}",
                 Description = LoadDragonItemDescription(itemId),
+                IsCash = GetIntValue(image?["info"]?["cash"]) == 1,
+                RequiredLevel = GetIntValue(image?["info"]?["reqLevel"]) ?? 0,
+                RequiredJobMask = GetIntValue(image?["info"]?["reqJob"]) ?? 0,
                 ItemTexture = LoadInfoTexture(image, "iconRaw") ?? LoadInfoTexture(image, "icon"),
                 Icon = LoadInfoIcon(image, "icon"),
                 IconRaw = LoadInfoIcon(image, "iconRaw")
@@ -750,12 +960,15 @@ namespace HaCreator.MapSimulator.Companions
             }
 
             image.ParseImage();
+            string description = LoadCachedItemDescription(itemId);
             var item = new CompanionEquipItem
             {
                 ItemId = itemId,
                 Name = LoadCachedItemName(itemId) ?? $"Pet Equip {itemId}",
-                Description = LoadCachedItemDescription(itemId),
-                ExcludedPetNames = CompanionEquipmentController.ParseExcludedPetNames(LoadCachedItemDescription(itemId)),
+                Description = description,
+                ExcludedPetNames = CompanionEquipmentController.ParseExcludedPetNames(description),
+                IsCash = GetIntValue(image?["info"]?["cash"]) == 1,
+                RequiredLevel = GetIntValue(image?["info"]?["reqLevel"]) ?? 0,
                 ItemTexture = LoadInfoTexture(image, "iconRaw") ?? LoadInfoTexture(image, "icon"),
                 Icon = LoadInfoIcon(image, "icon"),
                 IconRaw = LoadInfoIcon(image, "iconRaw")
@@ -784,6 +997,9 @@ namespace HaCreator.MapSimulator.Companions
                 ItemId = itemId,
                 Name = LoadMechanicItemName(itemId) ?? $"Mechanic Equip {itemId}",
                 Description = LoadMechanicItemDescription(itemId),
+                IsCash = GetIntValue(image?["info"]?["cash"]) == 1,
+                RequiredLevel = GetIntValue(image?["info"]?["reqLevel"]) ?? 0,
+                RequiredJobMask = GetIntValue(image?["info"]?["reqJob"]) ?? 0,
                 ItemTexture = LoadInfoTexture(image, "iconRaw") ?? LoadInfoTexture(image, "icon"),
                 Icon = LoadInfoIcon(image, "icon"),
                 IconRaw = LoadInfoIcon(image, "iconRaw")
@@ -898,6 +1114,18 @@ namespace HaCreator.MapSimulator.Companions
             {
                 WzStringProperty stringProperty => stringProperty.Value,
                 WzNullProperty => null,
+                _ => null
+            };
+        }
+
+        private static int? GetIntValue(WzObject obj)
+        {
+            return obj switch
+            {
+                WzIntProperty intProperty => intProperty.Value,
+                WzShortProperty shortProperty => shortProperty.Value,
+                WzLongProperty longProperty => (int)longProperty.Value,
+                WzStringProperty stringProperty when int.TryParse(stringProperty.Value, out int parsed) => parsed,
                 _ => null
             };
         }

@@ -9,6 +9,7 @@ using Microsoft.Xna.Framework.Input;
 using Spine;
 using System;
 using System.Collections.Generic;
+using System.Linq;
 
 namespace HaCreator.MapSimulator.UI
 {
@@ -593,15 +594,38 @@ namespace HaCreator.MapSimulator.UI
                 return;
 
             int itemCount = _skillManager.GetHotkeyItemCount(absoluteSlotIndex);
+            InventoryType inventoryType = _skillManager.GetHotkeyItemInventoryType(absoluteSlotIndex);
             string itemName = ResolveItemName(itemId);
+            string typeLine = ResolveItemTypeName(itemId, inventoryType);
             string countLine = itemCount > 0 ? $"Quantity: {itemCount}" : string.Empty;
+            string description = ResolveItemDescription(itemId);
+            Texture2D itemTexture = ResolveQuickSlotItemTexture(itemId, inventoryType);
 
             int tooltipWidth = ResolveTooltipWidth();
-            string[] wrappedTitle = WrapTooltipText(SanitizeFontText(itemName), tooltipWidth - (TOOLTIP_PADDING * 2));
-            string[] wrappedCount = WrapTooltipText(countLine, tooltipWidth - (TOOLTIP_PADDING * 2));
+            int textLeftOffset = TOOLTIP_PADDING + SLOT_SIZE + TOOLTIP_ICON_GAP;
+            float titleWidth = tooltipWidth - (TOOLTIP_PADDING * 2);
+            float sectionWidth = tooltipWidth - textLeftOffset - TOOLTIP_PADDING;
+            string[] wrappedTitle = WrapTooltipText(SanitizeFontText(itemName), titleWidth);
+            string[] wrappedType = WrapTooltipText(SanitizeFontText(typeLine), sectionWidth);
+            string[] wrappedCount = WrapTooltipText(countLine, sectionWidth);
+            string[] wrappedDescription = WrapTooltipText(SanitizeFontText(description), sectionWidth);
             float titleHeight = MeasureLinesHeight(wrappedTitle);
+            float typeHeight = MeasureLinesHeight(wrappedType);
             float countHeight = MeasureLinesHeight(wrappedCount);
-            int tooltipHeight = (int)Math.Ceiling((TOOLTIP_PADDING * 2) + titleHeight + (countHeight > 0f ? TOOLTIP_SECTION_GAP + countHeight : 0f));
+            float descriptionHeight = MeasureLinesHeight(wrappedDescription);
+            float contentHeight = typeHeight;
+            if (countHeight > 0f)
+            {
+                contentHeight += (contentHeight > 0f ? TOOLTIP_SECTION_GAP : 0f) + countHeight;
+            }
+
+            if (descriptionHeight > 0f)
+            {
+                contentHeight += (contentHeight > 0f ? TOOLTIP_SECTION_GAP : 0f) + descriptionHeight;
+            }
+
+            float iconBlockHeight = Math.Max(SLOT_SIZE, contentHeight);
+            int tooltipHeight = (int)Math.Ceiling((TOOLTIP_PADDING * 2) + titleHeight + TOOLTIP_TITLE_GAP + iconBlockHeight);
 
             int tooltipX = _lastMousePosition.X + TOOLTIP_OFFSET_X;
             int tooltipY = _lastMousePosition.Y + 20;
@@ -624,12 +648,35 @@ namespace HaCreator.MapSimulator.UI
             Rectangle backgroundRect = new Rectangle(tooltipX, tooltipY, tooltipWidth, tooltipHeight);
             DrawTooltipBackground(sprite, backgroundRect, tooltipFrameIndex);
 
-            int textX = tooltipX + TOOLTIP_PADDING;
-            int textY = tooltipY + TOOLTIP_PADDING;
-            DrawTooltipLines(sprite, wrappedTitle, textX, textY, new Color(255, 220, 120));
+            int titleX = tooltipX + TOOLTIP_PADDING;
+            int titleY = tooltipY + TOOLTIP_PADDING;
+            DrawTooltipLines(sprite, wrappedTitle, titleX, titleY, new Color(255, 220, 120));
+
+            int contentY = tooltipY + TOOLTIP_PADDING + (int)Math.Ceiling(titleHeight) + TOOLTIP_TITLE_GAP;
+            if (itemTexture != null)
+            {
+                sprite.Draw(itemTexture, new Rectangle(tooltipX + TOOLTIP_PADDING, contentY, SLOT_SIZE, SLOT_SIZE), Color.White);
+            }
+
+            int textX = tooltipX + textLeftOffset;
+            float sectionY = contentY;
+            if (typeHeight > 0f)
+            {
+                DrawTooltipLines(sprite, wrappedType, textX, sectionY, new Color(180, 220, 255));
+                sectionY += typeHeight;
+            }
+
             if (countHeight > 0f)
             {
-                DrawTooltipLines(sprite, wrappedCount, textX, textY + titleHeight + TOOLTIP_SECTION_GAP, Color.White);
+                sectionY += typeHeight > 0f ? TOOLTIP_SECTION_GAP : 0f;
+                DrawTooltipLines(sprite, wrappedCount, textX, sectionY, Color.White);
+                sectionY += countHeight;
+            }
+
+            if (descriptionHeight > 0f)
+            {
+                sectionY += sectionY > contentY ? TOOLTIP_SECTION_GAP : 0f;
+                DrawTooltipLines(sprite, wrappedDescription, textX, sectionY, new Color(255, 238, 196));
             }
         }
 
@@ -1168,6 +1215,43 @@ namespace HaCreator.MapSimulator.UI
                    !string.IsNullOrWhiteSpace(itemInfo.Item2)
                 ? itemInfo.Item2
                 : $"Item {itemId}";
+        }
+
+        private static string ResolveItemDescription(int itemId)
+        {
+            return HaCreator.Program.InfoManager?.ItemNameCache != null &&
+                   HaCreator.Program.InfoManager.ItemNameCache.TryGetValue(itemId, out Tuple<string, string, string> itemInfo)
+                ? itemInfo.Item3 ?? string.Empty
+                : string.Empty;
+        }
+
+        private static string ResolveItemTypeName(int itemId, InventoryType inventoryType)
+        {
+            if (HaCreator.Program.InfoManager?.ItemNameCache != null &&
+                HaCreator.Program.InfoManager.ItemNameCache.TryGetValue(itemId, out Tuple<string, string, string> itemInfo) &&
+                !string.IsNullOrWhiteSpace(itemInfo.Item1))
+            {
+                return itemInfo.Item1;
+            }
+
+            return inventoryType == InventoryType.NONE ? "Item" : inventoryType.ToString();
+        }
+
+        private Texture2D ResolveQuickSlotItemTexture(int itemId, InventoryType inventoryType)
+        {
+            if (_inventoryRuntime == null || inventoryType == InventoryType.NONE)
+            {
+                return null;
+            }
+
+            IReadOnlyList<InventorySlotData> slots = _inventoryRuntime.GetSlots(inventoryType);
+            if (slots == null)
+            {
+                return null;
+            }
+
+            InventorySlotData slot = slots.FirstOrDefault(candidate => candidate?.ItemId == itemId && candidate.ItemTexture != null);
+            return slot?.ItemTexture;
         }
         #endregion
     }

@@ -16,6 +16,7 @@ using Spine;
 using HaCreator.MapSimulator.Effects;
 using HaCreator.MapSimulator.Managers;
 using HaCreator.MapSimulator;
+using MapleLib.WzLib.WzStructure;
 
 namespace HaCreator.MapSimulator.Character
 {
@@ -39,6 +40,7 @@ namespace HaCreator.MapSimulator.Character
 
         public bool IsPlayerActive => Player != null && Player.IsAlive;
         public bool IsPlayerControlEnabled { get; set; } = true;
+        internal bool IsMovementLockedByMobStatus => _currentMobStatusState.MovementLocked;
 
         // Spawn point
         private Vector2 _spawnPoint;
@@ -74,6 +76,7 @@ namespace HaCreator.MapSimulator.Character
         private Action _onJumpSound;
         private Func<string> _jumpRestrictionMessageProvider;
         private Action<string> _onJumpRestricted;
+        private Func<float, float> _moveSpeedCapResolver;
 
         #endregion
 
@@ -213,6 +216,15 @@ namespace HaCreator.MapSimulator.Character
             }
         }
 
+        public void SetMoveSpeedCapResolver(Func<float, float> moveSpeedCapResolver)
+        {
+            _moveSpeedCapResolver = moveSpeedCapResolver;
+            if (Player != null)
+            {
+                Player.SetMoveSpeedCapResolver(moveSpeedCapResolver);
+            }
+        }
+
         public void SetReactorAttackAreaHandler(Action<Rectangle, int, int, int> reactorAttackAreaHandler)
         {
             _reactorAttackAreaHandler = reactorAttackAreaHandler;
@@ -265,6 +277,11 @@ namespace HaCreator.MapSimulator.Character
         public void SetCurrentMapIdProvider(Func<int> currentMapIdProvider)
         {
             Pets.SetCurrentMapIdProvider(currentMapIdProvider);
+        }
+
+        public void SetCurrentMapInfoProvider(Func<MapInfo> currentMapInfoProvider)
+        {
+            Dragon.SetCurrentMapInfoProvider(currentMapInfoProvider);
         }
 
         /// <summary>
@@ -325,8 +342,9 @@ namespace HaCreator.MapSimulator.Character
                 System.Diagnostics.Debug.WriteLine($"[PlayerManager] SkillManager created for job path {build.Job}");
             }
 
-            _mobStatusController = new PlayerMobStatusController(Player, Skills);
+            _mobStatusController = new PlayerMobStatusController(Player, Skills, TeleportToSpawn);
             Skills?.SetExternalCastBlockedEvaluator(currentTime => _currentMobStatusState.SkillCastBlocked);
+            Skills?.SetExternalStateRestrictionMessageProvider(currentTime => _mobStatusController?.GetSkillCastRestrictionMessage(currentTime));
 
             Combat.SetDamageBlockedEvaluator(currentTime => Skills?.IsPlayerProtectedByClientSkillZone(currentTime) == true);
 
@@ -338,6 +356,7 @@ namespace HaCreator.MapSimulator.Character
             Player.SetSkillMorphLoader(Loader.LoadMorph);
             Player.SetJumpSoundCallback(_onJumpSound);
             Player.SetJumpRestrictionHandler(_jumpRestrictionMessageProvider, _onJumpRestricted);
+            Player.SetMoveSpeedCapResolver(_moveSpeedCapResolver);
             Player.Physics.IsFlyingMap = _isFlyingMap;
             Player.Physics.RequiresFlyingSkillForMap = _requiresFlyingSkillForMap;
 
@@ -461,6 +480,7 @@ namespace HaCreator.MapSimulator.Character
             Player.SetPortableChairTamingMobLoader(portableChairTamingMobLoader);
             Player.SetJumpSoundCallback(_onJumpSound);
             Player.SetJumpRestrictionHandler(_jumpRestrictionMessageProvider, _onJumpRestricted);
+            Player.SetMoveSpeedCapResolver(_moveSpeedCapResolver);
             Player.Physics.IsFlyingMap = _isFlyingMap;
             Player.Physics.RequiresFlyingSkillForMap = _requiresFlyingSkillForMap;
 
@@ -1142,6 +1162,7 @@ namespace HaCreator.MapSimulator.Character
         {
             // Trigger swing animation
             Player.TriggerSkillAnimation("swingO1");
+            Skills?.UpdateBasicMeleeAfterImageState("swingO1", currentTime);
             System.Diagnostics.Debug.WriteLine($"[Attack] TryDoingBasicMeleeAttack - swingO1 triggered");
 
             // Apply damage to nearby mobs if mob pool is available
@@ -1172,7 +1193,8 @@ namespace HaCreator.MapSimulator.Character
                     if (worldHitbox.Intersects(mobHitbox))
                     {
                         int damage = CalculateBasicDamage();
-                        mob.ApplyDamage(damage, currentTime, damage > 100, Player.X, Player.Y);
+                        mob.ApplyDamage(damage, currentTime, damage > 100, Player.X, Player.Y, damageType: MobDamageType.Physical);
+                        ApplyMobReflectDamage(mob, currentTime, MobDamageType.Physical);
                         Vector2 damageAnchor = mob.GetDamageNumberAnchor();
 
                         _combatEffects?.AddDamageNumber(
@@ -1256,7 +1278,8 @@ namespace HaCreator.MapSimulator.Character
                     bool isCritical = _attackRandom.Next(100) < 20;
                     if (isCritical) damage = (int)(damage * 1.5f);
 
-                    closestMob.ApplyDamage(damage, currentTime, isCritical, Player.X, Player.Y);
+                    closestMob.ApplyDamage(damage, currentTime, isCritical, Player.X, Player.Y, damageType: MobDamageType.Magical);
+                    ApplyMobReflectDamage(closestMob, currentTime, MobDamageType.Magical);
                     Vector2 damageAnchor = closestMob.GetDamageNumberAnchor();
 
                     _combatEffects?.AddDamageNumber(
@@ -1271,6 +1294,20 @@ namespace HaCreator.MapSimulator.Character
             }
 
             return true;
+        }
+
+        private void ApplyMobReflectDamage(MobItem mob, int currentTime, MobDamageType damageType)
+        {
+            if (mob?.AI == null || Player == null || !Player.IsAlive)
+            {
+                return;
+            }
+
+            int reflectedDamage = mob.AI.CalculateReflectedDamageToAttacker(mob.AI.LastDamageTaken, damageType);
+            if (reflectedDamage > 0)
+            {
+                Player.TakeDamage(reflectedDamage, 0f, 0f);
+            }
         }
 
         /// <summary>

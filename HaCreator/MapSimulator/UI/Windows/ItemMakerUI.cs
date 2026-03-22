@@ -100,6 +100,7 @@ namespace HaCreator.MapSimulator.UI
         private readonly List<BackgroundLayer> _backgroundLayers = new();
         private readonly List<ItemMakerRecipe> _allRecipes = new();
         private readonly List<ItemMakerPage> _pages = new();
+        private readonly HashSet<int> _discoveredRecipeIds = new();
         private readonly Random _random = new();
         private readonly Texture2D _pixel;
 
@@ -139,6 +140,7 @@ namespace HaCreator.MapSimulator.UI
         public override string WindowName => MapSimulatorWindowNames.ItemMaker;
 
         public event Action<ItemMakerCraftResult> CraftCompleted;
+        public event Action<IReadOnlyCollection<int>> RecipesDiscovered;
 
         private IReadOnlyList<ItemMakerRecipe> CurrentRecipes =>
             _selectedPageIndex >= 0 && _selectedPageIndex < _pages.Count
@@ -168,6 +170,7 @@ namespace HaCreator.MapSimulator.UI
             _makerSkillLevel = Math.Max(0, makerSkillLevel);
             _characterJobId = Math.Max(0, characterJobId);
             _progression = progression ?? ItemMakerProgressionSnapshot.Default;
+            ResetDiscoveredRecipeState(_progression);
             _hasRequiredEquip = hasRequiredEquip;
             _matchesQuestRequirement = matchesQuestRequirement;
             RebuildVisiblePages();
@@ -182,6 +185,7 @@ namespace HaCreator.MapSimulator.UI
         public void UpdateProgression(ItemMakerProgressionSnapshot progression, string overrideStatusMessage = null)
         {
             _progression = progression ?? ItemMakerProgressionSnapshot.Default;
+            ResetDiscoveredRecipeState(_progression);
             RebuildVisiblePages();
             if (!string.IsNullOrWhiteSpace(overrideStatusMessage))
             {
@@ -617,6 +621,23 @@ namespace HaCreator.MapSimulator.UI
         private int GetEffectiveSkillLevel(ItemMakerRecipe recipe)
         {
             return Math.Clamp(_progression?.GetLevel(recipe.Family) ?? 1, 1, ItemMakerProgressionStore.MaxMakerSkillLevel);
+        }
+
+        private void ResetDiscoveredRecipeState(ItemMakerProgressionSnapshot progression)
+        {
+            _discoveredRecipeIds.Clear();
+            if (progression?.DiscoveredRecipeIds == null)
+            {
+                return;
+            }
+
+            foreach (int outputItemId in progression.DiscoveredRecipeIds)
+            {
+                if (outputItemId > 0)
+                {
+                    _discoveredRecipeIds.Add(outputItemId);
+                }
+            }
         }
 
         private string BuildMasteryDisplayText(ItemMakerRecipe recipe)
@@ -1435,11 +1456,16 @@ namespace HaCreator.MapSimulator.UI
                 : 0;
 
             var allowedBuckets = GetAllowedBucketKeys(_characterJobId);
-            var visibleRecipes = _allRecipes
+            List<ItemMakerRecipe> allowedRecipes = _allRecipes
                 .Where(recipe => allowedBuckets.Contains(recipe.BucketKey))
-                .Where(ShouldExposeRecipeInSelector)
                 .OrderBy(recipe => recipe.RequiredLevel)
                 .ThenBy(recipe => recipe.Title, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            SyncDiscoveredRecipes(allowedRecipes);
+
+            var visibleRecipes = allowedRecipes
+                .Where(ShouldExposeRecipeInSelector)
                 .ToList();
 
             List<ItemMakerRecipe> launchFilteredRecipes = ApplyLaunchFilter(visibleRecipes);
@@ -1575,6 +1601,16 @@ namespace HaCreator.MapSimulator.UI
 
         private bool ShouldExposeRecipeInSelector(ItemMakerRecipe recipe)
         {
+            if (!PassesPersistentRecipeGate(recipe))
+            {
+                return false;
+            }
+
+            return _discoveredRecipeIds.Contains(recipe.OutputItemId) || PassesTransientDiscoveryGate(recipe);
+        }
+
+        private bool PassesPersistentRecipeGate(ItemMakerRecipe recipe)
+        {
             if (recipe.RequiredSkillLevel > 0 && GetEffectiveSkillLevel(recipe) < recipe.RequiredSkillLevel)
             {
                 return false;
@@ -1585,6 +1621,11 @@ namespace HaCreator.MapSimulator.UI
                 return false;
             }
 
+            return true;
+        }
+
+        private bool PassesTransientDiscoveryGate(ItemMakerRecipe recipe)
+        {
             if (recipe.RequiredItemId > 0)
             {
                 InventoryType requiredItemType = ResolveInventoryType(recipe.RequiredItemId);
@@ -1609,6 +1650,29 @@ namespace HaCreator.MapSimulator.UI
             }
 
             return true;
+        }
+
+        private void SyncDiscoveredRecipes(IEnumerable<ItemMakerRecipe> recipes)
+        {
+            List<int> newlyDiscoveredIds = null;
+            foreach (ItemMakerRecipe recipe in recipes)
+            {
+                if (!PassesPersistentRecipeGate(recipe) || !PassesTransientDiscoveryGate(recipe))
+                {
+                    continue;
+                }
+
+                if (_discoveredRecipeIds.Add(recipe.OutputItemId))
+                {
+                    newlyDiscoveredIds ??= new List<int>();
+                    newlyDiscoveredIds.Add(recipe.OutputItemId);
+                }
+            }
+
+            if (newlyDiscoveredIds?.Count > 0)
+            {
+                RecipesDiscovered?.Invoke(newlyDiscoveredIds);
+            }
         }
 
         private void FocusLaunchContext()

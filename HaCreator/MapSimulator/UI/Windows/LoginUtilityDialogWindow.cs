@@ -2,10 +2,12 @@ using HaSharedLibrary.Render;
 using HaSharedLibrary.Render.DX;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
+using Microsoft.Xna.Framework.Input;
 using Spine;
 using System;
 using System.Collections.Generic;
 using HaCreator.MapSimulator;
+using System.Linq;
 
 namespace HaCreator.MapSimulator.UI
 {
@@ -14,6 +16,7 @@ namespace HaCreator.MapSimulator.UI
         private const int TextOffsetX = 17;
         private const int TextOffsetY = 13;
         private const float BodyWrapWidth = 248f;
+        private const float InputWrapWidth = 230f;
         private const int ButtonBottomMargin = 14;
         private const int ButtonGap = 12;
 
@@ -31,10 +34,20 @@ namespace HaCreator.MapSimulator.UI
         private string _body = string.Empty;
         private string _primaryLabel = "OK";
         private string _secondaryLabel = "Cancel";
+        private string _inputLabel = string.Empty;
+        private string _inputPlaceholder = string.Empty;
+        private string _inputValue = string.Empty;
         private int? _noticeTextIndex;
         private UIObject _activePrimaryButton;
         private UIObject _activeSecondaryButton;
         private LoginUtilityDialogButtonLayout _buttonLayout = LoginUtilityDialogButtonLayout.Ok;
+        private KeyboardState _previousKeyboardState;
+        private bool _inputMasked;
+        private int _inputMaxLength;
+
+        private static readonly Keys[] AlphaKeys = Enumerable.Range((int)Keys.A, 26).Select(value => (Keys)value).ToArray();
+        private static readonly Keys[] NumberKeys = Enumerable.Range((int)Keys.D0, 10).Select(value => (Keys)value).ToArray();
+        private static readonly Keys[] NumPadKeys = Enumerable.Range((int)Keys.NumPad0, 10).Select(value => (Keys)value).ToArray();
 
         public LoginUtilityDialogWindow(
             IDXObject frame,
@@ -63,9 +76,11 @@ namespace HaCreator.MapSimulator.UI
         public override string WindowName => MapSimulatorWindowNames.LoginUtilityDialog;
 
         public override bool SupportsDragging => false;
+        public override bool CapturesKeyboardInput => true;
 
         public event Action PrimaryRequested;
         public event Action SecondaryRequested;
+        public string InputValue => _inputValue;
 
         public override void SetFont(SpriteFont font)
         {
@@ -78,7 +93,12 @@ namespace HaCreator.MapSimulator.UI
             string primaryLabel,
             string secondaryLabel,
             LoginUtilityDialogButtonLayout buttonLayout,
-            int? noticeTextIndex = null)
+            int? noticeTextIndex = null,
+            string inputLabel = null,
+            string inputPlaceholder = null,
+            bool inputMasked = false,
+            int inputMaxLength = 0,
+            string inputValue = null)
         {
             _title = string.IsNullOrWhiteSpace(title) ? "Login Utility" : title;
             _body = body ?? string.Empty;
@@ -86,7 +106,82 @@ namespace HaCreator.MapSimulator.UI
             _secondaryLabel = string.IsNullOrWhiteSpace(secondaryLabel) ? "Cancel" : secondaryLabel;
             _buttonLayout = buttonLayout;
             _noticeTextIndex = noticeTextIndex;
+            _inputLabel = inputLabel ?? string.Empty;
+            _inputPlaceholder = inputPlaceholder ?? string.Empty;
+            _inputMasked = inputMasked;
+            _inputMaxLength = Math.Max(0, inputMaxLength);
+            _inputValue = inputValue ?? string.Empty;
             ConfigureButtons();
+        }
+
+        public override void Update(GameTime gameTime)
+        {
+            base.Update(gameTime);
+
+            if (!IsVisible || !HasInputField)
+            {
+                _previousKeyboardState = Keyboard.GetState();
+                return;
+            }
+
+            KeyboardState keyboardState = Keyboard.GetState();
+            if (Pressed(keyboardState, Keys.Enter))
+            {
+                PrimaryRequested?.Invoke();
+            }
+
+            if (Pressed(keyboardState, Keys.Escape))
+            {
+                SecondaryRequested?.Invoke();
+            }
+
+            if (Pressed(keyboardState, Keys.Back))
+            {
+                RemoveLastCharacter();
+            }
+
+            if (Pressed(keyboardState, Keys.Space))
+            {
+                AppendCharacter(' ');
+            }
+
+            bool shift = keyboardState.IsKeyDown(Keys.LeftShift) || keyboardState.IsKeyDown(Keys.RightShift);
+            foreach (Keys key in AlphaKeys)
+            {
+                if (Pressed(keyboardState, key))
+                {
+                    char c = (char)('a' + (key - Keys.A));
+                    AppendCharacter(shift ? char.ToUpperInvariant(c) : c);
+                }
+            }
+
+            foreach (Keys key in NumberKeys)
+            {
+                if (Pressed(keyboardState, key))
+                {
+                    AppendCharacter((char)('0' + (key - Keys.D0)));
+                }
+            }
+
+            foreach (Keys key in NumPadKeys)
+            {
+                if (Pressed(keyboardState, key))
+                {
+                    AppendCharacter((char)('0' + (key - Keys.NumPad0)));
+                }
+            }
+
+            if (Pressed(keyboardState, Keys.OemMinus) || Pressed(keyboardState, Keys.Subtract))
+            {
+                AppendCharacter(shift ? '_' : '-');
+            }
+
+            if (Pressed(keyboardState, Keys.OemPeriod) || Pressed(keyboardState, Keys.Decimal))
+            {
+                AppendCharacter('.');
+            }
+
+            _previousKeyboardState = keyboardState;
         }
 
         protected override void DrawContents(
@@ -134,6 +229,36 @@ namespace HaCreator.MapSimulator.UI
                     new Vector2(Position.X + TextOffsetX, y),
                     new Color(232, 232, 232));
                 y += _font.LineSpacing;
+            }
+
+            if (HasInputField)
+            {
+                y += 8f;
+                SelectorWindowDrawing.DrawShadowedText(
+                    sprite,
+                    _font,
+                    _inputLabel,
+                    new Vector2(Position.X + TextOffsetX, y),
+                    new Color(255, 248, 223));
+                y += _font.LineSpacing;
+
+                string visibleValue = string.IsNullOrEmpty(_inputValue)
+                    ? _inputPlaceholder
+                    : (_inputMasked ? new string('*', _inputValue.Length) : _inputValue);
+                Color valueColor = string.IsNullOrEmpty(_inputValue)
+                    ? new Color(164, 164, 164)
+                    : new Color(232, 232, 232);
+
+                foreach (string line in WrapText(string.IsNullOrWhiteSpace(visibleValue) ? "_" : visibleValue, InputWrapWidth))
+                {
+                    SelectorWindowDrawing.DrawShadowedText(
+                        sprite,
+                        _font,
+                        line,
+                        new Vector2(Position.X + TextOffsetX, y),
+                        valueColor);
+                    y += _font.LineSpacing;
+                }
             }
         }
 
@@ -299,6 +424,38 @@ namespace HaCreator.MapSimulator.UI
             {
                 yield return currentLine;
             }
+        }
+
+        private bool HasInputField => !string.IsNullOrWhiteSpace(_inputLabel);
+
+        private bool Pressed(KeyboardState keyboardState, Keys key)
+        {
+            return keyboardState.IsKeyDown(key) && !_previousKeyboardState.IsKeyDown(key);
+        }
+
+        private void AppendCharacter(char c)
+        {
+            if (!HasInputField)
+            {
+                return;
+            }
+
+            if (_inputMaxLength > 0 && _inputValue.Length >= _inputMaxLength)
+            {
+                return;
+            }
+
+            _inputValue += c;
+        }
+
+        private void RemoveLastCharacter()
+        {
+            if (string.IsNullOrEmpty(_inputValue))
+            {
+                return;
+            }
+
+            _inputValue = _inputValue.Substring(0, _inputValue.Length - 1);
         }
     }
 }

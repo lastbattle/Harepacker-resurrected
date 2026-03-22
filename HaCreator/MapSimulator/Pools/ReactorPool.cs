@@ -84,6 +84,7 @@ namespace HaCreator.MapSimulator.Pools
         public int? RequiredQuestId { get; set; }
         public QuestStateType? RequiredQuestState { get; set; }
         public string ScriptName { get; set; }
+        public bool ScriptStatePublished { get; set; }
     }
 
     internal sealed class ReactorInteractionMetadata
@@ -128,6 +129,7 @@ namespace HaCreator.MapSimulator.Pools
         private Action<ReactorItem> _onReactorSpawned;
         private Action<ReactorItem, int> _onReactorTouched;  // (reactor, playerId)
         private Action<ReactorItem, int> _onReactorHit;      // (reactor, playerId)
+        private Action<ReactorItem, string, bool, int> _onReactorScriptStateChanged;
 
         // Factory for creating new reactor items
         private Func<ReactorSpawnPoint, GraphicsDevice, ReactorItem> _reactorFactory;
@@ -147,6 +149,7 @@ namespace HaCreator.MapSimulator.Pools
         public void SetOnReactorSpawned(Action<ReactorItem> callback) => _onReactorSpawned = callback;
         public void SetOnReactorTouched(Action<ReactorItem, int> callback) => _onReactorTouched = callback;
         public void SetOnReactorHit(Action<ReactorItem, int> callback) => _onReactorHit = callback;
+        public void SetOnReactorScriptStateChanged(Action<ReactorItem, string, bool, int> callback) => _onReactorScriptStateChanged = callback;
         #endregion
 
         #region Initialization
@@ -195,7 +198,8 @@ namespace HaCreator.MapSimulator.Pools
                     RequiredItemId = interactionMetadata.RequiredItemId,
                     RequiredQuestId = interactionMetadata.RequiredQuestId,
                     RequiredQuestState = interactionMetadata.RequiredQuestState,
-                    ScriptName = interactionMetadata.ScriptName
+                    ScriptName = interactionMetadata.ScriptName,
+                    ScriptStatePublished = false
                 };
                 _reactorData[i] = data;
 
@@ -698,6 +702,7 @@ namespace HaCreator.MapSimulator.Pools
             data.StateStartTime = currentTick;
             data.StateFrame = 0;
             data.ActivatingPlayerId = playerId;
+            PublishScriptState(reactor, data, isEnabled: true, currentTick);
 
             // Invoke appropriate callback
             if (activationType == ReactorActivationType.Touch)
@@ -770,6 +775,7 @@ namespace HaCreator.MapSimulator.Pools
 
             data.State = ReactorState.Destroyed;
             data.StateStartTime = currentTick;
+            PublishScriptState(reactor, data, isEnabled: false, currentTick);
 
             // Update spawn point
             if (index < _spawnPoints.Count)
@@ -806,6 +812,7 @@ namespace HaCreator.MapSimulator.Pools
             data.VisualState = reactor?.GetInitialState() ?? 0;
             data.HitCount = 0;
             data.Alpha = 1f;
+            PublishScriptState(reactor, data, isEnabled: false, currentTick);
         }
 
         public void RefreshQuestReactors(int currentTick)
@@ -1093,6 +1100,7 @@ namespace HaCreator.MapSimulator.Pools
                             data.VisualState = _reactors[i]?.GetInitialState() ?? 0;
                             data.HitCount = 0;
                             data.Alpha = 1f;
+                            data.ScriptStatePublished = false;
                             spawnPoint.IsActive = true;
                         }
                     }
@@ -1263,6 +1271,22 @@ namespace HaCreator.MapSimulator.Pools
 
             int stateDuration = reactor.GetStateDuration(data.VisualState);
             return stateDuration > 0 ? stateDuration : ACTIVATION_ANIMATION_TIME;
+        }
+
+        private void PublishScriptState(ReactorItem reactor, ReactorRuntimeData data, bool isEnabled, int currentTick)
+        {
+            if (reactor == null || data == null || string.IsNullOrWhiteSpace(data.ScriptName))
+            {
+                return;
+            }
+
+            if (data.ScriptStatePublished == isEnabled)
+            {
+                return;
+            }
+
+            data.ScriptStatePublished = isEnabled;
+            _onReactorScriptStateChanged?.Invoke(reactor, data.ScriptName, isEnabled, currentTick);
         }
 
         private static Rectangle GetReactorBounds(ReactorInstance instance)

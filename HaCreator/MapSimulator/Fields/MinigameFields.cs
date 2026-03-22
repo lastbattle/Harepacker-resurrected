@@ -2913,7 +2913,8 @@ namespace HaCreator.MapSimulator.Fields
 
             try
             {
-                PacketReader reader = new(packetBytes);
+                byte[] payload = NormalizeMiniRoomPacketPayload(packetBytes);
+                PacketReader reader = new(payload);
                 byte basePacketType = reader.ReadByte();
                 return basePacketType switch
                 {
@@ -2931,6 +2932,28 @@ namespace HaCreator.MapSimulator.Fields
                 message = $"MiniRoom packet ended unexpectedly: {BitConverter.ToString(packetBytes)}";
                 return false;
             }
+        }
+
+        public static byte[] NormalizeMiniRoomPacketPayload(byte[] packetBytes)
+        {
+            if (packetBytes == null || packetBytes.Length == 0)
+            {
+                return Array.Empty<byte>();
+            }
+
+            if (IsMiniRoomBasePacketType(packetBytes[0]))
+            {
+                return (byte[])packetBytes.Clone();
+            }
+
+            if (packetBytes.Length > sizeof(ushort) && IsMiniRoomBasePacketType(packetBytes[sizeof(ushort)]))
+            {
+                byte[] trimmed = new byte[packetBytes.Length - sizeof(ushort)];
+                Buffer.BlockCopy(packetBytes, sizeof(ushort), trimmed, 0, trimmed.Length);
+                return trimmed;
+            }
+
+            return (byte[])packetBytes.Clone();
         }
 
         public static bool TryParseMiniRoomPacketHex(string text, out byte[] packetBytes, out string error)
@@ -3682,6 +3705,16 @@ namespace HaCreator.MapSimulator.Fields
         {
             message = $"MiniRoom base packet {basePacketType} is not modeled for Match Cards.";
             return false;
+        }
+
+        private static bool IsMiniRoomBasePacketType(byte packetType)
+        {
+            return packetType == MiniRoomBaseEnterPacketType
+                || packetType == MiniRoomBaseGameplayPacketType
+                || packetType == MiniRoomBaseChatPacketType
+                || packetType == MiniRoomBaseChatRepeatPacketType
+                || packetType == MiniRoomBaseAvatarPacketType
+                || packetType == MiniRoomBaseLeavePacketType;
         }
 
         private void DrawBoard(SpriteBatch spriteBatch, Texture2D pixel, SpriteFont font, Rectangle area)

@@ -1,33 +1,71 @@
 using System;
 using System.Collections.Concurrent;
+using System.Globalization;
 using System.IO;
 using System.Net;
 using System.Net.Sockets;
 using System.Threading;
 using System.Threading.Tasks;
+using Microsoft.Xna.Framework;
 
 namespace HaCreator.MapSimulator.Managers
 {
+    public enum AriantArenaInboxMessageKind
+    {
+        Packet,
+        ActorAddClone,
+        ActorAddAvatar,
+        ActorMove,
+        ActorRemove,
+        ActorClear
+    }
+
     public sealed class AriantArenaPacketInboxMessage
     {
         public AriantArenaPacketInboxMessage(int packetType, byte[] payload, string source, string rawText)
         {
+            Kind = AriantArenaInboxMessageKind.Packet;
             PacketType = packetType;
             Payload = payload != null ? (byte[])payload.Clone() : Array.Empty<byte>();
             Source = string.IsNullOrWhiteSpace(source) ? "ariant-inbox" : source;
             RawText = rawText ?? string.Empty;
         }
 
+        public AriantArenaPacketInboxMessage(
+            AriantArenaInboxMessageKind kind,
+            string actorName,
+            Vector2? position,
+            bool? facingRight,
+            string actionName,
+            byte[] avatarLookPayload,
+            string source,
+            string rawText)
+        {
+            Kind = kind;
+            ActorName = actorName?.Trim() ?? string.Empty;
+            Position = position;
+            FacingRight = facingRight;
+            ActionName = actionName?.Trim();
+            Payload = avatarLookPayload != null ? (byte[])avatarLookPayload.Clone() : Array.Empty<byte>();
+            Source = string.IsNullOrWhiteSpace(source) ? "ariant-inbox" : source;
+            RawText = rawText ?? string.Empty;
+        }
+
+        public AriantArenaInboxMessageKind Kind { get; }
         public int PacketType { get; }
         public byte[] Payload { get; }
+        public string ActorName { get; }
+        public Vector2? Position { get; }
+        public bool? FacingRight { get; }
+        public string ActionName { get; }
         public string Source { get; }
         public string RawText { get; }
     }
 
     /// <summary>
     /// Optional loopback inbox for live Ariant Arena field packets.
-    /// Each line is encoded as "<type> <hex-payload>", where type can be the numeric packet id
-    /// or the aliases "userscore" (354) and "showresult" (171).
+    /// Each line is encoded as either "<type> <hex-payload>" for Ariant field packets
+    /// or "actor <add|avatar|move|remove|clear> ..." for remote overlay updates.
     /// </summary>
     public sealed class AriantArenaPacketInboxManager : IDisposable
     {
@@ -104,6 +142,15 @@ namespace HaCreator.MapSimulator.Managers
                 : $"Ignored {summary} from {source}.";
         }
 
+        public void RecordDispatchResult(AriantArenaPacketInboxMessage message, bool success, string detail)
+        {
+            string label = DescribeMessage(message);
+            string summary = string.IsNullOrWhiteSpace(detail) ? label : $"{label}: {detail}";
+            LastStatus = success
+                ? $"Applied {summary} from {message?.Source ?? "ariant-inbox"}."
+                : $"Ignored {summary} from {message?.Source ?? "ariant-inbox"}.";
+        }
+
         public void Dispose()
         {
             lock (_listenerLock)
@@ -165,6 +212,39 @@ namespace HaCreator.MapSimulator.Managers
             }
         }
 
+        public static bool TryParseLine(string text, out AriantArenaPacketInboxMessage message, out string error)
+        {
+            message = null;
+            error = null;
+
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                error = "Ariant inbox line is empty.";
+                return false;
+            }
+
+            string[] tokens = text.Trim().Split((char[])null, StringSplitOptions.RemoveEmptyEntries);
+            if (tokens.Length == 0)
+            {
+                error = "Ariant inbox line is empty.";
+                return false;
+            }
+
+            string firstToken = tokens[0].Trim().ToLowerInvariant();
+            if (firstToken == "actor" || firstToken.StartsWith("actor", StringComparison.Ordinal))
+            {
+                return TryParseActorLine(tokens, text, out message, out error);
+            }
+
+            if (!TryParsePacketLine(text, out int packetType, out byte[] payload, out error))
+            {
+                return false;
+            }
+
+            message = new AriantArenaPacketInboxMessage(packetType, payload, "ariant-inbox", text);
+            return true;
+        }
+
         private async Task ListenLoopAsync(CancellationToken cancellationToken)
         {
             try
@@ -204,15 +284,30 @@ namespace HaCreator.MapSimulator.Managers
                             break;
                         }
 
-                        if (!TryParsePacketLine(line, out int packetType, out byte[] payload, out string error))
+                        if (!TryParseLine(line, out AriantArenaPacketInboxMessage message, out string error))
                         {
                             LastStatus = $"Ignored Ariant inbox line from {remoteEndpoint}: {error}";
                             continue;
                         }
 
-                        _pendingMessages.Enqueue(new AriantArenaPacketInboxMessage(packetType, payload, remoteEndpoint, line));
+                        if (!string.Equals(message.Source, remoteEndpoint, StringComparison.Ordinal))
+                        {
+                            message = message.Kind == AriantArenaInboxMessageKind.Packet
+                                ? new AriantArenaPacketInboxMessage(message.PacketType, message.Payload, remoteEndpoint, line)
+                                : new AriantArenaPacketInboxMessage(
+                                    message.Kind,
+                                    message.ActorName,
+                                    message.Position,
+                                    message.FacingRight,
+                                    message.ActionName,
+                                    message.Payload,
+                                    remoteEndpoint,
+                                    line);
+                        }
+
+                        _pendingMessages.Enqueue(message);
                         ReceivedCount++;
-                        LastStatus = $"Queued {DescribePacketType(packetType)} from {remoteEndpoint}.";
+                        LastStatus = $"Queued {DescribeMessage(message)} from {remoteEndpoint}.";
                     }
                 }
             }
@@ -262,6 +357,239 @@ namespace HaCreator.MapSimulator.Managers
                 PacketTypeUserScore => "userscore (354)",
                 _ => packetType.ToString()
             };
+        }
+
+        private static string DescribeMessage(AriantArenaPacketInboxMessage message)
+        {
+            if (message == null)
+            {
+                return "Ariant inbox message";
+            }
+
+            return message.Kind switch
+            {
+                AriantArenaInboxMessageKind.Packet => DescribePacketType(message.PacketType),
+                AriantArenaInboxMessageKind.ActorAddClone => $"actor add '{message.ActorName}'",
+                AriantArenaInboxMessageKind.ActorAddAvatar => $"actor avatar '{message.ActorName}'",
+                AriantArenaInboxMessageKind.ActorMove => $"actor move '{message.ActorName}'",
+                AriantArenaInboxMessageKind.ActorRemove => $"actor remove '{message.ActorName}'",
+                AriantArenaInboxMessageKind.ActorClear => "actor clear",
+                _ => "Ariant inbox message"
+            };
+        }
+
+        private static bool TryParseActorLine(string[] tokens, string rawText, out AriantArenaPacketInboxMessage message, out string error)
+        {
+            message = null;
+            error = null;
+
+            int commandIndex = 0;
+            string normalized = tokens[0].Trim().ToLowerInvariant();
+            string command;
+            if (normalized == "actor")
+            {
+                if (tokens.Length < 2)
+                {
+                    error = "Ariant actor inbox line is missing an action.";
+                    return false;
+                }
+
+                commandIndex = 1;
+                command = tokens[1].Trim().ToLowerInvariant();
+            }
+            else
+            {
+                command = normalized["actor".Length..];
+            }
+
+            int argumentIndex = commandIndex + 1;
+            switch (command)
+            {
+                case "add":
+                    return TryParseActorPlacementMessage(
+                        AriantArenaInboxMessageKind.ActorAddClone,
+                        tokens,
+                        rawText,
+                        argumentIndex,
+                        expectAvatarLookPayload: false,
+                        out message,
+                        out error);
+
+                case "avatar":
+                    return TryParseActorPlacementMessage(
+                        AriantArenaInboxMessageKind.ActorAddAvatar,
+                        tokens,
+                        rawText,
+                        argumentIndex,
+                        expectAvatarLookPayload: true,
+                        out message,
+                        out error);
+
+                case "move":
+                    return TryParseActorPlacementMessage(
+                        AriantArenaInboxMessageKind.ActorMove,
+                        tokens,
+                        rawText,
+                        argumentIndex,
+                        expectAvatarLookPayload: false,
+                        out message,
+                        out error);
+
+                case "remove":
+                    if (tokens.Length <= argumentIndex || string.IsNullOrWhiteSpace(tokens[argumentIndex]))
+                    {
+                        error = "Ariant actor remove inbox line requires a name.";
+                        return false;
+                    }
+
+                    message = new AriantArenaPacketInboxMessage(
+                        AriantArenaInboxMessageKind.ActorRemove,
+                        tokens[argumentIndex],
+                        position: null,
+                        facingRight: null,
+                        actionName: null,
+                        avatarLookPayload: null,
+                        source: "ariant-inbox",
+                        rawText);
+                    return true;
+
+                case "clear":
+                    message = new AriantArenaPacketInboxMessage(
+                        AriantArenaInboxMessageKind.ActorClear,
+                        actorName: null,
+                        position: null,
+                        facingRight: null,
+                        actionName: null,
+                        avatarLookPayload: null,
+                        source: "ariant-inbox",
+                        rawText);
+                    return true;
+
+                default:
+                    error = $"Unsupported Ariant actor inbox action: {command}";
+                    return false;
+            }
+        }
+
+        private static bool TryParseActorPlacementMessage(
+            AriantArenaInboxMessageKind kind,
+            string[] tokens,
+            string rawText,
+            int argumentIndex,
+            bool expectAvatarLookPayload,
+            out AriantArenaPacketInboxMessage message,
+            out string error)
+        {
+            message = null;
+            error = null;
+
+            int minimumTokenCount = expectAvatarLookPayload ? argumentIndex + 4 : argumentIndex + 3;
+            if (tokens.Length < minimumTokenCount)
+            {
+                error = expectAvatarLookPayload
+                    ? "Ariant actor avatar inbox line requires '<name> <x> <y> <avatarLookHex>'."
+                    : "Ariant actor inbox line requires '<name> <x> <y>'.";
+                return false;
+            }
+
+            string actorName = tokens[argumentIndex];
+            if (string.IsNullOrWhiteSpace(actorName))
+            {
+                error = "Ariant actor inbox line requires a non-empty name.";
+                return false;
+            }
+
+            if (!TryParseCoordinate(tokens[argumentIndex + 1], out float x)
+                || !TryParseCoordinate(tokens[argumentIndex + 2], out float y))
+            {
+                error = "Ariant actor inbox position requires numeric <x> <y> world coordinates.";
+                return false;
+            }
+
+            byte[] avatarLookPayload = null;
+            int optionalStartIndex = argumentIndex + 3;
+            if (expectAvatarLookPayload)
+            {
+                string avatarLookHex = tokens[argumentIndex + 3];
+                string compactHex = RemoveWhitespace(avatarLookHex);
+                if (compactHex.StartsWith("0x", StringComparison.OrdinalIgnoreCase))
+                {
+                    compactHex = compactHex[2..];
+                }
+
+                try
+                {
+                    avatarLookPayload = Convert.FromHexString(compactHex);
+                }
+                catch (FormatException)
+                {
+                    error = $"Invalid Ariant actor AvatarLook hex payload: {avatarLookHex}";
+                    return false;
+                }
+
+                optionalStartIndex++;
+            }
+
+            if (!TryParseOptionalActionAndFacing(tokens, optionalStartIndex, out string actionName, out bool? facingRight, out error))
+            {
+                return false;
+            }
+
+            message = new AriantArenaPacketInboxMessage(
+                kind,
+                actorName,
+                new Vector2(x, y),
+                facingRight,
+                actionName,
+                avatarLookPayload,
+                source: "ariant-inbox",
+                rawText);
+            return true;
+        }
+
+        private static bool TryParseOptionalActionAndFacing(string[] tokens, int startIndex, out string actionName, out bool? facingRight, out string error)
+        {
+            actionName = null;
+            facingRight = null;
+            error = null;
+
+            for (int i = startIndex; i < tokens.Length; i++)
+            {
+                string token = tokens[i];
+                if (string.IsNullOrWhiteSpace(token))
+                {
+                    continue;
+                }
+
+                if (string.Equals(token, "left", StringComparison.OrdinalIgnoreCase))
+                {
+                    facingRight = false;
+                    continue;
+                }
+
+                if (string.Equals(token, "right", StringComparison.OrdinalIgnoreCase))
+                {
+                    facingRight = true;
+                    continue;
+                }
+
+                if (actionName == null)
+                {
+                    actionName = token.Trim();
+                    continue;
+                }
+
+                error = $"Unexpected Ariant actor token '{token}'.";
+                return false;
+            }
+
+            return true;
+        }
+
+        private static bool TryParseCoordinate(string token, out float value)
+        {
+            return float.TryParse(token, NumberStyles.Float | NumberStyles.AllowThousands, CultureInfo.InvariantCulture, out value)
+                || float.TryParse(token, NumberStyles.Float | NumberStyles.AllowThousands, CultureInfo.CurrentCulture, out value);
         }
 
         private static string RemoveWhitespace(string text)

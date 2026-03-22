@@ -16,9 +16,12 @@ namespace HaCreator.MapSimulator.Character
         Slow,
         Freeze,
         Curse,
+        PainMark,
+        Banish,
         Attract,
         ReverseInput,
-        Undead
+        Undead,
+        Polymorph
     }
 
     internal readonly struct PlayerMobStatusFrameState
@@ -70,20 +73,24 @@ namespace HaCreator.MapSimulator.Character
             public int Value { get; set; }
             public int TickIntervalMs { get; set; }
             public int NextTickTime { get; set; }
+            public int RemainingCount { get; set; }
         }
 
         private readonly Dictionary<PlayerMobStatusEffect, PlayerMobStatusEntry> _entries = new();
         private readonly PlayerCharacter _player;
         private readonly SkillManager _skills;
+        private readonly Action _teleportToSpawn;
 
-        public PlayerMobStatusController(PlayerCharacter player, SkillManager skills)
+        public PlayerMobStatusController(PlayerCharacter player, SkillManager skills, Action teleportToSpawn = null)
         {
             _player = player ?? throw new ArgumentNullException(nameof(player));
             _skills = skills;
+            _teleportToSpawn = teleportToSpawn;
         }
 
         public PlayerMobStatusFrameState Update(int currentTime)
         {
+            RemoveExpiredEffects(currentTime);
             if (_entries.Count == 0)
             {
                 return PlayerMobStatusFrameState.Default;
@@ -93,19 +100,25 @@ namespace HaCreator.MapSimulator.Character
             foreach (KeyValuePair<PlayerMobStatusEffect, PlayerMobStatusEntry> pair in _entries)
             {
                 PlayerMobStatusEntry entry = pair.Value;
-                if (currentTime >= entry.ExpirationTime)
-                {
-                    expiredEffects ??= new List<PlayerMobStatusEffect>();
-                    expiredEffects.Add(pair.Key);
-                    continue;
-                }
-
-                if (entry.Effect == PlayerMobStatusEffect.Poison &&
-                    entry.Value > 0 &&
-                    entry.TickIntervalMs > 0 &&
-                    currentTime >= entry.NextTickTime)
+                bool shouldApplyPeriodicDamage =
+                    (entry.Effect == PlayerMobStatusEffect.Poison || entry.Effect == PlayerMobStatusEffect.PainMark)
+                    && entry.Value > 0
+                    && entry.TickIntervalMs > 0
+                    && currentTime >= entry.NextTickTime;
+                if (shouldApplyPeriodicDamage)
                 {
                     _player.TakeStatusDamage(entry.Value);
+                    if (entry.RemainingCount > 0)
+                    {
+                        entry.RemainingCount--;
+                        if (entry.RemainingCount <= 0)
+                        {
+                            expiredEffects ??= new List<PlayerMobStatusEffect>();
+                            expiredEffects.Add(pair.Key);
+                            continue;
+                        }
+                    }
+
                     entry.NextTickTime = currentTime + entry.TickIntervalMs;
                 }
             }
@@ -120,8 +133,9 @@ namespace HaCreator.MapSimulator.Character
 
             bool movementLocked = HasStatus(PlayerMobStatusEffect.Stun) || HasStatus(PlayerMobStatusEffect.Freeze);
             bool seduced = HasStatus(PlayerMobStatusEffect.Attract);
+            bool banished = HasStatus(PlayerMobStatusEffect.Banish);
             bool jumpBlocked = movementLocked || seduced || HasStatus(PlayerMobStatusEffect.Weakness);
-            bool skillCastBlocked = movementLocked || seduced || HasStatus(PlayerMobStatusEffect.Seal);
+            bool skillCastBlocked = movementLocked || seduced || banished || HasStatus(PlayerMobStatusEffect.Seal);
             float moveSpeedMultiplier = ResolveMoveSpeedMultiplier();
             float additionalMissChance = ResolveAdditionalMissChance();
             bool inputReversed = HasStatus(PlayerMobStatusEffect.ReverseInput);
@@ -140,6 +154,38 @@ namespace HaCreator.MapSimulator.Character
                 hpRecoveryReversed,
                 maxVitalPercentCap,
                 maxVitalPercentCap);
+        }
+
+        public string GetSkillCastRestrictionMessage(int currentTime)
+        {
+            RemoveExpiredEffects(currentTime);
+
+            if (HasStatus(PlayerMobStatusEffect.Stun))
+            {
+                return "Skills cannot be used while stunned.";
+            }
+
+            if (HasStatus(PlayerMobStatusEffect.Freeze))
+            {
+                return "Skills cannot be used while frozen.";
+            }
+
+            if (HasStatus(PlayerMobStatusEffect.Seal))
+            {
+                return "Skills cannot be used while sealed.";
+            }
+
+            if (HasStatus(PlayerMobStatusEffect.Attract))
+            {
+                return "Skills cannot be used while seduced.";
+            }
+
+            if (HasStatus(PlayerMobStatusEffect.Banish))
+            {
+                return "Skills cannot be used while banished.";
+            }
+
+            return null;
         }
 
         public bool TryApplyMobSkill(int skillId, MobSkillRuntimeData runtimeData, int currentTime, float sourceX = 0f)
@@ -173,7 +219,7 @@ namespace HaCreator.MapSimulator.Character
                     ApplyStatus(PlayerMobStatusEffect.Curse, runtimeData.DurationMs, currentTime, ResolveValue(runtimeData, 50));
                     return true;
                 case 125:
-                    ApplyStatus(
+                    ApplyPeriodicDamageStatus(
                         PlayerMobStatusEffect.Poison,
                         runtimeData.DurationMs,
                         currentTime,
@@ -185,6 +231,10 @@ namespace HaCreator.MapSimulator.Character
                     return true;
                 case 127:
                     _skills?.CancelAllActiveBuffs(currentTime);
+                    return true;
+                case 129:
+                    _teleportToSpawn?.Invoke();
+                    ApplyStatus(PlayerMobStatusEffect.Banish, runtimeData.DurationMs, currentTime, 1);
                     return true;
                 case 128:
                     ApplyStatus(PlayerMobStatusEffect.Attract, runtimeData.DurationMs, currentTime, ResolveSeduceDirection(sourceX));
@@ -198,6 +248,18 @@ namespace HaCreator.MapSimulator.Character
                 case 133:
                     ApplyStatus(PlayerMobStatusEffect.Undead, runtimeData.DurationMs, currentTime, 1);
                     return true;
+                case 134:
+                    ApplyPeriodicDamageStatus(
+                        PlayerMobStatusEffect.PainMark,
+                        runtimeData.DurationMs,
+                        currentTime,
+                        ResolveValue(runtimeData, 1),
+                        ResolveTickInterval(runtimeData, 1000),
+                        runtimeData.Count);
+                    return true;
+                case 172:
+                case 173:
+                    return ApplyPolymorphStatus(runtimeData, currentTime);
                 default:
                     return false;
             }
@@ -210,7 +272,18 @@ namespace HaCreator.MapSimulator.Character
 
         public bool ClearStatus(PlayerMobStatusEffect effect)
         {
-            return effect != PlayerMobStatusEffect.None && _entries.Remove(effect);
+            if (effect == PlayerMobStatusEffect.None)
+            {
+                return false;
+            }
+
+            bool removed = _entries.Remove(effect);
+            if (removed && effect == PlayerMobStatusEffect.Polymorph)
+            {
+                _player.ClearExternalAvatarTransform((int)PlayerMobStatusEffect.Polymorph);
+            }
+
+            return removed;
         }
 
         public bool HasStatusEffect(PlayerMobStatusEffect effect)
@@ -239,6 +312,29 @@ namespace HaCreator.MapSimulator.Character
 
         private void ApplyStatus(PlayerMobStatusEffect effect, int durationMs, int currentTime, int value, int tickIntervalMs = 0)
         {
+            ApplyStatus(effect, durationMs, currentTime, value, tickIntervalMs, 0);
+        }
+
+        private void ApplyPeriodicDamageStatus(PlayerMobStatusEffect effect, int durationMs, int currentTime, int value, int tickIntervalMs, int count = 0)
+        {
+            ApplyStatus(effect, durationMs, currentTime, value, tickIntervalMs, count);
+        }
+
+        private bool ApplyPolymorphStatus(MobSkillRuntimeData runtimeData, int currentTime)
+        {
+            int morphTemplateId = runtimeData?.X ?? 0;
+            if (morphTemplateId <= 0
+                || !_player.ApplyExternalAvatarTransform((int)PlayerMobStatusEffect.Polymorph, actionName: null, morphTemplateId))
+            {
+                return false;
+            }
+
+            ApplyStatus(PlayerMobStatusEffect.Polymorph, runtimeData.DurationMs, currentTime, morphTemplateId);
+            return true;
+        }
+
+        private void ApplyStatus(PlayerMobStatusEffect effect, int durationMs, int currentTime, int value, int tickIntervalMs, int remainingCount)
+        {
             if (effect == PlayerMobStatusEffect.None || durationMs <= 0)
             {
                 return;
@@ -250,6 +346,7 @@ namespace HaCreator.MapSimulator.Character
                 existingEntry.Value = value;
                 existingEntry.TickIntervalMs = tickIntervalMs;
                 existingEntry.NextTickTime = tickIntervalMs > 0 ? currentTime + tickIntervalMs : 0;
+                existingEntry.RemainingCount = Math.Max(0, remainingCount);
                 return;
             }
 
@@ -259,7 +356,8 @@ namespace HaCreator.MapSimulator.Character
                 ExpirationTime = currentTime + durationMs,
                 Value = value,
                 TickIntervalMs = tickIntervalMs,
-                NextTickTime = tickIntervalMs > 0 ? currentTime + tickIntervalMs : 0
+                NextTickTime = tickIntervalMs > 0 ? currentTime + tickIntervalMs : 0,
+                RemainingCount = Math.Max(0, remainingCount)
             };
         }
 
@@ -329,6 +427,36 @@ namespace HaCreator.MapSimulator.Character
             }
 
             return _player.FacingRight ? 1 : -1;
+        }
+
+        private void RemoveExpiredEffects(int currentTime)
+        {
+            if (_entries.Count == 0)
+            {
+                return;
+            }
+
+            List<PlayerMobStatusEffect> expiredEffects = null;
+            foreach (KeyValuePair<PlayerMobStatusEffect, PlayerMobStatusEntry> pair in _entries)
+            {
+                if (currentTime < pair.Value.ExpirationTime)
+                {
+                    continue;
+                }
+
+                expiredEffects ??= new List<PlayerMobStatusEffect>();
+                expiredEffects.Add(pair.Key);
+            }
+
+            if (expiredEffects == null)
+            {
+                return;
+            }
+
+            for (int i = 0; i < expiredEffects.Count; i++)
+            {
+                ClearStatus(expiredEffects[i]);
+            }
         }
 
         private static int ResolveTickInterval(MobSkillRuntimeData runtimeData, int fallbackMs)

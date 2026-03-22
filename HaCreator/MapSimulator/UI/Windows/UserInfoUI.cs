@@ -1,5 +1,6 @@
 using HaCreator.MapSimulator.Character;
 using HaCreator.MapSimulator.Companions;
+using HaCreator.MapSimulator.Managers;
 using HaSharedLibrary.Render;
 using HaSharedLibrary.Render.DX;
 using Microsoft.Xna.Framework;
@@ -60,6 +61,15 @@ namespace HaCreator.MapSimulator.UI
             public List<PageLayer> Layers { get; } = new List<PageLayer>();
         }
 
+        private sealed class PersonalityTooltipVisual
+        {
+            public IDXObject BaseTop { get; set; }
+            public IDXObject BaseMiddle { get; set; }
+            public IDXObject BaseBottom { get; set; }
+            public IDXObject Title { get; set; }
+            public Dictionary<string, IDXObject> BodyByTrait { get; } = new Dictionary<string, IDXObject>(StringComparer.OrdinalIgnoreCase);
+        }
+
         private enum AuxiliaryPopupKind
         {
             None,
@@ -76,6 +86,7 @@ namespace HaCreator.MapSimulator.UI
         private readonly List<string> _petExceptionEntries = new List<string> { "Meso Bag", "Throwing Star" };
         private readonly string[] _itemPopupEntries = { "Mini Room", "Personal Shop", "Entrusted Shop" };
         private readonly List<string> _wishEntries = new List<string> { "White Scroll", "Brown Work Gloves", "Ilbi Throwing-Star" };
+        private readonly Dictionary<ItemMakerRecipeFamily, IDXObject> _productSkillIcons = new Dictionary<ItemMakerRecipeFamily, IDXObject>();
 
         private IDXObject _foreground;
         private Point _foregroundOffset;
@@ -97,6 +108,10 @@ namespace HaCreator.MapSimulator.UI
         private AuxiliaryPopupVisual _itemPopupVisual;
         private AuxiliaryPopupVisual _wishPopupVisual;
         private UIObject _wishPresentButton;
+        private UIObject _popupUpButton;
+        private UIObject _popupDownButton;
+        private PersonalityTooltipVisual _personalityTooltipVisual;
+        private Func<ItemMakerProgressionSnapshot> _collectionSnapshotProvider;
         private AuxiliaryPopupKind _activePopup;
         private int _selectedPetTabIndex;
         private int _selectedItemPopupIndex;
@@ -341,6 +356,58 @@ namespace HaCreator.MapSimulator.UI
             UpdateButtonStates();
         }
 
+        public void InitializePopupScrollButtons(UIObject popupUpButton, UIObject popupDownButton)
+        {
+            _popupUpButton = popupUpButton;
+            _popupDownButton = popupDownButton;
+
+            BindActionButton(_popupUpButton, "Moved to the previous entry.", MovePopupSelectionUp);
+            BindActionButton(_popupDownButton, "Moved to the next entry.", MovePopupSelectionDown);
+            UpdateButtonStates();
+        }
+
+        public void SetCollectionSnapshotProvider(Func<ItemMakerProgressionSnapshot> snapshotProvider)
+        {
+            _collectionSnapshotProvider = snapshotProvider;
+        }
+
+        public void SetProductSkillIcon(ItemMakerRecipeFamily family, IDXObject icon)
+        {
+            if (icon != null)
+            {
+                _productSkillIcons[family] = icon;
+            }
+        }
+
+        public void InitializePersonalityTooltip(
+            IDXObject baseTop,
+            IDXObject baseMiddle,
+            IDXObject baseBottom,
+            IDXObject title,
+            IDictionary<string, IDXObject> bodyByTrait)
+        {
+            _personalityTooltipVisual = new PersonalityTooltipVisual
+            {
+                BaseTop = baseTop,
+                BaseMiddle = baseMiddle,
+                BaseBottom = baseBottom,
+                Title = title
+            };
+
+            if (bodyByTrait == null)
+            {
+                return;
+            }
+
+            foreach (KeyValuePair<string, IDXObject> entry in bodyByTrait)
+            {
+                if (entry.Value != null && !string.IsNullOrWhiteSpace(entry.Key))
+                {
+                    _personalityTooltipVisual.BodyByTrait[entry.Key] = entry.Value;
+                }
+            }
+        }
+
         public void SetPetController(PetController petController)
         {
             _petController = petController;
@@ -409,6 +476,7 @@ namespace HaCreator.MapSimulator.UI
 
             DrawExceptionPopup(sprite, skeletonMeshRenderer, gameTime, drawReflectionInfo);
             DrawAuxiliaryPopup(sprite, skeletonMeshRenderer, gameTime, drawReflectionInfo);
+            DrawPersonalityTooltip(sprite, skeletonMeshRenderer, gameTime, drawReflectionInfo);
             DrawStatusMessage(sprite);
         }
 
@@ -498,8 +566,14 @@ namespace HaCreator.MapSimulator.UI
             string level = _characterBuild != null ? _characterBuild.Level.ToString() : "-";
             string fame = _characterBuild != null ? _characterBuild.Fame.ToString() : "-";
             string rank = FormatRank(_characterBuild?.WorldRank ?? 0);
+            string jobRank = FormatRank(_characterBuild?.JobRank ?? 0);
             string guild = _characterBuild?.GuildDisplayText ?? "-";
             string alliance = _characterBuild?.AllianceDisplayText ?? "-";
+            string guildAlliance = guild == "-" && alliance == "-"
+                ? "-"
+                : alliance == "-"
+                    ? guild
+                    : $"{guild} / {alliance}";
 
             if (_isBigBang)
             {
@@ -518,9 +592,10 @@ namespace HaCreator.MapSimulator.UI
                     level,
                     job,
                     rank,
+                    jobRank,
                     fame,
-                    guild,
-                    alliance);
+                    guildAlliance);
+                DrawProductSkillSummary(sprite);
                 return;
             }
 
@@ -532,9 +607,11 @@ namespace HaCreator.MapSimulator.UI
             DrawValueColumn(sprite, PreBigBangFieldValuePos, PreBigBangFieldRowHeight, PreBigBangFieldMaxWidth,
                 level,
                 job,
+                rank,
+                jobRank,
                 fame,
-                guild,
-                alliance);
+                guildAlliance);
+            DrawProductSkillSummary(sprite);
         }
 
         private void DrawRidePage(SpriteBatch sprite)
@@ -641,6 +718,42 @@ namespace HaCreator.MapSimulator.UI
                     MutedColor,
                     0.58f);
             }
+        }
+
+        private void DrawProductSkillSummary(SpriteBatch sprite)
+        {
+            ItemMakerProgressionSnapshot snapshot = GetCollectionSnapshot();
+            if (_font == null || snapshot == null)
+            {
+                return;
+            }
+
+            (ItemMakerRecipeFamily family, Point position)[] iconSlots =
+            {
+                (ItemMakerRecipeFamily.Generic, new Point(18, 130)),
+                (ItemMakerRecipeFamily.Gloves, new Point(38, 130)),
+                (ItemMakerRecipeFamily.Shoes, new Point(58, 130)),
+                (ItemMakerRecipeFamily.Toys, new Point(78, 130))
+            };
+
+            foreach ((ItemMakerRecipeFamily family, Point position) in iconSlots)
+            {
+                if (!_productSkillIcons.TryGetValue(family, out IDXObject icon) || icon == null)
+                {
+                    continue;
+                }
+
+                bool active = family == ItemMakerRecipeFamily.Generic
+                    ? snapshot.SuccessfulCrafts > 0
+                    : snapshot.GetLevel(family) > 1;
+                Color tint = active ? Color.White : new Color(255, 255, 255, 96);
+                icon.DrawBackground(sprite, null, null, Position.X + position.X, Position.Y + position.Y, tint, false, null);
+            }
+
+            string makerText = snapshot.SuccessfulCrafts > 0
+                ? $"Maker Lv {snapshot.GenericLevel}  Crafts {snapshot.SuccessfulCrafts}"
+                : "Maker profile has no crafted items yet.";
+            DrawPlainText(sprite, FitText(makerText, 116), new Vector2(Position.X + 18, Position.Y + 112), MutedColor, 0.48f);
         }
 
         private void DrawSectionHeader(SpriteBatch sprite, string title)
@@ -801,6 +914,59 @@ namespace HaCreator.MapSimulator.UI
                     DrawWishPopupContents(sprite, popupPosition);
                     break;
             }
+        }
+
+        private void DrawPersonalityTooltip(
+            SpriteBatch sprite,
+            SkeletonMeshRenderer skeletonMeshRenderer,
+            GameTime gameTime,
+            ReflectionDrawableBoundary drawReflectionInfo)
+        {
+            if (_currentPage != UserInfoPage.Personality || _personalityTooltipVisual == null)
+            {
+                return;
+            }
+
+            string traitKey = ResolveHoveredPersonalityTrait();
+            if (string.IsNullOrWhiteSpace(traitKey) ||
+                !_personalityTooltipVisual.BodyByTrait.TryGetValue(traitKey, out IDXObject body) ||
+                body == null)
+            {
+                return;
+            }
+
+            Point tooltipPosition = new Point(Position.X + 104, Position.Y + 34);
+            DrawLayer(_personalityTooltipVisual.BaseTop, new Point(tooltipPosition.X - Position.X, tooltipPosition.Y - Position.Y), sprite, skeletonMeshRenderer, gameTime, drawReflectionInfo);
+
+            int middleHeight = Math.Max(0, body.Height - 26);
+            if (_personalityTooltipVisual.BaseMiddle != null && middleHeight > 0)
+            {
+                Texture2D middleTexture = (_personalityTooltipVisual.BaseMiddle as DXObject)?.Texture;
+                if (middleTexture != null)
+                {
+                    sprite.Draw(
+                        middleTexture,
+                        new Rectangle(tooltipPosition.X, tooltipPosition.Y + 13, middleTexture.Width, middleHeight),
+                        Color.White);
+                }
+            }
+
+            DrawLayer(_personalityTooltipVisual.BaseBottom, new Point(tooltipPosition.X - Position.X, tooltipPosition.Y + 13 + middleHeight - Position.Y), sprite, skeletonMeshRenderer, gameTime, drawReflectionInfo);
+            DrawLayer(_personalityTooltipVisual.Title, new Point(tooltipPosition.X + 7 - Position.X, tooltipPosition.Y + 4 - Position.Y), sprite, skeletonMeshRenderer, gameTime, drawReflectionInfo);
+            DrawLayer(body, new Point(tooltipPosition.X + 7 - Position.X, tooltipPosition.Y + 34 - Position.Y), sprite, skeletonMeshRenderer, gameTime, drawReflectionInfo);
+
+            if (_font == null)
+            {
+                return;
+            }
+
+            int value = GetPersonalityTraitValue(traitKey);
+            DrawPlainText(
+                sprite,
+                $"Lv {value}",
+                new Vector2(tooltipPosition.X + 102, tooltipPosition.Y + 16),
+                WarningColor,
+                0.5f);
         }
 
         private void DrawItemPopupContents(SpriteBatch sprite, Point popupPosition)
@@ -1001,6 +1167,19 @@ namespace HaCreator.MapSimulator.UI
                 _wishPresentButton.ButtonVisible = wishOpen;
                 _wishPresentButton.SetEnabled(wishOpen && _wishEntries.Count > 0);
             }
+
+            bool popupScrollVisible = _activePopup != AuxiliaryPopupKind.None;
+            if (_popupUpButton != null)
+            {
+                _popupUpButton.ButtonVisible = popupScrollVisible;
+                _popupUpButton.SetEnabled(popupScrollVisible && CanMovePopupSelection(-1));
+            }
+
+            if (_popupDownButton != null)
+            {
+                _popupDownButton.ButtonVisible = popupScrollVisible;
+                _popupDownButton.SetEnabled(popupScrollVisible && CanMovePopupSelection(1));
+            }
         }
 
         private PageVisual GetOrCreateVisual(UserInfoPage page)
@@ -1121,6 +1300,53 @@ namespace HaCreator.MapSimulator.UI
         {
             _exceptionPopupOpen = false;
             _activePopup = _activePopup == popupKind ? AuxiliaryPopupKind.None : popupKind;
+            if (_activePopup == AuxiliaryPopupKind.Item && _selectedItemPopupIndex < 0 && _itemPopupEntries.Length > 0)
+            {
+                _selectedItemPopupIndex = 0;
+            }
+
+            if (_activePopup == AuxiliaryPopupKind.Wish && _selectedWishIndex < 0 && _wishEntries.Count > 0)
+            {
+                _selectedWishIndex = 0;
+            }
+
+            UpdateButtonStates();
+        }
+
+        private void MovePopupSelectionUp()
+        {
+            MovePopupSelection(-1);
+        }
+
+        private void MovePopupSelectionDown()
+        {
+            MovePopupSelection(1);
+        }
+
+        private void MovePopupSelection(int delta)
+        {
+            if (_activePopup == AuxiliaryPopupKind.None)
+            {
+                return;
+            }
+
+            if (!CanMovePopupSelection(delta))
+            {
+                return;
+            }
+
+            switch (_activePopup)
+            {
+                case AuxiliaryPopupKind.Item:
+                    _selectedItemPopupIndex = Math.Clamp(_selectedItemPopupIndex + delta, 0, _itemPopupEntries.Length - 1);
+                    _statusMessage = $"Selected {_itemPopupEntries[_selectedItemPopupIndex]} preview.";
+                    break;
+                case AuxiliaryPopupKind.Wish:
+                    _selectedWishIndex = Math.Clamp(_selectedWishIndex + delta, 0, _wishEntries.Count - 1);
+                    _statusMessage = $"Selected {_wishEntries[_selectedWishIndex]} from the wish list.";
+                    break;
+            }
+
             UpdateButtonStates();
         }
 
@@ -1210,19 +1436,35 @@ namespace HaCreator.MapSimulator.UI
 
         private List<(string Label, string Value)> BuildCollectEntries()
         {
+            ItemMakerProgressionSnapshot snapshot = GetCollectionSnapshot();
             List<(string Label, string Value)> entries = new List<(string Label, string Value)>
             {
-                ("Equipped", (_characterBuild?.Equipment?.Count ?? 0).ToString()),
-                ("Weapon", _characterBuild?.GetWeapon()?.Name ?? "-"),
-                ("Cap", GetEquippedItemName(EquipSlot.Cap)),
-                ("Outfit", ResolveOutfitName()),
-                ("Shoes", GetEquippedItemName(EquipSlot.Shoes)),
-                ("EXP", _characterBuild?.ExpDisplayText ?? "-")
+                ("Maker", $"Lv {snapshot.GenericLevel}"),
+                ("Crafts", snapshot.SuccessfulCrafts.ToString()),
+                ("Glove", BuildCollectFamilySummary(snapshot, ItemMakerRecipeFamily.Gloves)),
+                ("Shoe", BuildCollectFamilySummary(snapshot, ItemMakerRecipeFamily.Shoes)),
+                ("Toy", BuildCollectFamilySummary(snapshot, ItemMakerRecipeFamily.Toys)),
+                ("Recipes", snapshot.DiscoveredRecipeIds.Count.ToString())
             };
 
             return _collectSortByName
                 ? entries.OrderBy(entry => entry.Label, StringComparer.OrdinalIgnoreCase).ToList()
                 : entries;
+        }
+
+        private string BuildCollectFamilySummary(ItemMakerProgressionSnapshot snapshot, ItemMakerRecipeFamily family)
+        {
+            if (snapshot == null)
+            {
+                return "-";
+            }
+
+            int level = snapshot.GetLevel(family);
+            int progress = snapshot.GetProgress(family);
+            int target = snapshot.GetProgressTarget(family);
+            return target > 0
+                ? $"Lv {level} ({progress}/{target})"
+                : $"Lv {level}";
         }
 
         private string ResolveNextPetExceptionEntry()
@@ -1456,6 +1698,59 @@ namespace HaCreator.MapSimulator.UI
             }
 
             return ellipsis;
+        }
+
+        private ItemMakerProgressionSnapshot GetCollectionSnapshot()
+        {
+            return _collectionSnapshotProvider?.Invoke() ?? ItemMakerProgressionSnapshot.Default;
+        }
+
+        private bool CanMovePopupSelection(int delta)
+        {
+            return _activePopup switch
+            {
+                AuxiliaryPopupKind.Item => _itemPopupEntries.Length > 0 &&
+                    (_selectedItemPopupIndex + delta) >= 0 &&
+                    (_selectedItemPopupIndex + delta) < _itemPopupEntries.Length,
+                AuxiliaryPopupKind.Wish => _wishEntries.Count > 0 &&
+                    (_selectedWishIndex + delta) >= 0 &&
+                    (_selectedWishIndex + delta) < _wishEntries.Count,
+                _ => false
+            };
+        }
+
+        private string ResolveHoveredPersonalityTrait()
+        {
+            MouseState mouseState = Mouse.GetState();
+            string[] traitKeys = { "charisma", "insight", "will", "craft", "sense", "charm" };
+            for (int i = 0; i < traitKeys.Length; i++)
+            {
+                if (GetPersonalityRowBounds(i).Contains(mouseState.Position))
+                {
+                    return traitKeys[i];
+                }
+            }
+
+            return null;
+        }
+
+        private Rectangle GetPersonalityRowBounds(int index)
+        {
+            return new Rectangle(Position.X + 18, Position.Y + 40 + (index * 24), 118, 22);
+        }
+
+        private int GetPersonalityTraitValue(string traitKey)
+        {
+            return traitKey?.ToLowerInvariant() switch
+            {
+                "charisma" => _characterBuild?.TraitCharisma ?? 0,
+                "insight" => _characterBuild?.TraitInsight ?? 0,
+                "will" => _characterBuild?.TraitWill ?? 0,
+                "craft" => _characterBuild?.TraitCraft ?? 0,
+                "sense" => _characterBuild?.TraitSense ?? 0,
+                "charm" => _characterBuild?.TraitCharm ?? 0,
+                _ => 0
+            };
         }
 
         private void DrawLayer(
