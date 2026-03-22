@@ -23,8 +23,10 @@ using MapleLib;
 using MapleLib.WzLib;
 using MapleLib.WzLib.Spine;
 using MapleLib.WzLib.WzProperties;
+using MapleLib.WzLib.Util;
 using MapleLib.WzLib.WzStructure.Data;
 using MapleLib.WzLib.WzStructure.Data.ItemStructure;
+using MapleLib.WzLib.WzStructure;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Audio;
 using Microsoft.Xna.Framework.Graphics;
@@ -1162,44 +1164,59 @@ namespace HaCreator.MapSimulator
                 }
             }
 
-            if (_loadMapCallback != null)
+            if (TryResolveMapDisplayNameFromCache(mapId, out string resolvedDisplayName))
             {
-                try
-                {
-                    Tuple<Board, string> result = _loadMapCallback(mapId);
-                    string title = result?.Item2;
-                    Board board = result?.Item1;
-                    string resolved = title;
-                    if (board?.MapInfo != null)
-                    {
-                        string street = board.MapInfo.strStreetName;
-                        string map = board.MapInfo.strMapName;
-                        if (!string.IsNullOrWhiteSpace(street) && !string.IsNullOrWhiteSpace(map) && !string.Equals(street, map, StringComparison.OrdinalIgnoreCase))
-                        {
-                            resolved = $"{street} : {map}";
-                        }
-                        else if (!string.IsNullOrWhiteSpace(map))
-                        {
-                            resolved = map;
-                        }
-                        else if (!string.IsNullOrWhiteSpace(street))
-                        {
-                            resolved = street;
-                        }
-                    }
-
-                    if (!string.IsNullOrWhiteSpace(resolved))
-                    {
-                        _mapTransferTitleCache[mapId] = resolved;
-                        return resolved;
-                    }
-                }
-                catch
-                {
-                }
+                _mapTransferTitleCache[mapId] = resolvedDisplayName;
+                return resolvedDisplayName;
             }
 
             return mapId.ToString();
+        }
+
+        private static bool TryResolveMapDisplayNameFromCache(int mapId, out string displayName)
+        {
+            displayName = null;
+
+            string mapIdKey = mapId.ToString().PadLeft(9, '0');
+            if (Program.InfoManager?.MapsCache == null ||
+                !Program.InfoManager.MapsCache.TryGetValue(mapIdKey, out Tuple<WzImage, string, string, string, MapleLib.WzLib.WzStructure.MapInfo> cachedMap) ||
+                cachedMap == null)
+            {
+                return false;
+            }
+
+            string mapName = cachedMap.Item2;
+            string streetName = cachedMap.Item3;
+            MapleLib.WzLib.WzStructure.MapInfo mapInfo = cachedMap.Item5;
+            if (mapInfo != null)
+            {
+                if (string.IsNullOrWhiteSpace(mapName))
+                {
+                    mapName = mapInfo.strMapName;
+                }
+
+                if (string.IsNullOrWhiteSpace(streetName))
+                {
+                    streetName = mapInfo.strStreetName;
+                }
+            }
+
+            if (!string.IsNullOrWhiteSpace(streetName) &&
+                !string.IsNullOrWhiteSpace(mapName) &&
+                !string.Equals(streetName, mapName, StringComparison.OrdinalIgnoreCase))
+            {
+                displayName = $"{streetName} : {mapName}";
+            }
+            else if (!string.IsNullOrWhiteSpace(mapName))
+            {
+                displayName = mapName;
+            }
+            else if (!string.IsNullOrWhiteSpace(streetName))
+            {
+                displayName = streetName;
+            }
+
+            return !string.IsNullOrWhiteSpace(displayName);
         }
 
         private void WireQuestLogWindowData()
@@ -7851,7 +7868,7 @@ namespace HaCreator.MapSimulator
             int viewWidth = _renderParams.RenderWidth;
             int viewHeight = _renderParams.RenderHeight;
 
-            if (_useSpatialPartitioning)
+            if (CanUseSpatialPartitioning())
             {
                 // Use spatial partitioning for large maps
                 UpdateObjectVisibilitySpatial(centerX, centerY, viewWidth, viewHeight);
@@ -7875,6 +7892,18 @@ namespace HaCreator.MapSimulator
 
             // Update mirror boundaries for mobs and NPCs (cached to avoid per-frame checks)
             UpdateMirrorBoundaries();
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private bool CanUseSpatialPartitioning()
+        {
+            return _useSpatialPartitioning &&
+                   _mapObjectsGrid != null &&
+                   _portalsGrid != null &&
+                   _reactorsGrid != null &&
+                   _visibleMapObjects != null &&
+                   _visiblePortals != null &&
+                   _visibleReactors != null;
         }
 
         /// <summary>
@@ -7960,22 +7989,34 @@ namespace HaCreator.MapSimulator
 
         private void ClearPreviousSpatialVisibility()
         {
-            for (int i = 0; i < _visibleMapObjectsCount; i++)
+            if (_visibleMapObjects != null)
             {
-                _visibleMapObjects[i]?.SetVisible(false);
-                _visibleMapObjects[i] = null;
+                int visibleMapObjectsToClear = Math.Min(_visibleMapObjectsCount, _visibleMapObjects.Length);
+                for (int i = 0; i < visibleMapObjectsToClear; i++)
+                {
+                    _visibleMapObjects[i]?.SetVisible(false);
+                    _visibleMapObjects[i] = null;
+                }
             }
 
-            for (int i = 0; i < _visiblePortalsCount; i++)
+            if (_visiblePortals != null)
             {
-                _visiblePortals[i]?.SetVisible(false);
-                _visiblePortals[i] = null;
+                int visiblePortalsToClear = Math.Min(_visiblePortalsCount, _visiblePortals.Length);
+                for (int i = 0; i < visiblePortalsToClear; i++)
+                {
+                    _visiblePortals[i]?.SetVisible(false);
+                    _visiblePortals[i] = null;
+                }
             }
 
-            for (int i = 0; i < _visibleReactorsCount; i++)
+            if (_visibleReactors != null)
             {
-                _visibleReactors[i]?.SetVisible(false);
-                _visibleReactors[i] = null;
+                int visibleReactorsToClear = Math.Min(_visibleReactorsCount, _visibleReactors.Length);
+                for (int i = 0; i < visibleReactorsToClear; i++)
+                {
+                    _visibleReactors[i]?.SetVisible(false);
+                    _visibleReactors[i] = null;
+                }
             }
 
             _visibleMapObjectsCount = 0;
@@ -13408,21 +13449,129 @@ namespace HaCreator.MapSimulator
             if (configuredReturnMap <= 0 || configuredReturnMap == MapConstants.MaxMap)
                 return false;
 
-            Tuple<Board, string> result = _loadMapCallback(configuredReturnMap);
-            Board returnBoard = result?.Item1;
-            PortalInstance townPortal = returnBoard?.BoardItems?.Portals?
-                .FirstOrDefault(portal => portal.pt == PortalType.TownPortalPoint)
-                ?? returnBoard?.BoardItems?.Portals?
-                    .FirstOrDefault(portal => string.Equals(portal.pn, PortalType.TownPortalPoint.ToCode(), StringComparison.OrdinalIgnoreCase))
-                ?? returnBoard?.BoardItems?.Portals?
-                    .FirstOrDefault(portal => portal.pt == PortalType.StartPoint);
-
-            if (townPortal == null)
+            if (!TryResolveReturnMapPortalPosition(configuredReturnMap, out returnX, out returnY))
                 return false;
 
             returnMapId = configuredReturnMap;
-            returnX = townPortal.X;
-            returnY = townPortal.Y;
+            return true;
+        }
+
+        private static bool TryResolveReturnMapPortalPosition(int mapId, out float portalX, out float portalY)
+        {
+            portalX = 0f;
+            portalY = 0f;
+
+            WzImage mapImage = TryGetMapImageForMetadataLookup(mapId);
+            if (mapImage == null)
+            {
+                return false;
+            }
+
+            bool shouldUnparse = !mapImage.Parsed;
+
+            try
+            {
+                if (!mapImage.Parsed)
+                {
+                    mapImage.ParseImage();
+                }
+
+                if (TryResolvePortalPosition(mapImage, PortalType.TownPortalPoint, PortalType.TownPortalPoint.ToCode(), out portalX, out portalY) ||
+                    TryResolvePortalPosition(mapImage, PortalType.StartPoint, null, out portalX, out portalY))
+                {
+                    return true;
+                }
+            }
+            finally
+            {
+                if (shouldUnparse)
+                {
+                    mapImage.UnparseImage();
+                }
+            }
+
+            return false;
+        }
+
+        private static WzImage TryGetMapImageForMetadataLookup(int mapId)
+        {
+            string mapIdKey = mapId.ToString().PadLeft(9, '0');
+            if (Program.InfoManager?.MapsCache != null &&
+                Program.InfoManager.MapsCache.TryGetValue(mapIdKey, out Tuple<WzImage, string, string, string, MapleLib.WzLib.WzStructure.MapInfo> cachedMap) &&
+                cachedMap?.Item1 != null)
+            {
+                return cachedMap.Item1;
+            }
+
+            if (Program.DataSource == null)
+            {
+                return null;
+            }
+
+            string folderNum = mapIdKey[0].ToString();
+            return Program.DataSource.GetImageByPath($"Map/Map/Map{folderNum}/{mapIdKey}.img")
+                   ?? Program.DataSource.GetImage("Map", $"Map/Map{folderNum}/{mapIdKey}.img");
+        }
+
+        private static bool TryResolvePortalPosition(
+            WzImage mapImage,
+            PortalType preferredPortalType,
+            string preferredPortalName,
+            out float portalX,
+            out float portalY)
+        {
+            portalX = 0f;
+            portalY = 0f;
+
+            if (mapImage?["portal"] is not WzSubProperty portalParent)
+            {
+                return false;
+            }
+
+            WzSubProperty fallbackPortal = null;
+            foreach (WzImageProperty property in portalParent.WzProperties)
+            {
+                if (property is not WzSubProperty portal)
+                {
+                    continue;
+                }
+
+                int? portalTypeId = InfoTool.GetOptionalInt(portal["pt"]);
+                PortalType? portalType = null;
+                if (portalTypeId.HasValue &&
+                    Program.InfoManager?.PortalEditor_TypeById != null &&
+                    portalTypeId.Value >= 0 &&
+                    portalTypeId.Value < Program.InfoManager.PortalEditor_TypeById.Count)
+                {
+                    portalType = Program.InfoManager.PortalEditor_TypeById[portalTypeId.Value];
+                }
+
+                string portalName = InfoTool.GetOptionalString(portal["pn"]);
+                bool matchesType = portalType == preferredPortalType;
+                bool matchesName = !string.IsNullOrWhiteSpace(preferredPortalName) &&
+                                   string.Equals(portalName, preferredPortalName, StringComparison.OrdinalIgnoreCase);
+                if (!matchesType && !matchesName)
+                {
+                    continue;
+                }
+
+                portalX = InfoTool.GetInt(portal["x"]);
+                portalY = InfoTool.GetInt(portal["y"]);
+                return true;
+            }
+
+            if (preferredPortalType == PortalType.StartPoint)
+            {
+                fallbackPortal = portalParent.WzProperties.OfType<WzSubProperty>().FirstOrDefault();
+            }
+
+            if (fallbackPortal == null)
+            {
+                return false;
+            }
+
+            portalX = InfoTool.GetInt(fallbackPortal["x"]);
+            portalY = InfoTool.GetInt(fallbackPortal["y"]);
             return true;
         }
 
