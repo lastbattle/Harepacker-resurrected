@@ -114,6 +114,7 @@ namespace HaCreator.MapSimulator
         private readonly List<MobMovementInfo> _groundMobMovementBuffer = new();
         private readonly List<MobItem> _frameActiveMobs = new();
         private readonly List<MobItem> _frameMovableMobs = new();
+        private readonly List<long> _expiredMobSkillEffectKeys = new();
         private MobItem _framePrimaryBossMob;
 
         // Mob pool for spawn/despawn management
@@ -161,6 +162,10 @@ namespace HaCreator.MapSimulator
         private int _visiblePortalsCount;
         private ReactorItem[] _visibleReactors;
         private int _visibleReactorsCount;
+        private MobItem[] _visibleMobs;
+        private int _visibleMobsCount;
+        private NpcItem[] _visibleNpcs;
+        private int _visibleNpcsCount;
         private bool[] _reactorVisibilityBuffer;
 
         // Boundary, borders
@@ -267,6 +272,8 @@ namespace HaCreator.MapSimulator
         private readonly Dictionary<(int skillId, int level), MobSummonSkillInfo> _mobSummonSkillCache = new();
         private readonly Dictionary<(int skillId, int level), MobSkillRuntimeData> _mobSkillRuntimeCache = new();
         private readonly Dictionary<long, int> _appliedMobSkillEffects = new();
+        private readonly Func<int, int, ReflectionDrawableBoundary> _mobMirrorBoundaryResolver;
+        private readonly Func<int, int, ReflectionDrawableBoundary> _npcMirrorBoundaryResolver;
         private readonly Random _mobSkillRandom = new Random();
 
         // Consolidated effect management
@@ -4901,6 +4908,8 @@ namespace HaCreator.MapSimulator
         /// <param name="spawnPortalName">Optional portal name to spawn at (from portal teleportation)</param>
         public MapSimulator(Board _mapBoard, string titleName, string spawnPortalName = null)
         {
+            _mobMirrorBoundaryResolver = ResolveMobMirrorBoundary;
+            _npcMirrorBoundaryResolver = ResolveNpcMirrorBoundary;
             _chatFallbackMeasureGraphics = SD.Graphics.FromImage(_chatFallbackMeasureBitmap);
             _chatFallbackMeasureGraphics.TextRenderingHint = SDText.TextRenderingHint.AntiAliasGridFit;
             _chatFallbackFont = new SD.Font("Segoe UI", 13f, SD.FontStyle.Regular, SD.GraphicsUnit.Point);
@@ -6891,6 +6900,10 @@ namespace HaCreator.MapSimulator
             _renderingManager?.SetVisibleRenderSets(
                 _useSpatialPartitioning ? _visibleMapObjects : null,
                 _useSpatialPartitioning ? _visibleMapObjectsCount : 0,
+                _visibleMobs,
+                _visibleMobsCount,
+                _visibleNpcs,
+                _visibleNpcsCount,
                 _useSpatialPartitioning ? _visiblePortals : null,
                 _useSpatialPartitioning ? _visiblePortalsCount : 0,
                 _useSpatialPartitioning ? _visibleReactors : null,
@@ -7882,15 +7895,21 @@ namespace HaCreator.MapSimulator
             // Mobs and NPCs always visible (they handle their own position-based culling)
             // Backgrounds always visible (they tile/scroll and handle their own culling)
 
+            UpdateVisibleEntityBuffers(centerX, centerY, viewWidth, viewHeight);
+
             _renderingManager?.SetVisibleRenderSets(
                 _useSpatialPartitioning ? _visibleMapObjects : null,
                 _useSpatialPartitioning ? _visibleMapObjectsCount : 0,
+                _visibleMobs,
+                _visibleMobsCount,
+                _visibleNpcs,
+                _visibleNpcsCount,
                 _useSpatialPartitioning ? _visiblePortals : null,
                 _useSpatialPartitioning ? _visiblePortalsCount : 0,
                 _useSpatialPartitioning ? _visibleReactors : null,
                 _useSpatialPartitioning ? _visibleReactorsCount : 0);
 
-            // Update mirror boundaries for mobs and NPCs (cached to avoid per-frame checks)
+            // Update mirror boundaries only for entities that may render this frame.
             UpdateMirrorBoundaries();
         }
 
@@ -8024,6 +8043,79 @@ namespace HaCreator.MapSimulator
             _visibleReactorsCount = 0;
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private void UpdateVisibleEntityBuffers(int centerX, int centerY, int viewWidth, int viewHeight)
+        {
+            EnsureVisibleEntityBufferCapacity(_mobsArray?.Length ?? 0, _npcsArray?.Length ?? 0);
+
+            _visibleMobsCount = 0;
+            if (_mobsArray != null)
+            {
+                for (int i = 0; i < _mobsArray.Length; i++)
+                {
+                    MobItem mob = _mobsArray[i];
+                    if (mob == null)
+                    {
+                        continue;
+                    }
+
+                    if (!IsWorldEntityInView(mob.CurrentX, mob.CurrentY, mob.MobInstance?.Width ?? 0, mob.MobInstance?.Height ?? 0, centerX, centerY, viewWidth, viewHeight))
+                    {
+                        continue;
+                    }
+
+                    _visibleMobs[_visibleMobsCount++] = mob;
+                }
+            }
+
+            _visibleNpcsCount = 0;
+            if (_npcsArray != null)
+            {
+                for (int i = 0; i < _npcsArray.Length; i++)
+                {
+                    NpcItem npc = _npcsArray[i];
+                    if (npc == null)
+                    {
+                        continue;
+                    }
+
+                    if (!IsWorldEntityInView(npc.CurrentX, npc.CurrentY, npc.NpcInstance?.Width ?? 0, npc.NpcInstance?.Height ?? 0, centerX, centerY, viewWidth, viewHeight))
+                    {
+                        continue;
+                    }
+
+                    _visibleNpcs[_visibleNpcsCount++] = npc;
+                }
+            }
+        }
+
+        private void EnsureVisibleEntityBufferCapacity(int mobCapacity, int npcCapacity)
+        {
+            if (_visibleMobs == null || _visibleMobs.Length < mobCapacity)
+            {
+                _visibleMobs = new MobItem[Math.Max(mobCapacity, 1)];
+            }
+
+            if (_visibleNpcs == null || _visibleNpcs.Length < npcCapacity)
+            {
+                _visibleNpcs = new NpcItem[Math.Max(npcCapacity, 1)];
+            }
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private bool IsWorldEntityInView(int entityX, int entityY, int entityWidth, int entityHeight, int centerX, int centerY, int viewWidth, int viewHeight)
+        {
+            int screenX = entityX - mapShiftX + centerX;
+            int screenY = entityY - mapShiftY + centerY;
+            int horizontalPadding = Math.Max(96, entityWidth + 48);
+            int verticalPadding = Math.Max(96, entityHeight + 48);
+
+            return screenX >= -horizontalPadding &&
+                   screenX <= viewWidth + horizontalPadding &&
+                   screenY >= -verticalPadding &&
+                   screenY <= viewHeight + verticalPadding;
+        }
+
         /// <summary>
         /// Pre-calculates mirror boundaries for mobs and NPCs.
         /// Uses caching to avoid redundant checks every frame.
@@ -8031,30 +8123,27 @@ namespace HaCreator.MapSimulator
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void UpdateMirrorBoundaries()
         {
-            // Create a lambda to check mirror field data boundaries
-            Func<int, int, ReflectionDrawableBoundary> checkMirrorFieldData = (x, y) =>
+            for (int i = 0; i < _visibleMobsCount; i++)
             {
-                var mirrorData = _mapBoard.BoardItems.CheckObjectWithinMirrorFieldDataBoundary(x, y, MirrorFieldDataType.mob);
-                return mirrorData?.ReflectionInfo;
-            };
-
-            // Update mobs
-            for (int i = 0; i < _frameActiveMobs.Count; i++)
-            {
-                _frameActiveMobs[i].UpdateMirrorBoundary(_mirrorBottomRect, _mirrorBottomReflection, checkMirrorFieldData);
+                _visibleMobs[i]?.UpdateMirrorBoundary(_mirrorBottomRect, _mirrorBottomReflection, _mobMirrorBoundaryResolver);
             }
 
-            // Update NPCs (using npc mirror type)
-            Func<int, int, ReflectionDrawableBoundary> checkNpcMirrorFieldData = (x, y) =>
+            for (int i = 0; i < _visibleNpcsCount; i++)
             {
-                var mirrorData = _mapBoard.BoardItems.CheckObjectWithinMirrorFieldDataBoundary(x, y, MirrorFieldDataType.npc);
-                return mirrorData?.ReflectionInfo;
-            };
-
-            for (int i = 0; i < _npcsArray.Length; i++)
-            {
-                _npcsArray[i].UpdateMirrorBoundary(_mirrorBottomRect, _mirrorBottomReflection, checkNpcMirrorFieldData);
+                _visibleNpcs[i]?.UpdateMirrorBoundary(_mirrorBottomRect, _mirrorBottomReflection, _npcMirrorBoundaryResolver);
             }
+        }
+
+        private ReflectionDrawableBoundary ResolveMobMirrorBoundary(int x, int y)
+        {
+            var mirrorData = _mapBoard?.BoardItems?.CheckObjectWithinMirrorFieldDataBoundary(x, y, MirrorFieldDataType.mob);
+            return mirrorData?.ReflectionInfo;
+        }
+
+        private ReflectionDrawableBoundary ResolveNpcMirrorBoundary(int x, int y)
+        {
+            var mirrorData = _mapBoard?.BoardItems?.CheckObjectWithinMirrorFieldDataBoundary(x, y, MirrorFieldDataType.npc);
+            return mirrorData?.ReflectionInfo;
         }
 
         /// <summary>
@@ -8190,7 +8279,7 @@ namespace HaCreator.MapSimulator
             CleanupAppliedMobSkillEffects(tickCount);
             List<MobItem> skillEffectMobs = null;
 
-            EscortProgressionState escortProgressionState = EscortProgressionController.ResolveState(_mobsArray);
+            EscortProgressionState escortProgressionState = EscortProgressionController.ResolveState(_frameActiveMobs);
 
             for (int i = 0; i < _frameMovableMobs.Count; i++)
             {
@@ -8293,7 +8382,7 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
-            List<long> expiredKeys = null;
+            _expiredMobSkillEffectKeys.Clear();
             foreach (KeyValuePair<long, int> entry in _appliedMobSkillEffects)
             {
                 if (currentTick < entry.Value)
@@ -8301,18 +8390,17 @@ namespace HaCreator.MapSimulator
                     continue;
                 }
 
-                expiredKeys ??= new List<long>();
-                expiredKeys.Add(entry.Key);
+                _expiredMobSkillEffectKeys.Add(entry.Key);
             }
 
-            if (expiredKeys == null)
+            if (_expiredMobSkillEffectKeys.Count == 0)
             {
                 return;
             }
 
-            for (int i = 0; i < expiredKeys.Count; i++)
+            for (int i = 0; i < _expiredMobSkillEffectKeys.Count; i++)
             {
-                _appliedMobSkillEffects.Remove(expiredKeys[i]);
+                _appliedMobSkillEffects.Remove(_expiredMobSkillEffectKeys[i]);
             }
         }
 

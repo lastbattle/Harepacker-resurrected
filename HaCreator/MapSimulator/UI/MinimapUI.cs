@@ -265,7 +265,6 @@ namespace HaCreator.MapSimulator.UI
                 DrawTrackedUserMarkers(sprite, skeletonMeshRenderer, gameTime, drawReflectionInfo, renderParameters, TickCount);
                 DrawNpcMarkers(sprite, skeletonMeshRenderer, gameTime, drawReflectionInfo, renderParameters, TickCount);
                 DrawNpcListPanel(sprite, skeletonMeshRenderer, gameTime, centerX, centerY, renderParameters, TickCount);
-                DrawDirectionOverlays(sprite, skeletonMeshRenderer, gameTime, drawReflectionInfo, renderParameters, TickCount);
             }
 
             // draw minimap buttons
@@ -528,18 +527,11 @@ namespace HaCreator.MapSimulator.UI
                     continue;
 
                 Point minimapPoint = WorldToMinimap(npc.CurrentX, npc.CurrentY);
-                if (!IsWithinMinimapImage(minimapPoint))
-                    continue;
-
                 BaseDXDrawableItem marker = ResolveNpcMarker(npc);
                 if (marker == null)
                     continue;
 
-                marker.Draw(sprite, skeletonMeshRenderer, gameTime,
-                    -Position.X, -Position.Y, minimapPoint.X, minimapPoint.Y,
-                    drawReflectionInfo,
-                    renderParameters,
-                    tickCount);
+                DrawMarkerWithDirectionOverlay(marker, minimapPoint, true, sprite, skeletonMeshRenderer, gameTime, drawReflectionInfo, renderParameters, tickCount);
             }
         }
 
@@ -560,74 +552,7 @@ namespace HaCreator.MapSimulator.UI
                     continue;
 
                 Point minimapPoint = WorldToMinimap(portal.PortalInstance.X, portal.PortalInstance.Y);
-                if (!IsWithinMinimapImage(minimapPoint))
-                    continue;
-
-                _portalMarker.Draw(sprite, skeletonMeshRenderer, gameTime,
-                    -Position.X, -Position.Y, minimapPoint.X, minimapPoint.Y,
-                    drawReflectionInfo,
-                    renderParameters,
-                    tickCount);
-            }
-        }
-
-        private void DrawDirectionOverlays(
-            SpriteBatch sprite,
-            SkeletonMeshRenderer skeletonMeshRenderer,
-            GameTime gameTime,
-            ReflectionDrawableBoundary drawReflectionInfo,
-            RenderParameters renderParameters,
-            int tickCount)
-        {
-            if (_bIsCollapsedState || _directionMarkers.Count == 0)
-                return;
-
-            foreach (PortalItem portal in _portalMarkers)
-            {
-                if (portal?.PortalInstance == null || !portal.IsVisible)
-                    continue;
-
-                DrawDirectionOverlayForPoint(
-                    WorldToMinimap(portal.PortalInstance.X, portal.PortalInstance.Y),
-                    sprite,
-                    skeletonMeshRenderer,
-                    gameTime,
-                    drawReflectionInfo,
-                    renderParameters,
-                    tickCount);
-            }
-
-            if (!_showNpcMarkers)
-                return;
-
-            foreach (NpcItem npc in _npcMarkers)
-            {
-                if (npc?.NpcInstance == null || !npc.IsVisible)
-                    continue;
-
-                DrawDirectionOverlayForPoint(
-                    WorldToMinimap(npc.CurrentX, npc.CurrentY),
-                    sprite,
-                    skeletonMeshRenderer,
-                    gameTime,
-                    drawReflectionInfo,
-                    renderParameters,
-                    tickCount);
-            }
-
-            foreach (TrackedUserMarker trackedUser in _trackedUserMarkers)
-            {
-                if (trackedUser == null || !trackedUser.ShowDirectionOverlay)
-                    continue;
-
-                DrawDirectionOverlayForPoint(
-                    WorldToMinimap((int)trackedUser.WorldX, (int)trackedUser.WorldY),
-                    sprite,
-                    skeletonMeshRenderer,
-                    gameTime,
-                    drawReflectionInfo,
-                    renderParameters,
-                    tickCount);
+                DrawMarkerWithDirectionOverlay(_portalMarker, minimapPoint, true, sprite, skeletonMeshRenderer, gameTime, drawReflectionInfo, renderParameters, tickCount);
             }
         }
 
@@ -702,14 +627,46 @@ namespace HaCreator.MapSimulator.UI
                     continue;
 
                 Point minimapPoint = WorldToMinimap((int)trackedUser.WorldX, (int)trackedUser.WorldY);
-                if (!IsWithinMinimapImage(minimapPoint))
-                    continue;
-
                 if (!_helperMarkers.TryGetValue(trackedUser.MarkerType, out BaseDXDrawableItem marker) || marker == null)
                     continue;
 
+                DrawMarkerWithDirectionOverlay(marker, minimapPoint, trackedUser.ShowDirectionOverlay, sprite, skeletonMeshRenderer, gameTime, drawReflectionInfo, renderParameters, tickCount);
+            }
+        }
+
+        private void DrawMarkerWithDirectionOverlay(
+            BaseDXDrawableItem marker,
+            Point minimapPoint,
+            bool showDirectionOverlay,
+            SpriteBatch sprite,
+            SkeletonMeshRenderer skeletonMeshRenderer,
+            GameTime gameTime,
+            ReflectionDrawableBoundary drawReflectionInfo,
+            RenderParameters renderParameters,
+            int tickCount)
+        {
+            if (marker == null)
+            {
+                return;
+            }
+
+            if (IsWithinMinimapImage(minimapPoint))
+            {
                 marker.Draw(sprite, skeletonMeshRenderer, gameTime,
                     -Position.X, -Position.Y, minimapPoint.X, minimapPoint.Y,
+                    drawReflectionInfo,
+                    renderParameters,
+                    tickCount);
+                return;
+            }
+
+            if (showDirectionOverlay)
+            {
+                DrawDirectionOverlayForPoint(
+                    minimapPoint,
+                    sprite,
+                    skeletonMeshRenderer,
+                    gameTime,
                     drawReflectionInfo,
                     renderParameters,
                     tickCount);

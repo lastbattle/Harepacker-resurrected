@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using System.Text;
 using HaCreator.MapEditor;
@@ -74,10 +75,15 @@ namespace HaCreator.MapSimulator.Managers
         private PortalItem[] _portalsArray;
         private ReactorItem[] _reactorsArray;
         private TooltipItem[] _tooltipsArray;
+        private MobItem[] _visibleMobs;
+        private int _visibleMobsCount;
+        private NpcItem[] _visibleNpcs;
+        private int _visibleNpcsCount;
         private PortalItem[] _visiblePortals;
         private int _visiblePortalsCount;
         private ReactorItem[] _visibleReactors;
         private int _visibleReactorsCount;
+        private readonly List<DropItem> _renderableDropsBuffer = new List<DropItem>();
 
         #endregion
 
@@ -177,6 +183,10 @@ namespace HaCreator.MapSimulator.Managers
         public void SetVisibleRenderSets(
             BaseDXDrawableItem[] visibleMapObjects,
             int visibleMapObjectsCount,
+            MobItem[] visibleMobs,
+            int visibleMobsCount,
+            NpcItem[] visibleNpcs,
+            int visibleNpcsCount,
             PortalItem[] visiblePortals,
             int visiblePortalsCount,
             ReactorItem[] visibleReactors,
@@ -184,11 +194,15 @@ namespace HaCreator.MapSimulator.Managers
         {
             _visibleMapObjects = visibleMapObjects;
             _visibleMapObjectsCount = visibleMapObjectsCount;
+            _visibleMobs = visibleMobs;
+            _visibleMobsCount = visibleMobsCount;
+            _visibleNpcs = visibleNpcs;
+            _visibleNpcsCount = visibleNpcsCount;
             _visiblePortals = visiblePortals;
             _visiblePortalsCount = visiblePortalsCount;
             _visibleReactors = visibleReactors;
             _visibleReactorsCount = visibleReactorsCount;
-            _useVisibleRenderSets = visibleMapObjects != null || visiblePortals != null || visibleReactors != null;
+            _useVisibleRenderSets = visibleMapObjects != null || visibleMobs != null || visibleNpcs != null || visiblePortals != null || visibleReactors != null;
         }
 
         /// <summary>
@@ -290,6 +304,28 @@ namespace HaCreator.MapSimulator.Managers
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void DrawMobs(in RenderContext context)
         {
+            if (_useVisibleRenderSets && _visibleMobs != null)
+            {
+                for (int i = 0; i < _visibleMobsCount; i++)
+                {
+                    MobItem mobItem = _visibleMobs[i];
+                    if (mobItem == null)
+                    {
+                        continue;
+                    }
+
+                    ReflectionDrawableBoundary mirrorFieldData = mobItem.CachedMirrorBoundary;
+
+                    mobItem.Draw(context.SpriteBatch, context.SkeletonMeshRenderer, context.GameTime,
+                        context.MapShiftX, context.MapShiftY, context.MapCenterX, context.MapCenterY,
+                        mirrorFieldData,
+                        context.RenderParams,
+                        context.TickCount);
+                }
+
+                return;
+            }
+
             if (_mobsArray == null) return;
 
             for (int i = 0; i < _mobsArray.Length; i++)
@@ -314,6 +350,28 @@ namespace HaCreator.MapSimulator.Managers
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void DrawNpcs(in RenderContext context)
         {
+            if (_useVisibleRenderSets && _visibleNpcs != null)
+            {
+                for (int i = 0; i < _visibleNpcsCount; i++)
+                {
+                    NpcItem npcItem = _visibleNpcs[i];
+                    if (npcItem == null)
+                    {
+                        continue;
+                    }
+
+                    ReflectionDrawableBoundary mirrorFieldData = npcItem.CachedMirrorBoundary;
+
+                    npcItem.Draw(context.SpriteBatch, context.SkeletonMeshRenderer, context.GameTime,
+                        context.MapShiftX, context.MapShiftY, context.MapCenterX, context.MapCenterY,
+                        mirrorFieldData,
+                        context.RenderParams,
+                        context.TickCount);
+                }
+
+                return;
+            }
+
             if (_npcsArray == null) return;
 
             for (int i = 0; i < _npcsArray.Length; i++)
@@ -450,9 +508,12 @@ namespace HaCreator.MapSimulator.Managers
             int screenWidth = context.RenderWidth;
             int screenHeight = context.RenderHeight;
 
-            foreach (var drop in _dropPool.GetRenderableDrops(0, screenWidth, 0, screenHeight,
-                context.MapShiftX, context.MapShiftY, context.MapCenterX, context.MapCenterY))
+            _dropPool.GetRenderableDrops(_renderableDropsBuffer, 0, screenWidth, 0, screenHeight,
+                context.MapShiftX, context.MapShiftY, context.MapCenterX, context.MapCenterY);
+
+            for (int i = 0; i < _renderableDropsBuffer.Count; i++)
             {
+                DropItem drop = _renderableDropsBuffer[i];
                 int screenX = (int)drop.X - context.MapShiftX + context.MapCenterX;
                 int screenY = (int)drop.Y - context.MapShiftY + context.MapCenterY;
 

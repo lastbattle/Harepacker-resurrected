@@ -827,12 +827,22 @@ namespace HaCreator.MapSimulator.Pools
         /// <summary>
         /// Get all drops that should be rendered (with screen culling)
         /// </summary>
-        public IEnumerable<DropItem> GetRenderableDrops(int screenLeft, int screenRight, int screenTop, int screenBottom, int mapShiftX, int mapShiftY, int centerX, int centerY)
+        public void GetRenderableDrops(List<DropItem> destination, int screenLeft, int screenRight, int screenTop, int screenBottom, int mapShiftX, int mapShiftY, int centerX, int centerY)
         {
-            foreach (var drop in _activeDrops)
+            if (destination == null)
             {
+                return;
+            }
+
+            destination.Clear();
+
+            for (int i = 0; i < _activeDrops.Count; i++)
+            {
+                DropItem drop = _activeDrops[i];
                 if (drop.Alpha <= 0)
+                {
                     continue;
+                }
 
                 int screenX = (int)drop.X - mapShiftX + centerX;
                 int screenY = (int)drop.Y - mapShiftY + centerY;
@@ -841,7 +851,7 @@ namespace HaCreator.MapSimulator.Pools
                 if (screenX >= screenLeft - 50 && screenX <= screenRight + 50 &&
                     screenY >= screenTop - 50 && screenY <= screenBottom + 50)
                 {
-                    yield return drop;
+                    destination.Add(drop);
                 }
             }
         }

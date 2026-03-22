@@ -42,8 +42,7 @@ namespace HaCreator.MapSimulator.Fields
                 return EscortProgressionState.None;
             }
 
-            List<int?> escortIndices = new List<int?>();
-
+            int? activeIndex = null;
             foreach (MobItem mob in mobs)
             {
                 if (mob?.AI?.IsEscortMob != true || mob.AI.IsDead)
@@ -51,10 +50,21 @@ namespace HaCreator.MapSimulator.Fields
                     continue;
                 }
 
-                escortIndices.Add(mob.MobInstance?.Info);
+                int? escortIndex = mob.MobInstance?.Info;
+                if (!escortIndex.HasValue || escortIndex.Value <= 0)
+                {
+                    continue;
+                }
+
+                if (!activeIndex.HasValue || escortIndex.Value < activeIndex.Value)
+                {
+                    activeIndex = escortIndex.Value;
+                }
             }
 
-            return ResolveState(escortIndices);
+            return activeIndex.HasValue
+                ? new EscortProgressionState(true, activeIndex.Value)
+                : EscortProgressionState.None;
         }
 
         public static bool CanMobFollow(MobItem mob, EscortProgressionState state)
