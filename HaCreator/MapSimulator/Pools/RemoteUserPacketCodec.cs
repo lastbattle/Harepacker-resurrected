@@ -19,7 +19,8 @@ namespace HaCreator.MapSimulator.Pools
         UserPortableChair = 210,
         UserMount = 211,
         UserPreparedSkill = 212,
-        UserPreparedSkillClear = 213
+        UserPreparedSkillClear = 213,
+        UserMeleeAttack = 214
     }
 
     public readonly record struct RemoteUserEnterFieldPacket(
@@ -30,7 +31,8 @@ namespace HaCreator.MapSimulator.Pools
         short Y,
         bool FacingRight,
         string ActionName,
-        bool IsVisibleInWorld);
+        bool IsVisibleInWorld,
+        int? PortableChairItemId);
 
     public readonly record struct RemoteUserLeaveFieldPacket(int CharacterId);
 
@@ -56,6 +58,14 @@ namespace HaCreator.MapSimulator.Pools
 
     public readonly record struct RemoteUserPreparedSkillClearPacket(int CharacterId);
 
+    public readonly record struct RemoteUserMeleeAttackPacket(
+        int CharacterId,
+        int SkillId,
+        int MasteryPercent,
+        int ChargeSkillId,
+        bool? FacingRight,
+        string ActionName);
+
     public readonly record struct RemoteUserHelperPacket(int CharacterId, MinimapUI.HelperMarkerType? MarkerType, bool ShowDirectionOverlay);
 
     public readonly record struct RemoteUserBattlefieldTeamPacket(int CharacterId, int? TeamId);
@@ -63,6 +73,30 @@ namespace HaCreator.MapSimulator.Pools
     public static class RemoteUserPacketCodec
     {
         public static bool TryParseEnterField(ReadOnlySpan<byte> payload, out RemoteUserEnterFieldPacket packet, out string error)
+        {
+            packet = default;
+            error = null;
+
+            if (TryParseCompactEnterField(payload, out packet, out error))
+            {
+                return true;
+            }
+
+            string compactError = error;
+            if (TryParseOfficialEnterField(payload, out packet, out error))
+            {
+                return true;
+            }
+
+            if (!string.IsNullOrWhiteSpace(compactError) && !string.IsNullOrWhiteSpace(error))
+            {
+                error = $"{error} Compact parse also failed: {compactError}";
+            }
+
+            return false;
+        }
+
+        private static bool TryParseCompactEnterField(ReadOnlySpan<byte> payload, out RemoteUserEnterFieldPacket packet, out string error)
         {
             packet = default;
             error = null;
@@ -91,7 +125,80 @@ namespace HaCreator.MapSimulator.Pools
                     return false;
                 }
 
-                packet = new RemoteUserEnterFieldPacket(characterId, name, avatarLook, x, y, facingRight, actionName, isVisibleInWorld);
+                packet = new RemoteUserEnterFieldPacket(characterId, name, avatarLook, x, y, facingRight, actionName, isVisibleInWorld, null);
+                return true;
+            }
+            catch (InvalidOperationException ex)
+            {
+                error = ex.Message;
+                return false;
+            }
+        }
+
+        private static bool TryParseOfficialEnterField(ReadOnlySpan<byte> payload, out RemoteUserEnterFieldPacket packet, out string error)
+        {
+            packet = default;
+            error = null;
+
+            try
+            {
+                var reader = new PacketReader(payload);
+                int characterId = reader.ReadInt32();
+                reader.ReadByte();
+                string name = reader.ReadString16();
+                reader.ReadString16();
+                reader.ReadBytes(6);
+
+                int avatarLookOffset = FindOfficialAvatarLookOffset(payload, reader.Offset, out error);
+                if (avatarLookOffset < 0)
+                {
+                    return false;
+                }
+
+                var avatarReader = new PacketReader(payload.Slice(avatarLookOffset));
+                if (!LoginAvatarLookCodec.TryDecode(avatarReader.ReadRemainingBytes(), out LoginAvatarLook avatarLook, out string avatarError))
+                {
+                    error = avatarError ?? "Remote user official enter packet AvatarLook payload could not be decoded.";
+                    return false;
+                }
+
+                avatarReader = new PacketReader(payload.Slice(avatarLookOffset));
+                byte[] avatarPayload = avatarReader.ReadRemainingBytes();
+                if (!LoginAvatarLookCodec.TryDecode(avatarPayload, out avatarLook, out avatarError))
+                {
+                    error = avatarError ?? "Remote user official enter packet AvatarLook payload could not be decoded.";
+                    return false;
+                }
+
+                int consumedAvatarBytes = LoginAvatarLookCodec.Encode(avatarLook).Length;
+                int remainingBytes = payload.Length - avatarLookOffset - consumedAvatarBytes;
+                if (remainingBytes != OfficialEnterFieldSuffixLength)
+                {
+                    error = $"Remote user official enter packet AvatarLook left {remainingBytes} trailing bytes; expected {OfficialEnterFieldSuffixLength}.";
+                    return false;
+                }
+
+                avatarReader = new PacketReader(payload.Slice(avatarLookOffset + consumedAvatarBytes));
+                avatarReader.ReadInt32();
+                avatarReader.ReadInt32();
+                avatarReader.ReadInt32();
+                avatarReader.ReadInt32();
+                avatarReader.ReadInt32();
+                int portableChairItemId = avatarReader.ReadInt32();
+                short x = avatarReader.ReadInt16();
+                short y = avatarReader.ReadInt16();
+                byte moveAction = avatarReader.ReadByte();
+
+                packet = new RemoteUserEnterFieldPacket(
+                    characterId,
+                    string.IsNullOrWhiteSpace(name) ? $"Remote{characterId}" : name.Trim(),
+                    avatarLook,
+                    x,
+                    y,
+                    DecodeFacingRight(moveAction),
+                    ResolveActionNameFromMoveAction(moveAction, portableChairItemId),
+                    true,
+                    portableChairItemId > 0 ? portableChairItemId : null);
                 return true;
             }
             catch (InvalidOperationException ex)
@@ -237,6 +344,43 @@ namespace HaCreator.MapSimulator.Pools
             return true;
         }
 
+        public static bool TryParseMeleeAttack(ReadOnlySpan<byte> payload, out RemoteUserMeleeAttackPacket packet, out string error)
+        {
+            packet = default;
+            error = null;
+
+            try
+            {
+                var reader = new PacketReader(payload);
+                int characterId = reader.ReadInt32();
+                int skillId = reader.ReadInt32();
+                int masteryPercent = reader.ReadInt32();
+                int chargeSkillId = reader.ReadInt32();
+                byte facingRaw = reader.ReadByte();
+                bool? facingRight = facingRaw switch
+                {
+                    0 => false,
+                    1 => true,
+                    byte.MaxValue => null,
+                    _ => null
+                };
+                if (facingRaw != 0 && facingRaw != 1 && facingRaw != byte.MaxValue)
+                {
+                    error = $"Remote user melee packet facing value {facingRaw} is not recognized.";
+                    return false;
+                }
+
+                string actionName = reader.ReadString8();
+                packet = new RemoteUserMeleeAttackPacket(characterId, skillId, masteryPercent, chargeSkillId, facingRight, actionName);
+                return true;
+            }
+            catch (InvalidOperationException ex)
+            {
+                error = ex.Message;
+                return false;
+            }
+        }
+
         public static bool TryParseHelper(ReadOnlySpan<byte> payload, out RemoteUserHelperPacket packet, out string error)
         {
             packet = default;
@@ -310,6 +454,75 @@ namespace HaCreator.MapSimulator.Pools
                 | (payload[7] << 24);
             itemId = rawItemId <= 0 ? null : rawItemId;
             return true;
+        }
+
+        private const int OfficialEnterFieldSuffixLength = (sizeof(int) * 6) + (sizeof(short) * 2) + sizeof(byte);
+
+        private static int FindOfficialAvatarLookOffset(ReadOnlySpan<byte> payload, int searchStartOffset, out string error)
+        {
+            error = null;
+            int firstCandidate = searchStartOffset + 16 + sizeof(short);
+            int lastCandidate = payload.Length - OfficialEnterFieldSuffixLength;
+            if (firstCandidate > lastCandidate)
+            {
+                error = "Remote user official enter packet is too short to contain remote secondary stats, AvatarLook, and spawn suffix.";
+                return -1;
+            }
+
+            int resolvedOffset = -1;
+            for (int avatarLookOffset = firstCandidate; avatarLookOffset <= lastCandidate; avatarLookOffset++)
+            {
+                byte[] avatarPayload = payload.Slice(avatarLookOffset).ToArray();
+                if (!LoginAvatarLookCodec.TryDecode(avatarPayload, out LoginAvatarLook avatarLook, out _))
+                {
+                    continue;
+                }
+
+                int consumedAvatarBytes = LoginAvatarLookCodec.Encode(avatarLook).Length;
+                if (payload.Length - avatarLookOffset - consumedAvatarBytes != OfficialEnterFieldSuffixLength)
+                {
+                    continue;
+                }
+
+                if (resolvedOffset >= 0)
+                {
+                    error = "Remote user official enter packet AvatarLook boundary is ambiguous.";
+                    return -1;
+                }
+
+                resolvedOffset = avatarLookOffset;
+            }
+
+            if (resolvedOffset < 0)
+            {
+                error = "Remote user official enter packet AvatarLook boundary could not be resolved after the remote secondary-stat payload.";
+            }
+
+            return resolvedOffset;
+        }
+
+        private static bool DecodeFacingRight(byte moveAction)
+        {
+            return (moveAction & 1) == 0;
+        }
+
+        private static string ResolveActionNameFromMoveAction(byte moveAction, int portableChairItemId)
+        {
+            if (portableChairItemId > 0)
+            {
+                return CharacterPart.GetActionString(CharacterAction.Sit);
+            }
+
+            return (moveAction >> 1) switch
+            {
+                1 => CharacterPart.GetActionString(CharacterAction.Walk1),
+                4 => CharacterPart.GetActionString(CharacterAction.Alert),
+                5 => CharacterPart.GetActionString(CharacterAction.Jump),
+                6 => CharacterPart.GetActionString(CharacterAction.Sit),
+                17 => CharacterPart.GetActionString(CharacterAction.Ladder),
+                18 => CharacterPart.GetActionString(CharacterAction.Rope),
+                _ => CharacterPart.GetActionString(CharacterAction.Stand1)
+            };
         }
 
         private static bool TryDecodeMoveSnapshot(ref PacketReader reader, int currentTime, out PlayerMovementSyncSnapshot snapshot, out byte moveAction)
@@ -525,6 +738,11 @@ namespace HaCreator.MapSimulator.Pools
                 return value;
             }
 
+            public byte[] ReadRemainingBytes()
+            {
+                return ReadBytes(_buffer.Length - _offset);
+            }
+
             public string ReadString8()
             {
                 int length = ReadByte();
@@ -533,6 +751,17 @@ namespace HaCreator.MapSimulator.Pools
                 _offset += length;
                 return value;
             }
+
+            public string ReadString16()
+            {
+                int length = ReadInt16();
+                EnsureReadable(length);
+                string value = Encoding.Default.GetString(_buffer.Slice(_offset, length));
+                _offset += length;
+                return value;
+            }
+
+            public int Offset => _offset;
 
             private void EnsureReadable(int byteCount)
             {

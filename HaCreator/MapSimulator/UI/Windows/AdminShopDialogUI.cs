@@ -106,6 +106,12 @@ namespace HaCreator.MapSimulator.UI
             public int ScrollOffset { get; set; }
         }
 
+        private sealed class AdminShopEntrySessionState
+        {
+            public AdminShopEntryState State { get; init; }
+            public string StateLabel { get; init; } = string.Empty;
+        }
+
         private sealed class AdminShopTabVisual
         {
             public Texture2D EnabledTexture { get; set; }
@@ -149,6 +155,12 @@ namespace HaCreator.MapSimulator.UI
         private const float ModalTextMaxWidth = 176f;
         private const int ServiceTabTextY = 4;
         private const int PaneTabTextY = 4;
+        // `TabShop` canvases do not encode per-tab placement; the client positions this strip via `CAdminShopDlg::OnCreate`.
+        private const int CategoryTabStartX = 95;
+        private const int CategoryTabStartY = 222;
+        private const int CategoryTabColumns = 5;
+        private const int CategoryTabStrideX = 42;
+        private const int CategoryTabStrideY = 19;
         private readonly string _windowName;
         private readonly AdminShopServiceMode _defaultMode;
         private readonly IDXObject _frameOverlay;
@@ -188,6 +200,11 @@ namespace HaCreator.MapSimulator.UI
         {
             [AdminShopServiceMode.CashShop] = new HashSet<string>(StringComparer.Ordinal),
             [AdminShopServiceMode.Mts] = new HashSet<string>(StringComparer.Ordinal)
+        };
+        private readonly Dictionary<AdminShopServiceMode, Dictionary<string, AdminShopEntrySessionState>> _entrySessionStates = new()
+        {
+            [AdminShopServiceMode.CashShop] = new Dictionary<string, AdminShopEntrySessionState>(StringComparer.Ordinal),
+            [AdminShopServiceMode.Mts] = new Dictionary<string, AdminShopEntrySessionState>(StringComparer.Ordinal)
         };
 
         private IInventoryRuntime _inventory;
@@ -929,6 +946,8 @@ namespace HaCreator.MapSimulator.UI
             _paneStates[AdminShopPane.User].SourceEntries.AddRange(CreateUserEntries(mode));
             RestoreEntryFlags(_paneStates[AdminShopPane.Npc].SourceEntries, mode);
             RestoreEntryFlags(_paneStates[AdminShopPane.User].SourceEntries, mode);
+            RestoreEntryStates(_paneStates[AdminShopPane.Npc].SourceEntries, mode);
+            RestoreEntryStates(_paneStates[AdminShopPane.User].SourceEntries, mode);
             PopulateEntryIcons(_paneStates[AdminShopPane.Npc].SourceEntries);
             PopulateEntryIcons(_paneStates[AdminShopPane.User].SourceEntries);
             ApplyFilters();
@@ -1214,7 +1233,11 @@ namespace HaCreator.MapSimulator.UI
 
             for (int i = 0; i < _categoryTabs.Length; i++)
             {
-                _categoryTabs[i] = new AdminShopTabVisual();
+                _categoryTabs[i] = new AdminShopTabVisual
+                {
+                    Label = GetCategoryLabel(GetFullCategory(i)),
+                    Offset = GetDefaultCategoryTabOffset(i)
+                };
             }
         }
 
@@ -1247,7 +1270,7 @@ namespace HaCreator.MapSimulator.UI
             Texture2D[] disabledTextures,
             Point[] offsets = null)
         {
-            SetTabTextures(_categoryTabs, enabledTextures, disabledTextures, offsets);
+            SetTabTextures(_categoryTabs, enabledTextures, disabledTextures, HasMeaningfulCategoryOffsets(offsets) ? offsets : null);
         }
 
         private static void SetTabTextures(
@@ -1271,6 +1294,33 @@ namespace HaCreator.MapSimulator.UI
                     tabs[i].Offset = offsets[i];
                 }
             }
+        }
+
+        private static bool HasMeaningfulCategoryOffsets(Point[] offsets)
+        {
+            if (offsets == null)
+            {
+                return false;
+            }
+
+            foreach (Point offset in offsets)
+            {
+                if (offset != Point.Zero)
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static Point GetDefaultCategoryTabOffset(int tabIndex)
+        {
+            int column = tabIndex % CategoryTabColumns;
+            int row = tabIndex / CategoryTabColumns;
+            return new Point(
+                CategoryTabStartX + (column * CategoryTabStrideX),
+                CategoryTabStartY + (row * CategoryTabStrideY));
         }
 
         private bool TryHandleBrowseTabClick(MouseState mouseState)
@@ -1531,6 +1581,7 @@ namespace HaCreator.MapSimulator.UI
 
             _pendingWishlistEntry.Wishlisted = true;
             _wishlistedEntryKeys[_currentMode].Add(GetEntryKey(_pendingWishlistEntry));
+            PersistEntrySessionState(_pendingWishlistEntry);
             string title = _pendingWishlistEntry.Title;
             CloseWishlistConfirmation($"Wish list confirmed for {title}.");
         }
@@ -1915,7 +1966,8 @@ namespace HaCreator.MapSimulator.UI
                 return false;
             }
 
-            return _storageRuntime.CanCurrentCharacterAccess
+            return _storageRuntime.IsAccessSessionActive
+                   && _storageRuntime.CanCurrentCharacterAccess
                    && _storageRuntime.IsSecondaryPasswordVerified
                    && _storageRuntime.CanExpandSlotLimit()
                    && _inventory.GetMesoCount() >= entry.Price;
@@ -1970,6 +2022,11 @@ namespace HaCreator.MapSimulator.UI
                 return $"{currentCharacterName} is not authorized to extend {accountLabel}.";
             }
 
+            if (!_storageRuntime.IsAccessSessionActive)
+            {
+                return "Open storage and unlock the trunk session before purchasing storage-slot expansion.";
+            }
+
             if (!_storageRuntime.IsSecondaryPasswordVerified)
             {
                 return _storageRuntime.HasSecondaryPassword
@@ -2015,6 +2072,7 @@ namespace HaCreator.MapSimulator.UI
             entry.State = AdminShopEntryState.RequestAccepted;
             entry.StateLabel = "Expanded";
             MarkEntryPurchased(entry);
+            PersistEntrySessionState(entry);
             _footerMessage = $"{entry.Title} succeeded. {entry.InventoryExpansionType} inventory now has {_inventory.GetSlotLimit(entry.InventoryExpansionType)} slots.";
             _pendingRequestEntry = null;
             Money = _inventory.GetMesoCount();
@@ -2055,6 +2113,14 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
+            if (!_storageRuntime.IsAccessSessionActive || !_storageRuntime.IsSecondaryPasswordVerified)
+            {
+                _footerMessage = BuildStorageExpansionBlockedMessage(entry);
+                _pendingRequestEntry = null;
+                UpdateActionButtonStates();
+                return;
+            }
+
             if (!_inventory.TryConsumeMeso(entry.Price))
             {
                 _footerMessage = $"Need {FormatPriceLabel(entry.Price)} before extending storage capacity.";
@@ -2067,6 +2133,7 @@ namespace HaCreator.MapSimulator.UI
             entry.State = AdminShopEntryState.RequestAccepted;
             entry.StateLabel = "Expanded";
             MarkEntryPurchased(entry);
+            PersistEntrySessionState(entry);
             _footerMessage = $"{entry.Title} succeeded. Storage now has {_storageRuntime.GetSlotLimit()} slots.";
             _pendingRequestEntry = null;
             Money = _inventory.GetMesoCount();
@@ -2133,6 +2200,7 @@ namespace HaCreator.MapSimulator.UI
             {
                 entry.State = AdminShopEntryState.RequestAccepted;
                 entry.StateLabel = "Accepted";
+                PersistEntrySessionState(entry);
                 _footerMessage = $"Catalog response received for {entry.Title}. The simulator accepted the request.";
                 _pendingRequestEntry = null;
                 Money = _inventory?.GetMesoCount() ?? Money;
@@ -2156,6 +2224,7 @@ namespace HaCreator.MapSimulator.UI
             entry.StateLabel = entry.LockAfterSuccess ? "Purchased" : "Delivered";
             entry.IconTexture = itemTexture;
             MarkEntryPurchased(entry);
+            PersistEntrySessionState(entry);
             _footerMessage = $"{entry.Title} delivered to {entry.RewardInventoryType} inventory.";
             _pendingRequestEntry = null;
             Money = _inventory.GetMesoCount();
@@ -2171,6 +2240,7 @@ namespace HaCreator.MapSimulator.UI
 
             entry.State = AdminShopEntryState.RequestRejected;
             entry.StateLabel = stateLabel;
+            PersistEntrySessionState(entry);
             _footerMessage = footerMessage;
             _pendingRequestEntry = null;
             Money = _inventory?.GetMesoCount() ?? Money;
@@ -2344,6 +2414,22 @@ namespace HaCreator.MapSimulator.UI
             }
         }
 
+        private void RestoreEntryStates(IEnumerable<AdminShopEntry> entries, AdminShopServiceMode mode)
+        {
+            Dictionary<string, AdminShopEntrySessionState> sessionStates = _entrySessionStates[mode];
+            foreach (AdminShopEntry entry in entries)
+            {
+                string key = GetEntryKey(entry);
+                if (!sessionStates.TryGetValue(key, out AdminShopEntrySessionState sessionState))
+                {
+                    continue;
+                }
+
+                entry.State = sessionState.State;
+                entry.StateLabel = sessionState.StateLabel;
+            }
+        }
+
         private void MarkEntryPurchased(AdminShopEntry entry)
         {
             if (entry == null)
@@ -2353,6 +2439,33 @@ namespace HaCreator.MapSimulator.UI
 
             entry.WasPurchased = true;
             _purchasedEntryKeys[_currentMode].Add(GetEntryKey(entry));
+            PersistEntrySessionState(entry);
+        }
+
+        private void PersistEntrySessionState(AdminShopEntry entry)
+        {
+            if (entry == null)
+            {
+                return;
+            }
+
+            string key = GetEntryKey(entry);
+            if (string.IsNullOrWhiteSpace(key))
+            {
+                return;
+            }
+
+            if (entry.State == AdminShopEntryState.PendingResponse)
+            {
+                _entrySessionStates[_currentMode].Remove(key);
+                return;
+            }
+
+            _entrySessionStates[_currentMode][key] = new AdminShopEntrySessionState
+            {
+                State = entry.State,
+                StateLabel = entry.StateLabel ?? string.Empty
+            };
         }
 
         private static string GetEntryKey(AdminShopEntry entry)

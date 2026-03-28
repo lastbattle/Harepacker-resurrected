@@ -41,20 +41,22 @@ namespace HaCreator.MapSimulator.Effects
     /// - Space Gaga maps 922240000, 922240100, and 922240200 all declare fieldType 20
     ///   (FIELDTYPE_SPACEGAGA) in map/Map\Map9.
     /// - Map/Obj/etc.img/space exposes the dedicated SpaceGAGA timerboard art via backgrnd
-    ///   (228x69) plus fontTime digits and comma. The client's OnCreate path resolves a canvas,
-    ///   so this runtime records the inferred concrete canvas path and paired bitmap-font path
-    ///   rather than only a broader root node.
+    ///   (228x69) plus fontTime digits and comma. Draw-side WZ usage lines up with that exact
+    ///   subtree, so the simulator keeps the resolved board source pinned to those concrete nodes.
     ///
     /// Client evidence:
     /// - CField_SpaceGAGA::OnClock (0x5625d0) only reacts to clock type 2, destroys the
     ///   previous clock, creates a 258x69 timerboard at (-114, 30), then sets and starts it.
+    /// - StringPool::GetString (0x746750) shows that StringPool id 0x140D is not a WZ string:
+    ///   it decodes an entry from StringPool::ms_aString where the first byte is the decode seed
+    ///   and the remaining bytes are the encoded literal used by OnCreate.
     /// - CTimerboard_SpaceGAGA::Draw (0x5626c0) renders a dedicated source canvas and draws
     ///   zero-padded minutes and seconds at fixed positions: (44, 23) and (131, 23).
     ///
     /// This simulator pass adds the dedicated timerboard flow and clock ownership seam.
     /// The client still references this through StringPool id 0x140D in OnCreate, but the
-    /// runtime now pins the inferred concrete WZ canvas/font nodes instead of scanning unrelated
-    /// UIWindow trees or reporting only the broader root.
+    /// literal bytes for ms_aString[0x140D] are still unrecovered in this workspace, so the
+    /// runtime keeps the verified WZ node mapping while reporting the exact client decode path.
     /// </summary>
     public class SpaceGagaField
     {
@@ -70,11 +72,13 @@ namespace HaCreator.MapSimulator.Effects
         private const int DividerWidth = 38;
         private const int DividerHeight = 36;
         private const int ResetPulseDurationMs = 600;
+        public const int PacketTypeClock = 1;
         private const int TimerboardSourceStringPoolId = 0x140D;
         private const string SpaceMapObjectImageName = "Obj/etc.img";
         private const string SpaceTimerboardSourceRoot = "Map/Obj/etc.img/space";
         private const string SpaceTimerboardBackgroundSourcePath = "Map/Obj/etc.img/space/backgrnd";
         private const string SpaceTimerboardBitmapFontSourcePath = "Map/Obj/etc.img/space/fontTime";
+        private const string SpaceTimerboardClientStringPoolSource = "StringPool::ms_aString[0x140D]";
         private const string SpaceTimerboardRootPath = "space";
         private const string SpaceTimerboardBackgroundPath = "space/backgrnd";
         private const string SpaceTimerboardDigitsPath = "space/fontTime";
@@ -88,9 +92,13 @@ namespace HaCreator.MapSimulator.Effects
         private Texture2D _backgroundTexture;
         private Texture2D _colonTexture;
         private readonly Texture2D[] _digitTextures = new Texture2D[10];
+        private int _lastDecodedClockType = -1;
+        private int _lastDecodedClockDurationSec = -1;
         public bool IsActive => _isActive;
         public int MapId => _mapId;
         public int DurationSeconds => _durationSec;
+        public int LastDecodedClockType => _lastDecodedClockType;
+        public int LastDecodedClockDurationSec => _lastDecodedClockDurationSec;
         public int RemainingSeconds
         {
             get
@@ -119,6 +127,8 @@ namespace HaCreator.MapSimulator.Effects
             _durationSec = 0;
             _timeOverTick = int.MinValue;
             _lastResetTick = int.MinValue;
+            _lastDecodedClockType = -1;
+            _lastDecodedClockDurationSec = -1;
         }
         public void OnClock(int clockType, int durationSec, int currentTimeMs)
         {
@@ -129,6 +139,38 @@ namespace HaCreator.MapSimulator.Effects
             _durationSec = Math.Max(0, durationSec);
             _timeOverTick = currentTimeMs + (_durationSec * 1000);
             _lastResetTick = currentTimeMs;
+        }
+        public bool TryApplyPacket(int packetType, byte[] payload, int currentTimeMs, out string errorMessage)
+        {
+            errorMessage = null;
+            if (!_isActive)
+            {
+                errorMessage = "SpaceGAGA timerboard inactive.";
+                return false;
+            }
+
+            if (packetType != PacketTypeClock)
+            {
+                errorMessage = $"Unsupported SpaceGAGA packet type: {packetType}";
+                return false;
+            }
+
+            if (!TryParseClockPacketPayload(payload, out int clockType, out int durationSec, out errorMessage))
+            {
+                return false;
+            }
+
+            _lastDecodedClockType = clockType;
+            _lastDecodedClockDurationSec = Math.Max(0, durationSec);
+
+            if (clockType != 2)
+            {
+                // CField_SpaceGAGA::OnClock ignores every non-type-2 clock payload.
+                return true;
+            }
+
+            OnClock(clockType, durationSec, currentTimeMs);
+            return true;
         }
         public void Update(int currentTimeMs, float deltaSeconds)
         {
@@ -190,7 +232,10 @@ namespace HaCreator.MapSimulator.Effects
                 return "SpaceGAGA timerboard inactive";
             }
             string timerText = _timeOverTick == int.MinValue ? "stopped" : FormatTimer(RemainingSeconds);
-            return $"SpaceGAGA timerboard active on map {_mapId}, timer={timerText}, duration={_durationSec}s, source={SpaceTimerboardBackgroundSourcePath}, font={SpaceTimerboardBitmapFontSourcePath} [StringPool 0x{TimerboardSourceStringPoolId:X} unresolved; inferred from client OnCreate canvas lookup]";
+            string rawClockText = _lastDecodedClockType >= 0
+                ? $", rawClock={_lastDecodedClockType}:{_lastDecodedClockDurationSec}s"
+                : string.Empty;
+            return $"SpaceGAGA timerboard active on map {_mapId}, timer={timerText}, duration={_durationSec}s, root={SpaceTimerboardSourceRoot}, source={SpaceTimerboardBackgroundSourcePath}, font={SpaceTimerboardBitmapFontSourcePath}{rawClockText} [StringPool 0x{TimerboardSourceStringPoolId:X}: {SpaceTimerboardClientStringPoolSource} encoded entry; first byte is the decode seed, literal bytes still unrecovered]";
         }
         public void Reset()
         {
@@ -199,6 +244,8 @@ namespace HaCreator.MapSimulator.Effects
             _durationSec = 0;
             _timeOverTick = int.MinValue;
             _lastResetTick = int.MinValue;
+            _lastDecodedClockType = -1;
+            _lastDecodedClockDurationSec = -1;
         }
         private float GetResetPulseStrength()
         {
@@ -322,6 +369,21 @@ namespace HaCreator.MapSimulator.Effects
             int minutes = Math.Max(0, remainingSeconds) / 60;
             int seconds = Math.Max(0, remainingSeconds) % 60;
             return $"{minutes:00}:{seconds:00}";
+        }
+        private static bool TryParseClockPacketPayload(byte[] payload, out int clockType, out int durationSec, out string errorMessage)
+        {
+            clockType = 0;
+            durationSec = 0;
+            errorMessage = null;
+            if (payload == null || payload.Length < 5)
+            {
+                errorMessage = "SpaceGAGA clock packet payload must contain 1 byte of clock type plus 4 bytes of duration.";
+                return false;
+            }
+
+            clockType = payload[0];
+            durationSec = BinaryPrimitives.ReadInt32LittleEndian(payload.AsSpan(1, 4));
+            return true;
         }
     }
     #endregion

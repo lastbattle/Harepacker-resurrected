@@ -21,6 +21,7 @@ namespace HaCreator.MapSimulator.Managers
         private sealed class PersistedAccountState
         {
             public string AccountName { get; set; }
+            public int? AccountId { get; set; }
             public int WorldId { get; set; }
             public int SlotCount { get; set; } = 3;
             public int BuyCharacterCount { get; set; }
@@ -31,6 +32,7 @@ namespace HaCreator.MapSimulator.Managers
         public sealed class LoginCharacterAccountState
         {
             public string AccountName { get; init; }
+            public int? AccountId { get; init; }
             public int WorldId { get; init; }
             public int SlotCount { get; init; } = 3;
             public int BuyCharacterCount { get; init; }
@@ -99,18 +101,23 @@ namespace HaCreator.MapSimulator.Managers
             LoadFromDisk();
         }
 
-        public static string ResolveAccountKey(string accountName, int worldId)
+        public static string ResolveAccountKey(string accountName, int worldId, int? accountId = null)
         {
+            if (accountId.HasValue && accountId.Value > 0)
+            {
+                return $"login-roster:accountid:{accountId.Value}:world:{Math.Max(0, worldId)}";
+            }
+
             string normalizedAccount = string.IsNullOrWhiteSpace(accountName)
                 ? "explorergm"
                 : accountName.Trim().ToLowerInvariant();
             return $"login-roster:{normalizedAccount}:world:{Math.Max(0, worldId)}";
         }
 
-        public LoginCharacterAccountState GetState(string accountName, int worldId)
+        public LoginCharacterAccountState GetState(string accountName, int worldId, int? accountId = null)
         {
-            string key = ResolveAccountKey(accountName, worldId);
-            if (!_accountsByKey.TryGetValue(key, out PersistedAccountState persisted) || persisted == null)
+            PersistedAccountState persisted = TryGetPersistedState(accountName, worldId, accountId);
+            if (persisted == null)
             {
                 return null;
             }
@@ -127,6 +134,7 @@ namespace HaCreator.MapSimulator.Managers
             return new LoginCharacterAccountState
             {
                 AccountName = string.IsNullOrWhiteSpace(persisted.AccountName) ? accountName : persisted.AccountName,
+                AccountId = persisted.AccountId,
                 WorldId = Math.Max(0, persisted.WorldId),
                 SlotCount = Math.Max(0, persisted.SlotCount),
                 BuyCharacterCount = Math.Max(0, persisted.BuyCharacterCount),
@@ -141,7 +149,8 @@ namespace HaCreator.MapSimulator.Managers
             int slotCount,
             int buyCharacterCount,
             int nextCharacterId,
-            IEnumerable<LoginCharacterAccountEntryState> entries)
+            IEnumerable<LoginCharacterAccountEntryState> entries,
+            int? accountId = null)
         {
             string normalizedAccountName = string.IsNullOrWhiteSpace(accountName) ? "explorergm" : accountName.Trim();
             List<LoginCharacterAccountEntryState> normalizedEntries = entries?
@@ -153,17 +162,41 @@ namespace HaCreator.MapSimulator.Managers
             int maxCharacterId = normalizedEntries.Count == 0 ? 0 : normalizedEntries.Max(entry => entry.CharacterId);
             int normalizedNextCharacterId = Math.Max(Math.Max(1, nextCharacterId), maxCharacterId + 1);
 
-            _accountsByKey[ResolveAccountKey(normalizedAccountName, worldId)] = new PersistedAccountState
+            PersistedAccountState persistedState = new()
             {
                 AccountName = normalizedAccountName,
+                AccountId = accountId.HasValue && accountId.Value > 0 ? accountId.Value : null,
                 WorldId = Math.Max(0, worldId),
                 SlotCount = Math.Max(0, slotCount),
                 BuyCharacterCount = Math.Max(0, buyCharacterCount),
                 NextCharacterId = normalizedNextCharacterId,
                 Entries = normalizedEntries
             };
+            _accountsByKey[ResolveAccountKey(normalizedAccountName, worldId, accountId)] = persistedState;
+
+            if (accountId.HasValue && accountId.Value > 0)
+            {
+                _accountsByKey[ResolveAccountKey(normalizedAccountName, worldId)] = ClonePersistedState(persistedState);
+            }
 
             SaveToDisk();
+        }
+
+        private PersistedAccountState TryGetPersistedState(string accountName, int worldId, int? accountId)
+        {
+            string accountIdKey = ResolveAccountKey(accountName, worldId, accountId);
+            if (_accountsByKey.TryGetValue(accountIdKey, out PersistedAccountState persistedById) && persistedById != null)
+            {
+                return persistedById;
+            }
+
+            string accountNameKey = ResolveAccountKey(accountName, worldId);
+            if (_accountsByKey.TryGetValue(accountNameKey, out PersistedAccountState persistedByName) && persistedByName != null)
+            {
+                return persistedByName;
+            }
+
+            return null;
         }
 
         private void LoadFromDisk()
@@ -257,6 +290,24 @@ namespace HaCreator.MapSimulator.Managers
                 PreviousJobRank = entry.PreviousJobRank,
                 AvatarLookPacket = entry.AvatarLookPacket != null ? (byte[])entry.AvatarLookPacket.Clone() : Array.Empty<byte>(),
                 Portal = entry.Portal
+            };
+        }
+
+        private static PersistedAccountState ClonePersistedState(PersistedAccountState state)
+        {
+            return new PersistedAccountState
+            {
+                AccountName = state?.AccountName,
+                AccountId = state?.AccountId,
+                WorldId = state?.WorldId ?? 0,
+                SlotCount = state?.SlotCount ?? 3,
+                BuyCharacterCount = state?.BuyCharacterCount ?? 0,
+                NextCharacterId = state?.NextCharacterId ?? 1,
+                Entries = state?.Entries?
+                    .Where(entry => entry != null)
+                    .Select(CloneEntryState)
+                    .ToList()
+                    ?? new List<LoginCharacterAccountEntryState>()
             };
         }
     }

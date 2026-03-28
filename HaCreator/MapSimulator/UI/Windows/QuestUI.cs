@@ -21,6 +21,8 @@ namespace HaCreator.MapSimulator.UI
         private const int QUEST_ENTRY_HEIGHT = 24;
         private const int MIN_VISIBLE_QUESTS = 4;
         private const int FOOTER_HEIGHT = 42;
+        private const int CATEGORY_ROW_HEIGHT = 18;
+        private const int CATEGORY_PANEL_PADDING = 6;
         private const int TAB_AVAILABLE = 0;
         private const int TAB_IN_PROGRESS = 1;
         private const int TAB_COMPLETED = 2;
@@ -47,11 +49,15 @@ namespace HaCreator.MapSimulator.UI
         private UIObject _myLevelButton;
         private UIObject _allLevelButton;
         private UIObject _detailButton;
+        private UIObject _showCategoryButton;
+        private UIObject _hideCategoryButton;
         private readonly Dictionary<int, List<QuestDisplayData>> _questsByTab;
+        private readonly Dictionary<QuestLogTabType, HashSet<int>> _hiddenAreaCodesByTab = new();
         private Texture2D _selectionHighlight;
         private Texture2D _iconAvailable;
         private Texture2D _iconInProgress;
         private Texture2D _iconCompleted;
+        private Texture2D _categoryLegendTexture;
         private Texture2D _pixel;
         private readonly GraphicsDevice _graphicsDevice;
         private readonly Dictionary<int, Texture2D> _itemIconCache = new();
@@ -61,6 +67,9 @@ namespace HaCreator.MapSimulator.UI
         private Func<QuestLogTabType, bool, int?> _preferredQuestIdProvider;
         private Point _lastMousePosition;
         private HoveredQuestItemInfo _hoveredQuestItem;
+        private bool _categoryPanelExpanded;
+        private bool _categoryLegendVisible;
+        private int _categoryScrollOffset;
 
         public event Action<int> QuestDetailRequested;
 
@@ -81,6 +90,8 @@ namespace HaCreator.MapSimulator.UI
                     _currentTab = value;
                     _scrollOffset = 0;
                     _selectedQuestId = -1;
+                    _categoryLegendVisible = false;
+                    _categoryScrollOffset = 0;
                     UpdateTabStates();
                 }
             }
@@ -189,6 +200,55 @@ namespace HaCreator.MapSimulator.UI
             UpdateTabStates();
         }
 
+        public void InitializeCategoryFilterButtons(UIObject showCategoryButton, UIObject hideCategoryButton, UIObject categoryLegendButton)
+        {
+            _showCategoryButton = showCategoryButton;
+            _hideCategoryButton = hideCategoryButton;
+
+            if (_showCategoryButton != null)
+            {
+                AddButton(_showCategoryButton);
+                _showCategoryButton.ButtonClickReleased += _ =>
+                {
+                    _categoryPanelExpanded = true;
+                    _categoryLegendVisible = false;
+                    _categoryScrollOffset = 0;
+                    UpdateTabStates();
+                };
+            }
+
+            if (_hideCategoryButton != null)
+            {
+                AddButton(_hideCategoryButton);
+                _hideCategoryButton.ButtonClickReleased += _ =>
+                {
+                    _categoryPanelExpanded = false;
+                    _categoryScrollOffset = 0;
+                    UpdateTabStates();
+                };
+            }
+
+            if (categoryLegendButton != null)
+            {
+                AddButton(categoryLegendButton);
+                categoryLegendButton.ButtonClickReleased += _ =>
+                {
+                    _categoryLegendVisible = !_categoryLegendVisible;
+                    if (_categoryLegendVisible)
+                    {
+                        _categoryPanelExpanded = false;
+                    }
+                };
+            }
+
+            UpdateTabStates();
+        }
+
+        public void SetCategoryLegendTexture(Texture2D categoryLegendTexture)
+        {
+            _categoryLegendTexture = categoryLegendTexture;
+        }
+
         public void SetQuestIcons(Texture2D available, Texture2D inProgress, Texture2D completed)
         {
             _iconAvailable = available;
@@ -276,6 +336,17 @@ namespace HaCreator.MapSimulator.UI
                 _detailButton.SetVisible(true);
                 _detailButton.SetButtonState(_selectedQuestId > 0 ? UIObjectState.Normal : UIObjectState.Disabled);
             }
+
+            bool showCategoryControls = HasCategoryFilterControls();
+            if (_showCategoryButton != null)
+            {
+                _showCategoryButton.SetVisible(showCategoryControls && !_categoryPanelExpanded);
+            }
+
+            if (_hideCategoryButton != null)
+            {
+                _hideCategoryButton.SetVisible(showCategoryControls && _categoryPanelExpanded);
+            }
         }
 
         protected override void DrawContents(SpriteBatch sprite, SkeletonMeshRenderer skeletonMeshRenderer, GameTime gameTime,
@@ -295,6 +366,7 @@ namespace HaCreator.MapSimulator.UI
             Rectangle tabRect = GetTabArea();
             Rectangle listRect = GetListArea();
             DrawTabs(sprite, tabRect);
+            DrawCategoryFilterPanel(sprite, tabRect);
             DrawQuestList(sprite, listRect, snapshot);
             DrawQuestFooter(sprite, GetFooterArea(), snapshot);
         }
@@ -493,7 +565,10 @@ namespace HaCreator.MapSimulator.UI
 
             if (ContainsPoint(mouseState.X, mouseState.Y))
             {
-                if (wheelDelta > 0)
+                if (HandleCategoryWheel(mouseState.X, mouseState.Y, wheelDelta))
+                {
+                }
+                else if (wheelDelta > 0)
                 {
                     ScrollUp();
                 }
@@ -549,6 +624,11 @@ namespace HaCreator.MapSimulator.UI
                 }
             }
 
+            if (HandleCategoryClick(mouseX, mouseY))
+            {
+                return;
+            }
+
             Rectangle listRect = GetListArea();
             if (!listRect.Contains(mouseX, mouseY))
             {
@@ -586,7 +666,7 @@ namespace HaCreator.MapSimulator.UI
 
         private Rectangle GetListArea()
         {
-            int top = Position.Y + (_currentTab == TAB_AVAILABLE ? 66 : 48);
+            int top = Position.Y + (_currentTab == TAB_AVAILABLE ? 66 : 48) + GetCategoryPanelHeight();
             int bottom = GetFooterArea().Y - 8;
             return new Rectangle(Position.X + 8, top, (CurrentFrame?.Width ?? 240) - 16, Math.Max(QUEST_ENTRY_HEIGHT + 8, bottom - top));
         }
@@ -652,7 +732,7 @@ namespace HaCreator.MapSimulator.UI
         {
             if (_questLogProvider != null)
             {
-                return _questLogProvider((QuestLogTabType)_currentTab, _showAllLevels) ?? new QuestLogSnapshot();
+                return ApplyCategoryFilters(_questLogProvider((QuestLogTabType)_currentTab, _showAllLevels) ?? new QuestLogSnapshot());
             }
 
             if (!_questsByTab.TryGetValue(_currentTab, out List<QuestDisplayData> quests))
@@ -660,12 +740,14 @@ namespace HaCreator.MapSimulator.UI
                 return new QuestLogSnapshot();
             }
 
-            return new QuestLogSnapshot
+            return ApplyCategoryFilters(new QuestLogSnapshot
             {
                 Entries = quests.Select(quest => new QuestLogEntrySnapshot
                 {
                     QuestId = quest.QuestId,
                     Name = quest.QuestName ?? $"Quest #{quest.QuestId}",
+                    AreaCode = 0,
+                    AreaName = "General",
                     State = quest.State switch
                     {
                         QuestState.NotStarted => QuestStateType.Not_Started,
@@ -687,7 +769,217 @@ namespace HaCreator.MapSimulator.UI
                     }).ToList(),
                     RewardLines = BuildLegacyRewardLines(quest)
                 }).ToList()
+            });
+        }
+
+        private QuestLogSnapshot GetUnfilteredSnapshot()
+        {
+            return _questLogProvider?.Invoke((QuestLogTabType)_currentTab, _showAllLevels) ?? new QuestLogSnapshot();
+        }
+
+        private QuestLogSnapshot ApplyCategoryFilters(QuestLogSnapshot snapshot)
+        {
+            if (snapshot?.Entries == null || snapshot.Entries.Count == 0)
+            {
+                return snapshot ?? new QuestLogSnapshot();
+            }
+
+            HashSet<int> hiddenAreaCodes = GetHiddenAreaCodes((QuestLogTabType)_currentTab);
+            if (hiddenAreaCodes.Count == 0)
+            {
+                return snapshot;
+            }
+
+            return new QuestLogSnapshot
+            {
+                Entries = snapshot.Entries.Where(entry => !hiddenAreaCodes.Contains(entry.AreaCode)).ToList()
             };
+        }
+
+        private HashSet<int> GetHiddenAreaCodes(QuestLogTabType tab)
+        {
+            if (!_hiddenAreaCodesByTab.TryGetValue(tab, out HashSet<int> hiddenAreaCodes))
+            {
+                hiddenAreaCodes = new HashSet<int>();
+                _hiddenAreaCodesByTab[tab] = hiddenAreaCodes;
+            }
+
+            return hiddenAreaCodes;
+        }
+
+        private void DrawCategoryFilterPanel(SpriteBatch sprite, Rectangle tabRect)
+        {
+            if (!HasCategoryFilterControls())
+            {
+                return;
+            }
+
+            Rectangle panelRect = GetCategoryPanelArea(tabRect);
+            if (panelRect.Height <= 0)
+            {
+                return;
+            }
+
+            sprite.Draw(_pixel, panelRect, new Color(7, 16, 29, 188));
+
+            if (_categoryLegendVisible && _categoryLegendTexture != null)
+            {
+                Rectangle legendRect = new(
+                    panelRect.X + CATEGORY_PANEL_PADDING,
+                    panelRect.Y + CATEGORY_PANEL_PADDING,
+                    Math.Min(panelRect.Width - (CATEGORY_PANEL_PADDING * 2), _categoryLegendTexture.Width),
+                    Math.Min(panelRect.Height - (CATEGORY_PANEL_PADDING * 2), _categoryLegendTexture.Height));
+                sprite.Draw(_categoryLegendTexture, legendRect, Color.White);
+                return;
+            }
+
+            IReadOnlyList<QuestAreaFilterEntry> areaFilters = GetVisibleAreaFilters();
+            if (areaFilters.Count == 0)
+            {
+                DrawText(sprite, "No category filters for this tab.", new Vector2(panelRect.X + 6, panelRect.Y + 4), new Color(214, 218, 228), SMALL_TEXT_SCALE);
+                return;
+            }
+
+            int visibleRows = GetVisibleCategoryRowCount(panelRect);
+            int maxOffset = Math.Max(0, areaFilters.Count - visibleRows);
+            _categoryScrollOffset = Math.Clamp(_categoryScrollOffset, 0, maxOffset);
+            HashSet<int> hiddenAreaCodes = GetHiddenAreaCodes((QuestLogTabType)_currentTab);
+
+            for (int i = 0; i < visibleRows && _categoryScrollOffset + i < areaFilters.Count; i++)
+            {
+                QuestAreaFilterEntry filter = areaFilters[_categoryScrollOffset + i];
+                Rectangle rowRect = new(
+                    panelRect.X + CATEGORY_PANEL_PADDING,
+                    panelRect.Y + CATEGORY_PANEL_PADDING + (i * CATEGORY_ROW_HEIGHT),
+                    panelRect.Width - (CATEGORY_PANEL_PADDING * 2),
+                    CATEGORY_ROW_HEIGHT - 2);
+                bool enabled = !hiddenAreaCodes.Contains(filter.AreaCode);
+                sprite.Draw(_pixel, rowRect, enabled ? new Color(44, 73, 110, 168) : new Color(53, 57, 63, 168));
+                DrawText(sprite, enabled ? "[x]" : "[ ]", new Vector2(rowRect.X + 4, rowRect.Y + 2), enabled ? new Color(151, 236, 136) : new Color(200, 204, 214), SMALL_TEXT_SCALE);
+                DrawText(sprite, Truncate(filter.AreaName, 24), new Vector2(rowRect.X + 28, rowRect.Y + 2), Color.White, SMALL_TEXT_SCALE);
+                DrawText(sprite, filter.Count.ToString(), new Vector2(rowRect.Right - 18, rowRect.Y + 2), new Color(210, 214, 224), 0.42f);
+            }
+        }
+
+        private bool HandleCategoryClick(int mouseX, int mouseY)
+        {
+            if (!HasCategoryFilterControls())
+            {
+                return false;
+            }
+
+            Rectangle panelRect = GetCategoryPanelArea(GetTabArea());
+            if (!panelRect.Contains(mouseX, mouseY))
+            {
+                return false;
+            }
+
+            if (_categoryLegendVisible)
+            {
+                _categoryLegendVisible = false;
+                return true;
+            }
+
+            IReadOnlyList<QuestAreaFilterEntry> areaFilters = GetVisibleAreaFilters();
+            if (areaFilters.Count == 0)
+            {
+                return true;
+            }
+
+            int rowIndex = (mouseY - panelRect.Y - CATEGORY_PANEL_PADDING) / CATEGORY_ROW_HEIGHT;
+            int entryIndex = _categoryScrollOffset + rowIndex;
+            if (rowIndex < 0 || entryIndex < 0 || entryIndex >= areaFilters.Count)
+            {
+                return true;
+            }
+
+            HashSet<int> hiddenAreaCodes = GetHiddenAreaCodes((QuestLogTabType)_currentTab);
+            int areaCode = areaFilters[entryIndex].AreaCode;
+            if (!hiddenAreaCodes.Add(areaCode))
+            {
+                hiddenAreaCodes.Remove(areaCode);
+            }
+
+            _scrollOffset = 0;
+            _selectedQuestId = -1;
+            return true;
+        }
+
+        private bool HandleCategoryWheel(int mouseX, int mouseY, int wheelDelta)
+        {
+            if (!HasCategoryFilterControls() || wheelDelta == 0)
+            {
+                return false;
+            }
+
+            Rectangle panelRect = GetCategoryPanelArea(GetTabArea());
+            if (!panelRect.Contains(mouseX, mouseY) || _categoryLegendVisible)
+            {
+                return false;
+            }
+
+            int visibleRows = GetVisibleCategoryRowCount(panelRect);
+            int maxOffset = Math.Max(0, GetVisibleAreaFilters().Count - visibleRows);
+            _categoryScrollOffset = wheelDelta > 0
+                ? Math.Max(0, _categoryScrollOffset - 1)
+                : Math.Min(maxOffset, _categoryScrollOffset + 1);
+            return true;
+        }
+
+        private bool HasCategoryFilterControls()
+        {
+            return _showCategoryButton != null || _hideCategoryButton != null;
+        }
+
+        private int GetCategoryPanelHeight()
+        {
+            Rectangle panelRect = GetCategoryPanelArea(GetTabArea());
+            return panelRect.Height > 0 ? panelRect.Height + 6 : 0;
+        }
+
+        private Rectangle GetCategoryPanelArea(Rectangle tabRect)
+        {
+            if (!HasCategoryFilterControls() || (!_categoryPanelExpanded && !_categoryLegendVisible))
+            {
+                return Rectangle.Empty;
+            }
+
+            int width = Math.Max(80, tabRect.Width - 6);
+            int x = tabRect.X;
+            int y = (_currentTab == TAB_AVAILABLE && HasClientLevelButtons()) ? tabRect.Bottom + 24 : tabRect.Bottom + 4;
+            if (_categoryLegendVisible && _categoryLegendTexture != null)
+            {
+                int legendHeight = Math.Min(96, _categoryLegendTexture.Height + (CATEGORY_PANEL_PADDING * 2));
+                return new Rectangle(x, y, width, legendHeight);
+            }
+
+            int rowCount = Math.Max(1, Math.Min(4, GetVisibleAreaFilters().Count));
+            int height = (rowCount * CATEGORY_ROW_HEIGHT) + (CATEGORY_PANEL_PADDING * 2);
+            return new Rectangle(x, y, width, height);
+        }
+
+        private int GetVisibleCategoryRowCount(Rectangle panelRect)
+        {
+            return Math.Max(1, (panelRect.Height - (CATEGORY_PANEL_PADDING * 2)) / CATEGORY_ROW_HEIGHT);
+        }
+
+        private IReadOnlyList<QuestAreaFilterEntry> GetVisibleAreaFilters()
+        {
+            QuestLogSnapshot snapshot = GetUnfilteredSnapshot();
+            if (snapshot?.Entries == null || snapshot.Entries.Count == 0)
+            {
+                return Array.Empty<QuestAreaFilterEntry>();
+            }
+
+            return snapshot.Entries
+                .GroupBy(entry => new { entry.AreaCode, entry.AreaName })
+                .Select(group => new QuestAreaFilterEntry(
+                    group.Key.AreaCode,
+                    string.IsNullOrWhiteSpace(group.Key.AreaName) ? "General" : group.Key.AreaName,
+                    group.Count()))
+                .OrderBy(entry => entry.AreaName, StringComparer.OrdinalIgnoreCase)
+                .ThenBy(entry => entry.AreaCode)
+                .ToList();
         }
 
         private static IReadOnlyList<QuestLogLineSnapshot> BuildLegacyRewardLines(QuestDisplayData quest)
@@ -1237,5 +1529,19 @@ namespace HaCreator.MapSimulator.UI
         public string Subtitle { get; init; } = string.Empty;
         public string Description { get; init; } = string.Empty;
         public Texture2D Icon { get; init; }
+    }
+
+    internal sealed class QuestAreaFilterEntry
+    {
+        public QuestAreaFilterEntry(int areaCode, string areaName, int count)
+        {
+            AreaCode = areaCode;
+            AreaName = areaName;
+            Count = count;
+        }
+
+        public int AreaCode { get; }
+        public string AreaName { get; }
+        public int Count { get; }
     }
 }

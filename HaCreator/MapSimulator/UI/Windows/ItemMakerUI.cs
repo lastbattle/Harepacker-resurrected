@@ -401,17 +401,23 @@ namespace HaCreator.MapSimulator.UI
             {
                 int recipeIndex = _recipeScrollOffset + i;
                 ItemMakerRecipe recipe = recipes[recipeIndex];
+                bool hiddenUnlocked = !recipe.IsHidden || IsHiddenRecipeUnlocked(recipe);
                 Rectangle rowRect = new(listRect.X + 4, listRect.Y + 4 + (i * RecipeRowHeight), listRect.Width - 8, RecipeRowHeight - 4);
                 bool selected = recipeIndex == _selectedRecipeIndex;
                 DrawPanel(sprite, rowRect,
                     selected ? new Color(55, 88, 126, 210) : new Color(27, 31, 45, 180),
                     selected ? new Color(153, 190, 230, 255) : new Color(66, 74, 95, 255));
 
-                string requirementPrefix = recipe.RequiredLevel > 0
-                    ? $"Lv {recipe.RequiredLevel}"
-                    : $"{_progression.GetFamilyLabel(recipe.Family)} L{GetEffectiveSkillLevel(recipe)}";
-                sprite.DrawString(_font, TruncateToWidth(recipe.Title, rowRect.Width - 16), new Vector2(rowRect.X + 8, rowRect.Y + 5), Color.White);
-                sprite.DrawString(_font, $"{requirementPrefix}  Output x{recipe.OutputQuantity}", new Vector2(rowRect.X + 8, rowRect.Y + 18), new Color(199, 211, 229));
+                string rowTitle = hiddenUnlocked ? recipe.Title : "Hidden recipe";
+                string requirementPrefix = hiddenUnlocked
+                    ? recipe.RequiredLevel > 0
+                        ? $"Lv {recipe.RequiredLevel}"
+                        : $"{_progression.GetFamilyLabel(recipe.Family)} L{GetEffectiveSkillLevel(recipe)}"
+                    : "???";
+                string outputText = hiddenUnlocked ? $"Output x{recipe.OutputQuantity}" : "Reveal the maker hint to inspect this entry.";
+                Color detailColor = hiddenUnlocked ? new Color(199, 211, 229) : new Color(187, 174, 220);
+                sprite.DrawString(_font, TruncateToWidth(rowTitle, rowRect.Width - 16), new Vector2(rowRect.X + 8, rowRect.Y + 5), Color.White);
+                sprite.DrawString(_font, TruncateToWidth($"{requirementPrefix}  {outputText}", rowRect.Width - 16), new Vector2(rowRect.X + 8, rowRect.Y + 18), detailColor);
             }
 
             if (recipes.Count > VisibleRecipeCount)
@@ -424,22 +430,42 @@ namespace HaCreator.MapSimulator.UI
             }
 
             ItemMakerRecipe selectedRecipe = recipes[Math.Clamp(_selectedRecipeIndex, 0, recipes.Count - 1)];
+            bool hiddenRecipeUnlocked = !selectedRecipe.IsHidden || IsHiddenRecipeUnlocked(selectedRecipe);
             Texture2D resultIcon = ResolveItemIcon(selectedRecipe.OutputItemId, selectedRecipe.OutputInventoryType);
             Vector2 detailOrigin = new(Position.X + 18, Position.Y + 185);
-            DrawItemIcon(sprite, resultIcon, (int)detailOrigin.X, (int)detailOrigin.Y - 2, 34);
-            sprite.DrawString(_font, selectedRecipe.Title, detailOrigin + new Vector2(40, 0), Color.White);
-            sprite.DrawString(_font, selectedRecipe.Description, detailOrigin + new Vector2(40, 18), new Color(207, 214, 226));
+            if (hiddenRecipeUnlocked)
+            {
+                DrawItemIcon(sprite, resultIcon, (int)detailOrigin.X, (int)detailOrigin.Y - 2, 34);
+            }
+
+            sprite.DrawString(_font, hiddenRecipeUnlocked ? selectedRecipe.Title : "Hidden recipe", detailOrigin + new Vector2(40, 0), Color.White);
+            sprite.DrawString(
+                _font,
+                hiddenRecipeUnlocked ? selectedRecipe.Description : "This entry stays obscured until its hidden maker requirement is revealed.",
+                detailOrigin + new Vector2(40, 18),
+                new Color(207, 214, 226));
 
             float y = detailOrigin.Y + 48;
+            if (!hiddenRecipeUnlocked)
+            {
+                sprite.DrawString(_font, "Hidden list entry", new Vector2(detailOrigin.X, y), new Color(214, 196, 255));
+                y += 18;
+
+                sprite.DrawString(_font, BuildHiddenRecipeLockHint(selectedRecipe), new Vector2(detailOrigin.X, y), new Color(255, 223, 153));
+                y += 18;
+
+                DrawGauge(sprite);
+                sprite.DrawString(_font, _statusMessage, new Vector2(Position.X + 18, Position.Y + 321), new Color(230, 230, 230));
+                return;
+            }
+
             string masteryText = BuildMasteryDisplayText(selectedRecipe);
             sprite.DrawString(_font, masteryText, new Vector2(detailOrigin.X, y), new Color(153, 210, 255));
             y += 18;
 
             if (selectedRecipe.IsHidden)
             {
-                string hiddenText = selectedRecipe.RequiredItemId > 0
-                    ? $"Hidden recipe unlocked by {GetItemName(selectedRecipe.RequiredItemId)}."
-                    : "Hidden recipe entry.";
+                string hiddenText = BuildHiddenRecipeUnlockSummary(selectedRecipe);
                 sprite.DrawString(_font, hiddenText, new Vector2(detailOrigin.X, y), new Color(214, 196, 255));
                 y += 18;
             }
@@ -766,6 +792,12 @@ namespace HaCreator.MapSimulator.UI
 
         private bool CanCraftRecipe(ItemMakerRecipe recipe, out string failureReason)
         {
+            if (recipe.IsHidden && !IsHiddenRecipeUnlocked(recipe))
+            {
+                failureReason = BuildHiddenRecipeFailureReason(recipe);
+                return false;
+            }
+
             if (_inventory == null)
             {
                 failureReason = "Inventory runtime is unavailable.";
@@ -886,6 +918,51 @@ namespace HaCreator.MapSimulator.UI
                 : failureReason;
         }
 
+        private string BuildHiddenRecipeLockHint(ItemMakerRecipe recipe)
+        {
+            if (HasExplicitHiddenUnlockGate(recipe))
+            {
+                return "Unlock this recipe by meeting its WZ-backed maker hint once.";
+            }
+
+            return "This hidden recipe locally reveals once its WZ level or mastery gate is met.";
+        }
+
+        private string BuildHiddenRecipeUnlockSummary(ItemMakerRecipe recipe)
+        {
+            if (recipe == null)
+            {
+                return "Hidden recipe entry.";
+            }
+
+            if (recipe.RequiredItemId > 0)
+            {
+                return $"Hidden recipe unlocked by {GetItemName(recipe.RequiredItemId)}.";
+            }
+
+            if (recipe.RequiredEquipItemId > 0)
+            {
+                return $"Hidden recipe unlocked by equipping {GetItemName(recipe.RequiredEquipItemId)}.";
+            }
+
+            if (recipe.RequiredQuestStates.Length > 0)
+            {
+                return "Hidden recipe unlocked by meeting its quest state.";
+            }
+
+            return "Hidden recipe unlocked by local level/mastery reveal.";
+        }
+
+        private string BuildHiddenRecipeFailureReason(ItemMakerRecipe recipe)
+        {
+            if (HasExplicitHiddenUnlockGate(recipe))
+            {
+                return "This hidden maker recipe has not been revealed yet.";
+            }
+
+            return "This hidden maker recipe is waiting for its level or mastery reveal.";
+        }
+
         private Rectangle GetCategorySelectorRectangle()
         {
             return new Rectangle(Position.X + 18, Position.Y + 23, 112, 18);
@@ -924,7 +1001,7 @@ namespace HaCreator.MapSimulator.UI
         private string SelectedRecipeLabel =>
             CurrentRecipes.Count == 0 || _selectedRecipeIndex < 0 || _selectedRecipeIndex >= CurrentRecipes.Count
                 ? "Select Item"
-                : CurrentRecipes[_selectedRecipeIndex].Title;
+                : GetRecipeSelectorLabel(CurrentRecipes[_selectedRecipeIndex]);
 
         private void ScrollRecipes(int delta)
         {
@@ -1055,8 +1132,15 @@ namespace HaCreator.MapSimulator.UI
                     selected ? new Color(55, 88, 126, 230) : new Color(27, 31, 45, 205),
                     selected ? new Color(153, 190, 230, 255) : new Color(66, 74, 95, 255));
 
-                sprite.DrawString(_font, TruncateToWidth(CurrentRecipes[recipeIndex].Title, optionRect.Width - 12), new Vector2(optionRect.X + 6, optionRect.Y + 2), Color.White);
+                sprite.DrawString(_font, TruncateToWidth(GetRecipeSelectorLabel(CurrentRecipes[recipeIndex]), optionRect.Width - 12), new Vector2(optionRect.X + 6, optionRect.Y + 2), Color.White);
             }
+        }
+
+        private string GetRecipeSelectorLabel(ItemMakerRecipe recipe)
+        {
+            return recipe != null && recipe.IsHidden && !IsHiddenRecipeUnlocked(recipe)
+                ? "???"
+                : recipe?.Title ?? "Select Item";
         }
 
         private void DrawPanel(SpriteBatch sprite, Rectangle rect, Color fill, Color border)
@@ -1477,18 +1561,16 @@ namespace HaCreator.MapSimulator.UI
                 .ThenBy(recipe => recipe.Title, StringComparer.OrdinalIgnoreCase)
                 .ToList();
 
-            SyncDiscoveredRecipes(allowedRecipes);
+            List<ItemMakerRecipe> launchFilteredRecipes = ApplyLaunchFilter(allowedRecipes);
+            SyncDiscoveredRecipes(launchFilteredRecipes.Where(static recipe => !recipe.IsHidden));
+            SyncUnlockedHiddenRecipes(launchFilteredRecipes.Where(static recipe => recipe.IsHidden));
 
-            var visibleRecipes = allowedRecipes
-                .Where(ShouldExposeRecipeInSelector)
-                .ToList();
-
-            List<ItemMakerRecipe> launchFilteredRecipes = ApplyLaunchFilter(visibleRecipes);
             List<ItemMakerRecipe> normalRecipes = launchFilteredRecipes
-                .Where(recipe => !recipe.IsHidden)
+                .Where(ShouldExposeRecipeInSelector)
+                .Where(static recipe => !recipe.IsHidden)
                 .ToList();
             List<ItemMakerRecipe> hiddenRecipes = launchFilteredRecipes
-                .Where(recipe => recipe.IsHidden)
+                .Where(static recipe => recipe.IsHidden)
                 .ToList();
 
             _pages.Clear();
@@ -1630,6 +1712,11 @@ namespace HaCreator.MapSimulator.UI
 
         private bool ShouldExposeRecipeInSelector(ItemMakerRecipe recipe)
         {
+            if (recipe.IsHidden)
+            {
+                return IsHiddenRecipeUnlocked(recipe);
+            }
+
             if (!PassesPersistentRecipeGate(recipe))
             {
                 return false;
@@ -1702,6 +1789,63 @@ namespace HaCreator.MapSimulator.UI
             {
                 RecipesDiscovered?.Invoke(newlyDiscoveredIds);
             }
+        }
+
+        private void SyncUnlockedHiddenRecipes(IEnumerable<ItemMakerRecipe> recipes)
+        {
+            List<int> newlyUnlockedIds = null;
+            foreach (ItemMakerRecipe recipe in recipes)
+            {
+                if (!PassesHiddenRecipeUnlockGate(recipe))
+                {
+                    continue;
+                }
+
+                if (_discoveredRecipeIds.Add(recipe.OutputItemId))
+                {
+                    newlyUnlockedIds ??= new List<int>();
+                    newlyUnlockedIds.Add(recipe.OutputItemId);
+                }
+            }
+
+            if (newlyUnlockedIds?.Count > 0)
+            {
+                RecipesDiscovered?.Invoke(newlyUnlockedIds);
+            }
+        }
+
+        private bool PassesHiddenRecipeUnlockGate(ItemMakerRecipe recipe)
+        {
+            if (!recipe.IsHidden)
+            {
+                return false;
+            }
+
+            // The client keeps hidden maker targets in a dedicated list rather than letting them
+            // fall out of the selector sweep. Locally reveal explicit hint-gated entries when the
+            // WZ auth gate passes, and let hide-only rows surface once their persistent level or
+            // mastery gate is met so they do not stay permanently obscured without the server
+            // session model that normally owns those unlock decisions.
+            bool passesPersistentGate = PassesPersistentRecipeGate(recipe);
+            bool passesTransientGate = PassesTransientDiscoveryGate(recipe);
+            return ItemMakerHiddenRecipeRevealPolicy.ShouldRevealLocally(
+                recipe.IsHidden,
+                passesPersistentGate,
+                passesTransientGate,
+                HasExplicitHiddenUnlockGate(recipe));
+        }
+
+        private bool IsHiddenRecipeUnlocked(ItemMakerRecipe recipe)
+        {
+            return recipe.IsHidden && _discoveredRecipeIds.Contains(recipe.OutputItemId);
+        }
+
+        private static bool HasExplicitHiddenUnlockGate(ItemMakerRecipe recipe)
+        {
+            return recipe != null
+                   && (recipe.RequiredItemId > 0
+                       || recipe.RequiredEquipItemId > 0
+                       || recipe.RequiredQuestStates.Length > 0);
         }
 
         private void FocusLaunchContext()

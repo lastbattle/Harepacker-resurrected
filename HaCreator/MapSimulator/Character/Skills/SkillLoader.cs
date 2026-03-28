@@ -62,14 +62,6 @@ namespace HaCreator.MapSimulator.Character.Skills
             14111000
         };
 
-        private static readonly Dictionary<int, int> FlagOnlyMorphSkillAliasTemplateIds = new()
-        {
-            // v115 exposes only info/morph=1 for these skills, but the available Morph assets and
-            // the client morph loader both operate on concrete template ids.
-            [10109] = 109,
-            [20020111] = 111
-        };
-
         private static readonly string[] PreferredShadowPartnerOffsetActions =
         {
             "stand1",
@@ -575,6 +567,9 @@ namespace HaCreator.MapSimulator.Character.Skills
             {
                 1 => SkillAttackType.Melee,
                 2 => SkillAttackType.Ranged,
+                // Aran combo/command attack families publish `info/type=52` even without `ball`,
+                // but the client keeps them on the shoot-attack path instead of falling back to melee.
+                52 => SkillAttackType.Ranged,
                 10 => SkillAttackType.Magic,
                 _ => null
             };
@@ -1085,6 +1080,8 @@ namespace HaCreator.MapSimulator.Character.Skills
                         yield return "swordTL";
                         break;
                 }
+
+                yield break;
             }
 
             int weaponCode = Math.Abs(weapon.ItemId / 10000) % 100;
@@ -2667,14 +2664,30 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return 0;
             }
 
-            if (!FlagOnlyMorphSkillAliasTemplateIds.TryGetValue(skillId, out int morphTemplateId) || morphTemplateId <= 0)
+            foreach (int morphTemplateId in EnumerateFlagOnlyMorphTemplateCandidates(skillId))
             {
-                return 0;
+                if (CharacterLoader.CanResolveMorphTemplate(morphTemplateId))
+                {
+                    return morphTemplateId;
+                }
             }
 
-            return Program.FindImage("Morph", morphTemplateId.ToString("D4") + ".img") != null
-                ? morphTemplateId
-                : 0;
+            return 0;
+        }
+
+        private static IEnumerable<int> EnumerateFlagOnlyMorphTemplateCandidates(int skillId)
+        {
+            if (skillId <= 0)
+            {
+                yield break;
+            }
+
+            var seen = new HashSet<int>();
+            int suffixTemplateId = skillId % 10000;
+            if (suffixTemplateId > 0 && seen.Add(suffixTemplateId))
+            {
+                yield return suffixTemplateId;
+            }
         }
 
         private static bool HasFlagOnlyMorphMetadata(WzImageProperty node, string name)

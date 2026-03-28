@@ -39,6 +39,7 @@ namespace HaCreator.MapSimulator.Managers
         public const int DefaultPort = 18486;
         private const int PacketTypeHealerMove = 344;
         private const int PacketTypePulleyStateChange = 345;
+        private const int OutboundPulleyRequestOpcode = 259;
         private const string PulleyRequestPacketHex = "0301";
 
         private sealed class ConnectedClient : IDisposable
@@ -201,31 +202,54 @@ namespace HaCreator.MapSimulator.Managers
 
         public static bool TryParsePacketLine(string text, out int packetType, out byte[] payload, out string error)
         {
+            bool parsed = TryParsePacketLine(text, out packetType, out payload, out _, out string message);
+            error = parsed ? null : message;
+            return parsed;
+        }
+
+        public static bool TryParsePacketLine(string text, out int packetType, out byte[] payload, out bool ignored, out string message)
+        {
             packetType = 0;
             payload = Array.Empty<byte>();
-            error = null;
+            ignored = false;
+            message = null;
 
             if (string.IsNullOrWhiteSpace(text))
             {
-                error = "Guild boss transport line is empty.";
+                message = "Guild boss transport line is empty.";
                 return false;
             }
 
-            string[] tokens = text.Trim().Split((char[])null, StringSplitOptions.RemoveEmptyEntries);
+            string trimmed = text.Trim();
+            string[] tokens = trimmed.Split((char[])null, StringSplitOptions.RemoveEmptyEntries);
             if (tokens.Length == 0)
             {
-                error = "Guild boss transport line is empty.";
+                message = "Guild boss transport line is empty.";
                 return false;
             }
 
-            if (TryParseRawPacket(tokens, out packetType, out payload, out error))
+            if (TryParseRawPacket(tokens, out packetType, out payload, out ignored, out message))
             {
                 return true;
             }
 
+            if (ignored)
+            {
+                return false;
+            }
+
             if (!TryParsePacketType(tokens[0], out packetType))
             {
-                error = $"Unsupported guild boss packet type: {tokens[0]}";
+                message = $"Unsupported guild boss packet type: {tokens[0]}";
+                return false;
+            }
+
+            if (packetType == OutboundPulleyRequestOpcode)
+            {
+                ignored = true;
+                message = $"Ignored outbound guild boss pulley request opcode: {OutboundPulleyRequestOpcode}.";
+                packetType = 0;
+                payload = Array.Empty<byte>();
                 return false;
             }
 
@@ -236,7 +260,7 @@ namespace HaCreator.MapSimulator.Managers
                     return true;
                 }
 
-                error = "Guild boss healer packet requires either a signed Y value or a hex payload.";
+                message = "Guild boss healer packet requires either a signed Y value or a hex payload.";
                 return false;
             }
 
@@ -245,14 +269,15 @@ namespace HaCreator.MapSimulator.Managers
                 return true;
             }
 
-            error = "Guild boss pulley packet requires either a state byte or a hex payload.";
+            message = "Guild boss pulley packet requires either a state byte or a hex payload.";
             return false;
         }
 
-        private static bool TryParseRawPacket(string[] tokens, out int packetType, out byte[] payload, out string error)
+        private static bool TryParseRawPacket(string[] tokens, out int packetType, out byte[] payload, out bool ignored, out string error)
         {
             packetType = 0;
             payload = Array.Empty<byte>();
+            ignored = false;
             error = null;
 
             if (tokens.Length == 0
@@ -282,6 +307,15 @@ namespace HaCreator.MapSimulator.Managers
             catch (Exception ex) when (ex is EndOfStreamException || ex is IOException)
             {
                 error = $"Guild boss raw packet decode failed: {ex.Message}";
+                return false;
+            }
+
+            if (packetType == OutboundPulleyRequestOpcode)
+            {
+                ignored = true;
+                error = $"Ignored outbound guild boss raw pulley request opcode: {OutboundPulleyRequestOpcode}.";
+                packetType = 0;
+                payload = Array.Empty<byte>();
                 return false;
             }
 
@@ -344,9 +378,17 @@ namespace HaCreator.MapSimulator.Managers
                             continue;
                         }
 
-                        if (!TryParsePacketLine(line, out int packetType, out byte[] payload, out string error))
+                        if (line.StartsWith("packetoutraw", StringComparison.OrdinalIgnoreCase))
                         {
-                            LastStatus = $"Ignored guild boss transport line from {client.Endpoint}: {error}";
+                            LastStatus = $"Ignored outbound echo from {client.Endpoint}: {line}";
+                            continue;
+                        }
+
+                        if (!TryParsePacketLine(line, out int packetType, out byte[] payload, out bool ignored, out string error))
+                        {
+                            LastStatus = ignored
+                                ? $"Ignored outbound echo from {client.Endpoint}: {error}"
+                                : $"Ignored guild boss transport line from {client.Endpoint}: {error}";
                             continue;
                         }
 

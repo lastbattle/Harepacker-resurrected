@@ -37,6 +37,8 @@ namespace HaCreator.MapSimulator.Interaction
     {
         public int QuestId { get; init; }
         public string Name { get; init; } = string.Empty;
+        public int AreaCode { get; init; }
+        public string AreaName { get; init; } = string.Empty;
         public QuestStateType State { get; init; }
         public string StatusText { get; init; } = string.Empty;
         public string SummaryText { get; init; } = string.Empty;
@@ -95,6 +97,7 @@ namespace HaCreator.MapSimulator.Interaction
         {
             public int ItemId { get; init; }
             public int RequiredCount { get; init; }
+            public bool IsSecret { get; init; }
         }
 
         internal sealed class QuestSkillRequirement
@@ -164,6 +167,8 @@ namespace HaCreator.MapSimulator.Interaction
         {
             public int QuestId { get; init; }
             public string Name { get; init; } = string.Empty;
+            public int AreaCode { get; init; }
+            public string AreaName { get; init; } = string.Empty;
             public string Summary { get; init; } = string.Empty;
             public string DemandSummary { get; init; } = string.Empty;
             public string RewardSummary { get; init; } = string.Empty;
@@ -569,6 +574,58 @@ namespace HaCreator.MapSimulator.Interaction
             return target != null;
         }
 
+        public bool TryBuildQuestDemandItemQuery(int questId, out QuestDemandItemQueryState queryState)
+        {
+            EnsureDefinitionsLoaded();
+            queryState = null;
+            if (!_definitions.TryGetValue(questId, out QuestDefinition definition))
+            {
+                return false;
+            }
+
+            QuestStateType state = GetQuestState(questId);
+            if (state != QuestStateType.Started)
+            {
+                return false;
+            }
+
+            List<int> visibleItemIds = new();
+            int hiddenItemCount = 0;
+            for (int i = 0; i < definition.EndItemRequirements.Count; i++)
+            {
+                QuestItemRequirement requirement = definition.EndItemRequirements[i];
+                if (GetResolvedItemCount(requirement.ItemId) >= requirement.RequiredCount)
+                {
+                    continue;
+                }
+
+                if (requirement.IsSecret)
+                {
+                    hiddenItemCount++;
+                    continue;
+                }
+
+                if (!visibleItemIds.Contains(requirement.ItemId))
+                {
+                    visibleItemIds.Add(requirement.ItemId);
+                }
+            }
+
+            if (visibleItemIds.Count == 0 && hiddenItemCount == 0)
+            {
+                return false;
+            }
+
+            queryState = new QuestDemandItemQueryState
+            {
+                QuestId = questId,
+                VisibleItemIds = visibleItemIds,
+                HiddenItemCount = hiddenItemCount,
+                FallbackNpcName = ResolveNpcName(definition.EndNpcId ?? definition.StartNpcId ?? 0)
+            };
+            return true;
+        }
+
         public QuestWindowActionResult TryAcceptFromQuestWindow(int questId, CharacterBuild build)
         {
             EnsureDefinitionsLoaded();
@@ -600,16 +657,27 @@ namespace HaCreator.MapSimulator.Interaction
                 };
             }
 
+            var messages = new List<string>
+            {
+                $"Accepted quest: {definition.Name}"
+            };
+            IReadOnlyList<QuestRewardItem> resolvedStartRewards = ResolveGrantedRewardItems(definition.StartActions.RewardItems, build, messages: null);
+            List<string> inventoryIssues = EvaluateRewardInventoryIssues(resolvedStartRewards);
+            if (inventoryIssues.Count > 0)
+            {
+                return new QuestWindowActionResult
+                {
+                    QuestId = questId,
+                    Messages = inventoryIssues
+                };
+            }
+
             QuestProgress progress = GetOrCreateProgress(questId);
             progress.State = QuestStateType.Started;
             progress.MobKills.Clear();
             MarkQuestAlarmUpdated(questId);
 
-            var messages = new List<string>
-            {
-                $"Accepted quest: {definition.Name}"
-            };
-            ApplyActions(definition.StartActions, build, messages);
+            ApplyActions(definition.StartActions, build, messages, resolvedStartRewards);
 
             return new QuestWindowActionResult
             {
@@ -697,11 +765,22 @@ namespace HaCreator.MapSimulator.Interaction
                 };
             }
 
+            messages.Insert(0, $"Completed quest: {definition.Name}");
+            IReadOnlyList<QuestRewardItem> resolvedCompletionRewards = ResolveGrantedRewardItems(definition.EndActions.RewardItems, build, messages: null);
+            List<string> inventoryIssues = EvaluateRewardInventoryIssues(resolvedCompletionRewards);
+            if (inventoryIssues.Count > 0)
+            {
+                return new QuestWindowActionResult
+                {
+                    QuestId = questId,
+                    Messages = inventoryIssues
+                };
+            }
+
             QuestProgress progress = GetOrCreateProgress(questId);
             progress.State = QuestStateType.Completed;
             MarkQuestAlarmUpdated(questId);
-            messages.Insert(0, $"Completed quest: {definition.Name}");
-            ApplyActions(definition.EndActions, build, messages);
+            ApplyActions(definition.EndActions, build, messages, resolvedCompletionRewards);
 
             return new QuestWindowActionResult
             {
@@ -869,6 +948,31 @@ namespace HaCreator.MapSimulator.Interaction
             return false;
         }
 
+        private List<string> EvaluateRewardInventoryIssues(IReadOnlyList<QuestRewardItem> rewards)
+        {
+            var issues = new List<string>();
+            if (rewards == null || rewards.Count == 0 || _canAcceptItemReward == null)
+            {
+                return issues;
+            }
+
+            for (int i = 0; i < rewards.Count; i++)
+            {
+                QuestRewardItem reward = rewards[i];
+                if (reward == null || reward.Count <= 0)
+                {
+                    continue;
+                }
+
+                if (!_canAcceptItemReward(reward.ItemId, reward.Count))
+                {
+                    issues.Add($"Make room for {GetItemName(reward.ItemId)} x{reward.Count} before claiming this quest reward.");
+                }
+            }
+
+            return issues;
+        }
+
         public NpcInteractionState BuildInteractionState(NpcItem npc, CharacterBuild build, int? preferredQuestId = null)
         {
             string npcName = npc?.NpcInstance?.NpcInfo?.StringName;
@@ -942,6 +1046,100 @@ namespace HaCreator.MapSimulator.Interaction
             };
         }
 
+        public NpcInteractionState BuildQuestDeliveryInteractionState(int questId, CharacterBuild build, int itemId)
+        {
+            EnsureDefinitionsLoaded();
+            if (!_definitions.TryGetValue(questId, out QuestDefinition definition))
+            {
+                return new NpcInteractionState
+                {
+                    NpcName = "NPC",
+                    Entries = new[]
+                    {
+                        new NpcInteractionEntry
+                        {
+                            EntryId = questId,
+                            QuestId = questId,
+                            Kind = NpcInteractionEntryKind.LockedQuest,
+                            Title = $"Quest #{questId}",
+                            Subtitle = "Unavailable",
+                            Pages = new[]
+                            {
+                                new NpcInteractionPage
+                                {
+                                    Text = $"Quest #{questId} is not available in the loaded quest data."
+                                }
+                            },
+                            PrimaryActionLabel = "OK",
+                            PrimaryActionEnabled = false,
+                            PrimaryActionKind = NpcInteractionActionKind.None
+                        }
+                    },
+                    SelectedEntryId = questId
+                };
+            }
+
+            QuestStateType state = GetQuestState(questId);
+            bool completionPhase = state == QuestStateType.Started;
+            int targetNpcId = completionPhase
+                ? definition.EndNpcId ?? definition.StartNpcId ?? 0
+                : definition.StartNpcId ?? definition.EndNpcId ?? 0;
+            string npcName = ResolveNpcName(targetNpcId);
+            List<string> issues = completionPhase
+                ? EvaluateCompletionIssues(definition, build)
+                : EvaluateStartIssues(definition, build);
+            bool primaryEnabled = issues.Count == 0 && targetNpcId > 0;
+            string itemName = itemId > 0 ? GetItemName(itemId) : "delivery item";
+
+            List<NpcInteractionPage> pages = new()
+            {
+                new NpcInteractionPage
+                {
+                    Text = NpcDialogueTextFormatter.Format(
+                        JoinQuestSections(
+                            definition.Summary,
+                            completionPhase ? definition.ProgressDescription : definition.StartDescription,
+                            definition.DemandSummary),
+                        CreateDialogueFormattingContext())
+                }
+            };
+
+            string deliveryContext = completionPhase
+                ? $"{npcName} will handle the completion handoff for {itemName}."
+                : $"{npcName} will handle the acceptance handoff for {itemName}.";
+            string requirementText = issues.Count == 0
+                ? deliveryContext
+                : string.Join(" ", issues);
+            pages.Add(new NpcInteractionPage
+            {
+                Text = NpcDialogueTextFormatter.Format(requirementText, CreateDialogueFormattingContext())
+            });
+
+            string actionLabel = completionPhase ? "Complete" : "Accept";
+            return new NpcInteractionState
+            {
+                NpcName = string.IsNullOrWhiteSpace(npcName) ? "NPC" : npcName,
+                Entries = new[]
+                {
+                    new NpcInteractionEntry
+                    {
+                        EntryId = questId,
+                        QuestId = questId,
+                        Kind = completionPhase
+                            ? (primaryEnabled ? NpcInteractionEntryKind.CompletableQuest : NpcInteractionEntryKind.InProgressQuest)
+                            : (primaryEnabled ? NpcInteractionEntryKind.AvailableQuest : NpcInteractionEntryKind.LockedQuest),
+                        Title = definition.Name,
+                        Subtitle = $"Quest Delivery via {itemName}",
+                        Pages = pages,
+                        PrimaryActionLabel = actionLabel,
+                        PrimaryActionEnabled = primaryEnabled,
+                        PrimaryActionKind = NpcInteractionActionKind.QuestPrimary
+                    }
+                },
+                SelectedEntryId = questId
+            };
+        }
+
         public QuestActionResult TryPerformPrimaryAction(int questId, int npcId, CharacterBuild build)
         {
             EnsureDefinitionsLoaded();
@@ -974,16 +1172,26 @@ namespace HaCreator.MapSimulator.Interaction
                     };
                 }
 
+                var messages = new List<string>
+                {
+                    $"Accepted quest: {definition.Name}"
+                };
+                IReadOnlyList<QuestRewardItem> resolvedStartRewards = ResolveGrantedRewardItems(definition.StartActions.RewardItems, build, messages: null);
+                List<string> inventoryIssues = EvaluateRewardInventoryIssues(resolvedStartRewards);
+                if (inventoryIssues.Count > 0)
+                {
+                    return new QuestActionResult
+                    {
+                        Messages = inventoryIssues
+                    };
+                }
+
                 QuestProgress progress = GetOrCreateProgress(questId);
                 progress.State = QuestStateType.Started;
                 progress.MobKills.Clear();
                 MarkQuestAlarmUpdated(questId);
 
-                var messages = new List<string>
-                {
-                    $"Accepted quest: {definition.Name}"
-                };
-                ApplyActions(definition.StartActions, build, messages);
+                ApplyActions(definition.StartActions, build, messages, resolvedStartRewards);
                 return new QuestActionResult
                 {
                     StateChanged = true,
@@ -1021,12 +1229,22 @@ namespace HaCreator.MapSimulator.Interaction
                     };
                 }
 
+                messages.Insert(0,
+                    $"Completed quest: {definition.Name}");
+                IReadOnlyList<QuestRewardItem> resolvedCompletionRewards = ResolveGrantedRewardItems(definition.EndActions.RewardItems, build, messages: null);
+                List<string> inventoryIssues = EvaluateRewardInventoryIssues(resolvedCompletionRewards);
+                if (inventoryIssues.Count > 0)
+                {
+                    return new QuestActionResult
+                    {
+                        Messages = inventoryIssues
+                    };
+                }
+
                 QuestProgress progress = GetOrCreateProgress(questId);
                 progress.State = QuestStateType.Completed;
                 MarkQuestAlarmUpdated(questId);
-                messages.Insert(0,
-                    $"Completed quest: {definition.Name}");
-                ApplyActions(definition.EndActions, build, messages);
+                ApplyActions(definition.EndActions, build, messages, resolvedCompletionRewards);
                 return new QuestActionResult
                 {
                     StateChanged = true,
@@ -1160,6 +1378,8 @@ namespace HaCreator.MapSimulator.Interaction
             {
                 QuestId = definition.QuestId,
                 Name = definition.Name,
+                AreaCode = definition.AreaCode,
+                AreaName = definition.AreaName,
                 State = state,
                 StatusText = state switch
                 {
@@ -1357,6 +1577,11 @@ namespace HaCreator.MapSimulator.Interaction
                 return itemPages;
             }
 
+            if (hasMissingItems && lostPages.Count > 0)
+            {
+                return lostPages;
+            }
+
             if (state == QuestStateType.Started && hasMissingMobs)
             {
                 if (TryGetStopPages(stopPages, "mob", out IReadOnlyList<NpcInteractionPage> mobPages))
@@ -1491,7 +1716,7 @@ namespace HaCreator.MapSimulator.Interaction
 
             if (definition.AllowedJobs.Count > 0)
             {
-                bool matchesJob = build != null && definition.AllowedJobs.Contains(build.Job);
+                bool matchesJob = build != null && MatchesAllowedJobs(build.Job, definition.AllowedJobs);
                 lines.Add(new QuestLogLineSnapshot
                 {
                     Label = "Req",
@@ -1710,7 +1935,7 @@ namespace HaCreator.MapSimulator.Interaction
                     issues.Add($"This quest is capped at level {definition.MaxLevel.Value}.");
                 }
 
-                if (definition.AllowedJobs.Count > 0 && !definition.AllowedJobs.Contains(build.Job))
+                if (definition.AllowedJobs.Count > 0 && !MatchesAllowedJobs(build.Job, definition.AllowedJobs))
                 {
                     issues.Add($"Required job: {string.Join(", ", definition.AllowedJobs.Select(FormatJobName))}.");
                 }
@@ -1726,6 +1951,8 @@ namespace HaCreator.MapSimulator.Interaction
             AppendItemIssues(definition.StartItemRequirements, issues);
             AppendSkillIssues(definition.StartSkillRequirements, issues);
             AppendMesoIssues(definition.StartActions.MesoReward, issues, "start");
+            AppendChoiceRewardIssues(definition.StartActions.RewardItems, build, issues);
+            issues.AddRange(EvaluateRewardInventoryIssues(ResolveGrantedRewardItems(definition.StartActions.RewardItems, build, messages: null)));
             return issues;
         }
 
@@ -1757,6 +1984,8 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             AppendMesoIssues(-definition.EndMesoRequirement, issues, "complete");
+            AppendChoiceRewardIssues(definition.EndActions.RewardItems, build, issues);
+            issues.AddRange(EvaluateRewardInventoryIssues(ResolveGrantedRewardItems(definition.EndActions.RewardItems, build, messages: null)));
 
             if (build != null && definition.MaxLevel.HasValue && build.Level > definition.MaxLevel.Value)
             {
@@ -1764,6 +1993,25 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             return issues;
+        }
+
+        private void AppendChoiceRewardIssues(
+            IReadOnlyList<QuestRewardItem> rewards,
+            CharacterBuild build,
+            ICollection<string> issues)
+        {
+            foreach ((int groupKey, List<QuestRewardItem> groupRewards) in GetFilteredChoiceRewardGroups(rewards, build))
+            {
+                if (groupRewards.Count <= 1)
+                {
+                    continue;
+                }
+
+                string rewardSummary = string.Join(
+                    ", ",
+                    groupRewards.Select(static reward => GetRewardItemDescription(reward, includeSelectionTag: false, includeFilters: true)));
+                issues.Add($"Choose 1 quest reward before continuing: {rewardSummary}.");
+            }
         }
 
         private void AppendQuestStateIssues(IReadOnlyList<QuestStateRequirement> requirements, ICollection<string> issues)
@@ -2148,7 +2396,11 @@ namespace HaCreator.MapSimulator.Interaction
             }
         }
 
-        private void ApplyActions(QuestActionBundle actions, CharacterBuild build, ICollection<string> messages)
+        private void ApplyActions(
+            QuestActionBundle actions,
+            CharacterBuild build,
+            ICollection<string> messages,
+            IReadOnlyList<QuestRewardItem> resolvedGrantedItems = null)
         {
             if (actions == null)
             {
@@ -2197,7 +2449,7 @@ namespace HaCreator.MapSimulator.Interaction
                 ApplyTraitReward(build, actions.TraitRewards[i], messages);
             }
 
-            IReadOnlyList<QuestRewardItem> resolvedGrantedItems = ResolveGrantedRewardItems(actions.RewardItems, build, messages);
+            resolvedGrantedItems ??= ResolveGrantedRewardItems(actions.RewardItems, build, messages);
             for (int i = 0; i < resolvedGrantedItems.Count; i++)
             {
                 QuestRewardItem item = resolvedGrantedItems[i];
@@ -2593,6 +2845,8 @@ namespace HaCreator.MapSimulator.Interaction
             {
                 QuestId = questId,
                 Name = (questInfo["name"] as WzStringProperty)?.Value ?? $"Quest #{questId}",
+                AreaCode = ParseInt(questInfo["area"]).GetValueOrDefault(),
+                AreaName = ResolveQuestAreaName(ParseInt(questInfo["area"]).GetValueOrDefault()),
                 Summary = (questInfo["summary"] as WzStringProperty)?.Value ?? string.Empty,
                 DemandSummary = (questInfo["demandSummary"] as WzStringProperty)?.Value ?? string.Empty,
                 RewardSummary = (questInfo["rewardSummary"] as WzStringProperty)?.Value ?? string.Empty,
@@ -2625,6 +2879,19 @@ namespace HaCreator.MapSimulator.Interaction
                 StartActions = ParseActions(startAct),
                 EndActions = ParseActions(endAct)
             };
+        }
+
+        private static string ResolveQuestAreaName(int areaCode)
+        {
+            if (areaCode <= 0)
+            {
+                return "General";
+            }
+
+            QuestAreaCodeType areaType = QuestAreaCodeTypeExt.ToEnum(areaCode);
+            return areaType != QuestAreaCodeType.Unknown
+                ? areaType.ToReadableString()
+                : $"Area {areaCode}";
         }
 
         public bool TryGetQuestLayerTagState(string tag, out bool isVisible)
@@ -2866,7 +3133,8 @@ namespace HaCreator.MapSimulator.Interaction
                 requirements.Add(new QuestItemRequirement
                 {
                     ItemId = itemId,
-                    RequiredCount = count
+                    RequiredCount = count,
+                    IsSecret = ParseInt(item["secret"]).GetValueOrDefault() != 0
                 });
             }
 
@@ -3361,7 +3629,6 @@ namespace HaCreator.MapSimulator.Interaction
 
             AppendConversationChoice(property["yes"], "Yes", choices);
             AppendConversationChoice(property["no"], "No", choices);
-            AppendConversationChoice(property["stop"], "Stop", choices);
         }
 
         private static void AppendConversationChoice(WzImageProperty property, string label, ICollection<NpcInteractionChoice> choices)
@@ -3474,28 +3741,7 @@ namespace HaCreator.MapSimulator.Interaction
                 return Array.Empty<NpcInteractionPage>();
             }
 
-            var pages = new List<NpcInteractionPage>();
-            if (property is WzStringProperty)
-            {
-                AppendConversationPage(property, pages);
-                return pages;
-            }
-
-            if (property.WzProperties == null)
-            {
-                return Array.Empty<NpcInteractionPage>();
-            }
-
-            for (int i = 0; i < property.WzProperties.Count; i++)
-            {
-                WzImageProperty child = property.WzProperties[i];
-                if (child is WzStringProperty || int.TryParse(child.Name, out _))
-                {
-                    AppendConversationPage(child, pages);
-                }
-            }
-
-            return pages;
+            return ParseConversationPages(property);
         }
 
         private static bool TryGetStopPages(
@@ -3955,12 +4201,45 @@ namespace HaCreator.MapSimulator.Interaction
                     continue;
                 }
 
+                if (groupRewards.Count > 1)
+                {
+                    messages?.Add($"Choice reward selection pending: {string.Join(", ", groupRewards.Select(static reward => GetRewardItemDescription(reward, includeSelectionTag: false, includeFilters: true)))}");
+                    continue;
+                }
+
                 QuestRewardItem selectedReward = groupRewards[0];
                 granted.Add(selectedReward);
-                messages?.Add($"Choice reward auto-selected: {GetRewardItemDescription(selectedReward, includeSelectionTag: false, includeFilters: false)}");
+                messages?.Add($"Choice reward resolved: {GetRewardItemDescription(selectedReward, includeSelectionTag: false, includeFilters: false)}");
             }
 
             return granted;
+        }
+
+        private IEnumerable<KeyValuePair<int, List<QuestRewardItem>>> GetFilteredChoiceRewardGroups(
+            IReadOnlyList<QuestRewardItem> rewards,
+            CharacterBuild build)
+        {
+            if (rewards == null || rewards.Count == 0)
+            {
+                return Enumerable.Empty<KeyValuePair<int, List<QuestRewardItem>>>();
+            }
+
+            var choiceGroups = new Dictionary<int, List<QuestRewardItem>>();
+            for (int i = 0; i < rewards.Count; i++)
+            {
+                QuestRewardItem reward = rewards[i];
+                if (reward == null ||
+                    reward.Count <= 0 ||
+                    reward.SelectionType != QuestRewardSelectionType.PlayerSelection ||
+                    !MatchesRewardItemFilter(reward, build))
+                {
+                    continue;
+                }
+
+                AddRewardSelectionGroup(choiceGroups, reward.SelectionGroup, reward);
+            }
+
+            return choiceGroups.OrderBy(pair => pair.Key);
         }
 
         private static void AddRewardSelectionGroup(IDictionary<int, List<QuestRewardItem>> groups, int groupKey, QuestRewardItem reward)

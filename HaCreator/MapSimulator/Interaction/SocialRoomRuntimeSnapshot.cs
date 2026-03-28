@@ -15,6 +15,15 @@ namespace HaCreator.MapSimulator.Interaction
         public string ModeName { get; set; }
         public int MiniRoomModeIndex { get; set; }
         public int MiniRoomWagerAmount { get; set; }
+        public bool MiniRoomOmokInProgress { get; set; }
+        public int MiniRoomOmokCurrentTurnIndex { get; set; }
+        public int MiniRoomOmokWinnerIndex { get; set; } = -1;
+        public int MiniRoomOmokLastMoveX { get; set; } = -1;
+        public int MiniRoomOmokLastMoveY { get; set; } = -1;
+        public int MiniRoomOmokOwnerStoneValue { get; set; } = 1;
+        public int MiniRoomOmokGuestStoneValue { get; set; } = 2;
+        public bool MiniRoomOmokTieRequested { get; set; }
+        public List<int> MiniRoomOmokBoard { get; set; } = new();
         public int TradeLocalOfferMeso { get; set; }
         public int TradeRemoteOfferMeso { get; set; }
         public bool TradeLocalLocked { get; set; }
@@ -22,6 +31,14 @@ namespace HaCreator.MapSimulator.Interaction
         public bool TradeLocalAccepted { get; set; }
         public bool TradeRemoteAccepted { get; set; }
         public DateTime? EntrustedPermitExpiresAtUtc { get; set; }
+        public int EmployeeTemplateId { get; set; }
+        public bool EmployeeUseOwnerAnchor { get; set; } = true;
+        public int EmployeeAnchorOffsetX { get; set; }
+        public int EmployeeAnchorOffsetY { get; set; }
+        public int EmployeeWorldX { get; set; }
+        public int EmployeeWorldY { get; set; }
+        public bool EmployeeHasWorldPosition { get; set; }
+        public bool? EmployeeFlip { get; set; }
         public List<SocialRoomOccupantSnapshot> Occupants { get; set; } = new();
         public List<SocialRoomItemSnapshot> Items { get; set; } = new();
         public List<string> Notes { get; set; } = new();

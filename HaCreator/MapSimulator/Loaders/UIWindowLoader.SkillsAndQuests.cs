@@ -1005,7 +1005,12 @@ namespace HaCreator.MapSimulator.Loaders
 
             UIObject myLevelButton = LoadButton(listProperty, "BtMyLevel", btClickSound, btOverSound, device);
             UIObject allLevelButton = LoadButton(listProperty, "BtAllLevel", btClickSound, btOverSound, device);
-            quest.InitializeLevelFilterButtons(myLevelButton, allLevelButton);
+            quest.InitializeLevelFilterButtons(myLevelButton, allLevelButton);
+            quest.InitializeCategoryFilterButtons(
+                LoadButton(questProperty, "BtMax", btClickSound, btOverSound, device),
+                LoadButton(questProperty, "BtMin", btClickSound, btOverSound, device),
+                LoadButton(listProperty, "BtIconInfo", btClickSound, btOverSound, device));
+            quest.SetCategoryLegendTexture(LoadCanvasTexture(questProperty?["icon_info"] as WzSubProperty, "backgrnd", device));
 
             return quest;
         }
@@ -1760,7 +1765,51 @@ namespace HaCreator.MapSimulator.Loaders
                 regionButtons.Add((property.Name.Substring(3), button));
             }
 
-            WorldMapUI window = new WorldMapUI(
+            WzSubProperty resultFieldProperty = worldMapSearchProperty?["resultField"] as WzSubProperty;
+
+            WzSubProperty resultNpcProperty = worldMapSearchProperty?["resultNpc"] as WzSubProperty;
+
+            WzSubProperty resultMobProperty = worldMapSearchProperty?["resultMob"] as WzSubProperty;
+
+            Dictionary<WorldMapUI.SearchResultKind, WorldMapUI.SearchResultVisualStyle> resultStyles = new Dictionary<WorldMapUI.SearchResultKind, WorldMapUI.SearchResultVisualStyle>
+
+            {
+
+                [WorldMapUI.SearchResultKind.Field] = new WorldMapUI.SearchResultVisualStyle(
+
+                    LoadCanvasTexture(resultFieldProperty, "mouseOverBase", device),
+
+                    ResolveCanvasOffset(resultFieldProperty, "mouseOverBase", Point.Zero),
+
+                    LoadCanvasTexture(resultFieldProperty, "icon", device),
+
+                    ResolveCanvasOffset(resultFieldProperty, "icon", Point.Zero)),
+
+                [WorldMapUI.SearchResultKind.Npc] = new WorldMapUI.SearchResultVisualStyle(
+
+                    LoadCanvasTexture(resultNpcProperty, "mouseOverBase", device),
+
+                    ResolveCanvasOffset(resultNpcProperty, "mouseOverBase", Point.Zero),
+
+                    LoadCanvasTexture(resultNpcProperty, "icon", device),
+
+                    ResolveCanvasOffset(resultNpcProperty, "icon", Point.Zero)),
+
+                [WorldMapUI.SearchResultKind.Mob] = new WorldMapUI.SearchResultVisualStyle(
+
+                    LoadCanvasTexture(resultMobProperty, "mouseOverBase", device),
+
+                    ResolveCanvasOffset(resultMobProperty, "mouseOverBase", Point.Zero),
+
+                    LoadCanvasTexture(resultMobProperty, "icon", device),
+
+                    ResolveCanvasOffset(resultMobProperty, "icon", Point.Zero))
+
+            };
+
+
+
+            WorldMapUI window = new WorldMapUI(
                 new DXObject(0, 0, frameTexture, 0),
                 LoadCanvasTexture(worldMapProperty, "title", device),
                 sidePanelTexture,
@@ -1775,12 +1824,7 @@ namespace HaCreator.MapSimulator.Loaders
                 LoadButton(worldMapSearchProperty, "BtLevelMob", clickSound, overSound, device),
                 LoadButton(worldMapProperty, "BtBefore", clickSound, overSound, device),
                 LoadButton(worldMapProperty, "BtNext", clickSound, overSound, device),
-                LoadCanvasTexture(worldMapSearchProperty?["resultField"] as WzSubProperty, "mouseOverBase", device),
-                LoadCanvasTexture(worldMapSearchProperty?["resultField"] as WzSubProperty, "icon", device),
-                LoadCanvasTexture(worldMapSearchProperty?["resultNpc"] as WzSubProperty, "mouseOverBase", device),
-                LoadCanvasTexture(worldMapSearchProperty?["resultNpc"] as WzSubProperty, "icon", device),
-                LoadCanvasTexture(worldMapSearchProperty?["resultMob"] as WzSubProperty, "mouseOverBase", device),
-                LoadCanvasTexture(worldMapSearchProperty?["resultMob"] as WzSubProperty, "icon", device),
+                resultStyles,
                 regionButtons,
                 device)
             {
@@ -2145,7 +2189,8 @@ namespace HaCreator.MapSimulator.Loaders
             IDXObject baseTop = CreateUserInfoPopupTexture(tooltipProperty, "base", device);
             IDXObject baseMiddle = CreateUserInfoPopupTexture(tooltipProperty, "base2", device);
             IDXObject baseBottom = CreateUserInfoPopupTexture(tooltipProperty, "base3", device);
-            IDXObject title = CreateUserInfoPopupTexture(tooltipProperty, "title", device);
+            IDXObject title = CreateUserInfoPopupTexture(tooltipProperty, "title", device);
+            IDXObject charmCollectionBody = CreateUserInfoPopupTexture(tooltipProperty?["charm"]?["collection"] as WzSubProperty, "0", device);
             Dictionary<string, IDXObject> bodies = new Dictionary<string, IDXObject>(StringComparer.OrdinalIgnoreCase)
             {
                 ["charisma"] = CreateUserInfoPopupTexture(tooltipProperty["charisma"] as WzSubProperty, "0", device),
@@ -2155,7 +2200,27 @@ namespace HaCreator.MapSimulator.Loaders
                 ["sense"] = CreateUserInfoPopupTexture(tooltipProperty["sense"] as WzSubProperty, "0", device),
                 ["charm"] = CreateUserInfoPopupTexture(tooltipProperty["charm"] as WzSubProperty, "0", device)
             };
-            window.InitializePersonalityTooltip(baseTop, baseMiddle, baseBottom, title, bodies);
+            Dictionary<char, IDXObject> numberGlyphs = new Dictionary<char, IDXObject>();
+            if (tooltipProperty["number"] is WzSubProperty numberProperty)
+            {
+                foreach (WzCanvasProperty glyphCanvas in numberProperty.WzProperties.OfType<WzCanvasProperty>())
+                {
+                    if (string.IsNullOrEmpty(glyphCanvas.Name) || glyphCanvas.Name.Length != 1)
+                    {
+                        continue;
+                    }
+
+                    Texture2D glyphTexture = glyphCanvas.GetLinkedWzCanvasBitmap()?.ToTexture2DAndDispose(device);
+                    if (glyphTexture == null)
+                    {
+                        continue;
+                    }
+
+                    numberGlyphs[glyphCanvas.Name[0]] = new DXObject(0, 0, glyphTexture, 0);
+                }
+            }
+
+            window.InitializePersonalityTooltip(baseTop, baseMiddle, baseBottom, title, bodies, charmCollectionBody, numberGlyphs);
         }
 
         private static IDXObject CreateUserInfoPopupTexture(WzObject parent, string canvasName, GraphicsDevice device)

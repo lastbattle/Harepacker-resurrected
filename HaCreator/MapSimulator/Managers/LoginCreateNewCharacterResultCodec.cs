@@ -7,6 +7,7 @@ namespace HaCreator.MapSimulator.Managers
     public sealed class LoginCreateNewCharacterResultProfile
     {
         public byte ResultCode { get; init; }
+        public byte[] Payload { get; init; } = Array.Empty<byte>();
         public LoginSelectWorldCharacterEntry CreatedCharacter { get; init; }
 
         public bool IsSuccess => ResultCode == 0;
@@ -27,7 +28,18 @@ namespace HaCreator.MapSimulator.Managers
 
             try
             {
-                return TryDecode(new PacketReader(data), out profile, out error);
+                bool decoded = TryDecode(new PacketReader(data), out profile, out error);
+                if (decoded && profile != null)
+                {
+                    profile = new LoginCreateNewCharacterResultProfile
+                    {
+                        ResultCode = profile.ResultCode,
+                        Payload = (byte[])data.Clone(),
+                        CreatedCharacter = profile.CreatedCharacter
+                    };
+                }
+
+                return decoded;
             }
             catch (EndOfStreamException)
             {
@@ -63,6 +75,7 @@ namespace HaCreator.MapSimulator.Managers
                 profile = new LoginCreateNewCharacterResultProfile
                 {
                     ResultCode = resultCode,
+                    Payload = Array.Empty<byte>(),
                     CreatedCharacter = createdCharacter
                 };
                 return true;

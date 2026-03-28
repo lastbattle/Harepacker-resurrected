@@ -13,12 +13,14 @@ namespace HaCreator.MapSimulator.Fields
     public sealed class FieldRuleRuntime
     {
         private const int DefaultDecIntervalMs = 10000;
+        private const int DefaultRecoveryIntervalMs = 10000;
         private static readonly int[] TimeWarningThresholdsSeconds = { 60, 30, 10, 5, 4, 3, 2, 1 };
 
         private readonly int _timeLimitSeconds;
         private readonly int _transferMapId;
         private readonly int _decHp;
         private readonly int _decIntervalMs;
+        private readonly float _recoveryRate;
         private readonly long _fieldLimit;
         private readonly WeatherType _ambientWeather;
         private readonly List<int> _allowedItems;
@@ -32,6 +34,7 @@ namespace HaCreator.MapSimulator.Fields
         private int _remainingMoveSkillUses;
         private int _enteredAt;
         private int _nextDamageAt;
+        private int _nextRecoveryAt;
         private int _nextConsumableItemUseAt;
         private bool _initialized;
         private bool _timeExpired;
@@ -42,6 +45,7 @@ namespace HaCreator.MapSimulator.Fields
             _transferMapId = ResolveTransferMapId(mapInfo);
             _decHp = Math.Max(0, mapInfo?.decHP ?? 0);
             _decIntervalMs = NormalizeDecIntervalMs(mapInfo?.decInterval);
+            _recoveryRate = NormalizeRecoveryRate(mapInfo?.recovery);
             _fieldLimit = mapInfo?.fieldLimit ?? 0;
             _ambientWeather = FieldEnvironmentEffectEvaluator.ResolveAmbientWeather(mapInfo);
             _allowedItems = mapInfo?.allowedItem != null ? new List<int>(mapInfo.allowedItem) : new List<int>();
@@ -55,6 +59,7 @@ namespace HaCreator.MapSimulator.Fields
         public bool IsActive =>
             _timeLimitSeconds > 0 ||
             _decHp > 0 ||
+            _recoveryRate > 0f ||
             _ambientWeather != WeatherType.None ||
             _allowedItems.Count > 0 ||
             FieldInteractionRestrictionEvaluator.GetJumpRestrictionMessage(_fieldLimit) != null ||
@@ -69,6 +74,7 @@ namespace HaCreator.MapSimulator.Fields
         {
             _enteredAt = currentTimeMs;
             _nextDamageAt = _decHp > 0 ? currentTimeMs + _decIntervalMs : int.MaxValue;
+            _nextRecoveryAt = _recoveryRate > 0f ? currentTimeMs + DefaultRecoveryIntervalMs : int.MaxValue;
             _nextConsumableItemUseAt = currentTimeMs;
             _remainingMoveSkillUses = _moveLimit ?? 0;
             _initialized = true;
@@ -136,6 +142,18 @@ namespace HaCreator.MapSimulator.Fields
                     _nextDamageAt += _decIntervalMs;
                 }
                 while (_nextDamageAt <= currentTimeMs);
+            }
+
+            if (_recoveryRate > 0f && playerAlive && !pendingMapChange && currentTimeMs >= _nextRecoveryAt)
+            {
+                result.HpRecoveryPercent = _recoveryRate;
+                result.MpRecoveryPercent = _recoveryRate;
+
+                do
+                {
+                    _nextRecoveryAt += DefaultRecoveryIntervalMs;
+                }
+                while (_nextRecoveryAt <= currentTimeMs);
             }
 
             return result;
@@ -220,6 +238,16 @@ namespace HaCreator.MapSimulator.Fields
                 {
                     messages.Add($"Environmental damage: {_decHp} HP every {intervalText}.");
                 }
+            }
+
+            if (_recoveryRate > 0f)
+            {
+                messages.Add(
+                    string.Format(
+                        CultureInfo.InvariantCulture,
+                        "Field recovery active: {0:0.###}% HP/MP every {1}.",
+                        _recoveryRate,
+                        FormatInterval(DefaultRecoveryIntervalMs)));
             }
 
             string ambientWeatherNotice = _ambientWeather switch
@@ -322,6 +350,13 @@ namespace HaCreator.MapSimulator.Fields
                 : decInterval.Value;
         }
 
+        private static float NormalizeRecoveryRate(float? recoveryRate)
+        {
+            return recoveryRate is > 0f
+                ? recoveryRate.Value
+                : 0f;
+        }
+
         private static string FormatDurationSeconds(int totalSeconds)
         {
             int minutes = totalSeconds / 60;
@@ -419,6 +454,8 @@ namespace HaCreator.MapSimulator.Fields
         public List<string> Messages { get; } = new List<string>();
         public List<string> OverlayMessages { get; } = new List<string>();
         public int EnvironmentalDamage { get; set; }
+        public float HpRecoveryPercent { get; set; }
+        public float MpRecoveryPercent { get; set; }
         public bool TriggerDamageMist { get; set; }
         public int TransferMapId { get; set; } = -1;
     }

@@ -152,6 +152,8 @@ namespace HaCreator.MapSimulator.Effects
             _lastClockUpdateTick = int.MinValue;
             _returnMapId = -1;
             _forcedReturnMapId = -1;
+            _hasNextFloorPortal = false;
+            _nextFloorMapId = -1;
             _pendingTransferMapId = -1;
             _pendingTransferAtTick = int.MinValue;
             _playerHp = 0;
@@ -170,6 +172,7 @@ namespace HaCreator.MapSimulator.Effects
         {
             _returnMapId = NormalizeTransferMapId(mapInfo?.returnMap);
             _forcedReturnMapId = NormalizeTransferMapId(mapInfo?.forcedReturn);
+            _nextFloorMapId = -1;
             _hasNextFloorPortal = hasNextFloorPortal || HasPortalScript(_mapId, "dojang_next");
         }
         public void Configure(MapInfo mapInfo, IEnumerable<PortalInstance> portals, bool hasNextFloorPortal = false)
@@ -510,13 +513,23 @@ namespace HaCreator.MapSimulator.Effects
             clockType = 0;
             durationSec = 0;
             errorMessage = null;
-            if (payload == null || payload.Length < 5)
+            if (payload == null || payload.Length < 1)
             {
-                errorMessage = "Dojo clock packet payload must contain 1 byte of clock type plus 4 bytes of duration.";
+                errorMessage = "Dojo clock packet payload must contain at least 1 byte of clock type.";
                 return false;
             }
+
             clockType = payload[0];
-            durationSec = BinaryPrimitives.ReadInt32LittleEndian(payload.AsSpan(1, 4));
+            if (payload.Length >= 5)
+            {
+                durationSec = BinaryPrimitives.ReadInt32LittleEndian(payload.AsSpan(1, 4));
+            }
+            else if (clockType == 2)
+            {
+                errorMessage = "Dojo type-2 clock packet payload must contain 1 byte of clock type plus 4 bytes of duration.";
+                return false;
+            }
+
             return true;
         }
         private void SchedulePresentationTransfer(int targetMapId, IReadOnlyList<DojoFrame> frames, int currentTimeMs)

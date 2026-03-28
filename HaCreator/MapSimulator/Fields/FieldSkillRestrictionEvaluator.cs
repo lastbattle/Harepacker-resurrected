@@ -87,7 +87,7 @@ namespace HaCreator.MapSimulator.Fields
                 return false;
             }
 
-            if (skill.UsesTamingMobMount)
+            if (UsesVehicleOwnershipOrMountSkill(skill))
             {
                 return true;
             }
@@ -112,6 +112,32 @@ namespace HaCreator.MapSimulator.Fields
                    || IsMechanicVehicleActionName(skill.PrepareActionName)
                    || IsMechanicVehicleActionName(skill.KeydownActionName)
                    || IsMechanicVehicleActionName(skill.KeydownEndActionName);
+        }
+
+        private static bool UsesVehicleOwnershipOrMountSkill(SkillData skill)
+        {
+            if (skill == null)
+            {
+                return false;
+            }
+
+            if (skill.UsesTamingMobMount)
+            {
+                return true;
+            }
+
+            if (skill.ClientInfoType != 13)
+            {
+                return false;
+            }
+
+            if (skill.SkillId == 5221006 || skill.SkillId == 33001001)
+            {
+                return true;
+            }
+
+            string combinedText = $"{skill.Name} {skill.Description}";
+            return ContainsAny(combinedText, "mount/unmount", "summon and mount", "monster rider", "jaguar rider");
         }
 
         private static bool IsMechanicSkill(int skillId)

@@ -229,7 +229,14 @@ namespace HaCreator.MapSimulator.UI
             if (tickCount - _lastToggleTime > TOGGLE_COOLDOWN_MS)
             {
                 _lastToggleTime = tickCount;
-                _isVisible = !_isVisible;
+                if (_isVisible)
+                {
+                    Hide();
+                }
+                else
+                {
+                    Show();
+                }
             }
         }
 
@@ -244,7 +251,7 @@ namespace HaCreator.MapSimulator.UI
         /// <summary>
         /// Hide the window
         /// </summary>
-        public void Hide()
+        public virtual void Hide()
         {
             _isVisible = false;
         }
@@ -339,6 +346,14 @@ namespace HaCreator.MapSimulator.UI
         }
 
         public virtual void HandleCommittedText(string text)
+        {
+        }
+
+        public virtual void HandleCompositionText(string text)
+        {
+        }
+
+        public virtual void ClearCompositionText()
         {
         }
 

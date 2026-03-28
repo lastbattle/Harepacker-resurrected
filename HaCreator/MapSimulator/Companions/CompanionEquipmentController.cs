@@ -390,9 +390,8 @@ namespace HaCreator.MapSimulator.Companions
                 return false;
             }
 
-            if (!HasOwnerState)
+            if (!CompanionEquipmentController.TryValidateAndroidOwnerState(_ownerBuild, out rejectReason))
             {
-                rejectReason = "Equip both an android and a heart in the character equipment window before using this page.";
                 return false;
             }
 
@@ -608,6 +607,21 @@ namespace HaCreator.MapSimulator.Companions
 
     public sealed class CompanionEquipmentController
     {
+        private sealed class AndroidHeartRequirement
+        {
+            public AndroidHeartRequirement(string displayName, IReadOnlyCollection<int> itemIds)
+            {
+                DisplayName = displayName;
+                ItemIds = itemIds ?? Array.Empty<int>();
+            }
+
+            public string DisplayName { get; }
+            public IReadOnlyCollection<int> ItemIds { get; }
+        }
+
+        private static readonly object AndroidHeartCatalogLock = new();
+        private static Dictionary<string, IReadOnlyCollection<int>> _androidHeartItemIdsByNormalizedName;
+
         public CompanionEquipmentController(GraphicsDevice device)
         {
             var loader = new CompanionEquipmentLoader(device);
@@ -626,6 +640,65 @@ namespace HaCreator.MapSimulator.Companions
         {
             int category = itemId / 10000;
             return category == 180 || category == 181;
+        }
+
+        private static IReadOnlyList<AndroidHeartRequirement> ParseSupportedAndroidHeartRequirements(string description)
+        {
+            if (string.IsNullOrWhiteSpace(description))
+            {
+                return Array.Empty<AndroidHeartRequirement>();
+            }
+
+            int markerStart = description.IndexOf("#c", StringComparison.OrdinalIgnoreCase);
+            if (markerStart < 0)
+            {
+                return Array.Empty<AndroidHeartRequirement>();
+            }
+
+            markerStart += 2;
+            int markerEnd = description.IndexOf('#', markerStart);
+            if (markerEnd <= markerStart)
+            {
+                return Array.Empty<AndroidHeartRequirement>();
+            }
+
+            string namesBlock = description.Substring(markerStart, markerEnd - markerStart).Trim();
+            if (string.IsNullOrWhiteSpace(namesBlock))
+            {
+                return Array.Empty<AndroidHeartRequirement>();
+            }
+
+            namesBlock = namesBlock.Replace(", and ", ", ", StringComparison.OrdinalIgnoreCase);
+            string[] segments = namesBlock.Contains(',')
+                ? namesBlock.Split(',')
+                : namesBlock.Split(new[] { " and " }, StringSplitOptions.RemoveEmptyEntries);
+
+            Dictionary<string, IReadOnlyCollection<int>> heartCatalog = GetAndroidHeartItemIdsByNormalizedName();
+            List<AndroidHeartRequirement> requirements = null;
+            HashSet<string> seenNames = null;
+            for (int i = 0; i < segments.Length; i++)
+            {
+                string cleaned = CleanAndroidHeartName(segments[i]);
+                if (string.IsNullOrWhiteSpace(cleaned))
+                {
+                    continue;
+                }
+
+                string normalizedName = NormalizeAndroidHeartName(cleaned);
+                seenNames ??= new HashSet<string>(StringComparer.Ordinal);
+                if (!seenNames.Add(normalizedName))
+                {
+                    continue;
+                }
+
+                heartCatalog.TryGetValue(normalizedName, out IReadOnlyCollection<int> itemIds);
+                requirements ??= new List<AndroidHeartRequirement>();
+                requirements.Add(new AndroidHeartRequirement(cleaned, itemIds));
+            }
+
+            return requirements == null || requirements.Count == 0
+                ? Array.Empty<AndroidHeartRequirement>()
+                : new ReadOnlyCollection<AndroidHeartRequirement>(requirements);
         }
 
         internal static bool CanEquipPetItem(CompanionEquipItem item, PetRuntime pet, out string rejectReason)
@@ -875,6 +948,18 @@ namespace HaCreator.MapSimulator.Companions
             return cleaned.Trim();
         }
 
+        internal static bool TryValidateAndroidOwnerState(CharacterBuild build, out string rejectReason)
+        {
+            rejectReason = null;
+            if (!TryGetEquippedAndroidOwnerParts(build, out CharacterPart androidPart, out CharacterPart heartPart))
+            {
+                rejectReason = "Equip both an android and a heart in the character equipment window before using this page.";
+                return false;
+            }
+
+            return CanPowerAndroid(androidPart, heartPart, out rejectReason);
+        }
+
         public static bool TryResolveDragonSlot(int itemId, out DragonEquipSlot slot)
         {
             slot = (itemId / 10000) switch
@@ -949,9 +1034,7 @@ namespace HaCreator.MapSimulator.Companions
 
         internal static bool HasAndroidOwnerState(CharacterBuild build)
         {
-            return build?.Equipment != null
-                   && build.Equipment.ContainsKey(EquipSlot.Android)
-                   && build.Equipment.ContainsKey(EquipSlot.AndroidHeart);
+            return TryValidateAndroidOwnerState(build, out _);
         }
 
         internal static bool MatchesRequiredJobMask(int requiredJobMask, int jobId)
@@ -1008,6 +1091,204 @@ namespace HaCreator.MapSimulator.Companions
             }
 
             return names.Count == 0 ? "the required job" : string.Join("/", names);
+        }
+
+        private static bool TryGetEquippedAndroidOwnerParts(
+            CharacterBuild build,
+            out CharacterPart androidPart,
+            out CharacterPart heartPart)
+        {
+            androidPart = null;
+            heartPart = null;
+
+            if (build?.Equipment == null)
+            {
+                return false;
+            }
+
+            return build.Equipment.TryGetValue(EquipSlot.Android, out androidPart)
+                   && androidPart != null
+                   && build.Equipment.TryGetValue(EquipSlot.AndroidHeart, out heartPart)
+                   && heartPart != null;
+        }
+
+        private static bool CanPowerAndroid(CharacterPart androidPart, CharacterPart heartPart, out string rejectReason)
+        {
+            rejectReason = null;
+            if (androidPart == null || heartPart == null)
+            {
+                return false;
+            }
+
+            IReadOnlyList<AndroidHeartRequirement> supportedHearts = ParseSupportedAndroidHeartRequirements(androidPart.Description);
+            if (supportedHearts == null || supportedHearts.Count == 0)
+            {
+                return true;
+            }
+
+            int equippedHeartItemId = heartPart.ItemId;
+            string equippedHeartName = CleanAndroidHeartName(heartPart.Name);
+            string normalizedEquippedHeartName = NormalizeAndroidHeartName(equippedHeartName);
+
+            for (int i = 0; i < supportedHearts.Count; i++)
+            {
+                AndroidHeartRequirement supportedHeart = supportedHearts[i];
+                IReadOnlyCollection<int> supportedItemIds = supportedHeart.ItemIds;
+                if (supportedItemIds != null && supportedItemIds.Count > 0)
+                {
+                    foreach (int supportedItemId in supportedItemIds)
+                    {
+                        if (supportedItemId == equippedHeartItemId)
+                        {
+                            return true;
+                        }
+                    }
+                }
+
+                if (normalizedEquippedHeartName.Length > 0
+                    && string.Equals(
+                        NormalizeAndroidHeartName(supportedHeart.DisplayName),
+                        normalizedEquippedHeartName,
+                        StringComparison.Ordinal))
+                {
+                    return true;
+                }
+            }
+
+            string androidName = string.IsNullOrWhiteSpace(androidPart.Name)
+                ? $"Android {androidPart.ItemId}"
+                : androidPart.Name;
+            string supportedHeartsText = string.Join(", ", BuildSupportedHeartDisplayNames(supportedHearts));
+            rejectReason = $"{androidName} requires {supportedHeartsText}. {equippedHeartName} is not compatible.";
+            return false;
+        }
+
+        private static IReadOnlyList<string> BuildSupportedHeartDisplayNames(IReadOnlyList<AndroidHeartRequirement> supportedHearts)
+        {
+            if (supportedHearts == null || supportedHearts.Count == 0)
+            {
+                return Array.Empty<string>();
+            }
+
+            List<string> names = new(supportedHearts.Count);
+            for (int i = 0; i < supportedHearts.Count; i++)
+            {
+                string displayName = supportedHearts[i]?.DisplayName;
+                if (!string.IsNullOrWhiteSpace(displayName))
+                {
+                    names.Add(displayName);
+                }
+            }
+
+            return names.Count == 0
+                ? Array.Empty<string>()
+                : new ReadOnlyCollection<string>(names);
+        }
+
+        private static Dictionary<string, IReadOnlyCollection<int>> GetAndroidHeartItemIdsByNormalizedName()
+        {
+            if (_androidHeartItemIdsByNormalizedName != null)
+            {
+                return _androidHeartItemIdsByNormalizedName;
+            }
+
+            lock (AndroidHeartCatalogLock)
+            {
+                if (_androidHeartItemIdsByNormalizedName != null)
+                {
+                    return _androidHeartItemIdsByNormalizedName;
+                }
+
+                var catalog = new Dictionary<string, List<int>>(StringComparer.Ordinal);
+                WzImage stringImage = global::HaCreator.Program.FindImage("String", "Eqp.img");
+                if (stringImage != null)
+                {
+                    stringImage.ParseImage();
+                    if (stringImage["Eqp"] is WzSubProperty eqp
+                        && eqp["Android"] is WzSubProperty androidStrings)
+                    {
+                        foreach (WzImageProperty property in androidStrings.WzProperties)
+                        {
+                            if (!int.TryParse(property.Name, out int itemId)
+                                || itemId / 10000 != 167
+                                || property is not WzSubProperty heartProperty)
+                            {
+                                continue;
+                            }
+
+                            string heartName = heartProperty["name"] switch
+                            {
+                                WzStringProperty stringProperty => stringProperty.Value,
+                                _ => null
+                            };
+                            string normalizedHeartName = NormalizeAndroidHeartName(heartName);
+                            if (normalizedHeartName.Length == 0)
+                            {
+                                continue;
+                            }
+
+                            if (!catalog.TryGetValue(normalizedHeartName, out List<int> itemIds))
+                            {
+                                itemIds = new List<int>();
+                                catalog[normalizedHeartName] = itemIds;
+                            }
+
+                            if (!itemIds.Contains(itemId))
+                            {
+                                itemIds.Add(itemId);
+                            }
+                        }
+                    }
+                }
+
+                _androidHeartItemIdsByNormalizedName = new Dictionary<string, IReadOnlyCollection<int>>(catalog.Count, StringComparer.Ordinal);
+                foreach (KeyValuePair<string, List<int>> entry in catalog)
+                {
+                    _androidHeartItemIdsByNormalizedName[entry.Key] = new ReadOnlyCollection<int>(entry.Value);
+                }
+
+                return _androidHeartItemIdsByNormalizedName;
+            }
+        }
+
+        private static string NormalizeAndroidHeartName(string heartName)
+        {
+            if (string.IsNullOrWhiteSpace(heartName))
+            {
+                return string.Empty;
+            }
+
+            StringBuilder builder = new(heartName.Length);
+            for (int i = 0; i < heartName.Length; i++)
+            {
+                char character = heartName[i];
+                if (char.IsLetterOrDigit(character))
+                {
+                    builder.Append(char.ToLowerInvariant(character));
+                }
+                else if (char.IsWhiteSpace(character))
+                {
+                    builder.Append(' ');
+                }
+            }
+
+            return builder.ToString().Trim();
+        }
+
+        private static string CleanAndroidHeartName(string heartName)
+        {
+            if (string.IsNullOrWhiteSpace(heartName))
+            {
+                return string.Empty;
+            }
+
+            string cleaned = heartName.Trim();
+            if (cleaned.StartsWith("and ", StringComparison.OrdinalIgnoreCase))
+            {
+                cleaned = cleaned.Substring(4).TrimStart();
+            }
+
+            return cleaned.Trim();
         }
     }
 
@@ -1323,6 +1604,11 @@ namespace HaCreator.MapSimulator.Companions
                 WzNullProperty => null,
                 _ => null
             };
+        }
+
+        private static string GetStringValue(WzImageProperty obj)
+        {
+            return GetStringValue((WzObject)obj);
         }
 
         private static int? GetIntValue(WzObject obj)

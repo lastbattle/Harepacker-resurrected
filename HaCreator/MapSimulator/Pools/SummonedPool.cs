@@ -1,6 +1,7 @@
 using HaCreator.MapSimulator.Character;
 using HaCreator.MapSimulator.Character.Skills;
 using HaCreator.MapSimulator.AI;
+using HaCreator.MapSimulator.Animation;
 using HaCreator.MapSimulator.Entities;
 using HaCreator.MapSimulator.Managers;
 using HaCreator.MapSimulator.Physics;
@@ -70,6 +71,8 @@ namespace HaCreator.MapSimulator.Pools
     public sealed class SummonedPool
     {
         private const int TeslaCoilSkillId = 35111002;
+        private const int TeslaCoilMasterySkillId = 35120001;
+        private const int SummonHitPeriodDurationMs = 1500;
 
         private sealed class PacketOwnedSummonState
         {
@@ -96,13 +99,60 @@ namespace HaCreator.MapSimulator.Pools
             public PlayerMovementSyncSnapshot MovementSnapshot { get; set; }
         }
 
+        private sealed class PacketOwnedSummonTimer
+        {
+            public int SummonedObjectId { get; init; }
+            public int SkillId { get; init; }
+            public int ExpireTime { get; init; }
+        }
+
+        private sealed class PacketOwnedMobAttackHitEffectDisplay
+        {
+            public float X { get; init; }
+            public float Y { get; init; }
+            public List<IDXObject> Frames { get; init; }
+            public int CurrentFrame { get; set; }
+            public int LastFrameTime { get; set; }
+            public bool Flip { get; init; }
+            public Color Tint { get; init; } = Color.White;
+            public bool IsComplete { get; private set; }
+
+            public void Update(int currentTime)
+            {
+                if (IsComplete || Frames == null || Frames.Count == 0 || CurrentFrame >= Frames.Count)
+                {
+                    IsComplete = true;
+                    return;
+                }
+
+                IDXObject frame = Frames[CurrentFrame];
+                int delay = frame?.Delay ?? 100;
+                if (currentTime - LastFrameTime < delay)
+                {
+                    return;
+                }
+
+                CurrentFrame++;
+                LastFrameTime = currentTime;
+                if (CurrentFrame >= Frames.Count)
+                {
+                    IsComplete = true;
+                }
+            }
+        }
+
         private readonly Dictionary<int, PacketOwnedSummonState> _summonsByObjectId = new();
         private readonly Dictionary<int, List<PacketOwnedSummonState>> _summonsByOwnerId = new();
         private readonly List<ActiveHitEffect> _hitEffects = new();
+        private readonly List<PacketOwnedMobAttackHitEffectDisplay> _mobAttackHitEffects = new();
+        private readonly List<PacketOwnedSummonTimer> _summonExpiryTimers = new();
+        private readonly Random _random = new();
         private SkillLoader _skillLoader;
         private MobPool _mobPool;
         private RemoteUserActorPool _remoteUserPool;
         private Func<PlayerCharacter> _localPlayerAccessor;
+        private Func<int, int> _localSkillLevelAccessor;
+        private SoundManager _soundManager;
 
         public int Count => _summonsByObjectId.Count;
 
@@ -110,12 +160,16 @@ namespace HaCreator.MapSimulator.Pools
             SkillLoader skillLoader,
             MobPool mobPool,
             RemoteUserActorPool remoteUserPool,
-            Func<PlayerCharacter> localPlayerAccessor)
+            Func<PlayerCharacter> localPlayerAccessor,
+            Func<int, int> localSkillLevelAccessor = null,
+            SoundManager soundManager = null)
         {
             _skillLoader = skillLoader;
             _mobPool = mobPool;
             _remoteUserPool = remoteUserPool;
             _localPlayerAccessor = localPlayerAccessor;
+            _localSkillLevelAccessor = localSkillLevelAccessor;
+            _soundManager = soundManager;
         }
 
         public void Clear()
@@ -128,6 +182,8 @@ namespace HaCreator.MapSimulator.Pools
             _summonsByObjectId.Clear();
             _summonsByOwnerId.Clear();
             _hitEffects.Clear();
+            _mobAttackHitEffects.Clear();
+            _summonExpiryTimers.Clear();
         }
 
         public IReadOnlyList<ActiveSummon> GetSummonsForOwner(int ownerCharacterId)
@@ -231,6 +287,10 @@ namespace HaCreator.MapSimulator.Pools
                 ? ownerFacingRight
                 : DecodeFacingRight(packet.MoveAction);
 
+            SummonAssistType assistType = Enum.IsDefined(typeof(SummonAssistType), (int)packet.AssistType)
+                ? (SummonAssistType)packet.AssistType
+                : ResolveSummonAssistType(skill);
+
             var summon = new ActiveSummon
             {
                 ObjectId = packet.SummonedObjectId,
@@ -251,13 +311,12 @@ namespace HaCreator.MapSimulator.Pools
                 SkillData = skill,
                 LevelData = levelData,
                 FacingRight = facingRight,
-                AssistType = Enum.IsDefined(typeof(SummonAssistType), (int)packet.AssistType)
-                    ? (SummonAssistType)packet.AssistType
-                    : ResolveSummonAssistType(skill),
-                ManualAssistEnabled = true,
+                AssistType = assistType,
+                ManualAssistEnabled = assistType != SummonAssistType.ManualAttack,
                 LastStateChangeTime = currentTime,
                 MaxHealth = ResolveSummonMaxHealth(levelData),
-                CurrentHealth = ResolveSummonMaxHealth(levelData)
+                CurrentHealth = ResolveSummonMaxHealth(levelData),
+                TeslaCoilState = packet.TeslaCoilState
             };
 
             var state = new PacketOwnedSummonState
@@ -278,6 +337,7 @@ namespace HaCreator.MapSimulator.Pools
 
             _summonsByObjectId[summon.ObjectId] = state;
             GetOrCreateOwnerList(packet.OwnerCharacterId).Add(state);
+            RegisterSummonExpiryTimer(summon);
             SyncPuppet(state, currentTime);
             ApplyCreatedOwnerSideEffects(state, currentTime);
             message = $"Summoned {summon.ObjectId} for owner {packet.OwnerCharacterId} created via packet-owned pool.";
@@ -334,6 +394,8 @@ namespace HaCreator.MapSimulator.Pools
             state.LastAttackTargets = packet.Targets ?? Array.Empty<SummonedAttackTargetPacket>();
             state.Summon.LastAttackTime = currentTime;
             state.Summon.LastAttackAnimationStartTime = currentTime;
+            state.Summon.TeslaCoilState = state.TeslaCoilState > 0 ? (byte)2 : state.Summon.TeslaCoilState;
+            state.Summon.ActorState = SummonActorState.Attack;
             state.Summon.LastStateChangeTime = currentTime;
             state.Summon.FacingRight = !packet.FacingLeft;
 
@@ -352,6 +414,8 @@ namespace HaCreator.MapSimulator.Pools
             state.LastSkillAction = attackAction;
             state.LastSkillTime = currentTime;
             state.Summon.LastAttackAnimationStartTime = currentTime;
+            state.Summon.TeslaCoilState = state.TeslaCoilState > 0 ? (byte)2 : state.Summon.TeslaCoilState;
+            state.Summon.ActorState = SummonActorState.Attack;
             state.Summon.LastStateChangeTime = currentTime;
             return true;
         }
@@ -367,13 +431,14 @@ namespace HaCreator.MapSimulator.Pools
             state.LastHitTime = currentTime;
             state.LastHitDamage = packet.Damage;
             state.Summon.LastStateChangeTime = currentTime;
+            PlayPacketMobAttackFeedback(state, packet, currentTime);
             if (packet.Damage > 0)
             {
                 ApplySummonDamage(state, packet.Damage, currentTime);
             }
             else
             {
-                StartSummonHitReaction(state.Summon, currentTime);
+                StartSummonHitReaction(state.Summon, packet.Damage, currentTime);
             }
 
             return true;
@@ -389,11 +454,24 @@ namespace HaCreator.MapSimulator.Pools
                 }
             }
 
+            for (int i = _mobAttackHitEffects.Count - 1; i >= 0; i--)
+            {
+                PacketOwnedMobAttackHitEffectDisplay effect = _mobAttackHitEffects[i];
+                effect.Update(currentTime);
+                if (effect.IsComplete)
+                {
+                    _mobAttackHitEffects.RemoveAt(i);
+                }
+            }
+
+            UpdateSummonExpiryTimers(currentTime);
+
             foreach (PacketOwnedSummonState state in _summonsByObjectId.Values.ToArray())
             {
                 ResolveOwnerState(state.OwnerCharacterId, out string ownerName, out bool ownerIsLocal, out bool ownerFacingRight);
                 state.OwnerName = ownerName;
                 state.OwnerIsLocal = ownerIsLocal;
+                AdvanceSummonHitPeriod(state.Summon, currentTime);
 
                 if (state.MovementSnapshot != null)
                 {
@@ -408,10 +486,7 @@ namespace HaCreator.MapSimulator.Pools
                     state.Summon.FacingRight = ownerFacingRight;
                 }
 
-                if (state.Summon.HasReachedNaturalExpiry(currentTime) && !state.Summon.ExpiryActionTriggered)
-                {
-                    BeginRemoval(state, currentTime, reason: 0);
-                }
+                RefreshIdleActorState(state, currentTime);
 
                 if (state.Summon.IsPendingRemoval && currentTime >= state.Summon.PendingRemovalTime)
                 {
@@ -420,6 +495,7 @@ namespace HaCreator.MapSimulator.Pools
                 }
 
                 SyncPuppet(state, currentTime);
+                ApplyLocalOwnerPuppetAggro(state);
             }
         }
 
@@ -435,6 +511,11 @@ namespace HaCreator.MapSimulator.Pools
             foreach (ActiveHitEffect hitEffect in _hitEffects)
             {
                 DrawHitEffect(spriteBatch, hitEffect, mapShiftX, mapShiftY, centerX, centerY, currentTime);
+            }
+
+            foreach (PacketOwnedMobAttackHitEffectDisplay hitEffect in _mobAttackHitEffects)
+            {
+                DrawMobAttackHitEffect(spriteBatch, hitEffect, mapShiftX, mapShiftY, centerX, centerY);
             }
         }
 
@@ -876,6 +957,7 @@ namespace HaCreator.MapSimulator.Pools
                 return;
             }
 
+            CancelSummonExpiryTimer(state.Summon.ObjectId);
             state.RemovalReason = reason;
             state.Summon.ExpiryActionTriggered = true;
             state.Summon.RemovalAnimationStartTime = currentTime;
@@ -896,6 +978,96 @@ namespace HaCreator.MapSimulator.Pools
             return Math.Max(1, levelData?.HP ?? 1);
         }
 
+        private static void RefreshIdleActorState(PacketOwnedSummonState state, int currentTime)
+        {
+            if (state?.Summon == null || state.Summon.IsPendingRemoval)
+            {
+                return;
+            }
+
+            if (IsSummonAnimationActive(state.Summon.SkillData?.SummonHitAnimation, state.Summon.LastHitAnimationStartTime, currentTime)
+                || IsSummonAnimationActive(
+                    state.Summon.SkillData?.SummonAttackAnimation,
+                    state.Summon.LastAttackAnimationStartTime,
+                    currentTime,
+                    GetSkillAnimationDuration(state.Summon.SkillData?.SummonAttackPrepareAnimation) ?? 0))
+            {
+                return;
+            }
+
+            SummonActorState idleState = state.Summon.SkillId == TeslaCoilSkillId
+                                         && state.Summon.SkillData?.SummonAttackPrepareAnimation?.Frames.Count > 0
+                                         && (state.Summon.TeslaCoilState == 1 || state.Summon.TeslaCoilState == 2)
+                ? SummonActorState.Prepare
+                : SummonActorState.Idle;
+            if (state.Summon.ActorState != idleState)
+            {
+                state.Summon.ActorState = idleState;
+                state.Summon.LastStateChangeTime = currentTime;
+            }
+        }
+
+        private static bool IsSummonAnimationActive(SkillAnimation animation, int animationStartTime, int currentTime, int initialDelay = 0)
+        {
+            if (animation?.Frames.Count <= 0 || animationStartTime == int.MinValue)
+            {
+                return false;
+            }
+
+            int elapsed = currentTime - animationStartTime;
+            int duration = initialDelay + (GetSkillAnimationDuration(animation) ?? 0);
+            return elapsed >= 0 && duration > 0 && elapsed < duration;
+        }
+
+        private static void AdvanceSummonHitPeriod(ActiveSummon summon, int currentTime)
+        {
+            if (summon == null)
+            {
+                return;
+            }
+
+            if (summon.LastHitPeriodUpdateTime == int.MinValue)
+            {
+                summon.LastHitPeriodUpdateTime = currentTime;
+                return;
+            }
+
+            int elapsed = Math.Max(0, currentTime - summon.LastHitPeriodUpdateTime);
+            summon.LastHitPeriodUpdateTime = currentTime;
+            if (elapsed <= 0 || summon.HitPeriodRemainingMs == 0)
+            {
+                return;
+            }
+
+            if (summon.HitPeriodRemainingMs > 0)
+            {
+                summon.HitPeriodRemainingMs = Math.Max(0, summon.HitPeriodRemainingMs - elapsed);
+            }
+            else
+            {
+                summon.HitPeriodRemainingMs = Math.Min(0, summon.HitPeriodRemainingMs + elapsed);
+            }
+
+            summon.HitFlashCounter += (uint)Math.Max(1, (elapsed + 29) / 30);
+        }
+
+        private static int ResolveSummonHitPeriodDurationMs(ActiveSummon summon)
+        {
+            return SummonHitPeriodDurationMs;
+        }
+
+        private static Color ResolveSummonDrawColor(ActiveSummon summon)
+        {
+            if (summon?.HitPeriodRemainingMs == 0)
+            {
+                return Color.White;
+            }
+
+            return (summon.HitFlashCounter & 3u) < 2u
+                ? new Color(128, 128, 128)
+                : Color.White;
+        }
+
         private void ApplySummonDamage(PacketOwnedSummonState state, int damage, int currentTime)
         {
             if (state?.Summon == null || state.Summon.IsPendingRemoval)
@@ -903,7 +1075,7 @@ namespace HaCreator.MapSimulator.Pools
                 return;
             }
 
-            StartSummonHitReaction(state.Summon, currentTime);
+            StartSummonHitReaction(state.Summon, damage, currentTime);
             state.Summon.MaxHealth = Math.Max(1, state.Summon.MaxHealth);
             int startingHealth = state.Summon.CurrentHealth > 0 ? state.Summon.CurrentHealth : state.Summon.MaxHealth;
             state.Summon.CurrentHealth = Math.Max(0, startingHealth - Math.Max(1, damage));
@@ -913,7 +1085,7 @@ namespace HaCreator.MapSimulator.Pools
             }
         }
 
-        private void StartSummonHitReaction(ActiveSummon summon, int currentTime)
+        private void StartSummonHitReaction(ActiveSummon summon, int hitDamage, int currentTime)
         {
             if (summon == null)
             {
@@ -921,12 +1093,16 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             summon.LastHitAnimationStartTime = currentTime;
+            summon.HitPeriodRemainingMs = hitDamage > 0
+                ? ResolveSummonHitPeriodDurationMs(summon)
+                : -ResolveSummonHitPeriodDurationMs(summon);
+            summon.LastHitPeriodUpdateTime = currentTime;
             summon.ActorState = SummonActorState.Hit;
             summon.LastStateChangeTime = currentTime;
 
-            if (summon.SkillData?.HitEffect != null)
+            if (hitDamage > 0 && summon.SkillData?.HitEffect != null)
             {
-                SpawnHitEffect(summon.SkillId, summon.SkillData.HitEffect, summon.PositionX, summon.PositionY, summon.FacingRight, currentTime);
+                SpawnHitEffect(summon.SkillId, summon.SkillData.HitEffect, summon.PositionX, summon.PositionY - 20f, summon.FacingRight, currentTime);
             }
         }
 
@@ -937,6 +1113,7 @@ namespace HaCreator.MapSimulator.Pools
                 return;
             }
 
+            CancelSummonExpiryTimer(state.Summon.ObjectId);
             RemovePuppet(state.Summon);
             _summonsByObjectId.Remove(state.Summon.ObjectId);
 
@@ -987,6 +1164,7 @@ namespace HaCreator.MapSimulator.Pools
 
             Vector2 summonPosition = new(state.Summon.PositionX, state.Summon.PositionY);
             int expirationTime = state.Summon.Duration > 0 ? state.Summon.StartTime + state.Summon.Duration : 0;
+            float aggroRange = ResolvePuppetAggroRange(state);
 
             _mobPool.RegisterPuppet(new PuppetInfo
             {
@@ -998,6 +1176,7 @@ namespace HaCreator.MapSimulator.Pools
                 IsGrounded = state.CurrentFootholdId != 0,
                 OwnerId = state.OwnerCharacterId,
                 AggroValue = 1,
+                AggroRange = aggroRange,
                 ExpirationTime = expirationTime,
                 IsActive = true
             });
@@ -1013,7 +1192,52 @@ namespace HaCreator.MapSimulator.Pools
             if (ShouldRegisterSummonPuppet(state.Summon.SkillData))
             {
                 SyncPuppet(state, currentTime);
+                ApplyLocalOwnerPuppetAggro(state);
                 _mobPool?.SyncPuppetTargets(currentTime);
+            }
+
+            TryRefreshLocalTeslaCoilDurations(state, currentTime);
+        }
+
+        private void TryRefreshLocalTeslaCoilDurations(PacketOwnedSummonState createdState, int currentTime)
+        {
+            if (createdState?.Summon == null
+                || createdState.Summon.SkillId != TeslaCoilSkillId
+                || !_summonsByOwnerId.TryGetValue(createdState.OwnerCharacterId, out List<PacketOwnedSummonState> summons))
+            {
+                return;
+            }
+
+            List<PacketOwnedSummonState> teslaCoils = summons
+                .Where(static candidate => candidate?.Summon?.SkillId == TeslaCoilSkillId && !candidate.Summon.IsPendingRemoval)
+                .OrderBy(static candidate => candidate.Summon.StartTime)
+                .ThenBy(static candidate => candidate.Summon.ObjectId)
+                .ToList();
+            if (teslaCoils.Count != 3)
+            {
+                return;
+            }
+
+            SkillData teslaSkill = createdState.Summon.SkillData ?? _skillLoader?.LoadSkill(TeslaCoilSkillId);
+            SkillLevelData teslaLevelData = teslaSkill?.GetLevel(Math.Max(1, createdState.SkillLevel));
+            int masteryLevel = Math.Max(0, _localSkillLevelAccessor?.Invoke(TeslaCoilMasterySkillId) ?? 0);
+            SkillLevelData masteryLevelData = masteryLevel > 0
+                ? _skillLoader?.LoadSkill(TeslaCoilMasterySkillId)?.GetLevel(masteryLevel)
+                : null;
+
+            int baseDurationMs = Math.Max(0, (teslaLevelData?.Y ?? 0) * 1000);
+            int masteryBonusMs = Math.Max(0, ((masteryLevelData?.Y ?? 0) * baseDurationMs) / 100);
+            int refreshedDurationMs = baseDurationMs + masteryBonusMs;
+            if (refreshedDurationMs <= 0)
+            {
+                return;
+            }
+
+            foreach (PacketOwnedSummonState teslaCoil in teslaCoils)
+            {
+                teslaCoil.Summon.StartTime = currentTime;
+                teslaCoil.Summon.Duration = refreshedDurationMs;
+                RegisterSummonExpiryTimer(teslaCoil.Summon);
             }
         }
 
@@ -1025,6 +1249,46 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             _mobPool.RemovePuppet(summon.ObjectId);
+        }
+
+        private void ApplyLocalOwnerPuppetAggro(PacketOwnedSummonState state)
+        {
+            if (_mobPool == null
+                || state?.Summon == null
+                || !state.OwnerIsLocal
+                || !ShouldRegisterSummonPuppet(state.Summon.SkillData))
+            {
+                return;
+            }
+
+            float aggroRange = ResolvePuppetAggroRange(state);
+            if (aggroRange <= 0f)
+            {
+                return;
+            }
+
+            _mobPool.LetMobChasePuppet(state.Summon.PositionX, state.Summon.PositionY, aggroRange, state.Summon.ObjectId);
+        }
+
+        private float ResolvePuppetAggroRange(PacketOwnedSummonState state)
+        {
+            if (state?.Summon == null)
+            {
+                return 0f;
+            }
+
+            float ownerX = state.Summon.PositionX;
+            PlayerCharacter localPlayer = _localPlayerAccessor?.Invoke();
+            if (localPlayer?.Build?.Id == state.OwnerCharacterId)
+            {
+                ownerX = localPlayer.X;
+            }
+            else if (_remoteUserPool != null && _remoteUserPool.TryGetActor(state.OwnerCharacterId, out RemoteUserActor actor))
+            {
+                ownerX = actor.Position.X;
+            }
+
+            return Math.Max(220f, Math.Abs(state.Summon.PositionX - ownerX) + 170f);
         }
 
         private int ResolveSummonSlotIndex(PacketOwnedSummonState state)
@@ -1053,64 +1317,94 @@ namespace HaCreator.MapSimulator.Pools
             return -1;
         }
 
-        private static int ResolveSummonDurationMs(SkillData skill, SkillLevelData levelData)
+        private void RegisterSummonExpiryTimer(ActiveSummon summon)
         {
-            if (levelData?.Time > 0)
+            if (summon?.ObjectId <= 0 || summon.Duration <= 0)
             {
-                return levelData.Time * 1000;
+                return;
             }
 
-            return skill != null && (skill.SkillId == 35111001 || skill.SkillId == 35111009 || skill.SkillId == 35111010)
-                ? 0
-                : 30000;
+            CancelSummonExpiryTimer(summon.ObjectId);
+            _summonExpiryTimers.Add(new PacketOwnedSummonTimer
+            {
+                SummonedObjectId = summon.ObjectId,
+                SkillId = summon.SkillId,
+                ExpireTime = summon.StartTime + summon.Duration
+            });
+        }
+
+        private void CancelSummonExpiryTimer(int summonedObjectId)
+        {
+            if (summonedObjectId <= 0)
+            {
+                return;
+            }
+
+            for (int i = _summonExpiryTimers.Count - 1; i >= 0; i--)
+            {
+                if (_summonExpiryTimers[i].SummonedObjectId == summonedObjectId)
+                {
+                    _summonExpiryTimers.RemoveAt(i);
+                }
+            }
+        }
+
+        private void UpdateSummonExpiryTimers(int currentTime)
+        {
+            if (_summonExpiryTimers.Count == 0)
+            {
+                return;
+            }
+
+            List<PacketOwnedSummonTimer> expiredTimers = null;
+            for (int i = _summonExpiryTimers.Count - 1; i >= 0; i--)
+            {
+                PacketOwnedSummonTimer timer = _summonExpiryTimers[i];
+                if (timer.ExpireTime > currentTime)
+                {
+                    continue;
+                }
+
+                expiredTimers ??= new List<PacketOwnedSummonTimer>();
+                expiredTimers.Add(timer);
+                _summonExpiryTimers.RemoveAt(i);
+            }
+
+            if (expiredTimers == null)
+            {
+                return;
+            }
+
+            foreach (PacketOwnedSummonTimer timer in expiredTimers
+                .OrderBy(static timer => timer.ExpireTime)
+                .ThenBy(static timer => timer.SkillId)
+                .ThenBy(static timer => timer.SummonedObjectId))
+            {
+                if (!_summonsByObjectId.TryGetValue(timer.SummonedObjectId, out PacketOwnedSummonState state)
+                    || state.Summon == null
+                    || state.Summon.IsPendingRemoval
+                    || state.Summon.ExpiryActionTriggered)
+                {
+                    continue;
+                }
+
+                BeginRemoval(state, currentTime, reason: 0);
+            }
+        }
+
+        private static int ResolveSummonDurationMs(SkillData skill, SkillLevelData levelData)
+        {
+            return SummonRuntimeRules.ResolveDurationMs(skill, levelData);
         }
 
         private static SummonAssistType ResolveSummonAssistType(SkillData skill)
         {
-            if (skill == null)
-            {
-                return SummonAssistType.PeriodicAttack;
-            }
-
-            if (!string.IsNullOrWhiteSpace(skill.MinionAbility))
-            {
-                if (skill.MinionAbility.IndexOf("heal", StringComparison.OrdinalIgnoreCase) >= 0
-                    || skill.MinionAbility.IndexOf("amplifyDamage", StringComparison.OrdinalIgnoreCase) >= 0
-                    || skill.MinionAbility.IndexOf("mes", StringComparison.OrdinalIgnoreCase) >= 0)
-                {
-                    return SummonAssistType.Support;
-                }
-
-                if (skill.MinionAbility.IndexOf("summon", StringComparison.OrdinalIgnoreCase) >= 0)
-                {
-                    return SummonAssistType.SummonAction;
-                }
-            }
-
-            return skill.SkillId switch
-            {
-                35111001 or 35111009 or 35111010 => SummonAssistType.OwnerAttackTargeted,
-                33111003 => SummonAssistType.TargetedAttack,
-                _ => SummonAssistType.PeriodicAttack
-            };
+            return SummonRuntimeRules.ResolveAssistType(skill);
         }
 
         private static bool ShouldRegisterSummonPuppet(SkillData skill)
         {
-            if (string.IsNullOrWhiteSpace(skill?.MinionAbility))
-            {
-                return false;
-            }
-
-            foreach (string token in skill.MinionAbility.Split(new[] { "&&" }, StringSplitOptions.RemoveEmptyEntries))
-            {
-                if (token.Trim().Equals("taunt", StringComparison.OrdinalIgnoreCase))
-                {
-                    return true;
-                }
-            }
-
-            return false;
+            return SummonRuntimeRules.ShouldRegisterPuppet(skill);
         }
 
         private void SpawnPacketAttackHitEffects(PacketOwnedSummonState state, int currentTime)
@@ -1158,6 +1452,131 @@ namespace HaCreator.MapSimulator.Pools
             });
         }
 
+        private void PlayPacketMobAttackFeedback(PacketOwnedSummonState state, SummonedHitPacket packet, int currentTime)
+        {
+            if (state?.Summon == null || packet.AttackIndex < 0)
+            {
+                return;
+            }
+
+            string attackAction = $"attack{packet.AttackIndex + 1}";
+            MobItem mob = ResolvePacketHitMob(packet);
+            if (mob != null)
+            {
+                SpawnPacketMobAttackHitEffect(state.Summon, mob, attackAction, packet, currentTime);
+                PlayPacketMobAttackSound(mob, packet.AttackIndex);
+            }
+
+            if (packet.Damage > 0)
+            {
+                PlayPacketSummonHitSound(state.Summon.SkillData);
+            }
+        }
+
+        private MobItem ResolvePacketHitMob(SummonedHitPacket packet)
+        {
+            if (_mobPool == null || packet.MobTemplateId is not int mobTemplateId || mobTemplateId <= 0)
+            {
+                return null;
+            }
+
+            string mobTypeId = mobTemplateId.ToString();
+            return _mobPool.GetMobsByType(mobTypeId)
+                .FirstOrDefault(static candidate => candidate?.AI?.IsDead != true)
+                ?? _mobPool.GetMobsByType(mobTypeId).FirstOrDefault();
+        }
+
+        private void SpawnPacketMobAttackHitEffect(
+            ActiveSummon summon,
+            MobItem mob,
+            string attackAction,
+            SummonedHitPacket packet,
+            int currentTime)
+        {
+            List<IDXObject> frames = mob?.GetAttackHitFrames(attackAction);
+            if (summon == null || frames == null || frames.Count == 0)
+            {
+                return;
+            }
+
+            Vector2 hitPosition = ResolvePacketHitEffectPosition(summon, mob, attackAction, currentTime);
+            _mobAttackHitEffects.Add(new PacketOwnedMobAttackHitEffectDisplay
+            {
+                X = hitPosition.X,
+                Y = hitPosition.Y,
+                Frames = frames,
+                CurrentFrame = 0,
+                LastFrameTime = currentTime,
+                Flip = packet.MobFacingLeft != true
+            });
+        }
+
+        private Vector2 ResolvePacketHitEffectPosition(ActiveSummon summon, MobItem mob, string attackAction, int currentTime)
+        {
+            Rectangle hitbox = GetSummonHitbox(summon, currentTime);
+            if (!hitbox.IsEmpty)
+            {
+                return new Vector2(
+                    hitbox.Left + _random.Next(Math.Max(1, hitbox.Width)),
+                    hitbox.Top + _random.Next(Math.Max(1, hitbox.Height)));
+            }
+
+            Vector2 fallback = new(summon.PositionX, summon.PositionY);
+            MobAnimationSet.AttackInfoMetadata attackInfo = mob?.GetAttackInfo(attackAction);
+            if (attackInfo?.HasRangeOrigin == true)
+            {
+                return new Vector2(
+                    fallback.X + attackInfo.RangeOrigin.X,
+                    fallback.Y + attackInfo.RangeOrigin.Y);
+            }
+
+            return fallback;
+        }
+
+        private static void PlayPacketMobAttackSound(MobItem mob, sbyte attackIndex)
+        {
+            if (mob == null)
+            {
+                return;
+            }
+
+            mob.PlayCharDamSound(attackIndex >= 1 ? 2 : 1);
+        }
+
+        private void PlayPacketSummonHitSound(SkillData skill)
+        {
+            if (skill == null || _soundManager == null)
+            {
+                return;
+            }
+
+            string soundKey = _skillLoader?.EnsureRepeatSoundRegistered(skill, _soundManager);
+            if (!string.IsNullOrWhiteSpace(soundKey))
+            {
+                _soundManager.PlaySound(soundKey);
+            }
+        }
+
+        private void DrawMobAttackHitEffect(SpriteBatch spriteBatch, PacketOwnedMobAttackHitEffectDisplay hitEffect, int mapShiftX, int mapShiftY, int centerX, int centerY)
+        {
+            if (hitEffect?.Frames == null
+                || hitEffect.CurrentFrame < 0
+                || hitEffect.CurrentFrame >= hitEffect.Frames.Count)
+            {
+                return;
+            }
+
+            IDXObject frame = hitEffect.Frames[hitEffect.CurrentFrame];
+            if (frame == null)
+            {
+                return;
+            }
+
+            int screenX = (int)MathF.Round(hitEffect.X) - mapShiftX + centerX;
+            int screenY = (int)MathF.Round(hitEffect.Y) - mapShiftY + centerY;
+            frame.DrawBackground(spriteBatch, null, null, screenX, screenY, hitEffect.Tint, hitEffect.Flip, null);
+        }
+
         private void DrawSummon(SpriteBatch spriteBatch, ActiveSummon summon, int mapShiftX, int mapShiftY, int centerX, int centerY, int currentTime)
         {
             int elapsed = Math.Max(0, currentTime - summon.StartTime);
@@ -1178,7 +1597,7 @@ namespace HaCreator.MapSimulator.Pools
                 null,
                 GetFrameDrawX(screenX, frame, shouldFlip),
                 screenY - frame.Origin.Y,
-                Color.White,
+                ResolveSummonDrawColor(summon),
                 shouldFlip,
                 null);
         }
@@ -1276,6 +1695,22 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             SkillAnimation prepareAnimation = skill.SummonAttackPrepareAnimation;
+            if (prepareAnimation?.Frames.Count > 0
+                && summon?.ActorState == SummonActorState.Prepare
+                && summon.SkillId == TeslaCoilSkillId
+                && (summon.TeslaCoilState == 1
+                    || summon.TeslaCoilState == 2
+                    || summon.LastAttackAnimationStartTime == int.MinValue))
+            {
+                int prepareElapsed = Math.Max(0, currentTime - summon.LastStateChangeTime);
+                int prepareDuration = GetSkillAnimationDuration(prepareAnimation) ?? 0;
+                if (prepareDuration <= 0 || prepareElapsed < prepareDuration)
+                {
+                    animationTime = prepareElapsed;
+                    return prepareAnimation;
+                }
+            }
+
             SkillAnimation attackAnimation = skill.SummonAttackAnimation;
             if (attackAnimation?.Frames.Count > 0 && summon.LastAttackAnimationStartTime != int.MinValue)
             {

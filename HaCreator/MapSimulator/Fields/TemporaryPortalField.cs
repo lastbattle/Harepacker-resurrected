@@ -24,6 +24,8 @@ namespace HaCreator.MapSimulator.Fields
         private const int OpenGateDefaultDurationMs = 30_000;
         private const int OpenGateTeleportDelayMs = 120;
         private const int CrossMapPortalTeleportDelayMs = 0;
+        private const int TownPortalOpeningDurationMs = 1700;
+        private const int TownPortalRemovalFadeDurationMs = 1000;
         private const float PortalInteractRangeX = 40f;
         private const float PortalInteractRangeY = 60f;
         private const byte RemoteTownPortalOverlayState = 1;
@@ -33,6 +35,7 @@ namespace HaCreator.MapSimulator.Fields
         private readonly List<TemporaryPortal> _portals = new();
         private readonly Dictionary<uint, RemoteTownPortalState> _remoteTownPortals = new();
         private readonly Dictionary<RemoteOpenGateKey, RemoteOpenGateState> _remoteOpenGates = new();
+        private readonly Dictionary<uint, RemoteTownPortalFieldMetadata> _remoteTownPortalFieldMetadata = new();
         private PortalVisualSet _openGateVisuals;
         private PortalVisualSet _mysticDoorCurrentMapVisuals;
         private PortalVisualSet _mysticDoorTownVisuals;
@@ -47,8 +50,17 @@ namespace HaCreator.MapSimulator.Fields
 
         public void Update(int currentTime)
         {
+            bool remoteTownPortalsChanged = AdvanceRemoteTownPortalPhases(currentTime);
+
             if (_portals.Count == 0)
+            {
+                if (remoteTownPortalsChanged)
+                {
+                    SyncRemoteTownPortalVisuals();
+                }
+
                 return;
+            }
 
             for (int i = _portals.Count - 1; i >= 0; i--)
             {
@@ -65,6 +77,11 @@ namespace HaCreator.MapSimulator.Fields
                         portal.LinkedPortalId = null;
                     }
                 }
+            }
+
+            if (remoteTownPortalsChanged)
+            {
+                SyncRemoteTownPortalVisuals();
             }
         }
 
@@ -202,6 +219,7 @@ namespace HaCreator.MapSimulator.Fields
             int packetType,
             byte[] payload,
             int currentMapId,
+            int currentTime,
             RemoteTownPortalResolvedDestination? townPortalDestination,
             out string result)
         {
@@ -217,7 +235,7 @@ namespace HaCreator.MapSimulator.Fields
                         return false;
                     }
 
-                    ApplyRemoteTownPortalCreate(townCreate, currentMapId, townPortalDestination);
+                    ApplyRemoteTownPortalCreate(townCreate, currentMapId, currentTime, townPortalDestination);
                     result = $"Applied {RemotePortalPacketCodec.DescribePacketType(packetType)} for owner {townCreate.OwnerCharacterId}.";
                     return true;
 
@@ -228,8 +246,7 @@ namespace HaCreator.MapSimulator.Fields
                         return false;
                     }
 
-                    bool removedTownPortal = _remoteTownPortals.Remove(townRemove.OwnerCharacterId);
-                    SyncRemoteTownPortalVisuals();
+                    bool removedTownPortal = ApplyRemoteTownPortalRemove(townRemove, currentTime);
                     result = removedTownPortal
                         ? $"Applied {RemotePortalPacketCodec.DescribePacketType(packetType)} for owner {townRemove.OwnerCharacterId}."
                         : $"Ignored {RemotePortalPacketCodec.DescribePacketType(packetType)} for unknown owner {townRemove.OwnerCharacterId}.";
@@ -380,16 +397,61 @@ namespace HaCreator.MapSimulator.Fields
         private void ApplyRemoteTownPortalCreate(
             RemoteTownPortalCreatedPacket packet,
             int currentMapId,
+            int currentTime,
             RemoteTownPortalResolvedDestination? destination)
         {
+            if (destination.HasValue)
+            {
+                RememberRemoteTownPortalFieldMetadata(packet.OwnerCharacterId, currentMapId, packet.X, packet.Y, destination.Value);
+            }
+
+            RemoteTownPortalResolvedDestination? resolvedDestination = ResolveRemoteTownPortalDestination(
+                packet.OwnerCharacterId,
+                currentMapId,
+                packet.X,
+                packet.Y,
+                destination,
+                _remoteTownPortals.TryGetValue(packet.OwnerCharacterId, out RemoteTownPortalState existingState) ? existingState : null);
+
             _remoteTownPortals[packet.OwnerCharacterId] = new RemoteTownPortalState(
                 packet.OwnerCharacterId,
                 packet.State,
                 currentMapId,
                 packet.X,
                 packet.Y,
-                destination);
+                resolvedDestination,
+                packet.State == 0 ? RemoteTownPortalVisualPhase.Opening : RemoteTownPortalVisualPhase.Stable,
+                currentTime,
+                null,
+                null);
             SyncRemoteTownPortalVisuals();
+        }
+
+        private bool ApplyRemoteTownPortalRemove(RemoteTownPortalRemovedPacket packet, int currentTime)
+        {
+            if (!_remoteTownPortals.TryGetValue(packet.OwnerCharacterId, out RemoteTownPortalState state))
+            {
+                return false;
+            }
+
+            if (packet.State == 0)
+            {
+                RemoteTownPortalRemovalSnapshot removalSnapshot = CaptureRemoteTownPortalRemovalSnapshot(state, currentTime);
+                _remoteTownPortals[packet.OwnerCharacterId] = state with
+                {
+                    Phase = RemoteTownPortalVisualPhase.Removing,
+                    PhaseStartedAt = currentTime,
+                    RemovalState = packet.State,
+                    RemovalSnapshot = removalSnapshot
+                };
+            }
+            else
+            {
+                _remoteTownPortals.Remove(packet.OwnerCharacterId);
+            }
+
+            SyncRemoteTownPortalVisuals();
+            return true;
         }
 
         private void ApplyRemoteOpenGateCreate(RemoteOpenGateCreatedPacket packet, int currentMapId)
@@ -488,6 +550,37 @@ namespace HaCreator.MapSimulator.Fields
             }
         }
 
+        private RemoteTownPortalRemovalSnapshot CaptureRemoteTownPortalRemovalSnapshot(RemoteTownPortalState state, int currentTime)
+        {
+            if (state.RemovalSnapshot != null)
+                return state.RemovalSnapshot;
+
+            if (!EnsureMysticDoorVisuals(out PortalVisualSet currentMapVisuals, out PortalVisualSet townVisuals, out PortalVisualSet frameVisuals))
+                return null;
+
+            IDXObject fieldMainFrame = ResolveRemoteTownPortalMainFrame(state, useTownVisuals: false, currentTime, currentMapVisuals, townVisuals);
+            IDXObject townMainFrame = state.Destination.HasValue
+                ? ResolveRemoteTownPortalMainFrame(state, useTownVisuals: true, currentTime, currentMapVisuals, townVisuals)
+                : null;
+            IDXObject fieldFrameFrame = ShouldDrawRemoteTownPortalFrame(state, useTownVisuals: false)
+                ? frameVisuals.GetFrameForTick(currentTime, state.PhaseStartedAt, loop: true)
+                : null;
+
+            return new RemoteTownPortalRemovalSnapshot(fieldMainFrame, fieldFrameFrame, townMainFrame);
+        }
+
+        private static IDXObject ResolveRemoteTownPortalMainFrame(
+            RemoteTownPortalState state,
+            bool useTownVisuals,
+            int currentTime,
+            PortalVisualSet currentMapVisuals,
+            PortalVisualSet townVisuals)
+        {
+            PortalVisualSet mainVisuals = useTownVisuals ? townVisuals : currentMapVisuals;
+            bool loop = state.Phase != RemoteTownPortalVisualPhase.Opening || useTownVisuals;
+            return mainVisuals.GetFrameForTick(currentTime, state.PhaseStartedAt, loop);
+        }
+
         private bool EnsureMysticDoorVisuals(out PortalVisualSet currentMapVisuals, out PortalVisualSet townVisuals, out PortalVisualSet frameVisuals)
         {
             currentMapVisuals = _mysticDoorCurrentMapVisuals;
@@ -521,14 +614,52 @@ namespace HaCreator.MapSimulator.Fields
             PortalVisualSet townVisuals,
             PortalVisualSet frameVisuals)
         {
-            List<BaseDXDrawableItem> drawables = new()
-            {
-                (useTownVisuals ? townVisuals : currentMapVisuals).CreateDrawable(x, y)
-            };
+            List<BaseDXDrawableItem> drawables = new();
+            PortalVisualSet mainVisuals = useTownVisuals ? townVisuals : currentMapVisuals;
+            RemoteTownPortalRemovalSnapshot removalSnapshot = state.RemovalSnapshot;
 
-            if (!useTownVisuals && state.State >= RemoteTownPortalOverlayState)
+            switch (state.Phase)
             {
-                drawables.Add(frameVisuals.CreateDrawable(x, y));
+                case RemoteTownPortalVisualPhase.Opening when !useTownVisuals:
+                    drawables.Add(mainVisuals.CreateOpeningDrawable(x, y, state.PhaseStartedAt));
+                    break;
+
+                case RemoteTownPortalVisualPhase.Removing:
+                    IDXObject removalMainFrame = useTownVisuals ? removalSnapshot?.TownMainFrame : removalSnapshot?.FieldMainFrame;
+                    if (removalMainFrame != null)
+                    {
+                        drawables.Add(mainVisuals.CreateSnapshotFadeDrawable(x, y, removalMainFrame, state.PhaseStartedAt, TownPortalRemovalFadeDurationMs));
+                    }
+                    else
+                    {
+                        drawables.Add(mainVisuals.CreateFadeDrawable(x, y, state.PhaseStartedAt, TownPortalRemovalFadeDurationMs));
+                    }
+                    break;
+
+                default:
+                    drawables.Add(mainVisuals.CreateLoopDrawable(x, y, state.PhaseStartedAt));
+                    break;
+            }
+
+            bool shouldDrawFrame = ShouldDrawRemoteTownPortalFrame(state, useTownVisuals);
+
+            if (shouldDrawFrame)
+            {
+                if (state.Phase == RemoteTownPortalVisualPhase.Removing)
+                {
+                    if (removalSnapshot?.FieldFrameFrame != null)
+                    {
+                        drawables.Add(frameVisuals.CreateSnapshotFadeDrawable(x, y, removalSnapshot.FieldFrameFrame, state.PhaseStartedAt, TownPortalRemovalFadeDurationMs));
+                    }
+                    else
+                    {
+                        drawables.Add(frameVisuals.CreateFadeDrawable(x, y, state.PhaseStartedAt, TownPortalRemovalFadeDurationMs));
+                    }
+                }
+                else
+                {
+                    drawables.Add(frameVisuals.CreateLoopDrawable(x, y, state.PhaseStartedAt));
+                }
             }
 
             return new TemporaryPortal(
@@ -544,6 +675,110 @@ namespace HaCreator.MapSimulator.Fields
             {
                 OwnerCharacterId = state.OwnerCharacterId
             };
+        }
+
+        private static bool ShouldDrawRemoteTownPortalFrame(RemoteTownPortalState state, bool useTownVisuals)
+        {
+            return !useTownVisuals
+                   && state.Phase != RemoteTownPortalVisualPhase.Opening
+                   && state.State >= RemoteTownPortalOverlayState;
+        }
+
+        private bool AdvanceRemoteTownPortalPhases(int currentTime)
+        {
+            if (_remoteTownPortals.Count == 0)
+            {
+                return false;
+            }
+
+            bool changed = false;
+            List<uint> ownersToRemove = null;
+            List<uint> owners = _remoteTownPortals.Keys.ToList();
+
+            foreach (uint ownerId in owners)
+            {
+                if (!_remoteTownPortals.TryGetValue(ownerId, out RemoteTownPortalState state))
+                {
+                    continue;
+                }
+
+                switch (state.Phase)
+                {
+                    case RemoteTownPortalVisualPhase.Opening:
+                        if (unchecked(currentTime - state.PhaseStartedAt) >= TownPortalOpeningDurationMs)
+                        {
+                            _remoteTownPortals[ownerId] = state with
+                            {
+                                Phase = RemoteTownPortalVisualPhase.Stable,
+                                PhaseStartedAt = currentTime
+                            };
+                            changed = true;
+                        }
+                        break;
+
+                    case RemoteTownPortalVisualPhase.Removing:
+                        if (unchecked(currentTime - state.PhaseStartedAt) >= TownPortalRemovalFadeDurationMs)
+                        {
+                            ownersToRemove ??= new List<uint>();
+                            ownersToRemove.Add(ownerId);
+                            changed = true;
+                        }
+                        break;
+                }
+            }
+
+            if (ownersToRemove != null)
+            {
+                foreach (uint ownerId in ownersToRemove)
+                {
+                    _remoteTownPortals.Remove(ownerId);
+                }
+            }
+
+            return changed;
+        }
+
+        private void RememberRemoteTownPortalFieldMetadata(
+            uint ownerCharacterId,
+            int sourceMapId,
+            short sourceX,
+            short sourceY,
+            RemoteTownPortalResolvedDestination destination)
+        {
+            _remoteTownPortalFieldMetadata[ownerCharacterId] = new RemoteTownPortalFieldMetadata(
+                sourceMapId,
+                sourceX,
+                sourceY,
+                destination.MapId);
+        }
+
+        private RemoteTownPortalResolvedDestination? ResolveRemoteTownPortalDestination(
+            uint ownerCharacterId,
+            int currentMapId,
+            short packetX,
+            short packetY,
+            RemoteTownPortalResolvedDestination? incomingDestination,
+            RemoteTownPortalState? existingState)
+        {
+            if (_remoteTownPortalFieldMetadata.TryGetValue(ownerCharacterId, out RemoteTownPortalFieldMetadata metadata))
+            {
+                if (currentMapId == metadata.TownMapId && currentMapId != metadata.SourceMapId)
+                {
+                    return new RemoteTownPortalResolvedDestination(metadata.SourceMapId, metadata.SourceX, metadata.SourceY);
+                }
+            }
+
+            if (incomingDestination.HasValue)
+            {
+                return incomingDestination;
+            }
+
+            if (existingState.HasValue && existingState.Value.Destination.HasValue)
+            {
+                return existingState.Value.Destination.Value;
+            }
+
+            return null;
         }
 
         private PortalVisualSet EnsureOpenGateVisuals()
@@ -646,23 +881,60 @@ namespace HaCreator.MapSimulator.Fields
 
         private sealed class PortalVisualSet
         {
-            private readonly List<IDXObject> _frames;
+            private readonly IDXObject[] _frames;
 
             public PortalVisualSet(TemporaryPortalKind kind, List<IDXObject> frames)
             {
                 Kind = kind;
-                _frames = frames;
+                _frames = frames?.ToArray() ?? throw new ArgumentNullException(nameof(frames));
             }
 
             public TemporaryPortalKind Kind { get; }
 
             public BaseDXDrawableItem CreateDrawable(float x, float y)
             {
-                var drawable = new BaseDXDrawableItem(_frames, false)
+                return CreateLoopDrawable(x, y, startedAt: 0);
+            }
+
+            public BaseDXDrawableItem CreateLoopDrawable(float x, float y, int startedAt)
+            {
+                var drawable = new PortalAnimationDrawable(_frames, loop: true, startedAt: startedAt)
                 {
                     Position = new Point(-(int)MathF.Round(x), -(int)MathF.Round(y))
                 };
                 return drawable;
+            }
+
+            public BaseDXDrawableItem CreateOpeningDrawable(float x, float y, int startedAt)
+            {
+                var drawable = new PortalAnimationDrawable(_frames, loop: false, startedAt: startedAt)
+                {
+                    Position = new Point(-(int)MathF.Round(x), -(int)MathF.Round(y))
+                };
+                return drawable;
+            }
+
+            public BaseDXDrawableItem CreateFadeDrawable(float x, float y, int startedAt, int durationMs)
+            {
+                var drawable = new PortalAnimationDrawable(_frames, loop: false, startedAt: startedAt, fadeStartedAt: startedAt, fadeDurationMs: durationMs)
+                {
+                    Position = new Point(-(int)MathF.Round(x), -(int)MathF.Round(y))
+                };
+                return drawable;
+            }
+
+            public BaseDXDrawableItem CreateSnapshotFadeDrawable(float x, float y, IDXObject frame, int startedAt, int durationMs)
+            {
+                var drawable = new PortalSnapshotFadeDrawable(frame, startedAt, durationMs)
+                {
+                    Position = new Point(-(int)MathF.Round(x), -(int)MathF.Round(y))
+                };
+                return drawable;
+            }
+
+            public IDXObject GetFrameForTick(int tickCount, int startedAt, bool loop)
+            {
+                return PortalAnimationDrawable.ResolveFrame(_frames, loop, startedAt, tickCount);
             }
         }
 
@@ -716,7 +988,22 @@ namespace HaCreator.MapSimulator.Fields
             int MapId,
             short X,
             short Y,
-            RemoteTownPortalResolvedDestination? Destination);
+            RemoteTownPortalResolvedDestination? Destination,
+            RemoteTownPortalVisualPhase Phase,
+            int PhaseStartedAt,
+            byte? RemovalState,
+            RemoteTownPortalRemovalSnapshot RemovalSnapshot);
+
+        private sealed record RemoteTownPortalRemovalSnapshot(
+            IDXObject FieldMainFrame,
+            IDXObject FieldFrameFrame,
+            IDXObject TownMainFrame);
+
+        private readonly record struct RemoteTownPortalFieldMetadata(
+            int SourceMapId,
+            short SourceX,
+            short SourceY,
+            int TownMapId);
 
         private readonly record struct RemoteOpenGateState(
             uint OwnerCharacterId,
@@ -727,10 +1014,249 @@ namespace HaCreator.MapSimulator.Fields
             bool IsFirstSlot,
             uint PartyId);
 
+        internal enum RemoteTownPortalVisualPhase
+        {
+            Opening,
+            Stable,
+            Removing
+        }
+
+        private sealed class PortalAnimationDrawable : BaseDXDrawableItem
+        {
+            private readonly IDXObject[] _frames;
+            private readonly bool _loop;
+            private readonly int _startedAt;
+            private readonly int _fadeStartedAt;
+            private readonly int _fadeDurationMs;
+
+            public PortalAnimationDrawable(IReadOnlyList<IDXObject> frames, bool loop, int startedAt, int fadeStartedAt = -1, int fadeDurationMs = 0)
+                : base(frames?.ToList() ?? throw new ArgumentNullException(nameof(frames)), false)
+            {
+                _frames = frames.ToArray();
+                _loop = loop;
+                _startedAt = startedAt;
+                _fadeStartedAt = fadeStartedAt;
+                _fadeDurationMs = fadeDurationMs;
+            }
+
+            public override void Draw(
+                SpriteBatch sprite,
+                SkeletonMeshRenderer skeletonMeshRenderer,
+                GameTime gameTime,
+                int mapShiftX,
+                int mapShiftY,
+                int centerX,
+                int centerY,
+                ReflectionDrawableBoundary drawReflectionInfo,
+                RenderParameters renderParameters,
+                int TickCount)
+            {
+                if (_frames.Length == 0)
+                {
+                    return;
+                }
+
+                int shiftCenteredX = mapShiftX - centerX;
+                int shiftCenteredY = mapShiftY - centerY;
+                IDXObject drawFrame = GetFrameForTick(TickCount);
+
+                if (!IsFrameWithinView(drawFrame, shiftCenteredX, shiftCenteredY, renderParameters.RenderWidth, renderParameters.RenderHeight))
+                {
+                    return;
+                }
+
+                float alpha = GetAlpha(TickCount);
+                if (alpha <= 0f)
+                {
+                    return;
+                }
+
+                if (alpha >= 0.999f)
+                {
+                    drawFrame.DrawObject(
+                        sprite,
+                        skeletonMeshRenderer,
+                        gameTime,
+                        shiftCenteredX - Position.X,
+                        shiftCenteredY - Position.Y,
+                        flip: false,
+                        drawReflectionInfo);
+                    return;
+                }
+
+                int drawX = drawFrame.X - (shiftCenteredX - Position.X);
+                int drawY = drawFrame.Y - (shiftCenteredY - Position.Y);
+                drawFrame.DrawBackground(
+                    sprite,
+                    skeletonMeshRenderer,
+                    gameTime,
+                    drawX,
+                    drawY,
+                    Color.White * alpha,
+                    flip: false,
+                    drawReflectionInfo);
+            }
+
+            private IDXObject GetFrameForTick(int tickCount)
+            {
+                return ResolveFrame(_frames, _loop, _startedAt, tickCount);
+            }
+
+            internal static IDXObject ResolveFrame(IReadOnlyList<IDXObject> frames, bool loop, int startedAt, int tickCount)
+            {
+                if (frames == null || frames.Count == 0)
+                    throw new ArgumentException("Animation frame collection cannot be empty.", nameof(frames));
+
+                if (frames.Count == 1)
+                {
+                    return frames[0];
+                }
+
+                int elapsed = Math.Max(0, unchecked(tickCount - startedAt));
+                int accumulated = 0;
+
+                if (loop)
+                {
+                    int cycleDuration = 0;
+                    for (int i = 0; i < frames.Count; i++)
+                    {
+                        cycleDuration += Math.Max(1, frames[i].Delay);
+                    }
+
+                    if (cycleDuration > 0)
+                    {
+                        elapsed %= cycleDuration;
+                    }
+                }
+
+                for (int i = 0; i < frames.Count; i++)
+                {
+                    accumulated += Math.Max(1, frames[i].Delay);
+                    if (elapsed < accumulated)
+                    {
+                        return frames[i];
+                    }
+                }
+
+                return frames[^1];
+            }
+
+            private float GetAlpha(int tickCount)
+            {
+                if (_fadeStartedAt < 0 || _fadeDurationMs <= 0)
+                {
+                    return 1f;
+                }
+
+                float progress = Math.Clamp((tickCount - _fadeStartedAt) / (float)_fadeDurationMs, 0f, 1f);
+                return 1f - progress;
+            }
+        }
+
+        private sealed class PortalSnapshotFadeDrawable : BaseDXDrawableItem
+        {
+            private readonly IDXObject _frame;
+            private readonly int _fadeStartedAt;
+            private readonly int _fadeDurationMs;
+
+            public PortalSnapshotFadeDrawable(IDXObject frame, int fadeStartedAt, int fadeDurationMs)
+                : base(frame ?? throw new ArgumentNullException(nameof(frame)), false)
+            {
+                _frame = frame;
+                _fadeStartedAt = fadeStartedAt;
+                _fadeDurationMs = fadeDurationMs;
+            }
+
+            public override void Draw(
+                SpriteBatch sprite,
+                SkeletonMeshRenderer skeletonMeshRenderer,
+                GameTime gameTime,
+                int mapShiftX,
+                int mapShiftY,
+                int centerX,
+                int centerY,
+                ReflectionDrawableBoundary drawReflectionInfo,
+                RenderParameters renderParameters,
+                int TickCount)
+            {
+                int shiftCenteredX = mapShiftX - centerX;
+                int shiftCenteredY = mapShiftY - centerY;
+
+                if (!IsFrameWithinView(_frame, shiftCenteredX, shiftCenteredY, renderParameters.RenderWidth, renderParameters.RenderHeight))
+                {
+                    return;
+                }
+
+                float alpha = Math.Clamp(1f - ((TickCount - _fadeStartedAt) / (float)_fadeDurationMs), 0f, 1f);
+                if (alpha <= 0f)
+                {
+                    return;
+                }
+
+                if (alpha >= 0.999f)
+                {
+                    _frame.DrawObject(
+                        sprite,
+                        skeletonMeshRenderer,
+                        gameTime,
+                        shiftCenteredX - Position.X,
+                        shiftCenteredY - Position.Y,
+                        flip: false,
+                        drawReflectionInfo);
+                    return;
+                }
+
+                int drawX = _frame.X - (shiftCenteredX - Position.X);
+                int drawY = _frame.Y - (shiftCenteredY - Position.Y);
+                _frame.DrawBackground(
+                    sprite,
+                    skeletonMeshRenderer,
+                    gameTime,
+                    drawX,
+                    drawY,
+                    Color.White * alpha,
+                    flip: false,
+                    drawReflectionInfo);
+            }
+        }
+
         private static bool IsMysticDoorSkill(SkillCastInfo castInfo)
         {
             return castInfo?.SkillData != null
                    && string.Equals(castInfo.SkillData.Name, MysticDoorSkillName, StringComparison.OrdinalIgnoreCase);
+        }
+
+        internal static RemoteTownPortalVisualPhase AdvanceRemoteTownPortalPhaseForTesting(RemoteTownPortalVisualPhase phase, int phaseStartedAt, int currentTime)
+        {
+            if (phase == RemoteTownPortalVisualPhase.Opening
+                && unchecked(currentTime - phaseStartedAt) >= TownPortalOpeningDurationMs)
+            {
+                return RemoteTownPortalVisualPhase.Stable;
+            }
+
+            if (phase == RemoteTownPortalVisualPhase.Removing
+                && unchecked(currentTime - phaseStartedAt) >= TownPortalRemovalFadeDurationMs)
+            {
+                return RemoteTownPortalVisualPhase.Removing;
+            }
+
+            return phase;
+        }
+
+        internal static RemoteTownPortalResolvedDestination? ResolveRemoteTownPortalDestinationForTesting(
+            int currentMapId,
+            RemoteTownPortalResolvedDestination? incomingDestination,
+            int sourceMapId,
+            short sourceX,
+            short sourceY,
+            int townMapId)
+        {
+            if (currentMapId == townMapId && currentMapId != sourceMapId)
+            {
+                return new RemoteTownPortalResolvedDestination(sourceMapId, sourceX, sourceY);
+            }
+
+            return incomingDestination;
         }
     }
 }

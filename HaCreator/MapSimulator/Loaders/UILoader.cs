@@ -557,7 +557,7 @@ namespace HaCreator.MapSimulator.Loaders
                         subProperty_chatTargetBase?["normal"]?["0"] as WzCanvasProperty).ToVector2();
                     Vector2 chatInputPos = new Vector2(
                         chatTargetButtonPos.X + obj_Ui_chatTarget.CanvasSnapshotWidth + 4,
-                        chatEnterPos.Y + 3);
+                        chatEnterPos.Y);
                     chatUI.SetLayoutMetrics(
                         chatFrameAnchorOrigin,
                         chatTargetLabelPos,

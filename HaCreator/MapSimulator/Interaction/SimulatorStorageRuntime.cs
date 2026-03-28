@@ -35,6 +35,7 @@ namespace HaCreator.MapSimulator.Interaction
         private string _currentAccountKey = StorageAccountStore.ResolveAccountKey("Simulator Account Storage");
         private string _secondaryPassword = string.Empty;
         private bool _secondaryPasswordVerified;
+        private bool _isAccessSessionActive;
         private bool _suspendPersistence;
 
         public string AccountLabel { get; private set; } = "Simulator Account Storage";
@@ -47,8 +48,9 @@ namespace HaCreator.MapSimulator.Interaction
                 ? _sharedCharacterNames.Count == 0
                   || (!string.IsNullOrWhiteSpace(CurrentCharacterName) && _sharedCharacterLookup.Contains(CurrentCharacterName))
                 : !string.IsNullOrWhiteSpace(CurrentCharacterName) && _authorizedCharacterLookup.Contains(CurrentCharacterName);
+        public bool IsAccessSessionActive => _isAccessSessionActive;
         public bool HasSecondaryPassword => !string.IsNullOrWhiteSpace(_secondaryPassword);
-        public bool IsSecondaryPasswordVerified => !HasSecondaryPassword || _secondaryPasswordVerified;
+        public bool IsSecondaryPasswordVerified => !HasSecondaryPassword || (_isAccessSessionActive && _secondaryPasswordVerified);
 
         public SimulatorStorageRuntime(StorageAccountStore accountStore = null, string initialAccountLabel = null, string initialAccountKey = null)
         {
@@ -213,6 +215,18 @@ namespace HaCreator.MapSimulator.Interaction
             }
         }
 
+        public void BeginAccessSession()
+        {
+            _isAccessSessionActive = true;
+            _secondaryPasswordVerified = false;
+        }
+
+        public void EndAccessSession()
+        {
+            _isAccessSessionActive = false;
+            _secondaryPasswordVerified = false;
+        }
+
         public void ConfigureAccess(string accountLabel, string accountKey, string currentCharacterName, IEnumerable<string> sharedCharacterNames)
         {
             string normalizedLabel = string.IsNullOrWhiteSpace(accountLabel) ? "Simulator Account Storage" : accountLabel.Trim();
@@ -227,6 +241,7 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             CurrentCharacterName = currentCharacterName ?? string.Empty;
+            EndAccessSession();
 
             _sharedCharacterNames.Clear();
             _sharedCharacterLookup.Clear();
@@ -245,8 +260,9 @@ namespace HaCreator.MapSimulator.Interaction
 
         public bool TrySetSecondaryPassword(string password)
         {
-            if (!CanCurrentCharacterAccess)
+            if (!CanCurrentCharacterAccess || !_isAccessSessionActive)
             {
+                _secondaryPasswordVerified = false;
                 return false;
             }
 
@@ -264,7 +280,7 @@ namespace HaCreator.MapSimulator.Interaction
 
         public bool TryVerifySecondaryPassword(string password)
         {
-            if (!CanCurrentCharacterAccess)
+            if (!CanCurrentCharacterAccess || !_isAccessSessionActive)
             {
                 _secondaryPasswordVerified = false;
                 return false;
@@ -307,6 +323,7 @@ namespace HaCreator.MapSimulator.Interaction
                 _meso = 0;
                 _secondaryPassword = string.Empty;
                 _secondaryPasswordVerified = false;
+                _isAccessSessionActive = false;
                 _authorizedCharacterNames.Clear();
                 _authorizedCharacterLookup.Clear();
 

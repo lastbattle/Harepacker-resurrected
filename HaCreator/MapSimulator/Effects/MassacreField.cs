@@ -53,9 +53,16 @@ namespace HaCreator.MapSimulator.Effects
         private static readonly string[] UiImageNames = { "UIWindow2.img", "UIWindow.img" };
         private const int TimerboardSourceStringPoolId = 0x14EE;
         private const int ClearScreenEffectStringPoolId = 0x14EC;
+        private const int CountBoardDigitStringPoolId = 0x1513;
         private const int KeyAnimationOpenStringPoolId = 0x1512;
         private const int KeyAnimationLoopStringPoolId = 0x1511;
         private const int KeyAnimationCloseStringPoolId = 0x1510;
+        private const int GaugeDangerBackgroundStringPoolId = 0x1516;
+        private const int GaugeDangerStringPoolId = 0x1517;
+        private const int GaugeDangerIconStringPoolId = 0x1518;
+        private const int GaugeFillStringPoolId = 0x1519;
+        private const int GaugeTextStringPoolId = 0x151A;
+        private const int GaugeDangerTextStringPoolId = 0x151B;
         private const int ComboTimeoutMs = 3000;
         private const int TimerboardWidth = 258;
         private const int TimerboardHeight = 61;
@@ -345,6 +352,31 @@ namespace HaCreator.MapSimulator.Effects
             _clearEffectAlpha = 0f;
             _clearEffectStartTime = int.MinValue;
         }
+        public bool TryApplyClockPayload(byte[] payload, int currentTimeMs, out string errorMessage)
+        {
+            errorMessage = null;
+            if (!_isActive)
+            {
+                errorMessage = "Massacre HUD inactive.";
+                return false;
+            }
+            if (payload == null || payload.Length < 5)
+            {
+                errorMessage = "Massacre clock payload requires 1 byte of type and 4 bytes of duration.";
+                return false;
+            }
+
+            int clockType = payload[0];
+            int durationSec = BinaryPrimitives.ReadInt32LittleEndian(payload.AsSpan(1, sizeof(int)));
+            if (clockType != 2)
+            {
+                errorMessage = $"Massacre clock type {clockType} does not own the timerboard.";
+                return false;
+            }
+
+            OnClock(clockType, durationSec, currentTimeMs);
+            return true;
+        }
         /// <summary>
         /// OnMassacreIncGauge - Packet 173
         /// From client: this->m_nIncGauge = Decode4(iPacket)
@@ -464,7 +496,7 @@ namespace HaCreator.MapSimulator.Effects
             string countEffectText = HasCountEffectPresentation ? $", countFx=stage{_countEffectPresentationStage}" : string.Empty;
             string bonusText = HasBonusPresentation ? ", bonusFx=active" : string.Empty;
             string resultText = HasResultPresentation ? $", result={_resultPresentation}:{_resultRank}:{_resultScore}" : string.Empty;
-            return $"Massacre map {_mapId}, timer={timerText}, gauge={_currentGauge}/{_maxGauge}, inc={_incGauge}, hitAdd={_defaultGaugeIncrease}, decay={_gaugeDec}/s, kills={_killCount}, combo={_comboCount}{countBoardText}{disableSkillText}{nextCountEffect}{countEffectText}{bonusText}{resultText}";
+            return $"Massacre map {_mapId}, timer={timerText}, gauge={_currentGauge}/{_maxGauge}, inc={_incGauge}, hitAdd={_defaultGaugeIncrease}, decay={_gaugeDec}/s, kills={_killCount}, combo={_comboCount}{countBoardText}{disableSkillText}{nextCountEffect}{countEffectText}{bonusText}{resultText}, ids=0x{TimerboardSourceStringPoolId:X}/0x{CountBoardDigitStringPoolId:X}/0x{ClearScreenEffectStringPoolId:X}";
         }
         public void Reset()
         {
@@ -554,6 +586,34 @@ namespace HaCreator.MapSimulator.Effects
                 _keyAnimationStage = 2;
                 _keyAnimationStageStart = currentTimeMs;
             }
+        }
+        public bool TryApplyMassacreInfoPayload(byte[] payload, int currentTimeMs, out string errorMessage)
+        {
+            errorMessage = null;
+            if (!_isActive)
+            {
+                errorMessage = "Massacre HUD inactive.";
+                return false;
+            }
+            if (payload == null || payload.Length < (sizeof(int) * 4))
+            {
+                errorMessage = "Massacre info payload requires four 4-byte integers: hit, miss, cool, skill.";
+                return false;
+            }
+
+            ReadOnlySpan<byte> span = payload.AsSpan();
+            int hit = BinaryPrimitives.ReadInt32LittleEndian(span);
+            int miss = BinaryPrimitives.ReadInt32LittleEndian(span.Slice(sizeof(int)));
+            int cool = BinaryPrimitives.ReadInt32LittleEndian(span.Slice(sizeof(int) * 2));
+            int skill = BinaryPrimitives.ReadInt32LittleEndian(span.Slice(sizeof(int) * 3));
+            if (hit < 0 || miss < 0 || cool < 0 || skill < 0)
+            {
+                errorMessage = "Massacre info payload values must be non-negative.";
+                return false;
+            }
+
+            SetMassacreInfo(hit, miss, cool, skill, currentTimeMs);
+            return true;
         }
         public void ShowCountEffectPresentation(int stage, int currentTimeMs)
         {
@@ -830,9 +890,12 @@ namespace HaCreator.MapSimulator.Effects
             WzImageProperty gauge = monsterKilling?["Gauge"];
             WzImageProperty result = monsterKilling?["Result"];
             LoadDigitTextures(count?["number"], _timerDigits);
+            // CField_Massacre::Init resolves StringPool 0x1513 into the count-board bitmap digits.
             LoadDigitTextures(count?["number2"], _countDigits);
             _countBoardTexture = LoadCanvasTexture(count?["backgrd0"] as WzCanvasProperty);
             _countBoardSkillTexture = LoadCanvasTexture(count?["backgrd1"] as WzCanvasProperty);
+            // CField_Massacre::Init maps StringPool ids 0x1519/0x151A and 0x1516-0x1518/0x151B
+            // onto the normal and danger gauge layers recovered from MonsterKilling/Gauge.
             _gaugeBackgroundTexture = LoadCanvasTexture(gauge?["backgrd"] as WzCanvasProperty);
             _gaugeTextTexture = LoadCanvasTexture(gauge?["text"] as WzCanvasProperty);
             _gaugePixelTexture = LoadCanvasTexture(gauge?["pixel"] as WzCanvasProperty);

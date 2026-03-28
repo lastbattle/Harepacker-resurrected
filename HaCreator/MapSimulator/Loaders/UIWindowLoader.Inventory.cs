@@ -71,15 +71,17 @@ namespace HaCreator.MapSimulator.Loaders
             inventory.InitializeUtilityButtons(btnGather, btnSort, btnCashShop);
 
             WzSubProperty skillMainProperty = uiWindowImage?["Skill"]?["main"] as WzSubProperty;
-            if (skillMainProperty != null)
-            {
-                // Inventory art does not ship dedicated tip frames, so reuse the shared client tooltip surfaces.
-                Texture2D[] tooltipFrames = new Texture2D[3];
-                tooltipFrames[0] = LoadCanvasTexture(skillMainProperty, "tip0", device);
-                tooltipFrames[1] = LoadCanvasTexture(skillMainProperty, "tip1", device);
-                tooltipFrames[2] = LoadCanvasTexture(skillMainProperty, "tip2", device);
-                inventory.SetTooltipTextures(tooltipFrames);
-            }
+            if (skillMainProperty != null)
+            {
+                // Inventory art does not ship dedicated tip frames, so reuse the shared client tooltip surfaces.
+                Texture2D[] tooltipFrames = new Texture2D[3];
+                tooltipFrames[0] = LoadCanvasTexture(skillMainProperty, "tip0", device);
+                tooltipFrames[1] = LoadCanvasTexture(skillMainProperty, "tip1", device);
+                tooltipFrames[2] = LoadCanvasTexture(skillMainProperty, "tip2", device);
+                inventory.SetTooltipTextures(tooltipFrames);
+            }
+
+            ApplyInventoryEquipTooltipAssets(inventory, uiWindowImage, device);
 
             // Load close button
             UIObject closeBtn = LoadButton(itemProperty, "BtClose", btClickSound, btOverSound, device);
@@ -227,14 +229,16 @@ namespace HaCreator.MapSimulator.Loaders
                 LoadInventoryMarkerTextures(itemProperty, "Quality", device));
 
             WzSubProperty skillMainProperty = uiWindow2Image?["Skill"]?["main"] as WzSubProperty;
-            if (skillMainProperty != null)
-            {
-                Texture2D[] tooltipFrames = new Texture2D[3];
-                tooltipFrames[0] = LoadCanvasTexture(skillMainProperty, "tip0", device);
-                tooltipFrames[1] = LoadCanvasTexture(skillMainProperty, "tip1", device);
-                tooltipFrames[2] = LoadCanvasTexture(skillMainProperty, "tip2", device);
-                inventory.SetTooltipTextures(tooltipFrames);
-            }
+            if (skillMainProperty != null)
+            {
+                Texture2D[] tooltipFrames = new Texture2D[3];
+                tooltipFrames[0] = LoadCanvasTexture(skillMainProperty, "tip0", device);
+                tooltipFrames[1] = LoadCanvasTexture(skillMainProperty, "tip1", device);
+                tooltipFrames[2] = LoadCanvasTexture(skillMainProperty, "tip2", device);
+                inventory.SetTooltipTextures(tooltipFrames);
+            }
+
+            ApplyInventoryEquipTooltipAssets(inventory, uiWindow2Image, device);
 
             UIObject tabEquip = LoadInventoryCanvasTabButton(itemProperty, "0", btClickSound, btOverSound, device);
             UIObject tabUse = LoadInventoryCanvasTabButton(itemProperty, "1", btClickSound, btOverSound, device);
@@ -247,8 +251,8 @@ namespace HaCreator.MapSimulator.Loaders
             return inventory;
         }
 
-        private static InventoryUIBigBang CreatePlaceholderInventoryBigBang(GraphicsDevice device, int screenWidth, int screenHeight)
-        {
+        private static InventoryUIBigBang CreatePlaceholderInventoryBigBang(GraphicsDevice device, int screenWidth, int screenHeight)
+        {
             int width = 172;
             int height = 293;
 
@@ -258,8 +262,30 @@ namespace HaCreator.MapSimulator.Loaders
             InventoryUIBigBang inventory = new InventoryUIBigBang(frame, device);
             inventory.Position = new Point(screenWidth - width - 20, 100);
 
-            return inventory;
-        }
-        #endregion
+            return inventory;
+        }
+
+        private static void ApplyInventoryEquipTooltipAssets(InventoryUI inventory, WzImage uiWindowImage, GraphicsDevice device)
+        {
+            WzSubProperty equipTooltipProperty = uiWindowImage?["ToolTip"]?["Equip"] as WzSubProperty;
+            if (equipTooltipProperty == null)
+            {
+                return;
+            }
+
+            inventory.SetEquipTooltipAssets(new EquipUIBigBang.EquipTooltipAssets
+            {
+                CanLabels = LoadCanvasTextureMap(equipTooltipProperty["Can"] as WzSubProperty, device),
+                CannotLabels = LoadCanvasTextureMap(equipTooltipProperty["Cannot"] as WzSubProperty, device),
+                PropertyLabels = LoadCanvasTextureMap(equipTooltipProperty["Property"] as WzSubProperty, device),
+                ItemCategoryLabels = LoadCanvasTextureMap(equipTooltipProperty["ItemCategory"] as WzSubProperty, device),
+                WeaponCategoryLabels = LoadCanvasTextureMap(equipTooltipProperty["WeaponCategory"] as WzSubProperty, device),
+                SpeedLabels = LoadCanvasTextureMap(equipTooltipProperty["Speed"] as WzSubProperty, device),
+                GrowthEnabledLabels = LoadCanvasTextureMap(equipTooltipProperty["GrowthEnabled"] as WzSubProperty, device),
+                GrowthDisabledLabels = LoadCanvasTextureMap(equipTooltipProperty["GrowthDisabled"] as WzSubProperty, device),
+                CashLabel = LoadCanvasTexture(equipTooltipProperty, "cash", device)
+            });
+        }
+        #endregion
     }
 }

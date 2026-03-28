@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.IO;
 using System.Net;
 using System.Net.Sockets;
@@ -136,15 +137,26 @@ namespace HaCreator.MapSimulator.Managers
                             break;
                         }
 
-                        if (!TryParsePacketLine(line, out LoginPacketType packetType, out string[] arguments))
+                        if (!LoginPacketScriptCodec.TryDecode(line, remoteEndpoint, out IReadOnlyList<LoginPacketInboxMessage> messages, out string error))
                         {
-                            LastStatus = $"Ignored login inbox line from {remoteEndpoint}: {line}";
+                            LastStatus = $"Ignored login inbox line from {remoteEndpoint}: {error ?? line}";
                             continue;
                         }
 
-                        _pendingMessages.Enqueue(new LoginPacketInboxMessage(packetType, remoteEndpoint, line, arguments));
-                        ReceivedCount++;
-                        LastStatus = $"Queued {packetType} from {remoteEndpoint}.";
+                        if (messages.Count == 0)
+                        {
+                            continue;
+                        }
+
+                        foreach (LoginPacketInboxMessage message in messages)
+                        {
+                            _pendingMessages.Enqueue(message);
+                            ReceivedCount++;
+                        }
+
+                        LastStatus = messages.Count == 1
+                            ? $"Queued {messages[0].PacketType} from {remoteEndpoint}."
+                            : $"Queued {messages.Count} login packets from {remoteEndpoint}.";
                     }
                 }
             }
@@ -185,6 +197,11 @@ namespace HaCreator.MapSimulator.Managers
                 {
                     return false;
                 }
+            }
+
+            if (TryParseRelayPacketLine(trimmed, out packetType, out arguments))
+            {
+                return true;
             }
 
             string token;
@@ -230,6 +247,198 @@ namespace HaCreator.MapSimulator.Managers
             return int.TryParse(token, out int numericPacket) &&
                    Enum.IsDefined(typeof(LoginPacketType), numericPacket) &&
                    LoginRuntimeManager.TryParsePacketType(((LoginPacketType)numericPacket).ToString(), out packetType);
+        }
+
+        private static bool TryParseRelayPacketLine(string text, out LoginPacketType packetType, out string[] arguments)
+        {
+            packetType = LoginPacketType.CheckPasswordResult;
+            arguments = Array.Empty<string>();
+
+            string[] tokens = text.Split((char[])null, StringSplitOptions.RemoveEmptyEntries);
+            if (tokens.Length == 0)
+            {
+                return false;
+            }
+
+            List<string> trailingArguments = new();
+            string normalizedPayloadArgument = null;
+            bool packetResolved = false;
+            bool seenPacketToken = false;
+
+            foreach (string rawToken in tokens)
+            {
+                string token = SanitizeRelayToken(rawToken);
+                if (string.IsNullOrWhiteSpace(token))
+                {
+                    continue;
+                }
+
+                if (TryParseRelayKeyValueToken(token, out string key, out string value))
+                {
+                    if (IsRelayMetadataKey(key))
+                    {
+                        continue;
+                    }
+
+                    if (!packetResolved && IsRelayPacketKey(key) && TryResolvePacketToken(value, out packetType))
+                    {
+                        packetResolved = true;
+                        seenPacketToken = true;
+                        continue;
+                    }
+
+                    if (IsRelayPayloadKey(key))
+                    {
+                        normalizedPayloadArgument = NormalizeRelayPayloadArgument(key, value);
+                        continue;
+                    }
+                }
+
+                if (!packetResolved && TryResolvePacketToken(token, out packetType))
+                {
+                    packetResolved = true;
+                    seenPacketToken = true;
+                    continue;
+                }
+
+                if (!seenPacketToken && IsRelayDirectionToken(token))
+                {
+                    continue;
+                }
+
+                trailingArguments.Add(token);
+            }
+
+            if (!packetResolved)
+            {
+                return false;
+            }
+
+            if (!string.IsNullOrWhiteSpace(normalizedPayloadArgument))
+            {
+                trailingArguments.Insert(0, normalizedPayloadArgument);
+            }
+
+            arguments = trailingArguments.ToArray();
+            return true;
+        }
+
+        private static bool TryResolvePacketToken(string token, out LoginPacketType packetType)
+        {
+            packetType = LoginPacketType.CheckPasswordResult;
+            if (string.IsNullOrWhiteSpace(token))
+            {
+                return false;
+            }
+
+            string candidate = SanitizeRelayToken(token);
+            if (LoginRuntimeManager.TryParsePacketType(candidate, out packetType))
+            {
+                return true;
+            }
+
+            return int.TryParse(candidate, out int numericPacket) &&
+                   Enum.IsDefined(typeof(LoginPacketType), numericPacket) &&
+                   LoginRuntimeManager.TryParsePacketType(((LoginPacketType)numericPacket).ToString(), out packetType);
+        }
+
+        private static string SanitizeRelayToken(string token)
+        {
+            return token?.Trim().Trim('"', '\'', '[', ']', '(', ')', '{', '}', ',', ';');
+        }
+
+        private static bool TryParseRelayKeyValueToken(string token, out string key, out string value)
+        {
+            key = null;
+            value = null;
+            if (string.IsNullOrWhiteSpace(token))
+            {
+                return false;
+            }
+
+            int separatorIndex = token.IndexOf('=');
+            if (separatorIndex <= 0)
+            {
+                return false;
+            }
+
+            key = token[..separatorIndex].Trim();
+            value = separatorIndex + 1 < token.Length ? token[(separatorIndex + 1)..].Trim() : string.Empty;
+            return key.Length > 0;
+        }
+
+        private static bool IsRelayPacketKey(string key)
+        {
+            return key.Equals("packet", StringComparison.OrdinalIgnoreCase) ||
+                   key.Equals("type", StringComparison.OrdinalIgnoreCase) ||
+                   key.Equals("packettype", StringComparison.OrdinalIgnoreCase) ||
+                   key.Equals("name", StringComparison.OrdinalIgnoreCase) ||
+                   key.Equals("handler", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static bool IsRelayPayloadKey(string key)
+        {
+            return key.Equals("payload", StringComparison.OrdinalIgnoreCase) ||
+                   key.Equals("payloadhex", StringComparison.OrdinalIgnoreCase) ||
+                   key.Equals("payloadb64", StringComparison.OrdinalIgnoreCase) ||
+                   key.Equals("hex", StringComparison.OrdinalIgnoreCase) ||
+                   key.Equals("data", StringComparison.OrdinalIgnoreCase) ||
+                   key.Equals("bytes", StringComparison.OrdinalIgnoreCase) ||
+                   key.Equals("raw", StringComparison.OrdinalIgnoreCase) ||
+                   key.Equals("b64", StringComparison.OrdinalIgnoreCase) ||
+                   key.Equals("base64", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static bool IsRelayMetadataKey(string key)
+        {
+            return key.Equals("dir", StringComparison.OrdinalIgnoreCase) ||
+                   key.Equals("direction", StringComparison.OrdinalIgnoreCase) ||
+                   key.Equals("from", StringComparison.OrdinalIgnoreCase) ||
+                   key.Equals("to", StringComparison.OrdinalIgnoreCase) ||
+                   key.Equals("len", StringComparison.OrdinalIgnoreCase) ||
+                   key.Equals("length", StringComparison.OrdinalIgnoreCase) ||
+                   key.Equals("size", StringComparison.OrdinalIgnoreCase) ||
+                   key.Equals("timestamp", StringComparison.OrdinalIgnoreCase) ||
+                   key.Equals("time", StringComparison.OrdinalIgnoreCase) ||
+                   key.Equals("source", StringComparison.OrdinalIgnoreCase) ||
+                   key.Equals("target", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static bool IsRelayDirectionToken(string token)
+        {
+            return token.Equals("recv", StringComparison.OrdinalIgnoreCase) ||
+                   token.Equals("receive", StringComparison.OrdinalIgnoreCase) ||
+                   token.Equals("received", StringComparison.OrdinalIgnoreCase) ||
+                   token.Equals("incoming", StringComparison.OrdinalIgnoreCase) ||
+                   token.Equals("inbound", StringComparison.OrdinalIgnoreCase) ||
+                   token.Equals("server", StringComparison.OrdinalIgnoreCase) ||
+                   token.Equals("serverbound", StringComparison.OrdinalIgnoreCase) ||
+                   token.Equals("clientbound", StringComparison.OrdinalIgnoreCase) ||
+                   token.Equals("s2c", StringComparison.OrdinalIgnoreCase) ||
+                   token.Equals("s->c", StringComparison.OrdinalIgnoreCase) ||
+                   token.Equals("s2clogin", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static string NormalizeRelayPayloadArgument(string key, string value)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                return $"{key}=";
+            }
+
+            if (key.Equals("payloadhex", StringComparison.OrdinalIgnoreCase))
+            {
+                return $"payloadhex={value}";
+            }
+
+            if (key.Equals("payloadb64", StringComparison.OrdinalIgnoreCase) ||
+                key.Equals("b64", StringComparison.OrdinalIgnoreCase) ||
+                key.Equals("base64", StringComparison.OrdinalIgnoreCase))
+            {
+                return $"payloadb64={value}";
+            }
+
+            return $"payload={value}";
         }
 
         private static int FindTokenSeparatorIndex(string text)

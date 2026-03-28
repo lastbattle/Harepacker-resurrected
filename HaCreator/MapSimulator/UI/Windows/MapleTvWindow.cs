@@ -15,16 +15,15 @@ namespace HaCreator.MapSimulator.UI
     {
         private static readonly Point WorldOverlayAnchor = new(400, 70);
         private static readonly Point WorldQueueAnchor = new(400, 118);
+        private static readonly Rectangle SelfMessageTextBounds = new(18, 113, 180, 75);
+        private static readonly Rectangle ReceiverMessageTextBounds = new(40, 113, 135, 75);
+        private static readonly Rectangle ReceiverNameBounds = new(46, 68, 146, 14);
         private static readonly Rectangle DefaultChatTextBounds = new(20, 17, 200, 58);
         private static readonly Rectangle StarChatTextBounds = new(18, 16, 224, 72);
         private static readonly Rectangle HeartChatTextBounds = new(18, 16, 224, 72);
-        private static readonly Point ContextLinePosition = new(15, 55);
         private static readonly Point ItemNamePosition = new(39, 70);
-        private static readonly Point ReceiverLinePosition = new(15, 88);
-        private static readonly Point MessageBoxPosition = new(18, 115);
         private static readonly Point PreviewAnchor = new(224, 8);
         private static readonly Point IdlePreviewOffset = new(0, 45);
-        private static readonly Point PreviewTextOffset = new(14, 112);
         private static readonly Point PreviewStatusOffset = new(14, 150);
         private const int MessageLineHeight = 15;
         private const int PreviewLineHeight = 15;
@@ -146,36 +145,43 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
-            string contextLine = snapshot.IsShowingMessage
-                ? $"{snapshot.SenderName} {(snapshot.UseReceiver ? "->" : "broadcast")} {ResolveReceiverLabel(snapshot)}"
-                : $"Draft owner: {snapshot.SenderName}";
-            DrawShadowText(sprite, contextLine, Position.X + ContextLinePosition.X, Position.Y + ContextLinePosition.Y, new Color(75, 80, 88), 0.38f);
-
             string itemLabel = snapshot.ItemId > 0
                 ? $"{snapshot.ItemName} ({snapshot.ItemId})"
                 : snapshot.ItemName;
             DrawShadowText(sprite, itemLabel, Position.X + ItemNamePosition.X, Position.Y + ItemNamePosition.Y, new Color(24, 24, 24), 0.4f);
 
-            string receiverLine = snapshot.UseReceiver
-                ? $"Receiver: {ResolveReceiverLabel(snapshot)}"
-                : "Receiver field disabled";
-            if (snapshot.IsShowingMessage)
+            if (snapshot.UseReceiver)
             {
-                receiverLine = $"{receiverLine} | {snapshot.RemainingMs / 1000f:0.0}s";
+                DrawShadowText(
+                    sprite,
+                    Truncate(ResolveReceiverLabel(snapshot), ResolveMaxChars(ReceiverNameBounds.Width, 0.38f)),
+                    Position.X + ReceiverNameBounds.X,
+                    Position.Y + ReceiverNameBounds.Y,
+                    new Color(24, 24, 24),
+                    0.38f);
             }
 
-            DrawShadowText(sprite, receiverLine, Position.X + ReceiverLinePosition.X, Position.Y + ReceiverLinePosition.Y, new Color(108, 33, 48), 0.36f);
-
             IReadOnlyList<string> lines = snapshot.IsShowingMessage ? snapshot.DisplayLines : snapshot.DraftLines;
-            int drawY = Position.Y + MessageBoxPosition.Y;
+            Rectangle messageBounds = ResolveMessageTextBounds(snapshot);
+            int drawY = Position.Y + messageBounds.Y;
             for (int i = 0; i < lines.Count && i < 5; i++)
             {
-                string line = string.IsNullOrWhiteSpace(lines[i]) ? string.Empty : Truncate(lines[i], 38);
-                DrawShadowText(sprite, line, Position.X + MessageBoxPosition.X, drawY, new Color(50, 50, 50), 0.38f);
+                string line = string.IsNullOrWhiteSpace(lines[i])
+                    ? string.Empty
+                    : Truncate(lines[i], ResolveMaxChars(messageBounds.Width, 0.38f));
+                DrawShadowText(sprite, line, Position.X + messageBounds.X, drawY, new Color(50, 50, 50), 0.38f);
                 drawY += MessageLineHeight;
             }
 
-            IEnumerable<string> statusLines = WrapText(snapshot.StatusMessage, 188f, 0.32f).Take(2);
+            string statusText = snapshot.IsShowingMessage
+                ? $"{snapshot.RemainingMs / 1000f:0.0}s remaining. {snapshot.StatusMessage}"
+                : snapshot.StatusMessage;
+            if (snapshot.MirrorsToChat)
+            {
+                statusText = $"{statusText} Megassenger chat mirror enabled.";
+            }
+
+            IEnumerable<string> statusLines = WrapText(statusText, 188f, 0.32f).Take(2);
             float statusY = Position.Y + 236f;
             foreach (string statusLine in statusLines)
             {
@@ -550,6 +556,11 @@ namespace HaCreator.MapSimulator.UI
                 2 => HeartChatTextBounds,
                 _ => DefaultChatTextBounds
             };
+        }
+
+        private static Rectangle ResolveMessageTextBounds(MapleTvSnapshot snapshot)
+        {
+            return snapshot.UseReceiver ? ReceiverMessageTextBounds : SelfMessageTextBounds;
         }
 
         private static string ResolveReceiverLabel(MapleTvSnapshot snapshot)

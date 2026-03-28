@@ -1,4 +1,6 @@
 using HaCreator.MapSimulator.Pools;
+using Microsoft.Xna.Framework;
+using System;
 
 namespace HaCreator.MapSimulator.UI
 {
@@ -14,8 +16,64 @@ namespace HaCreator.MapSimulator.UI
         public string ChatMessage { get; }
     }
 
+    public readonly struct PickupNoticeSuccessMessages
+    {
+        public PickupNoticeSuccessMessages(
+            string screenMessage,
+            string chatMessage = "",
+            string secondaryScreenMessage = "",
+            Color? secondaryScreenColor = null)
+        {
+            ScreenMessage = screenMessage ?? string.Empty;
+            ChatMessage = chatMessage ?? string.Empty;
+            SecondaryScreenMessage = secondaryScreenMessage ?? string.Empty;
+            SecondaryScreenColor = secondaryScreenColor ?? Color.White;
+        }
+
+        public string ScreenMessage { get; }
+        public string ChatMessage { get; }
+        public string SecondaryScreenMessage { get; }
+        public Color SecondaryScreenColor { get; }
+    }
+
     public static class PickupNoticeTextFormatter
     {
+        public static PickupNoticeSuccessMessages FormatMesoPickup(
+            int amount,
+            bool pickedByPet = false,
+            string sourceName = null,
+            int bonusMesoAmount = 0)
+        {
+            string chatMessage = pickedByPet
+                ? $"{FormatActorLabel(sourceName, "Your pet")} picked up some mesos."
+                : string.Empty;
+
+            string secondaryScreenMessage = bonusMesoAmount > 0
+                ? $"You have gained {bonusMesoAmount} bonus meso(s)."
+                : string.Empty;
+
+            return new PickupNoticeSuccessMessages(
+                $"You have gained {Math.Max(0, amount)} meso(s).",
+                chatMessage,
+                secondaryScreenMessage,
+                Color.Yellow);
+        }
+
+        public static string FormatItemPickup(string itemName, string itemTypeName, int quantity)
+        {
+            string resolvedItemName = string.IsNullOrWhiteSpace(itemName) ? "Unknown Item" : itemName;
+            string resolvedTypeName = string.IsNullOrWhiteSpace(itemTypeName) ? "item" : itemTypeName;
+
+            return quantity > 1
+                ? $"You have gained a(n) {resolvedTypeName} ({resolvedItemName}) x {quantity}."
+                : $"You have gained a(n) {resolvedTypeName} ({resolvedItemName}).";
+        }
+
+        public static string FormatQuestItemPickup(string itemName, string itemTypeName)
+        {
+            return FormatItemPickup(itemName, itemTypeName, 1);
+        }
+
         public static PickupNoticeMessagePair FormatFailure(
             DropPickupFailureReason reason,
             string itemName = null,
@@ -30,7 +88,7 @@ namespace HaCreator.MapSimulator.UI
             switch (reason)
             {
                 case DropPickupFailureReason.InventoryFull:
-                    return new PickupNoticeMessagePair("Your inventory is full.", "Your inventory is full.");
+                    return new PickupNoticeMessagePair("Your inventory is full.", string.Empty);
                 case DropPickupFailureReason.OwnershipRestricted:
                     return new PickupNoticeMessagePair("You may not loot this item yet.", "You may not loot this item yet.");
                 case DropPickupFailureReason.PetPickupBlocked:

@@ -55,6 +55,7 @@ namespace HaCreator.MapSimulator.UI
         private const int TOOLTIP_ICON_GAP = 8;
         private const int TOOLTIP_TITLE_GAP = 8;
         private const int TOOLTIP_SECTION_GAP = 6;
+        private const int TOOLTIP_ANCHOR_GAP = 8;
         private const float COOLDOWN_TEXT_SCALE = 0.55f;
         private static readonly Color TOOLTIP_BACKGROUND_COLOR = new Color(28, 28, 28, 228);
         private static readonly Color TOOLTIP_BORDER_COLOR = new Color(112, 112, 112, 235);
@@ -664,16 +665,11 @@ namespace HaCreator.MapSimulator.UI
             float iconBlockHeight = Math.Max(SKILL_ICON_SIZE, sectionHeight);
 
             int tooltipHeight = (int)Math.Ceiling((TOOLTIP_PADDING * 2) + titleHeight + TOOLTIP_TITLE_GAP + iconBlockHeight);
-            Point anchorPoint = new Point(_lastMousePosition.X, _lastMousePosition.Y + 20);
-            Rectangle backgroundRect = ResolveTooltipRect(
-                anchorPoint,
-                tooltipWidth,
-                tooltipHeight,
-                renderWidth,
-                renderHeight,
-                stackalloc[] { 1, 0, 2 },
-                out int tooltipFrameIndex);
-            DrawTooltipBackground(sprite, backgroundRect, tooltipFrameIndex);
+            int visibleRowIndex = _hoveredSkillIndex - _scrollOffset;
+            Point iconPosition = GetSkillIconPosition(Math.Max(0, visibleRowIndex));
+            Rectangle anchorRect = new Rectangle(iconPosition.X, iconPosition.Y, SKILL_ICON_SIZE, SKILL_ICON_SIZE);
+            Rectangle backgroundRect = ResolveHoverTooltipRect(anchorRect, tooltipWidth, tooltipHeight, renderWidth, renderHeight);
+            DrawHoverTooltipBackground(sprite, backgroundRect);
 
             int titleX = backgroundRect.X + TOOLTIP_PADDING;
             int titleY = backgroundRect.Y + TOOLTIP_PADDING;
@@ -807,52 +803,7 @@ namespace HaCreator.MapSimulator.UI
 
         private int ResolveTooltipWidth()
         {
-            int textureWidth = _tooltipFrames[1]?.Width ?? 0;
-            return textureWidth > 0 ? textureWidth : TOOLTIP_FALLBACK_WIDTH;
-        }
-
-        private Rectangle CreateTooltipRectFromAnchor(Point anchorPoint, int tooltipWidth, int tooltipHeight, int tooltipFrameIndex)
-        {
-            Texture2D tooltipFrame = tooltipFrameIndex >= 0 && tooltipFrameIndex < _tooltipFrames.Length
-                ? _tooltipFrames[tooltipFrameIndex]
-                : null;
-            Point origin = tooltipFrameIndex >= 0 && tooltipFrameIndex < _tooltipFrameOrigins.Length
-                ? _tooltipFrameOrigins[tooltipFrameIndex]
-                : Point.Zero;
-
-            if (tooltipFrame != null && origin != Point.Zero)
-            {
-                float scaleX = tooltipFrame.Width > 0 ? tooltipWidth / (float)tooltipFrame.Width : 1f;
-                float scaleY = tooltipFrame.Height > 0 ? tooltipHeight / (float)tooltipFrame.Height : 1f;
-                return new Rectangle(
-                    anchorPoint.X - (int)Math.Round(origin.X * scaleX),
-                    anchorPoint.Y - (int)Math.Round(origin.Y * scaleY),
-                    tooltipWidth,
-                    tooltipHeight);
-            }
-
-            return tooltipFrameIndex switch
-            {
-                0 => new Rectangle(anchorPoint.X - tooltipWidth + 1, anchorPoint.Y - tooltipHeight + 1, tooltipWidth, tooltipHeight),
-                2 => new Rectangle(anchorPoint.X - tooltipWidth + 1, anchorPoint.Y, tooltipWidth, tooltipHeight),
-                _ => new Rectangle(anchorPoint.X, anchorPoint.Y - tooltipHeight + 1, tooltipWidth, tooltipHeight)
-            };
-        }
-
-        private static int ComputeTooltipOverflow(Rectangle rect, int renderWidth, int renderHeight)
-        {
-            int overflow = 0;
-
-            if (rect.Left < TOOLTIP_PADDING)
-                overflow += TOOLTIP_PADDING - rect.Left;
-            if (rect.Top < TOOLTIP_PADDING)
-                overflow += TOOLTIP_PADDING - rect.Top;
-            if (rect.Right > renderWidth - TOOLTIP_PADDING)
-                overflow += rect.Right - (renderWidth - TOOLTIP_PADDING);
-            if (rect.Bottom > renderHeight - TOOLTIP_PADDING)
-                overflow += rect.Bottom - (renderHeight - TOOLTIP_PADDING);
-
-            return overflow;
+            return TOOLTIP_FALLBACK_WIDTH;
         }
 
         private static Rectangle ClampTooltipRect(Rectangle rect, int renderWidth, int renderHeight)
@@ -869,55 +820,33 @@ namespace HaCreator.MapSimulator.UI
                 rect.Height);
         }
 
-        private Rectangle ResolveTooltipRect(
-            Point anchorPoint,
-            int tooltipWidth,
-            int tooltipHeight,
-            int renderWidth,
-            int renderHeight,
-            ReadOnlySpan<int> framePreference,
-            out int tooltipFrameIndex)
+        private Rectangle ResolveHoverTooltipRect(Rectangle anchorRect, int tooltipWidth, int tooltipHeight, int renderWidth, int renderHeight)
         {
-            Rectangle bestRect = Rectangle.Empty;
-            int bestFrame = framePreference.Length > 0 ? framePreference[0] : 1;
-            int bestOverflow = int.MaxValue;
+            Rectangle rightRect = new Rectangle(
+                anchorRect.Right + TOOLTIP_ANCHOR_GAP,
+                anchorRect.Top - TOOLTIP_PADDING,
+                tooltipWidth,
+                tooltipHeight);
+            Rectangle leftRect = new Rectangle(
+                anchorRect.Left - TOOLTIP_ANCHOR_GAP - tooltipWidth,
+                anchorRect.Top - TOOLTIP_PADDING,
+                tooltipWidth,
+                tooltipHeight);
 
-            for (int i = 0; i < framePreference.Length; i++)
+            Rectangle preferredRect = rightRect.Right <= renderWidth - TOOLTIP_PADDING || leftRect.Left < TOOLTIP_PADDING
+                ? rightRect
+                : leftRect;
+
+            if (preferredRect.Bottom > renderHeight - TOOLTIP_PADDING)
             {
-                int frameIndex = framePreference[i];
-                Rectangle candidate = CreateTooltipRectFromAnchor(anchorPoint, tooltipWidth, tooltipHeight, frameIndex);
-                int overflow = ComputeTooltipOverflow(candidate, renderWidth, renderHeight);
-
-                if (overflow == 0)
-                {
-                    tooltipFrameIndex = frameIndex;
-                    return candidate;
-                }
-
-                if (overflow < bestOverflow)
-                {
-                    bestOverflow = overflow;
-                    bestFrame = frameIndex;
-                    bestRect = candidate;
-                }
+                preferredRect.Y = Math.Max(TOOLTIP_PADDING, anchorRect.Bottom - tooltipHeight);
             }
 
-            tooltipFrameIndex = bestFrame;
-            return ClampTooltipRect(bestRect, renderWidth, renderHeight);
+            return ClampTooltipRect(preferredRect, renderWidth, renderHeight);
         }
 
-        private void DrawTooltipBackground(SpriteBatch sprite, Rectangle rect, int tooltipFrameIndex)
+        private void DrawHoverTooltipBackground(SpriteBatch sprite, Rectangle rect)
         {
-            Texture2D tooltipFrame = tooltipFrameIndex >= 0 && tooltipFrameIndex < _tooltipFrames.Length
-                ? _tooltipFrames[tooltipFrameIndex]
-                : null;
-
-            if (tooltipFrame != null)
-            {
-                sprite.Draw(tooltipFrame, rect, Color.White);
-                return;
-            }
-
             sprite.Draw(_debugPlaceholder, rect, TOOLTIP_BACKGROUND_COLOR);
             DrawTooltipBorder(sprite, rect);
         }
@@ -952,14 +881,7 @@ namespace HaCreator.MapSimulator.UI
             if (_font == null || lines == null || lines.Length == 0)
                 return 0f;
 
-            int nonEmptyLines = 0;
-            for (int i = 0; i < lines.Length; i++)
-            {
-                if (!string.IsNullOrWhiteSpace(lines[i]))
-                    nonEmptyLines++;
-            }
-
-            return nonEmptyLines > 0 ? nonEmptyLines * _font.LineSpacing : 0f;
+            return lines.Length * _font.LineSpacing;
         }
 
         private string[] WrapTooltipText(string text, float maxWidth)
@@ -969,11 +891,16 @@ namespace HaCreator.MapSimulator.UI
 
             List<string> lines = new List<string>();
             string[] paragraphs = text.Replace("\r\n", "\n").Split('\n');
-            foreach (string paragraph in paragraphs)
+            for (int paragraphIndex = 0; paragraphIndex < paragraphs.Length; paragraphIndex++)
             {
+                string paragraph = paragraphs[paragraphIndex];
                 string trimmed = paragraph.Trim();
                 if (trimmed.Length == 0)
+                {
+                    if (lines.Count > 0 && !string.IsNullOrEmpty(lines[^1]))
+                        lines.Add(string.Empty);
                     continue;
+                }
 
                 string currentLine = string.Empty;
                 string[] words = trimmed.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
@@ -993,14 +920,22 @@ namespace HaCreator.MapSimulator.UI
 
                 if (!string.IsNullOrWhiteSpace(currentLine))
                     lines.Add(currentLine);
+
+                if (paragraphIndex < paragraphs.Length - 1 && lines.Count > 0 && !string.IsNullOrEmpty(lines[^1]))
+                    lines.Add(string.Empty);
             }
+
+            while (lines.Count > 0 && string.IsNullOrEmpty(lines[^1]))
+                lines.RemoveAt(lines.Count - 1);
 
             return lines.ToArray();
         }
 
         private static string SanitizeTooltipText(string text)
         {
-            return string.IsNullOrWhiteSpace(text) ? string.Empty : text.Replace('\r', ' ').Replace('\n', ' ').Trim();
+            return string.IsNullOrWhiteSpace(text)
+                ? string.Empty
+                : text.Replace("\r\n", "\n").Replace('\r', '\n').Trim();
         }
 
         private Vector2 MeasureSkillBookText(string text, float scale)
@@ -1016,7 +951,6 @@ namespace HaCreator.MapSimulator.UI
             if (_font == null || string.IsNullOrWhiteSpace(text))
                 return;
 
-            sprite.DrawString(_font, text, position + Vector2.One, Color.White, 0f, Vector2.Zero, scale, SpriteEffects.None, 0f);
             sprite.DrawString(_font, text, position, color, 0f, Vector2.Zero, scale, SpriteEffects.None, 0f);
         }
 

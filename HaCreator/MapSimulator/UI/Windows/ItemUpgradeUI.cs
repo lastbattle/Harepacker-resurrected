@@ -1,6 +1,8 @@
 using HaCreator.MapSimulator.Character;
 using HaSharedLibrary.Render;
 using HaSharedLibrary.Render.DX;
+using MapleLib.WzLib;
+using MapleLib.WzLib.WzProperties;
 using MapleLib.WzLib.WzStructure.Data.ItemStructure;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
@@ -62,14 +64,17 @@ namespace HaCreator.MapSimulator.UI
         private const int RevolutionaryMiracleCubeId = 5062003;
         private const int GoldenMiracleCubeId = 5062004;
         private const int EnlighteningMiracleCubeId = 5062005;
+        private const int MapleMiracleCubeId = 5062100;
         private const int MiracleCubeFragmentId = 2430112;
         private const int SuperMiracleCubeFragmentId = 2430481;
+        private const int EnlighteningMiracleCubeShardId = 2430759;
         private const int UretesTimeLabId = 5534000;
         private const int VegasSpellTenPercentId = 5610000;
         private const int VegasSpellSixtyPercentId = 5610001;
 
         private readonly Random _random = new Random();
         private readonly Dictionary<EquipSlot, UpgradeState> _upgradeStates = new Dictionary<EquipSlot, UpgradeState>();
+        private static readonly Dictionary<int, IReadOnlyCollection<int>> ConsumableRequirementCache = new Dictionary<int, IReadOnlyCollection<int>>();
         private static readonly IReadOnlyDictionary<int, EnhancementConsumableDefinition> ConsumableDefinitions =
             new Dictionary<int, EnhancementConsumableDefinition>
             {
@@ -100,7 +105,10 @@ namespace HaCreator.MapSimulator.UI
                 [SuperMiracleCubeId] = new(SuperMiracleCubeId, "Super Miracle Cube", 0, false, false, 1.0f, InventoryType.CASH, ConsumableEffectType.Cube, PotentialTier.Rare, 0f, CubeBehavior.Super),
                 [RevolutionaryMiracleCubeId] = new(RevolutionaryMiracleCubeId, "Revolutionary Miracle Cube", 0, false, false, 1.0f, InventoryType.CASH, ConsumableEffectType.Cube, PotentialTier.Rare, 0f, CubeBehavior.Revolutionary, ModifierBehavior.None, 0f, SuperMiracleCubeFragmentId),
                 [GoldenMiracleCubeId] = new(GoldenMiracleCubeId, "Golden Miracle Cube", 0, false, false, 1.0f, InventoryType.CASH, ConsumableEffectType.Cube, PotentialTier.Rare, 0f, CubeBehavior.Golden, ModifierBehavior.None, 0f, MiracleCubeFragmentId),
-                [EnlighteningMiracleCubeId] = new(EnlighteningMiracleCubeId, "Enlightening Miracle Cube", 0, false, false, 1.0f, InventoryType.CASH, ConsumableEffectType.Cube, PotentialTier.Rare, 0f, CubeBehavior.Enlightening),
+                // WZ exposes a matching shard item in String/Consume.img/2430759.
+                [EnlighteningMiracleCubeId] = new(EnlighteningMiracleCubeId, "Enlightening Miracle Cube", 0, false, false, 1.0f, InventoryType.CASH, ConsumableEffectType.Cube, PotentialTier.Rare, 0f, CubeBehavior.Enlightening, ModifierBehavior.None, 0f, EnlighteningMiracleCubeShardId),
+                // WZ Item/Cash/0506.img/05062100 carries a req list and a dedicated MiracleCube_8th UI path.
+                [MapleMiracleCubeId] = new(MapleMiracleCubeId, "Maple Miracle Cube", 0, false, false, 1.0f, InventoryType.CASH, ConsumableEffectType.Cube, PotentialTier.Rare, 0f, CubeBehavior.Maple),
                 [VegasSpellTenPercentId] = new(VegasSpellTenPercentId, "Vega's Spell(10%)", 0, false, false, 1.0f, InventoryType.CASH, ConsumableEffectType.Modifier, PotentialTier.Rare, 0f, CubeBehavior.Miracle, ModifierBehavior.VegaTenPercent, 0.3f),
                 [VegasSpellSixtyPercentId] = new(VegasSpellSixtyPercentId, "Vega's Spell(60%)", 0, false, false, 1.0f, InventoryType.CASH, ConsumableEffectType.Modifier, PotentialTier.Rare, 0f, CubeBehavior.Miracle, ModifierBehavior.VegaSixtyPercent, 0.9f)
             };
@@ -339,7 +347,7 @@ namespace HaCreator.MapSimulator.UI
             KeyValuePair<EquipSlot, CharacterPart> selection = candidates[_selectedIndex];
             CharacterPart selectedPart = selection.Value;
             UpgradeState state = GetOrCreateState(selection.Key, selectedPart);
-            EnhancementConsumable consumable = ResolveConsumable(state);
+            EnhancementConsumable consumable = ResolveConsumable(state, selectedPart);
             EnhancementConsumable modifier = ResolveModifier(consumable);
 
             DrawSelectedItem(sprite, windowX + ItemIconX, windowY + ItemIconY, selectedPart);
@@ -462,7 +470,7 @@ namespace HaCreator.MapSimulator.UI
             KeyValuePair<EquipSlot, CharacterPart> selection = candidates[_selectedIndex];
             CharacterPart selectedPart = selection.Value;
             UpgradeState state = GetOrCreateState(selection.Key, selectedPart);
-            EnhancementConsumable consumable = ResolveConsumable(state);
+            EnhancementConsumable consumable = ResolveConsumable(state, selectedPart);
             if (consumable == null)
             {
                 _statusMessage = _preferredModifierItemId.HasValue
@@ -492,6 +500,13 @@ namespace HaCreator.MapSimulator.UI
                 state.RemainingSlots < consumable.SuccessCountGain)
             {
                 _statusMessage = $"{consumable.Name} needs {consumable.SuccessCountGain} open slots on {ResolveItemName(selectedPart)}.";
+                _lastUpgradeSucceeded = false;
+                return new ItemUpgradeAttemptResult(false, _statusMessage, consumable.ItemId);
+            }
+
+            if (!TryGetConsumableCompatibilityBlockReason(consumable, selectedPart, out string compatibilityBlockReason))
+            {
+                _statusMessage = compatibilityBlockReason;
                 _lastUpgradeSucceeded = false;
                 return new ItemUpgradeAttemptResult(false, _statusMessage, consumable.ItemId);
             }
@@ -848,9 +863,10 @@ namespace HaCreator.MapSimulator.UI
 
             KeyValuePair<EquipSlot, CharacterPart> selection = candidates[_selectedIndex];
             UpgradeState state = GetOrCreateState(selection.Key, selection.Value);
-            EnhancementConsumable consumable = ResolveConsumable(state);
+            EnhancementConsumable consumable = ResolveConsumable(state, selection.Value);
             bool modifierReady = !_preferredModifierItemId.HasValue || ResolveModifier(consumable) != null;
             bool canApply = consumable != null &&
+                            TryGetConsumableCompatibilityBlockReason(consumable, selection.Value, out _) &&
                             modifierReady &&
                             consumable switch
                             {
@@ -880,7 +896,7 @@ namespace HaCreator.MapSimulator.UI
                 .ToArray();
         }
 
-        private EnhancementConsumable ResolveConsumable(UpgradeState state)
+        private EnhancementConsumable ResolveConsumable(UpgradeState state, CharacterPart selectedPart)
         {
             if (_inventory == null)
             {
@@ -893,7 +909,7 @@ namespace HaCreator.MapSimulator.UI
                 modifierDefinition.EffectType == ConsumableEffectType.Modifier)
             {
                 preparedModifierConsumable = new EnhancementConsumable(modifierDefinition);
-                EnhancementConsumable compatibleConsumable = ResolveConsumableForModifier(state, modifierDefinition);
+                EnhancementConsumable compatibleConsumable = ResolveConsumableForModifier(state, selectedPart, modifierDefinition);
                 if (compatibleConsumable != null)
                 {
                     return compatibleConsumable;
@@ -906,6 +922,7 @@ namespace HaCreator.MapSimulator.UI
                 if (GetConsumableCount(preferredItemId) > 0 &&
                     TryGetConsumableDefinition(preferredItemId, out EnhancementConsumableDefinition preferredDefinition) &&
                     preferredDefinition.EffectType != ConsumableEffectType.Modifier &&
+                    IsConsumableCompatibleWithItem(preferredDefinition, selectedPart?.ItemId ?? 0) &&
                     (preparedModifierConsumable == null || IsModifierCompatible(preparedModifierConsumable, new EnhancementConsumable(preferredDefinition))))
                 {
                     return new EnhancementConsumable(preferredDefinition);
@@ -918,21 +935,22 @@ namespace HaCreator.MapSimulator.UI
             int advancedCount = GetTotalConsumableCount(AdvancedEnhancementScrollId, AlternateAdvancedEnhancementScrollId, AlternateAdvancedEnhancementScrollId2);
             if (advancedCount > 0 && (state.SuccessCount >= 5 || normalCount == 0))
             {
-                return GetFirstAvailableConsumable(state, AdvancedEnhancementScrollId, AlternateAdvancedEnhancementScrollId, AlternateAdvancedEnhancementScrollId2);
+                return GetFirstAvailableConsumable(state, selectedPart, AdvancedEnhancementScrollId, AlternateAdvancedEnhancementScrollId, AlternateAdvancedEnhancementScrollId2);
             }
 
             if (normalCount > 0)
             {
-                return GetFirstAvailableConsumable(state, EquipEnhancementScrollId, AlternateEquipEnhancementScrollId);
+                return GetFirstAvailableConsumable(state, selectedPart, EquipEnhancementScrollId, AlternateEquipEnhancementScrollId);
             }
 
             if (advancedCount > 0)
             {
-                return GetFirstAvailableConsumable(state, AdvancedEnhancementScrollId, AlternateAdvancedEnhancementScrollId, AlternateAdvancedEnhancementScrollId2);
+                return GetFirstAvailableConsumable(state, selectedPart, AdvancedEnhancementScrollId, AlternateAdvancedEnhancementScrollId, AlternateAdvancedEnhancementScrollId2);
             }
 
             EnhancementConsumable starConsumable = GetFirstAvailableConsumable(
                 state,
+                selectedPart,
                 FiveStarEnhancementScrollId,
                 FourStarEnhancementScrollId,
                 ThreeStarEnhancementScrollId,
@@ -942,13 +960,13 @@ namespace HaCreator.MapSimulator.UI
                 return starConsumable;
             }
 
-            EnhancementConsumable potentialStamp = GetFirstAvailableConsumable(state, CarvedGoldenSealId, CarvedSilverSealId);
+            EnhancementConsumable potentialStamp = GetFirstAvailableConsumable(state, selectedPart, CarvedGoldenSealId, CarvedSilverSealId);
             if (potentialStamp != null)
             {
                 return potentialStamp;
             }
 
-            EnhancementConsumable epicPotentialScroll = GetFirstAvailableConsumable(state, EpicPotentialScrollId, EpicPotentialScrollId2, EpicPotentialScrollId3, EpicPotentialScrollId4);
+            EnhancementConsumable epicPotentialScroll = GetFirstAvailableConsumable(state, selectedPart, EpicPotentialScrollId, EpicPotentialScrollId2, EpicPotentialScrollId3, EpicPotentialScrollId4);
             if (epicPotentialScroll != null)
             {
                 return epicPotentialScroll;
@@ -956,6 +974,7 @@ namespace HaCreator.MapSimulator.UI
 
             EnhancementConsumable potentialConsumable = GetFirstAvailableConsumable(
                 state,
+                selectedPart,
                 SpecialPotentialScrollIdLegacy,
                 SpecialPotentialScrollId,
                 AdvancedPotentialScrollId,
@@ -970,6 +989,8 @@ namespace HaCreator.MapSimulator.UI
 
             EnhancementConsumable cubeConsumable = GetFirstAvailableConsumable(
                 state,
+                selectedPart,
+                MapleMiracleCubeId,
                 EnlighteningMiracleCubeId,
                 SuperMiracleCubeId,
                 PremiumMiracleCubeId,
@@ -997,7 +1018,7 @@ namespace HaCreator.MapSimulator.UI
             }
 
             UpgradeState state = GetOrCreateState(slot, part);
-            EnhancementConsumable consumable = ResolveConsumableForModifier(state, modifierDefinition);
+            EnhancementConsumable consumable = ResolveConsumableForModifier(state, part, modifierDefinition);
             if (consumable == null)
             {
                 return false;
@@ -1050,12 +1071,12 @@ namespace HaCreator.MapSimulator.UI
             };
         }
 
-        private EnhancementConsumable ResolveConsumableForModifier(UpgradeState state, EnhancementConsumableDefinition modifierDefinition)
+        private EnhancementConsumable ResolveConsumableForModifier(UpgradeState state, CharacterPart selectedPart, EnhancementConsumableDefinition modifierDefinition)
         {
             return modifierDefinition.ModifierBehavior switch
             {
-                ModifierBehavior.VegaTenPercent => GetFirstAvailableConsumable(state, AdvancedEnhancementScrollId, AlternateAdvancedEnhancementScrollId, AlternateAdvancedEnhancementScrollId2),
-                ModifierBehavior.VegaSixtyPercent => GetFirstAvailableConsumable(state, EquipEnhancementScrollId, AlternateEquipEnhancementScrollId),
+                ModifierBehavior.VegaTenPercent => GetFirstAvailableConsumable(state, selectedPart, AdvancedEnhancementScrollId, AlternateAdvancedEnhancementScrollId, AlternateAdvancedEnhancementScrollId2),
+                ModifierBehavior.VegaSixtyPercent => GetFirstAvailableConsumable(state, selectedPart, EquipEnhancementScrollId, AlternateEquipEnhancementScrollId),
                 _ => null
             };
         }
@@ -1242,6 +1263,7 @@ namespace HaCreator.MapSimulator.UI
             AppendConsumableSummary(segments, RevolutionaryMiracleCubeId, "Revo");
             AppendConsumableSummary(segments, GoldenMiracleCubeId, "Golden");
             AppendConsumableSummary(segments, EnlighteningMiracleCubeId, "Enlight");
+            AppendConsumableSummary(segments, MapleMiracleCubeId, "Maple");
             AppendConsumableSummary(segments, VegasSpellTenPercentId, "Vega10");
             AppendConsumableSummary(segments, VegasSpellSixtyPercentId, "Vega60");
             return segments.Count > 0 ? string.Join(" / ", segments) : "No stock";
@@ -1280,14 +1302,15 @@ namespace HaCreator.MapSimulator.UI
             }
         }
 
-        private EnhancementConsumable GetFirstAvailableConsumable(UpgradeState state, params int[] itemIds)
+        private EnhancementConsumable GetFirstAvailableConsumable(UpgradeState state, CharacterPart selectedPart, params int[] itemIds)
         {
             for (int i = 0; i < itemIds.Length; i++)
             {
                 int itemId = itemIds[i];
                 if (GetConsumableCount(itemId) <= 0 ||
                     !TryGetConsumableDefinition(itemId, out EnhancementConsumableDefinition definition) ||
-                    definition.SuccessCountGain > state.RemainingSlots)
+                    definition.SuccessCountGain > state.RemainingSlots ||
+                    !IsConsumableCompatibleWithItem(definition, selectedPart?.ItemId ?? 0))
                 {
                     continue;
                 }
@@ -1301,6 +1324,71 @@ namespace HaCreator.MapSimulator.UI
         private static bool TryGetConsumableDefinition(int itemId, out EnhancementConsumableDefinition definition)
         {
             return ConsumableDefinitions.TryGetValue(itemId, out definition);
+        }
+
+        private static bool IsConsumableCompatibleWithItem(EnhancementConsumableDefinition definition, int equipItemId)
+        {
+            if (definition.ItemId <= 0 || equipItemId <= 0)
+            {
+                return true;
+            }
+
+            IReadOnlyCollection<int> requiredItems = GetRequiredEquipItemIds(definition);
+            return requiredItems.Count == 0 || requiredItems.Contains(equipItemId);
+        }
+
+        private static IReadOnlyCollection<int> GetRequiredEquipItemIds(EnhancementConsumableDefinition definition)
+        {
+            if (ConsumableRequirementCache.TryGetValue(definition.ItemId, out IReadOnlyCollection<int> cached))
+            {
+                return cached;
+            }
+
+            var requiredItems = new HashSet<int>();
+            if (definition.InventoryType == InventoryType.CASH)
+            {
+                string imagePath = $"Cash/{(definition.ItemId / 10000):D4}.img";
+                WzImage image = HaCreator.Program.DataSource?.GetImage("Item", imagePath);
+                if (image != null)
+                {
+                    image.ParseImage();
+                    if (image.GetFromPath($"{definition.ItemId:D8}/req") is WzSubProperty reqProperty)
+                    {
+                        foreach (WzIntProperty itemProperty in reqProperty.WzProperties.OfType<WzIntProperty>())
+                        {
+                            if (itemProperty.Value > 0)
+                            {
+                                requiredItems.Add(itemProperty.Value);
+                            }
+                        }
+                    }
+                }
+            }
+
+            IReadOnlyCollection<int> result = requiredItems.Count > 0
+                ? requiredItems.ToArray()
+                : Array.Empty<int>();
+            ConsumableRequirementCache[definition.ItemId] = result;
+            return result;
+        }
+
+        private static bool TryGetConsumableCompatibilityBlockReason(EnhancementConsumable consumable, CharacterPart selectedPart, out string reason)
+        {
+            reason = null;
+            if (consumable == null || selectedPart == null)
+            {
+                return true;
+            }
+
+            if (IsConsumableCompatibleWithItem(consumable.Definition, selectedPart.ItemId))
+            {
+                return true;
+            }
+
+            reason = consumable.Definition.ItemId == MapleMiracleCubeId
+                ? $"{consumable.Name} only applies to Maple 8th Anniversary Crimson equipment."
+                : $"{consumable.Name} does not apply to {ResolveItemName(selectedPart)}.";
+            return false;
         }
 
         private bool TryGetCubeRewardBlockReason(EnhancementConsumable consumable, out string reason)
@@ -1353,6 +1441,8 @@ namespace HaCreator.MapSimulator.UI
                 CubeBehavior.Revolutionary => (0.18d, 0.06d, 0.015d, PotentialTier.Legendary, false),
                 CubeBehavior.Golden => (0.10d, 0.03d, 0d, PotentialTier.Unique, false),
                 CubeBehavior.Enlightening => (0.28d, 0.12d, 0.05d, PotentialTier.Legendary, true),
+                // WZ only states Maple Miracle Cube can reveal higher potentials than the base Miracle Cube.
+                CubeBehavior.Maple => (0.16d, 0.06d, 0.015d, PotentialTier.Legendary, false),
                 _ => (0.12d, 0.04d, 0d, PotentialTier.Unique, false)
             };
 
@@ -1485,7 +1575,8 @@ namespace HaCreator.MapSimulator.UI
             Super,
             Revolutionary,
             Golden,
-            Enlightening
+            Enlightening,
+            Maple
         }
 
         private enum ModifierBehavior

@@ -40,11 +40,14 @@ namespace HaCreator.MapSimulator.Interaction
         private int _messageType;
         private int _draftDurationMs = DefaultDurationMs;
         private int _messageStartedAt = int.MinValue;
+        private int _lastClientSendResultCode = -1;
+        private int _lastClientSendResultStringPoolId = -1;
         private bool _useReceiver;
         private bool _showMessage;
         private bool _queueExists;
         private bool _isSelfMessage = true;
         private MapleTvItemProfile _itemProfile;
+        private MapleTvSendResultFeedback _pendingSendResultFeedback;
 
         internal MapleTvRuntime()
         {
@@ -141,7 +144,8 @@ namespace HaCreator.MapSimulator.Interaction
                 RemainingMs = remainingMs,
                 TotalWaitMs = _draftDurationMs,
                 CanPublish = _draftLines.Any(line => !string.IsNullOrWhiteSpace(line)),
-                CanClear = _showMessage || _queueExists
+                CanClear = _showMessage || _queueExists,
+                MirrorsToChat = _itemProfile?.MirrorsToChat ?? false
             };
         }
 
@@ -352,7 +356,12 @@ namespace HaCreator.MapSimulator.Interaction
             _messageStartedAt = currentTick;
             _isSelfMessage = !_useReceiver;
             _messageType = _useReceiver ? 2 : 1;
-            _statusMessage = $"MapleTV message set for {_draftDurationMs / 1000f:0.0}s.";
+            _lastClientSendResultCode = -1;
+            _lastClientSendResultStringPoolId = -1;
+            _pendingSendResultFeedback = null;
+            _statusMessage = (_itemProfile?.MirrorsToChat ?? false)
+                ? $"MapleTV message set for {_draftDurationMs / 1000f:0.0}s. Megassenger chat mirroring is active."
+                : $"MapleTV message set for {_draftDurationMs / 1000f:0.0}s.";
             return _statusMessage;
         }
 
@@ -362,6 +371,7 @@ namespace HaCreator.MapSimulator.Interaction
             _queueExists = preserveQueue;
             _messageStartedAt = int.MinValue;
             Array.Clear(_displayLines, 0, _displayLines.Length);
+            _pendingSendResultFeedback = null;
             _statusMessage = preserveQueue
                 ? "MapleTV display cleared. The queue remains active."
                 : "MapleTV display cleared.";
@@ -372,13 +382,38 @@ namespace HaCreator.MapSimulator.Interaction
         {
             _statusMessage = result switch
             {
-                MapleTvSendResultKind.Success => "MapleTV send request accepted.",
-                MapleTvSendResultKind.Busy => "MapleTV send request rejected because another broadcast is already active.",
-                MapleTvSendResultKind.RecipientOffline => "MapleTV send request rejected because the target recipient is unavailable.",
-                _ => "MapleTV send request failed."
+                MapleTvSendResultKind.Success => QueueSendResultFeedback(1, "MapleTV send request accepted."),
+                MapleTvSendResultKind.Busy => QueueSendResultFeedback(2, "MapleTV send request rejected because another broadcast is already active."),
+                MapleTvSendResultKind.RecipientOffline => QueueSendResultFeedback(3, "MapleTV send request rejected because the target recipient is unavailable."),
+                _ => QueueSendResultFeedback(null, "MapleTV send request failed.")
             };
 
             return _statusMessage;
+        }
+
+        internal MapleTvSendResultFeedback ConsumePendingSendResultFeedback()
+        {
+            MapleTvSendResultFeedback feedback = _pendingSendResultFeedback;
+            _pendingSendResultFeedback = null;
+            return feedback;
+        }
+
+        internal string BuildMegassengerChatMirrorMessage()
+        {
+            if (!(_itemProfile?.MirrorsToChat ?? false))
+            {
+                return null;
+            }
+
+            string body = string.Join(" ", _displayLines.Where(line => !string.IsNullOrWhiteSpace(line)).Select(line => line.Trim()));
+            if (string.IsNullOrWhiteSpace(body))
+            {
+                return null;
+            }
+
+            return _useReceiver && !string.IsNullOrWhiteSpace(_receiverName)
+                ? $"[Megassenger] {_senderName} -> {_receiverName}: {body}"
+                : $"[Megassenger] {_senderName}: {body}";
         }
 
         internal bool TryApplySetMessagePacket(
@@ -488,14 +523,24 @@ namespace HaCreator.MapSimulator.Interaction
                 }
 
                 byte resultCode = reader.ReadByte();
-                if (!TryResolveSendResult(resultCode, out MapleTvSendResultKind result))
+                if (!TryResolveClientSendResultStringPoolId(resultCode, out int stringPoolId))
                 {
                     _statusMessage = $"MapleTV send-result packet used unsupported code {resultCode}.";
                     message = _statusMessage;
                     return false;
                 }
 
-                message = OnSendMessageResult(result);
+                string fallbackText = resultCode switch
+                {
+                    1 => "MapleTV send request accepted.",
+                    2 => "MapleTV send request rejected because another broadcast is already active.",
+                    3 => "MapleTV send request rejected because the target recipient is unavailable.",
+                    _ => "MapleTV send request failed."
+                };
+
+                QueueSendResultFeedback(resultCode, fallbackText);
+                _statusMessage = $"MapleTV send-result packet queued client chat feedback for code {resultCode} (StringPool 0x{stringPoolId:X}).";
+                message = _statusMessage;
                 return true;
             }
             catch (EndOfStreamException)
@@ -573,17 +618,41 @@ namespace HaCreator.MapSimulator.Interaction
             }
         }
 
-        private static bool TryResolveSendResult(byte resultCode, out MapleTvSendResultKind result)
+        private string QueueSendResultFeedback(int? resultCode, string fallbackText)
         {
-            result = resultCode switch
+            int stringPoolId = -1;
+            if (resultCode.HasValue)
             {
-                1 => MapleTvSendResultKind.Busy,
-                2 => MapleTvSendResultKind.RecipientOffline,
-                3 => MapleTvSendResultKind.Failed,
-                _ => MapleTvSendResultKind.Failed
+                TryResolveClientSendResultStringPoolId((byte)resultCode.Value, out stringPoolId);
+            }
+
+            _lastClientSendResultCode = resultCode ?? -1;
+            _lastClientSendResultStringPoolId = stringPoolId;
+
+            string resolvedText = stringPoolId >= 0
+                ? $"{fallbackText} [StringPool 0x{stringPoolId:X}]"
+                : fallbackText;
+
+            _pendingSendResultFeedback = new MapleTvSendResultFeedback(
+                resolvedText,
+                12,
+                resultCode ?? -1,
+                stringPoolId);
+
+            return resolvedText;
+        }
+
+        private static bool TryResolveClientSendResultStringPoolId(byte resultCode, out int stringPoolId)
+        {
+            stringPoolId = resultCode switch
+            {
+                1 => 0xF9E,
+                2 => 0xFA0,
+                3 => 0xF9F,
+                _ => -1
             };
 
-            return resultCode is >= 1 and <= 3;
+            return stringPoolId >= 0;
         }
     }
 
@@ -611,7 +680,10 @@ namespace HaCreator.MapSimulator.Interaction
         public int TotalWaitMs { get; init; }
         public bool CanPublish { get; init; }
         public bool CanClear { get; init; }
+        public bool MirrorsToChat { get; init; }
     }
+
+    internal sealed record MapleTvSendResultFeedback(string ChatMessage, int ChatLogType, int ResultCode, int StringPoolId);
 
     internal enum MapleTvAudienceMode
     {
@@ -620,14 +692,14 @@ namespace HaCreator.MapSimulator.Interaction
         ReceiverRequired
     }
 
-    internal sealed record MapleTvItemProfile(int ItemId, string ItemName, int MediaIndex, int DurationMs, MapleTvAudienceMode AudienceMode)
+    internal sealed record MapleTvItemProfile(int ItemId, string ItemName, int MediaIndex, int DurationMs, MapleTvAudienceMode AudienceMode, bool MirrorsToChat)
     {
         private const int DefaultItemDurationMs = 15000;
 
         internal static MapleTvItemProfile CreateDefault(int itemId, string itemName, int defaultMediaIndex, int defaultDurationMs)
         {
             string name = string.IsNullOrWhiteSpace(itemName) ? "Maple TV" : itemName.Trim();
-            return new MapleTvItemProfile(Math.Max(0, itemId), name, Math.Max(0, defaultMediaIndex), defaultDurationMs, MapleTvAudienceMode.Flexible);
+            return new MapleTvItemProfile(Math.Max(0, itemId), name, Math.Max(0, defaultMediaIndex), defaultDurationMs, MapleTvAudienceMode.Flexible, false);
         }
 
         internal static MapleTvItemProfile Resolve(int itemId, string itemName, string itemDescription, int defaultItemId, string defaultItemName, int defaultMediaIndex)
@@ -641,6 +713,9 @@ namespace HaCreator.MapSimulator.Interaction
             int alternateMediaB = defaultMediaIndex <= 1 ? 2 : 1;
             string resolvedName = string.IsNullOrWhiteSpace(itemName) ? $"Item #{itemId}" : itemName.Trim();
             string normalizedDescription = itemDescription ?? string.Empty;
+            bool isMegassenger =
+                resolvedName.IndexOf("Megassenger", StringComparison.OrdinalIgnoreCase) >= 0
+                || normalizedDescription.IndexOf("Megassenger", StringComparison.OrdinalIgnoreCase) >= 0;
 
             MapleTvAudienceMode audienceMode =
                 normalizedDescription.IndexOf("only announcement type of message", StringComparison.OrdinalIgnoreCase) >= 0
@@ -661,22 +736,15 @@ namespace HaCreator.MapSimulator.Interaction
                 : normalizedDescription.IndexOf("heart effect", StringComparison.OrdinalIgnoreCase) >= 0 ? alternateMediaB
                 : defaultMediaIndex;
 
-            MapleTvItemProfile inferredProfile = new(itemId, resolvedName, mediaIndex, durationMs, audienceMode);
+            MapleTvItemProfile inferredProfile = new(itemId, resolvedName, mediaIndex, durationMs, audienceMode, isMegassenger);
             return itemId switch
             {
-                5075000 => inferredProfile with { MediaIndex = defaultMediaIndex, DurationMs = 15000, AudienceMode = MapleTvAudienceMode.Flexible },
-                5075001 => inferredProfile with { MediaIndex = alternateMediaA, DurationMs = 30000, AudienceMode = MapleTvAudienceMode.SenderOnly },
-                5075002 => inferredProfile with { MediaIndex = alternateMediaB, DurationMs = 60000, AudienceMode = MapleTvAudienceMode.ReceiverRequired },
-                5075003 => inferredProfile with { MediaIndex = defaultMediaIndex, DurationMs = 15000, AudienceMode = MapleTvAudienceMode.Flexible },
-                5075004 => inferredProfile with { MediaIndex = alternateMediaA, DurationMs = 30000, AudienceMode = MapleTvAudienceMode.SenderOnly },
-                5075005 => inferredProfile with { MediaIndex = alternateMediaB, DurationMs = 60000, AudienceMode = MapleTvAudienceMode.ReceiverRequired },
-                5290000 => inferredProfile,
-                5290001 => inferredProfile,
-                5290002 => inferredProfile,
-                5290003 => inferredProfile,
-                5290004 => inferredProfile,
-                5290005 => inferredProfile,
-                5290006 => inferredProfile,
+                5075000 => inferredProfile with { MediaIndex = defaultMediaIndex, DurationMs = 15000, AudienceMode = MapleTvAudienceMode.Flexible, MirrorsToChat = false },
+                5075001 => inferredProfile with { MediaIndex = alternateMediaA, DurationMs = 30000, AudienceMode = MapleTvAudienceMode.SenderOnly, MirrorsToChat = false },
+                5075002 => inferredProfile with { MediaIndex = alternateMediaB, DurationMs = 60000, AudienceMode = MapleTvAudienceMode.ReceiverRequired, MirrorsToChat = false },
+                5075003 => inferredProfile with { MediaIndex = defaultMediaIndex, DurationMs = 15000, AudienceMode = MapleTvAudienceMode.Flexible, MirrorsToChat = true },
+                5075004 => inferredProfile with { MediaIndex = alternateMediaA, DurationMs = 15000, AudienceMode = MapleTvAudienceMode.Flexible, MirrorsToChat = true },
+                5075005 => inferredProfile with { MediaIndex = alternateMediaB, DurationMs = 15000, AudienceMode = MapleTvAudienceMode.Flexible, MirrorsToChat = true },
                 _ => CreateDefault(itemId, resolvedName, defaultMediaIndex, DefaultItemDurationMs)
             };
         }

@@ -10,6 +10,7 @@ using System;
 using System.Collections.Generic;
 using SD = System.Drawing;
 using SDText = System.Drawing.Text;
+using SWF = System.Windows.Forms;
 using XnaColor = Microsoft.Xna.Framework.Color;
 
 namespace HaCreator.MapSimulator.UI
@@ -38,6 +39,14 @@ namespace HaCreator.MapSimulator.UI
 
         private static readonly XnaColor ValueColor = XnaColor.Black;
         private static readonly XnaColor StatusColor = new XnaColor(64, 64, 64);
+        private const int BasicBlackFontHeight = 12;
+        private const int TextRasterPadding = 2;
+        private const SWF.TextFormatFlags BasicBlackTextFormatFlags =
+            SWF.TextFormatFlags.NoPadding |
+            SWF.TextFormatFlags.NoPrefix |
+            SWF.TextFormatFlags.PreserveGraphicsClipping |
+            SWF.TextFormatFlags.PreserveGraphicsTranslateTransform |
+            SWF.TextFormatFlags.SingleLine;
 
         private readonly Texture2D _panelTexture;
         private readonly Texture2D _panelTextureWithRank;
@@ -45,7 +54,7 @@ namespace HaCreator.MapSimulator.UI
         private readonly Texture2D _rankDownTexture;
         private readonly Texture2D _rankSameTexture;
         private readonly IReadOnlyDictionary<int, Texture2D> _jobBadgeTextures;
-        private readonly Dictionary<TextRenderCacheKey, Texture2D> _textTextureCache = new();
+        private readonly Dictionary<TextRenderCacheKey, RasterTextTexture> _textTextureCache = new();
         private readonly SD.Bitmap _measureBitmap;
         private readonly SD.Graphics _measureGraphics;
         private readonly SD.Font _basicBlackFont;
@@ -73,7 +82,7 @@ namespace HaCreator.MapSimulator.UI
             _measureBitmap = new SD.Bitmap(1, 1);
             _measureGraphics = SD.Graphics.FromImage(_measureBitmap);
             _measureGraphics.TextRenderingHint = SDText.TextRenderingHint.SingleBitPerPixelGridFit;
-            _basicBlackFont = new SD.Font("Tahoma", 11f, SD.FontStyle.Regular, SD.GraphicsUnit.Pixel);
+            _basicBlackFont = new SD.Font("Tahoma", BasicBlackFontHeight, SD.FontStyle.Regular, SD.GraphicsUnit.Pixel);
         }
 
         public override string WindowName => MapSimulatorWindowNames.CharacterDetail;
@@ -96,11 +105,6 @@ namespace HaCreator.MapSimulator.UI
             if (panelTexture != null)
             {
                 sprite.Draw(panelTexture, new Vector2(Position.X, Position.Y), XnaColor.White);
-            }
-
-            if (_font == null)
-            {
-                return;
             }
 
             if (_entry?.Build == null)
@@ -260,10 +264,13 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
-            Texture2D textTexture = GetOrCreateTextTexture(text, color);
-            if (textTexture != null)
+            RasterTextTexture textTexture = GetOrCreateTextTexture(text, color);
+            if (textTexture.Texture != null)
             {
-                sprite.Draw(textTexture, new Vector2(Position.X + x, Position.Y + y), XnaColor.White);
+                sprite.Draw(
+                    textTexture.Texture,
+                    new Vector2(Position.X + x + textTexture.OffsetX, Position.Y + y + textTexture.OffsetY),
+                    XnaColor.White);
                 return;
             }
 
@@ -282,7 +289,8 @@ namespace HaCreator.MapSimulator.UI
                 return Vector2.Zero;
             }
 
-            Vector2 rasterSize = MeasureRasterText(text);
+            RasterTextTexture textTexture = GetOrCreateTextTexture(text, ValueColor);
+            Vector2 rasterSize = textTexture.Measurement;
             if (rasterSize != Vector2.Zero)
             {
                 return rasterSize;
@@ -332,44 +340,108 @@ namespace HaCreator.MapSimulator.UI
                 return Vector2.Zero;
             }
 
-            SD.SizeF size = _measureGraphics.MeasureString(text, _basicBlackFont, SD.PointF.Empty, SD.StringFormat.GenericTypographic);
-            if (size.Width <= 0f || size.Height <= 0f)
-            {
-                size = _measureGraphics.MeasureString(text, _basicBlackFont);
-            }
+            SD.Size size = SWF.TextRenderer.MeasureText(
+                _measureGraphics,
+                text,
+                _basicBlackFont,
+                new SD.Size(int.MaxValue, int.MaxValue),
+                BasicBlackTextFormatFlags);
 
-            return new Vector2((float)Math.Ceiling(size.Width), (float)Math.Ceiling(size.Height));
+            return new Vector2(size.Width, size.Height);
         }
 
-        private Texture2D GetOrCreateTextTexture(string text, XnaColor color)
+        private RasterTextTexture GetOrCreateTextTexture(string text, XnaColor color)
         {
             if (_basicBlackFont == null || string.IsNullOrEmpty(text))
             {
-                return null;
+                return default;
             }
 
             TextRenderCacheKey cacheKey = new TextRenderCacheKey(text, color);
-            if (_textTextureCache.TryGetValue(cacheKey, out Texture2D cachedTexture) &&
-                cachedTexture != null &&
-                !cachedTexture.IsDisposed)
+            if (_textTextureCache.TryGetValue(cacheKey, out RasterTextTexture cachedTexture) &&
+                cachedTexture.Texture != null &&
+                !cachedTexture.Texture.IsDisposed)
             {
                 return cachedTexture;
             }
 
-            Vector2 size = MeasureRasterText(text);
-            int width = Math.Max(1, (int)size.X);
-            int height = Math.Max(1, (int)size.Y);
+            Vector2 measuredSize = MeasureRasterText(text);
+            int width = Math.Max(1, (int)measuredSize.X + (TextRasterPadding * 2));
+            int height = Math.Max(1, (int)measuredSize.Y + (TextRasterPadding * 2));
 
             using var bitmap = new SD.Bitmap(width, height);
             using SD.Graphics graphics = SD.Graphics.FromImage(bitmap);
             graphics.Clear(SD.Color.Transparent);
             graphics.TextRenderingHint = SDText.TextRenderingHint.SingleBitPerPixelGridFit;
-            using var brush = new SD.SolidBrush(SD.Color.FromArgb(color.A, color.R, color.G, color.B));
-            graphics.DrawString(text, _basicBlackFont, brush, 0f, 0f, SD.StringFormat.GenericTypographic);
+            SWF.TextRenderer.DrawText(
+                graphics,
+                text,
+                _basicBlackFont,
+                new SD.Rectangle(TextRasterPadding, TextRasterPadding, width - (TextRasterPadding * 2), height - (TextRasterPadding * 2)),
+                SD.Color.FromArgb(color.A, color.R, color.G, color.B),
+                SD.Color.Transparent,
+                BasicBlackTextFormatFlags);
 
-            Texture2D texture = bitmap.ToTexture2D(_panelTexture.GraphicsDevice);
+            RasterTextTexture texture = CreateRasterTextTexture(bitmap, measuredSize);
             _textTextureCache[cacheKey] = texture;
             return texture;
+        }
+
+        private RasterTextTexture CreateRasterTextTexture(SD.Bitmap bitmap, Vector2 measuredSize)
+        {
+            if (!TryFindOpaqueBounds(bitmap, out SD.Rectangle bounds))
+            {
+                return new RasterTextTexture(
+                    bitmap.ToTexture2D(_panelTexture.GraphicsDevice),
+                    0,
+                    0,
+                    measuredSize);
+            }
+
+            using SD.Bitmap croppedBitmap = bitmap.Clone(bounds, bitmap.PixelFormat);
+            Texture2D texture = croppedBitmap.ToTexture2D(_panelTexture.GraphicsDevice);
+            Vector2 measurement = new Vector2(
+                Math.Max(0, bounds.Right - TextRasterPadding),
+                Math.Max(0, bounds.Bottom - TextRasterPadding));
+
+            return new RasterTextTexture(
+                texture,
+                bounds.X - TextRasterPadding,
+                bounds.Y - TextRasterPadding,
+                measurement);
+        }
+
+        private static bool TryFindOpaqueBounds(SD.Bitmap bitmap, out SD.Rectangle bounds)
+        {
+            int left = bitmap.Width;
+            int top = bitmap.Height;
+            int right = -1;
+            int bottom = -1;
+
+            for (int y = 0; y < bitmap.Height; y++)
+            {
+                for (int x = 0; x < bitmap.Width; x++)
+                {
+                    if (bitmap.GetPixel(x, y).A == 0)
+                    {
+                        continue;
+                    }
+
+                    left = Math.Min(left, x);
+                    top = Math.Min(top, y);
+                    right = Math.Max(right, x);
+                    bottom = Math.Max(bottom, y);
+                }
+            }
+
+            if (right < left || bottom < top)
+            {
+                bounds = SD.Rectangle.Empty;
+                return false;
+            }
+
+            bounds = SD.Rectangle.FromLTRB(left, top, right + 1, bottom + 1);
+            return true;
         }
 
         private readonly struct TextRenderCacheKey : IEquatable<TextRenderCacheKey>
@@ -397,6 +469,22 @@ namespace HaCreator.MapSimulator.UI
             {
                 return HashCode.Combine(Text, Color);
             }
+        }
+
+        private readonly struct RasterTextTexture
+        {
+            public RasterTextTexture(Texture2D texture, int offsetX, int offsetY, Vector2 measurement)
+            {
+                Texture = texture;
+                OffsetX = offsetX;
+                OffsetY = offsetY;
+                Measurement = measurement;
+            }
+
+            public Texture2D Texture { get; }
+            public int OffsetX { get; }
+            public int OffsetY { get; }
+            public Vector2 Measurement { get; }
         }
     }
 }

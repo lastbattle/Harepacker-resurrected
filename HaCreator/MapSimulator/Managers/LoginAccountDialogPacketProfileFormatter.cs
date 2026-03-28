@@ -39,6 +39,7 @@ namespace HaCreator.MapSimulator.Managers
             Append(details, "Register date", FormatFileTime(profile.RegisterDateFileTime));
             Append(details, "Character count", profile.CharacterCount);
             Append(details, "Client key", FormatClientKey(profile.ClientKey));
+            Append(details, "Requested name", string.IsNullOrWhiteSpace(profile.RequestedName) ? null : profile.RequestedName.Trim());
             return details.Count == 0 ? null : string.Join(separator, details);
         }
 

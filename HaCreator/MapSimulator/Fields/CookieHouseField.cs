@@ -131,7 +131,7 @@ namespace HaCreator.MapSimulator.Fields
 
         public string DescribeStatus()
         {
-            return $"Cookie House map={_mapId}, point={_point}, grade={_gradeIndex + 1}/{GradeCount}, thresholds=client-s_anGrade-unresolved, {DescribeBackgroundSource()}, {DescribeBitmapSource()}";
+            return $"Cookie House map={_mapId}, point={_point}, grade={_gradeIndex + 1}/{GradeCount}, thresholds=client-s_anGrade-unresolved(4 thresholds/5 styles), {DescribeBackgroundSource()}, {DescribeBitmapSource()}";
         }
 
         public void Draw(SpriteBatch spriteBatch, Texture2D pixelTexture, SpriteFont font, int centerX)
@@ -230,19 +230,19 @@ namespace HaCreator.MapSimulator.Fields
 
             _bitmapNumberSourcePath = null;
             _usesFallbackBitmapSource = false;
-            foreach (string imageName in PreferredUiWindowImages)
+            foreach (WzImage image in EnumerateUiImages())
             {
-                WzImage image = global::HaCreator.Program.FindImage("UI", imageName);
                 if (image == null)
                 {
                     continue;
                 }
 
-                if (TryFindBitmapNumberRoot(image, $"UI/{imageName}", out WzImageProperty fallbackRoot, out string fallbackPath)
-                    && TryLoadBitmapNumberStyles(fallbackRoot))
+                string imagePath = $"UI/{image.Name}";
+                if (TryFindBitmapNumberRoot(image, imagePath, out WzImageProperty discoveredRoot, out string discoveredPath)
+                    && TryLoadBitmapNumberStyles(discoveredRoot))
                 {
-                    _bitmapNumberSourcePath = fallbackPath;
-                    _usesFallbackBitmapSource = true;
+                    _bitmapNumberSourcePath = discoveredPath;
+                    _usesFallbackBitmapSource = !IsPreferredUiWindowImage(image.Name);
                     return;
                 }
             }
@@ -625,6 +625,64 @@ namespace HaCreator.MapSimulator.Fields
             return true;
         }
 
+        private static IEnumerable<WzImage> EnumerateUiImages()
+        {
+            var seenNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (string imageName in PreferredUiWindowImages)
+            {
+                WzImage preferredImage = global::HaCreator.Program.FindImage("UI", imageName);
+                if (preferredImage != null && seenNames.Add(preferredImage.Name))
+                {
+                    yield return preferredImage;
+                }
+            }
+
+            foreach (WzDirectory directory in global::HaCreator.Program.GetDirectories("UI"))
+            {
+                if (directory == null)
+                {
+                    continue;
+                }
+
+                foreach (WzImage image in EnumerateImagesRecursive(directory))
+                {
+                    if (image != null && seenNames.Add(image.Name))
+                    {
+                        yield return image;
+                    }
+                }
+            }
+        }
+
+        private static IEnumerable<WzImage> EnumerateImagesRecursive(WzDirectory directory)
+        {
+            if (directory == null)
+            {
+                yield break;
+            }
+
+            foreach (WzImage image in directory.WzImages)
+            {
+                if (image != null)
+                {
+                    yield return image;
+                }
+            }
+
+            foreach (WzDirectory childDirectory in directory.WzDirectories)
+            {
+                foreach (WzImage image in EnumerateImagesRecursive(childDirectory))
+                {
+                    yield return image;
+                }
+            }
+        }
+
+        private static bool IsPreferredUiWindowImage(string imageName)
+        {
+            return PreferredUiWindowImages.Any(name => string.Equals(name, imageName, StringComparison.OrdinalIgnoreCase));
+        }
+
         private static bool TryFindBitmapNumberRoot(WzImage image, string currentPath, out WzImageProperty sourceRoot, out string sourcePath)
         {
             sourceRoot = null;
@@ -775,15 +833,15 @@ namespace HaCreator.MapSimulator.Fields
             string signIds = $"signs=0x{ClientBitmapPlusStringPoolId:X}/0x{ClientBitmapMinusStringPoolId:X}";
             if (string.IsNullOrWhiteSpace(_bitmapNumberSourcePath))
             {
-                return $"bitmap=unresolved [client StringPool 0x{ClientBitmapRootStringPoolId:X} unresolved, {signIds}]";
+                return $"bitmap=unresolved [client StringPool 0x{ClientBitmapRootStringPoolId:X} unresolved, constructor=styles:{GradeCount}/digits:{ClientBitmapDigitCount}/width:{ClientBitmapDigitWidth}, {signIds}]";
             }
 
             if (_usesFallbackBitmapSource)
             {
-                return $"bitmap=fallback:{_bitmapNumberSourcePath} [client StringPool 0x{ClientBitmapRootStringPoolId:X} unresolved, {signIds}]";
+                return $"bitmap=client-shaped-alt:{_bitmapNumberSourcePath} [client StringPool 0x{ClientBitmapRootStringPoolId:X} unresolved, constructor=styles:{GradeCount}/digits:{ClientBitmapDigitCount}/width:{ClientBitmapDigitWidth}, {signIds}]";
             }
 
-            return $"bitmap={_bitmapNumberSourcePath} [{signIds}]";
+            return $"bitmap=client-shaped:{_bitmapNumberSourcePath} [client StringPool 0x{ClientBitmapRootStringPoolId:X} unresolved, constructor=styles:{GradeCount}/digits:{ClientBitmapDigitCount}/width:{ClientBitmapDigitWidth}, {signIds}]";
         }
     }
 }

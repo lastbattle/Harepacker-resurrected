@@ -1,6 +1,7 @@
 using HaCreator.MapSimulator.Effects;
 using HaCreator.MapSimulator.Managers;
 using HaCreator.MapSimulator.Character;
+using HaCreator.MapSimulator.Pools;
 using HaCreator.MapEditor;
 using HaSharedLibrary.Render.DX;
 using MapleLib.WzLib;
@@ -81,7 +82,7 @@ namespace HaCreator.MapSimulator.Fields
             new(SpecialFieldBacklogArea.WitchtowerScoreUi, SpecialFieldBacklogStatus.Partial, "SpecialEffectFields.cs / WitchtowerField", IsWitchtowerMap),
             new(SpecialFieldBacklogArea.MassacreTimerboardAndGaugeFlow, SpecialFieldBacklogStatus.Partial, "SpecialEffectFields.cs / MassacreField", IsMassacreMap),
             new(SpecialFieldBacklogArea.MemoryGameAndMiniRoomCardParity, SpecialFieldBacklogStatus.Partial, "MinigameFields.cs / MemoryGameField"),
-            new(SpecialFieldBacklogArea.SnowballMinigameRuntime, SpecialFieldBacklogStatus.Partial, "MinigameFields.cs / SnowBallField"),
+            new(SpecialFieldBacklogArea.SnowballMinigameRuntime, SpecialFieldBacklogStatus.Partial, "MinigameFields.cs / SnowBallField", IsSnowBallMap),
             new(SpecialFieldBacklogArea.AriantArenaFieldFlow, SpecialFieldBacklogStatus.Partial, "MinigameFields.cs / AriantArenaField", IsAriantArenaMap),
             new(SpecialFieldBacklogArea.BattlefieldEventFlow, SpecialFieldBacklogStatus.Partial, "SpecialEffectFields.cs / BattlefieldField", IsBattlefieldMap),
             new(SpecialFieldBacklogArea.MuLungDojoFieldFlow, SpecialFieldBacklogStatus.Partial, "SpecialEffectFields.cs / DojoField", IsDojoMap),
@@ -106,9 +107,10 @@ namespace HaCreator.MapSimulator.Fields
             SoundManager soundManager = null,
             Action<string> requestBgmOverride = null,
             Action clearBgmOverride = null,
+            Func<LoginAvatarLook, string, CharacterBuild> weddingRemoteBuildFactory = null,
             Func<LoginAvatarLook, string, CharacterBuild> ariantArenaRemoteBuildFactory = null)
         {
-            _specialEffects.Initialize(graphicsDevice, requestBgmOverride, clearBgmOverride);
+            _specialEffects.Initialize(graphicsDevice, requestBgmOverride, clearBgmOverride, weddingRemoteBuildFactory);
             _minigames.Initialize(graphicsDevice, soundManager, ariantArenaRemoteBuildFactory);
             _partyRaid.Initialize(graphicsDevice);
         }
@@ -131,6 +133,7 @@ namespace HaCreator.MapSimulator.Fields
             }
 
             _specialEffects.ConfigureMap(board);
+            _minigames.BindMap(board);
             _partyRaid.BindMap(mapInfo);
 
             if (IsAriantArenaMap(mapInfo))
@@ -187,8 +190,9 @@ namespace HaCreator.MapSimulator.Fields
             _specialEffects.SetGuildBossPlayerState(localPlayerHitbox);
         }
 
-        public void SetAriantArenaPlayerState(string localPlayerName, int? localPlayerJob)
+        public void SetAriantArenaPlayerState(string localPlayerName, int? localPlayerJob, RemoteUserActorPool remoteUserPool = null)
         {
+            _minigames.SetAriantArenaRemoteUserPool(remoteUserPool);
             _minigames.AriantArena.SetLocalPlayerState(localPlayerName, localPlayerJob ?? 0);
         }
 
@@ -377,6 +381,11 @@ namespace HaCreator.MapSimulator.Fields
         private static bool IsCookieHouseMap(MapInfo mapInfo)
         {
             return mapInfo?.fieldType == FieldType.FIELDTYPE_COOKIEHOUSE;
+        }
+
+        private static bool IsSnowBallMap(MapInfo mapInfo)
+        {
+            return SnowBallField.SnowBallFieldDataLoader.IsSnowBallMap(mapInfo);
         }
 
         private static bool IsAriantArenaMap(MapInfo mapInfo)

@@ -15,6 +15,9 @@ namespace HaCreator.MapSimulator.UI
         private const int TitleOffsetY = 12;
         private const int BodyOffsetX = 17;
         private const int BodyOffsetY = 44;
+        private const int NoticeBodySpacingY = 6;
+        private const int CancelButtonOffsetX = 100;
+        private const int CancelButtonOffsetY = 106;
         private const int ProgressOffsetX = 87;
         private const int ProgressOffsetY = 34;
         private const int ProgressWidth = 109;
@@ -31,6 +34,7 @@ namespace HaCreator.MapSimulator.UI
         private readonly IReadOnlyDictionary<ConnectionNoticeWindowVariant, IReadOnlyList<Texture2D>> _progressFramesByVariant;
         private readonly IReadOnlyDictionary<ConnectionNoticeWindowVariant, IReadOnlyList<Texture2D>> _animationFramesByVariant;
         private readonly IReadOnlyDictionary<int, Texture2D> _noticeTextTextures;
+        private readonly UIObject _cancelButton;
         private SpriteFont _font;
         private string _title = "Connection Notice";
         private string _body = string.Empty;
@@ -43,7 +47,8 @@ namespace HaCreator.MapSimulator.UI
             IReadOnlyDictionary<ConnectionNoticeWindowVariant, IDXObject> framesByVariant,
             IReadOnlyDictionary<ConnectionNoticeWindowVariant, IReadOnlyList<Texture2D>> progressFramesByVariant,
             IReadOnlyDictionary<ConnectionNoticeWindowVariant, IReadOnlyList<Texture2D>> animationFramesByVariant,
-            IReadOnlyDictionary<int, Texture2D> noticeTextTextures)
+            IReadOnlyDictionary<int, Texture2D> noticeTextTextures,
+            UIObject cancelButton)
             : base((framesByVariant != null && framesByVariant.TryGetValue(ConnectionNoticeWindowVariant.Notice, out IDXObject frame))
                 ? frame
                 : null)
@@ -52,6 +57,7 @@ namespace HaCreator.MapSimulator.UI
             _progressFramesByVariant = progressFramesByVariant ?? new Dictionary<ConnectionNoticeWindowVariant, IReadOnlyList<Texture2D>>();
             _animationFramesByVariant = animationFramesByVariant ?? new Dictionary<ConnectionNoticeWindowVariant, IReadOnlyList<Texture2D>>();
             _noticeTextTextures = noticeTextTextures ?? new Dictionary<int, Texture2D>();
+            _cancelButton = RegisterButton(cancelButton);
         }
 
         public override string WindowName => MapSimulatorWindowNames.ConnectionNotice;
@@ -62,6 +68,8 @@ namespace HaCreator.MapSimulator.UI
         {
             _font = font;
         }
+
+        public event Action CancelRequested;
 
         public void Configure(
             string title,
@@ -84,6 +92,7 @@ namespace HaCreator.MapSimulator.UI
             }
 
             Frame = frame;
+            ConfigureButtons();
         }
 
         protected override void DrawContents(
@@ -104,6 +113,12 @@ namespace HaCreator.MapSimulator.UI
                 DrawAnimatedOverlay(sprite, TickCount);
             }
 
+            if (_font == null)
+            {
+                return;
+            }
+
+            float y = Position.Y + BodyOffsetY;
             if (_noticeTextIndex.HasValue &&
                 _noticeTextTextures.TryGetValue(_noticeTextIndex.Value, out Texture2D noticeTextTexture) &&
                 noticeTextTexture != null)
@@ -112,22 +127,24 @@ namespace HaCreator.MapSimulator.UI
                     noticeTextTexture,
                     new Vector2(Position.X + BodyOffsetX, Position.Y + BodyOffsetY),
                     Color.White);
-                return;
-            }
 
-            if (_font == null)
+                if (string.IsNullOrWhiteSpace(_body))
+                {
+                    return;
+                }
+
+                y += noticeTextTexture.Height + NoticeBodySpacingY;
+            }
+            else
             {
-                return;
+                SelectorWindowDrawing.DrawShadowedText(
+                    sprite,
+                    _font,
+                    _title,
+                    new Vector2(Position.X + TitleOffsetX, Position.Y + TitleOffsetY),
+                    Color.White);
             }
 
-            SelectorWindowDrawing.DrawShadowedText(
-                sprite,
-                _font,
-                _title,
-                new Vector2(Position.X + TitleOffsetX, Position.Y + TitleOffsetY),
-                Color.White);
-
-            float y = Position.Y + BodyOffsetY;
             foreach (string line in WrapText(_body, BodyWrapWidth))
             {
                 SelectorWindowDrawing.DrawShadowedText(
@@ -212,6 +229,34 @@ namespace HaCreator.MapSimulator.UI
             {
                 yield return currentLine;
             }
+        }
+
+        private UIObject RegisterButton(UIObject button)
+        {
+            if (button == null)
+            {
+                return null;
+            }
+
+            button.SetVisible(false);
+            button.SetEnabled(false);
+            button.ButtonClickReleased += _ => CancelRequested?.Invoke();
+            AddButton(button);
+            return button;
+        }
+
+        private void ConfigureButtons()
+        {
+            if (_cancelButton == null)
+            {
+                return;
+            }
+
+            bool showCancelButton = _variant is ConnectionNoticeWindowVariant.Loading or ConnectionNoticeWindowVariant.LoadingSingleGauge;
+            _cancelButton.X = CancelButtonOffsetX;
+            _cancelButton.Y = CancelButtonOffsetY;
+            _cancelButton.SetVisible(showCancelButton);
+            _cancelButton.SetEnabled(showCancelButton);
         }
     }
 }

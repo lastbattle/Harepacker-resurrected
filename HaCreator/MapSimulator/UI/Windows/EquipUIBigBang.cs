@@ -101,6 +101,14 @@ namespace HaCreator.MapSimulator.UI
             public Point SlotLabelsOffset { get; init; }
         }
 
+        private sealed class SpecialSlotChrome
+        {
+            public string Name { get; init; }
+            public IDXObject Chrome { get; init; }
+            public Point Offset { get; init; }
+            public Func<CharacterBuild, bool> IsActive { get; init; }
+        }
+
         public sealed class EquipTooltipAssets
         {
             public IReadOnlyDictionary<string, Texture2D> CanLabels { get; init; }
@@ -165,13 +173,12 @@ namespace HaCreator.MapSimulator.UI
         private IDXObject _foreground;
         private Point _foregroundOffset;
 
-        // Slot labels and character silhouette (backgrnd3)
+        // Slot labels and character silhouette (backgrnd3/backgrnd3_dual)
         private IDXObject _slotLabels;
         private Point _slotLabelsOffset;
-        private IDXObject _cashPendantChrome;
-        private Point _cashPendantChromeOffset;
-        private IDXObject _charmPocketChrome;
-        private Point _charmPocketChromeOffset;
+        private IDXObject _dualSlotLabels;
+        private Point _dualSlotLabelsOffset;
+        private readonly List<SpecialSlotChrome> _specialSlotChrome = new();
 
         // Tab buttons
         private UIObject _btnPet;
@@ -374,18 +381,32 @@ namespace HaCreator.MapSimulator.UI
             _slotLabelsOffset = new Point(offsetX, offsetY);
         }
 
-        public void SetSpecialSlotChrome(
-            IDXObject cashPendantChrome,
-            int cashPendantOffsetX,
-            int cashPendantOffsetY,
-            IDXObject charmPocketChrome,
-            int charmPocketOffsetX,
-            int charmPocketOffsetY)
+        public void SetDualSlotLabels(IDXObject slotLabels, int offsetX, int offsetY)
         {
-            _cashPendantChrome = cashPendantChrome;
-            _cashPendantChromeOffset = new Point(cashPendantOffsetX, cashPendantOffsetY);
-            _charmPocketChrome = charmPocketChrome;
-            _charmPocketChromeOffset = new Point(charmPocketOffsetX, charmPocketOffsetY);
+            _dualSlotLabels = slotLabels;
+            _dualSlotLabelsOffset = new Point(offsetX, offsetY);
+        }
+
+        public void SetSpecialSlotChrome(string chromeName, IDXObject chrome, int offsetX, int offsetY)
+        {
+            if (string.IsNullOrWhiteSpace(chromeName) || chrome == null)
+            {
+                return;
+            }
+
+            Func<CharacterBuild, bool> isActive = ResolveSpecialSlotChromeActivation(chromeName);
+            if (isActive == null)
+            {
+                return;
+            }
+
+            _specialSlotChrome.Add(new SpecialSlotChrome
+            {
+                Name = chromeName,
+                Chrome = chrome,
+                Offset = new Point(offsetX, offsetY),
+                IsActive = isActive
+            });
         }
 
         public void SetCompanionTabLayout(int tabIndex, IDXObject frame, IDXObject foreground, int foregroundOffsetX, int foregroundOffsetY, IDXObject slotLabels, int slotLabelOffsetX, int slotLabelOffsetY)
@@ -516,10 +537,14 @@ namespace HaCreator.MapSimulator.UI
             }
 
             // Draw slot labels and character silhouette (backgrnd3) z=1
-            if (_slotLabels != null)
+            IDXObject activeSlotLabels = ResolveCharacterSlotLabelsChrome();
+            Point activeSlotLabelsOffset = ReferenceEquals(activeSlotLabels, _dualSlotLabels)
+                ? _dualSlotLabelsOffset
+                : _slotLabelsOffset;
+            if (activeSlotLabels != null)
             {
-                _slotLabels.DrawBackground(sprite, skeletonMeshRenderer, gameTime,
-                    windowX + _slotLabelsOffset.X, windowY + _slotLabelsOffset.Y,
+                activeSlotLabels.DrawBackground(sprite, skeletonMeshRenderer, gameTime,
+                    windowX + activeSlotLabelsOffset.X, windowY + activeSlotLabelsOffset.Y,
                     Color.White, false, drawReflectionInfo);
             }
 
@@ -1132,31 +1157,48 @@ namespace HaCreator.MapSimulator.UI
             int windowX,
             int windowY)
         {
-            if (_characterBuild?.IsPendantSlotExtensionActive == true && _cashPendantChrome != null)
+            foreach (SpecialSlotChrome chrome in _specialSlotChrome)
             {
-                _cashPendantChrome.DrawBackground(
+                if (chrome.Chrome == null || chrome.IsActive?.Invoke(_characterBuild) != true)
+                {
+                    continue;
+                }
+
+                chrome.Chrome.DrawBackground(
                     sprite,
                     skeletonMeshRenderer,
                     gameTime,
-                    windowX + _cashPendantChromeOffset.X,
-                    windowY + _cashPendantChromeOffset.Y,
+                    windowX + chrome.Offset.X,
+                    windowY + chrome.Offset.Y,
                     Color.White,
                     false,
                     drawReflectionInfo);
+            }
+        }
+
+        internal static bool ShouldUseDualSlotLabels(CharacterBuild build)
+        {
+            return build?.IsPendantSlotExtensionActive == true;
+        }
+
+        private static Func<CharacterBuild, bool> ResolveSpecialSlotChromeActivation(string chromeName)
+        {
+            return chromeName switch
+            {
+                "cashPendant" => build => build?.IsPendantSlotExtensionActive == true,
+                "charmPocket" => build => build?.IsPocketSlotAvailable == true,
+                _ => null
+            };
+        }
+
+        private IDXObject ResolveCharacterSlotLabelsChrome()
+        {
+            if (ShouldUseDualSlotLabels(_characterBuild) && _dualSlotLabels != null)
+            {
+                return _dualSlotLabels;
             }
 
-            if (_characterBuild?.IsPocketSlotAvailable == true && _charmPocketChrome != null)
-            {
-                _charmPocketChrome.DrawBackground(
-                    sprite,
-                    skeletonMeshRenderer,
-                    gameTime,
-                    windowX + _charmPocketChromeOffset.X,
-                    windowY + _charmPocketChromeOffset.Y,
-                    Color.White,
-                    false,
-                    drawReflectionInfo);
-            }
+            return _slotLabels ?? _dualSlotLabels;
         }
 
         private void DrawDisabledOverlay(SpriteBatch sprite, int slotX, int slotY, EquipSlotVisualState visualState)

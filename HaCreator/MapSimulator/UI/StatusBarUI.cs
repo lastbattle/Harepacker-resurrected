@@ -52,6 +52,7 @@ namespace HaCreator.MapSimulator.UI {
         public int RemainingMs { get; set; }
         public int DurationMs { get; set; }
         public int SortOrder { get; set; }
+        public string FamilyDisplayName { get; set; }
         public IReadOnlyList<string> TemporaryStatLabels { get; set; } = Array.Empty<string>();
         public IReadOnlyList<string> TemporaryStatDisplayNames { get; set; } = Array.Empty<string>();
     }
@@ -565,6 +566,11 @@ namespace HaCreator.MapSimulator.UI {
                 return;
             }
 
+            if (IsDragonPreparedSkillOverlay(preparedSkill))
+            {
+                return;
+            }
+
             Vector2 anchor = new Vector2(
                 preparedSkill.WorldAnchor.X - mapShiftX + centerX,
                 preparedSkill.WorldAnchor.Y - mapShiftY + centerY);
@@ -637,11 +643,11 @@ namespace HaCreator.MapSimulator.UI {
             }
 
             // Job name
-            Vector2 jobPos = basePosLeft + JOB_TEXT_POS;
+            Vector2 jobPos = SnapToPixel(basePosLeft + JOB_TEXT_POS);
             DrawPlainText(sprite, FormatStatusBarJobLabel(stats.Job), jobPos, JOB_TEXT_COLOR, JOB_TEXT_SCALE);
 
             // Character name - drawn with shadow effect (from IDA: multiple positions for shadow)
-            Vector2 namePos = basePosLeft + NAME_TEXT_POS;
+            Vector2 namePos = SnapToPixel(basePosLeft + NAME_TEXT_POS);
             DrawDiagonalShadowText(sprite, stats.Name, namePos, Color.White, Color.Black, 0.8f);
 
             // Draw gauge text section (HP/MP/EXP area) - use basePosGauge
@@ -907,7 +913,9 @@ namespace HaCreator.MapSimulator.UI {
                 : buffEntry.TemporaryStatLabels;
             string temporaryStatText = temporaryStatDisplayNames != null && temporaryStatDisplayNames.Count > 0
                 ? $"Temp Stats: {string.Join(", ", temporaryStatDisplayNames)}"
-                : string.Empty;
+                : !string.IsNullOrWhiteSpace(buffEntry.FamilyDisplayName)
+                    ? $"Buff Type: {buffEntry.FamilyDisplayName}"
+                    : string.Empty;
             Texture2D iconTexture = ResolveBuffIconTexture(buffEntry.IconTexture, buffEntry.IconKey);
 
             DrawStatusBarSkillTooltip(
@@ -1347,6 +1355,11 @@ namespace HaCreator.MapSimulator.UI {
             return Math.Clamp(preparedSkill.Progress, 0f, 1f);
         }
 
+        private static bool IsDragonPreparedSkillOverlay(StatusBarPreparedSkillRenderData preparedSkill)
+        {
+            return preparedSkill?.SkillId is 22121000 or 22151001;
+        }
+
         private static PreparedSkillHudProfile ResolvePreparedSkillHudProfile(StatusBarPreparedSkillRenderData preparedSkill)
         {
             if (preparedSkill == null)
@@ -1663,9 +1676,9 @@ namespace HaCreator.MapSimulator.UI {
         private Vector2 GetRightAlignedStatusTextPosition(Vector2 basePos, Vector2 anchorOffset, string text, float bitmapScale, float spriteFontScale)
         {
             float textWidth = MeasureStatusBarTextWidth(text, bitmapScale, spriteFontScale);
-            return new Vector2(
+            return SnapToPixel(new Vector2(
                 basePos.X + anchorOffset.X - textWidth,
-                basePos.Y + anchorOffset.Y);
+                basePos.Y + anchorOffset.Y));
         }
 
         private float MeasureStatusBarTextWidth(string text, float bitmapScale, float spriteFontScale)
@@ -1687,9 +1700,16 @@ namespace HaCreator.MapSimulator.UI {
         {
             int digitCount = Math.Clamp(string.IsNullOrEmpty(levelText) ? 1 : levelText.Length, 1, 3);
             float clientSlotX = LEVEL_TEXT_POS.X - ((digitCount - 1) * 6);
-            return new Vector2(
+            return SnapToPixel(new Vector2(
                 basePosLeft.X + clientSlotX,
-                basePosLeft.Y + LEVEL_TEXT_POS.Y);
+                basePosLeft.Y + LEVEL_TEXT_POS.Y));
+        }
+
+        private static Vector2 SnapToPixel(Vector2 position)
+        {
+            return new Vector2(
+                (float)Math.Round(position.X),
+                (float)Math.Round(position.Y));
         }
 
         private Rectangle GetKeyDownBarRectangle(Vector2 basePosGauge, StatusBarKeyDownBarTextures textures, bool anchorIsWorldPosition = false)
@@ -1850,6 +1870,7 @@ namespace HaCreator.MapSimulator.UI {
             if (_digitTextures == null || !_useBitmapFont)
                 return 0;
 
+            Vector2 snappedPosition = SnapToPixel(position);
             int xOffset = 0;
             const int CHAR_SPACING = 0;  // Spacing between characters
 
@@ -1866,8 +1887,8 @@ namespace HaCreator.MapSimulator.UI {
                     int yAdjust = baselineY - origin.Y;
 
                     Rectangle destRect = new Rectangle(
-                        (int)(position.X + xOffset - origin.X * scale),
-                        (int)(position.Y + yAdjust * scale),
+                        (int)(snappedPosition.X + xOffset - origin.X * scale),
+                        (int)(snappedPosition.Y + yAdjust * scale),
                         (int)(texture.Width * scale),
                         (int)(texture.Height * scale)
                     );
@@ -1879,7 +1900,7 @@ namespace HaCreator.MapSimulator.UI {
                 } else if (_font != null) {
                     // Fall back to SpriteFont for characters without bitmap textures
                     string charStr = c.ToString();
-                    Vector2 charPos = new Vector2(position.X + xOffset, position.Y);
+                    Vector2 charPos = new Vector2(snappedPosition.X + xOffset, snappedPosition.Y);
                     // Draw with slight shadow for visibility
                     sprite.DrawString(_font, charStr, charPos + new Vector2(1, 1), Color.Black, 0f, Vector2.Zero, scale * 0.8f, SpriteEffects.None, 0f);
                     sprite.DrawString(_font, charStr, charPos, Color.White, 0f, Vector2.Zero, scale * 0.8f, SpriteEffects.None, 0f);
@@ -1896,6 +1917,7 @@ namespace HaCreator.MapSimulator.UI {
             if (digitTextures == null || digitTextures.Length < 10)
                 return 0;
 
+            Vector2 snappedPosition = SnapToPixel(position);
             int xOffset = 0;
             int baselineY = digitOrigins != null && digitOrigins.Length > 0 ? digitOrigins[0].Y : 0;
 
@@ -1912,8 +1934,8 @@ namespace HaCreator.MapSimulator.UI {
                 Point origin = digitOrigins != null && digitOrigins.Length > index ? digitOrigins[index] : Point.Zero;
                 int yAdjust = baselineY - origin.Y;
                 Rectangle destRect = new Rectangle(
-                    (int)(position.X + xOffset - origin.X * scale),
-                    (int)(position.Y + yAdjust * scale),
+                    (int)(snappedPosition.X + xOffset - origin.X * scale),
+                    (int)(snappedPosition.Y + yAdjust * scale),
                     (int)(texture.Width * scale),
                     (int)(texture.Height * scale));
                 sprite.Draw(texture, destRect, Color.White);

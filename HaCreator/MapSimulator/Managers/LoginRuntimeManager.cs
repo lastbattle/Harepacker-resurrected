@@ -69,6 +69,7 @@ namespace HaCreator.MapSimulator.Managers
                 [LoginPacketType.SelectCharacterResult] = HandleSelectCharacterResult,
                 [LoginPacketType.ViewAllCharResult] = HandleViewAllCharResult,
                 [LoginPacketType.SelectCharacterByVacResult] = HandleViewAllCharResult,
+                [LoginPacketType.CheckDuplicatedIdResult] = HandleCheckDuplicatedIdResult,
                 [LoginPacketType.CreateNewCharacterResult] = HandleCreateNewCharacterResult,
                 [LoginPacketType.DeleteCharacterResult] = HandleDeleteCharacterResult,
                 [LoginPacketType.EnableSpwResult] = HandleEnableSpwResult,
@@ -287,28 +288,56 @@ namespace HaCreator.MapSimulator.Managers
                 return false;
             }
 
-            string normalized = text.Trim().Replace("-", string.Empty).Replace("_", string.Empty);
+            string trimmed = text.Trim();
+            int namespaceSeparatorIndex = Math.Max(trimmed.LastIndexOf("::", StringComparison.Ordinal), trimmed.LastIndexOf('.'));
+            if (namespaceSeparatorIndex >= 0 && namespaceSeparatorIndex + 1 < trimmed.Length)
+            {
+                trimmed = trimmed[(namespaceSeparatorIndex + 1)..];
+            }
+
+            string normalized = trimmed.Replace("-", string.Empty).Replace("_", string.Empty);
             return normalized.ToLowerInvariant() switch
             {
                 "checkpassword" => Assign(LoginPacketType.CheckPasswordResult, out packetType),
+                "oncheckpasswordresult" => Assign(LoginPacketType.CheckPasswordResult, out packetType),
                 "guestlogin" or "guestidlogin" => Assign(LoginPacketType.GuestIdLoginResult, out packetType),
+                "onguestidloginresult" => Assign(LoginPacketType.GuestIdLoginResult, out packetType),
                 "accountinfo" => Assign(LoginPacketType.AccountInfoResult, out packetType),
+                "onaccountinforesult" => Assign(LoginPacketType.AccountInfoResult, out packetType),
                 "checkuserlimit" or "userlimit" => Assign(LoginPacketType.CheckUserLimitResult, out packetType),
+                "oncheckuserlimitresult" => Assign(LoginPacketType.CheckUserLimitResult, out packetType),
                 "setaccount" => Assign(LoginPacketType.SetAccountResult, out packetType),
+                "onsetaccountresult" => Assign(LoginPacketType.SetAccountResult, out packetType),
                 "confirmeula" or "eula" => Assign(LoginPacketType.ConfirmEulaResult, out packetType),
+                "onconfirmeularesult" => Assign(LoginPacketType.ConfirmEulaResult, out packetType),
                 "checkpincode" or "checkpin" or "pic" => Assign(LoginPacketType.CheckPinCodeResult, out packetType),
+                "oncheckpincoderesult" => Assign(LoginPacketType.CheckPinCodeResult, out packetType),
                 "updatepincode" or "updatepin" or "updatepic" => Assign(LoginPacketType.UpdatePinCodeResult, out packetType),
+                "onupdatepincoderesult" => Assign(LoginPacketType.UpdatePinCodeResult, out packetType),
                 "worldinfo" or "worldinformation" => Assign(LoginPacketType.WorldInformation, out packetType),
+                "onworldinformation" => Assign(LoginPacketType.WorldInformation, out packetType),
                 "selectworld" => Assign(LoginPacketType.SelectWorldResult, out packetType),
+                "onselectworldresult" => Assign(LoginPacketType.SelectWorldResult, out packetType),
                 "selectchar" or "selectcharacter" => Assign(LoginPacketType.SelectCharacterResult, out packetType),
+                "onselectcharacterresult" => Assign(LoginPacketType.SelectCharacterResult, out packetType),
+                "checkduplicatedid" or "checkduplicateid" or "checkduplicate" or "checkdup" => Assign(LoginPacketType.CheckDuplicatedIdResult, out packetType),
+                "oncheckduplicatedidresult" => Assign(LoginPacketType.CheckDuplicatedIdResult, out packetType),
                 "newcharresult" or "createnewcharacter" or "createnewcharacterresult" => Assign(LoginPacketType.CreateNewCharacterResult, out packetType),
+                "oncreatenewcharacterresult" => Assign(LoginPacketType.CreateNewCharacterResult, out packetType),
                 "deletechar" or "deletecharacter" or "deletecharacterresult" => Assign(LoginPacketType.DeleteCharacterResult, out packetType),
+                "ondeletecharacterresult" => Assign(LoginPacketType.DeleteCharacterResult, out packetType),
                 "enablespw" => Assign(LoginPacketType.EnableSpwResult, out packetType),
+                "onenablespwresult" => Assign(LoginPacketType.EnableSpwResult, out packetType),
                 "viewallchar" or "viewallcharacters" or "vac" => Assign(LoginPacketType.ViewAllCharResult, out packetType),
+                "onviewallcharresult" => Assign(LoginPacketType.ViewAllCharResult, out packetType),
                 "recommendworld" => Assign(LoginPacketType.RecommendWorldMessage, out packetType),
+                "onrecommendworldmessage" => Assign(LoginPacketType.RecommendWorldMessage, out packetType),
                 "latestworld" or "latestconnectedworld" => Assign(LoginPacketType.LatestConnectedWorld, out packetType),
+                "onlatestconnectedworld" => Assign(LoginPacketType.LatestConnectedWorld, out packetType),
                 "extracharinfo" => Assign(LoginPacketType.ExtraCharInfoResult, out packetType),
+                "onextracharinforesult" => Assign(LoginPacketType.ExtraCharInfoResult, out packetType),
                 "checkspw" => Assign(LoginPacketType.CheckSpwResult, out packetType),
+                "oncheckspwresult" => Assign(LoginPacketType.CheckSpwResult, out packetType),
                 _ => Enum.TryParse(text, true, out packetType),
             };
         }
@@ -379,6 +408,11 @@ namespace HaCreator.MapSimulator.Managers
             CharacterSelectReady = true;
             ScheduleStepChange(LoginStep.ViewAllCharacters, currentTickCount, DefaultStepChangeDelayMs, "ViewAllCharResult");
             LastEventSummary = "Received view-all-character data and scheduled the expanded roster step.";
+        }
+
+        private void HandleCheckDuplicatedIdResult(int currentTickCount)
+        {
+            LastEventSummary = "Received CheckDuplicatedIdResult for the login new-character flow.";
         }
 
         private void HandleCreateNewCharacterResult(int currentTickCount)

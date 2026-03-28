@@ -7,6 +7,7 @@ using HaCreator.MapEditor.Instance;
 using HaCreator.MapSimulator.Character;
 using HaCreator.MapSimulator.Interaction;
 using HaCreator.MapSimulator.Managers;
+using HaCreator.MapSimulator.Pools;
 using MapleLib.Converters;
 using MapleLib.PacketLib;
 using MapleLib.WzLib;
@@ -42,16 +43,7 @@ namespace HaCreator.MapSimulator.Fields
     /// </summary>
     public class AriantArenaField
     {
-        private sealed class RemoteParticipant
-        {
-            public int? CharacterId { get; init; }
-            public string Name { get; init; }
-            public CharacterBuild Build { get; init; }
-            public CharacterAssembler Assembler { get; init; }
-            public Vector2 Position { get; set; }
-            public bool FacingRight { get; set; } = true;
-            public string ActionName { get; set; } = CharacterPart.GetActionString(CharacterAction.Stand1);
-        }
+        private const string AriantRemoteSourceTag = "ariantarena";
         private const int MaxRankEntries = 6;
         private const int MaxScore = 9999;
         private const int PacketTypeUserEnterField = 179;
@@ -72,8 +64,6 @@ namespace HaCreator.MapSimulator.Fields
         private readonly List<AriantArenaScoreEntry> _entries = new();
         private readonly List<IDXObject> _resultFrames = new();
         private readonly List<IDXObject> _rankIcons = new();
-        private readonly Dictionary<string, RemoteParticipant> _remoteParticipants = new(StringComparer.OrdinalIgnoreCase);
-        private readonly Dictionary<int, string> _remoteParticipantNamesById = new();
         private GraphicsDevice _graphicsDevice;
         private bool _assetsLoaded;
         private bool _isActive;
@@ -84,6 +74,7 @@ namespace HaCreator.MapSimulator.Fields
         private int _resultVisibleUntil;
         private int _scoreRefreshSerial;
         private int _localPlayerJob;
+        private RemoteUserActorPool _remoteUserPool;
         private SoundManager _soundManager;
         private Func<LoginAvatarLook, string, CharacterBuild> _remoteBuildFactory;
         private string _resultSoundKey;
@@ -93,7 +84,7 @@ namespace HaCreator.MapSimulator.Fields
         public bool IsActive => _isActive;
         public IReadOnlyList<AriantArenaScoreEntry> Entries => _entries;
         public int ScoreRefreshSerial => _scoreRefreshSerial;
-        public int RemoteParticipantCount => _remoteParticipants.Count;
+        public int RemoteParticipantCount => CountAriantRemoteParticipants();
         public void Initialize(
             GraphicsDevice graphicsDevice,
             SoundManager soundManager = null,
@@ -103,6 +94,10 @@ namespace HaCreator.MapSimulator.Fields
             _soundManager = soundManager;
             _remoteBuildFactory = remoteBuildFactory;
             EnsureAssetsLoaded();
+        }
+        public void SetRemoteUserPool(RemoteUserActorPool remoteUserPool)
+        {
+            _remoteUserPool = remoteUserPool;
         }
         public void Enable()
         {
@@ -115,8 +110,7 @@ namespace HaCreator.MapSimulator.Fields
             _scoreRefreshSerial = 0;
             _lastResultMessage = null;
             _lastPacketType = null;
-            _remoteParticipants.Clear();
-            _remoteParticipantNamesById.Clear();
+            ClearRemoteParticipants();
             EnsureAssetsLoaded();
         }
         public void SetLocalPlayerState(string playerName, int jobId)
@@ -149,7 +143,7 @@ namespace HaCreator.MapSimulator.Fields
                     case PacketTypeUserLeaveField:
                         return TryApplyRemoteLeavePacket(payload, out errorMessage);
                     case PacketTypeUserMove:
-                        return TryApplyRemoteMovePacket(payload, out errorMessage);
+                        return TryApplyRemoteMovePacket(payload, currentTimeMs, out errorMessage);
                     case PacketTypeSetActivePortableChair:
                         return TryApplyRemoteChairPacket(payload, out errorMessage);
                     case PacketTypeAvatarModified:
@@ -265,36 +259,18 @@ namespace HaCreator.MapSimulator.Fields
                 return;
             }
 
-            string normalizedName = build.Name.Trim();
-            if (_remoteParticipants.TryGetValue(normalizedName, out RemoteParticipant existingParticipant)
-                && existingParticipant.CharacterId.HasValue
-                && (!characterId.HasValue || existingParticipant.CharacterId.Value != characterId.Value))
-            {
-                _remoteParticipantNamesById.Remove(existingParticipant.CharacterId.Value);
-            }
-
-            if (characterId.HasValue
-                && _remoteParticipantNamesById.TryGetValue(characterId.Value, out string previousName)
-                && !string.Equals(previousName, normalizedName, StringComparison.OrdinalIgnoreCase))
-            {
-                _remoteParticipants.Remove(previousName);
-            }
-
-            _remoteParticipants[normalizedName] = new RemoteParticipant
-            {
-                CharacterId = characterId,
-                Name = normalizedName,
-                Build = build,
-                Assembler = new CharacterAssembler(build),
-                Position = position,
-                FacingRight = facingRight,
-                ActionName = NormalizeRemoteActionName(actionName)
-            };
-
-            if (characterId.HasValue)
-            {
-                _remoteParticipantNamesById[characterId.Value] = normalizedName;
-            }
+            int resolvedCharacterId = characterId ?? ResolveSyntheticRemoteParticipantId(build.Name);
+            CharacterBuild remoteBuild = build.Clone();
+            remoteBuild.Name = string.IsNullOrWhiteSpace(remoteBuild.Name) ? build.Name.Trim() : remoteBuild.Name.Trim();
+            _remoteUserPool?.TryAddOrUpdate(
+                resolvedCharacterId,
+                remoteBuild,
+                position,
+                out _,
+                facingRight,
+                NormalizeRemoteActionName(actionName),
+                AriantRemoteSourceTag,
+                isVisibleInWorld: true);
         }
 
         public bool TryMoveRemoteParticipant(string name, Vector2 position, bool? facingRight, string actionName, out string message)
@@ -311,33 +287,35 @@ namespace HaCreator.MapSimulator.Fields
                 message = "Remote Ariant actor name is required.";
                 return false;
             }
-            if (!_remoteParticipants.TryGetValue(normalizedName, out RemoteParticipant participant))
+            if (!TryGetRemoteActorByName(normalizedName, out RemoteUserActor participant))
             {
                 message = $"Remote Ariant actor '{normalizedName}' does not exist.";
                 return false;
             }
-            participant.Position = position;
-            if (facingRight.HasValue)
-            {
-                participant.FacingRight = facingRight.Value;
-            }
-            if (!string.IsNullOrWhiteSpace(actionName))
-            {
-                participant.ActionName = NormalizeRemoteActionName(actionName);
-            }
-            return true;
+
+            return _remoteUserPool.TryMove(
+                participant.CharacterId,
+                position,
+                facingRight,
+                string.IsNullOrWhiteSpace(actionName) ? null : NormalizeRemoteActionName(actionName),
+                out message);
         }
 
         public bool TryMoveRemoteParticipant(int characterId, Vector2 position, bool? facingRight, string actionName, out string message)
         {
             message = null;
-            if (!_remoteParticipantNamesById.TryGetValue(characterId, out string participantName))
+            if (!TryGetRemoteActor(characterId, out _))
             {
                 message = $"Remote Ariant actor id {characterId} does not exist.";
                 return false;
             }
 
-            return TryMoveRemoteParticipant(participantName, position, facingRight, actionName, out message);
+            return _remoteUserPool.TryMove(
+                characterId,
+                position,
+                facingRight,
+                string.IsNullOrWhiteSpace(actionName) ? null : NormalizeRemoteActionName(actionName),
+                out message);
         }
 
         public bool RemoveRemoteParticipant(string name)
@@ -348,35 +326,28 @@ namespace HaCreator.MapSimulator.Fields
             }
 
             string normalizedName = name.Trim();
-            if (!_remoteParticipants.TryGetValue(normalizedName, out RemoteParticipant participant))
+            if (!TryGetRemoteActorByName(normalizedName, out RemoteUserActor participant))
             {
                 return false;
             }
 
-            if (participant.CharacterId.HasValue)
-            {
-                _remoteParticipantNamesById.Remove(participant.CharacterId.Value);
-            }
-
-            return _remoteParticipants.Remove(normalizedName);
+            return _remoteUserPool.TryRemove(participant.CharacterId, out _);
         }
 
         public bool RemoveRemoteParticipant(int characterId)
         {
-            return _remoteParticipantNamesById.TryGetValue(characterId, out string participantName)
-                && RemoveRemoteParticipant(participantName);
+            return TryGetRemoteActor(characterId, out _)
+                && _remoteUserPool.TryRemove(characterId, out _);
         }
 
         public void ClearRemoteParticipants()
         {
-            _remoteParticipants.Clear();
-            _remoteParticipantNamesById.Clear();
+            _remoteUserPool?.RemoveBySourceTag(AriantRemoteSourceTag);
         }
 
         public bool TryGetRemoteParticipant(string name, out AriantArenaRemoteParticipantSnapshot snapshot)
         {
-            if (!string.IsNullOrWhiteSpace(name)
-                && _remoteParticipants.TryGetValue(name.Trim(), out RemoteParticipant participant))
+            if (TryGetRemoteActorByName(name, out RemoteUserActor participant))
             {
                 snapshot = new AriantArenaRemoteParticipantSnapshot(
                     participant.Name,
@@ -391,9 +362,14 @@ namespace HaCreator.MapSimulator.Fields
 
         public bool TryGetRemoteParticipant(int characterId, out AriantArenaRemoteParticipantSnapshot snapshot)
         {
-            if (_remoteParticipantNamesById.TryGetValue(characterId, out string participantName))
+            if (TryGetRemoteActor(characterId, out RemoteUserActor participant))
             {
-                return TryGetRemoteParticipant(participantName, out snapshot);
+                snapshot = new AriantArenaRemoteParticipantSnapshot(
+                    participant.Name,
+                    participant.Position,
+                    participant.FacingRight,
+                    participant.ActionName);
+                return true;
             }
 
             snapshot = default;
@@ -438,7 +414,6 @@ namespace HaCreator.MapSimulator.Fields
             {
                 return;
             }
-            DrawRemoteParticipants(spriteBatch, skeletonMeshRenderer, mapShiftX, mapShiftY, centerX, centerY, tickCount, font);
             if (_showScoreboard && font != null)
             {
                 DrawScoreboard(spriteBatch, skeletonMeshRenderer, gameTime, font);
@@ -462,8 +437,7 @@ namespace HaCreator.MapSimulator.Fields
             _lastResultMessage = null;
             _localPlayerName = null;
             _lastPacketType = null;
-            _remoteParticipants.Clear();
-            _remoteParticipantNamesById.Clear();
+            ClearRemoteParticipants();
         }
         public string DescribeStatus()
         {
@@ -474,7 +448,7 @@ namespace HaCreator.MapSimulator.Fields
             string leaderText = _entries.Count == 0
                 ? "no scores"
                 : string.Join(", ", _entries.Take(MaxRankEntries).Select((entry, index) => $"{index + 1}.{entry.Name}={entry.Score}"));
-            return $"Ariant Arena active, {_entries.Count} score row(s), remoteActors={_remoteParticipants.Count}, result={(_showResult ? "showing" : "idle")}, refresh={_scoreRefreshSerial}, lastPacket={(_lastPacketType?.ToString() ?? "None")}, {leaderText}";
+            return $"Ariant Arena active, {_entries.Count} score row(s), remoteActors={CountAriantRemoteParticipants()}, result={(_showResult ? "showing" : "idle")}, refresh={_scoreRefreshSerial}, lastPacket={(_lastPacketType?.ToString() ?? "None")}, {leaderText}";
         }
         private bool ShouldSuppressLocalRankEntry(string normalizedName)
         {
@@ -510,45 +484,6 @@ namespace HaCreator.MapSimulator.Fields
                 }
                 DrawOutlinedText(spriteBatch, font, entry.Name, new Vector2(NameX, textY), new Color(20, 20, 20), new Color(204, 236, 255));
                 DrawOutlinedText(spriteBatch, font, entry.Score.ToString(), new Vector2(ScoreX, textY), new Color(20, 20, 20), new Color(255, 222, 112));
-            }
-        }
-        private void DrawRemoteParticipants(
-            SpriteBatch spriteBatch,
-            SkeletonMeshRenderer skeletonMeshRenderer,
-            int mapShiftX,
-            int mapShiftY,
-            int centerX,
-            int centerY,
-            int tickCount,
-            SpriteFont font)
-        {
-            if (_remoteParticipants.Count == 0)
-            {
-                return;
-            }
-            foreach (RemoteParticipant participant in _remoteParticipants.Values
-                .OrderBy(entry => entry.Position.Y)
-                .ThenBy(entry => entry.Name, StringComparer.OrdinalIgnoreCase))
-            {
-                AssembledFrame frame = participant.Assembler.GetFrameAtTime(participant.ActionName, tickCount)
-                    ?? participant.Assembler.GetFrameAtTime(CharacterPart.GetActionString(CharacterAction.Stand1), tickCount);
-                if (frame == null)
-                {
-                    continue;
-                }
-                int screenX = (int)MathF.Round(participant.Position.X) - mapShiftX + centerX;
-                int screenY = (int)MathF.Round(participant.Position.Y) - mapShiftY + centerY;
-                frame.Draw(spriteBatch, skeletonMeshRenderer, screenX, screenY, participant.FacingRight, Color.White);
-                if (font == null)
-                {
-                    continue;
-                }
-                Vector2 textSize = font.MeasureString(participant.Name);
-                float topY = screenY - frame.FeetOffset + frame.Bounds.Top;
-                Vector2 textPosition = new Vector2(
-                    screenX - (textSize.X * 0.5f),
-                    topY - textSize.Y - 6f);
-                DrawOutlinedText(spriteBatch, font, participant.Name, textPosition, Color.Black, new Color(255, 242, 178));
             }
         }
         private void DrawResult(SpriteBatch spriteBatch, SkeletonMeshRenderer skeletonMeshRenderer, GameTime gameTime, Texture2D pixelTexture, SpriteFont font)
@@ -751,7 +686,7 @@ namespace HaCreator.MapSimulator.Fields
             UpsertRemoteParticipant(
                 build,
                 spawn.Position,
-                facingRight: true,
+                facingRight: DecodeFacingRight(spawn.MoveAction),
                 ResolveRemoteActionName(spawn.MoveAction, spawn.PortableChairItemId),
                 spawn.CharacterId);
             return true;
@@ -774,19 +709,25 @@ namespace HaCreator.MapSimulator.Fields
             return true;
         }
 
-        private bool TryApplyRemoteMovePacket(byte[] payload, out string errorMessage)
+        private bool TryApplyRemoteMovePacket(byte[] payload, int currentTimeMs, out string errorMessage)
         {
             errorMessage = null;
-            if (!TryDecodeRemoteMovePacket(payload, out AriantArenaRemoteMovePacket move, out errorMessage))
+            if (!RemoteUserPacketCodec.TryParseMove(payload, currentTimeMs, out RemoteUserMovePacket move, out errorMessage))
             {
                 return false;
             }
 
-            return TryMoveRemoteParticipant(
+            if (!TryGetRemoteActor(move.CharacterId, out _))
+            {
+                errorMessage = $"Remote Ariant actor id {move.CharacterId} does not exist.";
+                return false;
+            }
+
+            return _remoteUserPool.TryApplyMoveSnapshot(
                 move.CharacterId,
-                move.Position,
-                facingRight: null,
-                ResolveRemoteActionName(move.MoveAction, portableChairItemId: 0),
+                move.Snapshot,
+                move.MoveAction,
+                currentTimeMs,
                 out errorMessage);
         }
 
@@ -798,21 +739,13 @@ namespace HaCreator.MapSimulator.Fields
                 return false;
             }
 
-            if (!TryGetRemoteParticipant(chair.CharacterId, out AriantArenaRemoteParticipantSnapshot snapshot))
+            if (!TryGetRemoteActor(chair.CharacterId, out _))
             {
                 errorMessage = $"Remote Ariant actor id {chair.CharacterId} does not exist.";
                 return false;
             }
 
-            string actionName = chair.PortableChairItemId > 0
-                ? CharacterPart.GetActionString(CharacterAction.Sit)
-                : CharacterPart.GetActionString(CharacterAction.Stand1);
-            return TryMoveRemoteParticipant(
-                chair.CharacterId,
-                snapshot.Position,
-                facingRight: null,
-                actionName,
-                out errorMessage);
+            return _remoteUserPool.TrySetPortableChair(chair.CharacterId, chair.PortableChairItemId > 0 ? chair.PortableChairItemId : null, out errorMessage);
         }
 
         private bool TryApplyRemoteAvatarModifiedPacket(byte[] payload, out string errorMessage)
@@ -828,8 +761,7 @@ namespace HaCreator.MapSimulator.Fields
                 return true;
             }
 
-            if (!_remoteParticipantNamesById.TryGetValue(avatarUpdate.CharacterId, out string participantName)
-                || !_remoteParticipants.TryGetValue(participantName, out RemoteParticipant participant))
+            if (!TryGetRemoteActor(avatarUpdate.CharacterId, out RemoteUserActor participant))
             {
                 errorMessage = $"Remote Ariant actor id {avatarUpdate.CharacterId} does not exist.";
                 return false;
@@ -844,13 +776,15 @@ namespace HaCreator.MapSimulator.Fields
                 return false;
             }
 
-            UpsertRemoteParticipant(
+            return _remoteUserPool.TryAddOrUpdate(
+                avatarUpdate.CharacterId,
                 build,
                 participant.Position,
+                out errorMessage,
                 participant.FacingRight,
                 participant.ActionName,
-                avatarUpdate.CharacterId);
-            return true;
+                AriantRemoteSourceTag,
+                isVisibleInWorld: true);
         }
 
         private CharacterBuild CreateRemoteBuildFromAvatarLook(string actorName, LoginAvatarLook avatarLook, out string errorMessage)
@@ -944,122 +878,6 @@ namespace HaCreator.MapSimulator.Fields
             catch (EndOfStreamException)
             {
                 errorMessage = "Ariant remote actor packet ended before the character id was fully read.";
-                return false;
-            }
-        }
-
-        private static bool TryDecodeRemoteMovePacket(byte[] payload, out AriantArenaRemoteMovePacket packet, out string errorMessage)
-        {
-            packet = default;
-            errorMessage = null;
-            if (!TryCreatePacketReader(payload, PacketTypeUserMove, out PacketReader reader, out errorMessage))
-            {
-                return false;
-            }
-
-            try
-            {
-                int characterId = reader.ReadInt();
-                short x = reader.ReadShort();
-                short y = reader.ReadShort();
-                reader.ReadShort();
-                reader.ReadShort();
-                int movementCount = reader.ReadByte();
-                byte moveAction = 0;
-                Vector2 position = new Vector2(x, y);
-
-                for (int i = 0; i < movementCount; i++)
-                {
-                    byte movementType = reader.ReadByte();
-                    short nextX = x;
-                    short nextY = y;
-
-                    switch (movementType)
-                    {
-                        case 0:
-                        case 5:
-                        case 12:
-                        case 14:
-                        case 35:
-                        case 36:
-                            nextX = reader.ReadShort();
-                            nextY = reader.ReadShort();
-                            reader.Skip(6);
-                            if (movementType == 12)
-                            {
-                                reader.ReadShort();
-                            }
-                            reader.Skip(4);
-                            break;
-
-                        case 1:
-                        case 2:
-                        case 13:
-                        case 16:
-                        case 18:
-                        case 31:
-                        case 32:
-                        case 33:
-                        case 34:
-                            reader.Skip(4);
-                            break;
-
-                        case 3:
-                        case 4:
-                        case 6:
-                        case 7:
-                        case 8:
-                        case 10:
-                            nextX = reader.ReadShort();
-                            nextY = reader.ReadShort();
-                            reader.Skip(2);
-                            break;
-
-                        case 9:
-                            reader.ReadByte();
-                            break;
-
-                        case 11:
-                            reader.Skip(6);
-                            break;
-
-                        case 17:
-                            nextX = reader.ReadShort();
-                            nextY = reader.ReadShort();
-                            reader.Skip(4);
-                            break;
-
-                        case 20:
-                        case 21:
-                        case 22:
-                        case 23:
-                        case 24:
-                        case 25:
-                        case 26:
-                        case 27:
-                        case 28:
-                        case 29:
-                        case 30:
-                            break;
-
-                        default:
-                            errorMessage = $"Unsupported Ariant remote move fragment type: {movementType}";
-                            return false;
-                    }
-
-                    moveAction = reader.ReadByte();
-                    reader.ReadShort();
-                    x = nextX;
-                    y = nextY;
-                    position = new Vector2(nextX, nextY);
-                }
-
-                packet = new AriantArenaRemoteMovePacket(characterId, position, moveAction);
-                return true;
-            }
-            catch (EndOfStreamException)
-            {
-                errorMessage = "Ariant remote move packet ended before decoding completed.";
                 return false;
             }
         }
@@ -1183,6 +1001,56 @@ namespace HaCreator.MapSimulator.Fields
             };
         }
 
+        private static bool DecodeFacingRight(byte moveAction)
+        {
+            return (moveAction & 1) == 0;
+        }
+
+        private static int ResolveSyntheticRemoteParticipantId(string actorName)
+        {
+            string normalized = actorName?.Trim();
+            if (string.IsNullOrWhiteSpace(normalized))
+            {
+                return 0x40000001;
+            }
+
+            int hash = StringComparer.OrdinalIgnoreCase.GetHashCode($"{AriantRemoteSourceTag}:{normalized}");
+            if (hash == int.MinValue)
+            {
+                hash = int.MaxValue;
+            }
+
+            return 0x40000000 | (Math.Abs(hash) & 0x3FFFFFFF);
+        }
+
+        private int CountAriantRemoteParticipants()
+        {
+            return _remoteUserPool?.Actors.Count(IsAriantRemoteActor) ?? 0;
+        }
+
+        private bool TryGetRemoteActorByName(string name, out RemoteUserActor actor)
+        {
+            actor = null;
+            return !string.IsNullOrWhiteSpace(name)
+                && _remoteUserPool != null
+                && _remoteUserPool.TryGetActorByName(name.Trim(), out actor)
+                && IsAriantRemoteActor(actor);
+        }
+
+        private bool TryGetRemoteActor(int characterId, out RemoteUserActor actor)
+        {
+            actor = null;
+            return _remoteUserPool != null
+                && _remoteUserPool.TryGetActor(characterId, out actor)
+                && IsAriantRemoteActor(actor);
+        }
+
+        private static bool IsAriantRemoteActor(RemoteUserActor actor)
+        {
+            return actor != null
+                && string.Equals(actor.SourceTag, AriantRemoteSourceTag, StringComparison.OrdinalIgnoreCase);
+        }
+
         private int GetNextIconIndex()
         {
             if (MaxRankEntries <= 0)
@@ -1258,7 +1126,6 @@ namespace HaCreator.MapSimulator.Fields
     public readonly record struct AriantArenaScoreUpdate(string UserName, int Score);
     public readonly record struct AriantArenaRemoteParticipantSnapshot(string Name, Vector2 Position, bool FacingRight, string ActionName);
     internal readonly record struct AriantArenaRemoteSpawnPacket(int CharacterId, string Name, LoginAvatarLook AvatarLook, Vector2 Position, byte MoveAction, int PortableChairItemId);
-    internal readonly record struct AriantArenaRemoteMovePacket(int CharacterId, Vector2 Position, byte MoveAction);
     internal readonly record struct AriantArenaRemoteChairPacket(int CharacterId, int PortableChairItemId);
     internal readonly record struct AriantArenaRemoteAvatarModifiedPacket(int CharacterId, LoginAvatarLook AvatarLook);
     #endregion

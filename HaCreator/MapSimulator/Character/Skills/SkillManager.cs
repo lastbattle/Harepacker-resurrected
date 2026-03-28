@@ -200,6 +200,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         }
 
         private const string GenericBuffIconKey = "united/buff";
+        private const string AnniversaryBuffIconKey = "united/anniversary";
         private const string ClientTimerSourceBuffExpire = "buff-expire";
         private const string ClientTimerSourceCycloneExpire = "cyclone-expire";
         private const string ClientTimerSourcePreparedRelease = "prepared-release";
@@ -216,18 +217,13 @@ namespace HaCreator.MapSimulator.Character.Skills
         private const int NightLordFlashJumpSkillId = 4111006;
         private const int ShadowerFlashJumpSkillId = 4211009;
         private const int DualBladeFlashJumpSkillId = 4321003;
-        private const int PageFireChargeSkillId = 1211004;
-        private const int PageIceChargeSkillId = 1211006;
-        private const int PageLightningChargeSkillId = 1211008;
-        private const int PaladinHolyChargeSkillId = 1221004;
-        private const int ThunderBreakerLightningChargeSkillId = 15101006;
-        private const int AranIceChargeSkillId = 21111005;
         private const int SwallowDigestDurationMs = 3000;
         private const int SwallowWriggleIntervalMs = 500;
         private const int WildHunterSwallowHoldStunMs = 30000;
         private const int AuraDotTickIntervalMs = 1000;
         private const int ExclusiveRequestThrottleMs = 300;
         private const int GenericBuffSortOrder = 999;
+        private const int GenericBuffPrimaryPriority = 999;
         private const string MaxHpBuffLabel = "MaxHP";
         private const string MaxMpBuffLabel = "MaxMP";
         private const string CraftBuffLabel = "Craft";
@@ -302,6 +298,8 @@ namespace HaCreator.MapSimulator.Character.Skills
 
         private static IReadOnlyDictionary<string, BuffTemporaryStatPresentation> ResolvedTemporaryStatPresentationCatalog =
             TemporaryStatPresentationCatalog;
+        private static IReadOnlyDictionary<string, BuffIconCatalogEntry> ResolvedBuffIconCatalog =
+            new Dictionary<string, BuffIconCatalogEntry>(StringComparer.OrdinalIgnoreCase);
 
         private static readonly (string Label, string[] Fragments)[] TemporaryStatTextAliases =
         {
@@ -376,9 +374,10 @@ namespace HaCreator.MapSimulator.Character.Skills
         private readonly List<ActiveHitEffect> _hitEffects = new();
         private readonly Dictionary<int, ActiveAffectedSkillPassive> _activeAffectedSkillPassives = new();
         private readonly Dictionary<int, int> _cooldowns = new(); // skillId -> lastCastTime
+        private readonly Dictionary<int, int> _serverCooldownExpireTimes = new(); // skillId -> absolute expire tick
         private readonly HashSet<int> _pendingCooldownCompletionNotifications = new();
         private PreparedSkill _preparedSkill;
-        private int _lastPreparedSkillRequestTime = int.MinValue;
+        private int _lastPreparedSkillExclusiveRequestTime = int.MinValue;
         private SkillCastInfo _currentCast;
         private SkillMountState _activeSkillMount;
         private bool _buffControlledFlyingAbility;
@@ -418,7 +417,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         public Action<IReadOnlyList<ClientSkillTimerExpiration>> OnClientSkillTimersExpiredBatch;
         public Action<int, int> OnClientSkillCancelRequested;
         public Action<int, int> OnClientSkillEffectRequested;
-        public Action<int, int> OnRepeatSkillModeEndRequested;
+        public Action<int, int, int> OnRepeatSkillModeEndRequested;
         public Action<SwallowAbsorbRequest> OnSwallowAbsorbRequested;
         public Action<Rectangle, int, int, int> OnAttackAreaResolved;
         public Action<string> OnMacroPartyNotifyRequested;
@@ -447,6 +446,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             if (buffIconCatalog == null || buffIconCatalog.Count == 0)
             {
                 ResolvedTemporaryStatPresentationCatalog = TemporaryStatPresentationCatalog;
+                ResolvedBuffIconCatalog = new Dictionary<string, BuffIconCatalogEntry>(StringComparer.OrdinalIgnoreCase);
                 return;
             }
 
@@ -460,6 +460,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
 
             ResolvedTemporaryStatPresentationCatalog = resolvedCatalog;
+            ResolvedBuffIconCatalog = new Dictionary<string, BuffIconCatalogEntry>(buffIconCatalog, StringComparer.OrdinalIgnoreCase);
         }
 
         public void SetMobPool(MobPool mobPool) => _mobPool = mobPool;
@@ -806,6 +807,11 @@ namespace HaCreator.MapSimulator.Character.Skills
             return -1;
         }
 
+        public bool IsSkillAssignedToDirectHotkey(int skillId)
+        {
+            return FindSkillSlot(skillId) >= 0;
+        }
+
         /// <summary>
         /// Get all hotkey configurations for saving
         /// Returns dictionary of slotIndex -> skillId
@@ -1040,6 +1046,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         private const int BATTLESHIP_TAMING_MOB_ID = 1932000;
         private const int MECHANIC_TAMING_MOB_ID = 1932016;
         private const int MECHANIC_KEYDOWN_MAX_DURATION_MS = 8000;
+        private const int CLIENT_VEHICLE_OWNERSHIP_GRACE_WINDOW_MS = 1000;
         private const int CYCLONE_SKILL_ID = 32121003;
         private const int MINE_SKILL_ID = 33101008;
         private const int SG88_SKILL_ID = 35121003;
@@ -1064,6 +1071,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         private const int TANK_REPEAT_ATTACK_DELAY_MS = 420;
         private const int OWNER_ATTACK_TARGET_MEMORY_MS = 1500;
         private const int SUMMON_BODY_CONTACT_COOLDOWN_MS = 700;
+        private const int SUMMON_PASSIVE_EFFECT_COOLDOWN_MS = 240;
         private const float TeslaTriangleMinimumEdgeLengthSq = 16f;
         private static readonly int[] WildHunterJaguarTamingMobCandidateIds =
         {
@@ -1081,6 +1089,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         private int _mineMovementDirection;
         private int _mineMovementStartTime;
         private RepeatSkillSustainState _activeRepeatSkillSustain;
+        private int _lastClientVehicleValidSkillId;
         private int _clientVehicleValidCount;
         private int _clientVehicleValidStartTime = int.MinValue;
         private readonly Dictionary<int, int> _recentOwnerAttackTargetTimes = new();
@@ -1182,6 +1191,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                     return false;
                 }
 
+                RecordPreparedSkillExclusiveRequest(currentTime);
                 ReleasePreparedSkill(currentTime);
                 return true;
             }
@@ -1260,6 +1270,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 && skillId == _preparedSkill.SkillId
                 && CanInputSourceControlPreparedSkill(_preparedSkill, keyIndex, ownerInputToken))
             {
+                RecordPreparedSkillExclusiveRequest(currentTime);
                 ReleasePreparedSkill(currentTime);
             }
         }
@@ -1316,6 +1327,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return false;
             }
 
+            RecordPreparedSkillExclusiveRequest(currentTime);
             OnClientSkillCancelRequested?.Invoke(cancelSkillId, skillId);
             return true;
         }
@@ -1386,19 +1398,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         /// </summary>
         public bool IsOnCooldown(int skillId, int currentTime)
         {
-            if (!_cooldowns.TryGetValue(skillId, out int lastCast))
-                return false;
-
-            var skill = GetSkillData(skillId);
-            if (skill == null)
-                return false;
-
-            int level = GetSkillLevel(skillId);
-            var levelData = skill.GetLevel(level);
-            if (levelData == null || levelData.Cooldown <= 0)
-                return false;
-
-            return currentTime - lastCast < levelData.Cooldown;
+            return GetCooldownRemaining(skillId, currentTime) > 0;
         }
 
         /// <summary>
@@ -1406,6 +1406,17 @@ namespace HaCreator.MapSimulator.Character.Skills
         /// </summary>
         public int GetCooldownRemaining(int skillId, int currentTime)
         {
+            if (_serverCooldownExpireTimes.TryGetValue(skillId, out int expireTime))
+            {
+                int overrideRemaining = Math.Max(0, expireTime - currentTime);
+                if (overrideRemaining <= 0)
+                {
+                    _serverCooldownExpireTimes.Remove(skillId);
+                }
+
+                return overrideRemaining;
+            }
+
             if (!_cooldowns.TryGetValue(skillId, out int lastCast))
                 return 0;
 
@@ -1447,6 +1458,42 @@ namespace HaCreator.MapSimulator.Character.Skills
             return activeSkillIds;
         }
 
+        public void SetServerCooldownRemaining(int skillId, int remainingMs, int currentTime)
+        {
+            if (skillId <= 0)
+            {
+                return;
+            }
+
+            if (remainingMs <= 0)
+            {
+                ClearServerCooldown(skillId);
+                return;
+            }
+
+            int expireTime = unchecked(currentTime + remainingMs);
+            _cooldowns[skillId] = currentTime;
+            _serverCooldownExpireTimes[skillId] = expireTime;
+            _pendingCooldownCompletionNotifications.Add(skillId);
+
+            SkillData skill = GetSkillData(skillId);
+            if (skill != null)
+            {
+                OnSkillCooldownStarted?.Invoke(skill, remainingMs, currentTime);
+            }
+        }
+
+        public void ClearServerCooldown(int skillId)
+        {
+            if (skillId <= 0)
+            {
+                return;
+            }
+
+            _serverCooldownExpireTimes.Remove(skillId);
+            _pendingCooldownCompletionNotifications.Remove(skillId);
+        }
+
         private void StartCast(SkillData skill, int level, int currentTime, int ownerHotkeySlot = -1, int ownerInputToken = 0)
         {
             var levelData = skill.GetLevel(level);
@@ -1475,7 +1522,12 @@ namespace HaCreator.MapSimulator.Character.Skills
             prepareActionName = ResolvePreparedAvatarActionName(skill, prepareActionName);
             int repeatReturnSkillId = ResolveRepeatSkillReturnSkillId(skill.SkillId);
 
-            ApplySkillCooldown(skill, levelData, currentTime);
+            bool defersExecutionResourceConsumption = DefersExecutionResourceConsumption(skill);
+            if (!defersExecutionResourceConsumption)
+            {
+                ApplySkillCooldown(skill, levelData, currentTime);
+            }
+
             ApplySkillMount(skill, levelData);
             TriggerSkillAnimation(skill, currentTime, prepareActionName);
             BeginRepeatSkillSustain(skill, levelData, currentTime, repeatReturnSkillId);
@@ -1497,7 +1549,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return;
             }
 
-            if (!TryConsumeSkillResources(levelData))
+            if (!defersExecutionResourceConsumption && !TryConsumeSkillResources(levelData))
                 return;
 
             if (skill.IsPrepareSkill)
@@ -1514,6 +1566,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             if (levelData.Cooldown > 0)
             {
                 _cooldowns[skill.SkillId] = currentTime;
+                _serverCooldownExpireTimes.Remove(skill.SkillId);
                 _pendingCooldownCompletionNotifications.Add(skill.SkillId);
                 OnSkillCooldownStarted?.Invoke(skill, levelData.Cooldown, currentTime);
             }
@@ -1543,6 +1596,11 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return false;
 
             return _player.HP > levelData.HpCon;
+        }
+
+        private static bool DefersExecutionResourceConsumption(SkillData skill)
+        {
+            return IsRocketBoosterSkill(skill);
         }
 
         private void TriggerSkillAnimation(SkillData skill, int currentTime, string actionNameOverride = null)
@@ -1594,29 +1652,13 @@ namespace HaCreator.MapSimulator.Character.Skills
         {
             for (int i = _buffs.Count - 1; i >= 0; i--)
             {
-                if (TryGetAfterImageChargeElement(_buffs[i]?.SkillId ?? 0, out int chargeElement))
+                if (AfterImageChargeSkillResolver.TryGetChargeElement(_buffs[i]?.SkillId ?? 0, out int chargeElement))
                 {
                     return chargeElement;
                 }
             }
 
             return 0;
-        }
-
-        private static bool TryGetAfterImageChargeElement(int skillId, out int chargeElement)
-        {
-            chargeElement = skillId switch
-            {
-                PageIceChargeSkillId => 1,
-                AranIceChargeSkillId => 1,
-                PageFireChargeSkillId => 2,
-                PageLightningChargeSkillId => 3,
-                ThunderBreakerLightningChargeSkillId => 3,
-                PaladinHolyChargeSkillId => 5,
-                _ => 0
-            };
-
-            return chargeElement > 0;
         }
 
         private static string ResolveSkillActionName(SkillData skill, string actionNameOverride = null)
@@ -1724,6 +1766,48 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
 
             return false;
+        }
+
+        private bool TryResolveClientVehicleOwnershipMountPart(SkillData skill, int skillId, out CharacterPart mountPart)
+        {
+            mountPart = null;
+            int resolvedSkillId = skill?.SkillId ?? skillId;
+
+            if (skill != null && TryResolveClientVehicleOwnershipMountItemId(skill, out int mountItemId))
+            {
+                mountPart = GetLoadedTamingMobPart(mountItemId);
+                if (mountPart?.Slot == EquipSlot.TamingMob)
+                {
+                    return true;
+                }
+            }
+
+            if (IsClientOwnedVehicleToggleSkill(resolvedSkillId))
+            {
+                mountPart = GetEquippedTamingMobPart();
+                return mountPart?.Slot == EquipSlot.TamingMob;
+            }
+
+            if (skill?.ClientInfoType == 13)
+            {
+                mountPart = GetEquippedTamingMobPart();
+                return mountPart?.Slot == EquipSlot.TamingMob;
+            }
+
+            return false;
+        }
+
+        private CharacterPart GetLoadedTamingMobPart(int itemId)
+        {
+            return itemId > 0 ? _tamingMobLoader?.Invoke(itemId) : null;
+        }
+
+        private CharacterPart GetEquippedTamingMobPart()
+        {
+            return _player?.Build?.Equipment != null
+                && _player.Build.Equipment.TryGetValue(EquipSlot.TamingMob, out CharacterPart mountPart)
+                ? mountPart
+                : null;
         }
 
         private int ResolveWildHunterJaguarMountItemId()
@@ -1888,6 +1972,69 @@ namespace HaCreator.MapSimulator.Character.Skills
                    || string.Equals(actionName, "getoff2", StringComparison.OrdinalIgnoreCase)
                    || string.Equals(actionName, "herbalism_mechanic", StringComparison.OrdinalIgnoreCase)
                    || string.Equals(actionName, "mining_mechanic", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private void UpdateClientOwnedVehicleTamingMobState(int currentTime)
+        {
+            if (_player == null)
+            {
+                return;
+            }
+
+            CharacterPart mountPart = null;
+            bool isActive = false;
+
+            for (int i = _buffs.Count - 1; i >= 0; i--)
+            {
+                SkillData activeVehicleSkill = _buffs[i]?.SkillData;
+                if (!IsClientOwnedVehicleSkill(activeVehicleSkill))
+                {
+                    continue;
+                }
+
+                if (TryResolveClientVehicleOwnershipMountPart(activeVehicleSkill, activeVehicleSkill.SkillId, out mountPart))
+                {
+                    isActive = true;
+                    break;
+                }
+            }
+
+            if (!isActive
+                && IsClientVehicleOwnershipGraceWindowActive(currentTime)
+                && TryResolveClientVehicleOwnershipMountPart(null, _lastClientVehicleValidSkillId, out mountPart))
+            {
+                isActive = true;
+            }
+
+            if (!isActive)
+            {
+                _clientVehicleValidCount = 0;
+                _clientVehicleValidStartTime = int.MinValue;
+                _lastClientVehicleValidSkillId = 0;
+            }
+
+            _player.SetClientOwnedVehicleTamingMobState(mountPart, isActive);
+        }
+
+        private bool IsClientVehicleOwnershipGraceWindowActive(int currentTime)
+        {
+            return _clientVehicleValidCount > 0
+                   && currentTime >= _clientVehicleValidStartTime
+                   && currentTime - _clientVehicleValidStartTime <= CLIENT_VEHICLE_OWNERSHIP_GRACE_WINDOW_MS;
+        }
+
+        private static bool IsClientOwnedVehicleSkill(SkillData skill)
+        {
+            return skill?.ClientInfoType == 13 || IsClientOwnedVehicleToggleSkill(skill?.SkillId ?? 0);
+        }
+
+        private static bool IsClientOwnedVehicleToggleSkill(int skillId)
+        {
+            return skillId == 1004
+                   || skillId == 10001004
+                   || skillId == 20001004
+                   || skillId == 20011004
+                   || skillId == 30001004;
         }
 
         private void TransferSkillMountOwnership(int previousSkillId, int nextSkillId)
@@ -2064,6 +2211,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 _clientVehicleValidStartTime = currentTime;
             }
 
+            _lastClientVehicleValidSkillId = skillId;
             _clientVehicleValidCount++;
             return true;
         }
@@ -2264,6 +2412,11 @@ namespace HaCreator.MapSimulator.Character.Skills
 
         private int ResolveClientCancelRequestSkillId(int skillId)
         {
+            if (skillId <= 0)
+            {
+                return skillId;
+            }
+
             SkillData skill = GetSkillData(skillId);
             if (skill?.AffectedSkillId > 0
                 && (skill.ClientInfoType == 50 || skill.ClientInfoType == 51))
@@ -2271,7 +2424,26 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return skill.AffectedSkillId;
             }
 
+            SkillData dummyParent = FindClientCancelDummyParentSkill(skillId);
+            if (dummyParent != null)
+            {
+                return dummyParent.SkillId;
+            }
+
             return skillId;
+        }
+
+        private SkillData FindClientCancelDummyParentSkill(int skillId)
+        {
+            if (skillId <= 0 || _availableSkills == null || _availableSkills.Count == 0)
+            {
+                return null;
+            }
+
+            return _availableSkills.FirstOrDefault(candidate =>
+                candidate?.SkillId > 0
+                && candidate.SkillId != skillId
+                && candidate.LinksDummySkill(skillId));
         }
 
         private static bool IsVehicleValidCancelSkill(int skillId)
@@ -2468,11 +2640,39 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return;
             }
 
+            if (TryResolvePendingTankSiegeModeEndFromObservedReturnMode(currentTime))
+            {
+                return;
+            }
+
             if (!_player.HasSkillAvatarTransform(RepeatSkillTankSiegeId))
             {
                 CancelClientSkillTimers(RepeatSkillTankSiegeId, ClientTimerSourceRepeatModeEndAck);
                 _activeRepeatSkillSustain = null;
             }
+        }
+
+        private bool TryResolvePendingTankSiegeModeEndFromObservedReturnMode(int currentTime)
+        {
+            if (_activeRepeatSkillSustain == null
+                || _activeRepeatSkillSustain.SkillId != RepeatSkillTankSiegeId
+                || !_activeRepeatSkillSustain.PendingModeEndRequest)
+            {
+                return false;
+            }
+
+            int returnSkillId = _activeRepeatSkillSustain.ReturnSkillId;
+            if (returnSkillId <= 0 || !_player.HasSkillAvatarTransform(returnSkillId))
+            {
+                return false;
+            }
+
+            CancelClientSkillTimers(RepeatSkillTankSiegeId, ClientTimerSourceRepeatModeEndAck);
+            SkillData returnSkill = GetSkillData(returnSkillId);
+            SkillLevelData returnLevelData = returnSkill?.GetLevel(GetSkillLevel(returnSkillId));
+            _activeRepeatSkillSustain = null;
+            BeginRepeatSkillSustain(returnSkill, returnLevelData, currentTime, 0);
+            return true;
         }
 
         private void BeginPendingTankSiegeModeEndRequest(RepeatSkillSustainState sustain, int currentTime, bool emitTimeoutEffect)
@@ -2497,7 +2697,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             sustain.PendingModeEndRequestTime = currentTime;
             sustain.IsDone = true;
             sustain.BranchPoint = 2;
-            OnRepeatSkillModeEndRequested?.Invoke(sustain.SkillId, sustain.ReturnSkillId);
+            OnRepeatSkillModeEndRequested?.Invoke(sustain.SkillId, sustain.ReturnSkillId, currentTime);
 
             if (OnRepeatSkillModeEndRequested == null)
             {
@@ -2548,6 +2748,11 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
 
             CancelClientSkillTimers(RepeatSkillTankSiegeId, ClientTimerSourceRepeatModeEndAck);
+
+            if (TryResolvePendingTankSiegeModeEndFromObservedReturnMode(currentTime))
+            {
+                return;
+            }
 
             if (!_player.HasSkillAvatarTransform(RepeatSkillTankSiegeId))
             {
@@ -2877,7 +3082,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         {
             if (HasConfirmedWildHunterSwallow())
             {
-                return TryExecuteWildHunterSwallowDigest(skill, currentTime);
+                return true;
             }
 
             if (HasPendingWildHunterSwallowAbsorb())
@@ -2943,11 +3148,6 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return true;
             }
 
-            _swallowState.IsDigesting = true;
-            _swallowState.DigestStartTime = currentTime;
-            _swallowState.DigestCompleteTime = currentTime + SwallowDigestDurationMs;
-            _swallowState.NextWriggleTime = currentTime + SwallowWriggleIntervalMs;
-
             target.AI.ApplyStatusEffect(
                 MobStatusEffect.Stun,
                 SwallowDigestDurationMs + SwallowWriggleIntervalMs,
@@ -2957,11 +3157,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 target.MovementInfo?.X ?? _player.X,
                 (target.MovementInfo?.Y ?? _player.Y) - 20f,
                 currentTime);
-            RegisterClientSkillTimer(
-                _swallowState.ParentSkillId,
-                ClientTimerSourceSwallowDigest,
-                _swallowState.DigestCompleteTime,
-                CompleteSwallowDigestFromClientTimer);
+            ActivateWildHunterSwallowDigestState(currentTime);
             return true;
         }
 
@@ -3198,9 +3394,9 @@ namespace HaCreator.MapSimulator.Character.Skills
         {
             var levelData = skill.GetLevel(level);
             int durationMs = GetPrepareDuration(skill, levelData);
-            KeyDownHudProfile hudProfile = ResolveKeyDownHudProfile(skill?.SkillId ?? 0);
+            PreparedSkillHudRules.PreparedSkillHudProfile hudProfile = PreparedSkillHudRules.ResolveProfile(skill?.SkillId ?? 0);
             bool usesReleaseTriggeredKeydown = UsesReleaseTriggeredKeydownExecution(skill);
-            _lastPreparedSkillRequestTime = currentTime;
+            RecordPreparedSkillExclusiveRequest(currentTime);
 
             _preparedSkill = new PreparedSkill
             {
@@ -3245,8 +3441,13 @@ namespace HaCreator.MapSimulator.Character.Skills
                 || skill.IsKeydownSkill
                 || UsesReleaseTriggeredKeydownExecution(skill);
             return isPreparedRequest
-                   && _lastPreparedSkillRequestTime != int.MinValue
-                   && currentTime - _lastPreparedSkillRequestTime < ExclusiveRequestThrottleMs;
+                   && _lastPreparedSkillExclusiveRequestTime != int.MinValue
+                   && currentTime - _lastPreparedSkillExclusiveRequestTime < ExclusiveRequestThrottleMs;
+        }
+
+        private void RecordPreparedSkillExclusiveRequest(int currentTime)
+        {
+            _lastPreparedSkillExclusiveRequestTime = currentTime;
         }
 
         private static bool CanInputSourceControlPreparedSkill(PreparedSkill prepared, int ownerHotkeySlot, int ownerInputToken)
@@ -3326,6 +3527,11 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return levelData.Y;
 
             return skill.Projectile != null ? 900 : 750;
+        }
+
+        private static PreparedSkillHudRules.PreparedSkillHudProfile ResolveKeyDownHudProfile(int skillId)
+        {
+            return PreparedSkillHudRules.ResolveProfile(skillId);
         }
 
         private void ReleasePreparedSkill(int currentTime)
@@ -3573,33 +3779,16 @@ namespace HaCreator.MapSimulator.Character.Skills
                     yield return "darkTornado";
                 }
             }
-        }
 
-        private static KeyDownHudProfile ResolveKeyDownHudProfile(int skillId)
-        {
-            return skillId switch
+            if (skill?.SkillId == 33101005)
             {
-                35121003 => new KeyDownHudProfile(true, "KeyDownBar4", 2000),
-                4341002 => new KeyDownHudProfile(true, "KeyDownBar1", 600),
-                5101004 => new KeyDownHudProfile(true, "KeyDownBar1", 1000),
-                15101003 => new KeyDownHudProfile(true, "KeyDownBar1", 1000),
-                14111006 => new KeyDownHudProfile(true, "KeyDownBar", 1000),
-                2121001 => new KeyDownHudProfile(true, "KeyDownBar", 1000),
-                2221001 => new KeyDownHudProfile(true, "KeyDownBar", 1000),
-                2321001 => new KeyDownHudProfile(true, "KeyDownBar", 1000),
-                3121004 => new KeyDownHudProfile(true, "KeyDownBar", 2000),
-                3221001 => new KeyDownHudProfile(true, "KeyDownBar", 900),
-                4341003 => new KeyDownHudProfile(true, "KeyDownBar", 1200),
-                5201002 => new KeyDownHudProfile(true, "KeyDownBar", 1000),
-                13111002 => new KeyDownHudProfile(true, "KeyDownBar", 1000),
-                22121000 => new KeyDownHudProfile(true, "KeyDownBar3", 500, PreparedSkillHudSurface.World, showText: false),
-                22151001 => new KeyDownHudProfile(true, "KeyDownBar2", 500, PreparedSkillHudSurface.World, showText: false),
-                33101005 => new KeyDownHudProfile(true, "KeyDownBar", 900),
-                33121009 => new KeyDownHudProfile(true, "KeyDownBar", 2000),
-                35001001 => new KeyDownHudProfile(true, "KeyDownBar", 2000),
-                35101009 => new KeyDownHudProfile(true, "KeyDownBar", 2000),
-                _ => new KeyDownHudProfile(true, "KeyDownBar", 0)
-            };
+                yield return "swallow_pre";
+
+                if (string.Equals(prepareActionName, "swallow", StringComparison.OrdinalIgnoreCase))
+                {
+                    yield return "swallow_loop";
+                }
+            }
         }
 
         private static int ResolveKeyDownMaxHoldDuration(int skillId)
@@ -3614,7 +3803,7 @@ namespace HaCreator.MapSimulator.Character.Skills
 
         private static bool UsesReleaseTriggeredKeydownExecution(SkillData skill)
         {
-            return skill?.SkillId == WildHunterSwallowSkillId;
+            return PreparedSkillHudRules.UsesReleaseTriggeredExecution(skill?.SkillId ?? 0);
         }
 
         private static bool PreservesPrepareActionDuringHold(SkillData skill)
@@ -3625,37 +3814,7 @@ namespace HaCreator.MapSimulator.Character.Skills
 
         private static PreparedSkillHudTextVariant ResolvePreparedSkillHudTextVariant(SkillData skill)
         {
-            if (skill?.SkillId == SG88_SKILL_ID)
-            {
-                return PreparedSkillHudTextVariant.Amplify;
-            }
-
-            if (skill?.SkillId == 4341002
-                || skill?.SkillId == 4341003
-                || UsesReleaseTriggeredKeydownExecution(skill))
-            {
-                return PreparedSkillHudTextVariant.ReleaseArmed;
-            }
-
-            return PreparedSkillHudTextVariant.Default;
-        }
-
-        private readonly struct KeyDownHudProfile
-        {
-            public KeyDownHudProfile(bool visible, string skinKey, int gaugeDurationMs, PreparedSkillHudSurface surface = PreparedSkillHudSurface.StatusBar, bool showText = true)
-            {
-                Visible = visible;
-                SkinKey = string.IsNullOrWhiteSpace(skinKey) ? "KeyDownBar" : skinKey;
-                GaugeDurationMs = gaugeDurationMs;
-                Surface = surface;
-                ShowText = showText;
-            }
-
-            public bool Visible { get; }
-            public string SkinKey { get; }
-            public int GaugeDurationMs { get; }
-            public PreparedSkillHudSurface Surface { get; }
-            public bool ShowText { get; }
+            return PreparedSkillHudRules.ResolveTextVariant(skill?.SkillId ?? 0);
         }
 
         private static SkillAnimation GetInitialCastEffect(SkillData skill)
@@ -3728,7 +3887,7 @@ namespace HaCreator.MapSimulator.Character.Skills
 
             if (UsesTransientMovementAvatarEffect(skill))
             {
-                return _player.ApplyTransientUnderFaceSkillAvatarEffect(skill.SkillId, skill.Effect, skill.EffectSecondary, currentTime);
+                return _player.ApplyTransientSkillAvatarEffect(skill.SkillId, skill.Effect, skill.EffectSecondary, currentTime);
             }
 
             return UsesEffectToAvatarLayerBuffFallback(skill);
@@ -3736,7 +3895,7 @@ namespace HaCreator.MapSimulator.Character.Skills
 
         private static bool UsesTransientMovementAvatarEffect(SkillData skill)
         {
-            if (skill?.Effect == null)
+            if (!HasClientOwnedAvatarEffectBranches(skill) || skill?.IsBuff == true)
             {
                 return false;
             }
@@ -3748,13 +3907,43 @@ namespace HaCreator.MapSimulator.Character.Skills
 
             string movementActionName = ResolveMovementActionName(skill);
             SkillMovementFamily movementFamily = ResolveMovementFamily(skill, movementActionName);
-            return movementFamily == SkillMovementFamily.Rush;
+            return movementFamily != SkillMovementFamily.None
+                   && movementFamily != SkillMovementFamily.Teleport;
         }
 
         private static bool IsDoubleJumpAction(string actionName)
         {
             return !string.IsNullOrWhiteSpace(actionName)
                    && actionName.IndexOf("doublejump", StringComparison.OrdinalIgnoreCase) >= 0;
+        }
+
+        private static IEnumerable<string> EnumerateMovementActionCandidates(SkillData skill)
+        {
+            if (skill == null)
+            {
+                yield break;
+            }
+
+            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            if (!string.IsNullOrWhiteSpace(skill.PrepareActionName) && seen.Add(skill.PrepareActionName))
+            {
+                yield return skill.PrepareActionName;
+            }
+
+            if (!string.IsNullOrWhiteSpace(skill.ActionName) && seen.Add(skill.ActionName))
+            {
+                yield return skill.ActionName;
+            }
+        }
+
+        private static bool IsBoundJumpActionName(string actionName)
+        {
+            return ActionTextContains(actionName, "doublejump")
+                   || ActionTextContains(actionName, "flash jump")
+                   || ActionTextContains(actionName, "archerdoublejump")
+                   || ActionTextContains(actionName, "backspin")
+                   || ActionTextContains(actionName, "assaulter")
+                   || ActionTextContains(actionName, "screw");
         }
 
         private static bool ActionTextContains(string actionName, string value)
@@ -3767,19 +3956,67 @@ namespace HaCreator.MapSimulator.Character.Skills
         private static bool UsesFlightBuffAvatarEffectFallback(SkillData skill)
         {
             return skill?.IsBuff == true
-                   && skill.Effect != null
+                   && HasClientOwnedAvatarEffectBranches(skill)
                    && !skill.HasPersistentAvatarEffect
                    && SkillGrantsFlyingAbility(skill);
         }
 
         private static string ResolveMovementActionName(SkillData skill)
         {
-            if (skill?.CasterMove == true && !string.IsNullOrWhiteSpace(skill.PrepareActionName))
+            if (skill == null)
+            {
+                return null;
+            }
+
+            foreach (string candidate in EnumerateMovementActionCandidates(skill))
+            {
+                if (ActionTextContains(candidate, "teleport"))
+                {
+                    return candidate;
+                }
+            }
+
+            foreach (string candidate in EnumerateMovementActionCandidates(skill))
+            {
+                if (ActionTextContains(candidate, "backstep"))
+                {
+                    return candidate;
+                }
+            }
+
+            foreach (string candidate in EnumerateMovementActionCandidates(skill))
+            {
+                if (IsBoundJumpActionName(candidate))
+                {
+                    return candidate;
+                }
+            }
+
+            foreach (string candidate in EnumerateMovementActionCandidates(skill))
+            {
+                if (ActionTextContains(candidate, "fly")
+                    || ActionTextContains(candidate, "flying")
+                    || ActionTextContains(candidate, "rocket"))
+                {
+                    return candidate;
+                }
+            }
+
+            foreach (string candidate in EnumerateMovementActionCandidates(skill))
+            {
+                if (ActionTextContains(candidate, "jump")
+                    || ActionTextContains(candidate, "hop"))
+                {
+                    return candidate;
+                }
+            }
+
+            if (skill.CasterMove && !string.IsNullOrWhiteSpace(skill.PrepareActionName))
             {
                 return skill.PrepareActionName;
             }
 
-            return skill?.ActionName;
+            return skill.ActionName;
         }
 
         private static bool ShouldExecuteMovementBranch(SkillData skill)
@@ -3815,30 +4052,34 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return SkillMovementFamily.None;
             }
 
-            if (ActionTextContains(movementActionName, "teleport") || SkillTextContains(skill, "teleport"))
+            string[] candidateActions = EnumerateMovementActionCandidates(skill).ToArray();
+            if (candidateActions.Any(candidate => ActionTextContains(candidate, "teleport"))
+                || ActionTextContains(movementActionName, "teleport")
+                || SkillTextContains(skill, "teleport"))
             {
                 return SkillMovementFamily.Teleport;
             }
 
-            if (ActionTextContains(movementActionName, "backstep"))
+            if (candidateActions.Any(candidate => ActionTextContains(candidate, "backstep"))
+                || ActionTextContains(movementActionName, "backstep"))
             {
                 return SkillMovementFamily.Backstep;
             }
 
             if (skill.ClientInfoType == 40
-                || ActionTextContains(movementActionName, "doublejump")
-                || ActionTextContains(movementActionName, "flash jump")
-                || ActionTextContains(movementActionName, "archerdoublejump")
-                || ActionTextContains(movementActionName, "backspin")
-                || ActionTextContains(movementActionName, "assaulter")
-                || ActionTextContains(movementActionName, "screw")
+                || candidateActions.Any(IsBoundJumpActionName)
+                || IsBoundJumpActionName(movementActionName)
                 || IsExplicitBoundJumpSkill(skill)
                 || SkillTextContains(skill, "flash jump"))
             {
                 return SkillMovementFamily.BoundJump;
             }
 
-            if (ActionTextContains(movementActionName, "fly")
+            if (candidateActions.Any(candidate =>
+                    ActionTextContains(candidate, "fly")
+                    || ActionTextContains(candidate, "flying")
+                    || ActionTextContains(candidate, "rocket"))
+                || ActionTextContains(movementActionName, "fly")
                 || ActionTextContains(movementActionName, "flying")
                 || ActionTextContains(movementActionName, "rocket")
                 || SkillTextContains(skill, "fly")
@@ -3848,7 +4089,10 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return SkillMovementFamily.FlyingRush;
             }
 
-            if (ActionTextContains(movementActionName, "jump")
+            if (candidateActions.Any(candidate =>
+                    ActionTextContains(candidate, "jump")
+                    || ActionTextContains(candidate, "hop"))
+                || ActionTextContains(movementActionName, "jump")
                 || ActionTextContains(movementActionName, "hop")
                 || SkillTextContains(skill, "jump")
                 || SkillTextContains(skill, "hop"))
@@ -3856,7 +4100,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return SkillMovementFamily.JumpRush;
             }
 
-            return !string.IsNullOrWhiteSpace(movementActionName)
+            return !string.IsNullOrWhiteSpace(movementActionName) || candidateActions.Length > 0
                 ? SkillMovementFamily.Rush
                 : SkillMovementFamily.None;
         }
@@ -4000,21 +4244,27 @@ namespace HaCreator.MapSimulator.Character.Skills
             horizontalVelocity = 0f;
             upwardSpeed = 0f;
 
+            int effectiveLevel = Math.Max(0, level);
             int scale;
             switch (skillId)
             {
                 case WildHunterJaguarJumpSkillId:
-                    scale = Math.Max(0, level / 4);
+                    scale = effectiveLevel / 2;
                     horizontalVelocity = 250f + (20f * scale);
                     upwardSpeed = 350f + (40f * scale);
                     break;
 
                 case WindWalkSkillId:
+                    scale = effectiveLevel / 4;
+                    horizontalVelocity = 350f + (40f * scale);
+                    upwardSpeed = 250f + (20f * scale);
+                    break;
+
                 case NightLordFlashJumpSkillId:
                 case ShadowerFlashJumpSkillId:
                 case DualBladeFlashJumpSkillId:
                 case ROCKET_BOOSTER_SKILL_ID:
-                    scale = Math.Max(0, level / 2);
+                    scale = effectiveLevel / 4;
                     horizontalVelocity = 350f + (40f * scale);
                     upwardSpeed = 250f + (20f * scale);
                     break;
@@ -4091,7 +4341,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return;
             }
 
-            if (!TryResolveClientBoundJumpVelocity(skill.SkillId, level, facingRight, out float horizontalVelocity, out float upwardSpeed))
+            if (!TryResolveClientBoundJumpVelocity(skill.SkillId, level, facingRight, out _, out float upwardSpeed))
             {
                 int horizontalRange = Math.Max(
                     Math.Max(levelData.RangeR, levelData.RangeL),
@@ -4102,19 +4352,18 @@ namespace HaCreator.MapSimulator.Character.Skills
                     horizontalRange = 160;
                 }
 
-                float direction = facingRight ? 1f : -1f;
-                horizontalVelocity = Math.Max(320f, horizontalRange * 2.4f) * direction;
                 upwardSpeed = Math.Max(260f, Math.Abs(levelData.RangeTop) * 3f);
             }
 
             bool usesTankStartup = string.Equals(startupActionName, "tank_rbooster_pre", StringComparison.OrdinalIgnoreCase);
+            string launchActionName = usesTankStartup ? "tank_rbooster_pre" : "rbooster_pre";
             int recoveryDurationMs = GetActionAnimationDurationMs(usesTankStartup ? "tank_rbooster_after" : "rbooster_after");
 
             _player.FacingRight = facingRight;
             _player.Physics.FacingRight = facingRight;
-            _player.ApplySkillAvatarTransform(skill.SkillId, usesTankStartup ? "tank_rbooster_pre" : "rbooster");
+            _player.ApplySkillAvatarTransform(skill.SkillId, launchActionName);
             _player.Physics.Jump();
-            _player.Physics.SetVelocity(horizontalVelocity, -upwardSpeed);
+            _player.Physics.SetVelocity(0f, -upwardSpeed);
             _rocketBoosterState = new RocketBoosterState
             {
                 Skill = skill,
@@ -4142,13 +4391,12 @@ namespace HaCreator.MapSimulator.Character.Skills
 
                 if (IsRocketBoosterSkill(pending.Skill))
                 {
-                    if (!CanStartRocketBooster(pending.Skill, currentTime))
-                    {
-                        CancelRocketBoosterState(playExitAction: false);
-                        continue;
-                    }
-
-                    ExecuteRocketBoosterLaunch(pending.Skill, pending.Level, pending.FacingRight, pending.ActionName);
+                    TryBeginRocketBoosterLaunch(
+                        pending.Skill,
+                        pending.Level,
+                        currentTime,
+                        pending.FacingRight,
+                        pending.ActionName);
                     continue;
                 }
 
@@ -4218,11 +4466,9 @@ namespace HaCreator.MapSimulator.Character.Skills
             if (_rocketBoosterState.LandingAttackTime == int.MinValue)
             {
                 SkillLevelData levelData = _rocketBoosterState.Skill.GetLevel(_rocketBoosterState.Level);
-                bool canLandAttack = levelData == null || levelData.MpCon <= 0 || TryConsumeSkillResources(levelData);
-
-                SpawnHitEffect(_rocketBoosterState.Skill, _player.X, _player.Y, currentTime, _rocketBoosterState.FacingRight);
-                if (canLandAttack)
+                if (levelData != null)
                 {
+                    SpawnHitEffect(_rocketBoosterState.Skill, _player.X, _player.Y, currentTime, _rocketBoosterState.FacingRight);
                     ProcessMeleeAttack(
                         _rocketBoosterState.Skill,
                         _rocketBoosterState.Level,
@@ -4331,7 +4577,8 @@ namespace HaCreator.MapSimulator.Character.Skills
             if (!_player.IsAlive
                 || !_player.CanAttack
                 || !string.IsNullOrWhiteSpace(GetStateRestrictionMessage(_cycloneState.Skill, currentTime))
-                || (_fieldSkillRestrictionEvaluator != null && !_fieldSkillRestrictionEvaluator(_cycloneState.Skill)))
+                || (_fieldSkillRestrictionEvaluator != null && !_fieldSkillRestrictionEvaluator(_cycloneState.Skill))
+                || !IsCycloneActionActive())
             {
                 StopCyclone();
                 return;
@@ -4408,22 +4655,22 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return 0;
             }
 
-            string actionName = ResolveMovementActionName(skill);
-            if (string.IsNullOrWhiteSpace(actionName))
-            {
-                return 0;
-            }
-
-            var animation = _player.Assembler.GetAnimation(actionName);
-            if (animation == null || animation.Length == 0)
-            {
-                return 0;
-            }
-
             int duration = 0;
-            foreach (var frame in animation)
+            foreach (string actionName in EnumerateMovementActionCandidates(skill))
             {
-                duration += frame.Duration;
+                var animation = _player.Assembler.GetAnimation(actionName);
+                if (animation == null || animation.Length == 0)
+                {
+                    continue;
+                }
+
+                int actionDuration = 0;
+                foreach (var frame in animation)
+                {
+                    actionDuration += frame.Duration;
+                }
+
+                duration = Math.Max(duration, actionDuration);
             }
 
             return duration;
@@ -4498,7 +4745,8 @@ namespace HaCreator.MapSimulator.Character.Skills
 
         private string ResolveRocketBoosterStartupActionName()
         {
-            return string.Equals(_player?.CurrentActionName, "tank_rbooster_pre", StringComparison.OrdinalIgnoreCase)
+            return _player?.HasSkillAvatarTransform(RepeatSkillTankModeId) == true
+                   || string.Equals(_player?.CurrentActionName, "tank_rbooster_pre", StringComparison.OrdinalIgnoreCase)
                 ? "tank_rbooster_pre"
                 : "rbooster_pre";
         }
@@ -5454,7 +5702,8 @@ namespace HaCreator.MapSimulator.Character.Skills
                 MobStatusEffect.PImmune,
                 MobStatusEffect.MImmune,
                 MobStatusEffect.HardSkin,
-                MobStatusEffect.Reflect
+                MobStatusEffect.Reflect,
+                MobStatusEffect.Rich
             };
 
             foreach (MobStatusEffect effect in removableEffects)
@@ -5732,6 +5981,16 @@ namespace HaCreator.MapSimulator.Character.Skills
             return Math.Max(1, damage);
         }
 
+        private static readonly IReadOnlyDictionary<int, double[]> ClientTargetDamageMultiplierTables = new Dictionary<int, double[]>
+        {
+            // Client-owned `SKILLENTRY::AdjustDamageDecRate` tables from MapleStory.exe v95.
+            [5121002] = new[] { 1d, 0.7d, 0.49d, 0.343d, 0.2401d, 0.16807d, 0d, 0d },
+            [3201005] = new[] { 1d, 0.9d, 0.81d, 0.729d, 0.6561d, 0.59049d, 0.531441d, 0.478296d },
+            [3221001] = new[] { 1d, 1.2d, 1.44d, 1.728d, 2.0736d, 2.48832d, 0d, 0d },
+            [33101001] = new[] { 1d, 1.2d, 1.44d, 1.728d, 2.0736d, 2.48832d, 0d, 0d },
+            [4341004] = new[] { 1d, 1d, 1d, 0.95d, 0.95d, 0.95d, 0.9d, 0.9d }
+        };
+
         private static int? ResolveTargetDamagePercentOverride(SkillData skill, SkillLevelData levelData, int targetOrder)
         {
             if (skill == null || levelData == null || targetOrder < 0)
@@ -5742,9 +6001,26 @@ namespace HaCreator.MapSimulator.Character.Skills
             return skill.SkillId switch
             {
                 3101005 when levelData.X > 0 => levelData.X,
-                2221006 or 22181001 when levelData.X > 0 => Math.Max(1, (int)MathF.Round(levelData.Damage * ResolveChainDamageDecayMultiplier(levelData.X, targetOrder))),
+                _ when skill.ChainAttackPenalty && levelData.X > 0 => Math.Max(1, (int)MathF.Round(levelData.Damage * ResolveChainDamageDecayMultiplier(levelData.X, targetOrder))),
+                _ when TryResolveClientTargetDamageMultiplier(skill.SkillId, targetOrder, out double multiplier)
+                    => Math.Max(0, (int)Math.Round(levelData.Damage * multiplier)),
                 _ => null
             };
+        }
+
+        private static bool TryResolveClientTargetDamageMultiplier(int skillId, int targetOrder, out double multiplier)
+        {
+            multiplier = 0d;
+            if (targetOrder < 0
+                || !ClientTargetDamageMultiplierTables.TryGetValue(skillId, out double[] table)
+                || table == null
+                || targetOrder >= table.Length)
+            {
+                return false;
+            }
+
+            multiplier = table[targetOrder];
+            return true;
         }
 
         private static float ResolveChainDamageDecayMultiplier(int decayPerTargetPercent, int targetOrder)
@@ -6840,7 +7116,8 @@ namespace HaCreator.MapSimulator.Character.Skills
                     LastStateChangeTime = currentTime,
                     ActorState = SummonActorState.Spawn,
                     MaxHealth = ResolveSummonMaxHealth(levelData),
-                    CurrentHealth = ResolveSummonMaxHealth(levelData)
+                    CurrentHealth = ResolveSummonMaxHealth(levelData),
+                    TeslaCoilState = skill.SkillId == TESLA_COIL_SKILL_ID ? (byte)1 : (byte)0
                 };
 
                 UpdateSummonPosition(summon, currentTime, 0f);
@@ -6848,6 +7125,31 @@ namespace HaCreator.MapSimulator.Character.Skills
                 RegisterSummonExpiryTimer(summon);
                 SyncSummonPuppet(summon, currentTime);
             }
+        }
+
+        private bool TryBeginRocketBoosterLaunch(
+            SkillData skill,
+            int level,
+            int currentTime,
+            bool facingRight,
+            string startupActionName)
+        {
+            if (!CanStartRocketBooster(skill, currentTime))
+            {
+                CancelRocketBoosterState(playExitAction: false);
+                return false;
+            }
+
+            SkillLevelData levelData = skill?.GetLevel(level);
+            if (levelData == null || !TryConsumeSkillResources(levelData))
+            {
+                CancelRocketBoosterState(playExitAction: false);
+                return false;
+            }
+
+            ApplySkillCooldown(skill, levelData, currentTime);
+            ExecuteRocketBoosterLaunch(skill, level, facingRight, startupActionName);
+            return true;
         }
 
         private void RemoveSummonsBySkill(int skillId)
@@ -6865,12 +7167,7 @@ namespace HaCreator.MapSimulator.Character.Skills
 
         private static int ResolveSummonDurationMs(SkillData skill, SkillLevelData levelData)
         {
-            if (levelData?.Time > 0)
-            {
-                return levelData.Time * 1000;
-            }
-
-            return IsSatelliteSummonSkill(skill?.SkillId ?? 0) ? 0 : 30000;
+            return SummonRuntimeRules.ResolveDurationMs(skill, levelData);
         }
 
         private static int ResolveMaxConcurrentSummons(SkillData skill, SkillLevelData levelData)
@@ -6915,9 +7212,7 @@ namespace HaCreator.MapSimulator.Character.Skills
 
         private static bool IsSatelliteSummonSkill(int skillId)
         {
-            return skillId == SATELLITE_SKILL_ID
-                || skillId == ENHANCED_SATELLITE_SKILL_ID
-                || skillId == SATELLITE_2_SKILL_ID;
+            return SummonRuntimeRules.IsSatelliteSummonSkill(skillId);
         }
 
         public void NotifyOwnerDamaged(MobItem sourceMob, int currentTime)
@@ -6976,6 +7271,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                     continue;
                 }
 
+                AdvanceSummonHitPeriod(summon, currentTime);
                 summon.PreviousPositionX = summon.PositionX;
                 summon.PreviousPositionY = summon.PositionY;
                 UpdateSummonPosition(summon, currentTime, deltaTime);
@@ -6990,6 +7286,11 @@ namespace HaCreator.MapSimulator.Character.Skills
                 if (summon.IsPendingRemoval)
                 {
                     summon.ActorState = SummonActorState.Die;
+                    continue;
+                }
+
+                if (IsSummonActionLockedByDamageHitPeriod(summon))
+                {
                     continue;
                 }
 
@@ -7133,7 +7434,9 @@ namespace HaCreator.MapSimulator.Character.Skills
 
             if (summon.SkillId == TESLA_COIL_SKILL_ID
                 && summon.SkillData.SummonAttackPrepareAnimation?.Frames.Count > 0
-                && summon.LastAttackAnimationStartTime == int.MinValue)
+                && (summon.TeslaCoilState == 1
+                    || summon.TeslaCoilState == 2
+                    || summon.LastAttackAnimationStartTime == int.MinValue))
             {
                 return SummonActorState.Prepare;
             }
@@ -7172,6 +7475,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             if (_mobPool?.ActiveMobs == null
                 || summon == null
                 || summon.IsPendingRemoval
+                || summon.HitPeriodRemainingMs != 0
                 || !ShouldRegisterSummonPuppet(summon.SkillData)
                 || currentTime - summon.LastBodyContactTime < SUMMON_BODY_CONTACT_COOLDOWN_MS)
             {
@@ -7240,6 +7544,61 @@ namespace HaCreator.MapSimulator.Character.Skills
             return Math.Max(1, levelData?.HP ?? 1);
         }
 
+        private static void AdvanceSummonHitPeriod(ActiveSummon summon, int currentTime)
+        {
+            if (summon == null)
+            {
+                return;
+            }
+
+            if (summon.LastHitPeriodUpdateTime == int.MinValue)
+            {
+                summon.LastHitPeriodUpdateTime = currentTime;
+                return;
+            }
+
+            int elapsed = Math.Max(0, currentTime - summon.LastHitPeriodUpdateTime);
+            summon.LastHitPeriodUpdateTime = currentTime;
+            if (elapsed <= 0 || summon.HitPeriodRemainingMs == 0)
+            {
+                return;
+            }
+
+            if (summon.HitPeriodRemainingMs > 0)
+            {
+                summon.HitPeriodRemainingMs = Math.Max(0, summon.HitPeriodRemainingMs - elapsed);
+            }
+            else
+            {
+                summon.HitPeriodRemainingMs = Math.Min(0, summon.HitPeriodRemainingMs + elapsed);
+            }
+
+            summon.HitFlashCounter += (uint)Math.Max(1, (elapsed + 29) / 30);
+        }
+
+        private static bool IsSummonActionLockedByDamageHitPeriod(ActiveSummon summon)
+        {
+            return summon?.HitPeriodRemainingMs > 0;
+        }
+
+        private static int ResolveSummonHitPeriodDurationMs(ActiveSummon summon)
+        {
+            int hitAnimationDuration = GetSkillAnimationDuration(summon?.SkillData?.SummonHitAnimation) ?? 0;
+            return Math.Max(240, hitAnimationDuration);
+        }
+
+        private static Color ResolveSummonDrawColor(ActiveSummon summon)
+        {
+            if (summon?.HitPeriodRemainingMs == 0)
+            {
+                return Color.White;
+            }
+
+            return (summon.HitFlashCounter & 3u) < 2u
+                ? new Color(128, 128, 128)
+                : Color.White;
+        }
+
         private bool ApplySummonDamage(ActiveSummon summon, int damage, int currentTime, bool allowSelfDestructFinalAction)
         {
             if (summon == null || summon.IsPendingRemoval)
@@ -7286,6 +7645,8 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
 
             summon.LastHitAnimationStartTime = currentTime;
+            summon.HitPeriodRemainingMs = ResolveSummonHitPeriodDurationMs(summon);
+            summon.LastHitPeriodUpdateTime = currentTime;
             SetSummonActorState(summon, SummonActorState.Hit, currentTime);
 
             Vector2 summonPosition = GetSummonPosition(summon);
@@ -7437,6 +7798,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 target.MovementInfo?.X ?? _player.X,
                 (target.MovementInfo?.Y ?? _player.Y) - 20f,
                 currentTime);
+            ActivateWildHunterSwallowDigestState(currentTime);
         }
 
         private bool DoesSwallowSkillRequestMatchState(int requestedSkillId)
@@ -7462,6 +7824,42 @@ namespace HaCreator.MapSimulator.Character.Skills
 
             SkillData requestedSkill = GetSkillData(requestedSkillId);
             return requestedSkill?.LinksDummySkill(parentSkillId) == true;
+        }
+
+        private void ActivateWildHunterSwallowDigestState(int currentTime)
+        {
+            if (_swallowState == null || _swallowState.IsDigesting)
+            {
+                return;
+            }
+
+            _swallowState.IsDigesting = true;
+            _swallowState.DigestStartTime = currentTime;
+            _swallowState.DigestCompleteTime = currentTime + SwallowDigestDurationMs;
+            _swallowState.NextWriggleTime = currentTime + SwallowWriggleIntervalMs;
+
+            RegisterClientSkillTimer(
+                _swallowState.ParentSkillId,
+                ClientTimerSourceSwallowDigest,
+                _swallowState.DigestCompleteTime,
+                CompleteSwallowDigestFromClientTimer);
+        }
+
+        private bool IsCycloneActionActive()
+        {
+            if (_cycloneState?.Skill == null || _player == null)
+            {
+                return false;
+            }
+
+            string cycloneActionName = ResolveSkillActionName(_cycloneState.Skill);
+            if (string.IsNullOrWhiteSpace(cycloneActionName))
+            {
+                return _player.State == PlayerState.Attacking;
+            }
+
+            return _player.State == PlayerState.Attacking
+                   && string.Equals(_player.CurrentActionName, cycloneActionName, StringComparison.OrdinalIgnoreCase);
         }
 
         private int ResolveSummonAttackExecutionDelayMs(ActiveSummon summon, IReadOnlyCollection<MobItem> targets, int currentTime)
@@ -7730,6 +8128,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                     .OrderBy(target => Vector2.DistanceSquared(GetMobHitboxCenter(target, currentTime), GetSummonPosition(teslaCoil)))
                     .FirstOrDefault();
                 UpdateSummonFacingTowardMob(teslaCoil, targetForCoil, currentTime);
+                teslaCoil.TeslaCoilState = 2;
                 teslaCoil.LastAttackTime = currentTime;
                 teslaCoil.LastAttackAnimationStartTime = currentTime;
                 SetSummonActorState(teslaCoil, SummonActorState.Attack, currentTime);
@@ -7965,15 +8364,12 @@ namespace HaCreator.MapSimulator.Character.Skills
 
         private static bool UsesReactiveDamageTriggerSummon(SkillData skill)
         {
-            return skill != null
-                   && string.Equals(skill.SummonCondition, "damaged", StringComparison.OrdinalIgnoreCase)
-                   && !string.IsNullOrWhiteSpace(skill.MinionAbility)
-                   && skill.MinionAbility.IndexOf("reflect", StringComparison.OrdinalIgnoreCase) >= 0;
+            return SummonRuntimeRules.UsesReactiveDamageTriggerSummon(skill);
         }
 
         private static bool UsesOwnerAttackTargetedSummon(SkillData skill)
         {
-            return skill != null && IsSatelliteSummonSkill(skill.SkillId);
+            return skill != null && SummonRuntimeRules.IsSatelliteSummonSkill(skill.SkillId);
         }
 
         private void UpdateRepeatSkillSustainFromSummonAttack(ActiveSummon summon, int currentTime)
@@ -8027,62 +8423,17 @@ namespace HaCreator.MapSimulator.Character.Skills
 
         private static SummonAssistType ResolveSummonAssistType(SkillData skill)
         {
-            if (skill == null)
-            {
-                return SummonAssistType.PeriodicAttack;
-            }
-
-            if (UsesReactiveDamageTriggerSummon(skill))
-            {
-                return SummonAssistType.TargetedAttack;
-            }
-
-            if (skill.SkillId == SG88_SKILL_ID)
-            {
-                return SummonAssistType.ManualAttack;
-            }
-
-            if (UsesOwnerAttackTargetedSummon(skill))
-            {
-                return SummonAssistType.OwnerAttackTargeted;
-            }
-
-            if (HasMinionAbilityToken(skill.MinionAbility, "heal")
-                || HasMinionAbilityToken(skill.MinionAbility, "mes")
-                || HasMinionAbilityToken(skill.MinionAbility, "amplifyDamage"))
-            {
-                return SummonAssistType.Support;
-            }
-
-            if (HasMinionAbilityToken(skill.MinionAbility, "summon"))
-            {
-                return SummonAssistType.SummonAction;
-            }
-
-            return SummonAssistType.PeriodicAttack;
+            return SummonRuntimeRules.ResolveAssistType(skill);
         }
 
         private static bool ShouldRegisterSummonPuppet(SkillData skill)
         {
-            return HasMinionAbilityToken(skill?.MinionAbility, "taunt");
+            return SummonRuntimeRules.ShouldRegisterPuppet(skill);
         }
 
         private static bool HasMinionAbilityToken(string minionAbility, string token)
         {
-            if (string.IsNullOrWhiteSpace(minionAbility) || string.IsNullOrWhiteSpace(token))
-            {
-                return false;
-            }
-
-            foreach (string part in minionAbility.Split(new[] { "&&" }, StringSplitOptions.RemoveEmptyEntries))
-            {
-                if (part.Trim().Equals(token, StringComparison.OrdinalIgnoreCase))
-                {
-                    return true;
-                }
-            }
-
-            return false;
+            return SummonRuntimeRules.HasMinionAbilityToken(minionAbility, token);
         }
 
         private List<ActiveSummon> GetActiveTeslaCoils(int currentTime)
@@ -8411,6 +8762,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             Vector2 summonPosition = GetSummonPosition(summon);
             int expirationTime = summon.Duration > 0 ? summon.StartTime + summon.Duration : 0;
             summon.SummonSlotIndex = GetSummonSlotIndex(summon, currentTime);
+            float aggroRange = Math.Max(220f, Math.Abs(summon.PositionX - _player.X) + 170f);
 
             _mobPool.RegisterPuppet(new PuppetInfo
             {
@@ -8420,13 +8772,13 @@ namespace HaCreator.MapSimulator.Character.Skills
                 Y = summonPosition.Y,
                 Hitbox = GetSummonHitbox(summon, currentTime),
                 IsGrounded = IsSummonGroundedForMobJumpAttack(summon),
-                OwnerId = 0,
+                OwnerId = _player.Build?.Id ?? 0,
                 AggroValue = 1,
+                AggroRange = aggroRange,
                 ExpirationTime = expirationTime,
                 IsActive = true
             });
 
-            float aggroRange = Math.Max(220f, Math.Abs(summon.PositionX - _player.X) + 170f);
             _mobPool.LetMobChasePuppet(summonPosition.X, summonPosition.Y, aggroRange, summon.ObjectId);
         }
 
@@ -8628,6 +8980,30 @@ namespace HaCreator.MapSimulator.Character.Skills
                 || summon.MovementStyle == SummonMovementStyle.DriftAroundOwner)
             {
                 summon.FacingRight = _player.FacingRight;
+            }
+
+            if ((summon.MovementStyle == SummonMovementStyle.Stationary
+                 || summon.MovementStyle == SummonMovementStyle.HoverAroundAnchor)
+                && currentTime - summon.LastPassiveEffectTime >= SUMMON_PASSIVE_EFFECT_COOLDOWN_MS)
+            {
+                float movedDistanceSq = Vector2.DistanceSquared(
+                    new Vector2(summon.PreviousPositionX, summon.PreviousPositionY),
+                    new Vector2(summon.PositionX, summon.PositionY));
+                if (movedDistanceSq >= 36f)
+                {
+                    SkillAnimation passiveEffect = summon.SkillData?.Effect ?? summon.SkillData?.AffectedEffect;
+                    if (passiveEffect?.Frames.Count > 0)
+                    {
+                        SpawnHitEffect(
+                            summon.SkillId,
+                            passiveEffect,
+                            summon.PositionX,
+                            summon.PositionY,
+                            summon.FacingRight,
+                            currentTime);
+                        summon.LastPassiveEffectTime = currentTime;
+                    }
+                }
             }
         }
 
@@ -9008,7 +9384,9 @@ namespace HaCreator.MapSimulator.Character.Skills
 
             bool usesSwallowFallback = UsesSwallowBuffAvatarEffectFallback(skill);
             SkillAnimation overlayAnimation = null;
+            SkillAnimation overlaySecondaryAnimation = null;
             SkillAnimation underFaceAnimation = null;
+            SkillAnimation underFaceSecondaryAnimation = null;
 
             if (usesSwallowFallback)
             {
@@ -9017,15 +9395,27 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
             else
             {
-                AssignAvatarBuffEffectPlane(CreateLoopingAvatarEffect(skill.Effect), ref overlayAnimation, ref underFaceAnimation);
-                AssignAvatarBuffEffectPlane(CreateLoopingAvatarEffect(skill.EffectSecondary), ref overlayAnimation, ref underFaceAnimation);
+                AssignAvatarBuffEffectPlane(
+                    CreateLoopingAvatarEffect(skill.Effect),
+                    ref overlayAnimation,
+                    ref overlaySecondaryAnimation,
+                    ref underFaceAnimation,
+                    ref underFaceSecondaryAnimation);
+                AssignAvatarBuffEffectPlane(
+                    CreateLoopingAvatarEffect(skill.EffectSecondary),
+                    ref overlayAnimation,
+                    ref overlaySecondaryAnimation,
+                    ref underFaceAnimation,
+                    ref underFaceSecondaryAnimation);
             }
 
             return new SkillData
             {
                 SkillId = skill.SkillId,
                 AvatarOverlayEffect = overlayAnimation,
+                AvatarOverlaySecondaryEffect = overlaySecondaryAnimation,
                 AvatarUnderFaceEffect = underFaceAnimation,
+                AvatarUnderFaceSecondaryEffect = underFaceSecondaryAnimation,
                 HideAvatarEffectOnLadderOrRope = usesSwallowFallback
             };
         }
@@ -9044,7 +9434,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         {
             return skill?.IsBuff == true
                    && skill.Invisible
-                   && skill.Effect != null
+                   && HasClientOwnedAvatarEffectBranches(skill)
                    && skill.AffectedEffect == null
                    && !skill.HasPersistentAvatarEffect
                    && !IsSwallowSkill(skill);
@@ -9054,7 +9444,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         {
             return skill?.IsBuff == true
                    && skill.Invisible
-                   && skill.Effect != null
+                   && HasClientOwnedAvatarEffectBranches(skill)
                    && !skill.HasPersistentAvatarEffect
                    && IsSwallowSkill(skill);
         }
@@ -9063,7 +9453,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         {
             return skill?.IsBuff == true
                    && skill.ReflectsIncomingDamage
-                   && skill.Effect != null
+                   && HasClientOwnedAvatarEffectBranches(skill)
                    && skill.AffectedEffect == null
                    && !skill.HasPersistentAvatarEffect;
         }
@@ -9083,13 +9473,18 @@ namespace HaCreator.MapSimulator.Character.Skills
         private static bool UsesTimedSingleEffectBuffAvatarEffectFallback(SkillData skill)
         {
             return skill?.IsBuff == true
-                   && (skill.Effect != null || skill.EffectSecondary != null)
+                   && HasClientOwnedAvatarEffectBranches(skill)
                    && (skill.Effect == null || skill.EffectSecondary == null)
                    && skill.AffectedEffect == null
                    && !skill.HasPersistentAvatarEffect
                    && !skill.IsMovement
                    && !skill.IsPrepareSkill
                    && !skill.IsSummon;
+        }
+
+        private static bool HasClientOwnedAvatarEffectBranches(SkillData skill)
+        {
+            return skill?.Effect != null || skill?.EffectSecondary != null;
         }
 
         private static SkillAnimation CreateLoopingAvatarEffect(SkillAnimation animation)
@@ -9112,7 +9507,9 @@ namespace HaCreator.MapSimulator.Character.Skills
         private static void AssignAvatarBuffEffectPlane(
             SkillAnimation animation,
             ref SkillAnimation overlayAnimation,
-            ref SkillAnimation underFaceAnimation)
+            ref SkillAnimation overlaySecondaryAnimation,
+            ref SkillAnimation underFaceAnimation,
+            ref SkillAnimation underFaceSecondaryAnimation)
         {
             if (animation == null)
             {
@@ -9123,12 +9520,12 @@ namespace HaCreator.MapSimulator.Character.Skills
             if (prefersUnderFace)
             {
                 underFaceAnimation ??= animation;
-                overlayAnimation ??= animation;
+                underFaceSecondaryAnimation ??= animation == underFaceAnimation ? null : animation;
                 return;
             }
 
             overlayAnimation ??= animation;
-            underFaceAnimation ??= animation;
+            overlaySecondaryAnimation ??= animation == overlayAnimation ? null : animation;
         }
 
         private void UpdateClientOwnedAvatarEffectSuppression(SkillData skill, bool suppress)
@@ -9167,18 +9564,21 @@ namespace HaCreator.MapSimulator.Character.Skills
             {
                 IReadOnlyList<BuffTemporaryStatPresentation> temporaryStats = GetBuffTemporaryStatPresentation(buff);
                 BuffTemporaryStatPresentation primaryTemporaryStat = ResolvePrimaryTemporaryStat(temporaryStats);
-                bool preferTemporaryStatIcon = primaryTemporaryStat != null && !string.IsNullOrWhiteSpace(primaryTemporaryStat.IconKey);
+                BuffIconCatalogEntry supplementalBuffIconEntry = ResolveSupplementalBuffIconEntry(buff, primaryTemporaryStat);
+                bool preferTemporaryStatIcon = primaryTemporaryStat != null && !string.IsNullOrWhiteSpace(primaryTemporaryStat.IconKey)
+                    || supplementalBuffIconEntry != null;
                 entries.Add(new StatusBarBuffEntry
                 {
                     SkillId = buff.SkillId,
                     SkillName = buff.SkillData?.Name ?? buff.SkillId.ToString(),
                     Description = buff.SkillData?.Description ?? string.Empty,
-                    IconKey = ResolveBuffIconKey(temporaryStats),
+                    IconKey = ResolveBuffIconKey(temporaryStats, supplementalBuffIconEntry),
                     IconTexture = preferTemporaryStatIcon ? null : buff.SkillData?.IconTexture,
                     StartTime = buff.StartTime,
                     DurationMs = buff.Duration,
                     RemainingMs = buff.GetRemainingTime(currentTime),
-                    SortOrder = primaryTemporaryStat?.SortOrder ?? GenericBuffSortOrder,
+                    SortOrder = ResolveStatusBarBuffSortOrder(primaryTemporaryStat),
+                    FamilyDisplayName = ResolveBuffFamilyDisplayName(primaryTemporaryStat, supplementalBuffIconEntry),
                     TemporaryStatLabels = temporaryStats.Select(stat => stat.Label).ToArray(),
                     TemporaryStatDisplayNames = temporaryStats.Select(stat => stat.DisplayName).ToArray()
                 });
@@ -9281,29 +9681,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 TrackIfMissing(temporaryStats, levelData.HP > 0 || levelData.MP > 0, RecoveryBuffLabel);
             }
 
-            string skillName = skill?.Name ?? string.Empty;
-            string skillDescription = skill?.Description ?? string.Empty;
-            string actionName = skill?.ActionName ?? string.Empty;
-            string prepareActionName = skill?.PrepareActionName ?? string.Empty;
-            string keydownActionName = skill?.KeydownActionName ?? string.Empty;
-            string keydownEndActionName = skill?.KeydownEndActionName ?? string.Empty;
-            string triggerCondition = skill?.TriggerCondition ?? string.Empty;
-            string affectedSkillEffect = skill?.AffectedSkillEffect ?? string.Empty;
-            string combinedText = string.Join(
-                " ",
-                new[]
-                {
-                    skillName,
-                    skillDescription,
-                    actionName,
-                    prepareActionName,
-                    keydownActionName,
-                    keydownEndActionName,
-                    triggerCondition,
-                    skill?.ZoneType ?? string.Empty,
-                    skill?.DebuffMessageToken ?? string.Empty,
-                    affectedSkillEffect
-                }.Where(text => !string.IsNullOrWhiteSpace(text)));
+            string combinedText = BuildCombinedTemporaryStatText(skill);
 
             TrackDescriptionTemporaryStats(temporaryStats, combinedText);
             TrackIdentityTemporaryStats(temporaryStats, skill, levelData, combinedText);
@@ -9371,17 +9749,50 @@ namespace HaCreator.MapSimulator.Character.Skills
                 .First();
         }
 
-        private static string ResolveBuffIconKey(IReadOnlyList<BuffTemporaryStatPresentation> temporaryStats)
+        private static int ResolveStatusBarBuffSortOrder(BuffTemporaryStatPresentation primaryTemporaryStat)
+        {
+            if (primaryTemporaryStat == null)
+            {
+                return GenericBuffSortOrder;
+            }
+
+            return primaryTemporaryStat.PrimaryPriority > 0
+                ? primaryTemporaryStat.PrimaryPriority
+                : (primaryTemporaryStat.SortOrder > 0 ? primaryTemporaryStat.SortOrder : GenericBuffPrimaryPriority);
+        }
+
+        private static string ResolveBuffIconKey(
+            IReadOnlyList<BuffTemporaryStatPresentation> temporaryStats,
+            BuffIconCatalogEntry supplementalBuffIconEntry = null)
         {
             BuffTemporaryStatPresentation primaryTemporaryStat = ResolvePrimaryTemporaryStat(temporaryStats);
             if (primaryTemporaryStat == null)
             {
-                return GenericBuffIconKey;
+                return supplementalBuffIconEntry?.IconKey ?? GenericBuffIconKey;
             }
 
             return string.IsNullOrWhiteSpace(primaryTemporaryStat.IconKey)
-                ? GenericBuffIconKey
+                ? (supplementalBuffIconEntry?.IconKey ?? GenericBuffIconKey)
                 : primaryTemporaryStat.IconKey;
+        }
+
+        private static string ResolveBuffFamilyDisplayName(
+            BuffTemporaryStatPresentation primaryTemporaryStat,
+            BuffIconCatalogEntry supplementalBuffIconEntry)
+        {
+            if (!string.IsNullOrWhiteSpace(primaryTemporaryStat?.DisplayName))
+            {
+                return primaryTemporaryStat.DisplayName;
+            }
+
+            if (!string.IsNullOrWhiteSpace(supplementalBuffIconEntry?.DisplayName))
+            {
+                return supplementalBuffIconEntry.DisplayName;
+            }
+
+            return TryGetBuffIconCatalogEntry(GenericBuffIconKey, out BuffIconCatalogEntry genericBuffIconEntry)
+                ? genericBuffIconEntry.DisplayName
+                : string.Empty;
         }
 
         private static BuffTemporaryStatPresentation CreateTemporaryStatPresentation(
@@ -9570,6 +9981,56 @@ namespace HaCreator.MapSimulator.Character.Skills
                 : new string(buffer, 0, length);
         }
 
+        private static BuffIconCatalogEntry ResolveSupplementalBuffIconEntry(
+            ActiveBuff buff,
+            BuffTemporaryStatPresentation primaryTemporaryStat)
+        {
+            if (buff?.SkillData == null
+                || (primaryTemporaryStat != null && !string.IsNullOrWhiteSpace(primaryTemporaryStat.IconKey)))
+            {
+                return null;
+            }
+
+            string combinedText = BuildCombinedTemporaryStatText(buff.SkillData);
+            return ContainsAny(combinedText, "anniversary")
+                && TryGetBuffIconCatalogEntry(AnniversaryBuffIconKey, out BuffIconCatalogEntry anniversaryEntry)
+                ? anniversaryEntry
+                : null;
+        }
+
+        private static string BuildCombinedTemporaryStatText(SkillData skill)
+        {
+            if (skill == null)
+            {
+                return string.Empty;
+            }
+
+            return string.Join(
+                " ",
+                new[]
+                {
+                    skill.Name ?? string.Empty,
+                    skill.Description ?? string.Empty,
+                    skill.ActionName ?? string.Empty,
+                    skill.PrepareActionName ?? string.Empty,
+                    skill.KeydownActionName ?? string.Empty,
+                    skill.KeydownEndActionName ?? string.Empty,
+                    skill.TriggerCondition ?? string.Empty,
+                    skill.ZoneType ?? string.Empty,
+                    skill.DebuffMessageToken ?? string.Empty,
+                    skill.AffectedSkillEffect ?? string.Empty
+                }.Where(text => !string.IsNullOrWhiteSpace(text)));
+        }
+
+        private static bool TryGetBuffIconCatalogEntry(string iconKey, out BuffIconCatalogEntry entry)
+        {
+            entry = null;
+            return !string.IsNullOrWhiteSpace(iconKey)
+                && ResolvedBuffIconCatalog != null
+                && ResolvedBuffIconCatalog.TryGetValue(iconKey, out entry)
+                && entry != null;
+        }
+
         private static BuffTemporaryStatPresentation ResolveTemporaryStatPresentation(
             BuffTemporaryStatPresentation basePresentation,
             IReadOnlyDictionary<string, BuffIconCatalogEntry> buffIconCatalog)
@@ -9694,58 +10155,85 @@ namespace HaCreator.MapSimulator.Character.Skills
 
         private static bool SkillMasteryAppliesToWeapon(SkillData skill, int weaponCode)
         {
-            if (skill == null)
+            if (skill == null || weaponCode <= 0)
                 return false;
 
-            string name = skill.Name ?? string.Empty;
-            if (string.IsNullOrWhiteSpace(name))
+            string name = NormalizeMasteryText(skill.Name);
+            string description = NormalizeMasteryText(skill.Description);
+            if (string.IsNullOrWhiteSpace(name) && string.IsNullOrWhiteSpace(description))
                 return false;
 
-            string normalizedName = name.Trim().ToLowerInvariant();
-            bool matchesWeapon = normalizedName switch
+            bool mentions(string token)
             {
-                string value when value.Contains("spell mastery") || value.Contains("magic mastery")
-                    => weaponCode is 37 or 38,
-                string value when value.Contains("sword mastery") || value.Contains("sword expert")
-                    => weaponCode is 30 or 40,
-                string value when value.Contains("axe mastery") || value.Contains("axe expert")
-                    => weaponCode is 31 or 41,
-                string value when value.Contains("blunt weapon mastery")
-                    || value.Contains("blunt weapon expert")
-                    || value.Contains("bw mastery")
-                    || value.Contains("bw expert")
-                    => weaponCode is 32 or 42,
-                string value when value.Contains("spear mastery") || value.Contains("spear expert")
-                    => weaponCode == 43,
-                string value when value.Contains("polearm mastery") || value.Contains("polearm expert")
-                    => weaponCode == 44,
-                string value when value.Contains("bow mastery") || value.Contains("bow expert")
-                    => weaponCode == 45,
-                string value when value.Contains("crossbow mastery") || value.Contains("crossbow expert")
-                    => weaponCode == 46,
-                string value when value.Contains("dual bowguns mastery") || value.Contains("dual bowguns expert")
-                    => weaponCode == 52,
-                string value when value.Contains("claw mastery") || value.Contains("claw expert")
-                    => weaponCode == 47,
-                string value when value.Contains("dagger mastery") || value.Contains("dagger expert")
-                    => weaponCode == 33,
-                string value when value.Contains("katara mastery") || value.Contains("katara expert")
-                    => weaponCode is 33 or 34,
-                string value when value.Contains("cane mastery") || value.Contains("cane expert")
-                    => weaponCode == 36,
-                string value when value.Contains("knuckle mastery") || value.Contains("knuckle expert")
-                    => weaponCode == 48,
-                string value when value.Contains("gun mastery")
-                    || value.Contains("gun expert")
-                    || value.Contains("mechanic mastery")
-                    || value.Contains("extreme mech")
-                    => weaponCode == 49,
-                string value when value.Contains("cannon mastery") || value.Contains("cannon expert")
-                    => weaponCode == 53,
+                return name.Contains(token, StringComparison.Ordinal)
+                       || description.Contains(token, StringComparison.Ordinal);
+            }
+
+            bool matchesWeapon = weaponCode switch
+            {
+                30 or 40 => mentions("sword mastery")
+                            || mentions("sword expert")
+                            || mentions("weapon mastery") && (mentions("swords and axes") || mentions("swords and blunt")),
+                31 or 41 => mentions("axe mastery")
+                            || mentions("axe expert")
+                            || mentions("weapon mastery") && mentions("swords and axes")
+                            || mentions("one handed blunt and axe"),
+                32 or 42 => mentions("blunt weapon mastery")
+                            || mentions("blunt weapon expert")
+                            || mentions("bw mastery")
+                            || mentions("bw expert")
+                            || mentions("weapon mastery") && mentions("swords and blunt")
+                            || mentions("one handed blunt and axe"),
+                33 => mentions("dagger mastery")
+                      || mentions("dagger expert")
+                      || mentions("katara mastery")
+                      || mentions("katara expert")
+                      || mentions("daggers and kataras"),
+                34 => mentions("katara mastery")
+                      || mentions("katara expert")
+                      || mentions("daggers and kataras"),
+                36 => mentions("cane mastery") || mentions("cane expert"),
+                37 or 38 => mentions("spell mastery")
+                            || mentions("magic mastery")
+                            || mentions("wand mastery")
+                            || mentions("staff mastery"),
+                43 => mentions("spear mastery")
+                      || mentions("spear expert")
+                      || mentions("weapon mastery") && mentions("spears and polearms"),
+                44 => mentions("polearm mastery")
+                      || mentions("polearm expert")
+                      || mentions("pole arm mastery")
+                      || mentions("pole arm expert")
+                      || mentions("weapon mastery") && mentions("spears and polearms")
+                      || mentions("high mastery"),
+                45 => mentions("bow mastery") || mentions("bow expert"),
+                46 => mentions("crossbow mastery") || mentions("crossbow expert"),
+                47 => mentions("claw mastery") || mentions("claw expert"),
+                48 => mentions("knuckle mastery") || mentions("knuckle expert"),
+                49 => mentions("gun mastery")
+                      || mentions("gun expert")
+                      || mentions("mechanic mastery")
+                      || mentions("extreme mech")
+                      || mentions("mech"),
+                52 => mentions("dual bowguns mastery") || mentions("dual bowguns expert"),
+                53 => mentions("cannon mastery") || mentions("cannon expert"),
                 _ => false
             };
 
-            return weaponCode > 0 && matchesWeapon;
+            return matchesWeapon;
+        }
+
+        private static string NormalizeMasteryText(string value)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                return string.Empty;
+            }
+
+            return value.Replace("\\r", " ", StringComparison.Ordinal)
+                .Replace("\\n", " ", StringComparison.Ordinal)
+                .Trim()
+                .ToLowerInvariant();
         }
 
         private int GetPassiveBonus(SkillData skill, SkillLevelData levelData, BuffStatType stat)
@@ -9888,6 +10376,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             ProcessQueuedSerialAttack(currentTime);
             ProcessQueuedSparkAttack(currentTime);
             ProcessQueuedSummonAttacks(currentTime);
+            UpdateClientOwnedVehicleTamingMobState(currentTime);
 
             // Process skill queue (for macros)
             ProcessSkillQueue(currentTime);
@@ -9935,6 +10424,20 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
         }
 
+        private void RequestActiveSwallowCancel(int currentTime)
+        {
+            if (_swallowState == null)
+            {
+                return;
+            }
+
+            int skillId = _swallowState.ParentSkillId > 0 ? _swallowState.ParentSkillId : _swallowState.SkillId;
+            if (skillId > 0)
+            {
+                RequestClientSkillCancel(skillId, currentTime);
+            }
+        }
+
         private void UpdateSwallowState(int currentTime)
         {
             if (_swallowState == null)
@@ -9947,7 +10450,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 MobItem pendingTarget = GetSwallowTarget();
                 if (pendingTarget?.AI == null || pendingTarget.AI.IsDead)
                 {
-                    ClearSwallowState();
+                    RequestActiveSwallowCancel(currentTime);
                 }
 
                 return;
@@ -10466,7 +10969,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return;
 
             SkillData skill = GetSkillData(queuedAttack.SkillId);
-            int level = queuedAttack.Level > 0 ? queuedAttack.Level : GetSkillLevel(queuedAttack.SkillId);
+            int level = ResolveQueuedExecutionSkillLevel(queuedAttack.SkillId);
             SkillLevelData levelData = skill?.GetLevel(level);
             if (skill == null || levelData == null)
                 return;
@@ -10506,7 +11009,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return;
 
             SkillData skill = GetSkillData(queuedAttack.SkillId);
-            int level = queuedAttack.Level > 0 ? queuedAttack.Level : GetSkillLevel(queuedAttack.SkillId);
+            int level = ResolveQueuedExecutionSkillLevel(queuedAttack.SkillId);
             SkillLevelData levelData = skill?.GetLevel(level);
             if (skill == null || levelData == null || !IsAttackTriggeredChainBuffSkill(skill, level))
                 return;
@@ -10596,7 +11099,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return;
 
             SkillData skill = GetSkillData(queuedAttack.SkillId);
-            int level = queuedAttack.Level > 0 ? queuedAttack.Level : GetSkillLevel(queuedAttack.SkillId);
+            int level = ResolveQueuedExecutionSkillLevel(queuedAttack.SkillId);
             SkillLevelData levelData = skill?.GetLevel(level);
             if (!ShouldUseQueuedSerialAttack(skill) || levelData == null)
                 return;
@@ -10632,6 +11135,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             for (int targetIndex = 0; targetIndex < targets.Count; targetIndex++)
             {
                 MobItem mob = targets[targetIndex];
+                int deferredTargetOrder = ResolveDeferredSerialTargetOrder(targetIndex);
                 bool died = ApplySkillAttackToMob(
                     skill,
                     level,
@@ -10642,7 +11146,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                     mode,
                     skill.HitEffect,
                     queuedAttack.FacingRight,
-                    targetIndex);
+                    deferredTargetOrder);
 
                 if (died && !mobsToKill.Contains(mob))
                 {
@@ -10654,6 +11158,12 @@ namespace HaCreator.MapSimulator.Character.Skills
             {
                 HandleMobDeath(mob, currentTime);
             }
+        }
+
+        private static int ResolveDeferredSerialTargetOrder(int targetIndex)
+        {
+            // Deferred serial branches begin after the opener has already consumed target order 0.
+            return Math.Max(0, targetIndex + 1);
         }
 
         #endregion
@@ -10889,7 +11399,7 @@ namespace HaCreator.MapSimulator.Character.Skills
 
             frame.Texture.DrawBackground(spriteBatch, null, null,
                 GetFrameDrawX(screenX, frame, shouldFlip), screenY - frame.Origin.Y,
-                Color.White, shouldFlip, null);
+                ResolveSummonDrawColor(summon), shouldFlip, null);
         }
 
         private static SkillAnimation ResolveSummonAnimation(ActiveSummon summon, int currentTime, int elapsedTime, out int animationTime)
@@ -10945,7 +11455,11 @@ namespace HaCreator.MapSimulator.Character.Skills
             var prepareAnimation = skill.SummonAttackPrepareAnimation;
             if (prepareAnimation?.Frames.Count > 0
                 && summon?.ActorState == SummonActorState.Prepare
-                && (skill.SkillId == TESLA_COIL_SKILL_ID || summon.LastAttackAnimationStartTime == int.MinValue))
+                && ((skill.SkillId == TESLA_COIL_SKILL_ID
+                     && (summon.TeslaCoilState == 1
+                         || summon.TeslaCoilState == 2
+                         || summon.LastAttackAnimationStartTime == int.MinValue))
+                    || skill.SkillId != TESLA_COIL_SKILL_ID))
             {
                 int prepareElapsed = Math.Max(0, currentTime - summon.LastStateChangeTime);
                 int prepareDuration = GetSkillAnimationDuration(prepareAnimation) ?? 0;
@@ -11011,6 +11525,12 @@ namespace HaCreator.MapSimulator.Character.Skills
             return skill != null
                    && (skill.SkillId == SMOKE_BOMB_SKILL_ID
                        || string.Equals(skill.ZoneType, "invincible", StringComparison.OrdinalIgnoreCase));
+        }
+
+        private int ResolveQueuedExecutionSkillLevel(int skillId)
+        {
+            // The client re-reads the learned level when queued final/serial/spark branches actually fire.
+            return GetSkillLevel(skillId);
         }
 
         private static bool UsesAuraDotAffectedSkillPassive(SkillData skill)

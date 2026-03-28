@@ -11,10 +11,11 @@ using System.Linq;
 
 namespace HaCreator.MapSimulator.UI
 {
-    public sealed class LoginUtilityDialogWindow : UIWindowBase
+    public sealed class LoginUtilityDialogWindow : UIWindowBase, ISoftKeyboardHost
     {
         private const int TextOffsetX = 17;
         private const int TextOffsetY = 13;
+        private const int NoticeBodySpacingY = 6;
         private const float BodyWrapWidth = 248f;
         private const float InputWrapWidth = 230f;
         private const int ButtonBottomMargin = 14;
@@ -45,6 +46,7 @@ namespace HaCreator.MapSimulator.UI
         private KeyboardState _previousKeyboardState;
         private bool _inputMasked;
         private int _inputMaxLength;
+        private SoftKeyboardKeyboardType _softKeyboardType = SoftKeyboardKeyboardType.AlphaNumeric;
 
         private static readonly Keys[] AlphaKeys = Enumerable.Range((int)Keys.A, 26).Select(value => (Keys)value).ToArray();
         private static readonly Keys[] NumberKeys = Enumerable.Range((int)Keys.D0, 10).Select(value => (Keys)value).ToArray();
@@ -80,6 +82,10 @@ namespace HaCreator.MapSimulator.UI
 
         public override bool SupportsDragging => false;
         public override bool CapturesKeyboardInput => true;
+        bool ISoftKeyboardHost.WantsSoftKeyboard => IsVisible && HasInputField;
+        SoftKeyboardKeyboardType ISoftKeyboardHost.SoftKeyboardKeyboardType => _softKeyboardType;
+        int ISoftKeyboardHost.SoftKeyboardTextLength => _inputValue?.Length ?? 0;
+        int ISoftKeyboardHost.SoftKeyboardMaxLength => _inputMaxLength;
 
         public event Action PrimaryRequested;
         public event Action SecondaryRequested;
@@ -101,7 +107,8 @@ namespace HaCreator.MapSimulator.UI
             string inputPlaceholder = null,
             bool inputMasked = false,
             int inputMaxLength = 0,
-            string inputValue = null)
+            string inputValue = null,
+            SoftKeyboardKeyboardType softKeyboardType = SoftKeyboardKeyboardType.AlphaNumeric)
         {
             _title = string.IsNullOrWhiteSpace(title) ? "Login Utility" : title;
             _body = body ?? string.Empty;
@@ -114,6 +121,7 @@ namespace HaCreator.MapSimulator.UI
             _inputMasked = inputMasked;
             _inputMaxLength = Math.Max(0, inputMaxLength);
             _inputValue = inputValue ?? string.Empty;
+            _softKeyboardType = softKeyboardType;
             ConfigureButtons();
         }
 
@@ -204,6 +212,7 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
+            float y;
             if (_noticeTextIndex.HasValue &&
                 _noticeTextTextures.TryGetValue(_noticeTextIndex.Value, out Texture2D noticeTextTexture) &&
                 noticeTextTexture != null)
@@ -212,17 +221,25 @@ namespace HaCreator.MapSimulator.UI
                     noticeTextTexture,
                     new Vector2(Position.X + TextOffsetX, Position.Y + TextOffsetY),
                     Color.White);
-                return;
+
+                if (string.IsNullOrWhiteSpace(_body))
+                {
+                    return;
+                }
+
+                y = Position.Y + TextOffsetY + noticeTextTexture.Height + NoticeBodySpacingY;
             }
+            else
+            {
+                SelectorWindowDrawing.DrawShadowedText(
+                    sprite,
+                    _font,
+                    _title,
+                    new Vector2(Position.X + TextOffsetX, Position.Y + TextOffsetY),
+                    Color.White);
 
-            SelectorWindowDrawing.DrawShadowedText(
-                sprite,
-                _font,
-                _title,
-                new Vector2(Position.X + TextOffsetX, Position.Y + TextOffsetY),
-                Color.White);
-
-            float y = Position.Y + TextOffsetY + _font.LineSpacing + 6;
+                y = Position.Y + TextOffsetY + _font.LineSpacing + 6;
+            }
             foreach (string line in WrapText(_body, BodyWrapWidth))
             {
                 SelectorWindowDrawing.DrawShadowedText(
@@ -463,6 +480,56 @@ namespace HaCreator.MapSimulator.UI
             }
 
             _inputValue = _inputValue.Substring(0, _inputValue.Length - 1);
+        }
+
+        Rectangle ISoftKeyboardHost.GetSoftKeyboardAnchorBounds() => GetInputBounds();
+
+        bool ISoftKeyboardHost.TryInsertSoftKeyboardCharacter(char character, out string errorMessage)
+        {
+            errorMessage = string.Empty;
+            if (!HasInputField)
+            {
+                errorMessage = "This dialog has no editable field.";
+                return false;
+            }
+
+            if (_inputMaxLength > 0 && _inputValue.Length >= _inputMaxLength)
+            {
+                errorMessage = "The input field is full.";
+                return false;
+            }
+
+            AppendCharacter(character);
+            return true;
+        }
+
+        bool ISoftKeyboardHost.TryBackspaceSoftKeyboard(out string errorMessage)
+        {
+            errorMessage = string.Empty;
+            if (string.IsNullOrEmpty(_inputValue))
+            {
+                errorMessage = "Nothing to remove.";
+                return false;
+            }
+
+            RemoveLastCharacter();
+            return true;
+        }
+
+        void ISoftKeyboardHost.OnSoftKeyboardClosed()
+        {
+        }
+
+        private Rectangle GetInputBounds()
+        {
+            float bodyLines = Math.Max(1, WrapText(_body, BodyWrapWidth).Count());
+            int lineSpacing = _font?.LineSpacing ?? 18;
+            int inputY = Position.Y + TextOffsetY + (lineSpacing * 2) + 6 + (int)((bodyLines - 1) * lineSpacing) + 8 + lineSpacing;
+            return new Rectangle(
+                Position.X + TextOffsetX,
+                inputY,
+                (int)Math.Ceiling(InputWrapWidth),
+                Math.Max(lineSpacing, 18));
         }
     }
 }

@@ -55,6 +55,8 @@ namespace HaCreator.MapSimulator.Pools
         public bool Flip { get; set; }
         public string Name { get; set; }
         public int RespawnTimeMs { get; set; }
+        public ReactorActivationType ActivationTypeOverride { get; set; }
+        public bool CanRespawn { get; set; } = true;
 
         // Runtime state
         public bool IsActive { get; set; }
@@ -137,7 +139,7 @@ namespace HaCreator.MapSimulator.Pools
         #endregion
 
         #region Public Properties
-        public int ReactorCount => _reactors?.Length ?? 0;
+        public int ReactorCount => GetReactorCount();
         public int ActiveReactorCount => _reactorData.Count(kvp => kvp.Value.State != ReactorState.Destroyed && kvp.Value.State != ReactorState.Respawning);
         public IReadOnlyList<ReactorItem> Reactors => _reactors;
         public bool RespawnEnabled { get => _respawnEnabled; set => _respawnEnabled = value; }
@@ -261,9 +263,16 @@ namespace HaCreator.MapSimulator.Pools
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public ReactorItem GetReactor(int index)
         {
-            if (_reactors == null || index < 0 || index >= _reactors.Length)
+            if (index < 0)
                 return null;
-            return _reactors[index];
+
+            if (_reactors != null && index < _reactors.Length && _reactors[index] != null)
+                return _reactors[index];
+
+            if (index < _spawnPoints.Count)
+                return _spawnPoints[index].CurrentReactor;
+
+            return null;
         }
 
         /// <summary>
@@ -295,7 +304,7 @@ namespace HaCreator.MapSimulator.Pools
         /// </summary>
         public (ReactorItem reactor, int index)? FindReactorAtPosition(float x, float y, float range = 40f, int? currentTick = null)
         {
-            if (_reactors == null)
+            if (GetReactorCount() == 0)
                 return null;
 
             float rangeSq = range * range;
@@ -341,7 +350,7 @@ namespace HaCreator.MapSimulator.Pools
         {
             var results = new List<(ReactorItem reactor, int index)>();
 
-            if (_reactors == null)
+            if (GetReactorCount() == 0)
                 return results;
 
             int resolvedTick = currentTick ?? _lastUpdateTick;
@@ -353,9 +362,9 @@ namespace HaCreator.MapSimulator.Pools
                 playerWidth,
                 playerHeight);
 
-            for (int i = 0; i < _reactors.Length; i++)
+            for (int i = 0; i < GetReactorCount(); i++)
             {
-                var reactor = _reactors[i];
+                var reactor = GetReactor(i);
                 if (reactor?.ReactorInstance == null)
                     continue;
 
@@ -401,15 +410,15 @@ namespace HaCreator.MapSimulator.Pools
         {
             var results = new List<(ReactorItem reactor, int index)>();
 
-            if (_reactors == null)
+            if (GetReactorCount() == 0)
                 return results;
 
             float rangeSq = skillRange * skillRange;
             int resolvedTick = currentTick ?? _lastUpdateTick;
 
-            for (int i = 0; i < _reactors.Length; i++)
+            for (int i = 0; i < GetReactorCount(); i++)
             {
-                var reactor = _reactors[i];
+                var reactor = GetReactor(i);
                 if (reactor?.ReactorInstance == null)
                     continue;
 
@@ -450,14 +459,14 @@ namespace HaCreator.MapSimulator.Pools
         {
             var results = new List<(ReactorItem reactor, int index)>();
 
-            if (_reactors == null || attackBounds.Width <= 0 || attackBounds.Height <= 0)
+            if (GetReactorCount() == 0 || attackBounds.Width <= 0 || attackBounds.Height <= 0)
                 return results;
 
             int resolvedTick = currentTick ?? _lastUpdateTick;
 
-            for (int i = 0; i < _reactors.Length; i++)
+            for (int i = 0; i < GetReactorCount(); i++)
             {
-                var reactor = _reactors[i];
+                var reactor = GetReactor(i);
                 if (reactor?.ReactorInstance == null)
                     continue;
 
@@ -575,12 +584,12 @@ namespace HaCreator.MapSimulator.Pools
         {
             var results = new List<(ReactorItem reactor, int index)>();
 
-            if (_reactors == null || itemId <= 0)
+            if (GetReactorCount() == 0 || itemId <= 0)
                 return results;
 
-            for (int i = 0; i < _reactors.Length; i++)
+            for (int i = 0; i < GetReactorCount(); i++)
             {
-                ReactorItem reactor = _reactors[i];
+                ReactorItem reactor = GetReactor(i);
                 if (reactor?.ReactorInstance == null)
                     continue;
 
@@ -610,7 +619,7 @@ namespace HaCreator.MapSimulator.Pools
         {
             var results = new List<(ReactorItem reactor, int index)>();
 
-            if (_reactors == null || itemId <= 0)
+            if (GetReactorCount() == 0 || itemId <= 0)
                 return results;
 
             int resolvedTick = currentTick ?? _lastUpdateTick;
@@ -621,9 +630,9 @@ namespace HaCreator.MapSimulator.Pools
                 playerWidth,
                 playerHeight);
 
-            for (int i = 0; i < _reactors.Length; i++)
+            for (int i = 0; i < GetReactorCount(); i++)
             {
-                ReactorItem reactor = _reactors[i];
+                ReactorItem reactor = GetReactor(i);
                 if (reactor?.ReactorInstance == null)
                     continue;
 
@@ -697,7 +706,7 @@ namespace HaCreator.MapSimulator.Pools
             if (data.State != ReactorState.Idle)
                 return;
 
-            if (reactor.TryGetNextState(data.VisualState, out int nextVisualState))
+            if (reactor.TryGetNextState(data.VisualState, activationType, out int nextVisualState))
             {
                 data.VisualState = nextVisualState;
             }
@@ -746,7 +755,7 @@ namespace HaCreator.MapSimulator.Pools
                 }
                 else
                 {
-                    if (reactor.TryGetNextState(data.VisualState, out int nextVisualState))
+                    if (reactor.TryGetNextState(data.VisualState, ReactorActivationType.Hit, out int nextVisualState))
                     {
                         data.VisualState = nextVisualState;
                         data.State = ReactorState.Activated;
@@ -865,22 +874,27 @@ namespace HaCreator.MapSimulator.Pools
                 ?? TryGetOptionalReactorType(infoProperty?["type"])
                 ?? ReactorType.UNKNOWN;
 
+            bool activateByTouch = TryGetOptionalInt(infoProperty?["activateByTouch"]).GetValueOrDefault() != 0;
+
             ReactorActivationType activationType = requiredItemId.HasValue
                 ? ReactorActivationType.Item
                 : requiredQuestId.HasValue
                     ? ReactorActivationType.Quest
-                    : reactorType switch
-                    {
-                        ReactorType.ActivatedByAnyHit => ReactorActivationType.Hit,
-                        ReactorType.ActivatedLeftHit => ReactorActivationType.Hit,
-                        ReactorType.ActivatedRightHit => ReactorActivationType.Hit,
-                        ReactorType.ActivatedByHarvesting => ReactorActivationType.Hit,
-                        ReactorType.ActivatedBySkill => ReactorActivationType.Skill,
-                        ReactorType.ActivatedByTouch => ReactorActivationType.Touch,
-                        ReactorType.ActivatedbyItem => ReactorActivationType.Item,
-                        ReactorType.AnimationOnly => ReactorActivationType.None,
-                        _ => ReactorActivationType.Touch
-                    };
+                    : activateByTouch
+                        ? ReactorActivationType.Touch
+                        : TryInferActivationTypeFromStateEvents(reactorInfo?.LinkedWzImage)
+                            ?? reactorType switch
+                            {
+                                ReactorType.ActivatedByAnyHit => ReactorActivationType.Hit,
+                                ReactorType.ActivatedLeftHit => ReactorActivationType.Hit,
+                                ReactorType.ActivatedRightHit => ReactorActivationType.Hit,
+                                ReactorType.ActivatedByHarvesting => ReactorActivationType.Hit,
+                                ReactorType.ActivatedBySkill => ReactorActivationType.Skill,
+                                ReactorType.ActivatedByTouch => ReactorActivationType.Touch,
+                                ReactorType.ActivatedbyItem => ReactorActivationType.Item,
+                                ReactorType.AnimationOnly => ReactorActivationType.None,
+                                _ => HasHitAnimation(reactorInfo?.LinkedWzImage) ? ReactorActivationType.Hit : ReactorActivationType.Touch
+                            };
 
             return new ReactorInteractionMetadata
             {
@@ -946,6 +960,45 @@ namespace HaCreator.MapSimulator.Pools
                 ? (ReactorType)value.Value
                 : null;
         }
+
+        private static ReactorActivationType? TryInferActivationTypeFromStateEvents(WzImage linkedReactorImage)
+        {
+            if (linkedReactorImage?.WzProperties == null)
+                return null;
+
+            var eventTypes = new HashSet<int>();
+            foreach (WzImageProperty property in linkedReactorImage.WzProperties)
+            {
+                if (!int.TryParse(property?.Name, out _))
+                    continue;
+
+                if (WzInfoTools.GetRealProperty(property?["event"]) is not WzSubProperty eventProperty)
+                    continue;
+
+                foreach (WzSubProperty eventNode in eventProperty.WzProperties.OfType<WzSubProperty>())
+                {
+                    int? eventType = TryGetOptionalInt(WzInfoTools.GetRealProperty(eventNode["type"]));
+                    if (eventType.HasValue)
+                    {
+                        eventTypes.Add(eventType.Value);
+                    }
+                }
+            }
+
+            if (eventTypes.Contains(5))
+                return ReactorActivationType.Skill;
+
+            if (eventTypes.Contains(9))
+                return ReactorActivationType.Item;
+
+            if (eventTypes.Any(eventType => eventType is 1 or 2 or 8))
+                return ReactorActivationType.Hit;
+
+            if (eventTypes.Any(eventType => eventType is 0 or 6 or 7 or 100))
+                return ReactorActivationType.Touch;
+
+            return null;
+        }
         #endregion
 
         #region Reactor Spawning
@@ -963,7 +1016,7 @@ namespace HaCreator.MapSimulator.Pools
 
             // Use factory if available
             ReactorItem newReactor = null;
-            if (_reactorFactory != null && _graphicsDevice != null)
+            if (_reactorFactory != null)
             {
                 newReactor = _reactorFactory(spawnPoint, _graphicsDevice);
             }
@@ -977,12 +1030,20 @@ namespace HaCreator.MapSimulator.Pools
                 // Reset runtime data
                 if (_reactorData.TryGetValue(spawnIndex, out var data))
                 {
+                    ApplyInteractionMetadata(newReactor?.ReactorInstance, data);
+                    if (spawnPoint.ActivationTypeOverride != ReactorActivationType.None)
+                    {
+                        data.ActivationType = spawnPoint.ActivationTypeOverride;
+                    }
+
                     data.State = ReactorState.Idle;
                     data.StateStartTime = currentTick;
                     data.StateFrame = 0;
                     data.VisualState = newReactor.GetInitialState();
                     data.HitCount = 0;
                     data.Alpha = 1f;
+                    data.CanRespawn = spawnPoint.CanRespawn;
+                    data.ScriptStatePublished = false;
                 }
 
                 _onReactorSpawned?.Invoke(newReactor);
@@ -998,7 +1059,13 @@ namespace HaCreator.MapSimulator.Pools
         /// <param name="positions">List of (x, y) positions</param>
         /// <param name="currentTick">Current game tick</param>
         /// <returns>List of spawned reactor indices</returns>
-        public List<int> SpawnReactorsAtPositions(string reactorId, List<(float x, float y)> positions, int currentTick)
+        public List<int> SpawnReactorsAtPositions(
+            string reactorId,
+            List<(float x, float y)> positions,
+            int currentTick,
+            ReactorActivationType activationTypeOverride = ReactorActivationType.None,
+            bool canRespawn = true,
+            string namePrefix = null)
         {
             var spawnedIndices = new List<int>();
 
@@ -1015,9 +1082,11 @@ namespace HaCreator.MapSimulator.Pools
                     X = x,
                     Y = y,
                     Flip = false,
-                    Name = $"spawned_{reactorId}_{_spawnPoints.Count}",
+                    Name = string.IsNullOrWhiteSpace(namePrefix) ? $"spawned_{reactorId}_{_spawnPoints.Count}" : $"{namePrefix}_{_spawnPoints.Count}",
                     RespawnTimeMs = DEFAULT_RESPAWN_TIME,
-                    IsActive = false
+                    IsActive = false,
+                    ActivationTypeOverride = activationTypeOverride,
+                    CanRespawn = canRespawn
                 };
 
                 _spawnPoints.Add(spawnPoint);
@@ -1033,12 +1102,13 @@ namespace HaCreator.MapSimulator.Pools
                     HitCount = 0,
                     RequiredHits = 1,
                     Alpha = 1f,
-                    ActivationType = ReactorActivationType.Touch
+                    ActivationType = activationTypeOverride == ReactorActivationType.None ? ReactorActivationType.Touch : activationTypeOverride,
+                    CanRespawn = canRespawn
                 };
                 _reactorData[spawnPoint.SpawnId] = data;
 
-                // Schedule spawn
-                spawnPoint.NextSpawnTime = currentTick; // Spawn immediately
+                spawnPoint.NextSpawnTime = currentTick;
+                SpawnReactor(spawnPoint.SpawnId, currentTick);
 
                 spawnedIndices.Add(spawnPoint.SpawnId);
             }
@@ -1073,7 +1143,7 @@ namespace HaCreator.MapSimulator.Pools
                         if (currentTick - data.StateStartTime >= GetActivationDuration(index))
                         {
                             if (ShouldAutoChainStates(data)
-                                && TryAdvanceToNextVisualState(reactor, data, currentTick))
+                                && TryAdvanceToNextVisualState(reactor, data, currentTick, data.ActivationType))
                             {
                                 break;
                             }
@@ -1081,6 +1151,16 @@ namespace HaCreator.MapSimulator.Pools
                             data.State = ReactorState.Active;
                             data.StateStartTime = currentTick;
                             data.StateFrame = 0;
+                        }
+                        break;
+
+                    case ReactorState.Active:
+                        if (data.ActivationType != ReactorActivationType.Hit
+                            && data.ActivationType != ReactorActivationType.None
+                            && currentTick - data.StateStartTime >= GetActivationDuration(index)
+                            && TryApplyTimedStateTransition(index, reactor, data, currentTick))
+                        {
+                            break;
                         }
                         break;
 
@@ -1108,17 +1188,9 @@ namespace HaCreator.MapSimulator.Pools
                     // Check if ready to respawn
                     if (currentTick >= spawnPoint.NextSpawnTime)
                     {
-                        // Get or reset reactor data
                         if (_reactorData.TryGetValue(i, out var data) && data.CanRespawn)
                         {
-                            data.State = ReactorState.Idle;
-                            data.StateStartTime = currentTick;
-                            data.StateFrame = 0;
-                            data.VisualState = _reactors[i]?.GetInitialState() ?? 0;
-                            data.HitCount = 0;
-                            data.Alpha = 1f;
-                            data.ScriptStatePublished = false;
-                            spawnPoint.IsActive = true;
+                            SpawnReactor(i, currentTick);
                         }
                     }
                 }
@@ -1132,12 +1204,12 @@ namespace HaCreator.MapSimulator.Pools
         /// </summary>
         public IEnumerable<(ReactorItem reactor, int index, float alpha)> GetRenderableReactors()
         {
-            if (_reactors == null)
+            if (GetReactorCount() == 0)
                 yield break;
 
-            for (int i = 0; i < _reactors.Length; i++)
+            for (int i = 0; i < GetReactorCount(); i++)
             {
-                var reactor = _reactors[i];
+                var reactor = GetReactor(i);
                 if (reactor == null)
                     continue;
 
@@ -1149,7 +1221,7 @@ namespace HaCreator.MapSimulator.Pools
                 }
 
                 // Skip destroyed/respawning
-                if (data.State == ReactorState.Destroyed && data.Alpha <= 0)
+                if (data.State == ReactorState.Destroyed)
                     continue;
                 if (data.State == ReactorState.Respawning)
                     continue;
@@ -1201,7 +1273,7 @@ namespace HaCreator.MapSimulator.Pools
 
             return new ReactorPoolStats
             {
-                TotalReactors = _reactors?.Length ?? 0,
+                TotalReactors = GetReactorCount(),
                 TotalSpawnPoints = _spawnPoints.Count,
                 IdleReactors = idleCount,
                 ActiveReactors = activeCount,
@@ -1222,7 +1294,7 @@ namespace HaCreator.MapSimulator.Pools
                 ReactorType.ActivatedByTouch => ReactorActivationType.Touch,
                 ReactorType.ActivatedbyItem => ReactorActivationType.Item,
                 ReactorType.AnimationOnly => ReactorActivationType.None,
-                _ => ReactorActivationType.Touch
+                _ => HasHitAnimation(reactorInstance?.ReactorInfo?.LinkedWzImage) ? ReactorActivationType.Hit : ReactorActivationType.Touch
             };
         }
 
@@ -1279,6 +1351,42 @@ namespace HaCreator.MapSimulator.Pools
             return int.TryParse(value.ToString(), out int parsedValue) ? parsedValue : null;
         }
 
+        private static bool HasHitAnimation(WzImage linkedReactorImage)
+        {
+            if (linkedReactorImage?.WzProperties == null)
+                return false;
+
+            foreach (WzImageProperty property in linkedReactorImage.WzProperties)
+            {
+                if (!int.TryParse(property?.Name, out _))
+                    continue;
+
+                if (WzInfoTools.GetRealProperty(property?["hit"]) != null)
+                    return true;
+            }
+
+            return false;
+        }
+
+        private void ApplyInteractionMetadata(ReactorInstance reactorInstance, ReactorRuntimeData data)
+        {
+            if (reactorInstance == null || data == null)
+                return;
+
+            ReactorInteractionMetadata interactionMetadata = ResolveInteractionMetadata(reactorInstance);
+            data.ReactorType = interactionMetadata.ReactorType;
+            data.ActivationType = interactionMetadata.ActivationType;
+            data.RequiredItemId = interactionMetadata.RequiredItemId;
+            data.RequiredQuestId = interactionMetadata.RequiredQuestId;
+            data.RequiredQuestState = interactionMetadata.RequiredQuestState;
+            data.ScriptName = interactionMetadata.ScriptName;
+        }
+
+        private int GetReactorCount()
+        {
+            return Math.Max(_reactors?.Length ?? 0, _spawnPoints.Count);
+        }
+
         private int GetActivationDuration(int index)
         {
             ReactorItem reactor = GetReactor(index);
@@ -1297,11 +1405,33 @@ namespace HaCreator.MapSimulator.Pools
                 && data.ActivationType != ReactorActivationType.None;
         }
 
-        private static bool TryAdvanceToNextVisualState(ReactorItem reactor, ReactorRuntimeData data, int currentTick)
+        private bool TryApplyTimedStateTransition(int index, ReactorItem reactor, ReactorRuntimeData data, int currentTick)
         {
             if (reactor == null
                 || data == null
-                || !reactor.TryGetNextState(data.VisualState, out int nextVisualState))
+                || !reactor.TryGetTimedStateTransition(data.VisualState, out int nextVisualState))
+            {
+                return false;
+            }
+
+            if (nextVisualState == reactor.GetInitialState())
+            {
+                ResetReactor(index, currentTick);
+                return true;
+            }
+
+            data.VisualState = nextVisualState;
+            data.State = ReactorState.Activated;
+            data.StateStartTime = currentTick;
+            data.StateFrame = 0;
+            return true;
+        }
+
+        private static bool TryAdvanceToNextVisualState(ReactorItem reactor, ReactorRuntimeData data, int currentTick, ReactorActivationType activationType)
+        {
+            if (reactor == null
+                || data == null
+                || !reactor.TryGetNextState(data.VisualState, activationType, out int nextVisualState))
             {
                 return false;
             }

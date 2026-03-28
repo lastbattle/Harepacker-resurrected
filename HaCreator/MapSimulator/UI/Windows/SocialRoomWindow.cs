@@ -32,6 +32,10 @@ namespace HaCreator.MapSimulator.UI
         private readonly Dictionary<int, CharacterAssembler> _miniRoomAvatarAssemblers = new Dictionary<int, CharacterAssembler>();
         private readonly Dictionary<int, string> _miniRoomAvatarKeys = new Dictionary<int, string>();
         private SpriteFont _font;
+        private Texture2D _miniRoomOmokBlackStoneTexture;
+        private Texture2D _miniRoomOmokWhiteStoneTexture;
+        private Texture2D _miniRoomOmokLastBlackStoneTexture;
+        private Texture2D _miniRoomOmokLastWhiteStoneTexture;
 
         private static readonly Color HeaderColor = new Color(79, 54, 18);
         private static readonly Color AccentColor = new Color(201, 145, 52);
@@ -63,6 +67,18 @@ namespace HaCreator.MapSimulator.UI
             {
                 _layers.Add(new LayerInfo(layer, offset));
             }
+        }
+
+        public void SetMiniRoomOmokStoneTextures(
+            Texture2D blackStoneTexture,
+            Texture2D whiteStoneTexture,
+            Texture2D lastBlackStoneTexture,
+            Texture2D lastWhiteStoneTexture)
+        {
+            _miniRoomOmokBlackStoneTexture = blackStoneTexture;
+            _miniRoomOmokWhiteStoneTexture = whiteStoneTexture;
+            _miniRoomOmokLastBlackStoneTexture = lastBlackStoneTexture ?? blackStoneTexture;
+            _miniRoomOmokLastWhiteStoneTexture = lastWhiteStoneTexture ?? whiteStoneTexture;
         }
 
         public void BindButton(UIObject button, Action action)
@@ -122,6 +138,12 @@ namespace HaCreator.MapSimulator.UI
 
         private void DrawMiniRoomContents(SpriteBatch sprite, SkeletonMeshRenderer skeletonMeshRenderer, int tickCount)
         {
+            if (string.Equals(_runtime.ModeName, "Omok", StringComparison.OrdinalIgnoreCase))
+            {
+                DrawOmokContents(sprite, skeletonMeshRenderer, tickCount);
+                return;
+            }
+
             Rectangle occupantPanel = new Rectangle(Position.X + 18, Position.Y + 80, 246, 136);
             Rectangle statePanel = new Rectangle(Position.X + 278, Position.Y + 80, 188, 136);
             Rectangle notePanel = new Rectangle(Position.X + 480, Position.Y + 80, 234, 136);
@@ -201,6 +223,139 @@ namespace HaCreator.MapSimulator.UI
                 Math.Max(180, (CurrentFrame?.Width ?? 320) - 40),
                 AccentColor,
                 0.55f);
+        }
+
+        private void DrawOmokContents(SpriteBatch sprite, SkeletonMeshRenderer skeletonMeshRenderer, int tickCount)
+        {
+            Rectangle boardPanel = new Rectangle(Position.X + 36, Position.Y + 74, 286, 286);
+            Rectangle occupantPanel = new Rectangle(Position.X + 340, Position.Y + 78, 178, 132);
+            Rectangle statePanel = new Rectangle(Position.X + 528, Position.Y + 78, 176, 132);
+            Rectangle notePanel = new Rectangle(Position.X + 340, Position.Y + 221, 364, 82);
+            Rectangle chatPanel = new Rectangle(Position.X + 18, Position.Y + 312, 696, 108);
+
+            DrawPanel(sprite, boardPanel);
+            DrawPanel(sprite, occupantPanel);
+            DrawPanel(sprite, statePanel);
+            DrawPanel(sprite, notePanel);
+            DrawPanel(sprite, chatPanel);
+
+            DrawText(sprite, _runtime.RoomTitle, new Vector2(Position.X + 20, Position.Y + 18), HeaderColor, 0.82f);
+            DrawText(sprite, $"{_runtime.ModeName} | Owner {_runtime.OwnerName}", new Vector2(Position.X + 20, Position.Y + 42), AccentColor, 0.6f);
+
+            DrawOmokBoard(sprite, boardPanel);
+
+            DrawText(sprite, "Players", new Vector2(occupantPanel.X + 12, occupantPanel.Y + 10), HeaderColor, 0.68f);
+            float occupantY = occupantPanel.Y + 34;
+            foreach (SocialRoomOccupant occupant in _runtime.Occupants)
+            {
+                Color color = occupant.IsReady ? SuccessColor : ValueColor;
+                DrawText(sprite, $"{occupant.Name} | {FormatRole(occupant.Role)}", new Vector2(occupantPanel.X + 12, occupantY), color, 0.58f);
+                occupantY += 17f;
+                DrawWrapped(sprite, occupant.Detail, occupantPanel.X + 16, ref occupantY, occupantPanel.Width - 24, MutedColor, 0.5f);
+                occupantY += 5f;
+                if (occupantY > occupantPanel.Bottom - 18)
+                {
+                    break;
+                }
+            }
+
+            DrawText(sprite, "Room State", new Vector2(statePanel.X + 12, statePanel.Y + 10), HeaderColor, 0.68f);
+            DrawKeyValue(sprite, statePanel.X + 12, statePanel.Y + 36, "Capacity", $"{_runtime.Occupants.Count}/{_runtime.Capacity}");
+            DrawKeyValue(sprite, statePanel.X + 12, statePanel.Y + 58, "Turn", ResolveOmokTurnSummary());
+            DrawKeyValue(sprite, statePanel.X + 12, statePanel.Y + 80, "Winner", ResolveOmokWinnerSummary());
+            DrawKeyValue(sprite, statePanel.X + 12, statePanel.Y + 102, "Mesos", $"{_runtime.MesoAmount:N0}");
+
+            DrawText(sprite, "Notes", new Vector2(notePanel.X + 12, notePanel.Y + 10), HeaderColor, 0.68f);
+            float noteY = notePanel.Y + 34;
+            foreach (string note in _runtime.Notes)
+            {
+                DrawWrapped(sprite, note, notePanel.X + 12, ref noteY, notePanel.Width - 24, MutedColor, 0.5f);
+                if (noteY > notePanel.Bottom - 12)
+                {
+                    break;
+                }
+            }
+
+            DrawText(sprite, "Chat", new Vector2(chatPanel.X + 12, chatPanel.Y + 10), HeaderColor, 0.68f);
+            float chatY = chatPanel.Bottom - 22;
+            for (int i = _runtime.ChatEntries.Count - 1; i >= 0; i--)
+            {
+                SocialRoomChatEntry chatEntry = _runtime.ChatEntries[i];
+                List<string> wrappedLines = new List<string>(WrapText(chatEntry.Text, chatPanel.Width - 24, 0.52f));
+                for (int lineIndex = wrappedLines.Count - 1; lineIndex >= 0; lineIndex--)
+                {
+                    DrawText(sprite, wrappedLines[lineIndex], new Vector2(chatPanel.X + 12, chatY), GetChatToneColor(chatEntry.Tone), 0.52f);
+                    chatY -= (_font.LineSpacing * 0.52f) + 1f;
+                    if (chatY < chatPanel.Y + 24)
+                    {
+                        break;
+                    }
+                }
+
+                if (chatY < chatPanel.Y + 24)
+                {
+                    break;
+                }
+            }
+
+            DrawMiniRoomAvatarStrip(sprite, skeletonMeshRenderer, tickCount, notePanel);
+
+            float statusY = Position.Y + (CurrentFrame?.Height ?? 240) - 30;
+            DrawWrapped(sprite, _runtime.StatusMessage, Position.X + 20, ref statusY, Math.Max(180, (CurrentFrame?.Width ?? 320) - 40), AccentColor, 0.55f);
+        }
+
+        private void DrawOmokBoard(SpriteBatch sprite, Rectangle panel)
+        {
+            Rectangle boardRect = new Rectangle(panel.X + 10, panel.Y + 10, 266, 266);
+            sprite.Draw(_panelTexture, boardRect, new Color(219, 184, 120, 220));
+
+            for (int i = 0; i < 15; i++)
+            {
+                int offset = i * 19;
+                Rectangle horizontal = new Rectangle(boardRect.X, boardRect.Y + offset, boardRect.Width, 1);
+                Rectangle vertical = new Rectangle(boardRect.X + offset, boardRect.Y, 1, boardRect.Height);
+                sprite.Draw(_panelTexture, horizontal, new Color(110, 73, 26, 160));
+                sprite.Draw(_panelTexture, vertical, new Color(110, 73, 26, 160));
+            }
+
+            for (int y = 0; y < 15; y++)
+            {
+                for (int x = 0; x < 15; x++)
+                {
+                    int stoneValue = _runtime.GetMiniRoomOmokStoneAt(x, y);
+                    if (stoneValue == 0)
+                    {
+                        continue;
+                    }
+
+                    bool isLastMove = x == _runtime.MiniRoomOmokLastMoveX && y == _runtime.MiniRoomOmokLastMoveY;
+                    Texture2D texture = ResolveOmokStoneTexture(stoneValue, isLastMove);
+                    Rectangle stoneRect = new Rectangle(boardRect.X + (x * 19) - 11, boardRect.Y + (y * 19) - 11, 22, 22);
+                    if (texture != null)
+                    {
+                        sprite.Draw(texture, stoneRect, Color.White);
+                    }
+                    else
+                    {
+                        sprite.Draw(_panelTexture, stoneRect, stoneValue == 1 ? new Color(28, 28, 28) : new Color(232, 232, 232));
+                    }
+                }
+            }
+        }
+
+        private Texture2D ResolveOmokStoneTexture(int stoneValue, bool isLastMove)
+        {
+            if (stoneValue == 1)
+            {
+                return isLastMove ? _miniRoomOmokLastBlackStoneTexture ?? _miniRoomOmokBlackStoneTexture : _miniRoomOmokBlackStoneTexture;
+            }
+
+            if (stoneValue == 2)
+            {
+                return isLastMove ? _miniRoomOmokLastWhiteStoneTexture ?? _miniRoomOmokWhiteStoneTexture : _miniRoomOmokWhiteStoneTexture;
+            }
+
+            return null;
         }
 
         private void DrawDefaultContents(SpriteBatch sprite)
@@ -476,6 +631,26 @@ namespace HaCreator.MapSimulator.UI
                 SocialRoomChatTone.RemoteSpeaker => new Color(120, 70, 32),
                 SocialRoomChatTone.Warning => new Color(153, 63, 32),
                 _ => ValueColor
+            };
+        }
+
+        private string ResolveOmokTurnSummary()
+        {
+            if (!_runtime.IsMiniRoomOmokInProgress)
+            {
+                return "idle";
+            }
+
+            return _runtime.MiniRoomOmokCurrentTurnIndex == 0 ? "Host" : "Guest";
+        }
+
+        private string ResolveOmokWinnerSummary()
+        {
+            return _runtime.MiniRoomOmokWinnerIndex switch
+            {
+                0 => "Host",
+                1 => "Guest",
+                _ => "None"
             };
         }
 

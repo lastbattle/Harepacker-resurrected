@@ -21,6 +21,8 @@ namespace HaCreator.MapSimulator.Managers
 
         public int LastFieldHazardDamage { get; private set; }
         public string LastFieldHazardMessage { get; private set; } = string.Empty;
+        public string LastFieldHazardFollowUpDetail { get; private set; } = string.Empty;
+        public int LastFieldHazardFollowUpUpdatedAt { get; private set; } = int.MinValue;
         public int LastFieldHazardNoticeStartedAt { get; private set; } = int.MinValue;
         public int LastFieldHazardNoticeExpiresAt { get; private set; } = int.MinValue;
 
@@ -116,13 +118,25 @@ namespace HaCreator.MapSimulator.Managers
         {
             LastFieldHazardDamage = Math.Max(0, damage);
             LastFieldHazardMessage = message ?? string.Empty;
+            LastFieldHazardFollowUpDetail = string.Empty;
+            LastFieldHazardFollowUpUpdatedAt = int.MinValue;
             LastFieldHazardNoticeStartedAt = currentTickCount;
             LastFieldHazardNoticeExpiresAt = currentTickCount + Math.Max(400, durationMs);
+        }
+
+        public void SetFieldHazardFollowUp(string detail, int currentTickCount)
+        {
+            LastFieldHazardFollowUpDetail = detail ?? string.Empty;
+            LastFieldHazardFollowUpUpdatedAt = string.IsNullOrWhiteSpace(LastFieldHazardFollowUpDetail)
+                ? int.MinValue
+                : currentTickCount;
         }
 
         public void ClearFieldHazardNotice()
         {
             LastFieldHazardMessage = string.Empty;
+            LastFieldHazardFollowUpDetail = string.Empty;
+            LastFieldHazardFollowUpUpdatedAt = int.MinValue;
             LastFieldHazardNoticeStartedAt = int.MinValue;
             LastFieldHazardNoticeExpiresAt = int.MinValue;
         }
@@ -179,10 +193,13 @@ namespace HaCreator.MapSimulator.Managers
             int remainingMs = Math.Max(0, LastFieldHazardNoticeExpiresAt - currentTickCount);
             return string.Format(
                 CultureInfo.InvariantCulture,
-                "Field hazard notice active. damage={0} remaining={1}ms message=\"{2}\"",
+                "Field hazard notice active. damage={0} remaining={1}ms message=\"{2}\"{3}",
                 LastFieldHazardDamage,
                 remainingMs,
-                LastFieldHazardMessage);
+                LastFieldHazardMessage,
+                string.IsNullOrWhiteSpace(LastFieldHazardFollowUpDetail)
+                    ? string.Empty
+                    : $" followUp=\"{LastFieldHazardFollowUpDetail}\"");
         }
     }
 }

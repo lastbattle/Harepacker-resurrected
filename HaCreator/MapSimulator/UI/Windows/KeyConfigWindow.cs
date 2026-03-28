@@ -295,10 +295,10 @@ namespace HaCreator.MapSimulator.UI
 
             if (string.IsNullOrEmpty(primary))
             {
-                return secondary;
+                return AppendGamepadBinding(secondary, binding.GamepadButton);
             }
 
-            return $"{primary} / {secondary}";
+            return AppendGamepadBinding($"{primary} / {secondary}", binding.GamepadButton);
         }
 
         private static string FormatKey(Keys key)
@@ -315,6 +315,43 @@ namespace HaCreator.MapSimulator.UI
                 Keys.OemTilde => "`",
                 Keys.OemCloseBrackets => "]",
                 _ => key.ToString(),
+            };
+        }
+
+        private static string AppendGamepadBinding(string keyboardBinding, Buttons gamepadButton)
+        {
+            string gamepadText = FormatGamepadButton(gamepadButton);
+            if (string.IsNullOrEmpty(gamepadText))
+            {
+                return string.IsNullOrWhiteSpace(keyboardBinding) ? "Unbound" : keyboardBinding;
+            }
+
+            if (string.IsNullOrWhiteSpace(keyboardBinding))
+            {
+                return $"Pad:{gamepadText}";
+            }
+
+            return $"{keyboardBinding} | Pad:{gamepadText}";
+        }
+
+        private static string FormatGamepadButton(Buttons button)
+        {
+            return button switch
+            {
+                (Buttons)0 => string.Empty,
+                Buttons.LeftShoulder => "LB",
+                Buttons.RightShoulder => "RB",
+                Buttons.LeftTrigger => "LT",
+                Buttons.RightTrigger => "RT",
+                Buttons.LeftThumbstickUp => "L-Up",
+                Buttons.LeftThumbstickDown => "L-Down",
+                Buttons.LeftThumbstickLeft => "L-Left",
+                Buttons.LeftThumbstickRight => "L-Right",
+                Buttons.DPadUp => "D-Up",
+                Buttons.DPadDown => "D-Down",
+                Buttons.DPadLeft => "D-Left",
+                Buttons.DPadRight => "D-Right",
+                _ => button.ToString(),
             };
         }
     }

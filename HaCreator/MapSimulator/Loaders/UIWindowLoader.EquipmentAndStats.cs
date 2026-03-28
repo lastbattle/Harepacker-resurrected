@@ -143,49 +143,10 @@ namespace HaCreator.MapSimulator.Loaders
                 catch { }
             }
 
-            IDXObject cashPendantChrome = null;
-            int cashPendantOffsetX = 0;
-            int cashPendantOffsetY = 0;
-            WzCanvasProperty cashPendant = (WzCanvasProperty)characterProperty["cashPendant"];
-            if (cashPendant != null)
-            {
-                try
-                {
-                    System.Drawing.Bitmap pendantBitmap = cashPendant.GetLinkedWzCanvasBitmap();
-                    Texture2D pendantTexture = pendantBitmap.ToTexture2DAndDispose(device);
-                    cashPendantChrome = new DXObject(0, 0, pendantTexture, 0);
-                    System.Drawing.PointF? pendantOrigin = cashPendant.GetCanvasOriginPosition();
-                    cashPendantOffsetX = pendantOrigin.HasValue ? -(int)pendantOrigin.Value.X : 0;
-                    cashPendantOffsetY = pendantOrigin.HasValue ? -(int)pendantOrigin.Value.Y : 0;
-                }
-                catch { }
-            }
-
-            IDXObject charmPocketChrome = null;
-            int charmPocketOffsetX = 0;
-            int charmPocketOffsetY = 0;
-            WzCanvasProperty charmPocket = (WzCanvasProperty)characterProperty["charmPocket"];
-            if (charmPocket != null)
-            {
-                try
-                {
-                    System.Drawing.Bitmap pocketBitmap = charmPocket.GetLinkedWzCanvasBitmap();
-                    Texture2D pocketTexture = pocketBitmap.ToTexture2DAndDispose(device);
-                    charmPocketChrome = new DXObject(0, 0, pocketTexture, 0);
-                    System.Drawing.PointF? pocketOrigin = charmPocket.GetCanvasOriginPosition();
-                    charmPocketOffsetX = pocketOrigin.HasValue ? -(int)pocketOrigin.Value.X : 0;
-                    charmPocketOffsetY = pocketOrigin.HasValue ? -(int)pocketOrigin.Value.Y : 0;
-                }
-                catch { }
-            }
-
-            equip.SetSpecialSlotChrome(
-                cashPendantChrome,
-                cashPendantOffsetX,
-                cashPendantOffsetY,
-                charmPocketChrome,
-                charmPocketOffsetX,
-                charmPocketOffsetY);
+            // only authors dynamic character-pane chrome for pendant slot expansion
+            // and the charm pocket unlock. Load them from WZ instead of duplicating layout constants.
+            TryLoadSpecialSlotChrome(characterProperty, "cashPendant", device, equip);
+            TryLoadSpecialSlotChrome(characterProperty, "charmPocket", device, equip);
 
             // Load button sounds
             WzBinaryProperty btClickSound = (WzBinaryProperty)soundUIImage?["BtMouseClick"];
@@ -249,7 +210,53 @@ namespace HaCreator.MapSimulator.Loaders
             return equip;
         }
 
-        private static void LoadEquipCompanionTabLayout(EquipUIBigBang equip, WzSubProperty equipProperty, string propertyName, int tabIndex, GraphicsDevice device)
+        private static void TryLoadSpecialSlotChrome(WzSubProperty characterProperty, string propertyName, GraphicsDevice device, EquipUIBigBang equip)
+
+        {
+
+            WzCanvasProperty chromeProperty = characterProperty?[propertyName] as WzCanvasProperty;
+
+            if (chromeProperty == null)
+
+            {
+
+                return;
+
+            }
+
+
+
+            try
+
+            {
+
+                System.Drawing.Bitmap chromeBitmap = chromeProperty.GetLinkedWzCanvasBitmap();
+
+                Texture2D chromeTexture = chromeBitmap.ToTexture2DAndDispose(device);
+
+                IDXObject chrome = new DXObject(0, 0, chromeTexture, 0);
+
+                System.Drawing.PointF? origin = chromeProperty.GetCanvasOriginPosition();
+
+                int offsetX = origin.HasValue ? -(int)origin.Value.X : 0;
+
+                int offsetY = origin.HasValue ? -(int)origin.Value.Y : 0;
+
+                equip.SetSpecialSlotChrome(propertyName, chrome, offsetX, offsetY);
+
+            }
+
+            catch
+
+            {
+
+            }
+
+        }
+
+
+
+        private static void LoadEquipCompanionTabLayout(EquipUIBigBang equip, WzSubProperty equipProperty, string propertyName, int tabIndex, GraphicsDevice device)
         {
             if (equipProperty?[propertyName] is not WzSubProperty tabProperty)
             {

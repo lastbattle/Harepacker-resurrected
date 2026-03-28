@@ -62,6 +62,7 @@ namespace HaCreator.MapSimulator.AI
         Weakness = 1L << 29,        // Weakness (reduced stats)
         Neutralise = 1L << 30,      // Neutralise (reduced magic defense)
         Hypnotize = 1L << 31,       // Hypnotized (attacks allies)
+        Rich = 1L << 32,            // MobSkill 157 special status
     }
 
     /// <summary>
@@ -88,6 +89,7 @@ namespace HaCreator.MapSimulator.AI
         public bool IsGrounded { get; set; }
         public int OwnerId { get; set; }
         public int AggroValue { get; set; }
+        public float AggroRange { get; set; }
         public int ExpirationTime { get; set; }
         public bool IsActive { get; set; } = true;
     }
@@ -2057,6 +2059,7 @@ namespace HaCreator.MapSimulator.AI
                 case MobStatusEffect.MImmune:
                 case MobStatusEffect.HardSkin:
                 case MobStatusEffect.Reflect:
+                case MobStatusEffect.Rich:
                     return true;
                 case MobStatusEffect.PADamage:
                 case MobStatusEffect.PDamage:

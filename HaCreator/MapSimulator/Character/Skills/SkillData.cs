@@ -229,6 +229,8 @@ namespace HaCreator.MapSimulator.Character.Skills
         public int Delay { get; set; } = 100;
         public Rectangle Bounds { get; set; }
         public bool Flip { get; set; }
+        public int AlphaStart { get; set; } = 255;
+        public int AlphaEnd { get; set; } = 255;
     }
 
     /// <summary>
@@ -254,22 +256,42 @@ namespace HaCreator.MapSimulator.Character.Skills
 
         public SkillFrame GetFrameAtTime(int timeMs)
         {
-            if (Frames.Count == 0) return null;
+            TryGetFrameAtTime(timeMs, out SkillFrame frame, out _);
+            return frame;
+        }
+
+        public bool TryGetFrameAtTime(int timeMs, out SkillFrame frame, out int frameElapsedMs)
+        {
+            frame = null;
+            frameElapsedMs = 0;
+
+            if (Frames.Count == 0) return false;
 
             if (TotalDuration == 0) CalculateDuration();
-            if (TotalDuration == 0) return Frames[0];
+            if (TotalDuration == 0)
+            {
+                frame = Frames[0];
+                return true;
+            }
 
             int time = Loop ? (timeMs % TotalDuration) : Math.Min(timeMs, TotalDuration - 1);
             int elapsed = 0;
 
-            foreach (var frame in Frames)
+            foreach (var currentFrame in Frames)
             {
-                elapsed += frame.Delay;
+                int frameDelay = Math.Max(1, currentFrame.Delay);
+                elapsed += frameDelay;
                 if (time < elapsed)
-                    return frame;
+                {
+                    frameElapsedMs = time - (elapsed - frameDelay);
+                    frame = currentFrame;
+                    return true;
+                }
             }
 
-            return Frames[^1];
+            frame = Frames[^1];
+            frameElapsedMs = Math.Max(0, Math.Min(time, TotalDuration - 1));
+            return true;
         }
 
         public bool IsComplete(int timeMs)
@@ -409,7 +431,9 @@ namespace HaCreator.MapSimulator.Character.Skills
         public SkillAnimation SummonRemovalAnimation { get; set; } // Optional self-destruct / removal branch
         public string SummonAttackBranchName { get; set; }
         public SkillAnimation AvatarOverlayEffect { get; set; } // Avatar-bound looping overlay
+        public SkillAnimation AvatarOverlaySecondaryEffect { get; set; } // Optional second overlay on the same avatar-owned plane
         public SkillAnimation AvatarUnderFaceEffect { get; set; } // Avatar-bound layer below face/hair
+        public SkillAnimation AvatarUnderFaceSecondaryEffect { get; set; } // Optional second under-face layer on the same avatar-owned plane
         public SkillAnimation AvatarLadderEffect { get; set; } // Ladder/rope override for avatar overlay
         public SkillAnimation AvatarOverlayFinishEffect { get; set; } // One-shot cleanup overlay
         public SkillAnimation AvatarUnderFaceFinishEffect { get; set; } // One-shot cleanup below face
@@ -480,7 +504,9 @@ namespace HaCreator.MapSimulator.Character.Skills
 
         public bool HasPersistentAvatarEffect =>
             AvatarOverlayEffect != null
+            || AvatarOverlaySecondaryEffect != null
             || AvatarUnderFaceEffect != null
+            || AvatarUnderFaceSecondaryEffect != null
             || AvatarLadderEffect != null
             || AvatarOverlayFinishEffect != null
             || AvatarUnderFaceFinishEffect != null
@@ -1180,11 +1206,16 @@ namespace HaCreator.MapSimulator.Character.Skills
         public int PendingRemovalTime { get; set; } = int.MaxValue;
         public int LastBodyContactTime { get; set; } = int.MinValue;
         public int LastHitAnimationStartTime { get; set; } = int.MinValue;
+        public int HitPeriodRemainingMs { get; set; }
+        public int LastHitPeriodUpdateTime { get; set; } = int.MinValue;
+        public uint HitFlashCounter { get; set; }
+        public int LastPassiveEffectTime { get; set; } = int.MinValue;
         public int LastStateChangeTime { get; set; }
         public SummonActorState ActorState { get; set; } = SummonActorState.Spawn;
         public bool ExpiryActionTriggered { get; set; }
         public int MaxHealth { get; set; } = 1;
         public int CurrentHealth { get; set; } = 1;
+        public byte TeslaCoilState { get; set; }
 
         public bool IsPendingRemoval => PendingRemovalTime != int.MaxValue;
 

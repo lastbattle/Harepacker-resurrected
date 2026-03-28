@@ -23,6 +23,7 @@ namespace HaCreator.MapSimulator
                     packetType,
                     payload,
                     _mapBoard.MapInfo.id,
+                    currTickCount,
                     townPortalDestination,
                     out string result))
             {

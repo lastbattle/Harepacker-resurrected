@@ -353,6 +353,8 @@ namespace HaCreator.MapSimulator.Character
         public DateTime? ExpirationDateUtc { get; set; }
         public int? Durability { get; set; }
         public int? MaxDurability { get; set; }
+        public int SellPrice { get; set; }
+        public bool IsEpic { get; set; }
         public int RequiredJobMask { get; set; }
         public int RequiredFame { get; set; }
         public int RequiredLevel { get; set; }
@@ -376,9 +378,14 @@ namespace HaCreator.MapSimulator.Character
         public int BonusSpeed { get; set; }
         public int BonusJump { get; set; }
         public int UpgradeSlots { get; set; }
+        public int? TotalUpgradeSlotCount { get; set; }
+        public int? RemainingUpgradeSlotCount { get; set; }
+        public int EnhancementStarCount { get; set; }
         public int KnockbackRate { get; set; }
         public int TradeAvailable { get; set; }
         public bool IsTimeLimited { get; set; }
+        public string PotentialTierText { get; set; }
+        public List<string> PotentialLines { get; set; } = new();
 
         // Icon for UI
         public IDXObject Icon { get; set; }
@@ -401,6 +408,8 @@ namespace HaCreator.MapSimulator.Character
                 ExpirationDateUtc = ExpirationDateUtc,
                 Durability = Durability,
                 MaxDurability = MaxDurability,
+                SellPrice = SellPrice,
+                IsEpic = IsEpic,
                 RequiredJobMask = RequiredJobMask,
                 RequiredFame = RequiredFame,
                 RequiredLevel = RequiredLevel,
@@ -424,9 +433,14 @@ namespace HaCreator.MapSimulator.Character
                 BonusSpeed = BonusSpeed,
                 BonusJump = BonusJump,
                 UpgradeSlots = UpgradeSlots,
+                TotalUpgradeSlotCount = TotalUpgradeSlotCount,
+                RemainingUpgradeSlotCount = RemainingUpgradeSlotCount,
+                EnhancementStarCount = EnhancementStarCount,
                 KnockbackRate = KnockbackRate,
                 TradeAvailable = TradeAvailable,
                 IsTimeLimited = IsTimeLimited,
+                PotentialTierText = PotentialTierText,
+                PotentialLines = PotentialLines != null ? new List<string>(PotentialLines) : new List<string>(),
                 Icon = Icon,
                 IconRaw = IconRaw
             };
@@ -684,6 +698,8 @@ namespace HaCreator.MapSimulator.Character
                 ExpirationDateUtc = ExpirationDateUtc,
                 Durability = Durability,
                 MaxDurability = MaxDurability,
+                SellPrice = SellPrice,
+                IsEpic = IsEpic,
                 RequiredJobMask = RequiredJobMask,
                 RequiredFame = RequiredFame,
                 RequiredLevel = RequiredLevel,
@@ -707,9 +723,14 @@ namespace HaCreator.MapSimulator.Character
                 BonusSpeed = BonusSpeed,
                 BonusJump = BonusJump,
                 UpgradeSlots = UpgradeSlots,
+                TotalUpgradeSlotCount = TotalUpgradeSlotCount,
+                RemainingUpgradeSlotCount = RemainingUpgradeSlotCount,
+                EnhancementStarCount = EnhancementStarCount,
                 KnockbackRate = KnockbackRate,
                 TradeAvailable = TradeAvailable,
                 IsTimeLimited = IsTimeLimited,
+                PotentialTierText = PotentialTierText,
+                PotentialLines = PotentialLines != null ? new List<string>(PotentialLines) : new List<string>(),
                 Icon = Icon,
                 IconRaw = IconRaw,
                 AttackSpeed = AttackSpeed,

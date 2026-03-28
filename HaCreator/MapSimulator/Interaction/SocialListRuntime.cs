@@ -20,7 +20,7 @@ namespace HaCreator.MapSimulator.Interaction
 
         private readonly Dictionary<SocialListTab, List<SocialEntryState>> _entriesByTab = new();
         private readonly Dictionary<SocialListTab, int> _selectedIndexByTab = new();
-        private readonly Dictionary<SocialListTab, int> _pageByTab = new();
+        private readonly Dictionary<SocialListTab, int> _firstVisibleIndexByTab = new();
         private readonly Queue<SocialEntryState> _friendInviteSeeds = new();
         private readonly Queue<SocialEntryState> _guildInviteSeeds = new();
         private readonly Queue<SocialEntryState> _allianceInviteSeeds = new();
@@ -76,16 +76,16 @@ namespace HaCreator.MapSimulator.Interaction
         {
             IReadOnlyList<SocialEntryState> tabEntries = GetFilteredEntries(_currentTab);
             int selectedIndex = GetSelectedIndex(_currentTab, tabEntries.Count);
+            int firstVisibleIndex = GetFirstVisibleIndex(_currentTab, tabEntries.Count);
             int totalPages = Math.Max(1, (int)Math.Ceiling(tabEntries.Count / (float)PageSize));
-            int page = Math.Clamp(_pageByTab.TryGetValue(_currentTab, out int currentPage) ? currentPage : 0, 0, totalPages - 1);
-            _pageByTab[_currentTab] = page;
+            int page = Math.Clamp((firstVisibleIndex / PageSize) + 1, 1, totalPages);
 
             IReadOnlyList<SocialEntryState> pageEntries = tabEntries
-                .Skip(page * PageSize)
+                .Skip(firstVisibleIndex)
                 .Take(PageSize)
                 .ToArray();
-            int pageSelectedIndex = selectedIndex >= page * PageSize && selectedIndex < ((page + 1) * PageSize)
-                ? selectedIndex - (page * PageSize)
+            int pageSelectedIndex = selectedIndex >= firstVisibleIndex && selectedIndex < (firstVisibleIndex + PageSize)
+                ? selectedIndex - firstVisibleIndex
                 : -1;
             SocialEntryState selectedEntry = selectedIndex >= 0 && selectedIndex < tabEntries.Count ? tabEntries[selectedIndex] : null;
 
@@ -94,15 +94,18 @@ namespace HaCreator.MapSimulator.Interaction
                 CurrentTab = _currentTab,
                 Entries = pageEntries.Select(CreateEntrySnapshot).ToArray(),
                 SelectedVisibleIndex = pageSelectedIndex,
-                Page = page + 1,
+                Page = page,
                 TotalPages = totalPages,
                 TotalEntries = tabEntries.Count,
+                FirstVisibleIndex = firstVisibleIndex,
+                MaxFirstVisibleIndex = Math.Max(0, tabEntries.Count - PageSize),
+                VisibleCapacity = PageSize,
                 HeaderTitle = GetHeaderTitle(),
                 SummaryLines = BuildSummaryLines(selectedEntry),
                 EnabledActionKeys = GetEnabledActions(selectedEntry).ToArray(),
                 FriendOnlineOnly = _friendOnlineOnly,
-                CanPageBackward = page > 0,
-                CanPageForward = page < totalPages - 1
+                CanPageBackward = firstVisibleIndex > 0,
+                CanPageForward = firstVisibleIndex < Math.Max(0, tabEntries.Count - PageSize)
             };
         }
 
@@ -145,7 +148,7 @@ namespace HaCreator.MapSimulator.Interaction
             _currentTab = tab;
             int count = GetFilteredEntries(tab).Count;
             _selectedIndexByTab[tab] = count > 0 ? Math.Clamp(GetSelectedIndex(tab, count), 0, count - 1) : -1;
-            ClampPage(tab, count);
+            EnsureSelectionVisible(tab, count);
         }
 
         internal void SelectVisibleEntry(int visibleIndex)
@@ -162,8 +165,8 @@ namespace HaCreator.MapSimulator.Interaction
                 return;
             }
 
-            int page = _pageByTab.TryGetValue(_currentTab, out int currentPage) ? currentPage : 0;
-            int absoluteIndex = (page * PageSize) + visibleIndex;
+            int firstVisibleIndex = GetFirstVisibleIndex(_currentTab, entries.Count);
+            int absoluteIndex = firstVisibleIndex + visibleIndex;
             if (absoluteIndex >= 0 && absoluteIndex < entries.Count)
             {
                 _selectedIndexByTab[_currentTab] = absoluteIndex;
@@ -172,16 +175,34 @@ namespace HaCreator.MapSimulator.Interaction
 
         internal void MovePage(int delta)
         {
+            MoveScroll(delta * PageSize);
+        }
+
+        internal void MoveScroll(int delta)
+        {
             IReadOnlyList<SocialEntryState> entries = GetFilteredEntries(_currentTab);
             if (entries.Count <= PageSize)
             {
-                _pageByTab[_currentTab] = 0;
+                _firstVisibleIndexByTab[_currentTab] = 0;
                 return;
             }
 
-            int totalPages = Math.Max(1, (int)Math.Ceiling(entries.Count / (float)PageSize));
-            int page = _pageByTab.TryGetValue(_currentTab, out int currentPage) ? currentPage : 0;
-            _pageByTab[_currentTab] = Math.Clamp(page + delta, 0, totalPages - 1);
+            int maxFirstVisibleIndex = Math.Max(0, entries.Count - PageSize);
+            int firstVisibleIndex = GetFirstVisibleIndex(_currentTab, entries.Count);
+            _firstVisibleIndexByTab[_currentTab] = Math.Clamp(firstVisibleIndex + delta, 0, maxFirstVisibleIndex);
+        }
+
+        internal void SetScrollPosition(float ratio)
+        {
+            IReadOnlyList<SocialEntryState> entries = GetFilteredEntries(_currentTab);
+            int maxFirstVisibleIndex = Math.Max(0, entries.Count - PageSize);
+            if (maxFirstVisibleIndex <= 0)
+            {
+                _firstVisibleIndexByTab[_currentTab] = 0;
+                return;
+            }
+
+            _firstVisibleIndexByTab[_currentTab] = (int)Math.Round(Math.Clamp(ratio, 0f, 1f) * maxFirstVisibleIndex);
         }
 
         internal void SetFriendOnlineOnly(bool onlineOnly)
@@ -189,7 +210,7 @@ namespace HaCreator.MapSimulator.Interaction
             _friendOnlineOnly = onlineOnly;
             int count = GetFilteredEntries(SocialListTab.Friend).Count;
             _selectedIndexByTab[SocialListTab.Friend] = count > 0 ? 0 : -1;
-            _pageByTab[SocialListTab.Friend] = 0;
+            _firstVisibleIndexByTab[SocialListTab.Friend] = 0;
         }
 
         internal string ExecuteAction(string actionKey)
@@ -278,7 +299,7 @@ namespace HaCreator.MapSimulator.Interaction
             {
                 _entriesByTab[tab] = new List<SocialEntryState>();
                 _selectedIndexByTab[tab] = -1;
-                _pageByTab[tab] = 0;
+                _firstVisibleIndexByTab[tab] = 0;
             }
 
             _entriesByTab[SocialListTab.Friend].AddRange(new[]
@@ -388,11 +409,39 @@ namespace HaCreator.MapSimulator.Interaction
             return Math.Clamp(selectedIndex, 0, entryCount - 1);
         }
 
-        private void ClampPage(SocialListTab tab, int entryCount)
+        private int GetFirstVisibleIndex(SocialListTab tab, int entryCount)
         {
-            int totalPages = Math.Max(1, (int)Math.Ceiling(entryCount / (float)PageSize));
-            int page = _pageByTab.TryGetValue(tab, out int currentPage) ? currentPage : 0;
-            _pageByTab[tab] = Math.Clamp(page, 0, totalPages - 1);
+            int maxFirstVisibleIndex = Math.Max(0, entryCount - PageSize);
+            int firstVisibleIndex = _firstVisibleIndexByTab.TryGetValue(tab, out int currentFirstVisibleIndex)
+                ? currentFirstVisibleIndex
+                : 0;
+            int clamped = Math.Clamp(firstVisibleIndex, 0, maxFirstVisibleIndex);
+            _firstVisibleIndexByTab[tab] = clamped;
+            return clamped;
+        }
+
+        private void EnsureSelectionVisible(SocialListTab tab, int entryCount)
+        {
+            if (entryCount <= 0)
+            {
+                _firstVisibleIndexByTab[tab] = 0;
+                return;
+            }
+
+            int firstVisibleIndex = GetFirstVisibleIndex(tab, entryCount);
+            int selectedIndex = GetSelectedIndex(tab, entryCount);
+            if (selectedIndex < firstVisibleIndex)
+            {
+                _firstVisibleIndexByTab[tab] = selectedIndex;
+                return;
+            }
+
+            int visibleEnd = firstVisibleIndex + PageSize - 1;
+            if (selectedIndex > visibleEnd)
+            {
+                _firstVisibleIndexByTab[tab] = Math.Max(0, selectedIndex - PageSize + 1);
+                GetFirstVisibleIndex(tab, entryCount);
+            }
         }
 
         private SocialListEntrySnapshot CreateEntrySnapshot(SocialEntryState entry)
@@ -429,7 +478,7 @@ namespace HaCreator.MapSimulator.Interaction
             {
                 return _currentTab switch
                 {
-                    SocialListTab.Friend => new[] { "Friend tab mirrors the client's list shell.", "Use Show Online or page buttons to inspect roster slices.", $"{GetFilteredEntries(SocialListTab.Friend).Count} visible friend entries." },
+                    SocialListTab.Friend => new[] { "Friend tab mirrors the client's list shell.", "Use Show Online, the scrollbar, or mouse wheel to inspect roster slices.", $"{GetFilteredEntries(SocialListTab.Friend).Count} visible friend entries." },
                     SocialListTab.Party => new[] { "Party tab owns leader, member, and location summaries.", "Create, invite, and boss-change actions mutate the simulator roster.", $"{GetFilteredEntries(SocialListTab.Party).Count} visible party entries." },
                     SocialListTab.Guild => new[] { $"Guild: {_guildName}", "Member management is simulated locally from the UserList shell.", $"{GetFilteredEntries(SocialListTab.Guild).Count} guild members listed." },
                     SocialListTab.Alliance => new[] { $"Alliance: {_allianceName}", "Union/alliance data stays separate from the guild member list.", $"{GetFilteredEntries(SocialListTab.Alliance).Count} alliance entries listed." },
@@ -564,7 +613,7 @@ namespace HaCreator.MapSimulator.Interaction
             _entriesByTab[SocialListTab.Friend].Add(nextFriend);
             SelectTab(SocialListTab.Friend);
             _selectedIndexByTab[SocialListTab.Friend] = GetFilteredEntries(SocialListTab.Friend).Count - 1;
-            ClampPage(SocialListTab.Friend, GetFilteredEntries(SocialListTab.Friend).Count);
+            EnsureSelectionVisible(SocialListTab.Friend, GetFilteredEntries(SocialListTab.Friend).Count);
             return $"{nextFriend.Name} was added to the friend roster.";
         }
 
@@ -992,7 +1041,7 @@ namespace HaCreator.MapSimulator.Interaction
         {
             IReadOnlyList<SocialEntryState> entries = GetFilteredEntries(tab);
             _selectedIndexByTab[tab] = entries.Count > 0 ? Math.Clamp(GetSelectedIndex(tab, entries.Count), 0, entries.Count - 1) : -1;
-            ClampPage(tab, entries.Count);
+            EnsureSelectionVisible(tab, entries.Count);
         }
 
         private SocialEntryState DequeueNextUnique(Queue<SocialEntryState> queue, SocialListTab tab)
@@ -1053,6 +1102,9 @@ namespace HaCreator.MapSimulator.Interaction
         public bool FriendOnlineOnly { get; init; }
         public bool CanPageBackward { get; init; }
         public bool CanPageForward { get; init; }
+        public int FirstVisibleIndex { get; init; }
+        public int MaxFirstVisibleIndex { get; init; }
+        public int VisibleCapacity { get; init; }
     }
 
     internal sealed class SocialListEntrySnapshot

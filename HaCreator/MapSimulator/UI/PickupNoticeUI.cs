@@ -113,22 +113,13 @@ namespace HaCreator.MapSimulator.UI
         /// Official format: "You have gained X meso(s)." (StringPool ID 0x12F / 303)
         /// Always uses "(s)" suffix regardless of amount, matching official MapleStory client.
         /// </summary>
-        public void AddMesoPickup(int amount, int currentTime, PickupNoticeSource source = PickupNoticeSource.Player, string sourceName = null)
+        public void AddMesoPickup(int amount, int currentTime)
         {
-            string message = FormatPickupSourceMessage(
+            AddFormattedNotice(
                 $"You have gained {amount} meso(s).",
-                source,
-                sourceName);
-
-            AddNotice(new PickupNotice
-            {
-                Message = message,
-                Type = PickupMessageType.MesoPickup,
-                TextColor = Color.White, // FONT_BASIC_WHITE in client (yellow is for bonus meso only)
-                OutlineColor = Color.Black,
-                SpawnTime = currentTime,
-                Quantity = amount
-            });
+                PickupMessageType.MesoPickup,
+                currentTime,
+                quantity: amount);
         }
 
         /// <summary>
@@ -143,9 +134,7 @@ namespace HaCreator.MapSimulator.UI
             int currentTime,
             Texture2D icon = null,
             bool isRare = false,
-            string itemTypeName = null,
-            PickupNoticeSource source = PickupNoticeSource.Player,
-            string sourceName = null)
+            string itemTypeName = null)
         {
             string message;
             if (string.IsNullOrEmpty(itemTypeName))
@@ -163,20 +152,13 @@ namespace HaCreator.MapSimulator.UI
                     : $"You have gained a(n) {itemTypeName} ({itemName}).";
             }
 
-            message = FormatPickupSourceMessage(message, source, sourceName);
-
-            var notice = new PickupNotice
-            {
-                Message = message,
-                Type = PickupMessageType.ItemPickup,
-                TextColor = isRare ? new Color(255, 200, 100) : Color.White, // Gold for rare items
-                OutlineColor = Color.Black,
-                SpawnTime = currentTime,
-                ItemIcon = icon,
-                Quantity = quantity
-            };
-
-            AddNotice(notice);
+            AddFormattedNotice(
+                message,
+                PickupMessageType.ItemPickup,
+                currentTime,
+                icon,
+                quantity,
+                isRare ? new Color(255, 200, 100) : Color.White);
         }
 
         /// <summary>
@@ -187,21 +169,18 @@ namespace HaCreator.MapSimulator.UI
             string itemName,
             int currentTime,
             Texture2D icon = null,
-            PickupNoticeSource source = PickupNoticeSource.Player,
-            string sourceName = null)
+            string itemTypeName = null)
         {
-            string message = FormatPickupSourceMessage($"You have gained an item ({itemName}).", source, sourceName);
+            string message = string.IsNullOrEmpty(itemTypeName)
+                ? $"You have gained an item ({itemName})."
+                : $"You have gained a(n) {itemTypeName} ({itemName}).";
 
-            AddNotice(new PickupNotice
-            {
-                Message = message,
-                Type = PickupMessageType.QuestItemPickup,
-                TextColor = new Color(150, 255, 150), // Light green for quest items
-                OutlineColor = Color.Black,
-                SpawnTime = currentTime,
-                ItemIcon = icon,
-                Quantity = 1
-            });
+            AddFormattedNotice(
+                message,
+                PickupMessageType.QuestItemPickup,
+                currentTime,
+                icon,
+                textColor: new Color(150, 255, 150));
         }
 
         /// <summary>
@@ -210,14 +189,7 @@ namespace HaCreator.MapSimulator.UI
         /// </summary>
         public void AddInventoryFullMessage(int currentTime)
         {
-            AddNotice(new PickupNotice
-            {
-                Message = "Your inventory is full.",
-                Type = PickupMessageType.InventoryFull,
-                TextColor = new Color(255, 100, 100), // Red for error
-                OutlineColor = Color.Black,
-                SpawnTime = currentTime
-            });
+            AddFormattedNotice("Your inventory is full.", PickupMessageType.InventoryFull, currentTime);
         }
 
         /// <summary>
@@ -225,14 +197,7 @@ namespace HaCreator.MapSimulator.UI
         /// </summary>
         public void AddCantPickupMessage(string reason, int currentTime)
         {
-            AddNotice(new PickupNotice
-            {
-                Message = reason ?? "Unable to pick up the item.",
-                Type = PickupMessageType.CantPickup,
-                TextColor = new Color(255, 100, 100), // Red for error
-                OutlineColor = Color.Black,
-                SpawnTime = currentTime
-            });
+            AddFormattedNotice(reason ?? "Unable to pick up the item.", PickupMessageType.CantPickup, currentTime);
         }
 
         /// <summary>
@@ -240,13 +205,26 @@ namespace HaCreator.MapSimulator.UI
         /// </summary>
         public void AddCustomMessage(string message, Color textColor, int currentTime)
         {
+            AddFormattedNotice(message, PickupMessageType.Unknown, currentTime, textColor: textColor);
+        }
+
+        public void AddFormattedNotice(
+            string message,
+            PickupMessageType type,
+            int currentTime,
+            Texture2D icon = null,
+            int quantity = 1,
+            Color? textColor = null)
+        {
             AddNotice(new PickupNotice
             {
                 Message = message,
-                Type = PickupMessageType.Unknown,
-                TextColor = textColor,
+                Type = type,
+                TextColor = textColor ?? GetDefaultTextColor(type),
                 OutlineColor = Color.Black,
-                SpawnTime = currentTime
+                SpawnTime = currentTime,
+                ItemIcon = icon,
+                Quantity = quantity
             });
         }
 
@@ -271,17 +249,18 @@ namespace HaCreator.MapSimulator.UI
             _notices.Add(notice);
         }
 
-        private static string FormatPickupSourceMessage(string message, PickupNoticeSource source, string sourceName)
+        private static Color GetDefaultTextColor(PickupMessageType type)
         {
-            if (source != PickupNoticeSource.Pet || string.IsNullOrWhiteSpace(message))
+            switch (type)
             {
-                return message;
+                case PickupMessageType.QuestItemPickup:
+                    return new Color(150, 255, 150);
+                case PickupMessageType.InventoryFull:
+                case PickupMessageType.CantPickup:
+                    return new Color(255, 100, 100);
+                default:
+                    return Color.White;
             }
-
-            string label = string.IsNullOrWhiteSpace(sourceName)
-                ? "Your pet"
-                : $"{sourceName}";
-            return $"{label} picked up this item for you. {message}";
         }
         #endregion
 

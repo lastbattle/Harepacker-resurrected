@@ -40,6 +40,19 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
+            if (RemoteAffectedAreaSupportResolver.IsAreaBuffItemType(packet.Type))
+            {
+                return UpsertRemoteAreaBuffItemAffectedArea(
+                    packet.ObjectId,
+                    packet.Type,
+                    unchecked((int)packet.OwnerCharacterId),
+                    packet.SkillId,
+                    packet.Bounds,
+                    packet.StartDelayUnits,
+                    packet.ElementAttribute,
+                    packet.Phase);
+            }
+
             return packet.SkillId >= 10000
                 ? UpsertRemotePlayerAffectedArea(
                     packet.ObjectId,
@@ -98,6 +111,9 @@ namespace HaCreator.MapSimulator
                     case AffectedAreaSourceKind.PlayerSkill:
                         UpdateRemotePlayerAffectedAreaGameplay(area, currentTime);
                         break;
+
+                    case AffectedAreaSourceKind.AreaBuffItem:
+                        break;
                 }
             }
         }
@@ -127,13 +143,18 @@ namespace HaCreator.MapSimulator
 
         private void UpdateRemotePlayerAffectedAreaGameplay(ActiveAffectedArea area, int currentTime)
         {
+            SkillData skill = _playerManager?.SkillLoader?.LoadSkill(area.SkillId);
+            SkillLevelData levelData = ResolveRemoteAffectedAreaSkillLevel(skill, area.SkillLevel);
+            if (TryApplyRemotePlayerSupportAffectedAreaGameplay(area, skill, levelData, currentTime))
+            {
+                return;
+            }
+
             if (_mobPool?.ActiveMobs == null || _mobPool.ActiveMobs.Count == 0)
             {
                 return;
             }
 
-            SkillData skill = _playerManager?.SkillLoader?.LoadSkill(area.SkillId);
-            SkillLevelData levelData = ResolveRemoteAffectedAreaSkillLevel(skill, area.SkillLevel);
             if (!TryResolveRemotePlayerAffectedAreaStatus(skill, levelData, out MobStatusEffect effect, out int durationMs, out int value))
             {
                 return;
@@ -153,6 +174,62 @@ namespace HaCreator.MapSimulator
 
                 mob.AI.ApplyStatusEffect(effect, durationMs, currentTime, value, RemoteAffectedAreaFallbackTickMs, sourceSkillId: skill.SkillId);
             }
+        }
+
+        private bool TryApplyRemotePlayerSupportAffectedAreaGameplay(
+            ActiveAffectedArea area,
+            SkillData skill,
+            SkillLevelData levelData,
+            int currentTime)
+        {
+            PlayerCharacter player = _playerManager?.Player;
+            if (player == null
+                || !player.IsAlive
+                || !RemoteAffectedAreaSupportResolver.IsSupportZone(skill)
+                || !area.Contains(player.X, player.Y))
+            {
+                return false;
+            }
+
+            int localPlayerId = player.Build?.Id ?? 0;
+            if (!RemoteAffectedAreaSupportResolver.CanAffectLocalPlayer(
+                    skill,
+                    localPlayerId,
+                    area.OwnerId,
+                    IsAffectedAreaOwnerPartyMember(area.OwnerId)))
+            {
+                return false;
+            }
+
+            if (RemoteAffectedAreaSupportResolver.IsInvincibleZone(skill))
+            {
+                return true;
+            }
+
+            if (!RemoteAffectedAreaSupportResolver.IsRecoveryZone(skill) || levelData == null)
+            {
+                return false;
+            }
+
+            if (!_affectedAreaPool.TryBeginGameplayTick(area, currentTime, RemoteAffectedAreaFallbackTickMs))
+            {
+                return true;
+            }
+
+            int hpHeal = levelData.HP;
+            int mpHeal = levelData.MP;
+            if (levelData.X > 0)
+            {
+                hpHeal = player.MaxHP * levelData.X / 100;
+            }
+
+            if (hpHeal <= 0 && mpHeal <= 0)
+            {
+                return true;
+            }
+
+            _playerManager?.Heal(hpHeal, mpHeal);
+            return true;
         }
 
         private static SkillLevelData ResolveRemoteAffectedAreaSkillLevel(SkillData skill, int level)
@@ -260,6 +337,55 @@ namespace HaCreator.MapSimulator
                     skill.DotType,
                     skill.ZoneType
                 }.Where(static value => !string.IsNullOrWhiteSpace(value)));
+        }
+
+        private bool IsRemoteAffectedAreaProtectionActive(int currentTime)
+        {
+            PlayerCharacter player = _playerManager?.Player;
+            if (player == null || _affectedAreaPool == null)
+            {
+                return false;
+            }
+
+            int localPlayerId = player.Build?.Id ?? 0;
+            foreach (ActiveAffectedArea area in _affectedAreaPool.ActiveAreas)
+            {
+                if (area?.SourceKind != AffectedAreaSourceKind.PlayerSkill
+                    || !area.IsActive(currentTime)
+                    || !area.Contains(player.X, player.Y))
+                {
+                    continue;
+                }
+
+                SkillData skill = _playerManager?.SkillLoader?.LoadSkill(area.SkillId);
+                if (!RemoteAffectedAreaSupportResolver.IsInvincibleZone(skill)
+                    || !RemoteAffectedAreaSupportResolver.CanAffectLocalPlayer(
+                        skill,
+                        localPlayerId,
+                        area.OwnerId,
+                        IsAffectedAreaOwnerPartyMember(area.OwnerId)))
+                {
+                    continue;
+                }
+
+                return true;
+            }
+
+            return false;
+        }
+
+        private bool IsAffectedAreaOwnerPartyMember(int ownerId)
+        {
+            if (ownerId <= 0 || !_remoteUserPool.TryGetActor(ownerId, out RemoteUserActor actor) || string.IsNullOrWhiteSpace(actor?.Name))
+            {
+                return false;
+            }
+
+            return _socialListRuntime
+                .BuildTrackedEntriesSnapshot()
+                .Any(entry => entry?.Tab == Interaction.SocialListTab.Party
+                              && !entry.IsLocalPlayer
+                              && string.Equals(entry.Name, actor.Name, StringComparison.OrdinalIgnoreCase));
         }
     }
 }

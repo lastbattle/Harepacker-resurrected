@@ -4,9 +4,10 @@ using HaSharedLibrary.Wz;
 using HaCreator.MapEditor;
 using HaCreator.MapEditor.Info;
 using HaCreator.MapEditor.Instance;
-using HaCreator.MapSimulator.Character;
-using HaCreator.MapSimulator.Interaction;
-using HaCreator.MapSimulator.Managers;
+using HaCreator.MapSimulator.Character;
+using HaCreator.MapSimulator.Interaction;
+using HaCreator.MapSimulator.Managers;
+using HaCreator.MapSimulator.Pools;
 using MapleLib.Converters;
 using MapleLib.PacketLib;
 using MapleLib.WzLib;
@@ -31,7 +32,9 @@ namespace HaCreator.MapSimulator.Fields
     /// </summary>
     public class MinigameFields
     {
-        private readonly SnowBallField _snowBall = new();
+        private GraphicsDevice _graphicsDevice;
+
+        private readonly SnowBallField _snowBall = new();
         private readonly CoconutField _coconut = new();
         private readonly MemoryGameField _memoryGame = new();
         private readonly AriantArenaField _ariantArena = new();
@@ -52,15 +55,24 @@ namespace HaCreator.MapSimulator.Fields
             GraphicsDevice graphicsDevice,
             SoundManager soundManager = null,
             Func<LoginAvatarLook, string, CharacterBuild> ariantArenaRemoteBuildFactory = null)
-        {
-            _coconut.Initialize(graphicsDevice);
+        {
+            _graphicsDevice = graphicsDevice;
+
+            _coconut.Initialize(graphicsDevice);
             _memoryGame.Initialize(graphicsDevice);
             _ariantArena.Initialize(graphicsDevice, soundManager, ariantArenaRemoteBuildFactory);
-        }
+        }
+
+        public void SetAriantArenaRemoteUserPool(RemoteUserActorPool remoteUserPool)
+        {
+            _ariantArena.SetRemoteUserPool(remoteUserPool);
+        }
 
         public void BindMap(Board board)
         {
-            _coconut.BindMap(board);
+            _snowBall.BindMap(board, _graphicsDevice);
+
+            _coconut.BindMap(board);
         }
 
         public void Update(int tickCount)

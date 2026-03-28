@@ -114,7 +114,7 @@ namespace HaCreator.MapSimulator
             _renderingManager.DrawBackgrounds(in renderContext, false); // back background
             _renderingManager.DrawMapObjects(in renderContext); // tiles and objects
             _renderingManager.DrawMobs(in renderContext); // mobs - rendered behind portals
-            _remoteUserPool.Draw(_spriteBatch, _skeletonMeshRenderer, mapShiftX, mapShiftY, mapCenterX, mapCenterY, TickCount, _fontDebugValues);
+            _remoteUserPool.Draw(_spriteBatch, _skeletonMeshRenderer, mapShiftX, mapShiftY, mapCenterX, mapCenterY, TickCount, _fontDebugValues, _playerManager?.Player);
             _summonedPool.Draw(_spriteBatch, mapShiftX, mapShiftY, mapCenterX, mapCenterY, TickCount);
             DrawPlayer(gameTime, mapCenterX, mapCenterY, TickCount); // player character (has tombstone logic)
             _mobAttackSystem.Draw(_spriteBatch, _debugBoundaryTexture, mapShiftX, mapShiftY, mapCenterX, mapCenterY, TickCount);
@@ -192,6 +192,7 @@ namespace HaCreator.MapSimulator
                 _renderParams.RenderWidth,
                 _renderParams.RenderHeight,
                 TickCount);
+            DrawPacketOwnedFieldFeedbackState(TickCount);
             DrawPacketOwnedLocalOverlayState(TickCount, mapCenterX, mapCenterY);
 
             //////////////////// UI related here ////////////////////
@@ -273,7 +274,30 @@ namespace HaCreator.MapSimulator
 
 
             base.Draw(gameTime);
-        }
+        }
+
+        private void DrawLocalPreparedSkillWorldOverlay(int mapCenterX, int mapCenterY, int currentTime)
+        {
+            if (statusBarUi == null)
+            {
+                return;
+            }
+
+            StatusBarPreparedSkillRenderData preparedSkill = GetPreparedSkillBarData(currentTime, PreparedSkillHudSurface.World);
+            if (preparedSkill == null || !IsDragonPreparedSkill(preparedSkill.SkillId))
+            {
+                return;
+            }
+
+            statusBarUi.DrawPreparedSkillWorldOverlay(
+                _spriteBatch,
+                mapShiftX,
+                mapShiftY,
+                mapCenterX,
+                mapCenterY,
+                currentTime,
+                preparedSkill);
+        }
 
 
         /// <summary>
@@ -346,8 +370,15 @@ namespace HaCreator.MapSimulator
             }
 
             // Draw living player
-            _playerManager.Draw(_spriteBatch, _skeletonMeshRenderer,
-                mapShiftX, mapShiftY, mapCenterX, mapCenterY, TickCount);
+            _playerManager.Draw(
+                _spriteBatch,
+                _skeletonMeshRenderer,
+                mapShiftX,
+                mapShiftY,
+                mapCenterX,
+                mapCenterY,
+                TickCount,
+                () => DrawLocalPreparedSkillWorldOverlay(mapCenterX, mapCenterY, TickCount));
 
             // Draw debug box around player (only in debug mode F5)
             if (_gameState.ShowDebugMode && _debugBoundaryTexture != null)

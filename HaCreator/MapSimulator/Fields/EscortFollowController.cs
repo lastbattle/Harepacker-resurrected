@@ -20,11 +20,13 @@ namespace HaCreator.MapSimulator.Fields
         internal const float AttachVerticalRange = 30f;
         internal const float ReleaseHorizontalRange = 140f;
         internal const float ReleaseVerticalRange = 60f;
+        internal const int FollowRequestThrottleMs = 1000;
         private const float AirborneFootholdCarryTolerance = 24f;
         private const int MaxConnectedFootholds = 512;
         private const float MaxTraversableFootholdHeightDelta = 120f;
 
         private MobMovementInfo _attachedFollower;
+        private int _lastFollowRequestTime = int.MinValue;
         private int _lastUpdateToken = int.MinValue;
         private MobMovementInfo _frameStartingFollower;
         private bool _frameStartingFollowerProcessed;
@@ -34,6 +36,7 @@ namespace HaCreator.MapSimulator.Fields
             MobMovementInfo movement,
             bool movementLocked = false,
             bool followAllowed = true,
+            int currentTime = int.MinValue,
             int updateToken = 0)
         {
             if (movement == null)
@@ -109,13 +112,24 @@ namespace HaCreator.MapSimulator.Fields
                 return false;
             }
 
+            if (!attached && !CanSendFollowRequest(currentTime))
+            {
+                return false;
+            }
+
             _attachedFollower = movement;
+            if (!attached)
+            {
+                _lastFollowRequestTime = currentTime;
+            }
+
             return true;
         }
 
         public void Clear()
         {
             _attachedFollower = null;
+            _lastFollowRequestTime = int.MinValue;
             _frameStartingFollower = null;
             _frameStartingFollowerProcessed = false;
             _lastUpdateToken = int.MinValue;
@@ -155,6 +169,7 @@ namespace HaCreator.MapSimulator.Fields
                    && !movementLocked
                    && player.State != PlayerState.Sitting
                    && !player.IsMovementLockedBySkillTransform
+                   && !player.HasActiveMorphTransform
                    && !HasActiveRideState(player);
         }
 
@@ -319,6 +334,16 @@ namespace HaCreator.MapSimulator.Fields
         private static float GetMidpointY(FootholdLine foothold)
         {
             return (foothold.FirstDot.Y + foothold.SecondDot.Y) * 0.5f;
+        }
+
+        private bool CanSendFollowRequest(int currentTime)
+        {
+            if (currentTime == int.MinValue || _lastFollowRequestTime == int.MinValue)
+            {
+                return true;
+            }
+
+            return currentTime - _lastFollowRequestTime >= FollowRequestThrottleMs;
         }
     }
 }

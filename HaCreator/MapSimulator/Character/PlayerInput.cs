@@ -153,11 +153,13 @@ namespace HaCreator.MapSimulator.Character
         #region Key Bindings
 
         private readonly Dictionary<InputAction, KeyBinding> _bindings = new();
+        private readonly Dictionary<int, int> _activeInputOwnershipTokens = new();
         private KeyboardState _currentKeyboard;
         private KeyboardState _previousKeyboard;
         private GamePadState _currentGamepad;
         private GamePadState _previousGamepad;
         private PlayerIndex _gamepadIndex = PlayerIndex.One;
+        private int _nextInputOwnershipToken = 1;
 
         // Default key bindings (matching MapleStory)
         private static readonly (InputAction action, Keys primary, Keys secondary, Buttons gamepad)[] DefaultBindings = new[]
@@ -240,6 +242,8 @@ namespace HaCreator.MapSimulator.Character
         public void LoadDefaultBindings()
         {
             _bindings.Clear();
+            _activeInputOwnershipTokens.Clear();
+            _nextInputOwnershipToken = 1;
             foreach (var (action, primary, secondary, gamepad) in DefaultBindings)
             {
                 _bindings[action] = new KeyBinding(action, primary, secondary, gamepad);
@@ -259,6 +263,11 @@ namespace HaCreator.MapSimulator.Character
         public void SetGamepadIndex(PlayerIndex index)
         {
             _gamepadIndex = index;
+        }
+
+        public PlayerIndex GetGamepadIndex()
+        {
+            return _gamepadIndex;
         }
 
         #endregion
@@ -288,6 +297,8 @@ namespace HaCreator.MapSimulator.Character
             // Set previous to current so held keys won't trigger IsPressed
             _previousKeyboard = _currentKeyboard;
             _previousGamepad = _currentGamepad;
+            _activeInputOwnershipTokens.Clear();
+            _nextInputOwnershipToken = 1;
         }
 
         /// <summary>
@@ -372,9 +383,13 @@ namespace HaCreator.MapSimulator.Character
                 for (int i = 0; i < 8; i++)
                 {
                     state.CtrlSlots[i] = _currentKeyboard.IsKeyDown(ctrlKeys[i]) && !_previousKeyboard.IsKeyDown(ctrlKeys[i]);
-                    state.CtrlSlotInputTokens[i] = state.CtrlSlots[i]
-                        ? ComposeInputToken(ctrlKeys[i], gamepadButton: null, requiresCtrl: true)
-                        : 0;
+                    if (state.CtrlSlots[i])
+                    {
+                        TryResolveTransitionInputToken(
+                            ComposeInputToken(ctrlKeys[i], gamepadButton: null, requiresCtrl: true),
+                            released: false,
+                            out state.CtrlSlotInputTokens[i]);
+                    }
                 }
             }
 
@@ -384,9 +399,13 @@ namespace HaCreator.MapSimulator.Character
                 bool currentComboHeld = ctrlHeld && _currentKeyboard.IsKeyDown(ctrlReleaseKeys[i]);
                 bool previousComboHeld = prevCtrlHeld && _previousKeyboard.IsKeyDown(ctrlReleaseKeys[i]);
                 state.CtrlSlotsReleased[i] = !currentComboHeld && previousComboHeld;
-                state.CtrlSlotReleaseInputTokens[i] = state.CtrlSlotsReleased[i]
-                    ? ComposeInputToken(ctrlReleaseKeys[i], gamepadButton: null, requiresCtrl: true)
-                    : 0;
+                if (state.CtrlSlotsReleased[i])
+                {
+                    TryResolveTransitionInputToken(
+                        ComposeInputToken(ctrlReleaseKeys[i], gamepadButton: null, requiresCtrl: true),
+                        released: true,
+                        out state.CtrlSlotReleaseInputTokens[i]);
+                }
             }
 
             return state;
@@ -465,25 +484,64 @@ namespace HaCreator.MapSimulator.Character
 
             if (binding.PrimaryKey != Keys.None && DidKeyTransition(binding.PrimaryKey, released))
             {
-                inputToken = ComposeInputToken(binding.PrimaryKey, gamepadButton: null, requiresCtrl: false);
-                return true;
+                return TryResolveTransitionInputToken(
+                    ComposeInputToken(binding.PrimaryKey, gamepadButton: null, requiresCtrl: false),
+                    released,
+                    out inputToken);
             }
 
             if (binding.SecondaryKey != Keys.None && DidKeyTransition(binding.SecondaryKey, released))
             {
-                inputToken = ComposeInputToken(binding.SecondaryKey, gamepadButton: null, requiresCtrl: false);
-                return true;
+                return TryResolveTransitionInputToken(
+                    ComposeInputToken(binding.SecondaryKey, gamepadButton: null, requiresCtrl: false),
+                    released,
+                    out inputToken);
             }
 
             if (_currentGamepad.IsConnected
                 && binding.GamepadButton != 0
                 && DidButtonTransition(binding.GamepadButton, released))
             {
-                inputToken = ComposeInputToken(key: null, binding.GamepadButton, requiresCtrl: false);
-                return true;
+                return TryResolveTransitionInputToken(
+                    ComposeInputToken(key: null, binding.GamepadButton, requiresCtrl: false),
+                    released,
+                    out inputToken);
             }
 
             return false;
+        }
+
+        private bool TryResolveTransitionInputToken(int physicalToken, bool released, out int inputToken)
+        {
+            inputToken = 0;
+            if (physicalToken == 0)
+            {
+                return false;
+            }
+
+            if (released)
+            {
+                if (!_activeInputOwnershipTokens.TryGetValue(physicalToken, out inputToken))
+                {
+                    return false;
+                }
+
+                _activeInputOwnershipTokens.Remove(physicalToken);
+                return true;
+            }
+
+            if (!_activeInputOwnershipTokens.TryGetValue(physicalToken, out inputToken))
+            {
+                inputToken = _nextInputOwnershipToken++;
+                if (_nextInputOwnershipToken <= 0)
+                {
+                    _nextInputOwnershipToken = 1;
+                }
+
+                _activeInputOwnershipTokens[physicalToken] = inputToken;
+            }
+
+            return true;
         }
 
         private bool DidKeyTransition(Keys key, bool released)

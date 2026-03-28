@@ -54,6 +54,7 @@
         public const string MemoMailbox = "MemoMailbox";
         public const string MemoSend = "MemoSend";
         public const string MemoGet = "MemoGet";
+        public const string RepairDurability = "RepairDurability";
         public const string QuestDelivery = "QuestDelivery";
         public const string QuestDetail = "QuestDetail";
         public const string QuestAlarm = "QuestAlarm";

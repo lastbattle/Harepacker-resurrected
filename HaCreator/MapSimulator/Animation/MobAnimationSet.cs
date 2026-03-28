@@ -70,6 +70,9 @@ namespace HaCreator.MapSimulator.Animation
             public int OffsetY { get; set; }
             public bool HasRangeBounds { get; set; }
             public Rectangle RangeBounds { get; set; }
+            public bool UseRangeGroupPlacement { get; set; }
+            public int RangeGroupIndex { get; set; }
+            public int RangeGroupCount { get; set; }
             public List<List<IDXObject>> Sequences { get; } = new List<List<IDXObject>>();
         }
 

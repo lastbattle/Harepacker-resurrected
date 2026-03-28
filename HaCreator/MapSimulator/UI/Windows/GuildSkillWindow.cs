@@ -166,7 +166,7 @@ namespace HaCreator.MapSimulator.UI
             {
                 _renewButton.X = 188;
                 _renewButton.Y = 351;
-                _renewButton.ButtonVisible = true;
+                _renewButton.ButtonVisible = snapshot.InGuild;
                 _renewButton.SetEnabled(snapshot.InGuild && snapshot.CanRenew);
             }
 

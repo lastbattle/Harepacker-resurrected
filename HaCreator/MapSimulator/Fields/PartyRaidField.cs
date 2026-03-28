@@ -106,7 +106,8 @@ namespace HaCreator.MapSimulator.Fields
         private int _timeOverTick;
         private PartyRaidFieldMode _mode;
         private PartyRaidTeamColor _teamColor;
-        private int _stage;
+        private int _mineStage;
+        private int _otherStage;
         private int _point;
         private int _batteryCharge;
         private int _batteryCapacity;
@@ -159,7 +160,9 @@ namespace HaCreator.MapSimulator.Fields
         public int MapId => _mapId;
         public PartyRaidFieldMode Mode => _mode;
         public PartyRaidTeamColor TeamColor => _teamColor;
-        public int Stage => _stage;
+        public int Stage => _mineStage;
+        public int MineStage => _mineStage;
+        public int OtherStage => _otherStage;
         public int Point => _point;
         public int BatteryCharge => _batteryCharge;
         public int BatteryCapacity => _batteryCapacity;
@@ -194,12 +197,12 @@ namespace HaCreator.MapSimulator.Fields
         public void BindMap(MapInfo mapInfo)
         {
             ResetState();
-            if (mapInfo == null || mapInfo.fieldType == null)
+            if (mapInfo == null)
             {
                 return;
             }
 
-            PartyRaidFieldMode mode = GetMode((FieldType)mapInfo.fieldType);
+            PartyRaidFieldMode mode = DetectMode(mapInfo);
             if (mode == PartyRaidFieldMode.None)
             {
                 return;
@@ -208,7 +211,8 @@ namespace HaCreator.MapSimulator.Fields
             _isActive = true;
             _mapId = mapInfo.id;
             _mode = mode;
-            _stage = 1;
+            _mineStage = 1;
+            _otherStage = 1;
             _batteryCharge = 0;
             _batteryCapacity = DefaultBatteryCapacity;
             _gaugeCapacity = DefaultGaugeCapacity;
@@ -293,7 +297,15 @@ namespace HaCreator.MapSimulator.Fields
             DrawTimer(spriteBatch, font);
         }
 
-        public void SetStage(int stage) => _stage = Math.Clamp(stage, 1, 5);
+        public void SetStage(int stage)
+        {
+            int clampedStage = ClampStage(stage);
+            _mineStage = clampedStage;
+            _otherStage = clampedStage;
+        }
+
+        public void SetMineStage(int stage) => _mineStage = ClampStage(stage);
+        public void SetOtherStage(int stage) => _otherStage = ClampStage(stage);
         public void SetPoint(int point) => _point = Math.Max(0, point);
         public void SetGaugeCapacity(int gaugeCapacity) => _gaugeCapacity = Math.Max(1, gaugeCapacity);
 
@@ -400,9 +412,21 @@ namespace HaCreator.MapSimulator.Fields
                 return true;
             }
 
+            if (MatchesAlias(key, "stageMine", "mineStage", "myStage", "ourStage"))
+            {
+                _mineStage = ClampStage(parsedValue);
+                return true;
+            }
+
+            if (MatchesAlias(key, "stageOther", "otherStage", "enemyStage", "rivalStage"))
+            {
+                _otherStage = ClampStage(parsedValue);
+                return true;
+            }
+
             if (MatchesAlias(key, "stage"))
             {
-                _stage = Math.Clamp(parsedValue, 1, 5);
+                SetStage(parsedValue);
                 return true;
             }
 
@@ -507,7 +531,7 @@ namespace HaCreator.MapSimulator.Fields
             string timerText = HasRunningClock ? $", timer={FormatTimer(RemainingSeconds)}" : string.Empty;
             return _mode switch
             {
-                PartyRaidFieldMode.Field => $"Party Raid field map {_mapId}: team {GetTeamLabel(_teamColor)}, stage {_stage}, point {_point}{DescribeBatteryStatus()}{timerText}.",
+                PartyRaidFieldMode.Field => $"Party Raid field map {_mapId}: team {GetTeamLabel(_teamColor)}, stage {_mineStage}{DescribeOtherStageStatus()}, point {_point}{DescribeBatteryStatus()}{timerText}.",
                 PartyRaidFieldMode.Boss => $"Party Raid boss map {_mapId}: point {_point}, red damage {_redDamage}, blue damage {_blueDamage}, gauge cap {_gaugeCapacity}{timerText}.",
                 PartyRaidFieldMode.Result => $"Party Raid result map {_mapId}: point {_resultPoint}, bonus {_resultBonus}, total {_resultTotal}, outcome {GetOutcomeLabel(_resultOutcome)}{timerText}.",
                 _ => "Party Raid runtime inactive."
@@ -520,12 +544,41 @@ namespace HaCreator.MapSimulator.Fields
             ResetState();
         }
 
+        internal static PartyRaidFieldMode DetectMode(MapInfo mapInfo)
+        {
+            if (mapInfo?.fieldType is FieldType fieldType)
+            {
+                return GetMode(fieldType);
+            }
+
+            if (mapInfo == null)
+            {
+                return PartyRaidFieldMode.None;
+            }
+
+            if (TryInferModeFromScripts(mapInfo.onUserEnter, mapInfo.onFirstUserEnter, out PartyRaidFieldMode scriptMode))
+            {
+                return scriptMode;
+            }
+
+            if (TryResolveMapScripts(mapInfo.id, out string onUserEnter, out string onFirstUserEnter)
+                && TryInferModeFromScripts(onUserEnter, onFirstUserEnter, out PartyRaidFieldMode resolvedScriptMode))
+            {
+                return resolvedScriptMode;
+            }
+
+            return InferModeFromMapId(mapInfo.id);
+        }
+
+        internal static bool IsPartyRaidMap(MapInfo mapInfo) => DetectMode(mapInfo) != PartyRaidFieldMode.None;
+
         private void ResetState()
         {
             _mapId = 0;
             _mode = PartyRaidFieldMode.None;
             _teamColor = PartyRaidTeamColor.Red;
-            _stage = 0;
+            _mineStage = 0;
+            _otherStage = 0;
             _point = 0;
             _batteryCharge = 0;
             _batteryCapacity = DefaultBatteryCapacity;
@@ -700,15 +753,15 @@ namespace HaCreator.MapSimulator.Fields
                 DrawSprite(spriteBatch, stateBackground, centerX + FieldBoardOffsetX, FieldBoardY);
             }
 
-            DrawAnimationFrame(spriteBatch, GetMineFrames(), _mineAnimation, centerX + StateMineOffsetX, StateMineY);
-            DrawAnimationFrame(spriteBatch, GetOtherFrames(), _otherAnimation, centerX + StateOtherOffsetX, StateOtherY);
+            DrawAnimationFrame(spriteBatch, GetMineFrames(), _mineAnimation, centerX + StateMineOffsetX, GetMineStateY());
+            DrawAnimationFrame(spriteBatch, GetOtherFrames(), _otherAnimation, centerX + StateOtherOffsetX, GetOtherStateY());
             DrawBatteryHud(spriteBatch, centerX);
 
             if (_fieldBoard.IsLoaded)
             {
                 DrawSprite(spriteBatch, _fieldBoard, centerX + FieldBoardOffsetX, FieldBoardY);
                 DrawNumber(spriteBatch, _fieldPointDigits, _point, centerX + FieldBoardOffsetX + FieldPointDrawX, FieldBoardY + FieldPointDrawY);
-                DrawSingleDigit(spriteBatch, _fieldStageDigits, Math.Clamp(_stage, 1, 5), centerX + FieldBoardOffsetX + FieldStageDrawX, FieldBoardY + FieldStageDrawY);
+                DrawSingleDigit(spriteBatch, _fieldStageDigits, ClampStage(_mineStage), centerX + FieldBoardOffsetX + FieldStageDrawX, FieldBoardY + FieldStageDrawY);
                 return;
             }
 
@@ -719,7 +772,7 @@ namespace HaCreator.MapSimulator.Fields
 
             if (font != null)
             {
-                DrawOutlinedString(spriteBatch, font, $"STAGE {_stage}", new Vector2(centerX - 40, FieldBoardY + 8), Color.Gold);
+                DrawOutlinedString(spriteBatch, font, $"STAGE {_mineStage}", new Vector2(centerX - 40, FieldBoardY + 8), Color.Gold);
                 DrawOutlinedString(spriteBatch, font, $"POINT {_point}", new Vector2(centerX - 40, FieldBoardY + 30), Color.White);
             }
         }
@@ -1042,6 +1095,27 @@ namespace HaCreator.MapSimulator.Fields
             _ => PartyRaidFieldMode.None
         };
 
+        private static PartyRaidFieldMode InferModeFromMapId(int mapId)
+        {
+            if (mapId <= 0 || mapId < 923020010 || mapId > 923020499)
+            {
+                return PartyRaidFieldMode.None;
+            }
+
+            int suffix = mapId % 1000;
+            if (suffix is 10 or 20)
+            {
+                return PartyRaidFieldMode.Result;
+            }
+
+            if (suffix is 189 or 190 or 289 or 290 or 389 or 390 or 489 or 490)
+            {
+                return PartyRaidFieldMode.Boss;
+            }
+
+            return mapId >= 923020100 ? PartyRaidFieldMode.Field : PartyRaidFieldMode.None;
+        }
+
         private static PartyRaidResultOutcome InferOutcomeFromMap(MapInfo mapInfo)
         {
             string onUserEnter = mapInfo?.onUserEnter;
@@ -1097,8 +1171,45 @@ namespace HaCreator.MapSimulator.Fields
         private static bool UsesWinBadge(PartyRaidResultOutcome outcome) => outcome == PartyRaidResultOutcome.Win || outcome == PartyRaidResultOutcome.Clear;
         private static string GetOutcomeLabel(PartyRaidResultOutcome outcome) => outcome switch { PartyRaidResultOutcome.Win => "WIN", PartyRaidResultOutcome.Lose => "LOSE", PartyRaidResultOutcome.Clear => "CLEAR", _ => "RESULT" };
         private static string GetTeamLabel(PartyRaidTeamColor teamColor) => teamColor == PartyRaidTeamColor.Blue ? "blue" : "red";
+        private string DescribeOtherStageStatus() => _otherStage != _mineStage ? $" (other {_otherStage})" : string.Empty;
         private string DescribeBatteryStatus() => _batteryCharge > 0 ? $", battery {_batteryCharge}/{Math.Max(1, _batteryCapacity)}" : string.Empty;
         private static string FormatTimer(int remainingSeconds) { int clamped = Math.Max(0, remainingSeconds); return string.Format(CultureInfo.InvariantCulture, "{0:D2}:{1:D2}", clamped / 60, clamped % 60); }
+        private int GetMineStateY() => StateMineY + ((_mineStage - 1) * 23);
+        private int GetOtherStateY() => StateOtherY + ((_otherStage - 1) * 23);
+        private static int ClampStage(int stage) => Math.Clamp(stage, 1, 5);
+
+        private static bool TryInferModeFromScripts(string onUserEnter, string onFirstUserEnter, out PartyRaidFieldMode mode)
+        {
+            if (StartsWithPartyRaidScript(onUserEnter, "PRaid_Win")
+                || StartsWithPartyRaidScript(onFirstUserEnter, "PRaid_Win")
+                || StartsWithPartyRaidScript(onUserEnter, "PRaid_Fail")
+                || StartsWithPartyRaidScript(onFirstUserEnter, "PRaid_Fail"))
+            {
+                mode = PartyRaidFieldMode.Result;
+                return true;
+            }
+
+            if (StartsWithPartyRaidScript(onUserEnter, "PRaid_B_")
+                || StartsWithPartyRaidScript(onFirstUserEnter, "PRaid_B_"))
+            {
+                mode = PartyRaidFieldMode.Boss;
+                return true;
+            }
+
+            if (StartsWithPartyRaidScript(onUserEnter, "PRaid_W_")
+                || StartsWithPartyRaidScript(onFirstUserEnter, "PRaid_W_")
+                || StartsWithPartyRaidScript(onUserEnter, "PRaid_D_")
+                || StartsWithPartyRaidScript(onFirstUserEnter, "PRaid_D_")
+                || StartsWithPartyRaidScript(onUserEnter, "PRaid_Revive")
+                || StartsWithPartyRaidScript(onFirstUserEnter, "PRaid_Revive"))
+            {
+                mode = PartyRaidFieldMode.Field;
+                return true;
+            }
+
+            mode = PartyRaidFieldMode.None;
+            return false;
+        }
 
         private static PartyRaidTeamColor? InferTeamColorFromScripts(string onUserEnter, string onFirstUserEnter)
         {

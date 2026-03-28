@@ -65,6 +65,12 @@ namespace HaCreator.MapSimulator.UI
         private KeyboardState _previousKeyState;
         private MouseState _previousMouseState;
         private SpriteFont _windowFont;
+
+        /// <summary>
+        /// Optional callback invoked before a named window is shown through the manager.
+        /// Used by the simulator to keep scripted ownership aligned across launcher paths.
+        /// </summary>
+        public Action<string> BeforeShowWindow { get; set; }
         #endregion
 
         #region Properties
@@ -83,6 +89,22 @@ namespace HaCreator.MapSimulator.UI
         /// </summary>
         public bool AnyWindowVisible => windows.Exists(w => w.IsVisible);
         public bool CapturesKeyboardInput => windows.Exists(w => w.IsVisible && w.CapturesKeyboardInput);
+        public UIWindowBase ActiveKeyboardWindow
+        {
+            get
+            {
+                for (int i = windows.Count - 1; i >= 0; i--)
+                {
+                    UIWindowBase window = windows[i];
+                    if (window.IsVisible && window.CapturesKeyboardInput)
+                    {
+                        return window;
+                    }
+                }
+
+                return null;
+            }
+        }
 
         /// <summary>
         /// Whether a window is currently being dragged
@@ -235,6 +257,7 @@ namespace HaCreator.MapSimulator.UI
         {
             if (windowsByName.TryGetValue(windowName, out var window))
             {
+                BeforeShowWindow?.Invoke(windowName);
                 window.Show();
                 BringToFront(window);
             }

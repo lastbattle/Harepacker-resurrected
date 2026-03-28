@@ -15,6 +15,28 @@ namespace HaCreator.MapSimulator.Character.Skills
         private const int ShadowerFlashJumpSkillId = 4211009;
         private const int DualBladeFlashJumpSkillId = 4321003;
         private const int RocketBoosterSkillId = 35101004;
+        private const int JaguarRiderSkillId = 33001001;
+        private const int MechanicPrototypeSkillId = 35001002;
+        private const int FlameLauncherSkillId = 35001001;
+        private const int EnhancedFlameLauncherSkillId = 35101009;
+        private const int NightWalkerPoisonBombSkillId = 14111006;
+        private const int NightlordTauntSkillId = 4341003;
+        private const int GunslingerBlankShotSkillId = 5201002;
+        private const int HermitNinjaAmbushSkillId = 4121004;
+        private const int ShadowerNinjaAmbushSkillId = 4221004;
+        private const int PirateDashSkillId = 5001005;
+        private const int ThunderBreakerDashSkillId = 15001003;
+        private const int DualBladeTornadoSpinSkillId = 4321000;
+        private const int CorsairBattleshipSkillId = 5221006;
+        private const int BattleMageTwisterSpinSkillId = 32121003;
+        private const int MonsterRidingSkillId = 1004;
+        private const int MonsterRidingBeginnerSkillId = 10001004;
+        private const int MonsterRidingEvanSkillId = 20001004;
+        private const int MonsterRidingMechanicSkillId = 20011004;
+        private const int SoaringSkillId = 1047;
+        private const int SoaringCygnusSkillId = 10001047;
+        private const int SoaringEvanSkillId = 20001047;
+        private const int SoaringMechanicSkillId = 20011047;
 
         public static bool CanUseSkill(PlayerCharacter player, SkillData skill)
         {
@@ -55,9 +77,67 @@ namespace HaCreator.MapSimulator.Character.Skills
             if (IsSwallowSkill(skill) && player.Physics?.IsOnLadderOrRope == true)
                 return "Swallow skills cannot be used while on a ladder or rope.";
 
+            string prepareRestrictionMessage = GetPrepareSkillRestrictionMessage(player, skill);
+            if (!string.IsNullOrWhiteSpace(prepareRestrictionMessage))
+                return prepareRestrictionMessage;
+
+            string clientSpecificRestrictionMessage = GetClientSpecificRestrictionMessage(player, skill);
+            if (!string.IsNullOrWhiteSpace(clientSpecificRestrictionMessage))
+                return clientSpecificRestrictionMessage;
+
             string movementRestrictionMessage = GetMovementRestrictionMessage(player, skill);
             if (!string.IsNullOrWhiteSpace(movementRestrictionMessage))
                 return movementRestrictionMessage;
+
+            return null;
+        }
+
+        private static string GetPrepareSkillRestrictionMessage(PlayerCharacter player, SkillData skill)
+        {
+            if (player?.Physics == null || skill == null || (!skill.IsPrepareSkill && !skill.IsKeydownSkill))
+            {
+                return null;
+            }
+
+            if (IsPrepareBombSkill(skill.SkillId))
+            {
+                return player.Physics.IsOnLadderOrRope
+                    ? "This prepared skill cannot be used while on a ladder or rope."
+                    : null;
+            }
+
+            if (RequiresGroundedPreparedStart(skill.SkillId) && !player.Physics.IsOnFoothold())
+            {
+                return "This prepared skill must start from the ground.";
+            }
+
+            return !player.Physics.IsOnFoothold()
+                   && !player.Physics.IsSwimming()
+                   && !player.Physics.IsUserFlying()
+                ? "This prepared skill cannot be used while airborne."
+                : null;
+        }
+
+        private static string GetClientSpecificRestrictionMessage(PlayerCharacter player, SkillData skill)
+        {
+            if (player?.Physics == null || skill == null)
+            {
+                return null;
+            }
+
+            if (UsesLadderOrRopeCastGate(skill) && player.Physics.IsOnLadderOrRope)
+            {
+                return "This skill cannot be used while on a ladder or rope.";
+            }
+
+            if (RequiresStableVehicleCastState(skill)
+                && !player.Physics.IsOnFoothold()
+                && !player.Physics.IsOnLadderOrRope
+                && !player.Physics.IsSwimming()
+                && !player.Physics.IsUserFlying())
+            {
+                return "This skill cannot be used while airborne.";
+            }
 
             return null;
         }
@@ -122,6 +202,87 @@ namespace HaCreator.MapSimulator.Character.Skills
         private static bool IsSwallowSkill(SkillData skill)
         {
             return skill?.IsSwallowFamilySkill == true;
+        }
+
+        private static bool IsPrepareBombSkill(int skillId)
+        {
+            return skillId == NightlordTauntSkillId
+                   || skillId == GunslingerBlankShotSkillId
+                   || skillId == NightWalkerPoisonBombSkillId;
+        }
+
+        private static bool RequiresGroundedPreparedStart(int skillId)
+        {
+            return skillId == FlameLauncherSkillId
+                   || skillId == EnhancedFlameLauncherSkillId;
+        }
+
+        private static bool UsesLadderOrRopeCastGate(SkillData skill)
+        {
+            if (skill == null)
+            {
+                return false;
+            }
+
+            int skillId = skill.SkillId;
+            return skillId == HermitNinjaAmbushSkillId
+                   || skillId == ShadowerNinjaAmbushSkillId
+                   || skillId == PirateDashSkillId
+                   || skillId == ThunderBreakerDashSkillId
+                   || skillId == DualBladeTornadoSpinSkillId
+                   || skillId == CorsairBattleshipSkillId
+                   || skillId == BattleMageTwisterSpinSkillId
+                   || skillId == SoaringSkillId
+                   || skillId == SoaringCygnusSkillId
+                   || skillId == SoaringEvanSkillId
+                   || skillId == SoaringMechanicSkillId
+                   || UsesVehicleOwnershipOrMountSkill(skill);
+        }
+
+        private static bool RequiresStableVehicleCastState(SkillData skill)
+        {
+            if (skill == null)
+            {
+                return false;
+            }
+
+            int skillId = skill.SkillId;
+            return skillId == JaguarRiderSkillId
+                   || skillId == MechanicPrototypeSkillId
+                   || skillId == MonsterRidingSkillId
+                   || skillId == MonsterRidingBeginnerSkillId
+                   || skillId == MonsterRidingEvanSkillId
+                   || skillId == MonsterRidingMechanicSkillId
+                   || UsesVehicleOwnershipOrMountSkill(skill);
+        }
+
+        private static bool UsesVehicleOwnershipOrMountSkill(SkillData skill)
+        {
+            if (skill == null)
+            {
+                return false;
+            }
+
+            if (skill.UsesTamingMobMount)
+            {
+                return true;
+            }
+
+            if (skill.ClientInfoType != 13)
+            {
+                return false;
+            }
+
+            if (skill.SkillId == CorsairBattleshipSkillId || skill.SkillId == JaguarRiderSkillId)
+            {
+                return true;
+            }
+
+            string combinedText = $"{skill.Name} {skill.Description}";
+            return combinedText.IndexOf("mount/unmount", StringComparison.OrdinalIgnoreCase) >= 0
+                   || combinedText.IndexOf("summon and mount", StringComparison.OrdinalIgnoreCase) >= 0
+                   || combinedText.IndexOf("monster rider", StringComparison.OrdinalIgnoreCase) >= 0
+                   || combinedText.IndexOf("jaguar rider", StringComparison.OrdinalIgnoreCase) >= 0;
         }
 
         private static bool UsesBoundJumpStateGate(SkillData skill)

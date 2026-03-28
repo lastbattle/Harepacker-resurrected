@@ -1454,7 +1454,9 @@ namespace HaCreator.MapSimulator.Entities
                 return new Color(255, 245, 190) * pulse;
             }
 
-            if (AI.HasStatusEffect(MobStatusEffect.Showdown) || AI.HasStatusEffect(MobStatusEffect.SealSkill))
+            if (AI.HasStatusEffect(MobStatusEffect.Showdown) ||
+                AI.HasStatusEffect(MobStatusEffect.SealSkill) ||
+                AI.HasStatusEffect(MobStatusEffect.Rich))
             {
                 return new Color(255, 235, 150) * pulse;
             }

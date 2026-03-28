@@ -1,3 +1,4 @@
+using HaCreator.MapSimulator.UI;
 using System;
 using System.Collections.Generic;
 
@@ -9,7 +10,45 @@ namespace HaCreator.MapSimulator.Managers
     /// </summary>
     public sealed class DirectionModeWindowOwnerRegistry
     {
+        private static readonly HashSet<string> ImplicitOwnerEligibleWindowNames = new(StringComparer.Ordinal)
+        {
+            MapSimulatorWindowNames.CashShop,
+            MapSimulatorWindowNames.Mts,
+            MapSimulatorWindowNames.Trunk,
+            MapSimulatorWindowNames.ItemMaker,
+            MapSimulatorWindowNames.ItemUpgrade,
+            MapSimulatorWindowNames.VegaSpell,
+            MapSimulatorWindowNames.MapleTv,
+            MapSimulatorWindowNames.MemoMailbox,
+            MapSimulatorWindowNames.MemoSend,
+            MapSimulatorWindowNames.MemoGet,
+            MapSimulatorWindowNames.CharacterInfo,
+            MapSimulatorWindowNames.BookCollection,
+            MapSimulatorWindowNames.SocialList,
+            MapSimulatorWindowNames.SocialSearch,
+            MapSimulatorWindowNames.GuildSearch,
+            MapSimulatorWindowNames.GuildManage,
+            MapSimulatorWindowNames.AllianceEditor,
+            MapSimulatorWindowNames.GuildSkill,
+            MapSimulatorWindowNames.GuildBbs,
+            MapSimulatorWindowNames.Messenger,
+            MapSimulatorWindowNames.FamilyChart,
+            MapSimulatorWindowNames.FamilyTree,
+            MapSimulatorWindowNames.QuestDelivery,
+            MapSimulatorWindowNames.ClassCompetition,
+            MapSimulatorWindowNames.MiniRoom,
+            MapSimulatorWindowNames.PersonalShop,
+            MapSimulatorWindowNames.EntrustedShop,
+            MapSimulatorWindowNames.TradingRoom
+        };
+
         private readonly HashSet<string> _ownedWindowNames = new(StringComparer.Ordinal);
+
+        public static bool IsImplicitOwnerEligibleWindow(string windowName)
+        {
+            return !string.IsNullOrWhiteSpace(windowName)
+                   && ImplicitOwnerEligibleWindowNames.Contains(windowName);
+        }
 
         public void TrackWindow(string windowName)
         {

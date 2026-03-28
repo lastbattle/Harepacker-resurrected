@@ -1,8 +1,11 @@
 using HaCreator.MapSimulator.Character;
 using HaCreator.MapSimulator.UI;
+using MapleLib.PacketLib;
+using MapleLib.WzLib;
 using MapleLib.WzLib.WzStructure.Data.ItemStructure;
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 
 namespace HaCreator.MapSimulator.Interaction
@@ -52,7 +55,8 @@ namespace HaCreator.MapSimulator.Interaction
     public enum SocialRoomFieldActorTemplate
     {
         Merchant,
-        StoreBanker
+        StoreBanker,
+        CashEmployee
     }
 
     public sealed class SocialRoomFieldActorSnapshot
@@ -62,13 +66,29 @@ namespace HaCreator.MapSimulator.Interaction
             SocialRoomFieldActorTemplate template,
             string headline,
             string detail,
-            string stateKey)
+            string stateKey,
+            int templateId = 0,
+            bool useOwnerAnchor = true,
+            int anchorOffsetX = 0,
+            int anchorOffsetY = 0,
+            int worldX = 0,
+            int worldY = 0,
+            bool hasWorldPosition = false,
+            bool? flip = null)
         {
             Kind = kind;
             Template = template;
             Headline = headline ?? string.Empty;
             Detail = detail ?? string.Empty;
             StateKey = stateKey ?? string.Empty;
+            TemplateId = Math.Max(0, templateId);
+            UseOwnerAnchor = useOwnerAnchor;
+            AnchorOffsetX = anchorOffsetX;
+            AnchorOffsetY = anchorOffsetY;
+            WorldX = worldX;
+            WorldY = worldY;
+            HasWorldPosition = hasWorldPosition;
+            Flip = flip;
         }
 
         public SocialRoomKind Kind { get; }
@@ -76,6 +96,14 @@ namespace HaCreator.MapSimulator.Interaction
         public string Headline { get; }
         public string Detail { get; }
         public string StateKey { get; }
+        public int TemplateId { get; }
+        public bool UseOwnerAnchor { get; }
+        public int AnchorOffsetX { get; }
+        public int AnchorOffsetY { get; }
+        public int WorldX { get; }
+        public int WorldY { get; }
+        public bool HasWorldPosition { get; }
+        public bool? Flip { get; }
     }
 
     public sealed class SocialRoomOccupant
@@ -173,6 +201,32 @@ namespace HaCreator.MapSimulator.Interaction
 
     public sealed class SocialRoomRuntime
     {
+        private const int MiniRoomOmokBoardSize = 15;
+        private const byte TradingRoomPutItemPacketType = 15;
+        private const byte TradingRoomPutMoneyPacketType = 16;
+        private const byte TradingRoomTradePacketType = 17;
+        private const byte TradingRoomExceedLimitPacketType = 21;
+        private const byte PersonalShopBuyResultPacketType = 24;
+        private const byte PersonalShopBasePacketType = 25;
+        private const byte PersonalShopSoldItemResultPacketType = 26;
+        private const byte PersonalShopMoveItemToInventoryPacketType = 27;
+        private const byte EntrustedShopArrangeItemResultPacketType = 40;
+        private const byte EntrustedShopWithdrawAllResultPacketType = 42;
+        private const byte EntrustedShopWithdrawMoneyResultPacketType = 44;
+        private const byte EntrustedShopVisitListResultPacketType = 46;
+        private const byte EntrustedShopBlackListResultPacketType = 47;
+        private const byte OmokTieRequestPacketType = 50;
+        private const byte OmokTieResultPacketType = 51;
+        private const byte OmokRetreatRequestPacketType = 54;
+        private const byte OmokRetreatResultPacketType = 55;
+        private const byte OmokReadyPacketType = 58;
+        private const byte OmokCancelReadyPacketType = 59;
+        private const byte OmokStartPacketType = 61;
+        private const byte OmokGameResultPacketType = 62;
+        private const byte OmokTimeOverPacketType = 63;
+        private const byte OmokPutStonePacketType = 64;
+        private const byte OmokPutStoneErrorPacketType = 65;
+
         public sealed class SocialRoomRemoteInventoryEntry
         {
             public SocialRoomRemoteInventoryEntry(int itemId, string itemName, int quantity)
@@ -232,16 +286,33 @@ namespace HaCreator.MapSimulator.Interaction
         private readonly List<SocialRoomOccupant> _defaultOccupants;
         private readonly List<SocialRoomRemoteInventoryEntry> _defaultRemoteInventoryEntries;
         private readonly SocialRoomRuntimeSnapshot _defaultSnapshot;
+        private readonly int[] _miniRoomOmokBoard;
         private int _miniRoomModeIndex;
         private int _miniRoomWagerAmount;
+        private int _miniRoomOmokCurrentTurnIndex;
+        private int _miniRoomOmokWinnerIndex;
+        private int _miniRoomOmokLastMoveX;
+        private int _miniRoomOmokLastMoveY;
+        private int _miniRoomOmokOwnerStoneValue;
+        private int _miniRoomOmokGuestStoneValue;
         private int _tradeLocalOfferMeso;
         private int _tradeRemoteOfferMeso;
         private int _remoteInventoryMeso;
+        private bool _miniRoomOmokInProgress;
+        private bool _miniRoomOmokTieRequested;
         private bool _tradeLocalLocked;
         private bool _tradeRemoteLocked;
         private bool _tradeLocalAccepted;
         private bool _tradeRemoteAccepted;
         private DateTime? _entrustedPermitExpiresAtUtc;
+        private int _employeeTemplateId;
+        private bool _employeeUseOwnerAnchor = true;
+        private int _employeeAnchorOffsetX;
+        private int _employeeAnchorOffsetY;
+        private int _employeeWorldX;
+        private int _employeeWorldY;
+        private bool _employeeHasWorldPosition;
+        private bool? _employeeFlip;
         private bool _inventoryBackedRows;
         private bool _suspendPersistence;
         private string _persistenceKey;
@@ -284,13 +355,26 @@ namespace HaCreator.MapSimulator.Interaction
             _defaultOccupants = occupants?.Select(occupant => new SocialRoomOccupant(occupant.Name, occupant.Role, occupant.Detail, occupant.IsReady, occupant.AvatarBuild)).ToList()
                 ?? new List<SocialRoomOccupant>();
             _defaultRemoteInventoryEntries = new List<SocialRoomRemoteInventoryEntry>();
+            _miniRoomOmokBoard = new int[MiniRoomOmokBoardSize * MiniRoomOmokBoardSize];
+            _miniRoomOmokCurrentTurnIndex = 0;
+            _miniRoomOmokWinnerIndex = -1;
+            _miniRoomOmokLastMoveX = -1;
+            _miniRoomOmokLastMoveY = -1;
+            _miniRoomOmokOwnerStoneValue = 1;
+            _miniRoomOmokGuestStoneValue = 2;
             _tradeRemoteOfferMeso = kind == SocialRoomKind.TradingRoom ? 75000 : 0;
             _remoteInventoryMeso = kind == SocialRoomKind.TradingRoom ? 325000 : 0;
             _entrustedPermitExpiresAtUtc = kind == SocialRoomKind.EntrustedShop ? DateTime.UtcNow.AddHours(24) : null;
+            _employeeAnchorOffsetX = kind == SocialRoomKind.EntrustedShop ? 72 : 0;
+            _employeeAnchorOffsetY = 0;
             StatusMessage = statusMessage ?? string.Empty;
             RoomState = roomState ?? string.Empty;
             ModeName = modeName ?? string.Empty;
             SeedDefaultRemoteInventory();
+            if (kind == SocialRoomKind.MiniRoom && string.Equals(ModeName, "Omok", StringComparison.OrdinalIgnoreCase))
+            {
+                SyncMiniRoomOmokPresentation();
+            }
             _defaultSnapshot = BuildSnapshot();
         }
 
@@ -308,6 +392,13 @@ namespace HaCreator.MapSimulator.Interaction
         public IReadOnlyList<SocialRoomChatEntry> ChatEntries => _chatEntries;
         public IReadOnlyList<SocialRoomRemoteInventoryEntry> RemoteInventoryEntries => _remoteInventoryEntries;
         public int RemoteInventoryMeso => _remoteInventoryMeso;
+        public int MiniRoomOmokBoardSizeValue => MiniRoomOmokBoardSize;
+        public bool IsMiniRoomOmokActive => Kind == SocialRoomKind.MiniRoom && _miniRoomModeIndex == 0;
+        public bool IsMiniRoomOmokInProgress => _miniRoomOmokInProgress;
+        public int MiniRoomOmokCurrentTurnIndex => _miniRoomOmokCurrentTurnIndex;
+        public int MiniRoomOmokWinnerIndex => _miniRoomOmokWinnerIndex;
+        public int MiniRoomOmokLastMoveX => _miniRoomOmokLastMoveX;
+        public int MiniRoomOmokLastMoveY => _miniRoomOmokLastMoveY;
 
         public void BindInventory(IInventoryRuntime inventoryRuntime)
         {
@@ -348,6 +439,15 @@ namespace HaCreator.MapSimulator.Interaction
                 ModeName = ModeName,
                 MiniRoomModeIndex = _miniRoomModeIndex,
                 MiniRoomWagerAmount = _miniRoomWagerAmount,
+                MiniRoomOmokInProgress = _miniRoomOmokInProgress,
+                MiniRoomOmokCurrentTurnIndex = _miniRoomOmokCurrentTurnIndex,
+                MiniRoomOmokWinnerIndex = _miniRoomOmokWinnerIndex,
+                MiniRoomOmokLastMoveX = _miniRoomOmokLastMoveX,
+                MiniRoomOmokLastMoveY = _miniRoomOmokLastMoveY,
+                MiniRoomOmokOwnerStoneValue = _miniRoomOmokOwnerStoneValue,
+                MiniRoomOmokGuestStoneValue = _miniRoomOmokGuestStoneValue,
+                MiniRoomOmokTieRequested = _miniRoomOmokTieRequested,
+                MiniRoomOmokBoard = _miniRoomOmokBoard.ToList(),
                 TradeLocalOfferMeso = _tradeLocalOfferMeso,
                 TradeRemoteOfferMeso = _tradeRemoteOfferMeso,
                 TradeLocalLocked = _tradeLocalLocked,
@@ -355,6 +455,14 @@ namespace HaCreator.MapSimulator.Interaction
                 TradeLocalAccepted = _tradeLocalAccepted,
                 TradeRemoteAccepted = _tradeRemoteAccepted,
                 EntrustedPermitExpiresAtUtc = _entrustedPermitExpiresAtUtc,
+                EmployeeTemplateId = _employeeTemplateId,
+                EmployeeUseOwnerAnchor = _employeeUseOwnerAnchor,
+                EmployeeAnchorOffsetX = _employeeAnchorOffsetX,
+                EmployeeAnchorOffsetY = _employeeAnchorOffsetY,
+                EmployeeWorldX = _employeeWorldX,
+                EmployeeWorldY = _employeeWorldY,
+                EmployeeHasWorldPosition = _employeeHasWorldPosition,
+                EmployeeFlip = _employeeFlip,
                 Occupants = _occupants
                     .Select(occupant => new SocialRoomOccupantSnapshot
                     {
@@ -418,6 +526,18 @@ namespace HaCreator.MapSimulator.Interaction
                 ModeName = source?.ModeName ?? _defaultSnapshot.ModeName;
                 _miniRoomModeIndex = source?.MiniRoomModeIndex ?? _defaultSnapshot.MiniRoomModeIndex;
                 _miniRoomWagerAmount = Math.Max(0, source?.MiniRoomWagerAmount ?? _defaultSnapshot.MiniRoomWagerAmount);
+                _miniRoomOmokInProgress = source?.MiniRoomOmokInProgress ?? _defaultSnapshot.MiniRoomOmokInProgress;
+                _miniRoomOmokCurrentTurnIndex = Math.Clamp(source?.MiniRoomOmokCurrentTurnIndex ?? _defaultSnapshot.MiniRoomOmokCurrentTurnIndex, 0, 1);
+                _miniRoomOmokWinnerIndex = source?.MiniRoomOmokWinnerIndex ?? _defaultSnapshot.MiniRoomOmokWinnerIndex;
+                _miniRoomOmokLastMoveX = source?.MiniRoomOmokLastMoveX ?? _defaultSnapshot.MiniRoomOmokLastMoveX;
+                _miniRoomOmokLastMoveY = source?.MiniRoomOmokLastMoveY ?? _defaultSnapshot.MiniRoomOmokLastMoveY;
+                _miniRoomOmokOwnerStoneValue = NormalizeOmokStoneValue(source?.MiniRoomOmokOwnerStoneValue ?? _defaultSnapshot.MiniRoomOmokOwnerStoneValue, fallback: 1);
+                _miniRoomOmokGuestStoneValue = NormalizeOmokStoneValue(source?.MiniRoomOmokGuestStoneValue ?? _defaultSnapshot.MiniRoomOmokGuestStoneValue, fallback: _miniRoomOmokOwnerStoneValue == 1 ? 2 : 1);
+                if (_miniRoomOmokOwnerStoneValue == _miniRoomOmokGuestStoneValue)
+                {
+                    _miniRoomOmokGuestStoneValue = _miniRoomOmokOwnerStoneValue == 1 ? 2 : 1;
+                }
+                _miniRoomOmokTieRequested = source?.MiniRoomOmokTieRequested ?? _defaultSnapshot.MiniRoomOmokTieRequested;
                 _tradeLocalOfferMeso = Math.Max(0, source?.TradeLocalOfferMeso ?? _defaultSnapshot.TradeLocalOfferMeso);
                 _tradeRemoteOfferMeso = Math.Max(0, source?.TradeRemoteOfferMeso ?? _defaultSnapshot.TradeRemoteOfferMeso);
                 _tradeLocalLocked = source?.TradeLocalLocked ?? _defaultSnapshot.TradeLocalLocked;
@@ -425,6 +545,14 @@ namespace HaCreator.MapSimulator.Interaction
                 _tradeLocalAccepted = source?.TradeLocalAccepted ?? _defaultSnapshot.TradeLocalAccepted;
                 _tradeRemoteAccepted = source?.TradeRemoteAccepted ?? _defaultSnapshot.TradeRemoteAccepted;
                 _entrustedPermitExpiresAtUtc = source?.EntrustedPermitExpiresAtUtc ?? _defaultSnapshot.EntrustedPermitExpiresAtUtc;
+                _employeeTemplateId = Math.Max(0, source?.EmployeeTemplateId ?? _defaultSnapshot.EmployeeTemplateId);
+                _employeeUseOwnerAnchor = source?.EmployeeUseOwnerAnchor ?? _defaultSnapshot.EmployeeUseOwnerAnchor;
+                _employeeAnchorOffsetX = source?.EmployeeAnchorOffsetX ?? _defaultSnapshot.EmployeeAnchorOffsetX;
+                _employeeAnchorOffsetY = source?.EmployeeAnchorOffsetY ?? _defaultSnapshot.EmployeeAnchorOffsetY;
+                _employeeWorldX = source?.EmployeeWorldX ?? _defaultSnapshot.EmployeeWorldX;
+                _employeeWorldY = source?.EmployeeWorldY ?? _defaultSnapshot.EmployeeWorldY;
+                _employeeHasWorldPosition = source?.EmployeeHasWorldPosition ?? _defaultSnapshot.EmployeeHasWorldPosition;
+                _employeeFlip = source?.EmployeeFlip ?? _defaultSnapshot.EmployeeFlip;
                 _remoteInventoryMeso = Math.Max(0, source?.RemoteInventoryMeso ?? _defaultSnapshot.RemoteInventoryMeso);
 
                 _occupants.Clear();
@@ -475,6 +603,12 @@ namespace HaCreator.MapSimulator.Interaction
                     }
                 }
 
+                int[] boardSource = ((source?.MiniRoomOmokBoard?.Count ?? 0) == _miniRoomOmokBoard.Length
+                    ? source.MiniRoomOmokBoard
+                    : _defaultSnapshot.MiniRoomOmokBoard)?.ToArray()
+                    ?? new int[_miniRoomOmokBoard.Length];
+                Array.Copy(boardSource, _miniRoomOmokBoard, _miniRoomOmokBoard.Length);
+
                 _remoteInventoryEntries.Clear();
                 IEnumerable<SocialRoomRemoteInventoryEntrySnapshot> remoteEntries = source?.RemoteInventoryEntries?.Count > 0
                     ? source.RemoteInventoryEntries
@@ -507,9 +641,9 @@ namespace HaCreator.MapSimulator.Interaction
             RefreshTimedState(DateTime.UtcNow);
             return Kind switch
             {
-                SocialRoomKind.MiniRoom => $"{RoomTitle}: state={RoomState}, mode={ModeName}, wager={_miniRoomWagerAmount:N0}, occupants={_occupants.Count}/{Capacity}",
-                SocialRoomKind.PersonalShop => $"{RoomTitle}: state={RoomState}, listed={_items.Count}, savedVisitors={_savedVisitors.Count}, blacklist={_blockedVisitors.Count}, ledger={MesoAmount:N0}",
-                SocialRoomKind.EntrustedShop => $"{RoomTitle}: state={RoomState}, listed={_items.Count}, ledger={MesoAmount:N0}, permit={FormatPermitStatus(DateTime.UtcNow)}",
+                SocialRoomKind.MiniRoom => $"{RoomTitle}: state={RoomState}, mode={ModeName}, wager={_miniRoomWagerAmount:N0}, occupants={_occupants.Count}/{Capacity}, omokTurn={ResolveOmokTurnName()}, winner={ResolveOmokWinnerName()}",
+                SocialRoomKind.PersonalShop => $"{RoomTitle}: state={RoomState}, listed={_items.Count}, savedVisitors={_savedVisitors.Count}, blacklist={_blockedVisitors.Count}, ledger={MesoAmount:N0}, employee={DescribeEmployeeState()}",
+                SocialRoomKind.EntrustedShop => $"{RoomTitle}: state={RoomState}, listed={_items.Count}, ledger={MesoAmount:N0}, permit={FormatPermitStatus(DateTime.UtcNow)}, employee={DescribeEmployeeState()}",
                 SocialRoomKind.TradingRoom => $"{RoomTitle}: state={RoomState}, localMeso={MesoAmount:N0}, remoteMeso={_tradeRemoteOfferMeso:N0}, remoteWallet={_remoteInventoryMeso:N0}, remoteItems={_remoteInventoryEntries.Sum(entry => entry.Quantity)}, lock={FormatTradePartyState(_tradeLocalLocked, _tradeRemoteLocked)}, accept={FormatTradePartyState(_tradeLocalAccepted, _tradeRemoteAccepted)}, escrowRows={_inventoryEscrow.Count}",
                 _ => RoomState
             };
@@ -534,6 +668,29 @@ namespace HaCreator.MapSimulator.Interaction
         {
             RefreshTimedState(utcNow);
 
+            if (Kind == SocialRoomKind.PersonalShop)
+            {
+                if (_employeeTemplateId <= 0)
+                {
+                    return null;
+                }
+
+                return new SocialRoomFieldActorSnapshot(
+                    Kind,
+                    SocialRoomFieldActorTemplate.CashEmployee,
+                    string.IsNullOrWhiteSpace(RoomTitle) ? "Hired Merchant" : RoomTitle,
+                    $"{OwnerName} | {RoomState}",
+                    $"cash|{_employeeTemplateId}|{ModeName}|{RoomState}",
+                    templateId: _employeeTemplateId,
+                    useOwnerAnchor: _employeeUseOwnerAnchor,
+                    anchorOffsetX: _employeeAnchorOffsetX,
+                    anchorOffsetY: _employeeAnchorOffsetY,
+                    worldX: _employeeWorldX,
+                    worldY: _employeeWorldY,
+                    hasWorldPosition: _employeeHasWorldPosition,
+                    flip: _employeeFlip);
+            }
+
             if (Kind != SocialRoomKind.EntrustedShop)
             {
                 return null;
@@ -547,15 +704,31 @@ namespace HaCreator.MapSimulator.Interaction
                     SocialRoomFieldActorTemplate.StoreBanker,
                     "Contract expired",
                     "Claim items and mesos at Fredrick.",
-                    $"expired|{RoomState}|{StatusMessage}");
+                    $"expired|{RoomState}|{StatusMessage}",
+                    useOwnerAnchor: _employeeUseOwnerAnchor,
+                    anchorOffsetX: _employeeAnchorOffsetX,
+                    anchorOffsetY: _employeeAnchorOffsetY,
+                    worldX: _employeeWorldX,
+                    worldY: _employeeWorldY,
+                    hasWorldPosition: _employeeHasWorldPosition,
+                    flip: _employeeFlip);
             }
 
+            bool usesCashEmployee = _employeeTemplateId > 0;
             return new SocialRoomFieldActorSnapshot(
                 Kind,
-                SocialRoomFieldActorTemplate.Merchant,
+                usesCashEmployee ? SocialRoomFieldActorTemplate.CashEmployee : SocialRoomFieldActorTemplate.Merchant,
                 string.IsNullOrWhiteSpace(RoomTitle) ? "Entrusted Shop" : RoomTitle,
                 $"{OwnerName} | {RoomState} | {permitStatus}",
-                $"merchant|{ModeName}|{RoomState}|{permitStatus}");
+                $"{(usesCashEmployee ? "cash" : "merchant")}|{_employeeTemplateId}|{ModeName}|{RoomState}|{permitStatus}",
+                templateId: _employeeTemplateId,
+                useOwnerAnchor: _employeeUseOwnerAnchor,
+                anchorOffsetX: _employeeAnchorOffsetX,
+                anchorOffsetY: _employeeAnchorOffsetY,
+                worldX: _employeeWorldX,
+                worldY: _employeeWorldY,
+                hasWorldPosition: _employeeHasWorldPosition,
+                flip: _employeeFlip);
         }
 
         public bool TryDispatchPacket(
@@ -701,6 +874,231 @@ namespace HaCreator.MapSimulator.Interaction
             return false;
         }
 
+        public bool TryDispatchPacketBytes(byte[] packetBytes, int tickCount, out string message)
+        {
+            message = null;
+            byte[] payload = NormalizePacketPayload(packetBytes);
+            if (payload.Length == 0)
+            {
+                message = "Social-room packet payload is empty.";
+                return false;
+            }
+
+            try
+            {
+                PacketReader reader = new(payload);
+                byte packetType = reader.ReadByte();
+                return Kind switch
+                {
+                    SocialRoomKind.MiniRoom => TryDispatchMiniRoomPacket(reader, packetType, tickCount, out message),
+                    SocialRoomKind.PersonalShop => TryDispatchPersonalShopPacket(reader, packetType, out message),
+                    SocialRoomKind.EntrustedShop => TryDispatchEntrustedShopPacket(reader, packetType, out message),
+                    SocialRoomKind.TradingRoom => TryDispatchTradingRoomPacket(reader, packetType, out message),
+                    _ => FailPacket(packetType, out message)
+                };
+            }
+            catch (EndOfStreamException)
+            {
+                message = $"Social-room packet ended unexpectedly: {BitConverter.ToString(payload)}";
+                return false;
+            }
+        }
+
+        private bool TryDispatchMiniRoomPacket(PacketReader reader, byte packetType, int tickCount, out string message)
+        {
+            if (!IsMiniRoomOmokActive)
+            {
+                message = $"MiniRoom packet {packetType} is only modeled while the room is in Omok mode.";
+                return false;
+            }
+
+            switch (packetType)
+            {
+                case OmokReadyPacketType:
+                    SetMiniRoomGuestReady(isReady: true, persistState: true);
+                    message = StatusMessage;
+                    return true;
+                case OmokCancelReadyPacketType:
+                    SetMiniRoomGuestReady(isReady: false, persistState: true);
+                    message = StatusMessage;
+                    return true;
+                case OmokStartPacketType:
+                {
+                    int firstTurnSeat = reader.ReadByte();
+                    StartMiniRoomOmokSessionFromPacket(firstTurnSeat);
+                    message = StatusMessage;
+                    return true;
+                }
+                case OmokPutStonePacketType:
+                {
+                    int x = reader.ReadInt();
+                    int y = reader.ReadInt();
+                    int stoneValue = NormalizeOmokStoneValue(reader.ReadByte(), fallback: ResolveOmokStoneValueForSeat(_miniRoomOmokCurrentTurnIndex));
+                    return TryApplyOmokStonePacket(x, y, stoneValue, out message);
+                }
+                case OmokPutStoneErrorPacketType:
+                {
+                    int errorCode = reader.ReadByte();
+                    _miniRoomOmokTieRequested = false;
+                    StatusMessage = errorCode == 67
+                        ? "The Omok stone packet was rejected because that point is already occupied."
+                        : $"The Omok stone packet was rejected (code {errorCode}).";
+                    AddMiniRoomSystemMessage($"System : {StatusMessage}", isWarning: true);
+                    SyncMiniRoomOmokPresentation();
+                    PersistState();
+                    message = StatusMessage;
+                    return true;
+                }
+                case OmokTimeOverPacketType:
+                    _miniRoomOmokCurrentTurnIndex = Math.Clamp((int)reader.ReadByte(), 0, 1);
+                    _miniRoomOmokTieRequested = false;
+                    RoomState = _miniRoomOmokInProgress ? "Omok in progress" : RoomState;
+                    StatusMessage = $"{ResolveMiniRoomSeatName(_miniRoomOmokCurrentTurnIndex)}'s Omok turn.";
+                    SyncMiniRoomOmokPresentation();
+                    PersistState();
+                    message = StatusMessage;
+                    return true;
+                case OmokTieRequestPacketType:
+                    _miniRoomOmokTieRequested = true;
+                    StatusMessage = $"{ResolveRemoteTraderName()} requested an Omok draw.";
+                    AddMiniRoomSystemMessage($"System : {StatusMessage}");
+                    SyncMiniRoomOmokPresentation();
+                    PersistState();
+                    message = StatusMessage;
+                    return true;
+                case OmokTieResultPacketType:
+                    _miniRoomOmokTieRequested = false;
+                    StatusMessage = "The Omok draw request was answered. Waiting for the next result packet.";
+                    AddMiniRoomSystemMessage($"System : {StatusMessage}");
+                    SyncMiniRoomOmokPresentation();
+                    PersistState();
+                    message = StatusMessage;
+                    return true;
+                case OmokRetreatRequestPacketType:
+                    StatusMessage = $"{ResolveRemoteTraderName()} requested an Omok retreat.";
+                    AddMiniRoomSystemMessage($"System : {StatusMessage}", isWarning: true);
+                    PersistState();
+                    message = StatusMessage;
+                    return true;
+                case OmokRetreatResultPacketType:
+                {
+                    bool accepted = reader.ReadByte() != 0;
+                    if (!accepted)
+                    {
+                        StatusMessage = "The Omok retreat request was declined.";
+                        AddMiniRoomSystemMessage($"System : {StatusMessage}", isWarning: true);
+                        PersistState();
+                        message = StatusMessage;
+                        return true;
+                    }
+
+                    int removedStoneCount = reader.ReadByte();
+                    int nextTurnSeat = reader.ReadByte();
+                    ApplyOmokRetreatPacket(removedStoneCount, nextTurnSeat);
+                    message = StatusMessage;
+                    return true;
+                }
+                case OmokGameResultPacketType:
+                {
+                    int resultType = reader.ReadByte();
+                    int winnerSeat = resultType == 1 ? -1 : reader.ReadByte();
+                    ApplyOmokGameResultPacket(resultType, winnerSeat);
+                    message = StatusMessage;
+                    return true;
+                }
+                default:
+                    return FailPacket(packetType, out message);
+            }
+        }
+
+        private bool TryDispatchPersonalShopPacket(PacketReader reader, byte packetType, out string message)
+        {
+            switch (packetType)
+            {
+                case PersonalShopBuyResultPacketType:
+                    ApplyPersonalShopBuyResult(reader.ReadByte());
+                    message = StatusMessage;
+                    return true;
+                case PersonalShopSoldItemResultPacketType:
+                    return TryApplyPersonalShopSoldItemPacket(reader, out message);
+                case PersonalShopMoveItemToInventoryPacketType:
+                    return TryApplyPersonalShopMoveItemPacket(reader, out message);
+                case PersonalShopBasePacketType:
+                    StatusMessage = "Received a personal-shop base lifecycle packet. The deeper client-owned base dialog flow is still partial.";
+                    PersistState();
+                    message = StatusMessage;
+                    return true;
+                default:
+                    return FailPacket(packetType, out message);
+            }
+        }
+
+        private bool TryDispatchEntrustedShopPacket(PacketReader reader, byte packetType, out string message)
+        {
+            switch (packetType)
+            {
+                case EntrustedShopArrangeItemResultPacketType:
+                    ApplyEntrustedArrangeResult(reader.ReadInt());
+                    message = StatusMessage;
+                    return true;
+                case EntrustedShopWithdrawAllResultPacketType:
+                    ApplyEntrustedWithdrawAllResult(reader.ReadByte());
+                    message = StatusMessage;
+                    return true;
+                case EntrustedShopWithdrawMoneyResultPacketType:
+                    ApplyEntrustedWithdrawMoneyResult();
+                    message = StatusMessage;
+                    return true;
+                case EntrustedShopVisitListResultPacketType:
+                    return TryApplyEntrustedVisitListPacket(reader, out message);
+                case EntrustedShopBlackListResultPacketType:
+                    return TryApplyEntrustedBlackListPacket(reader, out message);
+                case PersonalShopBuyResultPacketType:
+                case PersonalShopBasePacketType:
+                case PersonalShopSoldItemResultPacketType:
+                case PersonalShopMoveItemToInventoryPacketType:
+                    return TryDispatchPersonalShopPacket(reader, packetType, out message);
+                default:
+                    return FailPacket(packetType, out message);
+            }
+        }
+
+        private bool TryDispatchTradingRoomPacket(PacketReader reader, byte packetType, out string message)
+        {
+            switch (packetType)
+            {
+                case TradingRoomPutMoneyPacketType:
+                {
+                    int traderIndex = reader.ReadByte();
+                    int offeredMeso = reader.ReadInt();
+                    ApplyTradingRoomMesoPacket(traderIndex, offeredMeso);
+                    message = StatusMessage;
+                    return true;
+                }
+                case TradingRoomPutItemPacketType:
+                    message = "Trading-room item packets still require a full GW_ItemSlotBase decoder. Item-session payloads remain partial.";
+                    return false;
+                case TradingRoomTradePacketType:
+                    StatusMessage = "Received a trading-room trade-state packet. The exact CRC and settlement handshake remains partial.";
+                    PersistState();
+                    message = StatusMessage;
+                    return true;
+                case TradingRoomExceedLimitPacketType:
+                    StatusMessage = "Trading-room packet reported that the offer exceeded the room limit.";
+                    PersistState();
+                    message = StatusMessage;
+                    return true;
+                default:
+                    return FailPacket(packetType, out message);
+            }
+        }
+
+        private static bool FailPacket(byte packetType, out string message)
+        {
+            message = $"Social-room packet {packetType} is not modeled for this room.";
+            return false;
+        }
+
         public void SyncMiniRoomMatchCards(
             string roomTitle,
             string ownerName,
@@ -817,6 +1215,315 @@ namespace HaCreator.MapSimulator.Interaction
         public void AddMiniRoomSystemMessage(string message, bool isWarning = false)
         {
             AddMiniRoomChatEntry(message, isWarning ? SocialRoomChatTone.Warning : SocialRoomChatTone.System);
+        }
+
+        private void SetMiniRoomGuestReady(bool isReady, bool persistState)
+        {
+            if (Kind != SocialRoomKind.MiniRoom || _occupants.Count < 2)
+            {
+                return;
+            }
+
+            SocialRoomOccupant guest = _occupants[1];
+            guest.Update(isReady ? "Ready for the first turn" : "Waiting to ready", isReady);
+            RoomState = isReady ? "Ready check complete" : "Waiting for ready check";
+            StatusMessage = isReady
+                ? $"{guest.Name} is ready. Start {ModeName} when you want to open the board."
+                : $"{guest.Name} stepped back from the ready check.";
+            if (persistState)
+            {
+                PersistState();
+            }
+        }
+
+        private void StartMiniRoomOmokSessionFromPacket(int firstTurnSeat)
+        {
+            EnsureMiniRoomOccupant(0, OwnerName, SocialRoomOccupantRole.Owner, BuildOmokSeatDetail(0, "Host seat"), false);
+            EnsureMiniRoomOccupant(1, ResolveMiniRoomSeatName(1), SocialRoomOccupantRole.Guest, BuildOmokSeatDetail(1, "Guest seat"), false);
+            SetOmokSeatStoneValues(Math.Clamp(firstTurnSeat, 0, 1));
+            ResetOmokBoard();
+            _miniRoomOmokInProgress = true;
+            _miniRoomOmokCurrentTurnIndex = Math.Clamp(firstTurnSeat, 0, 1);
+            _miniRoomOmokWinnerIndex = -1;
+            _miniRoomOmokTieRequested = false;
+            RoomState = "Omok in progress";
+            StatusMessage = $"{ResolveMiniRoomSeatName(_miniRoomOmokCurrentTurnIndex)} opened the Omok round from a packet-backed start.";
+            SyncMiniRoomOmokPresentation();
+            AddMiniRoomSystemMessage("System : Omok round started from packet state.");
+            PersistState();
+        }
+
+        private bool TryApplyOmokStonePacket(int x, int y, int stoneValue, out string message)
+        {
+            message = null;
+            if (!TryValidateOmokCoordinates(x, y, out message))
+            {
+                return false;
+            }
+
+            int boardIndex = GetOmokBoardIndex(x, y);
+            if (_miniRoomOmokBoard[boardIndex] != 0)
+            {
+                message = $"Omok point {x},{y} is already occupied.";
+                return false;
+            }
+
+            int seatIndex = ResolveOmokSeatIndexByStoneValue(stoneValue);
+            if (seatIndex < 0)
+            {
+                seatIndex = _miniRoomOmokCurrentTurnIndex;
+            }
+
+            _miniRoomOmokInProgress = true;
+            _miniRoomOmokBoard[boardIndex] = stoneValue;
+            _miniRoomOmokLastMoveX = x;
+            _miniRoomOmokLastMoveY = y;
+            _miniRoomOmokTieRequested = false;
+            AddMiniRoomSpeakerMessage(ResolveMiniRoomSeatName(seatIndex), $"placed a {ResolveOmokStoneName(stoneValue)} stone at {x},{y}.", seatIndex == 0);
+
+            if (HasFiveInRow(x, y, stoneValue))
+            {
+                _miniRoomOmokInProgress = false;
+                _miniRoomOmokWinnerIndex = seatIndex;
+                RoomState = "Omok result";
+                StatusMessage = $"{ResolveMiniRoomSeatName(seatIndex)} completed five in a row and won the Omok round.";
+            }
+            else
+            {
+                _miniRoomOmokCurrentTurnIndex = seatIndex == 0 ? 1 : 0;
+                RoomState = "Omok in progress";
+                StatusMessage = $"{ResolveMiniRoomSeatName(_miniRoomOmokCurrentTurnIndex)}'s Omok turn.";
+            }
+
+            SyncMiniRoomOmokPresentation();
+            PersistState();
+            message = StatusMessage;
+            return true;
+        }
+
+        private void ApplyOmokRetreatPacket(int removedStoneCount, int nextTurnSeat)
+        {
+            int remainingToRemove = Math.Max(0, removedStoneCount);
+            if (remainingToRemove > 0)
+            {
+                for (int y = MiniRoomOmokBoardSize - 1; y >= 0 && remainingToRemove > 0; y--)
+                {
+                    for (int x = MiniRoomOmokBoardSize - 1; x >= 0 && remainingToRemove > 0; x--)
+                    {
+                        int boardIndex = GetOmokBoardIndex(x, y);
+                        if (_miniRoomOmokBoard[boardIndex] == 0)
+                        {
+                            continue;
+                        }
+
+                        _miniRoomOmokBoard[boardIndex] = 0;
+                        remainingToRemove--;
+                    }
+                }
+            }
+
+            _miniRoomOmokCurrentTurnIndex = Math.Clamp(nextTurnSeat, 0, 1);
+            _miniRoomOmokWinnerIndex = -1;
+            _miniRoomOmokTieRequested = false;
+            RoomState = "Omok in progress";
+            StatusMessage = removedStoneCount > 0
+                ? $"Omok retreat packet removed {removedStoneCount} recent stone(s)."
+                : "Omok retreat packet resolved without removing stones.";
+            SyncMiniRoomOmokPresentation();
+            PersistState();
+        }
+
+        private void ApplyOmokGameResultPacket(int resultType, int winnerSeat)
+        {
+            _miniRoomOmokInProgress = false;
+            _miniRoomOmokTieRequested = false;
+            if (resultType == 1)
+            {
+                _miniRoomOmokWinnerIndex = -1;
+                RoomState = "Omok draw";
+                StatusMessage = "The Omok round ended in a draw.";
+            }
+            else
+            {
+                _miniRoomOmokWinnerIndex = Math.Clamp(winnerSeat, 0, 1);
+                RoomState = "Omok result";
+                StatusMessage = $"{ResolveMiniRoomSeatName(_miniRoomOmokWinnerIndex)} won the Omok round from packet state.";
+            }
+
+            SyncMiniRoomOmokPresentation();
+            PersistState();
+        }
+
+        private void ApplyPersonalShopBuyResult(int resultCode)
+        {
+            RoomState = "Buy result received";
+            StatusMessage = resultCode switch
+            {
+                0 => "Personal-shop buy request resolved without a visible state change.",
+                1 => "Personal-shop buy request was blocked by the server result.",
+                _ => $"Personal-shop buy result code {resultCode} was applied."
+            };
+            PersistState();
+        }
+
+        private bool TryApplyPersonalShopSoldItemPacket(PacketReader reader, out string message)
+        {
+            int soldIndex = reader.ReadByte();
+            int purchasedBundles = reader.ReadShort();
+            string buyerName = NormalizeName(reader.ReadMapleString());
+            List<SocialRoomItemEntry> availableEntries = _items.Where(item => !item.IsClaimed).ToList();
+            if (availableEntries.Count == 0)
+            {
+                message = "No personal-shop bundle is available to apply the sold-item packet.";
+                return false;
+            }
+
+            SocialRoomItemEntry entry = soldIndex >= 0 && soldIndex < availableEntries.Count
+                ? availableEntries[soldIndex]
+                : availableEntries[0];
+            int quantitySold = Math.Max(1, purchasedBundles) * Math.Max(1, entry.Quantity);
+            int mesosReceived = Math.Max(0, Math.Max(1, purchasedBundles) * entry.MesoAmount);
+            entry.Update($"{entry.Detail} | Packet sold to {buyerName}", quantitySold, entry.MesoAmount, false, true);
+            MesoAmount += mesosReceived;
+            _inventoryEscrow.RemoveAll(escrow => ReferenceEquals(escrow.Entry, entry));
+            _occupants.RemoveAll(occupant => string.Equals(occupant.Name, buyerName, StringComparison.OrdinalIgnoreCase));
+            _occupants.Add(new SocialRoomOccupant(buyerName, SocialRoomOccupantRole.Buyer, $"Bought {entry.ItemName} from packet state"));
+            if (!_savedVisitors.Contains(buyerName, StringComparer.OrdinalIgnoreCase))
+            {
+                _savedVisitors.Add(buyerName);
+            }
+
+            RoomState = "Sold item recorded";
+            StatusMessage = $"{buyerName} bought {entry.ItemName} from the personal shop packet feed.";
+            PersistState();
+            message = StatusMessage;
+            return true;
+        }
+
+        private bool TryApplyPersonalShopMoveItemPacket(PacketReader reader, out string message)
+        {
+            int remainingItemCount = reader.ReadByte();
+            int removedIndex = reader.ReadShort();
+            if (_items.Count == 0)
+            {
+                message = "No personal-shop bundle exists to apply the move-to-inventory packet.";
+                return false;
+            }
+
+            int normalizedIndex = Math.Clamp(removedIndex, 0, _items.Count - 1);
+            SocialRoomItemEntry entry = _items[normalizedIndex];
+            _items.RemoveAt(normalizedIndex);
+            _inventoryEscrow.RemoveAll(escrow => ReferenceEquals(escrow.Entry, entry));
+            RoomState = "Closed for setup";
+            ModeName = "Repricing";
+            StatusMessage = $"Moved {entry.ItemName} back to inventory from packet state. {remainingItemCount} bundle(s) remain.";
+            PersistState();
+            message = StatusMessage;
+            return true;
+        }
+
+        private void ApplyEntrustedArrangeResult(int mesoAmount)
+        {
+            MesoAmount = Math.Max(0, mesoAmount);
+            RoomState = "Ledger review";
+            ModeName = "Ledger review";
+            StatusMessage = $"Entrusted-shop arrange packet refreshed the ledger to {MesoAmount:N0} meso.";
+            PersistState();
+        }
+
+        private void ApplyEntrustedWithdrawAllResult(int resultCode)
+        {
+            RoomState = "Withdraw-all result";
+            StatusMessage = resultCode switch
+            {
+                5 => "Entrusted-shop withdraw-all packet left the ledger untouched.",
+                0 => "Entrusted-shop withdraw-all packet resolved successfully.",
+                _ => $"Entrusted-shop withdraw-all result code {resultCode} was applied."
+            };
+            PersistState();
+        }
+
+        private void ApplyEntrustedWithdrawMoneyResult()
+        {
+            if (MesoAmount > 0)
+            {
+                _inventoryRuntime?.AddMeso(MesoAmount);
+            }
+
+            MesoAmount = 0;
+            RoomState = "Ledger settled";
+            StatusMessage = "Entrusted-shop withdraw-money packet moved all mesos out of the ledger.";
+            PersistState();
+        }
+
+        private bool TryApplyEntrustedVisitListPacket(PacketReader reader, out string message)
+        {
+            int count = reader.ReadShort();
+            _savedVisitors.Clear();
+            List<string> visitNotes = new();
+            for (int i = 0; i < count; i++)
+            {
+                string name = NormalizeName(reader.ReadMapleString());
+                int staySeconds = reader.ReadInt();
+                _savedVisitors.Add(name);
+                visitNotes.Add($"{name} stayed {staySeconds}s");
+            }
+
+            while (_notes.Count < 4)
+            {
+                _notes.Add(string.Empty);
+            }
+
+            _notes[0] = count > 0
+                ? $"Entrusted-shop visit log: {string.Join(", ", visitNotes)}."
+                : "Entrusted-shop visit log: no entries.";
+            StatusMessage = $"Applied entrusted-shop visit-list packet with {count} visitor entr{(count == 1 ? "y" : "ies")}.";
+            PersistState();
+            message = StatusMessage;
+            return true;
+        }
+
+        private bool TryApplyEntrustedBlackListPacket(PacketReader reader, out string message)
+        {
+            int count = reader.ReadShort();
+            _blockedVisitors.Clear();
+            for (int i = 0; i < count; i++)
+            {
+                _blockedVisitors.Add(NormalizeName(reader.ReadMapleString()));
+            }
+
+            while (_notes.Count < 4)
+            {
+                _notes.Add(string.Empty);
+            }
+
+            _notes[1] = _blockedVisitors.Count > 0
+                ? $"Entrusted-shop blacklist: {string.Join(", ", _blockedVisitors)}."
+                : "Entrusted-shop blacklist: empty.";
+            StatusMessage = $"Applied entrusted-shop blacklist packet with {_blockedVisitors.Count} entr{(_blockedVisitors.Count == 1 ? "y" : "ies")}.";
+            PersistState();
+            message = StatusMessage;
+            return true;
+        }
+
+        private void ApplyTradingRoomMesoPacket(int traderIndex, int offeredMeso)
+        {
+            int normalizedTraderIndex = Math.Clamp(traderIndex, 0, 1);
+            int normalizedMeso = Math.Max(0, offeredMeso);
+            if (normalizedTraderIndex == 0)
+            {
+                _tradeLocalOfferMeso = normalizedMeso;
+                MesoAmount = normalizedMeso;
+            }
+            else
+            {
+                _tradeRemoteOfferMeso = normalizedMeso;
+            }
+
+            RoomState = "Negotiating";
+            RefreshTradeOccupantsAndRows();
+            StatusMessage = $"{(normalizedTraderIndex == 0 ? OwnerName : ResolveRemoteTraderName())} set a packet-backed meso offer of {normalizedMeso:N0}.";
+            PersistState();
         }
 
         public static SocialRoomRuntime CreateMiniRoomSample()
@@ -951,20 +1658,13 @@ namespace HaCreator.MapSimulator.Interaction
                 return;
             }
 
-            if (_miniRoomToggleReadyHandler != null)
+            if (_miniRoomModeIndex == 1 && _miniRoomToggleReadyHandler != null)
             {
                 _miniRoomToggleReadyHandler();
                 return;
             }
 
-            SocialRoomOccupant guest = _occupants[1];
-            bool nextReady = !guest.IsReady;
-            guest.Update(nextReady ? "Ready for the first turn" : "Waiting to ready", nextReady);
-            RoomState = nextReady ? "Ready check complete" : "Waiting for ready check";
-            StatusMessage = nextReady
-                ? $"{guest.Name} is ready. Start {ModeName} when you want to open the board."
-                : $"{guest.Name} stepped back from the ready check.";
-            PersistState();
+            SetMiniRoomGuestReady(!_occupants[1].IsReady, persistState: true);
         }
 
         public void CycleMiniRoomMode()
@@ -974,14 +1674,12 @@ namespace HaCreator.MapSimulator.Interaction
                 return;
             }
 
-            if (_miniRoomModeHandler != null)
-            {
-                _miniRoomModeHandler();
-                return;
-            }
-
             _miniRoomModeIndex = (_miniRoomModeIndex + 1) % 2;
             ModeName = _miniRoomModeIndex == 0 ? "Omok" : "Match Cards";
+            if (_miniRoomModeIndex == 0)
+            {
+                SyncMiniRoomOmokPresentation();
+            }
             if (_items.Count > 1)
             {
                 _items[0].Update(
@@ -1009,13 +1707,37 @@ namespace HaCreator.MapSimulator.Interaction
                 return;
             }
 
-            if (_miniRoomStartHandler != null)
+            if (_miniRoomModeIndex == 1 && _miniRoomStartHandler != null)
             {
                 _miniRoomStartHandler();
                 return;
             }
 
             bool guestReady = _occupants.Count > 1 && _occupants[1].IsReady;
+            if (_miniRoomModeIndex == 0)
+            {
+                if (!guestReady)
+                {
+                    RoomState = "Waiting for ready check";
+                    StatusMessage = $"Cannot start {ModeName} until the guest readies up.";
+                    PersistState();
+                    return;
+                }
+
+                SetOmokSeatStoneValues(0);
+                ResetOmokBoard();
+                _miniRoomOmokInProgress = true;
+                _miniRoomOmokCurrentTurnIndex = 0;
+                _miniRoomOmokWinnerIndex = -1;
+                _miniRoomOmokTieRequested = false;
+                RoomState = "Omok in progress";
+                StatusMessage = $"{OwnerName} has the first Omok turn with black stones.";
+                SyncMiniRoomOmokPresentation();
+                AddMiniRoomSystemMessage("System : Omok round started.");
+                PersistState();
+                return;
+            }
+
             RoomState = guestReady ? $"{ModeName} in progress" : "Waiting for ready check";
             if (_items.Count > 0)
             {
@@ -1031,6 +1753,240 @@ namespace HaCreator.MapSimulator.Interaction
                 ? $"{ModeName} session started with ExplorerGM on the opening turn."
                 : $"Cannot start {ModeName} until the guest readies up.";
             PersistState();
+        }
+
+        public bool TryPlaceOmokStone(int x, int y, out string message)
+        {
+            message = null;
+            if (!IsMiniRoomOmokActive)
+            {
+                message = "Omok moves only apply while the mini-room is set to Omok.";
+                return false;
+            }
+
+            if (!_miniRoomOmokInProgress)
+            {
+                message = "Start the Omok round before placing stones.";
+                return false;
+            }
+
+            if (!TryValidateOmokCoordinates(x, y, out message))
+            {
+                return false;
+            }
+
+            int boardIndex = GetOmokBoardIndex(x, y);
+            if (_miniRoomOmokBoard[boardIndex] != 0)
+            {
+                message = $"Omok point {x},{y} is already occupied.";
+                return false;
+            }
+
+            int playerIndex = _miniRoomOmokCurrentTurnIndex;
+            int stoneValue = ResolveOmokStoneValueForSeat(playerIndex);
+            _miniRoomOmokBoard[boardIndex] = stoneValue;
+            _miniRoomOmokLastMoveX = x;
+            _miniRoomOmokLastMoveY = y;
+            _miniRoomOmokTieRequested = false;
+
+            string playerName = ResolveMiniRoomSeatName(playerIndex);
+            string stoneName = ResolveOmokStoneName(stoneValue);
+            AddMiniRoomSpeakerMessage(playerName, $"placed a {stoneName} stone at {x},{y}.", playerIndex == 0);
+
+            if (HasFiveInRow(x, y, stoneValue))
+            {
+                _miniRoomOmokInProgress = false;
+                _miniRoomOmokWinnerIndex = playerIndex;
+                RoomState = "Omok result";
+                StatusMessage = $"{playerName} completed five in a row and won the Omok round.";
+                if (_miniRoomWagerAmount > 0)
+                {
+                    string outcome = playerIndex == 0 ? "owner" : "guest";
+                    TrySettleMiniRoomWager(outcome, out _);
+                }
+
+                SyncMiniRoomOmokPresentation();
+                PersistState();
+                message = StatusMessage;
+                return true;
+            }
+
+            _miniRoomOmokCurrentTurnIndex = playerIndex == 0 ? 1 : 0;
+            RoomState = "Omok in progress";
+            StatusMessage = $"{ResolveMiniRoomSeatName(_miniRoomOmokCurrentTurnIndex)}'s Omok turn.";
+            SyncMiniRoomOmokPresentation();
+            PersistState();
+            message = StatusMessage;
+            return true;
+        }
+
+        public bool TryRequestMiniRoomTie(out string message)
+        {
+            message = null;
+            if (!IsMiniRoomOmokActive)
+            {
+                message = "Mini-room tie requests are only modeled for Omok.";
+                return false;
+            }
+
+            if (!_miniRoomOmokInProgress)
+            {
+                message = "No Omok round is active.";
+                return false;
+            }
+
+            if (_miniRoomOmokTieRequested)
+            {
+                _miniRoomOmokInProgress = false;
+                _miniRoomOmokWinnerIndex = -1;
+                RoomState = "Omok draw";
+                StatusMessage = "The Omok round ended in a draw.";
+                AddMiniRoomSystemMessage("System : Omok draw request accepted.");
+                if (_miniRoomWagerAmount > 0)
+                {
+                    TrySettleMiniRoomWager("draw", out _);
+                }
+            }
+            else
+            {
+                _miniRoomOmokTieRequested = true;
+                StatusMessage = $"{ResolveMiniRoomSeatName(_miniRoomOmokCurrentTurnIndex)} requested an Omok draw.";
+                AddMiniRoomSystemMessage($"System : {StatusMessage}");
+            }
+
+            SyncMiniRoomOmokPresentation();
+            PersistState();
+            message = StatusMessage;
+            return true;
+        }
+
+        public bool TryForfeitMiniRoom(string loserSeat, out string message)
+        {
+            message = null;
+            if (!IsMiniRoomOmokActive)
+            {
+                message = "Mini-room forfeits are only modeled for Omok.";
+                return false;
+            }
+
+            if (!_miniRoomOmokInProgress)
+            {
+                message = "No Omok round is active.";
+                return false;
+            }
+
+            int loserIndex = string.Equals(loserSeat, "guest", StringComparison.OrdinalIgnoreCase) ? 1 : 0;
+            int winnerIndex = loserIndex == 0 ? 1 : 0;
+            _miniRoomOmokInProgress = false;
+            _miniRoomOmokWinnerIndex = winnerIndex;
+            _miniRoomOmokTieRequested = false;
+            RoomState = "Omok forfeit";
+            StatusMessage = $"{ResolveMiniRoomSeatName(loserIndex)} forfeited. {ResolveMiniRoomSeatName(winnerIndex)} won the Omok round.";
+            AddMiniRoomSystemMessage($"System : {StatusMessage}", isWarning: true);
+            if (_miniRoomWagerAmount > 0)
+            {
+                TrySettleMiniRoomWager(winnerIndex == 0 ? "owner" : "guest", out _);
+            }
+
+            SyncMiniRoomOmokPresentation();
+            PersistState();
+            message = StatusMessage;
+            return true;
+        }
+
+        public bool AddMiniRoomVisitor(string visitorName, out string message)
+        {
+            message = null;
+            if (Kind != SocialRoomKind.MiniRoom)
+            {
+                message = "Mini-room visitor flow only applies to the mini-room shell.";
+                return false;
+            }
+
+            if (_occupants.Count >= Capacity)
+            {
+                message = "The mini-room has no open visitor seats.";
+                return false;
+            }
+
+            string resolvedName = NormalizeName(visitorName);
+            if (_occupants.Any(occupant => string.Equals(occupant.Name, resolvedName, StringComparison.OrdinalIgnoreCase)))
+            {
+                message = $"{resolvedName} is already inside the mini-room.";
+                return false;
+            }
+
+            string detail = $"Visitor seat {_occupants.Count} | Watching {ModeName}";
+            _occupants.Add(new SocialRoomOccupant(resolvedName, SocialRoomOccupantRole.Visitor, detail));
+            StatusMessage = $"{resolvedName} entered the mini-room as a visitor.";
+            AddMiniRoomSystemMessage($"System : {StatusMessage}");
+            if (_notes.Count > 1)
+            {
+                _notes[1] = $"Visitor seats active: {Math.Max(0, _occupants.Count - 2)} / {Math.Max(0, Capacity - 2)}.";
+            }
+
+            PersistState();
+            message = StatusMessage;
+            return true;
+        }
+
+        public bool RemoveMiniRoomOccupant(string occupantName, out string message)
+        {
+            message = null;
+            if (Kind != SocialRoomKind.MiniRoom)
+            {
+                message = "Mini-room leave flow only applies to the mini-room shell.";
+                return false;
+            }
+
+            string resolvedName = string.IsNullOrWhiteSpace(occupantName)
+                ? _occupants.LastOrDefault(occupant => occupant.Role == SocialRoomOccupantRole.Visitor)?.Name
+                : occupantName.Trim();
+            SocialRoomOccupant occupant = _occupants.FirstOrDefault(candidate =>
+                string.Equals(candidate.Name, resolvedName, StringComparison.OrdinalIgnoreCase));
+            if (occupant == null || occupant.Role == SocialRoomOccupantRole.Owner)
+            {
+                message = "No removable mini-room visitor or guest was found.";
+                return false;
+            }
+
+            bool removedGuest = occupant.Role == SocialRoomOccupantRole.Guest;
+            _occupants.Remove(occupant);
+            if (removedGuest)
+            {
+                SocialRoomOccupant replacementGuest = new SocialRoomOccupant("Opponent", SocialRoomOccupantRole.Guest, "Waiting to ready");
+                if (_occupants.Count == 0)
+                {
+                    _occupants.Add(new SocialRoomOccupant(OwnerName, SocialRoomOccupantRole.Owner, BuildOmokSeatDetail(0, "Host seat"), false));
+                }
+
+                if (_occupants.Count == 1)
+                {
+                    _occupants.Add(replacementGuest);
+                }
+                else
+                {
+                    _occupants.Insert(1, replacementGuest);
+                }
+
+                if (_miniRoomOmokInProgress)
+                {
+                    _miniRoomOmokInProgress = false;
+                    _miniRoomOmokWinnerIndex = 0;
+                    RoomState = "Omok ended";
+                    StatusMessage = $"{resolvedName} left the mini-room. {OwnerName} kept the room.";
+                }
+            }
+            else
+            {
+                StatusMessage = $"{resolvedName} left the mini-room visitor rail.";
+            }
+
+            AddMiniRoomSystemMessage($"System : {StatusMessage}", isWarning: removedGuest);
+            SyncMiniRoomOmokPresentation();
+            PersistState();
+            message = StatusMessage;
+            return true;
         }
 
         public bool TrySetMiniRoomWager(int mesoAmount, out string message)
@@ -1939,6 +2895,110 @@ namespace HaCreator.MapSimulator.Interaction
             return true;
         }
 
+        public bool TrySetEmployeeTemplate(int templateId, out string message)
+        {
+            message = null;
+            if (Kind != SocialRoomKind.PersonalShop && Kind != SocialRoomKind.EntrustedShop)
+            {
+                message = "Employee template changes only apply to personal-shop and entrusted-shop rooms.";
+                return false;
+            }
+
+            int normalizedTemplateId = Math.Max(0, templateId);
+            if (normalizedTemplateId > 0 && !HasEmployeeTemplate(normalizedTemplateId))
+            {
+                message = $"Employee template {normalizedTemplateId} was not found under Item/Cash.";
+                return false;
+            }
+
+            _employeeTemplateId = normalizedTemplateId;
+            if (_employeeAnchorOffsetX == 0 && _employeeAnchorOffsetY == 0)
+            {
+                _employeeAnchorOffsetX = Kind == SocialRoomKind.EntrustedShop ? 72 : 56;
+            }
+
+            StatusMessage = normalizedTemplateId > 0
+                ? $"Employee template set to {normalizedTemplateId}."
+                : "Employee template cleared; room will fall back to the legacy NPC representative.";
+            PersistState();
+            message = StatusMessage;
+            return true;
+        }
+
+        public bool TrySetEmployeeAnchorOffset(int offsetX, int offsetY, out string message)
+        {
+            message = null;
+            if (Kind != SocialRoomKind.PersonalShop && Kind != SocialRoomKind.EntrustedShop)
+            {
+                message = "Employee placement only applies to personal-shop and entrusted-shop rooms.";
+                return false;
+            }
+
+            _employeeUseOwnerAnchor = true;
+            _employeeHasWorldPosition = false;
+            _employeeAnchorOffsetX = offsetX;
+            _employeeAnchorOffsetY = offsetY;
+            StatusMessage = $"Employee anchor offset set to ({offsetX}, {offsetY}) relative to the owner.";
+            PersistState();
+            message = StatusMessage;
+            return true;
+        }
+
+        public bool TrySetEmployeeWorldPosition(int worldX, int worldY, out string message)
+        {
+            message = null;
+            if (Kind != SocialRoomKind.PersonalShop && Kind != SocialRoomKind.EntrustedShop)
+            {
+                message = "Employee placement only applies to personal-shop and entrusted-shop rooms.";
+                return false;
+            }
+
+            _employeeUseOwnerAnchor = false;
+            _employeeHasWorldPosition = true;
+            _employeeWorldX = worldX;
+            _employeeWorldY = worldY;
+            StatusMessage = $"Employee world placement set to ({worldX}, {worldY}).";
+            PersistState();
+            message = StatusMessage;
+            return true;
+        }
+
+        public bool TrySetEmployeeFlip(bool? flip, out string message)
+        {
+            message = null;
+            if (Kind != SocialRoomKind.PersonalShop && Kind != SocialRoomKind.EntrustedShop)
+            {
+                message = "Employee facing only applies to personal-shop and entrusted-shop rooms.";
+                return false;
+            }
+
+            _employeeFlip = flip;
+            StatusMessage = flip.HasValue
+                ? $"Employee facing locked to {(flip.Value ? "left" : "right")}."
+                : "Employee facing returned to action-driven random selection.";
+            PersistState();
+            message = StatusMessage;
+            return true;
+        }
+
+        public void ResetEmployeePlacement()
+        {
+            if (Kind != SocialRoomKind.PersonalShop && Kind != SocialRoomKind.EntrustedShop)
+            {
+                return;
+            }
+
+            _employeeUseOwnerAnchor = true;
+            _employeeHasWorldPosition = false;
+            _employeeAnchorOffsetX = Kind == SocialRoomKind.EntrustedShop ? 72 : 56;
+            _employeeAnchorOffsetY = 0;
+            _employeeWorldX = 0;
+            _employeeWorldY = 0;
+            _employeeFlip = null;
+            StatusMessage = "Employee placement reset to the owner-anchored default.";
+            PersistState();
+        }
+
         public void ClearRemoteTradeInventory()
         {
             if (Kind != SocialRoomKind.TradingRoom)
@@ -2223,6 +3283,44 @@ namespace HaCreator.MapSimulator.Interaction
                 : $"{Math.Max(1, remaining.Minutes)}m left";
         }
 
+        private string DescribeEmployeeState()
+        {
+            string templateText = _employeeTemplateId > 0 ? _employeeTemplateId.ToString() : "legacy";
+            if (_employeeHasWorldPosition && !_employeeUseOwnerAnchor)
+            {
+                return $"{templateText}@world({_employeeWorldX},{_employeeWorldY})";
+            }
+
+            return $"{templateText}@owner({_employeeAnchorOffsetX},{_employeeAnchorOffsetY})";
+        }
+
+        private static bool HasEmployeeTemplate(int templateId)
+        {
+            if (templateId <= 0)
+            {
+                return false;
+            }
+
+            string folderName = ResolveEmployeeItemFolder(templateId);
+            if (string.IsNullOrWhiteSpace(folderName))
+            {
+                return false;
+            }
+
+            WzImage itemImage = global::HaCreator.Program.FindImage("Item", $"{folderName}/{templateId / 10000:D4}.img");
+            return itemImage?[templateId.ToString("D8")]?["employee"] != null;
+        }
+
+        private static string ResolveEmployeeItemFolder(int templateId)
+        {
+            int category = templateId / 1000000;
+            return category switch
+            {
+                5 => "Cash",
+                _ => null
+            };
+        }
+
         private void ClearTradeHandshake()
         {
             _tradeLocalLocked = false;
@@ -2278,9 +3376,274 @@ namespace HaCreator.MapSimulator.Interaction
             return $"{(localState ? "Y" : "N")}/{(remoteState ? "Y" : "N")}";
         }
 
+        public int GetMiniRoomOmokStoneAt(int x, int y)
+        {
+            return x >= 0 && x < MiniRoomOmokBoardSize && y >= 0 && y < MiniRoomOmokBoardSize
+                ? _miniRoomOmokBoard[GetOmokBoardIndex(x, y)]
+                : 0;
+        }
+
+        private void SyncMiniRoomOmokPresentation()
+        {
+            if (Kind != SocialRoomKind.MiniRoom || _miniRoomModeIndex != 0)
+            {
+                return;
+            }
+
+            if (_items.Count > 0)
+            {
+                _items[0].Update(
+                    _miniRoomOmokInProgress ? "Omok board active" : "Omok board waiting on ready",
+                    1,
+                    0,
+                    _miniRoomOmokInProgress,
+                    false);
+            }
+
+            if (_items.Count > 1)
+            {
+                string detail = _miniRoomOmokInProgress
+                    ? $"Last move: {FormatOmokLastMove()} | Turn {ResolveOmokTurnName()}"
+                    : "Match Cards preview hidden";
+                _items[1].Update(detail, 1, 0, false, false);
+            }
+
+            EnsureMiniRoomOccupant(0, OwnerName, SocialRoomOccupantRole.Owner, BuildOmokSeatDetail(0, "Host seat"), _miniRoomOmokCurrentTurnIndex == 0 && _miniRoomOmokInProgress);
+            EnsureMiniRoomOccupant(1, ResolveMiniRoomSeatName(1), SocialRoomOccupantRole.Guest, BuildOmokSeatDetail(1, "Guest seat"), _miniRoomOmokCurrentTurnIndex == 1 && _miniRoomOmokInProgress);
+
+            for (int i = 2; i < _occupants.Count; i++)
+            {
+                SocialRoomOccupant visitor = _occupants[i];
+                visitor.Update(visitor.Name, visitor.Role, $"Visitor seat {i} | Watching {ModeName}", visitor.IsReady, visitor.AvatarBuild);
+            }
+
+            if (_notes.Count == 0)
+            {
+                _notes.Add("Shared client surface for Omok and Match Cards.");
+            }
+
+            if (_notes.Count == 1)
+            {
+                _notes.Add(string.Empty);
+            }
+
+            _notes[0] = "WZ-backed Omok shell uses UIWindow(.2).img/Minigame/Omok art and stone frames.";
+            _notes[1] = $"Visitor seats active: {Math.Max(0, _occupants.Count - 2)} / {Math.Max(0, Capacity - 2)}.";
+        }
+
+        private void ResetOmokBoard()
+        {
+            Array.Clear(_miniRoomOmokBoard, 0, _miniRoomOmokBoard.Length);
+            _miniRoomOmokLastMoveX = -1;
+            _miniRoomOmokLastMoveY = -1;
+            _miniRoomOmokWinnerIndex = -1;
+            _miniRoomOmokTieRequested = false;
+        }
+
+        private void SetOmokSeatStoneValues(int blackSeatIndex)
+        {
+            if (blackSeatIndex == 0)
+            {
+                _miniRoomOmokOwnerStoneValue = 1;
+                _miniRoomOmokGuestStoneValue = 2;
+                return;
+            }
+
+            _miniRoomOmokOwnerStoneValue = 2;
+            _miniRoomOmokGuestStoneValue = 1;
+        }
+
+        private bool TryValidateOmokCoordinates(int x, int y, out string message)
+        {
+            if (x < 0 || x >= MiniRoomOmokBoardSize || y < 0 || y >= MiniRoomOmokBoardSize)
+            {
+                message = $"Omok coordinates must be between 0 and {MiniRoomOmokBoardSize - 1}.";
+                return false;
+            }
+
+            message = null;
+            return true;
+        }
+
+        private bool HasFiveInRow(int x, int y, int stoneValue)
+        {
+            (int dx, int dy)[] directions =
+            {
+                (1, 0),
+                (0, 1),
+                (1, 1),
+                (1, -1)
+            };
+
+            foreach ((int dx, int dy) in directions)
+            {
+                int count = 1 + CountDirection(x, y, dx, dy, stoneValue) + CountDirection(x, y, -dx, -dy, stoneValue);
+                if (count >= 5)
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private int CountDirection(int x, int y, int dx, int dy, int stoneValue)
+        {
+            int count = 0;
+            for (int nextX = x + dx, nextY = y + dy;
+                nextX >= 0 && nextX < MiniRoomOmokBoardSize && nextY >= 0 && nextY < MiniRoomOmokBoardSize;
+                nextX += dx, nextY += dy)
+            {
+                if (_miniRoomOmokBoard[GetOmokBoardIndex(nextX, nextY)] != stoneValue)
+                {
+                    break;
+                }
+
+                count++;
+            }
+
+            return count;
+        }
+
+        private static int GetOmokBoardIndex(int x, int y)
+        {
+            return (y * MiniRoomOmokBoardSize) + x;
+        }
+
+        private string BuildOmokSeatDetail(int playerIndex, string seatLabel)
+        {
+            string stoneName = ResolveOmokStoneName(ResolveOmokStoneValueForSeat(playerIndex));
+            string state = _miniRoomOmokWinnerIndex == playerIndex
+                ? "Winner"
+                : _miniRoomOmokInProgress && _miniRoomOmokCurrentTurnIndex == playerIndex
+                    ? "Current turn"
+                    : _miniRoomOmokInProgress
+                        ? "Waiting"
+                        : "Ready";
+            return $"{seatLabel} | {stoneName} stones | {state}";
+        }
+
+        private string ResolveMiniRoomSeatName(int index)
+        {
+            if (index >= 0 && index < _occupants.Count && !string.IsNullOrWhiteSpace(_occupants[index].Name))
+            {
+                return _occupants[index].Name;
+            }
+
+            return index == 0 ? OwnerName : "Opponent";
+        }
+
+        private string ResolveOmokTurnName()
+        {
+            if (!IsMiniRoomOmokActive)
+            {
+                return "n/a";
+            }
+
+            if (_miniRoomOmokWinnerIndex >= 0)
+            {
+                return ResolveMiniRoomSeatName(_miniRoomOmokWinnerIndex);
+            }
+
+            return _miniRoomOmokInProgress ? ResolveMiniRoomSeatName(_miniRoomOmokCurrentTurnIndex) : "idle";
+        }
+
+        private string ResolveOmokWinnerName()
+        {
+            return _miniRoomOmokWinnerIndex >= 0 ? ResolveMiniRoomSeatName(_miniRoomOmokWinnerIndex) : "none";
+        }
+
+        private string FormatOmokLastMove()
+        {
+            return _miniRoomOmokLastMoveX >= 0 && _miniRoomOmokLastMoveY >= 0
+                ? $"{_miniRoomOmokLastMoveX},{_miniRoomOmokLastMoveY}"
+                : "none";
+        }
+
         private static string NormalizeName(string value)
         {
             return string.IsNullOrWhiteSpace(value) ? "Visitor" : value.Trim();
+        }
+
+        private static byte[] NormalizePacketPayload(byte[] packetBytes)
+        {
+            if (packetBytes == null || packetBytes.Length == 0)
+            {
+                return Array.Empty<byte>();
+            }
+
+            if (IsKnownPacketType(packetBytes[0]))
+            {
+                return (byte[])packetBytes.Clone();
+            }
+
+            if (packetBytes.Length > sizeof(ushort) && IsKnownPacketType(packetBytes[sizeof(ushort)]))
+            {
+                byte[] trimmed = new byte[packetBytes.Length - sizeof(ushort)];
+                Buffer.BlockCopy(packetBytes, sizeof(ushort), trimmed, 0, trimmed.Length);
+                return trimmed;
+            }
+
+            return (byte[])packetBytes.Clone();
+        }
+
+        private static bool IsKnownPacketType(byte packetType)
+        {
+            return packetType is
+                TradingRoomPutItemPacketType or
+                TradingRoomPutMoneyPacketType or
+                TradingRoomTradePacketType or
+                TradingRoomExceedLimitPacketType or
+                PersonalShopBuyResultPacketType or
+                PersonalShopBasePacketType or
+                PersonalShopSoldItemResultPacketType or
+                PersonalShopMoveItemToInventoryPacketType or
+                EntrustedShopArrangeItemResultPacketType or
+                EntrustedShopWithdrawAllResultPacketType or
+                EntrustedShopWithdrawMoneyResultPacketType or
+                EntrustedShopVisitListResultPacketType or
+                EntrustedShopBlackListResultPacketType or
+                OmokTieRequestPacketType or
+                OmokTieResultPacketType or
+                OmokRetreatRequestPacketType or
+                OmokRetreatResultPacketType or
+                OmokReadyPacketType or
+                OmokCancelReadyPacketType or
+                OmokStartPacketType or
+                OmokGameResultPacketType or
+                OmokTimeOverPacketType or
+                OmokPutStonePacketType or
+                OmokPutStoneErrorPacketType;
+        }
+
+        private static int NormalizeOmokStoneValue(int stoneValue, int fallback)
+        {
+            return stoneValue == 1 || stoneValue == 2 ? stoneValue : fallback;
+        }
+
+        private int ResolveOmokStoneValueForSeat(int seatIndex)
+        {
+            return seatIndex == 0 ? _miniRoomOmokOwnerStoneValue : _miniRoomOmokGuestStoneValue;
+        }
+
+        private int ResolveOmokSeatIndexByStoneValue(int stoneValue)
+        {
+            if (_miniRoomOmokOwnerStoneValue == stoneValue)
+            {
+                return 0;
+            }
+
+            if (_miniRoomOmokGuestStoneValue == stoneValue)
+            {
+                return 1;
+            }
+
+            return -1;
+        }
+
+        private static string ResolveOmokStoneName(int stoneValue)
+        {
+            return stoneValue == 1 ? "Black" : "White";
         }
 
         private static int ResolveSuggestedPrice(int itemId, int quantity)

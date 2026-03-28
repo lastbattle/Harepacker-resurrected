@@ -1,87 +1,76 @@
-﻿using HaCreator.MapSimulator.Character;
-using HaCreator.MapSimulator.Managers;
+using HaCreator.MapSimulator.Character;
 using HaSharedLibrary.Render;
 using HaSharedLibrary.Render.DX;
+using HaSharedLibrary.Util;
+using MapleLib.WzLib;
+using MapleLib.WzLib.WzProperties;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
+using Microsoft.Xna.Framework.Input;
 using Spine;
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 
 namespace HaCreator.MapSimulator.UI
 {
     /// <summary>
-    /// Dedicated book-style collection owner shaped after UIWindow(.2).img/Book.
-    /// The client pages in two-page spreads, so the simulator keeps the same cadence.
+    /// Dedicated Monster Book owner. The window keeps the existing BookCollection seam
+    /// but now renders the client MonsterBook art and card-driven runtime data.
     /// </summary>
     public sealed class BookCollectionWindow : UIWindowBase
     {
-        private sealed class BookEntry
-        {
-            public BookEntry(string label, string value, Color color)
-            {
-                Label = label ?? string.Empty;
-                Value = value ?? string.Empty;
-                Color = color;
-            }
-
-            public string Label { get; }
-            public string Value { get; }
-            public Color Color { get; }
-        }
-
-        private sealed class BookPage
-        {
-            public BookPage(string title, string subtitle, IEnumerable<BookEntry> entries)
-            {
-                Title = title ?? string.Empty;
-                Subtitle = subtitle ?? string.Empty;
-                Entries = entries?.ToList() ?? new List<BookEntry>();
-            }
-
-            public string Title { get; }
-            public string Subtitle { get; }
-            public List<BookEntry> Entries { get; }
-        }
-
         private const int PrevButtonId = 1000;
         private const int NextButtonId = 1001;
-        private const int PageStride = 2;
-        private const int EntriesPerEquipmentPage = 6;
-        private const int EntriesPerRecipePage = 6;
+        private const int CardColumns = 5;
+        private const int CardRows = 5;
+        private const int CardsPerPage = CardColumns * CardRows;
+        private const int MaxCardCopies = 5;
+
+        private static readonly Point CardSlotOrigin = new(24, 22);
+        private static readonly Point InfoPageOrigin = new(278, 36);
+        private static readonly Point CardCellPadding = new(5, 14);
+        private static readonly Point CardCellStride = new(33, 45);
+        private static readonly Point CardCellSize = new(31, 42);
+        private static readonly Rectangle SelectedCardIconBounds = new(69, 3, 32, 32);
+        private static readonly Rectangle SelectedCardNameBounds = new(10, 38, 151, 16);
+        private static readonly Rectangle SelectedCardDetailBounds = new(10, 54, 151, 20);
+        private static readonly Point SummaryValueOrigin = new(98, 90);
+        private static readonly int SummaryValueRowHeight = 31;
+        private static readonly Rectangle PageIndexBounds = new(158, 286, 156, 18);
+        private static readonly Rectangle StatusBounds = new(18, 286, 180, 18);
+        private static readonly Color TitleColor = new(82, 59, 29);
+        private static readonly Color ValueColor = new(56, 45, 33);
+        private static readonly Color AccentColor = new(173, 120, 48);
+        private static readonly Color MutedColor = new(128, 118, 103);
+        private static readonly Color HiddenTint = new(255, 255, 255, 66);
 
         private readonly Texture2D _pixel;
+        private readonly GraphicsDevice _graphicsDevice;
         private readonly Action _closeRequested;
         private readonly Dictionary<int, Action> _buttonActions = new();
-        private readonly List<BookPage> _pages = new();
+        private readonly Dictionary<int, Texture2D> _cardIconCache = new();
 
-        private Texture2D _pageMarkerActiveTexture;
-        private Texture2D _pageMarkerInactiveTexture;
+        private Texture2D _cardSlotTexture;
+        private Texture2D _infoPageTexture;
+        private Texture2D _coveredSlotTexture;
+        private Texture2D _selectedSlotTexture;
+        private Texture2D _fullMarkTexture;
         private SpriteFont _font;
-        private Func<ItemMakerProgressionSnapshot> _snapshotProvider;
-        private int _currentSpreadStart;
+        private Func<MonsterBookSnapshot> _snapshotProvider;
+        private MonsterBookSnapshot _snapshot;
+        private MouseState _previousMouseState;
+        private int _currentPageIndex;
+        private int _selectedSlotIndex;
         private UIObject _prevButton;
         private UIObject _nextButton;
 
-        private static readonly Point LeftPageOrigin = new(30, 42);
-        private static readonly Point RightPageOrigin = new(257, 42);
-        private static readonly Point PageContentSize = new(189, 223);
-        private static readonly Rectangle PageIndexBounds = new(144, 289, 190, 18);
-        private static readonly Color PaperTint = new(255, 250, 239, 160);
-        private static readonly Color PageBorderColor = new(118, 92, 55, 180);
-        private static readonly Color TitleColor = new(78, 51, 26);
-        private static readonly Color SubtitleColor = new(132, 109, 83);
-        private static readonly Color LabelColor = new(96, 72, 45);
-        private static readonly Color ValueColor = new(43, 43, 43);
-        private static readonly Color AccentColor = new(158, 80, 36);
-        private static readonly Color MarkerColor = new(124, 86, 40);
-        private static readonly Color MarkerOffColor = new(188, 169, 137);
-
-        public BookCollectionWindow(IDXObject frame, Texture2D pixel, Action closeRequested = null)
+        public BookCollectionWindow(IDXObject frame, Texture2D pixel, GraphicsDevice graphicsDevice, Action closeRequested = null)
             : base(frame)
         {
             _pixel = pixel ?? throw new ArgumentNullException(nameof(pixel));
+            _graphicsDevice = graphicsDevice ?? throw new ArgumentNullException(nameof(graphicsDevice));
             _closeRequested = closeRequested;
         }
 
@@ -92,15 +81,23 @@ namespace HaCreator.MapSimulator.UI
             _font = font;
         }
 
-        public void SetCollectionSnapshotProvider(Func<ItemMakerProgressionSnapshot> snapshotProvider)
+        public void SetMonsterBookSnapshotProvider(Func<MonsterBookSnapshot> snapshotProvider)
         {
             _snapshotProvider = snapshotProvider;
         }
 
-        public void SetPageMarkerTextures(Texture2D activeMarkerTexture, Texture2D inactiveMarkerTexture)
+        public void SetMonsterBookArt(
+            Texture2D cardSlotTexture,
+            Texture2D infoPageTexture,
+            Texture2D coveredSlotTexture,
+            Texture2D selectedSlotTexture,
+            Texture2D fullMarkTexture)
         {
-            _pageMarkerActiveTexture = activeMarkerTexture;
-            _pageMarkerInactiveTexture = inactiveMarkerTexture;
+            _cardSlotTexture = cardSlotTexture;
+            _infoPageTexture = infoPageTexture;
+            _coveredSlotTexture = coveredSlotTexture;
+            _selectedSlotTexture = selectedSlotTexture;
+            _fullMarkTexture = fullMarkTexture;
         }
 
         public void InitializeButtons(UIObject prevButton, UIObject nextButton, UIObject closeButton)
@@ -108,24 +105,25 @@ namespace HaCreator.MapSimulator.UI
             _prevButton = prevButton;
             _nextButton = nextButton;
 
-            RegisterButton(prevButton, PrevButtonId, () => MoveSpread(-PageStride));
-            RegisterButton(nextButton, NextButtonId, () => MoveSpread(PageStride));
+            RegisterButton(prevButton, PrevButtonId, MovePreviousPage);
+            RegisterButton(nextButton, NextButtonId, MoveNextPage);
             InitializeCloseButton(closeButton);
         }
 
         public override void Show()
         {
-            RefreshPages();
-            ClampSpreadStart();
+            RefreshSnapshot();
+            SelectCardOnCurrentPage();
             UpdateButtonStates();
             base.Show();
         }
 
         public override void Update(GameTime gameTime)
         {
-            RefreshPages();
-            ClampSpreadStart();
+            RefreshSnapshot();
+            ClampPageIndex();
             UpdateButtonStates();
+            HandleMouseSelection();
         }
 
         protected override void DrawContents(
@@ -145,10 +143,10 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
-            DrawPage(sprite, LeftPageOrigin, GetPage(_currentSpreadStart));
-            DrawPage(sprite, RightPageOrigin, GetPage(_currentSpreadStart + 1));
-            DrawPageMarkers(sprite);
+            DrawCardSlotPanel(sprite);
+            DrawInfoPanel(sprite);
             DrawPageIndex(sprite);
+            DrawStatus(sprite);
         }
 
         protected override void OnCloseButtonClicked(UIObject sender)
@@ -175,261 +173,336 @@ namespace HaCreator.MapSimulator.UI
             };
         }
 
-        private void MoveSpread(int delta)
+        private void MovePreviousPage()
         {
-            RefreshPages();
-
-            int nextSpread = _currentSpreadStart + delta;
-            if (nextSpread < 0)
+            if (_currentPageIndex <= 0)
             {
-                nextSpread = 0;
+                return;
             }
 
-            int lastSpreadStart = Math.Max(0, ((_pages.Count - 1) / PageStride) * PageStride);
-            if (nextSpread > lastSpreadStart)
-            {
-                nextSpread = lastSpreadStart;
-            }
-
-            _currentSpreadStart = nextSpread;
+            _currentPageIndex--;
+            SelectCardOnCurrentPage();
             UpdateButtonStates();
         }
 
-        private void RefreshPages()
+        private void MoveNextPage()
         {
-            _pages.Clear();
-
-            CharacterBuild build = CharacterBuild;
-            ItemMakerProgressionSnapshot snapshot = _snapshotProvider?.Invoke() ?? ItemMakerProgressionSnapshot.Default;
-
-            _pages.Add(new BookPage(
-                "Collection Overview",
-                build?.Name ?? "Simulator Profile",
-                new[]
-                {
-                    new BookEntry("Job", build?.JobName ?? "-", ValueColor),
-                    new BookEntry("Level", (build?.Level ?? 0).ToString(), ValueColor),
-                    new BookEntry("Maker", $"Lv {snapshot.GenericLevel}", AccentColor),
-                    new BookEntry("Crafts", snapshot.SuccessfulCrafts.ToString(), ValueColor),
-                    new BookEntry("Recipes", snapshot.DiscoveredRecipeIds.Count.ToString(), ValueColor),
-                    new BookEntry("Trait Craft", (build?.TraitCraft ?? snapshot.TraitCraft).ToString(), ValueColor)
-                }));
-
-            _pages.Add(new BookPage(
-                "Crafting Families",
-                "Two-page spread entries in the client map cleanly onto local family summaries.",
-                new[]
-                {
-                    CreateFamilyEntry(snapshot, ItemMakerRecipeFamily.Generic),
-                    CreateFamilyEntry(snapshot, ItemMakerRecipeFamily.Gloves),
-                    CreateFamilyEntry(snapshot, ItemMakerRecipeFamily.Shoes),
-                    CreateFamilyEntry(snapshot, ItemMakerRecipeFamily.Toys)
-                }));
-
-            _pages.Add(new BookPage(
-                "Traits",
-                "Personality values already loaded into UserInfo stay visible here as well.",
-                new[]
-                {
-                    new BookEntry("Charisma", (build?.TraitCharisma ?? 0).ToString(), ValueColor),
-                    new BookEntry("Insight", (build?.TraitInsight ?? 0).ToString(), ValueColor),
-                    new BookEntry("Will", (build?.TraitWill ?? 0).ToString(), ValueColor),
-                    new BookEntry("Craft", (build?.TraitCraft ?? snapshot.TraitCraft).ToString(), AccentColor),
-                    new BookEntry("Sense", (build?.TraitSense ?? 0).ToString(), ValueColor),
-                    new BookEntry("Charm", (build?.TraitCharm ?? 0).ToString(), ValueColor)
-                }));
-
-            IReadOnlyList<BookEntry> equipmentEntries = BuildEquipmentEntries(build);
-            AppendPagedSection("Equipment Ledger", "Visible equipment mirrors the live simulator build.", equipmentEntries, EntriesPerEquipmentPage);
-
-            IReadOnlyList<BookEntry> recipeEntries = BuildRecipeEntries(snapshot);
-            AppendPagedSection("Recipe Ledger", "Discovered maker outputs grouped into client-like rows.", recipeEntries, EntriesPerRecipePage);
-
-            if (_pages.Count == 0)
+            int maxPageIndex = Math.Max(0, (_snapshot?.Pages.Count ?? 1) - 1);
+            if (_currentPageIndex >= maxPageIndex)
             {
-                _pages.Add(new BookPage(
-                    "Collection",
-                    "No book entries are available for this character yet.",
-                    new[] { new BookEntry("Status", "No local collection data.", SubtitleColor) }));
-            }
-        }
-
-        private void AppendPagedSection(string title, string subtitle, IReadOnlyList<BookEntry> entries, int pageSize)
-        {
-            if (entries == null || entries.Count == 0)
-            {
-                _pages.Add(new BookPage(title, subtitle, new[] { new BookEntry("Status", "No entries recorded.", SubtitleColor) }));
                 return;
             }
 
-            for (int offset = 0; offset < entries.Count; offset += pageSize)
+            _currentPageIndex++;
+            SelectCardOnCurrentPage();
+            UpdateButtonStates();
+        }
+
+        private void RefreshSnapshot()
+        {
+            _snapshot = _snapshotProvider?.Invoke() ?? new MonsterBookSnapshot();
+            ClampPageIndex();
+            ClampSelectedSlot();
+        }
+
+        private void ClampPageIndex()
+        {
+            int maxPageIndex = Math.Max(0, (_snapshot?.Pages.Count ?? 1) - 1);
+            _currentPageIndex = Math.Clamp(_currentPageIndex, 0, maxPageIndex);
+        }
+
+        private void ClampSelectedSlot()
+        {
+            int visibleCount = GetCurrentPageCards().Count;
+            if (visibleCount <= 0)
             {
-                List<BookEntry> chunk = entries.Skip(offset).Take(pageSize).ToList();
-                _pages.Add(new BookPage(title, subtitle, chunk));
-            }
-        }
-
-        private static BookEntry CreateFamilyEntry(ItemMakerProgressionSnapshot snapshot, ItemMakerRecipeFamily family)
-        {
-            int level = snapshot.GetLevel(family);
-            int progress = snapshot.GetProgress(family);
-            int target = snapshot.GetProgressTarget(family);
-            string value = target > 0 ? $"Lv {level}  {progress}/{target}" : $"Lv {level}";
-            Color color = level > 1 || progress > 0 ? AccentColor : ValueColor;
-            return new BookEntry(snapshot.GetFamilyLabel(family), value, color);
-        }
-
-        private static IReadOnlyList<BookEntry> BuildEquipmentEntries(CharacterBuild build)
-        {
-            if (build?.Equipment == null || build.Equipment.Count == 0)
-            {
-                return new[] { new BookEntry("Status", "No equipped items.", SubtitleColor) };
-            }
-
-            return build.Equipment
-                .OrderBy(entry => entry.Key.ToString(), StringComparer.OrdinalIgnoreCase)
-                .Select(entry => new BookEntry(
-                    entry.Key.ToString(),
-                    string.IsNullOrWhiteSpace(entry.Value?.Name) ? "-" : entry.Value.Name,
-                    ValueColor))
-                .ToList();
-        }
-
-        private static IReadOnlyList<BookEntry> BuildRecipeEntries(ItemMakerProgressionSnapshot snapshot)
-        {
-            if (snapshot.DiscoveredRecipeIds == null || snapshot.DiscoveredRecipeIds.Count == 0)
-            {
-                return new[] { new BookEntry("Status", "No discovered recipes.", SubtitleColor) };
-            }
-
-            return snapshot.DiscoveredRecipeIds
-                .OrderBy(id => id)
-                .Select((id, index) => new BookEntry($"Recipe {index + 1}", id.ToString(), ValueColor))
-                .ToList();
-        }
-
-        private BookPage GetPage(int pageIndex)
-        {
-            return pageIndex >= 0 && pageIndex < _pages.Count ? _pages[pageIndex] : null;
-        }
-
-        private void ClampSpreadStart()
-        {
-            if (_pages.Count <= 1)
-            {
-                _currentSpreadStart = 0;
+                _selectedSlotIndex = 0;
                 return;
             }
 
-            int lastSpreadStart = Math.Max(0, ((_pages.Count - 1) / PageStride) * PageStride);
-            _currentSpreadStart = Math.Clamp(_currentSpreadStart, 0, lastSpreadStart);
-            _currentSpreadStart &= ~1;
+            _selectedSlotIndex = Math.Clamp(_selectedSlotIndex, 0, visibleCount - 1);
+        }
+
+        private void SelectCardOnCurrentPage()
+        {
+            IReadOnlyList<MonsterBookCardSnapshot> cards = GetCurrentPageCards();
+            if (cards.Count == 0)
+            {
+                _selectedSlotIndex = 0;
+                return;
+            }
+
+            int discoveredIndex = cards.ToList().FindIndex(card => card.IsDiscovered);
+            _selectedSlotIndex = discoveredIndex >= 0 ? discoveredIndex : 0;
         }
 
         private void UpdateButtonStates()
         {
-            bool hasPrevious = _currentSpreadStart > 0;
-            bool hasNext = _currentSpreadStart + PageStride < _pages.Count;
+            bool hasPrevious = _currentPageIndex > 0;
+            bool hasNext = _currentPageIndex + 1 < (_snapshot?.Pages.Count ?? 1);
 
             _prevButton?.SetEnabled(hasPrevious);
             _nextButton?.SetEnabled(hasNext);
         }
 
-        private void DrawPage(SpriteBatch sprite, Point origin, BookPage page)
+        private void HandleMouseSelection()
         {
-            Rectangle bounds = new(
-                Position.X + origin.X,
-                Position.Y + origin.Y,
-                PageContentSize.X,
-                PageContentSize.Y);
+            MouseState currentMouseState = Mouse.GetState();
+            bool leftReleased = currentMouseState.LeftButton == ButtonState.Released
+                && _previousMouseState.LeftButton == ButtonState.Pressed;
 
-            sprite.Draw(_pixel, bounds, PaperTint);
-            DrawFrame(sprite, bounds, PageBorderColor);
-
-            if (page == null)
+            if (leftReleased)
             {
-                DrawCenteredString(sprite, "Blank", new Rectangle(bounds.X, bounds.Y + 96, bounds.Width, 18), SubtitleColor, 0.72f);
-                return;
+                Point mousePosition = currentMouseState.Position;
+                IReadOnlyList<MonsterBookCardSnapshot> cards = GetCurrentPageCards();
+                for (int i = 0; i < cards.Count; i++)
+                {
+                    if (GetCardBounds(i).Contains(mousePosition))
+                    {
+                        _selectedSlotIndex = i;
+                        break;
+                    }
+                }
             }
 
-            DrawTrimmedString(sprite, page.Title, new Vector2(bounds.X + 12, bounds.Y + 12), TitleColor, 0.76f, bounds.Width - 24);
-            DrawWrappedText(sprite, page.Subtitle, new Rectangle(bounds.X + 12, bounds.Y + 38, bounds.Width - 24, 34), SubtitleColor, 0.52f);
+            _previousMouseState = currentMouseState;
+        }
 
-            int y = bounds.Y + 82;
-            foreach (BookEntry entry in page.Entries)
+        private void DrawCardSlotPanel(SpriteBatch sprite)
+        {
+            Vector2 panelPosition = new(Position.X + CardSlotOrigin.X, Position.Y + CardSlotOrigin.Y);
+            if (_cardSlotTexture != null)
             {
-                DrawEntryRow(sprite, bounds, y, entry);
-                y += 24;
+                sprite.Draw(_cardSlotTexture, panelPosition, Color.White);
+            }
+
+            IReadOnlyList<MonsterBookCardSnapshot> cards = GetCurrentPageCards();
+            for (int i = 0; i < CardsPerPage; i++)
+            {
+                Rectangle slotBounds = GetCardBounds(i);
+                MonsterBookCardSnapshot card = i < cards.Count ? cards[i] : null;
+                DrawCardSlot(sprite, slotBounds, card, i == _selectedSlotIndex);
             }
         }
 
-        private void DrawEntryRow(SpriteBatch sprite, Rectangle pageBounds, int y, BookEntry entry)
+        private void DrawCardSlot(SpriteBatch sprite, Rectangle bounds, MonsterBookCardSnapshot card, bool selected)
         {
-            Rectangle rowBounds = new(pageBounds.X + 8, y, pageBounds.Width - 16, 20);
-            sprite.Draw(_pixel, rowBounds, new Color(255, 255, 255, 42));
-            sprite.Draw(_pixel, new Rectangle(rowBounds.X, rowBounds.Bottom - 1, rowBounds.Width, 1), new Color(142, 118, 84, 90));
-
-            DrawTrimmedString(sprite, entry.Label, new Vector2(rowBounds.X + 6, rowBounds.Y + 3), LabelColor, 0.56f, 72f);
-            DrawTrimmedString(sprite, entry.Value, new Vector2(rowBounds.X + 78, rowBounds.Y + 3), entry.Color, 0.56f, rowBounds.Width - 86f);
-        }
-
-        private void DrawPageMarkers(SpriteBatch sprite)
-        {
-            int markerY = Position.Y + 276;
-            DrawMarker(sprite, Position.X + 222, markerY, GetPage(_currentSpreadStart) != null);
-            DrawMarker(sprite, Position.X + 248, markerY, GetPage(_currentSpreadStart + 1) != null);
-        }
-
-        private void DrawMarker(SpriteBatch sprite, int x, int y, bool active)
-        {
-            Texture2D texture = active ? _pageMarkerActiveTexture : _pageMarkerInactiveTexture;
-            if (texture != null)
+            if (card?.IsDiscovered == true)
             {
-                sprite.Draw(texture, new Vector2(x, y), Color.White);
-                return;
+                Texture2D icon = ResolveCardIcon(card.CardItemId);
+                if (icon != null)
+                {
+                    DrawCardIcon(sprite, icon, bounds, card.IsCompleted ? Color.White : new Color(255, 255, 255, 230));
+                }
+
+                Texture2D borderTexture = selected ? _selectedSlotTexture : _coveredSlotTexture;
+                if (borderTexture != null)
+                {
+                    sprite.Draw(borderTexture, new Vector2(bounds.X, bounds.Y), Color.White);
+                }
+
+                DrawCenteredString(sprite, $"{card.OwnedCopies}/{card.MaxCopies}", new Rectangle(bounds.X - 1, bounds.Bottom - 13, bounds.Width + 2, 10), ValueColor, 0.42f);
+                if (card.IsCompleted && _fullMarkTexture != null)
+                {
+                    sprite.Draw(_fullMarkTexture, new Vector2(bounds.Right - _fullMarkTexture.Width - 2, bounds.Y + 1), Color.White);
+                }
+            }
+            else
+            {
+                sprite.Draw(_pixel, bounds, new Color(25, 25, 25, 52));
+                if (selected && _selectedSlotTexture != null)
+                {
+                    sprite.Draw(_selectedSlotTexture, new Vector2(bounds.X, bounds.Y), HiddenTint);
+                }
+
+                DrawCenteredString(sprite, "?", bounds, MutedColor, 0.62f);
+            }
+        }
+
+        private void DrawCardIcon(SpriteBatch sprite, Texture2D icon, Rectangle bounds, Color tint)
+        {
+            float scale = Math.Min(24f / Math.Max(1, icon.Width), 24f / Math.Max(1, icon.Height));
+            int drawWidth = Math.Max(1, (int)Math.Round(icon.Width * scale));
+            int drawHeight = Math.Max(1, (int)Math.Round(icon.Height * scale));
+            Rectangle destination = new(
+                bounds.X + ((bounds.Width - drawWidth) / 2),
+                bounds.Y + 4 + ((24 - drawHeight) / 2),
+                drawWidth,
+                drawHeight);
+            sprite.Draw(icon, destination, tint);
+        }
+
+        private void DrawInfoPanel(SpriteBatch sprite)
+        {
+            Vector2 panelPosition = new(Position.X + InfoPageOrigin.X, Position.Y + InfoPageOrigin.Y);
+            if (_infoPageTexture != null)
+            {
+                sprite.Draw(_infoPageTexture, panelPosition, Color.White);
             }
 
-            Color color = active ? MarkerColor : MarkerOffColor;
-            sprite.Draw(_pixel, new Rectangle(x, y, 7, 7), color);
+            MonsterBookCardSnapshot selectedCard = GetSelectedCard();
+            if (selectedCard != null)
+            {
+                Texture2D icon = ResolveCardIcon(selectedCard.CardItemId);
+                if (icon != null)
+                {
+                    Rectangle iconBounds = OffsetBounds(SelectedCardIconBounds, InfoPageOrigin);
+                    sprite.Draw(icon, iconBounds, Color.White);
+                }
+            }
+
+            string selectedName = selectedCard?.IsDiscovered == true ? selectedCard.Name : "Unknown Card";
+            DrawCenteredString(sprite, selectedName, OffsetBounds(SelectedCardNameBounds, InfoPageOrigin), TitleColor, 0.6f);
+
+            string detailText = selectedCard == null
+                ? "No card selected."
+                : selectedCard.IsDiscovered
+                    ? BuildDetailText(selectedCard)
+                    : "Collect this card to reveal its detail entry.";
+            DrawCenteredString(sprite, detailText, OffsetBounds(SelectedCardDetailBounds, InfoPageOrigin), MutedColor, 0.46f);
+
+            DrawSummaryValue(sprite, 0, $"{Math.Max(1, _currentPageIndex + 1)}/{Math.Max(1, _snapshot?.Pages.Count ?? 1)}");
+            DrawSummaryValue(sprite, 1, $"{_snapshot?.OwnedCardTypes ?? 0}");
+            DrawSummaryValue(sprite, 2, $"{_snapshot?.OwnedBossCardTypes ?? 0}");
+            DrawSummaryValue(sprite, 3, $"{_snapshot?.OwnedNormalCardTypes ?? 0}");
+            DrawSummaryValue(sprite, 4, $"{_snapshot?.CompletedCardTypes ?? 0}");
+        }
+
+        private void DrawSummaryValue(SpriteBatch sprite, int row, string text)
+        {
+            Vector2 position = new(
+                Position.X + InfoPageOrigin.X + SummaryValueOrigin.X,
+                Position.Y + InfoPageOrigin.Y + SummaryValueOrigin.Y + (row * SummaryValueRowHeight));
+            sprite.DrawString(_font, string.IsNullOrWhiteSpace(text) ? "-" : text, position, AccentColor, 0f, Vector2.Zero, 0.56f, SpriteEffects.None, 0f);
         }
 
         private void DrawPageIndex(SpriteBatch sprite)
         {
-            int spreadNumber = (_currentSpreadStart / PageStride) + 1;
-            int spreadCount = Math.Max(1, (_pages.Count + 1) / PageStride);
             Rectangle bounds = new(
                 Position.X + PageIndexBounds.X,
                 Position.Y + PageIndexBounds.Y,
                 PageIndexBounds.Width,
                 PageIndexBounds.Height);
 
-            DrawCenteredString(sprite, $"{spreadNumber}/{spreadCount}", bounds, AccentColor, 0.66f);
+            DrawCenteredString(
+                sprite,
+                $"{Math.Max(1, _currentPageIndex + 1)}/{Math.Max(1, _snapshot?.Pages.Count ?? 1)}",
+                bounds,
+                AccentColor,
+                0.62f);
         }
 
-        private void DrawFrame(SpriteBatch sprite, Rectangle bounds, Color color)
+        private void DrawStatus(SpriteBatch sprite)
         {
-            sprite.Draw(_pixel, new Rectangle(bounds.X, bounds.Y, bounds.Width, 1), color);
-            sprite.Draw(_pixel, new Rectangle(bounds.X, bounds.Bottom - 1, bounds.Width, 1), color);
-            sprite.Draw(_pixel, new Rectangle(bounds.X, bounds.Y, 1, bounds.Height), color);
-            sprite.Draw(_pixel, new Rectangle(bounds.Right - 1, bounds.Y, 1, bounds.Height), color);
-        }
-
-        private void DrawWrappedText(SpriteBatch sprite, string text, Rectangle bounds, Color color, float scale)
-        {
+            string text = _snapshot?.StatusText;
             if (string.IsNullOrWhiteSpace(text))
             {
                 return;
             }
 
-            float y = bounds.Y;
-            foreach (string line in WrapText(text, bounds.Width, scale))
+            DrawTrimmedString(
+                sprite,
+                text,
+                new Vector2(Position.X + StatusBounds.X, Position.Y + StatusBounds.Y),
+                MutedColor,
+                0.4f,
+                StatusBounds.Width);
+        }
+
+        private IReadOnlyList<MonsterBookCardSnapshot> GetCurrentPageCards()
+        {
+            if (_snapshot?.Pages == null || _snapshot.Pages.Count == 0)
             {
-                sprite.DrawString(_font, line, new Vector2(bounds.X, y), color, 0f, Vector2.Zero, scale, SpriteEffects.None, 0f);
-                y += (_font.LineSpacing * scale) - 1f;
-                if (y > bounds.Bottom)
+                return Array.Empty<MonsterBookCardSnapshot>();
+            }
+
+            return _snapshot.Pages[_currentPageIndex].Cards ?? Array.Empty<MonsterBookCardSnapshot>();
+        }
+
+        private MonsterBookCardSnapshot GetSelectedCard()
+        {
+            IReadOnlyList<MonsterBookCardSnapshot> cards = GetCurrentPageCards();
+            return _selectedSlotIndex >= 0 && _selectedSlotIndex < cards.Count
+                ? cards[_selectedSlotIndex]
+                : null;
+        }
+
+        private Rectangle GetCardBounds(int slotIndex)
+        {
+            int column = slotIndex % CardColumns;
+            int row = slotIndex / CardColumns;
+            return new Rectangle(
+                Position.X + CardSlotOrigin.X + CardCellPadding.X + (column * CardCellStride.X),
+                Position.Y + CardSlotOrigin.Y + CardCellPadding.Y + (row * CardCellStride.Y),
+                CardCellSize.X,
+                CardCellSize.Y);
+        }
+
+        private Rectangle OffsetBounds(Rectangle bounds, Point offset)
+        {
+            return new Rectangle(Position.X + offset.X + bounds.X, Position.Y + offset.Y + bounds.Y, bounds.Width, bounds.Height);
+        }
+
+        private string BuildDetailText(MonsterBookCardSnapshot card)
+        {
+            if (card == null)
+            {
+                return string.Empty;
+            }
+
+            return string.Format(
+                CultureInfo.InvariantCulture,
+                "Lv {0}  HP {1}  EXP {2}  {3}/{4}",
+                Math.Max(0, card.Level),
+                Math.Max(0, card.MaxHp),
+                Math.Max(0, card.Exp),
+                card.OwnedCopies,
+                card.MaxCopies);
+        }
+
+        private Texture2D ResolveCardIcon(int cardItemId)
+        {
+            if (cardItemId <= 0)
+            {
+                return null;
+            }
+
+            if (_cardIconCache.TryGetValue(cardItemId, out Texture2D cachedTexture))
+            {
+                return cachedTexture;
+            }
+
+            Texture2D texture = LoadCardIconTexture(cardItemId);
+            if (texture != null)
+            {
+                _cardIconCache[cardItemId] = texture;
+            }
+
+            return texture;
+        }
+
+        private Texture2D LoadCardIconTexture(int cardItemId)
+        {
+            try
+            {
+                WzImage itemImage = global::HaCreator.Program.FindImage("Item", "Consume/0238.img");
+                if (itemImage == null)
                 {
-                    break;
+                    return null;
                 }
+
+                if (!itemImage.Parsed)
+                {
+                    itemImage.ParseImage();
+                }
+
+                WzSubProperty cardProperty = itemImage[cardItemId.ToString(CultureInfo.InvariantCulture)] as WzSubProperty;
+                WzCanvasProperty iconProperty = cardProperty?["info"]?["icon"] as WzCanvasProperty;
+                return iconProperty?.GetLinkedWzCanvasBitmap()?.ToTexture2DAndDispose(_graphicsDevice);
+            }
+            catch
+            {
+                return null;
             }
         }
 
@@ -456,37 +529,6 @@ namespace HaCreator.MapSimulator.UI
             }
         }
 
-        private IEnumerable<string> WrapText(string text, float maxWidth, float scale)
-        {
-            string[] words = (text ?? string.Empty)
-                .Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
-
-            if (words.Length == 0)
-            {
-                yield break;
-            }
-
-            string currentLine = string.Empty;
-            foreach (string word in words)
-            {
-                string candidate = string.IsNullOrEmpty(currentLine) ? word : $"{currentLine} {word}";
-                if (!string.IsNullOrEmpty(currentLine) && Measure(candidate, scale) > maxWidth)
-                {
-                    yield return currentLine;
-                    currentLine = word;
-                }
-                else
-                {
-                    currentLine = candidate;
-                }
-            }
-
-            if (!string.IsNullOrEmpty(currentLine))
-            {
-                yield return currentLine;
-            }
-        }
-
         private string TrimToWidth(string text, float maxWidth, float scale)
         {
             string safeText = string.IsNullOrWhiteSpace(text) ? string.Empty : text.Trim();
@@ -510,7 +552,7 @@ namespace HaCreator.MapSimulator.UI
 
         private float Measure(string text, float scale)
         {
-            return _font.MeasureString(text).X * scale;
+            return _font.MeasureString(text ?? string.Empty).X * scale;
         }
     }
 }

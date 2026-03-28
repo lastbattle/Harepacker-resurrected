@@ -44,8 +44,8 @@ namespace HaCreator.MapSimulator.Interaction
             | GuildBbsPermissionMask.Reply
             | GuildBbsPermissionMask.OwnThread
             | GuildBbsPermissionMask.Moderate;
-        private const int MaxTitleLength = 40;
-        private const int MaxThreadBodyLength = 420;
+        private const int MaxTitleLength = 25;
+        private const int MaxThreadBodyLength = 600;
         private const int MaxReplyBodyLength = 120;
 
         private sealed class GuildBbsCommentState

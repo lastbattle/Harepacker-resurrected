@@ -796,7 +796,6 @@ namespace HaCreator.MapSimulator.Pools
         public int LetMobChasePuppet(float puppetX, float puppetY, float aggroRange, int puppetId)
         {
             int count = 0;
-            float aggroRangeSq = aggroRange * aggroRange;
 
             foreach (var mob in _activeMobs)
             {
@@ -806,17 +805,11 @@ namespace HaCreator.MapSimulator.Pools
                 if (mob.MovementInfo == null)
                     continue;
 
-                // Calculate distance to puppet
-                float dx = mob.MovementInfo.X - puppetX;
-                float dy = mob.MovementInfo.Y - puppetY;
-                float distSq = dx * dx + dy * dy;
-
-                if (distSq <= aggroRangeSq)
+                PuppetInfo preferredPuppet = ResolvePreferredPuppetForMob(mob, _lastUpdateTick, puppetId, puppetX, puppetY, aggroRange);
+                if (preferredPuppet != null && preferredPuppet.ObjectId == puppetId)
                 {
-                    // Update mob's target to puppet position
-                    // The AI will now chase the puppet instead of the player
-                    mob.AI.ForceAggro(puppetX, puppetY, _lastUpdateTick, puppetId, MobTargetType.Summoned);
-                    mob.AI.SetAggroRange((int)aggroRange);
+                    mob.AI.ForceAggro(preferredPuppet.X, preferredPuppet.Y, _lastUpdateTick, preferredPuppet.ObjectId, MobTargetType.Summoned);
+                    mob.AI.SetAggroRange((int)MathF.Round(Math.Max(1f, preferredPuppet.AggroRange)));
                     count++;
                 }
             }
@@ -834,12 +827,10 @@ namespace HaCreator.MapSimulator.Pools
 
         public void SyncPuppetTargets(int currentTick)
         {
-            if (_activeMobs.Count == 0)
+            if (_activeMobs.Count == 0 || _activePuppets.Count == 0)
             {
                 return;
             }
-
-            var puppetsById = _activePuppets.ToDictionary(p => p.ObjectId);
 
             foreach (MobItem mob in _activeMobs)
             {
@@ -848,19 +839,179 @@ namespace HaCreator.MapSimulator.Pools
                     continue;
                 }
 
-                if (!puppetsById.TryGetValue(mob.AI.Target.TargetId, out PuppetInfo puppet))
+                PuppetInfo preferredPuppet = ResolvePreferredPuppetForMob(mob, currentTick);
+                if (preferredPuppet == null)
                 {
                     mob.AI.ClearExternalTarget(currentTick);
                     continue;
                 }
 
+                if (mob.AI.Target.TargetId != preferredPuppet.ObjectId)
+                {
+                    mob.AI.ForceAggro(
+                        preferredPuppet.X,
+                        preferredPuppet.Y,
+                        currentTick,
+                        preferredPuppet.ObjectId,
+                        MobTargetType.Summoned);
+                    mob.AI.SetAggroRange((int)MathF.Round(Math.Max(1f, preferredPuppet.AggroRange)));
+                    continue;
+                }
+
                 mob.AI.UpdateExternalTargetPosition(
-                    puppet.ObjectId,
+                    preferredPuppet.ObjectId,
                     MobTargetType.Summoned,
-                    puppet.X,
-                    puppet.Y,
+                    preferredPuppet.X,
+                    preferredPuppet.Y,
                     currentTick);
             }
+        }
+
+        private PuppetInfo ResolvePreferredPuppetForMob(
+            MobItem mob,
+            int currentTick,
+            int preferredPuppetId = 0,
+            float fallbackPuppetX = 0f,
+            float fallbackPuppetY = 0f,
+            float fallbackAggroRange = 0f)
+        {
+            if (mob?.AI == null || mob.MovementInfo == null)
+            {
+                return null;
+            }
+
+            PuppetInfo bestPuppet = null;
+            float bestDistanceSq = float.MaxValue;
+            int bestAggroValue = int.MinValue;
+            int currentTargetId = mob.AI.IsTargetingSummoned ? mob.AI.Target.TargetId : 0;
+
+            foreach (PuppetInfo puppet in EnumerateActivePuppets(currentTick, preferredPuppetId, fallbackPuppetX, fallbackPuppetY, fallbackAggroRange))
+            {
+                float range = Math.Max(0f, puppet.AggroRange);
+                if (range <= 0f)
+                {
+                    continue;
+                }
+
+                float dx = mob.MovementInfo.X - puppet.X;
+                float dy = mob.MovementInfo.Y - puppet.Y;
+                float distanceSq = dx * dx + dy * dy;
+                if (distanceSq > range * range)
+                {
+                    continue;
+                }
+
+                if (IsPreferredPuppetCandidate(
+                        puppet,
+                        distanceSq,
+                        bestPuppet,
+                        bestDistanceSq,
+                        bestAggroValue,
+                        currentTargetId))
+                {
+                    bestPuppet = puppet;
+                    bestDistanceSq = distanceSq;
+                    bestAggroValue = puppet.AggroValue;
+                }
+            }
+
+            return bestPuppet;
+        }
+
+        private IEnumerable<PuppetInfo> EnumerateActivePuppets(
+            int currentTick,
+            int fallbackPuppetId,
+            float fallbackPuppetX,
+            float fallbackPuppetY,
+            float fallbackAggroRange)
+        {
+            foreach (PuppetInfo puppet in _activePuppets)
+            {
+                if (IsPuppetActive(puppet, currentTick))
+                {
+                    yield return puppet;
+                }
+            }
+
+            if (fallbackPuppetId > 0
+                && _activePuppets.All(puppet => puppet.ObjectId != fallbackPuppetId)
+                && fallbackAggroRange > 0f)
+            {
+                yield return new PuppetInfo
+                {
+                    ObjectId = fallbackPuppetId,
+                    X = fallbackPuppetX,
+                    Y = fallbackPuppetY,
+                    AggroValue = 1,
+                    AggroRange = fallbackAggroRange,
+                    IsActive = true
+                };
+            }
+        }
+
+        private static bool IsPuppetActive(PuppetInfo puppet, int currentTick)
+        {
+            return puppet != null
+                && puppet.IsActive
+                && (puppet.ExpirationTime <= 0 || currentTick < puppet.ExpirationTime);
+        }
+
+        private static bool IsPreferredPuppetCandidate(
+            PuppetInfo candidate,
+            float candidateDistanceSq,
+            PuppetInfo currentBest,
+            float currentBestDistanceSq,
+            int currentBestAggroValue,
+            int currentTargetId)
+        {
+            if (candidate == null)
+            {
+                return false;
+            }
+
+            if (currentBest == null)
+            {
+                return true;
+            }
+
+            if (candidate.AggroValue != currentBestAggroValue)
+            {
+                return candidate.AggroValue > currentBestAggroValue;
+            }
+
+            bool candidateIsCurrentTarget = candidate.ObjectId == currentTargetId;
+            bool currentBestIsCurrentTarget = currentBest.ObjectId == currentTargetId;
+            if (candidateIsCurrentTarget != currentBestIsCurrentTarget)
+            {
+                return candidateIsCurrentTarget;
+            }
+
+            if (MathF.Abs(candidateDistanceSq - currentBestDistanceSq) > 0.5f)
+            {
+                return candidateDistanceSq < currentBestDistanceSq;
+            }
+
+            if (candidate.OwnerId != currentBest.OwnerId)
+            {
+                return candidate.OwnerId < currentBest.OwnerId;
+            }
+
+            if (candidate.SummonSlotIndex != currentBest.SummonSlotIndex)
+            {
+                if (candidate.SummonSlotIndex < 0)
+                {
+                    return false;
+                }
+
+                if (currentBest.SummonSlotIndex < 0)
+                {
+                    return true;
+                }
+
+                return candidate.SummonSlotIndex < currentBest.SummonSlotIndex;
+            }
+
+            return candidate.ObjectId < currentBest.ObjectId;
         }
 
         public void SyncHypnotizedTargets(int currentTick)

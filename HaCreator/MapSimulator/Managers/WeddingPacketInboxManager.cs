@@ -12,6 +12,7 @@ namespace HaCreator.MapSimulator.Managers
 {
     public enum WeddingInboxMessageKind
     {
+        Packet,
         CoupleMove,
         CoupleAvatar,
         GuestAddClone,
@@ -23,6 +24,16 @@ namespace HaCreator.MapSimulator.Managers
 
     public sealed class WeddingInboxMessage
     {
+        public WeddingInboxMessage(int packetType, byte[] payload, string source, string rawText)
+        {
+            Kind = WeddingInboxMessageKind.Packet;
+            PacketType = packetType;
+            Payload = payload != null ? (byte[])payload.Clone() : Array.Empty<byte>();
+            Source = string.IsNullOrWhiteSpace(source) ? "wedding-inbox" : source;
+            RawText = rawText ?? string.Empty;
+            ActorKey = string.Empty;
+        }
+
         public WeddingInboxMessage(
             WeddingInboxMessageKind kind,
             string actorKey,
@@ -44,6 +55,7 @@ namespace HaCreator.MapSimulator.Managers
         }
 
         public WeddingInboxMessageKind Kind { get; }
+        public int PacketType { get; }
         public string ActorKey { get; }
         public Vector2? Position { get; }
         public bool? FacingRight { get; }
@@ -56,6 +68,11 @@ namespace HaCreator.MapSimulator.Managers
     public sealed class WeddingPacketInboxManager : IDisposable
     {
         public const int DefaultPort = 18486;
+        private const int PacketTypeUserEnterField = 179;
+        private const int PacketTypeUserLeaveField = 180;
+        private const int PacketTypeUserMove = 210;
+        private const int PacketTypeSetActivePortableChair = 222;
+        private const int PacketTypeAvatarModified = 223;
 
         private readonly ConcurrentQueue<WeddingInboxMessage> _pendingMessages = new();
         private readonly object _listenerLock = new();
@@ -148,6 +165,17 @@ namespace HaCreator.MapSimulator.Managers
             }
 
             string subject = tokens[0].Trim().ToLowerInvariant();
+            if (subject != "actor" && subject != "guest")
+            {
+                if (!TryParsePacketLine(text, out int packetType, out byte[] payload, out error))
+                {
+                    return false;
+                }
+
+                message = new WeddingInboxMessage(packetType, payload, "wedding-inbox", text);
+                return true;
+            }
+
             return subject switch
             {
                 "actor" => TryParseCoupleLine(tokens, text, out message, out error),
@@ -229,6 +257,47 @@ namespace HaCreator.MapSimulator.Managers
                 }
 
                 ReceivedCount = 0;
+            }
+        }
+
+        private static bool TryParsePacketLine(string text, out int packetType, out byte[] payload, out string error)
+        {
+            packetType = 0;
+            payload = Array.Empty<byte>();
+            error = null;
+
+            string trimmed = text.Trim();
+            int separatorIndex = trimmed.IndexOfAny(new[] { ' ', '\t' });
+            string typeToken = separatorIndex >= 0 ? trimmed[..separatorIndex] : trimmed;
+            string payloadToken = separatorIndex >= 0 ? trimmed[(separatorIndex + 1)..].Trim() : string.Empty;
+
+            if (!TryParsePacketType(typeToken, out packetType))
+            {
+                error = $"Unsupported wedding packet type: {typeToken}";
+                return false;
+            }
+
+            string compactHex = RemoveWhitespace(payloadToken);
+            if (string.IsNullOrWhiteSpace(compactHex))
+            {
+                error = $"Wedding packet {DescribePacketType(packetType)} requires a hex payload.";
+                return false;
+            }
+
+            if (compactHex.StartsWith("0x", StringComparison.OrdinalIgnoreCase))
+            {
+                compactHex = compactHex[2..];
+            }
+
+            try
+            {
+                payload = Convert.FromHexString(compactHex);
+                return true;
+            }
+            catch (FormatException)
+            {
+                error = $"Invalid wedding packet hex payload: {payloadToken}";
+                return false;
             }
         }
 
@@ -482,6 +551,7 @@ namespace HaCreator.MapSimulator.Managers
 
             return message.Kind switch
             {
+                WeddingInboxMessageKind.Packet => DescribePacketType(message.PacketType),
                 WeddingInboxMessageKind.CoupleMove => $"actor {message.ActorKey}",
                 WeddingInboxMessageKind.CoupleAvatar => $"actor avatar {message.ActorKey}",
                 WeddingInboxMessageKind.GuestAddClone => $"guest add '{message.ActorKey}'",
@@ -490,6 +560,45 @@ namespace HaCreator.MapSimulator.Managers
                 WeddingInboxMessageKind.GuestRemove => $"guest remove '{message.ActorKey}'",
                 WeddingInboxMessageKind.GuestClear => "guest clear",
                 _ => "Wedding inbox message"
+            };
+        }
+
+        private static bool TryParsePacketType(string token, out int packetType)
+        {
+            packetType = 0;
+            if (string.IsNullOrWhiteSpace(token))
+            {
+                return false;
+            }
+
+            string normalized = token.Trim().ToLowerInvariant();
+            return normalized switch
+            {
+                "179" or "userenter" or "spawn" => AssignPacketType(PacketTypeUserEnterField, out packetType),
+                "180" or "userleave" or "despawn" => AssignPacketType(PacketTypeUserLeaveField, out packetType),
+                "210" or "usermove" or "move" => AssignPacketType(PacketTypeUserMove, out packetType),
+                "222" or "chair" or "setchair" => AssignPacketType(PacketTypeSetActivePortableChair, out packetType),
+                "223" or "avatarmod" or "avatarmodified" or "look" => AssignPacketType(PacketTypeAvatarModified, out packetType),
+                _ => int.TryParse(normalized, out packetType)
+            };
+        }
+
+        private static bool AssignPacketType(int value, out int packetType)
+        {
+            packetType = value;
+            return true;
+        }
+
+        private static string DescribePacketType(int packetType)
+        {
+            return packetType switch
+            {
+                PacketTypeUserEnterField => "userenter (179)",
+                PacketTypeUserLeaveField => "userleave (180)",
+                PacketTypeUserMove => "usermove (210)",
+                PacketTypeSetActivePortableChair => "chair (222)",
+                PacketTypeAvatarModified => "avatarmodified (223)",
+                _ => packetType.ToString(CultureInfo.InvariantCulture)
             };
         }
 

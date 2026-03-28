@@ -259,7 +259,45 @@ namespace HaCreator.MapSimulator.Effects
                 && _teamLookPresets.TryGetValue(teamId, out preset);
         }
 
-        public bool TryGetLocalTeamLookPreset(out BattlefieldTeamLookPreset preset)
+        public bool TryGetAssignedTeamId(int characterId, out int teamId)
+
+        {
+
+            teamId = default;
+
+            if (!_isActive || characterId <= 0)
+
+            {
+
+                return false;
+
+            }
+
+
+
+            if (_localCharacterId.HasValue
+
+                && characterId == _localCharacterId.Value
+
+                && _localTeamId.HasValue)
+
+            {
+
+                teamId = _localTeamId.Value;
+
+                return true;
+
+            }
+
+
+
+            return _remoteUserTeams.TryGetValue(characterId, out teamId);
+
+        }
+
+
+
+        public bool TryGetLocalTeamLookPreset(out BattlefieldTeamLookPreset preset)
         {
             preset = null;
             return _isActive

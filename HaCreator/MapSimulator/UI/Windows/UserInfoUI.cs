@@ -1,4 +1,4 @@
-﻿using HaCreator.MapSimulator.Character;
+using HaCreator.MapSimulator.Character;
 using HaCreator.MapSimulator.Companions;
 using HaCreator.MapSimulator.Managers;
 using HaSharedLibrary.Render;
@@ -88,6 +88,7 @@ namespace HaCreator.MapSimulator.UI
             public IDXObject BaseMiddle { get; set; }
             public IDXObject BaseBottom { get; set; }
             public IDXObject Title { get; set; }
+            public IDXObject CharmCollectionBody { get; set; }
             public Dictionary<string, IDXObject> BodyByTrait { get; } = new Dictionary<string, IDXObject>(StringComparer.OrdinalIgnoreCase);
             public Dictionary<char, IDXObject> NumberGlyphs { get; } = new Dictionary<char, IDXObject>();
         }
@@ -147,6 +148,7 @@ namespace HaCreator.MapSimulator.UI
         private UIObject _popupDownButton;
         private PersonalityTooltipVisual _personalityTooltipVisual;
         private Func<ItemMakerProgressionSnapshot> _collectionSnapshotProvider;
+        private Func<MonsterBookSnapshot> _monsterBookSnapshotProvider;
         private Func<RankDeltaSnapshot> _rankDeltaProvider;
         private AuxiliaryPopupKind _activePopup;
         private int _selectedPetTabIndex;
@@ -315,7 +317,7 @@ namespace HaCreator.MapSimulator.UI
 
             BindActionButton(_petExceptionButton, "Pet exception list opened.", ToggleExceptionPopup);
             BindActionButton(_collectSortButton, "Collection entries sorted by name.", ToggleCollectSortMode);
-            BindActionButton(_collectClaimButton, "Collection book opened.", OpenCollectionBook);
+            BindActionButton(_collectClaimButton, "Collection reward claimed.", ClaimCollectReward);
             UpdateButtonStates();
         }
 
@@ -421,6 +423,11 @@ namespace HaCreator.MapSimulator.UI
             _collectionSnapshotProvider = snapshotProvider;
         }
 
+        public void SetMonsterBookSnapshotProvider(Func<MonsterBookSnapshot> snapshotProvider)
+        {
+            _monsterBookSnapshotProvider = snapshotProvider;
+        }
+
         public void SetRankDeltaProvider(Func<RankDeltaSnapshot> rankDeltaProvider)
         {
             _rankDeltaProvider = rankDeltaProvider;
@@ -440,6 +447,7 @@ namespace HaCreator.MapSimulator.UI
             IDXObject baseBottom,
             IDXObject title,
             IDictionary<string, IDXObject> bodyByTrait,
+            IDXObject charmCollectionBody = null,
             IDictionary<char, IDXObject> numberGlyphs = null)
         {
             _personalityTooltipVisual = new PersonalityTooltipVisual
@@ -447,7 +455,8 @@ namespace HaCreator.MapSimulator.UI
                 BaseTop = baseTop,
                 BaseMiddle = baseMiddle,
                 BaseBottom = baseBottom,
-                Title = title
+                Title = title,
+                CharmCollectionBody = charmCollectionBody
             };
 
             if (bodyByTrait == null)
@@ -746,6 +755,7 @@ namespace HaCreator.MapSimulator.UI
         private void DrawCollectPage(SpriteBatch sprite)
         {
             List<(string Label, string Value)> entries = BuildCollectEntries();
+            MonsterBookSnapshot snapshot = GetMonsterBookSnapshot();
 
             DrawSectionHeader(sprite, "Collect");
             for (int i = 0; i < entries.Count; i++)
@@ -754,14 +764,14 @@ namespace HaCreator.MapSimulator.UI
                 DrawLabeledRow(sprite, 40 + (i * 24), label, value, ValueColor, 144);
             }
 
-            string rewardStatus = CanClaimCollectReward()
-                ? (_collectRewardClaimed ? "Reward claimed" : "Reward ready")
-                : "Need 5 equipped items";
+            string rewardStatus = snapshot.TotalCardTypes > 0
+                ? $"{snapshot.OwnedCardTypes}/{snapshot.TotalCardTypes} card entries registered locally."
+                : "Monster Book card data is not available in this session.";
             DrawPlainText(
                 sprite,
                 rewardStatus,
                 new Vector2(Position.X + 20, Position.Y + 188),
-                CanClaimCollectReward() && !_collectRewardClaimed ? SuccessColor : MutedColor,
+                snapshot.OwnedCardTypes > 0 ? SuccessColor : MutedColor,
                 0.58f);
         }
 
@@ -1013,9 +1023,12 @@ namespace HaCreator.MapSimulator.UI
             }
 
             Point tooltipPosition = new Point(Position.X + 104, Position.Y + 34);
+            bool drawCharmCollection = string.Equals(traitKey, "charm", StringComparison.OrdinalIgnoreCase) &&
+                                       ShouldDrawCharmCollectionTooltip();
+            int contentHeight = body.Height + (drawCharmCollection ? _personalityTooltipVisual.CharmCollectionBody?.Height ?? 0 : 0);
             DrawLayer(_personalityTooltipVisual.BaseTop, new Point(tooltipPosition.X - Position.X, tooltipPosition.Y - Position.Y), sprite, skeletonMeshRenderer, gameTime, drawReflectionInfo);
 
-            int middleHeight = Math.Max(0, body.Height - 26);
+            int middleHeight = Math.Max(0, contentHeight - 26);
             if (_personalityTooltipVisual.BaseMiddle != null && middleHeight > 0)
             {
                 Texture2D middleTexture = (_personalityTooltipVisual.BaseMiddle as DXObject)?.Texture;
@@ -1031,6 +1044,16 @@ namespace HaCreator.MapSimulator.UI
             DrawLayer(_personalityTooltipVisual.BaseBottom, new Point(tooltipPosition.X - Position.X, tooltipPosition.Y + 13 + middleHeight - Position.Y), sprite, skeletonMeshRenderer, gameTime, drawReflectionInfo);
             DrawLayer(_personalityTooltipVisual.Title, new Point(tooltipPosition.X + 7 - Position.X, tooltipPosition.Y + 4 - Position.Y), sprite, skeletonMeshRenderer, gameTime, drawReflectionInfo);
             DrawLayer(body, new Point(tooltipPosition.X + 7 - Position.X, tooltipPosition.Y + 34 - Position.Y), sprite, skeletonMeshRenderer, gameTime, drawReflectionInfo);
+            if (drawCharmCollection)
+            {
+                DrawLayer(
+                    _personalityTooltipVisual.CharmCollectionBody,
+                    new Point(tooltipPosition.X + 7 - Position.X, tooltipPosition.Y + 34 + body.Height - Position.Y),
+                    sprite,
+                    skeletonMeshRenderer,
+                    gameTime,
+                    drawReflectionInfo);
+            }
 
             if (_font == null)
             {
@@ -1210,7 +1233,7 @@ namespace HaCreator.MapSimulator.UI
             {
                 bool showCollectButtons = _currentPage == UserInfoPage.Collect;
                 _collectClaimButton.ButtonVisible = showCollectButtons;
-                _collectClaimButton.SetEnabled(showCollectButtons && !_exceptionPopupOpen);
+                _collectClaimButton.SetEnabled(showCollectButtons && !_exceptionPopupOpen && CanClaimCollectReward() && !_collectRewardClaimed);
             }
 
             if (_exceptionRegisterButton != null)
@@ -1479,7 +1502,7 @@ namespace HaCreator.MapSimulator.UI
             }
 
             BookCollectionRequested.Invoke();
-            _statusMessage = "Detailed collection book opened.";
+            _statusMessage = "Monster Book opened.";
         }
 
         private void ClaimCollectReward()
@@ -1519,20 +1542,25 @@ namespace HaCreator.MapSimulator.UI
 
         private List<(string Label, string Value)> BuildCollectEntries()
         {
-            ItemMakerProgressionSnapshot snapshot = GetCollectionSnapshot();
+            MonsterBookSnapshot snapshot = GetMonsterBookSnapshot();
             List<(string Label, string Value)> entries = new List<(string Label, string Value)>
             {
-                ("Maker", $"Lv {snapshot.GenericLevel}"),
-                ("Crafts", snapshot.SuccessfulCrafts.ToString()),
-                ("Glove", BuildCollectFamilySummary(snapshot, ItemMakerRecipeFamily.Gloves)),
-                ("Shoe", BuildCollectFamilySummary(snapshot, ItemMakerRecipeFamily.Shoes)),
-                ("Toy", BuildCollectFamilySummary(snapshot, ItemMakerRecipeFamily.Toys)),
-                ("Recipes", snapshot.DiscoveredRecipeIds.Count.ToString())
+                ("Entries", $"{snapshot.OwnedCardTypes}/{snapshot.TotalCardTypes}"),
+                ("Complete", snapshot.CompletedCardTypes.ToString()),
+                ("Boss", snapshot.OwnedBossCardTypes.ToString()),
+                ("Normal", snapshot.OwnedNormalCardTypes.ToString()),
+                ("Copies", snapshot.TotalOwnedCopies.ToString()),
+                ("Pages", snapshot.Pages.Count.ToString())
             };
 
             return _collectSortByName
                 ? entries.OrderBy(entry => entry.Label, StringComparer.OrdinalIgnoreCase).ToList()
                 : entries;
+        }
+
+        private MonsterBookSnapshot GetMonsterBookSnapshot()
+        {
+            return _monsterBookSnapshotProvider?.Invoke() ?? new MonsterBookSnapshot();
         }
 
         private string BuildCollectFamilySummary(ItemMakerProgressionSnapshot snapshot, ItemMakerRecipeFamily family)
@@ -1873,6 +1901,12 @@ namespace HaCreator.MapSimulator.UI
                 "charm" => _characterBuild?.TraitCharm ?? 0,
                 _ => 0
             };
+        }
+
+        private bool ShouldDrawCharmCollectionTooltip()
+        {
+            return _personalityTooltipVisual?.CharmCollectionBody != null &&
+                   (_characterBuild?.IsPocketSlotAvailable ?? false);
         }
 
         private static string FormatRankDelta(int currentRank, int? previousRank)

@@ -2,6 +2,10 @@ using System;
 using System.Collections.Generic;
 using HaCreator.MapSimulator.Character.Skills;
 using HaCreator.MapSimulator.Loaders;
+using HaSharedLibrary.Render.DX;
+using HaSharedLibrary.Util;
+using MapleLib.WzLib;
+using MapleLib.WzLib.WzProperties;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 
@@ -10,7 +14,8 @@ namespace HaCreator.MapSimulator.Pools
     public enum AffectedAreaSourceKind
     {
         PlayerSkill = 0,
-        MobSkill = 1
+        MobSkill = 1,
+        AreaBuffItem = 2
     }
 
     public readonly struct AffectedAreaCreateInfo
@@ -108,12 +113,15 @@ namespace HaCreator.MapSimulator.Pools
 
         private readonly SkillLoader _skillLoader;
         private readonly MobSkillEffectLoader _mobSkillEffectLoader;
+        private readonly GraphicsDevice _graphicsDevice;
         private readonly Dictionary<int, ActiveAffectedArea> _areas = new();
+        private readonly Dictionary<int, SkillAnimation> _areaBuffItemFogAnimationCache = new();
 
-        public AffectedAreaPool(SkillLoader skillLoader, MobSkillEffectLoader mobSkillEffectLoader)
+        public AffectedAreaPool(SkillLoader skillLoader, MobSkillEffectLoader mobSkillEffectLoader, GraphicsDevice graphicsDevice = null)
         {
             _skillLoader = skillLoader;
             _mobSkillEffectLoader = mobSkillEffectLoader;
+            _graphicsDevice = graphicsDevice;
         }
 
         public IEnumerable<ActiveAffectedArea> ActiveAreas => _areas.Values;
@@ -237,6 +245,7 @@ namespace HaCreator.MapSimulator.Pools
             {
                 AffectedAreaSourceKind.PlayerSkill => BuildPlayerSkillArea(createInfo, currentTime),
                 AffectedAreaSourceKind.MobSkill => BuildMobSkillArea(createInfo, currentTime),
+                AffectedAreaSourceKind.AreaBuffItem => BuildAreaBuffItemArea(createInfo, currentTime),
                 _ => null
             };
         }
@@ -298,6 +307,34 @@ namespace HaCreator.MapSimulator.Pools
                 WorldBounds = createInfo.WorldBounds,
                 ZoneType = "mist",
                 Animation = effectData.TileAnimation,
+                SourceKind = createInfo.SourceKind
+            };
+        }
+
+        private ActiveAffectedArea BuildAreaBuffItemArea(AffectedAreaCreateInfo createInfo, int currentTime)
+        {
+            SkillAnimation animation = LoadAreaBuffItemFogAnimation(createInfo.SkillId);
+            if (animation == null)
+            {
+                return null;
+            }
+
+            int startTime = ResolveStartTime(currentTime, createInfo.StartDelayUnits);
+            return new ActiveAffectedArea
+            {
+                ObjectId = createInfo.ObjectId,
+                Type = createInfo.Type,
+                OwnerId = createInfo.OwnerId,
+                SkillId = createInfo.SkillId,
+                SkillLevel = createInfo.SkillLevel,
+                Phase = createInfo.Phase,
+                ElementAttribute = createInfo.ElementAttribute,
+                StartTime = startTime,
+                ExpireTime = 0,
+                NextGameplayTickTime = startTime,
+                WorldBounds = createInfo.WorldBounds,
+                ZoneType = "fog",
+                Animation = animation,
                 SourceKind = createInfo.SourceKind
             };
         }
@@ -408,6 +445,135 @@ namespace HaCreator.MapSimulator.Pools
             }
         }
 
+        private SkillAnimation LoadAreaBuffItemFogAnimation(int itemId)
+        {
+            if (itemId <= 0 || _graphicsDevice == null)
+            {
+                return null;
+            }
+
+            if (_areaBuffItemFogAnimationCache.TryGetValue(itemId, out SkillAnimation cachedAnimation))
+            {
+                return cachedAnimation;
+            }
+
+            WzSubProperty itemProperty = LoadItemProperty(itemId);
+            WzImageProperty fogNode = (itemProperty?["effect"] as WzSubProperty)?["darkFog"];
+            SkillAnimation animation = LoadCanvasAnimation(fogNode);
+            if (animation == null)
+            {
+                return null;
+            }
+
+            animation.Loop = true;
+            _areaBuffItemFogAnimationCache[itemId] = animation;
+            return animation;
+        }
+
+        private static WzSubProperty LoadItemProperty(int itemId)
+        {
+            string folderName = InventoryItemFolderResolver.ResolveItemFolderName(itemId);
+            if (string.IsNullOrWhiteSpace(folderName))
+            {
+                return null;
+            }
+
+            WzImage itemImage = global::HaCreator.Program.FindImage("Item", $"{folderName}/{itemId / 10000:D4}.img");
+            if (itemImage == null)
+            {
+                return null;
+            }
+
+            itemImage.ParseImage();
+            return itemImage[itemId.ToString("D7")] as WzSubProperty;
+        }
+
+        private SkillAnimation LoadCanvasAnimation(WzImageProperty node)
+        {
+            if (node == null)
+            {
+                return null;
+            }
+
+            SkillAnimation animation = new SkillAnimation
+            {
+                Name = node.Name,
+                Loop = true
+            };
+
+            List<(int index, SkillFrame frame)> orderedFrames = new();
+            foreach (WzImageProperty child in node.WzProperties)
+            {
+                if (!int.TryParse(child.Name, out int frameIndex))
+                {
+                    continue;
+                }
+
+                SkillFrame frame = LoadCanvasFrame(child);
+                if (frame == null)
+                {
+                    continue;
+                }
+
+                orderedFrames.Add((frameIndex, frame));
+            }
+
+            if (orderedFrames.Count == 0)
+            {
+                return null;
+            }
+
+            orderedFrames.Sort(static (left, right) => left.index.CompareTo(right.index));
+            foreach ((_, SkillFrame frame) in orderedFrames)
+            {
+                animation.Frames.Add(frame);
+            }
+
+            animation.CalculateDuration();
+            return animation;
+        }
+
+        private SkillFrame LoadCanvasFrame(WzImageProperty frameNode)
+        {
+            WzCanvasProperty canvas = frameNode as WzCanvasProperty ?? frameNode?.GetLinkedWzImageProperty() as WzCanvasProperty;
+            if (canvas == null)
+            {
+                return null;
+            }
+
+            var bitmap = canvas.GetLinkedWzCanvasBitmap();
+            Texture2D texture = bitmap?.ToTexture2DAndDispose(_graphicsDevice);
+            if (texture == null)
+            {
+                return null;
+            }
+
+            System.Drawing.PointF origin = canvas.GetCanvasOriginPosition();
+            return new SkillFrame
+            {
+                Texture = new DXObject(0, 0, texture)
+                {
+                    Tag = canvas.FullPath
+                },
+                Origin = new Point((int)origin.X, (int)origin.Y),
+                Bounds = new Rectangle(0, 0, texture.Width, texture.Height),
+                Delay = GetInt(frameNode, "delay", 100),
+                Flip = GetInt(frameNode, "flip") == 1
+            };
+        }
+
+        private static int GetInt(WzImageProperty node, string name, int defaultValue = 0)
+        {
+            WzImageProperty valueProperty = node?[name];
+            return valueProperty switch
+            {
+                WzIntProperty intProperty => intProperty.Value,
+                WzShortProperty shortProperty => shortProperty.Value,
+                WzLongProperty longProperty => (int)longProperty.Value,
+                _ => defaultValue
+            };
+        }
+
         private static int GetFrameDrawX(int screenX, SkillFrame frame, bool shouldFlip)
         {
             if (!shouldFlip)
@@ -416,6 +582,21 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             return screenX + frame.Origin.X - frame.Bounds.Width;
+        }
+    }
+
+    internal static class InventoryItemFolderResolver
+    {
+        public static string ResolveItemFolderName(int itemId)
+        {
+            return (itemId / 1000000) switch
+            {
+                2 => "Consume",
+                3 => "Install",
+                4 => "Etc",
+                5 => "Cash",
+                _ => null
+            };
         }
     }
 }

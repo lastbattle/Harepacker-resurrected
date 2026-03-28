@@ -6,29 +6,39 @@ namespace HaCreator.MapSimulator.Fields
 {
     internal static class FieldObjectScriptTagAliasResolver
     {
+        internal readonly record struct PublishedTagMutation(
+            IReadOnlyList<string> TagsToEnable,
+            IReadOnlyList<string> TagsToDisable);
+
         public static IReadOnlyList<string> ResolvePublishedTags(string scriptName, IEnumerable<string> availableTags)
+        {
+            return ResolvePublishedTagMutation(scriptName, availableTags).TagsToEnable;
+        }
+
+        public static PublishedTagMutation ResolvePublishedTagMutation(string scriptName, IEnumerable<string> availableTags)
         {
             if (string.IsNullOrWhiteSpace(scriptName) || availableTags == null)
             {
-                return Array.Empty<string>();
+                return new PublishedTagMutation(Array.Empty<string>(), Array.Empty<string>());
             }
 
             var availableTagSet = new HashSet<string>(availableTags, StringComparer.OrdinalIgnoreCase);
             if (availableTagSet.Count == 0)
             {
-                return Array.Empty<string>();
+                return new PublishedTagMutation(Array.Empty<string>(), Array.Empty<string>());
             }
 
-            var resolvedTags = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            AddIfAvailable(scriptName.Trim(), availableTagSet, resolvedTags);
-
             string trimmedScriptName = scriptName.Trim();
+            var resolvedTags = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var retiredTags = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            AddIfAvailable(trimmedScriptName, availableTagSet, resolvedTags);
+
             if (TryParseTrailingStage(trimmedScriptName, out string scriptBaseName, out int stage))
             {
                 string camelCaseBaseName = ToCamelCase(scriptBaseName);
                 if (!string.IsNullOrWhiteSpace(camelCaseBaseName))
                 {
-                    if (stage == 1)
+                    if (stage <= 1)
                     {
                         AddIfAvailable(camelCaseBaseName, availableTagSet, resolvedTags);
                     }
@@ -36,6 +46,8 @@ namespace HaCreator.MapSimulator.Fields
                     {
                         AddIfAvailable(camelCaseBaseName + stage, availableTagSet, resolvedTags);
                     }
+
+                    AddSiblingStageTags(camelCaseBaseName, stage, availableTagSet, resolvedTags, retiredTags);
                 }
             }
             else
@@ -43,7 +55,9 @@ namespace HaCreator.MapSimulator.Fields
                 AddIfAvailable(ToCamelCase(trimmedScriptName), availableTagSet, resolvedTags);
             }
 
-            return resolvedTags.Count == 0 ? Array.Empty<string>() : new List<string>(resolvedTags);
+            return new PublishedTagMutation(
+                resolvedTags.Count == 0 ? Array.Empty<string>() : new List<string>(resolvedTags),
+                retiredTags.Count == 0 ? Array.Empty<string>() : new List<string>(retiredTags));
         }
 
         private static void AddIfAvailable(string candidateTag, ISet<string> availableTags, ISet<string> resolvedTags)
@@ -52,6 +66,64 @@ namespace HaCreator.MapSimulator.Fields
             {
                 resolvedTags.Add(candidateTag);
             }
+        }
+
+        private static void AddSiblingStageTags(
+            string camelCaseBaseName,
+            int activeStage,
+            ISet<string> availableTags,
+            ISet<string> resolvedTags,
+            ISet<string> retiredTags)
+        {
+            if (string.IsNullOrWhiteSpace(camelCaseBaseName) || availableTags == null)
+            {
+                return;
+            }
+
+            foreach (string availableTag in availableTags)
+            {
+                if (!TryParseStageTagCandidate(
+                    availableTag,
+                    camelCaseBaseName,
+                    treatBaseTagAsStageZero: activeStage == 0,
+                    out int stage))
+                {
+                    continue;
+                }
+
+                if (stage == activeStage)
+                {
+                    resolvedTags.Add(availableTag);
+                }
+                else
+                {
+                    retiredTags.Add(availableTag);
+                }
+            }
+        }
+
+        private static bool TryParseStageTagCandidate(
+            string availableTag,
+            string camelCaseBaseName,
+            bool treatBaseTagAsStageZero,
+            out int stage)
+        {
+            stage = 0;
+            if (string.IsNullOrWhiteSpace(availableTag)
+                || string.IsNullOrWhiteSpace(camelCaseBaseName)
+                || !availableTag.StartsWith(camelCaseBaseName, StringComparison.OrdinalIgnoreCase))
+            {
+                return false;
+            }
+
+            if (availableTag.Length == camelCaseBaseName.Length)
+            {
+                stage = treatBaseTagAsStageZero ? 0 : 1;
+                return true;
+            }
+
+            ReadOnlySpan<char> suffix = availableTag.AsSpan(camelCaseBaseName.Length);
+            return int.TryParse(suffix, out stage) && stage >= 0;
         }
 
         private static bool TryParseTrailingStage(string scriptName, out string scriptBaseName, out int stage)
@@ -70,7 +142,7 @@ namespace HaCreator.MapSimulator.Fields
             }
 
             ReadOnlySpan<char> suffix = scriptName.AsSpan(separatorIndex + 1);
-            if (!int.TryParse(suffix, out stage) || stage <= 0)
+            if (!int.TryParse(suffix, out stage) || stage < 0)
             {
                 return false;
             }

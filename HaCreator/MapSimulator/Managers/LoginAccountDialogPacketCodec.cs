@@ -24,6 +24,7 @@ namespace HaCreator.MapSimulator.Managers
         public long? RegisterDateFileTime { get; init; }
         public int? CharacterCount { get; init; }
         public byte[] ClientKey { get; init; } = Array.Empty<byte>();
+        public string RequestedName { get; init; }
         public string TextValue { get; init; }
     }
 
@@ -70,6 +71,7 @@ namespace HaCreator.MapSimulator.Managers
                 long? registerDateFileTime = null;
                 int? characterCount = null;
                 byte[] clientKey = Array.Empty<byte>();
+                string requestedName = null;
                 string textValue = null;
 
                 switch (packetType)
@@ -126,6 +128,12 @@ namespace HaCreator.MapSimulator.Managers
                         textValue = TryReadTrailingMapleString(reader, stream);
                         break;
 
+                    case LoginPacketType.CheckDuplicatedIdResult:
+                        requestedName = ReadMapleString(reader);
+                        resultCode = reader.ReadByte();
+                        textValue = TryReadTrailingMapleString(reader, stream);
+                        break;
+
                     default:
                         resultCode = reader.ReadByte();
                         if (HasRemaining(reader, stream, 1))
@@ -162,6 +170,7 @@ namespace HaCreator.MapSimulator.Managers
                     RegisterDateFileTime = registerDateFileTime,
                     CharacterCount = characterCount,
                     ClientKey = clientKey,
+                    RequestedName = requestedName,
                     TextValue = textValue,
                 };
                 return true;
@@ -187,6 +196,7 @@ namespace HaCreator.MapSimulator.Managers
                 or LoginPacketType.UpdatePinCodeResult
                 or LoginPacketType.EnableSpwResult
                 or LoginPacketType.CheckSpwResult
+                or LoginPacketType.CheckDuplicatedIdResult
                 or LoginPacketType.CreateNewCharacterResult
                 or LoginPacketType.DeleteCharacterResult;
         }

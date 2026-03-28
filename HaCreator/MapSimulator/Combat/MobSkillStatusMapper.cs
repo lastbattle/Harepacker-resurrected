@@ -5,13 +5,15 @@ namespace HaCreator.MapSimulator.Combat
     internal enum MobSkillOperation
     {
         ApplyStatus,
+        ClearNegativeStatuses,
         Heal
     }
 
     internal enum MobSkillStatusTargetMode
     {
         Self,
-        NearbyMobs
+        NearbyMobs,
+        RuntimeTargetMobType
     }
 
     internal readonly record struct MobSkillStatusDefinition(
@@ -70,6 +72,9 @@ namespace HaCreator.MapSimulator.Combat
                 case 145:
                     definition = new MobSkillStatusDefinition(skillId, MobSkillOperation.ApplyStatus, MobStatusEffect.Reflect, MobSkillStatusTargetMode.Self);
                     return true;
+                case 146:
+                    definition = new MobSkillStatusDefinition(skillId, MobSkillOperation.ClearNegativeStatuses, MobStatusEffect.None, MobSkillStatusTargetMode.RuntimeTargetMobType);
+                    return true;
                 case 150:
                     definition = new MobSkillStatusDefinition(skillId, MobSkillOperation.ApplyStatus, MobStatusEffect.PowerUp, MobSkillStatusTargetMode.Self);
                     return true;
@@ -90,6 +95,9 @@ namespace HaCreator.MapSimulator.Combat
                     return true;
                 case 156:
                     definition = new MobSkillStatusDefinition(skillId, MobSkillOperation.ApplyStatus, MobStatusEffect.Speed, MobSkillStatusTargetMode.Self);
+                    return true;
+                case 157:
+                    definition = new MobSkillStatusDefinition(skillId, MobSkillOperation.ApplyStatus, MobStatusEffect.Rich, MobSkillStatusTargetMode.Self);
                     return true;
                 default:
                     definition = default;
@@ -112,6 +120,7 @@ namespace HaCreator.MapSimulator.Combat
                 MobStatusEffect.MImmune => x,
                 MobStatusEffect.HardSkin => hp > 0 ? hp : x,
                 MobStatusEffect.Reflect => hp > 0 ? hp : 100,
+                MobStatusEffect.Rich => x,
                 _ => 0
             };
         }

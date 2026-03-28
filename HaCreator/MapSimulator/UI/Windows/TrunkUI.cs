@@ -148,11 +148,20 @@ namespace HaCreator.MapSimulator.UI
         public override void Show()
         {
             base.Show();
-            _storageRuntime?.ClearSecondaryPasswordVerification();
+            _storageRuntime?.BeginAccessSession();
             CancelMesoEntry();
             UpdateAccessStatusMessage();
             _previousScrollWheelValue = Mouse.GetState().ScrollWheelValue;
             _previousKeyboardState = Keyboard.GetState();
+        }
+
+        public override void Hide()
+        {
+            base.Hide();
+            _storageRuntime?.EndAccessSession();
+            CancelMesoEntry();
+            UpdateAccessStatusMessage();
+            UpdateButtonStates();
         }
 
         public override void SetFont(SpriteFont font)

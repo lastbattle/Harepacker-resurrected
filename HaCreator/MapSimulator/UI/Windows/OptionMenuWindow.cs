@@ -1,3 +1,4 @@
+using HaCreator.MapSimulator.Character;
 using HaSharedLibrary.Render;
 using HaSharedLibrary.Render.DX;
 using Microsoft.Xna.Framework;
@@ -47,14 +48,55 @@ namespace HaCreator.MapSimulator.UI
             public Action<bool> SetValue { get; }
         }
 
+        private sealed class JoypadRow
+        {
+            public JoypadRow(string label, string description, Func<PlayerInput, string> getValue, Action<PlayerInput> advanceValue)
+            {
+                Label = label;
+                Description = description;
+                GetValue = getValue;
+                AdvanceValue = advanceValue;
+            }
+
+            public string Label { get; }
+            public string Description { get; }
+            public Func<PlayerInput, string> GetValue { get; }
+            public Action<PlayerInput> AdvanceValue { get; }
+        }
+
         private readonly List<PageLayer> _layers = new();
         private readonly Dictionary<OptionMenuMode, List<OptionRow>> _rows = new();
+        private readonly List<JoypadRow> _joypadRows = new();
         private readonly Texture2D _checkTexture;
         private readonly Texture2D _highlightTexture;
         private readonly string _windowName;
         private SpriteFont _font;
         private OptionMenuMode _mode;
         private string _statusMessage = string.Empty;
+        private Func<PlayerInput> _joypadBindingSource;
+
+        private static readonly Buttons[] JoypadCycleButtons =
+        {
+            0,
+            Buttons.A,
+            Buttons.B,
+            Buttons.X,
+            Buttons.Y,
+            Buttons.LeftShoulder,
+            Buttons.RightShoulder,
+            Buttons.LeftTrigger,
+            Buttons.RightTrigger,
+            Buttons.Back,
+            Buttons.Start,
+            Buttons.DPadUp,
+            Buttons.DPadDown,
+            Buttons.DPadLeft,
+            Buttons.DPadRight,
+            Buttons.LeftThumbstickUp,
+            Buttons.LeftThumbstickDown,
+            Buttons.LeftThumbstickLeft,
+            Buttons.LeftThumbstickRight,
+        };
 
         public OptionMenuWindow(IDXObject frame, string windowName, Texture2D checkTexture, Texture2D highlightTexture)
             : base(frame)
@@ -93,8 +135,10 @@ namespace HaCreator.MapSimulator.UI
             Func<bool> getSfxMuted,
             Action<bool> setSfxMuted,
             Func<bool> getPauseOnFocusLoss,
-            Action<bool> setPauseOnFocusLoss)
+            Action<bool> setPauseOnFocusLoss,
+            Func<PlayerInput> joypadBindingSource)
         {
+            _joypadBindingSource = joypadBindingSource;
             _rows[OptionMenuMode.Game] = new List<OptionRow>
             {
                 new("Smooth Camera", "Toggles the simulator camera easing path.", getSmoothCamera, setSmoothCamera),
@@ -115,6 +159,7 @@ namespace HaCreator.MapSimulator.UI
             };
 
             _rows[OptionMenuMode.Joypad] = new List<OptionRow>();
+            BuildJoypadRows();
         }
 
         public void ShowMode(OptionMenuMode mode)
@@ -125,7 +170,7 @@ namespace HaCreator.MapSimulator.UI
                 OptionMenuMode.Game => "Game options loaded from UIWindow2.img/OptionMenu.",
                 OptionMenuMode.System => "System options loaded from UIWindow2.img/OptionMenu.",
                 OptionMenuMode.Extra => "Additional client option branch routed through the shared owner.",
-                OptionMenuMode.Joypad => "Joypad page uses the shared owner, but controller remapping is still pending.",
+                OptionMenuMode.Joypad => "Joypad page now cycles simulator controller bindings directly from the shared owner.",
                 _ => string.Empty,
             };
             Show();
@@ -143,30 +188,50 @@ namespace HaCreator.MapSimulator.UI
                 return false;
             }
 
-            if (!_rows.TryGetValue(_mode, out List<OptionRow> rows) || rows == null)
+            if (_mode == OptionMenuMode.Joypad)
             {
-                return false;
+                PlayerInput input = _joypadBindingSource?.Invoke();
+                if (input == null)
+                {
+                    return false;
+                }
+
+                for (int i = 0; i < _joypadRows.Count; i++)
+                {
+                    Rectangle rowBounds = GetJoypadRowBounds(i);
+                    if (!rowBounds.Contains(mouseState.X, mouseState.Y))
+                    {
+                        continue;
+                    }
+
+                    JoypadRow row = _joypadRows[i];
+                    row.AdvanceValue?.Invoke(input);
+                    _statusMessage = $"{row.Label}: {row.GetValue?.Invoke(input) ?? "Unavailable"}";
+                    mouseCursor?.SetMouseCursorMovedToClickableItem();
+                    return true;
+                }
             }
-
-            Rectangle rowBounds = GetRowBounds(0);
-            for (int i = 0; i < rows.Count; i++)
+            else if (_rows.TryGetValue(_mode, out List<OptionRow> rows) && rows != null)
             {
-                rowBounds = GetRowBounds(i);
-                if (!rowBounds.Contains(mouseState.X, mouseState.Y))
+                for (int i = 0; i < rows.Count; i++)
                 {
-                    continue;
-                }
+                    Rectangle rowBounds = GetRowBounds(i);
+                    if (!rowBounds.Contains(mouseState.X, mouseState.Y))
+                    {
+                        continue;
+                    }
 
-                OptionRow row = rows[i];
-                if (row.GetValue != null && row.SetValue != null)
-                {
-                    bool nextValue = !row.GetValue();
-                    row.SetValue(nextValue);
-                    _statusMessage = $"{row.Label}: {(nextValue ? "On" : "Off")}";
-                }
+                    OptionRow row = rows[i];
+                    if (row.GetValue != null && row.SetValue != null)
+                    {
+                        bool nextValue = !row.GetValue();
+                        row.SetValue(nextValue);
+                        _statusMessage = $"{row.Label}: {(nextValue ? "On" : "Off")}";
+                    }
 
-                mouseCursor?.SetMouseCursorMovedToClickableItem();
-                return true;
+                    mouseCursor?.SetMouseCursorMovedToClickableItem();
+                    return true;
+                }
             }
 
             return false;
@@ -205,26 +270,33 @@ namespace HaCreator.MapSimulator.UI
             sprite.DrawString(_font, GetTitle(), new Vector2(Position.X + 16, Position.Y + 16), Color.White);
             sprite.DrawString(_font, GetSubtitle(), new Vector2(Position.X + 16, Position.Y + 38), new Color(214, 214, 214));
 
-            if (!_rows.TryGetValue(_mode, out List<OptionRow> rows) || rows == null || rows.Count == 0)
+            if (_mode == OptionMenuMode.Joypad)
             {
-                DrawWrappedText(sprite, "The client joypad owner is loaded, but per-button calibration and pad remapping still remain outside this simulator pass.", Position.X + 16, Position.Y + 72, 248f, new Color(224, 224, 224));
+                DrawJoypadRows(sprite);
             }
             else
             {
-                for (int i = 0; i < rows.Count; i++)
+                if (!_rows.TryGetValue(_mode, out List<OptionRow> rows) || rows == null || rows.Count == 0)
                 {
-                    Rectangle bounds = GetRowBounds(i);
-                    sprite.Draw(_highlightTexture, bounds, new Color(36, 46, 62, 210));
-
-                    OptionRow row = rows[i];
-                    bool enabled = row.GetValue?.Invoke() ?? false;
-                    if (enabled && _checkTexture != null)
+                    DrawWrappedText(sprite, "No simulator option rows are available for this owner mode.", Position.X + 16, Position.Y + 72, 248f, new Color(224, 224, 224));
+                }
+                else
+                {
+                    for (int i = 0; i < rows.Count; i++)
                     {
-                        sprite.Draw(_checkTexture, new Vector2(bounds.X + 8, bounds.Y + 7), Color.White);
-                    }
+                        Rectangle bounds = GetRowBounds(i);
+                        sprite.Draw(_highlightTexture, bounds, new Color(36, 46, 62, 210));
 
-                    sprite.DrawString(_font, row.Label, new Vector2(bounds.X + 24, bounds.Y + 4), Color.White);
-                    DrawWrappedText(sprite, row.Description, bounds.X + 24, bounds.Y + 22, bounds.Width - 30, new Color(204, 204, 204));
+                        OptionRow row = rows[i];
+                        bool enabled = row.GetValue?.Invoke() ?? false;
+                        if (enabled && _checkTexture != null)
+                        {
+                            sprite.Draw(_checkTexture, new Vector2(bounds.X + 8, bounds.Y + 7), Color.White);
+                        }
+
+                        sprite.DrawString(_font, row.Label, new Vector2(bounds.X + 24, bounds.Y + 4), Color.White);
+                        DrawWrappedText(sprite, row.Description, bounds.X + 24, bounds.Y + 22, bounds.Width - 30, new Color(204, 204, 204));
+                    }
                 }
             }
 
@@ -266,7 +338,7 @@ namespace HaCreator.MapSimulator.UI
             {
                 OptionMenuMode.Game => "Client-backed option art with simulator-side game toggles.",
                 OptionMenuMode.System => "Audio and focus behavior already connected to the runtime.",
-                OptionMenuMode.Joypad => "Joypad entry now opens the dedicated owner instead of hard-blocking.",
+                OptionMenuMode.Joypad => "Click a joypad row to cycle the active controller slot or button binding.",
                 _ => "Shared miscellaneous toggles surfaced through the deeper option branch.",
             };
         }
@@ -275,6 +347,115 @@ namespace HaCreator.MapSimulator.UI
         {
             int width = Math.Max(220, (CurrentFrame?.Width ?? 283) - 30);
             return new Rectangle(Position.X + 12, Position.Y + 72 + (index * 84), width, 72);
+        }
+
+        private Rectangle GetJoypadRowBounds(int index)
+        {
+            int width = Math.Max(220, (CurrentFrame?.Width ?? 283) - 30);
+            return new Rectangle(Position.X + 12, Position.Y + 72 + (index * 38), width, 32);
+        }
+
+        private void DrawJoypadRows(SpriteBatch sprite)
+        {
+            PlayerInput input = _joypadBindingSource?.Invoke();
+            if (input == null)
+            {
+                DrawWrappedText(sprite, "Player input is unavailable for the joypad owner.", Position.X + 16, Position.Y + 72, 248f, new Color(224, 224, 224));
+                return;
+            }
+
+            for (int i = 0; i < _joypadRows.Count; i++)
+            {
+                Rectangle bounds = GetJoypadRowBounds(i);
+                sprite.Draw(_highlightTexture, bounds, new Color(36, 46, 62, 210));
+
+                JoypadRow row = _joypadRows[i];
+                sprite.DrawString(_font, row.Label, new Vector2(bounds.X + 8, bounds.Y + 3), Color.White);
+                string value = row.GetValue?.Invoke(input) ?? "Unavailable";
+                sprite.DrawString(_font, value, new Vector2(bounds.Right - Math.Min(92, (int)_font.MeasureString(value).X) - 8, bounds.Y + 3), new Color(255, 228, 151));
+                DrawWrappedText(sprite, row.Description, bounds.X + 8, bounds.Y + 16, bounds.Width - 16, new Color(204, 204, 204));
+            }
+        }
+
+        private void BuildJoypadRows()
+        {
+            _joypadRows.Clear();
+            _joypadRows.Add(new JoypadRow(
+                "Controller Slot",
+                "Cycles the active XInput slot used by PlayerInput.",
+                input => $"P{(int)input.GetGamepadIndex() + 1}",
+                input => input.SetGamepadIndex(input.GetGamepadIndex() switch
+                {
+                    PlayerIndex.One => PlayerIndex.Two,
+                    PlayerIndex.Two => PlayerIndex.Three,
+                    PlayerIndex.Three => PlayerIndex.Four,
+                    _ => PlayerIndex.One,
+                })));
+
+            AddJoypadBindingRow(InputAction.Jump, "Jump", "Cycles the jump pad button.");
+            AddJoypadBindingRow(InputAction.Attack, "Attack", "Cycles the basic attack pad button.");
+            AddJoypadBindingRow(InputAction.Pickup, "Pickup", "Cycles the pickup or loot pad button.");
+            AddJoypadBindingRow(InputAction.Interact, "Interact", "Cycles the talk or portal pad button.");
+            AddJoypadBindingRow(InputAction.Skill1, "Skill 1", "Cycles the primary shoulder skill button.");
+            AddJoypadBindingRow(InputAction.Skill2, "Skill 2", "Cycles the secondary shoulder skill button.");
+            AddJoypadBindingRow(InputAction.ToggleInventory, "Inventory", "Cycles the utility menu pad button.");
+            AddJoypadBindingRow(InputAction.Escape, "Escape", "Cycles the system or cancel pad button.");
+        }
+
+        private void AddJoypadBindingRow(InputAction action, string label, string description)
+        {
+            _joypadRows.Add(new JoypadRow(
+                label,
+                description,
+                input => FormatGamepadButton(input?.GetBinding(action)?.GamepadButton ?? (Buttons)0),
+                input =>
+                {
+                    if (input == null)
+                    {
+                        return;
+                    }
+
+                    KeyBinding binding = input.GetBinding(action);
+                    Buttons current = binding?.GamepadButton ?? (Buttons)0;
+                    Buttons next = GetNextJoypadButton(current);
+                    input.SetBinding(
+                        action,
+                        binding?.PrimaryKey ?? Keys.None,
+                        binding?.SecondaryKey ?? Keys.None,
+                        next);
+                }));
+        }
+
+        private static Buttons GetNextJoypadButton(Buttons current)
+        {
+            int currentIndex = Array.IndexOf(JoypadCycleButtons, current);
+            if (currentIndex < 0)
+            {
+                return JoypadCycleButtons[0];
+            }
+
+            return JoypadCycleButtons[(currentIndex + 1) % JoypadCycleButtons.Length];
+        }
+
+        private static string FormatGamepadButton(Buttons button)
+        {
+            return button switch
+            {
+                (Buttons)0 => "Unbound",
+                Buttons.LeftShoulder => "LB",
+                Buttons.RightShoulder => "RB",
+                Buttons.LeftTrigger => "LT",
+                Buttons.RightTrigger => "RT",
+                Buttons.LeftThumbstickUp => "L-Up",
+                Buttons.LeftThumbstickDown => "L-Down",
+                Buttons.LeftThumbstickLeft => "L-Left",
+                Buttons.LeftThumbstickRight => "L-Right",
+                Buttons.DPadUp => "D-Up",
+                Buttons.DPadDown => "D-Down",
+                Buttons.DPadLeft => "D-Left",
+                Buttons.DPadRight => "D-Right",
+                _ => button.ToString(),
+            };
         }
 
         private void DrawWrappedText(SpriteBatch sprite, string text, int x, int y, float maxWidth, Color color)

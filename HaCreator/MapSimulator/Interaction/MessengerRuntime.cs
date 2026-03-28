@@ -148,6 +148,30 @@ namespace HaCreator.MapSimulator.Interaction
             };
         }
 
+        public IReadOnlyList<MessengerRemoteParticipantSnapshot> GetRemoteParticipantSnapshots()
+        {
+            if (_participants.Count <= 1)
+            {
+                return Array.Empty<MessengerRemoteParticipantSnapshot>();
+            }
+
+            List<MessengerRemoteParticipantSnapshot> snapshots = new(_participants.Count - 1);
+            for (int i = 1; i < _participants.Count; i++)
+            {
+                MessengerParticipantState participant = _participants[i];
+                snapshots.Add(new MessengerRemoteParticipantSnapshot(
+                    participant.Name,
+                    participant.LocationSummary,
+                    participant.Channel,
+                    participant.StatusText,
+                    participant.JobName,
+                    participant.Level,
+                    participant.IsOnline));
+            }
+
+            return snapshots;
+        }
+
         public void SelectSlot(int slotIndex)
         {
             _selectedSlot = Math.Clamp(slotIndex, 0, MaxParticipants - 1);
@@ -284,6 +308,11 @@ namespace HaCreator.MapSimulator.Interaction
             return _lastActionSummary;
         }
 
+        public string ReceiveInvitePacket(string contactName)
+        {
+            return ReceiveInvite(contactName);
+        }
+
         public string AcceptIncomingInvite()
         {
             if (_incomingInvite == null)
@@ -363,6 +392,19 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             return JoinContact(contact, packetDriven, joinedViaIncomingInvite: false);
+        }
+
+        public string ResolvePendingInvitePacket(string contactName, bool accepted)
+        {
+            string resolvedName = NormalizeParticipantName(contactName);
+            if (resolvedName != null
+                && _pendingInvite != null
+                && !string.Equals(_pendingInvite.ContactName, resolvedName, StringComparison.OrdinalIgnoreCase))
+            {
+                return $"Pending Messenger invite targets {_pendingInvite.ContactName}, not {resolvedName}.";
+            }
+
+            return ResolvePendingInvite(accepted, packetDriven: true);
         }
 
         public string WhisperSelected()
@@ -718,6 +760,66 @@ namespace HaCreator.MapSimulator.Interaction
             AddSystemLog(_lastActionSummary);
             RecordPacketSummary($"Removed simulated Messenger member-info packet override for {contact.Name}.");
             return _lastActionSummary;
+        }
+
+        public string ApplyPacketPayload(MessengerPacketType packetType, byte[] payload)
+        {
+            payload ??= Array.Empty<byte>();
+
+            switch (packetType)
+            {
+                case MessengerPacketType.Invite:
+                    if (!MessengerPacketCodec.TryParseInvite(payload, out MessengerInvitePacket invitePacket, out string inviteError))
+                    {
+                        return inviteError ?? "Messenger invite packet payload could not be decoded.";
+                    }
+
+                    return ReceiveInvitePacket(invitePacket.ContactName);
+                case MessengerPacketType.InviteAccept:
+                    if (!MessengerPacketCodec.TryParseInvite(payload, out MessengerInvitePacket acceptPacket, out string acceptError))
+                    {
+                        return acceptError ?? "Messenger invite-accept packet payload could not be decoded.";
+                    }
+
+                    return ResolvePendingInvitePacket(acceptPacket.ContactName, accepted: true);
+                case MessengerPacketType.InviteReject:
+                    if (!MessengerPacketCodec.TryParseInvite(payload, out MessengerInvitePacket rejectPacket, out string rejectError))
+                    {
+                        return rejectError ?? "Messenger invite-reject packet payload could not be decoded.";
+                    }
+
+                    return ResolvePendingInvitePacket(rejectPacket.ContactName, accepted: false);
+                case MessengerPacketType.Leave:
+                    if (!MessengerPacketCodec.TryParseInvite(payload, out MessengerInvitePacket leavePacket, out string leaveError))
+                    {
+                        return leaveError ?? "Messenger leave packet payload could not be decoded.";
+                    }
+
+                    return RemoveParticipant(leavePacket.ContactName, rejectedInvite: false);
+                case MessengerPacketType.RoomChat:
+                    if (!MessengerPacketCodec.TryParseChat(payload, out MessengerChatPacket roomPacket, out string roomError))
+                    {
+                        return roomError ?? "Messenger room-chat packet payload could not be decoded.";
+                    }
+
+                    return ReceiveRoomMessage(roomPacket.ContactName, roomPacket.Message);
+                case MessengerPacketType.Whisper:
+                    if (!MessengerPacketCodec.TryParseChat(payload, out MessengerChatPacket whisperPacket, out string whisperError))
+                    {
+                        return whisperError ?? "Messenger whisper packet payload could not be decoded.";
+                    }
+
+                    return ReceiveRemoteWhisper(whisperPacket.ContactName, whisperPacket.Message);
+                case MessengerPacketType.MemberInfo:
+                    if (!MessengerPacketCodec.TryParseMemberInfo(payload, out MessengerMemberInfoPacket memberInfoPacket, out string memberInfoError))
+                    {
+                        return memberInfoError ?? "Messenger member-info packet payload could not be decoded.";
+                    }
+
+                    return ApplyPacketMemberInfo(memberInfoPacket);
+                default:
+                    return $"Messenger packet type '{packetType}' is not modeled.";
+            }
         }
 
         public string SubmitClaim()
@@ -1086,6 +1188,30 @@ namespace HaCreator.MapSimulator.Interaction
             SyncParticipantFromContact(contact);
         }
 
+        private string ApplyPacketMemberInfo(MessengerMemberInfoPacket packet)
+        {
+            string resolvedName = NormalizeParticipantName(packet.ContactName);
+            if (resolvedName == null || !_contacts.ContainsKey(resolvedName))
+            {
+                return $"No simulator Messenger contact named {packet.ContactName?.Trim()} is available.";
+            }
+
+            ApplyPacketProfile(
+                resolvedName,
+                packet.IsOnline,
+                packet.Channel,
+                packet.Level,
+                packet.JobName,
+                packet.LocationSummary,
+                packet.StatusText);
+
+            _lastActionSummary = $"Applied decoded Messenger member-info packet for {resolvedName}.";
+            AddSystemLog(_lastActionSummary);
+            StartBlink(Environment.TickCount);
+            RecordPacketSummary($"Decoded Messenger member-info packet for {resolvedName}, CH {Math.Max(1, packet.Channel)}, Lv. {Math.Max(1, packet.Level)}.");
+            return _lastActionSummary;
+        }
+
         private void SyncParticipantFromContact(MessengerContactState contact)
         {
             int participantIndex = FindParticipantIndex(contact.Name);
@@ -1390,6 +1516,15 @@ namespace HaCreator.MapSimulator.Interaction
         public int BubbleStartTick { get; init; }
         public int BubbleExpireTick { get; init; }
     }
+
+    internal readonly record struct MessengerRemoteParticipantSnapshot(
+        string Name,
+        string LocationSummary,
+        int Channel,
+        string StatusText,
+        string JobName,
+        int Level,
+        bool IsOnline);
 
     internal sealed record MessengerDeleteResult(string Message, bool ShouldHideWindow);
 

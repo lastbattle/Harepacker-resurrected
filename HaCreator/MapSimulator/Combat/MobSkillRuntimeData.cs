@@ -2,6 +2,13 @@ using Microsoft.Xna.Framework;
 
 namespace HaCreator.MapSimulator
 {
+    internal enum MobSkillTargetMobType
+    {
+        None = 0,
+        NearbyMobs = 1,
+        Self = 2
+    }
+
     internal sealed class MobSkillRuntimeData
     {
         public int X { get; init; }
@@ -17,6 +24,8 @@ namespace HaCreator.MapSimulator
         public int PropPercent { get; init; }
 
         public int Count { get; init; }
+
+        public MobSkillTargetMobType TargetMobType { get; init; }
 
         public Point? Lt { get; init; }
 

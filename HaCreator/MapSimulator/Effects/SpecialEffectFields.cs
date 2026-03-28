@@ -16,7 +16,8 @@ using System.IO;
 using HaCreator.MapEditor;
 using HaCreator.MapEditor.Info;
 using HaCreator.MapEditor.Instance.Misc;
-using HaCreator.MapSimulator.Character;
+using HaCreator.MapSimulator.Character;
+using HaCreator.MapSimulator.Managers;
 using HaCreator.Wz;
 using HaSharedLibrary.Wz;
 using HaSharedLibrary.Util;
@@ -81,9 +82,11 @@ namespace HaCreator.MapSimulator.Effects
         public void Initialize(
             GraphicsDevice device,
             Action<string> requestBgmOverride = null,
-            Action clearBgmOverride = null)
+            Action clearBgmOverride = null,
+
+            Func<LoginAvatarLook, string, CharacterBuild> weddingRemoteBuildFactory = null)
         {
-            _wedding.Initialize(device, requestBgmOverride, clearBgmOverride);
+            _wedding.Initialize(device, requestBgmOverride, clearBgmOverride, weddingRemoteBuildFactory);
             _witchtower.Initialize(device);
             _battlefield.Initialize(device);
             _guildBoss.Initialize(device);

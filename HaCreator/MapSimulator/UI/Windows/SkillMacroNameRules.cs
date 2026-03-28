@@ -179,6 +179,144 @@ namespace HaCreator.MapSimulator.UI
             return insertedAny;
         }
 
+        internal static string GetInsertablePrefix(string currentText, int insertionIndex, string insertedText, out string error, Encoding encoding = null)
+        {
+            string original = currentText ?? string.Empty;
+            string incoming = insertedText ?? string.Empty;
+            int safeInsertionIndex = Math.Clamp(insertionIndex, 0, original.Length);
+
+            if (incoming.Length == 0)
+            {
+                error = string.Empty;
+                return string.Empty;
+            }
+
+            string working = original;
+            int workingInsertionIndex = safeInsertionIndex;
+            string firstError = string.Empty;
+            StringBuilder insertedPrefix = new();
+
+            TextElementEnumerator enumerator = StringInfo.GetTextElementEnumerator(incoming);
+            while (enumerator.MoveNext())
+            {
+                string textElement = enumerator.GetTextElement();
+                string candidate = working.Insert(workingInsertionIndex, textElement);
+                if (TryNormalizeForEdit(candidate, out string normalizedCandidate, out string candidateError, encoding))
+                {
+                    insertedPrefix.Append(textElement);
+                    working = normalizedCandidate;
+                    workingInsertionIndex += textElement.Length;
+                    continue;
+                }
+
+                if (string.IsNullOrEmpty(firstError))
+                {
+                    firstError = candidateError;
+                }
+
+                break;
+            }
+
+            error = insertedPrefix.Length > 0 ? string.Empty : firstError;
+            return insertedPrefix.ToString();
+        }
+
+        internal static string BuildCompositionPreview(string currentText, int insertionIndex, string compositionText, out string error, Encoding encoding = null)
+        {
+            string sanitized = RemoveControlCharacters(compositionText);
+            if (sanitized.Length == 0)
+            {
+                error = string.Empty;
+                return string.Empty;
+            }
+
+            return GetInsertablePrefix(currentText, insertionIndex, sanitized, out error, encoding);
+        }
+
+        internal static int GetPreviousCaretStop(string text, int caretIndex)
+        {
+            string value = text ?? string.Empty;
+            int safeCaretIndex = Math.Clamp(caretIndex, 0, value.Length);
+            if (safeCaretIndex <= 0 || value.Length == 0)
+            {
+                return 0;
+            }
+
+            int previousStop = 0;
+            TextElementEnumerator enumerator = StringInfo.GetTextElementEnumerator(value);
+            while (enumerator.MoveNext())
+            {
+                int elementIndex = enumerator.ElementIndex;
+                if (elementIndex >= safeCaretIndex)
+                {
+                    break;
+                }
+
+                previousStop = elementIndex;
+            }
+
+            return previousStop;
+        }
+
+        internal static int GetNextCaretStop(string text, int caretIndex)
+        {
+            string value = text ?? string.Empty;
+            int safeCaretIndex = Math.Clamp(caretIndex, 0, value.Length);
+            if (safeCaretIndex >= value.Length || value.Length == 0)
+            {
+                return value.Length;
+            }
+
+            TextElementEnumerator enumerator = StringInfo.GetTextElementEnumerator(value);
+            while (enumerator.MoveNext())
+            {
+                int elementIndex = enumerator.ElementIndex;
+                string element = enumerator.GetTextElement();
+                int nextStop = elementIndex + element.Length;
+                if (safeCaretIndex < nextStop)
+                {
+                    return nextStop;
+                }
+            }
+
+            return value.Length;
+        }
+
+        internal static bool TryRemoveTextElementBeforeCaret(string text, int caretIndex, out string updatedText, out int updatedCaretIndex)
+        {
+            string value = text ?? string.Empty;
+            int safeCaretIndex = Math.Clamp(caretIndex, 0, value.Length);
+            if (safeCaretIndex <= 0 || value.Length == 0)
+            {
+                updatedText = value;
+                updatedCaretIndex = safeCaretIndex;
+                return false;
+            }
+
+            int removeStart = GetPreviousCaretStop(value, safeCaretIndex);
+            int removeLength = safeCaretIndex - removeStart;
+            updatedText = value.Remove(removeStart, removeLength);
+            updatedCaretIndex = removeStart;
+            return true;
+        }
+
+        internal static bool TryRemoveTextElementAtCaret(string text, int caretIndex, out string updatedText, out int updatedCaretIndex)
+        {
+            string value = text ?? string.Empty;
+            int safeCaretIndex = Math.Clamp(caretIndex, 0, value.Length);
+            if (safeCaretIndex >= value.Length || value.Length == 0)
+            {
+                updatedText = value;
+                updatedCaretIndex = safeCaretIndex;
+                return false;
+            }
+
+            int removeEnd = GetNextCaretStop(value, safeCaretIndex);
+            updatedText = value.Remove(safeCaretIndex, removeEnd - safeCaretIndex);
+            updatedCaretIndex = safeCaretIndex;
+            return true;
+        }
+
         internal static bool TryNormalizeForEdit(string text, out string normalized, out string error, Encoding encoding = null)
         {
             string candidate = text ?? string.Empty;
@@ -229,6 +367,25 @@ namespace HaCreator.MapSimulator.UI
                 sourceEncoding.CodePage,
                 EncoderFallback.ExceptionFallback,
                 DecoderFallback.ExceptionFallback);
+        }
+
+        private static string RemoveControlCharacters(string text)
+        {
+            if (string.IsNullOrEmpty(text))
+            {
+                return string.Empty;
+            }
+
+            StringBuilder builder = new(text.Length);
+            foreach (char ch in text)
+            {
+                if (!char.IsControl(ch))
+                {
+                    builder.Append(ch);
+                }
+            }
+
+            return builder.ToString();
         }
     }
 }

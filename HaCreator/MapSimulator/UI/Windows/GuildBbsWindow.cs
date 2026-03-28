@@ -100,6 +100,13 @@ namespace HaCreator.MapSimulator.UI
             public Rectangle Bounds { get; init; }
         }
 
+        private sealed class TextLineLayout
+        {
+            public int StartIndex { get; init; }
+            public int EndIndex { get; init; }
+            public string Text { get; init; } = string.Empty;
+        }
+
         private InputTarget _activeInputTarget;
 
         public GuildBbsWindow(
@@ -363,12 +370,14 @@ namespace HaCreator.MapSimulator.UI
                 if (GetComposeTitleBounds().Contains(mousePosition))
                 {
                     ActivateInput(InputTarget.ComposeTitle, snapshot, clearExisting: false);
+                    SetCursorFromPoint(InputTarget.ComposeTitle, snapshot, mousePosition);
                     return;
                 }
 
                 if (GetComposeBodyBounds().Contains(mousePosition))
                 {
                     ActivateInput(InputTarget.ComposeBody, snapshot, clearExisting: false);
+                    SetCursorFromPoint(InputTarget.ComposeBody, snapshot, mousePosition);
                     return;
                 }
 
@@ -382,6 +391,7 @@ namespace HaCreator.MapSimulator.UI
                 if (snapshot.SelectedThread != null && GetReplyInputBounds().Contains(mousePosition))
                 {
                     ActivateInput(InputTarget.ReplyBody, snapshot, clearExisting: false);
+                    SetCursorFromPoint(InputTarget.ReplyBody, snapshot, mousePosition);
                     return;
                 }
 
@@ -545,7 +555,9 @@ namespace HaCreator.MapSimulator.UI
             if (HandleNavigationKey(keyboardState, Keys.Back, tickCount, removeBackward: true)
                 || HandleNavigationKey(keyboardState, Keys.Delete, tickCount, removeBackward: false)
                 || HandleCursorKey(keyboardState, Keys.Left, tickCount, -1)
-                || HandleCursorKey(keyboardState, Keys.Right, tickCount, 1))
+                || HandleCursorKey(keyboardState, Keys.Right, tickCount, 1)
+                || HandleVerticalCursorKey(keyboardState, Keys.Up, tickCount, -1)
+                || HandleVerticalCursorKey(keyboardState, Keys.Down, tickCount, 1))
             {
                 SyncInputBuffer();
                 return;
@@ -553,13 +565,13 @@ namespace HaCreator.MapSimulator.UI
 
             if (keyboardState.IsKeyDown(Keys.Home) && _previousKeyboardState.IsKeyUp(Keys.Home))
             {
-                _cursorPosition = 0;
+                _cursorPosition = ResolveHomeCursorPosition();
                 return;
             }
 
             if (keyboardState.IsKeyDown(Keys.End) && _previousKeyboardState.IsKeyUp(Keys.End))
             {
-                _cursorPosition = _inputBuffer.Length;
+                _cursorPosition = ResolveEndCursorPosition();
                 return;
             }
 
@@ -650,6 +662,32 @@ namespace HaCreator.MapSimulator.UI
             if (ShouldRepeatKey(key, tickCount))
             {
                 _cursorPosition = Math.Clamp(_cursorPosition + delta, 0, _inputBuffer.Length);
+                _lastKeyRepeatTime = tickCount;
+                return true;
+            }
+
+            return true;
+        }
+
+        private bool HandleVerticalCursorKey(KeyboardState keyboardState, Keys key, int tickCount, int delta)
+        {
+            if (_activeInputTarget != InputTarget.ComposeBody || !keyboardState.IsKeyDown(key))
+            {
+                return false;
+            }
+
+            if (_previousKeyboardState.IsKeyUp(key))
+            {
+                MoveComposeBodyCursorVertical(delta);
+                _lastHeldKey = key;
+                _keyHoldStartTime = tickCount;
+                _lastKeyRepeatTime = tickCount;
+                return true;
+            }
+
+            if (ShouldRepeatKey(key, tickCount))
+            {
+                MoveComposeBodyCursorVertical(delta);
                 _lastKeyRepeatTime = tickCount;
                 return true;
             }
@@ -896,7 +934,7 @@ namespace HaCreator.MapSimulator.UI
             DrawTextInputBox(sprite, titleBounds, _activeInputTarget == InputTarget.ComposeTitle);
             DrawTextInputBox(sprite, bodyBounds, _activeInputTarget == InputTarget.ComposeBody);
             DrawEditableText(sprite, compose.Title, titleBounds, 0.46f, new Color(58, 49, 39), InputTarget.ComposeTitle, tickCount);
-            DrawWrappedText(sprite, compose.Body, bodyBounds, 0.40f, new Color(78, 82, 91), 12);
+            DrawEditableMultilineText(sprite, compose.Body, bodyBounds, 0.40f, new Color(78, 82, 91), InputTarget.ComposeBody, tickCount, 12);
 
             DrawString(sprite, "Title", titleBounds.X, titleBounds.Y - 16, new Color(101, 106, 115), 0.35f);
             DrawString(sprite, "Body", bodyBounds.X, bodyBounds.Y - 16, new Color(101, 106, 115), 0.35f);
@@ -1027,6 +1065,40 @@ namespace HaCreator.MapSimulator.UI
             string cursorSource = _inputBuffer.Length > 0 ? _inputBuffer.ToString()[..Math.Clamp(_cursorPosition, 0, _inputBuffer.Length)] : string.Empty;
             float cursorX = bounds.X + 4 + (_font.MeasureString(TruncateToWidth(cursorSource, bounds.Width - 8, scale)).X * scale);
             sprite.Draw(_pixel, new Rectangle((int)cursorX, bounds.Y + 3, 1, bounds.Height - 6), new Color(66, 76, 94));
+        }
+
+        private void DrawEditableMultilineText(SpriteBatch sprite, string text, Rectangle bounds, float scale, Color color, InputTarget target, int tickCount, int maxLines)
+        {
+            IReadOnlyList<TextLineLayout> lines = BuildTextLines(text ?? string.Empty, bounds.Width - 8, scale);
+            if (lines.Count == 0)
+            {
+                lines = new[] { new TextLineLayout { StartIndex = 0, EndIndex = 0, Text = string.Empty } };
+            }
+
+            float y = bounds.Y + 2;
+            for (int i = 0; i < lines.Count && i < maxLines; i++)
+            {
+                sprite.DrawString(_font, lines[i].Text, new Vector2(bounds.X + 2, y), color, 0f, Vector2.Zero, scale, SpriteEffects.None, 0f);
+                y += 15f;
+            }
+
+            if (_activeInputTarget != target || ((tickCount - _cursorBlinkTimer) / 500) % 2 != 0)
+            {
+                return;
+            }
+
+            int lineIndex = ResolveCursorLineIndex(lines, _cursorPosition);
+            if (lineIndex < 0 || lineIndex >= Math.Min(lines.Count, maxLines))
+            {
+                return;
+            }
+
+            TextLineLayout line = lines[lineIndex];
+            int relativeIndex = Math.Clamp(_cursorPosition - line.StartIndex, 0, line.Text.Length);
+            string cursorText = line.Text[..relativeIndex];
+            float cursorX = bounds.X + 2 + (_font.MeasureString(cursorText).X * scale);
+            int cursorY = bounds.Y + 2 + (lineIndex * 15);
+            sprite.Draw(_pixel, new Rectangle((int)cursorX, cursorY, 1, 12), new Color(66, 76, 94));
         }
 
         private void DrawWrappedText(SpriteBatch sprite, string text, Rectangle bounds, float scale, Color color, int maxLines)
@@ -1181,6 +1253,8 @@ namespace HaCreator.MapSimulator.UI
                 || key == Keys.Delete
                 || key == Keys.Left
                 || key == Keys.Right
+                || key == Keys.Up
+                || key == Keys.Down
                 || key == Keys.Home
                 || key == Keys.End
                 || key == Keys.Tab
@@ -1256,6 +1330,212 @@ namespace HaCreator.MapSimulator.UI
             byte green = (byte)(70 + Math.Abs((seed / 7) % 120));
             byte blue = (byte)(90 + Math.Abs((seed / 13) % 120));
             return new Color(red, green, blue);
+        }
+
+        private void SetCursorFromPoint(InputTarget target, GuildBbsSnapshot snapshot, Point mousePosition)
+        {
+            string source = target switch
+            {
+                InputTarget.ComposeTitle => snapshot.Compose?.Title ?? string.Empty,
+                InputTarget.ComposeBody => snapshot.Compose?.Body ?? string.Empty,
+                InputTarget.ReplyBody => snapshot.ReplyDraft?.Body ?? string.Empty,
+                _ => string.Empty
+            };
+
+            _cursorPosition = target == InputTarget.ComposeBody
+                ? ResolveMultilineCursorPosition(source, GetComposeBodyBounds(), mousePosition, 0.40f)
+                : ResolveSingleLineCursorPosition(
+                    source,
+                    target == InputTarget.ComposeTitle ? GetComposeTitleBounds() : GetReplyInputBounds(),
+                    mousePosition,
+                    target == InputTarget.ComposeTitle ? 0.46f : 0.39f);
+            _cursorBlinkTimer = Environment.TickCount;
+        }
+
+        private int ResolveSingleLineCursorPosition(string text, Rectangle bounds, Point mousePosition, float scale)
+        {
+            string source = text ?? string.Empty;
+            float relativeX = Math.Max(0f, mousePosition.X - (bounds.X + 4));
+            int bestIndex = 0;
+            float bestDistance = float.MaxValue;
+
+            for (int index = 0; index <= source.Length; index++)
+            {
+                float width = _font.MeasureString(source[..index]).X * scale;
+                float distance = Math.Abs(width - relativeX);
+                if (distance < bestDistance)
+                {
+                    bestDistance = distance;
+                    bestIndex = index;
+                }
+            }
+
+            return bestIndex;
+        }
+
+        private int ResolveMultilineCursorPosition(string text, Rectangle bounds, Point mousePosition, float scale)
+        {
+            IReadOnlyList<TextLineLayout> lines = BuildTextLines(text ?? string.Empty, bounds.Width - 8, scale);
+            if (lines.Count == 0)
+            {
+                return 0;
+            }
+
+            int lineIndex = Math.Clamp((mousePosition.Y - (bounds.Y + 2)) / 15, 0, lines.Count - 1);
+            TextLineLayout line = lines[lineIndex];
+            float relativeX = Math.Max(0f, mousePosition.X - (bounds.X + 2));
+            int bestIndex = line.StartIndex;
+            float bestDistance = float.MaxValue;
+
+            for (int index = 0; index <= line.Text.Length; index++)
+            {
+                float width = _font.MeasureString(line.Text[..index]).X * scale;
+                float distance = Math.Abs(width - relativeX);
+                if (distance < bestDistance)
+                {
+                    bestDistance = distance;
+                    bestIndex = line.StartIndex + index;
+                }
+            }
+
+            return bestIndex;
+        }
+
+        private int ResolveHomeCursorPosition()
+        {
+            if (_activeInputTarget != InputTarget.ComposeBody)
+            {
+                return 0;
+            }
+
+            IReadOnlyList<TextLineLayout> lines = BuildTextLines(_inputBuffer.ToString(), GetComposeBodyBounds().Width - 8, 0.40f);
+            int lineIndex = ResolveCursorLineIndex(lines, _cursorPosition);
+            return lineIndex >= 0 ? lines[lineIndex].StartIndex : 0;
+        }
+
+        private int ResolveEndCursorPosition()
+        {
+            if (_activeInputTarget != InputTarget.ComposeBody)
+            {
+                return _inputBuffer.Length;
+            }
+
+            IReadOnlyList<TextLineLayout> lines = BuildTextLines(_inputBuffer.ToString(), GetComposeBodyBounds().Width - 8, 0.40f);
+            int lineIndex = ResolveCursorLineIndex(lines, _cursorPosition);
+            return lineIndex >= 0 ? lines[lineIndex].EndIndex : _inputBuffer.Length;
+        }
+
+        private void MoveComposeBodyCursorVertical(int delta)
+        {
+            IReadOnlyList<TextLineLayout> lines = BuildTextLines(_inputBuffer.ToString(), GetComposeBodyBounds().Width - 8, 0.40f);
+            if (lines.Count == 0)
+            {
+                _cursorPosition = 0;
+                return;
+            }
+
+            int currentLineIndex = ResolveCursorLineIndex(lines, _cursorPosition);
+            if (currentLineIndex < 0)
+            {
+                currentLineIndex = 0;
+            }
+
+            int targetLineIndex = Math.Clamp(currentLineIndex + delta, 0, lines.Count - 1);
+            if (targetLineIndex == currentLineIndex)
+            {
+                return;
+            }
+
+            TextLineLayout currentLine = lines[currentLineIndex];
+            TextLineLayout targetLine = lines[targetLineIndex];
+            int column = Math.Clamp(_cursorPosition - currentLine.StartIndex, 0, currentLine.Text.Length);
+            _cursorPosition = Math.Clamp(targetLine.StartIndex + column, targetLine.StartIndex, targetLine.EndIndex);
+        }
+
+        private IReadOnlyList<TextLineLayout> BuildTextLines(string text, float maxWidth, float scale)
+        {
+            string source = text?.Replace("\r", string.Empty) ?? string.Empty;
+            var lines = new List<TextLineLayout>();
+
+            if (source.Length == 0)
+            {
+                lines.Add(new TextLineLayout());
+                return lines;
+            }
+
+            int index = 0;
+            while (index < source.Length)
+            {
+                if (source[index] == '\n')
+                {
+                    lines.Add(new TextLineLayout
+                    {
+                        StartIndex = index,
+                        EndIndex = index,
+                        Text = string.Empty
+                    });
+                    index++;
+                    continue;
+                }
+
+                int startIndex = index;
+                string currentText = string.Empty;
+                while (index < source.Length && source[index] != '\n')
+                {
+                    string candidate = currentText + source[index];
+                    if (currentText.Length > 0 && (_font.MeasureString(candidate).X * scale) > maxWidth)
+                    {
+                        break;
+                    }
+
+                    currentText = candidate;
+                    index++;
+                }
+
+                if (currentText.Length == 0 && index < source.Length)
+                {
+                    currentText = source[index].ToString();
+                    index++;
+                }
+
+                lines.Add(new TextLineLayout
+                {
+                    StartIndex = startIndex,
+                    EndIndex = startIndex + currentText.Length,
+                    Text = currentText
+                });
+            }
+
+            if (source[^1] == '\n')
+            {
+                lines.Add(new TextLineLayout
+                {
+                    StartIndex = source.Length,
+                    EndIndex = source.Length,
+                    Text = string.Empty
+                });
+            }
+
+            return lines;
+        }
+
+        private static int ResolveCursorLineIndex(IReadOnlyList<TextLineLayout> lines, int cursorPosition)
+        {
+            if (lines == null || lines.Count == 0)
+            {
+                return -1;
+            }
+
+            for (int i = 0; i < lines.Count; i++)
+            {
+                TextLineLayout line = lines[i];
+                if (cursorPosition >= line.StartIndex && cursorPosition <= line.EndIndex)
+                {
+                    return i;
+                }
+            }
+
+            return cursorPosition <= lines[0].StartIndex ? 0 : lines.Count - 1;
         }
     }
 }

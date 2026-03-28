@@ -17,7 +17,6 @@ namespace HaCreator.MapSimulator.UI
         private readonly Point _headerOffset;
         private readonly Texture2D[] _rightIcons;
         private readonly string[] _entitlementLabels;
-        private readonly Texture2D _pixel;
 
         private Func<FamilyChartSnapshot> _snapshotProvider;
         private Func<string> _openTreeHandler;
@@ -55,8 +54,7 @@ namespace HaCreator.MapSimulator.UI
             _headerOffset = headerOffset;
             _rightIcons = rightIcons ?? Array.Empty<Texture2D>();
             _entitlementLabels = entitlementLabels ?? Array.Empty<string>();
-            _pixel = new Texture2D(device ?? throw new ArgumentNullException(nameof(device)), 1, 1);
-            _pixel.SetData(new[] { Color.White });
+            _ = device ?? throw new ArgumentNullException(nameof(device));
         }
 
         public override string WindowName => MapSimulatorWindowNames.FamilyChart;
@@ -160,24 +158,13 @@ namespace HaCreator.MapSimulator.UI
 
             FamilyChartSnapshot snapshot = GetSnapshot();
 
-            DrawText(sprite, snapshot.SelectedMemberName, 24, 32, new Color(80, 58, 31), 0.58f);
-            DrawText(sprite, snapshot.SelectedRank, 24, 46, new Color(141, 110, 70), 0.38f);
-            DrawText(sprite, snapshot.LocationSummary, 24, 58, new Color(100, 100, 100), 0.33f);
-
-            DrawValue(sprite, snapshot.JuniorCount.ToString(), 24, 85, 0.46f);
-            DrawValue(sprite, snapshot.CurrentReputation.ToString("N0"), 24, 109, 0.46f);
-            DrawValue(sprite, snapshot.TodayReputation.ToString("N0"), 24, 133, 0.46f);
+            DrawCenteredText(sprite, snapshot.SelectedMemberName, 7, 34, 209, new Color(80, 58, 31), 0.50f);
+            DrawRightAlignedText(sprite, $"{Math.Max(0, snapshot.JuniorCount)}/2", 47, 78, 31, new Color(70, 70, 70), 0.42f);
+            DrawRightAlignedText(sprite, snapshot.CurrentReputation.ToString("N0"), 47, 100, 153, new Color(70, 70, 70), 0.42f);
+            DrawRightAlignedText(sprite, FormatSignedValue(snapshot.TodayReputation), 107, 119, 92, new Color(70, 70, 70), 0.42f);
 
             DrawSpecialPanel(sprite, snapshot);
             DrawPreceptPanel(sprite, snapshot);
-
-            DrawText(
-                sprite,
-                $"{snapshot.Page}/{snapshot.TotalPages}  {snapshot.TotalMembers} family members",
-                104,
-                322,
-                new Color(215, 215, 215),
-                0.33f);
         }
 
         private void DrawSpecialPanel(SpriteBatch sprite, FamilyChartSnapshot snapshot)
@@ -190,9 +177,16 @@ namespace HaCreator.MapSimulator.UI
                 sprite.Draw(icon, new Vector2(iconBounds.X, iconBounds.Y), Color.White);
             }
 
-            DrawValue(sprite, snapshot.SpecialReputationCost.ToString("N0"), 24, 244, 0.42f);
-            DrawValue(sprite, snapshot.SpecialUsesLeft.ToString(), 111, 244, 0.42f);
-            DrawText(sprite, ResolveEntitlementLabel(snapshot), 24, 197, new Color(74, 74, 74), 0.33f);
+            DrawLeftAlignedText(
+                sprite,
+                $"[{Math.Max(1, snapshot.Page):00}/{Math.Max(1, snapshot.TotalPages):00}]",
+                163,
+                153,
+                new Color(116, 116, 116),
+                0.30f);
+            DrawCenteredText(sprite, ResolveEntitlementLabel(snapshot), 12, 182, 191, new Color(74, 74, 74), 0.31f);
+            DrawRightAlignedText(sprite, snapshot.SpecialReputationCost.ToString("N0"), 45, 201, 41, new Color(70, 70, 70), 0.38f);
+            DrawRightAlignedText(sprite, snapshot.SpecialUsesLeft.ToString(), 166, 201, 33, new Color(70, 70, 70), 0.38f);
         }
 
         private Rectangle GetSpecialIconBounds()
@@ -214,11 +208,9 @@ namespace HaCreator.MapSimulator.UI
 
         private void DrawPreceptPanel(SpriteBatch sprite, FamilyChartSnapshot snapshot)
         {
-            Rectangle preceptBounds = new Rectangle(Position.X + 20, Position.Y + 264, 174, 38);
-            sprite.Draw(_pixel, preceptBounds, new Color(255, 255, 255, 30));
-            DrawWrappedText(sprite, snapshot.Precept, 24, 268, 166, new Color(89, 89, 89), 0.34f, 13);
+            DrawWrappedText(sprite, snapshot.Precept, 13, 220, 177, new Color(170, 64, 64), 0.31f, 12);
 
-            int detailY = 306;
+            int detailY = 268;
             foreach (string line in snapshot.DetailLines)
             {
                 DrawText(sprite, line, 24, detailY, new Color(188, 188, 188), 0.30f);
@@ -285,6 +277,35 @@ namespace HaCreator.MapSimulator.UI
             DrawText(sprite, text, x, y, new Color(70, 70, 70), scale);
         }
 
+        private void DrawLeftAlignedText(SpriteBatch sprite, string text, int x, int y, Color color, float scale)
+        {
+            DrawText(sprite, text, x, y, color, scale);
+        }
+
+        private void DrawCenteredText(SpriteBatch sprite, string text, int x, int y, int width, Color color, float scale)
+        {
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                return;
+            }
+
+            Vector2 size = _font.MeasureString(text) * scale;
+            float drawX = Position.X + x + Math.Max(0f, (width - size.X) * 0.5f);
+            sprite.DrawString(_font, text, new Vector2(drawX, Position.Y + y), color, 0f, Vector2.Zero, scale, SpriteEffects.None, 0f);
+        }
+
+        private void DrawRightAlignedText(SpriteBatch sprite, string text, int x, int y, int width, Color color, float scale)
+        {
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                return;
+            }
+
+            Vector2 size = _font.MeasureString(text) * scale;
+            float drawX = Position.X + x + Math.Max(0f, width - size.X);
+            sprite.DrawString(_font, text, new Vector2(drawX, Position.Y + y), color, 0f, Vector2.Zero, scale, SpriteEffects.None, 0f);
+        }
+
         private void DrawText(SpriteBatch sprite, string text, int x, int y, Color color, float scale)
         {
             if (string.IsNullOrWhiteSpace(text))
@@ -327,6 +348,13 @@ namespace HaCreator.MapSimulator.UI
                 remaining = remaining[line.Length..].TrimStart();
                 drawY += lineHeight;
             }
+        }
+
+        private static string FormatSignedValue(int value)
+        {
+            return value >= 0
+                ? $"+{value:N0}"
+                : value.ToString("N0");
         }
     }
 }

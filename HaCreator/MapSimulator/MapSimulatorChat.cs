@@ -64,6 +64,10 @@ namespace HaCreator.MapSimulator
         private static readonly Color GuildMessageColor = new Color(176, 255, 120);
         private static readonly Color AllianceMessageColor = new Color(124, 236, 255);
         private static readonly Color ExpeditionMessageColor = new Color(255, 216, 128);
+        private static readonly Color ClientType11Color = new Color(255, 255, 255, 176);
+        private static readonly Color ClientType18Color = new Color(77, 26, 173, 44);
+        private static readonly Color ClientType20Color = new Color(255, 92, 89, 128);
+        private static readonly Color ClientType22Color = new Color(153, 204, 51);
 
         private const int CHAT_INPUT_X = 5;
         private const int CHAT_INPUT_Y_OFFSET = 55; // Offset from bottom of screen (just above status bar level indicator)
@@ -139,11 +143,18 @@ namespace HaCreator.MapSimulator
             Friend = 3,
             Guild = 4,
             Alliance = 5,
+            Type11 = 11,
+            System = 12,
             Notice = 13,
             OutgoingWhisper = 14,
-            System = 12,
             Error = 15,
             IncomingWhisper = 16,
+            Type18 = 18,
+            Type19 = 19,
+            Type20 = 20,
+            Type21 = 21,
+            Type22 = 22,
+            Type23 = 23,
             Expedition = 26
         }
 
@@ -611,6 +622,21 @@ namespace HaCreator.MapSimulator
             AddMessage(text, color, tickCount, chatLogType, null);
         }
 
+        public void AddClientChatMessage(string text, int tickCount, int chatLogType)
+        {
+            AddClientChatMessage(text, tickCount, chatLogType, null);
+        }
+
+        public void AddClientChatMessage(string text, int tickCount, int chatLogType, string whisperTargetCandidate)
+        {
+            AddMessage(
+                text,
+                ResolveRenderedClientChatLogColor(chatLogType),
+                tickCount,
+                chatLogType,
+                whisperTargetCandidate);
+        }
+
         public void AddMessage(string text, Color color, int tickCount, int chatLogType, string whisperTargetCandidate)
         {
             if (chatLogType < 0)
@@ -1010,12 +1036,19 @@ namespace HaCreator.MapSimulator
                 ClientChatLogType.Friend => FriendMessageColor,
                 ClientChatLogType.Guild => GuildMessageColor,
                 ClientChatLogType.Alliance => AllianceMessageColor,
+                ClientChatLogType.Type11 => ClientType11Color,
                 ClientChatLogType.Expedition => ExpeditionMessageColor,
                 ClientChatLogType.Notice => NoticeMessageColor,
                 ClientChatLogType.OutgoingWhisper => WhisperMessageColor,
                 ClientChatLogType.Error => ErrorMessageColor,
                 ClientChatLogType.System => SystemMessageColor,
                 ClientChatLogType.IncomingWhisper => WhisperMessageColor,
+                ClientChatLogType.Type18 => ClientType18Color,
+                ClientChatLogType.Type19 => ClientType20Color,
+                ClientChatLogType.Type20 => ClientType20Color,
+                ClientChatLogType.Type21 => new Color(255, 198, 0, 221),
+                ClientChatLogType.Type22 => ClientType22Color,
+                ClientChatLogType.Type23 => ClientType22Color,
                 _ => DefaultMessageColor
             };
         }
@@ -1070,6 +1103,26 @@ namespace HaCreator.MapSimulator
             if (ColorsMatch(color, WhisperMessageColor))
             {
                 return InferWhisperChatLogType(text);
+            }
+
+            if (ColorsMatch(color, ClientType11Color))
+            {
+                return (int)ClientChatLogType.Type11;
+            }
+
+            if (ColorsMatch(color, ClientType18Color))
+            {
+                return (int)ClientChatLogType.Type18;
+            }
+
+            if (ColorsMatch(color, ClientType20Color))
+            {
+                return (int)ClientChatLogType.Type20;
+            }
+
+            if (ColorsMatch(color, ClientType22Color))
+            {
+                return (int)ClientChatLogType.Type22;
             }
 
             return -1;

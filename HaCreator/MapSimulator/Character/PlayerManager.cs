@@ -67,6 +67,7 @@ namespace HaCreator.MapSimulator.Character
         private CombatEffects _combatEffects;
         private MobSkillEffectLoader _mobSkillEffectLoader;
         private AffectedAreaPool _affectedAreaPool;
+        private Func<int, bool> _remoteAffectedAreaDamageBlockEvaluator;
         private SoundManager _soundManager;
         private Action<Rectangle, int, int, int> _reactorAttackAreaHandler;
         private PlayerMobStatusController _mobStatusController;
@@ -280,6 +281,11 @@ namespace HaCreator.MapSimulator.Character
         public void SetAffectedAreaPool(AffectedAreaPool affectedAreaPool)
         {
             _affectedAreaPool = affectedAreaPool;
+        }
+
+        public void SetRemoteAffectedAreaDamageBlockEvaluator(Func<int, bool> evaluator)
+        {
+            _remoteAffectedAreaDamageBlockEvaluator = evaluator;
         }
 
         public void SetSoundManager(SoundManager soundManager)
@@ -802,8 +808,15 @@ namespace HaCreator.MapSimulator.Character
         /// <summary>
         /// Draw player
         /// </summary>
-        public void Draw(SpriteBatch spriteBatch, SkeletonMeshRenderer skeletonRenderer,
-            int mapShiftX, int mapShiftY, int centerX, int centerY, int currentTime)
+        public void Draw(
+            SpriteBatch spriteBatch,
+            SkeletonMeshRenderer skeletonRenderer,
+            int mapShiftX,
+            int mapShiftY,
+            int centerX,
+            int centerY,
+            int currentTime,
+            Action drawBetweenDragonAndPlayer = null)
         {
             if (Player == null)
                 return;
@@ -817,6 +830,7 @@ namespace HaCreator.MapSimulator.Character
             Pets.Draw(spriteBatch, skeletonRenderer, mapShiftX, mapShiftY, centerX, centerY, PetRenderPlane.BehindOwner);
             Skills?.DrawBackgroundEffects(spriteBatch, mapShiftX, mapShiftY, centerX, centerY, currentTime);
             Dragon.Draw(spriteBatch, skeletonRenderer, mapShiftX, mapShiftY, centerX, centerY, currentTime);
+            drawBetweenDragonAndPlayer?.Invoke();
             Player.Draw(
                 spriteBatch,
                 skeletonRenderer,
@@ -864,8 +878,7 @@ namespace HaCreator.MapSimulator.Character
                 return true;
             }
 
-            return Player != null
-                   && _affectedAreaPool?.IsPointInsideZone(Player.X, Player.Y, currentTime, "invincible") == true;
+            return _remoteAffectedAreaDamageBlockEvaluator?.Invoke(currentTime) == true;
         }
 
         internal bool TryApplyMobSkillStatus(int skillId, MobSkillRuntimeData runtimeData, int currentTime, float sourceX = 0f)
@@ -888,11 +901,11 @@ namespace HaCreator.MapSimulator.Character
             return _mobStatusController?.HasStatusEffect(effect) == true;
         }
 
-        private void HandleRepeatSkillModeEndRequested(int skillId, int returnSkillId)
+        private void HandleRepeatSkillModeEndRequested(int skillId, int returnSkillId, int requestedAt)
         {
             _pendingRepeatSkillModeEndSkillId = skillId;
             _pendingRepeatSkillModeEndReturnSkillId = returnSkillId;
-            _pendingRepeatSkillModeEndRequestTime = Environment.TickCount;
+            _pendingRepeatSkillModeEndRequestTime = requestedAt;
         }
 
         private void TryAcknowledgePendingRepeatSkillModeEnd(int currentTime)

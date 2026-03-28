@@ -36,6 +36,7 @@ namespace HaCreator.MapSimulator.UI
         private const int LayoutRowDominanceThreshold = 6;
         private const int LayoutIconInsetX = 10;
         private const int LayoutIconGapX = 10;
+        private const int LayoutTitlePaddingTop = 6;
         private const int LayoutBodyPaddingTop = 5;
         private const int LayoutBodyPaddingBottom = 8;
         private const int LayoutBodyToTitleGap = 10;
@@ -413,25 +414,47 @@ namespace HaCreator.MapSimulator.UI
                 _textRightPadding = Math.Max(8, _panelWidth - innerRight + LayoutIconInsetX);
             }
 
-            FindDominantNeutralBand(_frameBottom, out int bandStart, out int bandEnd);
-            if (bandStart < 0 || bandEnd < bandStart)
+            if (!TryResolveNoticeBands(out int titleBandStart, out int titleBandEnd, out int bodyBandStart, out int bodyBandEnd))
             {
                 return;
             }
 
-            int bodyTop = _topHeight + _centerHeight + bandStart;
-            int bodyBottom = _topHeight + _centerHeight + bandEnd;
+            int bodyTop = bodyBandStart;
+            int bodyBottom = bodyBandEnd;
             int bodyHeight = Math.Max(0, bodyBottom - bodyTop + 1);
+            int titleTop = titleBandStart;
+            int titleBottom = titleBandEnd;
 
             _messageY = bodyTop + LayoutBodyPaddingTop;
             _textBottomPadding = Math.Max(LayoutBodyPaddingBottom, GetMinimumPanelHeight() - bodyBottom + LayoutBodyPaddingBottom);
 
             int iconTop = bodyTop + Math.Max(0, (bodyHeight - IconSize) / 2);
-            _iconY = Math.Max(_iconY, iconTop);
+            _iconY = Math.Max(12, iconTop);
 
-            int titleBottom = Math.Max(0, bodyTop - LayoutBodyToTitleGap);
             float titleHeight = _font != null ? _font.LineSpacing * TitleScale : 12f;
-            _titleY = Math.Max(8, (int)Math.Round(titleBottom - titleHeight));
+            int resolvedTitleY = (int)Math.Round((double)(titleTop + LayoutTitlePaddingTop));
+            int maxTitleY = Math.Max(8, Math.Min(bodyTop - LayoutBodyToTitleGap, titleBottom + 1) - (int)Math.Ceiling(titleHeight));
+            _titleY = Math.Max(8, Math.Min(resolvedTitleY, maxTitleY));
+        }
+
+        private bool TryResolveNoticeBands(out int titleBandStart, out int titleBandEnd, out int bodyBandStart, out int bodyBandEnd)
+        {
+            titleBandStart = -1;
+            titleBandEnd = -1;
+            bodyBandStart = -1;
+            bodyBandEnd = -1;
+
+            if (!TryFindDominantBandAcrossNotice(IsTitlePanelPixel, out titleBandStart, out titleBandEnd))
+            {
+                return false;
+            }
+
+            if (!TryFindDominantBandAcrossNotice(IsNeutralPanelPixel, out bodyBandStart, out bodyBandEnd, titleBandEnd + 1))
+            {
+                return false;
+            }
+
+            return titleBandEnd >= titleBandStart && bodyBandEnd >= bodyBandStart;
         }
 
         private static int FindInnerEdge(Texture2D texture, bool fromLeft)
@@ -524,6 +547,110 @@ namespace HaCreator.MapSimulator.UI
             }
         }
 
+        private bool TryFindDominantBandAcrossNotice(Func<Color, bool> predicate, out int bandStart, out int bandEnd, int searchStartY = 0)
+        {
+            bandStart = -1;
+            bandEnd = -1;
+            int noticeHeight = GetMinimumPanelHeight();
+            if (_panelWidth <= 0 || noticeHeight <= 0)
+            {
+                return false;
+            }
+
+            int currentStart = -1;
+            int currentLength = 0;
+            int bestStart = -1;
+            int bestLength = 0;
+            Color[] row = new Color[_panelWidth];
+
+            for (int y = Math.Max(0, searchStartY); y < noticeHeight; y++)
+            {
+                if (!TryGetCombinedRow(y, row))
+                {
+                    continue;
+                }
+
+                int matchCount = 0;
+                for (int x = 0; x < row.Length; x++)
+                {
+                    if (predicate(row[x]))
+                    {
+                        matchCount++;
+                    }
+                }
+
+                bool isDominant = matchCount >= row.Length - LayoutRowDominanceThreshold;
+                if (isDominant)
+                {
+                    if (currentStart < 0)
+                    {
+                        currentStart = y;
+                        currentLength = 1;
+                    }
+                    else
+                    {
+                        currentLength++;
+                    }
+                }
+                else if (currentStart >= 0)
+                {
+                    if (currentLength > bestLength)
+                    {
+                        bestStart = currentStart;
+                        bestLength = currentLength;
+                    }
+
+                    currentStart = -1;
+                    currentLength = 0;
+                }
+            }
+
+            if (currentStart >= 0 && currentLength > bestLength)
+            {
+                bestStart = currentStart;
+                bestLength = currentLength;
+            }
+
+            if (bestStart < 0)
+            {
+                return false;
+            }
+
+            bandStart = bestStart;
+            bandEnd = bestStart + bestLength - 1;
+            return true;
+        }
+
+        private bool TryGetCombinedRow(int absoluteY, Color[] row)
+        {
+            if (row == null || row.Length < _panelWidth)
+            {
+                return false;
+            }
+
+            if (_frameTop != null && absoluteY < _topHeight)
+            {
+                _frameTop.GetData(0, new Rectangle(0, absoluteY, _panelWidth, 1), row, 0, row.Length);
+                return true;
+            }
+
+            int localY = absoluteY - _topHeight;
+            if (_frameCenter != null && localY < _centerHeight)
+            {
+                _frameCenter.GetData(0, new Rectangle(0, localY, _panelWidth, 1), row, 0, row.Length);
+                return true;
+            }
+
+            localY -= _centerHeight;
+            if (_frameBottom != null && localY >= 0 && localY < _bottomHeight)
+            {
+                _frameBottom.GetData(0, new Rectangle(0, localY, _panelWidth, 1), row, 0, row.Length);
+                return true;
+            }
+
+            return false;
+        }
+
         private static bool IsFrameFillPixel(Color color)
         {
             if (color.A < LayoutSampleAlphaThreshold)
@@ -544,6 +671,16 @@ namespace HaCreator.MapSimulator.UI
             return Math.Abs(color.R - color.G) <= 8 &&
                    Math.Abs(color.G - color.B) <= 8 &&
                    color.R >= 180;
+        }
+
+        private static bool IsTitlePanelPixel(Color color)
+        {
+            if (color.A < LayoutSampleAlphaThreshold)
+            {
+                return false;
+            }
+
+            return color.B - color.R >= 30 || color.G - color.R >= 12;
         }
 
         private string[] WrapText(string value, float scale, int maxWidth)

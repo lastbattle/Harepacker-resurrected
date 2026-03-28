@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Linq;
+using System.Runtime.InteropServices;
 using HaCreator.MapSimulator.UI;
 using HaSharedLibrary.Util;
 using MapleLib.PacketLib;
@@ -15,6 +16,15 @@ namespace HaCreator.MapSimulator.Interaction
 {
     internal sealed class FieldMessageBoxRuntime
     {
+        private static readonly string[] ClientVisualPropertyPreference =
+        {
+            "messageBox",
+            "sample",
+            "message",
+            "board",
+            "chalkboard"
+        };
+
         private const int DefaultItemId = 5370000;
         private const int DefaultFrameDelayMs = 100;
         private const int DefaultLeaveFadeMs = 1000;
@@ -26,6 +36,7 @@ namespace HaCreator.MapSimulator.Interaction
         private const int MaxBodyLineCount = 4;
 
         private readonly Dictionary<int, FieldMessageBoxEntry> _entries = new();
+        private readonly List<LeavingMessageBoxEntry> _leavingEntries = new();
         private readonly Dictionary<int, MessageBoxVisual> _visualCache = new();
         private readonly Dictionary<int, string> _itemNameCache = new();
         private GraphicsDevice _graphicsDevice;
@@ -33,7 +44,7 @@ namespace HaCreator.MapSimulator.Interaction
         private int _nextLocalMessageBoxId = 1;
         private string _statusMessage = "Field message-box pool idle.";
 
-        internal int ActiveCount => _entries.Count;
+        internal int ActiveCount => _entries.Count + _leavingEntries.Count;
 
         internal void Initialize(GraphicsDevice graphicsDevice)
         {
@@ -50,6 +61,7 @@ namespace HaCreator.MapSimulator.Interaction
         internal void Clear()
         {
             _entries.Clear();
+            _leavingEntries.Clear();
             _statusMessage = "Field message-box pool cleared.";
         }
 
@@ -101,21 +113,25 @@ namespace HaCreator.MapSimulator.Interaction
         {
             if (!_entries.TryGetValue(messageBoxId, out FieldMessageBoxEntry entry))
             {
+                int leavingIndex = _leavingEntries.FindIndex(leaving => leaving.Id == messageBoxId);
+                if (leavingIndex >= 0)
+                {
+                    _leavingEntries.RemoveAt(leavingIndex);
+                    _statusMessage = $"Removed field message-box {messageBoxId} from the leave-field queue.";
+                    return _statusMessage;
+                }
+
                 return $"Field message-box {messageBoxId} is not active.";
             }
 
+            _entries.Remove(messageBoxId);
             if (immediate)
             {
-                _entries.Remove(messageBoxId);
                 _statusMessage = $"Removed field message-box {messageBoxId} immediately.";
                 return _statusMessage;
             }
 
-            if (!entry.IsLeaving)
-            {
-                entry.BeginLeave(currentTick);
-            }
-
+            _leavingEntries.Add(LeavingMessageBoxEntry.FromEntry(entry, currentTick));
             _statusMessage = $"Field message-box {messageBoxId} began its leave-field fade.";
             return _statusMessage;
         }
@@ -150,38 +166,25 @@ namespace HaCreator.MapSimulator.Interaction
 
         internal void Update(int currentTick)
         {
-            if (_entries.Count == 0)
+            if (_entries.Count == 0 && _leavingEntries.Count == 0)
             {
                 return;
             }
 
-            List<int> expired = null;
-            foreach ((int messageBoxId, FieldMessageBoxEntry entry) in _entries)
+            foreach (FieldMessageBoxEntry entry in _entries.Values)
             {
                 entry.Update(currentTick);
-                if (entry.ShouldRemove(currentTick))
-                {
-                    expired ??= new List<int>();
-                    expired.Add(messageBoxId);
-                }
             }
 
-            if (expired == null)
+            int removedLeavingCount = _leavingEntries.RemoveAll(leaving => leaving.ShouldRemove(currentTick));
+            if (removedLeavingCount == 0)
             {
                 return;
             }
 
-            foreach (int messageBoxId in expired)
-            {
-                _entries.Remove(messageBoxId);
-            }
-
-            if (expired.Count > 0)
-            {
-                _statusMessage = expired.Count == 1
-                    ? $"Field message-box {expired[0]} finished leaving the field."
-                    : $"{expired.Count} field message-box entries finished leaving the field.";
-            }
+            _statusMessage = removedLeavingCount == 1
+                ? "Field message-box leave animation finished."
+                : $"{removedLeavingCount} field message-box leave animations finished.";
         }
 
         internal void Draw(
@@ -200,7 +203,11 @@ namespace HaCreator.MapSimulator.Interaction
                 return;
             }
 
-            foreach (FieldMessageBoxEntry entry in _entries.Values.OrderBy(messageBox => messageBox.LayerPosition.Y))
+            IEnumerable<IMessageBoxDrawableEntry> drawEntries = _entries.Values.Cast<IMessageBoxDrawableEntry>()
+                .Concat(_leavingEntries)
+                .OrderBy(messageBox => messageBox.LayerPosition.Y);
+
+            foreach (IMessageBoxDrawableEntry entry in drawEntries)
             {
                 DrawEntry(spriteBatch, font, entry, mapShiftX, mapShiftY, mapCenterX, mapCenterY, renderWidth, renderHeight, currentTick);
             }
@@ -280,7 +287,7 @@ namespace HaCreator.MapSimulator.Interaction
         private void DrawEntry(
             SpriteBatch spriteBatch,
             SpriteFont font,
-            FieldMessageBoxEntry entry,
+            IMessageBoxDrawableEntry entry,
             int mapShiftX,
             int mapShiftY,
             int mapCenterX,
@@ -345,7 +352,7 @@ namespace HaCreator.MapSimulator.Interaction
             spriteBatch.Draw(_pixelTexture, new Rectangle(bounds.Right - 2, bounds.Y, 2, bounds.Height), border);
         }
 
-        private void DrawBoardText(SpriteBatch spriteBatch, SpriteFont font, Rectangle boardBounds, FieldMessageBoxEntry entry, float alpha)
+        private void DrawBoardText(SpriteBatch spriteBatch, SpriteFont font, Rectangle boardBounds, IMessageBoxDrawableEntry entry, float alpha)
         {
             MessageBoxTextLayout layout = entry.Visual?.TextLayout ?? MessageBoxTextLayout.Default;
             int textRegionWidth = Math.Max(MinBoardWidth, boardBounds.Width - layout.PaddingLeft - layout.PaddingRight);
@@ -376,7 +383,7 @@ namespace HaCreator.MapSimulator.Interaction
             }
         }
 
-        private Rectangle BuildFallbackBounds(Point drawAnchor, SpriteFont font, FieldMessageBoxEntry entry)
+        private Rectangle BuildFallbackBounds(Point drawAnchor, SpriteFont font, IMessageBoxDrawableEntry entry)
         {
             const int width = 220;
             string[] bodyLines = WrapText(font, entry.MessageText, width - 26).Take(MaxBodyLineCount).ToArray();
@@ -424,12 +431,12 @@ namespace HaCreator.MapSimulator.Interaction
             Texture2D iconTexture = LoadCanvasTexture(infoProperty?["iconRaw"] as WzCanvasProperty)
                                     ?? LoadCanvasTexture(infoProperty?["icon"] as WzCanvasProperty);
 
-            if (TryLoadNamedVisual(itemProperty, "messageBox", out MessageBoxVisual messageBoxVisual) ||
-                TryLoadNamedVisual(infoProperty, "messageBox", out messageBoxVisual) ||
-                TryLoadNamedVisual(itemProperty, "sample", out messageBoxVisual) ||
-                TryLoadNamedVisual(infoProperty, "sample", out messageBoxVisual))
+            foreach ((WzSubProperty parent, string propertyName) in EnumerateClientVisualCandidates(itemProperty, infoProperty))
             {
-                return messageBoxVisual with { IconTexture = iconTexture ?? messageBoxVisual.IconTexture };
+                if (TryLoadNamedVisual(parent, propertyName, out MessageBoxVisual messageBoxVisual))
+                {
+                    return messageBoxVisual with { IconTexture = iconTexture ?? messageBoxVisual.IconTexture };
+                }
             }
 
             List<(WzSubProperty Property, int Score)> candidates = new();
@@ -583,6 +590,14 @@ namespace HaCreator.MapSimulator.Interaction
                 return false;
             }
 
+            string layoutKey = property.Name;
+            if (property.WzProperties.OfType<WzCanvasProperty>().Count() == 1)
+            {
+                layoutKey = property.WzProperties.OfType<WzCanvasProperty>().First().Name;
+            }
+
+            MessageBoxTextLayout layout = ResolveTextLayout(layoutKey, textures[0]);
+
             if (property.Name.Equals("info", StringComparison.OrdinalIgnoreCase) &&
                 textures.Count > 1 &&
                 property.WzProperties.OfType<WzCanvasProperty>().Any(canvas => canvas.Name.Equals("sample", StringComparison.OrdinalIgnoreCase)))
@@ -598,6 +613,7 @@ namespace HaCreator.MapSimulator.Interaction
                 textures = new List<Texture2D> { sampleTexture };
                 origins = new List<Point> { sampleOrigin };
                 delays = new List<int> { sampleDelay };
+                layout = ResolveTextLayout("sample", sampleTexture);
             }
 
             return textures.Count > 0;
@@ -664,8 +680,29 @@ namespace HaCreator.MapSimulator.Interaction
             return score;
         }
 
+        private static IEnumerable<(WzSubProperty Parent, string PropertyName)> EnumerateClientVisualCandidates(WzSubProperty itemProperty, WzSubProperty infoProperty)
+        {
+            foreach (string propertyName in ClientVisualPropertyPreference)
+            {
+                if (infoProperty != null)
+                {
+                    yield return (infoProperty, propertyName);
+                }
+
+                if (itemProperty != null)
+                {
+                    yield return (itemProperty, propertyName);
+                }
+            }
+        }
+
         private static MessageBoxTextLayout ResolveTextLayout(string propertyName, Texture2D texture)
         {
+            if (TryResolveTextureBackedTextLayout(texture, out MessageBoxTextLayout textureBackedLayout))
+            {
+                return textureBackedLayout;
+            }
+
             string name = propertyName ?? string.Empty;
             if (name.IndexOf("sample", StringComparison.OrdinalIgnoreCase) >= 0 ||
                 name.IndexOf("message", StringComparison.OrdinalIgnoreCase) >= 0 ||
@@ -688,6 +725,118 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             return MessageBoxTextLayout.Default;
+        }
+
+        private static bool TryResolveTextureBackedTextLayout(Texture2D texture, out MessageBoxTextLayout layout)
+        {
+            layout = default;
+            if (texture == null)
+            {
+                return false;
+            }
+
+            Color[] pixels = new Color[texture.Width * texture.Height];
+            try
+            {
+                texture.GetData(pixels);
+            }
+            catch (InvalidOperationException)
+            {
+                return false;
+            }
+            catch (NotSupportedException)
+            {
+                return false;
+            }
+
+            if (!TryFindDominantOpaqueBounds(pixels, texture.Width, texture.Height, out Rectangle fillBounds, out Color fillColor))
+            {
+                return false;
+            }
+
+            int paddingLeft = Math.Clamp(fillBounds.Left, 4, texture.Width / 2);
+            int paddingTop = Math.Clamp(fillBounds.Top, 4, texture.Height / 2);
+            int paddingRight = Math.Clamp(texture.Width - fillBounds.Right - 1, 4, texture.Width / 2);
+            int paddingBottom = Math.Clamp(texture.Height - fillBounds.Bottom - 1, 4, texture.Height / 2);
+            Color textColor = ChooseContrastingTextColor(fillColor);
+            layout = new MessageBoxTextLayout(
+                paddingLeft,
+                paddingTop,
+                paddingRight,
+                paddingBottom,
+                CenterHorizontally: true,
+                CenterVertically: true,
+                MaxLineCount: MaxBodyLineCount,
+                TextColor: textColor);
+            return true;
+        }
+
+        private static bool TryFindDominantOpaqueBounds(Color[] pixels, int width, int height, out Rectangle bounds, out Color fillColor)
+        {
+            bounds = Rectangle.Empty;
+            fillColor = Color.Transparent;
+            if (pixels == null || pixels.Length == 0 || width <= 0 || height <= 0)
+            {
+                return false;
+            }
+
+            Dictionary<int, int> colorCounts = new();
+            for (int i = 0; i < pixels.Length; i++)
+            {
+                Color pixel = pixels[i];
+                if (pixel.A < 220)
+                {
+                    continue;
+                }
+
+                int key = pixel.PackedValue.GetHashCode();
+                colorCounts[key] = colorCounts.TryGetValue(key, out int count) ? count + 1 : 1;
+            }
+
+            if (colorCounts.Count == 0)
+            {
+                return false;
+            }
+
+            int dominantKey = colorCounts.OrderByDescending(pair => pair.Value).First().Key;
+            fillColor = pixels.First(pixel => pixel.A >= 220 && pixel.PackedValue.GetHashCode() == dominantKey);
+
+            int minX = width;
+            int minY = height;
+            int maxX = -1;
+            int maxY = -1;
+            for (int y = 0; y < height; y++)
+            {
+                for (int x = 0; x < width; x++)
+                {
+                    Color pixel = pixels[(y * width) + x];
+                    if (pixel.A < 220 || pixel.PackedValue.GetHashCode() != dominantKey)
+                    {
+                        continue;
+                    }
+
+                    minX = Math.Min(minX, x);
+                    minY = Math.Min(minY, y);
+                    maxX = Math.Max(maxX, x);
+                    maxY = Math.Max(maxY, y);
+                }
+            }
+
+            if (maxX < minX || maxY < minY)
+            {
+                return false;
+            }
+
+            bounds = new Rectangle(minX, minY, (maxX - minX) + 1, (maxY - minY) + 1);
+            return bounds.Width >= 24 && bounds.Height >= 20;
+        }
+
+        private static Color ChooseContrastingTextColor(Color background)
+        {
+            float luminance = (0.2126f * background.R) + (0.7152f * background.G) + (0.0722f * background.B);
+            return luminance >= 140f
+                ? new Color(32, 32, 32)
+                : new Color(244, 246, 232);
         }
 
         private string ResolveItemName(int itemId)
@@ -757,14 +906,23 @@ namespace HaCreator.MapSimulator.Interaction
             return lines.Count == 0 ? new[] { normalized } : lines;
         }
 
-        private sealed class FieldMessageBoxEntry
+        private interface IMessageBoxDrawableEntry
+        {
+            int Id { get; }
+            string MessageText { get; }
+            Point LayerPosition { get; }
+            MessageBoxVisual Visual { get; }
+            Texture2D GetDisplayTexture();
+            Point GetDisplayOrigin();
+            float GetAlpha(int currentTick);
+            int GetVerticalFloatOffset(int currentTick);
+        }
+
+        private sealed class FieldMessageBoxEntry : IMessageBoxDrawableEntry
         {
             private int _frameIndex;
             private int _nextFrameTick;
             private readonly int _createdAt;
-            private int _leaveStartedAt = int.MinValue;
-            private Texture2D _leaveTexture;
-            private Point _leaveOrigin;
 
             public FieldMessageBoxEntry(
                 int id,
@@ -798,11 +956,10 @@ namespace HaCreator.MapSimulator.Interaction
             public MessageBoxVisual Visual { get; }
             public string ItemName { get; }
             public int FrameIndex => _frameIndex;
-            public bool IsLeaving => _leaveStartedAt != int.MinValue;
 
             public void Update(int currentTick)
             {
-                if (IsLeaving || Visual == null || Visual.FrameCount <= 1 || currentTick < _nextFrameTick)
+                if (Visual == null || Visual.FrameCount <= 1 || currentTick < _nextFrameTick)
                 {
                     return;
                 }
@@ -811,52 +968,86 @@ namespace HaCreator.MapSimulator.Interaction
                 _nextFrameTick = currentTick + Visual.GetFrameDelay(_frameIndex);
             }
 
-            public void BeginLeave(int currentTick)
-            {
-                _leaveTexture ??= Visual?.GetFrameTexture(_frameIndex);
-                _leaveOrigin = Visual?.GetFrameOrigin(_frameIndex) ?? Point.Zero;
-                _leaveStartedAt = currentTick;
-            }
-
             public float GetAlpha(int currentTick)
             {
-                if (!IsLeaving)
-                {
-                    return 1f;
-                }
-
-                float progress = Math.Clamp((currentTick - _leaveStartedAt) / (float)DefaultLeaveFadeMs, 0f, 1f);
-                return 1f - progress;
-            }
-
-            public bool ShouldRemove(int currentTick)
-            {
-                return IsLeaving && currentTick - _leaveStartedAt >= DefaultLeaveFadeMs;
+                return 1f;
             }
 
             public int GetVerticalFloatOffset(int currentTick)
             {
-                if (IsLeaving)
-                {
-                    return 0;
-                }
-
                 float phase = ((currentTick - _createdAt) % DefaultBobPeriodMs) / DefaultBobPeriodMs;
                 return (int)Math.Round(Math.Sin(phase * MathHelper.TwoPi) * DefaultBobAmplitude);
             }
 
             public Texture2D GetDisplayTexture()
             {
-                return IsLeaving
-                    ? _leaveTexture ?? Visual?.GetFrameTexture(_frameIndex)
-                    : Visual?.GetFrameTexture(_frameIndex);
+                return Visual?.GetFrameTexture(_frameIndex);
             }
 
             public Point GetDisplayOrigin()
             {
-                return IsLeaving
-                    ? _leaveOrigin
-                    : Visual?.GetFrameOrigin(_frameIndex) ?? Point.Zero;
+                return Visual?.GetFrameOrigin(_frameIndex) ?? Point.Zero;
+            }
+        }
+
+        private sealed class LeavingMessageBoxEntry : IMessageBoxDrawableEntry
+        {
+            private readonly int _leaveStartedAt;
+            private readonly Texture2D _leaveTexture;
+            private readonly Point _leaveOrigin;
+
+            private LeavingMessageBoxEntry(int id, string messageText, Point layerPosition, MessageBoxVisual visual, Texture2D leaveTexture, Point leaveOrigin, int leaveStartedAt)
+            {
+                Id = id;
+                MessageText = messageText;
+                LayerPosition = layerPosition;
+                Visual = visual;
+                _leaveTexture = leaveTexture;
+                _leaveOrigin = leaveOrigin;
+                _leaveStartedAt = leaveStartedAt;
+            }
+
+            public int Id { get; }
+            public string MessageText { get; }
+            public Point LayerPosition { get; }
+            public MessageBoxVisual Visual { get; }
+
+            public static LeavingMessageBoxEntry FromEntry(FieldMessageBoxEntry entry, int currentTick)
+            {
+                return new LeavingMessageBoxEntry(
+                    entry.Id,
+                    entry.MessageText,
+                    entry.LayerPosition,
+                    entry.Visual,
+                    entry.GetDisplayTexture(),
+                    entry.GetDisplayOrigin(),
+                    currentTick);
+            }
+
+            public bool ShouldRemove(int currentTick)
+            {
+                return currentTick - _leaveStartedAt >= DefaultLeaveFadeMs;
+            }
+
+            public Texture2D GetDisplayTexture()
+            {
+                return _leaveTexture;
+            }
+
+            public Point GetDisplayOrigin()
+            {
+                return _leaveOrigin;
+            }
+
+            public float GetAlpha(int currentTick)
+            {
+                float progress = Math.Clamp((currentTick - _leaveStartedAt) / (float)DefaultLeaveFadeMs, 0f, 1f);
+                return 1f - progress;
+            }
+
+            public int GetVerticalFloatOffset(int currentTick)
+            {
+                return 0;
             }
         }
 

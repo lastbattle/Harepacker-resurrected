@@ -1,12 +1,17 @@
 ﻿using HaCreator.MapSimulator.Character;
 using HaCreator.MapSimulator.Effects;
 using HaCreator.MapSimulator.Interaction;
+using HaCreator.MapSimulator.Managers;
+using HaCreator.MapSimulator.Companions;
+using HaCreator.MapSimulator.UI;
 using MapleLib.WzLib;
 using MapleLib.WzLib.Util;
 using MapleLib.WzLib.WzProperties;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
+using MapleLib.WzLib.WzStructure.Data.ItemStructure;
 using System;
+using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Linq;
@@ -16,6 +21,8 @@ namespace HaCreator.MapSimulator
 {
     public partial class MapSimulator
     {
+        private readonly record struct FieldHazardHpPotionCandidate(int ItemId, InventoryType InventoryType, string ItemName);
+
         private const int PacketOwnedBalloonHorizontalPadding = 10;
         private const int PacketOwnedBalloonVerticalPadding = 8;
         private const int PacketOwnedBalloonMinWidth = 64;
@@ -23,10 +30,15 @@ namespace HaCreator.MapSimulator
         private const int PacketOwnedBalloonScreenMargin = 6;
         private const int PacketOwnedBalloonAvatarVerticalOffset = 15;
         private const int PacketOwnedBalloonFadeOutMs = 220;
+        private const int PacketOwnedBalloonCornerThreshold = 28;
+        private const int PacketOwnedBalloonLongArrowThreshold = 18;
 
         private readonly PacketFieldFadeOverlay _packetOwnedFieldFadeOverlay = new();
         private readonly LocalOverlayBalloonState _packetOwnedBalloonState = new();
+        private readonly LocalOverlayPacketInboxManager _localOverlayPacketInbox = new();
         private LocalOverlayBalloonSkin _packetOwnedBalloonSkin;
+        private bool _localOverlayPacketInboxEnabled = true;
+        private int _localOverlayPacketInboxConfiguredPort = LocalOverlayPacketInboxManager.DefaultPort;
 
         private void LoadPacketOwnedLocalOverlayAssets()
         {
@@ -48,8 +60,44 @@ namespace HaCreator.MapSimulator
                 West = LoadUiCanvasTexture(balloonSource["w"] as WzCanvasProperty),
                 East = LoadUiCanvasTexture(balloonSource["e"] as WzCanvasProperty),
                 Center = LoadUiCanvasTexture(balloonSource["c"] as WzCanvasProperty),
-                Arrow = LoadUiCanvasTexture(balloonSource["arrow"] as WzCanvasProperty),
+                Arrow = LoadUiArrowSprite(balloonSource["arrow"] as WzCanvasProperty),
+                SecondaryArrow = LoadUiArrowSprite(balloonSource["slArrow"] as WzCanvasProperty),
+                SouthEastArrow = LoadUiArrowSprite(balloonSource["seArrow"] as WzCanvasProperty),
+                SouthWestArrow = LoadUiArrowSprite(balloonSource["swArrow"] as WzCanvasProperty),
+                NorthWestArrow = LoadUiArrowSprite(balloonSource["nwArrow"] as WzCanvasProperty),
+                NorthEastArrow = LoadUiArrowSprite(balloonSource["neArrow"] as WzCanvasProperty),
+                SouthEastLongArrow = LoadUiArrowSprite(balloonSource["selArrow"] as WzCanvasProperty),
+                SouthWestLongArrow = LoadUiArrowSprite(balloonSource["swlArrow"] as WzCanvasProperty),
+                NorthWestLongArrow = LoadUiArrowSprite(balloonSource["nwlArrow"] as WzCanvasProperty),
+                NorthEastLongArrow = LoadUiArrowSprite(balloonSource["nelArrow"] as WzCanvasProperty),
                 TextColor = ResolvePacketOwnedBalloonTextColor(balloonSource["clr"] as WzImageProperty)
+            };
+        }
+
+        private LocalOverlayBalloonArrowSprite LoadUiArrowSprite(WzCanvasProperty canvasProperty)
+        {
+            if (canvasProperty == null)
+            {
+                return null;
+            }
+
+            Texture2D texture = LoadUiCanvasTexture(canvasProperty);
+            if (texture == null)
+            {
+                return null;
+            }
+
+            Point origin = Point.Zero;
+            System.Drawing.PointF sourceOrigin = canvasProperty.GetCanvasOriginPosition();
+            if (!float.IsNaN(sourceOrigin.X) && !float.IsNaN(sourceOrigin.Y))
+            {
+                origin = new Point((int)Math.Round(sourceOrigin.X), (int)Math.Round(sourceOrigin.Y));
+            }
+
+            return new LocalOverlayBalloonArrowSprite
+            {
+                Texture = texture,
+                Origin = origin
             };
         }
 
@@ -115,70 +163,26 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
-            if (!TryResolvePacketOwnedBalloonAnchorScreenPoint(currentTickCount, mapCenterX, mapCenterY, out Point anchor))
+            var occupiedBounds = new List<Rectangle>();
+
+            LocalOverlayBalloonMessage avatarMessage = _packetOwnedBalloonState.GetAvatarMessage(currentTickCount);
+            if (avatarMessage != null
+                && TryBuildPacketOwnedBalloonLayout(avatarMessage, currentTickCount, mapCenterX, mapCenterY, occupiedBounds, out PacketOwnedBalloonLayout avatarLayout))
             {
-                return;
+                DrawPacketOwnedBalloonLayout(avatarLayout, currentTickCount);
+                occupiedBounds.Add(avatarLayout.BodyBounds);
             }
 
-            string[] lines = WrapPacketOwnedBalloonText(_packetOwnedBalloonState.Text, ResolvePacketOwnedBalloonWrapWidth());
-            if (lines.Length == 0)
+            IReadOnlyList<LocalOverlayBalloonMessage> fieldMessages = _packetOwnedBalloonState.GetFieldMessages(currentTickCount);
+            for (int i = 0; i < fieldMessages.Count; i++)
             {
-                return;
-            }
+                if (!TryBuildPacketOwnedBalloonLayout(fieldMessages[i], currentTickCount, mapCenterX, mapCenterY, occupiedBounds, out PacketOwnedBalloonLayout fieldLayout))
+                {
+                    continue;
+                }
 
-            Vector2 lineMeasure = MeasureChatTextWithFallback("Ay");
-            int lineHeight = Math.Max(14, (int)Math.Ceiling(lineMeasure.Y));
-            int textWidth = 0;
-            for (int i = 0; i < lines.Length; i++)
-            {
-                textWidth = Math.Max(textWidth, (int)Math.Ceiling(MeasureChatTextWithFallback(lines[i]).X));
-            }
-
-            int requestedWidth = Math.Clamp(_packetOwnedBalloonState.RequestedWidth, PacketOwnedBalloonMinWidth, PacketOwnedBalloonMaxWidth);
-            int bodyWidth = Math.Max(requestedWidth, textWidth + (PacketOwnedBalloonHorizontalPadding * 2));
-            int bodyHeight = Math.Max(26, (lines.Length * lineHeight) + (PacketOwnedBalloonVerticalPadding * 2));
-            int arrowHeight = _packetOwnedBalloonSkin?.Arrow?.Height ?? 14;
-            int bodyX = Math.Clamp(
-                anchor.X - (bodyWidth / 2),
-                PacketOwnedBalloonScreenMargin,
-                Math.Max(PacketOwnedBalloonScreenMargin, Width - bodyWidth - PacketOwnedBalloonScreenMargin));
-            int bodyY = Math.Clamp(
-                anchor.Y - bodyHeight - arrowHeight + 1,
-                PacketOwnedBalloonScreenMargin,
-                Math.Max(PacketOwnedBalloonScreenMargin, Height - bodyHeight - arrowHeight - PacketOwnedBalloonScreenMargin));
-            Rectangle bodyBounds = new(bodyX, bodyY, bodyWidth, bodyHeight);
-
-            float alpha = 1f;
-            int fadeRemaining = _packetOwnedBalloonState.ExpiresAt - currentTickCount;
-            if (fadeRemaining < PacketOwnedBalloonFadeOutMs)
-            {
-                alpha = MathHelper.Clamp(fadeRemaining / (float)PacketOwnedBalloonFadeOutMs, 0f, 1f);
-            }
-
-            Color tint = Color.White * alpha;
-            Color textColor = (_packetOwnedBalloonSkin?.TextColor ?? Color.Black) * alpha;
-
-            if (_packetOwnedBalloonSkin?.IsLoaded == true)
-            {
-                DrawPacketOwnedBalloonNineSlice(bodyBounds, tint);
-                DrawPacketOwnedBalloonArrow(bodyBounds, anchor, tint);
-            }
-            else if (_debugBoundaryTexture != null)
-            {
-                Color background = new Color(255, 255, 255) * (0.96f * alpha);
-                Color border = new Color(66, 66, 66) * alpha;
-                _spriteBatch.Draw(_debugBoundaryTexture, bodyBounds, background);
-                _spriteBatch.Draw(_debugBoundaryTexture, new Rectangle(bodyBounds.X, bodyBounds.Y, bodyBounds.Width, 1), border);
-                _spriteBatch.Draw(_debugBoundaryTexture, new Rectangle(bodyBounds.X, bodyBounds.Bottom - 1, bodyBounds.Width, 1), border);
-                _spriteBatch.Draw(_debugBoundaryTexture, new Rectangle(bodyBounds.X, bodyBounds.Y, 1, bodyBounds.Height), border);
-                _spriteBatch.Draw(_debugBoundaryTexture, new Rectangle(bodyBounds.Right - 1, bodyBounds.Y, 1, bodyBounds.Height), border);
-            }
-
-            float drawY = bodyBounds.Y + PacketOwnedBalloonVerticalPadding;
-            for (int i = 0; i < lines.Length; i++)
-            {
-                DrawChatTextWithFallback(lines[i], new Vector2(bodyBounds.X + PacketOwnedBalloonHorizontalPadding, drawY), textColor);
-                drawY += lineHeight;
+                DrawPacketOwnedBalloonLayout(fieldLayout, currentTickCount);
+                occupiedBounds.Add(fieldLayout.BodyBounds);
             }
         }
 
@@ -212,26 +216,46 @@ namespace HaCreator.MapSimulator
             _spriteBatch.Draw(southEast, new Vector2(bodyBounds.Right - rightWidth, bodyBounds.Bottom - bottomHeight), tint);
         }
 
-        private void DrawPacketOwnedBalloonArrow(Rectangle bodyBounds, Point anchor, Color tint)
+        private void DrawPacketOwnedBalloonArrow(in PacketOwnedBalloonLayout layout, Color tint)
         {
-            Texture2D arrow = _packetOwnedBalloonSkin?.Arrow;
-            if (arrow == null)
+            LocalOverlayBalloonArrowSprite arrow = layout.ArrowSprite;
+            Texture2D arrowTexture = arrow?.Texture;
+            if (arrowTexture == null)
             {
                 return;
             }
 
-            int arrowX = Math.Clamp(
-                anchor.X - (arrow.Width / 2),
-                bodyBounds.X + 6,
-                Math.Max(bodyBounds.X + 6, bodyBounds.Right - arrow.Width - 6));
-            int arrowY = bodyBounds.Bottom - 1;
-            _spriteBatch.Draw(arrow, new Vector2(arrowX, arrowY), tint);
+            Vector2 arrowPosition = layout.ArrowKind switch
+            {
+                PacketOwnedBalloonArrowKind.BottomLeft or PacketOwnedBalloonArrowKind.BottomLeftLong
+                    => new Vector2(layout.BodyBounds.X - arrow.Origin.X, layout.BodyBounds.Bottom - 1 - arrow.Origin.Y),
+                PacketOwnedBalloonArrowKind.BottomRight or PacketOwnedBalloonArrowKind.BottomRightLong
+                    => new Vector2(layout.BodyBounds.Right - arrow.Origin.X, layout.BodyBounds.Bottom - 1 - arrow.Origin.Y),
+                PacketOwnedBalloonArrowKind.TopLeft or PacketOwnedBalloonArrowKind.TopLeftLong
+                    => new Vector2(layout.BodyBounds.X - arrow.Origin.X, layout.BodyBounds.Y - arrow.Origin.Y),
+                PacketOwnedBalloonArrowKind.TopRight or PacketOwnedBalloonArrowKind.TopRightLong
+                    => new Vector2(layout.BodyBounds.Right - arrow.Origin.X, layout.BodyBounds.Y - arrow.Origin.Y),
+                PacketOwnedBalloonArrowKind.TopCenter or PacketOwnedBalloonArrowKind.TopCenterLong
+                    => new Vector2(
+                        Math.Clamp(
+                            layout.Anchor.X - (arrowTexture.Width / 2) + arrow.Origin.X,
+                            layout.BodyBounds.X + 6,
+                            Math.Max(layout.BodyBounds.X + 6, layout.BodyBounds.Right - arrowTexture.Width - 6)),
+                        layout.BodyBounds.Y - arrowTexture.Height + 1),
+                _ => new Vector2(
+                    Math.Clamp(
+                        layout.Anchor.X - (arrowTexture.Width / 2) + arrow.Origin.X,
+                        layout.BodyBounds.X + 6,
+                        Math.Max(layout.BodyBounds.X + 6, layout.BodyBounds.Right - arrowTexture.Width - 6)),
+                    layout.BodyBounds.Bottom - 1)
+            };
+            _spriteBatch.Draw(arrowTexture, arrowPosition, tint);
         }
 
-        private bool TryResolvePacketOwnedBalloonAnchorScreenPoint(int currentTickCount, int mapCenterX, int mapCenterY, out Point anchor)
+        private bool TryResolvePacketOwnedBalloonAnchorScreenPoint(LocalOverlayBalloonMessage message, int currentTickCount, int mapCenterX, int mapCenterY, out Point anchor)
         {
             Point worldAnchor;
-            if (_packetOwnedBalloonState.AnchorMode == LocalOverlayBalloonAnchorMode.Avatar)
+            if (message.AnchorMode == LocalOverlayBalloonAnchorMode.Avatar)
             {
                 if (!TryResolvePacketOwnedAvatarBalloonWorldAnchor(currentTickCount, out worldAnchor))
                 {
@@ -241,7 +265,7 @@ namespace HaCreator.MapSimulator
             }
             else
             {
-                worldAnchor = _packetOwnedBalloonState.WorldAnchor;
+                worldAnchor = message.WorldAnchor;
             }
 
             anchor = new Point(
@@ -266,10 +290,10 @@ namespace HaCreator.MapSimulator
             return true;
         }
 
-        private int ResolvePacketOwnedBalloonWrapWidth()
+        private int ResolvePacketOwnedBalloonWrapWidth(int requestedWidth)
         {
-            int requestedWidth = Math.Clamp(_packetOwnedBalloonState.RequestedWidth, PacketOwnedBalloonMinWidth, PacketOwnedBalloonMaxWidth);
-            return Math.Max(32, requestedWidth - (PacketOwnedBalloonHorizontalPadding * 2));
+            int clampedWidth = Math.Clamp(requestedWidth, PacketOwnedBalloonMinWidth, PacketOwnedBalloonMaxWidth);
+            return Math.Max(32, clampedWidth - (PacketOwnedBalloonHorizontalPadding * 2));
         }
 
         private string[] WrapPacketOwnedBalloonText(string text, int maxWidth)
@@ -318,7 +342,172 @@ namespace HaCreator.MapSimulator
             return wrappedLines.Count == 0 ? Array.Empty<string>() : wrappedLines.ToArray();
         }
 
-        private string ApplyPacketOwnedFieldFade(int fadeInMs, int holdMs, int fadeOutMs, int styleCode, int currentTickCount)
+        private bool TryBuildPacketOwnedBalloonLayout(
+            LocalOverlayBalloonMessage message,
+            int currentTickCount,
+            int mapCenterX,
+            int mapCenterY,
+            List<Rectangle> occupiedBounds,
+            out PacketOwnedBalloonLayout layout)
+        {
+            layout = default;
+            if (!TryResolvePacketOwnedBalloonAnchorScreenPoint(message, currentTickCount, mapCenterX, mapCenterY, out Point anchor))
+            {
+                return false;
+            }
+
+            string[] lines = WrapPacketOwnedBalloonText(message.Text, ResolvePacketOwnedBalloonWrapWidth(message.RequestedWidth));
+            if (lines.Length == 0)
+            {
+                return false;
+            }
+
+            Vector2 lineMeasure = MeasureChatTextWithFallback("Ay");
+            int lineHeight = Math.Max(14, (int)Math.Ceiling(lineMeasure.Y));
+            int textWidth = 0;
+            for (int i = 0; i < lines.Length; i++)
+            {
+                textWidth = Math.Max(textWidth, (int)Math.Ceiling(MeasureChatTextWithFallback(lines[i]).X));
+            }
+
+            int requestedWidth = Math.Clamp(message.RequestedWidth, PacketOwnedBalloonMinWidth, PacketOwnedBalloonMaxWidth);
+            int bodyWidth = Math.Max(requestedWidth, textWidth + (PacketOwnedBalloonHorizontalPadding * 2));
+            int bodyHeight = Math.Max(26, (lines.Length * lineHeight) + (PacketOwnedBalloonVerticalPadding * 2));
+            int bodyX = Math.Clamp(
+                anchor.X - (bodyWidth / 2),
+                PacketOwnedBalloonScreenMargin,
+                Math.Max(PacketOwnedBalloonScreenMargin, Width - bodyWidth - PacketOwnedBalloonScreenMargin));
+            bool placeAbove = anchor.Y >= bodyHeight + PacketOwnedBalloonScreenMargin + 16;
+            PacketOwnedBalloonArrowKind arrowKind = SelectPacketOwnedBalloonArrowKind(anchor, bodyX, bodyWidth, placeAbove);
+            LocalOverlayBalloonArrowSprite arrowSprite = ResolvePacketOwnedBalloonArrowSprite(arrowKind);
+            int arrowHeight = arrowSprite?.Texture?.Height ?? 14;
+            int desiredBodyY = placeAbove
+                ? anchor.Y - bodyHeight - arrowHeight + 1
+                : anchor.Y + arrowHeight - 1;
+            Rectangle bodyBounds = new(
+                bodyX,
+                Math.Clamp(
+                    desiredBodyY,
+                    PacketOwnedBalloonScreenMargin,
+                    Math.Max(PacketOwnedBalloonScreenMargin, Height - bodyHeight - PacketOwnedBalloonScreenMargin)),
+                bodyWidth,
+                bodyHeight);
+
+            if (occupiedBounds != null)
+            {
+                for (int i = 0; i < occupiedBounds.Count; i++)
+                {
+                    if (!bodyBounds.Intersects(occupiedBounds[i]))
+                    {
+                        continue;
+                    }
+
+                    int adjustedY = placeAbove
+                        ? occupiedBounds[i].Y - bodyHeight - PacketOwnedBalloonScreenMargin
+                        : occupiedBounds[i].Bottom + PacketOwnedBalloonScreenMargin;
+                    bodyBounds.Y = Math.Clamp(
+                        adjustedY,
+                        PacketOwnedBalloonScreenMargin,
+                        Math.Max(PacketOwnedBalloonScreenMargin, Height - bodyHeight - PacketOwnedBalloonScreenMargin));
+                }
+            }
+
+            layout = new PacketOwnedBalloonLayout(message, anchor, bodyBounds, lines, lineHeight, arrowKind, arrowSprite);
+            return true;
+        }
+
+        private void DrawPacketOwnedBalloonLayout(in PacketOwnedBalloonLayout layout, int currentTickCount)
+        {
+            float alpha = 1f;
+            int fadeRemaining = layout.Message.ExpiresAt - currentTickCount;
+            if (fadeRemaining < PacketOwnedBalloonFadeOutMs)
+            {
+                alpha = MathHelper.Clamp(fadeRemaining / (float)PacketOwnedBalloonFadeOutMs, 0f, 1f);
+            }
+
+            Color tint = Color.White * alpha;
+            Color textColor = (_packetOwnedBalloonSkin?.TextColor ?? Color.Black) * alpha;
+
+            if (_packetOwnedBalloonSkin?.IsLoaded == true)
+            {
+                DrawPacketOwnedBalloonNineSlice(layout.BodyBounds, tint);
+                DrawPacketOwnedBalloonArrow(layout, tint);
+            }
+            else if (_debugBoundaryTexture != null)
+            {
+                Color background = new Color(255, 255, 255) * (0.96f * alpha);
+                Color border = new Color(66, 66, 66) * alpha;
+                _spriteBatch.Draw(_debugBoundaryTexture, layout.BodyBounds, background);
+                _spriteBatch.Draw(_debugBoundaryTexture, new Rectangle(layout.BodyBounds.X, layout.BodyBounds.Y, layout.BodyBounds.Width, 1), border);
+                _spriteBatch.Draw(_debugBoundaryTexture, new Rectangle(layout.BodyBounds.X, layout.BodyBounds.Bottom - 1, layout.BodyBounds.Width, 1), border);
+                _spriteBatch.Draw(_debugBoundaryTexture, new Rectangle(layout.BodyBounds.X, layout.BodyBounds.Y, 1, layout.BodyBounds.Height), border);
+                _spriteBatch.Draw(_debugBoundaryTexture, new Rectangle(layout.BodyBounds.Right - 1, layout.BodyBounds.Y, 1, layout.BodyBounds.Height), border);
+            }
+
+            float drawY = layout.BodyBounds.Y + PacketOwnedBalloonVerticalPadding;
+            for (int i = 0; i < layout.Lines.Length; i++)
+            {
+                DrawChatTextWithFallback(layout.Lines[i], new Vector2(layout.BodyBounds.X + PacketOwnedBalloonHorizontalPadding, drawY), textColor);
+                drawY += layout.LineHeight;
+            }
+        }
+
+        private PacketOwnedBalloonArrowKind SelectPacketOwnedBalloonArrowKind(Point anchor, int bodyX, int bodyWidth, bool placeAbove)
+        {
+            int bodyCenterX = bodyX + (bodyWidth / 2);
+            int deltaFromCenter = anchor.X - bodyCenterX;
+            bool useLongArrow = Math.Abs(deltaFromCenter) >= PacketOwnedBalloonLongArrowThreshold;
+            bool nearLeft = anchor.X <= bodyX + PacketOwnedBalloonCornerThreshold;
+            bool nearRight = anchor.X >= bodyX + bodyWidth - PacketOwnedBalloonCornerThreshold;
+
+            if (placeAbove)
+            {
+                if (nearLeft)
+                {
+                    return useLongArrow ? PacketOwnedBalloonArrowKind.BottomLeftLong : PacketOwnedBalloonArrowKind.BottomLeft;
+                }
+
+                if (nearRight)
+                {
+                    return useLongArrow ? PacketOwnedBalloonArrowKind.BottomRightLong : PacketOwnedBalloonArrowKind.BottomRight;
+                }
+
+                return useLongArrow ? PacketOwnedBalloonArrowKind.BottomCenterLong : PacketOwnedBalloonArrowKind.BottomCenter;
+            }
+
+            if (nearLeft)
+            {
+                return useLongArrow ? PacketOwnedBalloonArrowKind.TopLeftLong : PacketOwnedBalloonArrowKind.TopLeft;
+            }
+
+            if (nearRight)
+            {
+                return useLongArrow ? PacketOwnedBalloonArrowKind.TopRightLong : PacketOwnedBalloonArrowKind.TopRight;
+            }
+
+            return useLongArrow ? PacketOwnedBalloonArrowKind.TopCenterLong : PacketOwnedBalloonArrowKind.TopCenter;
+        }
+
+        private LocalOverlayBalloonArrowSprite ResolvePacketOwnedBalloonArrowSprite(PacketOwnedBalloonArrowKind kind)
+        {
+            return kind switch
+            {
+                PacketOwnedBalloonArrowKind.BottomCenter => _packetOwnedBalloonSkin?.Arrow,
+                PacketOwnedBalloonArrowKind.BottomCenterLong => _packetOwnedBalloonSkin?.SecondaryArrow ?? _packetOwnedBalloonSkin?.Arrow,
+                PacketOwnedBalloonArrowKind.BottomLeft => _packetOwnedBalloonSkin?.SouthWestArrow ?? _packetOwnedBalloonSkin?.Arrow,
+                PacketOwnedBalloonArrowKind.BottomRight => _packetOwnedBalloonSkin?.SouthEastArrow ?? _packetOwnedBalloonSkin?.Arrow,
+                PacketOwnedBalloonArrowKind.TopLeft => _packetOwnedBalloonSkin?.NorthWestArrow ?? _packetOwnedBalloonSkin?.Arrow,
+                PacketOwnedBalloonArrowKind.TopRight => _packetOwnedBalloonSkin?.NorthEastArrow ?? _packetOwnedBalloonSkin?.Arrow,
+                PacketOwnedBalloonArrowKind.BottomLeftLong => _packetOwnedBalloonSkin?.SouthWestLongArrow ?? _packetOwnedBalloonSkin?.SouthWestArrow ?? _packetOwnedBalloonSkin?.Arrow,
+                PacketOwnedBalloonArrowKind.BottomRightLong => _packetOwnedBalloonSkin?.SouthEastLongArrow ?? _packetOwnedBalloonSkin?.SouthEastArrow ?? _packetOwnedBalloonSkin?.Arrow,
+                PacketOwnedBalloonArrowKind.TopLeftLong => _packetOwnedBalloonSkin?.NorthWestLongArrow ?? _packetOwnedBalloonSkin?.NorthWestArrow ?? _packetOwnedBalloonSkin?.Arrow,
+                PacketOwnedBalloonArrowKind.TopRightLong => _packetOwnedBalloonSkin?.NorthEastLongArrow ?? _packetOwnedBalloonSkin?.NorthEastArrow ?? _packetOwnedBalloonSkin?.Arrow,
+                PacketOwnedBalloonArrowKind.TopCenterLong => _packetOwnedBalloonSkin?.SecondaryArrow ?? _packetOwnedBalloonSkin?.Arrow,
+                _ => _packetOwnedBalloonSkin?.Arrow
+            };
+        }
+
+        private string ApplyPacketOwnedFieldFade(int fadeInMs, int holdMs, int fadeOutMs, int startingAlpha, int currentTickCount)
         {
             int layerZ = ResolvePacketOwnedFieldFadeLayer();
             if (fadeInMs <= 0 && holdMs <= 0 && fadeOutMs <= 0)
@@ -327,14 +516,14 @@ namespace HaCreator.MapSimulator
                 return "Cleared the packet-authored field fade overlay.";
             }
 
-            _packetOwnedFieldFadeOverlay.Start(fadeInMs, holdMs, fadeOutMs, styleCode, layerZ, currentTickCount);
+            _packetOwnedFieldFadeOverlay.Start(fadeInMs, holdMs, fadeOutMs, startingAlpha, layerZ, currentTickCount);
             return string.Format(
                 CultureInfo.InvariantCulture,
-                "Registered packet-authored field fade (fadeIn={0}ms, hold={1}ms, fadeOut={2}ms, style={3}, layer={4}).",
+                "Registered packet-authored field fade (fadeIn={0}ms, hold={1}ms, fadeOut={2}ms, alpha={3}, layer={4}).",
                 fadeInMs,
                 holdMs,
                 fadeOutMs,
-                DescribePacketOwnedFadeStyle(styleCode),
+                DescribePacketOwnedFadeAlpha(startingAlpha),
                 layerZ);
         }
 
@@ -390,12 +579,18 @@ namespace HaCreator.MapSimulator
         private string ApplyFieldHazardNotice(int damage, int currentTickCount, string message = null, int? durationMs = null)
         {
             StampPacketOwnedUtilityRequestState();
+            string resolvedMessage = BuildFieldHazardNoticeMessage(damage, message);
             _localOverlayRuntime.OnNotifyHpDecByField(
                 damage,
                 currentTickCount,
-                BuildFieldHazardNoticeMessage(damage, message),
+                resolvedMessage,
                 durationMs ?? Managers.LocalOverlayRuntime.DefaultFieldHazardNoticeDurationMs);
-            return $"Applied packet-authored field hazard notice for {Math.Max(0, damage)} HP.";
+
+            string followUpDetail = TryApplyFieldHazardPetAutoConsume(damage, currentTickCount);
+            _localOverlayRuntime.SetFieldHazardFollowUp(followUpDetail, currentTickCount);
+            return string.IsNullOrWhiteSpace(followUpDetail)
+                ? $"Applied packet-authored field hazard notice for {Math.Max(0, damage)} HP."
+                : $"Applied packet-authored field hazard notice for {Math.Max(0, damage)} HP. {followUpDetail}";
         }
 
         private string ClearFieldHazardNotice()
@@ -416,34 +611,190 @@ namespace HaCreator.MapSimulator
                 : "The field is draining HP.";
         }
 
+        private string TryApplyFieldHazardPetAutoConsume(int damage, int currentTickCount)
+        {
+            PlayerCharacter player = _playerManager?.Player;
+            if (damage <= 0 || player?.Build == null || !player.IsAlive)
+            {
+                return null;
+            }
+
+            if (_playerManager?.Pets?.ActivePets == null || _playerManager.Pets.ActivePets.Count == 0)
+            {
+                return null;
+            }
+
+            int predictedRemainingHp = Math.Max(0, player.HP - damage);
+            int hpThresholdPercent = Math.Clamp(_statusBarHpWarningThresholdPercent, 1, 99);
+            int hpThreshold = Math.Max(1, (int)Math.Ceiling(player.MaxHP * (hpThresholdPercent / 100f)));
+            if (predictedRemainingHp >= hpThreshold)
+            {
+                return null;
+            }
+
+            if (!TryResolveFieldHazardHpPotionCandidate(predictedRemainingHp, out FieldHazardHpPotionCandidate candidate))
+            {
+                TryTriggerLimitedPetSpeechEvent(PetAutoSpeechEvent.NoHpPotion, ref _petHpPotionFailureSpeechCount, currentTickCount);
+                _chat?.AddMessage(FieldHazardNoHpPotionNoticeText, new Color(255, 206, 145), currentTickCount);
+                return FieldHazardNoHpPotionNoticeText;
+            }
+
+            if (player.HP < player.MaxHP && TryUseConsumableInventoryItem(candidate.ItemId, candidate.InventoryType, currentTickCount))
+            {
+                return $"Pet auto-HP consumed {candidate.ItemName}.";
+            }
+
+            return $"Pet auto-HP would request {candidate.ItemName}.";
+        }
+
+        private bool TryResolveFieldHazardHpPotionCandidate(int predictedRemainingHp, out FieldHazardHpPotionCandidate candidate)
+        {
+            candidate = default;
+            PlayerCharacter player = _playerManager?.Player;
+            IInventoryRuntime inventoryWindow = uiWindowManager?.InventoryWindow as IInventoryRuntime;
+            if (player == null || inventoryWindow == null)
+            {
+                return false;
+            }
+
+            var seenItems = new System.Collections.Generic.HashSet<(InventoryType Type, int ItemId)>();
+            var hotkeyBindings = _playerManager?.Skills?.GetAllItemHotkeys();
+            if (hotkeyBindings != null)
+            {
+                foreach (var hotkeyEntry in hotkeyBindings.OrderBy(entry => entry.Key))
+                {
+                    Character.Skills.ItemHotkeyBinding binding = hotkeyEntry.Value;
+                    if (binding == null || binding.ItemId <= 0 || binding.InventoryType == InventoryType.NONE)
+                    {
+                        continue;
+                    }
+
+                    if (!seenItems.Add((binding.InventoryType, binding.ItemId)))
+                    {
+                        continue;
+                    }
+
+                    if (TryCreateFieldHazardHpPotionCandidate(binding.ItemId, binding.InventoryType, predictedRemainingHp, inventoryWindow, player, out candidate))
+                    {
+                        return true;
+                    }
+                }
+            }
+
+            InventoryType[] fallbackInventories = { InventoryType.USE, InventoryType.CASH };
+            for (int inventoryIndex = 0; inventoryIndex < fallbackInventories.Length; inventoryIndex++)
+            {
+                InventoryType inventoryType = fallbackInventories[inventoryIndex];
+                var slots = inventoryWindow.GetSlots(inventoryType);
+                if (slots == null)
+                {
+                    continue;
+                }
+
+                for (int i = 0; i < slots.Count; i++)
+                {
+                    var slot = slots[i];
+                    if (slot == null || slot.ItemId <= 0 || slot.Quantity <= 0)
+                    {
+                        continue;
+                    }
+
+                    if (!seenItems.Add((inventoryType, slot.ItemId)))
+                    {
+                        continue;
+                    }
+
+                    if (TryCreateFieldHazardHpPotionCandidate(slot.ItemId, inventoryType, predictedRemainingHp, inventoryWindow, player, out candidate))
+                    {
+                        return true;
+                    }
+                }
+            }
+
+            return false;
+        }
+
+        private bool TryCreateFieldHazardHpPotionCandidate(
+            int itemId,
+            InventoryType inventoryType,
+            int predictedRemainingHp,
+            IInventoryRuntime inventoryWindow,
+            PlayerCharacter player,
+            out FieldHazardHpPotionCandidate candidate)
+        {
+            candidate = default;
+            if (itemId <= 0
+                || inventoryType == InventoryType.NONE
+                || inventoryWindow == null
+                || player == null
+                || inventoryWindow.GetItemCount(inventoryType, itemId) <= 0
+                || !string.IsNullOrWhiteSpace(GetFieldItemUseRestrictionMessage(inventoryType, itemId, 1)))
+            {
+                return false;
+            }
+
+            ConsumableItemEffect effect = ResolveConsumableItemEffect(itemId);
+            int hpRecovery = ResolveConsumableRecoveryAmount(predictedRemainingHp, player.MaxHP, effect.FlatHp, effect.PercentHp);
+            if (hpRecovery <= 0)
+            {
+                return false;
+            }
+
+            string itemName = InventoryItemMetadataResolver.TryResolveItemName(itemId, out string resolvedName) && !string.IsNullOrWhiteSpace(resolvedName)
+                ? resolvedName.Trim()
+                : $"Item {itemId}";
+            candidate = new FieldHazardHpPotionCandidate(itemId, inventoryType, itemName);
+            return true;
+        }
+
         private string DescribePacketOwnedFieldFadeAndBalloonStatus(int currentTickCount)
         {
             string fadeStatus = _packetOwnedFieldFadeOverlay.IsActive
                 ? string.Format(
                     CultureInfo.InvariantCulture,
-                    "Fade active: fadeIn={0}ms hold={1}ms fadeOut={2}ms remaining={3}ms style={4} layer={5}.",
+                    "Fade active: fadeIn={0}ms hold={1}ms fadeOut={2}ms remaining={3}ms alpha={4} layer={5}.",
                     _packetOwnedFieldFadeOverlay.FadeInMs,
                     _packetOwnedFieldFadeOverlay.HoldMs,
                     _packetOwnedFieldFadeOverlay.FadeOutMs,
                     Math.Max(0, _packetOwnedFieldFadeOverlay.ExpiresAt - currentTickCount),
-                    DescribePacketOwnedFadeStyle(_packetOwnedFieldFadeOverlay.StyleCode),
+                    DescribePacketOwnedFadeAlpha(_packetOwnedFieldFadeOverlay.StartingAlpha),
                     _packetOwnedFieldFadeOverlay.RequestedLayerZ)
                 : "Fade inactive.";
 
-            string balloonStatus = _packetOwnedBalloonState.IsActive(currentTickCount)
-                ? string.Format(
-                    CultureInfo.InvariantCulture,
-                    "Balloon active: {0}, width={1}, remaining={2}ms, text=\"{3}\".",
-                    _packetOwnedBalloonState.AnchorMode == LocalOverlayBalloonAnchorMode.Avatar
-                        ? "avatar anchor"
-                        : $"world anchor ({_packetOwnedBalloonState.WorldAnchor.X}, {_packetOwnedBalloonState.WorldAnchor.Y})",
-                    _packetOwnedBalloonState.RequestedWidth,
-                    Math.Max(0, _packetOwnedBalloonState.ExpiresAt - currentTickCount),
-                    _packetOwnedBalloonState.Text)
-                : "Balloon inactive.";
+            LocalOverlayBalloonMessage avatarMessage = _packetOwnedBalloonState.GetAvatarMessage(currentTickCount);
+            IReadOnlyList<LocalOverlayBalloonMessage> fieldMessages = _packetOwnedBalloonState.GetFieldMessages(currentTickCount);
+            string balloonStatus;
+            if (avatarMessage == null && fieldMessages.Count == 0)
+            {
+                balloonStatus = "Balloon inactive.";
+            }
+            else
+            {
+                string avatarStatus = avatarMessage == null
+                    ? "avatar=inactive"
+                    : string.Format(
+                        CultureInfo.InvariantCulture,
+                        "avatar width={0}, remaining={1}ms, text=\"{2}\"",
+                        avatarMessage.RequestedWidth,
+                        Math.Max(0, avatarMessage.ExpiresAt - currentTickCount),
+                        avatarMessage.Text);
+                string fieldStatus = fieldMessages.Count == 0
+                    ? "field=0"
+                    : string.Format(
+                        CultureInfo.InvariantCulture,
+                        "field={0} (latest anchor=({1}, {2}), width={3}, remaining={4}ms, text=\"{5}\")",
+                        fieldMessages.Count,
+                        fieldMessages[^1].WorldAnchor.X,
+                        fieldMessages[^1].WorldAnchor.Y,
+                        fieldMessages[^1].RequestedWidth,
+                        Math.Max(0, fieldMessages[^1].ExpiresAt - currentTickCount),
+                        fieldMessages[^1].Text);
+                balloonStatus = $"Balloon active: {avatarStatus}; {fieldStatus}.";
+            }
 
             return string.Join(
                 Environment.NewLine,
+                DescribeLocalOverlayPacketInboxStatus(),
                 fadeStatus,
                 balloonStatus,
                 _localOverlayRuntime.DescribeDamageMeterStatus(currentTickCount),
@@ -532,9 +883,12 @@ namespace HaCreator.MapSimulator
                 case "packetraw":
                     return HandlePacketOwnedLocalOverlayPacketCommand(args, rawHex: true);
 
+                case "inbox":
+                    return HandlePacketOwnedLocalOverlayInboxCommand(args);
+
                 default:
                     return ChatCommandHandler.CommandResult.Error(
-                        "Usage: /localoverlay [status|clear [fade|balloon|damagemeter|hazard|all]|fade <fadeInMs> <holdMs> <fadeOutMs> [style]|balloon avatar <width> <lifetimeSec> <text>|balloon world <x> <y> <width> <lifetimeSec> <text>|damagemeter <seconds>|damagemeterclear|hazard <damage> [message]|hazardclear|packet <fade|balloon|damagemeter|hpdec> [payloadhex=..|payloadb64=..]|packetraw <fade|balloon|damagemeter|hpdec> <hex>]");
+                        "Usage: /localoverlay [status|clear [fade|balloon|damagemeter|hazard|all]|fade <fadeInMs> <holdMs> <fadeOutMs> [alpha]|balloon avatar <width> <lifetimeSec> <text>|balloon world <x> <y> <width> <lifetimeSec> <text>|damagemeter <seconds>|damagemeterclear|hazard <damage> [message]|hazardclear|packet <fade|balloon|damagemeter|hpdec> [payloadhex=..|payloadb64=..]|packetraw <fade|balloon|damagemeter|hpdec> <hex>|inbox [status|packet <fade|balloon> [payloadhex=..|payloadb64=..]|packetraw <fade|balloon> <hex>]]");
             }
         }
 
@@ -545,16 +899,16 @@ namespace HaCreator.MapSimulator
                 || !int.TryParse(args[2], NumberStyles.Integer, CultureInfo.InvariantCulture, out int holdMs)
                 || !int.TryParse(args[3], NumberStyles.Integer, CultureInfo.InvariantCulture, out int fadeOutMs))
             {
-                return ChatCommandHandler.CommandResult.Error("Usage: /localoverlay fade <fadeInMs> <holdMs> <fadeOutMs> [style]");
+                return ChatCommandHandler.CommandResult.Error("Usage: /localoverlay fade <fadeInMs> <holdMs> <fadeOutMs> [alpha]");
             }
 
-            if (!TryParsePacketOwnedFadeStyle(args.Length >= 5 ? args[4] : null, out int styleCode, out string styleError))
+            if (!TryParsePacketOwnedFadeAlpha(args.Length >= 5 ? args[4] : null, out int startingAlpha, out string alphaError))
             {
-                return ChatCommandHandler.CommandResult.Error(styleError);
+                return ChatCommandHandler.CommandResult.Error(alphaError);
             }
 
             return ChatCommandHandler.CommandResult.Ok(
-                ApplyPacketOwnedFieldFade(fadeInMs, holdMs, fadeOutMs, styleCode, currTickCount));
+                ApplyPacketOwnedFieldFade(fadeInMs, holdMs, fadeOutMs, startingAlpha, currTickCount));
         }
 
         private ChatCommandHandler.CommandResult HandlePacketOwnedDamageMeterCommand(string[] args)
@@ -681,7 +1035,7 @@ namespace HaCreator.MapSimulator
             message = null;
             if (payload == null || payload.Length < 16)
             {
-                message = "Field-fade payload must contain fadeIn, hold, fadeOut, and style Int32 values.";
+                message = "Field-fade payload must contain fadeIn, hold, fadeOut, and alpha Int32 values.";
                 return false;
             }
 
@@ -692,8 +1046,8 @@ namespace HaCreator.MapSimulator
                 int fadeInMs = reader.ReadInt32();
                 int holdMs = reader.ReadInt32();
                 int fadeOutMs = reader.ReadInt32();
-                int styleCode = reader.ReadInt32();
-                message = ApplyPacketOwnedFieldFade(fadeInMs, holdMs, fadeOutMs, styleCode, currTickCount);
+                int startingAlpha = reader.ReadInt32();
+                message = ApplyPacketOwnedFieldFade(fadeInMs, holdMs, fadeOutMs, startingAlpha, currTickCount);
                 return true;
             }
             catch (Exception ex) when (ex is EndOfStreamException or IOException)
@@ -796,57 +1150,195 @@ namespace HaCreator.MapSimulator
             return Encoding.Default.GetString(bytes);
         }
 
-        private static bool TryParsePacketOwnedFadeStyle(string value, out int styleCode, out string error)
+        private void EnsureLocalOverlayPacketInboxState(bool shouldRun)
         {
-            styleCode = 0;
+            if (!shouldRun || !_localOverlayPacketInboxEnabled)
+            {
+                if (_localOverlayPacketInbox.IsRunning)
+                {
+                    _localOverlayPacketInbox.Stop();
+                }
+
+                return;
+            }
+
+            if (_localOverlayPacketInbox.IsRunning && _localOverlayPacketInbox.Port == _localOverlayPacketInboxConfiguredPort)
+            {
+                return;
+            }
+
+            if (_localOverlayPacketInbox.IsRunning)
+            {
+                _localOverlayPacketInbox.Stop();
+            }
+
+            try
+            {
+                _localOverlayPacketInbox.Start(_localOverlayPacketInboxConfiguredPort);
+            }
+            catch (Exception ex)
+            {
+                _localOverlayPacketInbox.Stop();
+                _chat?.AddMessage($"Local overlay packet inbox failed to start: {ex.Message}", Color.OrangeRed, currTickCount);
+            }
+        }
+
+        private void DrainLocalOverlayPacketInbox()
+        {
+            while (_localOverlayPacketInbox.TryDequeue(out LocalOverlayPacketInboxMessage message))
+            {
+                if (message == null)
+                {
+                    continue;
+                }
+
+                bool applied = TryApplyPacketOwnedLocalOverlayPacket(message.PacketType, message.Payload, out string detail);
+                _localOverlayPacketInbox.RecordDispatchResult(message, applied, detail);
+                if (!string.IsNullOrWhiteSpace(detail))
+                {
+                    _chat?.AddMessage(detail, applied ? new Color(255, 228, 151) : Color.OrangeRed, currTickCount);
+                }
+            }
+        }
+
+        private string DescribeLocalOverlayPacketInboxStatus()
+        {
+            string enabledText = _localOverlayPacketInboxEnabled ? "enabled" : "disabled";
+            string listeningText = _localOverlayPacketInbox.IsRunning
+                ? $"listening on 127.0.0.1:{_localOverlayPacketInbox.Port}"
+                : $"configured for 127.0.0.1:{_localOverlayPacketInboxConfiguredPort}";
+            return $"Local overlay packet inbox {enabledText}, {listeningText}, received {_localOverlayPacketInbox.ReceivedCount} packet(s).";
+        }
+
+        private bool TryApplyPacketOwnedLocalOverlayPacket(int packetType, byte[] payload, out string message)
+        {
+            switch (packetType)
+            {
+                case LocalOverlayPacketInboxManager.FieldFadeInOutPacketType:
+                    return TryApplyPacketOwnedFieldFadePayload(payload, out message);
+
+                case LocalOverlayPacketInboxManager.BalloonMsgPacketType:
+                    return TryApplyPacketOwnedBalloonPayload(payload, out message);
+
+                default:
+                    message = $"Unsupported local overlay packet type {packetType}.";
+                    return false;
+            }
+        }
+
+        private ChatCommandHandler.CommandResult HandlePacketOwnedLocalOverlayInboxCommand(string[] args)
+        {
+            int offset = args.Length > 0 && string.Equals(args[0], "inbox", StringComparison.OrdinalIgnoreCase) ? 1 : 0;
+            string usagePrefix = offset == 0 ? "/localoverlaypacket" : "/localoverlay inbox";
+            if (args.Length <= offset || string.Equals(args[offset], "status", StringComparison.OrdinalIgnoreCase))
+            {
+                return ChatCommandHandler.CommandResult.Info($"{DescribeLocalOverlayPacketInboxStatus()} {_localOverlayPacketInbox.LastStatus}");
+            }
+
+            if (string.Equals(args[offset], "packet", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(args[offset], "packetraw", StringComparison.OrdinalIgnoreCase))
+            {
+                bool rawHex = string.Equals(args[offset], "packetraw", StringComparison.OrdinalIgnoreCase);
+                if (args.Length <= offset + 1)
+                {
+                    return ChatCommandHandler.CommandResult.Error(
+                        rawHex
+                            ? $"Usage: {usagePrefix} packetraw <fade|balloon> <hex>"
+                            : $"Usage: {usagePrefix} packet <fade|balloon> [payloadhex=..|payloadb64=..]");
+                }
+
+                if (!LocalOverlayPacketInboxManager.TryParsePacketType(args[offset + 1], out int packetType))
+                {
+                    return ChatCommandHandler.CommandResult.Error("Only fade and balloon inbox packet types are supported.");
+                }
+
+                byte[] payload = Array.Empty<byte>();
+                if (rawHex)
+                {
+                    if (args.Length <= offset + 2 || !TryDecodeHexBytes(string.Join(string.Empty, args.Skip(offset + 2)), out payload))
+                    {
+                        return ChatCommandHandler.CommandResult.Error($"Usage: {usagePrefix} packetraw <fade|balloon> <hex>");
+                    }
+                }
+                else if (args.Length > offset + 2 && !TryParseBinaryPayloadArgument(args[offset + 2], out payload, out string payloadError))
+                {
+                    return ChatCommandHandler.CommandResult.Error(payloadError ?? $"Usage: {usagePrefix} packet <fade|balloon> [payloadhex=..|payloadb64=..]");
+                }
+
+                _localOverlayPacketInbox.EnqueueLocal(packetType, payload, "localoverlay-command");
+                return ChatCommandHandler.CommandResult.Ok($"Queued {args[offset + 1]} through the local overlay packet inbox.");
+            }
+
+            return ChatCommandHandler.CommandResult.Error(
+                $"Usage: {usagePrefix} [status|packet <fade|balloon> [payloadhex=..|payloadb64=..]|packetraw <fade|balloon> <hex>]");
+        }
+
+        private static bool TryParsePacketOwnedFadeAlpha(string value, out int alpha, out string error)
+        {
+            alpha = 0;
             error = null;
 
-            if (string.IsNullOrWhiteSpace(value) || value.Equals("black", StringComparison.OrdinalIgnoreCase))
+            if (string.IsNullOrWhiteSpace(value))
             {
                 return true;
             }
 
-            if (value.Equals("white", StringComparison.OrdinalIgnoreCase))
+            if (value.Equals("opaque", StringComparison.OrdinalIgnoreCase)
+                || value.Equals("full", StringComparison.OrdinalIgnoreCase))
             {
-                styleCode = 1;
+                alpha = byte.MaxValue;
                 return true;
             }
 
-            string normalized = value.Trim();
-            if (normalized.StartsWith("#", StringComparison.Ordinal))
+            if (int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out int parsedInt)
+                && parsedInt >= 0
+                && parsedInt <= byte.MaxValue)
             {
-                normalized = normalized[1..];
-            }
-
-            if (normalized.StartsWith("0x", StringComparison.OrdinalIgnoreCase))
-            {
-                normalized = normalized[2..];
-            }
-
-            if (int.TryParse(normalized, NumberStyles.HexNumber, CultureInfo.InvariantCulture, out int parsedHex))
-            {
-                styleCode = parsedHex;
+                alpha = parsedInt;
                 return true;
             }
 
-            if (int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out int parsedInt))
+            if (value.EndsWith("%", StringComparison.Ordinal)
+                && int.TryParse(value[..^1], NumberStyles.Integer, CultureInfo.InvariantCulture, out int parsedPercent)
+                && parsedPercent >= 0
+                && parsedPercent <= 100)
             {
-                styleCode = parsedInt;
+                alpha = (int)Math.Round(parsedPercent / 100f * byte.MaxValue);
                 return true;
             }
 
-            error = "Fade style must be black, white, an integer, #RRGGBB, or 0xAARRGGBB.";
+            error = "Fade alpha must be an integer from 0 to 255, a percentage like 50%, or 'opaque'.";
             return false;
         }
 
-        private static string DescribePacketOwnedFadeStyle(int styleCode)
+        private static string DescribePacketOwnedFadeAlpha(int alpha)
         {
-            return styleCode switch
-            {
-                0 => "black",
-                1 => "white",
-                _ => $"0x{unchecked((uint)styleCode):X8}"
-            };
+            return $"{Math.Clamp(alpha, 0, byte.MaxValue)}";
         }
+
+        private enum PacketOwnedBalloonArrowKind
+        {
+            BottomCenter,
+            BottomCenterLong,
+            BottomLeft,
+            BottomLeftLong,
+            BottomRight,
+            BottomRightLong,
+            TopCenter,
+            TopCenterLong,
+            TopLeft,
+            TopLeftLong,
+            TopRight,
+            TopRightLong
+        }
+
+        private readonly record struct PacketOwnedBalloonLayout(
+            LocalOverlayBalloonMessage Message,
+            Point Anchor,
+            Rectangle BodyBounds,
+            string[] Lines,
+            int LineHeight,
+            PacketOwnedBalloonArrowKind ArrowKind,
+            LocalOverlayBalloonArrowSprite ArrowSprite);
     }
 }

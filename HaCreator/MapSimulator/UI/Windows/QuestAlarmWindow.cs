@@ -18,9 +18,25 @@ namespace HaCreator.MapSimulator.UI
         private const int MaxVisibleEntries = 5;
         private const int DeleteButtonSize = 11;
         private const int RowDoubleClickWindowMs = 450;
-        private const int RowGap = 3;
         private const int HeaderActionMargin = 6;
         private const int HeaderActionSpacing = 4;
+        private const int ClientTitleX = 10;
+        private const int ClientTitleY = 25;
+        private const int ClientTitleHeight = 18;
+        private const int ClientDetailWidth = 150;
+        private const int ClientDetailIndent = 10;
+        private const int ClientDetailLabelWidth = 32;
+        private const int ClientDetailTextInset = 6;
+        private const int ClientDetailIconSize = 14;
+        private const int ClientDetailValueGap = 6;
+        private const int ClientDetailRowGap = 1;
+        private const int ClientDetailPaddingTop = 3;
+        private const int ClientDetailPaddingBottom = 4;
+        private const float TitleScale = 0.5f;
+        private const float DetailScale = 0.42f;
+        private const float HeaderScale = 0.48f;
+        private const float HeaderActionScale = 0.4f;
+        private const float PageScale = 0.38f;
 
         private readonly string _windowName;
         private readonly GraphicsDevice _device;
@@ -58,6 +74,7 @@ namespace HaCreator.MapSimulator.UI
         private Rectangle _deleteAllBounds = Rectangle.Empty;
 
         private Texture2D _selectionBarTexture;
+        private Texture2D _incompleteSelectionBarTexture;
         private Texture2D _progressFrameTexture;
         private Texture2D _progressGaugeTexture;
         private Texture2D _progressSpotTexture;
@@ -115,6 +132,7 @@ namespace HaCreator.MapSimulator.UI
 
         internal void SetQuestChromeTextures(
             Texture2D selectionBarTexture,
+            Texture2D incompleteSelectionBarTexture,
             Texture2D progressFrameTexture,
             Texture2D progressGaugeTexture,
             Texture2D progressSpotTexture,
@@ -125,6 +143,7 @@ namespace HaCreator.MapSimulator.UI
             IReadOnlyList<Texture2D> questButtonAnimationFrames)
         {
             _selectionBarTexture = selectionBarTexture;
+            _incompleteSelectionBarTexture = incompleteSelectionBarTexture;
             _progressFrameTexture = progressFrameTexture;
             _progressGaugeTexture = progressGaugeTexture;
             _progressSpotTexture = progressSpotTexture;
@@ -270,9 +289,9 @@ namespace HaCreator.MapSimulator.UI
             ClampScrollOffset(snapshot);
             RefreshFrame(snapshot);
 
-            Vector2 titlePosition = new Vector2(Position.X + 8, Position.Y + 5);
+            Vector2 titlePosition = new Vector2(Position.X + 19, Position.Y + 5);
             string title = $"Quest Alarm ({snapshot.Entries.Count})";
-            sprite.DrawString(_font, title, titlePosition, Color.White, 0f, Vector2.Zero, 0.48f, SpriteEffects.None, 0f);
+            sprite.DrawString(_font, title, titlePosition, Color.White, 0f, Vector2.Zero, HeaderScale, SpriteEffects.None, 0f);
             DrawHeaderActions(sprite, snapshot);
 
             if (snapshot.HasAlertAnimation)
@@ -292,8 +311,7 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
-            int y = Position.Y + 27;
-            int availableWidth = _maxTopTexture.Width - 8;
+            int y = Position.Y + ClientTitleY;
             IReadOnlyList<QuestAlarmEntrySnapshot> visibleEntries = snapshot.Entries
                 .Skip(_scrollOffset)
                 .Take(MaxVisibleEntries)
@@ -302,43 +320,38 @@ namespace HaCreator.MapSimulator.UI
             for (int i = 0; i < visibleEntries.Count; i++)
             {
                 QuestAlarmEntrySnapshot entry = visibleEntries[i];
-                int rowHeight = GetRowHeight(entry);
-                int requirementLines = Math.Min(2, entry.RequirementLines.Count);
+                bool isSelected = entry.QuestId == _selectedQuestId;
+                int rowHeight = GetRowHeight(entry, isSelected);
 
-                Rectangle rowRect = new Rectangle(Position.X + 4, y, availableWidth, rowHeight);
-                Rectangle deleteRect = new Rectangle(rowRect.Right - DeleteButtonSize - 4, rowRect.Y + 4, DeleteButtonSize, DeleteButtonSize);
+                Rectangle rowRect = new Rectangle(Position.X + 6, y, _maxTopTexture.Width - 12, rowHeight);
+                Rectangle titleRect = new Rectangle(rowRect.X, rowRect.Y, rowRect.Width, ClientTitleHeight);
+                Rectangle deleteRect = new Rectangle(titleRect.Right - DeleteButtonSize - 4, titleRect.Y + 3, DeleteButtonSize, DeleteButtonSize);
                 _rowLayouts.Add(new RowLayout(entry.QuestId, rowRect, deleteRect));
 
-                DrawRowBackground(sprite, rowRect, entry);
+                DrawRowBackground(sprite, titleRect, entry, isSelected);
 
                 Color titleColor = entry.IsReadyToComplete
                     ? new Color(150, 241, 142)
                     : entry.IsRecentlyUpdated
                         ? new Color(151, 221, 255)
                         : new Color(255, 228, 153);
-                sprite.DrawString(_font, Truncate(entry.Title, 24), new Vector2(rowRect.X + 6, rowRect.Y + 2), titleColor, 0f, Vector2.Zero, 0.5f, SpriteEffects.None, 0f);
+                sprite.DrawString(_font, Truncate(entry.Title, 26), new Vector2(Position.X + ClientTitleX, titleRect.Y + 1), titleColor, 0f, Vector2.Zero, TitleScale, SpriteEffects.None, 0f);
 
                 string progressText = entry.TotalProgress > 0
                     ? $"{Math.Min(entry.CurrentProgress, entry.TotalProgress)}/{entry.TotalProgress}"
                     : entry.StatusText;
-                Vector2 progressSize = _font.MeasureString(progressText) * 0.42f;
-                sprite.DrawString(_font, progressText, new Vector2(deleteRect.X - progressSize.X - 6, rowRect.Y + 3), new Color(214, 220, 229), 0f, Vector2.Zero, 0.42f, SpriteEffects.None, 0f);
+                Vector2 progressSize = _font.MeasureString(progressText) * DetailScale;
+                sprite.DrawString(_font, progressText, new Vector2(deleteRect.X - progressSize.X - 6, titleRect.Y + 3), new Color(214, 220, 229), 0f, Vector2.Zero, DetailScale, SpriteEffects.None, 0f);
 
                 DrawInlineDelete(sprite, deleteRect, entry.QuestId);
-                DrawProgressGauge(sprite, rowRect.X + 6, rowRect.Y + 17, Math.Min(90, rowRect.Width - 30), entry.ProgressRatio);
 
-                int lineY = rowRect.Y + 31;
-                for (int requirementIndex = 0; requirementIndex < requirementLines; requirementIndex++)
+                if (isSelected)
                 {
-                    DrawRequirementLine(sprite, rowRect, entry.RequirementLines[requirementIndex], ref lineY);
+                    Rectangle detailRect = new Rectangle(Position.X + ClientDetailIndent, titleRect.Bottom, ClientDetailWidth, Math.Max(0, rowRect.Bottom - titleRect.Bottom));
+                    DrawSelectedDetail(sprite, detailRect, entry);
                 }
 
-                if (!string.IsNullOrWhiteSpace(entry.DemandText))
-                {
-                    sprite.DrawString(_font, Truncate(entry.DemandText, 32), new Vector2(rowRect.X + 6, lineY), new Color(201, 207, 221), 0f, Vector2.Zero, 0.4f, SpriteEffects.None, 0f);
-                }
-
-                y += rowHeight + RowGap;
+                y += rowHeight;
             }
 
             if (snapshot.Entries.Count > visibleEntries.Count)
@@ -351,7 +364,7 @@ namespace HaCreator.MapSimulator.UI
                     new Color(214, 218, 226),
                     0f,
                     Vector2.Zero,
-                    0.42f,
+                    DetailScale,
                     SpriteEffects.None,
                     0f);
             }
@@ -537,12 +550,7 @@ namespace HaCreator.MapSimulator.UI
                     .ToList();
                 for (int i = 0; i < visibleEntries.Count; i++)
                 {
-                    if (i > 0)
-                    {
-                        contentHeight += RowGap;
-                    }
-
-                    contentHeight += GetRowHeight(visibleEntries[i]);
+                    contentHeight += GetRowHeight(visibleEntries[i], visibleEntries[i].QuestId == _selectedQuestId);
                 }
 
                 if (snapshot.Entries.Count > visibleEntries.Count)
@@ -581,16 +589,16 @@ namespace HaCreator.MapSimulator.UI
             }
         }
 
-        private void DrawRowBackground(SpriteBatch sprite, Rectangle rowRect, QuestAlarmEntrySnapshot entry)
+        private void DrawRowBackground(SpriteBatch sprite, Rectangle rowRect, QuestAlarmEntrySnapshot entry, bool isSelected)
         {
-            Color background = entry.QuestId == _selectedQuestId
+            Color background = isSelected
                 ? new Color(34, 63, 101, 208)
                 : new Color(7, 14, 20, 196);
             sprite.Draw(_pixel, rowRect, background);
 
-            if (_selectionBarTexture != null && entry.QuestId == _selectedQuestId)
+            if (_selectionBarTexture != null && isSelected)
             {
-                sprite.Draw(_selectionBarTexture, new Vector2(rowRect.X + 2, rowRect.Y), Color.White * 0.82f);
+                DrawTextureStrip(sprite, _selectionBarTexture, new Rectangle(rowRect.X + 1, rowRect.Y + 3, Math.Min(rowRect.Width - 2, ClientDetailWidth), _selectionBarTexture.Height), Color.White * 0.82f);
             }
 
             Color borderColor = entry.IsReadyToComplete
@@ -610,7 +618,7 @@ namespace HaCreator.MapSimulator.UI
             }
 
             string deleteAllLabel = "Delete all";
-            Vector2 labelSize = _font.MeasureString(deleteAllLabel) * 0.4f;
+            Vector2 labelSize = _font.MeasureString(deleteAllLabel) * HeaderActionScale;
             int x = Position.X + _maxTopTexture.Width - HeaderActionMargin - (int)Math.Ceiling(labelSize.X);
             int y = Position.Y + 7;
             _deleteAllBounds = new Rectangle(x - 2, y - 1, (int)Math.Ceiling(labelSize.X) + 4, (int)Math.Ceiling(labelSize.Y) + 2);
@@ -620,34 +628,98 @@ namespace HaCreator.MapSimulator.UI
                 : _pressedDeleteAll
                     ? new Color(255, 205, 137)
                     : new Color(223, 228, 238);
-            sprite.DrawString(_font, deleteAllLabel, new Vector2(x, y), deleteAllColor, 0f, Vector2.Zero, 0.4f, SpriteEffects.None, 0f);
+            sprite.DrawString(_font, deleteAllLabel, new Vector2(x, y), deleteAllColor, 0f, Vector2.Zero, HeaderActionScale, SpriteEffects.None, 0f);
 
             if (_scrollOffset > 0 || snapshot.Entries.Count > MaxVisibleEntries)
             {
                 string pageLabel = $"{_scrollOffset + 1}-{Math.Min(snapshot.Entries.Count, _scrollOffset + MaxVisibleEntries)}";
-                Vector2 pageSize = _font.MeasureString(pageLabel) * 0.38f;
+                Vector2 pageSize = _font.MeasureString(pageLabel) * PageScale;
                 float pageX = x - HeaderActionSpacing - pageSize.X;
-                sprite.DrawString(_font, pageLabel, new Vector2(pageX, Position.Y + 7), new Color(166, 176, 192), 0f, Vector2.Zero, 0.38f, SpriteEffects.None, 0f);
+                sprite.DrawString(_font, pageLabel, new Vector2(pageX, Position.Y + 7), new Color(166, 176, 192), 0f, Vector2.Zero, PageScale, SpriteEffects.None, 0f);
             }
         }
 
-        private void DrawRequirementLine(SpriteBatch sprite, Rectangle rowRect, QuestLogLineSnapshot line, ref int lineY)
+        private void DrawSelectedDetail(SpriteBatch sprite, Rectangle detailRect, QuestAlarmEntrySnapshot entry)
         {
-            Color lineColor = line.IsComplete ? new Color(143, 229, 135) : new Color(236, 205, 131);
-            int lineX = rowRect.X + 6;
+            if (detailRect.Height <= 0)
+            {
+                return;
+            }
+
+            sprite.Draw(_pixel, detailRect, new Color(4, 9, 13, 172));
+            DrawBorder(sprite, detailRect, entry.IsReadyToComplete
+                ? new Color(115, 197, 104, 128)
+                : entry.IsRecentlyUpdated
+                    ? new Color(83, 154, 219, 128)
+                    : new Color(77, 90, 102, 112));
+
+            int currentY = detailRect.Y + ClientDetailPaddingTop;
+            DrawProgressGauge(sprite, detailRect.X + 1, currentY, Math.Min(ClientDetailWidth - 2, 150), entry.ProgressRatio);
+            currentY += Math.Max(ClientTitleHeight, _progressFrameTexture?.Height ?? 13) + ClientDetailRowGap;
+
+            foreach (QuestLogLineSnapshot line in entry.RequirementLines ?? Array.Empty<QuestLogLineSnapshot>())
+            {
+                currentY = DrawRequirementLine(sprite, detailRect.X, detailRect.Right, currentY, line);
+            }
+
+            foreach (string line in WrapText(entry.DemandText, ClientDetailWidth - 6, DetailScale))
+            {
+                sprite.DrawString(_font, line, new Vector2(detailRect.X + 2, currentY), new Color(201, 207, 221), 0f, Vector2.Zero, DetailScale, SpriteEffects.None, 0f);
+                currentY += ClientTitleHeight;
+            }
+        }
+
+        private int DrawRequirementLine(SpriteBatch sprite, int left, int right, int y, QuestLogLineSnapshot line)
+        {
+            if (line == null)
+            {
+                return y;
+            }
+
+            Texture2D rowTexture = line.IsComplete
+                ? _selectionBarTexture
+                : _incompleteSelectionBarTexture ?? _selectionBarTexture;
+            int detailLeft = left + ClientDetailLabelWidth;
+            int availableWidth = Math.Max(48, right - detailLeft);
+            int stripWidth = Math.Min(availableWidth, rowTexture?.Width ?? availableWidth);
+            if (rowTexture != null)
+            {
+                DrawTextureStrip(sprite, rowTexture, new Rectangle(detailLeft, y + 3, stripWidth, rowTexture.Height), Color.White);
+            }
+
+            Color labelColor = line.IsComplete ? new Color(168, 224, 173) : new Color(255, 190, 137);
+            Color textColor = line.IsComplete ? new Color(219, 239, 219) : new Color(255, 218, 189);
+            sprite.DrawString(_font, line.Label ?? string.Empty, new Vector2(left, y + 1), labelColor, 0f, Vector2.Zero, DetailScale, SpriteEffects.None, 0f);
+
+            int iconOffset = 0;
             if (line.ItemId.HasValue)
             {
                 Texture2D icon = GetItemIcon(line.ItemId.Value);
                 if (icon != null)
                 {
-                    sprite.Draw(icon, new Rectangle(lineX, lineY - 1, 14, 14), Color.White);
-                    lineX += 18;
+                    Rectangle iconBounds = new Rectangle(detailLeft + ClientDetailTextInset, y + 2, ClientDetailIconSize, ClientDetailIconSize);
+                    sprite.Draw(icon, iconBounds, Color.White);
+                    iconOffset = ClientDetailIconSize + 4;
                 }
             }
 
-            string lineText = $"{line.Label}: {line.Text}";
-            sprite.DrawString(_font, Truncate(lineText, 30), new Vector2(lineX, lineY), lineColor, 0f, Vector2.Zero, 0.42f, SpriteEffects.None, 0f);
-            lineY += 16;
+            string bodyText = Truncate(line.Text, 28);
+            Vector2 valueSize = string.IsNullOrWhiteSpace(line.ValueText)
+                ? Vector2.Zero
+                : _font.MeasureString(line.ValueText) * DetailScale;
+            float bodyX = detailLeft + ClientDetailTextInset + iconOffset;
+            float bodyRight = detailLeft + stripWidth - ClientDetailTextInset - valueSize.X - (valueSize.X > 0 ? ClientDetailValueGap : 0);
+            float maxBodyWidth = Math.Max(28f, bodyRight - bodyX);
+            bodyText = TruncateToWidth(bodyText, maxBodyWidth, DetailScale);
+            sprite.DrawString(_font, bodyText, new Vector2(bodyX, y + 1), textColor, 0f, Vector2.Zero, DetailScale, SpriteEffects.None, 0f);
+
+            if (!string.IsNullOrWhiteSpace(line.ValueText))
+            {
+                float valueX = Math.Max(bodyX, detailLeft + stripWidth - ClientDetailTextInset - valueSize.X);
+                sprite.DrawString(_font, line.ValueText, new Vector2(valueX, y + 1), textColor, 0f, Vector2.Zero, DetailScale, SpriteEffects.None, 0f);
+            }
+
+            return y + ClientTitleHeight;
         }
 
         private void DrawProgressGauge(SpriteBatch sprite, int x, int y, int width, float ratio)
@@ -655,16 +727,17 @@ namespace HaCreator.MapSimulator.UI
             ratio = MathHelper.Clamp(ratio, 0f, 1f);
             if (_progressFrameTexture != null)
             {
-                sprite.Draw(_progressFrameTexture, new Vector2(x, y), Color.White);
+                DrawTextureStrip(sprite, _progressFrameTexture, new Rectangle(x, y, Math.Min(width, _progressFrameTexture.Width), _progressFrameTexture.Height), Color.White);
             }
 
             if (_progressGaugeTexture != null)
             {
-                int innerWidth = Math.Max(1, (int)Math.Round(width * ratio));
+                int fillWidth = Math.Max(0, width - 3);
+                int innerWidth = Math.Max(1, (int)Math.Round(fillWidth * ratio));
                 sprite.Draw(_progressGaugeTexture, new Rectangle(x + 2, y + 1, innerWidth, Math.Max(1, _progressGaugeTexture.Height)), Color.White);
                 if (_progressSpotTexture != null && innerWidth > 0)
                 {
-                    sprite.Draw(_progressSpotTexture, new Vector2(x + 1 + innerWidth, y + 1), Color.White);
+                    sprite.Draw(_progressSpotTexture, new Vector2(Math.Min(x + width - _progressSpotTexture.Width, x + 1 + innerWidth), y + 1), Color.White);
                 }
             }
             else
@@ -860,15 +933,19 @@ namespace HaCreator.MapSimulator.UI
             _scrollOffset = Math.Clamp(_scrollOffset, 0, maxOffset);
         }
 
-        private int GetRowHeight(QuestAlarmEntrySnapshot entry)
+        private int GetRowHeight(QuestAlarmEntrySnapshot entry, bool isSelected)
         {
-            int rowHeight = 36;
-            rowHeight += Math.Min(2, entry?.RequirementLines?.Count ?? 0) * 16;
-            if (!string.IsNullOrWhiteSpace(entry?.DemandText))
+            int rowHeight = ClientTitleHeight;
+            if (!isSelected || entry == null)
             {
-                rowHeight += 14;
+                return rowHeight;
             }
 
+            rowHeight += ClientDetailPaddingTop;
+            rowHeight += Math.Max(ClientTitleHeight, _progressFrameTexture?.Height ?? 13) + ClientDetailRowGap;
+            rowHeight += (entry.RequirementLines?.Count ?? 0) * ClientTitleHeight;
+            rowHeight += WrapText(entry.DemandText, ClientDetailWidth - 6, DetailScale).Count() * ClientTitleHeight;
+            rowHeight += ClientDetailPaddingBottom;
             return rowHeight;
         }
 
@@ -899,6 +976,18 @@ namespace HaCreator.MapSimulator.UI
             sprite.Draw(_pixel, new Rectangle(bounds.X, bounds.Bottom - 1, bounds.Width, 1), color);
             sprite.Draw(_pixel, new Rectangle(bounds.X, bounds.Y, 1, bounds.Height), color);
             sprite.Draw(_pixel, new Rectangle(bounds.Right - 1, bounds.Y, 1, bounds.Height), color);
+        }
+
+        private void DrawTextureStrip(SpriteBatch sprite, Texture2D texture, Rectangle destination, Color color)
+        {
+            if (sprite == null || texture == null || destination.Width <= 0 || destination.Height <= 0)
+            {
+                return;
+            }
+
+            Rectangle source = new Rectangle(0, 0, Math.Min(texture.Width, destination.Width), Math.Min(texture.Height, destination.Height));
+            Rectangle clippedDestination = new Rectangle(destination.X, destination.Y, source.Width, source.Height);
+            sprite.Draw(texture, clippedDestination, source, color);
         }
 
         private static Texture2D BuildFrameTexture(GraphicsDevice device, Texture2D top, Texture2D center, Texture2D bottom, int centerRepeats)
@@ -943,6 +1032,68 @@ namespace HaCreator.MapSimulator.UI
             }
 
             return $"{text.Substring(0, Math.Max(0, maxChars - 3))}...";
+        }
+
+        private string TruncateToWidth(string text, float maxWidth, float scale)
+        {
+            if (string.IsNullOrWhiteSpace(text) || _font == null || maxWidth <= 0f)
+            {
+                return string.Empty;
+            }
+
+            if (_font.MeasureString(text).X * scale <= maxWidth)
+            {
+                return text;
+            }
+
+            string ellipsis = "...";
+            for (int length = Math.Max(0, text.Length - 1); length > 0; length--)
+            {
+                string candidate = text.Substring(0, length) + ellipsis;
+                if (_font.MeasureString(candidate).X * scale <= maxWidth)
+                {
+                    return candidate;
+                }
+            }
+
+            return ellipsis;
+        }
+
+        private IEnumerable<string> WrapText(string text, float maxWidth, float scale)
+        {
+            if (_font == null || string.IsNullOrWhiteSpace(text))
+            {
+                yield break;
+            }
+
+            foreach (string block in text.Replace("\r", string.Empty).Split('\n'))
+            {
+                string[] words = block.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
+                if (words.Length == 0)
+                {
+                    continue;
+                }
+
+                string currentLine = string.Empty;
+                foreach (string word in words)
+                {
+                    string candidate = string.IsNullOrEmpty(currentLine) ? word : $"{currentLine} {word}";
+                    if (!string.IsNullOrEmpty(currentLine) && _font.MeasureString(candidate).X * scale > maxWidth)
+                    {
+                        yield return currentLine;
+                        currentLine = word;
+                    }
+                    else
+                    {
+                        currentLine = candidate;
+                    }
+                }
+
+                if (!string.IsNullOrEmpty(currentLine))
+                {
+                    yield return currentLine;
+                }
+            }
         }
 
         private bool WasPressed(KeyboardState keyboardState, Keys key)

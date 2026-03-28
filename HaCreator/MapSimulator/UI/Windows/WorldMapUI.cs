@@ -138,6 +138,8 @@ namespace HaCreator.MapSimulator.UI
         private int _pageIndex;
         private SearchFilterMode _searchFilterMode;
         private MouseState _previousMouseState;
+        private string _compositionText = string.Empty;
+        private int _compositionInsertionIndex = -1;
 
         public WorldMapUI(
             IDXObject frame,
@@ -321,6 +323,56 @@ namespace HaCreator.MapSimulator.UI
         public override void SetFont(SpriteFont font)
         {
             _font = font;
+        }
+
+        public override void HandleCommittedText(string text)
+        {
+            if (!CapturesKeyboardInput || string.IsNullOrEmpty(text))
+            {
+                return;
+            }
+
+            ClearCompositionText();
+            InsertSearchText(text);
+        }
+
+        public override void HandleCompositionText(string text)
+        {
+            if (!CapturesKeyboardInput)
+            {
+                ClearCompositionText();
+                return;
+            }
+
+            string sanitized = SanitizeSearchText(text);
+            if (string.IsNullOrEmpty(sanitized))
+            {
+                ClearCompositionText();
+                return;
+            }
+
+            if (_compositionText.Length == 0)
+            {
+                _compositionInsertionIndex = Math.Clamp(_searchCursorPosition, 0, _searchQuery.Length);
+            }
+
+            int availableLength = Math.Max(0, MaxSearchQueryLength - _searchQuery.Length);
+            if (availableLength <= 0)
+            {
+                ClearCompositionText();
+                return;
+            }
+
+            _compositionText = sanitized.Length > availableLength
+                ? sanitized[..availableLength]
+                : sanitized;
+            _caretBlinkTick = Environment.TickCount;
+        }
+
+        public override void ClearCompositionText()
+        {
+            _compositionText = string.Empty;
+            _compositionInsertionIndex = -1;
         }
 
         public void SetEntries(IReadOnlyList<MapEntry> entries, int currentMapId, int? focusedMapId = null)
@@ -1007,13 +1059,15 @@ namespace HaCreator.MapSimulator.UI
 
         private void DrawSearchRow(SpriteBatch sprite, SearchResultEntry entry, int row)
         {
-            Texture2D hoverTexture = GetHoverTexture(entry.Kind);
+            SearchResultVisualStyle? style = GetResultStyle(entry.Kind);
+            Texture2D hoverTexture = style?.HoverTexture;
             Rectangle rowBounds = new Rectangle(Position.X + ListStartX, Position.Y + ListStartY + (row * RowHeight), ListWidth, RowHeight);
             if (IsSearchResultSelected(entry))
             {
                 if (hoverTexture != null)
                 {
-                    sprite.Draw(hoverTexture, rowBounds, Color.White);
+                    Point hoverOffset = style?.HoverOffset ?? Point.Zero;
+                    sprite.Draw(hoverTexture, new Vector2(rowBounds.X + hoverOffset.X, rowBounds.Y + hoverOffset.Y), Color.White);
                 }
                 else if (_selectionTexture != null)
                 {
@@ -1021,11 +1075,12 @@ namespace HaCreator.MapSimulator.UI
                 }
             }
 
-            Texture2D iconTexture = GetIconTexture(entry.Kind);
+            Texture2D iconTexture = style?.IconTexture;
             int textStartX = rowBounds.X + 2;
             if (iconTexture != null)
             {
-                sprite.Draw(iconTexture, new Vector2(rowBounds.X + 2, rowBounds.Y + 1), Color.White);
+                Point iconOffset = style?.IconOffset ?? Point.Zero;
+                sprite.Draw(iconTexture, new Vector2(rowBounds.X + 2 + iconOffset.X, rowBounds.Y + 1 + iconOffset.Y), Color.White);
                 textStartX += 15;
             }
 
@@ -1114,7 +1169,8 @@ namespace HaCreator.MapSimulator.UI
             sprite.Draw(_searchInputOutlineTexture, new Rectangle(bounds.X, bounds.Y, 1, bounds.Height), new Color(117, 155, 220));
             sprite.Draw(_searchInputOutlineTexture, new Rectangle(bounds.Right - 1, bounds.Y, 1, bounds.Height), new Color(117, 155, 220));
 
-            if (string.IsNullOrEmpty(_searchQuery))
+            SearchInputVisualState searchVisual = BuildSearchInputVisualState();
+            if (string.IsNullOrEmpty(searchVisual.VisibleText))
             {
                 SelectorWindowDrawing.DrawShadowedText(
                     sprite,
@@ -1125,19 +1181,30 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
-            (int visibleStart, string visibleText) = GetVisibleSearchText();
             Vector2 textPosition = new Vector2(bounds.X + SearchTextInsetX, bounds.Y + SearchTextInsetY);
-            SelectorWindowDrawing.DrawShadowedText(sprite, _font, visibleText, textPosition, new Color(236, 236, 236));
+            SelectorWindowDrawing.DrawShadowedText(sprite, _font, searchVisual.VisibleText, textPosition, new Color(236, 236, 236));
+
+            if (searchVisual.VisibleCompositionLength > 0)
+            {
+                string compositionPrefix = searchVisual.VisibleCompositionStart <= 0
+                    ? string.Empty
+                    : searchVisual.VisibleText[..searchVisual.VisibleCompositionStart];
+                string compositionText = searchVisual.VisibleText.Substring(searchVisual.VisibleCompositionStart, searchVisual.VisibleCompositionLength);
+                int underlineX = bounds.X + SearchTextInsetX + (int)_font.MeasureString(compositionPrefix).X;
+                int underlineWidth = Math.Max(1, (int)Math.Ceiling(_font.MeasureString(compositionText).X));
+                int underlineY = bounds.Bottom - 4;
+                sprite.Draw(_caretTexture, new Rectangle(underlineX, underlineY, underlineWidth, 1), new Color(164, 214, 255, 220));
+            }
 
             if (((tickCount - _caretBlinkTick) / 500) % 2 != 0)
             {
                 return;
             }
 
-            int visibleCaretIndex = Math.Clamp(_searchCursorPosition - visibleStart, 0, visibleText.Length);
+            int visibleCaretIndex = Math.Clamp(searchVisual.VisibleCaretIndex, 0, searchVisual.VisibleText.Length);
             string caretPrefix = visibleCaretIndex <= 0
                 ? string.Empty
-                : visibleText[..visibleCaretIndex];
+                : searchVisual.VisibleText[..visibleCaretIndex];
             int caretX = bounds.X + SearchTextInsetX + (int)_font.MeasureString(caretPrefix).X;
             int caretY = bounds.Y + 3;
             sprite.Draw(_caretTexture, new Rectangle(caretX, caretY, 1, Math.Max(12, _font.LineSpacing - 2)), new Color(255, 255, 255, 220));
@@ -1216,22 +1283,6 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
-            bool shift = keyboardState.IsKeyDown(Keys.LeftShift) || keyboardState.IsKeyDown(Keys.RightShift);
-            foreach (Keys key in keyboardState.GetPressedKeys())
-            {
-                if (ctrl)
-                {
-                    continue;
-                }
-
-                if (_previousSearchKeyboardState.IsKeyDown(key) || !TryInsertSearchCharacter(key, shift, tickCount))
-                {
-                    continue;
-                }
-
-                return;
-            }
-
             if (_lastHeldSearchKey != Keys.None
                 && keyboardState.IsKeyDown(_lastHeldSearchKey)
                 && ShouldRepeatHeldKey(tickCount))
@@ -1261,11 +1312,6 @@ namespace HaCreator.MapSimulator.UI
                 {
                     _searchCursorPosition = Math.Min(_searchQuery.Length, _searchCursorPosition + 1);
                 }
-                else
-                {
-                    TryInsertSearchCharacter(_lastHeldSearchKey, shift, tickCount);
-                }
-
                 _lastKeyRepeatTime = tickCount;
             }
             else if (_lastHeldSearchKey != Keys.None && !keyboardState.IsKeyDown(_lastHeldSearchKey))
@@ -1411,21 +1457,6 @@ namespace HaCreator.MapSimulator.UI
 
             _searchQuery = _searchQuery.Remove(_searchCursorPosition, removalLength);
             OnSearchQueryChanged();
-        }
-
-        private bool TryInsertSearchCharacter(Keys key, bool shift, int tickCount)
-        {
-            char? character = KeyToChar(key, shift);
-            if (!character.HasValue || _searchQuery.Length >= MaxSearchQueryLength)
-            {
-                return false;
-            }
-
-            _searchQuery = _searchQuery.Insert(_searchCursorPosition, character.Value.ToString());
-            _searchCursorPosition++;
-            BeginHeldKey(key, tickCount);
-            OnSearchQueryChanged();
-            return true;
         }
 
         private void OnSearchQueryChanged()
@@ -1639,6 +1670,7 @@ namespace HaCreator.MapSimulator.UI
             _searchCursorPosition = 0;
             _caretBlinkTick = Environment.TickCount;
             ResetSearchKeyRepeat();
+            ClearCompositionText();
         }
 
         private void HandleSearchClipboardPaste()
@@ -1668,6 +1700,7 @@ namespace HaCreator.MapSimulator.UI
                     normalized = normalized[..remainingLength];
                 }
 
+                ClearCompositionText();
                 _searchQuery = _searchQuery.Insert(_searchCursorPosition, normalized);
                 _searchCursorPosition += normalized.Length;
                 OnSearchQueryChanged();
@@ -1705,40 +1738,123 @@ namespace HaCreator.MapSimulator.UI
             return keyboardState.IsKeyDown(key) && _previousSearchKeyboardState.IsKeyUp(key);
         }
 
-        private static char? KeyToChar(Keys key, bool shift)
+        private void InsertSearchText(string text)
         {
-            if (key >= Keys.A && key <= Keys.Z)
+            string sanitized = SanitizeSearchText(text);
+            if (string.IsNullOrEmpty(sanitized))
             {
-                char value = (char)('a' + (key - Keys.A));
-                return shift ? char.ToUpperInvariant(value) : value;
+                return;
             }
 
-            if (key >= Keys.D0 && key <= Keys.D9)
+            int availableLength = MaxSearchQueryLength - _searchQuery.Length;
+            if (availableLength <= 0)
             {
-                return (char)('0' + (key - Keys.D0));
+                return;
             }
 
-            if (key >= Keys.NumPad0 && key <= Keys.NumPad9)
+            if (sanitized.Length > availableLength)
             {
-                return (char)('0' + (key - Keys.NumPad0));
+                sanitized = sanitized[..availableLength];
             }
 
-            return key switch
+            _searchQuery = _searchQuery.Insert(_searchCursorPosition, sanitized);
+            _searchCursorPosition += sanitized.Length;
+            OnSearchQueryChanged();
+        }
+
+        private static string SanitizeSearchText(string text)
+        {
+            if (string.IsNullOrEmpty(text))
             {
-                Keys.Space => ' ',
-                Keys.OemMinus => shift ? '_' : '-',
-                Keys.Subtract => '-',
-                Keys.OemPeriod or Keys.Decimal => '.',
-                Keys.OemComma => ',',
-                Keys.OemSemicolon => shift ? ':' : ';',
-                Keys.OemQuestion => shift ? '?' : '/',
-                Keys.OemQuotes => shift ? '"' : '\'',
-                Keys.OemOpenBrackets => shift ? '{' : '[',
-                Keys.OemCloseBrackets => shift ? '}' : ']',
-                Keys.OemPipe => shift ? '|' : '\\',
-                Keys.OemPlus => shift ? '+' : '=',
-                _ => null
-            };
+                return string.Empty;
+            }
+
+            return string.Concat(text
+                .Replace("\r", " ")
+                .Replace("\n", " ")
+                .Where(static character => !char.IsControl(character)));
+        }
+
+        private SearchInputVisualState BuildSearchInputVisualState()
+        {
+            (string displayText, int caretIndex, int compositionStart, int compositionLength) = BuildDisplayedSearchText();
+            if (_font == null || string.IsNullOrEmpty(displayText))
+            {
+                return new SearchInputVisualState(string.Empty, 0, 0, 0, 0);
+            }
+
+            float maxWidth = SearchInputBoxWidth - (SearchTextInsetX * 2) - 2;
+            int clampedCaretIndex = Math.Clamp(caretIndex, 0, displayText.Length);
+            int visibleStart = 0;
+
+            while (visibleStart < clampedCaretIndex)
+            {
+                if (_font.MeasureString(displayText[visibleStart..clampedCaretIndex]).X <= maxWidth)
+                {
+                    break;
+                }
+
+                visibleStart++;
+            }
+
+            int visibleLength = Math.Max(0, Math.Min(displayText.Length - visibleStart, Math.Max(1, clampedCaretIndex - visibleStart)));
+            while (visibleStart + visibleLength < displayText.Length)
+            {
+                string candidate = displayText.Substring(visibleStart, visibleLength + 1);
+                if (_font.MeasureString(candidate).X > maxWidth)
+                {
+                    break;
+                }
+
+                visibleLength++;
+            }
+
+            string visibleText = displayText.Substring(visibleStart, Math.Max(0, visibleLength));
+            int visibleCaretIndex = Math.Clamp(clampedCaretIndex - visibleStart, 0, visibleText.Length);
+            int visibleCompositionStart = 0;
+            int visibleCompositionLength = 0;
+            if (compositionLength > 0)
+            {
+                int compositionEnd = compositionStart + compositionLength;
+                int visibleEnd = visibleStart + visibleText.Length;
+                int overlapStart = Math.Max(compositionStart, visibleStart);
+                int overlapEnd = Math.Min(compositionEnd, visibleEnd);
+                if (overlapEnd > overlapStart)
+                {
+                    visibleCompositionStart = overlapStart - visibleStart;
+                    visibleCompositionLength = overlapEnd - overlapStart;
+                }
+            }
+
+            return new SearchInputVisualState(visibleText, visibleStart, visibleCaretIndex, visibleCompositionStart, visibleCompositionLength);
+        }
+
+        private (string DisplayText, int CaretIndex, int CompositionStart, int CompositionLength) BuildDisplayedSearchText()
+        {
+            if (string.IsNullOrEmpty(_compositionText))
+            {
+                return (_searchQuery, Math.Clamp(_searchCursorPosition, 0, _searchQuery.Length), -1, 0);
+            }
+
+            int insertionIndex = Math.Clamp(_compositionInsertionIndex >= 0 ? _compositionInsertionIndex : _searchCursorPosition, 0, _searchQuery.Length);
+            string displayText = _searchQuery.Insert(insertionIndex, _compositionText);
+            return (displayText, insertionIndex + _compositionText.Length, insertionIndex, _compositionText.Length);
+        }
+
+        private SearchResultVisualStyle? GetResultStyle(SearchResultKind kind)
+        {
+            if (_resultStyles.TryGetValue(kind, out SearchResultVisualStyle style))
+            {
+                return style;
+            }
+
+            return kind == SearchResultKind.Item
+                ? (_resultStyles.TryGetValue(SearchResultKind.Npc, out style)
+                    ? style
+                    : _resultStyles.TryGetValue(SearchResultKind.Field, out style)
+                        ? style
+                        : null)
+                : null;
         }
 
         private void HandleSearchMouseInput(MouseState mouseState)
@@ -1756,6 +1872,7 @@ namespace HaCreator.MapSimulator.UI
             }
 
             _caretBlinkTick = Environment.TickCount;
+            ClearCompositionText();
             _searchCursorPosition = ResolveSearchCursorFromMouse(mouseState.X);
             ResetSearchKeyRepeat();
         }
@@ -1768,7 +1885,9 @@ namespace HaCreator.MapSimulator.UI
             }
 
             Rectangle bounds = GetSearchInputBounds();
-            (int visibleStart, string visibleText) = GetVisibleSearchText();
+            SearchInputVisualState searchVisual = BuildSearchInputVisualState();
+            int visibleStart = searchVisual.VisibleStart;
+            string visibleText = searchVisual.VisibleText;
             float localX = Math.Max(0, mouseX - bounds.X - SearchTextInsetX);
             float bestDistance = float.MaxValue;
             int bestCursor = visibleStart;
@@ -1788,40 +1907,22 @@ namespace HaCreator.MapSimulator.UI
             return Math.Clamp(bestCursor, 0, _searchQuery.Length);
         }
 
-        private (int visibleStart, string visibleText) GetVisibleSearchText()
+        private sealed class SearchInputVisualState
         {
-            if (_font == null || string.IsNullOrEmpty(_searchQuery))
+            public SearchInputVisualState(string visibleText, int visibleStart, int visibleCaretIndex, int visibleCompositionStart, int visibleCompositionLength)
             {
-                return (0, string.Empty);
+                VisibleText = visibleText;
+                VisibleStart = visibleStart;
+                VisibleCaretIndex = visibleCaretIndex;
+                VisibleCompositionStart = visibleCompositionStart;
+                VisibleCompositionLength = visibleCompositionLength;
             }
 
-            float maxWidth = SearchInputBoxWidth - (SearchTextInsetX * 2) - 2;
-            int caretIndex = Math.Clamp(_searchCursorPosition, 0, _searchQuery.Length);
-            int visibleStart = 0;
-
-            while (visibleStart < caretIndex)
-            {
-                if (_font.MeasureString(_searchQuery[visibleStart..caretIndex]).X <= maxWidth)
-                {
-                    break;
-                }
-
-                visibleStart++;
-            }
-
-            int visibleLength = Math.Max(0, Math.Min(_searchQuery.Length - visibleStart, Math.Max(1, caretIndex - visibleStart)));
-            while (visibleStart + visibleLength < _searchQuery.Length)
-            {
-                string candidate = _searchQuery.Substring(visibleStart, visibleLength + 1);
-                if (_font.MeasureString(candidate).X > maxWidth)
-                {
-                    break;
-                }
-
-                visibleLength++;
-            }
-
-            return (visibleStart, _searchQuery.Substring(visibleStart, visibleLength));
+            public string VisibleText { get; }
+            public int VisibleStart { get; }
+            public int VisibleCaretIndex { get; }
+            public int VisibleCompositionStart { get; }
+            public int VisibleCompositionLength { get; }
         }
     }
 }

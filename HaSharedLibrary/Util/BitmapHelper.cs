@@ -97,6 +97,49 @@ namespace HaSharedLibrary.Util
             }
         }
 
+        public static Bitmap ToBitmap(this Texture2D texture)
+        {
+            if (texture == null)
+            {
+                return null;
+            }
+
+            int width = texture.Width;
+            int height = texture.Height;
+            if (width <= 0 || height <= 0)
+            {
+                return null;
+            }
+
+            Microsoft.Xna.Framework.Color[] pixelData = new Microsoft.Xna.Framework.Color[width * height];
+            texture.GetData(pixelData);
+
+            Bitmap bitmap = new Bitmap(width, height, System.Drawing.Imaging.PixelFormat.Format32bppArgb);
+            Rectangle bounds = new Rectangle(0, 0, width, height);
+            BitmapData bitmapData = bitmap.LockBits(bounds, ImageLockMode.WriteOnly, System.Drawing.Imaging.PixelFormat.Format32bppArgb);
+            try
+            {
+                byte[] bytes = new byte[pixelData.Length * 4];
+                for (int i = 0; i < pixelData.Length; i++)
+                {
+                    int index = i * 4;
+                    Microsoft.Xna.Framework.Color color = pixelData[i];
+                    bytes[index] = color.B;
+                    bytes[index + 1] = color.G;
+                    bytes[index + 2] = color.R;
+                    bytes[index + 3] = color.A;
+                }
+
+                System.Runtime.InteropServices.Marshal.Copy(bytes, 0, bitmapData.Scan0, bytes.Length);
+            }
+            finally
+            {
+                bitmap.UnlockBits(bitmapData);
+            }
+
+            return bitmap;
+        }
+
         /// <summary>
         /// Get the size of an image in Kilobytes
         /// </summary>

@@ -250,39 +250,51 @@ namespace HaCreator.MapSimulator.Loaders
                     }
                 }
 
-                WzImageProperty effectNode = infoNode?["effect"];
-                bool effectHandledAsStructuredNode = false;
-                if (TryBuildAttackEffectNode(texturePool, effectNode, device, usedProps, out var primaryStructuredEffectNode))
-                {
-                    AddCachedAttackExtraEffect(cached, actionName, primaryStructuredEffectNode);
-                    effectHandledAsStructuredNode = true;
-                }
+                List<WzImageProperty> attackEffectProperties = GetAttackEffectProperties(infoNode);
+                Dictionary<string, int> plainEffectGrouping = BuildPlainAttackEffectGrouping(
+                    attackEffectProperties
+                        .Where(property =>
+                            TryGetAttackEffectNodeOrder(property?.Name, out int order) &&
+                            order >= 0 &&
+                            !HasStructuredAttackEffectMetadata(property as WzSubProperty))
+                        .Select(property => property.Name));
 
-                if (!effectHandledAsStructuredNode && effectNode != null)
+                foreach (WzImageProperty attackEffectProperty in attackEffectProperties)
                 {
-                    List<IDXObject> effectFrames = MapSimulatorLoader.LoadFrames(texturePool, effectNode, 0, 0, device, usedProps);
+                    bool isPrimaryEffect = string.Equals(attackEffectProperty.Name, "effect", StringComparison.OrdinalIgnoreCase);
+                    if (TryBuildAttackEffectNode(texturePool, attackEffectProperty, device, usedProps, out var structuredEffectNode))
+                    {
+                        AddCachedAttackExtraEffect(cached, actionName, structuredEffectNode);
+                        continue;
+                    }
+
+                    if (TryBuildPlainAttackEffectNode(texturePool, attackEffectProperty, device, usedProps, out var plainEffectNode))
+                    {
+                        if (plainEffectGrouping.TryGetValue(attackEffectProperty.Name, out int groupIndex))
+                        {
+                            plainEffectNode.RangeGroupIndex = groupIndex;
+                            plainEffectNode.RangeGroupCount = plainEffectGrouping.Count;
+                            AddCachedAttackExtraEffect(cached, actionName, plainEffectNode);
+                            continue;
+                        }
+
+                        if (isPrimaryEffect)
+                        {
+                            cached.AttackEffects[actionName] = plainEffectNode.Sequences[0];
+                        }
+
+                        continue;
+                    }
+
+                    if (!isPrimaryEffect)
+                    {
+                        continue;
+                    }
+
+                    List<IDXObject> effectFrames = MapSimulatorLoader.LoadFrames(texturePool, attackEffectProperty, 0, 0, device, usedProps);
                     if (effectFrames.Count > 0)
                     {
                         cached.AttackEffects[actionName] = effectFrames;
-                    }
-                }
-
-                if (infoNode != null)
-                {
-                    foreach (WzImageProperty infoChild in infoNode.WzProperties)
-                    {
-                        if (effectHandledAsStructuredNode &&
-                            string.Equals(infoChild.Name, "effect", StringComparison.OrdinalIgnoreCase))
-                        {
-                            continue;
-                        }
-
-                        if (!TryBuildAttackEffectNode(texturePool, infoChild, device, usedProps, out var extraEffectNode))
-                        {
-                            continue;
-                        }
-
-                        AddCachedAttackExtraEffect(cached, actionName, extraEffectNode);
                     }
                 }
 
@@ -573,6 +585,35 @@ namespace HaCreator.MapSimulator.Loaders
             return effectNode.Sequences.Count > 0;
         }
 
+        private static bool TryBuildPlainAttackEffectNode(
+            TexturePool texturePool,
+            WzImageProperty infoChild,
+            GraphicsDevice device,
+            ConcurrentBag<WzObject> usedProps,
+            out MobAnimationSet.AttackEffectNode effectNode)
+        {
+            effectNode = null;
+            if (infoChild == null || !TryGetAttackEffectNodeOrder(infoChild.Name, out int groupIndex))
+            {
+                return false;
+            }
+
+            List<IDXObject> frames = MapSimulatorLoader.LoadFrames(texturePool, infoChild, 0, 0, device, usedProps);
+            if (frames.Count == 0)
+            {
+                return false;
+            }
+
+            effectNode = new MobAnimationSet.AttackEffectNode
+            {
+                Name = infoChild.Name,
+                UseRangeGroupPlacement = true,
+                RangeGroupIndex = groupIndex
+            };
+            effectNode.Sequences.Add(frames);
+            return true;
+        }
+
         private static bool HasStructuredAttackEffectMetadata(WzSubProperty effectProperty)
         {
             return effectProperty != null &&
@@ -588,6 +629,95 @@ namespace HaCreator.MapSimulator.Loaders
                     effectProperty["fall"] != null ||
                     effectProperty["x"] != null ||
                     effectProperty["y"] != null);
+        }
+
+        internal static Dictionary<string, int> BuildPlainAttackEffectGrouping(IEnumerable<string> effectPropertyNames)
+        {
+            var orderedNames = effectPropertyNames?
+                .Where(name => TryGetAttackEffectNodeOrder(name, out int order) && order >= 0)
+                .ToList() ?? new List<string>();
+            var grouping = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+            if (orderedNames.Count == 0)
+            {
+                return grouping;
+            }
+
+            bool hasPrimaryEffect = orderedNames.Any(IsPrimaryAttackEffectNodeName);
+            bool hasNumberedEffects = orderedNames.Any(name => !IsPrimaryAttackEffectNodeName(name));
+            if (!hasNumberedEffects)
+            {
+                return grouping;
+            }
+
+            int groupIndex = 0;
+            for (int i = 0; i < orderedNames.Count; i++)
+            {
+                string name = orderedNames[i];
+                if (hasPrimaryEffect && IsPrimaryAttackEffectNodeName(name))
+                {
+                    continue;
+                }
+
+                grouping[name] = groupIndex++;
+            }
+
+            return grouping;
+        }
+
+        private static bool IsPrimaryAttackEffectNodeName(string name)
+        {
+            return string.Equals(name, "effect", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static List<WzImageProperty> GetAttackEffectProperties(WzSubProperty infoNode)
+        {
+            var effects = new List<WzImageProperty>();
+            if (infoNode?.WzProperties == null)
+            {
+                return effects;
+            }
+
+            foreach (WzImageProperty child in infoNode.WzProperties)
+            {
+                if (child == null || !child.Name.StartsWith("effect", StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                effects.Add(child);
+            }
+
+            effects.Sort((left, right) => GetAttackEffectNodeSortKey(left?.Name).CompareTo(GetAttackEffectNodeSortKey(right?.Name)));
+            return effects;
+        }
+
+        private static int GetAttackEffectNodeSortKey(string name)
+        {
+            return TryGetAttackEffectNodeOrder(name, out int order) ? order : int.MaxValue;
+        }
+
+        private static bool TryGetAttackEffectNodeOrder(string name, out int order)
+        {
+            order = -1;
+            if (string.IsNullOrEmpty(name) || !name.StartsWith("effect", StringComparison.OrdinalIgnoreCase))
+            {
+                return false;
+            }
+
+            string suffix = name.Substring("effect".Length);
+            if (suffix.Length == 0)
+            {
+                order = 0;
+                return true;
+            }
+
+            if (!int.TryParse(suffix, out int suffixIndex))
+            {
+                return false;
+            }
+
+            order = suffixIndex + 1;
+            return true;
         }
         #endregion
 

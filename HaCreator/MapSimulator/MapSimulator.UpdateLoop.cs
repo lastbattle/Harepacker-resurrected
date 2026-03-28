@@ -123,7 +123,9 @@ namespace HaCreator.MapSimulator
 
             if (IsLoginRuntimeSceneActive)
             {
-                UpdateLoginRuntimeFrame(gameTime, newKeyboardState, newMouseState, isWindowActive);
+                EnsureLocalOverlayPacketInboxState(shouldRun: false);
+                EnsureLocalUtilityPacketInboxState(shouldRun: false);
+                UpdateLoginRuntimeFrame(gameTime, newKeyboardState, newMouseState, isWindowActive);
                 return;
             }
 
@@ -138,21 +140,25 @@ namespace HaCreator.MapSimulator
                 _playerManager?.Player?.HP,
                 _playerManager?.Player?.MaxHP,
                 _framePrimaryBossMob?.AI?.HpPercent);
-            _specialFieldRuntime.SetGuildBossPlayerState(_playerManager?.GetPlayerHitbox());
+            _specialFieldRuntime.SetGuildBossPlayerState(_playerManager?.GetPlayerHitbox());
             _specialFieldRuntime.SetAriantArenaPlayerState(
                 _playerManager?.Player?.Build?.Name,
-                _playerManager?.Player?.Build?.Job);
+                _playerManager?.Player?.Build?.Job,
+                _remoteUserPool);
             DrainWeddingPacketInbox(currTickCount);
             DrainCoconutPacketInbox(currTickCount);
             FlushPendingCoconutAttackRequests();
             DrainAriantArenaPacketInbox(currTickCount);
-            DrainMonsterCarnivalPacketInbox(currTickCount);
+            DrainMonsterCarnivalPacketInbox(currTickCount);
+            DrainMassacrePacketInbox(currTickCount);
             DrainDojoPacketInbox(currTickCount);
             DrainGuildBossTransport(currTickCount);
             DrainPartyRaidPacketInbox(currTickCount);
             DrainCookieHousePointInbox();
             _specialFieldRuntime.Update(gameTime, currTickCount);
+            SyncMessengerRemoteActorsToSharedPool();
             _remoteUserPool.Update(currTickCount);
+            _remoteUserPool.SyncPortableChairPairState(_playerManager?.Player);
             _summonedPool.Update(currTickCount);
             while (_specialFieldRuntime.Minigames.SnowBall.TryConsumeChatMessage(out string snowBallChatMessage))
             {
@@ -166,9 +172,14 @@ namespace HaCreator.MapSimulator
                     QueueFieldTransfer(specialFieldTransferMapId);
                 }
             }
-            SyncBattlefieldLocalAppearance();
+            SyncBattlefieldLocalAppearance();
+            _remoteUserPool.SyncBattlefieldAppearance(_specialFieldRuntime.SpecialEffects.Battlefield);
             UpdateDirectionModeState(currTickCount);
-            UpdateWorldChannelSelectorRequestState();
+            UpdateWorldChannelSelectorRequestState();
+            EnsureLocalOverlayPacketInboxState(shouldRun: true);
+            DrainLocalOverlayPacketInbox();
+            EnsureLocalUtilityPacketInboxState(shouldRun: true);
+            DrainLocalUtilityPacketInbox();
 
             if (isWindowActive)
             {
@@ -218,6 +229,7 @@ namespace HaCreator.MapSimulator
             _fieldMessageBoxRuntime.Update(currTickCount);
             _packetFieldStateRuntime.Initialize(GraphicsDevice, _mapBoard?.MapInfo);
             _packetFieldStateRuntime.Update(currTickCount);
+            UpdatePacketOwnedFieldFeedbackState(currTickCount);
             UpdatePacketOwnedLocalOverlayState(currTickCount);
             _localOverlayRuntime.Update(currTickCount);
 

@@ -10,7 +10,10 @@ namespace HaCreator.MapSimulator.Interaction
         public string Body { get; init; } = string.Empty;
         public string AttachmentSummary { get; init; } = string.Empty;
         public string LastActionSummary { get; init; } = string.Empty;
+        public bool HasAttachment { get; init; }
+        public bool IsMesoAttachment { get; init; }
         public bool CanSend { get; init; }
+        public bool CanQuickSend { get; init; }
     }
 
     internal sealed class MemoMailboxAttachmentSnapshot

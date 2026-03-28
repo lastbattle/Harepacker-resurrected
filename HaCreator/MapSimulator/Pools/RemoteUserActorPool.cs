@@ -1,5 +1,6 @@
 using HaCreator.MapSimulator.Character;
 using HaCreator.MapSimulator.Character.Skills;
+using HaCreator.MapSimulator.Effects;
 using HaCreator.MapSimulator.Managers;
 using HaCreator.MapSimulator.Physics;
 using HaCreator.MapSimulator.UI;
@@ -20,6 +21,16 @@ namespace HaCreator.MapSimulator.Pools
     public sealed class RemoteUserActorPool
     {
         private const int MinimumMeleeAfterImageFadeDurationMs = 60;
+        private static readonly EquipSlot[] BattlefieldAppearanceSlots =
+        {
+            EquipSlot.Cap,
+            EquipSlot.Coat,
+            EquipSlot.Longcoat,
+            EquipSlot.Pants,
+            EquipSlot.Shoes,
+            EquipSlot.Glove,
+            EquipSlot.Cape,
+        };
 
         private readonly Dictionary<int, RemoteUserActor> _actorsById = new();
         private readonly Dictionary<string, int> _actorIdsByName = new(StringComparer.OrdinalIgnoreCase);
@@ -119,6 +130,7 @@ namespace HaCreator.MapSimulator.Pools
             {
                 string previousName = actor.Name;
                 actor.BeginMeleeAfterImageFade(Environment.TickCount);
+                ResetBattlefieldAppearanceState(actor);
                 actor.Build = build;
                 actor.Name = build.Name.Trim();
                 actor.Position = position;
@@ -246,7 +258,7 @@ namespace HaCreator.MapSimulator.Pools
             int skillId,
             string actionName,
             int masteryPercent,
-            int chargeElement,
+            int chargeSkillId,
             bool? facingRight,
             int currentTime,
             out string message)
@@ -269,6 +281,9 @@ namespace HaCreator.MapSimulator.Pools
                 actor.ActionName = NormalizeActionName(actionName, actor.Build.ActivePortableChair != null);
             }
 
+            int chargeElement = AfterImageChargeSkillResolver.TryGetChargeElement(chargeSkillId, out int resolvedChargeElement)
+                ? resolvedChargeElement
+                : 0;
             RegisterMeleeAfterImage(actor, skillId, actor.ActionName, currentTime, masteryPercent, chargeElement);
             return true;
         }
@@ -338,6 +353,14 @@ namespace HaCreator.MapSimulator.Pools
 
             actor.BattlefieldTeamId = teamId;
             return true;
+        }
+
+        public void SyncBattlefieldAppearance(BattlefieldField battlefield)
+        {
+            foreach (RemoteUserActor actor in _actorsById.Values)
+            {
+                SyncBattlefieldAppearance(actor, battlefield);
+            }
         }
 
         public bool TrySetPortableChair(int characterId, int? chairItemId, out string message)
@@ -517,6 +540,38 @@ namespace HaCreator.MapSimulator.Pools
             }
         }
 
+        public void SyncPortableChairPairState(PlayerCharacter player)
+        {
+            if (player == null)
+            {
+                return;
+            }
+
+            PortableChair chair = player.Build?.ActivePortableChair;
+            bool requestsExternalPair = chair?.IsCoupleChair == true;
+            player.SetPortableChairPairRequestActive(requestsExternalPair);
+            if (!requestsExternalPair)
+            {
+                return;
+            }
+
+            RemoteUserActor pairActor = FindPortableChairPairActor(
+                chair,
+                player.FacingRight,
+                player.X,
+                player.Y,
+                skipCharacterId: player.Build?.Id ?? 0,
+                preferVisibleOnly: true);
+            if (pairActor != null)
+            {
+                player.SetPortableChairExternalPair(pairActor.Position, pairActor.FacingRight);
+            }
+            else
+            {
+                player.ClearPortableChairExternalPair();
+            }
+        }
+
         public IReadOnlyList<StatusBarPreparedSkillRenderData> BuildPreparedSkillWorldOverlays(int currentTime)
         {
             List<StatusBarPreparedSkillRenderData> overlays = new();
@@ -552,7 +607,7 @@ namespace HaCreator.MapSimulator.Pools
                     HoldElapsedMs = prepared.IsHolding ? elapsed : 0,
                     MaxHoldDurationMs = prepared.MaxHoldDurationMs,
                     TextVariant = prepared.TextVariant,
-                    ShowText = prepared.ShowText,
+                    ShowText = prepared.ShowText && !PreparedSkillHudRules.IsDragonOverlaySkill(prepared.SkillId),
                     WorldAnchor = new Vector2(actor.Position.X, actor.Position.Y - 92f)
                 });
             }
@@ -596,8 +651,10 @@ namespace HaCreator.MapSimulator.Pools
             int centerX,
             int centerY,
             int tickCount,
-            SpriteFont font)
+            SpriteFont font,
+            PlayerCharacter localPlayer = null)
         {
+            var renderedCouplePairs = new HashSet<(int LeftId, int RightId)>();
             foreach (RemoteUserActor actor in _actorsById.Values
                 .Where(static value => value.IsVisibleInWorld)
                 .OrderBy(static value => value.Position.Y)
@@ -612,8 +669,32 @@ namespace HaCreator.MapSimulator.Pools
 
                 int screenX = (int)Math.Round(actor.Position.X) - mapShiftX + centerX;
                 int screenY = (int)Math.Round(actor.Position.Y) - mapShiftY + centerY;
+                DrawPortableChairCoupleMidpointEffects(
+                    spriteBatch,
+                    skeletonMeshRenderer,
+                    actor,
+                    localPlayer,
+                    mapShiftX,
+                    mapShiftY,
+                    centerX,
+                    centerY,
+                    tickCount,
+                    drawFrontLayers: false,
+                    renderedCouplePairs);
                 DrawMeleeAfterImage(spriteBatch, skeletonMeshRenderer, actor, screenX, screenY, tickCount);
                 frame.Draw(spriteBatch, skeletonMeshRenderer, screenX, screenY, actor.FacingRight, Color.White);
+                DrawPortableChairCoupleMidpointEffects(
+                    spriteBatch,
+                    skeletonMeshRenderer,
+                    actor,
+                    localPlayer,
+                    mapShiftX,
+                    mapShiftY,
+                    centerX,
+                    centerY,
+                    tickCount,
+                    drawFrontLayers: true,
+                    renderedCouplePairs);
 
                 if (font == null)
                 {
@@ -624,6 +705,81 @@ namespace HaCreator.MapSimulator.Pools
                 float topY = screenY - frame.FeetOffset + frame.Bounds.Top;
                 Vector2 textPosition = new(screenX - (textSize.X / 2f), topY - textSize.Y - 10f);
                 DrawOutlinedText(spriteBatch, font, actor.Name, textPosition, Color.Black, ResolveNameColor(actor));
+            }
+        }
+
+        private void DrawPortableChairCoupleMidpointEffects(
+            SpriteBatch spriteBatch,
+            SkeletonMeshRenderer skeletonMeshRenderer,
+            RemoteUserActor actor,
+            PlayerCharacter localPlayer,
+            int mapShiftX,
+            int mapShiftY,
+            int centerX,
+            int centerY,
+            int currentTime,
+            bool drawFrontLayers,
+            ISet<(int LeftId, int RightId)> renderedPairs)
+        {
+            PortableChair chair = actor?.Build?.ActivePortableChair;
+            if (chair?.IsCoupleChair != true
+                || chair.CoupleMidpointLayers == null
+                || chair.CoupleMidpointLayers.Count == 0)
+            {
+                return;
+            }
+
+            if (TryResolvePortableChairPairWithLocalPlayer(actor, chair, localPlayer, out _, out _))
+            {
+                return;
+            }
+
+            RemoteUserActor partnerActor = FindPortableChairPairActor(
+                chair,
+                actor.FacingRight,
+                actor.Position.X,
+                actor.Position.Y,
+                skipCharacterId: actor.CharacterId,
+                preferVisibleOnly: true);
+            if (partnerActor == null)
+            {
+                return;
+            }
+
+            var pairKey = actor.CharacterId < partnerActor.CharacterId
+                ? (actor.CharacterId, partnerActor.CharacterId)
+                : (partnerActor.CharacterId, actor.CharacterId);
+            if (drawFrontLayers)
+            {
+                if (!renderedPairs.Add(pairKey))
+                {
+                    return;
+                }
+            }
+            else if (renderedPairs.Contains(pairKey))
+            {
+                return;
+            }
+
+            int midpointScreenX = (int)Math.Round((actor.Position.X + partnerActor.Position.X) * 0.5f) - mapShiftX + centerX;
+            int midpointScreenY = (int)Math.Round((actor.Position.Y + partnerActor.Position.Y) * 0.5f) - mapShiftY + centerY;
+            int animationTime = currentTime;
+            for (int i = 0; i < chair.CoupleMidpointLayers.Count; i++)
+            {
+                PortableChairLayer layer = chair.CoupleMidpointLayers[i];
+                if ((layer.RelativeZ > 0) != drawFrontLayers)
+                {
+                    continue;
+                }
+
+                CharacterFrame layerFrame = PlayerCharacter.GetPortableChairLayerFrameAtTime(layer, animationTime);
+                PlayerCharacter.DrawPortableChairLayerFrame(
+                    spriteBatch,
+                    skeletonMeshRenderer,
+                    layerFrame,
+                    midpointScreenX,
+                    midpointScreenY,
+                    actor.FacingRight);
             }
         }
 
@@ -664,6 +820,232 @@ namespace HaCreator.MapSimulator.Pools
                 2 => new Color(185, 229, 255),
                 _ => Color.White
             };
+        }
+
+        private bool TryResolvePortableChairPairWithLocalPlayer(
+            RemoteUserActor actor,
+            PortableChair chair,
+            PlayerCharacter localPlayer,
+            out Vector2 partnerPosition,
+            out bool partnerFacingRight)
+        {
+            partnerPosition = Vector2.Zero;
+            partnerFacingRight = false;
+            if (actor == null
+                || chair?.IsCoupleChair != true
+                || localPlayer?.Build == null
+                || !localPlayer.IsAlive
+                || localPlayer.Build.ActivePortableChair == null)
+            {
+                return false;
+            }
+
+            if (!PlayerCharacter.IsPortableChairActualPairActive(
+                    chair,
+                    actor.FacingRight,
+                    actor.Position.X,
+                    actor.Position.Y,
+                    localPlayer.FacingRight,
+                    localPlayer.X,
+                    localPlayer.Y))
+            {
+                return false;
+            }
+
+            partnerPosition = localPlayer.Position;
+            partnerFacingRight = localPlayer.FacingRight;
+            return true;
+        }
+
+        private RemoteUserActor FindPortableChairPairActor(
+            PortableChair chair,
+            bool ownerFacingRight,
+            float ownerX,
+            float ownerY,
+            int skipCharacterId,
+            bool preferVisibleOnly)
+        {
+            if (chair?.IsCoupleChair != true)
+            {
+                return null;
+            }
+
+            Point expectedOffset = PlayerCharacter.ResolvePortableChairPairOffset(chair, ownerFacingRight);
+            Vector2 expectedPosition = new(ownerX + expectedOffset.X, ownerY + expectedOffset.Y);
+            RemoteUserActor bestActor = null;
+            float bestScore = float.MaxValue;
+
+            foreach (RemoteUserActor actor in _actorsById.Values)
+            {
+                if (actor.CharacterId == skipCharacterId
+                    || (preferVisibleOnly && !actor.IsVisibleInWorld))
+                {
+                    continue;
+                }
+
+                if (!PlayerCharacter.IsPortableChairActualPairActive(
+                        chair,
+                        ownerFacingRight,
+                        ownerX,
+                        ownerY,
+                        actor.FacingRight,
+                        actor.Position.X,
+                        actor.Position.Y))
+                {
+                    continue;
+                }
+
+                float score = Vector2.DistanceSquared(actor.Position, expectedPosition);
+                if (score < bestScore)
+                {
+                    bestScore = score;
+                    bestActor = actor;
+                }
+            }
+
+            return bestActor;
+        }
+
+        private void SyncBattlefieldAppearance(RemoteUserActor actor, BattlefieldField battlefield)
+        {
+            if (actor?.Build == null)
+            {
+                return;
+            }
+
+            int? assignedTeamId = battlefield != null
+                && battlefield.TryGetAssignedTeamId(actor.CharacterId, out int resolvedTeamId)
+                ? resolvedTeamId
+                : actor.BattlefieldTeamId;
+            if (battlefield?.IsActive != true)
+            {
+                RestoreBattlefieldAppearance(actor, clearTeamId: false);
+                return;
+            }
+
+            if (actor.BattlefieldAppliedTeamId == assignedTeamId
+                && (!assignedTeamId.HasValue || actor.BattlefieldOriginalEquipment != null))
+            {
+                return;
+            }
+
+            if (!assignedTeamId.HasValue
+                || !battlefield.TryGetAssignedTeamLookPreset(actor.CharacterId, out BattlefieldField.BattlefieldTeamLookPreset preset))
+            {
+                RestoreBattlefieldAppearance(actor, clearTeamId: false);
+                actor.BattlefieldAppliedTeamId = assignedTeamId;
+                actor.BattlefieldTeamId = assignedTeamId;
+                return;
+            }
+
+            EnsureBattlefieldOriginalAppearanceSnapshot(actor);
+            if (actor.BattlefieldOriginalSpeed == null)
+            {
+                actor.BattlefieldOriginalSpeed = actor.Build.Speed;
+            }
+
+            foreach (EquipSlot slot in BattlefieldAppearanceSlots)
+            {
+                actor.Build.Unequip(slot);
+            }
+
+            if (preset.EquipmentItemIds.ContainsKey(EquipSlot.Longcoat))
+            {
+                actor.Build.Unequip(EquipSlot.Coat);
+                actor.Build.Unequip(EquipSlot.Pants);
+            }
+            else if (preset.EquipmentItemIds.ContainsKey(EquipSlot.Coat))
+            {
+                actor.Build.Unequip(EquipSlot.Longcoat);
+            }
+
+            foreach (KeyValuePair<EquipSlot, int> entry in preset.EquipmentItemIds)
+            {
+                CharacterPart part = _loader?.LoadEquipment(entry.Value);
+                if (part != null)
+                {
+                    actor.Build.Equip(part);
+                }
+            }
+
+            if (preset.MoveSpeed.HasValue)
+            {
+                actor.Build.Speed = preset.MoveSpeed.Value;
+            }
+
+            actor.RefreshAssembler();
+            actor.BattlefieldAppliedTeamId = assignedTeamId;
+            actor.BattlefieldTeamId = assignedTeamId;
+        }
+
+        private static void EnsureBattlefieldOriginalAppearanceSnapshot(RemoteUserActor actor)
+        {
+            if (actor.BattlefieldOriginalEquipment != null || actor?.Build == null)
+            {
+                return;
+            }
+
+            actor.BattlefieldOriginalEquipment = new Dictionary<EquipSlot, CharacterPart>();
+            actor.BattlefieldOriginalSpeed = actor.Build.Speed;
+            foreach (EquipSlot slot in BattlefieldAppearanceSlots)
+            {
+                if (actor.Build.Equipment.TryGetValue(slot, out CharacterPart part) && part != null)
+                {
+                    actor.BattlefieldOriginalEquipment[slot] = part;
+                }
+            }
+        }
+
+        private static void RestoreBattlefieldAppearance(RemoteUserActor actor, bool clearTeamId)
+        {
+            if (actor?.Build == null)
+            {
+                return;
+            }
+
+            if (actor.BattlefieldOriginalEquipment == null)
+            {
+                actor.BattlefieldAppliedTeamId = null;
+                if (clearTeamId)
+                {
+                    actor.BattlefieldTeamId = null;
+                }
+                return;
+            }
+
+            foreach (EquipSlot slot in BattlefieldAppearanceSlots)
+            {
+                actor.Build.Unequip(slot);
+            }
+
+            foreach (KeyValuePair<EquipSlot, CharacterPart> entry in actor.BattlefieldOriginalEquipment)
+            {
+                actor.Build.Equip(entry.Value);
+            }
+
+            if (actor.BattlefieldOriginalSpeed.HasValue)
+            {
+                actor.Build.Speed = actor.BattlefieldOriginalSpeed.Value;
+            }
+
+            actor.RefreshAssembler();
+            ResetBattlefieldAppearanceState(actor);
+            if (clearTeamId)
+            {
+                actor.BattlefieldTeamId = null;
+            }
+        }
+
+        private static void ResetBattlefieldAppearanceState(RemoteUserActor actor)
+        {
+            if (actor == null)
+            {
+                return;
+            }
+
+            actor.BattlefieldOriginalEquipment = null;
+            actor.BattlefieldOriginalSpeed = null;
+            actor.BattlefieldAppliedTeamId = null;
         }
 
         private static string NormalizeActionName(string actionName, bool allowSitFallback)
@@ -955,6 +1337,9 @@ namespace HaCreator.MapSimulator.Pools
         public byte LastMoveActionRaw { get; set; }
         public int CurrentFootholdId { get; set; }
         public bool MovementDrivenActionSelection { get; set; }
+        public Dictionary<EquipSlot, CharacterPart> BattlefieldOriginalEquipment { get; set; }
+        public float? BattlefieldOriginalSpeed { get; set; }
+        public int? BattlefieldAppliedTeamId { get; set; }
         public RemoteMeleeAfterImageState MeleeAfterImage { get; private set; }
 
         public void RefreshAssembler()

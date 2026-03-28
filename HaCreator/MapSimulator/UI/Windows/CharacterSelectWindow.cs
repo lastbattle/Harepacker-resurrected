@@ -1,12 +1,15 @@
 using HaCreator.MapSimulator.Managers;
 using HaSharedLibrary.Render;
 using HaSharedLibrary.Render.DX;
+using HaSharedLibrary.Util;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using Spine;
 using System;
 using System.Collections.Generic;
 using System.Text;
+using SD = System.Drawing;
+using SDText = System.Drawing.Text;
 
 namespace HaCreator.MapSimulator.UI
 {
@@ -43,6 +46,11 @@ namespace HaCreator.MapSimulator.UI
         private readonly IReadOnlyList<AnimationFrame> _enterFocusFrames;
         private readonly BalloonStyle _instructionBalloonStyle;
         private readonly OwnerCanvasFrame _eventBanner;
+        private readonly Dictionary<TextRenderCacheKey, Texture2D> _textTextureCache = new();
+        private readonly SD.Bitmap _measureBitmap;
+        private readonly SD.Graphics _measureGraphics;
+        private readonly SD.Font _basicBlackFont;
+        private readonly GraphicsDevice _graphicsDevice;
 
         private SpriteFont _font;
         private string _statusMessage = "Select a character.";
@@ -75,6 +83,13 @@ namespace HaCreator.MapSimulator.UI
             _enterFocusFrames = enterFocusFrames ?? Array.Empty<AnimationFrame>();
             _instructionBalloonStyle = instructionBalloonStyle;
             _eventBanner = eventBanner;
+            _graphicsDevice = frame?.Texture?.GraphicsDevice
+                ?? _instructionBalloonStyle.Center?.GraphicsDevice
+                ?? _eventBanner.Texture?.GraphicsDevice;
+            _measureBitmap = new SD.Bitmap(1, 1);
+            _measureGraphics = SD.Graphics.FromImage(_measureBitmap);
+            _measureGraphics.TextRenderingHint = SDText.TextRenderingHint.SingleBitPerPixelGridFit;
+            _basicBlackFont = new SD.Font("Tahoma", 11f, SD.FontStyle.Regular, SD.GraphicsUnit.Pixel);
 
             if (_enterButton != null)
             {
@@ -233,17 +248,13 @@ namespace HaCreator.MapSimulator.UI
             }
 
             string wrappedMessage = WrapText(balloonMessage, BalloonWidth - 20, StatusTextScale, 2);
-            float textY = bodyBounds.Y + (wrappedMessage.Contains(Environment.NewLine, StringComparison.Ordinal) ? 9f : BalloonTextInsetY);
-            sprite.DrawString(
-                _font,
+            int textY = bodyBounds.Y + (wrappedMessage.Contains(Environment.NewLine, StringComparison.Ordinal) ? 9 : BalloonTextInsetY);
+            DrawRasterText(
+                sprite,
                 wrappedMessage,
-                new Vector2(bodyBounds.X + BalloonTextInsetX, textY),
-                _instructionBalloonStyle.TextColor,
-                0f,
-                Vector2.Zero,
-                StatusTextScale,
-                SpriteEffects.None,
-                0f);
+                bodyBounds.X + BalloonTextInsetX,
+                textY,
+                _instructionBalloonStyle.TextColor);
         }
 
         private void DrawBalloonNineSlice(SpriteBatch sprite, Rectangle bodyBounds)
@@ -378,7 +389,18 @@ namespace HaCreator.MapSimulator.UI
 
         private void DrawShadowedText(SpriteBatch sprite, string text, Vector2 position, Color color, float scale)
         {
-            if (_font == null || string.IsNullOrEmpty(text))
+            if (string.IsNullOrEmpty(text))
+            {
+                return;
+            }
+
+            if (DrawRasterText(sprite, text, (int)position.X + 1, (int)position.Y + 1, new Color(32, 24, 16, 180)) &&
+                DrawRasterText(sprite, text, (int)position.X, (int)position.Y, color))
+            {
+                return;
+            }
+
+            if (_font == null)
             {
                 return;
             }
@@ -390,7 +412,7 @@ namespace HaCreator.MapSimulator.UI
 
         private string WrapText(string text, int maxWidth, float scale, int maxLines)
         {
-            if (string.IsNullOrWhiteSpace(text) || _font == null)
+            if (string.IsNullOrWhiteSpace(text))
             {
                 return string.Empty;
             }
@@ -408,7 +430,7 @@ namespace HaCreator.MapSimulator.UI
                 string candidate = currentLine.Length == 0
                     ? words[i]
                     : $"{currentLine} {words[i]}";
-                if (_font.MeasureString(candidate).X * scale <= maxWidth)
+                if (MeasureText(candidate, scale).X <= maxWidth)
                 {
                     currentLine.Clear();
                     currentLine.Append(candidate);
@@ -438,6 +460,68 @@ namespace HaCreator.MapSimulator.UI
             }
 
             return string.Join(Environment.NewLine, lines);
+        }
+
+        private Vector2 MeasureText(string text, float fallbackScale)
+        {
+            if (_basicBlackFont != null && !string.IsNullOrEmpty(text))
+            {
+                SD.SizeF size = _measureGraphics.MeasureString(text, _basicBlackFont, SD.PointF.Empty, SD.StringFormat.GenericTypographic);
+                if (size.Width > 0f && size.Height > 0f)
+                {
+                    return new Vector2((float)Math.Ceiling(size.Width), (float)Math.Ceiling(size.Height));
+                }
+            }
+
+            return _font == null ? Vector2.Zero : _font.MeasureString(text) * fallbackScale;
+        }
+
+        private bool DrawRasterText(SpriteBatch sprite, string text, int x, int y, Color color)
+        {
+            if (string.IsNullOrEmpty(text))
+            {
+                return false;
+            }
+
+            Texture2D texture = GetOrCreateTextTexture(text, color);
+            if (texture == null)
+            {
+                return false;
+            }
+
+            sprite.Draw(texture, new Vector2(x, y), Color.White);
+            return true;
+        }
+
+        private Texture2D GetOrCreateTextTexture(string text, Color color)
+        {
+            if (_basicBlackFont == null || _graphicsDevice == null || string.IsNullOrEmpty(text))
+            {
+                return null;
+            }
+
+            TextRenderCacheKey cacheKey = new(text, color);
+            if (_textTextureCache.TryGetValue(cacheKey, out Texture2D cachedTexture) &&
+                cachedTexture != null &&
+                !cachedTexture.IsDisposed)
+            {
+                return cachedTexture;
+            }
+
+            Vector2 size = MeasureText(text, StatusTextScale);
+            int width = Math.Max(1, (int)size.X);
+            int height = Math.Max(1, (int)size.Y);
+
+            using var bitmap = new SD.Bitmap(width, height);
+            using SD.Graphics graphics = SD.Graphics.FromImage(bitmap);
+            graphics.Clear(SD.Color.Transparent);
+            graphics.TextRenderingHint = SDText.TextRenderingHint.SingleBitPerPixelGridFit;
+            using var brush = new SD.SolidBrush(SD.Color.FromArgb(color.A, color.R, color.G, color.B));
+            graphics.DrawString(text, _basicBlackFont, brush, 0f, 0f, SD.StringFormat.GenericTypographic);
+
+            Texture2D texture = bitmap.ToTexture2D(_graphicsDevice);
+            _textTextureCache[cacheKey] = texture;
+            return texture;
         }
 
         public readonly struct AnimationFrame
@@ -516,6 +600,33 @@ namespace HaCreator.MapSimulator.UI
 
             public Texture2D Texture { get; }
             public Point Origin { get; }
+        }
+
+        private readonly struct TextRenderCacheKey : IEquatable<TextRenderCacheKey>
+        {
+            public TextRenderCacheKey(string text, Color color)
+            {
+                Text = text ?? string.Empty;
+                Color = color.PackedValue;
+            }
+
+            public string Text { get; }
+            public uint Color { get; }
+
+            public bool Equals(TextRenderCacheKey other)
+            {
+                return Color == other.Color && string.Equals(Text, other.Text, StringComparison.Ordinal);
+            }
+
+            public override bool Equals(object obj)
+            {
+                return obj is TextRenderCacheKey other && Equals(other);
+            }
+
+            public override int GetHashCode()
+            {
+                return HashCode.Combine(Text, Color);
+            }
         }
     }
 }

@@ -16,10 +16,13 @@ using System.IO;
 using HaCreator.MapEditor;
 using HaCreator.MapEditor.Info;
 using HaCreator.MapEditor.Instance.Misc;
-using HaCreator.MapSimulator.Character;
+using HaCreator.MapSimulator.Character;
+using HaCreator.MapSimulator.Managers;
 using HaCreator.Wz;
 using HaSharedLibrary.Wz;
-using HaSharedLibrary.Util;
+using HaSharedLibrary.Util;
+using MapleLib.Converters;
+using MapleLib.PacketLib;
 
 namespace HaCreator.MapSimulator.Effects
 {
@@ -62,7 +65,12 @@ namespace HaCreator.MapSimulator.Effects
         private const string WeddingWeatherPath = "weather/wedding";
         private const string WeddingHeartWeatherPath = "weather/heartWedding";
         private const int CeremonyPetalCount = 28;
-        private const int CeremonyHeartCount = 14;
+        private const int CeremonyHeartCount = 14;
+        private const int PacketTypeUserEnterField = 179;
+        private const int PacketTypeUserLeaveField = 180;
+        private const int PacketTypeUserMove = 210;
+        private const int PacketTypeSetActivePortableChair = 222;
+        private const int PacketTypeAvatarModified = 223;
 
         private static readonly Dictionary<int, Dictionary<int, string>> WeddingDialogFallbacks = new()
         {
@@ -93,6 +101,7 @@ namespace HaCreator.MapSimulator.Effects
         private readonly Dictionary<int, Vector2> _participantPositions = new();
         private readonly Dictionary<int, WeddingRemoteParticipant> _participantActors = new();
         private readonly Dictionary<string, WeddingRemoteParticipant> _audienceActors = new(StringComparer.OrdinalIgnoreCase);
+        private readonly Dictionary<int, string> _audienceActorNamesById = new();
 
         // Wedding step (from OnWeddingProgress)
         private int _currentStep = 0;
@@ -129,7 +138,9 @@ namespace HaCreator.MapSimulator.Effects
         private readonly Queue<WeddingDialog> _dialogQueue = new();
         private WeddingPacketResponse? _lastPacketResponse;
         private Action<string> _requestBgmOverride;
-        private Action _clearBgmOverride;
+        private Action _clearBgmOverride;
+        private Func<LoginAvatarLook, string, CharacterBuild> _remoteBuildFactory;
+        private int? _lastPacketType;
         #endregion
 
         #region Public Properties
@@ -152,16 +163,21 @@ namespace HaCreator.MapSimulator.Effects
         public WeddingPacketResponse? LastPacketResponse => _lastPacketResponse;
         public int RemoteParticipantCount => _participantActors.Count + _audienceActors.Count;
         public int AudienceParticipantCount => _audienceActors.Count;
+        public int? LastPacketType => _lastPacketType;
+        public bool UseExternalRemoteActorRenderer { get; set; }
         #endregion
 
         #region Initialization
         public void Initialize(
             GraphicsDevice device,
             Action<string> requestBgmOverride = null,
-            Action clearBgmOverride = null)
+            Action clearBgmOverride = null,
+
+            Func<LoginAvatarLook, string, CharacterBuild> remoteBuildFactory = null)
         {
             _requestBgmOverride = requestBgmOverride;
-            _clearBgmOverride = clearBgmOverride;
+            _clearBgmOverride = clearBgmOverride;
+            _remoteBuildFactory = remoteBuildFactory;
             _blessFrames = LoadBlessFrames(device);
             LoadCeremonyOverlay(device);
             LoadCeremonyCelebrationAssets(device);
@@ -182,7 +198,9 @@ namespace HaCreator.MapSimulator.Effects
             _participantPositions.Clear();
             _participantActors.Clear();
             _audienceActors.Clear();
-            _lastPacketResponse = null;
+            _audienceActorNamesById.Clear();
+            _lastPacketResponse = null;
+            _lastPacketType = null;
             _ceremonyTextOverlayActive = false;
             _ceremonyTextOverlayAlpha = 0f;
             _ceremonyCardOverlayActive = false;
@@ -210,7 +228,74 @@ namespace HaCreator.MapSimulator.Effects
             UpdateParticipantState();
         }
 
-        public void SetParticipantPosition(int characterId, Vector2 worldPosition)
+        public bool TryApplyPacket(int packetType, byte[] payload, int currentTimeMs, out string errorMessage)
+
+        {
+
+            errorMessage = null;
+            _lastPacketType = packetType;
+
+            if (!_isActive)
+
+            {
+
+                errorMessage = "Wedding runtime inactive.";
+
+                return false;
+
+            }
+
+            try
+
+            {
+
+                switch (packetType)
+
+                {
+
+                    case PacketTypeUserEnterField:
+
+                        return TryApplyRemoteSpawnPacket(payload, out errorMessage);
+
+                    case PacketTypeUserLeaveField:
+
+                        return TryApplyRemoteLeavePacket(payload, out errorMessage);
+
+                    case PacketTypeUserMove:
+
+                        return TryApplyRemoteMovePacket(payload, out errorMessage);
+
+                    case PacketTypeSetActivePortableChair:
+
+                        return TryApplyRemoteChairPacket(payload, out errorMessage);
+
+                    case PacketTypeAvatarModified:
+
+                        return TryApplyRemoteAvatarModifiedPacket(payload, out errorMessage);
+
+                    default:
+
+                        errorMessage = $"Unsupported wedding packet type: {packetType}";
+
+                        return false;
+
+                }
+
+            }
+
+            catch (Exception ex) when (ex is InvalidDataException || ex is EndOfStreamException || ex is IOException)
+
+            {
+
+                errorMessage = ex.Message;
+
+                return false;
+
+            }
+
+        }
+
+        public void SetParticipantPosition(int characterId, Vector2 worldPosition)
         {
             if (characterId <= 0)
             {
@@ -225,18 +310,37 @@ namespace HaCreator.MapSimulator.Effects
         {
             if (_participantActors.TryGetValue(characterId, out WeddingRemoteParticipant participant))
             {
-                snapshot = new WeddingRemoteParticipantSnapshot(
-                    participant.CharacterId,
-                    participant.Name,
-                    participant.Role,
-                    participant.Position,
-                    participant.FacingRight,
-                    participant.ActionName);
-                return true;
+                snapshot = new WeddingRemoteParticipantSnapshot(
+                    participant.CharacterId,
+                    participant.Name,
+                    participant.Role,
+                    participant.Position,
+                    participant.FacingRight,
+                    participant.ActionName,
+                    participant.Build?.Clone());
+                return true;
             }
 
             snapshot = default;
             return false;
+        }
+
+        public IReadOnlyList<WeddingRemoteParticipantSnapshot> GetRemoteParticipantSnapshots()
+        {
+            List<WeddingRemoteParticipantSnapshot> snapshots = new(_participantActors.Count + _audienceActors.Count);
+            foreach (WeddingRemoteParticipant participant in _participantActors.Values.Concat(_audienceActors.Values))
+            {
+                snapshots.Add(new WeddingRemoteParticipantSnapshot(
+                    participant.CharacterId,
+                    participant.Name,
+                    participant.Role,
+                    participant.Position,
+                    participant.FacingRight,
+                    participant.ActionName,
+                    participant.Build?.Clone()));
+            }
+
+            return snapshots;
         }
 
         public bool TryConfigureParticipantActor(
@@ -283,18 +387,30 @@ namespace HaCreator.MapSimulator.Effects
 
         public void UpsertAudienceParticipant(CharacterBuild build, Vector2 worldPosition, bool facingRight, string actionName = null)
         {
+            UpsertAudienceParticipant(build, worldPosition, facingRight, actionName, build?.Id);
+        }
+
+        public void UpsertAudienceParticipant(CharacterBuild build, Vector2 worldPosition, bool facingRight, string actionName, int? characterId)
+        {
             if (build == null)
             {
                 return;
             }
 
             string actorName = string.IsNullOrWhiteSpace(build.Name) ? "Guest" : build.Name.Trim();
+            if (characterId.HasValue
+                && _audienceActorNamesById.TryGetValue(characterId.Value, out string previousName)
+                && !string.Equals(previousName, actorName, StringComparison.OrdinalIgnoreCase))
+            {
+                _audienceActors.Remove(previousName);
+            }
+
             if (!_audienceActors.TryGetValue(actorName, out WeddingRemoteParticipant participant))
             {
                 CharacterBuild actorBuild = build.Clone();
                 actorBuild.Name = actorName;
                 participant = new WeddingRemoteParticipant(
-                    actorBuild.Id,
+                    characterId ?? actorBuild.Id,
                     WeddingParticipantRole.Guest,
                     actorBuild.Name,
                     actorBuild,
@@ -302,8 +418,13 @@ namespace HaCreator.MapSimulator.Effects
                 _audienceActors[actorName] = participant;
             }
 
+            participant.CharacterId = characterId ?? participant.CharacterId;
             ApplyParticipantPresentation(participant, build, facingRight, actionName);
             participant.Position = worldPosition;
+            if (participant.CharacterId > 0)
+            {
+                _audienceActorNamesById[participant.CharacterId] = actorName;
+            }
         }
 
         public bool TryMoveAudienceParticipant(string name, Vector2 worldPosition, bool? facingRight, string actionName, out string message)
@@ -328,13 +449,69 @@ namespace HaCreator.MapSimulator.Effects
 
         public bool RemoveAudienceParticipant(string name)
         {
-            return !string.IsNullOrWhiteSpace(name) && _audienceActors.Remove(name.Trim());
+            if (string.IsNullOrWhiteSpace(name))
+            {
+                return false;
+            }
+
+            string normalized = name.Trim();
+            if (!_audienceActors.TryGetValue(normalized, out WeddingRemoteParticipant participant))
+            {
+                return false;
+            }
+
+            if (participant.CharacterId > 0)
+            {
+                _audienceActorNamesById.Remove(participant.CharacterId);
+            }
+
+            return _audienceActors.Remove(normalized);
         }
 
         public void ClearAudienceParticipants()
         {
             _audienceActors.Clear();
+            _audienceActorNamesById.Clear();
         }
+
+        public bool TryMoveAudienceParticipantById(int characterId, Vector2 worldPosition, bool? facingRight, string actionName, out string message)
+        {
+            message = null;
+            if (!_audienceActorNamesById.TryGetValue(characterId, out string actorName))
+            {
+                message = $"Wedding guest id {characterId} does not exist.";
+                return false;
+            }
+
+            return TryMoveAudienceParticipant(actorName, worldPosition, facingRight, actionName, out message);
+        }
+
+        public bool RemoveAudienceParticipantById(int characterId)
+        {
+            return _audienceActorNamesById.TryGetValue(characterId, out string actorName)
+                && RemoveAudienceParticipant(actorName);
+        }
+
+        public bool TryGetAudienceParticipantById(int characterId, out WeddingRemoteParticipantSnapshot snapshot)
+        {
+            snapshot = default;
+            if (!_audienceActorNamesById.TryGetValue(characterId, out string actorName)
+                || !_audienceActors.TryGetValue(actorName, out WeddingRemoteParticipant participant))
+            {
+                return false;
+            }
+
+            snapshot = new WeddingRemoteParticipantSnapshot(
+                participant.CharacterId,
+                participant.Name,
+                participant.Role,
+                participant.Position,
+                participant.FacingRight,
+                participant.ActionName,
+                participant.Build?.Clone());
+            return true;
+        }
+
         private static void ApplyParticipantPresentation(
             WeddingRemoteParticipant participant,
             CharacterBuild build,
@@ -371,6 +548,554 @@ namespace HaCreator.MapSimulator.Effects
                 participant.ActionName = actionName.Trim();
                 participant.HasExplicitAction = true;
             }
+        }
+
+        private void PromoteAudienceActorToParticipant(int characterId, WeddingParticipantRole role, Vector2? fallbackPosition)
+        {
+            if (characterId <= 0
+                || !_audienceActorNamesById.TryGetValue(characterId, out string actorName)
+                || !_audienceActors.TryGetValue(actorName, out WeddingRemoteParticipant participant))
+            {
+                return;
+            }
+
+            _audienceActors.Remove(actorName);
+            _audienceActorNamesById.Remove(characterId);
+            TryConfigureParticipantActor(
+                characterId,
+                fallbackPosition ?? participant.Position,
+                participant.Build,
+                participant.FacingRight,
+                participant.ActionName,
+                out _);
+        }
+
+        private bool TryApplyRemoteSpawnPacket(byte[] payload, out string errorMessage)
+        {
+            errorMessage = null;
+            if (!TryDecodeRemoteSpawnPacket(payload, out WeddingRemoteSpawnPacket spawn, out errorMessage))
+            {
+                return false;
+            }
+
+            CharacterBuild build = CreateRemoteBuildFromAvatarLook(spawn.Name, spawn.AvatarLook, out errorMessage);
+            if (build == null)
+            {
+                return false;
+            }
+
+            string actionName = ResolveRemoteActionName(spawn.MoveAction, spawn.PortableChairItemId);
+            bool facingRight = (spawn.MoveAction & 1) == 0;
+            if (spawn.CharacterId == _groomId || spawn.CharacterId == _brideId)
+            {
+                return TryConfigureParticipantActor(spawn.CharacterId, spawn.Position, build, facingRight, actionName, out errorMessage);
+            }
+
+            UpsertAudienceParticipant(build, spawn.Position, facingRight, actionName, spawn.CharacterId);
+            return true;
+        }
+
+        private bool TryApplyRemoteLeavePacket(byte[] payload, out string errorMessage)
+        {
+            errorMessage = null;
+            if (!TryDecodeRemoteCharacterIdPacket(payload, PacketTypeUserLeaveField, out int characterId, out errorMessage))
+            {
+                return false;
+            }
+
+            bool removed = RemoveAudienceParticipantById(characterId);
+            if (_participantActors.Remove(characterId))
+            {
+                removed = true;
+            }
+
+            if (_participantPositions.Remove(characterId))
+            {
+                removed = true;
+            }
+
+            if (characterId == _groomId && LocalParticipantRole != WeddingParticipantRole.Groom)
+            {
+                _groomPosition = null;
+                removed = true;
+            }
+
+            if (characterId == _brideId && LocalParticipantRole != WeddingParticipantRole.Bride)
+            {
+                _bridePosition = null;
+                removed = true;
+            }
+
+            if (!removed)
+            {
+                errorMessage = $"Wedding remote actor id {characterId} does not exist.";
+                return false;
+            }
+
+            UpdateParticipantState();
+            return true;
+        }
+
+        private bool TryApplyRemoteMovePacket(byte[] payload, out string errorMessage)
+        {
+            errorMessage = null;
+            if (!TryDecodeRemoteMovePacket(payload, out WeddingRemoteMovePacket move, out errorMessage))
+            {
+                return false;
+            }
+
+            string actionName = ResolveRemoteActionName(move.MoveAction, portableChairItemId: 0);
+            bool facingRight = (move.MoveAction & 1) == 0;
+            if (move.CharacterId == _groomId || move.CharacterId == _brideId)
+            {
+                return TryConfigureParticipantActor(move.CharacterId, move.Position, build: null, facingRight, actionName, out errorMessage);
+            }
+
+            return TryMoveAudienceParticipantById(move.CharacterId, move.Position, facingRight, actionName, out errorMessage);
+        }
+
+        private bool TryApplyRemoteChairPacket(byte[] payload, out string errorMessage)
+        {
+            errorMessage = null;
+            if (!TryDecodeRemoteChairPacket(payload, out WeddingRemoteChairPacket chair, out errorMessage))
+            {
+                return false;
+            }
+
+            string actionName = chair.PortableChairItemId > 0
+                ? CharacterPart.GetActionString(CharacterAction.Sit)
+                : CharacterPart.GetActionString(CharacterAction.Stand1);
+            if (chair.CharacterId == _groomId || chair.CharacterId == _brideId)
+            {
+                if (!TryGetRemoteParticipant(chair.CharacterId, out WeddingRemoteParticipantSnapshot snapshot))
+                {
+                    errorMessage = $"Wedding remote participant id {chair.CharacterId} does not exist.";
+                    return false;
+                }
+
+                return TryConfigureParticipantActor(chair.CharacterId, snapshot.Position, build: null, facingRight: null, actionName, out errorMessage);
+            }
+
+            if (!TryGetAudienceParticipantById(chair.CharacterId, out WeddingRemoteParticipantSnapshot audienceSnapshot))
+            {
+                errorMessage = $"Wedding guest id {chair.CharacterId} does not exist.";
+                return false;
+            }
+
+            return TryMoveAudienceParticipantById(chair.CharacterId, audienceSnapshot.Position, facingRight: null, actionName, out errorMessage);
+        }
+
+        private bool TryApplyRemoteAvatarModifiedPacket(byte[] payload, out string errorMessage)
+        {
+            errorMessage = null;
+            if (!TryDecodeRemoteAvatarModifiedPacket(payload, out WeddingRemoteAvatarModifiedPacket packet, out errorMessage))
+            {
+                return false;
+            }
+
+            if (packet.AvatarLook == null)
+            {
+                return true;
+            }
+
+            if (packet.CharacterId == _groomId || packet.CharacterId == _brideId)
+            {
+                string actorName = packet.CharacterId == _groomId ? "Groom" : "Bride";
+                Vector2? position = packet.CharacterId == _groomId ? _groomPosition : _bridePosition;
+                bool? facingRight = null;
+                string actionName = null;
+                if (TryGetRemoteParticipant(packet.CharacterId, out WeddingRemoteParticipantSnapshot participantSnapshot))
+                {
+                    actorName = participantSnapshot.Name;
+                    position = participantSnapshot.Position;
+                    facingRight = participantSnapshot.FacingRight;
+                    actionName = participantSnapshot.ActionName;
+                }
+
+                CharacterBuild build = CreateRemoteBuildFromAvatarLook(actorName, packet.AvatarLook, out errorMessage);
+                if (build == null)
+                {
+                    return false;
+                }
+
+                return TryConfigureParticipantActor(packet.CharacterId, position, build, facingRight, actionName, out errorMessage);
+            }
+
+            if (!TryGetAudienceParticipantById(packet.CharacterId, out WeddingRemoteParticipantSnapshot audienceSnapshot))
+            {
+                errorMessage = $"Wedding guest id {packet.CharacterId} does not exist.";
+                return false;
+            }
+
+            CharacterBuild audienceBuild = CreateRemoteBuildFromAvatarLook(audienceSnapshot.Name, packet.AvatarLook, out errorMessage);
+            if (audienceBuild == null)
+            {
+                return false;
+            }
+
+            UpsertAudienceParticipant(audienceBuild, audienceSnapshot.Position, audienceSnapshot.FacingRight, audienceSnapshot.ActionName, packet.CharacterId);
+            return true;
+        }
+
+        private CharacterBuild CreateRemoteBuildFromAvatarLook(string actorName, LoginAvatarLook avatarLook, out string errorMessage)
+        {
+            errorMessage = null;
+            if (avatarLook == null)
+            {
+                errorMessage = "Wedding AvatarLook payload is missing.";
+                return null;
+            }
+
+            CharacterBuild build = _remoteBuildFactory?.Invoke(avatarLook, actorName);
+            if (build == null)
+            {
+                errorMessage = "Wedding AvatarLook payload could not be converted into a character build.";
+                return null;
+            }
+
+            if (!string.IsNullOrWhiteSpace(actorName))
+            {
+                build.Name = actorName.Trim();
+            }
+
+            return build;
+        }
+
+        private static bool TryDecodeRemoteSpawnPacket(byte[] payload, out WeddingRemoteSpawnPacket packet, out string errorMessage)
+        {
+            packet = default;
+            errorMessage = null;
+            if (!TryCreatePacketReader(payload, PacketTypeUserEnterField, out PacketReader reader, out errorMessage))
+            {
+                return false;
+            }
+
+            try
+            {
+                int characterId = reader.ReadInt();
+                reader.ReadByte();
+                string name = reader.ReadMapleString();
+                reader.ReadMapleString();
+                reader.Skip(6);
+                if (!TrySkipEmptyRemoteSecondaryStat(reader, out errorMessage))
+                {
+                    return false;
+                }
+
+                reader.ReadShort();
+                if (!LoginAvatarLookCodec.TryDecode(reader, out LoginAvatarLook avatarLook, out string avatarError))
+                {
+                    errorMessage = avatarError ?? "Wedding remote spawn packet could not decode AvatarLook.";
+                    return false;
+                }
+
+                reader.ReadInt();
+                reader.ReadInt();
+                reader.ReadInt();
+                reader.ReadInt();
+                reader.ReadInt();
+                int portableChairItemId = reader.ReadInt();
+                short x = reader.ReadShort();
+                short y = reader.ReadShort();
+                byte moveAction = reader.ReadByte();
+
+                packet = new WeddingRemoteSpawnPacket(
+                    characterId,
+                    string.IsNullOrWhiteSpace(name) ? $"WeddingGuest{characterId}" : name.Trim(),
+                    avatarLook,
+                    new Vector2(x, y),
+                    moveAction,
+                    portableChairItemId);
+                return true;
+            }
+            catch (EndOfStreamException)
+            {
+                errorMessage = "Wedding remote spawn packet ended before decoding completed.";
+                return false;
+            }
+        }
+
+        private static bool TryDecodeRemoteCharacterIdPacket(byte[] payload, int packetType, out int characterId, out string errorMessage)
+        {
+            characterId = 0;
+            errorMessage = null;
+            if (!TryCreatePacketReader(payload, packetType, out PacketReader reader, out errorMessage))
+            {
+                return false;
+            }
+
+            try
+            {
+                characterId = reader.ReadInt();
+                return true;
+            }
+            catch (EndOfStreamException)
+            {
+                errorMessage = "Wedding remote actor packet ended before the character id was fully read.";
+                return false;
+            }
+        }
+
+        private static bool TryDecodeRemoteMovePacket(byte[] payload, out WeddingRemoteMovePacket packet, out string errorMessage)
+        {
+            packet = default;
+            errorMessage = null;
+            if (!TryCreatePacketReader(payload, PacketTypeUserMove, out PacketReader reader, out errorMessage))
+            {
+                return false;
+            }
+
+            try
+            {
+                int characterId = reader.ReadInt();
+                short x = reader.ReadShort();
+                short y = reader.ReadShort();
+                reader.ReadShort();
+                reader.ReadShort();
+                int movementCount = reader.ReadByte();
+                byte moveAction = 0;
+                Vector2 position = new Vector2(x, y);
+
+                for (int i = 0; i < movementCount; i++)
+                {
+                    byte movementType = reader.ReadByte();
+                    short nextX = x;
+                    short nextY = y;
+
+                    switch (movementType)
+                    {
+                        case 0:
+                        case 5:
+                        case 12:
+                        case 14:
+                        case 35:
+                        case 36:
+                            nextX = reader.ReadShort();
+                            nextY = reader.ReadShort();
+                            reader.Skip(6);
+                            if (movementType == 12)
+                            {
+                                reader.ReadShort();
+                            }
+
+                            reader.Skip(4);
+                            break;
+                        case 1:
+                        case 2:
+                        case 13:
+                        case 16:
+                        case 18:
+                        case 31:
+                        case 32:
+                        case 33:
+                        case 34:
+                            reader.Skip(4);
+                            break;
+                        case 3:
+                        case 4:
+                        case 6:
+                        case 7:
+                        case 8:
+                        case 10:
+                            nextX = reader.ReadShort();
+                            nextY = reader.ReadShort();
+                            reader.Skip(2);
+                            break;
+                        case 9:
+                            reader.ReadByte();
+                            break;
+                        case 11:
+                            reader.Skip(6);
+                            break;
+                        case 17:
+                            nextX = reader.ReadShort();
+                            nextY = reader.ReadShort();
+                            reader.Skip(4);
+                            break;
+                        case 20:
+                        case 21:
+                        case 22:
+                        case 23:
+                        case 24:
+                        case 25:
+                        case 26:
+                        case 27:
+                        case 28:
+                        case 29:
+                        case 30:
+                            break;
+                        default:
+                            errorMessage = $"Unsupported wedding remote move fragment type: {movementType}";
+                            return false;
+                    }
+
+                    moveAction = reader.ReadByte();
+                    reader.ReadShort();
+                    x = nextX;
+                    y = nextY;
+                    position = new Vector2(nextX, nextY);
+                }
+
+                packet = new WeddingRemoteMovePacket(characterId, position, moveAction);
+                return true;
+            }
+            catch (EndOfStreamException)
+            {
+                errorMessage = "Wedding remote move packet ended before decoding completed.";
+                return false;
+            }
+        }
+
+        private static bool TryDecodeRemoteChairPacket(byte[] payload, out WeddingRemoteChairPacket packet, out string errorMessage)
+        {
+            packet = default;
+            errorMessage = null;
+            if (!TryCreatePacketReader(payload, PacketTypeSetActivePortableChair, out PacketReader reader, out errorMessage))
+            {
+                return false;
+            }
+
+            try
+            {
+                packet = new WeddingRemoteChairPacket(reader.ReadInt(), reader.ReadInt());
+                return true;
+            }
+            catch (EndOfStreamException)
+            {
+                errorMessage = "Wedding remote chair packet ended before decoding completed.";
+                return false;
+            }
+        }
+
+        private static bool TryDecodeRemoteAvatarModifiedPacket(byte[] payload, out WeddingRemoteAvatarModifiedPacket packet, out string errorMessage)
+        {
+            packet = default;
+            errorMessage = null;
+            if (!TryCreatePacketReader(payload, PacketTypeAvatarModified, out PacketReader reader, out errorMessage))
+            {
+                return false;
+            }
+
+            try
+            {
+                int characterId = reader.ReadInt();
+                byte flags = reader.ReadByte();
+                LoginAvatarLook avatarLook = null;
+
+                if ((flags & 0x01) != 0)
+                {
+                    if (!LoginAvatarLookCodec.TryDecode(reader, out avatarLook, out string avatarError))
+                    {
+                        errorMessage = avatarError ?? "Wedding remote avatar-modified packet could not decode AvatarLook.";
+                        return false;
+                    }
+                }
+
+                if ((flags & 0x02) != 0)
+                {
+                    reader.ReadByte();
+                }
+
+                if ((flags & 0x04) != 0)
+                {
+                    reader.ReadByte();
+                }
+
+                if (reader.ReadByte() != 0)
+                {
+                    reader.ReadLong();
+                    reader.ReadLong();
+                    reader.ReadInt();
+                }
+
+                if (reader.ReadByte() != 0)
+                {
+                    reader.ReadLong();
+                    reader.ReadLong();
+                    reader.ReadInt();
+                }
+
+                if (reader.ReadByte() != 0)
+                {
+                    reader.ReadInt();
+                    reader.ReadInt();
+                    reader.ReadInt();
+                }
+
+                reader.ReadInt();
+                packet = new WeddingRemoteAvatarModifiedPacket(characterId, avatarLook);
+                return true;
+            }
+            catch (EndOfStreamException)
+            {
+                errorMessage = "Wedding remote avatar-modified packet ended before decoding completed.";
+                return false;
+            }
+        }
+
+        private static bool TryCreatePacketReader(byte[] payload, int packetType, out PacketReader reader, out string errorMessage)
+        {
+            reader = null;
+            errorMessage = null;
+            if (payload == null || payload.Length == 0)
+            {
+                errorMessage = $"Wedding packet {packetType} payload is missing.";
+                return false;
+            }
+
+            reader = new PacketReader(payload);
+            return true;
+        }
+
+        private static bool TrySkipEmptyRemoteSecondaryStat(PacketReader reader, out string errorMessage)
+        {
+            errorMessage = null;
+            byte[] remoteSecondaryStatMask = reader.ReadBytes(16);
+            if (remoteSecondaryStatMask.Length != 16)
+            {
+                errorMessage = "Wedding remote spawn packet ended before the 16-byte remote secondary-stat mask was fully read.";
+                return false;
+            }
+
+            if (remoteSecondaryStatMask.Any(value => value != 0))
+            {
+                errorMessage = "Wedding remote spawn packets with non-empty remote secondary-stat masks are not decoded yet.";
+                return false;
+            }
+
+            return true;
+        }
+
+        private static string ResolveRemoteActionName(byte moveAction, int portableChairItemId)
+        {
+            if (portableChairItemId > 0)
+            {
+                return CharacterPart.GetActionString(CharacterAction.Sit);
+            }
+
+            return (moveAction >> 1) switch
+            {
+                1 => CharacterPart.GetActionString(CharacterAction.Walk1),
+                4 => CharacterPart.GetActionString(CharacterAction.Alert),
+                5 => CharacterPart.GetActionString(CharacterAction.Jump),
+                6 => CharacterPart.GetActionString(CharacterAction.Sit),
+                17 => CharacterPart.GetActionString(CharacterAction.Ladder),
+                18 => CharacterPart.GetActionString(CharacterAction.Rope),
+                _ => CharacterPart.GetActionString(CharacterAction.Stand1)
+            };
+        }
+
+        private static string DescribePacketType(int packetType)
+        {
+            return packetType switch
+            {
+                PacketTypeUserEnterField => "userenter (179)",
+                PacketTypeUserLeaveField => "userleave (180)",
+                PacketTypeUserMove => "usermove (210)",
+                PacketTypeSetActivePortableChair => "chair (222)",
+                PacketTypeAvatarModified => "avatarmodified (223)",
+                _ => packetType.ToString(CultureInfo.InvariantCulture)
+            };
         }
 
         #endregion
@@ -766,7 +1491,9 @@ namespace HaCreator.MapSimulator.Effects
             }
 
             SyncParticipantActor(_groomId, WeddingParticipantRole.Groom, _groomPosition);
-            SyncParticipantActor(_brideId, WeddingParticipantRole.Bride, _bridePosition);
+            SyncParticipantActor(_brideId, WeddingParticipantRole.Bride, _bridePosition);
+            PromoteAudienceActorToParticipant(_groomId, WeddingParticipantRole.Groom, _groomPosition);
+            PromoteAudienceActorToParticipant(_brideId, WeddingParticipantRole.Bride, _bridePosition);
         }
 
         private bool ShouldSendParticipantAdvancePacket()
@@ -796,7 +1523,13 @@ namespace HaCreator.MapSimulator.Effects
                 : "unknown";
             string lastPacket = _lastPacketResponse.HasValue
                 ? _lastPacketResponse.Value.ToString()
-                : "none";
+                : "none";
+
+            string lastRemotePacket = _lastPacketType.HasValue
+
+                ? DescribePacketType(_lastPacketType.Value)
+
+                : "none";
             string scene = _ceremonyTextOverlayActive
                 ? "declaration overlay active"
                 : _ceremonyCardOverlayActive
@@ -804,7 +1537,7 @@ namespace HaCreator.MapSimulator.Effects
                 : _ceremonyCelebrationActive
                     ? "celebration particles active"
                     : "no scene overlay";
-            return $"Wedding map {_mapId}: step {_currentStep}, role {role}, dialog {dialog}, scene {scene}, coupleActors={_participantActors.Count}, audienceActors={_audienceActors.Count}, groom {groomPosition}, bride {bridePosition}, last packet {lastPacket}.";
+            return $"Wedding map {_mapId}: step {_currentStep}, role {role}, dialog {dialog}, scene {scene}, coupleActors={_participantActors.Count}, audienceActors={_audienceActors.Count}, groom {groomPosition}, bride {bridePosition}, last packet {lastPacket}, last remote packet {lastRemotePacket}.";
         }
 
         private Vector2? TryGetBlessEffectWorldCenter()
@@ -1266,20 +1999,25 @@ namespace HaCreator.MapSimulator.Effects
             return frames[Math.Clamp(baseFrameIndex, 0, frames.Count - 1)];
         }
 
-        private void DrawRemoteParticipants(
-            SpriteBatch spriteBatch,
-            SkeletonMeshRenderer skeletonMeshRenderer,
-            int mapShiftX,
-            int mapShiftY,
-            int centerX,
-            int centerY,
-            int tickCount,
-            SpriteFont font)
-        {
+        private void DrawRemoteParticipants(
+            SpriteBatch spriteBatch,
+            SkeletonMeshRenderer skeletonMeshRenderer,
+            int mapShiftX,
+            int mapShiftY,
+            int centerX,
+            int centerY,
+            int tickCount,
+            SpriteFont font)
+        {
+            if (UseExternalRemoteActorRenderer)
+            {
+                return;
+            }
+
             if (_participantActors.Count == 0 && _audienceActors.Count == 0)
-            {
-                return;
-            }
+            {
+                return;
+            }
 
             foreach (WeddingRemoteParticipant participant in _participantActors.Values
                 .Concat(_audienceActors.Values)
@@ -1473,7 +2211,9 @@ namespace HaCreator.MapSimulator.Effects
             _participantPositions.Clear();
             _participantActors.Clear();
             _audienceActors.Clear();
-            _lastPacketResponse = null;
+            _audienceActorNamesById.Clear();
+            _lastPacketResponse = null;
+            _lastPacketType = null;
             _localCharacterId = null;
             _localPlayerPosition = null;
             _localPlayerBuild = null;
@@ -1514,13 +2254,28 @@ namespace HaCreator.MapSimulator.Effects
         public WeddingDialogMode Mode;
     }
 
-    public readonly record struct WeddingRemoteParticipantSnapshot(
-        int CharacterId,
-        string Name,
-        WeddingParticipantRole Role,
-        Vector2 Position,
-        bool FacingRight,
-        string ActionName);
+    public readonly record struct WeddingRemoteParticipantSnapshot(
+        int CharacterId,
+        string Name,
+        WeddingParticipantRole Role,
+        Vector2 Position,
+        bool FacingRight,
+        string ActionName,
+        CharacterBuild Build);
+
+    internal readonly record struct WeddingRemoteSpawnPacket(
+        int CharacterId,
+        string Name,
+        LoginAvatarLook AvatarLook,
+        Vector2 Position,
+        byte MoveAction,
+        int PortableChairItemId);
+
+    internal readonly record struct WeddingRemoteMovePacket(int CharacterId, Vector2 Position, byte MoveAction);
+
+    internal readonly record struct WeddingRemoteChairPacket(int CharacterId, int PortableChairItemId);
+
+    internal readonly record struct WeddingRemoteAvatarModifiedPacket(int CharacterId, LoginAvatarLook AvatarLook);
 
     public sealed class WeddingRemoteParticipant
     {
@@ -1534,7 +2289,7 @@ namespace HaCreator.MapSimulator.Effects
             ActionName = CharacterPart.GetActionString(CharacterAction.Stand1);
         }
 
-        public int CharacterId { get; }
+        public int CharacterId { get; set; }
         public WeddingParticipantRole Role { get; }
         public string Name { get; set; }
         public CharacterBuild Build { get; set; }

@@ -732,7 +732,7 @@ namespace HaCreator.MapSimulator.Fields
             return true;
         }
 
-        public void OnRequestResult(byte tabCode, int entryIndex, string requestMessage, int tickCount)
+        public void OnRequestResult(byte tabCode, int entryIndex, string characterName, int tickCount)
         {
             MonsterCarnivalTab tab = TryParseTab(tabCode, out MonsterCarnivalTab parsedTab)
                 ? parsedTab
@@ -740,17 +740,15 @@ namespace HaCreator.MapSimulator.Fields
             MonsterCarnivalEntry entry = GetEntry(tab, entryIndex);
             if (entry == null)
             {
-                string fallbackMessage = string.IsNullOrWhiteSpace(requestMessage)
+                string fallbackMessage = string.IsNullOrWhiteSpace(characterName)
                     ? $"Monster Carnival request result received for tab {(int)tab}, index {entryIndex}."
-                    : requestMessage.Trim();
+                    : characterName.Trim();
                 ShowStatus(fallbackMessage, tickCount);
                 return;
             }
 
             ApplySuccessfulRequest(entry);
-            string successMessage = string.IsNullOrWhiteSpace(requestMessage)
-                ? BuildRequestSuccessMessage(entry)
-                : requestMessage.Trim();
+            string successMessage = BuildRequestSuccessMessage(entry, characterName);
             ShowStatus(successMessage, tickCount);
         }
 
@@ -1503,20 +1501,47 @@ namespace HaCreator.MapSimulator.Fields
             return counts?.Values.Sum() ?? 0;
         }
 
-        private string BuildRequestSuccessMessage(MonsterCarnivalEntry entry)
+        private static MonsterCarnivalStringPoolMessage? GetRequestSuccessMessage(MonsterCarnivalTab tab)
+        {
+            return tab switch
+            {
+                MonsterCarnivalTab.Mob => new MonsterCarnivalStringPoolMessage(0x1024, "{0} summoned {1}."),
+                MonsterCarnivalTab.Skill => new MonsterCarnivalStringPoolMessage(0x1025, "{0} used {1}."),
+                MonsterCarnivalTab.Guardian => new MonsterCarnivalStringPoolMessage(0x1026, "{0} summoned {1}."),
+                _ => null
+            };
+        }
+
+        private string BuildRequestSuccessMessage(MonsterCarnivalEntry entry, string characterName)
         {
             if (entry == null)
             {
                 return "Monster Carnival request completed.";
             }
 
-            return entry.Tab switch
+            MonsterCarnivalStringPoolMessage? definition = GetRequestSuccessMessage(entry.Tab);
+            string normalizedName = string.IsNullOrWhiteSpace(characterName) ? null : characterName.Trim();
+            if (definition.HasValue && !string.IsNullOrWhiteSpace(normalizedName))
+            {
+                string fallback = string.Format(
+                    CultureInfo.InvariantCulture,
+                    definition.Value.FallbackFormat,
+                    normalizedName,
+                    entry.Name);
+                return FormatStringPoolMessage(definition.Value, fallback);
+            }
+
+            string fallbackMessage = entry.Tab switch
             {
                 MonsterCarnivalTab.Mob => $"Summoned {entry.Name}.",
                 MonsterCarnivalTab.Skill => $"Activated {entry.Name}.",
                 MonsterCarnivalTab.Guardian => $"Placed {entry.Name}.",
                 _ => $"Requested {entry.Name}."
             };
+
+            return definition.HasValue
+                ? FormatStringPoolMessage(definition.Value, fallbackMessage)
+                : fallbackMessage;
         }
 
         private static string DescribeRequestFailure(int reasonCode)

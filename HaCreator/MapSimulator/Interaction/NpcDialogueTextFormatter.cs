@@ -31,6 +31,7 @@ namespace HaCreator.MapSimulator.Interaction
         private static readonly Regex QuestValueRegex = new(@"#x(\d+):?#", RegexOptions.Compiled | RegexOptions.IgnoreCase);
         private static readonly Regex ItemNameAliasRegex = new(@"#z(\d+):?#", RegexOptions.Compiled);
         private static readonly Regex ItemIconRegex = new(@"#(?:i|v)\d+:?#", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+        private static readonly Regex RewardCategoryRegex = new(@"#W[^#\s]*#", RegexOptions.Compiled | RegexOptions.IgnoreCase);
         private static readonly Regex PlayerNameRegex = new(@"#h\d*#", RegexOptions.Compiled);
         private static readonly Regex StyleTagRegex = new(@"#(?:[bkrgdenmc])", RegexOptions.Compiled | RegexOptions.IgnoreCase);
         private static readonly Regex ClientPromptTagRegex = new(@"#(?:E|I)", RegexOptions.Compiled);
@@ -49,6 +50,7 @@ namespace HaCreator.MapSimulator.Interaction
             formatted = SelectionRegex.Replace(formatted, string.Empty);
             formatted = PlayerNameRegex.Replace(formatted, "You");
             formatted = ItemIconRegex.Replace(formatted, string.Empty);
+            formatted = RewardCategoryRegex.Replace(formatted, string.Empty);
             formatted = ItemCountRegex.Replace(formatted, match => ResolveItemCountText(match.Groups[1].Value, context));
             formatted = NpcRegex.Replace(formatted, static match => ResolveNpcName(match.Groups[1].Value));
             formatted = ItemNameRegex.Replace(formatted, static match => ResolveItemName(match.Groups[1].Value));

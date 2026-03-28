@@ -24,6 +24,7 @@ namespace HaCreator.MapSimulator.Combat
             public Vector2 Position { get; set; }
             public Vector2 Velocity { get; set; }
             public Vector2 Target { get; set; }
+            public Vector2 ImpactPoint { get; set; }
             public int SpawnTime { get; set; }
             public int ExpireTime { get; set; }
             public bool CreatesGroundHazard { get; set; }
@@ -31,9 +32,12 @@ namespace HaCreator.MapSimulator.Combat
             public int LaneIndex { get; set; }
             public int LaneCount { get; set; }
 
-            public Rectangle GetHitbox()
+            public Rectangle GetHitbox(int currentTime)
             {
-                return new Rectangle((int)Position.X - 8, (int)Position.Y - 8, 16, 16);
+                IDXObject frame = Frames != null && Frames.Count > 0
+                    ? Frames[ResolveFrameIndex(Frames, currentTime, SpawnTime)]
+                    : null;
+                return CreateFrameAnchoredHitbox(frame, Position, Flip, 16);
             }
         }
 
@@ -226,7 +230,7 @@ namespace HaCreator.MapSimulator.Combat
 
                 if (debugTexture != null)
                 {
-                    Rectangle hitbox = projectile.GetHitbox();
+                    Rectangle hitbox = projectile.GetHitbox(currentTime);
                     Rectangle screenRect = new Rectangle(
                         hitbox.X - mapShiftX + centerX,
                         hitbox.Y - mapShiftY + centerY,
@@ -288,8 +292,13 @@ namespace HaCreator.MapSimulator.Combat
             int laneCount = Math.Max(1, projectileLanes.Count);
             for (int i = 0; i < projectileLanes.Count; i++)
             {
-                (Vector2 target, MobTargetInfo laneTargetInfo) = projectileLanes[i];
-                Vector2 direction = target - spawn;
+                (Vector2 impactPoint, MobTargetInfo laneTargetInfo) = projectileLanes[i];
+                Vector2 projectileDestination = ResolveProjectileTravelDestination(
+                    spawn,
+                    impactPoint,
+                    mobItem.MovementInfo?.FlipX ?? true,
+                    attack?.RangeRadius ?? 0);
+                Vector2 direction = projectileDestination - spawn;
                 if (direction.LengthSquared() < 1f)
                 {
                     direction = new Vector2(mobItem.MovementInfo.FlipX ? 1f : -1f, 0f);
@@ -300,7 +309,7 @@ namespace HaCreator.MapSimulator.Combat
                 }
 
                 float speed = Math.Max(220f, attack.BulletSpeed > 0 ? attack.BulletSpeed : 320f);
-                float travelDistance = Vector2.Distance(spawn, target);
+                float travelDistance = Vector2.Distance(spawn, projectileDestination);
                 int travelTime = Math.Max(250, (int)(travelDistance / speed * 1000f));
 
                 _activeMobProjectiles.Add(new ActiveMobProjectile
@@ -311,7 +320,8 @@ namespace HaCreator.MapSimulator.Combat
                     Frames = mobItem.GetAttackProjectileFrames(attack.AnimationName),
                     Position = spawn,
                     Velocity = direction * speed,
-                    Target = target,
+                    Target = projectileDestination,
+                    ImpactPoint = impactPoint,
                     SpawnTime = currentTime,
                     ExpireTime = currentTime + travelTime,
                     CreatesGroundHazard = mobItem.AI.IsBoss && (attack.IsAreaOfEffect || attack.Range >= 180),
@@ -459,13 +469,14 @@ namespace HaCreator.MapSimulator.Combat
                 projectile.Position += projectile.Velocity * deltaSeconds;
 
                 bool targetedSummoned = projectile.TargetInfo?.TargetType == MobTargetType.Summoned;
-                if (TryApplyPuppetHit(projectile.SourceMob, projectile.Attack, projectile.TargetInfo, projectile.GetHitbox(), currentTime) ||
-                    TryApplyTargetMobHit(projectile.SourceMob, projectile.Attack, projectile.TargetInfo, projectile.GetHitbox(), currentTime) ||
+                Rectangle projectileHitbox = projectile.GetHitbox(currentTime);
+                if (TryApplyPuppetHit(projectile.SourceMob, projectile.Attack, projectile.TargetInfo, projectileHitbox, currentTime) ||
+                    TryApplyTargetMobHit(projectile.SourceMob, projectile.Attack, projectile.TargetInfo, projectileHitbox, currentTime) ||
                     (!targetedSummoned &&
                      projectile.TargetInfo?.TargetType != MobTargetType.Mob &&
                      playerManager?.Combat != null &&
-                    playerManager.IsPlayerActive &&
-                     playerManager.Combat.TryApplyMobHit(projectile.SourceMob, projectile.GetHitbox(), currentTime, projectile.Attack)))
+                     playerManager.IsPlayerActive &&
+                     playerManager.Combat.TryApplyMobHit(projectile.SourceMob, projectileHitbox, currentTime, projectile.Attack)))
                 {
                     SpawnMobWorldEffects(projectile.SourceMob, projectile.Attack, projectile.Position, currentTime, animationEffects);
                     _activeMobProjectiles.RemoveAt(i);
@@ -484,7 +495,7 @@ namespace HaCreator.MapSimulator.Combat
                     continue;
                 }
 
-                Rectangle impactHitbox = CreateProjectileImpactHitbox(projectile.Target);
+                Rectangle impactHitbox = CreateProjectileImpactHitbox(projectile.SourceMob, projectile.Attack, projectile.Target);
                 if (!projectile.CreatesGroundHazard)
                 {
                     ApplyProjectileImpactHits(
@@ -738,6 +749,11 @@ namespace HaCreator.MapSimulator.Combat
                 return;
             }
 
+            if (TryScheduleGroupedRangeEffectNode(mobItem, attack, effectNode, impactPosition, baseTime, flip))
+            {
+                return;
+            }
+
             if (IsFallingEffectNode(effectNode))
             {
                 ScheduleFallingEffectNode(mobItem, attack, effectNode, impactPosition, baseTime, flip);
@@ -770,6 +786,44 @@ namespace HaCreator.MapSimulator.Combat
                     Flip = flip
                 });
             }
+        }
+
+        private bool TryScheduleGroupedRangeEffectNode(
+            MobItem mobItem,
+            MobAttackEntry attack,
+            MobAnimationSet.AttackEffectNode effectNode,
+            Vector2 impactPosition,
+            int baseTime,
+            bool flip)
+        {
+            if (effectNode?.UseRangeGroupPlacement != true || effectNode.Sequences.Count == 0)
+            {
+                return false;
+            }
+
+            int groupCount = Math.Max(1, effectNode.RangeGroupCount);
+            int groupIndex = Math.Clamp(effectNode.RangeGroupIndex, 0, groupCount - 1);
+            List<Vector2> positions = BuildGroupedRangeEffectPositions(mobItem, attack, effectNode, impactPosition, groupCount);
+            if (positions.Count == 0)
+            {
+                return false;
+            }
+
+            List<IDXObject> frames = effectNode.Sequences[0];
+            if (frames == null || frames.Count == 0)
+            {
+                return false;
+            }
+
+            int clampedIndex = Math.Min(groupIndex, positions.Count - 1);
+            _scheduledMobVisualEffects.Add(new ScheduledMobVisualEffect
+            {
+                Frames = frames,
+                Position = ResolveEffectNodePosition(positions[clampedIndex], effectNode, flip),
+                TriggerTime = baseTime + Math.Max(0, effectNode.Delay) + Math.Max(0, effectNode.Start),
+                Flip = flip
+            });
+            return true;
         }
 
         private void ScheduleTimedRangeEffectNode(
@@ -955,6 +1009,40 @@ namespace HaCreator.MapSimulator.Combat
             }
 
             return BuildRangePositions(left, right, spawnCount, effectNode.RandomPos, baseY);
+        }
+
+        private List<Vector2> BuildGroupedRangeEffectPositions(
+            MobItem mobItem,
+            MobAttackEntry attack,
+            MobAnimationSet.AttackEffectNode effectNode,
+            Vector2 impactPosition,
+            int groupCount)
+        {
+            groupCount = Math.Max(1, groupCount);
+            if (effectNode?.HasRangeBounds == true)
+            {
+                float nodeLeft = GetRelativeLeft(mobItem, true, effectNode.RangeBounds.Left, effectNode.RangeBounds.Right);
+                float nodeRight = GetRelativeRight(mobItem, true, effectNode.RangeBounds.Left, effectNode.RangeBounds.Right);
+                float nodeBottom = GetRelativeBottom(mobItem, true, effectNode.RangeBounds.Bottom, impactPosition.Y);
+                return BuildRangePositions(nodeLeft, nodeRight, groupCount, false, nodeBottom);
+            }
+
+            if (attack?.HasRangeBounds == true)
+            {
+                float attackLeft = GetRelativeLeft(mobItem, true, attack.RangeLeft, attack.RangeRight);
+                float attackRight = GetRelativeRight(mobItem, true, attack.RangeLeft, attack.RangeRight);
+                float attackBottom = GetRangeBottomY(mobItem, attack);
+                return BuildRangePositions(attackLeft, attackRight, groupCount, false, attackBottom);
+            }
+
+            float span = Math.Max(attack?.AreaWidth ?? 0, attack?.Range ?? 0);
+            if (span <= 0f)
+            {
+                span = 80f * Math.Max(1, groupCount - 1);
+            }
+
+            float halfSpan = span * 0.5f;
+            return BuildRangePositions(impactPosition.X - halfSpan, impactPosition.X + halfSpan, groupCount, false, impactPosition.Y);
         }
 
         private static int ResolveTimedRangeSpawnCount(MobAnimationSet.AttackEffectNode effectNode)
@@ -1336,6 +1424,20 @@ namespace HaCreator.MapSimulator.Combat
                     continue;
                 }
 
+                if (TryResolveProjectileLaneTarget(
+                        mobItem,
+                        attack,
+                        lanePosition,
+                        targetInfo,
+                        null,
+                        currentTime,
+                        out laneTargetInfo,
+                        out resolvedLaneTarget))
+                {
+                    assignments.Add((resolvedLaneTarget, laneTargetInfo));
+                    continue;
+                }
+
                 assignments.Add((lanePosition, null));
             }
 
@@ -1531,7 +1633,7 @@ namespace HaCreator.MapSimulator.Combat
                 IsValid = true
             };
             long targetKey = GetLaneTargetKey(playerTarget);
-            if (usedLaneTargets.Contains(targetKey))
+            if (usedLaneTargets != null && usedLaneTargets.Contains(targetKey))
             {
                 return;
             }
@@ -1590,7 +1692,7 @@ namespace HaCreator.MapSimulator.Combat
                     IsValid = true
                 };
                 long candidateKey = GetLaneTargetKey(candidateTargetInfo);
-                if (usedLaneTargets.Contains(candidateKey))
+                if (usedLaneTargets != null && usedLaneTargets.Contains(candidateKey))
                 {
                     continue;
                 }
@@ -1655,7 +1757,7 @@ namespace HaCreator.MapSimulator.Combat
                     IsValid = true
                 };
                 long candidateKey = GetLaneTargetKey(candidateTargetInfo);
-                if (usedLaneTargets.Contains(candidateKey))
+                if (usedLaneTargets != null && usedLaneTargets.Contains(candidateKey))
                 {
                     continue;
                 }
@@ -1694,6 +1796,50 @@ namespace HaCreator.MapSimulator.Combat
         private static Vector2 ResolveProjectileDestinationPoint(Rectangle targetHitbox, float sourceY, bool sourceFacesRight)
         {
             return ResolveLockedTargetAdmissionPoint(targetHitbox, sourceY, sourceFacesRight);
+        }
+
+        internal static Vector2 ResolveProjectileTravelDestination(
+            Vector2 spawn,
+            Vector2 target,
+            bool sourceFacesRight,
+            int rangeRadius)
+        {
+            if (rangeRadius <= 0)
+            {
+                return target;
+            }
+
+            float horizontalDelta = sourceFacesRight
+                ? target.X - spawn.X
+                : spawn.X - target.X;
+            float verticalDelta = target.Y - spawn.Y;
+            Vector2 adjustedTarget = target;
+
+            if (horizontalDelta <= 0f)
+            {
+                adjustedTarget = new Vector2(
+                    spawn.X + (sourceFacesRight ? 1f : -1f),
+                    spawn.Y);
+            }
+            else
+            {
+                float maxVerticalOffset = horizontalDelta * 0.6f;
+                if (Math.Abs(verticalDelta) > maxVerticalOffset)
+                {
+                    adjustedTarget = new Vector2(
+                        target.X,
+                        spawn.Y + Math.Sign(verticalDelta) * maxVerticalOffset);
+                }
+            }
+
+            Vector2 direction = adjustedTarget - spawn;
+            if (direction.LengthSquared() < 0.0001f)
+            {
+                return spawn;
+            }
+
+            direction.Normalize();
+            return spawn + (direction * rangeRadius);
         }
 
         private static long GetLaneTargetKey(MobTargetInfo targetInfo)
@@ -2056,6 +2202,21 @@ namespace HaCreator.MapSimulator.Combat
             return hitAny;
         }
 
+        internal static bool IsEncounterParticipant(bool usesMobCombatLane, bool isTargetingMob)
+        {
+            return usesMobCombatLane || isTargetingMob;
+        }
+
+        internal static bool CanApplyMobVsMobDamage(
+            bool sourceUsesMobCombatLane,
+            bool sourceIsTargetingMob,
+            bool targetUsesMobCombatLane,
+            bool targetIsTargetingMob)
+        {
+            return IsEncounterParticipant(sourceUsesMobCombatLane, sourceIsTargetingMob) &&
+                   IsEncounterParticipant(targetUsesMobCombatLane, targetIsTargetingMob);
+        }
+
         private static bool CanApplyMobVsMobDamage(MobItem sourceMob, MobItem targetMob)
         {
             if (sourceMob == null || targetMob == null || ReferenceEquals(sourceMob, targetMob))
@@ -2063,16 +2224,73 @@ namespace HaCreator.MapSimulator.Combat
                 return false;
             }
 
-            return sourceMob.UsesMobCombatLane || targetMob.UsesMobCombatLane;
+            return CanApplyMobVsMobDamage(
+                sourceMob.UsesMobCombatLane,
+                sourceMob.AI?.IsTargetingMob == true,
+                targetMob.UsesMobCombatLane,
+                targetMob.AI?.IsTargetingMob == true);
         }
 
-        private static Rectangle CreateProjectileImpactHitbox(Vector2 target)
+        private static Rectangle CreateProjectileImpactHitbox(MobItem sourceMob, MobAttackEntry attack, Vector2 target)
         {
+            List<IDXObject> hitFrames = sourceMob?.GetAttackHitFrames(attack?.AnimationName);
+            IDXObject impactFrame = hitFrames != null && hitFrames.Count > 0 ? hitFrames[0] : null;
+            if (impactFrame != null)
+            {
+                return CreateFrameAnchoredHitbox(impactFrame, target, false, 16);
+            }
+
+            List<IDXObject> projectileFrames = sourceMob?.GetAttackProjectileFrames(attack?.AnimationName);
+            IDXObject projectileFrame = projectileFrames != null && projectileFrames.Count > 0 ? projectileFrames[0] : null;
+            return CreateFrameAnchoredHitbox(projectileFrame, target, false, 16);
+        }
+
+        internal static Rectangle CreateFrameAnchoredHitbox(IDXObject frame, Vector2 anchor, bool flip, int minimumSize = 16)
+        {
+            if (frame == null)
+            {
+                int fallbackSize = Math.Max(1, minimumSize);
+                int fallbackRadius = fallbackSize / 2;
+                return new Rectangle(
+                    (int)MathF.Round(anchor.X) - fallbackRadius,
+                    (int)MathF.Round(anchor.Y) - fallbackRadius,
+                    fallbackSize,
+                    fallbackSize);
+            }
+
+            int width = Math.Max(frame.Width, minimumSize);
+            int height = Math.Max(frame.Height, minimumSize);
+            int originX = flip
+                ? width - Math.Clamp(frame.X, 0, width)
+                : Math.Clamp(frame.X, 0, width);
+            int originY = Math.Clamp(frame.Y, 0, height);
             return new Rectangle(
-                (int)MathF.Round(target.X) - 8,
-                (int)MathF.Round(target.Y) - 8,
-                16,
-                16);
+                (int)MathF.Round(anchor.X) - originX,
+                (int)MathF.Round(anchor.Y) - originY,
+                width,
+                height);
+        }
+
+        private static int ResolveFrameIndex(List<IDXObject> frames, int currentTime, int startTime)
+        {
+            if (frames == null || frames.Count == 0)
+            {
+                return 0;
+            }
+
+            int elapsed = Math.Max(0, currentTime - startTime);
+            for (int i = 0; i < frames.Count; i++)
+            {
+                int delay = Math.Max(1, frames[i]?.Delay ?? 1);
+                if (elapsed < delay)
+                {
+                    return i;
+                }
+
+                elapsed -= delay;
+            }
+
+            return frames.Count - 1;
         }
 
         private static bool ApplyMobDamage(MobItem sourceMob, MobAttackEntry attack, MobItem targetMob, int currentTime)

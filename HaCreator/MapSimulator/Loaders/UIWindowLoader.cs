@@ -1,4 +1,4 @@
-﻿using HaCreator.MapSimulator.Interaction;
+using HaCreator.MapSimulator.Interaction;
 
 using HaCreator.MapSimulator.Managers;
 
@@ -1268,6 +1268,8 @@ namespace HaCreator.MapSimulator.Loaders
 
 
             WzSubProperty noticeProperty = loginImage?["Notice"] as WzSubProperty;
+            WzBinaryProperty btClickSound = soundUIImage?["BtMouseClick"] as WzBinaryProperty;
+            WzBinaryProperty btOverSound = soundUIImage?["BtMouseOver"] as WzBinaryProperty;
 
             IDXObject noticeFrame = LoadWindowCanvasLayer(noticeProperty?["backgrnd"] as WzSubProperty, "0", device);
 
@@ -1400,6 +1402,8 @@ namespace HaCreator.MapSimulator.Loaders
                 noticeProperty?["text"] as WzSubProperty,
 
                 device);
+            UIObject cancelButton = LoadButton(noticeProperty?["Loading"] as WzSubProperty, "BtCancel", btClickSound, btOverSound, device)
+                                    ?? LoadButton(noticeProperty?["LoadingSG"] as WzSubProperty, "BtCancel", btClickSound, btOverSound, device);
 
             Dictionary<ConnectionNoticeWindowVariant, IDXObject> framesByVariant = new()
 
@@ -1443,7 +1447,8 @@ namespace HaCreator.MapSimulator.Loaders
 
                 animationFramesByVariant,
 
-                noticeTextTextures)
+                noticeTextTextures,
+                cancelButton)
 
             {
 
@@ -1816,7 +1821,7 @@ namespace HaCreator.MapSimulator.Loaders
 
             return CreateUIWindowManager(uiWindow1Image, uiWindow2Image, basicImage, soundUIImage,
 
-                null, null, null, device, screenWidth, screenHeight, isBigBang, 900, storageAccountLabel, storageAccountKey); // Default to GM book (900 in v115-style data)
+                null, null, null, device, screenWidth, screenHeight, isBigBang, 900, storageAccountLabel, storageAccountKey); // Default to GM book (900 in data)
         }
 
 
@@ -2182,6 +2187,9 @@ namespace HaCreator.MapSimulator.Loaders
             RegisterQuestDeliveryWindow(manager, uiWindow2Image, basicImage, soundUIImage, device,
 
                 new Point(x + (cascade * 6), y + (cascade * 3)));
+            RegisterRepairDurabilityWindow(manager, uiWindow2Image, basicImage, soundUIImage, device,
+
+                new Point(x + (cascade * 6), y + (cascade * 4)));
             RegisterQuestAlarmWindow(manager, uiWindow1Image, uiWindow2Image, basicImage, soundUIImage, device,
 
                 new Point(x + (cascade * 8), y + (cascade * 8)));
@@ -3373,25 +3381,37 @@ namespace HaCreator.MapSimulator.Loaders
             Point position)
 
         {
+            if (manager.GetWindow(MapSimulatorWindowNames.ClassCompetition) != null)
+            {
+                return;
+            }
 
-            RegisterPlaceholderWindow(
+            UIWindowBase classCompetitionWindow = CreateClassCompetitionWindow(basicImage, soundUIImage, device, position);
+            if (classCompetitionWindow != null)
+            {
+                manager.RegisterCustomWindow(classCompetitionWindow);
+            }
 
-                manager,
+        }
 
-                basicImage,
+        private static void RegisterRepairDurabilityWindow(
+            UIWindowManager manager,
+            WzImage uiWindow2Image,
+            WzImage basicImage,
+            WzImage soundUIImage,
+            GraphicsDevice device,
+            Point position)
+        {
+            if (manager.GetWindow(MapSimulatorWindowNames.RepairDurability) != null)
+            {
+                return;
+            }
 
-                soundUIImage,
-
-                device,
-
-                MapSimulatorWindowNames.ClassCompetition,
-
-                "Class Competition",
-
-                "Packet-owned owner for CUserLocal::OnOpenClassCompetitionPage. The live page surface still needs a dedicated simulator runtime.",
-
-                position);
-
+            UIWindowBase repairWindow = CreateRepairDurabilityWindow(uiWindow2Image, basicImage, soundUIImage, device, position);
+            if (repairWindow != null)
+            {
+                manager.RegisterCustomWindow(repairWindow);
+            }
         }
 
 
@@ -3770,6 +3790,7 @@ namespace HaCreator.MapSimulator.Loaders
             SocialRoomRuntime runtime = SocialRoomRuntime.CreateMiniRoomSample();
 
             SocialRoomWindow window = CreateSocialRoomWindow(omokProperty, basicImage, soundUIImage, device, position, MapSimulatorWindowNames.MiniRoom, runtime);
+            ConfigureMiniRoomOmokAssets(window, omokProperty, device);
 
             if (window == null)
 
@@ -3810,6 +3831,36 @@ namespace HaCreator.MapSimulator.Loaders
             window.BindButton(LoadButton(commonProperty, "btExit", clickSound, overSound, device), window.Hide);
 
             return window;
+
+        }
+
+
+
+        private static void ConfigureMiniRoomOmokAssets(SocialRoomWindow window, WzSubProperty omokProperty, GraphicsDevice device)
+
+        {
+
+            if (window == null || omokProperty == null)
+
+            {
+
+                return;
+
+            }
+
+
+
+            WzSubProperty stoneRoot = omokProperty["stone"] as WzSubProperty;
+
+            Texture2D blackStone = LoadCanvasTexture(stoneRoot?["0"]?["black"] as WzSubProperty, "0", device);
+
+            Texture2D whiteStone = LoadCanvasTexture(stoneRoot?["0"]?["white"] as WzSubProperty, "0", device);
+
+            Texture2D lastBlackStone = LoadCanvasTexture(stoneRoot?["10"]?["black"] as WzSubProperty, "0", device) ?? blackStone;
+
+            Texture2D lastWhiteStone = LoadCanvasTexture(stoneRoot?["10"]?["white"] as WzSubProperty, "0", device) ?? whiteStone;
+
+            window.SetMiniRoomOmokStoneTextures(blackStone, whiteStone, lastBlackStone, lastWhiteStone);
 
         }
 
@@ -4415,9 +4466,9 @@ namespace HaCreator.MapSimulator.Loaders
 
         {
 
-            WzSubProperty sourceProperty = uiWindow2Image?["Book"] as WzSubProperty
+            WzSubProperty sourceProperty = uiWindow2Image?["MonsterBook"] as WzSubProperty
 
-                ?? uiWindow1Image?["Book"] as WzSubProperty;
+                ?? uiWindow1Image?["MonsterBook"] as WzSubProperty;
 
             if (sourceProperty == null)
 
@@ -4433,9 +4484,9 @@ namespace HaCreator.MapSimulator.Loaders
 
                     MapSimulatorWindowNames.BookCollection,
 
-                    "Book Collection",
+                    "Monster Book",
 
-                    "Fallback owner for the dedicated book-style collection surface.",
+                    "Fallback owner for the dedicated Monster Book surface.",
 
                     position);
 
@@ -4458,9 +4509,9 @@ namespace HaCreator.MapSimulator.Loaders
 
                     MapSimulatorWindowNames.BookCollection,
 
-                    "Book Collection",
+                    "Monster Book",
 
-                    "Fallback owner for the dedicated book-style collection surface.",
+                    "Fallback owner for the dedicated Monster Book surface.",
 
                     position);
 
@@ -4486,7 +4537,9 @@ namespace HaCreator.MapSimulator.Loaders
 
                 new DXObject(0, 0, frameTexture, 0),
 
-                pixel)
+                pixel,
+
+                device)
 
             {
 
@@ -4496,22 +4549,27 @@ namespace HaCreator.MapSimulator.Loaders
 
 
 
-            WzSubProperty utilDialogProperty = uiWindow2Image?["UtilDlgEx"] as WzSubProperty
+            bookCollection.SetMonsterBookArt(
 
-                ?? uiWindow1Image?["UtilDlgEx"] as WzSubProperty;
-            bookCollection.SetPageMarkerTextures(
+                LoadCanvasTexture(sourceProperty, "cardSlot", device),
 
-                LoadCanvasTexture(utilDialogProperty, "dot1", device),
+                LoadCanvasTexture(sourceProperty, "infoPage", device),
 
-                LoadCanvasTexture(utilDialogProperty, "dot0", device));
+                LoadCanvasTexture(sourceProperty, "cover", device),
+
+                LoadCanvasTexture(sourceProperty, "select", device),
+
+                LoadCanvasTexture(sourceProperty, "fullMark", device));
 
 
 
             WzBinaryProperty btClickSound = soundUIImage?["BtMouseClick"] as WzBinaryProperty;
             WzBinaryProperty btOverSound = soundUIImage?["BtMouseOver"] as WzBinaryProperty;
 
-            UIObject prevButton = LoadButton(sourceProperty, "BtPrev", btClickSound, btOverSound, device);
-            UIObject nextButton = LoadButton(sourceProperty, "BtNext", btClickSound, btOverSound, device);
+            UIObject prevButton = LoadButton(sourceProperty, "arrowLeft", btClickSound, btOverSound, device)
+                ?? LoadButton(sourceProperty, "BtPrev", btClickSound, btOverSound, device);
+            UIObject nextButton = LoadButton(sourceProperty, "arrowRight", btClickSound, btOverSound, device)
+                ?? LoadButton(sourceProperty, "BtNext", btClickSound, btOverSound, device);
             UIObject closeButton = LoadButton(sourceProperty, "BtClose", btClickSound, btOverSound, device);
 
             if (prevButton != null)
@@ -4660,6 +4718,8 @@ namespace HaCreator.MapSimulator.Loaders
 
                 LoadCanvasTexture(questInfoProperty?["summary_icon"] as WzSubProperty, "select", device),
 
+                LoadCanvasTexture(questInfoProperty?["summary_icon"] as WzSubProperty, "prob", device),
+
                 LoadCanvasTexture(questInfoProperty?["Gauge"] as WzSubProperty, "frame", device),
 
                 LoadCanvasTexture(questInfoProperty?["Gauge"] as WzSubProperty, "gauge", device),
@@ -4768,7 +4828,12 @@ namespace HaCreator.MapSimulator.Loaders
 
                 new DXObject(0, 0, frameTexture, 0),
 
-                iconFrames.ToArray())
+                iconFrames.ToArray(),
+                LoadCanvasTexture(utilDialogProperty, "list5", device),
+                LoadCanvasTexture(utilDialogProperty, "list4", device),
+                LoadCanvasTexture(utilDialogProperty, "bar", device),
+                LoadCanvasTexture(utilDialogProperty, "line", device),
+                device)
 
             {
 
@@ -4791,6 +4856,155 @@ namespace HaCreator.MapSimulator.Loaders
             window.InitializeButtons(okButton, cancelButton);
 
 
+
+            WzSubProperty closeButtonProperty = basicImage?["BtClose"] as WzSubProperty;
+
+            if (closeButtonProperty != null)
+
+            {
+
+                try
+
+                {
+
+                    UIObject closeBtn = new UIObject(closeButtonProperty, btClickSound, btOverSound, false, Point.Zero, device);
+
+                    closeBtn.X = frameTexture.Width - closeBtn.CanvasSnapshotWidth - 8;
+
+                    closeBtn.Y = 8;
+
+                    window.InitializeCloseButton(closeBtn);
+
+                }
+
+                catch
+
+                {
+
+                }
+
+            }
+
+
+
+            return window;
+
+        }
+
+        private static UIWindowBase CreateRepairDurabilityWindow(
+            WzImage uiWindow2Image,
+            WzImage basicImage,
+            WzImage soundUIImage,
+            GraphicsDevice device,
+            Point position)
+        {
+            WzSubProperty repairProperty = uiWindow2Image?["Repair"] as WzSubProperty;
+            Texture2D frameTexture = LoadCanvasTexture(repairProperty, "backgrnd", device);
+            if (frameTexture == null)
+            {
+                return CreatePlaceholderUtilityWindow(
+                    basicImage,
+                    soundUIImage,
+                    device,
+                    MapSimulatorWindowNames.RepairDurability,
+                    "Repair",
+                    "Fallback owner for packet-authored durability repair launches.",
+                    position);
+            }
+
+            RepairDurabilityWindow window = new RepairDurabilityWindow(
+                new DXObject(0, 0, frameTexture, 0),
+                LoadCanvasTexture(repairProperty, "normal", device),
+                LoadCanvasTexture(repairProperty, "select", device),
+                "Repair Fee",
+                device)
+            {
+                Position = position
+            };
+
+            window.AddLayer(LoadWindowCanvasLayerWithOffset(repairProperty, "backgrnd2", device, out Point overlayOffset), overlayOffset);
+            window.AddLayer(LoadWindowCanvasLayerWithOffset(repairProperty, "backgrnd3", device, out Point contentOffset), contentOffset);
+
+            WzBinaryProperty btClickSound = soundUIImage?["BtMouseClick"] as WzBinaryProperty;
+            WzBinaryProperty btOverSound = soundUIImage?["BtMouseOver"] as WzBinaryProperty;
+            UIObject repairAllButton = LoadButton(repairProperty, "BtAllRepair", btClickSound, btOverSound, device);
+            UIObject repairButton = LoadButton(repairProperty, "BtRepair", btClickSound, btOverSound, device);
+            if (repairAllButton != null)
+            {
+                repairAllButton.X = 114;
+                repairAllButton.Y = 28;
+            }
+
+            if (repairButton != null)
+            {
+                repairButton.X = 114;
+                repairButton.Y = 46;
+            }
+
+            UIObject closeButton = null;
+            WzSubProperty basicCloseButton = basicImage?["BtClose"] as WzSubProperty;
+            if (basicCloseButton != null)
+            {
+                try
+                {
+                    closeButton = new UIObject(basicCloseButton, btClickSound, btOverSound, false, Point.Zero, device)
+                    {
+                        X = 211,
+                        Y = 6
+                    };
+                }
+                catch
+                {
+                    closeButton = null;
+                }
+            }
+
+            window.InitializeButtons(repairAllButton, repairButton, closeButton);
+            return window;
+        }
+
+
+
+        private static UIWindowBase CreateClassCompetitionWindow(
+            WzImage basicImage,
+
+            WzImage soundUIImage,
+
+            GraphicsDevice device,
+
+            Point position)
+
+        {
+
+            Texture2D frameTexture = CreatePlaceholderWindowTexture(device, 292, 164, "Class Competition");
+
+            UtilityPanelWindow window = new UtilityPanelWindow(
+
+                new DXObject(0, 0, frameTexture, 0),
+
+                MapSimulatorWindowNames.ClassCompetition,
+
+                "Class Competition")
+
+            {
+
+                Position = position
+
+            };
+
+
+
+            window.SetStaticLines(
+
+                "Packet-owned owner for CUserLocal::OnOpenClassCompetitionPage.",
+
+                "The client only instantiates the singleton from this packet branch, so the simulator keeps the launch page separate from menu-button routing.");
+
+
+
+            WzBinaryProperty btClickSound = soundUIImage?["BtMouseClick"] as WzBinaryProperty;
+
+            WzBinaryProperty btOverSound = soundUIImage?["BtMouseOver"] as WzBinaryProperty;
 
             WzSubProperty closeButtonProperty = basicImage?["BtClose"] as WzSubProperty;
 
@@ -5511,6 +5725,8 @@ namespace HaCreator.MapSimulator.Loaders
 
                 disabledTabs,
 
+                LoadVerticalScrollbarSkin(basicImage?["VScr9"] as WzSubProperty, device),
+
                 device)
 
             {
@@ -5660,6 +5876,76 @@ namespace HaCreator.MapSimulator.Loaders
             window.InitializeCloseButton(CreateUserInfoCloseButton(basicImage, clickSound, overSound, device, frameTexture.Width));
 
             return window;
+
+        }
+
+        private static VerticalScrollbarSkin LoadVerticalScrollbarSkin(WzSubProperty scrollbarProperty, GraphicsDevice device)
+
+        {
+
+            if (scrollbarProperty == null)
+
+            {
+
+                return null;
+
+            }
+
+
+
+            WzSubProperty enabledProperty = scrollbarProperty["enabled"] as WzSubProperty;
+
+            WzSubProperty disabledProperty = scrollbarProperty["disabled"] as WzSubProperty;
+
+
+
+            return new VerticalScrollbarSkin
+
+            {
+
+                PrevStates = new[]
+
+                {
+
+                    LoadCanvasTexture(enabledProperty, "prev0", device),
+
+                    LoadCanvasTexture(enabledProperty, "prev1", device),
+
+                    LoadCanvasTexture(enabledProperty, "prev2", device)
+
+                },
+
+                NextStates = new[]
+
+                {
+
+                    LoadCanvasTexture(enabledProperty, "next0", device),
+
+                    LoadCanvasTexture(enabledProperty, "next1", device),
+
+                    LoadCanvasTexture(enabledProperty, "next2", device)
+
+                },
+
+                ThumbStates = new[]
+
+                {
+
+                    LoadCanvasTexture(enabledProperty, "thumb0", device),
+
+                    LoadCanvasTexture(enabledProperty, "thumb1", device),
+
+                    LoadCanvasTexture(enabledProperty, "thumb2", device)
+
+                },
+
+                PrevDisabled = LoadCanvasTexture(disabledProperty, "prev", device),
+
+                NextDisabled = LoadCanvasTexture(disabledProperty, "next", device),
+
+                Base = LoadCanvasTexture(enabledProperty, "base", device) ?? LoadCanvasTexture(disabledProperty, "base", device)
+
+            };
 
         }
 
@@ -7198,7 +7484,7 @@ namespace HaCreator.MapSimulator.Loaders
 
                 LoadGuildBbsEmoticonSet(basicEmoticonProperty, GetPropertyChildCount(basicEmoticonProperty, 3), device),
 
-                LoadGuildBbsEmoticonSet(cashEmoticonProperty, GetPropertyChildCount(cashEmoticonProperty, 7), device),
+                LoadGuildBbsEmoticonSet(cashEmoticonProperty, Math.Min(7, GetPropertyChildCount(cashEmoticonProperty, 7)), device),
 
                 device)
 
@@ -7911,24 +8197,66 @@ namespace HaCreator.MapSimulator.Loaders
         {
 
             WzSubProperty sourceProperty = uiWindow2Image?["Ranking"] as WzSubProperty;
+            if (sourceProperty == null)
+            {
+                return CreatePlaceholderUtilityWindow(
+                    basicImage,
+                    soundUIImage,
+                    device,
+                    MapSimulatorWindowNames.Ranking,
+                    "Ranking",
+                    "Fallback owner because UIWindow2.img/Ranking assets were unavailable.",
+                    position);
+            }
 
-            return CreateWzPlaceholderUtilityWindow(
+            Texture2D frameTexture = LoadCanvasTexture(sourceProperty, "backgrnd", device);
+            if (frameTexture == null)
+            {
+                return CreatePlaceholderUtilityWindow(
+                    basicImage,
+                    soundUIImage,
+                    device,
+                    MapSimulatorWindowNames.Ranking,
+                    "Ranking",
+                    "Fallback owner because the client ranking background could not be loaded.",
+                    position);
+            }
 
-                sourceProperty,
-
-                basicImage,
-
-                soundUIImage,
-
-                device,
-
+            RankingWindow window = new RankingWindow(
+                new DXObject(0, 0, frameTexture, 0),
                 MapSimulatorWindowNames.Ranking,
+                CreateFilledTexture(device, 1, 1, Color.White, Color.White))
+            {
+                Position = position
+            };
 
-                "Ranking",
+            WzBinaryProperty btClickSound = soundUIImage?["BtMouseClick"] as WzBinaryProperty;
+            WzBinaryProperty btOverSound = soundUIImage?["BtMouseOver"] as WzBinaryProperty;
+            UIObject closeButton = LoadButton(sourceProperty, "BtClose", btClickSound, btOverSound, device);
+            if (closeButton == null)
+            {
+                WzSubProperty basicCloseButton = basicImage?["BtClose"] as WzSubProperty;
+                if (basicCloseButton != null)
+                {
+                    try
+                    {
+                        closeButton = new UIObject(basicCloseButton, btClickSound, btOverSound, false, Point.Zero, device);
+                        closeButton.X = Math.Max(8, frameTexture.Width - closeButton.CanvasSnapshotWidth - 8);
+                        closeButton.Y = 8;
+                    }
+                    catch
+                    {
+                        closeButton = null;
+                    }
+                }
+            }
 
-                "UIWindow2.img/Ranking now provides the owner art, but live ranking data and the deeper client dispatch behind BtRank are still not simulated.",
+            if (closeButton != null)
+            {
+                window.InitializeCloseButton(closeButton);
+            }
 
-                position);
+            return window;
 
         }
 
@@ -7946,27 +8274,87 @@ namespace HaCreator.MapSimulator.Loaders
 
         {
 
-            WzSubProperty sourceProperty = uiWindow2Image?["EventList"]?["main"] as WzSubProperty
-
+            WzSubProperty eventRoot = uiWindow2Image?["EventList"] as WzSubProperty;
+            WzSubProperty sourceProperty = eventRoot?["main"] as WzSubProperty
                 ?? uiWindow2Image?["MapleEvent"] as WzSubProperty;
+            if (sourceProperty == null)
+            {
+                return CreatePlaceholderUtilityWindow(
+                    basicImage,
+                    soundUIImage,
+                    device,
+                    MapSimulatorWindowNames.Event,
+                    "Event",
+                    "Fallback owner because UIWindow2.img/EventList assets were unavailable.",
+                    position);
+            }
 
-            return CreateWzPlaceholderUtilityWindow(
+            Texture2D frameTexture = LoadCanvasTexture(sourceProperty, "backgrnd", device);
+            if (frameTexture == null)
+            {
+                return CreatePlaceholderUtilityWindow(
+                    basicImage,
+                    soundUIImage,
+                    device,
+                    MapSimulatorWindowNames.Event,
+                    "Event",
+                    "Fallback owner because the client event background could not be loaded.",
+                    position);
+            }
 
-                sourceProperty,
-
-                basicImage,
-
-                soundUIImage,
-
-                device,
-
+            WzSubProperty eventListProperty = sourceProperty["event"] as WzSubProperty;
+            Texture2D normalRowTexture = LoadCanvasTexture(eventListProperty, "normal", device);
+            Texture2D selectedRowTexture = LoadCanvasTexture(eventListProperty, "select", device) ?? normalRowTexture;
+            EventWindow window = new EventWindow(
+                new DXObject(0, 0, frameTexture, 0),
                 MapSimulatorWindowNames.Event,
+                normalRowTexture,
+                selectedRowTexture)
+            {
+                Position = position
+            };
 
-                "Event",
+            IDXObject overlay = LoadWindowCanvasLayerWithOffset(sourceProperty, "backgrnd2", device, out Point overlayOffset);
+            IDXObject content = LoadWindowCanvasLayerWithOffset(sourceProperty, "backgrnd3", device, out Point contentOffset);
+            IDXObject title = LoadWindowCanvasLayerWithOffset(sourceProperty, "title", device, out Point titleOffset);
+            window.AddLayer(overlay, overlayOffset);
+            window.AddLayer(content, contentOffset);
+            window.AddLayer(title, titleOffset);
 
-                "The popup now lands on client event owner art, but the live event list, attendance state, and deeper event packet flows are still simulator placeholders.",
+            WzBinaryProperty btClickSound = soundUIImage?["BtMouseClick"] as WzBinaryProperty;
+            WzBinaryProperty btOverSound = soundUIImage?["BtMouseOver"] as WzBinaryProperty;
+            UIObject closeButton = LoadButton(sourceProperty, "BtClose", btClickSound, btOverSound, device);
+            if (closeButton == null)
+            {
+                WzSubProperty basicCloseButton = basicImage?["BtClose"] as WzSubProperty;
+                if (basicCloseButton != null)
+                {
+                    try
+                    {
+                        closeButton = new UIObject(basicCloseButton, btClickSound, btOverSound, false, Point.Zero, device);
+                        closeButton.X = Math.Max(8, frameTexture.Width - closeButton.CanvasSnapshotWidth - 8);
+                        closeButton.Y = 8;
+                    }
+                    catch
+                    {
+                        closeButton = null;
+                    }
+                }
+            }
 
-                position);
+            WzSubProperty calendarProperty = eventRoot?["calendar"] as WzSubProperty;
+            window.InitializeButtons(
+                LoadButton(eventListProperty, "BtNone", btClickSound, btOverSound, device),
+                LoadButton(eventListProperty, "BtStart", btClickSound, btOverSound, device),
+                LoadButton(eventListProperty, "BtIng", btClickSound, btOverSound, device),
+                LoadButton(eventListProperty, "BtClear", btClickSound, btOverSound, device),
+                LoadButton(eventListProperty, "BtWill", btClickSound, btOverSound, device),
+                LoadButton(eventListProperty, "BtCalendar", btClickSound, btOverSound, device),
+                LoadButton(calendarProperty, "BtPre", btClickSound, btOverSound, device),
+                LoadButton(calendarProperty, "BtNext", btClickSound, btOverSound, device),
+                closeButton);
+
+            return window;
 
         }
 
@@ -8895,6 +9283,16 @@ namespace HaCreator.MapSimulator.Loaders
 
 
 
+            if (inventory.GetItemCount(InventoryType.CASH, 5062100) <= 0)
+
+            {
+
+                inventory.AddItem(InventoryType.CASH, 5062100, null, 1); // Maple Miracle Cube
+
+            }
+
+
+
             if (inventory.GetItemCount(InventoryType.CASH, 5534000) <= 0)
 
             {
@@ -8920,6 +9318,16 @@ namespace HaCreator.MapSimulator.Loaders
             {
 
                 inventory.AddItem(InventoryType.CASH, 5610001, null, 1); // Vega's Spell(60%)
+
+            }
+
+
+
+            if (inventory.GetItemCount(InventoryType.EQUIP, 1003243) <= 0)
+
+            {
+
+                inventory.AddItem(InventoryType.EQUIP, 1003243, null, 1); // Maple 8th Anniversary Crimson equip for Maple Miracle Cube req-gated flow
 
             }
 

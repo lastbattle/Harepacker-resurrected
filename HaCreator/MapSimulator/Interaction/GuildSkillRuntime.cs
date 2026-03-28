@@ -6,6 +6,14 @@ using System.Linq;
 
 namespace HaCreator.MapSimulator.Interaction
 {
+    internal enum GuildSkillPermissionLevel
+    {
+        None,
+        Member,
+        JrMaster,
+        Master
+    }
+
     internal sealed class GuildSkillRuntime
     {
         private readonly List<SkillDisplayData> _skills = new();
@@ -16,18 +24,26 @@ namespace HaCreator.MapSimulator.Interaction
         private int _savedAvailablePoints = 2;
         private int _guildLevel = 12;
         private string _guildName = "Maple GM";
+        private string _guildRoleLabel = "Master";
         private bool _isInGuild = true;
+        private GuildSkillPermissionLevel _permissionLevel = GuildSkillPermissionLevel.Master;
 
         internal static bool HasGuildMembership(CharacterBuild build)
         {
             return !string.IsNullOrWhiteSpace(build?.GuildName);
         }
 
-        internal void UpdateLocalContext(CharacterBuild build)
+        internal void UpdateLocalContext(CharacterBuild build, string guildRoleLabel)
         {
             bool inGuild = HasGuildMembership(build);
             _guildName = inGuild ? build.GuildName.Trim() : "No Guild";
             _guildLevel = inGuild ? Math.Clamp((build?.Level ?? 1) / 10 + 5, 1, 30) : 0;
+            _guildRoleLabel = inGuild
+                ? NormalizeGuildRoleLabel(guildRoleLabel)
+                : "No Guild";
+            _permissionLevel = inGuild
+                ? ResolvePermissionLevel(_guildRoleLabel)
+                : GuildSkillPermissionLevel.None;
 
             if (!inGuild)
             {
@@ -88,11 +104,13 @@ namespace HaCreator.MapSimulator.Interaction
                 InGuild = _isInGuild,
                 GuildName = _guildName,
                 GuildLevel = _guildLevel,
+                GuildRoleLabel = _guildRoleLabel,
+                CanManageSkills = CanManageSkills(),
                 AvailablePoints = _availablePoints,
                 SelectedIndex = _selectedIndex,
                 RecommendedSkillId = _recommendedSkillId,
-                CanRenew = _isInGuild && _skills.Count > 1,
-                CanLevelUpSelected = CanLevelUp(selectedSkill),
+                CanRenew = CanManageSkills() && _skills.Count > 1,
+                CanLevelUpSelected = CanManageSkills() && CanLevelUp(selectedSkill),
                 SummaryLines = BuildSummaryLines(selectedSkill, selectedRequiredGuildLevel),
                 Entries = _skills.Select(skill => new GuildSkillEntrySnapshot
                 {
@@ -128,6 +146,11 @@ namespace HaCreator.MapSimulator.Interaction
                 return "Join a guild to cycle guild skill recommendations.";
             }
 
+            if (!CanManageSkills())
+            {
+                return "Guild skill management requires Jr. Master or Master authority.";
+            }
+
             if (_skills.Count == 0)
             {
                 _recommendedSkillId = 0;
@@ -152,6 +175,11 @@ namespace HaCreator.MapSimulator.Interaction
             if (!_isInGuild)
             {
                 return "Join a guild to level guild skills.";
+            }
+
+            if (!CanManageSkills())
+            {
+                return "Guild skill management requires Jr. Master or Master authority.";
             }
 
             SkillDisplayData selectedSkill = GetSelectedSkill();
@@ -209,6 +237,11 @@ namespace HaCreator.MapSimulator.Interaction
             return _guildLevel >= GetRequiredGuildLevel(skill, skill.CurrentLevel + 1);
         }
 
+        private bool CanManageSkills()
+        {
+            return _isInGuild && _permissionLevel >= GuildSkillPermissionLevel.JrMaster;
+        }
+
         private static int GetRequiredGuildLevel(SkillDisplayData skill, int nextLevel)
         {
             if (skill == null)
@@ -251,12 +284,22 @@ namespace HaCreator.MapSimulator.Interaction
                 };
             }
 
+            if (!CanManageSkills())
+            {
+                return new[]
+                {
+                    _guildName,
+                    $"Guild Lv. {_guildLevel}  |  {_guildRoleLabel}",
+                    "Guild skill management requires Jr. Master or Master."
+                };
+            }
+
             if (selectedSkill == null)
             {
                 return new[]
                 {
                     _guildName,
-                    $"Guild Lv. {_guildLevel}",
+                    $"Guild Lv. {_guildLevel}  |  {_guildRoleLabel}",
                     $"SP: {_availablePoints}"
                 };
             }
@@ -264,10 +307,10 @@ namespace HaCreator.MapSimulator.Interaction
             return new[]
             {
                 _guildName,
-                $"Guild Lv. {_guildLevel}  |  SP: {_availablePoints}",
+                $"Guild Lv. {_guildLevel}  |  {_guildRoleLabel}",
                 selectedRequiredGuildLevel > _guildLevel && selectedSkill.CurrentLevel < selectedSkill.MaxLevel
                     ? $"Next rank requires Guild Lv. {selectedRequiredGuildLevel}."
-                    : selectedSkill.Description
+                    : $"SP: {_availablePoints}  |  {selectedSkill.Description}"
             };
         }
 
@@ -316,6 +359,36 @@ namespace HaCreator.MapSimulator.Interaction
                 _ => 0
             };
         }
+
+        private static string NormalizeGuildRoleLabel(string guildRoleLabel)
+        {
+            return string.IsNullOrWhiteSpace(guildRoleLabel)
+                ? "Member"
+                : guildRoleLabel.Trim();
+        }
+
+        private static GuildSkillPermissionLevel ResolvePermissionLevel(string guildRoleLabel)
+        {
+            if (string.IsNullOrWhiteSpace(guildRoleLabel))
+            {
+                return GuildSkillPermissionLevel.Member;
+            }
+
+            string normalized = guildRoleLabel.Trim();
+            if (normalized.Equals("Master", StringComparison.OrdinalIgnoreCase))
+            {
+                return GuildSkillPermissionLevel.Master;
+            }
+
+            if (normalized.Equals("Jr. Master", StringComparison.OrdinalIgnoreCase) ||
+                normalized.Equals("Jr Master", StringComparison.OrdinalIgnoreCase) ||
+                normalized.Equals("Junior Master", StringComparison.OrdinalIgnoreCase))
+            {
+                return GuildSkillPermissionLevel.JrMaster;
+            }
+
+            return GuildSkillPermissionLevel.Member;
+        }
     }
 
     internal sealed class GuildSkillSnapshot
@@ -323,6 +396,8 @@ namespace HaCreator.MapSimulator.Interaction
         public bool InGuild { get; init; }
         public string GuildName { get; init; } = string.Empty;
         public int GuildLevel { get; init; }
+        public string GuildRoleLabel { get; init; } = string.Empty;
+        public bool CanManageSkills { get; init; }
         public int AvailablePoints { get; init; }
         public int SelectedIndex { get; init; } = -1;
         public int RecommendedSkillId { get; init; }

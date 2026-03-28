@@ -371,9 +371,9 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
-            Vector2 drawPosition = new Vector2(
+            Vector2 drawPosition = SnapToPixel(new Vector2(
                 this.Position.X + _pointNotificationAnchor.X - origin.X,
-                this.Position.Y + _pointNotificationAnchor.Y - origin.Y);
+                this.Position.Y + _pointNotificationAnchor.Y - origin.Y));
             sprite.Draw(frame, drawPosition, Color.White);
         }
 
@@ -445,9 +445,9 @@ namespace HaCreator.MapSimulator.UI
             {
                 Point originDelta = ResolveChatTargetOriginDelta(targetType, labelPlacement.Origin);
                 sprite.Draw(labelPlacement.Texture,
-                    new Vector2(
+                    SnapToPixel(new Vector2(
                         this.Position.X + _chatTargetLabelPos.X + originDelta.X,
-                        this.Position.Y + _chatTargetLabelPos.Y + originDelta.Y),
+                        this.Position.Y + _chatTargetLabelPos.Y + originDelta.Y)),
                     Color.White);
             }
         }
@@ -560,7 +560,7 @@ namespace HaCreator.MapSimulator.UI
                     Color.Black);
             }
 
-            Vector2 inputPos = new Vector2(this.Position.X + _chatInputPos.X, this.Position.Y + _chatInputPos.Y);
+            Vector2 inputPos = SnapToPixel(new Vector2(this.Position.X + _chatInputPos.X, this.Position.Y + _chatInputPos.Y));
             DrawTextWithShadow(sprite, chatState.InputText, inputPos, Color.White, Color.Black);
 
             if (_pixelTexture == null || ((tickCount / 500) % 2) != 0)
@@ -571,7 +571,7 @@ namespace HaCreator.MapSimulator.UI
             string textBeforeCursor = chatState.InputText.Substring(
                 0,
                 Math.Clamp(chatState.CursorPosition, 0, chatState.InputText.Length));
-            float cursorX = inputPos.X + _font.MeasureString(textBeforeCursor).X;
+            float cursorX = (float)Math.Round(inputPos.X + _font.MeasureString(textBeforeCursor).X);
             sprite.Draw(_pixelTexture,
                 new Rectangle(
                     (int)cursorX,
@@ -614,8 +614,7 @@ namespace HaCreator.MapSimulator.UI
         private float ResolveInputTextYOffset(float measuredTextHeight)
         {
             int enterHeight = _chatEnterTexture?.Height ?? 21;
-            float centeredOffset = MathF.Floor(Math.Max(0f, (enterHeight - measuredTextHeight) * 0.5f));
-            return Math.Max(_chatInputBasePos.Y - _chatEnterPos.Y, centeredOffset);
+            return MathF.Floor(Math.Max(0f, (enterHeight - measuredTextHeight) * 0.5f));
         }
 
         private float ResolveCursorTopOffset()
@@ -738,8 +737,9 @@ namespace HaCreator.MapSimulator.UI
 
         private void DrawTextWithShadow(SpriteBatch sprite, string text, Vector2 position, Color color, Color shadowColor)
         {
-            sprite.DrawString(_font, text, position + new Vector2(1, 1), shadowColor);
-            sprite.DrawString(_font, text, position, color);
+            Vector2 snappedPosition = SnapToPixel(position);
+            sprite.DrawString(_font, text, snappedPosition + new Vector2(1, 1), shadowColor);
+            sprite.DrawString(_font, text, snappedPosition, color);
         }
 
         private void TryRegisterWhisperTargetHitRegion(WrappedChatLine line, float lineY)
@@ -762,12 +762,19 @@ namespace HaCreator.MapSimulator.UI
             _whisperTargetHitRegions.Add(new WhisperTargetHitRegion
             {
                 Bounds = new Rectangle(
-                    this.Position.X + (int)_chatLogTextPos.X,
-                    (int)lineY - 1,
+                    (int)Math.Round(this.Position.X + _chatLogTextPos.X),
+                    (int)Math.Round(lineY) - 1,
                     (int)Math.Ceiling(textWidth) + 2,
                     Math.Max(1, _font.LineSpacing)),
                 WhisperTarget = line.WhisperTargetCandidate
             });
+        }
+
+        private static Vector2 SnapToPixel(Vector2 position)
+        {
+            return new Vector2(
+                (float)Math.Round(position.X),
+                (float)Math.Round(position.Y));
         }
 
         private static float ResolveLineMaxWidth(float maxWidth, int chatLogType, bool isFirstLine)

@@ -37,6 +37,11 @@ namespace HaCreator.MapSimulator.UI
         private const int EditTargetTextInsetX = 3;
         private const int EditTargetTextInsetY = 1;
         private const int EditTargetMaxLength = 12;
+        private const int ScrollBarX = 139;
+        private const int ScrollBarY = 76;
+        private const int ScrollBarHeight = 93;
+        private const int ScrollBarButtonHeight = 12;
+        private const int ScrollBarWheelRange = 165;
 
         private readonly IDXObject _innerFrame;
         private readonly IDXObject _listFrame;
@@ -52,6 +57,16 @@ namespace HaCreator.MapSimulator.UI
         private readonly UIObject _confirmationCancelButton;
         private readonly List<UIObject> _confirmationButtons = new();
         private readonly int _maxSavedDestinations;
+        private readonly Texture2D _scrollUpNormal;
+        private readonly Texture2D _scrollUpPressed;
+        private readonly Texture2D _scrollUpDisabled;
+        private readonly Texture2D _scrollDownNormal;
+        private readonly Texture2D _scrollDownPressed;
+        private readonly Texture2D _scrollDownDisabled;
+        private readonly Texture2D _scrollTrackEnabled;
+        private readonly Texture2D _scrollTrackDisabled;
+        private readonly Texture2D _scrollThumbNormal;
+        private readonly Texture2D _scrollThumbPressed;
 
         private SpriteFont _font;
         private string _currentMapName = string.Empty;
@@ -66,6 +81,63 @@ namespace HaCreator.MapSimulator.UI
         private bool _confirmationVisible;
         private string _confirmationMessage = string.Empty;
         private Action _pendingConfirmationAction;
+        private bool _isDraggingScrollThumb;
+        private int _scrollThumbDragOffsetY;
+        private Point _lastMousePosition;
+
+        public MapTransferUI(
+            IDXObject frame,
+            IDXObject innerFrame,
+            IDXObject listFrame,
+            Texture2D selectionTexture,
+            UIObject registerButton,
+            UIObject deleteButton,
+            UIObject moveButton,
+            UIObject mapButton,
+            Texture2D confirmationTexture,
+            UIObject confirmationOkButton,
+            UIObject confirmationCancelButton,
+            int maxSavedDestinations,
+            Texture2D scrollUpNormal,
+            Texture2D scrollUpPressed,
+            Texture2D scrollUpDisabled,
+            Texture2D scrollDownNormal,
+            Texture2D scrollDownPressed,
+            Texture2D scrollDownDisabled,
+            Texture2D scrollTrackEnabled,
+            Texture2D scrollTrackDisabled,
+            Texture2D scrollThumbNormal,
+            Texture2D scrollThumbPressed,
+            GraphicsDevice device)
+            : base(frame)
+        {
+            _innerFrame = innerFrame;
+            _listFrame = listFrame;
+            _selectionTexture = selectionTexture;
+            _registerButton = registerButton;
+            _deleteButton = deleteButton;
+            _moveButton = moveButton;
+            _mapButton = mapButton;
+            _confirmationTexture = confirmationTexture;
+            _confirmationOkButton = confirmationOkButton;
+            _confirmationCancelButton = confirmationCancelButton;
+            _maxSavedDestinations = Math.Max(MaxVisibleRows, maxSavedDestinations);
+            _scrollUpNormal = scrollUpNormal;
+            _scrollUpPressed = scrollUpPressed;
+            _scrollUpDisabled = scrollUpDisabled;
+            _scrollDownNormal = scrollDownNormal;
+            _scrollDownPressed = scrollDownPressed;
+            _scrollDownDisabled = scrollDownDisabled;
+            _scrollTrackEnabled = scrollTrackEnabled;
+            _scrollTrackDisabled = scrollTrackDisabled;
+            _scrollThumbNormal = scrollThumbNormal;
+            _scrollThumbPressed = scrollThumbPressed;
+
+            InitializeCloseAndActionButtons(registerButton, deleteButton, moveButton, mapButton);
+            InitializeRowButtons(device);
+            InitializeConfirmationButtons();
+            UpdateButtonStates();
+        }
 
         public MapTransferUI(
             IDXObject frame,
@@ -81,24 +153,31 @@ namespace HaCreator.MapSimulator.UI
             UIObject confirmationCancelButton,
             int maxSavedDestinations,
             GraphicsDevice device)
-            : base(frame)
+            : this(
+                frame,
+                innerFrame,
+                listFrame,
+                selectionTexture,
+                registerButton,
+                deleteButton,
+                moveButton,
+                mapButton,
+                confirmationTexture,
+                confirmationOkButton,
+                confirmationCancelButton,
+                maxSavedDestinations,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                device)
         {
-            _innerFrame = innerFrame;
-            _listFrame = listFrame;
-            _selectionTexture = selectionTexture;
-            _registerButton = registerButton;
-            _deleteButton = deleteButton;
-            _moveButton = moveButton;
-            _mapButton = mapButton;
-            _confirmationTexture = confirmationTexture;
-            _confirmationOkButton = confirmationOkButton;
-            _confirmationCancelButton = confirmationCancelButton;
-            _maxSavedDestinations = Math.Max(MaxVisibleRows, maxSavedDestinations);
-
-            InitializeCloseAndActionButtons(registerButton, deleteButton, moveButton, mapButton);
-            InitializeRowButtons(device);
-            InitializeConfirmationButtons();
-            UpdateButtonStates();
         }
 
         public override string WindowName => MapSimulatorWindowNames.MapTransfer;
@@ -106,12 +185,7 @@ namespace HaCreator.MapSimulator.UI
         public int MaxSavedDestinations => _maxSavedDestinations;
         public int SavedDestinationCount => _destinations.FindAll(entry => entry.IsSavedSlot && entry.MapId > 0).Count;
         bool ISoftKeyboardHost.WantsSoftKeyboard => IsVisible && _editTargetFocused;
-        SoftKeyboardConstraintProfile ISoftKeyboardHost.SoftKeyboardConstraintProfile => SoftKeyboardConstraintProfile.NumericOnly;
-        SoftKeyboardInputMode ISoftKeyboardHost.SoftKeyboardInputMode
-        {
-            get => SoftKeyboardInputMode.Numeric;
-            set { }
-        }
+        SoftKeyboardKeyboardType ISoftKeyboardHost.SoftKeyboardKeyboardType => SoftKeyboardKeyboardType.NumericOnly;
         int ISoftKeyboardHost.SoftKeyboardTextLength => _manualTargetText?.Length ?? 0;
         int ISoftKeyboardHost.SoftKeyboardMaxLength => EditTargetMaxLength;
 
@@ -128,6 +202,7 @@ namespace HaCreator.MapSimulator.UI
             _previousMouseState = mouseState;
             _previousScrollWheelValue = mouseState.ScrollWheelValue;
             _previousKeyboardState = Keyboard.GetState();
+            _lastMousePosition = new Point(mouseState.X, mouseState.Y);
         }
 
         public override void SetFont(SpriteFont font)
@@ -196,6 +271,7 @@ namespace HaCreator.MapSimulator.UI
             }
 
             MouseState mouseState = Mouse.GetState();
+            _lastMousePosition = new Point(mouseState.X, mouseState.Y);
             int wheelDelta = mouseState.ScrollWheelValue - _previousScrollWheelValue;
             _previousScrollWheelValue = mouseState.ScrollWheelValue;
 
@@ -219,6 +295,7 @@ namespace HaCreator.MapSimulator.UI
 
             HandleEditTargetMouseInput(mouseState);
             HandleEditTargetKeyboardInput();
+            HandleScrollBarInput(mouseState);
 
             if (wheelDelta == 0 || _destinations.Count <= MaxVisibleRows || !ContainsPoint(mouseState.X, mouseState.Y))
             {
@@ -285,6 +362,7 @@ namespace HaCreator.MapSimulator.UI
             }
 
             DrawEditTarget(sprite, TickCount);
+            DrawScrollBar(sprite);
 
             if (_selectedIndex >= 0 && _selectedIndex < _destinations.Count)
             {
@@ -483,6 +561,47 @@ namespace HaCreator.MapSimulator.UI
             }
         }
 
+        private void DrawScrollBar(SpriteBatch sprite)
+        {
+            if (!ShouldShowScrollBar())
+            {
+                return;
+            }
+
+            Rectangle upButtonBounds = GetScrollUpButtonBounds();
+            Rectangle downButtonBounds = GetScrollDownButtonBounds();
+            Rectangle trackBounds = GetScrollTrackBounds();
+            Rectangle thumbBounds = GetScrollThumbBounds();
+            bool canScroll = GetMaxScrollOffset() > 0;
+            bool leftPressed = Mouse.GetState().LeftButton == ButtonState.Pressed;
+
+            DrawScrollTexture(
+                sprite,
+                canScroll
+                    ? ((leftPressed && upButtonBounds.Contains(_lastMousePosition) && !_isDraggingScrollThumb)
+                        ? _scrollUpPressed ?? _scrollUpNormal
+                        : _scrollUpNormal)
+                    : _scrollUpDisabled ?? _scrollUpNormal,
+                upButtonBounds);
+
+            DrawTiledTrack(sprite, canScroll ? _scrollTrackEnabled : _scrollTrackDisabled ?? _scrollTrackEnabled, trackBounds);
+
+            if (canScroll)
+            {
+                bool thumbPressed = _isDraggingScrollThumb || (leftPressed && thumbBounds.Contains(_lastMousePosition));
+                DrawScrollTexture(sprite, thumbPressed ? _scrollThumbPressed ?? _scrollThumbNormal : _scrollThumbNormal, thumbBounds);
+            }
+
+            DrawScrollTexture(
+                sprite,
+                canScroll
+                    ? ((leftPressed && downButtonBounds.Contains(_lastMousePosition) && !_isDraggingScrollThumb)
+                        ? _scrollDownPressed ?? _scrollDownNormal
+                        : _scrollDownNormal)
+                    : _scrollDownDisabled ?? _scrollDownNormal,
+                downButtonBounds);
+        }
+
         private void DrawEditTarget(SpriteBatch sprite, int tickCount)
         {
             if (_selectionTexture == null)
@@ -601,6 +720,78 @@ namespace HaCreator.MapSimulator.UI
             UpdateButtonStates();
         }
 
+        private void HandleScrollBarInput(MouseState mouseState)
+        {
+            if (!ShouldShowScrollBar())
+            {
+                _isDraggingScrollThumb = false;
+                return;
+            }
+
+            if (_isDraggingScrollThumb)
+            {
+                if (mouseState.LeftButton == ButtonState.Released)
+                {
+                    _isDraggingScrollThumb = false;
+                }
+                else
+                {
+                    UpdateScrollOffsetFromThumb(mouseState.Y);
+                }
+
+                return;
+            }
+
+            bool leftClicked = mouseState.LeftButton == ButtonState.Pressed && _previousMouseState.LeftButton == ButtonState.Released;
+            if (!leftClicked)
+            {
+                return;
+            }
+
+            Rectangle scrollBarBounds = GetScrollBarBounds();
+            if (!scrollBarBounds.Contains(mouseState.X, mouseState.Y))
+            {
+                return;
+            }
+
+            if (GetScrollUpButtonBounds().Contains(mouseState.X, mouseState.Y))
+            {
+                ScrollUp();
+                return;
+            }
+
+            if (GetScrollDownButtonBounds().Contains(mouseState.X, mouseState.Y))
+            {
+                ScrollDown();
+                return;
+            }
+
+            Rectangle thumbBounds = GetScrollThumbBounds();
+            if (thumbBounds.Contains(mouseState.X, mouseState.Y))
+            {
+                _isDraggingScrollThumb = true;
+                _scrollThumbDragOffsetY = mouseState.Y - thumbBounds.Y;
+                return;
+            }
+
+            Rectangle trackBounds = GetScrollTrackBounds();
+            if (trackBounds.Contains(mouseState.X, mouseState.Y))
+            {
+                int thumbCenter = thumbBounds.Y + (thumbBounds.Height / 2);
+                if (mouseState.Y < thumbCenter)
+                {
+                    _scrollOffset = Math.Max(0, _scrollOffset - MaxVisibleRows);
+                }
+                else if (mouseState.Y > thumbCenter)
+                {
+                    _scrollOffset = Math.Min(GetMaxScrollOffset(), _scrollOffset + MaxVisibleRows);
+                }
+
+                ClampScrollOffset();
+                UpdateRowButtons();
+            }
+        }
+
         private void HandleClipboardPaste()
         {
             try
@@ -634,6 +825,30 @@ namespace HaCreator.MapSimulator.UI
         private bool TryParseManualTargetMapId(out int targetMapId)
         {
             return int.TryParse(_manualTargetText, out targetMapId) && targetMapId > 0;
+        }
+
+        private void ScrollUp()
+        {
+            if (_scrollOffset <= 0)
+            {
+                return;
+            }
+
+            _scrollOffset--;
+            ClampScrollOffset();
+            UpdateRowButtons();
+        }
+
+        private void ScrollDown()
+        {
+            if (_scrollOffset >= GetMaxScrollOffset())
+            {
+                return;
+            }
+
+            _scrollOffset++;
+            ClampScrollOffset();
+            UpdateRowButtons();
         }
 
         private void RequestRegisterConfirmation(DestinationEntry selectedEntry)
@@ -843,6 +1058,124 @@ namespace HaCreator.MapSimulator.UI
                 Position.Y + EditTargetY,
                 EditTargetWidth,
                 EditTargetHeight);
+        }
+
+        private Rectangle GetScrollBarBounds()
+        {
+            int width = Math.Max(
+                Math.Max(_scrollUpNormal?.Width ?? 0, _scrollDownNormal?.Width ?? 0),
+                Math.Max(_scrollTrackEnabled?.Width ?? 0, _scrollThumbNormal?.Width ?? 0));
+            if (width <= 0)
+            {
+                width = 11;
+            }
+
+            return new Rectangle(Position.X + ScrollBarX, Position.Y + ScrollBarY, width, ScrollBarHeight);
+        }
+
+        private Rectangle GetScrollUpButtonBounds()
+        {
+            Rectangle bounds = GetScrollBarBounds();
+            int height = _scrollUpNormal?.Height ?? ScrollBarButtonHeight;
+            return new Rectangle(bounds.X, bounds.Y, bounds.Width, height);
+        }
+
+        private Rectangle GetScrollDownButtonBounds()
+        {
+            Rectangle bounds = GetScrollBarBounds();
+            int height = _scrollDownNormal?.Height ?? ScrollBarButtonHeight;
+            return new Rectangle(bounds.X, bounds.Bottom - height, bounds.Width, height);
+        }
+
+        private Rectangle GetScrollTrackBounds()
+        {
+            Rectangle bounds = GetScrollBarBounds();
+            Rectangle upBounds = GetScrollUpButtonBounds();
+            Rectangle downBounds = GetScrollDownButtonBounds();
+            int top = upBounds.Bottom;
+            int bottom = downBounds.Y;
+            return new Rectangle(bounds.X, top, bounds.Width, Math.Max(0, bottom - top));
+        }
+
+        private Rectangle GetScrollThumbBounds()
+        {
+            Rectangle trackBounds = GetScrollTrackBounds();
+            int thumbHeight = Math.Min(trackBounds.Height, Math.Max(1, _scrollThumbNormal?.Height ?? trackBounds.Width));
+            int maxScroll = GetMaxScrollOffset();
+            if (maxScroll <= 0)
+            {
+                return new Rectangle(trackBounds.X, trackBounds.Y, trackBounds.Width, thumbHeight);
+            }
+
+            int travel = Math.Max(0, trackBounds.Height - thumbHeight);
+            int thumbTop = trackBounds.Y + (int)Math.Round((_scrollOffset / (double)maxScroll) * travel);
+            return new Rectangle(trackBounds.X, thumbTop, trackBounds.Width, thumbHeight);
+        }
+
+        private void UpdateScrollOffsetFromThumb(int mouseY)
+        {
+            Rectangle trackBounds = GetScrollTrackBounds();
+            Rectangle thumbBounds = GetScrollThumbBounds();
+            int maxScroll = GetMaxScrollOffset();
+            if (maxScroll <= 0)
+            {
+                return;
+            }
+
+            int travel = Math.Max(0, trackBounds.Height - thumbBounds.Height);
+            if (travel <= 0)
+            {
+                _scrollOffset = 0;
+            }
+            else
+            {
+                int thumbTop = Math.Clamp(mouseY - _scrollThumbDragOffsetY, trackBounds.Y, trackBounds.Y + travel);
+                double ratio = (thumbTop - trackBounds.Y) / (double)travel;
+                _scrollOffset = (int)Math.Round(ratio * maxScroll);
+            }
+
+            ClampScrollOffset();
+            UpdateRowButtons();
+        }
+
+        private void DrawTiledTrack(SpriteBatch sprite, Texture2D texture, Rectangle bounds)
+        {
+            if (texture == null || bounds.Width <= 0 || bounds.Height <= 0)
+            {
+                return;
+            }
+
+            for (int y = bounds.Y; y < bounds.Bottom; y += texture.Height)
+            {
+                int tileHeight = Math.Min(texture.Height, bounds.Bottom - y);
+                Rectangle destination = new Rectangle(bounds.X, y, bounds.Width, tileHeight);
+                Rectangle source = new Rectangle(0, 0, Math.Min(texture.Width, bounds.Width), tileHeight);
+                sprite.Draw(texture, destination, source, Color.White);
+            }
+        }
+
+        private void DrawScrollTexture(SpriteBatch sprite, Texture2D texture, Rectangle bounds)
+        {
+            if (texture == null || bounds.Width <= 0 || bounds.Height <= 0)
+            {
+                return;
+            }
+
+            sprite.Draw(texture, bounds, Color.White);
+        }
+
+        private int GetMaxScrollOffset()
+        {
+            return Math.Max(0, _destinations.Count - MaxVisibleRows);
+        }
+
+        private bool ShouldShowScrollBar()
+        {
+            return _maxSavedDestinations > MaxVisibleRows
+                && _scrollUpNormal != null
+                && _scrollDownNormal != null
+                && _scrollTrackEnabled != null
+                && _scrollThumbNormal != null;
         }
 
         Rectangle ISoftKeyboardHost.GetSoftKeyboardAnchorBounds() => GetEditTargetBounds();

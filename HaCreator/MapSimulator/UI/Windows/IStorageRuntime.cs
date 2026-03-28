@@ -10,6 +10,7 @@ namespace HaCreator.MapSimulator.UI
         IReadOnlyList<string> SharedCharacterNames { get; }
         IReadOnlyList<string> AuthorizedCharacterNames { get; }
         bool CanCurrentCharacterAccess { get; }
+        bool IsAccessSessionActive { get; }
         bool HasSecondaryPassword { get; }
         bool IsSecondaryPasswordVerified { get; }
 
@@ -25,6 +26,8 @@ namespace HaCreator.MapSimulator.UI
         bool CanAcceptItem(InventoryType type, InventorySlotData slotData);
         bool TryRemoveSlotAt(InventoryType type, int slotIndex, out InventorySlotData slotData);
         void SortSlots(InventoryType type);
+        void BeginAccessSession();
+        void EndAccessSession();
         void ConfigureAccess(string accountLabel, string accountKey, string currentCharacterName, IEnumerable<string> sharedCharacterNames);
         bool TrySetSecondaryPassword(string password);
         bool TryVerifySecondaryPassword(string password);

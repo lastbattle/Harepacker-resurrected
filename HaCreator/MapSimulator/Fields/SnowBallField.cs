@@ -11,6 +11,7 @@ using MapleLib.Converters;
 using MapleLib.PacketLib;
 using MapleLib.WzLib;
 using MapleLib.WzLib.WzProperties;
+using MapleLib.WzLib.WzStructure;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using Spine;
@@ -46,6 +47,12 @@ namespace HaCreator.MapSimulator.Fields
     /// </summary>
     public class SnowBallField
     {
+        public const int PacketTypeState = 338;
+        public const int PacketTypeHit = 339;
+        public const int PacketTypeMessage = 340;
+        public const int PacketTypeTouch = 341;
+        public const int OutboundTouchOpcode = 256;
+
         #region Constants (from client)
         // Static configuration from WZ (set during Init)
         private static int ms_nDeltaX = 20;  // Movement per hit
@@ -72,11 +79,140 @@ namespace HaCreator.MapSimulator.Fields
             TeamOnly
         }
         private readonly record struct SnowBallMessageTemplate(int StringPoolId, string FallbackFormat, SnowBallMessageArgumentPattern ArgumentPattern);
+        public sealed class SnowBallFieldDefinition
+        {
+            public int DeltaX { get; init; }
+            public int SnowManX { get; init; }
+            public int BallStartX { get; init; }
+            public int BallMinX { get; init; }
+            public int BallMaxX { get; init; }
+            public int DamageSnowBall { get; init; }
+            public int DamageSnowMan0 { get; init; }
+            public int DamageSnowMan1 { get; init; }
+            public int SnowManHp { get; init; }
+            public int SnowManWaitMs { get; init; }
+            public int RecoveryAmount { get; init; }
+            public int Speed { get; init; }
+            public int Section1X { get; init; }
+            public int Section2X { get; init; }
+            public int Section3X { get; init; }
+            public SnowBallTeamDefinition[] Teams { get; init; } = Array.Empty<SnowBallTeamDefinition>();
+        }
+
+        public sealed class SnowBallTeamDefinition
+        {
+            public int Team { get; init; }
+            public int LaneY { get; init; }
+            public string PortalName { get; init; }
+            public string SnowBallPath { get; init; }
+            public string SnowManPath { get; init; }
+        }
+
+        public static class SnowBallFieldDataLoader
+        {
+            private const string PropertyName = "snowBall";
+
+            public static bool IsSnowBallMap(MapInfo mapInfo) =>
+                mapInfo?.fieldType == MapleLib.WzLib.WzStructure.Data.FieldType.FIELDTYPE_SNOWBALL
+                || FindSnowBallProperty(mapInfo) != null;
+
+            public static SnowBallFieldDefinition Load(MapInfo mapInfo)
+            {
+                WzImageProperty property = FindSnowBallProperty(mapInfo);
+                if (property == null)
+                {
+                    return null;
+                }
+
+                SnowBallTeamDefinition[] teams =
+                [
+                    LoadTeam(property["0"], 0),
+                    LoadTeam(property["1"], 1)
+                ];
+
+                if (teams.Any(static team => team == null))
+                {
+                    return null;
+                }
+
+                return new SnowBallFieldDefinition
+                {
+                    DeltaX = ReadInt(property["dx"], 20),
+                    SnowManX = ReadInt(property["x"], 0),
+                    BallStartX = ReadInt(property["x0"], 0),
+                    BallMinX = ReadInt(property["xMin"], 0),
+                    BallMaxX = ReadInt(property["xMax"], 0),
+                    DamageSnowBall = ReadInt(property["damageSnowBall"], 10),
+                    DamageSnowMan0 = ReadInt(property["damageSnowMan0"], 15),
+                    DamageSnowMan1 = ReadInt(property["damageSnowMan1"], 45),
+                    SnowManHp = ReadInt(property["snowManHP"], 7500),
+                    SnowManWaitMs = ReadInt(property["snowManWait"], 10000),
+                    RecoveryAmount = ReadInt(property["recoveryAmount"], 400),
+                    Speed = ReadInt(property["speed"], 150),
+                    Section1X = ReadInt(property["section1"], 0),
+                    Section2X = ReadInt(property["section2"], 0),
+                    Section3X = ReadInt(property["section3"], 0),
+                    Teams = teams
+                };
+            }
+
+            private static SnowBallTeamDefinition LoadTeam(WzImageProperty property, int team)
+            {
+                if (property == null)
+                {
+                    return null;
+                }
+
+                return new SnowBallTeamDefinition
+                {
+                    Team = team,
+                    LaneY = ReadInt(property["y"], 0),
+                    PortalName = ReadString(property["portal"]),
+                    SnowBallPath = ReadString(property["snowBall"]),
+                    SnowManPath = ReadString(property["snowMan"])
+                };
+            }
+
+            private static WzImageProperty FindSnowBallProperty(MapInfo mapInfo)
+            {
+                if (mapInfo?.additionalNonInfoProps != null)
+                {
+                    WzImageProperty existing = mapInfo.additionalNonInfoProps
+                        .FirstOrDefault(prop => string.Equals(prop.Name, PropertyName, StringComparison.OrdinalIgnoreCase));
+                    if (existing != null)
+                    {
+                        return existing;
+                    }
+                }
+
+                return mapInfo?.Image?[PropertyName] as WzImageProperty;
+            }
+
+            private static int ReadInt(WzImageProperty property, int defaultValue)
+            {
+                if (property == null)
+                {
+                    return defaultValue;
+                }
+
+                if (property is WzStringProperty stringProperty
+                    && int.TryParse(stringProperty.Value, NumberStyles.Integer, CultureInfo.InvariantCulture, out int parsedValue))
+                {
+                    return parsedValue;
+                }
+
+                return InfoTool.GetOptionalInt(property, defaultValue) ?? defaultValue;
+            }
+
+            private static string ReadString(WzImageProperty property)
+            {
+                return property == null ? string.Empty : InfoTool.GetString(property);
+            }
+        }
         public class SnowBall
         {
             public Rectangle Area;           // m_rcArea - Bounding box
             public string PortalName;        // m_sPortalName - Win portal target
-            public Vector2 Origin;           // m_pVecOrg - Origin position
             public float Rotation;           // Current rotation angle (degrees)
             public int Team;                 // 0 = left, 1 = right
             public bool IsWinner;            // Animation stopped
@@ -86,12 +222,15 @@ namespace HaCreator.MapSimulator.Fields
             public int SpeedDegree;
             public int PositionDelta;
             public int MovementElapsed;
+            public int AnchorX;
+            public int AnchorY;
             // Movement properties
-            public int PositionX => Area.X + Area.Width / 2;
-            public int PositionY => Area.Y + Area.Height / 2;
+            public int PositionX => AnchorX;
+            public int PositionY => AnchorY;
             public void Move(int dx)
             {
                 int moveAmount = dx * ms_nDeltaX;
+                AnchorX += moveAmount;
                 Area.X += moveAmount;
                 // Rotate the snowball (4 degrees per step)
                 Rotation += 4f * dx;
@@ -105,8 +244,9 @@ namespace HaCreator.MapSimulator.Fields
             }
             public void SetPos(int x, int y, bool flip)
             {
-                Area.X = x - Area.Width / 2;
-                Area.Y = y - Area.Height / 2;
+                AnchorX = x;
+                AnchorY = y;
+                Area = new Rectangle(x - 80, y - 161, 160, 165);
                 PositionDelta = 0;
                 MovementElapsed = 0;
             }
@@ -203,9 +343,13 @@ namespace HaCreator.MapSimulator.Fields
             public bool ShowHitEffect;
             public int HitEffectEndTime;
             public int StunDurationMs = 10000;
+            public int AnchorX;
+            public int AnchorY;
             public void Init(int x, int y, int hp)
             {
-                Area = new Rectangle(x - 50, y - 100, 100, 100);
+                AnchorX = x;
+                AnchorY = y;
+                Area = new Rectangle(x - 30, y - 25, 60, 25);
                 MaxHP = hp;
                 HP = hp;
             }
@@ -264,10 +408,14 @@ namespace HaCreator.MapSimulator.Fields
         private SnowMan[] _snowMen = new SnowMan[2];
         private readonly List<DamageInfo> _damageQueue = new();
         private GameState _state = GameState.NotStarted;
-        // Event config from WZ
-        private int _leftGoalX;
-        private int _rightGoalX;
-        private int _groundY;
+        // Event config from WZ/client init
+        private int _ballMinX;
+        private int _ballMaxX;
+        private int _ballStartX;
+        private int _snowManX;
+        private readonly int[] _laneY = new int[2];
+        private SnowBallFieldDefinition _definition;
+        private GraphicsDevice _graphicsDevice;
         // UI elements
         private bool _showScoreboard = true;
         private int _team0Score;
@@ -309,47 +457,221 @@ namespace HaCreator.MapSimulator.Fields
             int damageSnowBall = 10, int damageSnowMan0 = 15, int damageSnowMan1 = 45,
             int snowManHp = 7500, int snowManWaitMs = 10000)
         {
+            _definition = null;
+            _ballMinX = leftGoalX;
+            _ballMaxX = rightGoalX;
+            _ballStartX = (leftGoalX + rightGoalX) / 2;
+            _snowManX = _ballStartX;
+            _laneY[0] = groundY;
+            _laneY[1] = groundY;
             ms_nDeltaX = deltaX;
-            _leftGoalX = leftGoalX;
-            _rightGoalX = rightGoalX;
-            _groundY = groundY;
             _damageSnowBall = damageSnowBall;
             _damageSnowMan[0] = damageSnowMan0;
             _damageSnowMan[1] = damageSnowMan1;
             _snowManWaitMs = snowManWaitMs;
-            int centerX = (leftGoalX + rightGoalX) / 2;
-            int ballStartOffset = (rightGoalX - leftGoalX) / 4;
-            // Initialize snowballs
+
             for (int i = 0; i < 2; i++)
             {
                 _snowBalls[i] = new SnowBall
                 {
                     Team = i,
-                    Area = new Rectangle(
-                        i == 0 ? centerX - ballStartOffset - snowBallRadius : centerX + ballStartOffset - snowBallRadius,
-                        groundY - snowBallRadius * 2,
-                        snowBallRadius * 2,
-                        snowBallRadius * 2
-                    ),
-                    Origin = new Vector2(
-                        i == 0 ? centerX - ballStartOffset : centerX + ballStartOffset,
-                        groundY - snowBallRadius
-                    ),
                     Rotation = 0f,
                     IsWinner = false
                 };
-            }
-            // Initialize snowmen (blockers)
-            for (int i = 0; i < 2; i++)
-            {
+                _snowBalls[i].SetPos(_ballStartX, _laneY[i], i == 1);
+
                 _snowMen[i] = new SnowMan { Team = i };
-                int snowManX = i == 0 ? leftGoalX + 100 : rightGoalX - 100;
-                _snowMen[i].Init(snowManX, groundY, snowManHp);
+                _snowMen[i].Init(_snowManX, _laneY[i], snowManHp);
                 _snowMen[i].StunDurationMs = snowManWaitMs;
             }
-            ms_rgBall = new Rectangle(leftGoalX, groundY - 200, rightGoalX - leftGoalX, 200);
+
+            ms_rgBall = BuildBallBounds();
             _state = GameState.NotStarted;
-            System.Diagnostics.Debug.WriteLine($"[SnowBallField] Initialized: leftGoal={leftGoalX}, rightGoal={rightGoalX}, groundY={groundY}");
+        }
+
+        public void BindMap(Board board, GraphicsDevice graphicsDevice)
+        {
+            Reset();
+
+            _graphicsDevice = graphicsDevice;
+            SnowBallFieldDefinition definition = SnowBallFieldDataLoader.Load(board?.MapInfo);
+            if (definition == null)
+            {
+                return;
+            }
+
+            ConfigureFromDefinition(definition);
+        }
+
+        private void ConfigureFromDefinition(SnowBallFieldDefinition definition)
+        {
+            _definition = definition;
+            ms_nDeltaX = definition.DeltaX;
+            _ballMinX = definition.BallMinX;
+            _ballMaxX = definition.BallMaxX;
+            _ballStartX = definition.BallStartX;
+            _snowManX = definition.SnowManX;
+            _damageSnowBall = definition.DamageSnowBall;
+            _damageSnowMan[0] = definition.DamageSnowMan0;
+            _damageSnowMan[1] = definition.DamageSnowMan1;
+            _snowManWaitMs = definition.SnowManWaitMs;
+
+            for (int i = 0; i < 2; i++)
+            {
+                SnowBallTeamDefinition teamDefinition = definition.Teams.ElementAtOrDefault(i) ?? new SnowBallTeamDefinition { Team = i };
+                _laneY[i] = teamDefinition.LaneY;
+                _snowBalls[i] = new SnowBall
+                {
+                    Team = i,
+                    PortalName = teamDefinition.PortalName,
+                    Rotation = 0f,
+                    IsWinner = false,
+                    Frames = LoadFramesFromMapPath(teamDefinition.SnowBallPath)
+                };
+                _snowBalls[i].SetPos(_ballStartX, _laneY[i], i == 1);
+
+                List<IDXObject> snowManFrames = LoadFramesFromMapPath(teamDefinition.SnowManPath);
+                _snowMen[i] = new SnowMan
+                {
+                    Team = i,
+                    Frames = snowManFrames,
+                    HitFrames = snowManFrames
+                };
+                _snowMen[i].Init(_snowManX, _laneY[i], definition.SnowManHp);
+                _snowMen[i].StunDurationMs = definition.SnowManWaitMs;
+            }
+
+            ms_rgBall = BuildBallBounds();
+            _state = GameState.NotStarted;
+        }
+
+        private Rectangle BuildBallBounds()
+        {
+            int minLaneY = _laneY.Min();
+            int maxLaneY = _laneY.Max();
+            int top = minLaneY - 161;
+            int bottom = maxLaneY + 4;
+            return new Rectangle(_ballMinX, top, Math.Max(0, _ballMaxX - _ballMinX), Math.Max(0, bottom - top));
+        }
+
+        private List<IDXObject> LoadFramesFromMapPath(string mapPath)
+        {
+            if (_graphicsDevice == null || string.IsNullOrWhiteSpace(mapPath))
+            {
+                return null;
+            }
+
+            WzImageProperty property = ResolveMapProperty(mapPath);
+            if (property == null)
+            {
+                return null;
+            }
+
+            return LoadFrames(property);
+        }
+
+        private static WzImageProperty ResolveMapProperty(string mapPath)
+        {
+            string normalizedPath = mapPath.Replace('\\', '/');
+            string[] segments = normalizedPath.Split('/', StringSplitOptions.RemoveEmptyEntries);
+            if (segments.Length < 3)
+            {
+                return null;
+            }
+
+            if (!string.Equals(segments[0], "Map", StringComparison.OrdinalIgnoreCase))
+            {
+                return null;
+            }
+
+            WzImage image = global::HaCreator.Program.FindImage("Map", string.Join("/", segments.Skip(1).Take(2)));
+            if (image == null)
+            {
+                return null;
+            }
+
+            if (!image.Parsed)
+            {
+                image.ParseImage();
+            }
+
+            WzObject current = image;
+            for (int i = 3; i < segments.Length; i++)
+            {
+                current = current switch
+                {
+                    WzImage currentImage => currentImage[segments[i]],
+                    WzImageProperty currentProperty => currentProperty[segments[i]],
+                    _ => null
+                };
+
+                if (current == null)
+                {
+                    return null;
+                }
+            }
+
+            return current as WzImageProperty;
+        }
+
+        private List<IDXObject> LoadFrames(WzImageProperty source)
+        {
+            List<IDXObject> frames = new();
+            WzImageProperty resolved = WzInfoTools.GetRealProperty(source);
+            if (resolved is WzSubProperty subProperty && subProperty.WzProperties.Count == 1)
+            {
+                resolved = WzInfoTools.GetRealProperty(subProperty.WzProperties[0]);
+            }
+
+            if (resolved is WzCanvasProperty canvas)
+            {
+                IDXObject frame = CreateFrame(canvas);
+                if (frame != null)
+                {
+                    frames.Add(frame);
+                }
+
+                return frames;
+            }
+
+            if (resolved is not WzSubProperty container)
+            {
+                return frames;
+            }
+
+            for (int i = 0; ; i++)
+            {
+                WzImageProperty child = WzInfoTools.GetRealProperty(container[i.ToString()]);
+                if (child == null)
+                {
+                    break;
+                }
+
+                if (child is WzCanvasProperty childCanvas)
+                {
+                    IDXObject frame = CreateFrame(childCanvas);
+                    if (frame != null)
+                    {
+                        frames.Add(frame);
+                    }
+                }
+            }
+
+            return frames;
+        }
+
+        private IDXObject CreateFrame(WzCanvasProperty canvas)
+        {
+            System.Drawing.Bitmap bitmap = canvas.GetLinkedWzCanvasBitmap();
+            if (bitmap == null)
+            {
+                return null;
+            }
+
+            Texture2D texture = bitmap.ToTexture2DAndDispose(_graphicsDevice);
+            System.Drawing.PointF origin = canvas.GetCanvasOriginPosition();
+            int delay = canvas[WzCanvasProperty.AnimationDelayPropertyName]?.GetInt() ?? 0;
+            return new DXObject(-(int)origin.X, -(int)origin.Y, texture, delay);
         }
         public void SetSnowBallFrames(int team, List<IDXObject> frames)
         {
@@ -439,11 +761,11 @@ namespace HaCreator.MapSimulator.Fields
             }
             if (_snowBalls[0] != null)
             {
-                _snowBalls[0].ApplyStatePosition(team0Pos, _groundY - _snowBalls[0].Area.Height / 2, team0SpeedDegree, isFirstSnapshot || _state != GameState.Active);
+                _snowBalls[0].ApplyStatePosition(team0Pos, _laneY[0], team0SpeedDegree, isFirstSnapshot || _state != GameState.Active);
             }
             if (_snowBalls[1] != null)
             {
-                _snowBalls[1].ApplyStatePosition(team1Pos, _groundY - _snowBalls[1].Area.Height / 2, team1SpeedDegree, isFirstSnapshot || _state != GameState.Active);
+                _snowBalls[1].ApplyStatePosition(team1Pos, _laneY[1], team1SpeedDegree, isFirstSnapshot || _state != GameState.Active);
             }
             switch (_state)
             {
@@ -597,7 +919,7 @@ namespace HaCreator.MapSimulator.Fields
         }
         private void CheckWinCondition()
         {
-            if (_snowBalls[0] != null && _snowBalls[0].PositionX >= _rightGoalX - 50)
+            if (_snowBalls[0] != null && _snowBalls[0].PositionX >= _ballMaxX)
             {
                 OnSnowBallState(
                     (int)GameState.Team0Win,
@@ -608,7 +930,7 @@ namespace HaCreator.MapSimulator.Fields
                     _snowBalls[1]?.PositionX ?? 0,
                     0);
             }
-            else if (_snowBalls[1] != null && _snowBalls[1].PositionX <= _leftGoalX + 50)
+            else if (_snowBalls[1] != null && _snowBalls[1].PositionX <= _ballMinX)
             {
                 OnSnowBallState(
                     (int)GameState.Team1Win,
@@ -758,8 +1080,8 @@ namespace HaCreator.MapSimulator.Fields
             foreach (var ball in _snowBalls)
             {
                 if (ball == null) continue;
-                int screenX = ball.Area.X - shiftCenterX;
-                int screenY = ball.Area.Y - shiftCenterY;
+                int screenX = ball.AnchorX - shiftCenterX;
+                int screenY = ball.AnchorY - shiftCenterY;
                 if (ball.Frames != null && ball.Frames.Count > 0)
                 {
                     var frame = ball.Frames[ball.FrameIndex % ball.Frames.Count];
@@ -785,8 +1107,8 @@ namespace HaCreator.MapSimulator.Fields
             foreach (var snowMan in _snowMen)
             {
                 if (snowMan == null) continue;
-                int screenX = snowMan.Area.X - shiftCenterX;
-                int screenY = snowMan.Area.Y - shiftCenterY;
+                int screenX = snowMan.AnchorX - shiftCenterX;
+                int screenY = snowMan.AnchorY - shiftCenterY;
                 var frames = snowMan.ShowHitEffect ? snowMan.HitFrames : snowMan.Frames;
                 if (frames != null && frames.Count > 0)
                 {
@@ -878,26 +1200,22 @@ namespace HaCreator.MapSimulator.Fields
             _localPlayerPosition = null;
             _pendingTouchPacketRequests.Clear();
             _touchPacketSequence = 0;
-            // Reset snowballs
-            int centerX = (_leftGoalX + _rightGoalX) / 2;
-            int ballStartOffset = (_rightGoalX - _leftGoalX) / 4;
             for (int i = 0; i < 2; i++)
             {
                 if (_snowBalls[i] != null)
                 {
-                    int x = i == 0 ? centerX - ballStartOffset : centerX + ballStartOffset;
-                    _snowBalls[i].SetPos(x, _groundY - _snowBalls[i].Area.Height / 2, i == 1);
+                    _snowBalls[i].SetPos(_ballStartX, _laneY[i], i == 1);
                     _snowBalls[i].Rotation = 0f;
                     _snowBalls[i].IsWinner = false;
                     _snowBalls[i].SpeedDegree = 0;
                 }
-            }
-            // Reset snowmen
-            for (int i = 0; i < 2; i++)
-            {
+
                 if (_snowMen[i] != null)
                 {
                     _snowMen[i].HP = _snowMen[i].MaxHP;
+                    _snowMen[i].AnchorX = _snowManX;
+                    _snowMen[i].AnchorY = _laneY[i];
+                    _snowMen[i].Area = new Rectangle(_snowManX - 30, _laneY[i] - 25, 60, 25);
                     _snowMen[i].IsStunned = false;
                     _snowMen[i].ShowHitEffect = false;
                     _snowMen[i].StunDurationMs = _snowManWaitMs;

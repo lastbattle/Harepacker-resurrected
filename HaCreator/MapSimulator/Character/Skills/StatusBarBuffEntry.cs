@@ -18,6 +18,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         public int DurationMs { get; set; }
         public int RemainingMs { get; set; }
         public int SortOrder { get; set; }
+        public string FamilyDisplayName { get; set; }
         public IReadOnlyList<string> TemporaryStatLabels { get; set; } = Array.Empty<string>();
         public IReadOnlyList<string> TemporaryStatDisplayNames { get; set; } = Array.Empty<string>();
     }

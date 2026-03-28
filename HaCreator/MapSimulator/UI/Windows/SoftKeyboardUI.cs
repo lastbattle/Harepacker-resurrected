@@ -8,24 +8,27 @@ using System;
 
 namespace HaCreator.MapSimulator.UI
 {
-    internal enum SoftKeyboardConstraintProfile
+    public enum SoftKeyboardKeyboardType
     {
-        AlphaNumericToggle,
-        NumericOnly
+        AlphaNumeric = 0,
+        AlphaNumericWithAlphaEdges = 1,
+        NumericOnly = 2,
+        NumericOnlyAlt = 3
     }
 
-    internal enum SoftKeyboardInputMode
+    internal enum SoftKeyboardKeyMode
     {
-        Alphabetic,
-        Numeric
+        AlphaNumeric = 0,
+        AlphabeticOnly = 1,
+        NumericOnly = 2,
+        Disabled = 3
     }
 
     internal interface ISoftKeyboardHost
     {
         bool WantsSoftKeyboard { get; }
         Rectangle GetSoftKeyboardAnchorBounds();
-        SoftKeyboardConstraintProfile SoftKeyboardConstraintProfile { get; }
-        SoftKeyboardInputMode SoftKeyboardInputMode { get; set; }
+        SoftKeyboardKeyboardType SoftKeyboardKeyboardType { get; }
         int SoftKeyboardTextLength { get; }
         int SoftKeyboardMaxLength { get; }
         bool TryInsertSoftKeyboardCharacter(char character, out string errorMessage);
@@ -194,8 +197,9 @@ namespace HaCreator.MapSimulator.UI
                 sprite.Draw(_backgroundTexture, new Vector2(Position.X, Position.Y), Color.White);
             }
 
-            DrawModeButton(sprite, GetAlphaButtonBounds(), "ABC", IsAlphabeticModeActive(), _hoveredAlphaButton, _pressedAlphaButton, _host.SoftKeyboardConstraintProfile == SoftKeyboardConstraintProfile.NumericOnly);
-            DrawModeButton(sprite, GetNumericButtonBounds(), "123", IsNumericModeActive(), _hoveredNumericButton, _pressedNumericButton, false);
+            SoftKeyboardKeyMode keyMode = ResolveKeyMode();
+            DrawModeButton(sprite, GetAlphaButtonBounds(), "ABC", IsAlphabeticModeActive(keyMode), disabled: !IsAlphabeticFamilyEnabled(keyMode));
+            DrawModeButton(sprite, GetNumericButtonBounds(), "123", IsNumericModeActive(keyMode), disabled: !IsNumericFamilyEnabled(keyMode));
             DrawCloseButton(sprite, GetCloseButtonBounds());
             DrawBackspace(sprite, GetBackspaceBounds());
 
@@ -247,8 +251,6 @@ namespace HaCreator.MapSimulator.UI
             if (leftJustPressed)
             {
                 _pressedCloseButton = _hoveredCloseButton;
-                _pressedAlphaButton = _hoveredAlphaButton;
-                _pressedNumericButton = _hoveredNumericButton;
                 _pressedBackspace = _hoveredBackspace;
                 _pressedKeyIndex = _hoveredKeyIndex;
             }
@@ -261,17 +263,7 @@ namespace HaCreator.MapSimulator.UI
                     return true;
                 }
 
-                if (_pressedAlphaButton && _hoveredAlphaButton && _host.SoftKeyboardConstraintProfile == SoftKeyboardConstraintProfile.AlphaNumericToggle)
-                {
-                    _host.SoftKeyboardInputMode = SoftKeyboardInputMode.Alphabetic;
-                    _statusMessage = string.Empty;
-                }
-                else if (_pressedNumericButton && _hoveredNumericButton)
-                {
-                    _host.SoftKeyboardInputMode = SoftKeyboardInputMode.Numeric;
-                    _statusMessage = string.Empty;
-                }
-                else if (_pressedBackspace && _hoveredBackspace)
+                if (_pressedBackspace && _hoveredBackspace)
                 {
                     _host.TryBackspaceSoftKeyboard(out _statusMessage);
                 }
@@ -344,19 +336,13 @@ namespace HaCreator.MapSimulator.UI
             }
         }
 
-        private void DrawModeButton(SpriteBatch sprite, Rectangle bounds, string label, bool active, bool hovered, bool pressed, bool disabled)
+        private void DrawModeButton(SpriteBatch sprite, Rectangle bounds, string label, bool active, bool disabled)
         {
             Color fill = disabled
                 ? new Color(88, 88, 88, 170)
                 : active
                     ? new Color(246, 224, 154, 230)
-                    : hovered
-                        ? new Color(214, 214, 214, 220)
-                        : new Color(180, 180, 180, 190);
-            if (pressed && !disabled)
-            {
-                fill = new Color(150, 150, 150, 230);
-            }
+                    : new Color(180, 180, 180, 190);
 
             sprite.Draw(_pixelTexture, bounds, fill);
             sprite.Draw(_pixelTexture, new Rectangle(bounds.X, bounds.Y, bounds.Width, 1), new Color(38, 38, 38));
@@ -453,34 +439,32 @@ namespace HaCreator.MapSimulator.UI
 
         private bool IsKeyEnabled(int keyIndex)
         {
-            if (_host == null || keyIndex < 0 || keyIndex >= KeyCharacters.Length || _host.SoftKeyboardTextLength >= _host.SoftKeyboardMaxLength)
+            if (_host == null || keyIndex < 0 || keyIndex >= KeyCharacters.Length)
             {
                 return false;
             }
 
-            if (_host.SoftKeyboardConstraintProfile == SoftKeyboardConstraintProfile.NumericOnly)
+            SoftKeyboardKeyMode keyMode = ResolveKeyMode();
+            if (keyMode == SoftKeyboardKeyMode.Disabled)
             {
-                return keyIndex < 10;
+                return false;
             }
 
-            return _host.SoftKeyboardInputMode == SoftKeyboardInputMode.Alphabetic
-                ? keyIndex >= 10
-                : keyIndex < 10;
+            return keyIndex < 10
+                ? IsNumericFamilyEnabled(keyMode)
+                : IsAlphabeticFamilyEnabled(keyMode);
         }
 
         private char GetCharacterForKey(int keyIndex)
         {
-            char character = KeyCharacters[Math.Clamp(keyIndex, 0, KeyCharacters.Length - 1)];
-            return _host?.SoftKeyboardInputMode == SoftKeyboardInputMode.Numeric || keyIndex < 10
-                ? character
-                : char.ToUpperInvariant(character);
+            return KeyCharacters[Math.Clamp(keyIndex, 0, KeyCharacters.Length - 1)];
         }
 
         private void UpdateHoverState(Point mousePoint)
         {
             _hoveredCloseButton = GetCloseButtonBounds().Contains(mousePoint);
-            _hoveredAlphaButton = GetAlphaButtonBounds().Contains(mousePoint);
-            _hoveredNumericButton = GetNumericButtonBounds().Contains(mousePoint);
+            _hoveredAlphaButton = false;
+            _hoveredNumericButton = false;
             _hoveredBackspace = GetBackspaceBounds().Contains(mousePoint);
             _hoveredKeyIndex = ResolveKeyIndex(mousePoint);
         }
@@ -574,15 +558,75 @@ namespace HaCreator.MapSimulator.UI
         private Rectangle GetNumericButtonBounds() => new(Position.X + NumericButtonX, Position.Y + ModeButtonY, ModeButtonWidth, ModeButtonHeight);
         private Rectangle GetCloseButtonBounds() => new(Position.X + CloseButtonX, Position.Y + CloseButtonY, CloseButtonSize, CloseButtonSize);
 
-        private bool IsAlphabeticModeActive() => _host?.SoftKeyboardInputMode == SoftKeyboardInputMode.Alphabetic;
-        private bool IsNumericModeActive() => _host?.SoftKeyboardInputMode == SoftKeyboardInputMode.Numeric || _host?.SoftKeyboardConstraintProfile == SoftKeyboardConstraintProfile.NumericOnly;
+        private SoftKeyboardKeyMode ResolveKeyMode()
+        {
+            if (_host == null)
+            {
+                return SoftKeyboardKeyMode.Disabled;
+            }
+
+            int textLength = Math.Max(0, _host.SoftKeyboardTextLength);
+            int maxLength = _host.SoftKeyboardMaxLength;
+            if (maxLength < 0)
+            {
+                return SoftKeyboardKeyMode.Disabled;
+            }
+
+            return _host.SoftKeyboardKeyboardType switch
+            {
+                SoftKeyboardKeyboardType.AlphaNumeric => textLength < maxLength
+                    ? SoftKeyboardKeyMode.AlphaNumeric
+                    : SoftKeyboardKeyMode.Disabled,
+                SoftKeyboardKeyboardType.AlphaNumericWithAlphaEdges => ResolveAlphaEdgeKeyMode(textLength, maxLength),
+                SoftKeyboardKeyboardType.NumericOnly or SoftKeyboardKeyboardType.NumericOnlyAlt => textLength < maxLength
+                    ? SoftKeyboardKeyMode.NumericOnly
+                    : SoftKeyboardKeyMode.Disabled,
+                _ => SoftKeyboardKeyMode.Disabled
+            };
+        }
+
+        private static SoftKeyboardKeyMode ResolveAlphaEdgeKeyMode(int textLength, int maxLength)
+        {
+            if (textLength <= 0)
+            {
+                return SoftKeyboardKeyMode.AlphabeticOnly;
+            }
+
+            int finalAlphabeticIndex = maxLength - 1;
+            if (textLength < finalAlphabeticIndex)
+            {
+                return SoftKeyboardKeyMode.NumericOnly;
+            }
+
+            return textLength == finalAlphabeticIndex
+                ? SoftKeyboardKeyMode.AlphabeticOnly
+                : SoftKeyboardKeyMode.Disabled;
+        }
+
+        private static bool IsAlphabeticFamilyEnabled(SoftKeyboardKeyMode keyMode)
+        {
+            return keyMode is SoftKeyboardKeyMode.AlphaNumeric or SoftKeyboardKeyMode.AlphabeticOnly;
+        }
+
+        private static bool IsNumericFamilyEnabled(SoftKeyboardKeyMode keyMode)
+        {
+            return keyMode is SoftKeyboardKeyMode.AlphaNumeric or SoftKeyboardKeyMode.NumericOnly;
+        }
+
+        private static bool IsAlphabeticModeActive(SoftKeyboardKeyMode keyMode)
+        {
+            return IsAlphabeticFamilyEnabled(keyMode);
+        }
+
+        private static bool IsNumericModeActive(SoftKeyboardKeyMode keyMode)
+        {
+            return IsNumericFamilyEnabled(keyMode);
+        }
 
         private void ResetPressedState()
         {
             _pressedKeyIndex = -1;
             _pressedBackspace = false;
-            _pressedAlphaButton = false;
-            _pressedNumericButton = false;
             _pressedCloseButton = false;
         }
 

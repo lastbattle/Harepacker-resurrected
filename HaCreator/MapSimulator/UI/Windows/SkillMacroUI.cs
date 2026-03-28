@@ -8,6 +8,7 @@ using Microsoft.Xna.Framework.Input;
 using Spine;
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 using System.Text;
 
@@ -578,7 +579,7 @@ namespace HaCreator.MapSimulator.UI
                     Color.White);
             }
 
-            string displayText = _editingMacroName ?? string.Empty;
+            string displayText = BuildDisplayedNameText();
             string byteCountText = $"{SkillMacroNameRules.GetByteCount(displayText)}/{SkillMacroNameRules.MaxNameBytes} bytes";
             sprite.DrawString(_font, byteCountText,
                 new Vector2(fieldX + 92, fieldY - 16),
@@ -1002,27 +1003,28 @@ namespace HaCreator.MapSimulator.UI
 
         private void RemoveCharacterBeforeCursor()
         {
-            if (_editingCursorPosition <= 0)
+            if (!SkillMacroNameRules.TryRemoveTextElementBeforeCaret(_editingMacroName, _editingCursorPosition, out string updatedText, out int updatedCaretIndex))
             {
                 return;
             }
 
             ClearCompositionText();
-            _editingMacroName = _editingMacroName.Remove(_editingCursorPosition - 1, 1);
-            _editingCursorPosition--;
+            _editingMacroName = updatedText;
+            _editingCursorPosition = updatedCaretIndex;
             _validationMessage = string.Empty;
             _caretBlinkTick = Environment.TickCount;
         }
 
         private void RemoveCharacterAtCursor()
         {
-            if (_editingCursorPosition >= _editingMacroName.Length)
+            if (!SkillMacroNameRules.TryRemoveTextElementAtCaret(_editingMacroName, _editingCursorPosition, out string updatedText, out int updatedCaretIndex))
             {
                 return;
             }
 
             ClearCompositionText();
-            _editingMacroName = _editingMacroName.Remove(_editingCursorPosition, 1);
+            _editingMacroName = updatedText;
+            _editingCursorPosition = updatedCaretIndex;
             _validationMessage = string.Empty;
             _caretBlinkTick = Environment.TickCount;
         }
@@ -1408,15 +1410,15 @@ namespace HaCreator.MapSimulator.UI
 
             int bestCursor = _editingMacroName.Length;
             float bestDistance = float.MaxValue;
-            for (int i = 0; i <= _editingMacroName.Length; i++)
+            foreach (int caretStop in EnumerateCaretStops(_editingMacroName))
             {
-                string prefix = i <= 0 ? string.Empty : _editingMacroName[..i];
+                string prefix = caretStop <= 0 ? string.Empty : _editingMacroName[..caretStop];
                 float prefixWidth = prefix.Length > 0 ? _font.MeasureString(prefix).X : 0f;
                 float distance = Math.Abs(prefixWidth - targetX);
                 if (distance < bestDistance)
                 {
                     bestDistance = distance;
-                    bestCursor = i;
+                    bestCursor = caretStop;
                 }
             }
 
@@ -1624,7 +1626,7 @@ namespace HaCreator.MapSimulator.UI
             }
         }
 
-        public void HandleCompositionText(string text)
+        public override void HandleCompositionText(string text)
         {
             if (!CapturesKeyboardInput)
             {
@@ -1644,11 +1646,26 @@ namespace HaCreator.MapSimulator.UI
                 _compositionInsertionIndex = _editingCursorPosition;
             }
 
-            _compositionText = sanitized;
+            int insertionIndex = Math.Clamp(_compositionInsertionIndex >= 0 ? _compositionInsertionIndex : _editingCursorPosition, 0, _editingMacroName.Length);
+            string preview = SkillMacroNameRules.BuildCompositionPreview(_editingMacroName, insertionIndex, sanitized, out string error);
+            if (preview.Length == 0)
+            {
+                ClearCompositionText();
+                if (!string.IsNullOrEmpty(error))
+                {
+                    _validationMessage = error;
+                }
+
+                return;
+            }
+
+            _compositionInsertionIndex = insertionIndex;
+            _compositionText = preview;
+            _validationMessage = string.Empty;
             _caretBlinkTick = Environment.TickCount;
         }
 
-        public void ClearCompositionText()
+        public override void ClearCompositionText()
         {
             _compositionText = string.Empty;
             _compositionInsertionIndex = -1;
@@ -1671,14 +1688,14 @@ namespace HaCreator.MapSimulator.UI
             if (keyboardState.IsKeyDown(Keys.Left) && _previousKeyboardState.IsKeyUp(Keys.Left))
             {
                 ClearCompositionText();
-                _editingCursorPosition = Math.Max(0, _editingCursorPosition - 1);
+                _editingCursorPosition = SkillMacroNameRules.GetPreviousCaretStop(_editingMacroName, _editingCursorPosition);
                 _caretBlinkTick = Environment.TickCount;
             }
 
             if (keyboardState.IsKeyDown(Keys.Right) && _previousKeyboardState.IsKeyUp(Keys.Right))
             {
                 ClearCompositionText();
-                _editingCursorPosition = Math.Min(_editingMacroName.Length, _editingCursorPosition + 1);
+                _editingCursorPosition = SkillMacroNameRules.GetNextCaretStop(_editingMacroName, _editingCursorPosition);
                 _caretBlinkTick = Environment.TickCount;
             }
 
@@ -1767,6 +1784,34 @@ namespace HaCreator.MapSimulator.UI
             }
 
             return builder.ToString();
+        }
+
+        private string BuildDisplayedNameText()
+        {
+            string committedText = _editingMacroName ?? string.Empty;
+            if (string.IsNullOrEmpty(_compositionText))
+            {
+                return committedText;
+            }
+
+            int insertionIndex = Math.Clamp(_compositionInsertionIndex >= 0 ? _compositionInsertionIndex : _editingCursorPosition, 0, committedText.Length);
+            return committedText.Insert(insertionIndex, _compositionText);
+        }
+
+        private static IEnumerable<int> EnumerateCaretStops(string text)
+        {
+            string value = text ?? string.Empty;
+            yield return 0;
+            if (value.Length == 0)
+            {
+                yield break;
+            }
+
+            TextElementEnumerator enumerator = StringInfo.GetTextElementEnumerator(value);
+            while (enumerator.MoveNext())
+            {
+                yield return enumerator.ElementIndex + enumerator.GetTextElement().Length;
+            }
         }
         #endregion
     }

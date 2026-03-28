@@ -28,7 +28,7 @@ namespace HaCreator.MapSimulator
         {
             if (args == null || args.Length == 0)
             {
-                return ChatCommandHandler.CommandResult.Error("Usage: /remoteuser <status|clear|clone|avatar|move|action|chair|mount|helper|team|prepare|preparedclear|visible|remove> ...");
+                return ChatCommandHandler.CommandResult.Error("Usage: /remoteuser <status|clear|clone|avatar|move|action|chair|mount|helper|team|prepare|preparedclear|visible|remove|packet|packetraw> ...");
             }
 
             return args[0].ToLowerInvariant() switch
@@ -258,7 +258,8 @@ namespace HaCreator.MapSimulator
                 return ChatCommandHandler.CommandResult.Error("Usage: /remoteuser prepare <characterId> <skillId> <durationMs> [skinKey] [skillName]");
             }
 
-            string skinKey = args.Length >= 5 ? args[4] : "KeyDownBar";
+            PreparedSkillHudRules.PreparedSkillHudProfile hudProfile = PreparedSkillHudRules.ResolveProfile(skillId);
+            string skinKey = args.Length >= 5 ? args[4] : hudProfile.SkinKey;
             string skillName = args.Length >= 6 ? string.Join(" ", args.Skip(5)) : null;
             return _remoteUserPool.TrySetPreparedSkill(
                 characterId,
@@ -268,10 +269,10 @@ namespace HaCreator.MapSimulator
                 skinKey,
                 isKeydownSkill: true,
                 isHolding: false,
-                gaugeDurationMs: durationMs,
+                gaugeDurationMs: hudProfile.GaugeDurationMs > 0 ? hudProfile.GaugeDurationMs : durationMs,
                 maxHoldDurationMs: durationMs,
-                PreparedSkillHudTextVariant.Default,
-                showText: true,
+                PreparedSkillHudRules.ResolveTextVariant(skillId),
+                showText: hudProfile.ShowText,
                 currentTime,
                 out string message)
                 ? ChatCommandHandler.CommandResult.Ok($"Remote user {characterId} prepared skill {skillId} armed for {durationMs}ms.")
@@ -329,7 +330,7 @@ namespace HaCreator.MapSimulator
         {
             if (args.Length < 3 || !TryParseRemoteUserPacketType(args[1], out int packetType))
             {
-                return ChatCommandHandler.CommandResult.Error("Usage: /remoteuser packet <179|180|181|182|183|184|210|211|212|213|enter|leave|move|state|helper|team|chair|mount|prepare|preparedclear> <payloadhex=..|payloadb64=..>");
+                return ChatCommandHandler.CommandResult.Error("Usage: /remoteuser packet <179|180|181|182|183|184|210|211|212|213|214|enter|leave|move|state|helper|team|chair|mount|prepare|preparedclear|melee> <payloadhex=..|payloadb64=..>");
             }
 
             if (!TryParseBinaryPayloadArgument(args[2], out byte[] payload, out string payloadError))
@@ -346,7 +347,7 @@ namespace HaCreator.MapSimulator
         {
             if (args.Length < 3 || !TryParseRemoteUserPacketType(args[1], out int packetType))
             {
-                return ChatCommandHandler.CommandResult.Error("Usage: /remoteuser packetraw <179|180|181|182|183|184|210|211|212|213|enter|leave|move|state|helper|team|chair|mount|prepare|preparedclear> <hex>");
+                return ChatCommandHandler.CommandResult.Error("Usage: /remoteuser packetraw <179|180|181|182|183|184|210|211|212|213|214|enter|leave|move|state|helper|team|chair|mount|prepare|preparedclear|melee> <hex>");
             }
 
             byte[] payload;
@@ -497,18 +498,19 @@ namespace HaCreator.MapSimulator
                         return false;
                     }
 
+                    PreparedSkillHudRules.PreparedSkillHudProfile hudProfile = PreparedSkillHudRules.ResolveProfile(preparePacket.SkillId);
                     bool preparedApplied = _remoteUserPool.TrySetPreparedSkill(
                         preparePacket.CharacterId,
                         preparePacket.SkillId,
                         preparePacket.SkillName,
                         preparePacket.DurationMs,
-                        preparePacket.SkinKey,
+                        string.IsNullOrWhiteSpace(preparePacket.SkinKey) ? hudProfile.SkinKey : preparePacket.SkinKey,
                         preparePacket.IsKeydownSkill,
                         preparePacket.IsHolding,
-                        preparePacket.GaugeDurationMs,
+                        preparePacket.GaugeDurationMs > 0 ? preparePacket.GaugeDurationMs : hudProfile.GaugeDurationMs,
                         preparePacket.MaxHoldDurationMs,
-                        PreparedSkillHudTextVariant.Default,
-                        preparePacket.ShowText,
+                        PreparedSkillHudRules.ResolveTextVariant(preparePacket.SkillId),
+                        preparePacket.ShowText && hudProfile.ShowText,
                         currentTime,
                         out string prepareMessage);
                     result = preparedApplied
@@ -528,6 +530,27 @@ namespace HaCreator.MapSimulator
                         ? $"Applied {DescribeRemoteUserPacketType(packetType)} for {clearPacket.CharacterId}."
                         : clearMessage;
                     return cleared;
+
+                case RemoteUserPacketType.UserMeleeAttack:
+                    if (!RemoteUserPacketCodec.TryParseMeleeAttack(payload, out RemoteUserMeleeAttackPacket meleePacket, out string meleeError))
+                    {
+                        result = meleeError;
+                        return false;
+                    }
+
+                    bool meleeApplied = _remoteUserPool.TryRegisterMeleeAfterImage(
+                        meleePacket.CharacterId,
+                        meleePacket.SkillId,
+                        meleePacket.ActionName,
+                        meleePacket.MasteryPercent,
+                        meleePacket.ChargeSkillId,
+                        meleePacket.FacingRight,
+                        currentTime,
+                        out string meleeMessage);
+                    result = meleeApplied
+                        ? $"Applied {DescribeRemoteUserPacketType(packetType)} for {meleePacket.CharacterId}."
+                        : meleeMessage;
+                    return meleeApplied;
 
                 default:
                     result = $"Unsupported remote user packet type {packetType}.";
@@ -593,6 +616,7 @@ namespace HaCreator.MapSimulator
                 "mount" => (int)RemoteUserPacketType.UserMount,
                 "prepare" => (int)RemoteUserPacketType.UserPreparedSkill,
                 "preparedclear" => (int)RemoteUserPacketType.UserPreparedSkillClear,
+                "melee" or "attack" or "meleeattack" => (int)RemoteUserPacketType.UserMeleeAttack,
                 _ => 0
             };
 
@@ -613,6 +637,7 @@ namespace HaCreator.MapSimulator
                 (int)RemoteUserPacketType.UserMount => "remote user remote mount packet",
                 (int)RemoteUserPacketType.UserPreparedSkill => "remote user remote prepared-skill packet",
                 (int)RemoteUserPacketType.UserPreparedSkillClear => "remote user remote prepared-skill clear packet",
+                (int)RemoteUserPacketType.UserMeleeAttack => "remote user remote melee-attack packet",
                 _ => $"remote user packet {packetType}"
             };
         }

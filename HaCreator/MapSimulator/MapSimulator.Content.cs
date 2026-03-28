@@ -1,4 +1,4 @@
-﻿using HaCreator.MapEditor;
+using HaCreator.MapEditor;
 using HaCreator.MapEditor.Info;
 using HaCreator.MapEditor.Instance;
 using HaCreator.MapEditor.Instance.Misc;
@@ -451,6 +451,8 @@ namespace HaCreator.MapSimulator
                 RequestSpecialFieldBgmOverride,
                 ClearSpecialFieldBgmOverride,
 
+                BuildAriantArenaRemoteCharacter,
+
                 BuildAriantArenaRemoteCharacter);
 
             ///////////////////////////////////////////////
@@ -496,11 +498,14 @@ namespace HaCreator.MapSimulator
             SyncMemoryGamePacketInboxState();
             SyncAriantArenaPacketInboxState();
             SyncMonsterCarnivalPacketInboxState();
-            SyncDojoPacketInboxState();
+            SyncMassacrePacketInboxState();
+
+            SyncDojoPacketInboxState();
             SyncGuildBossTransportState();
             SyncPartyRaidPacketInboxState();
             SyncCookieHousePointInboxState();
-            SyncBattlefieldLocalAppearance();
+            SyncBattlefieldLocalAppearance();
+            _remoteUserPool.SyncBattlefieldAppearance(_specialFieldRuntime.SpecialEffects.Battlefield);
 
             // Initialize camera controller
             _cameraController.Initialize(
@@ -656,6 +661,8 @@ namespace HaCreator.MapSimulator
                 {
                     userInfoWindow.SetPetController(_playerManager.Pets);
                     userInfoWindow.SetCollectionSnapshotProvider(GetActiveItemMakerProgression);
+                    userInfoWindow.SetMonsterBookSnapshotProvider(GetActiveMonsterBookSnapshot);
+                    userInfoWindow.SetRankDeltaProvider(ResolveCharacterInfoRankDeltaSnapshot);
 
                     WireCharacterInfoWindowActionRoutes(userInfoWindow);
                 }
@@ -670,7 +677,7 @@ namespace HaCreator.MapSimulator
 
                 bookCollectionWindow.SetFont(_fontDebugValues);
 
-                bookCollectionWindow.SetCollectionSnapshotProvider(GetActiveItemMakerProgression);
+                bookCollectionWindow.SetMonsterBookSnapshotProvider(GetActiveMonsterBookSnapshot);
 
             }
 
@@ -693,7 +700,19 @@ namespace HaCreator.MapSimulator
                     equipBigBang.SetAndroidEquipmentController(_playerManager.CompanionEquipment?.Android);
                 }
             }
-            if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.ItemUpgrade) is ItemUpgradeUI itemUpgradeWindow && _playerManager?.Player?.Build != null)
+            if (uiWindowManager?.InventoryWindow is InventoryUI inventoryWindow && _playerManager?.Player?.Build != null)
+
+            {
+
+                inventoryWindow.CharacterBuild = _playerManager.Player.Build;
+
+                inventoryWindow.SetFont(_fontChat);
+
+                inventoryWindow.SetCharacterLoader(_playerManager.Loader);
+
+            }
+
+            if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.ItemUpgrade) is ItemUpgradeUI itemUpgradeWindow && _playerManager?.Player?.Build != null)
             {
                 itemUpgradeWindow.CharacterBuild = _playerManager.Player.Build;
                 itemUpgradeWindow.SetFont(_fontChat);
@@ -705,7 +724,26 @@ namespace HaCreator.MapSimulator
                     vegaSpellWindow.SetItemUpgradeBackend(itemUpgradeWindow);
                 }
             }
-            if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.CashShop) is AdminShopDialogUI cashShopWindowRebuild)
+            if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.RepairDurability) is RepairDurabilityWindow repairDurabilityWindow && _playerManager?.Player?.Build != null)
+            {
+
+                repairDurabilityWindow.CharacterBuild = _playerManager.Player.Build;
+
+                repairDurabilityWindow.SetFont(_fontChat);
+
+                repairDurabilityWindow.SetInventory(uiWindowManager.InventoryWindow as IInventoryRuntime);
+
+                repairDurabilityWindow.RepairRequested -= HandleRepairDurabilityRequested;
+
+                repairDurabilityWindow.RepairRequested += HandleRepairDurabilityRequested;
+
+                repairDurabilityWindow.RepairAllRequested -= HandleRepairDurabilityAllRequested;
+
+                repairDurabilityWindow.RepairAllRequested += HandleRepairDurabilityAllRequested;
+
+            }
+
+            if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.CashShop) is AdminShopDialogUI cashShopWindowRebuild)
             {
                 cashShopWindowRebuild.SetInventory(uiWindowManager.InventoryWindow as IInventoryRuntime);
             }
@@ -1230,6 +1268,8 @@ namespace HaCreator.MapSimulator
                 {
                     userInfoWindow.SetPetController(_playerManager.Pets);
                     userInfoWindow.SetCollectionSnapshotProvider(GetActiveItemMakerProgression);
+                    userInfoWindow.SetMonsterBookSnapshotProvider(GetActiveMonsterBookSnapshot);
+                    userInfoWindow.SetRankDeltaProvider(ResolveCharacterInfoRankDeltaSnapshot);
 
                     WireCharacterInfoWindowActionRoutes(userInfoWindow);
                 }
@@ -1265,7 +1305,26 @@ namespace HaCreator.MapSimulator
                     vegaSpellWindow.SetItemUpgradeBackend(itemUpgradeWindow);
                 }
             }
-            if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.CashShop) is AdminShopDialogUI cashShopWindow)
+            if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.RepairDurability) is RepairDurabilityWindow repairDurabilityWindow && _playerManager?.Player?.Build != null)
+            {
+
+                repairDurabilityWindow.CharacterBuild = _playerManager.Player.Build;
+
+                repairDurabilityWindow.SetFont(_fontChat);
+
+                repairDurabilityWindow.SetInventory(uiWindowManager.InventoryWindow as IInventoryRuntime);
+
+                repairDurabilityWindow.RepairRequested -= HandleRepairDurabilityRequested;
+
+                repairDurabilityWindow.RepairRequested += HandleRepairDurabilityRequested;
+
+                repairDurabilityWindow.RepairAllRequested -= HandleRepairDurabilityAllRequested;
+
+                repairDurabilityWindow.RepairAllRequested += HandleRepairDurabilityAllRequested;
+
+            }
+
+            if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.CashShop) is AdminShopDialogUI cashShopWindow)
             {
                 cashShopWindow.SetInventory(uiWindowManager.InventoryWindow as IInventoryRuntime);
             }
@@ -1331,11 +1390,14 @@ namespace HaCreator.MapSimulator
             SyncMemoryGamePacketInboxState();
             SyncAriantArenaPacketInboxState();
             SyncMonsterCarnivalPacketInboxState();
-            SyncDojoPacketInboxState();
+            SyncMassacrePacketInboxState();
+
+            SyncDojoPacketInboxState();
             SyncGuildBossTransportState();
             SyncPartyRaidPacketInboxState();
             SyncCookieHousePointInboxState();
-            SyncBattlefieldLocalAppearance();
+            SyncBattlefieldLocalAppearance();
+            _remoteUserPool.SyncBattlefieldAppearance(_specialFieldRuntime.SpecialEffects.Battlefield);
 
             // Initialize camera controller for smooth scrolling
             _cameraController.Initialize(

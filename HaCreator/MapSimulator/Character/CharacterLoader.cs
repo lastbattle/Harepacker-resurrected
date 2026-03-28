@@ -213,6 +213,30 @@ namespace HaCreator.MapSimulator.Character
             return morphPart;
         }
 
+        internal static bool CanResolveMorphTemplate(int morphTemplateId)
+        {
+            if (morphTemplateId <= 0)
+            {
+                return false;
+            }
+
+            var checkedTemplateIds = new HashSet<int>();
+            foreach (int candidateTemplateId in EnumerateMorphTemplateCandidates(morphTemplateId, exactMorphImage: null))
+            {
+                if (!checkedTemplateIds.Add(candidateTemplateId))
+                {
+                    continue;
+                }
+
+                if (Program.FindImage("Morph", candidateTemplateId.ToString("D4") + ".img") != null)
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
         private void PopulateMorphAnimations(CharacterPart morphPart, int morphTemplateId, WzImage exactMorphImage)
         {
             if (morphPart == null)
@@ -308,7 +332,7 @@ namespace HaCreator.MapSimulator.Character
 
         private static IEnumerable<int> EnumeratePairedMorphTemplateCandidates(int morphTemplateId)
         {
-            // v115 WZ shows paired 100x/110x morph families with matching action sets
+            // WZ shows paired 100x/110x morph families with matching action sets
             // (for example 1001 <-> 1101 and 1003 <-> 1103), so prefer that sibling
             // before the coarser id -> id0 -> id00 -> id000 truncation fallback.
             if (morphTemplateId >= 1000 && morphTemplateId < 1200)
@@ -1323,6 +1347,8 @@ namespace HaCreator.MapSimulator.Character
             part.IsTimeLimited = GetIntValue(info["timeLimited"]) == 1;
             part.MaxDurability = GetIntValue(info["durability"]);
             part.Durability = part.MaxDurability;
+            part.SellPrice = GetIntValue(info["price"]) ?? 0;
+            part.IsEpic = GetIntValue(info["epic"]) == 1;
 
             if (Program.InfoManager?.ItemNameCache != null
                 && Program.InfoManager.ItemNameCache.TryGetValue(part.ItemId, out Tuple<string, string, string> itemInfo))

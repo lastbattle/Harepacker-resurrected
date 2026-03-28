@@ -1672,7 +1672,6 @@ namespace HaCreator.MapSimulator.UI
             if (string.IsNullOrWhiteSpace(text))
                 return;
 
-            sprite.DrawString(_font, text, position + Vector2.One, Color.White, 0f, Vector2.Zero, scale, SpriteEffects.None, 0f);
             sprite.DrawString(_font, text, position, color, 0f, Vector2.Zero, scale, SpriteEffects.None, 0f);
         }
 

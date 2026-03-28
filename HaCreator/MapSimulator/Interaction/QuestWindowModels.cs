@@ -92,9 +92,18 @@ namespace HaCreator.MapSimulator.Interaction
         public QuestWorldMapTargetKind Kind { get; init; }
         public int QuestId { get; init; }
         public int MapId { get; init; }
+        public IReadOnlyList<int> MapIds { get; init; } = Array.Empty<int>();
         public int? EntityId { get; init; }
         public string Label { get; init; } = string.Empty;
         public string Description { get; init; } = string.Empty;
+        public string FallbackNpcName { get; init; } = string.Empty;
+    }
+
+    internal sealed class QuestDemandItemQueryState
+    {
+        public int QuestId { get; init; }
+        public IReadOnlyList<int> VisibleItemIds { get; init; } = Array.Empty<int>();
+        public int HiddenItemCount { get; init; }
         public string FallbackNpcName { get; init; } = string.Empty;
     }
 
