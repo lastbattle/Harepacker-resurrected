@@ -233,19 +233,19 @@ namespace HaCreator.MapSimulator.Interaction
                 "Guild.Info" => ShowSelectedInfo("guild"),
                 "Guild.Skill" => "Guild skill management remains a separate `GuildSkill` surface, but the button now resolves as a dedicated social action.",
                 "Guild.Search" => null,
-                "Guild.Manage" => "Guild management uses a separate `GuildManage` window family that still remains unmodeled.",
-                "Guild.Change" => "Guild notice and emblem change tools still need their dedicated edit flow.",
+                "Guild.Manage" => "Guild management now opens the dedicated three-tab editor window.",
+                "Guild.Change" => "Guild notice editing now opens the dedicated change tab inside guild management.",
                 "Alliance.Invite" => AddAllianceMember(),
                 "Alliance.Withdraw" => RemoveGuildMember("alliance"),
                 "Alliance.PartyInvite" => "Alliance party invite forwarded from the union tab.",
                 "Alliance.GradeUp" => "Alliance grade promotion still needs the packet-authored union rank model.",
                 "Alliance.GradeDown" => "Alliance grade demotion still needs the packet-authored union rank model.",
                 "Alliance.Kick" => RemoveGuildMember("alliance"),
-                "Alliance.Change" => "Alliance notice and grade tools still need their dedicated edit flow.",
+                "Alliance.Change" => "Alliance rank titles now open in the dedicated union editor.",
                 "Alliance.Chat" => SendAllianceChat(),
                 "Alliance.Whisper" => WhisperSelected("alliance"),
                 "Alliance.Info" => ShowSelectedInfo("alliance"),
-                "Alliance.Notice" => "Alliance notice editing still needs the dedicated notice editor behind the union tab.",
+                "Alliance.Notice" => "Alliance notice editing now opens in the dedicated union editor.",
                 "Blacklist.Add" => AddBlacklistEntry(),
                 "Blacklist.Delete" => DeleteBlacklistEntry(),
                 _ => "That social action is not modeled yet."
@@ -502,8 +502,11 @@ namespace HaCreator.MapSimulator.Interaction
                         yield return "Guild.Whisper";
                         yield return "Guild.Info";
                         yield return "Guild.Skill";
-                        yield return "Guild.Manage";
-                        yield return "Guild.Change";
+                        if (CanManageGuild())
+                        {
+                            yield return "Guild.Manage";
+                            yield return "Guild.Change";
+                        }
                         if (!selectedEntry.IsLocalPlayer)
                         {
                             yield return "Guild.PartyInvite";
@@ -522,8 +525,11 @@ namespace HaCreator.MapSimulator.Interaction
                         yield return "Alliance.Chat";
                         yield return "Alliance.Whisper";
                         yield return "Alliance.Info";
-                        yield return "Alliance.Change";
-                        yield return "Alliance.Notice";
+                        if (CanManageAlliance())
+                        {
+                            yield return "Alliance.Change";
+                            yield return "Alliance.Notice";
+                        }
                         yield return "Alliance.GradeUp";
                         yield return "Alliance.GradeDown";
                         if (!selectedEntry.IsLocalPlayer)

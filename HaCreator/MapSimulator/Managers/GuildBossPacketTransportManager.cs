@@ -39,6 +39,7 @@ namespace HaCreator.MapSimulator.Managers
         public const int DefaultPort = 18486;
         private const int PacketTypeHealerMove = 344;
         private const int PacketTypePulleyStateChange = 345;
+        private const string PulleyRequestPacketHex = "0301";
 
         private sealed class ConnectedClient : IDisposable
         {
@@ -146,7 +147,8 @@ namespace HaCreator.MapSimulator.Managers
                 return false;
             }
 
-            string line = $"pulleyhit {request.Sequence} {request.TickCount}";
+            string legacyLine = $"pulleyhit {request.Sequence} {request.TickCount}";
+            string rawPacketLine = $"packetoutraw {PulleyRequestPacketHex}";
             int sent = 0;
 
             foreach (ConnectedClient client in clients)
@@ -155,7 +157,8 @@ namespace HaCreator.MapSimulator.Managers
                 {
                     lock (client.WriteLock)
                     {
-                        client.Writer.WriteLine(line);
+                        client.Writer.WriteLine(legacyLine);
+                        client.Writer.WriteLine(rawPacketLine);
                     }
 
                     sent++;
@@ -174,7 +177,7 @@ namespace HaCreator.MapSimulator.Managers
             }
 
             SentCount++;
-            status = $"Sent pulleyhit #{request.Sequence} to {sent} guild boss transport client(s).";
+            status = $"Sent pulleyhit #{request.Sequence} and packetoutraw {PulleyRequestPacketHex} to {sent} guild boss transport client(s).";
             LastStatus = status;
             return true;
         }

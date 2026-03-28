@@ -68,6 +68,16 @@ namespace HaCreator.MapSimulator.Effects
         private const int TimerDividerY = 10;
         private const int TimerDividerWidth = 17;
         private const int TimerDividerHeight = 38;
+        private const int CountBoardX = 7;
+        private const int CountBoardY = 11;
+        private const int CountHitX = 57;
+        private const int CountHitY = 11;
+        private const int CountCoolX = 57;
+        private const int CountCoolY = 33;
+        private const int CountMissX = 57;
+        private const int CountMissY = 55;
+        private const int CountSkillX = 80;
+        private const int CountSkillY = 85;
         private const int GaugeWidth = 262;
         private const int GaugeFillWidth = 259;
         private const int GaugeHeight = 9;
@@ -93,6 +103,10 @@ namespace HaCreator.MapSimulator.Effects
         private bool _isActive;
         private int _mapId;
         private int _incGauge;
+        private int _hitCount;
+        private int _missCount;
+        private int _coolCount;
+        private int _skillCount;
         private int _gaugeDec = 1;
         private int _currentGauge;
         private int _maxGauge = 100;
@@ -113,7 +127,6 @@ namespace HaCreator.MapSimulator.Effects
         private int _clearEffectStartTime = int.MinValue;
         private int _keyAnimationStage = -1;
         private int _keyAnimationStageStart = int.MinValue;
-        private bool _keyAnimationQueued;
         private bool _disableSkill;
         private readonly List<MassacreCountEffect> _countEffects = new();
         private string _countEffectBannerText;
@@ -125,8 +138,11 @@ namespace HaCreator.MapSimulator.Effects
         private Texture2D _gaugeBackgroundTexture;
         private Texture2D _gaugeTextTexture;
         private Texture2D _gaugePixelTexture;
+        private Texture2D _countBoardTexture;
+        private Texture2D _countBoardSkillTexture;
         private Texture2D _timerboardSourceTexture;
         private readonly Texture2D[] _timerDigits = new Texture2D[10];
+        private readonly Texture2D[] _countDigits = new Texture2D[10];
         private readonly Texture2D[] _resultDigits = new Texture2D[10];
         private Texture2D _resultPlusTexture;
         private Texture2D _resultBoardTexture;
@@ -157,6 +173,10 @@ namespace HaCreator.MapSimulator.Effects
         public int GaugeDecreasePerSecond => _gaugeDec;
         public int DefaultGaugeIncrease => _defaultGaugeIncrease;
         public bool IsSkillDisabled => _disableSkill;
+        public int HitCount => _hitCount;
+        public int MissCount => _missCount;
+        public int CoolCount => _coolCount;
+        public int SkillCount => _skillCount;
         public bool HasKeyAnimation => _keyAnimationStage >= 0;
         public int KillCount => _killCount;
         public int ComboCount => _comboCount;
@@ -257,13 +277,13 @@ namespace HaCreator.MapSimulator.Effects
                     _countEffects.Sort(static (left, right) => left.Threshold.CompareTo(right.Threshold));
                 }
                 _currentGauge = Math.Clamp(_currentGauge, 0, _maxGauge);
-                _displayGauge = Math.Clamp(_displayGauge, 0f, _maxGauge);
-                if (_disableSkill)
-                {
-                    _keyAnimationStage = -1;
-                    _keyAnimationStageStart = int.MinValue;
-                    _keyAnimationQueued = false;
-                }
+                    _displayGauge = Math.Clamp(_displayGauge, 0f, _maxGauge);
+                    if (_disableSkill)
+                    {
+                        _keyAnimationStage = -1;
+                        _keyAnimationStageStart = int.MinValue;
+                        _skillCount = 0;
+                    }
                 return;
             }
         }
@@ -283,6 +303,10 @@ namespace HaCreator.MapSimulator.Effects
         public void ResetRoundState()
         {
             _incGauge = 0;
+            _hitCount = 0;
+            _missCount = 0;
+            _coolCount = 0;
+            _skillCount = 0;
             _currentGauge = 0;
             _displayGauge = 0f;
             _killCount = 0;
@@ -297,7 +321,6 @@ namespace HaCreator.MapSimulator.Effects
             _clearEffectStartTime = int.MinValue;
             _keyAnimationStage = -1;
             _keyAnimationStageStart = int.MinValue;
-            _keyAnimationQueued = false;
             _countEffectBannerText = null;
             _countEffectBannerUntilMs = int.MinValue;
             _countEffectPresentationStartTick = int.MinValue;
@@ -338,7 +361,6 @@ namespace HaCreator.MapSimulator.Effects
             if (increase > 0)
             {
                 RegisterKill(currentTimeMs);
-                QueueKeyAnimation();
             }
         }
         /// <summary>
@@ -352,7 +374,6 @@ namespace HaCreator.MapSimulator.Effects
             }
             _incGauge = Math.Max(0, _incGauge + Math.Max(0, gaugeAmount));
             RegisterKill(currentTimeMs);
-            QueueKeyAnimation();
         }
         public void Update(int currentTimeMs, float deltaSeconds)
         {
@@ -421,6 +442,7 @@ namespace HaCreator.MapSimulator.Effects
             Viewport viewport = spriteBatch.GraphicsDevice.Viewport;
             DrawTimerboard(spriteBatch, pixelTexture, font, viewport);
             DrawGaugeHud(spriteBatch, pixelTexture, font, viewport);
+            DrawCountBoard(spriteBatch, font);
             DrawKeyAnimation(spriteBatch, pixelTexture, font);
             DrawCountEffectPresentation(spriteBatch, font, viewport, Environment.TickCount);
             DrawBonusPresentation(spriteBatch, font, viewport, Environment.TickCount);
@@ -438,10 +460,11 @@ namespace HaCreator.MapSimulator.Effects
                 ? $", nextCountEffect={threshold}"
                 : string.Empty;
             string disableSkillText = _disableSkill ? ", skills=disabled" : string.Empty;
+            string countBoardText = $", point={_hitCount}/{_coolCount}/{_missCount}/{_skillCount}";
             string countEffectText = HasCountEffectPresentation ? $", countFx=stage{_countEffectPresentationStage}" : string.Empty;
             string bonusText = HasBonusPresentation ? ", bonusFx=active" : string.Empty;
             string resultText = HasResultPresentation ? $", result={_resultPresentation}:{_resultRank}:{_resultScore}" : string.Empty;
-            return $"Massacre map {_mapId}, timer={timerText}, gauge={_currentGauge}/{_maxGauge}, inc={_incGauge}, hitAdd={_defaultGaugeIncrease}, decay={_gaugeDec}/s, kills={_killCount}, combo={_comboCount}{disableSkillText}{nextCountEffect}{countEffectText}{bonusText}{resultText}";
+            return $"Massacre map {_mapId}, timer={timerText}, gauge={_currentGauge}/{_maxGauge}, inc={_incGauge}, hitAdd={_defaultGaugeIncrease}, decay={_gaugeDec}/s, kills={_killCount}, combo={_comboCount}{countBoardText}{disableSkillText}{nextCountEffect}{countEffectText}{bonusText}{resultText}";
         }
         public void Reset()
         {
@@ -472,21 +495,6 @@ namespace HaCreator.MapSimulator.Effects
             _lastKillTime = currentTimeMs;
             UpdateCountEffectBanner(currentTimeMs);
         }
-        private void QueueKeyAnimation()
-        {
-            if (_disableSkill)
-            {
-                return;
-            }
-            if (_keyAnimationStage >= 0)
-            {
-                _keyAnimationQueued = true;
-                return;
-            }
-            _keyAnimationStage = 0;
-            _keyAnimationStageStart = Environment.TickCount;
-            _keyAnimationQueued = false;
-        }
         private void UpdateKeyAnimation(int currentTimeMs)
         {
             if (_keyAnimationStage < 0)
@@ -498,25 +506,58 @@ namespace HaCreator.MapSimulator.Effects
                 _keyAnimationStageStart = currentTimeMs;
             }
             List<MassacreCanvasFrame> frames = GetKeyFramesForStage(_keyAnimationStage);
-            if (frames == null || IsAnimationPlaying(frames, currentTimeMs, _keyAnimationStageStart, repeat: false))
+            if (frames == null)
             {
                 return;
             }
-            _keyAnimationStageStart = currentTimeMs;
-            _keyAnimationStage++;
-            if (_keyAnimationStage > 2)
+            if (_keyAnimationStage == 1)
             {
-                if (_keyAnimationQueued)
-                {
-                    _keyAnimationStage = 0;
-                    _keyAnimationQueued = false;
-                }
-                else
-                {
-                    _keyAnimationStage = -1;
-                    _keyAnimationStageStart = int.MinValue;
-                }
+                return;
             }
+            if (IsAnimationPlaying(frames, currentTimeMs, _keyAnimationStageStart, repeat: false))
+            {
+                return;
+            }
+            if (_keyAnimationStage == 0)
+            {
+                _keyAnimationStage = _skillCount > 0 ? 1 : 2;
+                _keyAnimationStageStart = currentTimeMs;
+                return;
+            }
+            _keyAnimationStage = -1;
+            _keyAnimationStageStart = int.MinValue;
+        }
+        public void SetMassacreInfo(int hit, int miss, int cool, int skill, int currentTimeMs)
+        {
+            _hitCount = Math.Max(0, hit);
+            _missCount = Math.Max(0, miss);
+            _coolCount = Math.Max(0, cool);
+
+            int nextSkillCount = _disableSkill ? 0 : Math.Max(0, skill);
+            int previousSkillCount = _skillCount;
+            _skillCount = nextSkillCount;
+
+            if (_disableSkill)
+            {
+                _keyAnimationStage = -1;
+                _keyAnimationStageStart = int.MinValue;
+                return;
+            }
+
+            if (previousSkillCount <= 0 && nextSkillCount > 0)
+            {
+                _keyAnimationStage = 0;
+                _keyAnimationStageStart = currentTimeMs;
+            }
+            else if (previousSkillCount > 0 && nextSkillCount <= 0)
+            {
+                _keyAnimationStage = 2;
+                _keyAnimationStageStart = currentTimeMs;
+            }
+        }
+        public void ShowCountEffectPresentation(int stage, int currentTimeMs)
+        {
+            TriggerCountEffectPresentation(stage, currentTimeMs);
         }
         private void TriggerClearEffect(int currentTimeMs)
         {
@@ -622,6 +663,43 @@ namespace HaCreator.MapSimulator.Effects
                 spriteBatch.DrawString(font, _countEffectBannerText, bannerPos, new Color(255, 223, 132));
             }
         }
+        private void DrawCountBoard(SpriteBatch spriteBatch, SpriteFont font)
+        {
+            Texture2D boardTexture = _disableSkill ? _countBoardTexture : _countBoardSkillTexture ?? _countBoardTexture;
+            if (boardTexture == null && font == null)
+            {
+                return;
+            }
+
+            Vector2 boardPos = new(CountBoardX, CountBoardY);
+            if (boardTexture != null)
+            {
+                spriteBatch.Draw(boardTexture, boardPos, Color.White);
+            }
+
+            if (!TryDrawBitmapNumber(spriteBatch, _countDigits, _hitCount, boardPos + new Vector2(CountHitX, CountHitY))
+                && font != null)
+            {
+                DrawDigitString(spriteBatch, font, _hitCount.ToString(CultureInfo.InvariantCulture), boardPos + new Vector2(CountHitX, CountHitY), Color.White);
+            }
+
+            if (!TryDrawBitmapNumber(spriteBatch, _countDigits, _coolCount, boardPos + new Vector2(CountCoolX, CountCoolY))
+                && font != null)
+            {
+                DrawDigitString(spriteBatch, font, _coolCount.ToString(CultureInfo.InvariantCulture), boardPos + new Vector2(CountCoolX, CountCoolY), Color.White);
+            }
+
+            if (!TryDrawBitmapNumber(spriteBatch, _countDigits, _missCount, boardPos + new Vector2(CountMissX, CountMissY))
+                && font != null)
+            {
+                DrawDigitString(spriteBatch, font, _missCount.ToString(CultureInfo.InvariantCulture), boardPos + new Vector2(CountMissX, CountMissY), Color.White);
+            }
+
+            if (!_disableSkill && !TryDrawBitmapNumber(spriteBatch, _countDigits, _skillCount, boardPos + new Vector2(CountSkillX, CountSkillY)) && font != null)
+            {
+                DrawDigitString(spriteBatch, font, _skillCount.ToString(CultureInfo.InvariantCulture), boardPos + new Vector2(CountSkillX, CountSkillY), Color.White);
+            }
+        }
         private void DrawKeyAnimation(SpriteBatch spriteBatch, Texture2D pixelTexture, SpriteFont font)
         {
             if (_keyAnimationStage < 0)
@@ -629,7 +707,8 @@ namespace HaCreator.MapSimulator.Effects
                 return;
             }
             List<MassacreCanvasFrame> frames = GetKeyFramesForStage(_keyAnimationStage);
-            if (!DrawAnimation(spriteBatch, frames, Environment.TickCount, _keyAnimationStageStart, new Vector2(KeyAnimationX, KeyAnimationY), repeat: false) && font != null)
+            bool repeat = _keyAnimationStage == 1;
+            if (!DrawAnimation(spriteBatch, frames, Environment.TickCount, _keyAnimationStageStart, new Vector2(KeyAnimationX, KeyAnimationY), repeat) && font != null)
             {
                 string text = _keyAnimationStage switch
                 {
@@ -751,6 +830,9 @@ namespace HaCreator.MapSimulator.Effects
             WzImageProperty gauge = monsterKilling?["Gauge"];
             WzImageProperty result = monsterKilling?["Result"];
             LoadDigitTextures(count?["number"], _timerDigits);
+            LoadDigitTextures(count?["number2"], _countDigits);
+            _countBoardTexture = LoadCanvasTexture(count?["backgrd0"] as WzCanvasProperty);
+            _countBoardSkillTexture = LoadCanvasTexture(count?["backgrd1"] as WzCanvasProperty);
             _gaugeBackgroundTexture = LoadCanvasTexture(gauge?["backgrd"] as WzCanvasProperty);
             _gaugeTextTexture = LoadCanvasTexture(gauge?["text"] as WzCanvasProperty);
             _gaugePixelTexture = LoadCanvasTexture(gauge?["pixel"] as WzCanvasProperty);
@@ -876,6 +958,14 @@ namespace HaCreator.MapSimulator.Effects
                 spriteBatch.Draw(digitTexture, new Vector2(x, topLeft.Y), Color.White);
                 x += digitTexture.Width;
             }
+        }
+        private static bool TryDrawBitmapNumber(SpriteBatch spriteBatch, Texture2D[] digits, int value, Vector2 position)
+        {
+            return TryDrawBitmapDigits(
+                spriteBatch,
+                digits,
+                Math.Max(0, value).ToString(CultureInfo.InvariantCulture),
+                position);
         }
         private static bool TryDrawBitmapDigits(SpriteBatch spriteBatch, Texture2D[] digits, string text, Vector2 position)
         {

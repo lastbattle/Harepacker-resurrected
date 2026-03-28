@@ -5,6 +5,18 @@ namespace HaCreator.MapSimulator.Entities
 {
     public static class SpecialMobInteractionRules
     {
+        public static bool ShouldDisableAutoRespawn(MobData mobData)
+        {
+            if (mobData == null)
+            {
+                return false;
+            }
+
+            return mobData.DamagedByMob
+                   || mobData.Escort > 0
+                   || mobData.RemoveAfter > 0;
+        }
+
         public static bool ShouldSuppressRewardDrops(MobItem mob)
         {
             if (mob?.AI == null)
@@ -25,7 +37,7 @@ namespace HaCreator.MapSimulator.Entities
                 return true;
             }
 
-            return mobData?.DamagedByMob == true || (mobData?.Escort ?? 0) > 0;
+            return mobData?.DamagedByMob == true || mobData?.Escort > 0;
         }
     }
 }

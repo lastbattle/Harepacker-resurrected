@@ -1344,7 +1344,7 @@ namespace HaCreator.MapSimulator.UI
             bool usesRandomReward = randomRewards.Count > 0;
             int outputQuantity = (recipeData["itemNum"] as WzIntProperty)?.Value ?? 1;
             int requiredItemId = Math.Max(0, (recipeData["reqItem"] as WzIntProperty)?.Value ?? 0);
-            bool isHidden = ((recipeData["hide"] as WzIntProperty)?.Value ?? 0) != 0 || requiredItemId > 0;
+            bool isHidden = ((recipeData["hide"] as WzIntProperty)?.Value ?? 0) != 0;
 
             return new ItemMakerRecipe
             {

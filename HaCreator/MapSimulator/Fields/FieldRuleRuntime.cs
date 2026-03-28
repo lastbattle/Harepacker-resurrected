@@ -2,6 +2,7 @@ using MapleLib.WzLib.WzStructure;
 using MapleLib.WzLib.WzStructure.Data;
 using MapleLib.WzLib.WzStructure.Data.ItemStructure;
 using MapleLib.WzLib.WzProperties;
+using HaCreator.MapSimulator.Character.Skills;
 using System;
 using System.Collections.Generic;
 using System.Globalization;
@@ -22,22 +23,20 @@ namespace HaCreator.MapSimulator.Fields
         private readonly WeatherType _ambientWeather;
         private readonly List<int> _allowedItems;
         private readonly List<int> _protectItems;
-        private readonly int? _levelLimit;
         private readonly int? _moveLimit;
-        private readonly bool _partyOnly;
-        private readonly bool _expeditionOnly;
         private readonly int _consumeItemCoolTimeSeconds;
         private readonly List<string> _entryScripts;
         private readonly Func<int, bool> _hasItem;
 
         private readonly HashSet<int> _announcedThresholds = new HashSet<int>();
+        private int _remainingMoveSkillUses;
         private int _enteredAt;
         private int _nextDamageAt;
         private int _nextConsumableItemUseAt;
         private bool _initialized;
         private bool _timeExpired;
 
-        public FieldRuleRuntime(MapInfo mapInfo, Func<int, bool> hasItem = null)
+        public FieldRuleRuntime(MapInfo mapInfo, Func<int, bool> hasItem = null, bool includeFirstUserEnterScript = true)
         {
             _timeLimitSeconds = Math.Max(0, mapInfo?.timeLimit ?? 0);
             _transferMapId = ResolveTransferMapId(mapInfo);
@@ -47,12 +46,9 @@ namespace HaCreator.MapSimulator.Fields
             _ambientWeather = FieldEnvironmentEffectEvaluator.ResolveAmbientWeather(mapInfo);
             _allowedItems = mapInfo?.allowedItem != null ? new List<int>(mapInfo.allowedItem) : new List<int>();
             _protectItems = mapInfo?.protectItem != null ? new List<int>(mapInfo.protectItem) : new List<int>();
-            _levelLimit = mapInfo?.lvLimit;
-            _moveLimit = mapInfo?.moveLimit;
-            _partyOnly = mapInfo?.partyOnly == true;
-            _expeditionOnly = mapInfo?.expeditionOnly == true;
+            _moveLimit = NormalizeMoveLimit(mapInfo?.moveLimit);
             _consumeItemCoolTimeSeconds = Math.Max(0, mapInfo?.consumeItemCoolTime ?? 0);
-            _entryScripts = CollectEntryScripts(mapInfo);
+            _entryScripts = CollectEntryScripts(mapInfo, includeFirstUserEnterScript);
             _hasItem = hasItem;
         }
 
@@ -61,14 +57,11 @@ namespace HaCreator.MapSimulator.Fields
             _decHp > 0 ||
             _ambientWeather != WeatherType.None ||
             _allowedItems.Count > 0 ||
-            _levelLimit.HasValue ||
             FieldInteractionRestrictionEvaluator.GetJumpRestrictionMessage(_fieldLimit) != null ||
             FieldInteractionRestrictionEvaluator.GetTeleportItemRestrictionMessage(_fieldLimit) != null ||
             FieldInteractionRestrictionEvaluator.GetTransferRestrictionMessage(_fieldLimit) != null ||
             FieldSkillRestrictionEvaluator.HasFieldEntryNotice(_fieldLimit) ||
             _moveLimit.HasValue ||
-            _partyOnly ||
-            _expeditionOnly ||
             _entryScripts.Count > 0 ||
             _consumeItemCoolTimeSeconds > 0;
 
@@ -77,6 +70,7 @@ namespace HaCreator.MapSimulator.Fields
             _enteredAt = currentTimeMs;
             _nextDamageAt = _decHp > 0 ? currentTimeMs + _decIntervalMs : int.MaxValue;
             _nextConsumableItemUseAt = currentTimeMs;
+            _remainingMoveSkillUses = _moveLimit ?? 0;
             _initialized = true;
             _timeExpired = false;
             _announcedThresholds.Clear();
@@ -178,6 +172,33 @@ namespace HaCreator.MapSimulator.Fields
             _nextConsumableItemUseAt = currentTimeMs + (_consumeItemCoolTimeSeconds * 1000);
         }
 
+        public bool CanUseSkill(SkillData skill)
+        {
+            return GetSkillRestrictionMessage(skill) == null;
+        }
+
+        public string GetSkillRestrictionMessage(SkillData skill)
+        {
+            if (_moveLimit is not > 0 || skill?.IsMovement != true)
+            {
+                return null;
+            }
+
+            return _remainingMoveSkillUses > 0
+                ? null
+                : $"Movement skills can only be used {_moveLimit.Value} time(s) in this map.";
+        }
+
+        public void RegisterSuccessfulSkillUse(SkillData skill)
+        {
+            if (_moveLimit is not > 0 || skill?.IsMovement != true || _remainingMoveSkillUses <= 0)
+            {
+                return;
+            }
+
+            _remainingMoveSkillUses--;
+        }
+
         private IReadOnlyList<string> BuildEntryMessages()
         {
             List<string> messages = new List<string>();
@@ -222,6 +243,11 @@ namespace HaCreator.MapSimulator.Fields
                 messages.Add($"Consumable item cooldown active: {_consumeItemCoolTimeSeconds}s between use-item activations.");
             }
 
+            if (_moveLimit is > 0)
+            {
+                messages.Add($"Movement skill limit active: {_moveLimit.Value} use(s) in this field.");
+            }
+
             string teleportItemRestrictionNotice = FieldInteractionRestrictionEvaluator.GetTeleportItemRestrictionMessage(_fieldLimit);
             if (!string.IsNullOrWhiteSpace(teleportItemRestrictionNotice))
             {
@@ -246,12 +272,6 @@ namespace HaCreator.MapSimulator.Fields
                 messages.Add(skillRestrictionNotice);
             }
 
-            string partialRestrictionNotice = BuildPartialRestrictionNotice();
-            if (!string.IsNullOrWhiteSpace(partialRestrictionNotice))
-            {
-                messages.Add(partialRestrictionNotice);
-            }
-
             string fieldScriptNotice = BuildFieldScriptNotice();
             if (!string.IsNullOrWhiteSpace(fieldScriptNotice))
             {
@@ -271,33 +291,6 @@ namespace HaCreator.MapSimulator.Fields
             return $"Field scripts detected but not executed by the simulator: {string.Join(", ", _entryScripts)}.";
         }
 
-        private string BuildPartialRestrictionNotice()
-        {
-            List<string> notices = new List<string>();
-
-            if (_moveLimit.HasValue)
-            {
-                notices.Add($"moveLimit={_moveLimit.Value}");
-            }
-
-            if (_partyOnly)
-            {
-                notices.Add("partyOnly");
-            }
-
-            if (_expeditionOnly)
-            {
-                notices.Add("expeditionOnly");
-            }
-
-            if (notices.Count == 0)
-            {
-                return null;
-            }
-
-            return $"Field metadata present but only surfaced as notices in the simulator: {string.Join(", ", notices)}.";
-        }
-
         private static int ResolveTransferMapId(MapInfo mapInfo)
         {
             int returnMap = mapInfo?.returnMap ?? 0;
@@ -310,6 +303,11 @@ namespace HaCreator.MapSimulator.Fields
             return forcedReturn > 0 && forcedReturn != MapConstants.MaxMap
                 ? forcedReturn
                 : -1;
+        }
+
+        private static int? NormalizeMoveLimit(int? moveLimit)
+        {
+            return moveLimit is > 0 ? moveLimit : null;
         }
 
         private static int NormalizeDecIntervalMs(int? decInterval)
@@ -346,13 +344,16 @@ namespace HaCreator.MapSimulator.Fields
             return string.Join(", ", ids) + suffix;
         }
 
-        private static List<string> CollectEntryScripts(MapInfo mapInfo)
+        private static List<string> CollectEntryScripts(MapInfo mapInfo, bool includeFirstUserEnterScript)
         {
             var scripts = new List<string>();
             var seenScripts = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
             AddScriptIfPresent(scripts, seenScripts, "onUserEnter", mapInfo?.onUserEnter);
-            AddScriptIfPresent(scripts, seenScripts, "onFirstUserEnter", mapInfo?.onFirstUserEnter);
+            if (includeFirstUserEnterScript)
+            {
+                AddScriptIfPresent(scripts, seenScripts, "onFirstUserEnter", mapInfo?.onFirstUserEnter);
+            }
 
             string fieldScript = (mapInfo?.Image?["info"]?["fieldScript"] as WzStringProperty)?.Value;
             AddScriptIfPresent(scripts, seenScripts, "fieldScript", fieldScript);

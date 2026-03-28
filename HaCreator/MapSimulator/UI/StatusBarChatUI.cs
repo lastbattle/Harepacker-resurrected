@@ -76,16 +76,24 @@ namespace HaCreator.MapSimulator.UI
         private const int ChatMessageDisplayTime = 10000;
         private const int ChatMessageFadeTime = 2000;
         private const int ChatMaxVisibleLines = 8;
-        private const int ChatLogLineHeight = 14;
-        private const int ChatLogWidth = 452;
+        private const int DefaultChatLogLineHeight = 14;
+        private const int DefaultChatCursorHeight = 13;
+        private const int DefaultChatWhisperPromptGap = 15;
+        private const int DefaultChatLogToEnterGap = 4;
         private const int ChatWrapIndentSpaces = 5;
         private const int ChatSpecialFirstLineWidthReduction = 38;
         private const int ChatScrollRecentThresholdMs = 5000;
         private Point _pointNotificationAnchor = new Point(512, 60);
         private Vector2 _chatTargetLabelPos = new Vector2(17, 7);
         private Vector2 _chatEnterPos = new Vector2(4, 2);
+        private Vector2 _chatInputBasePos = new Vector2(74, 5);
         private Vector2 _chatInputPos = new Vector2(74, 5);
         private Vector2 _chatWhisperPromptPos = new Vector2(74, -13);
+        private Vector2 _chatLogTextBasePos = new Vector2(4, -16);
+        private Vector2 _chatLogTextPos = new Vector2(4, -16);
+        private int _chatLogWidth = 452;
+        private int _chatLogLineHeight = DefaultChatLogLineHeight;
+        private int _chatCursorHeight = DefaultChatCursorHeight;
 
         public Action ToggleChatRequested { get; set; }
         public Action<int> CycleChatTargetRequested { get; set; }
@@ -114,6 +122,7 @@ namespace HaCreator.MapSimulator.UI
         public void SetFont(SpriteFont font)
         {
             _font = font;
+            RefreshTextMetrics();
         }
 
         public void SetPixelTexture(GraphicsDevice graphicsDevice)
@@ -128,6 +137,7 @@ namespace HaCreator.MapSimulator.UI
         public void SetChatEnterTexture(Texture2D chatEnterTexture)
         {
             _chatEnterTexture = chatEnterTexture;
+            RefreshTextMetrics();
         }
 
         public void SetChatTargetTextures(
@@ -173,15 +183,21 @@ namespace HaCreator.MapSimulator.UI
             _skillPointNotificationAnimation = skillPointAnimation ?? new StatusBarPointNotificationAnimation();
         }
 
-        public void SetLayoutMetrics(Point frameAnchor, Vector2 chatTargetLabelPos, Vector2 chatEnterPos)
+        public void SetLayoutMetrics(
+            Point frameAnchor,
+            Vector2 chatTargetLabelPos,
+            Vector2 chatEnterPos,
+            Vector2 chatInputPos,
+            Vector2 chatLogTextPos,
+            int chatLogWidth)
         {
             _pointNotificationAnchor = frameAnchor;
             _chatTargetLabelPos = chatTargetLabelPos;
             _chatEnterPos = chatEnterPos;
-
-            Vector2 inputDelta = new Vector2(70, 3);
-            _chatInputPos = _chatEnterPos + inputDelta;
-            _chatWhisperPromptPos = _chatEnterPos + new Vector2(inputDelta.X, -15);
+            _chatInputBasePos = chatInputPos;
+            _chatLogTextBasePos = chatLogTextPos;
+            _chatLogWidth = Math.Max(1, chatLogWidth);
+            RefreshTextMetrics();
         }
 
         public void BindControls(UIObject chatTargetButton, UIObject chatToggleButton, UIObject scrollUpButton, UIObject scrollDownButton, UIObject characterInfoButton = null, UIObject memoButton = null)
@@ -447,7 +463,7 @@ namespace HaCreator.MapSimulator.UI
 
             int lineIndex = wrappedLines.Count - 1 - _scrollOffset;
             int drawnLines = 0;
-            float lineY = this.Position.Y - 16;
+            float lineY = this.Position.Y + _chatLogTextPos.Y;
 
             while (lineIndex >= 0 && drawnLines < ChatMaxVisibleLines)
             {
@@ -466,7 +482,7 @@ namespace HaCreator.MapSimulator.UI
                     continue;
                 }
 
-                Color lineColor = line.Color * alpha;
+                Color lineColor = ResolveRenderedLineColor(line) * alpha;
                 Color backgroundColor = GetClientChatLineBackgroundColor(line.ChatLogType) * alpha;
                 Color shadowColor = GetClientChatLineShadowColor(line.ChatLogType) * alpha;
                 Vector2 textSize = _font.MeasureString(line.Text);
@@ -474,18 +490,31 @@ namespace HaCreator.MapSimulator.UI
                 {
                     sprite.Draw(
                         _pixelTexture,
-                        new Rectangle(this.Position.X + 2, (int)lineY - 1, (int)textSize.X + 6, (int)textSize.Y + 2),
+                    new Rectangle(this.Position.X + (int)_chatLogTextPos.X - 2, (int)lineY - 1, (int)textSize.X + 6, (int)textSize.Y + 2),
                         backgroundColor);
                 }
 
-                DrawTextWithShadow(sprite, line.Text, new Vector2(this.Position.X + 4, lineY), lineColor, shadowColor);
+                DrawTextWithShadow(sprite, line.Text, new Vector2(this.Position.X + _chatLogTextPos.X, lineY), lineColor, shadowColor);
                 TryRegisterWhisperTargetHitRegion(line, lineY);
-                lineY -= ChatLogLineHeight;
+                lineY -= _chatLogLineHeight;
                 drawnLines++;
                 lineIndex--;
             }
 
             _lastWrappedLineCount = wrappedLines.Count;
+        }
+
+        private static Color ResolveRenderedLineColor(WrappedChatLine line)
+        {
+            if (line == null)
+            {
+                return Color.White;
+            }
+
+            Color mappedColor = MapSimulatorChat.ResolveRenderedClientChatLogColor(line.ChatLogType);
+            return mappedColor != Color.White || line.ChatLogType == 0
+                ? mappedColor
+                : line.Color;
         }
 
         private void AdjustScrollForNewLines(int wrappedLineCount, int tickCount)
@@ -544,8 +573,55 @@ namespace HaCreator.MapSimulator.UI
                 Math.Clamp(chatState.CursorPosition, 0, chatState.InputText.Length));
             float cursorX = inputPos.X + _font.MeasureString(textBeforeCursor).X;
             sprite.Draw(_pixelTexture,
-                new Rectangle((int)cursorX, (int)inputPos.Y, 1, _font.LineSpacing - 1),
+                new Rectangle(
+                    (int)cursorX,
+                    (int)Math.Floor(inputPos.Y + ResolveCursorTopOffset()),
+                    1,
+                    _chatCursorHeight),
                 Color.White);
+        }
+
+        private void RefreshTextMetrics()
+        {
+            float measuredHeight = ResolveMeasuredTextHeight();
+            int fontLineSpacing = _font?.LineSpacing ?? DefaultChatCursorHeight + 1;
+            _chatLogLineHeight = Math.Max(DefaultChatLogLineHeight, fontLineSpacing + 1);
+            _chatCursorHeight = Math.Clamp(
+                fontLineSpacing - 1,
+                1,
+                Math.Max(1, (_chatEnterTexture?.Height ?? DefaultChatCursorHeight + 2) - 2));
+
+            float inputYOffset = ResolveInputTextYOffset(measuredHeight);
+            _chatInputPos = new Vector2(_chatInputBasePos.X, _chatEnterPos.Y + inputYOffset);
+            _chatWhisperPromptPos = new Vector2(
+                _chatInputPos.X,
+                _chatInputPos.Y - Math.Max(DefaultChatWhisperPromptGap, _chatLogLineHeight + 3));
+            _chatLogTextPos = new Vector2(
+                _chatLogTextBasePos.X,
+                _chatEnterPos.Y - (_chatLogLineHeight + DefaultChatLogToEnterGap));
+        }
+
+        private float ResolveMeasuredTextHeight()
+        {
+            if (_font == null)
+            {
+                return DefaultChatCursorHeight;
+            }
+
+            return Math.Max(1f, _font.MeasureString("Ag").Y);
+        }
+
+        private float ResolveInputTextYOffset(float measuredTextHeight)
+        {
+            int enterHeight = _chatEnterTexture?.Height ?? 21;
+            float centeredOffset = MathF.Floor(Math.Max(0f, (enterHeight - measuredTextHeight) * 0.5f));
+            return Math.Max(_chatInputBasePos.Y - _chatEnterPos.Y, centeredOffset);
+        }
+
+        private float ResolveCursorTopOffset()
+        {
+            float measuredHeight = ResolveMeasuredTextHeight();
+            return MathF.Floor(Math.Max(0f, (measuredHeight - _chatCursorHeight) * 0.5f));
         }
 
         private List<WrappedChatLine> BuildWrappedLines(IReadOnlyList<ChatMessage> messages)
@@ -563,7 +639,7 @@ namespace HaCreator.MapSimulator.UI
                 bool isFirstWrappedLine = true;
                 foreach (string lineText in WrapText(
                     message.Text ?? string.Empty,
-                    ChatLogWidth,
+                    _chatLogWidth,
                     message.ChatLogType,
                     ShouldIndentWrappedContinuation(message.ChatLogType)))
                 {
@@ -686,7 +762,7 @@ namespace HaCreator.MapSimulator.UI
             _whisperTargetHitRegions.Add(new WhisperTargetHitRegion
             {
                 Bounds = new Rectangle(
-                    this.Position.X + 4,
+                    this.Position.X + (int)_chatLogTextPos.X,
                     (int)lineY - 1,
                     (int)Math.Ceiling(textWidth) + 2,
                     Math.Max(1, _font.LineSpacing)),
@@ -875,10 +951,10 @@ namespace HaCreator.MapSimulator.UI
         private Rectangle GetChatInteractionBounds()
         {
             return new Rectangle(
-                this.Position.X,
-                this.Position.Y - (ChatMaxVisibleLines * ChatLogLineHeight) - 18,
-                ChatLogWidth + 18,
-                (ChatMaxVisibleLines * ChatLogLineHeight) + 42);
+                this.Position.X + (int)_chatLogTextPos.X - 4,
+                this.Position.Y + (int)_chatLogTextPos.Y - (ChatMaxVisibleLines * _chatLogLineHeight) + 2,
+                _chatLogWidth + 18,
+                (ChatMaxVisibleLines * _chatLogLineHeight) + 42);
         }
 
         private static string ResolveWhisperTargetCandidate(ChatMessage message)

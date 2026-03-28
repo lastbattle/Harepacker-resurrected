@@ -19,6 +19,17 @@ namespace HaCreator.MapSimulator.Interaction
         Master
     }
 
+    [Flags]
+    internal enum GuildBbsPermissionMask
+    {
+        None = 0,
+        WriteThread = 1 << 0,
+        WriteNotice = 1 << 1,
+        Reply = 1 << 2,
+        OwnThread = 1 << 3,
+        Moderate = 1 << 4
+    }
+
     internal sealed class GuildBbsRuntime
     {
         private const int VisibleThreadCount = 8;
@@ -26,6 +37,13 @@ namespace HaCreator.MapSimulator.Interaction
         private const int DefaultBasicEmoticonCount = 3;
         private const int DefaultCashEmoticonCount = 7;
         private const int CashEmoticonItemIdStart = 5290000;
+        private const int ClientCashEmoticonIdStart = 100;
+        private const GuildBbsPermissionMask SupportedPermissionMask =
+            GuildBbsPermissionMask.WriteThread
+            | GuildBbsPermissionMask.WriteNotice
+            | GuildBbsPermissionMask.Reply
+            | GuildBbsPermissionMask.OwnThread
+            | GuildBbsPermissionMask.Moderate;
         private const int MaxTitleLength = 40;
         private const int MaxThreadBodyLength = 420;
         private const int MaxReplyBodyLength = 120;
@@ -75,7 +93,8 @@ namespace HaCreator.MapSimulator.Interaction
         }
 
         private readonly List<GuildBbsThreadState> _threads = new();
-        private readonly HashSet<int> _ownedCashEmoticonIds = new();
+        private readonly HashSet<int> _inventoryOwnedCashEmoticonIds = new();
+        private readonly HashSet<int> _packetOwnedCashEmoticonIds = new();
         private GuildBbsComposeState _compose = new();
         private readonly GuildBbsReplyDraftState _replyDraft = new();
         private string _localPlayerName = "Player";
@@ -83,6 +102,9 @@ namespace HaCreator.MapSimulator.Interaction
         private string _locationSummary = "Field";
         private string _guildRoleLabel = "Master";
         private GuildBbsPermissionLevel _permissionLevel = GuildBbsPermissionLevel.Master;
+        private GuildBbsPermissionMask _rolePermissionMask = SupportedPermissionMask;
+        private GuildBbsPermissionMask? _packetPermissionMask;
+        private bool _hasPacketCashOwnershipOverride;
         private int _selectedThreadId;
         private int _threadPageIndex;
         private int _commentPageIndex;
@@ -113,20 +135,73 @@ namespace HaCreator.MapSimulator.Interaction
             _locationSummary = string.IsNullOrWhiteSpace(locationSummary) ? "Field" : locationSummary.Trim();
             _guildRoleLabel = string.IsNullOrWhiteSpace(guildRoleLabel) ? "Member" : guildRoleLabel.Trim();
             _permissionLevel = ResolvePermissionLevel(_guildRoleLabel);
+            _rolePermissionMask = ResolvePermissionMask(_permissionLevel);
 
-            _ownedCashEmoticonIds.Clear();
+            _inventoryOwnedCashEmoticonIds.Clear();
             if (ownedCashEmoticonItemIds != null)
             {
                 foreach (int itemId in ownedCashEmoticonItemIds)
                 {
                     if (itemId >= CashEmoticonItemIdStart && itemId < CashEmoticonItemIdStart + _cashEmoticonCount)
                     {
-                        _ownedCashEmoticonIds.Add(itemId);
+                        _inventoryOwnedCashEmoticonIds.Add(itemId);
                     }
                 }
             }
 
             NormalizeDraftState();
+        }
+
+        public string ApplyPermissionMaskOverride(GuildBbsPermissionMask mask)
+        {
+            _packetPermissionMask = NormalizePermissionMask(mask);
+            NormalizeDraftState();
+            return $"Guild BBS authority override is now packet-owned: {DescribePermissionMask(EffectivePermissionMask)}.";
+        }
+
+        public string ClearPermissionMaskOverride()
+        {
+            _packetPermissionMask = null;
+            NormalizeDraftState();
+            return $"Guild BBS authority reverted to guild-role rules: {DescribePermissionMask(EffectivePermissionMask)}.";
+        }
+
+        public string ApplyPermissionPacket(byte[] payload)
+        {
+            if (!TryDecodePermissionPacket(payload, out GuildBbsPermissionMask decodedMask, out string detail))
+            {
+                return detail;
+            }
+
+            _packetPermissionMask = decodedMask;
+            NormalizeDraftState();
+            return $"Decoded Guild BBS authority packet -> {DescribePermissionMask(decodedMask)}.";
+        }
+
+        public string ApplyCashOwnershipPacket(byte[] payload)
+        {
+            if (!TryDecodeCashOwnershipPacket(payload, out HashSet<int> decodedOwnership, out string detail))
+            {
+                return detail;
+            }
+
+            _packetOwnedCashEmoticonIds.Clear();
+            foreach (int itemId in decodedOwnership)
+            {
+                _packetOwnedCashEmoticonIds.Add(itemId);
+            }
+
+            _hasPacketCashOwnershipOverride = true;
+            NormalizeDraftState();
+            return $"Decoded Guild BBS cash-entitlement packet -> {decodedOwnership.Count}/{_cashEmoticonCount} owned ({CashOwnershipSourceLabel}).";
+        }
+
+        public string ClearCashOwnershipPacket()
+        {
+            _packetOwnedCashEmoticonIds.Clear();
+            _hasPacketCashOwnershipOverride = false;
+            NormalizeDraftState();
+            return $"Guild BBS cash entitlement reverted to inventory-owned state: {OwnedCashEmoticonCount}/{_cashEmoticonCount}.";
         }
 
         public GuildBbsSnapshot BuildSnapshot()
@@ -568,7 +643,7 @@ namespace HaCreator.MapSimulator.Interaction
 
             if (resolvedKind == GuildBbsEmoticonKind.Cash && !IsCashEmoticonOwned(resolvedSlot))
             {
-                return $"Cash emoticon {resolvedSlot + 1} is not owned by the current simulator inventory.";
+                return $"Cash emoticon {resolvedSlot + 1} is not owned by the current Guild BBS entitlement source.";
             }
 
             _compose.EmoticonKind = resolvedKind;
@@ -588,7 +663,7 @@ namespace HaCreator.MapSimulator.Interaction
 
             if (resolvedKind == GuildBbsEmoticonKind.Cash && !IsCashEmoticonOwned(resolvedSlot))
             {
-                return $"Cash emoticon {resolvedSlot + 1} is not owned by the current simulator inventory.";
+                return $"Cash emoticon {resolvedSlot + 1} is not owned by the current Guild BBS entitlement source.";
             }
 
             _replyDraft.EmoticonKind = resolvedKind;
@@ -603,7 +678,7 @@ namespace HaCreator.MapSimulator.Interaction
             string threadSummary = selectedThread == null
                 ? "none"
                 : $"#{selectedThread.ThreadId} \"{selectedThread.Title}\" ({selectedThread.Comments.Count} comment(s))";
-            return $"Guild BBS: threads={_threads.Count}, threadPage={_threadPageIndex + 1}, commentPage={_commentPageIndex + 1}, selected={threadSummary}, mode={(IsWriteMode ? "write" : "read")}, guild={_guildName}, role={_guildRoleLabel}, cashEmoticons={_ownedCashEmoticonIds.Count}/{_cashEmoticonCount}";
+            return $"Guild BBS: threads={_threads.Count}, threadPage={_threadPageIndex + 1}, commentPage={_commentPageIndex + 1}, selected={threadSummary}, mode={(IsWriteMode ? "write" : "read")}, guild={_guildName}, role={_guildRoleLabel}, authority={AuthoritySourceLabel} [{DescribePermissionMask(EffectivePermissionMask)}], cashEmoticons={OwnedCashEmoticonCount}/{_cashEmoticonCount} ({CashOwnershipSourceLabel})";
         }
 
         private GuildBbsComposeState CreateDraftFromContext()
@@ -641,7 +716,10 @@ namespace HaCreator.MapSimulator.Interaction
                 CanEditSelectedThread = selectedThread != null && CanEditThread(selectedThread),
                 CanDeleteSelectedThread = selectedThread != null && CanDeleteThread(selectedThread),
                 CanDeleteReply = selectedThread != null && selectedThread.Comments.Any(CanDeleteComment),
-                OwnedCashEmoticonCount = _ownedCashEmoticonIds.Count
+                OwnedCashEmoticonCount = OwnedCashEmoticonCount,
+                AuthoritySourceLabel = AuthoritySourceLabel,
+                CashOwnershipSourceLabel = CashOwnershipSourceLabel,
+                PermissionMaskText = DescribePermissionMask(EffectivePermissionMask)
             };
         }
 
@@ -757,40 +835,43 @@ namespace HaCreator.MapSimulator.Interaction
 
         private bool CanWriteThread()
         {
-            return _permissionLevel >= GuildBbsPermissionLevel.Member;
+            return EffectivePermissionMask.HasFlag(GuildBbsPermissionMask.WriteThread);
         }
 
         private bool CanWriteNotice()
         {
-            return _permissionLevel >= GuildBbsPermissionLevel.JrMaster;
+            return EffectivePermissionMask.HasFlag(GuildBbsPermissionMask.WriteNotice);
         }
 
         private bool CanReplyToThread()
         {
-            return _permissionLevel >= GuildBbsPermissionLevel.Member;
+            return EffectivePermissionMask.HasFlag(GuildBbsPermissionMask.Reply);
         }
 
         private bool CanModerateAnyThread()
         {
-            return _permissionLevel >= GuildBbsPermissionLevel.JrMaster;
+            return EffectivePermissionMask.HasFlag(GuildBbsPermissionMask.Moderate);
         }
 
         private bool CanEditThread(GuildBbsThreadState thread)
         {
             return thread != null
-                && (IsLocalAuthor(thread.Author) || CanModerateAnyThread());
+                && ((IsLocalAuthor(thread.Author) && EffectivePermissionMask.HasFlag(GuildBbsPermissionMask.OwnThread))
+                    || CanModerateAnyThread());
         }
 
         private bool CanDeleteThread(GuildBbsThreadState thread)
         {
             return thread != null
-                && (IsLocalAuthor(thread.Author) || CanModerateAnyThread());
+                && ((IsLocalAuthor(thread.Author) && EffectivePermissionMask.HasFlag(GuildBbsPermissionMask.OwnThread))
+                    || CanModerateAnyThread());
         }
 
         private bool CanDeleteComment(GuildBbsCommentState comment)
         {
             return comment != null
-                && (IsLocalAuthor(comment.Author) || CanModerateAnyThread());
+                && ((IsLocalAuthor(comment.Author) && EffectivePermissionMask.HasFlag(GuildBbsPermissionMask.OwnThread))
+                    || CanModerateAnyThread());
         }
 
         private bool IsLocalAuthor(string author)
@@ -811,7 +892,7 @@ namespace HaCreator.MapSimulator.Interaction
         private bool IsCashEmoticonOwned(int slotIndex)
         {
             int itemId = CashEmoticonItemIdStart + slotIndex;
-            return _ownedCashEmoticonIds.Contains(itemId);
+            return EffectiveOwnedCashEmoticonIds.Contains(itemId);
         }
 
         private void NormalizeDraftState()
@@ -868,6 +949,147 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             return GuildBbsPermissionLevel.Member;
+        }
+
+        private GuildBbsPermissionMask EffectivePermissionMask => NormalizePermissionMask(_packetPermissionMask ?? _rolePermissionMask);
+
+        private IReadOnlyCollection<int> EffectiveOwnedCashEmoticonIds =>
+            _hasPacketCashOwnershipOverride
+                ? _packetOwnedCashEmoticonIds
+                : _inventoryOwnedCashEmoticonIds;
+
+        private int OwnedCashEmoticonCount => EffectiveOwnedCashEmoticonIds.Count;
+
+        private string AuthoritySourceLabel => _packetPermissionMask.HasValue ? "Packet" : "Guild role";
+
+        private string CashOwnershipSourceLabel => _hasPacketCashOwnershipOverride ? "Packet" : "Inventory";
+
+        private static GuildBbsPermissionMask ResolvePermissionMask(GuildBbsPermissionLevel permissionLevel)
+        {
+            return permissionLevel switch
+            {
+                GuildBbsPermissionLevel.Master => SupportedPermissionMask,
+                GuildBbsPermissionLevel.JrMaster => SupportedPermissionMask,
+                GuildBbsPermissionLevel.Member => GuildBbsPermissionMask.WriteThread | GuildBbsPermissionMask.Reply | GuildBbsPermissionMask.OwnThread,
+                _ => GuildBbsPermissionMask.None
+            };
+        }
+
+        private static GuildBbsPermissionMask NormalizePermissionMask(GuildBbsPermissionMask mask)
+        {
+            return mask & SupportedPermissionMask;
+        }
+
+        private static string DescribePermissionMask(GuildBbsPermissionMask mask)
+        {
+            if (mask == GuildBbsPermissionMask.None)
+            {
+                return "none";
+            }
+
+            var names = new List<string>(5);
+            if (mask.HasFlag(GuildBbsPermissionMask.WriteThread))
+            {
+                names.Add("write");
+            }
+
+            if (mask.HasFlag(GuildBbsPermissionMask.WriteNotice))
+            {
+                names.Add("notice");
+            }
+
+            if (mask.HasFlag(GuildBbsPermissionMask.Reply))
+            {
+                names.Add("reply");
+            }
+
+            if (mask.HasFlag(GuildBbsPermissionMask.OwnThread))
+            {
+                names.Add("own-thread");
+            }
+
+            if (mask.HasFlag(GuildBbsPermissionMask.Moderate))
+            {
+                names.Add("moderate");
+            }
+
+            return string.Join(", ", names);
+        }
+
+        private bool TryDecodePermissionPacket(byte[] payload, out GuildBbsPermissionMask mask, out string detail)
+        {
+            mask = GuildBbsPermissionMask.None;
+            detail = null;
+            if (payload == null || payload.Length == 0)
+            {
+                detail = "Guild BBS authority packet payload is empty.";
+                return false;
+            }
+
+            mask = NormalizePermissionMask((GuildBbsPermissionMask)payload[0]);
+            detail = $"Decoded authority mask byte 0x{payload[0]:X2}.";
+            return true;
+        }
+
+        private bool TryDecodeCashOwnershipPacket(byte[] payload, out HashSet<int> ownedItemIds, out string detail)
+        {
+            ownedItemIds = new HashSet<int>();
+            detail = null;
+            if (payload == null || payload.Length == 0)
+            {
+                detail = "Guild BBS cash-entitlement packet payload is empty.";
+                return false;
+            }
+
+            foreach (byte value in payload)
+            {
+                if (TryResolvePacketCashItemId(value, out int byteItemId))
+                {
+                    ownedItemIds.Add(byteItemId);
+                }
+            }
+
+            for (int offset = 0; offset <= payload.Length - sizeof(short); offset++)
+            {
+                short candidate = BitConverter.ToInt16(payload, offset);
+                if (TryResolvePacketCashItemId(candidate, out int shortItemId))
+                {
+                    ownedItemIds.Add(shortItemId);
+                }
+            }
+
+            for (int offset = 0; offset <= payload.Length - sizeof(int); offset++)
+            {
+                int candidate = BitConverter.ToInt32(payload, offset);
+                if (TryResolvePacketCashItemId(candidate, out int intItemId))
+                {
+                    ownedItemIds.Add(intItemId);
+                }
+            }
+
+            detail = ownedItemIds.Count == 0
+                ? "Decoded Guild BBS cash-entitlement packet with no owned emoticons."
+                : $"Decoded {ownedItemIds.Count} Guild BBS cash emoticon entitlement(s).";
+            return true;
+        }
+
+        private bool TryResolvePacketCashItemId(int rawValue, out int itemId)
+        {
+            itemId = 0;
+            if (rawValue >= CashEmoticonItemIdStart && rawValue < CashEmoticonItemIdStart + _cashEmoticonCount)
+            {
+                itemId = rawValue;
+                return true;
+            }
+
+            int slotIndex = rawValue - ClientCashEmoticonIdStart;
+            if (slotIndex >= 0 && slotIndex < _cashEmoticonCount)
+            {
+                itemId = CashEmoticonItemIdStart + slotIndex;
+                return true;
+            }
+
+            return false;
         }
 
         private void SeedDefaultThreads()
@@ -1033,6 +1255,9 @@ namespace HaCreator.MapSimulator.Interaction
     internal sealed class GuildBbsPermissionSnapshot
     {
         public string PermissionLabel { get; init; } = string.Empty;
+        public string AuthoritySourceLabel { get; init; } = string.Empty;
+        public string CashOwnershipSourceLabel { get; init; } = string.Empty;
+        public string PermissionMaskText { get; init; } = string.Empty;
         public bool CanWrite { get; init; }
         public bool CanWriteNotice { get; init; }
         public bool CanReply { get; init; }

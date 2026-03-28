@@ -15,6 +15,7 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using HaCreator.MapSimulator.Pools;
+using Point = Microsoft.Xna.Framework.Point;
 using Rectangle = Microsoft.Xna.Framework.Rectangle;
 
 namespace HaCreator.MapSimulator.Loaders
@@ -472,6 +473,15 @@ namespace HaCreator.MapSimulator.Loaders
             WzSubProperty rangeNode = infoNode["range"] as WzSubProperty;
             if (rangeNode != null)
             {
+                WzVectorProperty sp = rangeNode["sp"] as WzVectorProperty;
+                if (sp != null)
+                {
+                    metadata.HasRangeOrigin = true;
+                    metadata.RangeOrigin = new Point(sp.X.Value, sp.Y.Value);
+                }
+
+                metadata.RangeRadius = InfoTool.GetInt(rangeNode["r"], 0);
+
                 WzVectorProperty lt = rangeNode["lt"] as WzVectorProperty;
                 WzVectorProperty rb = rangeNode["rb"] as WzVectorProperty;
                 if (lt != null && rb != null)
@@ -593,7 +603,7 @@ namespace HaCreator.MapSimulator.Loaders
         /// <returns></returns>
         public static NpcItem CreateNpcFromProperty(
             TexturePool texturePool, NpcInstance npcInstance, float UserScreenScaleFactor,
-            GraphicsDevice device, ConcurrentBag<WzObject> usedProps)
+            GraphicsDevice device, ConcurrentBag<WzObject> usedProps, bool includeTooltips = true)
         {
             NpcInfo npcInfo = (NpcInfo)npcInstance.BaseInfo;
             WzImage source = npcInfo.LinkedWzImage;
@@ -625,17 +635,22 @@ namespace HaCreator.MapSimulator.Loaders
             if (animationSet.ActionCount == 0) // fix japan ms v186, (9000021.img「ガガ」) なぜだ？;(
                 return null;
 
-            System.Drawing.Color color_foreGround = System.Drawing.Color.FromArgb(255, 255, 255, 0); // gold npc foreground color
+            NameTooltipItem nameTooltip = null;
+            NameTooltipItem npcDescTooltip = null;
+            if (includeTooltips)
+            {
+                System.Drawing.Color color_foreGround = System.Drawing.Color.FromArgb(255, 255, 255, 0); // gold npc foreground color
 
-            NameTooltipItem nameTooltip = MapSimulatorLoader.CreateNPCMobNameTooltip(
-                npcInstance.NpcInfo.StringName, npcInstance.X, npcInstance.Y, color_foreGround,
-                texturePool, UserScreenScaleFactor, device);
+                nameTooltip = MapSimulatorLoader.CreateNPCMobNameTooltip(
+                    npcInstance.NpcInfo.StringName, npcInstance.X, npcInstance.Y, color_foreGround,
+                    texturePool, UserScreenScaleFactor, device);
 
-            const int NPC_FUNC_Y_POS = 17;
+                const int NPC_FUNC_Y_POS = 17;
 
-            NameTooltipItem npcDescTooltip = MapSimulatorLoader.CreateNPCMobNameTooltip(
-                npcInstance.NpcInfo.StringFunc, npcInstance.X, npcInstance.Y + NPC_FUNC_Y_POS, color_foreGround,
-                texturePool, UserScreenScaleFactor, device);
+                npcDescTooltip = MapSimulatorLoader.CreateNPCMobNameTooltip(
+                    npcInstance.NpcInfo.StringFunc, npcInstance.X, npcInstance.Y + NPC_FUNC_Y_POS, color_foreGround,
+                    texturePool, UserScreenScaleFactor, device);
+            }
 
             return new NpcItem(
                 npcInstance,

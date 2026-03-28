@@ -70,6 +70,27 @@ namespace HaCreator.MapSimulator.Combat
                 case 145:
                     definition = new MobSkillStatusDefinition(skillId, MobSkillOperation.ApplyStatus, MobStatusEffect.Reflect, MobSkillStatusTargetMode.Self);
                     return true;
+                case 150:
+                    definition = new MobSkillStatusDefinition(skillId, MobSkillOperation.ApplyStatus, MobStatusEffect.PowerUp, MobSkillStatusTargetMode.Self);
+                    return true;
+                case 151:
+                    definition = new MobSkillStatusDefinition(skillId, MobSkillOperation.ApplyStatus, MobStatusEffect.PGuardUp, MobSkillStatusTargetMode.Self);
+                    return true;
+                case 152:
+                    definition = new MobSkillStatusDefinition(skillId, MobSkillOperation.ApplyStatus, MobStatusEffect.MagicUp, MobSkillStatusTargetMode.Self);
+                    return true;
+                case 153:
+                    definition = new MobSkillStatusDefinition(skillId, MobSkillOperation.ApplyStatus, MobStatusEffect.MGuardUp, MobSkillStatusTargetMode.Self);
+                    return true;
+                case 154:
+                    definition = new MobSkillStatusDefinition(skillId, MobSkillOperation.ApplyStatus, MobStatusEffect.ACC, MobSkillStatusTargetMode.Self);
+                    return true;
+                case 155:
+                    definition = new MobSkillStatusDefinition(skillId, MobSkillOperation.ApplyStatus, MobStatusEffect.EVA, MobSkillStatusTargetMode.Self);
+                    return true;
+                case 156:
+                    definition = new MobSkillStatusDefinition(skillId, MobSkillOperation.ApplyStatus, MobStatusEffect.Speed, MobSkillStatusTargetMode.Self);
+                    return true;
                 default:
                     definition = default;
                     return false;
@@ -84,6 +105,8 @@ namespace HaCreator.MapSimulator.Combat
                 MobStatusEffect.MagicUp => x,
                 MobStatusEffect.PGuardUp => x,
                 MobStatusEffect.MGuardUp => x,
+                MobStatusEffect.ACC => x,
+                MobStatusEffect.EVA => x,
                 MobStatusEffect.Speed => x,
                 MobStatusEffect.PImmune => x,
                 MobStatusEffect.MImmune => x,

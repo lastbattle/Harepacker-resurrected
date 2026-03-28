@@ -271,7 +271,13 @@ namespace HaCreator.MapSimulator.UI
             GuildBbsSnapshot snapshot = GetSnapshot();
             sprite.DrawString(_font, "Guild BBS", new Vector2(Position.X + 54, Position.Y + 7), Color.White, 0f, Vector2.Zero, 0.52f, SpriteEffects.None, 0f);
             sprite.DrawString(_font, snapshot.GuildName, new Vector2(Position.X + 58, Position.Y + 22), new Color(59, 58, 54), 0f, Vector2.Zero, 0.45f, SpriteEffects.None, 0f);
-            DrawString(sprite, $"{snapshot.GuildRoleLabel}  Cash {snapshot.Permission?.OwnedCashEmoticonCount ?? 0}", Position.X + 58, Position.Y + 34, new Color(92, 95, 102), 0.33f);
+            DrawString(
+                sprite,
+                $"{snapshot.GuildRoleLabel}  Auth {snapshot.Permission?.AuthoritySourceLabel ?? "Guild role"}  Cash {snapshot.Permission?.OwnedCashEmoticonCount ?? 0} ({snapshot.Permission?.CashOwnershipSourceLabel ?? "Inventory"})",
+                Position.X + 58,
+                Position.Y + 34,
+                new Color(92, 95, 102),
+                0.33f);
             DrawGuildMark(sprite, snapshot.GuildName);
             DrawThreadList(sprite, snapshot);
 
@@ -768,7 +774,7 @@ namespace HaCreator.MapSimulator.UI
             string threadAccess = selectedThread == null
                 ? "No thread selected"
                 : $"Edit {(permission.CanEditSelectedThread ? "Y" : "N")}  Delete {(permission.CanDeleteSelectedThread ? "Y" : "N")}  Reply {(permission.CanReply ? "Y" : "N")}";
-            return $"{permission.PermissionLabel} authority  Notice {(permission.CanWriteNotice ? "Y" : "N")}  {threadAccess}";
+            return $"{permission.PermissionLabel} {permission.AuthoritySourceLabel} [{permission.PermissionMaskText}]  Notice {(permission.CanWriteNotice ? "Y" : "N")}  {threadAccess}";
         }
 
         private void UpdateDynamicButtonLayout(GuildBbsSnapshot snapshot)

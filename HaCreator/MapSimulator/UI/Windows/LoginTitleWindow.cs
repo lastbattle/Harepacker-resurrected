@@ -48,6 +48,7 @@ namespace HaCreator.MapSimulator.UI
         private readonly UIObject _loginButton;
         private readonly UIObject _guestLoginButton;
         private readonly UIObject _newButton;
+        private readonly UIObject _homePageButton;
         private readonly UIObject _quitButton;
         private readonly UIObject _saveIdButton;
         private readonly UIObject _idLostButton;
@@ -82,6 +83,7 @@ namespace HaCreator.MapSimulator.UI
             UIObject loginButton,
             UIObject guestLoginButton,
             UIObject newButton,
+            UIObject homePageButton,
             UIObject quitButton,
             UIObject saveIdButton,
             UIObject idLostButton,
@@ -101,6 +103,7 @@ namespace HaCreator.MapSimulator.UI
             _loginButton = loginButton;
             _guestLoginButton = guestLoginButton;
             _newButton = newButton;
+            _homePageButton = homePageButton;
             _quitButton = quitButton;
             _saveIdButton = saveIdButton;
             _idLostButton = idLostButton;
@@ -130,6 +133,12 @@ namespace HaCreator.MapSimulator.UI
                 AddButton(_quitButton);
             }
 
+            if (_homePageButton != null)
+            {
+                _homePageButton.ButtonClickReleased += _ => HomePageRequested?.Invoke();
+                AddButton(_homePageButton);
+            }
+
             if (_saveIdButton != null)
             {
                 _saveIdButton.ButtonClickReleased += _ => ToggleRememberId();
@@ -156,6 +165,7 @@ namespace HaCreator.MapSimulator.UI
         public event Action<LoginTitleSubmission> SubmitRequested;
         public event Action GuestLoginRequested;
         public event Action NewAccountRequested;
+        public event Action HomePageRequested;
         public event Action QuitRequested;
         public event Action RecoverIdRequested;
         public event Action RecoverPasswordRequested;
@@ -352,6 +362,7 @@ namespace HaCreator.MapSimulator.UI
             DrawButtonLabel(sprite, _loginButton, "Login");
             DrawButtonLabel(sprite, _guestLoginButton, "Guest");
             DrawButtonLabel(sprite, _newButton, "New");
+            DrawButtonLabel(sprite, _homePageButton, "Home");
             DrawButtonLabel(sprite, _quitButton, "Quit");
             DrawButtonLabel(sprite, _idLostButton, "Find ID");
             DrawButtonLabel(sprite, _passwordLostButton, "Find PW");

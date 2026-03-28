@@ -1,4 +1,4 @@
-﻿using HaSharedLibrary.Render.DX;
+using HaSharedLibrary.Render.DX;
 using MapleLib.Helpers;
 using MapleLib.WzLib;
 using MapleLib.WzLib.WzProperties;
@@ -157,10 +157,11 @@ namespace HaCreator.MapSimulator.Effects
 
             if (_dojo.IsActive)
             {
-                _dojo.Configure(
-                    board?.MapInfo,
-                    board?.BoardItems?.Portals?.Any(portal => string.Equals(portal?.script, "dojang_next", StringComparison.OrdinalIgnoreCase)) == true);
-            }
+                _dojo.Configure(
+                    board?.MapInfo,
+                    board?.BoardItems?.Portals,
+                    board?.BoardItems?.Portals?.Any(portal => string.Equals(portal?.script, "dojang_next", StringComparison.OrdinalIgnoreCase)) == true);
+            }
         }
 
         private static bool IsWitchtowerMap(int mapId, FieldType? fieldType)

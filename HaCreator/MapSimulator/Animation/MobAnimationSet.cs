@@ -38,6 +38,9 @@ namespace HaCreator.MapSimulator.Animation
             public int AttackType { get; set; } = -1;
             public bool HasRangeBounds { get; set; }
             public Rectangle RangeBounds { get; set; }
+            public bool HasRangeOrigin { get; set; }
+            public Point RangeOrigin { get; set; }
+            public int RangeRadius { get; set; }
             public int EffectAfter { get; set; }
             public int AttackAfter { get; set; }
             public int AreaCount { get; set; }

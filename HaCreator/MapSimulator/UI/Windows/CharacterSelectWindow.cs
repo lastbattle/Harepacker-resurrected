@@ -12,16 +12,26 @@ namespace HaCreator.MapSimulator.UI
 {
     public sealed class CharacterSelectWindow : UIWindowBase
     {
-        private static readonly Point DefaultStatusPosition = new(18, 286);
-        private static readonly Point DefaultSlotSummaryPosition = new(18, 268);
         private static readonly Point ClientStatusScrollPosition = new(201, 112);
         private static readonly Point ClientStatusSparkleAnchor = new(285, -26);
         private static readonly Point ClientStatusBeamAnchor = new(274, -18);
         private static readonly Point ClientStatusAccentPosition = new(281, 128);
         private static readonly Point ClientEnterFocusAnchor = new(148, 246);
+        private static readonly Point ClientEventBannerTopLeft = new(66, 8);
+        private static readonly Point BalloonDefaultAnchor = new(309, 94);
+        private const int EntriesPerPage = 3;
+        private const int OwnerWidth = 618;
+        private const int CardWidth = 183;
+        private const int CardStartX = 18;
+        private const int CardGap = 14;
+        private const int BalloonWidth = 220;
+        private const int BalloonHeight = 40;
+        private const int BalloonTextInsetX = 10;
+        private const int BalloonTextInsetY = 15;
         private const int StatusTextWrapWidth = 170;
-        private const float SlotSummaryScale = 0.47f;
         private const float StatusTextScale = 0.50f;
+        private const string DefaultInstructionMessage = "Double-click to enter.";
+        private const string DefaultStatusMessage = "Select a character.";
 
         private readonly UIObject _enterButton;
         private readonly UIObject _newButton;
@@ -31,12 +41,15 @@ namespace HaCreator.MapSimulator.UI
         private readonly IReadOnlyList<AnimationFrame> _statusBeamFrames;
         private readonly IReadOnlyList<AnimationFrame> _statusAccentFrames;
         private readonly IReadOnlyList<AnimationFrame> _enterFocusFrames;
+        private readonly BalloonStyle _instructionBalloonStyle;
+        private readonly OwnerCanvasFrame _eventBanner;
 
         private SpriteFont _font;
         private string _statusMessage = "Select a character.";
-        private string _slotSummary = string.Empty;
         private bool _canEnter;
         private int _showTick = -1;
+        private int _selectedIndex = -1;
+        private int _pageIndex;
 
         public CharacterSelectWindow(
             IDXObject frame,
@@ -47,7 +60,9 @@ namespace HaCreator.MapSimulator.UI
             IReadOnlyList<AnimationFrame> statusSparkleFrames,
             IReadOnlyList<AnimationFrame> statusBeamFrames,
             IReadOnlyList<AnimationFrame> statusAccentFrames,
-            IReadOnlyList<AnimationFrame> enterFocusFrames)
+            IReadOnlyList<AnimationFrame> enterFocusFrames,
+            BalloonStyle instructionBalloonStyle,
+            OwnerCanvasFrame eventBanner)
             : base(frame)
         {
             _enterButton = enterButton;
@@ -58,6 +73,8 @@ namespace HaCreator.MapSimulator.UI
             _statusBeamFrames = statusBeamFrames ?? Array.Empty<AnimationFrame>();
             _statusAccentFrames = statusAccentFrames ?? Array.Empty<AnimationFrame>();
             _enterFocusFrames = enterFocusFrames ?? Array.Empty<AnimationFrame>();
+            _instructionBalloonStyle = instructionBalloonStyle;
+            _eventBanner = eventBanner;
 
             if (_enterButton != null)
             {
@@ -119,10 +136,9 @@ namespace HaCreator.MapSimulator.UI
             bool canDelete)
         {
             _statusMessage = statusMessage ?? string.Empty;
-            int occupiedCount = entries?.Count ?? 0;
-            string buySummary = buyCharacterCount > 0 ? $" +{buyCharacterCount} buy" : string.Empty;
-            _slotSummary = $"Slots {occupiedCount}/{Math.Max(occupiedCount, slotCount)}{buySummary}  Page {Math.Max(1, pageIndex + 1)}/{Math.Max(1, pageCount)}";
             _canEnter = canEnter;
+            _selectedIndex = selectedIndex;
+            _pageIndex = Math.Max(0, pageIndex);
             _enterButton?.SetEnabled(canEnter);
             _deleteButton?.SetEnabled(canDelete);
         }
@@ -145,6 +161,8 @@ namespace HaCreator.MapSimulator.UI
             }
 
             DrawClientShell(sprite, TickCount);
+            DrawEventBanner(sprite);
+            DrawInstructionBalloon(sprite);
             DrawStatusText(sprite);
         }
 
@@ -168,24 +186,136 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
-            bool hasClientStatusShell = _statusScrollFrames.Count > 0;
-            Point slotPosition = hasClientStatusShell
-                ? new Point(Position.X + ClientStatusScrollPosition.X + 26, Position.Y + ClientStatusScrollPosition.Y + 58)
-                : new Point(Position.X + DefaultSlotSummaryPosition.X, Position.Y + DefaultSlotSummaryPosition.Y);
-            Point statusPosition = hasClientStatusShell
-                ? new Point(Position.X + ClientStatusScrollPosition.X + 21, Position.Y + ClientStatusScrollPosition.Y + 79)
-                : new Point(Position.X + DefaultStatusPosition.X, Position.Y + DefaultStatusPosition.Y);
-
-            if (!string.IsNullOrWhiteSpace(_slotSummary))
+            if (ShouldDrawStatusScrollText())
             {
-                DrawShadowedText(sprite, _slotSummary, slotPosition.ToVector2(), new Color(138, 100, 70), SlotSummaryScale);
-            }
-
-            if (!string.IsNullOrWhiteSpace(_statusMessage))
-            {
+                Point statusPosition = new(Position.X + ClientStatusScrollPosition.X + 21, Position.Y + ClientStatusScrollPosition.Y + 79);
                 string wrappedMessage = WrapText(_statusMessage, StatusTextWrapWidth, StatusTextScale, 2);
                 DrawShadowedText(sprite, wrappedMessage, statusPosition.ToVector2(), new Color(92, 63, 44), StatusTextScale);
             }
+        }
+
+        private void DrawEventBanner(SpriteBatch sprite)
+        {
+            if (_eventBanner.Texture == null)
+            {
+                return;
+            }
+
+            sprite.Draw(
+                _eventBanner.Texture,
+                new Vector2(
+                    Position.X + ClientEventBannerTopLeft.X - _eventBanner.Origin.X,
+                    Position.Y + ClientEventBannerTopLeft.Y - _eventBanner.Origin.Y),
+                Color.White);
+        }
+
+        private void DrawInstructionBalloon(SpriteBatch sprite)
+        {
+            if (_font == null || !_instructionBalloonStyle.IsReady)
+            {
+                return;
+            }
+
+            string balloonMessage = ResolveBalloonMessage();
+            if (string.IsNullOrWhiteSpace(balloonMessage))
+            {
+                return;
+            }
+
+            Rectangle bodyBounds = ResolveBalloonBounds();
+            DrawBalloonNineSlice(sprite, bodyBounds);
+
+            if (_instructionBalloonStyle.SelectionArrow != null)
+            {
+                float arrowX = ResolveBalloonAnchorX() - (_instructionBalloonStyle.SelectionArrow.Width / 2f);
+                float arrowY = bodyBounds.Bottom - 1f;
+                sprite.Draw(_instructionBalloonStyle.SelectionArrow, new Vector2(arrowX, arrowY), Color.White);
+            }
+
+            string wrappedMessage = WrapText(balloonMessage, BalloonWidth - 20, StatusTextScale, 2);
+            float textY = bodyBounds.Y + (wrappedMessage.Contains(Environment.NewLine, StringComparison.Ordinal) ? 9f : BalloonTextInsetY);
+            sprite.DrawString(
+                _font,
+                wrappedMessage,
+                new Vector2(bodyBounds.X + BalloonTextInsetX, textY),
+                _instructionBalloonStyle.TextColor,
+                0f,
+                Vector2.Zero,
+                StatusTextScale,
+                SpriteEffects.None,
+                0f);
+        }
+
+        private void DrawBalloonNineSlice(SpriteBatch sprite, Rectangle bodyBounds)
+        {
+            Texture2D center = _instructionBalloonStyle.Center;
+            Texture2D north = _instructionBalloonStyle.North;
+            Texture2D south = _instructionBalloonStyle.South;
+            Texture2D west = _instructionBalloonStyle.West;
+            Texture2D east = _instructionBalloonStyle.East;
+            Texture2D northWest = _instructionBalloonStyle.NorthWest;
+            Texture2D northEast = _instructionBalloonStyle.NorthEast;
+            Texture2D southWest = _instructionBalloonStyle.SouthWest;
+            Texture2D southEast = _instructionBalloonStyle.SouthEast;
+
+            int leftWidth = northWest.Width;
+            int rightWidth = northEast.Width;
+            int topHeight = northWest.Height;
+            int bottomHeight = southWest.Height;
+            int innerWidth = Math.Max(0, bodyBounds.Width - leftWidth - rightWidth);
+            int innerHeight = Math.Max(0, bodyBounds.Height - topHeight - bottomHeight);
+
+            sprite.Draw(center, new Rectangle(bodyBounds.X + leftWidth, bodyBounds.Y + topHeight, innerWidth, innerHeight), Color.White);
+            sprite.Draw(north, new Rectangle(bodyBounds.X + leftWidth, bodyBounds.Y, innerWidth, topHeight), Color.White);
+            sprite.Draw(south, new Rectangle(bodyBounds.X + leftWidth, bodyBounds.Bottom - bottomHeight, innerWidth, bottomHeight), Color.White);
+            sprite.Draw(west, new Rectangle(bodyBounds.X, bodyBounds.Y + topHeight, leftWidth, innerHeight), Color.White);
+            sprite.Draw(east, new Rectangle(bodyBounds.Right - rightWidth, bodyBounds.Y + topHeight, rightWidth, innerHeight), Color.White);
+            sprite.Draw(northWest, new Vector2(bodyBounds.X, bodyBounds.Y), Color.White);
+            sprite.Draw(northEast, new Vector2(bodyBounds.Right - rightWidth, bodyBounds.Y), Color.White);
+            sprite.Draw(southWest, new Vector2(bodyBounds.X, bodyBounds.Bottom - bottomHeight), Color.White);
+            sprite.Draw(southEast, new Vector2(bodyBounds.Right - rightWidth, bodyBounds.Bottom - bottomHeight), Color.White);
+        }
+
+        private Rectangle ResolveBalloonBounds()
+        {
+            int anchorX = ResolveBalloonAnchorX();
+            int x = anchorX - (BalloonWidth / 2);
+            int minX = Position.X + 4;
+            int maxX = Position.X + OwnerWidth - BalloonWidth - 4;
+            x = Math.Clamp(x, minX, Math.Max(minX, maxX));
+            return new Rectangle(x, Position.Y + 4, BalloonWidth, BalloonHeight);
+        }
+
+        private int ResolveBalloonAnchorX()
+        {
+            int visibleSlotIndex = _selectedIndex >= 0
+                ? _selectedIndex - (_pageIndex * EntriesPerPage)
+                : -1;
+            if (visibleSlotIndex < 0 || visibleSlotIndex >= EntriesPerPage)
+            {
+                return Position.X + BalloonDefaultAnchor.X;
+            }
+
+            return Position.X + CardStartX + (visibleSlotIndex * (CardWidth + CardGap)) + (CardWidth / 2);
+        }
+
+        private string ResolveBalloonMessage()
+        {
+            if (_canEnter)
+            {
+                return DefaultInstructionMessage;
+            }
+
+            return string.IsNullOrWhiteSpace(_statusMessage)
+                ? DefaultStatusMessage
+                : _statusMessage;
+        }
+
+        private bool ShouldDrawStatusScrollText()
+        {
+            return !string.IsNullOrWhiteSpace(_statusMessage) &&
+                   !_canEnter &&
+                   !string.Equals(_statusMessage, DefaultStatusMessage, StringComparison.Ordinal);
         }
 
         private void DrawAnimation(
@@ -322,6 +452,70 @@ namespace HaCreator.MapSimulator.UI
             public Texture2D Texture { get; }
             public Point Offset { get; }
             public int Delay { get; }
+        }
+
+        public readonly struct BalloonStyle
+        {
+            public BalloonStyle(
+                Texture2D northWest,
+                Texture2D north,
+                Texture2D northEast,
+                Texture2D west,
+                Texture2D center,
+                Texture2D east,
+                Texture2D southWest,
+                Texture2D south,
+                Texture2D southEast,
+                Texture2D selectionArrow,
+                Color textColor)
+            {
+                NorthWest = northWest;
+                North = north;
+                NorthEast = northEast;
+                West = west;
+                Center = center;
+                East = east;
+                SouthWest = southWest;
+                South = south;
+                SouthEast = southEast;
+                SelectionArrow = selectionArrow;
+                TextColor = textColor;
+            }
+
+            public Texture2D NorthWest { get; }
+            public Texture2D North { get; }
+            public Texture2D NorthEast { get; }
+            public Texture2D West { get; }
+            public Texture2D Center { get; }
+            public Texture2D East { get; }
+            public Texture2D SouthWest { get; }
+            public Texture2D South { get; }
+            public Texture2D SouthEast { get; }
+            public Texture2D SelectionArrow { get; }
+            public Color TextColor { get; }
+
+            public bool IsReady =>
+                NorthWest != null &&
+                North != null &&
+                NorthEast != null &&
+                West != null &&
+                Center != null &&
+                East != null &&
+                SouthWest != null &&
+                South != null &&
+                SouthEast != null;
+        }
+
+        public readonly struct OwnerCanvasFrame
+        {
+            public OwnerCanvasFrame(Texture2D texture, Point origin)
+            {
+                Texture = texture;
+                Origin = origin;
+            }
+
+            public Texture2D Texture { get; }
+            public Point Origin { get; }
         }
     }
 }

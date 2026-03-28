@@ -70,6 +70,11 @@ namespace HaCreator.MapSimulator.Managers
     public sealed class AriantArenaPacketInboxManager : IDisposable
     {
         public const int DefaultPort = 18485;
+        private const int PacketTypeUserEnterField = 179;
+        private const int PacketTypeUserLeaveField = 180;
+        private const int PacketTypeUserMove = 210;
+        private const int PacketTypeSetActivePortableChair = 222;
+        private const int PacketTypeAvatarModified = 223;
         private const int PacketTypeShowResult = 171;
         private const int PacketTypeUserScore = 354;
 
@@ -338,6 +343,11 @@ namespace HaCreator.MapSimulator.Managers
             return normalized switch
             {
                 "171" or "showresult" or "result" => AssignPacketType(PacketTypeShowResult, out packetType),
+                "179" or "userenter" or "spawn" => AssignPacketType(PacketTypeUserEnterField, out packetType),
+                "180" or "userleave" or "despawn" => AssignPacketType(PacketTypeUserLeaveField, out packetType),
+                "210" or "usermove" or "move" => AssignPacketType(PacketTypeUserMove, out packetType),
+                "222" or "chair" or "setchair" => AssignPacketType(PacketTypeSetActivePortableChair, out packetType),
+                "223" or "avatarmod" or "avatarmodified" or "look" => AssignPacketType(PacketTypeAvatarModified, out packetType),
                 "354" or "userscore" or "score" => AssignPacketType(PacketTypeUserScore, out packetType),
                 _ => int.TryParse(normalized, out packetType)
             };
@@ -354,6 +364,11 @@ namespace HaCreator.MapSimulator.Managers
             return packetType switch
             {
                 PacketTypeShowResult => "showresult (171)",
+                PacketTypeUserEnterField => "userenter (179)",
+                PacketTypeUserLeaveField => "userleave (180)",
+                PacketTypeUserMove => "usermove (210)",
+                PacketTypeSetActivePortableChair => "chair (222)",
+                PacketTypeAvatarModified => "avatarmodified (223)",
                 PacketTypeUserScore => "userscore (354)",
                 _ => packetType.ToString()
             };

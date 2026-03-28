@@ -1,4 +1,4 @@
-using HaCreator.MapSimulator.Animation;
+﻿using HaCreator.MapSimulator.Animation;
 using HaCreator.MapSimulator.Character;
 using HaCreator.MapSimulator.Pools;
 using HaSharedLibrary.Render.DX;
@@ -30,6 +30,9 @@ namespace HaCreator.MapSimulator.Companions
 
     public sealed class PetRuntime
     {
+        private const int MinFullness = 0;
+        private const int MaxFullness = 100;
+        private const int DefaultFullness = 60;
         private const float FollowSpeed = 220f;
         private const float FollowSpacing = 28f;
         private const float MultiPetSpacing = 18f;
@@ -67,13 +70,14 @@ namespace HaCreator.MapSimulator.Companions
         private bool _hangOnBack;
         private bool _useClientMultiPetHangAction;
 
-        internal PetRuntime(int runtimeId, int slotIndex, PetDefinition definition)
+        internal PetRuntime(int runtimeId, int slotIndex, PetDefinition definition, int initialFullness = DefaultFullness)
         {
             RuntimeId = runtimeId;
             SlotIndex = slotIndex;
             Definition = definition ?? throw new ArgumentNullException(nameof(definition));
             _animation = new AnimationController(definition.Animations, "stand1");
             _eventSpeechLines = definition.EventSpeechLines ?? new Dictionary<PetAutoSpeechEvent, string[]>();
+            Fullness = Math.Clamp(initialFullness, MinFullness, MaxFullness);
         }
 
         public int RuntimeId { get; }
@@ -88,6 +92,8 @@ namespace HaCreator.MapSimulator.Companions
         public string Name => Definition.Name;
         public int ChatBalloonStyle => Definition.ChatBalloonStyle;
         public int CommandLevel => _commandLevel;
+        public int Fullness { get; private set; }
+        public bool IsFull => Fullness >= MaxFullness;
         public bool HasIdleAutoSpeech => HasAutoSpeechEvent(PetAutoSpeechEvent.Rest);
         public bool HasActiveSpeech => !string.IsNullOrWhiteSpace(_activeSpeechText);
         public string ActiveSpeechText => _activeSpeechText;
@@ -255,6 +261,22 @@ namespace HaCreator.MapSimulator.Companions
             }
 
             return TryApplyDialogFeedback(feedback, success, currentTime);
+        }
+
+        internal bool CanConsumeFood(int fullnessIncrease)
+        {
+            return fullnessIncrease > 0 && !IsFull;
+        }
+
+        internal bool TryFeed(int fullnessIncrease)
+        {
+            if (!CanConsumeFood(fullnessIncrease))
+            {
+                return false;
+            }
+
+            Fullness = Math.Clamp(Fullness + fullnessIncrease, MinFullness, MaxFullness);
+            return true;
         }
 
         public void Draw(SpriteBatch spriteBatch, SkeletonMeshRenderer skeletonRenderer,
@@ -587,6 +609,13 @@ namespace HaCreator.MapSimulator.Companions
 
     public sealed class PetController
     {
+        internal readonly struct PetFoodItemUsePlan
+        {
+            public int SlotIndex { get; init; }
+            public int FullnessIncrease { get; init; }
+            public bool ConsumeItem { get; init; }
+        }
+
         private const int MaxPets = 3;
         private const int DefaultPetItemId = 5000000;
         private const int PickupForbiddenMapId = 209080000;
@@ -731,9 +760,117 @@ namespace HaCreator.MapSimulator.Companions
             return pet != null && pet.TryTriggerFoodFeedback(variant, success, currentTime);
         }
 
+        internal bool TryPlanFoodItemUse(
+            IReadOnlyCollection<int> supportedPetItemIds,
+            int fullnessIncrease,
+            out PetFoodItemUsePlan plan)
+        {
+            return TryPlanFoodItemUse(_activePets, supportedPetItemIds, fullnessIncrease, out plan);
+        }
+
+        internal bool TryExecuteFoodItemUse(PetFoodItemUsePlan plan, int currentTime, out int fedSlotIndex)
+        {
+            return TryExecuteFoodItemUse(_activePets, plan, currentTime, out fedSlotIndex);
+        }
+
         public IEnumerable<PetRuntime> GetSpeakingPets(int currentTime)
         {
             return _activePets.Where(pet => pet.HasActiveSpeech && pet.ActiveSpeechExpiresAt > currentTime);
+        }
+
+        private PetRuntime SelectPetForFoodItem(IReadOnlyCollection<int> supportedPetItemIds, int fullnessIncrease)
+        {
+            return SelectPetForFoodItem(_activePets, supportedPetItemIds, fullnessIncrease);
+        }
+
+        internal static bool TryPlanFoodItemUse(
+            IReadOnlyList<PetRuntime> activePets,
+            IReadOnlyCollection<int> supportedPetItemIds,
+            int fullnessIncrease,
+            out PetFoodItemUsePlan plan)
+        {
+            plan = default;
+
+            PetRuntime pet = SelectPetForFoodItem(activePets, supportedPetItemIds, fullnessIncrease);
+            if (pet == null)
+            {
+                return false;
+            }
+
+            plan = new PetFoodItemUsePlan
+            {
+                SlotIndex = pet.SlotIndex,
+                FullnessIncrease = Math.Max(0, fullnessIncrease),
+                ConsumeItem = pet.CanConsumeFood(fullnessIncrease)
+            };
+            return true;
+        }
+
+        internal static bool TryExecuteFoodItemUse(
+            IReadOnlyList<PetRuntime> activePets,
+            PetFoodItemUsePlan plan,
+            int currentTime,
+            out int fedSlotIndex)
+        {
+            fedSlotIndex = -1;
+
+            PetRuntime pet = activePets?.FirstOrDefault(candidate => candidate != null && candidate.SlotIndex == plan.SlotIndex);
+            if (pet == null)
+            {
+                return false;
+            }
+
+            bool success = plan.ConsumeItem && pet.TryFeed(plan.FullnessIncrease);
+            int variant = ResolveFoodFeedbackVariant(pet);
+            bool handled = pet.TryTriggerFoodFeedback(variant, success, currentTime);
+            fedSlotIndex = pet.SlotIndex;
+            return handled || success || !plan.ConsumeItem;
+        }
+
+        private static PetRuntime SelectPetForFoodItem(
+            IReadOnlyList<PetRuntime> activePets,
+            IReadOnlyCollection<int> supportedPetItemIds,
+            int fullnessIncrease)
+        {
+            if (activePets == null || activePets.Count == 0)
+            {
+                return null;
+            }
+
+            IEnumerable<PetRuntime> compatiblePets = supportedPetItemIds == null || supportedPetItemIds.Count == 0
+                ? activePets.Where(pet => pet != null)
+                : activePets.Where(pet => pet != null && supportedPetItemIds.Contains(pet.ItemId));
+
+            PetRuntime hungryPet = compatiblePets.FirstOrDefault(pet => pet.CanConsumeFood(fullnessIncrease));
+            if (hungryPet != null)
+            {
+                return hungryPet;
+            }
+
+            return compatiblePets.FirstOrDefault();
+        }
+
+        private static int ResolveFoodFeedbackVariant(PetRuntime pet)
+        {
+            IReadOnlyDictionary<int, (int MinLevel, int MaxLevel)> ranges = pet?.Definition?.FoodFeedbackLevelRanges;
+            if (ranges != null)
+            {
+                foreach (KeyValuePair<int, (int MinLevel, int MaxLevel)> entry in ranges.OrderBy(pair => pair.Key))
+                {
+                    if (pet.CommandLevel >= entry.Value.MinLevel && pet.CommandLevel <= entry.Value.MaxLevel)
+                    {
+                        return entry.Key;
+                    }
+                }
+            }
+
+            return pet?.CommandLevel switch
+            {
+                <= 9 => 1,
+                <= 19 => 2,
+                <= 29 => 3,
+                _ => 4
+            };
         }
 
         public void Update(PlayerCharacter owner, DropPool dropPool, int currentTime, float deltaTime)

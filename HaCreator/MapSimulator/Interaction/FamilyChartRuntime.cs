@@ -8,16 +8,18 @@ namespace HaCreator.MapSimulator.Interaction
 {
     internal sealed class FamilyChartRuntime
     {
+        private const int FamilyEntitlementCount = 5;
         private const int LocalPlayerId = 120;
         private const int DefaultFamilyHeadId = 100;
         private const int DirectJuniorSlotLeft = 5;
         private const int DirectJuniorSlotRight = 6;
         private const int GrandchildSlotStart = 7;
         private const int EntitlementDurationMs = 15 * 60 * 1000;
-        private const int ClientFamilyTreeTitleStringId = 4610;
-        private const int ClientFamilyTreeNoSelectionStringId = 4608;
-        private const int ClientFamilyTreeJuniorCountStringId = 4611;
-        private const int ClientFamilyTreeGrandchildCountStringId = 4612;
+        // CUIFamilyChart::Draw / _DrawChartItem.
+        private const int ClientFamilyTreeNoSelectionStringId = 0x1200;
+        private const int ClientFamilyTreeTitleStringId = 0x1202;
+        private const int ClientFamilyTreeJuniorCountStringId = 0x1203;
+        private const int ClientFamilyTreeGrandchildCountStringId = 0x1204;
         private const int ClientFamilyTreeEmptyBranchStringId = 0x11FD;
         private const int ClientFamilyTreeJuniorEntryStringId = 0x1201;
 
@@ -73,9 +75,8 @@ namespace HaCreator.MapSimulator.Interaction
         internal FamilyChartSnapshot BuildChartSnapshot()
         {
             FamilyMemberState selectedMember = GetSelectedMember();
-            IReadOnlyList<int> focusOrder = BuildFocusOrder();
-            int focusIndex = GetFocusIndex(focusOrder, selectedMember?.Id ?? LocalPlayerId);
             FamilyPrivilegeState activePrivilege = GetActivePrivilege(Environment.TickCount);
+            int entitlementPage = Math.Clamp((int)_entitlementType, 0, FamilyEntitlementCount - 1) + 1;
 
             return new FamilyChartSnapshot
             {
@@ -93,12 +94,12 @@ namespace HaCreator.MapSimulator.Interaction
                 EntitlementLabel = GetEntitlementLabel(_entitlementType),
                 EntitlementIndex = (int)_entitlementType,
                 DetailLines = BuildDetailLines(selectedMember, activePrivilege),
-                CanPageBackward = focusIndex > 0,
-                CanPageForward = focusIndex < focusOrder.Count - 1,
+                CanPageBackward = FamilyEntitlementCount > 1,
+                CanPageForward = FamilyEntitlementCount > 1,
                 CanAddJunior = CanAddJunior(selectedMember),
                 CanUseSpecial = CanExecuteEntitlement(selectedMember),
-                Page = focusIndex + 1,
-                TotalPages = Math.Max(1, focusOrder.Count)
+                Page = entitlementPage,
+                TotalPages = FamilyEntitlementCount
             };
         }
 
@@ -259,7 +260,13 @@ namespace HaCreator.MapSimulator.Interaction
 
         internal string CycleEntitlement()
         {
-            _entitlementType = (FamilyEntitlementType)(((int)_entitlementType + 1) % 5);
+            _entitlementType = GetWrappedEntitlement(1);
+            return $"Family entitlement switched to {GetEntitlementLabel(_entitlementType)}.";
+        }
+
+        internal string MoveEntitlementSelection(int delta)
+        {
+            _entitlementType = GetWrappedEntitlement(delta);
             return $"Family entitlement switched to {GetEntitlementLabel(_entitlementType)}.";
         }
 
@@ -928,6 +935,17 @@ namespace HaCreator.MapSimulator.Interaction
                 FamilyEntitlementType.ExpBuff => "EXP Buff",
                 _ => "Drop Rate, EXP Buff"
             };
+        }
+
+        private FamilyEntitlementType GetWrappedEntitlement(int delta)
+        {
+            int nextIndex = ((int)_entitlementType + delta) % FamilyEntitlementCount;
+            if (nextIndex < 0)
+            {
+                nextIndex += FamilyEntitlementCount;
+            }
+
+            return (FamilyEntitlementType)nextIndex;
         }
 
         private sealed class FamilyMemberState

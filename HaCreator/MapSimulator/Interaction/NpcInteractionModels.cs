@@ -38,6 +38,7 @@ namespace HaCreator.MapSimulator.Interaction
 
     internal sealed class NpcInteractionPage
     {
+        public string RawText { get; init; } = string.Empty;
         public string Text { get; init; } = string.Empty;
         public IReadOnlyList<NpcInteractionChoice> Choices { get; init; } = Array.Empty<NpcInteractionChoice>();
     }
@@ -84,5 +85,6 @@ namespace HaCreator.MapSimulator.Interaction
         public bool StateChanged { get; init; }
         public int? PreferredQuestId { get; init; }
         public IReadOnlyList<string> Messages { get; init; } = Array.Empty<string>();
+        public IReadOnlyList<string> PublishedScriptNames { get; init; } = Array.Empty<string>();
     }
 }

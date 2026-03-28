@@ -139,17 +139,21 @@ namespace HaCreator.MapSimulator
                 _playerManager?.Player?.MaxHP,
                 _framePrimaryBossMob?.AI?.HpPercent);
             _specialFieldRuntime.SetGuildBossPlayerState(_playerManager?.GetPlayerHitbox());
-            _specialFieldRuntime.SetAriantArenaPlayerState(
-                _playerManager?.Player?.Build?.Name,
-                _playerManager?.Player?.Build?.Job);
-            DrainCoconutPacketInbox(currTickCount);
-            DrainAriantArenaPacketInbox(currTickCount);
+            _specialFieldRuntime.SetAriantArenaPlayerState(
+                _playerManager?.Player?.Build?.Name,
+                _playerManager?.Player?.Build?.Job);
+            DrainWeddingPacketInbox(currTickCount);
+            DrainCoconutPacketInbox(currTickCount);
+            FlushPendingCoconutAttackRequests();
+            DrainAriantArenaPacketInbox(currTickCount);
             DrainMonsterCarnivalPacketInbox(currTickCount);
             DrainDojoPacketInbox(currTickCount);
             DrainGuildBossTransport(currTickCount);
             DrainPartyRaidPacketInbox(currTickCount);
             DrainCookieHousePointInbox();
-            _specialFieldRuntime.Update(gameTime, currTickCount);
+            _specialFieldRuntime.Update(gameTime, currTickCount);
+            _remoteUserPool.Update(currTickCount);
+            _summonedPool.Update(currTickCount);
             while (_specialFieldRuntime.Minigames.SnowBall.TryConsumeChatMessage(out string snowBallChatMessage))
             {
                 _chat?.AddMessage(snowBallChatMessage, new Color(255, 228, 151), currTickCount);
@@ -209,7 +213,15 @@ namespace HaCreator.MapSimulator
             UpdateNpcIdleSpeechState(currTickCount);
             UpdatePetEventSpeechState(currTickCount);
             UpdatePetIdleSpeechState(currTickCount);
-            _mapleTvRuntime.UpdateLocalContext(_playerManager?.Player?.Build);
+            _fieldMessageBoxRuntime.Initialize(GraphicsDevice);
+
+            _fieldMessageBoxRuntime.Update(currTickCount);
+            _packetFieldStateRuntime.Initialize(GraphicsDevice, _mapBoard?.MapInfo);
+            _packetFieldStateRuntime.Update(currTickCount);
+            UpdatePacketOwnedLocalOverlayState(currTickCount);
+            _localOverlayRuntime.Update(currTickCount);
+
+            _mapleTvRuntime.UpdateLocalContext(_playerManager?.Player?.Build);
             _mapleTvRuntime.Update(currTickCount);
 
             // Handle portal UP key interaction (player presses UP near portal)
@@ -741,7 +753,8 @@ namespace HaCreator.MapSimulator
             UpdateMobMovement(gameTime);
 
             // Update NPC movement and action cycling
-            UpdateNpcActions(gameTime);
+            UpdateNpcActions(gameTime);
+            UpdateSocialRoomEmployeeActor(gameTime);
 
             // Pre-calculate visibility for all objects (culling optimization)
             _frameNumber++;

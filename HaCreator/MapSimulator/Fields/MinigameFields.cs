@@ -48,11 +48,14 @@ namespace HaCreator.MapSimulator.Fields
             _snowBall.SetLocalPlayerPosition(localWorldPosition);
         }
 
-        public void Initialize(GraphicsDevice graphicsDevice, SoundManager soundManager = null)
+        public void Initialize(
+            GraphicsDevice graphicsDevice,
+            SoundManager soundManager = null,
+            Func<LoginAvatarLook, string, CharacterBuild> ariantArenaRemoteBuildFactory = null)
         {
             _coconut.Initialize(graphicsDevice);
             _memoryGame.Initialize(graphicsDevice);
-            _ariantArena.Initialize(graphicsDevice, soundManager);
+            _ariantArena.Initialize(graphicsDevice, soundManager, ariantArenaRemoteBuildFactory);
         }
 
         public void BindMap(Board board)

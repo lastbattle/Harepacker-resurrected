@@ -1,9 +1,10 @@
-﻿using HaCreator.MapSimulator.Interaction;
+using HaCreator.MapSimulator.Interaction;
 using HaCreator.MapSimulator.Managers;
 using HaCreator.MapSimulator.UI;
 using HaCreator.MapSimulator.UI.Controls;
-using HaSharedLibrary.Render.DX;
-using HaSharedLibrary.Util;
+using HaSharedLibrary.Render.DX;
+using HaSharedLibrary.Util;
+using HaSharedLibrary.Wz;
 using MapleLib.WzLib;
 using MapleLib.WzLib.WzProperties;
 using MapleLib.WzLib.WzStructure;
@@ -207,13 +208,20 @@ namespace HaCreator.MapSimulator.Loaders
                 skill.SetSpUpTextures(spUpNormal, spUpPressed, spUpDisabled, spUpMouseOver);
             }
 
-            Texture2D[] tooltipFrames =
-            {
-                LoadCanvasTexture(mainProperty, "tip0", device),
-                LoadCanvasTexture(mainProperty, "tip1", device),
-                LoadCanvasTexture(mainProperty, "tip2", device)
-            };
-            skill.SetTooltipTextures(tooltipFrames);
+            Texture2D[] tooltipFrames =
+            {
+                LoadCanvasTexture(mainProperty, "tip0", device),
+                LoadCanvasTexture(mainProperty, "tip1", device),
+                LoadCanvasTexture(mainProperty, "tip2", device)
+            };
+            skill.SetTooltipTextures(tooltipFrames);
+            Point[] tooltipOrigins =
+            {
+                ResolveTooltipOrigin(mainProperty["tip0"] as WzCanvasProperty),
+                ResolveTooltipOrigin(mainProperty["tip1"] as WzCanvasProperty),
+                ResolveTooltipOrigin(mainProperty["tip2"] as WzCanvasProperty)
+            };
+            skill.SetTooltipOrigins(tooltipOrigins);
 
             WzSubProperty vScrollProperty = (WzSubProperty)basicImage?["VScr"];
             if (vScrollProperty != null)
@@ -586,7 +594,7 @@ namespace HaCreator.MapSimulator.Loaders
         /// Structure: UI.wz/UIWindow2.img/Skill/macro
         /// </summary>
         public static SkillMacroUI CreateSkillMacroWindowBigBang(
-            WzImage uiWindow2Image, WzImage soundUIImage, GraphicsDevice device, int screenWidth, int screenHeight)
+            WzImage uiWindow1Image, WzImage uiWindow2Image, WzImage soundUIImage, GraphicsDevice device, int screenWidth, int screenHeight)
         {
             if (uiWindow2Image == null)
                 return null;
@@ -664,7 +672,13 @@ namespace HaCreator.MapSimulator.Loaders
                     macroUI.SetMacroSlotIcons(macroIcons);
                 }
 
-                System.Diagnostics.Debug.WriteLine("[UIWindowLoader] Created SkillMacroUI");
+                SkillMacroSoftKeyboardSkin softKeyboardSkin = LoadSkillMacroSoftKeyboardSkin(uiWindow1Image, device);
+                if (softKeyboardSkin != null)
+                {
+                    macroUI.SetSoftKeyboardSkin(softKeyboardSkin);
+                }
+
+                System.Diagnostics.Debug.WriteLine("[UIWindowLoader] Created SkillMacroUI");
                 return macroUI;
             }
             catch (Exception ex)
@@ -792,11 +806,11 @@ namespace HaCreator.MapSimulator.Loaders
         /// <summary>
         /// Load a button state texture (normal/pressed/disabled/mouseOver has sub-property "0")
         /// </summary>
-        private static Texture2D LoadButtonStateTexture(WzSubProperty buttonProperty, string stateName, GraphicsDevice device)
-        {
-            WzSubProperty stateProperty = (WzSubProperty)buttonProperty?[stateName];
-            if (stateProperty == null)
-                return null;
+        private static Texture2D LoadButtonStateTexture(WzSubProperty buttonProperty, string stateName, GraphicsDevice device)
+        {
+            WzSubProperty stateProperty = (WzSubProperty)buttonProperty?[stateName];
+            if (stateProperty == null)
+                return null;
 
             WzCanvasProperty canvas = (WzCanvasProperty)stateProperty["0"];
             if (canvas == null)
@@ -808,13 +822,78 @@ namespace HaCreator.MapSimulator.Loaders
                 return bitmap?.ToTexture2DAndDispose(device);
             }
             catch
-            {
-                return null;
-            }
-        }
-
-        private static SkillUIBigBang CreatePlaceholderSkillBigBang(GraphicsDevice device, int screenWidth, int screenHeight)
-        {
+            {
+                return null;
+            }
+        }
+
+        private static SkillMacroSoftKeyboardSkin LoadSkillMacroSoftKeyboardSkin(WzImage uiWindow1Image, GraphicsDevice device)
+        {
+            WzSubProperty softKeyboardProperty = uiWindow1Image?["SoftKeyboard"] as WzSubProperty;
+            if (softKeyboardProperty == null)
+                return null;
+
+            WzSubProperty backgroundProperty = softKeyboardProperty["backgrnd"] as WzSubProperty;
+            WzSubProperty buttonProperty = softKeyboardProperty["Bt"] as WzSubProperty;
+
+            SkillMacroSoftKeyboardSkin skin = new SkillMacroSoftKeyboardSkin
+            {
+                ExpandedBackground = LoadCanvasTexture(backgroundProperty?["1"] as WzSubProperty, "back", device),
+                MinimizedBackground = LoadCanvasTexture(backgroundProperty?["0"] as WzSubProperty, "back", device),
+                ExpandedTitle = LoadCanvasTexture(backgroundProperty?["1"] as WzSubProperty, "1", device),
+                MinimizedTitle = LoadCanvasTexture(backgroundProperty?["0"] as WzSubProperty, "1", device),
+                KeyboardBackground = LoadCanvasTexture(backgroundProperty?["1"] as WzSubProperty, "keyboard_new", device)
+                    ?? LoadCanvasTexture(backgroundProperty?["1"] as WzSubProperty, "keyboard", device)
+                    ?? LoadCanvasTexture(backgroundProperty?["0"] as WzSubProperty, "keyboard", device)
+            };
+
+            WzSubProperty keyProperty = softKeyboardProperty["key"] as WzSubProperty;
+            if (keyProperty != null)
+            {
+                for (int i = 0; i <= 36; i++)
+                {
+                    WzSubProperty stateProperty = keyProperty[i.ToString()] as WzSubProperty;
+                    if (stateProperty == null)
+                        continue;
+
+                    skin.KeyTextures[i] = LoadSoftKeyboardTextures(stateProperty, device);
+                }
+            }
+
+            WzSubProperty functionKeyProperty = softKeyboardProperty["funckey"] as WzSubProperty;
+            if (functionKeyProperty != null)
+            {
+                skin.FunctionKeyTextures[SkillMacroSoftKeyboardFunctionKey.CapsLock] = LoadSoftKeyboardTextures(functionKeyProperty["capslock"] as WzSubProperty, device);
+                skin.FunctionKeyTextures[SkillMacroSoftKeyboardFunctionKey.LeftShift] = LoadSoftKeyboardTextures(functionKeyProperty["lshift"] as WzSubProperty, device);
+                skin.FunctionKeyTextures[SkillMacroSoftKeyboardFunctionKey.RightShift] = LoadSoftKeyboardTextures(functionKeyProperty["rshift"] as WzSubProperty, device);
+                skin.FunctionKeyTextures[SkillMacroSoftKeyboardFunctionKey.Enter] = LoadSoftKeyboardTextures(functionKeyProperty["enter"] as WzSubProperty, device);
+                skin.FunctionKeyTextures[SkillMacroSoftKeyboardFunctionKey.Backspace] = LoadSoftKeyboardTextures(functionKeyProperty["backspace"] as WzSubProperty, device);
+            }
+
+            WzSubProperty expandedButtons = buttonProperty?["1"] as WzSubProperty;
+            WzSubProperty minimizedButtons = buttonProperty?["0"] as WzSubProperty;
+            skin.WindowButtonTextures[SkillMacroSoftKeyboardWindowButton.Close] = LoadSoftKeyboardTextures(expandedButtons?["BtClose"] as WzSubProperty ?? minimizedButtons?["BtClose"] as WzSubProperty, device);
+            skin.WindowButtonTextures[SkillMacroSoftKeyboardWindowButton.Minimize] = LoadSoftKeyboardTextures(expandedButtons?["BtMin"] as WzSubProperty ?? minimizedButtons?["BtMin"] as WzSubProperty, device);
+            skin.WindowButtonTextures[SkillMacroSoftKeyboardWindowButton.Maximize] = LoadSoftKeyboardTextures(expandedButtons?["BtMax"] as WzSubProperty ?? minimizedButtons?["BtMax"] as WzSubProperty, device);
+            return skin;
+        }
+
+        private static SkillMacroSoftKeyboardKeyTextures LoadSoftKeyboardTextures(WzSubProperty property, GraphicsDevice device)
+        {
+            if (property == null)
+                return null;
+
+            return new SkillMacroSoftKeyboardKeyTextures
+            {
+                Normal = LoadButtonStateTexture(property, "normal", device),
+                Hovered = LoadButtonStateTexture(property, "mouseOver", device),
+                Pressed = LoadButtonStateTexture(property, "pressed", device),
+                Disabled = LoadButtonStateTexture(property, "disabled", device)
+            };
+        }
+
+        private static SkillUIBigBang CreatePlaceholderSkillBigBang(GraphicsDevice device, int screenWidth, int screenHeight)
+        {
             int width = 174;
             int height = 299;
 
@@ -1062,7 +1141,9 @@ namespace HaCreator.MapSimulator.Loaders
             WzBinaryProperty clickSound = soundUIImage?["BtMouseClick"] as WzBinaryProperty;
             WzBinaryProperty overSound = soundUIImage?["BtMouseOver"] as WzBinaryProperty;
             QuestDetailWindow window = CreateQuestDetailWindowShell(device, frameTexture, screenWidth, screenHeight);
-            WzSubProperty legacyQuestProperty = uiWindow1Image?["Quest"] as WzSubProperty;
+            WzSubProperty questProperty = uiWindow2Image?["Quest"] as WzSubProperty;
+
+            WzSubProperty legacyQuestProperty = uiWindow1Image?["Quest"] as WzSubProperty;
 
             Texture2D foregroundTexture = LoadCanvasTexture(questInfoProperty, "backgrnd2", device);
             if (foregroundTexture != null)
@@ -1091,7 +1172,7 @@ namespace HaCreator.MapSimulator.Loaders
 
             UIObject closeButton = CreateUserInfoCloseButton(basicImage, clickSound, overSound, device, frameTexture.Width);
             window.InitializeCloseButton(closeButton);
-            InitializeQuestDetailButtons(window, questInfoProperty, legacyQuestProperty, clickSound, overSound, device, frameTexture.Width, frameTexture.Height, true);
+            InitializeQuestDetailButtons(window, questInfoProperty, questProperty, legacyQuestProperty, clickSound, overSound, device, frameTexture.Width, frameTexture.Height, true);
             return window;
         }
 
@@ -1136,7 +1217,7 @@ namespace HaCreator.MapSimulator.Loaders
 
             UIObject closeButton = CreateUserInfoCloseButton(basicImage, clickSound, overSound, device, frameTexture.Width);
             window.InitializeCloseButton(closeButton);
-            InitializeQuestDetailButtons(window, questProperty, questProperty, clickSound, overSound, device, frameTexture.Width, frameTexture.Height, false);
+            InitializeQuestDetailButtons(window, questProperty, questProperty, questProperty, clickSound, overSound, device, frameTexture.Width, frameTexture.Height, false);
             return window;
         }
 
@@ -1152,7 +1233,7 @@ namespace HaCreator.MapSimulator.Loaders
             WzBinaryProperty clickSound = soundUIImage?["BtMouseClick"] as WzBinaryProperty;
             WzBinaryProperty overSound = soundUIImage?["BtMouseOver"] as WzBinaryProperty;
             window.InitializeCloseButton(CreateUserInfoCloseButton(basicImage, clickSound, overSound, device, frameTexture.Width));
-            InitializeQuestDetailButtons(window, null, null, clickSound, overSound, device, frameTexture.Width, frameTexture.Height, true);
+            InitializeQuestDetailButtons(window, null, null, null, clickSound, overSound, device, frameTexture.Width, frameTexture.Height, true);
             return window;
         }
 
@@ -1170,51 +1251,61 @@ namespace HaCreator.MapSimulator.Loaders
             };
         }
 
-        private static void InitializeQuestDetailButtons(
-            QuestDetailWindow window,
-            WzSubProperty buttonSource,
-            WzSubProperty legacyButtonSource,
-            WzBinaryProperty clickSound,
-            WzBinaryProperty overSound,
+        private static void InitializeQuestDetailButtons(
+            QuestDetailWindow window,
+            WzSubProperty buttonSource,
+            WzSubProperty defaultButtonSource,
+            WzSubProperty legacyButtonSource,
+            WzBinaryProperty clickSound,
+            WzBinaryProperty overSound,
             GraphicsDevice device,
             int frameWidth,
             int frameHeight,
             bool isBigBang)
         {
-            bool hasAcceptArt = isBigBang
-                ? buttonSource?["BtQuestDeliveryAccept"] is WzSubProperty
-                : buttonSource?["BtOK"] is WzSubProperty;
-            bool hasCompleteArt = isBigBang
-                ? buttonSource?["BtQuestDeliveryComplete"] is WzSubProperty
-                : buttonSource?["BtOK"] is WzSubProperty;
-            bool hasTrackArt = (isBigBang ? buttonSource?["BtArlim"] : buttonSource?["BtAlert"]) is WzSubProperty;
-            bool hasGiveUpArt = buttonSource?["BtGiveup"] is WzSubProperty;
-
-            UIObject acceptButton = isBigBang
-                ? CreateQuestDetailActionButton(buttonSource?["BtQuestDeliveryAccept"] as WzSubProperty, clickSound, overSound, device)
-                : CreateQuestDetailActionButton(buttonSource?["BtOK"] as WzSubProperty, clickSound, overSound, device);
-            UIObject completeButton = isBigBang
-                ? CreateQuestDetailActionButton(buttonSource?["BtQuestDeliveryComplete"] as WzSubProperty, clickSound, overSound, device)
-                : CreateQuestDetailActionButton(buttonSource?["BtOK"] as WzSubProperty, clickSound, overSound, device);
-            UIObject trackButton = CreateQuestDetailActionButton(
-                (isBigBang ? buttonSource?["BtArlim"] : buttonSource?["BtAlert"]) as WzSubProperty,
-                clickSound, overSound, device);
-            UIObject giveUpButton = CreateQuestDetailActionButton(buttonSource?["BtGiveup"] as WzSubProperty, clickSound, overSound, device);
-            UIObject markMobButton = CreateQuestDetailActionButton((legacyButtonSource?["BtMarkMob"]) as WzSubProperty, clickSound, overSound, device);
-            UIObject genericNpcButton = CreateQuestDetailActionButton((isBigBang ? buttonSource?["BtNPC"] : null) as WzSubProperty, clickSound, overSound, device);
-            UIObject markNpcButton = CreateQuestDetailActionButton((legacyButtonSource?["BtMarkNpc"]) as WzSubProperty, clickSound, overSound, device)
-                                      ?? CreateQuestDetailActionButton((isBigBang ? buttonSource?["BtNPC"] : null) as WzSubProperty, clickSound, overSound, device);
-            UIObject gotoNpcButton = CreateQuestDetailActionButton((legacyButtonSource?["BtGotoNpc"]) as WzSubProperty, clickSound, overSound, device)
-                                      ?? CreateQuestDetailActionButton((isBigBang ? buttonSource?["BtNPC"] : null) as WzSubProperty, clickSound, overSound, device);
+            bool hasAcceptArt = (isBigBang ? defaultButtonSource?["BtOK"] : buttonSource?["BtOK"]) is WzSubProperty;
+            bool hasCompleteArt = hasAcceptArt;
+            bool hasTrackArt = (isBigBang ? buttonSource?["BtArlim"] : buttonSource?["BtAlert"]) is WzSubProperty;
+            bool hasGiveUpArt = buttonSource?["BtGiveup"] is WzSubProperty;
+            bool hasDeliveryAcceptArt = isBigBang && buttonSource?["BtQuestDeliveryAccept"] is WzSubProperty;
+            bool hasDeliveryCompleteArt = isBigBang && buttonSource?["BtQuestDeliveryComplete"] is WzSubProperty;
+
+            UIObject acceptButton = CreateQuestDetailActionButton(
+                (isBigBang ? defaultButtonSource?["BtOK"] : buttonSource?["BtOK"]) as WzSubProperty,
+                clickSound, overSound, device);
+            UIObject completeButton = CreateQuestDetailActionButton(
+                (isBigBang ? defaultButtonSource?["BtOK"] : buttonSource?["BtOK"]) as WzSubProperty,
+                clickSound, overSound, device);
+            UIObject trackButton = CreateQuestDetailActionButton(
+                (isBigBang ? buttonSource?["BtArlim"] : buttonSource?["BtAlert"]) as WzSubProperty,
+                clickSound, overSound, device);
+            UIObject giveUpButton = CreateQuestDetailActionButton(buttonSource?["BtGiveup"] as WzSubProperty, clickSound, overSound, device);
+            UIObject markMobButton = CreateQuestDetailActionButton((legacyButtonSource?["BtMarkMob"]) as WzSubProperty, clickSound, overSound, device);
+            UIObject genericNpcButton = CreateQuestDetailActionButton((isBigBang ? buttonSource?["BtNPC"] : null) as WzSubProperty, clickSound, overSound, device);
+            UIObject deliveryAcceptButton = isBigBang
+                ? CreateQuestDetailActionButton(buttonSource?["BtQuestDeliveryAccept"] as WzSubProperty, clickSound, overSound, device)
+                : null;
+            UIObject deliveryCompleteButton = isBigBang
+                ? CreateQuestDetailActionButton(buttonSource?["BtQuestDeliveryComplete"] as WzSubProperty, clickSound, overSound, device)
+                : null;
+            UIObject markNpcButton = CreateQuestDetailActionButton((legacyButtonSource?["BtMarkNpc"]) as WzSubProperty, clickSound, overSound, device)
+                                      ?? CreateQuestDetailActionButton((isBigBang ? buttonSource?["BtNPC"] : null) as WzSubProperty, clickSound, overSound, device);
+            UIObject gotoNpcButton = CreateQuestDetailActionButton((legacyButtonSource?["BtGotoNpc"]) as WzSubProperty, clickSound, overSound, device)
+                                      ?? CreateQuestDetailActionButton((isBigBang ? buttonSource?["BtNPC"] : null) as WzSubProperty, clickSound, overSound, device);
 
             acceptButton ??= CreateFallbackQuestDetailButton(device, 117, 16);
             completeButton ??= CreateFallbackQuestDetailButton(device, 117, 16);
             trackButton ??= CreateFallbackQuestDetailButton(device, 86, 17);
             giveUpButton ??= CreateFallbackQuestDetailButton(device, 60, 16);
             markMobButton ??= CreateFallbackQuestDetailButton(device, 78, 16);
-            genericNpcButton ??= CreateFallbackQuestDetailButton(device, 80, 16);
-            markNpcButton ??= CreateFallbackQuestDetailButton(device, 81, 17);
-            gotoNpcButton ??= CreateFallbackQuestDetailButton(device, 105, 16);
+            genericNpcButton ??= CreateFallbackQuestDetailButton(device, 80, 16);
+            markNpcButton ??= CreateFallbackQuestDetailButton(device, 81, 17);
+            gotoNpcButton ??= CreateFallbackQuestDetailButton(device, 105, 16);
+            if (isBigBang)
+            {
+                deliveryAcceptButton ??= CreateFallbackQuestDetailButton(device, 117, 16);
+                deliveryCompleteButton ??= CreateFallbackQuestDetailButton(device, 117, 16);
+            }
 
             PositionQuestDetailActionButton(acceptButton, frameWidth, frameHeight, 12, 8);
             PositionQuestDetailActionButton(completeButton, frameWidth, frameHeight, 12, 8);
@@ -1228,10 +1319,12 @@ namespace HaCreator.MapSimulator.Loaders
 
             window.RegisterActionButton(QuestWindowActionKind.Accept, acceptButton, !hasAcceptArt);
             window.RegisterActionButton(QuestWindowActionKind.Complete, completeButton, !hasCompleteArt);
-            window.RegisterActionButton(QuestWindowActionKind.Track, trackButton, !hasTrackArt);
-            window.RegisterActionButton(QuestWindowActionKind.GiveUp, giveUpButton, !hasGiveUpArt);
-            window.RegisterActionButton(QuestWindowActionKind.LocateMob, markMobButton, legacyButtonSource?["BtMarkMob"] is not WzSubProperty);
-            window.RegisterNpcButton(QuestDetailNpcButtonStyle.GenericNpc, genericNpcButton, buttonSource?["BtNPC"] is not WzSubProperty);
+            window.RegisterActionButton(QuestWindowActionKind.Track, trackButton, !hasTrackArt);
+            window.RegisterActionButton(QuestWindowActionKind.GiveUp, giveUpButton, !hasGiveUpArt);
+            window.RegisterActionButton(QuestWindowActionKind.LocateMob, markMobButton, legacyButtonSource?["BtMarkMob"] is not WzSubProperty);
+            window.RegisterActionButton(QuestWindowActionKind.QuestDeliveryAccept, deliveryAcceptButton, !hasDeliveryAcceptArt);
+            window.RegisterActionButton(QuestWindowActionKind.QuestDeliveryComplete, deliveryCompleteButton, !hasDeliveryCompleteArt);
+            window.RegisterNpcButton(QuestDetailNpcButtonStyle.GenericNpc, genericNpcButton, buttonSource?["BtNPC"] is not WzSubProperty);
             window.RegisterNpcButton(QuestDetailNpcButtonStyle.MarkNpc, markNpcButton, legacyButtonSource?["BtMarkNpc"] is not WzSubProperty);
             window.RegisterNpcButton(QuestDetailNpcButtonStyle.GotoNpc, gotoNpcButton, legacyButtonSource?["BtGotoNpc"] is not WzSubProperty);
             window.InitializeNavigationButtons(device);
@@ -1435,7 +1528,7 @@ namespace HaCreator.MapSimulator.Loaders
             return quickSlot;
         }
 
-        private static MapTransferUI CreateMapTransferWindow(
+        private static MapTransferUI CreateMapTransferWindow(
             WzImage uiWindow1Image,
             WzImage uiWindow2Image,
             WzImage basicImage,
@@ -1501,7 +1594,62 @@ namespace HaCreator.MapSimulator.Loaders
             }
 
             return window;
-        }
+        }
+
+        private static SoftKeyboardUI CreateSoftKeyboardWindow(WzImage uiWindowImage, GraphicsDevice device, int screenWidth, int screenHeight)
+        {
+            if (uiWindowImage == null || device == null)
+            {
+                return null;
+            }
+
+            WzCanvasProperty backgroundCanvas = ResolveCanvasProperty(uiWindowImage, "SoftKeyboard/backgrnd/0/back");
+            WzCanvasProperty keyNormalCanvas = ResolveCanvasProperty(uiWindowImage, "SoftKeyboard/key/0/normal/0");
+            WzCanvasProperty keyPressedCanvas = ResolveCanvasProperty(uiWindowImage, "SoftKeyboard/key/0/pressed/0");
+            WzCanvasProperty keyDisabledCanvas = ResolveCanvasProperty(uiWindowImage, "SoftKeyboard/key/0/disabled/0");
+            WzCanvasProperty keyHoverCanvas = ResolveCanvasProperty(uiWindowImage, "SoftKeyboard/key/0/mouseOver/0");
+            WzCanvasProperty backspaceNormalCanvas = ResolveCanvasProperty(uiWindowImage, "SoftKeyboard/funckey/backspace/normal/0");
+            WzCanvasProperty backspacePressedCanvas = ResolveCanvasProperty(uiWindowImage, "SoftKeyboard/funckey/backspace/pressed/0");
+            WzCanvasProperty backspaceDisabledCanvas = ResolveCanvasProperty(uiWindowImage, "SoftKeyboard/funckey/backspace/disabled/0");
+            WzCanvasProperty backspaceHoverCanvas = ResolveCanvasProperty(uiWindowImage, "SoftKeyboard/funckey/backspace/mouseOver/0");
+
+            if (backgroundCanvas == null
+                || keyNormalCanvas == null
+                || keyPressedCanvas == null
+                || keyDisabledCanvas == null
+                || keyHoverCanvas == null
+                || backspaceNormalCanvas == null
+                || backspacePressedCanvas == null
+                || backspaceDisabledCanvas == null
+                || backspaceHoverCanvas == null)
+            {
+                return null;
+            }
+
+            Texture2D backgroundTexture = backgroundCanvas.GetLinkedWzCanvasBitmap()?.ToTexture2DAndDispose(device);
+            Texture2D[] keyTextures =
+            {
+                keyNormalCanvas.GetLinkedWzCanvasBitmap()?.ToTexture2DAndDispose(device),
+                keyPressedCanvas.GetLinkedWzCanvasBitmap()?.ToTexture2DAndDispose(device),
+                keyDisabledCanvas.GetLinkedWzCanvasBitmap()?.ToTexture2DAndDispose(device),
+                keyHoverCanvas.GetLinkedWzCanvasBitmap()?.ToTexture2DAndDispose(device)
+            };
+            Texture2D[] backspaceTextures =
+            {
+                backspaceNormalCanvas.GetLinkedWzCanvasBitmap()?.ToTexture2DAndDispose(device),
+                backspacePressedCanvas.GetLinkedWzCanvasBitmap()?.ToTexture2DAndDispose(device),
+                backspaceDisabledCanvas.GetLinkedWzCanvasBitmap()?.ToTexture2DAndDispose(device),
+                backspaceHoverCanvas.GetLinkedWzCanvasBitmap()?.ToTexture2DAndDispose(device)
+            };
+
+            if (backgroundTexture == null || keyTextures.Any(texture => texture == null) || backspaceTextures.Any(texture => texture == null))
+            {
+                return null;
+            }
+
+            IDXObject frame = new DXObject(0, 0, backgroundTexture, 0);
+            return new SoftKeyboardUI(frame, backgroundTexture, keyTextures, backspaceTextures, device, screenWidth, screenHeight);
+        }
 
         private static TrunkUI CreateTrunkWindow(
             WzImage uiWindow1Image,
@@ -1561,7 +1709,7 @@ namespace HaCreator.MapSimulator.Loaders
             return window;
         }
 
-        private static WorldMapUI CreateWorldMapWindow(
+        private static WorldMapUI CreateWorldMapWindow(
             WzImage uiWindow1Image,
             WzImage uiWindow2Image,
             WzImage basicImage,
@@ -1648,7 +1796,37 @@ namespace HaCreator.MapSimulator.Loaders
             }
 
             return window;
-        }
+        }
+
+        private static WzCanvasProperty ResolveCanvasProperty(WzImage image, string path)
+        {
+            if (image == null || string.IsNullOrWhiteSpace(path))
+            {
+                return null;
+            }
+
+            WzImageProperty current = null;
+            string[] segments = path.Split(new[] { '/' }, StringSplitOptions.RemoveEmptyEntries);
+            for (int i = 0; i < segments.Length; i++)
+            {
+                current = i == 0
+                    ? image[segments[i]]
+                    : current?[segments[i]];
+
+                if (current == null)
+                {
+                    return null;
+                }
+            }
+
+            WzImageProperty resolved = WzInfoTools.GetRealProperty(current);
+            if (resolved is WzCanvasProperty canvas)
+            {
+                return canvas;
+            }
+
+            return resolved?.WzProperties?.OfType<WzCanvasProperty>().FirstOrDefault();
+        }
 
         private static Texture2D LoadQuestIcon(WzSubProperty questIconProperty, string iconNum, GraphicsDevice device)
         {

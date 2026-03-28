@@ -106,7 +106,8 @@ namespace HaCreator.MapSimulator
             ApplyRequestedBgm(_specialFieldBgmOverrideName ?? _mapBgmName);
 
             // Sound effects from Sound.wz/Game.img - using SoundManager for concurrent playback
-            _soundManager = new SoundManager();
+            _soundManager = new SoundManager();
+            ApplyUtilityAudioSettings();
             WzImage soundGameImage = Program.FindImage("Sound", "Game.img");
             if (soundGameImage != null)
             {
@@ -374,7 +375,7 @@ namespace HaCreator.MapSimulator
                     uiWindowManager = UIWindowLoader.CreateUIWindowManager(
                         uiWindow1Image, uiWindow2Image, uiBasicImage, soundUIImage,
                         skillWzFile, stringWzFile, uiMapleTvImage,
-                        GraphicsDevice, _renderParams.RenderWidth, _renderParams.RenderHeight, _gameState.IsBigBangUpdate, storageAccountLabel: BuildStorageAccountLabel());
+                        GraphicsDevice, _renderParams.RenderWidth, _renderParams.RenderHeight, _gameState.IsBigBangUpdate, storageAccountLabel: BuildStorageAccountLabel(), storageAccountKey: BuildStorageAccountKey());
                     UIWindowLoader.RegisterGuildBbsWindow(
                         uiWindowManager,
                         uiGuildBbsImage,
@@ -448,7 +449,9 @@ namespace HaCreator.MapSimulator
                 _DxDeviceManager.GraphicsDevice,
                 _soundManager,
                 RequestSpecialFieldBgmOverride,
-                ClearSpecialFieldBgmOverride);
+                ClearSpecialFieldBgmOverride,
+
+                BuildAriantArenaRemoteCharacter);
 
             ///////////////////////////////////////////////
             ////// Default positioning for character //////
@@ -470,13 +473,14 @@ namespace HaCreator.MapSimulator
             // Spawn at portal spawn point (spawnX, spawnY set above from StartPoint portal)
             ResetLoginRuntimeForCurrentMap(currTickCount);
             InitializeAuthoredDynamicObjectTagStates();
-            ApplyEntryScriptDynamicObjectTagStates(currTickCount);
+            bool runOnFirstUserEnterScript = ShouldRunOnFirstUserEnterForCurrentMap();
+            ApplyEntryScriptDynamicObjectTagStates(currTickCount, runOnFirstUserEnterScript);
             InitializeDynamicObjectDirectionEventTriggers();
 
             InitializePlayerManager(spawnX, spawnY);
             if (!_gameState.IsLoginMap)
             {
-                InitializeFieldRuleRuntime(currTickCount);
+                InitializeFieldRuleRuntime(currTickCount, runOnFirstUserEnterScript);
             }
             else
             {
@@ -484,7 +488,10 @@ namespace HaCreator.MapSimulator
                 InitializeLoginCharacterRoster();
             }
             SetCookieHouseContextPoint(0);
-            _specialFieldRuntime.BindMap(_mapBoard);
+            BindRemoteAffectedAreaPacketField();
+            _specialFieldRuntime.BindMap(_mapBoard);
+            _packetFieldStateRuntime.Initialize(GraphicsDevice, _mapBoard?.MapInfo);
+            SyncWeddingPacketInboxState();
             SyncCoconutPacketInboxState();
             SyncMemoryGamePacketInboxState();
             SyncAriantArenaPacketInboxState();
@@ -583,12 +590,16 @@ namespace HaCreator.MapSimulator
             _chat.Initialize(_fontChat, _debugBoundaryTexture, Height);
             _npcInteractionOverlay = new NpcInteractionOverlay(GraphicsDevice);
             _npcInteractionOverlay.SetFont(_fontChat);
-            RegisterChatCommands();
+            RegisterChatCommands();
+            RegisterRemoteUserChatCommand();
 
             // Initialize pickup notice UI (bottom right corner messages)
             _pickupNoticeUI.Initialize(_fontChat, _debugBoundaryTexture, Width, Height);
-            _skillCooldownNoticeUI.Initialize(_fontChat, _debugBoundaryTexture, Width);
-            LoadSkillCooldownNoticeUiFrame();
+            _skillCooldownNoticeUI.Initialize(_fontChat, _debugBoundaryTexture, Width, Height);
+            LoadSkillCooldownNoticeUiFrame();
+            _packetOwnedHudNoticeUI.Initialize(_fontChat, _debugBoundaryTexture, Width, Height);
+            LoadPacketOwnedHudNoticeUiFrame();
+            LoadPacketOwnedLocalOverlayAssets();
 
             _temporaryPortalField = new TemporaryPortalField(_texturePool, _DxDeviceManager.GraphicsDevice);
 
@@ -607,7 +618,8 @@ namespace HaCreator.MapSimulator
             // Positions derived from IDA Pro analysis of CUIStatusBar::SetNumberValue and CUIStatusBar::SetStatusValue
             if (statusBarUi != null)
             {
-                statusBarUi.SetCharacterStatsProvider(_fontDebugValues, GetCharacterStatsData);
+                _playerManager?.Skills?.ConfigureBuffIconCatalog(UILoader.LoadBuffIconCatalogEntries(uiBuffIconImage));
+                statusBarUi.SetCharacterStatsProvider(_fontChat, GetCharacterStatsData);
                 statusBarUi.SetBuffStatusProvider(GetStatusBarBuffData);
                 statusBarUi.SetCooldownStatusProvider(GetStatusBarCooldownData);
                 statusBarUi.SetOffBarCooldownStatusProvider(GetStatusBarOffBarCooldownData);
@@ -635,7 +647,7 @@ namespace HaCreator.MapSimulator
                 uiWindowManager.AbilityWindow.CharacterBuild = _playerManager.Player.Build;
                 uiWindowManager.AbilityWindow.SetFont(_fontDebugValues);
             }
-            if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.CharacterInfo) != null && _playerManager?.Player?.Build != null)
+            if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.CharacterInfo) != null && _playerManager?.Player?.Build != null)
             {
                 UIWindowBase characterInfoWindow = uiWindowManager.GetWindow(MapSimulatorWindowNames.CharacterInfo);
                 characterInfoWindow.CharacterBuild = _playerManager.Player.Build;
@@ -643,10 +655,26 @@ namespace HaCreator.MapSimulator
                 if (characterInfoWindow is UserInfoUI userInfoWindow)
                 {
                     userInfoWindow.SetPetController(_playerManager.Pets);
-                    userInfoWindow.SetCollectionSnapshotProvider(GetActiveItemMakerProgression);
+                    userInfoWindow.SetCollectionSnapshotProvider(GetActiveItemMakerProgression);
+
+                    WireCharacterInfoWindowActionRoutes(userInfoWindow);
                 }
-            }
-            if (uiWindowManager?.EquipWindow != null && _playerManager?.Player?.Build != null)
+            }
+
+            if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.BookCollection) is BookCollectionWindow bookCollectionWindow
+                && _playerManager?.Player?.Build != null)
+
+            {
+
+                bookCollectionWindow.CharacterBuild = _playerManager.Player.Build;
+
+                bookCollectionWindow.SetFont(_fontDebugValues);
+
+                bookCollectionWindow.SetCollectionSnapshotProvider(GetActiveItemMakerProgression);
+
+            }
+
+            if (uiWindowManager?.EquipWindow != null && _playerManager?.Player?.Build != null)
             {
                 uiWindowManager.EquipWindow.CharacterBuild = _playerManager.Player.Build;
                 uiWindowManager.EquipWindow.SetFont(_fontChat);
@@ -766,7 +794,9 @@ namespace HaCreator.MapSimulator
             // Clear combat effects (only map-specific effects like mob HP bars)
             _combatEffects?.ClearMapState();
             _fieldEffects?.ResetAllEffects();
-            _specialFieldRuntime.Reset();
+            _specialFieldRuntime.Reset();
+            _remoteUserPool.Clear();
+            _summonedPool.Clear();
 
             // Prepare player manager for map change (preserves character, caches, skill levels)
             _playerManager?.PrepareForMapChange();
@@ -861,8 +891,11 @@ namespace HaCreator.MapSimulator
             _activeNpcInteractionNpc = null;
             _activeNpcInteractionNpcId = 0;
             _npcQuestFeedback.Clear();
-            ResetPetSpeechEventState();
-            _gameState.ExitDirectionModeImmediate();
+            ResetPetSpeechEventState();
+
+            _fieldMessageBoxRuntime.Clear();
+            _packetFieldStateRuntime.Clear();
+            _gameState.ExitDirectionModeImmediate();
             _scriptedDirectionModeWindows.Reset();
             _scriptedDirectionModeOwnerActive = false;
         }
@@ -1128,7 +1161,7 @@ namespace HaCreator.MapSimulator
                     uiWindowManager = UIWindowLoader.CreateUIWindowManager(
                         uiWindow1Image, uiWindow2Image, uiBasicImage, soundUIImage,
                         skillWzFile, stringWzFile, uiMapleTvImage,
-                        GraphicsDevice, _renderParams.RenderWidth, _renderParams.RenderHeight, _gameState.IsBigBangUpdate, storageAccountLabel: BuildStorageAccountLabel());
+                        GraphicsDevice, _renderParams.RenderWidth, _renderParams.RenderHeight, _gameState.IsBigBangUpdate, storageAccountLabel: BuildStorageAccountLabel(), storageAccountKey: BuildStorageAccountKey());
                     UIWindowLoader.RegisterGuildBbsWindow(
                         uiWindowManager,
                         uiGuildBbsImage,
@@ -1162,7 +1195,8 @@ namespace HaCreator.MapSimulator
             // Initialize status bar character stats display after map change
             if (statusBarUi != null)
             {
-                statusBarUi.SetCharacterStatsProvider(_fontDebugValues, GetCharacterStatsData);
+                _playerManager?.Skills?.ConfigureBuffIconCatalog(UILoader.LoadBuffIconCatalogEntries(uiBuffIconImage));
+                statusBarUi.SetCharacterStatsProvider(_fontChat, GetCharacterStatsData);
                 statusBarUi.SetBuffStatusProvider(GetStatusBarBuffData);
                 statusBarUi.SetCooldownStatusProvider(GetStatusBarCooldownData);
                 statusBarUi.SetOffBarCooldownStatusProvider(GetStatusBarOffBarCooldownData);
@@ -1195,7 +1229,9 @@ namespace HaCreator.MapSimulator
                 if (characterInfoWindow is UserInfoUI userInfoWindow)
                 {
                     userInfoWindow.SetPetController(_playerManager.Pets);
-                    userInfoWindow.SetCollectionSnapshotProvider(GetActiveItemMakerProgression);
+                    userInfoWindow.SetCollectionSnapshotProvider(GetActiveItemMakerProgression);
+
+                    WireCharacterInfoWindowActionRoutes(userInfoWindow);
                 }
             }
             if (uiWindowManager?.EquipWindow != null && _playerManager?.Player?.Build != null)
@@ -1261,7 +1297,8 @@ namespace HaCreator.MapSimulator
             // For map changes, reconnect existing player instead of creating new one
             ResetLoginRuntimeForCurrentMap(currTickCount);
             InitializeAuthoredDynamicObjectTagStates();
-            ApplyEntryScriptDynamicObjectTagStates(currTickCount);
+            bool runOnFirstUserEnterScript = ShouldRunOnFirstUserEnterForCurrentMap();
+            ApplyEntryScriptDynamicObjectTagStates(currTickCount, runOnFirstUserEnterScript);
             InitializeDynamicObjectDirectionEventTriggers();
             if (!_gameState.IsLoginMap)
             {
@@ -1274,7 +1311,7 @@ namespace HaCreator.MapSimulator
                     InitializePlayerManager(spawnX, spawnY);
                 }
 
-                InitializeFieldRuleRuntime(currTickCount);
+                InitializeFieldRuleRuntime(currTickCount, runOnFirstUserEnterScript);
             }
             else
             {
@@ -1287,8 +1324,10 @@ namespace HaCreator.MapSimulator
                 InitializeLoginCharacterRoster();
             }
             SetCookieHouseContextPoint(0);
-            _specialFieldRuntime.BindMap(_mapBoard);
-            SyncCoconutPacketInboxState();
+            BindRemoteAffectedAreaPacketField();
+            _specialFieldRuntime.BindMap(_mapBoard);
+            _packetFieldStateRuntime.Initialize(GraphicsDevice, _mapBoard?.MapInfo);
+            SyncCoconutPacketInboxState();
             SyncMemoryGamePacketInboxState();
             SyncAriantArenaPacketInboxState();
             SyncMonsterCarnivalPacketInboxState();

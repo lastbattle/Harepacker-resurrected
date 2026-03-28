@@ -60,6 +60,22 @@ namespace HaCreator.MapSimulator.UI
             public UIObject Button { get; }
         }
 
+        public readonly struct SearchResultVisualStyle
+        {
+            public SearchResultVisualStyle(Texture2D hoverTexture, Point hoverOffset, Texture2D iconTexture, Point iconOffset)
+            {
+                HoverTexture = hoverTexture;
+                HoverOffset = hoverOffset;
+                IconTexture = iconTexture;
+                IconOffset = iconOffset;
+            }
+
+            public Texture2D HoverTexture { get; }
+            public Point HoverOffset { get; }
+            public Texture2D IconTexture { get; }
+            public Point IconOffset { get; }
+        }
+
         private enum SearchFilterMode
         {
             All,
@@ -100,12 +116,7 @@ namespace HaCreator.MapSimulator.UI
         private readonly UIObject _levelMobButton;
         private readonly UIObject _prevButton;
         private readonly UIObject _nextButton;
-        private readonly Texture2D _resultFieldHoverTexture;
-        private readonly Texture2D _resultFieldIconTexture;
-        private readonly Texture2D _resultNpcHoverTexture;
-        private readonly Texture2D _resultNpcIconTexture;
-        private readonly Texture2D _resultMobHoverTexture;
-        private readonly Texture2D _resultMobIconTexture;
+        private readonly IReadOnlyDictionary<SearchResultKind, SearchResultVisualStyle> _resultStyles;
         private readonly List<RegionButtonEntry> _regionButtons = new List<RegionButtonEntry>();
         private readonly List<UIObject> _rowButtons = new List<UIObject>();
         private readonly List<MapEntry> _allEntries = new List<MapEntry>();
@@ -143,12 +154,7 @@ namespace HaCreator.MapSimulator.UI
             UIObject levelMobButton,
             UIObject prevButton,
             UIObject nextButton,
-            Texture2D resultFieldHoverTexture,
-            Texture2D resultFieldIconTexture,
-            Texture2D resultNpcHoverTexture,
-            Texture2D resultNpcIconTexture,
-            Texture2D resultMobHoverTexture,
-            Texture2D resultMobIconTexture,
+            IReadOnlyDictionary<SearchResultKind, SearchResultVisualStyle> resultStyles,
             IEnumerable<(string regionCode, UIObject button)> regionButtons,
             GraphicsDevice device)
             : base(frame)
@@ -172,12 +178,7 @@ namespace HaCreator.MapSimulator.UI
             _levelMobButton = levelMobButton;
             _prevButton = prevButton;
             _nextButton = nextButton;
-            _resultFieldHoverTexture = resultFieldHoverTexture;
-            _resultFieldIconTexture = resultFieldIconTexture;
-            _resultNpcHoverTexture = resultNpcHoverTexture;
-            _resultNpcIconTexture = resultNpcIconTexture;
-            _resultMobHoverTexture = resultMobHoverTexture;
-            _resultMobIconTexture = resultMobIconTexture;
+            _resultStyles = resultStyles ?? new Dictionary<SearchResultKind, SearchResultVisualStyle>();
 
             if (_allButton != null)
             {
@@ -260,6 +261,56 @@ namespace HaCreator.MapSimulator.UI
             }
 
             UpdateButtonStates();
+        }
+
+        public WorldMapUI(
+            IDXObject frame,
+            Texture2D titleTexture,
+            Texture2D sidePanelTexture,
+            Point sidePanelOffset,
+            Texture2D searchNoticeTexture,
+            Point searchNoticeOffset,
+            Texture2D selectionTexture,
+            UIObject allButton,
+            UIObject anotherButton,
+            UIObject searchButton,
+            UIObject allSearchButton,
+            UIObject levelMobButton,
+            UIObject prevButton,
+            UIObject nextButton,
+            Texture2D resultFieldHoverTexture,
+            Texture2D resultFieldIconTexture,
+            Texture2D resultNpcHoverTexture,
+            Texture2D resultNpcIconTexture,
+            Texture2D resultMobHoverTexture,
+            Texture2D resultMobIconTexture,
+            IEnumerable<(string regionCode, UIObject button)> regionButtons,
+            GraphicsDevice device)
+            : this(
+                frame,
+                titleTexture,
+                sidePanelTexture,
+                sidePanelOffset,
+                searchNoticeTexture,
+                searchNoticeOffset,
+                selectionTexture,
+                allButton,
+                anotherButton,
+                searchButton,
+                allSearchButton,
+                levelMobButton,
+                prevButton,
+                nextButton,
+                BuildLegacyResultStyles(
+                    resultFieldHoverTexture,
+                    resultFieldIconTexture,
+                    resultNpcHoverTexture,
+                    resultNpcIconTexture,
+                    resultMobHoverTexture,
+                    resultMobIconTexture),
+                regionButtons,
+                device)
+        {
         }
 
         public override string WindowName => MapSimulatorWindowNames.WorldMap;
@@ -989,26 +1040,43 @@ namespace HaCreator.MapSimulator.UI
 
         private Texture2D GetHoverTexture(SearchResultKind kind)
         {
-            return kind switch
+            if (_resultStyles.TryGetValue(kind, out SearchResultVisualStyle style))
             {
-                SearchResultKind.Field => _resultFieldHoverTexture,
-                SearchResultKind.Npc => _resultNpcHoverTexture,
-                SearchResultKind.Mob => _resultMobHoverTexture,
-                SearchResultKind.Item => _resultFieldHoverTexture ?? _resultNpcHoverTexture,
-                _ => null
-            };
+                return style.HoverTexture;
+            }
+
+            return kind == SearchResultKind.Item
+                ? GetHoverTexture(SearchResultKind.Field) ?? GetHoverTexture(SearchResultKind.Npc)
+                : null;
         }
 
         private Texture2D GetIconTexture(SearchResultKind kind)
         {
-            return kind switch
+            if (_resultStyles.TryGetValue(kind, out SearchResultVisualStyle style))
             {
-                SearchResultKind.Field => _resultFieldIconTexture,
-                SearchResultKind.Npc => _resultNpcIconTexture,
-                SearchResultKind.Mob => _resultMobIconTexture,
-                SearchResultKind.Item => _resultNpcIconTexture ?? _resultFieldIconTexture,
-                _ => null
+                return style.IconTexture;
+            }
+
+            return kind == SearchResultKind.Item
+                ? GetIconTexture(SearchResultKind.Npc) ?? GetIconTexture(SearchResultKind.Field)
+                : null;
+        }
+
+        private static IReadOnlyDictionary<SearchResultKind, SearchResultVisualStyle> BuildLegacyResultStyles(
+            Texture2D resultFieldHoverTexture,
+            Texture2D resultFieldIconTexture,
+            Texture2D resultNpcHoverTexture,
+            Texture2D resultNpcIconTexture,
+            Texture2D resultMobHoverTexture,
+            Texture2D resultMobIconTexture)
+        {
+            var styles = new Dictionary<SearchResultKind, SearchResultVisualStyle>
+            {
+                [SearchResultKind.Field] = new(resultFieldHoverTexture, Point.Zero, resultFieldIconTexture, Point.Zero),
+                [SearchResultKind.Npc] = new(resultNpcHoverTexture, Point.Zero, resultNpcIconTexture, Point.Zero),
+                [SearchResultKind.Mob] = new(resultMobHoverTexture, Point.Zero, resultMobIconTexture, Point.Zero)
             };
+            return styles;
         }
 
         private void DrawTitle(SpriteBatch sprite, string fallbackText)

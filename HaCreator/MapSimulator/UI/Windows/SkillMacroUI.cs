@@ -9,6 +9,7 @@ using Spine;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text;
 
 namespace HaCreator.MapSimulator.UI
 {
@@ -75,6 +76,8 @@ namespace HaCreator.MapSimulator.UI
         private const int NAME_FIELD_HEIGHT = 20;
         private const int NAME_FIELD_X = CONTENT_OFFSET_X;
         private const int NAME_FIELD_Y = CONTENT_OFFSET_Y - 30;
+        private const int NAME_FIELD_TEXT_INSET_X = 4;
+        private const int NAME_FIELD_TEXT_INSET_Y = 3;
         // Button positions (relative to window)
         // BtOK button origin from UIWindow2: (-145, -255) means 145 from left, 255 from top
         private const int BUTTON_OK_X = 50;
@@ -120,11 +123,28 @@ namespace HaCreator.MapSimulator.UI
         private Texture2D _slotHighlightTexture;
         private Texture2D _macroSlotTexture;
         private Texture2D _selectedSlotTexture;
+        private Texture2D _textPixelTexture;
         private Texture2D[] _macroSlotIcons;
 
         // Checkbox state
         private bool _notifyPartyMembers = false;
         private string _validationMessage = string.Empty;
+        private int _editingCursorPosition;
+        private int _caretBlinkTick;
+        private string _compositionText = string.Empty;
+        private int _compositionInsertionIndex = -1;
+        private SkillMacroSoftKeyboardSkin _softKeyboardSkin;
+        private bool _softKeyboardVisible;
+        private bool _softKeyboardMinimized;
+        private bool _softKeyboardShift;
+        private bool _softKeyboardCapsLock;
+        private int _hoveredSoftKeyboardKeyIndex = -1;
+        private SkillMacroSoftKeyboardFunctionKey _hoveredSoftKeyboardFunctionKey = SkillMacroSoftKeyboardFunctionKey.None;
+        private SkillMacroSoftKeyboardWindowButton _hoveredSoftKeyboardWindowButton = SkillMacroSoftKeyboardWindowButton.None;
+        private int _pressedSoftKeyboardKeyIndex = -1;
+        private SkillMacroSoftKeyboardFunctionKey _pressedSoftKeyboardFunctionKey = SkillMacroSoftKeyboardFunctionKey.None;
+        private SkillMacroSoftKeyboardWindowButton _pressedSoftKeyboardWindowButton = SkillMacroSoftKeyboardWindowButton.None;
+        private int _softKeyboardPressedVisualUntil;
 
         // Buttons
         private UIObject _btnOK;
@@ -179,8 +199,12 @@ namespace HaCreator.MapSimulator.UI
             _editingMacroName = string.Empty;
             _notifyPartyMembers = false;
             _validationMessage = string.Empty;
+            _editingCursorPosition = 0;
+            _caretBlinkTick = Environment.TickCount;
+            ClearCompositionText();
             Array.Clear(_editingSkillIds, 0, _editingSkillIds.Length);
             CancelDrag();
+            HideSoftKeyboard();
         }
 
         /// <summary>
@@ -276,6 +300,9 @@ namespace HaCreator.MapSimulator.UI
                 }
             }
             _selectedSlotTexture.SetData(selectedData);
+
+            _textPixelTexture = new Texture2D(device, 1, 1);
+            _textPixelTexture.SetData(new[] { Color.White });
         }
         #endregion
 
@@ -353,6 +380,11 @@ namespace HaCreator.MapSimulator.UI
                 _macroSlotIcons = icons;
             }
         }
+
+        internal void SetSoftKeyboardSkin(SkillMacroSoftKeyboardSkin skin)
+        {
+            _softKeyboardSkin = skin;
+        }
         #endregion
 
         #region Drawing
@@ -389,6 +421,17 @@ namespace HaCreator.MapSimulator.UI
             {
                 DrawDraggedMacro(sprite);
             }
+        }
+
+        protected override void DrawOverlay(SpriteBatch sprite, SkeletonMeshRenderer skeletonMeshRenderer, GameTime gameTime,
+            int mapShiftX, int mapShiftY, int centerX, int centerY,
+            ReflectionDrawableBoundary drawReflectionInfo,
+            RenderParameters renderParameters,
+            int TickCount)
+        {
+            base.DrawOverlay(sprite, skeletonMeshRenderer, gameTime, mapShiftX, mapShiftY, centerX, centerY, drawReflectionInfo, renderParameters, TickCount);
+
+            DrawSoftKeyboard(sprite);
         }
 
         private void DrawMacroSlot(SpriteBatch sprite, int macroIndex, int windowX, int windowY)
@@ -484,12 +527,58 @@ namespace HaCreator.MapSimulator.UI
             var fieldRect = new Rectangle(fieldX, fieldY, NAME_FIELD_WIDTH, NAME_FIELD_HEIGHT);
             sprite.Draw(_emptySlotTexture, fieldRect, Color.White);
 
-            // Draw current name
-            string displayText = _editingMacroName ?? "";
-            sprite.DrawString(_font, displayText,
-                new Vector2(fieldX + 4, fieldY + 3),
-                Color.White);
+            int safeCursorPosition = Math.Clamp(_editingCursorPosition, 0, _editingMacroName?.Length ?? 0);
+            string committedPrefix = safeCursorPosition > 0
+                ? _editingMacroName[..safeCursorPosition]
+                : string.Empty;
+            string committedSuffix = safeCursorPosition < (_editingMacroName?.Length ?? 0)
+                ? _editingMacroName[safeCursorPosition..]
+                : string.Empty;
+            string compositionText = _compositionText ?? string.Empty;
+            Vector2 textPosition = new(fieldX + NAME_FIELD_TEXT_INSET_X, fieldY + NAME_FIELD_TEXT_INSET_Y);
 
+            if (committedPrefix.Length > 0)
+            {
+                sprite.DrawString(_font, committedPrefix, textPosition, Color.White);
+            }
+
+            float prefixWidth = committedPrefix.Length > 0 ? _font.MeasureString(committedPrefix).X : 0f;
+            Vector2 compositionPosition = new(textPosition.X + prefixWidth, textPosition.Y);
+            if (compositionText.Length > 0)
+            {
+                sprite.DrawString(_font, compositionText, compositionPosition, new Color(255, 235, 160));
+
+                int compositionWidth = Math.Max(1, (int)Math.Ceiling(_font.MeasureString(compositionText).X));
+                int underlineY = fieldY + NAME_FIELD_HEIGHT - 3;
+                sprite.Draw(_textPixelTexture,
+                    new Rectangle((int)compositionPosition.X, underlineY, compositionWidth, 1),
+                    new Color(255, 235, 160, 220));
+            }
+
+            if (committedSuffix.Length > 0)
+            {
+                float compositionWidth = compositionText.Length > 0 ? _font.MeasureString(compositionText).X : 0f;
+                sprite.DrawString(_font, committedSuffix,
+                    new Vector2(compositionPosition.X + compositionWidth, compositionPosition.Y),
+                    Color.White);
+            }
+
+            if (((Environment.TickCount - _caretBlinkTick) / 500) % 2 == 0)
+            {
+                float caretOffset = prefixWidth;
+                if (compositionText.Length > 0)
+                {
+                    caretOffset += _font.MeasureString(compositionText).X;
+                }
+
+                int caretX = fieldX + NAME_FIELD_TEXT_INSET_X + (int)Math.Round(caretOffset);
+                int caretY = fieldY + 2;
+                sprite.Draw(_textPixelTexture,
+                    new Rectangle(caretX, caretY, 1, Math.Max(12, _font.LineSpacing - 2)),
+                    Color.White);
+            }
+
+            string displayText = _editingMacroName ?? string.Empty;
             string byteCountText = $"{SkillMacroNameRules.GetByteCount(displayText)}/{SkillMacroNameRules.MaxNameBytes} bytes";
             sprite.DrawString(_font, byteCountText,
                 new Vector2(fieldX + 92, fieldY - 16),
@@ -501,6 +590,176 @@ namespace HaCreator.MapSimulator.UI
                     new Vector2(fieldX, fieldY + NAME_FIELD_HEIGHT + 2),
                     Color.IndianRed);
             }
+        }
+
+        private void DrawSoftKeyboard(SpriteBatch sprite)
+        {
+            if (!_softKeyboardVisible)
+            {
+                return;
+            }
+
+            Point origin = GetSoftKeyboardPosition();
+            Texture2D backgroundTexture = _softKeyboardMinimized
+                ? _softKeyboardSkin?.MinimizedBackground
+                : _softKeyboardSkin?.ExpandedBackground;
+            Texture2D titleTexture = _softKeyboardMinimized
+                ? _softKeyboardSkin?.MinimizedTitle
+                : _softKeyboardSkin?.ExpandedTitle;
+
+            if (backgroundTexture != null)
+            {
+                sprite.Draw(backgroundTexture, new Vector2(origin.X, origin.Y), Color.White);
+            }
+            else
+            {
+                Rectangle fallbackBounds = SkillMacroSoftKeyboardLayout.GetBounds(origin, _softKeyboardMinimized);
+                sprite.Draw(_emptySlotTexture, fallbackBounds, new Color(32, 32, 40, 230));
+            }
+
+            if (titleTexture != null)
+            {
+                sprite.Draw(titleTexture, new Vector2(origin.X + 14, origin.Y + 8), Color.White);
+            }
+
+            DrawSoftKeyboardWindowButton(sprite, origin, SkillMacroSoftKeyboardWindowButton.Maximize);
+            DrawSoftKeyboardWindowButton(sprite, origin, SkillMacroSoftKeyboardWindowButton.Minimize);
+            DrawSoftKeyboardWindowButton(sprite, origin, SkillMacroSoftKeyboardWindowButton.Close);
+
+            if (_softKeyboardMinimized)
+            {
+                return;
+            }
+
+            if (_softKeyboardSkin?.KeyboardBackground != null)
+            {
+                sprite.Draw(_softKeyboardSkin.KeyboardBackground, new Vector2(origin.X + 6, origin.Y + 20), Color.White);
+            }
+
+            foreach (int keyIndex in SkillMacroSoftKeyboardLayout.EnumerateVisibleKeyIndices(false))
+            {
+                DrawSoftKeyboardKey(sprite, origin, keyIndex);
+            }
+
+            DrawSoftKeyboardFunctionKey(sprite, origin, SkillMacroSoftKeyboardFunctionKey.CapsLock);
+            DrawSoftKeyboardFunctionKey(sprite, origin, SkillMacroSoftKeyboardFunctionKey.LeftShift);
+            DrawSoftKeyboardFunctionKey(sprite, origin, SkillMacroSoftKeyboardFunctionKey.RightShift);
+            DrawSoftKeyboardFunctionKey(sprite, origin, SkillMacroSoftKeyboardFunctionKey.Enter);
+            DrawSoftKeyboardFunctionKey(sprite, origin, SkillMacroSoftKeyboardFunctionKey.Backspace);
+        }
+
+        private void DrawSoftKeyboardKey(SpriteBatch sprite, Point origin, int keyIndex)
+        {
+            Rectangle bounds = SkillMacroSoftKeyboardLayout.GetKeyBounds(keyIndex);
+            bounds.Offset(origin);
+
+            bool enabled = IsSoftKeyboardKeyEnabled(keyIndex);
+            SkillMacroSoftKeyboardVisualState visualState = ResolveSoftKeyboardKeyVisualState(
+                enabled,
+                keyIndex == _hoveredSoftKeyboardKeyIndex,
+                keyIndex == _pressedSoftKeyboardKeyIndex);
+
+            DrawSoftKeyboardTexture(sprite, _softKeyboardSkin?.KeyTextures.TryGetValue(keyIndex, out SkillMacroSoftKeyboardKeyTextures textures) == true ? textures : null, bounds, visualState);
+            DrawSoftKeyboardLabel(sprite, bounds, SkillMacroSoftKeyboardLayout.GetKeyText(keyIndex, IsSoftKeyboardUppercase()), enabled ? Color.White : Color.Gray);
+        }
+
+        private void DrawSoftKeyboardFunctionKey(SpriteBatch sprite, Point origin, SkillMacroSoftKeyboardFunctionKey key)
+        {
+            Rectangle bounds = SkillMacroSoftKeyboardLayout.GetFunctionKeyBounds(key);
+            if (bounds.IsEmpty)
+            {
+                return;
+            }
+
+            bounds.Offset(origin);
+            bool enabled = key != SkillMacroSoftKeyboardFunctionKey.Enter || CanSaveCurrentMacro();
+            bool active = key switch
+            {
+                SkillMacroSoftKeyboardFunctionKey.CapsLock => _softKeyboardCapsLock,
+                SkillMacroSoftKeyboardFunctionKey.LeftShift or SkillMacroSoftKeyboardFunctionKey.RightShift => _softKeyboardShift,
+                _ => false
+            };
+
+            bool hovered = key == _hoveredSoftKeyboardFunctionKey;
+            bool pressed = key == _pressedSoftKeyboardFunctionKey || active;
+            SkillMacroSoftKeyboardVisualState visualState = ResolveSoftKeyboardKeyVisualState(enabled, hovered, pressed);
+            DrawSoftKeyboardTexture(sprite, _softKeyboardSkin?.FunctionKeyTextures.TryGetValue(key, out SkillMacroSoftKeyboardKeyTextures textures) == true ? textures : null, bounds, visualState);
+
+            string label = key switch
+            {
+                SkillMacroSoftKeyboardFunctionKey.CapsLock => "CAPS",
+                SkillMacroSoftKeyboardFunctionKey.LeftShift => "SHIFT",
+                SkillMacroSoftKeyboardFunctionKey.RightShift => "SHIFT",
+                SkillMacroSoftKeyboardFunctionKey.Enter => "ENTER",
+                SkillMacroSoftKeyboardFunctionKey.Backspace => "BS",
+                _ => string.Empty
+            };
+            DrawSoftKeyboardLabel(sprite, bounds, label, enabled ? Color.White : Color.Gray);
+        }
+
+        private void DrawSoftKeyboardWindowButton(SpriteBatch sprite, Point origin, SkillMacroSoftKeyboardWindowButton button)
+        {
+            Rectangle bounds = SkillMacroSoftKeyboardLayout.GetWindowButtonBounds(button);
+            if (bounds.IsEmpty)
+            {
+                return;
+            }
+
+            bounds.Offset(origin);
+            bool pressed = button == _pressedSoftKeyboardWindowButton;
+            bool hovered = button == _hoveredSoftKeyboardWindowButton;
+            SkillMacroSoftKeyboardVisualState visualState = ResolveSoftKeyboardKeyVisualState(true, hovered, pressed);
+            DrawSoftKeyboardTexture(sprite, _softKeyboardSkin?.WindowButtonTextures.TryGetValue(button, out SkillMacroSoftKeyboardKeyTextures textures) == true ? textures : null, bounds, visualState);
+        }
+
+        private void DrawSoftKeyboardTexture(SpriteBatch sprite, SkillMacroSoftKeyboardKeyTextures textures, Rectangle bounds, SkillMacroSoftKeyboardVisualState visualState)
+        {
+            Texture2D texture = textures?.Resolve(visualState);
+            if (texture != null)
+            {
+                sprite.Draw(texture, new Vector2(bounds.X, bounds.Y), Color.White);
+                return;
+            }
+
+            Color fallbackColor = visualState switch
+            {
+                SkillMacroSoftKeyboardVisualState.Disabled => new Color(55, 55, 60, 220),
+                SkillMacroSoftKeyboardVisualState.Hovered => new Color(90, 90, 110, 230),
+                SkillMacroSoftKeyboardVisualState.Pressed => new Color(120, 120, 145, 230),
+                _ => new Color(70, 70, 84, 220)
+            };
+            sprite.Draw(_emptySlotTexture, bounds, fallbackColor);
+        }
+
+        private void DrawSoftKeyboardLabel(SpriteBatch sprite, Rectangle bounds, string label, Color color)
+        {
+            if (_font == null || string.IsNullOrEmpty(label))
+            {
+                return;
+            }
+
+            Vector2 size = _font.MeasureString(label);
+            Vector2 position = new(
+                bounds.X + Math.Max(0f, (bounds.Width - size.X) / 2f),
+                bounds.Y + Math.Max(0f, (bounds.Height - size.Y) / 2f) - 1f);
+            sprite.DrawString(_font, label, position, color);
+        }
+
+        private static SkillMacroSoftKeyboardVisualState ResolveSoftKeyboardKeyVisualState(bool enabled, bool hovered, bool pressed)
+        {
+            if (!enabled)
+            {
+                return SkillMacroSoftKeyboardVisualState.Disabled;
+            }
+
+            if (pressed)
+            {
+                return SkillMacroSoftKeyboardVisualState.Pressed;
+            }
+
+            return hovered
+                ? SkillMacroSoftKeyboardVisualState.Hovered
+                : SkillMacroSoftKeyboardVisualState.Normal;
         }
 
         private void DrawCheckbox(SpriteBatch sprite, int windowX, int windowY)
@@ -592,13 +851,18 @@ namespace HaCreator.MapSimulator.UI
 
             _editingMacroIndex = index;
             _editingMacroName = _macros[index].Name ?? "";
+            _editingCursorPosition = _editingMacroName.Length;
             _notifyPartyMembers = _macros[index].NotifyParty;
             _validationMessage = string.Empty;
+            _caretBlinkTick = Environment.TickCount;
+            ClearCompositionText();
 
             for (int i = 0; i < SKILLS_PER_MACRO; i++)
             {
                 _editingSkillIds[i] = _macros[index].SkillIds[i];
             }
+
+            ShowSoftKeyboard();
         }
 
         /// <summary>
@@ -631,6 +895,138 @@ namespace HaCreator.MapSimulator.UI
             return true;
         }
 
+        private bool CanSaveCurrentMacro()
+        {
+            return _editingMacroIndex >= 0
+                && _editingMacroIndex < MAX_MACRO_SLOTS
+                && _editingSkillIds.Any(skillId => skillId > 0)
+                && SkillMacroNameRules.TryNormalize(_editingMacroName, out _, out _);
+        }
+
+        private void ShowSoftKeyboard(bool resetDismissedState = false)
+        {
+            if (_softKeyboardSkin == null && resetDismissedState)
+            {
+                return;
+            }
+
+            _softKeyboardVisible = true;
+            if (resetDismissedState)
+            {
+                _softKeyboardMinimized = false;
+            }
+        }
+
+        private void HideSoftKeyboard()
+        {
+            _softKeyboardVisible = false;
+            ResetSoftKeyboardTransientState();
+        }
+
+        private void ResetSoftKeyboardTransientState()
+        {
+            _hoveredSoftKeyboardKeyIndex = -1;
+            _hoveredSoftKeyboardFunctionKey = SkillMacroSoftKeyboardFunctionKey.None;
+            _hoveredSoftKeyboardWindowButton = SkillMacroSoftKeyboardWindowButton.None;
+            _pressedSoftKeyboardKeyIndex = -1;
+            _pressedSoftKeyboardFunctionKey = SkillMacroSoftKeyboardFunctionKey.None;
+            _pressedSoftKeyboardWindowButton = SkillMacroSoftKeyboardWindowButton.None;
+            _softKeyboardPressedVisualUntil = 0;
+            _softKeyboardShift = false;
+        }
+
+        private bool IsSoftKeyboardVisible => _softKeyboardVisible && _editingMacroIndex >= 0;
+
+        private Point GetSoftKeyboardPosition()
+        {
+            int windowWidth = CurrentFrame?.Width ?? WINDOW_WIDTH_BB;
+            int windowHeight = CurrentFrame?.Height ?? WINDOW_HEIGHT_BB;
+            return new Point(
+                Position.X + Math.Max(0, windowWidth - SkillMacroSoftKeyboardLayout.ExpandedWidth),
+                Position.Y + windowHeight + 6);
+        }
+
+        private bool IsPointInSoftKeyboard(int mouseX, int mouseY)
+        {
+            return IsSoftKeyboardVisible && SkillMacroSoftKeyboardLayout.GetBounds(GetSoftKeyboardPosition(), _softKeyboardMinimized).Contains(mouseX, mouseY);
+        }
+
+        private bool IsSoftKeyboardUppercase()
+        {
+            return _softKeyboardCapsLock ^ _softKeyboardShift;
+        }
+
+        private bool IsSoftKeyboardKeyEnabled(int keyIndex)
+        {
+            string insertedText = SkillMacroSoftKeyboardLayout.GetKeyText(keyIndex, IsSoftKeyboardUppercase());
+            return CanInsertSoftKeyboardText(insertedText);
+        }
+
+        private bool CanInsertSoftKeyboardText(string text)
+        {
+            return SkillMacroNameRules.TryInsertBestEffort(
+                _editingMacroName,
+                _editingCursorPosition,
+                text,
+                out _,
+                out int insertedLength,
+                out _)
+                && insertedLength > 0;
+        }
+
+        private bool TryInsertSoftKeyboardText(string text)
+        {
+            if (string.IsNullOrEmpty(text))
+            {
+                return false;
+            }
+
+            ClearCompositionText();
+            if (SkillMacroNameRules.TryInsertBestEffort(_editingMacroName, _editingCursorPosition, text, out string updatedText, out int insertedLength, out string error)
+                && insertedLength > 0)
+            {
+                _editingMacroName = updatedText;
+                _editingCursorPosition = Math.Clamp(_editingCursorPosition + insertedLength, 0, _editingMacroName.Length);
+                _validationMessage = string.Empty;
+                _caretBlinkTick = Environment.TickCount;
+                return true;
+            }
+
+            if (!string.IsNullOrEmpty(error))
+            {
+                _validationMessage = error;
+            }
+
+            return false;
+        }
+
+        private void RemoveCharacterBeforeCursor()
+        {
+            if (_editingCursorPosition <= 0)
+            {
+                return;
+            }
+
+            ClearCompositionText();
+            _editingMacroName = _editingMacroName.Remove(_editingCursorPosition - 1, 1);
+            _editingCursorPosition--;
+            _validationMessage = string.Empty;
+            _caretBlinkTick = Environment.TickCount;
+        }
+
+        private void RemoveCharacterAtCursor()
+        {
+            if (_editingCursorPosition >= _editingMacroName.Length)
+            {
+                return;
+            }
+
+            ClearCompositionText();
+            _editingMacroName = _editingMacroName.Remove(_editingCursorPosition, 1);
+            _validationMessage = string.Empty;
+            _caretBlinkTick = Environment.TickCount;
+        }
+
         /// <summary>
         /// Delete the selected macro
         /// </summary>
@@ -649,6 +1045,9 @@ namespace HaCreator.MapSimulator.UI
             _editingMacroName = "";
             _notifyPartyMembers = false;
             _validationMessage = string.Empty;
+            _editingCursorPosition = 0;
+            _caretBlinkTick = Environment.TickCount;
+            ClearCompositionText();
             Array.Clear(_editingSkillIds, 0, SKILLS_PER_MACRO);
         }
 
@@ -809,6 +1208,36 @@ namespace HaCreator.MapSimulator.UI
                 _dragPosition = new Vector2(mouseX, mouseY);
             }
 
+            if (_softKeyboardPressedVisualUntil > 0 && Environment.TickCount >= _softKeyboardPressedVisualUntil)
+            {
+                _pressedSoftKeyboardKeyIndex = -1;
+                _pressedSoftKeyboardFunctionKey = SkillMacroSoftKeyboardFunctionKey.None;
+                _pressedSoftKeyboardWindowButton = SkillMacroSoftKeyboardWindowButton.None;
+                _softKeyboardPressedVisualUntil = 0;
+            }
+
+            if (IsSoftKeyboardVisible)
+            {
+                Point softKeyboardPosition = GetSoftKeyboardPosition();
+                int localX = mouseX - softKeyboardPosition.X;
+                int localY = mouseY - softKeyboardPosition.Y;
+                _hoveredSoftKeyboardWindowButton = SkillMacroSoftKeyboardLayout.GetWindowButtonFromPoint(localX, localY);
+                _hoveredSoftKeyboardFunctionKey = _hoveredSoftKeyboardWindowButton == SkillMacroSoftKeyboardWindowButton.None
+                    ? SkillMacroSoftKeyboardLayout.GetFunctionKeyFromPoint(localX, localY, _softKeyboardMinimized)
+                    : SkillMacroSoftKeyboardFunctionKey.None;
+                _hoveredSoftKeyboardKeyIndex = (!_softKeyboardMinimized
+                                                && _hoveredSoftKeyboardWindowButton == SkillMacroSoftKeyboardWindowButton.None
+                                                && _hoveredSoftKeyboardFunctionKey == SkillMacroSoftKeyboardFunctionKey.None)
+                    ? SkillMacroSoftKeyboardLayout.GetKeyIndexFromPoint(localX, localY)
+                    : -1;
+            }
+            else
+            {
+                _hoveredSoftKeyboardKeyIndex = -1;
+                _hoveredSoftKeyboardFunctionKey = SkillMacroSoftKeyboardFunctionKey.None;
+                _hoveredSoftKeyboardWindowButton = SkillMacroSoftKeyboardWindowButton.None;
+            }
+
             _hoveredMacroIndex = GetMacroIndexAtPosition(mouseX, mouseY);
             if (_hoveredMacroIndex >= 0)
             {
@@ -825,10 +1254,24 @@ namespace HaCreator.MapSimulator.UI
         /// </summary>
         public void OnMouseDown(int mouseX, int mouseY, bool leftButton, bool rightButton)
         {
+            if (leftButton && IsPointInSoftKeyboard(mouseX, mouseY))
+            {
+                HandleSoftKeyboardMouseDown(mouseX, mouseY);
+                return;
+            }
+
             int macroIndex = GetMacroIndexAtPosition(mouseX, mouseY);
 
             if (macroIndex < 0)
             {
+                if (leftButton && IsPointInNameField(mouseX, mouseY))
+                {
+                    ClearCompositionText();
+                    _editingCursorPosition = ResolveNameCursorFromMouse(mouseX);
+                    _caretBlinkTick = Environment.TickCount;
+                    ShowSoftKeyboard(resetDismissedState: true);
+                }
+
                 // Check checkbox
                 if (IsPointInCheckbox(mouseX, mouseY) && leftButton)
                 {
@@ -939,9 +1382,146 @@ namespace HaCreator.MapSimulator.UI
                    mouseY >= checkY && mouseY <= checkY + 12;
         }
 
+        private Rectangle GetNameFieldBounds()
+        {
+            return new Rectangle(Position.X + NAME_FIELD_X, Position.Y + NAME_FIELD_Y, NAME_FIELD_WIDTH, NAME_FIELD_HEIGHT);
+        }
+
+        private bool IsPointInNameField(int mouseX, int mouseY)
+        {
+            return _editingMacroIndex >= 0 && GetNameFieldBounds().Contains(mouseX, mouseY);
+        }
+
+        private int ResolveNameCursorFromMouse(int mouseX)
+        {
+            if (_font == null || string.IsNullOrEmpty(_editingMacroName))
+            {
+                return 0;
+            }
+
+            Rectangle bounds = GetNameFieldBounds();
+            float targetX = mouseX - bounds.X - NAME_FIELD_TEXT_INSET_X;
+            if (targetX <= 0f)
+            {
+                return 0;
+            }
+
+            int bestCursor = _editingMacroName.Length;
+            float bestDistance = float.MaxValue;
+            for (int i = 0; i <= _editingMacroName.Length; i++)
+            {
+                string prefix = i <= 0 ? string.Empty : _editingMacroName[..i];
+                float prefixWidth = prefix.Length > 0 ? _font.MeasureString(prefix).X : 0f;
+                float distance = Math.Abs(prefixWidth - targetX);
+                if (distance < bestDistance)
+                {
+                    bestDistance = distance;
+                    bestCursor = i;
+                }
+            }
+
+            return bestCursor;
+        }
+
+        private void HandleSoftKeyboardMouseDown(int mouseX, int mouseY)
+        {
+            Point origin = GetSoftKeyboardPosition();
+            int localX = mouseX - origin.X;
+            int localY = mouseY - origin.Y;
+
+            SkillMacroSoftKeyboardWindowButton windowButton = SkillMacroSoftKeyboardLayout.GetWindowButtonFromPoint(localX, localY);
+            if (windowButton != SkillMacroSoftKeyboardWindowButton.None)
+            {
+                _pressedSoftKeyboardWindowButton = windowButton;
+                _softKeyboardPressedVisualUntil = Environment.TickCount + 120;
+                switch (windowButton)
+                {
+                    case SkillMacroSoftKeyboardWindowButton.Close:
+                        HideSoftKeyboard();
+                        break;
+                    case SkillMacroSoftKeyboardWindowButton.Minimize:
+                        _softKeyboardMinimized = true;
+                        ResetSoftKeyboardTransientState();
+                        break;
+                    case SkillMacroSoftKeyboardWindowButton.Maximize:
+                        _softKeyboardVisible = true;
+                        _softKeyboardMinimized = false;
+                        ResetSoftKeyboardTransientState();
+                        break;
+                }
+
+                return;
+            }
+
+            SkillMacroSoftKeyboardFunctionKey functionKey = SkillMacroSoftKeyboardLayout.GetFunctionKeyFromPoint(localX, localY, _softKeyboardMinimized);
+            if (functionKey != SkillMacroSoftKeyboardFunctionKey.None)
+            {
+                _pressedSoftKeyboardFunctionKey = functionKey;
+                _softKeyboardPressedVisualUntil = Environment.TickCount + 120;
+
+                switch (functionKey)
+                {
+                    case SkillMacroSoftKeyboardFunctionKey.CapsLock:
+                        _softKeyboardCapsLock = !_softKeyboardCapsLock;
+                        break;
+                    case SkillMacroSoftKeyboardFunctionKey.LeftShift:
+                    case SkillMacroSoftKeyboardFunctionKey.RightShift:
+                        _softKeyboardShift = !_softKeyboardShift;
+                        break;
+                    case SkillMacroSoftKeyboardFunctionKey.Enter:
+                        if (SaveCurrentMacro())
+                        {
+                            HideSoftKeyboard();
+                            Hide();
+                            OnMacroWindowClosed?.Invoke();
+                        }
+                        break;
+                    case SkillMacroSoftKeyboardFunctionKey.Backspace:
+                        RemoveCharacterBeforeCursor();
+                        break;
+                }
+
+                return;
+            }
+
+            if (_softKeyboardMinimized)
+            {
+                return;
+            }
+
+            int keyIndex = SkillMacroSoftKeyboardLayout.GetKeyIndexFromPoint(localX, localY);
+            if (keyIndex < 0 || !IsSoftKeyboardKeyEnabled(keyIndex))
+            {
+                return;
+            }
+
+            _pressedSoftKeyboardKeyIndex = keyIndex;
+            _softKeyboardPressedVisualUntil = Environment.TickCount + 120;
+            if (TryInsertSoftKeyboardText(SkillMacroSoftKeyboardLayout.GetKeyText(keyIndex, IsSoftKeyboardUppercase())))
+            {
+                _softKeyboardShift = false;
+            }
+        }
+
         public bool HandlesMacroInteractionPoint(int mouseX, int mouseY)
         {
-            return GetMacroIndexAtPosition(mouseX, mouseY) >= 0 || IsPointInCheckbox(mouseX, mouseY);
+            return GetMacroIndexAtPosition(mouseX, mouseY) >= 0
+                || IsPointInCheckbox(mouseX, mouseY)
+                || IsPointInNameField(mouseX, mouseY)
+                || IsPointInSoftKeyboard(mouseX, mouseY);
+        }
+
+        protected override IEnumerable<Rectangle> GetAdditionalInteractiveBounds()
+        {
+            foreach (Rectangle bounds in base.GetAdditionalInteractiveBounds())
+            {
+                yield return bounds;
+            }
+
+            if (IsSoftKeyboardVisible)
+            {
+                yield return SkillMacroSoftKeyboardLayout.GetBounds(GetSoftKeyboardPosition(), _softKeyboardMinimized);
+            }
         }
         #endregion
 
@@ -962,7 +1542,11 @@ namespace HaCreator.MapSimulator.UI
             _editingMacroName = "";
             _notifyPartyMembers = false;
             _validationMessage = string.Empty;
+            _editingCursorPosition = 0;
+            _caretBlinkTick = Environment.TickCount;
+            ClearCompositionText();
             Array.Clear(_editingSkillIds, 0, SKILLS_PER_MACRO);
+            HideSoftKeyboard();
 
             Hide();
             OnMacroWindowClosed?.Invoke();
@@ -980,6 +1564,14 @@ namespace HaCreator.MapSimulator.UI
         public override void Update(GameTime gameTime)
         {
             base.Update(gameTime);
+
+            if (_softKeyboardPressedVisualUntil > 0 && Environment.TickCount >= _softKeyboardPressedVisualUntil)
+            {
+                _pressedSoftKeyboardKeyIndex = -1;
+                _pressedSoftKeyboardFunctionKey = SkillMacroSoftKeyboardFunctionKey.None;
+                _pressedSoftKeyboardWindowButton = SkillMacroSoftKeyboardWindowButton.None;
+                _softKeyboardPressedVisualUntil = 0;
+            }
 
             if (!CapturesKeyboardInput)
             {
@@ -1011,17 +1603,20 @@ namespace HaCreator.MapSimulator.UI
             _dragSourceSlot = -1;
         }
 
-        public void HandleCommittedText(string text)
+        public override void HandleCommittedText(string text)
         {
             if (!CapturesKeyboardInput || string.IsNullOrEmpty(text))
             {
                 return;
             }
 
-            if (SkillMacroNameRules.TryAppendBestEffort(_editingMacroName, text, out string updatedText, out string error))
+            ClearCompositionText();
+            if (SkillMacroNameRules.TryInsertBestEffort(_editingMacroName, _editingCursorPosition, text, out string updatedText, out int insertedLength, out string error))
             {
                 _editingMacroName = updatedText;
+                _editingCursorPosition = Math.Clamp(_editingCursorPosition + insertedLength, 0, _editingMacroName.Length);
                 _validationMessage = string.Empty;
+                _caretBlinkTick = Environment.TickCount;
             }
             else if (!string.IsNullOrEmpty(error))
             {
@@ -1029,13 +1624,86 @@ namespace HaCreator.MapSimulator.UI
             }
         }
 
+        public void HandleCompositionText(string text)
+        {
+            if (!CapturesKeyboardInput)
+            {
+                ClearCompositionText();
+                return;
+            }
+
+            string sanitized = SanitizeCompositionText(text);
+            if (sanitized.Length == 0)
+            {
+                ClearCompositionText();
+                return;
+            }
+
+            if (_compositionText.Length == 0)
+            {
+                _compositionInsertionIndex = _editingCursorPosition;
+            }
+
+            _compositionText = sanitized;
+            _caretBlinkTick = Environment.TickCount;
+        }
+
+        public void ClearCompositionText()
+        {
+            _compositionText = string.Empty;
+            _compositionInsertionIndex = -1;
+        }
+
         private void HandleKeyboardInput(KeyboardState keyboardState)
         {
             bool ctrl = keyboardState.IsKeyDown(Keys.LeftControl) || keyboardState.IsKeyDown(Keys.RightControl);
 
-            if (keyboardState.IsKeyDown(Keys.Back) && _previousKeyboardState.IsKeyUp(Keys.Back) && _editingMacroName.Length > 0)
+            if (keyboardState.IsKeyDown(Keys.Back) && _previousKeyboardState.IsKeyUp(Keys.Back) && _editingCursorPosition > 0)
             {
-                _editingMacroName = _editingMacroName[..^1];
+                RemoveCharacterBeforeCursor();
+            }
+
+            if (keyboardState.IsKeyDown(Keys.Delete) && _previousKeyboardState.IsKeyUp(Keys.Delete) && _editingCursorPosition < _editingMacroName.Length)
+            {
+                RemoveCharacterAtCursor();
+            }
+
+            if (keyboardState.IsKeyDown(Keys.Left) && _previousKeyboardState.IsKeyUp(Keys.Left))
+            {
+                ClearCompositionText();
+                _editingCursorPosition = Math.Max(0, _editingCursorPosition - 1);
+                _caretBlinkTick = Environment.TickCount;
+            }
+
+            if (keyboardState.IsKeyDown(Keys.Right) && _previousKeyboardState.IsKeyUp(Keys.Right))
+            {
+                ClearCompositionText();
+                _editingCursorPosition = Math.Min(_editingMacroName.Length, _editingCursorPosition + 1);
+                _caretBlinkTick = Environment.TickCount;
+            }
+
+            if (keyboardState.IsKeyDown(Keys.Home) && _previousKeyboardState.IsKeyUp(Keys.Home))
+            {
+                ClearCompositionText();
+                _editingCursorPosition = 0;
+                _caretBlinkTick = Environment.TickCount;
+            }
+
+            if (keyboardState.IsKeyDown(Keys.End) && _previousKeyboardState.IsKeyUp(Keys.End))
+            {
+                ClearCompositionText();
+                _editingCursorPosition = _editingMacroName.Length;
+                _validationMessage = string.Empty;
+                _caretBlinkTick = Environment.TickCount;
+            }
+
+            if (_compositionInsertionIndex >= 0 && _compositionInsertionIndex != _editingCursorPosition)
+            {
+                _compositionInsertionIndex = _editingCursorPosition;
+            }
+
+            if (_compositionText.Length > 0)
+            {
                 _validationMessage = string.Empty;
             }
 
@@ -1063,10 +1731,13 @@ namespace HaCreator.MapSimulator.UI
 
                 string normalizedClipboardText = clipboardText.Replace("\r", string.Empty).Replace("\n", string.Empty);
 
-                if (SkillMacroNameRules.TryAppendBestEffort(_editingMacroName, normalizedClipboardText, out string updatedText, out string error))
+                ClearCompositionText();
+                if (SkillMacroNameRules.TryInsertBestEffort(_editingMacroName, _editingCursorPosition, normalizedClipboardText, out string updatedText, out int insertedLength, out string error))
                 {
                     _editingMacroName = updatedText;
+                    _editingCursorPosition = Math.Clamp(_editingCursorPosition + insertedLength, 0, _editingMacroName.Length);
                     _validationMessage = string.Empty;
+                    _caretBlinkTick = Environment.TickCount;
                 }
                 else
                 {
@@ -1077,6 +1748,25 @@ namespace HaCreator.MapSimulator.UI
             {
                 _validationMessage = "Clipboard paste is not available right now.";
             }
+        }
+
+        private static string SanitizeCompositionText(string text)
+        {
+            if (string.IsNullOrEmpty(text))
+            {
+                return string.Empty;
+            }
+
+            StringBuilder builder = new(text.Length);
+            foreach (char ch in text)
+            {
+                if (!char.IsControl(ch))
+                {
+                    builder.Append(ch);
+                }
+            }
+
+            return builder.ToString();
         }
         #endregion
     }

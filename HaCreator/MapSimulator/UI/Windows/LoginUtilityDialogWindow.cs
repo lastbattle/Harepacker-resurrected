@@ -28,6 +28,7 @@ namespace HaCreator.MapSimulator.UI
         private readonly UIObject _laterButton;
         private readonly UIObject _restartButton;
         private readonly UIObject _exitButton;
+        private readonly UIObject _nexonButton;
         private readonly IReadOnlyDictionary<int, Texture2D> _noticeTextTextures;
         private SpriteFont _font;
         private string _title = "Login Utility";
@@ -59,6 +60,7 @@ namespace HaCreator.MapSimulator.UI
             UIObject laterButton,
             UIObject restartButton,
             UIObject exitButton,
+            UIObject nexonButton,
             IReadOnlyDictionary<int, Texture2D> noticeTextTextures)
             : base(frame)
         {
@@ -70,6 +72,7 @@ namespace HaCreator.MapSimulator.UI
             _laterButton = RegisterButton(laterButton, false);
             _restartButton = RegisterButton(restartButton, true);
             _exitButton = RegisterButton(exitButton, false);
+            _nexonButton = RegisterButton(nexonButton, true);
             _noticeTextTextures = noticeTextTextures ?? new Dictionary<int, Texture2D>();
         }
 
@@ -333,6 +336,7 @@ namespace HaCreator.MapSimulator.UI
             HideButton(_laterButton);
             HideButton(_restartButton);
             HideButton(_exitButton);
+            HideButton(_nexonButton);
 
             switch (_buttonLayout)
             {
@@ -350,6 +354,9 @@ namespace HaCreator.MapSimulator.UI
                 case LoginUtilityDialogButtonLayout.RestartExit:
                     _activePrimaryButton = _restartButton ?? _okButton;
                     _activeSecondaryButton = _exitButton;
+                    break;
+                case LoginUtilityDialogButtonLayout.Nexon:
+                    _activePrimaryButton = _nexonButton ?? _okButton;
                     break;
                 default:
                     _activePrimaryButton = _okButton;

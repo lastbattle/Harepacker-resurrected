@@ -69,6 +69,10 @@ namespace HaCreator.MapSimulator.Character.Skills
     /// </summary>
     public enum BuffStatType
     {
+        Strength,
+        Dexterity,
+        Intelligence,
+        Luck,
         Attack,
         MagicAttack,
         Defense,
@@ -79,6 +83,8 @@ namespace HaCreator.MapSimulator.Character.Skills
         Jump,
         MaxHP,
         MaxMP,
+        MaxHPPercent,
+        MaxMPPercent,
         CriticalRate,
         DamageReduction,
         Invincible,
@@ -116,6 +122,16 @@ namespace HaCreator.MapSimulator.Character.Skills
         SummonAction = 4,
         ManualAttack = 5,
         OwnerAttackTargeted = 6
+    }
+
+    public enum SummonActorState
+    {
+        Spawn,
+        Idle,
+        Prepare,
+        Attack,
+        Hit,
+        Die
     }
 
     #endregion
@@ -157,6 +173,10 @@ namespace HaCreator.MapSimulator.Character.Skills
         public int MAD { get; set; }                 // Magic Attack boost
         public int PDD { get; set; }                 // Physical Defense boost
         public int MDD { get; set; }                 // Magic Defense boost
+        public int STR { get; set; }                 // Strength boost
+        public int DEX { get; set; }                 // Dexterity boost
+        public int INT { get; set; }                 // Intelligence boost
+        public int LUK { get; set; }                 // Luck boost
         public int ACC { get; set; }                 // Accuracy boost
         public int EVA { get; set; }                 // Avoidability boost
         public int Speed { get; set; }               // Speed boost
@@ -186,6 +206,8 @@ namespace HaCreator.MapSimulator.Character.Skills
         public int EnhancedMDD { get; set; }         // Mechanic-only magic defense boost
         public int EnhancedMaxHP { get; set; }       // Mechanic-only max HP boost
         public int EnhancedMaxMP { get; set; }       // Mechanic-only max MP boost
+        public int MaxHPPercent { get; set; }        // Percentage max HP boost
+        public int MaxMPPercent { get; set; }        // Percentage max MP boost
 
         // Requirements
         public int RequiredLevel { get; set; }       // Level required
@@ -354,7 +376,9 @@ namespace HaCreator.MapSimulator.Character.Skills
         public bool CanNotMoveInState { get; set; }
         public bool OnlyNormalAttackInState { get; set; }
         public bool SpecialNormalAttackInState { get; set; }
+        public bool HasMorphMetadata { get; set; }
         public int MorphId { get; set; }
+        public bool UsesTamingMobMount { get; set; }
         public bool ReflectsIncomingDamage { get; set; }
 
         // Level data
@@ -379,7 +403,10 @@ namespace HaCreator.MapSimulator.Character.Skills
         public SkillAnimation AffectedEffect { get; set; }   // Effect while buff active
         public SkillAnimation SummonSpawnAnimation { get; set; } // Initial summon spawn sequence
         public SkillAnimation SummonAnimation { get; set; }  // Summon body/effect
+        public SkillAnimation SummonAttackPrepareAnimation { get; set; } // Optional summon windup before the main attack branch
         public SkillAnimation SummonAttackAnimation { get; set; } // Summon attack sequence
+        public SkillAnimation SummonHitAnimation { get; set; } // Summon hit reaction sequence
+        public SkillAnimation SummonRemovalAnimation { get; set; } // Optional self-destruct / removal branch
         public string SummonAttackBranchName { get; set; }
         public SkillAnimation AvatarOverlayEffect { get; set; } // Avatar-bound looping overlay
         public SkillAnimation AvatarUnderFaceEffect { get; set; } // Avatar-bound layer below face/hair
@@ -388,6 +415,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         public SkillAnimation AvatarUnderFaceFinishEffect { get; set; } // One-shot cleanup below face
         public SkillAnimation AvatarLadderFinishEffect { get; set; } // Ladder/rope cleanup override
         public Dictionary<string, SkillAnimation> ShadowPartnerActionAnimations { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+        public int ShadowPartnerHorizontalOffsetPx { get; set; }
         public bool HideAvatarEffectOnLadderOrRope { get; set; }
         public int SummonMoveAbility { get; set; }
         public SummonMovementStyle SummonMovementStyle { get; set; } = SummonMovementStyle.Stationary;
@@ -458,12 +486,26 @@ namespace HaCreator.MapSimulator.Character.Skills
             || AvatarUnderFaceFinishEffect != null
             || AvatarLadderFinishEffect != null;
 
-        public bool UsesAffectedSkillBodyAttack =>
+        public bool IsSwallowFamilySkill =>
+            IsSwallowSkill
+            || (DummySkillParents?.Length ?? 0) > 0;
+
+        public bool UsesAffectedSkillPassiveData =>
             AffectedSkillId > 0
-            && !string.IsNullOrWhiteSpace(AffectedSkillEffect)
+            && !string.IsNullOrWhiteSpace(AffectedSkillEffect);
+
+        public bool UsesAffectedSkillBodyAttack =>
+            UsesAffectedSkillPassiveData
             && AffectedSkillEffect.IndexOf("bodyAttack", StringComparison.OrdinalIgnoreCase) >= 0;
 
         public bool HasShadowPartnerActionAnimations => ShadowPartnerActionAnimations != null && ShadowPartnerActionAnimations.Count > 0;
+
+        public bool LinksDummySkill(int skillId)
+        {
+            return skillId > 0
+                   && DummySkillParents != null
+                   && Array.IndexOf(DummySkillParents, skillId) >= 0;
+        }
 
         public MeleeAfterImageCatalog GetAfterImageCatalogForCharacterLevel(string weaponTypeKey, int characterLevel)
         {
@@ -1071,11 +1113,14 @@ namespace HaCreator.MapSimulator.Character.Skills
         public int SkillId { get; set; }
         public int Level { get; set; }
         public int OwnerHotkeySlot { get; set; } = -1;
+        public int OwnerInputToken { get; set; }
+        public int ReservedTargetMobId { get; set; }
         public int StartTime { get; set; }
         public int Duration { get; set; }
         public int MaxHoldDurationMs { get; set; }
         public int HudGaugeDurationMs { get; set; }
         public string HudSkinKey { get; set; } = "KeyDownBar";
+        public PreparedSkillHudTextVariant HudTextVariant { get; set; } = PreparedSkillHudTextVariant.Default;
         public bool ShowHudBar { get; set; } = true;
         public bool ShowHudText { get; set; } = true;
         public PreparedSkillHudSurface HudSurface { get; set; } = PreparedSkillHudSurface.StatusBar;
@@ -1115,11 +1160,14 @@ namespace HaCreator.MapSimulator.Character.Skills
         public int Duration { get; set; }
         public int LastAttackTime { get; set; }
         public int LastAttackAnimationStartTime { get; set; } = int.MinValue;
+        public int RemovalAnimationStartTime { get; set; } = int.MinValue;
         public int MoveAbility { get; set; }
         public SummonMovementStyle MovementStyle { get; set; }
         public float SpawnDistanceX { get; set; }
         public float AnchorX { get; set; }
         public float AnchorY { get; set; }
+        public float PreviousPositionX { get; set; }
+        public float PreviousPositionY { get; set; }
         public float PositionX { get; set; }
         public float PositionY { get; set; }
         public bool NeedsAnchorReset { get; set; }
@@ -1130,13 +1178,24 @@ namespace HaCreator.MapSimulator.Character.Skills
         public bool ManualAssistEnabled { get; set; } = true;
         public int NextSupportTime { get; set; }
         public int PendingRemovalTime { get; set; } = int.MaxValue;
+        public int LastBodyContactTime { get; set; } = int.MinValue;
+        public int LastHitAnimationStartTime { get; set; } = int.MinValue;
+        public int LastStateChangeTime { get; set; }
+        public SummonActorState ActorState { get; set; } = SummonActorState.Spawn;
+        public bool ExpiryActionTriggered { get; set; }
+        public int MaxHealth { get; set; } = 1;
+        public int CurrentHealth { get; set; } = 1;
 
         public bool IsPendingRemoval => PendingRemovalTime != int.MaxValue;
 
+        public bool HasReachedNaturalExpiry(int currentTime)
+        {
+            return Duration > 0 && currentTime - StartTime >= Duration;
+        }
+
         public bool IsExpired(int currentTime)
         {
-            return (Duration > 0 && currentTime - StartTime >= Duration)
-                || (IsPendingRemoval && currentTime >= PendingRemovalTime);
+            return IsPendingRemoval && currentTime >= PendingRemovalTime;
         }
     }
 

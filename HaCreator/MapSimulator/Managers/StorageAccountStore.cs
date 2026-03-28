@@ -89,8 +89,15 @@ namespace HaCreator.MapSimulator.Managers
 
         public StorageAccountState GetState(string accountLabel)
         {
-            string key = ResolveAccountKey(accountLabel);
-            if (!_accountsByKey.TryGetValue(key, out PersistedStorageAccountState persisted))
+            return GetStateByKey(ResolveAccountKey(accountLabel));
+        }
+
+        public StorageAccountState GetStateByKey(string accountKey)
+        {
+            string defaultAccountLabel = string.IsNullOrWhiteSpace(accountKey)
+                ? "Simulator Account Storage"
+                : accountKey.Trim();
+            if (string.IsNullOrWhiteSpace(accountKey) || !_accountsByKey.TryGetValue(accountKey.Trim(), out PersistedStorageAccountState persisted))
             {
                 return null;
             }
@@ -131,13 +138,41 @@ namespace HaCreator.MapSimulator.Managers
 
             return new StorageAccountState
             {
-                AccountLabel = string.IsNullOrWhiteSpace(persisted.AccountLabel) ? accountLabel : persisted.AccountLabel,
+                AccountLabel = string.IsNullOrWhiteSpace(persisted.AccountLabel) ? defaultAccountLabel : persisted.AccountLabel,
                 SlotLimit = Math.Max(24, persisted.SlotLimit),
                 Meso = Math.Max(0, persisted.Meso),
                 AuthorizedCharacterNames = NormalizeCharacterNames(persisted.AuthorizedCharacterNames),
                 SecondaryPassword = persisted.SecondaryPassword ?? string.Empty,
                 ItemsByType = itemsByType
             };
+        }
+
+        public void SaveState(
+            string accountKey,
+            string accountLabel,
+            int slotLimit,
+            long meso,
+            IReadOnlyDictionary<InventoryType, List<InventorySlotData>> itemsByType,
+            IReadOnlyCollection<string> authorizedCharacterNames = null,
+            string secondaryPassword = null)
+        {
+            string normalizedLabel = string.IsNullOrWhiteSpace(accountLabel) ? "Simulator Account Storage" : accountLabel.Trim();
+            string normalizedKey = string.IsNullOrWhiteSpace(accountKey)
+                ? ResolveAccountKey(normalizedLabel)
+                : accountKey.Trim();
+            Dictionary<string, List<PersistedStorageSlotRecord>> persistedItems = BuildPersistedItems(itemsByType);
+
+            _accountsByKey[normalizedKey] = new PersistedStorageAccountState
+            {
+                AccountLabel = normalizedLabel,
+                SlotLimit = Math.Max(24, slotLimit),
+                Meso = Math.Max(0, meso),
+                AuthorizedCharacterNames = NormalizeCharacterNames(authorizedCharacterNames),
+                SecondaryPassword = secondaryPassword ?? string.Empty,
+                ItemsByType = persistedItems
+            };
+
+            SaveToDisk();
         }
 
         public void SaveState(
@@ -149,56 +184,7 @@ namespace HaCreator.MapSimulator.Managers
             string secondaryPassword = null)
         {
             string normalizedLabel = string.IsNullOrWhiteSpace(accountLabel) ? "Simulator Account Storage" : accountLabel.Trim();
-            string key = ResolveAccountKey(normalizedLabel);
-            Dictionary<string, List<PersistedStorageSlotRecord>> persistedItems = new(StringComparer.OrdinalIgnoreCase);
-
-            if (itemsByType != null)
-            {
-                foreach (KeyValuePair<InventoryType, List<InventorySlotData>> entry in itemsByType)
-                {
-                    if (entry.Key == InventoryType.NONE)
-                    {
-                        continue;
-                    }
-
-                    List<PersistedStorageSlotRecord> rows = new();
-                    foreach (InventorySlotData slot in entry.Value ?? new List<InventorySlotData>())
-                    {
-                        if (slot == null || slot.ItemId <= 0)
-                        {
-                            continue;
-                        }
-
-                        rows.Add(new PersistedStorageSlotRecord
-                        {
-                            ItemId = slot.ItemId,
-                            Quantity = Math.Max(1, slot.Quantity),
-                            MaxStackSize = slot.MaxStackSize,
-                            IsEquipped = slot.IsEquipped,
-                            IsDisabled = slot.IsDisabled,
-                            IsActiveBullet = slot.IsActiveBullet,
-                            GradeFrameIndex = slot.GradeFrameIndex,
-                            ItemName = slot.ItemName,
-                            ItemTypeName = slot.ItemTypeName,
-                            Description = slot.Description
-                        });
-                    }
-
-                    persistedItems[entry.Key.ToString()] = rows;
-                }
-            }
-
-            _accountsByKey[key] = new PersistedStorageAccountState
-            {
-                AccountLabel = normalizedLabel,
-                SlotLimit = Math.Max(24, slotLimit),
-                Meso = Math.Max(0, meso),
-                AuthorizedCharacterNames = NormalizeCharacterNames(authorizedCharacterNames),
-                SecondaryPassword = secondaryPassword ?? string.Empty,
-                ItemsByType = persistedItems
-            };
-
-            SaveToDisk();
+            SaveState(ResolveAccountKey(normalizedLabel), normalizedLabel, slotLimit, meso, itemsByType, authorizedCharacterNames, secondaryPassword);
         }
 
         private void LoadFromDisk()
@@ -278,6 +264,50 @@ namespace HaCreator.MapSimulator.Managers
             }
 
             return normalized;
+        }
+
+        private static Dictionary<string, List<PersistedStorageSlotRecord>> BuildPersistedItems(IReadOnlyDictionary<InventoryType, List<InventorySlotData>> itemsByType)
+        {
+            Dictionary<string, List<PersistedStorageSlotRecord>> persistedItems = new(StringComparer.OrdinalIgnoreCase);
+            if (itemsByType == null)
+            {
+                return persistedItems;
+            }
+
+            foreach (KeyValuePair<InventoryType, List<InventorySlotData>> entry in itemsByType)
+            {
+                if (entry.Key == InventoryType.NONE)
+                {
+                    continue;
+                }
+
+                List<PersistedStorageSlotRecord> rows = new();
+                foreach (InventorySlotData slot in entry.Value ?? new List<InventorySlotData>())
+                {
+                    if (slot == null || slot.ItemId <= 0)
+                    {
+                        continue;
+                    }
+
+                    rows.Add(new PersistedStorageSlotRecord
+                    {
+                        ItemId = slot.ItemId,
+                        Quantity = Math.Max(1, slot.Quantity),
+                        MaxStackSize = slot.MaxStackSize,
+                        IsEquipped = slot.IsEquipped,
+                        IsDisabled = slot.IsDisabled,
+                        IsActiveBullet = slot.IsActiveBullet,
+                        GradeFrameIndex = slot.GradeFrameIndex,
+                        ItemName = slot.ItemName,
+                        ItemTypeName = slot.ItemTypeName,
+                        Description = slot.Description
+                    });
+                }
+
+                persistedItems[entry.Key.ToString()] = rows;
+            }
+
+            return persistedItems;
         }
     }
 }

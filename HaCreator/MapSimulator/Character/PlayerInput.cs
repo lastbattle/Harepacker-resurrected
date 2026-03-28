@@ -116,6 +116,8 @@ namespace HaCreator.MapSimulator.Character
         // Skill hotkeys (8 primary slots)
         public bool[] Skills;
         public bool[] SkillsReleased;
+        public int[] SkillInputTokens;
+        public int[] SkillReleaseInputTokens;
 
         // Quick slots for items (8 slots)
         public bool[] QuickSlots;
@@ -123,10 +125,14 @@ namespace HaCreator.MapSimulator.Character
         // Function key slots (12 slots - F1-F12)
         public bool[] FunctionSlots;
         public bool[] FunctionSlotsReleased;
+        public int[] FunctionSlotInputTokens;
+        public int[] FunctionSlotReleaseInputTokens;
 
         // Ctrl+Number slots (8 secondary skill slots)
         public bool[] CtrlSlots;
         public bool[] CtrlSlotsReleased;
+        public int[] CtrlSlotInputTokens;
+        public int[] CtrlSlotReleaseInputTokens;
 
         public bool InventoryPressed;
         public bool EquipPressed;
@@ -307,11 +313,17 @@ namespace HaCreator.MapSimulator.Character
 
                 Skills = new bool[8],
                 SkillsReleased = new bool[8],
+                SkillInputTokens = new int[8],
+                SkillReleaseInputTokens = new int[8],
                 QuickSlots = new bool[8],
                 FunctionSlots = new bool[12],
                 FunctionSlotsReleased = new bool[12],
+                FunctionSlotInputTokens = new int[12],
+                FunctionSlotReleaseInputTokens = new int[12],
                 CtrlSlots = new bool[8],
                 CtrlSlotsReleased = new bool[8],
+                CtrlSlotInputTokens = new int[8],
+                CtrlSlotReleaseInputTokens = new int[8],
 
                 InventoryPressed = IsPressed(InputAction.ToggleInventory),
                 EquipPressed = IsPressed(InputAction.ToggleEquip),
@@ -327,8 +339,11 @@ namespace HaCreator.MapSimulator.Character
             // Primary skill hotkeys (8 slots)
             for (int i = 0; i < 8; i++)
             {
-                state.Skills[i] = IsPressed(InputAction.Skill1 + i);
-                state.SkillsReleased[i] = IsReleased(InputAction.Skill1 + i);
+                InputAction action = InputAction.Skill1 + i;
+                state.Skills[i] = TryGetInputToken(action, released: false, out int pressToken);
+                state.SkillsReleased[i] = TryGetInputToken(action, released: true, out int releaseToken);
+                state.SkillInputTokens[i] = pressToken;
+                state.SkillReleaseInputTokens[i] = releaseToken;
             }
 
             // Quick slots for items (8 slots)
@@ -340,8 +355,11 @@ namespace HaCreator.MapSimulator.Character
             // Function key slots (12 slots - F1-F12)
             for (int i = 0; i < 12; i++)
             {
-                state.FunctionSlots[i] = IsPressed(InputAction.FunctionSlot1 + i);
-                state.FunctionSlotsReleased[i] = IsReleased(InputAction.FunctionSlot1 + i);
+                InputAction action = InputAction.FunctionSlot1 + i;
+                state.FunctionSlots[i] = TryGetInputToken(action, released: false, out int pressToken);
+                state.FunctionSlotsReleased[i] = TryGetInputToken(action, released: true, out int releaseToken);
+                state.FunctionSlotInputTokens[i] = pressToken;
+                state.FunctionSlotReleaseInputTokens[i] = releaseToken;
             }
 
             // Ctrl+Number secondary skill slots (8 slots)
@@ -354,6 +372,9 @@ namespace HaCreator.MapSimulator.Character
                 for (int i = 0; i < 8; i++)
                 {
                     state.CtrlSlots[i] = _currentKeyboard.IsKeyDown(ctrlKeys[i]) && !_previousKeyboard.IsKeyDown(ctrlKeys[i]);
+                    state.CtrlSlotInputTokens[i] = state.CtrlSlots[i]
+                        ? ComposeInputToken(ctrlKeys[i], gamepadButton: null, requiresCtrl: true)
+                        : 0;
                 }
             }
 
@@ -363,6 +384,9 @@ namespace HaCreator.MapSimulator.Character
                 bool currentComboHeld = ctrlHeld && _currentKeyboard.IsKeyDown(ctrlReleaseKeys[i]);
                 bool previousComboHeld = prevCtrlHeld && _previousKeyboard.IsKeyDown(ctrlReleaseKeys[i]);
                 state.CtrlSlotsReleased[i] = !currentComboHeld && previousComboHeld;
+                state.CtrlSlotReleaseInputTokens[i] = state.CtrlSlotsReleased[i]
+                    ? ComposeInputToken(ctrlReleaseKeys[i], gamepadButton: null, requiresCtrl: true)
+                    : 0;
             }
 
             return state;
@@ -421,28 +445,7 @@ namespace HaCreator.MapSimulator.Character
         /// </summary>
         public bool IsPressed(InputAction action)
         {
-            if (!_bindings.TryGetValue(action, out var binding))
-                return false;
-
-            // Check keyboard
-            if (binding.PrimaryKey != Keys.None &&
-                _currentKeyboard.IsKeyDown(binding.PrimaryKey) &&
-                !_previousKeyboard.IsKeyDown(binding.PrimaryKey))
-                return true;
-
-            if (binding.SecondaryKey != Keys.None &&
-                _currentKeyboard.IsKeyDown(binding.SecondaryKey) &&
-                !_previousKeyboard.IsKeyDown(binding.SecondaryKey))
-                return true;
-
-            // Check gamepad
-            if (_currentGamepad.IsConnected && binding.GamepadButton != 0)
-            {
-                return _currentGamepad.IsButtonDown(binding.GamepadButton) &&
-                       !_previousGamepad.IsButtonDown(binding.GamepadButton);
-            }
-
-            return false;
+            return TryGetInputToken(action, released: false, out _);
         }
 
         /// <summary>
@@ -450,28 +453,71 @@ namespace HaCreator.MapSimulator.Character
         /// </summary>
         public bool IsReleased(InputAction action)
         {
+            return TryGetInputToken(action, released: true, out _);
+        }
+
+        public bool TryGetInputToken(InputAction action, bool released, out int inputToken)
+        {
+            inputToken = 0;
+
             if (!_bindings.TryGetValue(action, out var binding))
                 return false;
 
-            // Check keyboard
-            if (binding.PrimaryKey != Keys.None &&
-                !_currentKeyboard.IsKeyDown(binding.PrimaryKey) &&
-                _previousKeyboard.IsKeyDown(binding.PrimaryKey))
-                return true;
-
-            if (binding.SecondaryKey != Keys.None &&
-                !_currentKeyboard.IsKeyDown(binding.SecondaryKey) &&
-                _previousKeyboard.IsKeyDown(binding.SecondaryKey))
-                return true;
-
-            // Check gamepad
-            if (_currentGamepad.IsConnected && binding.GamepadButton != 0)
+            if (binding.PrimaryKey != Keys.None && DidKeyTransition(binding.PrimaryKey, released))
             {
-                return !_currentGamepad.IsButtonDown(binding.GamepadButton) &&
-                       _previousGamepad.IsButtonDown(binding.GamepadButton);
+                inputToken = ComposeInputToken(binding.PrimaryKey, gamepadButton: null, requiresCtrl: false);
+                return true;
+            }
+
+            if (binding.SecondaryKey != Keys.None && DidKeyTransition(binding.SecondaryKey, released))
+            {
+                inputToken = ComposeInputToken(binding.SecondaryKey, gamepadButton: null, requiresCtrl: false);
+                return true;
+            }
+
+            if (_currentGamepad.IsConnected
+                && binding.GamepadButton != 0
+                && DidButtonTransition(binding.GamepadButton, released))
+            {
+                inputToken = ComposeInputToken(key: null, binding.GamepadButton, requiresCtrl: false);
+                return true;
             }
 
             return false;
+        }
+
+        private bool DidKeyTransition(Keys key, bool released)
+        {
+            return released
+                ? !_currentKeyboard.IsKeyDown(key) && _previousKeyboard.IsKeyDown(key)
+                : _currentKeyboard.IsKeyDown(key) && !_previousKeyboard.IsKeyDown(key);
+        }
+
+        private bool DidButtonTransition(Buttons button, bool released)
+        {
+            return released
+                ? !_currentGamepad.IsButtonDown(button) && _previousGamepad.IsButtonDown(button)
+                : _currentGamepad.IsButtonDown(button) && !_previousGamepad.IsButtonDown(button);
+        }
+
+        private static int ComposeInputToken(Keys? key, Buttons? gamepadButton, bool requiresCtrl)
+        {
+            const int ctrlBit = 1 << 29;
+            const int keyboardTag = 1 << 30;
+            const int gamepadTag = 1 << 28;
+
+            int token = requiresCtrl ? ctrlBit : 0;
+            if (key.HasValue)
+            {
+                return token | keyboardTag | (int)key.Value;
+            }
+
+            if (gamepadButton.HasValue)
+            {
+                return token | gamepadTag | (int)gamepadButton.Value;
+            }
+
+            return token;
         }
 
         /// <summary>

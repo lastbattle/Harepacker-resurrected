@@ -24,30 +24,56 @@ namespace HaCreator.MapSimulator.Fields
         private const int MaxConnectedFootholds = 512;
         private const float MaxTraversableFootholdHeightDelta = 120f;
 
-        private readonly HashSet<MobMovementInfo> _attachedFollowers = new();
+        private MobMovementInfo _attachedFollower;
+        private int _lastUpdateToken = int.MinValue;
+        private MobMovementInfo _frameStartingFollower;
+        private bool _frameStartingFollowerProcessed;
 
         public bool UpdateEscortFollow(
             PlayerCharacter player,
             MobMovementInfo movement,
             bool movementLocked = false,
-            bool followAllowed = true)
+            bool followAllowed = true,
+            int updateToken = 0)
         {
             if (movement == null)
             {
                 return false;
             }
 
+            BeginUpdatePass(updateToken);
+
+            bool attached = ReferenceEquals(_attachedFollower, movement);
+            bool wasFrameStartingFollower = ReferenceEquals(_frameStartingFollower, movement);
+
             if (!followAllowed)
             {
-                _attachedFollowers.Remove(movement);
+                if (attached)
+                {
+                    _attachedFollower = null;
+                }
+
+                if (wasFrameStartingFollower)
+                {
+                    _frameStartingFollowerProcessed = true;
+                }
+
                 return false;
             }
 
-            bool attached = _attachedFollowers.Contains(movement);
             FootholdLine playerFoothold = ResolvePlayerFoothold(player, attached);
-            if (!CanEvaluate(player, playerFoothold, movement, movementLocked))
+            if (!CanEvaluate(player, playerFoothold, movement, movementLocked, attached))
             {
-                _attachedFollowers.Remove(movement);
+                if (attached)
+                {
+                    _attachedFollower = null;
+                }
+
+                if (wasFrameStartingFollower)
+                {
+                    _frameStartingFollowerProcessed = true;
+                }
+
                 return false;
             }
 
@@ -61,34 +87,78 @@ namespace HaCreator.MapSimulator.Fields
 
             if (!withinWindow || !CanTraverseBetween(playerFoothold, movement.CurrentFoothold))
             {
-                _attachedFollowers.Remove(movement);
+                if (attached)
+                {
+                    _attachedFollower = null;
+                }
+
+                if (wasFrameStartingFollower)
+                {
+                    _frameStartingFollowerProcessed = true;
+                }
+
                 return false;
             }
 
-            _attachedFollowers.Add(movement);
+            if (wasFrameStartingFollower)
+            {
+                _frameStartingFollowerProcessed = true;
+            }
+            else if (_attachedFollower != null || (_frameStartingFollower != null && !_frameStartingFollowerProcessed))
+            {
+                return false;
+            }
+
+            _attachedFollower = movement;
             return true;
         }
 
         public void Clear()
         {
-            _attachedFollowers.Clear();
+            _attachedFollower = null;
+            _frameStartingFollower = null;
+            _frameStartingFollowerProcessed = false;
+            _lastUpdateToken = int.MinValue;
+        }
+
+        private void BeginUpdatePass(int updateToken)
+        {
+            if (_lastUpdateToken == updateToken)
+            {
+                return;
+            }
+
+            _lastUpdateToken = updateToken;
+            _frameStartingFollower = _attachedFollower;
+            _frameStartingFollowerProcessed = false;
         }
 
         private static bool CanEvaluate(
             PlayerCharacter player,
             FootholdLine playerFoothold,
             MobMovementInfo movement,
-            bool movementLocked)
+            bool movementLocked,
+            bool attached)
         {
-            return CanIssueFollowRequest(player)
-                   && !movementLocked
+            return (attached
+                       ? CanMaintainEscortFollow(player)
+                       : CanIssueFollowRequest(player, movementLocked))
                    && playerFoothold != null
                    && movement.CurrentFoothold != null
                    && movement.MoveType != MobMoveType.Fly
                    && !movement.IsInKnockback;
         }
 
-        private static bool CanIssueFollowRequest(PlayerCharacter player)
+        private static bool CanIssueFollowRequest(PlayerCharacter player, bool movementLocked)
+        {
+            return CanMaintainEscortFollow(player)
+                   && !movementLocked
+                   && player.State != PlayerState.Sitting
+                   && !player.IsMovementLockedBySkillTransform
+                   && !HasActiveRideState(player);
+        }
+
+        private static bool CanMaintainEscortFollow(PlayerCharacter player)
         {
             return player?.IsAlive == true
                    && player.Physics != null
@@ -96,9 +166,6 @@ namespace HaCreator.MapSimulator.Fields
                    && !player.Physics.IsOnLadderOrRope
                    && !player.Physics.IsUserFlying()
                    && !player.Physics.IsInSwimArea
-                   && player.State != PlayerState.Sitting
-                   && !player.IsMovementLockedBySkillTransform
-                   && !HasActiveRideState(player)
                    && !string.Equals(player.CurrentActionName, CharacterPart.GetActionString(CharacterAction.Ghost), StringComparison.OrdinalIgnoreCase);
         }
 

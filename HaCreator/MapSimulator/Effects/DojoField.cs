@@ -1,4 +1,4 @@
-﻿using HaSharedLibrary.Render.DX;
+using HaSharedLibrary.Render.DX;
 using MapleLib.Helpers;
 using MapleLib.WzLib;
 using MapleLib.WzLib.WzProperties;
@@ -15,6 +15,7 @@ using System.Linq;
 using System.IO;
 using HaCreator.MapEditor;
 using HaCreator.MapEditor.Info;
+using HaCreator.MapEditor.Instance;
 using HaCreator.MapEditor.Instance.Misc;
 using HaCreator.MapSimulator.Character;
 using HaCreator.Wz;
@@ -86,6 +87,7 @@ namespace HaCreator.MapSimulator.Effects
         private int _returnMapId = -1;
         private int _forcedReturnMapId = -1;
         private bool _hasNextFloorPortal;
+        private int _nextFloorMapId = -1;
         private int _pendingTransferMapId = -1;
         private int _pendingTransferAtTick = int.MinValue;
         private int _playerHp;
@@ -93,6 +95,8 @@ namespace HaCreator.MapSimulator.Effects
         private float? _bossHpPercent;
         private float? _lastBossHpPercent;
         private int _energy;
+        private int _lastDecodedClockType = -1;
+        private int _lastDecodedClockDurationSec = -1;
         private int _stageBannerStartTick = int.MinValue;
         private int _resultEffectStartTick = int.MinValue;
         private GraphicsDevice _device;
@@ -115,6 +119,8 @@ namespace HaCreator.MapSimulator.Effects
         public bool IsActive => _isActive;
         public int Stage => _stage;
         public int Energy => _energy;
+        public int LastDecodedClockType => _lastDecodedClockType;
+        public int LastDecodedClockDurationSec => _lastDecodedClockDurationSec;
         public int RemainingSeconds
         {
             get
@@ -153,6 +159,8 @@ namespace HaCreator.MapSimulator.Effects
             _bossHpPercent = null;
             _lastBossHpPercent = null;
             _energy = 0;
+            _lastDecodedClockType = -1;
+            _lastDecodedClockDurationSec = -1;
             EnsureAssetsLoaded();
             _stageBannerStartTick = Environment.TickCount;
             _resultEffectStartTick = int.MinValue;
@@ -164,16 +172,26 @@ namespace HaCreator.MapSimulator.Effects
             _forcedReturnMapId = NormalizeTransferMapId(mapInfo?.forcedReturn);
             _hasNextFloorPortal = hasNextFloorPortal || HasPortalScript(_mapId, "dojang_next");
         }
+        public void Configure(MapInfo mapInfo, IEnumerable<PortalInstance> portals, bool hasNextFloorPortal = false)
+        {
+            Configure(mapInfo, hasNextFloorPortal);
+            _nextFloorMapId = ResolveNextFloorMapIdFromPortals(portals);
+            if (_nextFloorMapId > 0)
+            {
+                _hasNextFloorPortal = true;
+            }
+        }
         public void OnClock(int clockType, int durationSec, int currentTimeMs)
         {
             if (clockType != 2)
             {
                 return;
             }
+
             _timerDurationSec = Math.Max(0, durationSec);
             _timeOverTick = currentTimeMs + (_timerDurationSec * 1000);
             _lastClockUpdateTick = currentTimeMs;
-            if (_resultEffect == DojoResultEffect.TimeOver)
+            if (_resultEffect != DojoResultEffect.None)
             {
                 _resultEffect = DojoResultEffect.None;
                 _resultEffectStartTick = int.MinValue;
@@ -221,11 +239,22 @@ namespace HaCreator.MapSimulator.Effects
                     {
                         return false;
                     }
+
+                    _lastDecodedClockType = clockType;
+                    _lastDecodedClockDurationSec = Math.Max(0, durationSec);
+
+                    if (clockType == 1)
+                    {
+                        // CField_Dojang::OnClock only creates the timerboard for type 2.
+                        return true;
+                    }
+
                     if (clockType != 2)
                     {
-                        errorMessage = $"Dojo clock packet type {clockType} does not create the client timerboard.";
+                        errorMessage = $"Unsupported Dojo clock packet type: {clockType}";
                         return false;
                     }
+
                     OnClock(clockType, durationSec, currentTimeMs);
                     return true;
                 default:
@@ -247,12 +276,19 @@ namespace HaCreator.MapSimulator.Effects
         public void SetStage(int stage, int currentTimeMs)
         {
             _stage = Math.Clamp(stage, 0, 32);
+            _resultEffect = DojoResultEffect.None;
+            _resultEffectStartTick = int.MinValue;
+            _pendingTransferMapId = -1;
+            _pendingTransferAtTick = int.MinValue;
             _stageBannerStartTick = currentTimeMs;
         }
         public void ShowClearResult(int currentTimeMs, int nextMapId = -1)
         {
             _resultEffect = DojoResultEffect.Clear;
             _resultEffectStartTick = currentTimeMs;
+            _timeOverTick = int.MinValue;
+            _timerDurationSec = 0;
+            _lastClockUpdateTick = currentTimeMs;
             SchedulePresentationTransfer(nextMapId, _clearFrames, currentTimeMs);
         }
         public void ShowClearResultForNextFloor(int currentTimeMs)
@@ -309,7 +345,10 @@ namespace HaCreator.MapSimulator.Effects
                 : "--";
             string timerText = _timeOverTick == int.MinValue ? "stopped" : FormatTimer(RemainingSeconds);
             string transferText = _pendingTransferMapId > 0 ? $", pendingReturn={_pendingTransferMapId}" : string.Empty;
-            return $"Mu Lung Dojo floor {_stage}, timer={timerText}, boss={bossText}, player={_playerHp}/{_playerMaxHp}, energy={_energy}/{EnergyMax}{transferText}";
+            string clockPacketText = _lastDecodedClockType >= 0
+                ? $", rawClock={_lastDecodedClockType}:{_lastDecodedClockDurationSec}s"
+                : string.Empty;
+            return $"Mu Lung Dojo floor {_stage}, timer={timerText}, boss={bossText}, player={_playerHp}/{_playerMaxHp}, energy={_energy}/{EnergyMax}{transferText}{clockPacketText}";
         }
         public void Reset()
         {
@@ -322,6 +361,7 @@ namespace HaCreator.MapSimulator.Effects
             _returnMapId = -1;
             _forcedReturnMapId = -1;
             _hasNextFloorPortal = false;
+            _nextFloorMapId = -1;
             _pendingTransferMapId = -1;
             _pendingTransferAtTick = int.MinValue;
             _playerHp = 0;
@@ -329,6 +369,8 @@ namespace HaCreator.MapSimulator.Effects
             _bossHpPercent = null;
             _lastBossHpPercent = null;
             _energy = 0;
+            _lastDecodedClockType = -1;
+            _lastDecodedClockDurationSec = -1;
             _stageBannerStartTick = int.MinValue;
             _resultEffectStartTick = int.MinValue;
             _resultEffect = DojoResultEffect.None;
@@ -360,7 +402,36 @@ namespace HaCreator.MapSimulator.Effects
         }
         private int ResolveNextFloorMapId()
         {
+            if (_nextFloorMapId > 0)
+            {
+                return _nextFloorMapId;
+            }
+
             return ResolveNextFloorMapIdCore(_mapId, _hasNextFloorPortal, HasMapImage);
+        }
+        private static int ResolveNextFloorMapIdFromPortals(IEnumerable<PortalInstance> portals)
+        {
+            if (portals == null)
+            {
+                return -1;
+            }
+
+            foreach (PortalInstance portal in portals)
+            {
+                if (portal == null
+                    || !string.Equals(portal.script, "dojang_next", StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                int targetMapId = NormalizeTransferMapId(portal.tm);
+                if (targetMapId > 0)
+                {
+                    return targetMapId;
+                }
+            }
+
+            return -1;
         }
         private static int ResolveNextFloorMapIdCore(int mapId, bool hasNextFloorPortal, Func<int, bool> hasMapImage)
         {

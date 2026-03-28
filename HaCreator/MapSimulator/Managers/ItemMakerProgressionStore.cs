@@ -386,7 +386,10 @@ namespace HaCreator.MapSimulator.Managers
                         GloveProgress = Math.Max(0, entry.Value.GloveProgress),
                         ShoeProgress = Math.Max(0, entry.Value.ShoeProgress),
                         ToyProgress = Math.Max(0, entry.Value.ToyProgress),
-                        SuccessfulCrafts = Math.Max(0, entry.Value.SuccessfulCrafts)
+                        SuccessfulCrafts = Math.Max(0, entry.Value.SuccessfulCrafts),
+                        DiscoveredRecipeIds = entry.Value.DiscoveredRecipeIds != null
+                            ? new HashSet<int>(entry.Value.DiscoveredRecipeIds.Where(static id => id > 0))
+                            : new HashSet<int>()
                     };
                 }
             }

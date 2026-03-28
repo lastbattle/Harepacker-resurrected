@@ -41,8 +41,9 @@ namespace HaCreator.MapSimulator.Effects
     /// - Space Gaga maps 922240000, 922240100, and 922240200 all declare fieldType 20
     ///   (FIELDTYPE_SPACEGAGA) in map/Map\Map9.
     /// - Map/Obj/etc.img/space exposes the dedicated SpaceGAGA timerboard art via backgrnd
-    ///   (228x69) plus fontTime digits and comma, which is the fixed WZ source this runtime now
-    ///   prefers before falling back to older heuristic discovery.
+    ///   (228x69) plus fontTime digits and comma. The client's OnCreate path resolves a canvas,
+    ///   so this runtime records the inferred concrete canvas path and paired bitmap-font path
+    ///   rather than only a broader root node.
     ///
     /// Client evidence:
     /// - CField_SpaceGAGA::OnClock (0x5625d0) only reacts to clock type 2, destroys the
@@ -52,7 +53,8 @@ namespace HaCreator.MapSimulator.Effects
     ///
     /// This simulator pass adds the dedicated timerboard flow and clock ownership seam.
     /// The client still references this through StringPool id 0x140D in OnCreate, but the
-    /// runtime now pins the concrete WZ source node instead of scanning unrelated UIWindow trees.
+    /// runtime now pins the inferred concrete WZ canvas/font nodes instead of scanning unrelated
+    /// UIWindow trees or reporting only the broader root.
     /// </summary>
     public class SpaceGagaField
     {
@@ -71,6 +73,8 @@ namespace HaCreator.MapSimulator.Effects
         private const int TimerboardSourceStringPoolId = 0x140D;
         private const string SpaceMapObjectImageName = "Obj/etc.img";
         private const string SpaceTimerboardSourceRoot = "Map/Obj/etc.img/space";
+        private const string SpaceTimerboardBackgroundSourcePath = "Map/Obj/etc.img/space/backgrnd";
+        private const string SpaceTimerboardBitmapFontSourcePath = "Map/Obj/etc.img/space/fontTime";
         private const string SpaceTimerboardRootPath = "space";
         private const string SpaceTimerboardBackgroundPath = "space/backgrnd";
         private const string SpaceTimerboardDigitsPath = "space/fontTime";
@@ -186,7 +190,7 @@ namespace HaCreator.MapSimulator.Effects
                 return "SpaceGAGA timerboard inactive";
             }
             string timerText = _timeOverTick == int.MinValue ? "stopped" : FormatTimer(RemainingSeconds);
-            return $"SpaceGAGA timerboard active on map {_mapId}, timer={timerText}, duration={_durationSec}s, source={SpaceTimerboardSourceRoot} [StringPool 0x{TimerboardSourceStringPoolId:X}]";
+            return $"SpaceGAGA timerboard active on map {_mapId}, timer={timerText}, duration={_durationSec}s, source={SpaceTimerboardBackgroundSourcePath}, font={SpaceTimerboardBitmapFontSourcePath} [StringPool 0x{TimerboardSourceStringPoolId:X} unresolved; inferred from client OnCreate canvas lookup]";
         }
         public void Reset()
         {

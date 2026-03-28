@@ -205,6 +205,9 @@ namespace HaCreator.MapSimulator.UI {
         private static readonly Point STATUS_BAR_GAUGE_BASE_OFFSET = new Point(155, 52);
         private Point _statusBarLeftBaseOffset = STATUS_BAR_LEFT_BASE_OFFSET;
         private Point _statusBarGaugeBaseOffset = STATUS_BAR_GAUGE_BASE_OFFSET;
+        private Vector2 _hpTextPos = HP_TEXT_POS;
+        private Vector2 _mpTextPos = MP_TEXT_POS;
+        private Vector2 _expTextPos = EXP_TEXT_POS;
         private const int BUFF_ICON_SIZE = 32;
         private const int BUFF_ICON_SPACING = 2;
         private const int BUFF_TRAY_COLUMNS = 10;
@@ -320,6 +323,13 @@ namespace HaCreator.MapSimulator.UI {
         {
             _statusBarLeftBaseOffset = leftBaseOffset;
             _statusBarGaugeBaseOffset = gaugeBaseOffset;
+        }
+
+        public void SetGaugeTextAnchors(Vector2 hpTextPos, Vector2 mpTextPos, Vector2 expTextPos)
+        {
+            _hpTextPos = hpTextPos;
+            _mpTextPos = mpTextPos;
+            _expTextPos = expTextPos;
         }
 
         public void SetLeftLayoutMetric(Point leftBaseOffset)
@@ -561,6 +571,26 @@ namespace HaCreator.MapSimulator.UI {
             DrawPreparedSkillBar(sprite, anchor, currentTime, preparedSkill, anchorIsWorldPosition: true);
         }
 
+        public void DrawPreparedSkillWorldOverlay(
+            SpriteBatch sprite,
+            int mapShiftX,
+            int mapShiftY,
+            int centerX,
+            int centerY,
+            int currentTime,
+            StatusBarPreparedSkillRenderData preparedSkill)
+        {
+            if (preparedSkill == null || preparedSkill.Surface != PreparedSkillHudSurface.World)
+            {
+                return;
+            }
+
+            Vector2 anchor = new Vector2(
+                preparedSkill.WorldAnchor.X - mapShiftX + centerX,
+                preparedSkill.WorldAnchor.Y - mapShiftY + centerY);
+            DrawPreparedSkillBar(sprite, anchor, currentTime, preparedSkill, anchorIsWorldPosition: true);
+        }
+
         /// <summary>
         /// Draw character stats (HP, MP, EXP, Level, Name) on the status bar.
         /// Positions derived from IDA Pro analysis of CUIStatusBar::SetNumberValue and CUIStatusBar::SetStatusValue.
@@ -617,7 +647,7 @@ namespace HaCreator.MapSimulator.UI {
             // Draw gauge text section (HP/MP/EXP area) - use basePosGauge
             // HP text - format from client: [HP/MaxHP]
             string hpText = $"[{stats.HP}/{stats.MaxHP}]";
-            Vector2 hpPos = GetRightAlignedStatusTextPosition(basePosGauge, HP_TEXT_POS, hpText, 1.0f, 0.7f);
+            Vector2 hpPos = GetRightAlignedStatusTextPosition(basePosGauge, _hpTextPos, hpText, 1.0f, 0.7f);
             if (_useBitmapFont) {
                 DrawBitmapString(sprite, hpText, hpPos, 1.0f);
             } else {
@@ -626,7 +656,7 @@ namespace HaCreator.MapSimulator.UI {
 
             // MP text - format from client: [MP/MaxMP]
             string mpText = $"[{stats.MP}/{stats.MaxMP}]";
-            Vector2 mpPos = GetRightAlignedStatusTextPosition(basePosGauge, MP_TEXT_POS, mpText, 1.0f, 0.7f);
+            Vector2 mpPos = GetRightAlignedStatusTextPosition(basePosGauge, _mpTextPos, mpText, 1.0f, 0.7f);
             if (_useBitmapFont) {
                 DrawBitmapString(sprite, mpText, mpPos, 1.0f);
             } else {
@@ -638,7 +668,7 @@ namespace HaCreator.MapSimulator.UI {
             // Cap at 99.99% like the client does
             if (expPercent > 99.99) expPercent = 99.99;
             string expText = $"{Math.Max(0L, stats.EXP)}[{expPercent:F2}%]";
-            Vector2 expPos = GetRightAlignedStatusTextPosition(basePosGauge, EXP_TEXT_POS, expText, 1.0f, 0.7f);
+            Vector2 expPos = GetRightAlignedStatusTextPosition(basePosGauge, _expTextPos, expText, 1.0f, 0.7f);
             if (_useBitmapFont) {
                 DrawBitmapString(sprite, expText, expPos, 1.0f);
             } else {

@@ -8,6 +8,7 @@ using Microsoft.Xna.Framework.Input;
 using Spine;
 using System;
 using System.Collections.Generic;
+using System.Linq;
 
 namespace HaCreator.MapSimulator.UI
 {
@@ -329,18 +330,38 @@ namespace HaCreator.MapSimulator.UI
             if (!_isVisible)
                 return false;
 
-            // Use CurrentFrame (which respects override frame for expanded views)
-            // instead of LastFrameDrawn which may have stale dimensions
+            if (GetWindowBounds().Contains(x, y))
+            {
+                return true;
+            }
+
+            return GetAdditionalInteractiveBounds().Any(bounds => bounds.Contains(x, y));
+        }
+
+        public virtual void HandleCommittedText(string text)
+        {
+        }
+
+        public virtual bool CanStartDragAt(int x, int y)
+        {
+            return GetWindowBounds().Contains(x, y);
+        }
+
+        protected virtual IEnumerable<Rectangle> GetAdditionalInteractiveBounds()
+        {
+            yield break;
+        }
+
+        protected Rectangle GetWindowBounds()
+        {
             int frameWidth = CurrentFrame?.Width ?? 200;
             int frameHeight = CurrentFrame?.Height ?? 200;
 
-            Rectangle windowRect = new Rectangle(
+            return new Rectangle(
                 this.Position.X,
                 this.Position.Y,
                 frameWidth,
                 frameHeight);
-
-            return windowRect.Contains(x, y);
         }
         #endregion
 

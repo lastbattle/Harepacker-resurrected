@@ -167,7 +167,7 @@ namespace HaCreator.MapSimulator.UI
                 _renewButton.X = 188;
                 _renewButton.Y = 351;
                 _renewButton.ButtonVisible = true;
-                _renewButton.SetEnabled(snapshot.CanRenew);
+                _renewButton.SetEnabled(snapshot.InGuild && snapshot.CanRenew);
             }
 
             if (_upButton == null)
@@ -175,7 +175,9 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
-            bool showUp = snapshot.SelectedIndex >= 0 && snapshot.SelectedIndex < Math.Min(VisibleRows, snapshot.Entries.Count);
+            bool showUp = snapshot.InGuild &&
+                          snapshot.SelectedIndex >= 0 &&
+                          snapshot.SelectedIndex < Math.Min(VisibleRows, snapshot.Entries.Count);
             _upButton.ButtonVisible = showUp;
             _upButton.SetEnabled(showUp && snapshot.CanLevelUpSelected);
             if (!showUp)

@@ -8,6 +8,7 @@ using HaSharedLibrary.Util;
 using MapleLib.WzLib;
 using MapleLib.WzLib.WzProperties;
 using MapleLib.WzLib.WzStructure;
+using MapleLib.WzLib.WzStructure.Data;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using Spine;
@@ -48,6 +49,12 @@ namespace HaCreator.MapSimulator.Companions
 
         private readonly GraphicsDevice _device;
         private readonly Dictionary<int, DragonAnimationSet> _animationCache = new();
+        private static readonly HashSet<int> HiddenDragonMountIds = new()
+        {
+            1902040,
+            1902041,
+            1902042
+        };
         private Func<MapInfo> _currentMapInfoProvider;
         private DragonAnimationSet _currentSet;
         private string _currentActionName;
@@ -67,6 +74,8 @@ namespace HaCreator.MapSimulator.Companions
         private const float GroundVerticalOffset = -12f;
         private const float LadderSideOffset = 34f;
         private const float LadderVerticalOffset = 18f;
+        private const float DragonKeyDownBarHalfWidth = 36f;
+        private const float DragonKeyDownBarVerticalGap = 30f;
         private const int ExplicitActionFadeLeadMs = 120;
 
         public DragonCompanionRuntime(GraphicsDevice device)
@@ -97,22 +106,37 @@ namespace HaCreator.MapSimulator.Companions
             _currentSet = animationSet;
             _facingRight = owner.FacingRight;
             _worldAnchor = ResolveAnchor(owner, animationSet, currentTime);
-            _isSuppressed = ShouldSuppressForCurrentMap();
+            _isSuppressed = ShouldSuppress(owner);
 
             float deltaSeconds = GetDeltaSeconds(currentTime);
             UpdateVisualAnchor(deltaSeconds);
 
             bool explicitActionSelected = false;
             string ownerActionName = owner.CurrentActionName;
+            string explicitActionName = ResolveExplicitActionName(ownerActionName, animationSet);
             if (!string.Equals(_observedOwnerActionName, ownerActionName, StringComparison.OrdinalIgnoreCase))
             {
                 _observedOwnerActionName = ownerActionName;
-                string explicitActionName = ResolveExplicitActionName(ownerActionName, animationSet);
                 if (!string.IsNullOrWhiteSpace(explicitActionName))
                 {
                     SetCurrentAction(explicitActionName, currentTime);
                     explicitActionSelected = true;
                 }
+            }
+
+            bool shouldLoopExplicitAction = false;
+            if (_currentSet.TryGetAnimation(_currentActionName, out SkillAnimation currentAnimation)
+                && IsExplicitDragonAction(_currentActionName)
+                && ShouldLoopExplicitAction(_currentActionName)
+                && string.Equals(explicitActionName, _currentActionName, StringComparison.OrdinalIgnoreCase))
+            {
+                int elapsed = Math.Max(0, currentTime - _currentActionStartTime);
+                if (currentAnimation.IsComplete(elapsed))
+                {
+                    _currentActionStartTime = currentTime;
+                }
+
+                shouldLoopExplicitAction = true;
             }
 
             string baseActionName = ResolveBaseActionName(owner, animationSet);
@@ -122,6 +146,8 @@ namespace HaCreator.MapSimulator.Companions
                 || string.Equals(_currentActionName, "move", StringComparison.OrdinalIgnoreCase)
                 || !animationSet.TryGetAnimation(_currentActionName, out SkillAnimation activeAnimation)
                 || !IsExplicitDragonAction(_currentActionName)
+                || (shouldLoopExplicitAction
+                    && string.Equals(explicitActionName, _currentActionName, StringComparison.OrdinalIgnoreCase))
                 || (activeAnimation.IsComplete(Math.Max(0, currentTime - _currentActionStartTime))
                     && !string.Equals(ownerActionName, _currentActionName, StringComparison.OrdinalIgnoreCase))))
             {
@@ -134,12 +160,14 @@ namespace HaCreator.MapSimulator.Companions
                 && IsExplicitDragonAction(_currentActionName))
             {
                 int elapsed = Math.Max(0, currentTime - _currentActionStartTime);
+                bool loopCurrentAction = ShouldLoopExplicitAction(_currentActionName)
+                    && string.Equals(explicitActionName, _currentActionName, StringComparison.OrdinalIgnoreCase);
                 int fadeStart = Math.Max(0, activeAction.TotalDuration - ExplicitActionFadeLeadMs);
-                if (activeAction.IsComplete(elapsed))
+                if (!loopCurrentAction && activeAction.IsComplete(elapsed))
                 {
                     alphaTarget = 0f;
                 }
-                else if (elapsed >= fadeStart && activeAction.TotalDuration > fadeStart)
+                else if (!loopCurrentAction && elapsed >= fadeStart && activeAction.TotalDuration > fadeStart)
                 {
                     float fadeProgress = (elapsed - fadeStart) / (float)(activeAction.TotalDuration - fadeStart);
                     alphaTarget = MathHelper.Clamp(1f - fadeProgress, 0f, 1f);
@@ -195,11 +223,37 @@ namespace HaCreator.MapSimulator.Companions
                 return false;
             }
 
-            float halfWidth = frame.Bounds.Width * 0.5f;
-            float left = _facingRight
-                ? _visualAnchor.X - frame.Origin.X
-                : _visualAnchor.X - (frame.Bounds.Width - frame.Origin.X);
-            top = new Vector2(left + halfWidth, _visualAnchor.Y - frame.Origin.Y);
+            Rectangle bounds = GetRelativeBounds(frame);
+            float centerOffsetX = (bounds.Left + bounds.Right) * 0.5f;
+            float topOffsetY = bounds.Top;
+            float topX = _facingRight
+                ? _visualAnchor.X + centerOffsetX
+                : _visualAnchor.X - centerOffsetX;
+            top = new Vector2(topX, _visualAnchor.Y + topOffsetY);
+            return true;
+        }
+
+        public bool TryGetCurrentKeyDownBarAnchor(int currentTime, out Vector2 anchor)
+        {
+            anchor = Vector2.Zero;
+
+            if (_currentSet == null
+                || string.IsNullOrWhiteSpace(_currentActionName)
+                || _alpha <= 0.01f
+                || !_currentSet.TryGetAnimation(_currentActionName, out SkillAnimation animation))
+            {
+                return false;
+            }
+
+            SkillFrame frame = animation.GetFrameAtTime(Math.Max(0, currentTime - _currentActionStartTime));
+            if (frame == null)
+            {
+                return false;
+            }
+
+            anchor = new Vector2(
+                _visualAnchor.X - DragonKeyDownBarHalfWidth,
+                _visualAnchor.Y - frame.Bounds.Height - DragonKeyDownBarVerticalGap);
             return true;
         }
 
@@ -286,7 +340,7 @@ namespace HaCreator.MapSimulator.Companions
                     Texture = texture,
                     Origin = new Point(origin?.X.Value ?? 0, origin?.Y.Value ?? 0),
                     Delay = Math.Max(1, GetIntValue(canvas["delay"]) ?? 100),
-                    Bounds = new Rectangle(0, 0, texture.Width, texture.Height)
+                    Bounds = ResolveFrameBounds(canvas, texture)
                 });
             }
 
@@ -441,6 +495,12 @@ namespace HaCreator.MapSimulator.Companions
                    || string.Equals(actionName, "move", StringComparison.OrdinalIgnoreCase);
         }
 
+        private static bool ShouldLoopExplicitAction(string actionName)
+        {
+            return !string.IsNullOrWhiteSpace(actionName)
+                   && actionName.EndsWith("_prepare", StringComparison.OrdinalIgnoreCase);
+        }
+
         private static int ParseFrameIndex(string value)
         {
             return int.TryParse(value, out int parsed) ? parsed : int.MaxValue;
@@ -460,7 +520,35 @@ namespace HaCreator.MapSimulator.Companions
         private bool ShouldSuppressForCurrentMap()
         {
             MapInfo mapInfo = _currentMapInfoProvider?.Invoke();
-            return mapInfo?.vanishDragon == true;
+            return ShouldSuppressForMapInfo(mapInfo);
+        }
+
+        private static bool ShouldSuppressForMapInfo(MapInfo mapInfo)
+        {
+            if (mapInfo == null)
+            {
+                return false;
+            }
+
+            return mapInfo.vanishDragon == true
+                || mapInfo.fieldType == FieldType.FIELDTYPE_NODRAGON;
+        }
+
+        private bool ShouldSuppress(PlayerCharacter owner)
+        {
+            return ShouldSuppressForCurrentMap() || ShouldSuppressForCurrentMount(owner);
+        }
+
+        private static bool ShouldSuppressForCurrentMount(PlayerCharacter owner)
+        {
+            if (owner?.Build?.Equipment == null
+                || !owner.Build.Equipment.TryGetValue(EquipSlot.TamingMob, out CharacterPart mountPart)
+                || mountPart?.ItemId is not int mountItemId)
+            {
+                return false;
+            }
+
+            return HiddenDragonMountIds.Contains(mountItemId);
         }
 
         private float GetDeltaSeconds(int currentTime)
@@ -543,6 +631,40 @@ namespace HaCreator.MapSimulator.Companions
             }
 
             return Math.Max(current - maxStep, target);
+        }
+
+        private static Rectangle ResolveFrameBounds(WzCanvasProperty canvas, IDXObject texture)
+        {
+            WzVectorProperty lt = canvas["lt"] as WzVectorProperty;
+            WzVectorProperty rb = canvas["rb"] as WzVectorProperty;
+            if (lt != null && rb != null)
+            {
+                int left = lt.X.Value;
+                int top = lt.Y.Value;
+                int width = Math.Max(1, rb.X.Value - left);
+                int height = Math.Max(1, rb.Y.Value - top);
+                return new Rectangle(left, top, width, height);
+            }
+
+            WzVectorProperty origin = canvas["origin"] as WzVectorProperty;
+            int originX = origin?.X.Value ?? 0;
+            int originY = origin?.Y.Value ?? 0;
+            return new Rectangle(-originX, -originY, texture.Width, texture.Height);
+        }
+
+        private static Rectangle GetRelativeBounds(SkillFrame frame)
+        {
+            if (frame == null)
+            {
+                return Rectangle.Empty;
+            }
+
+            if (!frame.Bounds.IsEmpty)
+            {
+                return frame.Bounds;
+            }
+
+            return new Rectangle(-frame.Origin.X, -frame.Origin.Y, 0, 0);
         }
     }
 }

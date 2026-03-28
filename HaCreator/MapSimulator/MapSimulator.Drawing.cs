@@ -114,7 +114,9 @@ namespace HaCreator.MapSimulator
             _renderingManager.DrawBackgrounds(in renderContext, false); // back background
             _renderingManager.DrawMapObjects(in renderContext); // tiles and objects
             _renderingManager.DrawMobs(in renderContext); // mobs - rendered behind portals
-            DrawPlayer(gameTime, mapCenterX, mapCenterY, TickCount); // player character (has tombstone logic)
+            _remoteUserPool.Draw(_spriteBatch, _skeletonMeshRenderer, mapShiftX, mapShiftY, mapCenterX, mapCenterY, TickCount, _fontDebugValues);
+            _summonedPool.Draw(_spriteBatch, mapShiftX, mapShiftY, mapCenterX, mapCenterY, TickCount);
+            DrawPlayer(gameTime, mapCenterX, mapCenterY, TickCount); // player character (has tombstone logic)
             _mobAttackSystem.Draw(_spriteBatch, _debugBoundaryTexture, mapShiftX, mapShiftY, mapCenterX, mapCenterY, TickCount);
             _renderingManager.DrawDrops(in renderContext); // item/meso drops
             _renderingManager.DrawPortals(in renderContext); // portals
@@ -130,10 +132,33 @@ namespace HaCreator.MapSimulator
                 _renderParams,
                 TickCount);
             _renderingManager.DrawReactors(in renderContext); // reactors
-            _renderingManager.DrawNpcs(in renderContext); // NPCs - rendered on top
+            _renderingManager.DrawNpcs(in renderContext); // NPCs - rendered on top
+            _socialRoomEmployeeActor.Draw(
+                _spriteBatch,
+                _skeletonMeshRenderer,
+                gameTime,
+                mapShiftX,
+                mapShiftY,
+                mapCenterX,
+                mapCenterY,
+                _renderParams,
+                TickCount,
+                _fontChat ?? _fontDebugValues,
+                _debugBoundaryTexture);
             DrawNpcQuestAlerts(in renderContext);
             DrawNpcQuestFeedback(in renderContext);
-            DrawPetIdleSpeechFeedback(in renderContext);
+            DrawPetIdleSpeechFeedback(in renderContext);
+
+            _fieldMessageBoxRuntime.Draw(
+                _spriteBatch,
+                _fontChat,
+                mapShiftX,
+                mapShiftY,
+                mapCenterX,
+                mapCenterY,
+                _renderParams.RenderWidth,
+                _renderParams.RenderHeight,
+                TickCount);
             _renderingManager.DrawTransportation(in renderContext); // ship/balrog
             _renderingManager.DrawBackgrounds(in renderContext, true); // front background
             _specialFieldRuntime.Draw(
@@ -160,7 +185,14 @@ namespace HaCreator.MapSimulator
 
             // Limited view field (fog of war) - draws after world, before UI
             _renderingManager.DrawLimitedView(in renderContext);
-            DrawMapleTvOverlay(gameTime, TickCount);
+            DrawMapleTvOverlay(gameTime, TickCount);
+            _packetFieldStateRuntime.Draw(
+                _spriteBatch,
+                _fontChat,
+                _renderParams.RenderWidth,
+                _renderParams.RenderHeight,
+                TickCount);
+            DrawPacketOwnedLocalOverlayState(TickCount, mapCenterX, mapCenterY);
 
             //////////////////// UI related here ////////////////////
             _renderingManager.DrawTooltips(in renderContext, mouseState); 
@@ -177,7 +209,13 @@ namespace HaCreator.MapSimulator
                 DrawUI(gameTime, shiftCenter, _renderParams, mapCenterX, mapCenterY, mouseState, TickCount, IsActive); // status bar and minimap
             }
 
-            if (gameTime.TotalGameTime.TotalSeconds < 5)
+            if (!_gameState.HideUIMode)
+            {
+                _packetOwnedHudNoticeUI.SetScreenSize(_renderParams.RenderWidth, _renderParams.RenderHeight);
+                _packetOwnedHudNoticeUI.Draw(_spriteBatch, _localOverlayRuntime, TickCount);
+            }
+
+            if (gameTime.TotalGameTime.TotalSeconds < 5)
             {
                 if (!_gameState.IsLoginMap)
                 {
@@ -463,7 +501,19 @@ namespace HaCreator.MapSimulator
                     _renderParams,
                     TickCount);
 
-                statusBarUi.Draw(_spriteBatch, _skeletonMeshRenderer, gameTime,
+                foreach (StatusBarPreparedSkillRenderData remotePreparedSkill in _remoteUserPool.BuildPreparedSkillWorldOverlays(TickCount))
+                {
+                    statusBarUi.DrawPreparedSkillWorldOverlay(
+                        _spriteBatch,
+                        mapShiftX,
+                        mapShiftY,
+                        minimapPos.X,
+                        minimapPos.Y,
+                        TickCount,
+                        remotePreparedSkill);
+                }
+
+                statusBarUi.Draw(_spriteBatch, _skeletonMeshRenderer, gameTime,
                             mapShiftX, mapShiftY, minimapPos.X, minimapPos.Y,
                             null,
                             _renderParams,

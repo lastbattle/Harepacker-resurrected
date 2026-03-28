@@ -25,6 +25,8 @@ namespace HaCreator.MapSimulator.Companions
         internal PetDialogFeedbackDefinition SlangFeedback { get; init; }
         internal IReadOnlyDictionary<int, PetDialogFeedbackDefinition> FoodFeedback { get; init; } =
             new Dictionary<int, PetDialogFeedbackDefinition>();
+        internal IReadOnlyDictionary<int, (int MinLevel, int MaxLevel)> FoodFeedbackLevelRanges { get; init; } =
+            new Dictionary<int, (int MinLevel, int MaxLevel)>();
         internal PetAnimationSet Animations { get; } = new PetAnimationSet();
     }
 
@@ -126,7 +128,8 @@ namespace HaCreator.MapSimulator.Companions
                 EventSpeechLines = LoadEventSpeechLines(dialogStrings),
                 Commands = LoadInteractCommands(petImage, dialogStrings),
                 SlangFeedback = LoadDialogFeedback(dialogStrings, "s"),
-                FoodFeedback = LoadFoodFeedback(dialogStrings)
+                FoodFeedback = LoadFoodFeedback(dialogStrings),
+                FoodFeedbackLevelRanges = LoadFoodFeedbackLevelRanges(petImage)
             };
 
             foreach (string action in SupportedActions)
@@ -381,6 +384,37 @@ namespace HaCreator.MapSimulator.Companions
             return feedback;
         }
 
+        private static IReadOnlyDictionary<int, (int MinLevel, int MaxLevel)> LoadFoodFeedbackLevelRanges(WzImage petImage)
+        {
+            if (petImage?["interact"] is not WzSubProperty interactProperty)
+            {
+                return new Dictionary<int, (int MinLevel, int MaxLevel)>();
+            }
+
+            var ranges = new Dictionary<int, (int MinLevel, int MaxLevel)>();
+            foreach (WzSubProperty interactEntry in interactProperty.WzProperties.OfType<WzSubProperty>())
+            {
+                string commandKey = (interactEntry["command"] as WzStringProperty)?.Value?.Trim();
+                if (!TryResolveFeedbackVariant(commandKey, out int variant))
+                {
+                    continue;
+                }
+
+                int minLevel = Math.Clamp(GetIntValue(interactEntry["l0"]) ?? 1, 1, 30);
+                int maxLevel = Math.Clamp(GetIntValue(interactEntry["l1"]) ?? minLevel, minLevel, 30);
+                if (ranges.TryGetValue(variant, out (int MinLevel, int MaxLevel) existing))
+                {
+                    ranges[variant] = (Math.Min(existing.MinLevel, minLevel), Math.Max(existing.MaxLevel, maxLevel));
+                }
+                else
+                {
+                    ranges[variant] = (minLevel, maxLevel);
+                }
+            }
+
+            return ranges;
+        }
+
         private static PetDialogFeedbackDefinition LoadDialogFeedback(
             IReadOnlyDictionary<string, string> dialogStrings,
             string prefix)
@@ -425,6 +459,22 @@ namespace HaCreator.MapSimulator.Companions
                 .Where(line => !string.IsNullOrWhiteSpace(line))
                 .Distinct(StringComparer.Ordinal)
                 .ToArray();
+        }
+
+        private static bool TryResolveFeedbackVariant(string commandKey, out int variant)
+        {
+            variant = 0;
+            if (string.IsNullOrWhiteSpace(commandKey) ||
+                commandKey.Length < 2 ||
+                !char.IsLetter(commandKey[0]) ||
+                !int.TryParse(commandKey.Substring(1), out int commandIndex) ||
+                commandIndex <= 0)
+            {
+                return false;
+            }
+
+            variant = ((commandIndex - 1) % 4) + 1;
+            return true;
         }
 
         private List<IDXObject> LoadActionFrames(WzSubProperty actionNode)

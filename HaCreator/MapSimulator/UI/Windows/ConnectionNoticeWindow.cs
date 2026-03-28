@@ -19,6 +19,8 @@ namespace HaCreator.MapSimulator.UI
         private const int ProgressOffsetY = 34;
         private const int ProgressWidth = 109;
         private const int ProgressHeight = 8;
+        private const int LoadingCircleOffsetX = 84;
+        private const int LoadingCircleOffsetY = 46;
         private const int SingleGaugeOffsetX = 104;
         private const int SingleGaugeOffsetY = 42;
         private const int SingleGaugeWidth = 137;
@@ -27,6 +29,7 @@ namespace HaCreator.MapSimulator.UI
 
         private readonly IReadOnlyDictionary<ConnectionNoticeWindowVariant, IDXObject> _framesByVariant;
         private readonly IReadOnlyDictionary<ConnectionNoticeWindowVariant, IReadOnlyList<Texture2D>> _progressFramesByVariant;
+        private readonly IReadOnlyDictionary<ConnectionNoticeWindowVariant, IReadOnlyList<Texture2D>> _animationFramesByVariant;
         private readonly IReadOnlyDictionary<int, Texture2D> _noticeTextTextures;
         private SpriteFont _font;
         private string _title = "Connection Notice";
@@ -39,6 +42,7 @@ namespace HaCreator.MapSimulator.UI
         public ConnectionNoticeWindow(
             IReadOnlyDictionary<ConnectionNoticeWindowVariant, IDXObject> framesByVariant,
             IReadOnlyDictionary<ConnectionNoticeWindowVariant, IReadOnlyList<Texture2D>> progressFramesByVariant,
+            IReadOnlyDictionary<ConnectionNoticeWindowVariant, IReadOnlyList<Texture2D>> animationFramesByVariant,
             IReadOnlyDictionary<int, Texture2D> noticeTextTextures)
             : base((framesByVariant != null && framesByVariant.TryGetValue(ConnectionNoticeWindowVariant.Notice, out IDXObject frame))
                 ? frame
@@ -46,6 +50,7 @@ namespace HaCreator.MapSimulator.UI
         {
             _framesByVariant = framesByVariant ?? new Dictionary<ConnectionNoticeWindowVariant, IDXObject>();
             _progressFramesByVariant = progressFramesByVariant ?? new Dictionary<ConnectionNoticeWindowVariant, IReadOnlyList<Texture2D>>();
+            _animationFramesByVariant = animationFramesByVariant ?? new Dictionary<ConnectionNoticeWindowVariant, IReadOnlyList<Texture2D>>();
             _noticeTextTextures = noticeTextTextures ?? new Dictionary<int, Texture2D>();
         }
 
@@ -96,6 +101,7 @@ namespace HaCreator.MapSimulator.UI
             if (_showProgress)
             {
                 DrawProgress(sprite);
+                DrawAnimatedOverlay(sprite, TickCount);
             }
 
             if (_noticeTextIndex.HasValue &&
@@ -155,6 +161,28 @@ namespace HaCreator.MapSimulator.UI
                 ? new Rectangle(Position.X + SingleGaugeOffsetX, Position.Y + SingleGaugeOffsetY, SingleGaugeWidth, SingleGaugeHeight)
                 : new Rectangle(Position.X + ProgressOffsetX, Position.Y + ProgressOffsetY, ProgressWidth, ProgressHeight);
             sprite.Draw(progressTexture, trackRect, Color.White);
+        }
+
+        private void DrawAnimatedOverlay(SpriteBatch sprite, int tickCount)
+        {
+            if (!_animationFramesByVariant.TryGetValue(_variant, out IReadOnlyList<Texture2D> frames) ||
+                frames == null ||
+                frames.Count == 0)
+            {
+                return;
+            }
+
+            int frameIndex = Math.Abs(tickCount / 90) % frames.Count;
+            Texture2D animationFrame = frames[frameIndex];
+            if (animationFrame == null)
+            {
+                return;
+            }
+
+            sprite.Draw(
+                animationFrame,
+                new Vector2(Position.X + LoadingCircleOffsetX, Position.Y + LoadingCircleOffsetY),
+                Color.White);
         }
 
         private IEnumerable<string> WrapText(string text, float maxWidth)

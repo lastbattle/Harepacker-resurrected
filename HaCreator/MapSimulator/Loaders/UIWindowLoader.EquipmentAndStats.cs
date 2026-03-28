@@ -143,7 +143,51 @@ namespace HaCreator.MapSimulator.Loaders
                 catch { }
             }
 
-            // Load button sounds
+            IDXObject cashPendantChrome = null;
+            int cashPendantOffsetX = 0;
+            int cashPendantOffsetY = 0;
+            WzCanvasProperty cashPendant = (WzCanvasProperty)characterProperty["cashPendant"];
+            if (cashPendant != null)
+            {
+                try
+                {
+                    System.Drawing.Bitmap pendantBitmap = cashPendant.GetLinkedWzCanvasBitmap();
+                    Texture2D pendantTexture = pendantBitmap.ToTexture2DAndDispose(device);
+                    cashPendantChrome = new DXObject(0, 0, pendantTexture, 0);
+                    System.Drawing.PointF? pendantOrigin = cashPendant.GetCanvasOriginPosition();
+                    cashPendantOffsetX = pendantOrigin.HasValue ? -(int)pendantOrigin.Value.X : 0;
+                    cashPendantOffsetY = pendantOrigin.HasValue ? -(int)pendantOrigin.Value.Y : 0;
+                }
+                catch { }
+            }
+
+            IDXObject charmPocketChrome = null;
+            int charmPocketOffsetX = 0;
+            int charmPocketOffsetY = 0;
+            WzCanvasProperty charmPocket = (WzCanvasProperty)characterProperty["charmPocket"];
+            if (charmPocket != null)
+            {
+                try
+                {
+                    System.Drawing.Bitmap pocketBitmap = charmPocket.GetLinkedWzCanvasBitmap();
+                    Texture2D pocketTexture = pocketBitmap.ToTexture2DAndDispose(device);
+                    charmPocketChrome = new DXObject(0, 0, pocketTexture, 0);
+                    System.Drawing.PointF? pocketOrigin = charmPocket.GetCanvasOriginPosition();
+                    charmPocketOffsetX = pocketOrigin.HasValue ? -(int)pocketOrigin.Value.X : 0;
+                    charmPocketOffsetY = pocketOrigin.HasValue ? -(int)pocketOrigin.Value.Y : 0;
+                }
+                catch { }
+            }
+
+            equip.SetSpecialSlotChrome(
+                cashPendantChrome,
+                cashPendantOffsetX,
+                cashPendantOffsetY,
+                charmPocketChrome,
+                charmPocketOffsetX,
+                charmPocketOffsetY);
+
+            // Load button sounds
             WzBinaryProperty btClickSound = (WzBinaryProperty)soundUIImage?["BtMouseClick"];
             WzBinaryProperty btOverSound = (WzBinaryProperty)soundUIImage?["BtMouseOver"];
 
@@ -284,7 +328,23 @@ namespace HaCreator.MapSimulator.Loaders
                 texture?.Height ?? fallbackHeight);
         }
 
-        private static List<Texture2D> CreateFallbackProgressFrames(
+        private static Point ResolveTooltipOrigin(WzCanvasProperty canvas)
+        {
+            if (canvas == null)
+            {
+                return Point.Zero;
+            }
+
+            System.Drawing.PointF? origin = canvas.GetCanvasOriginPosition();
+            if (!origin.HasValue)
+            {
+                return Point.Zero;
+            }
+
+            return new Point((int)origin.Value.X, (int)origin.Value.Y);
+        }
+
+        private static List<Texture2D> CreateFallbackProgressFrames(
             GraphicsDevice device,
             int width,
             int height,
@@ -393,7 +453,27 @@ namespace HaCreator.MapSimulator.Loaders
             WzBinaryProperty btOverSound = (WzBinaryProperty)soundUIImage?["BtMouseOver"];
 
             UIObject closeBtn = LoadButton(skillProperty, "BtClose", btClickSound, btOverSound, device);
-            skill.InitializeCloseButton(closeBtn);
+            skill.InitializeCloseButton(closeBtn);
+
+            WzImage uiWindow2Image = Program.FindImage("UI", "UIWindow2.img");
+            WzSubProperty postBigBangSkillMain = uiWindow2Image?["Skill"]?["main"] as WzSubProperty;
+            if (postBigBangSkillMain != null)
+            {
+                Texture2D[] tooltipFrames =
+                {
+                    LoadCanvasTexture(postBigBangSkillMain, "tip0", device),
+                    LoadCanvasTexture(postBigBangSkillMain, "tip1", device),
+                    LoadCanvasTexture(postBigBangSkillMain, "tip2", device)
+                };
+                skill.SetTooltipTextures(tooltipFrames);
+                Point[] tooltipOrigins =
+                {
+                    ResolveTooltipOrigin(postBigBangSkillMain["tip0"] as WzCanvasProperty),
+                    ResolveTooltipOrigin(postBigBangSkillMain["tip1"] as WzCanvasProperty),
+                    ResolveTooltipOrigin(postBigBangSkillMain["tip2"] as WzCanvasProperty)
+                };
+                skill.SetTooltipOrigins(tooltipOrigins);
+            }
 
             return skill;
         }

@@ -1,4 +1,5 @@
 using MapleLib.WzLib.WzStructure.Data.ItemStructure;
+using MapleLib.WzLib.WzProperties;
 
 namespace HaCreator.MapSimulator.UI
 {
@@ -51,6 +52,25 @@ namespace HaCreator.MapSimulator.UI
                    && !string.IsNullOrWhiteSpace(itemInfo?.Item3)
                 ? (description = itemInfo.Item3) != null
                 : false;
+        }
+
+        public static bool TryResolveItemInfoPath(int itemId, out string path)
+        {
+            path = null;
+            WzSubProperty itemProperty = LoadItemProperty(itemId);
+            if (itemProperty?["info"] is not WzSubProperty infoProperty)
+            {
+                return false;
+            }
+
+            string resolvedPath = (infoProperty["path"] as WzStringProperty)?.Value;
+            if (string.IsNullOrWhiteSpace(resolvedPath))
+            {
+                return false;
+            }
+
+            path = resolvedPath.Trim();
+            return true;
         }
 
         public static bool TryResolveImageSource(int itemId, out string category, out string imagePath)
@@ -128,6 +148,24 @@ namespace HaCreator.MapSimulator.UI
                 >= 190 and < 200 => "TamingMob",
                 _ => null
             };
+        }
+
+        private static WzSubProperty LoadItemProperty(int itemId)
+        {
+            if (!TryResolveImageSource(itemId, out string category, out string imagePath))
+            {
+                return null;
+            }
+
+            var itemImage = global::HaCreator.Program.FindImage(category, imagePath);
+            if (itemImage == null)
+            {
+                return null;
+            }
+
+            itemImage.ParseImage();
+            string itemNodeName = category == "Character" ? itemId.ToString("D8") : itemId.ToString("D7");
+            return itemImage[itemNodeName] as WzSubProperty;
         }
     }
 }

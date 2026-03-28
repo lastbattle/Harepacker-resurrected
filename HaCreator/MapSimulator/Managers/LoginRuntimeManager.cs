@@ -180,6 +180,25 @@ namespace HaCreator.MapSimulator.Managers
             PendingTransitionReason = reason;
         }
 
+        public bool CancelPendingStep(string reason = null)
+        {
+            if (!PendingStep.HasValue)
+            {
+                return false;
+            }
+
+            LoginStep cancelledStep = PendingStep.Value;
+            PendingStep = null;
+            StepChangeRequestedAt = int.MinValue;
+            PendingStepDelayMs = 0;
+            StepChangeAt = int.MinValue;
+            PendingTransitionReason = null;
+            LastEventSummary = string.IsNullOrWhiteSpace(reason)
+                ? $"Cancelled pending transition to {cancelledStep}."
+                : $"{reason} -> stayed on {CurrentStep}.";
+            return true;
+        }
+
         public bool TryDispatchPacket(LoginPacketType packetType, int currentTickCount, out string message)
         {
             LastPacketType = packetType;

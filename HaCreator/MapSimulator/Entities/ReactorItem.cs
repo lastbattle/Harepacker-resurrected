@@ -7,6 +7,7 @@ using Spine;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Rectangle = Microsoft.Xna.Framework.Rectangle;
 
 namespace HaCreator.MapSimulator.Entities
 {
@@ -115,6 +116,37 @@ namespace HaCreator.MapSimulator.Entities
             return totalDuration;
         }
 
+        public int GetCurrentFrameIndex(int tickCount)
+        {
+            if (_stateFrames.Count == 0)
+                return 0;
+
+            GetStateFrame(tickCount, out int frameIndex);
+            return frameIndex;
+        }
+
+        public Rectangle GetCurrentBounds(int tickCount)
+        {
+            IDXObject frame = _stateFrames.Count > 0
+                ? GetStateFrame(tickCount, out _)
+                : LastFrameDrawn ?? Frame0;
+
+            if (frame == null)
+            {
+                int fallbackX = ReactorInstance?.X ?? 0;
+                int fallbackY = ReactorInstance?.Y ?? 0;
+                int fallbackWidth = Math.Max(1, ReactorInstance?.Width ?? 1);
+                int fallbackHeight = Math.Max(1, ReactorInstance?.Height ?? 1);
+                return new Rectangle(fallbackX, fallbackY, fallbackWidth, fallbackHeight);
+            }
+
+            return new Rectangle(
+                frame.X - Position.X,
+                frame.Y - Position.Y,
+                Math.Max(1, frame.Width),
+                Math.Max(1, frame.Height));
+        }
+
         public override void Draw(SpriteBatch sprite, SkeletonMeshRenderer skeletonMeshRenderer, GameTime gameTime,
             int mapShiftX, int mapShiftY, int centerX, int centerY,
             ReflectionDrawableBoundary drawReflectionInfo,
@@ -148,10 +180,18 @@ namespace HaCreator.MapSimulator.Entities
 
         private IDXObject GetStateFrame(int tickCount)
         {
+            return GetStateFrame(tickCount, out _);
+        }
+
+        private IDXObject GetStateFrame(int tickCount, out int frameIndex)
+        {
             if (!_stateFrames.TryGetValue(_activeState, out IDXObject[] frames) || frames.Length == 0)
             {
                 if (!_stateFrames.TryGetValue(0, out frames) || frames.Length == 0)
+                {
+                    frameIndex = 0;
                     return null;
+                }
             }
 
             if (_activeFrameIndex >= frames.Length)
@@ -159,14 +199,20 @@ namespace HaCreator.MapSimulator.Entities
 
             if (frames.Length > 1)
             {
-                int currentDelay = Math.Max(1, frames[_activeFrameIndex].Delay);
-                if (tickCount - _lastStateTick >= currentDelay)
+                int elapsed = tickCount - _lastStateTick;
+                while (elapsed > 0)
                 {
+                    int currentDelay = Math.Max(1, frames[_activeFrameIndex].Delay);
+                    if (elapsed < currentDelay)
+                        break;
+
+                    elapsed -= currentDelay;
                     _activeFrameIndex = (_activeFrameIndex + 1) % frames.Length;
-                    _lastStateTick = tickCount;
+                    _lastStateTick += currentDelay;
                 }
             }
 
+            frameIndex = _activeFrameIndex;
             return frames[_activeFrameIndex];
         }
 

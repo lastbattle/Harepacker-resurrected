@@ -44,10 +44,38 @@ namespace HaCreator.MapSimulator.Companions
         public int ItemId { get; init; }
         public string Name { get; init; }
         public string Description { get; init; }
+        public string ItemCategory { get; init; }
         public IReadOnlyList<string> ExcludedPetNames { get; init; } = Array.Empty<string>();
+        public IReadOnlyCollection<int> SupportedPetItemIds { get; init; } = Array.Empty<int>();
         public bool IsCash { get; init; }
         public int RequiredLevel { get; init; }
         public int RequiredJobMask { get; init; }
+        public int RequiredFame { get; init; }
+        public int RequiredSTR { get; init; }
+        public int RequiredDEX { get; init; }
+        public int RequiredINT { get; init; }
+        public int RequiredLUK { get; init; }
+        public int BonusSTR { get; init; }
+        public int BonusDEX { get; init; }
+        public int BonusINT { get; init; }
+        public int BonusLUK { get; init; }
+        public int BonusHP { get; init; }
+        public int BonusMP { get; init; }
+        public int BonusWeaponAttack { get; init; }
+        public int BonusMagicAttack { get; init; }
+        public int BonusWeaponDefense { get; init; }
+        public int BonusMagicDefense { get; init; }
+        public int BonusAccuracy { get; init; }
+        public int BonusAvoidability { get; init; }
+        public int BonusHands { get; init; }
+        public int BonusSpeed { get; init; }
+        public int BonusJump { get; init; }
+        public int UpgradeSlots { get; init; }
+        public int KnockbackRate { get; init; }
+        public int TradeAvailable { get; init; }
+        public bool IsTimeLimited { get; init; }
+        public int? Durability { get; init; }
+        public int? MaxDurability { get; init; }
         public Texture2D ItemTexture { get; init; }
         public IDXObject Icon { get; init; }
         public IDXObject IconRaw { get; init; }
@@ -240,8 +268,9 @@ namespace HaCreator.MapSimulator.Companions
             return true;
         }
 
-        public bool TryMoveItem(PetRuntime sourcePet, PetRuntime targetPet)
+        public bool TryMoveItem(PetRuntime sourcePet, PetRuntime targetPet, out string rejectReason)
         {
+            rejectReason = null;
             if (sourcePet == null || targetPet == null)
             {
                 return false;
@@ -255,12 +284,13 @@ namespace HaCreator.MapSimulator.Companions
             _equippedItems.TryGetValue(sourcePet.RuntimeId, out CompanionEquipItem sourceItem);
             if (sourceItem == null)
             {
+                rejectReason = "This pet does not have an equipped accessory to move.";
                 return false;
             }
 
             _equippedItems.TryGetValue(targetPet.RuntimeId, out CompanionEquipItem targetItem);
-            if (!CompanionEquipmentController.CanEquipPetItem(sourceItem, targetPet, out _)
-                || (targetItem != null && !CompanionEquipmentController.CanEquipPetItem(targetItem, sourcePet, out _)))
+            if (!CompanionEquipmentController.CanEquipPetItem(sourceItem, targetPet, out rejectReason)
+                || (targetItem != null && !CompanionEquipmentController.CanEquipPetItem(targetItem, sourcePet, out rejectReason)))
             {
                 return false;
             }
@@ -362,7 +392,7 @@ namespace HaCreator.MapSimulator.Companions
 
             if (!HasOwnerState)
             {
-                rejectReason = "Equip an android in the character equipment window before using this page.";
+                rejectReason = "Equip both an android and a heart in the character equipment window before using this page.";
                 return false;
             }
 
@@ -606,6 +636,22 @@ namespace HaCreator.MapSimulator.Companions
                 return false;
             }
 
+            if (item.SupportedPetItemIds != null && item.SupportedPetItemIds.Count > 0)
+            {
+                int petItemId = pet.ItemId;
+                foreach (int supportedPetItemId in item.SupportedPetItemIds)
+                {
+                    if (supportedPetItemId == petItemId)
+                    {
+                        return true;
+                    }
+                }
+
+                string petName = string.IsNullOrWhiteSpace(pet.Name) ? $"Pet {pet.RuntimeId}" : pet.Name;
+                rejectReason = $"{item.Name ?? "This pet accessory"} cannot be equipped on {petName}.";
+                return false;
+            }
+
             if (item.ExcludedPetNames == null || item.ExcludedPetNames.Count == 0)
             {
                 return true;
@@ -644,6 +690,36 @@ namespace HaCreator.MapSimulator.Companions
             if (item.RequiredJobMask != 0 && !MatchesRequiredJobMask(item.RequiredJobMask, build.Job))
             {
                 rejectReason = $"Requires {ResolveRequiredJobNames(item.RequiredJobMask)}.";
+                return false;
+            }
+
+            if (item.RequiredSTR > 0 && build.TotalSTR < item.RequiredSTR)
+            {
+                rejectReason = $"Requires {item.RequiredSTR} STR.";
+                return false;
+            }
+
+            if (item.RequiredDEX > 0 && build.TotalDEX < item.RequiredDEX)
+            {
+                rejectReason = $"Requires {item.RequiredDEX} DEX.";
+                return false;
+            }
+
+            if (item.RequiredINT > 0 && build.TotalINT < item.RequiredINT)
+            {
+                rejectReason = $"Requires {item.RequiredINT} INT.";
+                return false;
+            }
+
+            if (item.RequiredLUK > 0 && build.TotalLUK < item.RequiredLUK)
+            {
+                rejectReason = $"Requires {item.RequiredLUK} LUK.";
+                return false;
+            }
+
+            if (item.RequiredFame > 0 && build.Fame < item.RequiredFame)
+            {
+                rejectReason = $"Requires {item.RequiredFame} Fame.";
                 return false;
             }
 
@@ -713,6 +789,36 @@ namespace HaCreator.MapSimulator.Companions
             return names.Count == 0
                 ? Array.Empty<string>()
                 : new ReadOnlyCollection<string>(names);
+        }
+
+        internal static IReadOnlyCollection<int> ParseSupportedPetItemIds(IEnumerable<string> propertyNames)
+        {
+            if (propertyNames == null)
+            {
+                return Array.Empty<int>();
+            }
+
+            List<int> petItemIds = null;
+            foreach (string propertyName in propertyNames)
+            {
+                if (string.IsNullOrWhiteSpace(propertyName)
+                    || string.Equals(propertyName, "info", StringComparison.OrdinalIgnoreCase)
+                    || !int.TryParse(propertyName, out int petItemId)
+                    || petItemId <= 0)
+                {
+                    continue;
+                }
+
+                petItemIds ??= new List<int>();
+                if (!petItemIds.Contains(petItemId))
+                {
+                    petItemIds.Add(petItemId);
+                }
+            }
+
+            return petItemIds == null || petItemIds.Count == 0
+                ? Array.Empty<int>()
+                : new ReadOnlyCollection<int>(petItemIds);
         }
 
         internal static string NormalizePetCompatibilityName(string petName)
@@ -843,7 +949,9 @@ namespace HaCreator.MapSimulator.Companions
 
         internal static bool HasAndroidOwnerState(CharacterBuild build)
         {
-            return build?.Equipment != null && build.Equipment.ContainsKey(EquipSlot.Android);
+            return build?.Equipment != null
+                   && build.Equipment.ContainsKey(EquipSlot.Android)
+                   && build.Equipment.ContainsKey(EquipSlot.AndroidHeart);
         }
 
         internal static bool MatchesRequiredJobMask(int requiredJobMask, int jobId)
@@ -934,9 +1042,36 @@ namespace HaCreator.MapSimulator.Companions
                 ItemId = itemId,
                 Name = LoadDragonItemName(itemId) ?? $"Dragon Equip {itemId}",
                 Description = LoadDragonItemDescription(itemId),
+                ItemCategory = LoadCachedItemCategory(itemId, "Dragon Equip"),
                 IsCash = GetIntValue(image?["info"]?["cash"]) == 1,
                 RequiredLevel = GetIntValue(image?["info"]?["reqLevel"]) ?? 0,
                 RequiredJobMask = GetIntValue(image?["info"]?["reqJob"]) ?? 0,
+                RequiredFame = GetIntValue(image?["info"]?["reqPOP"]) ?? 0,
+                RequiredSTR = GetIntValue(image?["info"]?["reqSTR"]) ?? 0,
+                RequiredDEX = GetIntValue(image?["info"]?["reqDEX"]) ?? 0,
+                RequiredINT = GetIntValue(image?["info"]?["reqINT"]) ?? 0,
+                RequiredLUK = GetIntValue(image?["info"]?["reqLUK"]) ?? 0,
+                BonusSTR = GetIntValue(image?["info"]?["incSTR"]) ?? 0,
+                BonusDEX = GetIntValue(image?["info"]?["incDEX"]) ?? 0,
+                BonusINT = GetIntValue(image?["info"]?["incINT"]) ?? 0,
+                BonusLUK = GetIntValue(image?["info"]?["incLUK"]) ?? 0,
+                BonusHP = GetIntValue(image?["info"]?["incMHP"]) ?? 0,
+                BonusMP = GetIntValue(image?["info"]?["incMMP"]) ?? 0,
+                BonusWeaponAttack = GetIntValue(image?["info"]?["incPAD"]) ?? 0,
+                BonusMagicAttack = GetIntValue(image?["info"]?["incMAD"]) ?? 0,
+                BonusWeaponDefense = GetIntValue(image?["info"]?["incPDD"]) ?? 0,
+                BonusMagicDefense = GetIntValue(image?["info"]?["incMDD"]) ?? 0,
+                BonusAccuracy = GetIntValue(image?["info"]?["incACC"]) ?? 0,
+                BonusAvoidability = GetIntValue(image?["info"]?["incEVA"]) ?? 0,
+                BonusHands = GetIntValue(image?["info"]?["incCraft"]) ?? 0,
+                BonusSpeed = GetIntValue(image?["info"]?["incSpeed"]) ?? 0,
+                BonusJump = GetIntValue(image?["info"]?["incJump"]) ?? 0,
+                UpgradeSlots = GetIntValue(image?["info"]?["tuc"]) ?? 0,
+                KnockbackRate = GetIntValue(image?["info"]?["knockback"]) ?? 0,
+                TradeAvailable = GetIntValue(image?["info"]?["tradeAvailable"]) ?? 0,
+                IsTimeLimited = GetIntValue(image?["info"]?["timeLimited"]) == 1,
+                MaxDurability = GetIntValue(image?["info"]?["durability"]),
+                Durability = GetIntValue(image?["info"]?["durability"]),
                 ItemTexture = LoadInfoTexture(image, "iconRaw") ?? LoadInfoTexture(image, "icon"),
                 Icon = LoadInfoIcon(image, "icon"),
                 IconRaw = LoadInfoIcon(image, "iconRaw")
@@ -966,9 +1101,38 @@ namespace HaCreator.MapSimulator.Companions
                 ItemId = itemId,
                 Name = LoadCachedItemName(itemId) ?? $"Pet Equip {itemId}",
                 Description = description,
+                ItemCategory = LoadCachedItemCategory(itemId, "Pet Equip"),
                 ExcludedPetNames = CompanionEquipmentController.ParseExcludedPetNames(description),
+                SupportedPetItemIds = CompanionEquipmentController.ParseSupportedPetItemIds(EnumeratePropertyNames(image)),
                 IsCash = GetIntValue(image?["info"]?["cash"]) == 1,
                 RequiredLevel = GetIntValue(image?["info"]?["reqLevel"]) ?? 0,
+                RequiredJobMask = GetIntValue(image?["info"]?["reqJob"]) ?? 0,
+                RequiredFame = GetIntValue(image?["info"]?["reqPOP"]) ?? 0,
+                RequiredSTR = GetIntValue(image?["info"]?["reqSTR"]) ?? 0,
+                RequiredDEX = GetIntValue(image?["info"]?["reqDEX"]) ?? 0,
+                RequiredINT = GetIntValue(image?["info"]?["reqINT"]) ?? 0,
+                RequiredLUK = GetIntValue(image?["info"]?["reqLUK"]) ?? 0,
+                BonusSTR = GetIntValue(image?["info"]?["incSTR"]) ?? 0,
+                BonusDEX = GetIntValue(image?["info"]?["incDEX"]) ?? 0,
+                BonusINT = GetIntValue(image?["info"]?["incINT"]) ?? 0,
+                BonusLUK = GetIntValue(image?["info"]?["incLUK"]) ?? 0,
+                BonusHP = GetIntValue(image?["info"]?["incMHP"]) ?? 0,
+                BonusMP = GetIntValue(image?["info"]?["incMMP"]) ?? 0,
+                BonusWeaponAttack = GetIntValue(image?["info"]?["incPAD"]) ?? 0,
+                BonusMagicAttack = GetIntValue(image?["info"]?["incMAD"]) ?? 0,
+                BonusWeaponDefense = GetIntValue(image?["info"]?["incPDD"]) ?? 0,
+                BonusMagicDefense = GetIntValue(image?["info"]?["incMDD"]) ?? 0,
+                BonusAccuracy = GetIntValue(image?["info"]?["incACC"]) ?? 0,
+                BonusAvoidability = GetIntValue(image?["info"]?["incEVA"]) ?? 0,
+                BonusHands = GetIntValue(image?["info"]?["incCraft"]) ?? 0,
+                BonusSpeed = GetIntValue(image?["info"]?["incSpeed"]) ?? 0,
+                BonusJump = GetIntValue(image?["info"]?["incJump"]) ?? 0,
+                UpgradeSlots = GetIntValue(image?["info"]?["tuc"]) ?? 0,
+                KnockbackRate = GetIntValue(image?["info"]?["knockback"]) ?? 0,
+                TradeAvailable = GetIntValue(image?["info"]?["tradeAvailable"]) ?? 0,
+                IsTimeLimited = GetIntValue(image?["info"]?["timeLimited"]) == 1,
+                MaxDurability = GetIntValue(image?["info"]?["durability"]),
+                Durability = GetIntValue(image?["info"]?["durability"]),
                 ItemTexture = LoadInfoTexture(image, "iconRaw") ?? LoadInfoTexture(image, "icon"),
                 Icon = LoadInfoIcon(image, "icon"),
                 IconRaw = LoadInfoIcon(image, "iconRaw")
@@ -997,9 +1161,36 @@ namespace HaCreator.MapSimulator.Companions
                 ItemId = itemId,
                 Name = LoadMechanicItemName(itemId) ?? $"Mechanic Equip {itemId}",
                 Description = LoadMechanicItemDescription(itemId),
+                ItemCategory = LoadCachedItemCategory(itemId, "Mechanic Equip"),
                 IsCash = GetIntValue(image?["info"]?["cash"]) == 1,
                 RequiredLevel = GetIntValue(image?["info"]?["reqLevel"]) ?? 0,
                 RequiredJobMask = GetIntValue(image?["info"]?["reqJob"]) ?? 0,
+                RequiredFame = GetIntValue(image?["info"]?["reqPOP"]) ?? 0,
+                RequiredSTR = GetIntValue(image?["info"]?["reqSTR"]) ?? 0,
+                RequiredDEX = GetIntValue(image?["info"]?["reqDEX"]) ?? 0,
+                RequiredINT = GetIntValue(image?["info"]?["reqINT"]) ?? 0,
+                RequiredLUK = GetIntValue(image?["info"]?["reqLUK"]) ?? 0,
+                BonusSTR = GetIntValue(image?["info"]?["incSTR"]) ?? 0,
+                BonusDEX = GetIntValue(image?["info"]?["incDEX"]) ?? 0,
+                BonusINT = GetIntValue(image?["info"]?["incINT"]) ?? 0,
+                BonusLUK = GetIntValue(image?["info"]?["incLUK"]) ?? 0,
+                BonusHP = GetIntValue(image?["info"]?["incMHP"]) ?? 0,
+                BonusMP = GetIntValue(image?["info"]?["incMMP"]) ?? 0,
+                BonusWeaponAttack = GetIntValue(image?["info"]?["incPAD"]) ?? 0,
+                BonusMagicAttack = GetIntValue(image?["info"]?["incMAD"]) ?? 0,
+                BonusWeaponDefense = GetIntValue(image?["info"]?["incPDD"]) ?? 0,
+                BonusMagicDefense = GetIntValue(image?["info"]?["incMDD"]) ?? 0,
+                BonusAccuracy = GetIntValue(image?["info"]?["incACC"]) ?? 0,
+                BonusAvoidability = GetIntValue(image?["info"]?["incEVA"]) ?? 0,
+                BonusHands = GetIntValue(image?["info"]?["incCraft"]) ?? 0,
+                BonusSpeed = GetIntValue(image?["info"]?["incSpeed"]) ?? 0,
+                BonusJump = GetIntValue(image?["info"]?["incJump"]) ?? 0,
+                UpgradeSlots = GetIntValue(image?["info"]?["tuc"]) ?? 0,
+                KnockbackRate = GetIntValue(image?["info"]?["knockback"]) ?? 0,
+                TradeAvailable = GetIntValue(image?["info"]?["tradeAvailable"]) ?? 0,
+                IsTimeLimited = GetIntValue(image?["info"]?["timeLimited"]) == 1,
+                MaxDurability = GetIntValue(image?["info"]?["durability"]),
+                Durability = GetIntValue(image?["info"]?["durability"]),
                 ItemTexture = LoadInfoTexture(image, "iconRaw") ?? LoadInfoTexture(image, "icon"),
                 Icon = LoadInfoIcon(image, "icon"),
                 IconRaw = LoadInfoIcon(image, "iconRaw")
@@ -1091,6 +1282,22 @@ namespace HaCreator.MapSimulator.Companions
             return texture != null ? new DXObject(0, 0, texture, 0) : null;
         }
 
+        private static IEnumerable<string> EnumeratePropertyNames(WzImage image)
+        {
+            if (image?.WzProperties == null)
+            {
+                yield break;
+            }
+
+            foreach (WzImageProperty property in image.WzProperties)
+            {
+                if (!string.IsNullOrWhiteSpace(property?.Name))
+                {
+                    yield return property.Name;
+                }
+            }
+        }
+
         private Texture2D LoadInfoTexture(WzImage image, string iconName)
         {
             if (image?["info"] is not WzSubProperty info || info[iconName] is not WzCanvasProperty canvas)
@@ -1144,6 +1351,15 @@ namespace HaCreator.MapSimulator.Companions
                    && global::HaCreator.Program.InfoManager.ItemNameCache.TryGetValue(itemId, out Tuple<string, string, string> itemInfo)
                 ? itemInfo.Item3
                 : null;
+        }
+
+        private static string LoadCachedItemCategory(int itemId, string fallbackCategory)
+        {
+            return global::HaCreator.Program.InfoManager?.ItemNameCache != null
+                   && global::HaCreator.Program.InfoManager.ItemNameCache.TryGetValue(itemId, out Tuple<string, string, string> itemInfo)
+                   && !string.IsNullOrWhiteSpace(itemInfo.Item1)
+                ? itemInfo.Item1
+                : fallbackCategory;
         }
     }
 }

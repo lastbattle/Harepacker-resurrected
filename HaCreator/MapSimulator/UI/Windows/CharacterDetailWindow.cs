@@ -8,10 +8,8 @@ using Microsoft.Xna.Framework.Graphics;
 using Spine;
 using System;
 using System.Collections.Generic;
-using System.Drawing;
-using System.Drawing.Drawing2D;
-using System.Drawing.Text;
-using System.IO;
+using SD = System.Drawing;
+using SDText = System.Drawing.Text;
 using XnaColor = Microsoft.Xna.Framework.Color;
 
 namespace HaCreator.MapSimulator.UI
@@ -37,19 +35,24 @@ namespace HaCreator.MapSimulator.UI
         private const int JobRankIconY = 120;
         private const int StatusPaddingX = 8;
         private const int StatusPaddingY = 8;
-        private static readonly XnaColor ValueColor = new XnaColor(97, 77, 63);
-        private static readonly XnaColor StatusColor = new XnaColor(220, 220, 220);
-        private static readonly StringFormat TypographicStringFormat = StringFormat.GenericTypographic;
-        private LoginCharacterRosterEntry _entry;
-        private string _statusMessage = "Select a character to inspect details.";
+
+        private static readonly XnaColor ValueColor = XnaColor.Black;
+        private static readonly XnaColor StatusColor = new XnaColor(64, 64, 64);
+
         private readonly Texture2D _panelTexture;
         private readonly Texture2D _panelTextureWithRank;
         private readonly Texture2D _rankUpTexture;
         private readonly Texture2D _rankDownTexture;
         private readonly Texture2D _rankSameTexture;
         private readonly IReadOnlyDictionary<int, Texture2D> _jobBadgeTextures;
-        private Texture2D _composedPanelTexture;
-        private bool _isComposedPanelDirty = true;
+        private readonly Dictionary<TextRenderCacheKey, Texture2D> _textTextureCache = new();
+        private readonly SD.Bitmap _measureBitmap;
+        private readonly SD.Graphics _measureGraphics;
+        private readonly SD.Font _basicBlackFont;
+
+        private LoginCharacterRosterEntry _entry;
+        private string _statusMessage = "Select a character to inspect details.";
+        private SpriteFont _font;
 
         public CharacterDetailWindow(
             IDXObject frame,
@@ -67,6 +70,10 @@ namespace HaCreator.MapSimulator.UI
             _rankDownTexture = rankDownTexture;
             _rankSameTexture = rankSameTexture;
             _jobBadgeTextures = jobBadgeTextures ?? new Dictionary<int, Texture2D>();
+            _measureBitmap = new SD.Bitmap(1, 1);
+            _measureGraphics = SD.Graphics.FromImage(_measureBitmap);
+            _measureGraphics.TextRenderingHint = SDText.TextRenderingHint.SingleBitPerPixelGridFit;
+            _basicBlackFont = new SD.Font("Tahoma", 11f, SD.FontStyle.Regular, SD.GraphicsUnit.Pixel);
         }
 
         public override string WindowName => MapSimulatorWindowNames.CharacterDetail;
@@ -85,86 +92,55 @@ namespace HaCreator.MapSimulator.UI
             RenderParameters renderParameters,
             int TickCount)
         {
-            Texture2D panelTexture = EnsureComposedPanelTexture();
+            Texture2D panelTexture = ResolvePanelTexture();
             if (panelTexture != null)
             {
                 sprite.Draw(panelTexture, new Vector2(Position.X, Position.Y), XnaColor.White);
             }
+
+            if (_font == null)
+            {
+                return;
+            }
+
+            if (_entry?.Build == null)
+            {
+                DrawStatusMessage(sprite);
+                return;
+            }
+
+            DrawPanelValues(sprite, _entry.Build);
         }
 
-        private Texture2D EnsureComposedPanelTexture()
+        private void DrawPanelValues(SpriteBatch sprite, CharacterBuild build)
         {
-            if (!_isComposedPanelDirty)
-            {
-                return _composedPanelTexture;
-            }
-
-            DisposeComposedPanelTexture();
-            Texture2D baseTexture = ResolvePanelTexture();
-            if (baseTexture == null)
-            {
-                _isComposedPanelDirty = false;
-                return null;
-            }
-
-            try
-            {
-                using Bitmap bitmap = CreateCompositeBitmap(baseTexture);
-                using Graphics graphics = Graphics.FromImage(bitmap);
-                ConfigureGraphics(graphics);
-
-                if (_entry?.Build == null)
-                {
-                    DrawStatusMessage(graphics, bitmap.Width, bitmap.Height);
-                }
-                else
-                {
-                    DrawPanelValues(graphics, _entry.Build);
-                }
-
-                _composedPanelTexture = bitmap.ToTexture2DAndDispose(baseTexture.GraphicsDevice);
-            }
-            catch
-            {
-                _composedPanelTexture = baseTexture;
-            }
-
-            _isComposedPanelDirty = false;
-            return _composedPanelTexture;
-        }
-
-        private void DrawPanelValues(Graphics graphics, CharacterBuild build)
-        {
-            DrawValue(graphics, LeftValueX, JobValueY, build.JobName);
-            DrawValue(graphics, LeftValueX, LevelValueY, build.Level.ToString());
-            DrawValue(graphics, RightValueX, FameValueY, build.Fame.ToString());
-            DrawValue(graphics, LeftValueX, StrengthValueY, build.TotalSTR.ToString());
-            DrawValue(graphics, RightValueX, IntelligenceValueY, build.TotalINT.ToString());
-            DrawValue(graphics, LeftValueX, DexterityValueY, build.TotalDEX.ToString());
-            DrawValue(graphics, RightValueX, LuckValueY, build.TotalLUK.ToString());
+            DrawValue(sprite, LeftValueX, JobValueY, build.JobName);
+            DrawValue(sprite, LeftValueX, LevelValueY, build.Level.ToString());
+            DrawValue(sprite, RightValueX, FameValueY, build.Fame.ToString());
+            DrawValue(sprite, LeftValueX, StrengthValueY, build.TotalSTR.ToString());
+            DrawValue(sprite, RightValueX, IntelligenceValueY, build.TotalINT.ToString());
+            DrawValue(sprite, LeftValueX, DexterityValueY, build.TotalDEX.ToString());
+            DrawValue(sprite, RightValueX, LuckValueY, build.TotalLUK.ToString());
 
             if (!HasRankInfo())
             {
                 return;
             }
 
-            DrawRightAlignedValue(graphics, RankRightEdgeX, WorldRankValueY, FormatRank(build.WorldRank));
-            DrawRankGlyph(graphics, build.WorldRank, _entry.PreviousWorldRank, WorldRankGlyphY);
+            DrawRightAlignedValue(sprite, RankRightEdgeX, WorldRankValueY, FormatRank(build.WorldRank));
+            DrawRankGlyph(sprite, build.WorldRank, _entry.PreviousWorldRank, WorldRankGlyphY);
 
             Texture2D jobBadgeTexture = ResolveJobBadgeTexture(build);
             if (jobBadgeTexture != null)
             {
-                using Bitmap badgeBitmap = CloneTextureBitmap(jobBadgeTexture);
-                graphics.DrawImage(
-                    badgeBitmap,
-                    JobRankIconRightEdgeX - badgeBitmap.Width,
-                    JobRankIconY,
-                    badgeBitmap.Width,
-                    badgeBitmap.Height);
+                sprite.Draw(
+                    jobBadgeTexture,
+                    new Vector2(Position.X + JobRankIconRightEdgeX - jobBadgeTexture.Width, Position.Y + JobRankIconY),
+                    XnaColor.White);
             }
 
-            DrawRightAlignedValue(graphics, RankRightEdgeX, JobRankValueY, FormatRank(build.JobRank));
-            DrawRankGlyph(graphics, build.JobRank, _entry.PreviousJobRank, JobRankGlyphY);
+            DrawRightAlignedValue(sprite, RankRightEdgeX, JobRankValueY, FormatRank(build.JobRank));
+            DrawRankGlyph(sprite, build.JobRank, _entry.PreviousJobRank, JobRankGlyphY);
         }
 
         private Texture2D ResolvePanelTexture()
@@ -177,20 +153,20 @@ namespace HaCreator.MapSimulator.UI
             return (_entry?.Build?.WorldRank ?? 0) > 0 || (_entry?.Build?.JobRank ?? 0) > 0;
         }
 
-        private void DrawValue(Graphics graphics, int x, int y, string value)
+        private void DrawValue(SpriteBatch sprite, int x, int y, string value)
         {
             string safeValue = string.IsNullOrWhiteSpace(value) ? "-" : value;
-            DrawText(graphics, safeValue, x, y, ValueColor);
+            DrawText(sprite, safeValue, x, y, ValueColor);
         }
 
-        private void DrawRightAlignedValue(Graphics graphics, int rightEdgeX, int y, string value)
+        private void DrawRightAlignedValue(SpriteBatch sprite, int rightEdgeX, int y, string value)
         {
             string safeValue = string.IsNullOrWhiteSpace(value) ? "-" : value;
-            SizeF size = MeasureText(graphics, safeValue);
-            DrawText(graphics, safeValue, rightEdgeX - (int)Math.Ceiling(size.Width), y, ValueColor);
+            Vector2 size = MeasureText(safeValue);
+            DrawText(sprite, safeValue, rightEdgeX - (int)Math.Ceiling(size.X), y, ValueColor);
         }
 
-        private void DrawRankGlyph(Graphics graphics, int currentRank, int? previousRank, int y)
+        private void DrawRankGlyph(SpriteBatch sprite, int currentRank, int? previousRank, int y)
         {
             Texture2D glyphTexture = ResolveRankGlyph(currentRank, previousRank);
             if (glyphTexture == null)
@@ -198,14 +174,11 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
-            using Bitmap glyphBitmap = CloneTextureBitmap(glyphTexture);
             int yOffset = glyphTexture == _rankSameTexture ? 0 : -4;
-            graphics.DrawImage(
-                glyphBitmap,
-                RankGlyphX,
-                y + yOffset,
-                glyphBitmap.Width,
-                glyphBitmap.Height);
+            sprite.Draw(
+                glyphTexture,
+                new Vector2(Position.X + RankGlyphX, Position.Y + y + yOffset),
+                XnaColor.White);
         }
 
         private Texture2D ResolveJobBadgeTexture(CharacterBuild build)
@@ -270,70 +243,52 @@ namespace HaCreator.MapSimulator.UI
             return currentRank < previousRank.Value ? _rankUpTexture : _rankDownTexture;
         }
 
-        private void DrawStatusMessage(Graphics graphics, int width, int height)
+        private void DrawStatusMessage(SpriteBatch sprite)
         {
             if (string.IsNullOrWhiteSpace(_statusMessage))
             {
                 return;
             }
 
-            string text = _statusMessage;
-            RectangleF layout = new RectangleF(
-                StatusPaddingX,
-                StatusPaddingY,
-                Math.Max(0, width - (StatusPaddingX * 2)),
-                Math.Max(0, height - (StatusPaddingY * 2)));
-            using Font font = CreatePanelFont();
-            using SolidBrush brush = new SolidBrush(ToDrawingColor(StatusColor));
-            graphics.DrawString(text, font, brush, layout, TypographicStringFormat);
+            DrawText(sprite, _statusMessage, StatusPaddingX, StatusPaddingY, StatusColor);
         }
 
-        private void DrawText(Graphics graphics, string text, int x, int y, XnaColor color)
+        private void DrawText(SpriteBatch sprite, string text, int x, int y, XnaColor color)
         {
-            using Font font = CreatePanelFont();
-            using SolidBrush brush = new SolidBrush(ToDrawingColor(color));
-            graphics.DrawString(text, font, brush, x, y, TypographicStringFormat);
+            if (string.IsNullOrEmpty(text))
+            {
+                return;
+            }
+
+            Texture2D textTexture = GetOrCreateTextTexture(text, color);
+            if (textTexture != null)
+            {
+                sprite.Draw(textTexture, new Vector2(Position.X + x, Position.Y + y), XnaColor.White);
+                return;
+            }
+
+            if (_font == null)
+            {
+                return;
+            }
+
+            sprite.DrawString(_font, text, new Vector2(Position.X + x, Position.Y + y), color, 0f, Vector2.Zero, 0.5f, SpriteEffects.None, 0f);
         }
 
-        private static SizeF MeasureText(Graphics graphics, string text)
+        private Vector2 MeasureText(string text)
         {
-            using Font font = CreatePanelFont();
-            return graphics.MeasureString(text, font, PointF.Empty, TypographicStringFormat);
-        }
+            if (string.IsNullOrEmpty(text))
+            {
+                return Vector2.Zero;
+            }
 
-        private static Font CreatePanelFont()
-        {
-            return new Font("Tahoma", 8f, FontStyle.Regular, GraphicsUnit.Pixel);
-        }
+            Vector2 rasterSize = MeasureRasterText(text);
+            if (rasterSize != Vector2.Zero)
+            {
+                return rasterSize;
+            }
 
-        private static void ConfigureGraphics(Graphics graphics)
-        {
-            graphics.CompositingMode = CompositingMode.SourceOver;
-            graphics.CompositingQuality = CompositingQuality.HighQuality;
-            graphics.InterpolationMode = InterpolationMode.NearestNeighbor;
-            graphics.PixelOffsetMode = PixelOffsetMode.Half;
-            graphics.SmoothingMode = SmoothingMode.None;
-            graphics.TextRenderingHint = TextRenderingHint.SingleBitPerPixelGridFit;
-        }
-
-        private static Bitmap CloneTextureBitmap(Texture2D texture)
-        {
-            using MemoryStream stream = new MemoryStream();
-            texture.SaveAsPng(stream, texture.Width, texture.Height);
-            stream.Position = 0;
-            using Bitmap source = new Bitmap(stream);
-            return new Bitmap(source);
-        }
-
-        private static Bitmap CreateCompositeBitmap(Texture2D texture)
-        {
-            using Bitmap baseBitmap = CloneTextureBitmap(texture);
-            return new Bitmap(baseBitmap);
-        }
-
-        private static System.Drawing.Color ToDrawingColor(XnaColor color)
-        {
-            return System.Drawing.Color.FromArgb(color.A, color.R, color.G, color.B);
+            return _font == null ? Vector2.Zero : _font.MeasureString(text) * 0.5f;
         }
 
         private static bool IsJobName(string jobName, params string[] fragments)
@@ -361,26 +316,87 @@ namespace HaCreator.MapSimulator.UI
 
         public override void SetFont(SpriteFont font)
         {
-            _isComposedPanelDirty = true;
+            _font = font;
         }
 
         public void SetEntry(LoginCharacterRosterEntry entry, string statusMessage)
         {
             _entry = entry;
             _statusMessage = statusMessage ?? string.Empty;
-            _isComposedPanelDirty = true;
         }
 
-        private void DisposeComposedPanelTexture()
+        private Vector2 MeasureRasterText(string text)
         {
-            if (_composedPanelTexture != null
-                && _composedPanelTexture != _panelTexture
-                && _composedPanelTexture != _panelTextureWithRank)
+            if (_basicBlackFont == null || string.IsNullOrEmpty(text))
             {
-                _composedPanelTexture.Dispose();
+                return Vector2.Zero;
             }
 
-            _composedPanelTexture = null;
+            SD.SizeF size = _measureGraphics.MeasureString(text, _basicBlackFont, SD.PointF.Empty, SD.StringFormat.GenericTypographic);
+            if (size.Width <= 0f || size.Height <= 0f)
+            {
+                size = _measureGraphics.MeasureString(text, _basicBlackFont);
+            }
+
+            return new Vector2((float)Math.Ceiling(size.Width), (float)Math.Ceiling(size.Height));
+        }
+
+        private Texture2D GetOrCreateTextTexture(string text, XnaColor color)
+        {
+            if (_basicBlackFont == null || string.IsNullOrEmpty(text))
+            {
+                return null;
+            }
+
+            TextRenderCacheKey cacheKey = new TextRenderCacheKey(text, color);
+            if (_textTextureCache.TryGetValue(cacheKey, out Texture2D cachedTexture) &&
+                cachedTexture != null &&
+                !cachedTexture.IsDisposed)
+            {
+                return cachedTexture;
+            }
+
+            Vector2 size = MeasureRasterText(text);
+            int width = Math.Max(1, (int)size.X);
+            int height = Math.Max(1, (int)size.Y);
+
+            using var bitmap = new SD.Bitmap(width, height);
+            using SD.Graphics graphics = SD.Graphics.FromImage(bitmap);
+            graphics.Clear(SD.Color.Transparent);
+            graphics.TextRenderingHint = SDText.TextRenderingHint.SingleBitPerPixelGridFit;
+            using var brush = new SD.SolidBrush(SD.Color.FromArgb(color.A, color.R, color.G, color.B));
+            graphics.DrawString(text, _basicBlackFont, brush, 0f, 0f, SD.StringFormat.GenericTypographic);
+
+            Texture2D texture = bitmap.ToTexture2D(_panelTexture.GraphicsDevice);
+            _textTextureCache[cacheKey] = texture;
+            return texture;
+        }
+
+        private readonly struct TextRenderCacheKey : IEquatable<TextRenderCacheKey>
+        {
+            public TextRenderCacheKey(string text, XnaColor color)
+            {
+                Text = text ?? string.Empty;
+                Color = color.PackedValue;
+            }
+
+            public string Text { get; }
+            public uint Color { get; }
+
+            public bool Equals(TextRenderCacheKey other)
+            {
+                return Color == other.Color && string.Equals(Text, other.Text, StringComparison.Ordinal);
+            }
+
+            public override bool Equals(object obj)
+            {
+                return obj is TextRenderCacheKey other && Equals(other);
+            }
+
+            public override int GetHashCode()
+            {
+                return HashCode.Combine(Text, Color);
+            }
         }
     }
 }

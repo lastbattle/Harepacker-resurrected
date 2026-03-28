@@ -81,6 +81,7 @@ namespace HaCreator.MapSimulator.Character
         public CharacterPart SourcePart { get; set; }
         public Color Tint { get; set; } = Color.White;
         public CharacterPartType PartType { get; set; }
+        public PortableChairLayer SourcePortableChairLayer { get; set; }
     }
 
     /// <summary>
@@ -228,7 +229,7 @@ namespace HaCreator.MapSimulator.Character
             if (frames == null || frames.Length == 0)
                 return null;
 
-            return GetFrameAtTime(frames, timeMs);
+            return ResolveDynamicPortableChairFrame(GetFrameAtTime(frames, timeMs), timeMs);
         }
 
         public AssembledFrame GetFrameAtTime(string actionName, int timeMs)
@@ -237,7 +238,7 @@ namespace HaCreator.MapSimulator.Character
             if (frames == null || frames.Length == 0)
                 return null;
 
-            return GetFrameAtTime(frames, timeMs);
+            return ResolveDynamicPortableChairFrame(GetFrameAtTime(frames, timeMs), timeMs);
         }
 
         public int GetFrameIndexAtTime(string actionName, int timeMs)
@@ -369,6 +370,73 @@ namespace HaCreator.MapSimulator.Character
             }
 
             return Math.Min(1, frames.Length - 1);
+        }
+
+        private AssembledFrame ResolveDynamicPortableChairFrame(AssembledFrame frame, int timeMs)
+        {
+            if (frame?.Parts == null || frame.Parts.Count == 0 || _build?.ActivePortableChair?.Layers == null)
+            {
+                return frame;
+            }
+
+            bool hasPortableChairParts = false;
+            for (int i = 0; i < frame.Parts.Count; i++)
+            {
+                if (frame.Parts[i].PartType == CharacterPartType.PortableChair
+                    && frame.Parts[i].SourcePortableChairLayer?.Animation != null)
+                {
+                    hasPortableChairParts = true;
+                    break;
+                }
+            }
+
+            if (!hasPortableChairParts)
+            {
+                return frame;
+            }
+
+            var resolvedParts = new List<AssembledPart>(frame.Parts.Count);
+            for (int i = 0; i < frame.Parts.Count; i++)
+            {
+                AssembledPart part = frame.Parts[i];
+                if (part.PartType != CharacterPartType.PortableChair || part.SourcePortableChairLayer?.Animation == null)
+                {
+                    resolvedParts.Add(part);
+                    continue;
+                }
+
+                CharacterFrame chairFrame = part.SourcePortableChairLayer.Animation.GetFrameAtTime(timeMs, out _);
+                if (chairFrame?.Texture == null)
+                {
+                    continue;
+                }
+
+                resolvedParts.Add(new AssembledPart
+                {
+                    Texture = chairFrame.Texture,
+                    OffsetX = -chairFrame.Origin.X,
+                    OffsetY = -chairFrame.Origin.Y,
+                    ZLayer = part.ZLayer,
+                    ZIndex = part.ZIndex,
+                    VisibilityTokens = part.VisibilityTokens,
+                    VisibilityPriority = part.VisibilityPriority,
+                    IsVisible = part.IsVisible,
+                    SourcePart = part.SourcePart,
+                    Tint = part.Tint,
+                    PartType = part.PartType,
+                    SourcePortableChairLayer = part.SourcePortableChairLayer
+                });
+            }
+
+            return new AssembledFrame
+            {
+                Parts = resolvedParts,
+                Bounds = frame.Bounds,
+                Origin = frame.Origin,
+                Duration = frame.Duration,
+                MapPoints = frame.MapPoints,
+                FeetOffset = frame.FeetOffset
+            };
         }
 
         #region Assembly
@@ -650,7 +718,8 @@ namespace HaCreator.MapSimulator.Character
                     Point.Zero,
                     CharacterPartType.PortableChair,
                     sourcePart: null,
-                    zOverride: GetPortableChairZIndex(layer.RelativeZ));
+                    zOverride: GetPortableChairZIndex(layer.RelativeZ),
+                    sourcePortableChairLayer: layer);
             }
         }
 
@@ -794,7 +863,8 @@ namespace HaCreator.MapSimulator.Character
             Point offset,
             CharacterPartType type,
             CharacterPart sourcePart,
-            int? zOverride = null)
+            int? zOverride = null,
+            PortableChairLayer sourcePortableChairLayer = null)
         {
             if (frame == null) return;
 
@@ -820,7 +890,8 @@ namespace HaCreator.MapSimulator.Character
                         VisibilityTokens = GetVisibilityTokens(sourcePart, subPart.Z),
                         VisibilityPriority = GetVisibilityPriority(sourcePart, subPart.Z, zIndex),
                         SourcePart = sourcePart,
-                        PartType = type
+                        PartType = type,
+                        SourcePortableChairLayer = sourcePortableChairLayer
                     });
                 }
             }
@@ -838,7 +909,8 @@ namespace HaCreator.MapSimulator.Character
                     VisibilityTokens = GetVisibilityTokens(sourcePart, frame.Z),
                     VisibilityPriority = GetVisibilityPriority(sourcePart, frame.Z, zIndex),
                     SourcePart = sourcePart,
-                    PartType = type
+                    PartType = type,
+                    SourcePortableChairLayer = sourcePortableChairLayer
                 });
             }
         }

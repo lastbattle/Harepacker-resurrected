@@ -197,9 +197,9 @@ namespace HaCreator.MapSimulator.UI
             UpdateButtonStates();
         }
 
-        public void ConfigureStorageAccess(string accountLabel, string currentCharacterName, IEnumerable<string> sharedCharacterNames)
+        public void ConfigureStorageAccess(string accountLabel, string accountKey, string currentCharacterName, IEnumerable<string> sharedCharacterNames)
         {
-            _storageRuntime?.ConfigureAccess(accountLabel, currentCharacterName, sharedCharacterNames);
+            _storageRuntime?.ConfigureAccess(accountLabel, accountKey, currentCharacterName, sharedCharacterNames);
             ClampSelection();
             UpdateAccessStatusMessage();
             UpdateButtonStates();

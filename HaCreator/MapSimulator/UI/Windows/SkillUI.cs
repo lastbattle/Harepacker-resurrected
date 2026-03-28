@@ -9,6 +9,7 @@ using Spine;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text;
 
 namespace HaCreator.MapSimulator.UI
 {
@@ -20,7 +21,7 @@ namespace HaCreator.MapSimulator.UI
     public class SkillUI : UIWindowBase
     {
         #region Constants
-        // From binary analysis of CUISkill::Draw at 0x84ed90 (v115 post-Big Bang)
+        // From binary analysis of CUISkill::Draw at 0x84ed90 (post-Big Bang)
         // The skill window uses a list layout with one skill per row
         private const int SKILL_ICON_SIZE = 32;
 
@@ -48,6 +49,7 @@ namespace HaCreator.MapSimulator.UI
         // SP display position
         private const int SP_DISPLAY_X_BASE = 104;    // Right-aligned from this position
         private const int SP_DISPLAY_Y = 256;         // 0x100
+        private const float SP_DISPLAY_TEXT_SCALE = 0.4f;
         private const int TOOLTIP_FALLBACK_WIDTH = 320;
         private const int TOOLTIP_PADDING = 10;
         private const int TOOLTIP_ICON_GAP = 8;
@@ -60,6 +62,17 @@ namespace HaCreator.MapSimulator.UI
         // Job book icon position
         private const int BOOK_ICON_X = 15;
         private const int BOOK_ICON_Y = 55;
+        private const int JOB_ICON_SIZE = 32;
+        private const int BOOK_NAME_CENTER_X = 104;
+        private const int BOOK_NAME_SINGLE_LINE_Y = 65;
+        private const int BOOK_NAME_MULTI_LINE_FIRST_Y = 55;
+        private const int BOOK_NAME_MULTI_LINE_SECOND_Y = 69;
+        private const int BOOK_NAME_MAX_WIDTH = 110;
+        private const float BOOK_NAME_TEXT_SCALE = 0.42f;
+        private const int SKILL_NAME_MAX_WIDTH = 95;
+        private const int SKILL_LEVEL_MAX_WIDTH = 30;
+        private const float SKILL_NAME_TEXT_SCALE = 0.38f;
+        private const float SKILL_LEVEL_TEXT_SCALE = 0.34f;
 
         // Hit detection constants (from CUISkill::GetSkillIndexFromPoint at 0x84b390)
         private const int ICON_HIT_LEFT = 13;
@@ -113,9 +126,12 @@ namespace HaCreator.MapSimulator.UI
         private SpriteFont _font;
         private Character.Skills.SkillManager _skillManager;
         private readonly Texture2D[] _tooltipFrames = new Texture2D[3];
+        private readonly Point[] _tooltipFrameOrigins = new Point[3];
         private Texture2D _debugPlaceholder;
         private int _hoveredSkillIndex = -1;
         private Point _lastMousePosition;
+        private readonly Dictionary<int, Texture2D> _jobIconsByTab;
+        private readonly Dictionary<int, string> _jobNamesByTab;
 
         // Drag and drop
         private bool _isDragging = false;
@@ -210,6 +226,23 @@ namespace HaCreator.MapSimulator.UI
             CreateEmptySlotTexture(device);
             _debugPlaceholder = new Texture2D(device, 1, 1);
             _debugPlaceholder.SetData(new[] { Color.White });
+
+            _jobIconsByTab = new Dictionary<int, Texture2D>
+            {
+                { TAB_BEGINNER, null },
+                { TAB_1ST, null },
+                { TAB_2ND, null },
+                { TAB_3RD, null },
+                { TAB_4TH, null }
+            };
+            _jobNamesByTab = new Dictionary<int, string>
+            {
+                { TAB_BEGINNER, "Beginner" },
+                { TAB_1ST, "1st Job" },
+                { TAB_2ND, "2nd Job" },
+                { TAB_3RD, "3rd Job" },
+                { TAB_4TH, "4th Job" }
+            };
         }
 
         private void CreateEmptySlotTexture(GraphicsDevice device)
@@ -257,6 +290,17 @@ namespace HaCreator.MapSimulator.UI
             for (int i = 0; i < Math.Min(_tooltipFrames.Length, tooltipFrames.Length); i++)
             {
                 _tooltipFrames[i] = tooltipFrames[i];
+            }
+        }
+
+        public void SetTooltipOrigins(Point[] tooltipOrigins)
+        {
+            if (tooltipOrigins == null)
+                return;
+
+            for (int i = 0; i < Math.Min(_tooltipFrameOrigins.Length, tooltipOrigins.Length); i++)
+            {
+                _tooltipFrameOrigins[i] = tooltipOrigins[i];
             }
         }
 
@@ -327,22 +371,26 @@ namespace HaCreator.MapSimulator.UI
             int windowX = Position.X;
             int windowY = Position.Y;
 
+            DrawJobHeader(sprite, windowX, windowY);
+
             // Draw visible skill rows using official client layout
             int rowIndex = 0;
             for (int nTop = FIRST_ROW_TOP; nTop < 287 && (rowIndex + _scrollOffset) < skills.Count; nTop += SKILL_ROW_HEIGHT)
             {
                 int skillIndex = rowIndex + _scrollOffset;
                 var skill = skills[skillIndex];
+                bool isUnlearned = skill.CurrentLevel <= 0;
 
                 // Calculate icon position: (12, nTop - 17)
                 int iconX = windowX + ICON_X;
                 int iconY = windowY + nTop + ICON_Y_OFFSET;
 
                 // Draw skill icon
-                if (skill.IconTexture != null)
+                Texture2D iconTexture = skill.GetIconForState(isUnlearned, skillIndex == _hoveredSkillIndex);
+                if (iconTexture != null)
                 {
                     Rectangle iconRect = new Rectangle(iconX, iconY, SKILL_ICON_SIZE, SKILL_ICON_SIZE);
-                    sprite.Draw(skill.IconTexture, iconRect, Color.White);
+                    sprite.Draw(iconTexture, iconRect, Color.White);
 
                     if (TryGetCooldownVisualState(skill.SkillId, TickCount, out float remainingProgress, out string remainingText))
                     {
@@ -365,9 +413,37 @@ namespace HaCreator.MapSimulator.UI
                         Color.White);
                 }
 
-                // Note: Text rendering would go here with proper font support
-                // Name position: (50, nTop - 18)
-                // Level position: (50, nTop)
+                if (_font != null)
+                {
+                    string skillName = FitTextToWidth(SanitizeFontText(skill.SkillName), SKILL_NAME_MAX_WIDTH, SKILL_NAME_TEXT_SCALE);
+                    DrawSkillBookText(
+                        sprite,
+                        skillName,
+                        new Vector2(windowX + NAME_X, windowY + nTop + NAME_Y_OFFSET),
+                        Color.Black,
+                        SKILL_NAME_TEXT_SCALE);
+
+                    int bonusLevel = Math.Max(0, skill.BonusLevel);
+                    int displayLevel = Math.Max(0, skill.CurrentLevel) + bonusLevel;
+                    string levelText = FitTextToWidth(displayLevel.ToString(), SKILL_LEVEL_MAX_WIDTH, SKILL_LEVEL_TEXT_SCALE);
+                    DrawSkillBookText(
+                        sprite,
+                        levelText,
+                        new Vector2(windowX + LEVEL_X, windowY + nTop + LEVEL_Y_OFFSET),
+                        bonusLevel > 0 ? new Color(0, 102, 255) : Color.Black,
+                        SKILL_LEVEL_TEXT_SCALE);
+
+                    if (bonusLevel > 0)
+                    {
+                        string bonusText = FitTextToWidth($"(+{bonusLevel})", SKILL_LEVEL_MAX_WIDTH, SKILL_LEVEL_TEXT_SCALE);
+                        DrawSkillBookText(
+                            sprite,
+                            bonusText,
+                            new Vector2(windowX + BONUS_X, windowY + nTop + LEVEL_Y_OFFSET),
+                            new Color(0, 102, 255),
+                            SKILL_LEVEL_TEXT_SCALE);
+                    }
+                }
 
                 // Highlight selected skill
                 if (skillIndex == _selectedSkillIndex)
@@ -378,6 +454,8 @@ namespace HaCreator.MapSimulator.UI
 
                 rowIndex++;
             }
+
+            DrawSkillPointCount(sprite, windowX, windowY);
         }
 
         protected override void DrawOverlay(SpriteBatch sprite, SkeletonMeshRenderer skeletonMeshRenderer, GameTime gameTime,
@@ -387,6 +465,95 @@ namespace HaCreator.MapSimulator.UI
             int TickCount)
         {
             DrawHoveredSkillTooltip(sprite, renderParameters.RenderWidth, renderParameters.RenderHeight, TickCount);
+        }
+
+        /// <summary>
+        /// Draw the job header row with job icon and name.
+        /// </summary>
+        private void DrawJobHeader(SpriteBatch sprite, int windowX, int windowY)
+        {
+            Texture2D jobIcon = null;
+            string jobName = "Beginner";
+
+            if (_jobIconsByTab.TryGetValue(_currentTab, out Texture2D icon))
+                jobIcon = icon;
+            if (_jobNamesByTab.TryGetValue(_currentTab, out string name))
+                jobName = name;
+
+            if (jobIcon == null)
+                _jobIconsByTab.TryGetValue(TAB_BEGINNER, out jobIcon);
+
+            if (jobIcon != null)
+            {
+                sprite.Draw(
+                    jobIcon,
+                    new Rectangle(windowX + BOOK_ICON_X, windowY + BOOK_ICON_Y, JOB_ICON_SIZE, JOB_ICON_SIZE),
+                    Color.White);
+            }
+
+            DrawBookName(sprite, windowX, windowY, jobName);
+        }
+
+        private void DrawBookName(SpriteBatch sprite, int windowX, int windowY, string jobName)
+        {
+            if (_font == null || string.IsNullOrWhiteSpace(jobName))
+                return;
+
+            jobName = SanitizeFontText(jobName);
+            float width = MeasureSkillBookText(jobName, BOOK_NAME_TEXT_SCALE).X;
+            if (width < BOOK_NAME_MAX_WIDTH)
+            {
+                DrawSkillBookText(
+                    sprite,
+                    jobName,
+                    new Vector2(windowX + BOOK_NAME_CENTER_X - (width / 2f), windowY + BOOK_NAME_SINGLE_LINE_Y),
+                    Color.Black,
+                    BOOK_NAME_TEXT_SCALE);
+                return;
+            }
+
+            if (!TryResolveBookNameSplit(jobName, out string firstLine, out string secondLine))
+            {
+                string fitted = FitTextToWidth(jobName, BOOK_NAME_MAX_WIDTH, BOOK_NAME_TEXT_SCALE);
+                float fittedWidth = MeasureSkillBookText(fitted, BOOK_NAME_TEXT_SCALE).X;
+                DrawSkillBookText(
+                    sprite,
+                    fitted,
+                    new Vector2(windowX + BOOK_NAME_CENTER_X - (fittedWidth / 2f), windowY + BOOK_NAME_MULTI_LINE_FIRST_Y),
+                    Color.Black,
+                    BOOK_NAME_TEXT_SCALE);
+                return;
+            }
+
+            float firstWidth = MeasureSkillBookText(firstLine, BOOK_NAME_TEXT_SCALE).X;
+            float secondWidth = MeasureSkillBookText(secondLine, BOOK_NAME_TEXT_SCALE).X;
+            DrawSkillBookText(
+                sprite,
+                firstLine,
+                new Vector2(windowX + BOOK_NAME_CENTER_X - (firstWidth / 2f), windowY + BOOK_NAME_MULTI_LINE_FIRST_Y),
+                Color.Black,
+                BOOK_NAME_TEXT_SCALE);
+            DrawSkillBookText(
+                sprite,
+                secondLine,
+                new Vector2(windowX + BOOK_NAME_CENTER_X - (secondWidth / 2f), windowY + BOOK_NAME_MULTI_LINE_SECOND_Y),
+                Color.Black,
+                BOOK_NAME_TEXT_SCALE);
+        }
+
+        private void DrawSkillPointCount(SpriteBatch sprite, int windowX, int windowY)
+        {
+            if (_font == null)
+                return;
+
+            string spText = SanitizeFontText(GetCurrentSkillPoints().ToString());
+            float width = MeasureSkillBookText(spText, SP_DISPLAY_TEXT_SCALE).X;
+            DrawSkillBookText(
+                sprite,
+                spText,
+                new Vector2(windowX + SP_DISPLAY_X_BASE - width, windowY + SP_DISPLAY_Y),
+                Color.Black,
+                SP_DISPLAY_TEXT_SCALE);
         }
 
         /// <summary>
@@ -644,8 +811,26 @@ namespace HaCreator.MapSimulator.UI
             return textureWidth > 0 ? textureWidth : TOOLTIP_FALLBACK_WIDTH;
         }
 
-        private static Rectangle CreateTooltipRectFromAnchor(Point anchorPoint, int tooltipWidth, int tooltipHeight, int tooltipFrameIndex)
+        private Rectangle CreateTooltipRectFromAnchor(Point anchorPoint, int tooltipWidth, int tooltipHeight, int tooltipFrameIndex)
         {
+            Texture2D tooltipFrame = tooltipFrameIndex >= 0 && tooltipFrameIndex < _tooltipFrames.Length
+                ? _tooltipFrames[tooltipFrameIndex]
+                : null;
+            Point origin = tooltipFrameIndex >= 0 && tooltipFrameIndex < _tooltipFrameOrigins.Length
+                ? _tooltipFrameOrigins[tooltipFrameIndex]
+                : Point.Zero;
+
+            if (tooltipFrame != null && origin != Point.Zero)
+            {
+                float scaleX = tooltipFrame.Width > 0 ? tooltipWidth / (float)tooltipFrame.Width : 1f;
+                float scaleY = tooltipFrame.Height > 0 ? tooltipHeight / (float)tooltipFrame.Height : 1f;
+                return new Rectangle(
+                    anchorPoint.X - (int)Math.Round(origin.X * scaleX),
+                    anchorPoint.Y - (int)Math.Round(origin.Y * scaleY),
+                    tooltipWidth,
+                    tooltipHeight);
+            }
+
             return tooltipFrameIndex switch
             {
                 0 => new Rectangle(anchorPoint.X - tooltipWidth + 1, anchorPoint.Y - tooltipHeight + 1, tooltipWidth, tooltipHeight),
@@ -817,6 +1002,132 @@ namespace HaCreator.MapSimulator.UI
         {
             return string.IsNullOrWhiteSpace(text) ? string.Empty : text.Replace('\r', ' ').Replace('\n', ' ').Trim();
         }
+
+        private Vector2 MeasureSkillBookText(string text, float scale)
+        {
+            if (_font == null || string.IsNullOrWhiteSpace(text))
+                return Vector2.Zero;
+
+            return _font.MeasureString(text) * scale;
+        }
+
+        private void DrawSkillBookText(SpriteBatch sprite, string text, Vector2 position, Color color, float scale)
+        {
+            if (_font == null || string.IsNullOrWhiteSpace(text))
+                return;
+
+            sprite.DrawString(_font, text, position + Vector2.One, Color.White, 0f, Vector2.Zero, scale, SpriteEffects.None, 0f);
+            sprite.DrawString(_font, text, position, color, 0f, Vector2.Zero, scale, SpriteEffects.None, 0f);
+        }
+
+        private string FitTextToWidth(string text, int maxWidth, float scale)
+        {
+            if (_font == null || string.IsNullOrWhiteSpace(text))
+                return string.Empty;
+
+            string sanitized = text.Trim();
+            if (MeasureSkillBookText(sanitized, scale).X <= maxWidth)
+                return sanitized;
+
+            const string ellipsis = "...";
+            string working = sanitized;
+            while (working.Length > 1)
+            {
+                working = working[..^1].TrimEnd();
+                string candidate = working + ellipsis;
+                if (MeasureSkillBookText(candidate, scale).X <= maxWidth)
+                    return candidate;
+            }
+
+            return ellipsis;
+        }
+
+        private static string SanitizeFontText(string text)
+        {
+            if (string.IsNullOrEmpty(text))
+                return string.Empty;
+
+            var builder = new StringBuilder(text.Length);
+            foreach (char ch in text)
+            {
+                switch (ch)
+                {
+                    case '\r':
+                    case '\n':
+                    case '\t':
+                    case ' ':
+                        builder.Append(ch == '\t' ? ' ' : ch);
+                        break;
+                    case '\u2018':
+                    case '\u2019':
+                    case '\u2032':
+                        builder.Append('\'');
+                        break;
+                    case '\u201C':
+                    case '\u201D':
+                    case '\u2033':
+                        builder.Append('"');
+                        break;
+                    case '\u2013':
+                    case '\u2014':
+                    case '\u2212':
+                        builder.Append('-');
+                        break;
+                    case '\u2026':
+                        builder.Append("...");
+                        break;
+                    case '\u00A0':
+                    case '\u3000':
+                        builder.Append(' ');
+                        break;
+                    default:
+                        if (ch >= 32 && ch <= 126)
+                        {
+                            builder.Append(ch);
+                        }
+                        else if (!char.IsControl(ch))
+                        {
+                            builder.Append('?');
+                        }
+                        break;
+                }
+            }
+
+            return builder.ToString();
+        }
+
+        private bool TryResolveBookNameSplit(string jobName, out string firstLine, out string secondLine)
+        {
+            firstLine = string.Empty;
+            secondLine = string.Empty;
+
+            if (string.IsNullOrWhiteSpace(jobName))
+                return false;
+
+            int splitIndex = jobName.IndexOf(' ', Math.Min(10, Math.Max(0, jobName.Length - 1)));
+            if (splitIndex <= 0 || splitIndex >= jobName.Length - 1)
+                splitIndex = jobName.LastIndexOf(' ');
+
+            if (splitIndex <= 0 || splitIndex >= jobName.Length - 1)
+                return false;
+
+            while (splitIndex > 0 && splitIndex < jobName.Length - 1)
+            {
+                string candidateSecondLine = jobName[(splitIndex + 1)..];
+                if (MeasureSkillBookText(candidateSecondLine, BOOK_NAME_TEXT_SCALE).X < BOOK_NAME_MAX_WIDTH)
+                    break;
+
+                int nextSplit = jobName.IndexOf(' ', splitIndex + 1);
+                if (nextSplit <= 0 || nextSplit >= jobName.Length - 1)
+                    return false;
+
+                splitIndex = nextSplit;
+            }
+
+            firstLine = jobName[..splitIndex].Trim();
+            secondLine = jobName[(splitIndex + 1)..].Trim();
+            return !string.IsNullOrWhiteSpace(firstLine) && !string.IsNullOrWhiteSpace(secondLine);
+        }
         #endregion
 
         #region Skill Management
@@ -842,6 +1153,28 @@ namespace HaCreator.MapSimulator.UI
             }
         }
 
+        public void AddSkill(int jobAdvancement, SkillDisplayData skillData)
+        {
+            if (skillData == null)
+                return;
+
+            int tab = Math.Clamp(jobAdvancement, TAB_BEGINNER, TAB_4TH);
+            if (skillsByTab.TryGetValue(tab, out var skills))
+            {
+                skills.Add(skillData);
+            }
+        }
+
+        public void SetJobInfo(int tab, Texture2D jobIcon, string jobName)
+        {
+            int tabIndex = Math.Clamp(tab, TAB_BEGINNER, TAB_4TH);
+            _jobIconsByTab[tabIndex] = jobIcon;
+            if (!string.IsNullOrWhiteSpace(jobName))
+            {
+                _jobNamesByTab[tabIndex] = jobName;
+            }
+        }
+
         /// <summary>
         /// Set skill points for a job advancement tab
         /// </summary>
@@ -863,6 +1196,48 @@ namespace HaCreator.MapSimulator.UI
             skillPoints[tab] = Math.Max(0, currentPoints + delta);
         }
 
+        public int GetCurrentSkillPoints()
+        {
+            if (skillPoints.TryGetValue(_currentTab, out int points))
+                return points;
+
+            return 0;
+        }
+
+        public void UpdateSkillLevel(int skillId, int currentLevel, int maxLevel)
+        {
+            foreach (var tabSkills in skillsByTab.Values)
+            {
+                foreach (SkillDisplayData skill in tabSkills)
+                {
+                    if (skill.SkillId != skillId)
+                        continue;
+
+                    skill.CurrentLevel = Math.Max(0, currentLevel);
+                    skill.MaxLevel = Math.Max(skill.CurrentLevel, maxLevel);
+                }
+            }
+        }
+
+        public void RecalculateSkillPointsFromCurrentLevels()
+        {
+            foreach (var entry in skillsByTab)
+            {
+                int remainingPoints = 0;
+                List<SkillDisplayData> skills = entry.Value;
+                for (int i = 0; i < skills.Count; i++)
+                {
+                    SkillDisplayData skill = skills[i];
+                    if (skill == null)
+                        continue;
+
+                    remainingPoints += Math.Max(0, skill.MaxLevel - skill.CurrentLevel);
+                }
+
+                skillPoints[entry.Key] = remainingPoints;
+            }
+        }
+
         /// <summary>
         /// Clear all skills
         /// </summary>
@@ -871,6 +1246,7 @@ namespace HaCreator.MapSimulator.UI
             foreach (var kvp in skillsByTab)
             {
                 kvp.Value.Clear();
+                skillPoints[kvp.Key] = 0;
             }
             _selectedSkill = null;
             _selectedSkillIndex = -1;

@@ -50,10 +50,12 @@ namespace HaCreator.MapSimulator.Interaction
         public bool HasSecondaryPassword => !string.IsNullOrWhiteSpace(_secondaryPassword);
         public bool IsSecondaryPasswordVerified => !HasSecondaryPassword || _secondaryPasswordVerified;
 
-        public SimulatorStorageRuntime(StorageAccountStore accountStore = null, string initialAccountLabel = null)
+        public SimulatorStorageRuntime(StorageAccountStore accountStore = null, string initialAccountLabel = null, string initialAccountKey = null)
         {
             _accountStore = accountStore ?? new StorageAccountStore();
-            LoadAccountState(string.IsNullOrWhiteSpace(initialAccountLabel) ? AccountLabel : initialAccountLabel);
+            LoadAccountState(
+                string.IsNullOrWhiteSpace(initialAccountLabel) ? AccountLabel : initialAccountLabel,
+                initialAccountKey);
         }
 
         public IReadOnlyList<InventorySlotData> GetSlots(InventoryType type)
@@ -211,13 +213,13 @@ namespace HaCreator.MapSimulator.Interaction
             }
         }
 
-        public void ConfigureAccess(string accountLabel, string currentCharacterName, IEnumerable<string> sharedCharacterNames)
+        public void ConfigureAccess(string accountLabel, string accountKey, string currentCharacterName, IEnumerable<string> sharedCharacterNames)
         {
             string normalizedLabel = string.IsNullOrWhiteSpace(accountLabel) ? "Simulator Account Storage" : accountLabel.Trim();
-            string nextAccountKey = StorageAccountStore.ResolveAccountKey(normalizedLabel);
+            string nextAccountKey = ResolveConfiguredAccountKey(normalizedLabel, accountKey);
             if (!string.Equals(_currentAccountKey, nextAccountKey, StringComparison.Ordinal))
             {
-                LoadAccountState(normalizedLabel);
+                LoadAccountState(normalizedLabel, nextAccountKey);
             }
             else
             {
@@ -283,11 +285,18 @@ namespace HaCreator.MapSimulator.Interaction
             _secondaryPasswordVerified = false;
         }
 
-        private void LoadAccountState(string accountLabel)
+        private void LoadAccountState(string accountLabel, string accountKey = null)
         {
             string normalizedLabel = string.IsNullOrWhiteSpace(accountLabel) ? "Simulator Account Storage" : accountLabel.Trim();
-            string nextAccountKey = StorageAccountStore.ResolveAccountKey(normalizedLabel);
-            StorageAccountStore.StorageAccountState state = _accountStore?.GetState(normalizedLabel);
+            string nextAccountKey = ResolveConfiguredAccountKey(normalizedLabel, accountKey);
+            string legacyAccountKey = StorageAccountStore.ResolveAccountKey(normalizedLabel);
+            StorageAccountStore.StorageAccountState state = _accountStore?.GetStateByKey(nextAccountKey);
+            bool migratedLegacyState = false;
+            if (state == null && !string.Equals(nextAccountKey, legacyAccountKey, StringComparison.Ordinal))
+            {
+                state = _accountStore?.GetStateByKey(legacyAccountKey);
+                migratedLegacyState = state != null;
+            }
 
             _suspendPersistence = true;
             try
@@ -332,6 +341,11 @@ namespace HaCreator.MapSimulator.Interaction
             {
                 _suspendPersistence = false;
             }
+
+            if (migratedLegacyState)
+            {
+                PersistCurrentState();
+            }
         }
 
         private void PersistCurrentState()
@@ -356,7 +370,7 @@ namespace HaCreator.MapSimulator.Interaction
                 snapshot[entry.Key] = rows;
             }
 
-            _accountStore.SaveState(AccountLabel, _slotLimit, _meso, snapshot, _authorizedCharacterNames, _secondaryPassword);
+            _accountStore.SaveState(_currentAccountKey, AccountLabel, _slotLimit, _meso, snapshot, _authorizedCharacterNames, _secondaryPassword);
         }
 
         private void ReconcileAuthorizedCharacters()
@@ -399,6 +413,13 @@ namespace HaCreator.MapSimulator.Interaction
 
             _authorizedCharacterNames.Add(normalizedName);
             return true;
+        }
+
+        private static string ResolveConfiguredAccountKey(string accountLabel, string accountKey)
+        {
+            return string.IsNullOrWhiteSpace(accountKey)
+                ? StorageAccountStore.ResolveAccountKey(accountLabel)
+                : accountKey.Trim();
         }
 
         private static int NormalizeSlotExpansionAmount(int amount)

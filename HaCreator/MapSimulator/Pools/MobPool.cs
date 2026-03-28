@@ -155,7 +155,7 @@ namespace HaCreator.MapSimulator.Pools
                 Hide = instance?.Hide == true,
                 Info = instance?.Info,
                 Team = instance?.Team,
-                RespawnTimeMs = mobData?.Escort > 0
+                RespawnTimeMs = SpecialMobInteractionRules.ShouldDisableAutoRespawn(mobData)
                     ? -1
                     : NormalizeRespawnTime(instance?.MobTime, mobData?.IsBoss ?? false),
                 IsBoss = mobData?.IsBoss ?? false,

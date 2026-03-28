@@ -13,14 +13,15 @@ namespace HaCreator.MapSimulator.Interaction
         private const int BubbleLifetimeMs = 4200;
         private const int BlinkDurationMs = 3000;
         private const int BlinkPulseIntervalMs = 180;
+        private const int DeleteGateDelayMs = 450;
 
         private static readonly MessengerContactDefinition[] ContactDefinitions =
         {
-            new("Rondo", "Lith Harbor", 4, "Ready to board.", "Boarding soon. Meet me at the dock."),
-            new("Rin", "Sleepywood", 7, "Grinding Jr. Boogies.", "I'll keep the spot warm."),
-            new("Targa", "Free Market", 1, "Selling scrolls.", "Catch me before the room fills."),
-            new("Aria", "Orbis", 12, "Waiting at the station.", "The next ship is almost here."),
-            new("Pia", "Henesys", 2, "Checking the market.", "I'm still looking through stores.")
+            new("Rondo", "Lith Harbor", 4, "Ready to board.", "Boarding soon. Meet me at the dock.", "Pirate", 34),
+            new("Rin", "Sleepywood", 7, "Grinding Jr. Boogies.", "I'll keep the spot warm.", "Cleric", 52),
+            new("Targa", "Free Market", 1, "Selling scrolls.", "Catch me before the room fills.", "Chief Bandit", 71),
+            new("Aria", "Orbis", 12, "Waiting at the station.", "The next ship is almost here.", "Hunter", 48),
+            new("Pia", "Henesys", 2, "Checking the market.", "I'm still looking through stores.", "Magician", 24)
         };
 
         private readonly List<MessengerParticipantState> _participants = new(MaxParticipants);
@@ -34,9 +35,11 @@ namespace HaCreator.MapSimulator.Interaction
         private int _nextClaimId = 1;
         private int _blinkStartTick = int.MinValue;
         private int _blinkEndTick = int.MinValue;
+        private int _deleteEligibleTick = int.MinValue;
         private MessengerWindowState _windowState;
         private PendingMessengerInviteState _pendingInvite;
         private PendingMessengerInviteState _incomingInvite;
+        private bool _windowCloseReady;
         private string _lastActionSummary = "Messenger opened.";
         private string _lastPacketSummary = "Messenger packet trace idle.";
 
@@ -64,6 +67,7 @@ namespace HaCreator.MapSimulator.Interaction
                     LocationSummary = resolvedLocation,
                     Channel = resolvedChannel,
                     StatusText = "You opened Messenger.",
+                    JobName = "Beginner",
                     IsLocalPlayer = true,
                     IsOnline = true
                 });
@@ -138,7 +142,9 @@ namespace HaCreator.MapSimulator.Interaction
                 LastPacketSummary = _lastPacketSummary,
                 StatusBarText = statusBarText,
                 CollapsedStatusText = collapsedStatusText,
-                ShowStatusBlink = showStatusBlink
+                ShowStatusBlink = showStatusBlink,
+                ShouldCloseWindow = _windowCloseReady,
+                WindowCloseSummary = _lastActionSummary
             };
         }
 
@@ -427,7 +433,7 @@ namespace HaCreator.MapSimulator.Interaction
             _lastActionSummary = $"Received a Messenger whisper from {participant.Name}.";
             StartBlink(Environment.TickCount);
             RecordPacketSummary($"Applied simulated Messenger whisper packet from {participant.Name}.");
-            return _lastActionSummary;
+            return $"[Whisper] {participant.Name}: {resolvedMessage}";
         }
 
         public string ProcessChatInput(string message)
@@ -517,31 +523,45 @@ namespace HaCreator.MapSimulator.Interaction
             return _lastActionSummary;
         }
 
-        public string TryDeleteMessenger()
+        public MessengerDeleteResult TryDeleteMessenger()
         {
             if (_incomingInvite != null)
             {
-                return RejectIncomingInvite();
+                string message = RejectIncomingInvite();
+                return new MessengerDeleteResult(message, false);
             }
 
-            if (_pendingInvite != null)
+            if (_windowCloseReady)
             {
-                string contactName = _pendingInvite.ContactName;
-                _pendingInvite = null;
-                _lastActionSummary = $"Canceled Messenger invite to {contactName}.";
-                AddSystemLog(_lastActionSummary);
-                RecordPacketSummary($"Sent simulated Messenger invite-cancel packet to {contactName}.");
-                return _lastActionSummary;
+                return new MessengerDeleteResult(_lastActionSummary, true);
             }
 
-            if (_participants.Count > 1)
+            if (_pendingInvite != null || _participants.Count > 1)
             {
-                return LeaveMessenger();
+                if (_deleteEligibleTick == int.MinValue)
+                {
+                    _deleteEligibleTick = Environment.TickCount + DeleteGateDelayMs;
+                    _lastActionSummary = _pendingInvite != null
+                        ? $"Messenger close requested while invite {_pendingInvite.InviteId} is still owned by the server seam."
+                        : "Messenger close requested while the server-owned room state is still active.";
+                    AddSystemLog(_lastActionSummary);
+                    RecordPacketSummary(_pendingInvite != null
+                        ? $"Sent simulated Messenger delete request while invite {_pendingInvite.InviteId} is pending."
+                        : "Sent simulated Messenger delete request while remote participants are still bound to the room.");
+                }
+
+                return new MessengerDeleteResult(_lastActionSummary, false);
             }
 
-            _lastActionSummary = "Messenger close requested with only the local profile present.";
-            RecordPacketSummary("Simulated Messenger TryDelete with no remote participants.");
-            return _lastActionSummary;
+            _windowCloseReady = true;
+            _lastActionSummary = "Messenger close gate passed with only the local profile present.";
+            RecordPacketSummary("Simulated Messenger TryDelete destroy after the local-only gate passed.");
+            return new MessengerDeleteResult(_lastActionSummary, true);
+        }
+
+        public void AcknowledgeWindowClose()
+        {
+            _windowCloseReady = false;
         }
 
         public string RemoveParticipant(string name, bool rejectedInvite)
@@ -613,6 +633,93 @@ namespace HaCreator.MapSimulator.Interaction
             return _lastActionSummary;
         }
 
+        public string SeedPacketProfiles()
+        {
+            ApplyPacketProfile("Rondo", true, 9, 41, "Gunslinger", "Mushroom Shrine", "Waiting on the next taxi.");
+            ApplyPacketProfile("Rin", true, 3, 58, "Priest", "Ludibrium", "Buffing at the PQ entrance.");
+            ApplyPacketProfile("Targa", false, 1, 74, "Hermit", "Free Market", "Offline");
+            _lastActionSummary = "Seeded packet-shaped Messenger member cards for Rondo, Rin, and Targa.";
+            AddSystemLog(_lastActionSummary);
+            RecordPacketSummary("Applied simulated Messenger member-info packets for three contacts.");
+            return _lastActionSummary;
+        }
+
+        public string ClearPacketProfiles()
+        {
+            foreach (MessengerContactState contact in _contacts.Values)
+            {
+                contact.ApplyDefinitionDefaults();
+                SyncParticipantFromContact(contact);
+            }
+
+            _lastActionSummary = "Cleared packet-shaped Messenger member overrides and restored simulator defaults.";
+            AddSystemLog(_lastActionSummary);
+            RecordPacketSummary("Cleared simulated Messenger member-info packet overrides.");
+            return _lastActionSummary;
+        }
+
+        public string UpsertPacketProfile(string payload)
+        {
+            string resolvedPayload = NormalizeMessage(payload);
+            if (resolvedPayload == null)
+            {
+                return "Messenger packet upsert needs <name>|<online|offline>|<channel>|<level>|<job>|<location>|<status>.";
+            }
+
+            string[] parts = resolvedPayload.Split('|');
+            if (parts.Length < 7)
+            {
+                return "Messenger packet upsert needs <name>|<online|offline>|<channel>|<level>|<job>|<location>|<status>.";
+            }
+
+            string name = NormalizeParticipantName(parts[0]);
+            bool? online = parts[1].Trim().ToLowerInvariant() switch
+            {
+                "online" => true,
+                "offline" => false,
+                _ => null
+            };
+            if (name == null || !online.HasValue || !int.TryParse(parts[2].Trim(), out int channel) || !int.TryParse(parts[3].Trim(), out int level))
+            {
+                return "Messenger packet upsert needs <name>|<online|offline>|<channel>|<level>|<job>|<location>|<status>.";
+            }
+
+            if (!_contacts.TryGetValue(name, out MessengerContactState contact))
+            {
+                return $"No simulator Messenger contact named {name} is available.";
+            }
+
+            ApplyPacketProfile(
+                contact.Name,
+                online.Value,
+                Math.Max(1, channel),
+                Math.Max(1, level),
+                NormalizeMessage(parts[4]) ?? contact.JobName,
+                NormalizeMessage(parts[5]) ?? contact.LocationSummary,
+                NormalizeMessage(parts[6]) ?? contact.StatusText);
+
+            _lastActionSummary = $"Applied packet-shaped Messenger member card for {contact.Name}.";
+            AddSystemLog(_lastActionSummary);
+            RecordPacketSummary($"Applied simulated Messenger member-info packet for {contact.Name}.");
+            return _lastActionSummary;
+        }
+
+        public string RemovePacketProfile(string contactName)
+        {
+            string resolvedName = NormalizeParticipantName(contactName);
+            if (resolvedName == null || !_contacts.TryGetValue(resolvedName, out MessengerContactState contact))
+            {
+                return $"No simulator Messenger contact named {contactName?.Trim()} is available.";
+            }
+
+            contact.ApplyDefinitionDefaults();
+            SyncParticipantFromContact(contact);
+            _lastActionSummary = $"Removed packet-shaped Messenger member override for {contact.Name}.";
+            AddSystemLog(_lastActionSummary);
+            RecordPacketSummary($"Removed simulated Messenger member-info packet override for {contact.Name}.");
+            return _lastActionSummary;
+        }
+
         public string SubmitClaim()
         {
             MessengerLogEntryState[] claimableEntries = _logEntries
@@ -675,6 +782,8 @@ namespace HaCreator.MapSimulator.Interaction
                 LocationSummary = contact.LocationSummary,
                 Channel = contact.Channel,
                 StatusText = contact.StatusText,
+                JobName = contact.JobName,
+                Level = contact.Level,
                 IsLocalPlayer = false,
                 IsOnline = contact.IsOnline
             };
@@ -705,6 +814,11 @@ namespace HaCreator.MapSimulator.Interaction
                 ResolvePendingInvite(_pendingInvite.WillAccept, packetDriven: true);
             }
 
+            if (_deleteEligibleTick != int.MinValue && tickCount >= _deleteEligibleTick)
+            {
+                ResolveDeleteGate();
+            }
+
             if (_lastPulseTick == int.MinValue)
             {
                 _lastPulseTick = tickCount;
@@ -730,6 +844,7 @@ namespace HaCreator.MapSimulator.Interaction
                 ? $"{contact.Name} came online in {contact.LocationSummary}, CH {contact.Channel}."
                 : $"{contact.Name} went offline.";
             AddSystemLog(_lastActionSummary);
+            RecordPacketSummary($"Applied simulated Messenger presence pulse for {contact.Name}.");
         }
 
         private MessengerContactState FindNextInvitableContact()
@@ -861,7 +976,7 @@ namespace HaCreator.MapSimulator.Interaction
                 case "leave":
                 case "exit":
                 case "close":
-                    return LeaveMessenger();
+                    return TryDeleteMessenger().Message;
                 default:
                     _lastActionSummary = $"Messenger command '{commandText}' is not modeled.";
                     AddSystemLog(_lastActionSummary);
@@ -924,6 +1039,72 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             return -1;
+        }
+
+        private void ResolveDeleteGate()
+        {
+            _deleteEligibleTick = int.MinValue;
+
+            if (_pendingInvite != null)
+            {
+                string contactName = _pendingInvite.ContactName;
+                _pendingInvite = null;
+                _lastActionSummary = $"Canceled Messenger invite to {contactName} after the server-owned delete gate resolved.";
+                AddSystemLog(_lastActionSummary);
+                RecordPacketSummary($"Applied simulated Messenger invite-cancel packet to {contactName}.");
+            }
+
+            if (_participants.Count > 1)
+            {
+                MessengerParticipantState localPlayer = _participants[0];
+                _participants.Clear();
+                _participants.Add(localPlayer);
+                _selectedSlot = 0;
+                _lastActionSummary = $"{localPlayer.Name} left the Messenger after the delete gate resolved.";
+                AddSystemLog(_lastActionSummary);
+                RecordPacketSummary("Applied simulated Messenger leave packet after the delete gate resolved.");
+            }
+
+            _windowCloseReady = true;
+        }
+
+        private void ApplyPacketProfile(string name, bool isOnline, int channel, int level, string jobName, string locationSummary, string statusText)
+        {
+            if (!_contacts.TryGetValue(name, out MessengerContactState contact))
+            {
+                return;
+            }
+
+            contact.IsOnline = isOnline;
+            contact.AcceptsInvites = isOnline;
+            contact.Channel = Math.Max(1, channel);
+            contact.Level = Math.Max(1, level);
+            contact.JobName = string.IsNullOrWhiteSpace(jobName) ? contact.JobName : jobName.Trim();
+            contact.LocationSummary = string.IsNullOrWhiteSpace(locationSummary) ? contact.LocationSummary : locationSummary.Trim();
+            contact.StatusText = string.IsNullOrWhiteSpace(statusText) ? contact.StatusText : statusText.Trim();
+            contact.DataSourceLabel = "packet";
+            SyncParticipantFromContact(contact);
+        }
+
+        private void SyncParticipantFromContact(MessengerContactState contact)
+        {
+            int participantIndex = FindParticipantIndex(contact.Name);
+            if (participantIndex <= 0)
+            {
+                return;
+            }
+
+            MessengerParticipantState participant = _participants[participantIndex];
+            _participants[participantIndex] = participant with
+            {
+                LocationSummary = contact.LocationSummary,
+                Channel = contact.Channel,
+                StatusText = contact.IsOnline ? contact.StatusText : "Offline",
+                JobName = contact.JobName,
+                Level = contact.Level,
+                IsOnline = contact.IsOnline,
+                DataSourceLabel = contact.DataSourceLabel
+            };
         }
 
         private string BuildPendingInviteSummary()
@@ -1028,6 +1209,15 @@ namespace HaCreator.MapSimulator.Interaction
                 Channel = channel;
                 StatusText = statusText;
                 JoinGreeting = joinGreeting;
+                JobName = "Adventurer";
+                Level = 30;
+            }
+
+            public MessengerContactDefinition(string name, string locationSummary, int channel, string statusText, string joinGreeting, string jobName, int level)
+                : this(name, locationSummary, channel, statusText, joinGreeting)
+            {
+                JobName = jobName;
+                Level = Math.Max(1, level);
             }
 
             public string Name { get; }
@@ -1035,29 +1225,42 @@ namespace HaCreator.MapSimulator.Interaction
             public int Channel { get; }
             public string StatusText { get; }
             public string JoinGreeting { get; }
+            public string JobName { get; }
+            public int Level { get; }
         }
 
         private sealed class MessengerContactState
         {
             public MessengerContactState(MessengerContactDefinition definition)
             {
-                Name = definition.Name;
-                LocationSummary = definition.LocationSummary;
-                Channel = definition.Channel;
-                StatusText = definition.StatusText;
-                JoinGreeting = definition.JoinGreeting;
-                IsOnline = true;
-                AcceptsInvites = true;
+                Definition = definition;
+                ApplyDefinitionDefaults();
             }
 
-            public string Name { get; }
-            public string LocationSummary { get; }
-            public int Channel { get; }
-            public string StatusText { get; }
-            public string JoinGreeting { get; }
+            public MessengerContactDefinition Definition { get; }
+            public string Name => Definition.Name;
+            public string LocationSummary { get; set; }
+            public int Channel { get; set; }
+            public string StatusText { get; set; }
+            public string JoinGreeting => Definition.JoinGreeting;
+            public string JobName { get; set; }
+            public int Level { get; set; }
+            public string DataSourceLabel { get; set; } = "sim";
             public bool IsOnline { get; set; }
             public bool AcceptsInvites { get; set; }
             public bool CanInvite => IsOnline && AcceptsInvites;
+
+            public void ApplyDefinitionDefaults()
+            {
+                LocationSummary = Definition.LocationSummary;
+                Channel = Definition.Channel;
+                StatusText = Definition.StatusText;
+                JobName = Definition.JobName;
+                Level = Definition.Level;
+                DataSourceLabel = "sim";
+                IsOnline = true;
+                AcceptsInvites = true;
+            }
         }
 
         private sealed record PendingMessengerInviteState(
@@ -1072,6 +1275,9 @@ namespace HaCreator.MapSimulator.Interaction
             public string LocationSummary { get; init; } = string.Empty;
             public int Channel { get; init; }
             public string StatusText { get; init; } = string.Empty;
+            public string JobName { get; init; } = string.Empty;
+            public int Level { get; init; }
+            public string DataSourceLabel { get; init; } = "sim";
             public bool IsLocalPlayer { get; init; }
             public bool IsOnline { get; init; }
             public string BubbleText { get; init; } = string.Empty;
@@ -1086,6 +1292,9 @@ namespace HaCreator.MapSimulator.Interaction
                     LocationSummary = LocationSummary,
                     Channel = Channel,
                     StatusText = StatusText,
+                    JobName = JobName,
+                    Level = Level,
+                    DataSourceLabel = DataSourceLabel,
                     IsLocalPlayer = IsLocalPlayer,
                     IsOnline = IsOnline,
                     BubbleText = BubbleText,
@@ -1162,6 +1371,8 @@ namespace HaCreator.MapSimulator.Interaction
         public string StatusBarText { get; init; } = string.Empty;
         public string CollapsedStatusText { get; init; } = string.Empty;
         public bool ShowStatusBlink { get; init; }
+        public bool ShouldCloseWindow { get; init; }
+        public string WindowCloseSummary { get; init; } = string.Empty;
     }
 
     internal sealed class MessengerParticipantSnapshot
@@ -1170,12 +1381,17 @@ namespace HaCreator.MapSimulator.Interaction
         public string LocationSummary { get; init; } = string.Empty;
         public int Channel { get; init; }
         public string StatusText { get; init; } = string.Empty;
+        public string JobName { get; init; } = string.Empty;
+        public int Level { get; init; }
+        public string DataSourceLabel { get; init; } = "sim";
         public bool IsLocalPlayer { get; init; }
         public bool IsOnline { get; init; }
         public string BubbleText { get; init; } = string.Empty;
         public int BubbleStartTick { get; init; }
         public int BubbleExpireTick { get; init; }
     }
+
+    internal sealed record MessengerDeleteResult(string Message, bool ShouldHideWindow);
 
     internal sealed class MessengerLogEntrySnapshot
     {

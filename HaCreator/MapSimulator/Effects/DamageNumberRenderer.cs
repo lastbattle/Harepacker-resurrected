@@ -319,7 +319,7 @@ namespace HaCreator.MapSimulator.Effects
         /// Draw a damage number using WZ sprites.
         /// Uses the authentic MapleStory spacing algorithm from CAnimationDisplayer::Effect_HP.
         ///
-        /// Binary analysis (v115, address 0x444eb0) revealed the spacing formula:
+        /// Binary analysis (address 0x444eb0) revealed the spacing formula:
         /// - For each digit: overlap = 3 * (origin.x - width) / 5
         /// - Since origin.x is typically less than width/2, this produces negative overlap
         /// - Negative overlap means digits are drawn CLOSER together (overlapping slightly)

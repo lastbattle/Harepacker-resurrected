@@ -66,6 +66,7 @@ namespace HaCreator.MapSimulator.Character
         // Combat effects reference
         private CombatEffects _combatEffects;
         private MobSkillEffectLoader _mobSkillEffectLoader;
+        private AffectedAreaPool _affectedAreaPool;
         private SoundManager _soundManager;
         private Action<Rectangle, int, int, int> _reactorAttackAreaHandler;
         private PlayerMobStatusController _mobStatusController;
@@ -247,6 +248,11 @@ namespace HaCreator.MapSimulator.Character
             return _mobSkillEffectLoader?.LoadMobSkillEffect(skillId, skillLevel);
         }
 
+        public MobSkillEffectLoader GetMobSkillEffectLoader()
+        {
+            return _mobSkillEffectLoader;
+        }
+
         /// <summary>
         /// Set mob pool for combat
         /// </summary>
@@ -269,6 +275,11 @@ namespace HaCreator.MapSimulator.Character
         public void SetCombatEffects(CombatEffects combatEffects)
         {
             _combatEffects = combatEffects;
+        }
+
+        public void SetAffectedAreaPool(AffectedAreaPool affectedAreaPool)
+        {
+            _affectedAreaPool = affectedAreaPool;
         }
 
         public void SetSoundManager(SoundManager soundManager)
@@ -354,7 +365,7 @@ namespace HaCreator.MapSimulator.Character
             Skills?.SetExternalCastBlockedEvaluator(currentTime => _currentMobStatusState.SkillCastBlocked);
             Skills?.SetExternalStateRestrictionMessageProvider(currentTime => _mobStatusController?.GetSkillCastRestrictionMessage(currentTime));
 
-            Combat.SetDamageBlockedEvaluator(currentTime => Skills?.IsPlayerProtectedByClientSkillZone(currentTime) == true);
+            Combat.SetDamageBlockedEvaluator(IsDamageBlockedByAffectedArea);
 
             // Set up callbacks
             Player.SetFootholdLookup(_findFoothold);
@@ -481,7 +492,7 @@ namespace HaCreator.MapSimulator.Character
                 Skills?.NotifyOwnerDamaged(mob, Environment.TickCount);
             };
 
-            Combat.SetDamageBlockedEvaluator(currentTime => Skills?.IsPlayerProtectedByClientSkillZone(currentTime) == true);
+            Combat.SetDamageBlockedEvaluator(IsDamageBlockedByAffectedArea);
 
             Player.SetFootholdLookup(_findFoothold);
             Player.SetLadderLookup(_findLadder);
@@ -706,12 +717,12 @@ namespace HaCreator.MapSimulator.Character
                     {
                         if (inputState.Skills[i])
                         {
-                            Skills.TryCastHotkey(i, currentTime);
+                            Skills.TryCastHotkey(i, currentTime, inputState.SkillInputTokens[i]);
                         }
 
                         if (inputState.SkillsReleased[i])
                         {
-                            Skills.ReleaseHotkeyIfActive(i, currentTime);
+                            Skills.ReleaseHotkeyIfActive(i, currentTime, inputState.SkillReleaseInputTokens[i]);
                         }
                     }
 
@@ -720,12 +731,18 @@ namespace HaCreator.MapSimulator.Character
                     {
                         if (inputState.FunctionSlots[i])
                         {
-                            Skills.TryCastHotkey(SkillManager.FUNCTION_SLOT_OFFSET + i, currentTime);
+                            Skills.TryCastHotkey(
+                                SkillManager.FUNCTION_SLOT_OFFSET + i,
+                                currentTime,
+                                inputState.FunctionSlotInputTokens[i]);
                         }
 
                         if (inputState.FunctionSlotsReleased[i])
                         {
-                            Skills.ReleaseHotkeyIfActive(SkillManager.FUNCTION_SLOT_OFFSET + i, currentTime);
+                            Skills.ReleaseHotkeyIfActive(
+                                SkillManager.FUNCTION_SLOT_OFFSET + i,
+                                currentTime,
+                                inputState.FunctionSlotReleaseInputTokens[i]);
                         }
                     }
 
@@ -734,12 +751,18 @@ namespace HaCreator.MapSimulator.Character
                     {
                         if (inputState.CtrlSlots[i])
                         {
-                            Skills.TryCastHotkey(SkillManager.CTRL_SLOT_OFFSET + i, currentTime);
+                            Skills.TryCastHotkey(
+                                SkillManager.CTRL_SLOT_OFFSET + i,
+                                currentTime,
+                                inputState.CtrlSlotInputTokens[i]);
                         }
 
                         if (inputState.CtrlSlotsReleased[i])
                         {
-                            Skills.ReleaseHotkeyIfActive(SkillManager.CTRL_SLOT_OFFSET + i, currentTime);
+                            Skills.ReleaseHotkeyIfActive(
+                                SkillManager.CTRL_SLOT_OFFSET + i,
+                                currentTime,
+                                inputState.CtrlSlotReleaseInputTokens[i]);
                         }
                     }
                 }
@@ -811,6 +834,8 @@ namespace HaCreator.MapSimulator.Character
                 Skills.DrawProjectiles(spriteBatch, mapShiftX, mapShiftY, centerX, centerY, currentTime);
                 Skills.DrawEffects(spriteBatch, mapShiftX, mapShiftY, centerX, centerY, currentTime);
             }
+
+            _affectedAreaPool?.Draw(spriteBatch, mapShiftX, mapShiftY, centerX, centerY, currentTime);
         }
 
         /// <summary>
@@ -832,17 +857,22 @@ namespace HaCreator.MapSimulator.Character
             return Pets.TryExecuteCommand(message, currentTime);
         }
 
+        private bool IsDamageBlockedByAffectedArea(int currentTime)
+        {
+            if (Skills?.IsPlayerProtectedByClientSkillZone(currentTime) == true)
+            {
+                return true;
+            }
+
+            return Player != null
+                   && _affectedAreaPool?.IsPointInsideZone(Player.X, Player.Y, currentTime, "invincible") == true;
+        }
+
         internal bool TryApplyMobSkillStatus(int skillId, MobSkillRuntimeData runtimeData, int currentTime, float sourceX = 0f)
         {
             if (Player == null)
             {
                 return false;
-            }
-
-            if (skillId == 129)
-            {
-                TeleportToSpawn();
-                return true;
             }
 
             return _mobStatusController?.TryApplyMobSkill(skillId, runtimeData, currentTime, sourceX) == true;
@@ -890,7 +920,8 @@ namespace HaCreator.MapSimulator.Character
             Player?.ApplyMobRecoveryModifiers(
                 _currentMobStatusState.HpRecoveryReversed,
                 _currentMobStatusState.MaxHpPercentCap,
-                _currentMobStatusState.MaxMpPercentCap);
+                _currentMobStatusState.MaxMpPercentCap,
+                _currentMobStatusState.HpRecoveryDamagePercent);
             Player?.SetExternalMoveSpeedMultiplier(_currentMobStatusState.MoveSpeedMultiplier);
             Combat?.SetAdditionalPlayerMissChance(_currentMobStatusState.AdditionalMissChance);
         }

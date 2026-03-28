@@ -4,6 +4,7 @@ using HaSharedLibrary.Render.DX;
 using HaSharedLibrary.Util;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
+using MapleLib.WzLib.WzStructure.Data.QuestStructure;
 using Spine;
 using System;
 using System.Collections.Generic;
@@ -13,6 +14,14 @@ namespace HaCreator.MapSimulator.UI
 {
     public sealed class QuestDetailWindow : UIWindowBase
     {
+        private const float ClientContentX = 18f;
+        private const float ClientContentWidth = 253f;
+        private const float ConditionLabelWidth = 38f;
+        private const float ConditionTextInset = 6f;
+        private const float ConditionValueGap = 8f;
+        private const float ConditionRowGap = 4f;
+        private const int ConditionIconSize = 18;
+
         private readonly string _windowName;
         private readonly List<ButtonLabel> _buttonLabels = new();
         private readonly Dictionary<QuestWindowActionKind, ActionButtonBinding> _actionButtons = new();
@@ -32,10 +41,12 @@ namespace HaCreator.MapSimulator.UI
         private UIObject _activeSecondaryButton;
         private UIObject _activeTertiaryButton;
         private UIObject _activeQuaternaryButton;
+        private UIObject _activeDeliveryButton;
         private bool _drawPrimaryLabel = true;
         private bool _drawSecondaryLabel = true;
         private bool _drawTertiaryLabel = true;
         private bool _drawQuaternaryLabel = true;
+        private bool _drawDeliveryLabel = true;
         private Texture2D _summaryHeaderTexture;
         private Texture2D _requirementHeaderTexture;
         private Texture2D _rewardHeaderTexture;
@@ -154,7 +165,8 @@ namespace HaCreator.MapSimulator.UI
 
                 if (_state.PrimaryAction == action ||
                     _state.SecondaryAction == action ||
-                    _state.QuaternaryAction == action)
+                    _state.QuaternaryAction == action ||
+                    ResolveDeliveryAction(_state) == action)
                 {
                     ActionRequested?.Invoke(action);
                 }
@@ -222,10 +234,12 @@ namespace HaCreator.MapSimulator.UI
             _activeSecondaryButton = null;
             _activeTertiaryButton = null;
             _activeQuaternaryButton = null;
+            _activeDeliveryButton = null;
             _drawPrimaryLabel = true;
             _drawSecondaryLabel = true;
             _drawTertiaryLabel = true;
             _drawQuaternaryLabel = true;
+            _drawDeliveryLabel = true;
 
             foreach (ActionButtonBinding binding in _actionButtons.Values)
             {
@@ -257,6 +271,7 @@ namespace HaCreator.MapSimulator.UI
 
             if (state != null)
             {
+                BindDeliveryActionButton(state);
                 BindNpcButton(state);
                 BindQuaternaryActionButton(state);
                 LayoutActionButtons();
@@ -324,11 +339,11 @@ namespace HaCreator.MapSimulator.UI
 
             if (_state == null)
             {
-                sprite.DrawString(_font, "Select a quest to inspect its details.", new Vector2(Position.X + 16, Position.Y + 22), new Color(220, 220, 220));
+                sprite.DrawString(_font, "Select a quest to inspect its details.", new Vector2(Position.X + ClientContentX, Position.Y + 22), new Color(220, 220, 220));
                 return;
             }
 
-            float x = Position.X + 16;
+            float x = Position.X + ClientContentX;
             float y = Position.Y + 20;
 
             sprite.DrawString(_font, _state.Title, new Vector2(x, y), Color.White);
@@ -342,13 +357,13 @@ namespace HaCreator.MapSimulator.UI
 
             y = DrawNoticeSurface(sprite, y, TickCount);
 
-            DrawSummarySection(sprite, ref y, x, 258f);
-            DrawRequirementSection(sprite, ref y, x, 258f);
-            DrawRewardSection(sprite, ref y, x, 258f);
+            DrawSummarySection(sprite, ref y, x, ClientContentWidth);
+            DrawRequirementSection(sprite, ref y, x, ClientContentWidth);
+            DrawRewardSection(sprite, ref y, x, ClientContentWidth);
 
             if (!string.IsNullOrWhiteSpace(_state.HintText))
             {
-                DrawWrappedText(sprite, _state.HintText, new Vector2(x, y), 258f, new Color(243, 227, 168));
+                DrawWrappedText(sprite, _state.HintText, new Vector2(x, y), ClientContentWidth, new Color(243, 227, 168));
             }
         }
 
@@ -396,6 +411,11 @@ namespace HaCreator.MapSimulator.UI
             if (_activeQuaternaryButton?.ButtonVisible == true && _drawQuaternaryLabel)
             {
                 DrawCenteredButtonLabel(sprite, _activeQuaternaryButton, _state.QuaternaryActionLabel);
+            }
+
+            if (_activeDeliveryButton?.ButtonVisible == true && _drawDeliveryLabel)
+            {
+                DrawCenteredButtonLabel(sprite, _activeDeliveryButton, GetDeliveryActionLabel(_state));
             }
 
             if (_navigationCount > 1)
@@ -531,17 +551,12 @@ namespace HaCreator.MapSimulator.UI
                 return y;
             }
 
-            const float labelWidth = 38f;
-            const float iconSize = 18f;
-
             foreach (QuestLogLineSnapshot line in lines.Where(line => line != null))
             {
-                Texture2D rowTexture = !rewardSection && !line.IsComplete
-                    ? _incompleteSelectionBarTexture ?? _selectionBarTexture
-                    : _selectionBarTexture;
-                if (rowTexture != null)
+                ConditionRowLayout layout = BuildConditionRowLayout(line, x, y, maxWidth, rewardSection);
+                if (layout.RowTexture != null)
                 {
-                    sprite.Draw(rowTexture, new Rectangle((int)x, (int)y, Math.Min((int)maxWidth, rowTexture.Width), rowTexture.Height), Color.White);
+                    sprite.Draw(layout.RowTexture, layout.TextureBounds, Color.White);
                 }
 
                 Color labelColor = rewardSection
@@ -551,20 +566,19 @@ namespace HaCreator.MapSimulator.UI
                     ? new Color(244, 234, 198)
                     : (line.IsComplete ? new Color(219, 239, 219) : new Color(255, 218, 189));
 
-                sprite.DrawString(_font, line.Label ?? string.Empty, new Vector2(x, y), labelColor);
-
-                float lineX = x + labelWidth + 6f;
-                Texture2D iconTexture = line.ItemId.HasValue && _itemIconProvider != null
-                    ? _itemIconProvider(line.ItemId.Value)
-                    : null;
-                if (iconTexture != null)
+                sprite.DrawString(_font, line.Label ?? string.Empty, layout.LabelPosition, labelColor);
+                if (layout.IconTexture != null)
                 {
-                    sprite.Draw(iconTexture, new Rectangle((int)lineX, (int)y, (int)iconSize, (int)iconSize), Color.White);
-                    lineX += iconSize + 4f;
+                    sprite.Draw(layout.IconTexture, layout.IconBounds, Color.White);
                 }
 
-                y = DrawWrappedText(sprite, line.Text, new Vector2(lineX, y), Math.Max(48f, maxWidth - (lineX - x)), textColor);
-                y += 4f;
+                y = DrawWrappedText(sprite, line.Text, layout.BodyPosition, layout.BodyMaxWidth, textColor);
+                if (!string.IsNullOrWhiteSpace(line.ValueText))
+                {
+                    sprite.DrawString(_font, line.ValueText, layout.ValuePosition, textColor);
+                }
+
+                y = layout.NextY;
             }
 
             return y;
@@ -627,7 +641,7 @@ namespace HaCreator.MapSimulator.UI
                 return null;
             }
 
-            float x = Position.X + 16;
+            float x = Position.X + ClientContentX;
             float y = Position.Y + 20 + _font.LineSpacing + 8;
 
             if (!string.IsNullOrWhiteSpace(_state.NpcText))
@@ -636,15 +650,15 @@ namespace HaCreator.MapSimulator.UI
             }
 
             y = AdvanceNoticeLayout(y);
-            y = AdvanceSummaryLayout(x, y, 258f);
+            y = AdvanceSummaryLayout(x, y, ClientContentWidth);
 
-            HoveredQuestItemInfo hovered = TryResolveHoveredConditionItem(mouseX, mouseY, _state.RequirementLines, x, ref y, 258f, false);
+            HoveredQuestItemInfo hovered = TryResolveHoveredConditionItem(mouseX, mouseY, _state.RequirementLines, x, ref y, ClientContentWidth, false);
             if (hovered != null)
             {
                 return hovered;
             }
 
-            return TryResolveHoveredConditionItem(mouseX, mouseY, _state.RewardLines, x, ref y, 258f, true);
+            return TryResolveHoveredConditionItem(mouseX, mouseY, _state.RewardLines, x, ref y, ClientContentWidth, true);
         }
 
         private float AdvanceSummaryLayout(float x, float y, float maxWidth)
@@ -708,28 +722,66 @@ namespace HaCreator.MapSimulator.UI
 
             y = AdvanceSectionHeader(rewardSection ? _rewardHeaderTexture : _requirementHeaderTexture, y);
 
-            const float labelWidth = 38f;
-            const float iconSize = 18f;
             foreach (QuestLogLineSnapshot line in lines.Where(line => line != null))
             {
-                float lineX = x + labelWidth + 6f;
-                if (line.ItemId.HasValue)
+                ConditionRowLayout layout = BuildConditionRowLayout(line, x, y, maxWidth, rewardSection);
+                if (line.ItemId.HasValue && layout.IconBounds.Contains(mouseX, mouseY))
                 {
-                    Rectangle iconRect = new Rectangle((int)lineX, (int)y, (int)iconSize, (int)iconSize);
-                    if (iconRect.Contains(mouseX, mouseY))
-                    {
-                        return CreateHoveredQuestItem(line.ItemId.Value, line.Text);
-                    }
-
-                    lineX += iconSize + 4f;
+                    return CreateHoveredQuestItem(line.ItemId.Value, line.Text);
                 }
 
-                y = AdvanceWrappedText(line.Text, Math.Max(48f, maxWidth - (lineX - x)), y);
-                y += 4f;
+                y = layout.NextY;
             }
 
-            y += 8f;
             return null;
+        }
+
+        private ConditionRowLayout BuildConditionRowLayout(QuestLogLineSnapshot line, float x, float y, float maxWidth, bool rewardSection)
+        {
+            Texture2D rowTexture = !rewardSection && !line.IsComplete
+                ? _incompleteSelectionBarTexture ?? _selectionBarTexture
+                : _selectionBarTexture;
+            Texture2D iconTexture = line.ItemId.HasValue
+                ? ResolveItemIcon(line.ItemId.Value)
+                : null;
+
+            float detailX = x + ConditionLabelWidth + ConditionTextInset;
+            float detailWidth = Math.Max(48f, maxWidth - (detailX - x));
+            float stripWidth = rowTexture != null
+                ? Math.Min(rowTexture.Width, detailWidth)
+                : detailWidth;
+            float stripHeight = rowTexture?.Height ?? 0f;
+            float iconWidth = iconTexture != null ? ConditionIconSize : 0f;
+            float textLeft = detailX + (rowTexture != null ? ConditionTextInset : 0f);
+            if (iconTexture != null)
+            {
+                textLeft += iconWidth + 4f;
+            }
+
+            float valueWidth = string.IsNullOrWhiteSpace(line.ValueText)
+                ? 0f
+                : _font.MeasureString(line.ValueText).X;
+            float textRight = detailX + stripWidth - (rowTexture != null ? ConditionTextInset : 0f);
+            float bodyMaxWidth = Math.Max(36f, textRight - textLeft - (valueWidth > 0f ? valueWidth + ConditionValueGap : 0f));
+            int lineCount = Math.Max(1, WrapText(line.Text, bodyMaxWidth).Count());
+            float bodyHeight = lineCount * _font.LineSpacing;
+            float rowHeight = Math.Max(Math.Max(bodyHeight, stripHeight), iconWidth);
+            float textureY = y + Math.Max(0f, (rowHeight - stripHeight) / 2f);
+            float labelY = y + Math.Max(0f, (rowHeight - _font.LineSpacing) / 2f);
+            float iconY = y + Math.Max(0f, (rowHeight - ConditionIconSize) / 2f);
+            float bodyY = y + Math.Max(0f, (rowHeight - bodyHeight) / 2f);
+            float valueY = y + Math.Max(0f, (rowHeight - _font.LineSpacing) / 2f);
+
+            return new ConditionRowLayout(
+                rowTexture,
+                new Rectangle((int)detailX, (int)textureY, Math.Max(1, (int)Math.Round(stripWidth)), Math.Max(1, (int)Math.Round(stripHeight))),
+                new Vector2(x, labelY),
+                iconTexture,
+                new Rectangle((int)(detailX + (rowTexture != null ? ConditionTextInset : 0f)), (int)iconY, ConditionIconSize, ConditionIconSize),
+                new Vector2(textLeft, bodyY),
+                bodyMaxWidth,
+                new Vector2(Math.Max(textLeft, textRight - valueWidth), valueY),
+                y + rowHeight + ConditionRowGap);
         }
 
         private float AdvanceSectionHeader(Texture2D texture, float y)
@@ -960,6 +1012,7 @@ namespace HaCreator.MapSimulator.UI
         private void LayoutActionButtons()
         {
             List<UIObject> orderedButtons = new();
+            AppendDistinctVisibleButton(orderedButtons, _activeDeliveryButton);
             AppendDistinctVisibleButton(orderedButtons, _activeQuaternaryButton);
             AppendDistinctVisibleButton(orderedButtons, _activeTertiaryButton);
             AppendDistinctVisibleButton(orderedButtons, _activeSecondaryButton);
@@ -983,6 +1036,50 @@ namespace HaCreator.MapSimulator.UI
                 button.Y = Math.Max(16, frameHeight - buttonHeight - 10);
                 cursorX = button.X - 8;
             }
+        }
+
+        private void BindDeliveryActionButton(QuestWindowDetailState state)
+        {
+            QuestWindowActionKind action = ResolveDeliveryAction(state);
+            if (action == QuestWindowActionKind.None || !_actionButtons.TryGetValue(action, out ActionButtonBinding binding))
+            {
+                return;
+            }
+
+            binding.Button.SetVisible(true);
+            binding.Button.SetButtonState(UIObjectState.Normal);
+            _activeDeliveryButton = binding.Button;
+            _drawDeliveryLabel = binding.DrawLabel;
+        }
+
+        private static QuestWindowActionKind ResolveDeliveryAction(QuestWindowDetailState state)
+        {
+            if (state?.DeliveryCashItemId is not int deliveryCashItemId || deliveryCashItemId <= 0)
+            {
+                return QuestWindowActionKind.None;
+            }
+
+            return state.State switch
+            {
+                QuestStateType.Not_Started => QuestWindowActionKind.QuestDeliveryAccept,
+                QuestStateType.Started => QuestWindowActionKind.QuestDeliveryComplete,
+                _ => QuestWindowActionKind.None
+            };
+        }
+
+        private static string GetDeliveryActionLabel(QuestWindowDetailState state)
+        {
+            if (!string.IsNullOrWhiteSpace(state?.DeliveryCashItemName))
+            {
+                return state.DeliveryCashItemName;
+            }
+
+            return ResolveDeliveryAction(state) switch
+            {
+                QuestWindowActionKind.QuestDeliveryAccept => "Delivery",
+                QuestWindowActionKind.QuestDeliveryComplete => "Delivery",
+                _ => string.Empty
+            };
         }
 
         private static void AppendDistinctVisibleButton(ICollection<UIObject> buttons, UIObject button)
@@ -1061,6 +1158,41 @@ namespace HaCreator.MapSimulator.UI
 
             public UIObject Button { get; }
             public bool DrawLabel { get; }
+        }
+
+        private readonly struct ConditionRowLayout
+        {
+            public ConditionRowLayout(
+                Texture2D rowTexture,
+                Rectangle textureBounds,
+                Vector2 labelPosition,
+                Texture2D iconTexture,
+                Rectangle iconBounds,
+                Vector2 bodyPosition,
+                float bodyMaxWidth,
+                Vector2 valuePosition,
+                float nextY)
+            {
+                RowTexture = rowTexture;
+                TextureBounds = textureBounds;
+                LabelPosition = labelPosition;
+                IconTexture = iconTexture;
+                IconBounds = iconBounds;
+                BodyPosition = bodyPosition;
+                BodyMaxWidth = bodyMaxWidth;
+                ValuePosition = valuePosition;
+                NextY = nextY;
+            }
+
+            public Texture2D RowTexture { get; }
+            public Rectangle TextureBounds { get; }
+            public Vector2 LabelPosition { get; }
+            public Texture2D IconTexture { get; }
+            public Rectangle IconBounds { get; }
+            public Vector2 BodyPosition { get; }
+            public float BodyMaxWidth { get; }
+            public Vector2 ValuePosition { get; }
+            public float NextY { get; }
         }
 
         private readonly struct ButtonLabel

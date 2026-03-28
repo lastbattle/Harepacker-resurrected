@@ -6,6 +6,8 @@ using HaCreator.MapSimulator.Managers;
 using HaSharedLibrary;
 using HaSharedLibrary.Render;
 using HaSharedLibrary.Render.DX;
+using MapleLib.WzLib;
+using MapleLib.WzLib.WzProperties;
 using MapleLib.WzLib.WzStructure.Data.MobStructure;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
@@ -661,6 +663,8 @@ namespace HaCreator.MapSimulator.Entities
                     ? Math.Max(
                         Math.Max(System.Math.Abs(attackInfo.RangeBounds.Left), System.Math.Abs(attackInfo.RangeBounds.Right)),
                         1)
+                    : (attackInfo?.RangeRadius ?? 0) > 0
+                        ? attackInfo.RangeRadius
                     : DetermineAttackRange(attackMeta, actionIndex, isBoss, isRanged, isArea);
                 int effectAfter = attackInfo?.EffectAfter > 0 ? attackInfo.EffectAfter : (isArea ? 380 : isRanged ? 300 : 220);
                 int attackAfter = attackInfo?.AttackAfter > 0 ? attackInfo.AttackAfter : (isArea ? 520 : effectAfter + 80);
@@ -705,7 +709,7 @@ namespace HaCreator.MapSimulator.Entities
                     EffectAfter = effectAfter,
                     AttackAfter = attackAfter,
                     BulletSpeed = (attackMeta?.BulletSpeed ?? 0) > 0 ? attackMeta.BulletSpeed : (isRanged ? 320 : 0),
-                    ProjectileCount = isBoss && isRanged ? Math.Max(1, Math.Min(3, actionIndex)) : 1,
+                    ProjectileCount = ResolveProjectileCount(attackMeta, attackInfo, isBoss, isRanged, isArea, actionIndex),
                     AreaWidth = areaWidth,
                     AreaHeight = areaHeight,
                     RandomDelayWindow = isArea ? Math.Clamp(range, 120, 420) : 0,
@@ -714,6 +718,10 @@ namespace HaCreator.MapSimulator.Entities
                     RangeTop = attackInfo?.RangeBounds.Top ?? 0,
                     RangeRight = attackInfo?.RangeBounds.Right ?? 0,
                     RangeBottom = attackInfo?.RangeBounds.Bottom ?? 0,
+                    HasRangeOrigin = attackInfo?.HasRangeOrigin == true,
+                    RangeOriginX = attackInfo?.RangeOrigin.X ?? 0,
+                    RangeOriginY = attackInfo?.RangeOrigin.Y ?? 0,
+                    RangeRadius = attackInfo?.RangeRadius ?? 0,
                     AreaCount = attackInfo?.AreaCount ?? 0,
                     AttackCount = attackInfo?.AttackCount ?? 0,
                     StartOffset = attackInfo?.StartOffset ?? 0,
@@ -819,6 +827,30 @@ namespace HaCreator.MapSimulator.Entities
             return null;
         }
 
+        private static int ResolveProjectileCount(
+            MobAttackData attackMeta,
+            MobAnimationSet.AttackInfoMetadata attackInfo,
+            bool isBoss,
+            bool isRanged,
+            bool isArea,
+            int actionIndex)
+        {
+            if (!isRanged || isArea)
+            {
+                return 1;
+            }
+
+            int configuredCount = Math.Max(
+                attackInfo?.AttackCount ?? 0,
+                attackMeta?.AttackCount ?? 0);
+            if (configuredCount > 0)
+            {
+                return configuredCount;
+            }
+
+            return isBoss ? Math.Max(1, Math.Min(3, actionIndex)) : 1;
+        }
+
         private string ResolveSkillAnimationName(int preferredActionIndex)
         {
             if (preferredActionIndex > 0)
@@ -901,12 +933,58 @@ namespace HaCreator.MapSimulator.Entities
 
         private static int DetermineSkillRange(MobSkillData skillData, bool isBoss)
         {
+            int authoredRange = ResolveAuthoredMobSkillRange(skillData?.Skill ?? 0, skillData?.Level ?? 1);
+            if (authoredRange > 0)
+            {
+                return authoredRange;
+            }
+
             if (skillData.OnlyFsm)
             {
                 return isBoss ? 500 : 320;
             }
 
             return isBoss ? 360 : 260;
+        }
+
+        private static int ResolveAuthoredMobSkillRange(int skillId, int skillLevel)
+        {
+            if (skillId <= 0)
+            {
+                return 0;
+            }
+
+            WzImage mobSkillImage = Program.FindImage("Skill", "MobSkill");
+            if (mobSkillImage == null)
+            {
+                return 0;
+            }
+
+            if (!mobSkillImage.Parsed)
+            {
+                mobSkillImage.ParseImage();
+            }
+
+            WzSubProperty skillNode = mobSkillImage[skillId.ToString()] as WzSubProperty;
+            WzSubProperty levelNode = skillNode?["level"] as WzSubProperty;
+            WzSubProperty selectedLevel =
+                levelNode?[Math.Max(1, skillLevel).ToString()] as WzSubProperty ??
+                levelNode?["1"] as WzSubProperty;
+            if (selectedLevel == null)
+            {
+                return 0;
+            }
+
+            WzVectorProperty lt = selectedLevel["lt"] as WzVectorProperty;
+            WzVectorProperty rb = selectedLevel["rb"] as WzVectorProperty;
+            if (lt == null || rb == null)
+            {
+                return 0;
+            }
+
+            int horizontalRange = Math.Max(Math.Abs(lt.X.Value), Math.Abs(rb.X.Value));
+            int verticalRange = Math.Max(Math.Abs(lt.Y.Value), Math.Abs(rb.Y.Value));
+            return Math.Max(horizontalRange, verticalRange);
         }
 
         private static int DetermineSkillCooldown(MobSkillData skillData, bool isBoss)

@@ -90,6 +90,11 @@ namespace HaCreator.MapSimulator.Fields
         private const int TimerBoardSeparatorX = 98;
         private const int TimerBoardSecondTensX = 131;
         private const int TimerBoardSecondOnesX = 157;
+        private const int PartyRaidPointStringId = 0x1A58;
+        private const int PartyRaidBonusStringId = 0x156D;
+        private const int PartyRaidTotalStringId = 0x156E;
+        private const int PartyRaidBossRedDamageStringId = 0x1ACE;
+        private const int PartyRaidBossBlueDamageStringId = 0x1AA3;
 
         private bool _isActive;
         private bool _assetsLoaded;
@@ -381,13 +386,15 @@ namespace HaCreator.MapSimulator.Fields
                 return false;
             }
 
-            if (MatchesAlias(key, "redDamage", "red", "damage_r", "partyraid_red"))
+            if (MatchesAlias(key, "redDamage", "red", "damage_r", "partyraid_red")
+                || MatchesStringPoolKey(key, PartyRaidBossRedDamageStringId))
             {
                 _redDamage = parsedValue;
                 return true;
             }
 
-            if (MatchesAlias(key, "blueDamage", "blue", "damage_b", "partyraid_blue"))
+            if (MatchesAlias(key, "blueDamage", "blue", "damage_b", "partyraid_blue")
+                || MatchesStringPoolKey(key, PartyRaidBossBlueDamageStringId))
             {
                 _blueDamage = parsedValue;
                 return true;
@@ -428,7 +435,8 @@ namespace HaCreator.MapSimulator.Fields
                 return false;
             }
 
-            if (MatchesAlias(key, "point", "partyPoint", "pt"))
+            if (MatchesAlias(key, "point", "partyPoint", "pt")
+                || MatchesStringPoolKey(key, PartyRaidPointStringId))
             {
                 _point = parsedValue;
                 return true;
@@ -461,15 +469,18 @@ namespace HaCreator.MapSimulator.Fields
                 return false;
             }
 
-            if (MatchesAlias(key, "point", "partyPoint", "pt"))
+            if (MatchesAlias(key, "point", "partyPoint", "pt")
+                || MatchesStringPoolKey(key, PartyRaidPointStringId))
             {
                 _resultPoint = parsedValue;
             }
-            else if (MatchesAlias(key, "bonus", "rewardBonus"))
+            else if (MatchesAlias(key, "bonus", "rewardBonus")
+                || MatchesStringPoolKey(key, PartyRaidBonusStringId))
             {
                 _resultBonus = parsedValue;
             }
-            else if (MatchesAlias(key, "total", "sum"))
+            else if (MatchesAlias(key, "total", "sum")
+                || MatchesStringPoolKey(key, PartyRaidTotalStringId))
             {
                 _resultTotal = parsedValue;
             }
@@ -1303,6 +1314,24 @@ namespace HaCreator.MapSimulator.Fields
                 if (normalized == NormalizeKey(aliases[i])) return true;
             }
             return false;
+        }
+
+        private static bool MatchesStringPoolKey(string key, int stringId)
+        {
+            if (string.IsNullOrWhiteSpace(key))
+            {
+                return false;
+            }
+
+            string trimmed = key.Trim();
+            if (trimmed.StartsWith("0x", StringComparison.OrdinalIgnoreCase))
+            {
+                return int.TryParse(trimmed.AsSpan(2), NumberStyles.HexNumber, CultureInfo.InvariantCulture, out int parsedHex)
+                    && parsedHex == stringId;
+            }
+
+            return int.TryParse(trimmed, NumberStyles.Integer, CultureInfo.InvariantCulture, out int parsedValue)
+                && parsedValue == stringId;
         }
 
         private static string NormalizeKey(string key) => key.Replace("_", string.Empty).Replace("-", string.Empty).Trim().ToLowerInvariant();

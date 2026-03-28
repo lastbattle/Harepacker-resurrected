@@ -1,0 +1,393 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+
+namespace HaCreator.MapSimulator.Interaction
+{
+    internal enum GuildManageTab
+    {
+        Position = 0,
+        Admission = 1,
+        Change = 2
+    }
+
+    internal enum AllianceEditorFocus
+    {
+        RankTitle = 0,
+        Notice = 1
+    }
+
+    internal sealed partial class SocialListRuntime
+    {
+        private readonly List<string> _guildRankTitles = new()
+        {
+            "Master",
+            "Jr. Master",
+            "Veteran",
+            "Member",
+            "Recruit"
+        };
+
+        private readonly List<string> _allianceRankTitles = new()
+        {
+            "Chief",
+            "Executive",
+            "Captain",
+            "Member",
+            "Recruit"
+        };
+
+        private GuildManageTab _guildManageCurrentTab;
+        private int _guildManageSelectedRankIndex;
+        private bool _guildManageRequiresApproval = true;
+        private bool _guildManageEditing;
+        private string _guildManageDraft = string.Empty;
+        private string _guildNoticeText = "Attendance check at reset. Boss signups after event run.";
+
+        private AllianceEditorFocus _allianceEditorFocus;
+        private int _allianceSelectedRankIndex;
+        private bool _allianceEditorEditing;
+        private string _allianceEditorDraft = string.Empty;
+        private string _allianceNoticeText = "Union training routes rotate nightly. Whisper for regroup.";
+
+        internal void OpenGuildManageWindow(GuildManageTab initialTab)
+        {
+            _guildManageCurrentTab = initialTab;
+            _guildManageEditing = false;
+            _guildManageDraft = string.Empty;
+            _guildManageSelectedRankIndex = Math.Clamp(_guildManageSelectedRankIndex, 0, Math.Max(0, _guildRankTitles.Count - 1));
+        }
+
+        internal GuildManageSnapshot BuildGuildManageSnapshot()
+        {
+            string localRole = GetLocalGuildRoleLabel();
+            string selectedTitle = _guildRankTitles.Count == 0
+                ? string.Empty
+                : _guildRankTitles[Math.Clamp(_guildManageSelectedRankIndex, 0, _guildRankTitles.Count - 1)];
+            string editableText = _guildManageCurrentTab switch
+            {
+                GuildManageTab.Position => _guildManageEditing ? _guildManageDraft : selectedTitle,
+                GuildManageTab.Change => _guildManageEditing ? _guildManageDraft : _guildNoticeText,
+                _ => string.Empty
+            };
+
+            return new GuildManageSnapshot
+            {
+                CurrentTab = _guildManageCurrentTab,
+                RankTitles = _guildRankTitles.ToArray(),
+                SelectedRankIndex = Math.Clamp(_guildManageSelectedRankIndex, 0, Math.Max(0, _guildRankTitles.Count - 1)),
+                RequiresApproval = _guildManageRequiresApproval,
+                EditableText = editableText,
+                NoticeText = _guildNoticeText,
+                IsEditing = _guildManageEditing,
+                CanEdit = CanManageGuild(),
+                CanPageBackward = _guildManageCurrentTab == GuildManageTab.Position && _guildManageSelectedRankIndex > 0,
+                CanPageForward = _guildManageCurrentTab == GuildManageTab.Position && _guildManageSelectedRankIndex < _guildRankTitles.Count - 1,
+                SummaryLines = BuildGuildManageSummary(localRole, selectedTitle)
+            };
+        }
+
+        internal void SelectGuildManageTab(GuildManageTab tab)
+        {
+            _guildManageCurrentTab = tab;
+            _guildManageEditing = false;
+            _guildManageDraft = string.Empty;
+        }
+
+        internal void SelectGuildManageRank(int visibleIndex)
+        {
+            if (_guildManageCurrentTab != GuildManageTab.Position || visibleIndex < 0 || visibleIndex >= _guildRankTitles.Count)
+            {
+                return;
+            }
+
+            _guildManageSelectedRankIndex = visibleIndex;
+        }
+
+        internal void MoveGuildManageRankSelection(int delta)
+        {
+            if (_guildManageCurrentTab != GuildManageTab.Position || _guildRankTitles.Count == 0)
+            {
+                return;
+            }
+
+            _guildManageSelectedRankIndex = Math.Clamp(_guildManageSelectedRankIndex + delta, 0, _guildRankTitles.Count - 1);
+        }
+
+        internal string BeginGuildManageEdit()
+        {
+            if (!CanManageGuild())
+            {
+                return $"Guild management is read-only while the local role is {GetLocalGuildRoleLabel()}.";
+            }
+
+            if (_guildManageCurrentTab == GuildManageTab.Admission)
+            {
+                return "Guild admission uses the OK/NO controls instead of freeform text.";
+            }
+
+            _guildManageEditing = true;
+            _guildManageDraft = _guildManageCurrentTab == GuildManageTab.Position
+                ? _guildRankTitles[_guildManageSelectedRankIndex]
+                : _guildNoticeText;
+            return _guildManageCurrentTab == GuildManageTab.Position
+                ? $"Editing guild rank title {_guildManageSelectedRankIndex + 1}."
+                : "Editing guild notice text.";
+        }
+
+        internal void SetGuildManageDraft(string value)
+        {
+            if (_guildManageEditing)
+            {
+                _guildManageDraft = value ?? string.Empty;
+            }
+        }
+
+        internal string SaveGuildManageEdit()
+        {
+            if (!_guildManageEditing)
+            {
+                return "Use EDIT before saving guild management changes.";
+            }
+
+            string committedValue = string.IsNullOrWhiteSpace(_guildManageDraft)
+                ? (_guildManageCurrentTab == GuildManageTab.Position ? $"Rank {_guildManageSelectedRankIndex + 1}" : "Guild notice")
+                : _guildManageDraft.Trim();
+
+            if (_guildManageCurrentTab == GuildManageTab.Position)
+            {
+                _guildRankTitles[_guildManageSelectedRankIndex] = committedValue;
+            }
+            else if (_guildManageCurrentTab == GuildManageTab.Change)
+            {
+                _guildNoticeText = committedValue;
+            }
+
+            _guildManageEditing = false;
+            _guildManageDraft = string.Empty;
+
+            return _guildManageCurrentTab == GuildManageTab.Position
+                ? $"Guild rank title {_guildManageSelectedRankIndex + 1} saved as \"{committedValue}\"."
+                : "Guild notice text saved.";
+        }
+
+        internal string CancelGuildManageEdit()
+        {
+            if (!_guildManageEditing)
+            {
+                return null;
+            }
+
+            _guildManageEditing = false;
+            _guildManageDraft = string.Empty;
+            return "Guild management edit canceled.";
+        }
+
+        internal string SetGuildAdmission(bool requiresApproval)
+        {
+            if (!CanManageGuild())
+            {
+                return $"Guild admission is read-only while the local role is {GetLocalGuildRoleLabel()}.";
+            }
+
+            _guildManageRequiresApproval = requiresApproval;
+            return requiresApproval
+                ? "Guild admission now requires approval."
+                : "Guild admission now accepts open enrollment.";
+        }
+
+        internal void OpenAllianceEditor(AllianceEditorFocus focus)
+        {
+            _allianceEditorFocus = focus;
+            _allianceEditorEditing = false;
+            _allianceEditorDraft = string.Empty;
+            _allianceSelectedRankIndex = Math.Clamp(_allianceSelectedRankIndex, 0, Math.Max(0, _allianceRankTitles.Count - 1));
+        }
+
+        internal AllianceEditorSnapshot BuildAllianceEditorSnapshot()
+        {
+            string selectedTitle = _allianceRankTitles.Count == 0
+                ? string.Empty
+                : _allianceRankTitles[Math.Clamp(_allianceSelectedRankIndex, 0, Math.Max(0, _allianceRankTitles.Count - 1))];
+            string editableText = _allianceEditorFocus == AllianceEditorFocus.Notice
+                ? (_allianceEditorEditing ? _allianceEditorDraft : _allianceNoticeText)
+                : (_allianceEditorEditing ? _allianceEditorDraft : selectedTitle);
+
+            return new AllianceEditorSnapshot
+            {
+                RankTitles = _allianceRankTitles.ToArray(),
+                SelectedRankIndex = Math.Clamp(_allianceSelectedRankIndex, 0, Math.Max(0, _allianceRankTitles.Count - 1)),
+                Focus = _allianceEditorFocus,
+                EditableText = editableText,
+                NoticeText = _allianceNoticeText,
+                IsEditing = _allianceEditorEditing,
+                CanEdit = CanManageAlliance(),
+                SummaryLines = BuildAllianceEditorSummary(selectedTitle)
+            };
+        }
+
+        internal void SelectAllianceRankTitle(int visibleIndex)
+        {
+            if (visibleIndex < 0 || visibleIndex >= _allianceRankTitles.Count)
+            {
+                return;
+            }
+
+            _allianceEditorFocus = AllianceEditorFocus.RankTitle;
+            _allianceSelectedRankIndex = visibleIndex;
+        }
+
+        internal void FocusAllianceNotice()
+        {
+            _allianceEditorFocus = AllianceEditorFocus.Notice;
+        }
+
+        internal string BeginAllianceEdit()
+        {
+            if (!CanManageAlliance())
+            {
+                return $"Alliance editing is read-only while the local role is {GetLocalAllianceRoleLabel()}.";
+            }
+
+            _allianceEditorEditing = true;
+            _allianceEditorDraft = _allianceEditorFocus == AllianceEditorFocus.Notice
+                ? _allianceNoticeText
+                : _allianceRankTitles[_allianceSelectedRankIndex];
+            return _allianceEditorFocus == AllianceEditorFocus.Notice
+                ? "Editing alliance notice text."
+                : $"Editing alliance rank title {_allianceSelectedRankIndex + 1}.";
+        }
+
+        internal void SetAllianceEditorDraft(string value)
+        {
+            if (_allianceEditorEditing)
+            {
+                _allianceEditorDraft = value ?? string.Empty;
+            }
+        }
+
+        internal string SaveAllianceEdit()
+        {
+            if (!_allianceEditorEditing)
+            {
+                return "Use EDIT before saving alliance changes.";
+            }
+
+            string committedValue = string.IsNullOrWhiteSpace(_allianceEditorDraft)
+                ? (_allianceEditorFocus == AllianceEditorFocus.Notice ? "Alliance notice" : $"Rank {_allianceSelectedRankIndex + 1}")
+                : _allianceEditorDraft.Trim();
+            if (_allianceEditorFocus == AllianceEditorFocus.Notice)
+            {
+                _allianceNoticeText = committedValue;
+            }
+            else
+            {
+                _allianceRankTitles[_allianceSelectedRankIndex] = committedValue;
+            }
+
+            _allianceEditorEditing = false;
+            _allianceEditorDraft = string.Empty;
+            return _allianceEditorFocus == AllianceEditorFocus.Notice
+                ? "Alliance notice text saved."
+                : $"Alliance rank title {_allianceSelectedRankIndex + 1} saved as \"{committedValue}\".";
+        }
+
+        internal string CancelAllianceEdit()
+        {
+            if (!_allianceEditorEditing)
+            {
+                return null;
+            }
+
+            _allianceEditorEditing = false;
+            _allianceEditorDraft = string.Empty;
+            return "Alliance edit canceled.";
+        }
+
+        private IReadOnlyList<string> BuildGuildManageSummary(string localRole, string selectedTitle)
+        {
+            return _guildManageCurrentTab switch
+            {
+                GuildManageTab.Position => new[]
+                {
+                    $"Guild role: {localRole}",
+                    $"Selected rank: {selectedTitle}",
+                    CanManageGuild() ? "Edit or save to rename guild rank titles." : "Only Master or Jr. Master may rename guild ranks here."
+                },
+                GuildManageTab.Admission => new[]
+                {
+                    $"Guild role: {localRole}",
+                    _guildManageRequiresApproval ? "Admission mode: approval required" : "Admission mode: open enrollment",
+                    CanManageGuild() ? "Use OK/NO to mirror the client admission toggle." : "Admission toggle is read-only for the current local role."
+                },
+                _ => new[]
+                {
+                    $"Guild role: {localRole}",
+                    "Guild notice text is edited from the Change tab.",
+                    CanManageGuild() ? "Use EDIT then SAVE to commit the notice draft." : "Guild notice is read-only for the current local role."
+                }
+            };
+        }
+
+        private IReadOnlyList<string> BuildAllianceEditorSummary(string selectedTitle)
+        {
+            return new[]
+            {
+                $"Alliance role: {GetLocalAllianceRoleLabel()}",
+                _allianceEditorFocus == AllianceEditorFocus.Notice ? "Focus: alliance notice" : $"Focus: rank title {_allianceSelectedRankIndex + 1} ({selectedTitle})",
+                CanManageAlliance() ? "Use EDIT and SAVE to update alliance rank titles or the union notice." : "Alliance editor is read-only unless the local entry is a representative."
+            };
+        }
+
+        private bool CanManageGuild()
+        {
+            string role = GetLocalGuildRoleLabel();
+            return string.Equals(role, "Master", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(role, "Jr. Master", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private bool CanManageAlliance()
+        {
+            string role = GetLocalAllianceRoleLabel();
+            return string.Equals(role, "Representative", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(role, "Leader", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private string GetLocalAllianceRoleLabel()
+        {
+            SocialEntryState localAllianceEntry = _entriesByTab.TryGetValue(SocialListTab.Alliance, out List<SocialEntryState> entries)
+                ? entries.FirstOrDefault(entry => entry.IsLocalPlayer)
+                : null;
+            return string.IsNullOrWhiteSpace(localAllianceEntry?.PrimaryText)
+                ? "Member"
+                : localAllianceEntry.PrimaryText;
+        }
+    }
+
+    internal sealed class GuildManageSnapshot
+    {
+        public GuildManageTab CurrentTab { get; init; }
+        public IReadOnlyList<string> RankTitles { get; init; } = Array.Empty<string>();
+        public int SelectedRankIndex { get; init; }
+        public bool RequiresApproval { get; init; }
+        public string EditableText { get; init; } = string.Empty;
+        public string NoticeText { get; init; } = string.Empty;
+        public bool IsEditing { get; init; }
+        public bool CanEdit { get; init; }
+        public bool CanPageBackward { get; init; }
+        public bool CanPageForward { get; init; }
+        public IReadOnlyList<string> SummaryLines { get; init; } = Array.Empty<string>();
+    }
+
+    internal sealed class AllianceEditorSnapshot
+    {
+        public IReadOnlyList<string> RankTitles { get; init; } = Array.Empty<string>();
+        public int SelectedRankIndex { get; init; }
+        public AllianceEditorFocus Focus { get; init; }
+        public string EditableText { get; init; } = string.Empty;
+        public string NoticeText { get; init; } = string.Empty;
+        public bool IsEditing { get; init; }
+        public bool CanEdit { get; init; }
+        public IReadOnlyList<string> SummaryLines { get; init; } = Array.Empty<string>();
+    }
+}

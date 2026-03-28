@@ -28,6 +28,8 @@ namespace HaCreator.MapSimulator.Combat
             public int ExpireTime { get; set; }
             public bool CreatesGroundHazard { get; set; }
             public bool Flip { get; set; }
+            public int LaneIndex { get; set; }
+            public int LaneCount { get; set; }
 
             public Rectangle GetHitbox()
             {
@@ -280,19 +282,13 @@ namespace HaCreator.MapSimulator.Combat
             float? targetY,
             int currentTime)
         {
-            Vector2 spawn = new Vector2(
-                mobItem.CurrentX,
-                mobItem.CurrentY - Math.Max(20, mobItem.GetVisualHeight(60) / 2f));
-
-            int projectileCount = Math.Max(1, attack.ProjectileCount);
-            for (int i = 0; i < projectileCount; i++)
+            Vector2 spawn = ResolveProjectileSpawnPoint(mobItem, attack);
+            List<(Vector2 Target, MobTargetInfo TargetInfo)> projectileLanes =
+                BuildProjectileLaneAssignments(mobItem, attack, targetInfo, targetX, targetY, spawn, currentTime);
+            int laneCount = Math.Max(1, projectileLanes.Count);
+            for (int i = 0; i < projectileLanes.Count; i++)
             {
-                float spread = projectileCount == 1 ? 0f : (i - (projectileCount - 1) / 2f) * 45f;
-                float resolvedTargetX = targetX ?? (mobItem.CurrentX + (mobItem.MovementInfo.FlipX ? attack.Range : -attack.Range));
-                float resolvedTargetY = targetY ?? mobItem.CurrentY - 20f;
-                resolvedTargetX += spread;
-
-                Vector2 target = new Vector2(resolvedTargetX, resolvedTargetY);
+                (Vector2 target, MobTargetInfo laneTargetInfo) = projectileLanes[i];
                 Vector2 direction = target - spawn;
                 if (direction.LengthSquared() < 1f)
                 {
@@ -311,7 +307,7 @@ namespace HaCreator.MapSimulator.Combat
                 {
                     SourceMob = mobItem,
                     Attack = attack,
-                    TargetInfo = targetInfo?.Clone(),
+                    TargetInfo = laneTargetInfo?.Clone(),
                     Frames = mobItem.GetAttackProjectileFrames(attack.AnimationName),
                     Position = spawn,
                     Velocity = direction * speed,
@@ -319,7 +315,9 @@ namespace HaCreator.MapSimulator.Combat
                     SpawnTime = currentTime,
                     ExpireTime = currentTime + travelTime,
                     CreatesGroundHazard = mobItem.AI.IsBoss && (attack.IsAreaOfEffect || attack.Range >= 180),
-                    Flip = direction.X < 0f
+                    Flip = direction.X < 0f,
+                    LaneIndex = i,
+                    LaneCount = laneCount
                 });
             }
         }
@@ -484,6 +482,18 @@ namespace HaCreator.MapSimulator.Combat
                     SpawnMobWorldEffects(projectile.SourceMob, projectile.Attack, projectile.Target, currentTime, animationEffects);
                     _activeMobProjectiles.RemoveAt(i);
                     continue;
+                }
+
+                Rectangle impactHitbox = CreateProjectileImpactHitbox(projectile.Target);
+                if (!projectile.CreatesGroundHazard)
+                {
+                    ApplyProjectileImpactHits(
+                        projectile.SourceMob,
+                        projectile.Attack,
+                        projectile.TargetInfo,
+                        impactHitbox,
+                        currentTime,
+                        playerManager);
                 }
 
                 if (projectile.CreatesGroundHazard)
@@ -987,6 +997,23 @@ namespace HaCreator.MapSimulator.Combat
             return 0;
         }
 
+        internal static List<float> BuildRangeSlotOffsets(MobAttackEntry attack, int slotCount)
+        {
+            var offsets = new List<float>();
+            if (attack == null || slotCount <= 0)
+            {
+                return offsets;
+            }
+
+            float spacing = ResolveRangeSlotSpacing(attack, slotCount);
+            for (int i = 0; i < slotCount; i++)
+            {
+                offsets.Add((attack.StartOffset + i) * spacing);
+            }
+
+            return offsets;
+        }
+
         private List<Vector2> BuildRangeSlotPositions(MobItem mobItem, MobAttackEntry attack, int slotCount, float? playerX, float? playerY)
         {
             if (slotCount <= 0)
@@ -1013,27 +1040,54 @@ namespace HaCreator.MapSimulator.Combat
                 baseY = playerY ?? mobItem.CurrentY;
             }
 
-            if (slotCount == 1)
+            float center = (left + right) * 0.5f;
+            List<float> offsets = BuildRangeSlotOffsets(attack, slotCount);
+            if (offsets.Count == 0)
             {
-                return new List<Vector2> { ResolveGroundPoint((left + right) * 0.5f, baseY) };
+                offsets.Add(0f);
             }
 
-            float center = (left + right) * 0.5f;
-            float spacing = Math.Abs(right - left) / Math.Max(1, slotCount - 1);
+            var positions = new List<Vector2>(offsets.Count);
+            for (int i = 0; i < offsets.Count; i++)
+            {
+                float x = center + offsets[i];
+                positions.Add(ResolveGroundPoint(x, baseY));
+            }
+
+            return positions;
+        }
+
+        private static float ResolveRangeSlotSpacing(MobAttackEntry attack, int slotCount)
+        {
+            if (attack == null)
+            {
+                return 0f;
+            }
+
+            if (attack.HasRangeBounds)
+            {
+                float laneWidth = Math.Max(Math.Abs(attack.RangeRight - attack.RangeLeft), 1);
+                if (attack.AreaWidth > 0)
+                {
+                    laneWidth = Math.Max(laneWidth, attack.AreaWidth);
+                }
+
+                return laneWidth;
+            }
+
+            if (slotCount <= 1)
+            {
+                return 0f;
+            }
+
+            float spanWidth = Math.Max(Math.Max(attack.AreaWidth, attack.Range), 1);
+            float spacing = spanWidth / Math.Max(1, slotCount - 1);
             if (spacing <= 0f)
             {
                 spacing = Math.Max(40f, attack.EffectAfter > 0 ? attack.EffectAfter / 10f : 60f);
             }
 
-            var positions = new List<Vector2>(slotCount);
-            for (int i = 0; i < slotCount; i++)
-            {
-                float slotIndex = attack.StartOffset + i;
-                float x = center + slotIndex * spacing;
-                positions.Add(ResolveGroundPoint(x, baseY));
-            }
-
-            return positions;
+            return spacing;
         }
 
         private List<Vector2> BuildRangePositions(float left, float right, int count, bool randomPos, float baseY)
@@ -1237,10 +1291,440 @@ namespace HaCreator.MapSimulator.Combat
             return 200;
         }
 
+        private List<(Vector2 Target, MobTargetInfo TargetInfo)> BuildProjectileLaneAssignments(
+            MobItem mobItem,
+            MobAttackEntry attack,
+            MobTargetInfo targetInfo,
+            float? targetX,
+            float? targetY,
+            Vector2 spawn,
+            int currentTime)
+        {
+            int laneCount = ResolveProjectileLaneCount(attack);
+            var assignments = new List<(Vector2 Target, MobTargetInfo TargetInfo)>(laneCount);
+            var usedLaneTargets = new HashSet<long>();
+
+            if (targetInfo?.IsValid == true)
+            {
+                Vector2 primaryTarget = ResolveProjectileDestination(mobItem, targetInfo, spawn, currentTime);
+                assignments.Add((primaryTarget, targetInfo.Clone()));
+                usedLaneTargets.Add(GetLaneTargetKey(targetInfo));
+            }
+
+            List<Vector2> lanePositions = BuildProjectileLanePositions(
+                mobItem,
+                attack,
+                targetX ?? targetInfo?.TargetX,
+                targetY ?? targetInfo?.TargetY,
+                laneCount);
+
+            for (int i = 0; i < lanePositions.Count && assignments.Count < laneCount; i++)
+            {
+                Vector2 lanePosition = lanePositions[i];
+                if (TryResolveProjectileLaneTarget(
+                        mobItem,
+                        attack,
+                        lanePosition,
+                        targetInfo,
+                        usedLaneTargets,
+                        currentTime,
+                        out MobTargetInfo laneTargetInfo,
+                        out Vector2 resolvedLaneTarget))
+                {
+                    assignments.Add((resolvedLaneTarget, laneTargetInfo));
+                    usedLaneTargets.Add(GetLaneTargetKey(laneTargetInfo));
+                    continue;
+                }
+
+                assignments.Add((lanePosition, null));
+            }
+
+            while (assignments.Count < laneCount)
+            {
+                assignments.Add((ResolveFallbackProjectileTarget(mobItem, attack, targetX, targetY, assignments.Count, laneCount), null));
+            }
+
+            return assignments;
+        }
+
+        private static int ResolveProjectileLaneCount(MobAttackEntry attack)
+        {
+            if (attack == null)
+            {
+                return 1;
+            }
+
+            int authoredCount = Math.Max(attack.ProjectileCount, attack.AttackCount);
+            return Math.Max(1, authoredCount);
+        }
+
+        private List<Vector2> BuildProjectileLanePositions(
+            MobItem mobItem,
+            MobAttackEntry attack,
+            float? targetX,
+            float? targetY,
+            int laneCount)
+        {
+            var lanePositions = new List<Vector2>(Math.Max(0, laneCount));
+            if (mobItem == null || attack == null || laneCount <= 0)
+            {
+                return lanePositions;
+            }
+
+            if (attack.HasRangeBounds)
+            {
+                float left = GetRelativeLeft(mobItem, true, attack.RangeLeft, attack.RangeRight);
+                float right = GetRelativeRight(mobItem, true, attack.RangeLeft, attack.RangeRight);
+                float y = targetY ?? (mobItem.CurrentY + ((attack.RangeTop + attack.RangeBottom) * 0.5f));
+                int slotCount = Math.Max(laneCount, Math.Max(1, attack.AreaCount));
+                if (slotCount == 1)
+                {
+                    lanePositions.Add(new Vector2((left + right) * 0.5f, y));
+                    return lanePositions;
+                }
+
+                float center = (left + right) * 0.5f;
+                float spacing = Math.Abs(right - left) / Math.Max(1, slotCount - 1);
+                if (spacing <= 0f)
+                {
+                    spacing = Math.Max(40f, attack.EffectAfter > 0 ? attack.EffectAfter / 10f : 60f);
+                }
+
+                for (int i = 0; i < laneCount; i++)
+                {
+                    float slotIndex = attack.StartOffset + i;
+                    lanePositions.Add(new Vector2(center + (slotIndex * spacing), y));
+                }
+
+                return lanePositions;
+            }
+
+            for (int i = 0; i < laneCount; i++)
+            {
+                lanePositions.Add(ResolveFallbackProjectileTarget(mobItem, attack, targetX, targetY, i, laneCount));
+            }
+
+            return lanePositions;
+        }
+
+        private static Vector2 ResolveFallbackProjectileTarget(
+            MobItem mobItem,
+            MobAttackEntry attack,
+            float? targetX,
+            float? targetY,
+            int laneIndex,
+            int laneCount)
+        {
+            float spread = laneCount <= 1 ? 0f : (laneIndex - (laneCount - 1) / 2f) * 45f;
+            float resolvedTargetX = targetX ?? (mobItem.CurrentX + (mobItem.MovementInfo.FlipX ? attack.Range : -attack.Range));
+            float resolvedTargetY = targetY ?? mobItem.CurrentY - 20f;
+            return new Vector2(resolvedTargetX + spread, resolvedTargetY);
+        }
+
         private Vector2 ResolveGroundPoint(float x, float preferredY)
         {
             float groundedY = _groundResolver?.Invoke(x, preferredY) ?? preferredY;
             return new Vector2(x, groundedY);
+        }
+
+        private static Vector2 ResolveProjectileSpawnPoint(MobItem mobItem, MobAttackEntry attack)
+        {
+            if (mobItem == null)
+            {
+                return Vector2.Zero;
+            }
+
+            if (attack?.HasRangeOrigin == true)
+            {
+                bool faceRight = mobItem.MovementInfo?.FlipX ?? true;
+                float originX = faceRight
+                    ? mobItem.CurrentX + attack.RangeOriginX
+                    : mobItem.CurrentX - attack.RangeOriginX;
+                float originY = mobItem.CurrentY + attack.RangeOriginY;
+                return new Vector2(originX, originY);
+            }
+
+            return new Vector2(
+                mobItem.CurrentX,
+                mobItem.CurrentY - Math.Max(20, mobItem.GetVisualHeight(60) / 2f));
+        }
+
+        private bool TryResolveProjectileLaneTarget(
+            MobItem sourceMob,
+            MobAttackEntry attack,
+            Vector2 lanePosition,
+            MobTargetInfo primaryTargetInfo,
+            HashSet<long> usedLaneTargets,
+            int currentTime,
+            out MobTargetInfo resolvedTargetInfo,
+            out Vector2 resolvedTargetPoint)
+        {
+            resolvedTargetInfo = null;
+            resolvedTargetPoint = lanePosition;
+
+            float bestScore = float.MaxValue;
+            Rectangle laneSearch = new Rectangle(
+                (int)MathF.Round(lanePosition.X) - 90,
+                (int)MathF.Round(lanePosition.Y) - 110,
+                180,
+                220);
+            bool sourceFacesRight = sourceMob?.MovementInfo?.FlipX ?? true;
+
+            TryConsiderProjectileLanePlayerTarget(
+                attack,
+                lanePosition,
+                laneSearch,
+                usedLaneTargets,
+                sourceFacesRight,
+                ref bestScore,
+                ref resolvedTargetInfo,
+                ref resolvedTargetPoint);
+            TryConsiderProjectileLanePuppetTarget(
+                attack,
+                primaryTargetInfo,
+                lanePosition,
+                laneSearch,
+                usedLaneTargets,
+                sourceFacesRight,
+                ref bestScore,
+                ref resolvedTargetInfo,
+                ref resolvedTargetPoint);
+            TryConsiderProjectileLaneMobTarget(
+                sourceMob,
+                primaryTargetInfo,
+                lanePosition,
+                laneSearch,
+                usedLaneTargets,
+                currentTime,
+                sourceFacesRight,
+                ref bestScore,
+                ref resolvedTargetInfo,
+                ref resolvedTargetPoint);
+
+            return resolvedTargetInfo != null;
+        }
+
+        private void TryConsiderProjectileLanePlayerTarget(
+            MobAttackEntry attack,
+            Vector2 lanePosition,
+            Rectangle laneSearch,
+            HashSet<long> usedLaneTargets,
+            bool sourceFacesRight,
+            ref float bestScore,
+            ref MobTargetInfo resolvedTargetInfo,
+            ref Vector2 resolvedTargetPoint)
+        {
+            if (!CanHitPlayerTarget(attack) || _playerHitboxAccessor == null)
+            {
+                return;
+            }
+
+            Rectangle playerHitbox = _playerHitboxAccessor();
+            if (playerHitbox.IsEmpty || !IntersectsOrNear(laneSearch, playerHitbox, 50f))
+            {
+                return;
+            }
+
+            var playerTarget = new MobTargetInfo
+            {
+                TargetType = MobTargetType.Player,
+                IsValid = true
+            };
+            long targetKey = GetLaneTargetKey(playerTarget);
+            if (usedLaneTargets.Contains(targetKey))
+            {
+                return;
+            }
+
+            Vector2 candidatePoint = ResolveProjectileDestinationPoint(playerHitbox, lanePosition.Y, sourceFacesRight);
+            float candidateScore = ScoreLaneTarget(lanePosition, candidatePoint);
+            if (candidateScore >= bestScore)
+            {
+                return;
+            }
+
+            playerTarget.TargetX = candidatePoint.X;
+            playerTarget.TargetY = candidatePoint.Y;
+            bestScore = candidateScore;
+            resolvedTargetInfo = playerTarget;
+            resolvedTargetPoint = candidatePoint;
+        }
+
+        private void TryConsiderProjectileLanePuppetTarget(
+            MobAttackEntry attack,
+            MobTargetInfo primaryTargetInfo,
+            Vector2 lanePosition,
+            Rectangle laneSearch,
+            HashSet<long> usedLaneTargets,
+            bool sourceFacesRight,
+            ref float bestScore,
+            ref MobTargetInfo resolvedTargetInfo,
+            ref Vector2 resolvedTargetPoint)
+        {
+            IReadOnlyList<PuppetInfo> puppets = _puppetAccessor?.Invoke();
+            if (puppets == null)
+            {
+                return;
+            }
+
+            int excludedTargetId = primaryTargetInfo?.TargetType == MobTargetType.Summoned ? primaryTargetInfo.TargetId : 0;
+            for (int i = 0; i < puppets.Count; i++)
+            {
+                PuppetInfo puppet = puppets[i];
+                if (puppet == null || !puppet.IsActive || puppet.ObjectId == excludedTargetId || !CanHitPuppetTarget(attack, puppet))
+                {
+                    continue;
+                }
+
+                Rectangle puppetHitbox = CreatePuppetHitbox(puppet);
+                if (puppetHitbox.IsEmpty || !IntersectsOrNear(laneSearch, puppetHitbox, 50f))
+                {
+                    continue;
+                }
+
+                var candidateTargetInfo = new MobTargetInfo
+                {
+                    TargetId = puppet.ObjectId,
+                    TargetSlotIndex = puppet.SummonSlotIndex,
+                    TargetType = MobTargetType.Summoned,
+                    IsValid = true
+                };
+                long candidateKey = GetLaneTargetKey(candidateTargetInfo);
+                if (usedLaneTargets.Contains(candidateKey))
+                {
+                    continue;
+                }
+
+                Vector2 candidatePoint = ResolveProjectileDestinationPoint(puppetHitbox, lanePosition.Y, sourceFacesRight);
+                float candidateScore = ScoreLaneTarget(lanePosition, candidatePoint);
+                if (candidateScore >= bestScore)
+                {
+                    continue;
+                }
+
+                candidateTargetInfo.TargetX = candidatePoint.X;
+                candidateTargetInfo.TargetY = candidatePoint.Y;
+                bestScore = candidateScore;
+                resolvedTargetInfo = candidateTargetInfo;
+                resolvedTargetPoint = candidatePoint;
+            }
+        }
+
+        private void TryConsiderProjectileLaneMobTarget(
+            MobItem sourceMob,
+            MobTargetInfo primaryTargetInfo,
+            Vector2 lanePosition,
+            Rectangle laneSearch,
+            HashSet<long> usedLaneTargets,
+            int currentTime,
+            bool sourceFacesRight,
+            ref float bestScore,
+            ref MobTargetInfo resolvedTargetInfo,
+            ref Vector2 resolvedTargetPoint)
+        {
+            IReadOnlyList<MobItem> mobs = _mobListAccessor?.Invoke();
+            if (mobs == null)
+            {
+                return;
+            }
+
+            int excludedTargetId = primaryTargetInfo?.TargetType == MobTargetType.Mob ? primaryTargetInfo.TargetId : 0;
+            for (int i = 0; i < mobs.Count; i++)
+            {
+                MobItem mob = mobs[i];
+                if (mob?.AI == null || mob.AI.IsDead || ReferenceEquals(mob, sourceMob) || mob.PoolId == excludedTargetId)
+                {
+                    continue;
+                }
+
+                if (!CanApplyMobVsMobDamage(sourceMob, mob))
+                {
+                    continue;
+                }
+
+                Rectangle mobHitbox = mob.GetBodyHitbox(currentTime);
+                if (mobHitbox.IsEmpty || !IntersectsOrNear(laneSearch, mobHitbox, 50f))
+                {
+                    continue;
+                }
+
+                var candidateTargetInfo = new MobTargetInfo
+                {
+                    TargetId = mob.PoolId,
+                    TargetType = MobTargetType.Mob,
+                    IsValid = true
+                };
+                long candidateKey = GetLaneTargetKey(candidateTargetInfo);
+                if (usedLaneTargets.Contains(candidateKey))
+                {
+                    continue;
+                }
+
+                Vector2 candidatePoint = ResolveProjectileDestinationPoint(mobHitbox, lanePosition.Y, sourceFacesRight);
+                float candidateScore = ScoreLaneTarget(lanePosition, candidatePoint);
+                if (candidateScore >= bestScore)
+                {
+                    continue;
+                }
+
+                candidateTargetInfo.TargetX = candidatePoint.X;
+                candidateTargetInfo.TargetY = candidatePoint.Y;
+                bestScore = candidateScore;
+                resolvedTargetInfo = candidateTargetInfo;
+                resolvedTargetPoint = candidatePoint;
+            }
+        }
+
+        private Vector2 ResolveProjectileDestination(
+            MobItem sourceMob,
+            MobTargetInfo targetInfo,
+            Vector2 spawn,
+            int currentTime)
+        {
+            Rectangle targetHitbox = GetTargetHitbox(targetInfo, currentTime);
+            if (!targetHitbox.IsEmpty)
+            {
+                bool sourceFacesRight = sourceMob?.MovementInfo?.FlipX ?? true;
+                return ResolveProjectileDestinationPoint(targetHitbox, spawn.Y, sourceFacesRight);
+            }
+
+            return new Vector2(targetInfo?.TargetX ?? spawn.X, targetInfo?.TargetY ?? spawn.Y);
+        }
+
+        private static Vector2 ResolveProjectileDestinationPoint(Rectangle targetHitbox, float sourceY, bool sourceFacesRight)
+        {
+            return ResolveLockedTargetAdmissionPoint(targetHitbox, sourceY, sourceFacesRight);
+        }
+
+        private static long GetLaneTargetKey(MobTargetInfo targetInfo)
+        {
+            if (targetInfo == null)
+            {
+                return long.MinValue;
+            }
+
+            return ((long)targetInfo.TargetType << 32) | (uint)Math.Max(0, targetInfo.TargetId);
+        }
+
+        private static float ScoreLaneTarget(Vector2 lanePosition, Vector2 candidatePoint)
+        {
+            return Vector2.DistanceSquared(lanePosition, candidatePoint);
+        }
+
+        private static bool IntersectsOrNear(Rectangle searchRect, Rectangle targetRect, float padding)
+        {
+            if (searchRect.Intersects(targetRect))
+            {
+                return true;
+            }
+
+            int roundedPadding = (int)MathF.Round(padding);
+            Rectangle paddedRect = new Rectangle(
+                targetRect.X - roundedPadding,
+                targetRect.Y - roundedPadding,
+                targetRect.Width + (roundedPadding * 2),
+                targetRect.Height + (roundedPadding * 2));
+            return searchRect.Intersects(paddedRect);
         }
 
         private MobTargetInfo ResolveAttackTarget(MobItem mobItem, float? playerX, float? playerY)
@@ -1539,6 +2023,39 @@ namespace HaCreator.MapSimulator.Combat
             return hitAny;
         }
 
+        private bool ApplyProjectileImpactHits(
+            MobItem sourceMob,
+            MobAttackEntry attack,
+            MobTargetInfo targetInfo,
+            Rectangle hitbox,
+            int currentTime,
+            PlayerManager playerManager)
+        {
+            if (hitbox.IsEmpty)
+            {
+                return false;
+            }
+
+            bool targetedSummoned = targetInfo?.TargetType == MobTargetType.Summoned;
+            bool targetedMob = targetInfo?.TargetType == MobTargetType.Mob;
+            bool hitAny =
+                TryApplyPuppetHit(sourceMob, attack, targetInfo, hitbox, currentTime) ||
+                TryApplyTargetMobHit(sourceMob, attack, targetInfo, hitbox, currentTime);
+
+            if (!targetedSummoned &&
+                !targetedMob &&
+                playerManager?.Combat != null &&
+                playerManager.IsPlayerActive &&
+                CanHitPlayerTarget(attack))
+            {
+                hitAny |= playerManager.Combat.TryApplyMobHit(sourceMob, hitbox, currentTime, attack);
+                hitAny |= ApplyAreaPuppetHits(sourceMob, attack, hitbox, targetInfo, currentTime);
+                hitAny |= ApplyAreaMobHits(sourceMob, attack, hitbox, targetInfo, currentTime);
+            }
+
+            return hitAny;
+        }
+
         private static bool CanApplyMobVsMobDamage(MobItem sourceMob, MobItem targetMob)
         {
             if (sourceMob == null || targetMob == null || ReferenceEquals(sourceMob, targetMob))
@@ -1547,6 +2064,15 @@ namespace HaCreator.MapSimulator.Combat
             }
 
             return sourceMob.UsesMobCombatLane || targetMob.UsesMobCombatLane;
+        }
+
+        private static Rectangle CreateProjectileImpactHitbox(Vector2 target)
+        {
+            return new Rectangle(
+                (int)MathF.Round(target.X) - 8,
+                (int)MathF.Round(target.Y) - 8,
+                16,
+                16);
         }
 
         private static bool ApplyMobDamage(MobItem sourceMob, MobAttackEntry attack, MobItem targetMob, int currentTime)
@@ -1644,6 +2170,16 @@ namespace HaCreator.MapSimulator.Combat
             }
 
             bool faceRight = sourceMob.MovementInfo?.FlipX ?? true;
+            if (attack.HasRangeOrigin)
+            {
+                float originX = faceRight
+                    ? sourceMob.CurrentX + attack.RangeOriginX
+                    : sourceMob.CurrentX - attack.RangeOriginX;
+                float originY = sourceMob.CurrentY + attack.RangeOriginY;
+                sourcePoint = new Vector2(originX, originY);
+                return true;
+            }
+
             if (attack.HasRangeBounds)
             {
                 float originX = faceRight

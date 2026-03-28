@@ -153,6 +153,7 @@ namespace HaCreator.MapSimulator.UI
         private Texture2D _spUpDisabled;
         private Texture2D _spUpMouseOver;
         private readonly Texture2D[] _tooltipFrames = new Texture2D[3];
+        private readonly Point[] _tooltipFrameOrigins = new Point[3];
         private Texture2D _scrollPrevNormal;
         private Texture2D _scrollPrevPressed;
         private Texture2D _scrollNextNormal;
@@ -453,6 +454,17 @@ namespace HaCreator.MapSimulator.UI
             for (int i = 0; i < Math.Min(_tooltipFrames.Length, tooltipFrames.Length); i++)
             {
                 _tooltipFrames[i] = tooltipFrames[i];
+            }
+        }
+
+        public void SetTooltipOrigins(Point[] tooltipOrigins)
+        {
+            if (tooltipOrigins == null)
+                return;
+
+            for (int i = 0; i < Math.Min(_tooltipFrameOrigins.Length, tooltipOrigins.Length); i++)
+            {
+                _tooltipFrameOrigins[i] = tooltipOrigins[i];
             }
         }
 
@@ -1264,8 +1276,26 @@ namespace HaCreator.MapSimulator.UI
             return textureWidth > 0 ? textureWidth : TOOLTIP_FALLBACK_WIDTH;
         }
 
-        private static Rectangle CreateTooltipRectFromAnchor(Point anchorPoint, int tooltipWidth, int tooltipHeight, int tooltipFrameIndex)
+        private Rectangle CreateTooltipRectFromAnchor(Point anchorPoint, int tooltipWidth, int tooltipHeight, int tooltipFrameIndex)
         {
+            Texture2D tooltipFrame = tooltipFrameIndex >= 0 && tooltipFrameIndex < _tooltipFrames.Length
+                ? _tooltipFrames[tooltipFrameIndex]
+                : null;
+            Point origin = tooltipFrameIndex >= 0 && tooltipFrameIndex < _tooltipFrameOrigins.Length
+                ? _tooltipFrameOrigins[tooltipFrameIndex]
+                : Point.Zero;
+
+            if (tooltipFrame != null && origin != Point.Zero)
+            {
+                float scaleX = tooltipFrame.Width > 0 ? tooltipWidth / (float)tooltipFrame.Width : 1f;
+                float scaleY = tooltipFrame.Height > 0 ? tooltipHeight / (float)tooltipFrame.Height : 1f;
+                return new Rectangle(
+                    anchorPoint.X - (int)Math.Round(origin.X * scaleX),
+                    anchorPoint.Y - (int)Math.Round(origin.Y * scaleY),
+                    tooltipWidth,
+                    tooltipHeight);
+            }
+
             return tooltipFrameIndex switch
             {
                 0 => new Rectangle(anchorPoint.X - tooltipWidth + 1, anchorPoint.Y - tooltipHeight + 1, tooltipWidth, tooltipHeight),

@@ -79,6 +79,12 @@ namespace HaCreator.MapSimulator.UI
             }
         }
 
+        public void InitializeButtons(UIObject okButton, UIObject cancelButton)
+        {
+            RegisterActionButton(okButton, Hide);
+            RegisterActionButton(cancelButton, Hide);
+        }
+
         public void ConfigureRows(
             Func<bool> getSmoothCamera,
             Action<bool> setSmoothCamera,
@@ -114,6 +120,14 @@ namespace HaCreator.MapSimulator.UI
         public void ShowMode(OptionMenuMode mode)
         {
             _mode = mode;
+            _statusMessage = mode switch
+            {
+                OptionMenuMode.Game => "Game options loaded from UIWindow2.img/OptionMenu.",
+                OptionMenuMode.System => "System options loaded from UIWindow2.img/OptionMenu.",
+                OptionMenuMode.Extra => "Additional client option branch routed through the shared owner.",
+                OptionMenuMode.Joypad => "Joypad page uses the shared owner, but controller remapping is still pending.",
+                _ => string.Empty,
+            };
             Show();
         }
 
@@ -233,6 +247,17 @@ namespace HaCreator.MapSimulator.UI
                 OptionMenuMode.Joypad => "Joypad",
                 _ => "Option",
             };
+        }
+
+        private void RegisterActionButton(UIObject button, Action action)
+        {
+            if (button == null)
+            {
+                return;
+            }
+
+            AddButton(button);
+            button.ButtonClickReleased += _ => action?.Invoke();
         }
 
         private string GetSubtitle()

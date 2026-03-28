@@ -49,6 +49,35 @@ namespace HaCreator.MapSimulator.Interaction
         ResetTrade
     }
 
+    public enum SocialRoomFieldActorTemplate
+    {
+        Merchant,
+        StoreBanker
+    }
+
+    public sealed class SocialRoomFieldActorSnapshot
+    {
+        public SocialRoomFieldActorSnapshot(
+            SocialRoomKind kind,
+            SocialRoomFieldActorTemplate template,
+            string headline,
+            string detail,
+            string stateKey)
+        {
+            Kind = kind;
+            Template = template;
+            Headline = headline ?? string.Empty;
+            Detail = detail ?? string.Empty;
+            StateKey = stateKey ?? string.Empty;
+        }
+
+        public SocialRoomKind Kind { get; }
+        public SocialRoomFieldActorTemplate Template { get; }
+        public string Headline { get; }
+        public string Detail { get; }
+        public string StateKey { get; }
+    }
+
     public sealed class SocialRoomOccupant
     {
         public SocialRoomOccupant(string name, SocialRoomOccupantRole role, string detail, bool isReady = false, CharacterBuild avatarBuild = null)
@@ -144,6 +173,29 @@ namespace HaCreator.MapSimulator.Interaction
 
     public sealed class SocialRoomRuntime
     {
+        public sealed class SocialRoomRemoteInventoryEntry
+        {
+            public SocialRoomRemoteInventoryEntry(int itemId, string itemName, int quantity)
+            {
+                ItemId = Math.Max(0, itemId);
+                ItemName = string.IsNullOrWhiteSpace(itemName) ? ResolveItemName(ItemId) : itemName.Trim();
+                Quantity = Math.Max(0, quantity);
+            }
+
+            public int ItemId { get; }
+            public string ItemName { get; private set; }
+            public int Quantity { get; private set; }
+
+            public void Update(int quantity, string itemName = null)
+            {
+                Quantity = Math.Max(0, quantity);
+                if (!string.IsNullOrWhiteSpace(itemName))
+                {
+                    ItemName = itemName.Trim();
+                }
+            }
+        }
+
         private sealed class InventoryEscrowEntry
         {
             public InventoryEscrowEntry(
@@ -175,21 +227,28 @@ namespace HaCreator.MapSimulator.Interaction
         private readonly List<string> _blockedVisitors;
         private readonly Queue<string> _pendingVisitorNames;
         private readonly List<InventoryEscrowEntry> _inventoryEscrow;
+        private readonly List<SocialRoomRemoteInventoryEntry> _remoteInventoryEntries;
         private readonly List<SocialRoomItemEntry> _defaultItems;
         private readonly List<SocialRoomOccupant> _defaultOccupants;
+        private readonly List<SocialRoomRemoteInventoryEntry> _defaultRemoteInventoryEntries;
+        private readonly SocialRoomRuntimeSnapshot _defaultSnapshot;
         private int _miniRoomModeIndex;
         private int _miniRoomWagerAmount;
         private int _tradeLocalOfferMeso;
         private int _tradeRemoteOfferMeso;
+        private int _remoteInventoryMeso;
         private bool _tradeLocalLocked;
         private bool _tradeRemoteLocked;
         private bool _tradeLocalAccepted;
         private bool _tradeRemoteAccepted;
         private DateTime? _entrustedPermitExpiresAtUtc;
         private bool _inventoryBackedRows;
+        private bool _suspendPersistence;
+        private string _persistenceKey;
         private Action _miniRoomToggleReadyHandler;
         private Action _miniRoomStartHandler;
         private Action _miniRoomModeHandler;
+        private Action<string, SocialRoomRuntimeSnapshot> _persistStateHandler;
         private IInventoryRuntime _inventoryRuntime;
 
         private SocialRoomRuntime(
@@ -219,15 +278,20 @@ namespace HaCreator.MapSimulator.Interaction
             _blockedVisitors = new List<string>();
             _pendingVisitorNames = new Queue<string>(new[] { "Rondo", "Rin", "Maya", "Pia", "Targa", "Rowen" });
             _inventoryEscrow = new List<InventoryEscrowEntry>();
+            _remoteInventoryEntries = new List<SocialRoomRemoteInventoryEntry>();
             _defaultItems = items?.Select(item => new SocialRoomItemEntry(item.OwnerName, item.ItemName, item.Quantity, item.MesoAmount, item.Detail, item.IsLocked, item.IsClaimed)).ToList()
                 ?? new List<SocialRoomItemEntry>();
             _defaultOccupants = occupants?.Select(occupant => new SocialRoomOccupant(occupant.Name, occupant.Role, occupant.Detail, occupant.IsReady, occupant.AvatarBuild)).ToList()
                 ?? new List<SocialRoomOccupant>();
+            _defaultRemoteInventoryEntries = new List<SocialRoomRemoteInventoryEntry>();
             _tradeRemoteOfferMeso = kind == SocialRoomKind.TradingRoom ? 75000 : 0;
+            _remoteInventoryMeso = kind == SocialRoomKind.TradingRoom ? 325000 : 0;
             _entrustedPermitExpiresAtUtc = kind == SocialRoomKind.EntrustedShop ? DateTime.UtcNow.AddHours(24) : null;
             StatusMessage = statusMessage ?? string.Empty;
             RoomState = roomState ?? string.Empty;
             ModeName = modeName ?? string.Empty;
+            SeedDefaultRemoteInventory();
+            _defaultSnapshot = BuildSnapshot();
         }
 
         public SocialRoomKind Kind { get; }
@@ -242,6 +306,8 @@ namespace HaCreator.MapSimulator.Interaction
         public IReadOnlyList<SocialRoomItemEntry> Items => _items;
         public IReadOnlyList<string> Notes => _notes;
         public IReadOnlyList<SocialRoomChatEntry> ChatEntries => _chatEntries;
+        public IReadOnlyList<SocialRoomRemoteInventoryEntry> RemoteInventoryEntries => _remoteInventoryEntries;
+        public int RemoteInventoryMeso => _remoteInventoryMeso;
 
         public void BindInventory(IInventoryRuntime inventoryRuntime)
         {
@@ -255,6 +321,187 @@ namespace HaCreator.MapSimulator.Interaction
             _miniRoomModeHandler = cycleMode;
         }
 
+        public void ConfigurePersistence(string key, Action<string, SocialRoomRuntimeSnapshot> persistStateHandler, SocialRoomRuntimeSnapshot snapshot = null)
+        {
+            _persistenceKey = string.IsNullOrWhiteSpace(key) ? null : key.Trim();
+            _persistStateHandler = persistStateHandler;
+
+            if (snapshot == null)
+            {
+                ResetToDefaults();
+                return;
+            }
+
+            RestoreSnapshot(snapshot);
+        }
+
+        public SocialRoomRuntimeSnapshot BuildSnapshot()
+        {
+            return new SocialRoomRuntimeSnapshot
+            {
+                Kind = Kind,
+                RoomTitle = RoomTitle,
+                OwnerName = OwnerName,
+                MesoAmount = MesoAmount,
+                StatusMessage = StatusMessage,
+                RoomState = RoomState,
+                ModeName = ModeName,
+                MiniRoomModeIndex = _miniRoomModeIndex,
+                MiniRoomWagerAmount = _miniRoomWagerAmount,
+                TradeLocalOfferMeso = _tradeLocalOfferMeso,
+                TradeRemoteOfferMeso = _tradeRemoteOfferMeso,
+                TradeLocalLocked = _tradeLocalLocked,
+                TradeRemoteLocked = _tradeRemoteLocked,
+                TradeLocalAccepted = _tradeLocalAccepted,
+                TradeRemoteAccepted = _tradeRemoteAccepted,
+                EntrustedPermitExpiresAtUtc = _entrustedPermitExpiresAtUtc,
+                Occupants = _occupants
+                    .Select(occupant => new SocialRoomOccupantSnapshot
+                    {
+                        Name = occupant.Name,
+                        Role = occupant.Role,
+                        Detail = occupant.Detail,
+                        IsReady = occupant.IsReady
+                    })
+                    .ToList(),
+                Items = _items
+                    .Select(item => new SocialRoomItemSnapshot
+                    {
+                        OwnerName = item.OwnerName,
+                        ItemName = item.ItemName,
+                        Quantity = item.Quantity,
+                        MesoAmount = item.MesoAmount,
+                        Detail = item.Detail,
+                        IsLocked = item.IsLocked,
+                        IsClaimed = item.IsClaimed
+                    })
+                    .ToList(),
+                Notes = _notes.ToList(),
+                ChatEntries = _chatEntries
+                    .Select(entry => new SocialRoomChatEntrySnapshot
+                    {
+                        Text = entry.Text,
+                        Tone = entry.Tone
+                    })
+                    .ToList(),
+                SavedVisitors = _savedVisitors.ToList(),
+                BlockedVisitors = _blockedVisitors.ToList(),
+                RemoteInventoryMeso = _remoteInventoryMeso,
+                RemoteInventoryEntries = _remoteInventoryEntries
+                    .Select(entry => new SocialRoomRemoteInventoryEntrySnapshot
+                    {
+                        ItemId = entry.ItemId,
+                        ItemName = entry.ItemName,
+                        Quantity = entry.Quantity
+                    })
+                    .ToList()
+            };
+        }
+
+        public void RestoreSnapshot(SocialRoomRuntimeSnapshot snapshot)
+        {
+            SocialRoomRuntimeSnapshot source = snapshot?.Kind == Kind
+                ? snapshot
+                : _defaultSnapshot;
+
+            _suspendPersistence = true;
+            try
+            {
+                _inventoryEscrow.Clear();
+                _inventoryBackedRows = false;
+
+                RoomTitle = source?.RoomTitle ?? _defaultSnapshot.RoomTitle;
+                OwnerName = source?.OwnerName ?? _defaultSnapshot.OwnerName;
+                MesoAmount = Math.Max(0, source?.MesoAmount ?? _defaultSnapshot.MesoAmount);
+                StatusMessage = source?.StatusMessage ?? _defaultSnapshot.StatusMessage;
+                RoomState = source?.RoomState ?? _defaultSnapshot.RoomState;
+                ModeName = source?.ModeName ?? _defaultSnapshot.ModeName;
+                _miniRoomModeIndex = source?.MiniRoomModeIndex ?? _defaultSnapshot.MiniRoomModeIndex;
+                _miniRoomWagerAmount = Math.Max(0, source?.MiniRoomWagerAmount ?? _defaultSnapshot.MiniRoomWagerAmount);
+                _tradeLocalOfferMeso = Math.Max(0, source?.TradeLocalOfferMeso ?? _defaultSnapshot.TradeLocalOfferMeso);
+                _tradeRemoteOfferMeso = Math.Max(0, source?.TradeRemoteOfferMeso ?? _defaultSnapshot.TradeRemoteOfferMeso);
+                _tradeLocalLocked = source?.TradeLocalLocked ?? _defaultSnapshot.TradeLocalLocked;
+                _tradeRemoteLocked = source?.TradeRemoteLocked ?? _defaultSnapshot.TradeRemoteLocked;
+                _tradeLocalAccepted = source?.TradeLocalAccepted ?? _defaultSnapshot.TradeLocalAccepted;
+                _tradeRemoteAccepted = source?.TradeRemoteAccepted ?? _defaultSnapshot.TradeRemoteAccepted;
+                _entrustedPermitExpiresAtUtc = source?.EntrustedPermitExpiresAtUtc ?? _defaultSnapshot.EntrustedPermitExpiresAtUtc;
+                _remoteInventoryMeso = Math.Max(0, source?.RemoteInventoryMeso ?? _defaultSnapshot.RemoteInventoryMeso);
+
+                _occupants.Clear();
+                foreach (SocialRoomOccupantSnapshot occupant in (source?.Occupants?.Count > 0 ? source.Occupants : _defaultSnapshot.Occupants) ?? Enumerable.Empty<SocialRoomOccupantSnapshot>())
+                {
+                    _occupants.Add(new SocialRoomOccupant(occupant.Name, occupant.Role, occupant.Detail, occupant.IsReady));
+                }
+
+                _items.Clear();
+                foreach (SocialRoomItemSnapshot item in (source?.Items?.Count > 0 ? source.Items : _defaultSnapshot.Items) ?? Enumerable.Empty<SocialRoomItemSnapshot>())
+                {
+                    _items.Add(new SocialRoomItemEntry(item.OwnerName, item.ItemName, item.Quantity, item.MesoAmount, item.Detail, item.IsLocked, item.IsClaimed));
+                }
+
+                _notes.Clear();
+                foreach (string note in (source?.Notes?.Count > 0 ? source.Notes : _defaultSnapshot.Notes) ?? Enumerable.Empty<string>())
+                {
+                    if (!string.IsNullOrWhiteSpace(note))
+                    {
+                        _notes.Add(note);
+                    }
+                }
+
+                _chatEntries.Clear();
+                foreach (SocialRoomChatEntrySnapshot entry in (source?.ChatEntries?.Count > 0 ? source.ChatEntries : _defaultSnapshot.ChatEntries) ?? Enumerable.Empty<SocialRoomChatEntrySnapshot>())
+                {
+                    if (!string.IsNullOrWhiteSpace(entry?.Text))
+                    {
+                        _chatEntries.Add(new SocialRoomChatEntry(entry.Text, entry.Tone));
+                    }
+                }
+
+                _savedVisitors.Clear();
+                foreach (string visitor in source?.SavedVisitors ?? Enumerable.Empty<string>())
+                {
+                    if (!string.IsNullOrWhiteSpace(visitor))
+                    {
+                        _savedVisitors.Add(visitor);
+                    }
+                }
+
+                _blockedVisitors.Clear();
+                foreach (string visitor in source?.BlockedVisitors ?? Enumerable.Empty<string>())
+                {
+                    if (!string.IsNullOrWhiteSpace(visitor))
+                    {
+                        _blockedVisitors.Add(visitor);
+                    }
+                }
+
+                _remoteInventoryEntries.Clear();
+                IEnumerable<SocialRoomRemoteInventoryEntrySnapshot> remoteEntries = source?.RemoteInventoryEntries?.Count > 0
+                    ? source.RemoteInventoryEntries
+                    : _defaultSnapshot.RemoteInventoryEntries;
+                foreach (SocialRoomRemoteInventoryEntrySnapshot entry in remoteEntries ?? Enumerable.Empty<SocialRoomRemoteInventoryEntrySnapshot>())
+                {
+                    if (entry == null || entry.ItemId <= 0 || entry.Quantity <= 0)
+                    {
+                        continue;
+                    }
+
+                    _remoteInventoryEntries.Add(new SocialRoomRemoteInventoryEntry(entry.ItemId, entry.ItemName, entry.Quantity));
+                }
+
+                RefreshRemoteInventoryNotes();
+            }
+            finally
+            {
+                _suspendPersistence = false;
+            }
+        }
+
+        public void ResetToDefaults()
+        {
+            RestoreSnapshot(_defaultSnapshot);
+        }
+
         public string DescribeStatus()
         {
             RefreshTimedState(DateTime.UtcNow);
@@ -263,7 +510,7 @@ namespace HaCreator.MapSimulator.Interaction
                 SocialRoomKind.MiniRoom => $"{RoomTitle}: state={RoomState}, mode={ModeName}, wager={_miniRoomWagerAmount:N0}, occupants={_occupants.Count}/{Capacity}",
                 SocialRoomKind.PersonalShop => $"{RoomTitle}: state={RoomState}, listed={_items.Count}, savedVisitors={_savedVisitors.Count}, blacklist={_blockedVisitors.Count}, ledger={MesoAmount:N0}",
                 SocialRoomKind.EntrustedShop => $"{RoomTitle}: state={RoomState}, listed={_items.Count}, ledger={MesoAmount:N0}, permit={FormatPermitStatus(DateTime.UtcNow)}",
-                SocialRoomKind.TradingRoom => $"{RoomTitle}: state={RoomState}, localMeso={MesoAmount:N0}, remoteMeso={_tradeRemoteOfferMeso:N0}, lock={FormatTradePartyState(_tradeLocalLocked, _tradeRemoteLocked)}, accept={FormatTradePartyState(_tradeLocalAccepted, _tradeRemoteAccepted)}, escrowRows={_inventoryEscrow.Count}",
+                SocialRoomKind.TradingRoom => $"{RoomTitle}: state={RoomState}, localMeso={MesoAmount:N0}, remoteMeso={_tradeRemoteOfferMeso:N0}, remoteWallet={_remoteInventoryMeso:N0}, remoteItems={_remoteInventoryEntries.Sum(entry => entry.Quantity)}, lock={FormatTradePartyState(_tradeLocalLocked, _tradeRemoteLocked)}, accept={FormatTradePartyState(_tradeLocalAccepted, _tradeRemoteAccepted)}, escrowRows={_inventoryEscrow.Count}",
                 _ => RoomState
             };
         }
@@ -272,8 +519,43 @@ namespace HaCreator.MapSimulator.Interaction
         {
             if (Kind == SocialRoomKind.EntrustedShop)
             {
+                string previousState = RoomState;
+                string previousStatus = StatusMessage;
                 UpdateEntrustedPermitState(utcNow);
+                if (!string.Equals(previousState, RoomState, StringComparison.Ordinal) ||
+                    !string.Equals(previousStatus, StatusMessage, StringComparison.Ordinal))
+                {
+                    PersistState();
+                }
             }
+        }
+
+        public SocialRoomFieldActorSnapshot GetFieldActorSnapshot(DateTime utcNow)
+        {
+            RefreshTimedState(utcNow);
+
+            if (Kind != SocialRoomKind.EntrustedShop)
+            {
+                return null;
+            }
+
+            string permitStatus = FormatPermitStatus(utcNow);
+            if (IsEntrustedPermitExpired(utcNow))
+            {
+                return new SocialRoomFieldActorSnapshot(
+                    Kind,
+                    SocialRoomFieldActorTemplate.StoreBanker,
+                    "Contract expired",
+                    "Claim items and mesos at Fredrick.",
+                    $"expired|{RoomState}|{StatusMessage}");
+            }
+
+            return new SocialRoomFieldActorSnapshot(
+                Kind,
+                SocialRoomFieldActorTemplate.Merchant,
+                string.IsNullOrWhiteSpace(RoomTitle) ? "Entrusted Shop" : RoomTitle,
+                $"{OwnerName} | {RoomState} | {permitStatus}",
+                $"merchant|{ModeName}|{RoomState}|{permitStatus}");
         }
 
         public bool TryDispatchPacket(
@@ -498,6 +780,8 @@ namespace HaCreator.MapSimulator.Interaction
                         : "Room occupants and ready state now mirror the live simulator board.";
                 }
             }
+
+            PersistState();
         }
 
         public void AddMiniRoomChatEntry(string text, SocialRoomChatTone tone = SocialRoomChatTone.Neutral)
@@ -513,6 +797,8 @@ namespace HaCreator.MapSimulator.Interaction
             {
                 _chatEntries.RemoveRange(0, _chatEntries.Count - maxChatEntries);
             }
+
+            PersistState();
         }
 
         public void AddMiniRoomSpeakerMessage(string speakerName, string message, bool isLocalSpeaker)
@@ -678,6 +964,7 @@ namespace HaCreator.MapSimulator.Interaction
             StatusMessage = nextReady
                 ? $"{guest.Name} is ready. Start {ModeName} when you want to open the board."
                 : $"{guest.Name} stepped back from the ready check.";
+            PersistState();
         }
 
         public void CycleMiniRoomMode()
@@ -712,6 +999,7 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             StatusMessage = $"Mini-room preview switched to {ModeName}.";
+            PersistState();
         }
 
         public void StartMiniRoomSession()
@@ -742,6 +1030,7 @@ namespace HaCreator.MapSimulator.Interaction
             StatusMessage = guestReady
                 ? $"{ModeName} session started with ExplorerGM on the opening turn."
                 : $"Cannot start {ModeName} until the guest readies up.";
+            PersistState();
         }
 
         public bool TrySetMiniRoomWager(int mesoAmount, out string message)
@@ -771,6 +1060,7 @@ namespace HaCreator.MapSimulator.Interaction
             StatusMessage = mesoAmount > 0
                 ? $"Mini-room wager set to {mesoAmount:N0} per player."
                 : "Mini-room wager cleared and refunded.";
+            PersistState();
             message = StatusMessage;
             return true;
         }
@@ -816,6 +1106,7 @@ namespace HaCreator.MapSimulator.Interaction
 
             _miniRoomWagerAmount = 0;
             MesoAmount = 0;
+            PersistState();
             message = StatusMessage;
             return true;
         }
@@ -845,6 +1136,7 @@ namespace HaCreator.MapSimulator.Interaction
             StatusMessage = isOpen
                 ? "The personal shop is open and new visitors can enter."
                 : "The personal shop is closed while the owner edits bundles.";
+            PersistState();
         }
 
         public bool ClosePersonalShop(out string message)
@@ -868,6 +1160,7 @@ namespace HaCreator.MapSimulator.Interaction
             StatusMessage = refunded > 0
                 ? $"Closed the personal shop and returned {refunded} unsold bundle(s) to inventory."
                 : "Closed the personal shop for setup.";
+            PersistState();
             message = StatusMessage;
             return true;
         }
@@ -891,6 +1184,8 @@ namespace HaCreator.MapSimulator.Interaction
             {
                 _occupants[0].Update("Reordered bundles and refreshed the room notice", isReady: true);
             }
+
+            PersistState();
         }
 
         public void ClaimPersonalShopEarnings()
@@ -916,6 +1211,7 @@ namespace HaCreator.MapSimulator.Interaction
             StatusMessage = claimed > 0
                 ? $"Claimed {claimed:N0} mesos from sold bundles into inventory."
                 : "No queued mesos remain to claim from the personal shop.";
+            PersistState();
         }
 
         public bool AddPersonalShopVisitor(string visitorName, out string message)
@@ -953,6 +1249,7 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             StatusMessage = $"{resolvedName} entered the personal shop and was saved to the visitor list.";
+            PersistState();
             message = StatusMessage;
             return true;
         }
@@ -987,6 +1284,7 @@ namespace HaCreator.MapSimulator.Interaction
                 StatusMessage = $"{resolvedName} was added to the personal-shop blacklist and removed from the room.";
             }
 
+            PersistState();
             message = StatusMessage;
             return true;
         }
@@ -1024,6 +1322,7 @@ namespace HaCreator.MapSimulator.Interaction
             RoomState = "Closed for setup";
             ModeName = "Repricing";
             StatusMessage = $"Listed {slotData.ItemName} x{quantity} for {mesoAmount:N0} meso in the personal shop.";
+            PersistState();
             message = StatusMessage;
             return true;
         }
@@ -1065,6 +1364,7 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             StatusMessage = $"{resolvedBuyer} bought {entry.ItemName} for {entry.MesoAmount:N0} meso.";
+            PersistState();
             message = StatusMessage;
             return true;
         }
@@ -1096,6 +1396,7 @@ namespace HaCreator.MapSimulator.Interaction
             StatusMessage = isLedger
                 ? "Entrusted-shop view switched to restock mode."
                 : "Entrusted-shop view switched back to the earnings ledger.";
+            PersistState();
         }
 
         public bool TryAutoListEntrustedShopItem(out string message)
@@ -1136,6 +1437,7 @@ namespace HaCreator.MapSimulator.Interaction
             RoomState = "Updating sale list";
             ModeName = "Restock";
             StatusMessage = $"Restocked {slotData.ItemName} x{quantity} in the entrusted-shop ledger.";
+            PersistState();
             message = StatusMessage;
             return true;
         }
@@ -1161,6 +1463,7 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             StatusMessage = "Entrusted-shop bundles rearranged for the next hiring cycle.";
+            PersistState();
         }
 
         public void ClaimEntrustedShopEarnings()
@@ -1194,6 +1497,7 @@ namespace HaCreator.MapSimulator.Interaction
             StatusMessage = claimed > 0
                 ? $"Claimed {claimed:N0} mesos from the entrusted shop ledger into inventory."
                 : "No entrusted-shop mesos remain to claim.";
+            PersistState();
         }
 
         public bool TryRenewEntrustedPermit(int minutes, out string message)
@@ -1214,6 +1518,7 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             StatusMessage = $"Entrusted-shop permit renewed for {normalizedMinutes} minute{(normalizedMinutes == 1 ? string.Empty : "s")}.";
+            PersistState();
             message = StatusMessage;
             return true;
         }
@@ -1229,6 +1534,7 @@ namespace HaCreator.MapSimulator.Interaction
 
             _entrustedPermitExpiresAtUtc = DateTime.UtcNow;
             UpdateEntrustedPermitState(DateTime.UtcNow);
+            PersistState();
             message = StatusMessage;
             return true;
         }
@@ -1252,6 +1558,7 @@ namespace HaCreator.MapSimulator.Interaction
             RefreshTradeOccupantsAndRows();
 
             StatusMessage = $"Raised the offered mesos to {MesoAmount:N0}.";
+            PersistState();
         }
 
         public bool TryOfferTradeMeso(int mesoAmount, out string message)
@@ -1279,7 +1586,9 @@ namespace HaCreator.MapSimulator.Interaction
             MesoAmount += mesoAmount;
             _tradeLocalOfferMeso += mesoAmount;
             RefreshTradeOccupantsAndRows();
-            message = $"Escrowed {mesoAmount:N0} meso into the trading room.";
+            StatusMessage = $"Escrowed {mesoAmount:N0} meso into the trading room.";
+            PersistState();
+            message = StatusMessage;
             return true;
         }
 
@@ -1310,6 +1619,7 @@ namespace HaCreator.MapSimulator.Interaction
             RoomState = "Negotiating";
             RefreshTradeOccupantsAndRows();
             StatusMessage = $"Added {slotData.ItemName} x{quantity} to the local trade escrow.";
+            PersistState();
             message = StatusMessage;
             return true;
         }
@@ -1330,14 +1640,21 @@ namespace HaCreator.MapSimulator.Interaction
                 return false;
             }
 
+            if (!TryConsumeRemoteInventoryItem(itemId, quantity, out SocialRoomRemoteInventoryEntry remoteInventoryEntry, out message))
+            {
+                return false;
+            }
+
             ClearTradeHandshake();
             string remoteName = ResolveRemoteTraderName();
-            SocialRoomItemEntry entry = new SocialRoomItemEntry(remoteName, ResolveItemName(itemId), quantity, 0, "Guest offer | Simulator-authored remote escrow");
+            SocialRoomItemEntry entry = new SocialRoomItemEntry(remoteName, remoteInventoryEntry.ItemName, quantity, 0, "Guest offer | Remote inventory escrowed");
             int insertIndex = _items.FindLastIndex(item => string.Equals(item.OwnerName, OwnerName, StringComparison.OrdinalIgnoreCase));
             _items.Insert(insertIndex < 0 ? _items.Count : insertIndex + 1, entry);
             RoomState = "Negotiating";
             RefreshTradeOccupantsAndRows();
             StatusMessage = $"Remote trader added {entry.ItemName} x{quantity} to the preview offer.";
+            RefreshRemoteInventoryNotes();
+            PersistState();
             message = StatusMessage;
             return true;
         }
@@ -1357,11 +1674,20 @@ namespace HaCreator.MapSimulator.Interaction
                 return false;
             }
 
+            if (_remoteInventoryMeso < mesoAmount)
+            {
+                message = $"Remote trader only has {_remoteInventoryMeso:N0} meso available in the simulator wallet.";
+                return false;
+            }
+
             ClearTradeHandshake();
+            _remoteInventoryMeso -= mesoAmount;
             _tradeRemoteOfferMeso += mesoAmount;
             RoomState = "Negotiating";
             RefreshTradeOccupantsAndRows();
             StatusMessage = $"Remote trader escrowed {mesoAmount:N0} meso into the preview offer.";
+            RefreshRemoteInventoryNotes();
+            PersistState();
             message = StatusMessage;
             return true;
         }
@@ -1393,6 +1719,7 @@ namespace HaCreator.MapSimulator.Interaction
             StatusMessage = locked
                 ? $"{actor} locked their side of the trade."
                 : $"{actor} unlocked their side of the trade.";
+            PersistState();
             message = StatusMessage;
             return true;
         }
@@ -1428,6 +1755,7 @@ namespace HaCreator.MapSimulator.Interaction
             StatusMessage = accepted
                 ? $"{actor} accepted the locked trade."
                 : $"{actor} canceled their final trade acceptance.";
+            PersistState();
             message = StatusMessage;
             return true;
         }
@@ -1470,6 +1798,9 @@ namespace HaCreator.MapSimulator.Interaction
 
             _inventoryEscrow.Clear();
             _inventoryBackedRows = false;
+            RestoreDefaultRemoteInventory();
+            RefreshRemoteInventoryNotes();
+            PersistState();
         }
 
         public bool TryCompleteTrade(out string message)
@@ -1544,8 +1875,181 @@ namespace HaCreator.MapSimulator.Interaction
             RoomState = "Trade settled";
             RefreshTradeOccupantsAndRows();
             StatusMessage = $"Trade completed. Received {remoteEntries.Count} remote item entr{(remoteEntries.Count == 1 ? "y" : "ies")} and {receivedRemoteMeso:N0} meso.";
+            RefreshRemoteInventoryNotes();
+            PersistState();
             message = StatusMessage;
             return true;
+        }
+
+        public string DescribeRemoteTradeInventory()
+        {
+            if (Kind != SocialRoomKind.TradingRoom)
+            {
+                return "Remote trade inventory is only modeled for the trading-room shell.";
+            }
+
+            string itemSummary = _remoteInventoryEntries.Count == 0
+                ? "no items"
+                : string.Join(", ", _remoteInventoryEntries.Select(entry => $"{entry.ItemName} x{entry.Quantity}"));
+            return $"Remote trader wallet={_remoteInventoryMeso:N0}, catalog={itemSummary}.";
+        }
+
+        public bool TrySeedRemoteTradeInventoryItem(int itemId, int quantity, out string message)
+        {
+            message = null;
+            if (Kind != SocialRoomKind.TradingRoom)
+            {
+                message = "Remote trade inventory seeding only applies to the trading-room shell.";
+                return false;
+            }
+
+            InventoryType inventoryType = InventoryItemMetadataResolver.ResolveInventoryType(itemId);
+            if (inventoryType == InventoryType.NONE || quantity <= 0)
+            {
+                message = "A valid item id and quantity are required to seed the remote trade inventory.";
+                return false;
+            }
+
+            AddRemoteInventoryItem(itemId, quantity);
+            RefreshRemoteInventoryNotes();
+            PersistState();
+            message = $"Added {ResolveItemName(itemId)} x{quantity} to the remote trade inventory.";
+            return true;
+        }
+
+        public bool TrySeedRemoteTradeInventoryMeso(int mesoAmount, out string message)
+        {
+            message = null;
+            if (Kind != SocialRoomKind.TradingRoom)
+            {
+                message = "Remote trade inventory seeding only applies to the trading-room shell.";
+                return false;
+            }
+
+            if (mesoAmount <= 0)
+            {
+                message = "A positive meso amount is required to seed the remote trade wallet.";
+                return false;
+            }
+
+            _remoteInventoryMeso += mesoAmount;
+            RefreshRemoteInventoryNotes();
+            PersistState();
+            message = $"Added {mesoAmount:N0} meso to the remote trade wallet.";
+            return true;
+        }
+
+        public void ClearRemoteTradeInventory()
+        {
+            if (Kind != SocialRoomKind.TradingRoom)
+            {
+                return;
+            }
+
+            _remoteInventoryEntries.Clear();
+            _remoteInventoryMeso = 0;
+            RefreshRemoteInventoryNotes();
+            PersistState();
+        }
+
+        private void SeedDefaultRemoteInventory()
+        {
+            if (Kind != SocialRoomKind.TradingRoom)
+            {
+                return;
+            }
+
+            _defaultRemoteInventoryEntries.Clear();
+            _defaultRemoteInventoryEntries.Add(new SocialRoomRemoteInventoryEntry(4004004, ResolveItemName(4004004), 40));
+            _defaultRemoteInventoryEntries.Add(new SocialRoomRemoteInventoryEntry(2070011, ResolveItemName(2070011), 2));
+            _defaultRemoteInventoryEntries.Add(new SocialRoomRemoteInventoryEntry(2044704, ResolveItemName(2044704), 1));
+            RestoreDefaultRemoteInventory();
+        }
+
+        private void RestoreDefaultRemoteInventory()
+        {
+            if (Kind != SocialRoomKind.TradingRoom)
+            {
+                return;
+            }
+
+            _remoteInventoryEntries.Clear();
+            foreach (SocialRoomRemoteInventoryEntry entry in _defaultRemoteInventoryEntries)
+            {
+                _remoteInventoryEntries.Add(new SocialRoomRemoteInventoryEntry(entry.ItemId, entry.ItemName, entry.Quantity));
+            }
+
+            _remoteInventoryMeso = _defaultSnapshot?.RemoteInventoryMeso ?? 325000;
+        }
+
+        private bool TryConsumeRemoteInventoryItem(int itemId, int quantity, out SocialRoomRemoteInventoryEntry entry, out string message)
+        {
+            entry = _remoteInventoryEntries.FirstOrDefault(candidate => candidate.ItemId == itemId && candidate.Quantity >= quantity);
+            if (entry == null)
+            {
+                int available = _remoteInventoryEntries.FirstOrDefault(candidate => candidate.ItemId == itemId)?.Quantity ?? 0;
+                message = available > 0
+                    ? $"Remote trader only has {available} of item {itemId} available."
+                    : $"Remote trader does not have item {itemId} in the simulator inventory.";
+                return false;
+            }
+
+            entry.Update(entry.Quantity - quantity);
+            if (entry.Quantity <= 0)
+            {
+                _remoteInventoryEntries.Remove(entry);
+            }
+
+            message = null;
+            return true;
+        }
+
+        private void AddRemoteInventoryItem(int itemId, int quantity)
+        {
+            if (itemId <= 0 || quantity <= 0)
+            {
+                return;
+            }
+
+            SocialRoomRemoteInventoryEntry existing = _remoteInventoryEntries.FirstOrDefault(entry => entry.ItemId == itemId);
+            if (existing != null)
+            {
+                existing.Update(existing.Quantity + quantity);
+                return;
+            }
+
+            _remoteInventoryEntries.Add(new SocialRoomRemoteInventoryEntry(itemId, ResolveItemName(itemId), quantity));
+        }
+
+        private void RefreshRemoteInventoryNotes()
+        {
+            if (Kind != SocialRoomKind.TradingRoom)
+            {
+                return;
+            }
+
+            string walletNote = $"Remote trade wallet: {_remoteInventoryMeso:N0} meso.";
+            string itemNote = _remoteInventoryEntries.Count == 0
+                ? "Remote trade catalog: empty."
+                : $"Remote trade catalog: {string.Join(", ", _remoteInventoryEntries.Select(entry => $"{entry.ItemName} x{entry.Quantity}"))}.";
+
+            while (_notes.Count < 4)
+            {
+                _notes.Add(string.Empty);
+            }
+
+            _notes[2] = walletNote;
+            _notes[3] = itemNote;
+        }
+
+        private void PersistState()
+        {
+            if (_suspendPersistence || string.IsNullOrWhiteSpace(_persistenceKey) || _persistStateHandler == null)
+            {
+                return;
+            }
+
+            _persistStateHandler(_persistenceKey, BuildSnapshot());
         }
 
         private void EnsureInventoryBackedRows()

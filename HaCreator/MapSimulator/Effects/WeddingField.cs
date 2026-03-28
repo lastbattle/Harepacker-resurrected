@@ -91,7 +91,8 @@ namespace HaCreator.MapSimulator.Effects
         private Vector2? _groomPosition;
         private Vector2? _bridePosition;
         private readonly Dictionary<int, Vector2> _participantPositions = new();
-        private readonly Dictionary<int, WeddingRemoteParticipant> _participantActors = new();
+        private readonly Dictionary<int, WeddingRemoteParticipant> _participantActors = new();
+        private readonly Dictionary<string, WeddingRemoteParticipant> _audienceActors = new(StringComparer.OrdinalIgnoreCase);
 
         // Wedding step (from OnWeddingProgress)
         private int _currentStep = 0;
@@ -149,7 +150,8 @@ namespace HaCreator.MapSimulator.Effects
         public Vector2? GroomPosition => _groomPosition;
         public Vector2? BridePosition => _bridePosition;
         public WeddingPacketResponse? LastPacketResponse => _lastPacketResponse;
-        public int RemoteParticipantCount => _participantActors.Count;
+        public int RemoteParticipantCount => _participantActors.Count + _audienceActors.Count;
+        public int AudienceParticipantCount => _audienceActors.Count;
         #endregion
 
         #region Initialization
@@ -178,7 +180,8 @@ namespace HaCreator.MapSimulator.Effects
             _groomPosition = null;
             _bridePosition = null;
             _participantPositions.Clear();
-            _participantActors.Clear();
+            _participantActors.Clear();
+            _audienceActors.Clear();
             _lastPacketResponse = null;
             _ceremonyTextOverlayActive = false;
             _ceremonyTextOverlayAlpha = 0f;
@@ -218,7 +221,7 @@ namespace HaCreator.MapSimulator.Effects
             UpdateParticipantState();
         }
 
-        public bool TryGetRemoteParticipant(int characterId, out WeddingRemoteParticipantSnapshot snapshot)
+        public bool TryGetRemoteParticipant(int characterId, out WeddingRemoteParticipantSnapshot snapshot)
         {
             if (_participantActors.TryGetValue(characterId, out WeddingRemoteParticipant participant))
             {
@@ -232,10 +235,145 @@ namespace HaCreator.MapSimulator.Effects
                 return true;
             }
 
-            snapshot = default;
-            return false;
-        }
-        #endregion
+            snapshot = default;
+            return false;
+        }
+
+        public bool TryConfigureParticipantActor(
+            int characterId,
+            Vector2? worldPosition,
+            CharacterBuild build,
+            bool? facingRight,
+            string actionName,
+            out string message)
+        {
+            message = null;
+            if (characterId <= 0)
+            {
+                message = "Wedding participant ID is missing.";
+                return false;
+            }
+
+            if (characterId != _groomId && characterId != _brideId)
+            {
+                message = $"Wedding participant {characterId} is not the active groom or bride.";
+                return false;
+            }
+
+            if (worldPosition.HasValue)
+            {
+                _participantPositions[characterId] = worldPosition.Value;
+            }
+
+            UpdateParticipantState();
+            if (!_participantActors.TryGetValue(characterId, out WeddingRemoteParticipant participant))
+            {
+                message = $"Wedding participant {characterId} does not have a resolved overlay position yet.";
+                return false;
+            }
+
+            ApplyParticipantPresentation(participant, build, facingRight, actionName);
+            if (worldPosition.HasValue)
+            {
+                participant.Position = worldPosition.Value;
+            }
+
+            return true;
+        }
+
+        public void UpsertAudienceParticipant(CharacterBuild build, Vector2 worldPosition, bool facingRight, string actionName = null)
+        {
+            if (build == null)
+            {
+                return;
+            }
+
+            string actorName = string.IsNullOrWhiteSpace(build.Name) ? "Guest" : build.Name.Trim();
+            if (!_audienceActors.TryGetValue(actorName, out WeddingRemoteParticipant participant))
+            {
+                CharacterBuild actorBuild = build.Clone();
+                actorBuild.Name = actorName;
+                participant = new WeddingRemoteParticipant(
+                    actorBuild.Id,
+                    WeddingParticipantRole.Guest,
+                    actorBuild.Name,
+                    actorBuild,
+                    new CharacterAssembler(actorBuild));
+                _audienceActors[actorName] = participant;
+            }
+
+            ApplyParticipantPresentation(participant, build, facingRight, actionName);
+            participant.Position = worldPosition;
+        }
+
+        public bool TryMoveAudienceParticipant(string name, Vector2 worldPosition, bool? facingRight, string actionName, out string message)
+        {
+            message = null;
+            if (string.IsNullOrWhiteSpace(name))
+            {
+                message = "Wedding guest name is missing.";
+                return false;
+            }
+
+            if (!_audienceActors.TryGetValue(name.Trim(), out WeddingRemoteParticipant participant))
+            {
+                message = $"Wedding guest '{name}' does not exist.";
+                return false;
+            }
+
+            participant.Position = worldPosition;
+            ApplyParticipantPresentation(participant, build: null, facingRight, actionName);
+            return true;
+        }
+
+        public bool RemoveAudienceParticipant(string name)
+        {
+            return !string.IsNullOrWhiteSpace(name) && _audienceActors.Remove(name.Trim());
+        }
+
+        public void ClearAudienceParticipants()
+        {
+            _audienceActors.Clear();
+        }
+        private static void ApplyParticipantPresentation(
+            WeddingRemoteParticipant participant,
+            CharacterBuild build,
+            bool? facingRight,
+            string actionName)
+        {
+            if (participant == null)
+            {
+                return;
+            }
+
+            if (build != null)
+            {
+                CharacterBuild actorBuild = build.Clone();
+                if (string.IsNullOrWhiteSpace(actorBuild.Name))
+                {
+                    actorBuild.Name = participant.Name;
+                }
+
+                participant.Name = actorBuild.Name;
+                participant.Build = actorBuild;
+                participant.Assembler = new CharacterAssembler(actorBuild);
+                participant.HasExplicitBuild = true;
+            }
+
+            if (facingRight.HasValue)
+            {
+                participant.FacingRight = facingRight.Value;
+                participant.HasExplicitFacing = true;
+            }
+
+            if (!string.IsNullOrWhiteSpace(actionName))
+            {
+                participant.ActionName = actionName.Trim();
+                participant.HasExplicitAction = true;
+            }
+        }
+
+        #endregion
 
         #region Packet Handling (matching CField_Wedding)
 
@@ -666,7 +804,7 @@ namespace HaCreator.MapSimulator.Effects
                 : _ceremonyCelebrationActive
                     ? "celebration particles active"
                     : "no scene overlay";
-            return $"Wedding map {_mapId}: step {_currentStep}, role {role}, dialog {dialog}, scene {scene}, remoteActors={_participantActors.Count}, groom {groomPosition}, bride {bridePosition}, last packet {lastPacket}.";
+            return $"Wedding map {_mapId}: step {_currentStep}, role {role}, dialog {dialog}, scene {scene}, coupleActors={_participantActors.Count}, audienceActors={_audienceActors.Count}, groom {groomPosition}, bride {bridePosition}, last packet {lastPacket}.";
         }
 
         private Vector2? TryGetBlessEffectWorldCenter()
@@ -1138,12 +1276,13 @@ namespace HaCreator.MapSimulator.Effects
             int tickCount,
             SpriteFont font)
         {
-            if (_participantActors.Count == 0)
+            if (_participantActors.Count == 0 && _audienceActors.Count == 0)
             {
                 return;
             }
 
-            foreach (WeddingRemoteParticipant participant in _participantActors.Values
+            foreach (WeddingRemoteParticipant participant in _participantActors.Values
+                .Concat(_audienceActors.Values)
                 .OrderBy(entry => entry.Position.Y)
                 .ThenBy(entry => entry.Role)
                 .ThenBy(entry => entry.Name, StringComparer.OrdinalIgnoreCase))
@@ -1286,8 +1425,14 @@ namespace HaCreator.MapSimulator.Effects
             }
 
             participant.Position = position.Value;
-            participant.FacingRight = role == WeddingParticipantRole.Groom;
-            participant.ActionName = CharacterPart.GetActionString(CharacterAction.Stand1);
+            if (!participant.HasExplicitFacing)
+            {
+                participant.FacingRight = role == WeddingParticipantRole.Groom;
+            }
+            if (!participant.HasExplicitAction || string.IsNullOrWhiteSpace(participant.ActionName))
+            {
+                participant.ActionName = CharacterPart.GetActionString(CharacterAction.Stand1);
+            }
         }
 
         private CharacterBuild CreateParticipantBuild(WeddingParticipantRole role, int characterId)
@@ -1326,7 +1471,8 @@ namespace HaCreator.MapSimulator.Effects
             _groomPosition = null;
             _bridePosition = null;
             _participantPositions.Clear();
-            _participantActors.Clear();
+            _participantActors.Clear();
+            _audienceActors.Clear();
             _lastPacketResponse = null;
             _localCharacterId = null;
             _localPlayerPosition = null;
@@ -1390,12 +1536,18 @@ namespace HaCreator.MapSimulator.Effects
 
         public int CharacterId { get; }
         public WeddingParticipantRole Role { get; }
-        public string Name { get; }
-        public CharacterBuild Build { get; }
-        public CharacterAssembler Assembler { get; }
+        public string Name { get; set; }
+        public CharacterBuild Build { get; set; }
+        public CharacterAssembler Assembler { get; set; }
         public Vector2 Position { get; set; }
         public bool FacingRight { get; set; } = true;
-        public string ActionName { get; set; }
+        public string ActionName { get; set; }
+
+        public bool HasExplicitFacing { get; set; }
+
+        public bool HasExplicitAction { get; set; }
+
+        public bool HasExplicitBuild { get; set; }
     }
 
     public sealed class WeddingSceneFrame

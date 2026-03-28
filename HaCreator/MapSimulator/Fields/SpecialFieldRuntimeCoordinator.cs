@@ -3,6 +3,8 @@ using HaCreator.MapSimulator.Managers;
 using HaCreator.MapSimulator.Character;
 using HaCreator.MapEditor;
 using HaSharedLibrary.Render.DX;
+using MapleLib.WzLib;
+using MapleLib.WzLib.WzProperties;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using MapleLib.WzLib.WzStructure;
@@ -103,10 +105,11 @@ namespace HaCreator.MapSimulator.Fields
             GraphicsDevice graphicsDevice,
             SoundManager soundManager = null,
             Action<string> requestBgmOverride = null,
-            Action clearBgmOverride = null)
+            Action clearBgmOverride = null,
+            Func<LoginAvatarLook, string, CharacterBuild> ariantArenaRemoteBuildFactory = null)
         {
             _specialEffects.Initialize(graphicsDevice, requestBgmOverride, clearBgmOverride);
-            _minigames.Initialize(graphicsDevice, soundManager);
+            _minigames.Initialize(graphicsDevice, soundManager, ariantArenaRemoteBuildFactory);
             _partyRaid.Initialize(graphicsDevice);
         }
 
@@ -120,7 +123,13 @@ namespace HaCreator.MapSimulator.Fields
                 return;
             }
 
+            bool hasGuildBossRuntimeNodes = HasGuildBossRuntimeNodes(board);
             _specialEffects.DetectFieldType(mapInfo.id, mapInfo.fieldType);
+            if (!_specialEffects.GuildBoss.IsActive && hasGuildBossRuntimeNodes)
+            {
+                _specialEffects.GuildBoss.Enable();
+            }
+
             _specialEffects.ConfigureMap(board);
             _partyRaid.BindMap(mapInfo);
 
@@ -134,6 +143,12 @@ namespace HaCreator.MapSimulator.Fields
             if (IsCookieHouseMap(mapInfo))
             {
                 _cookieHouse.Enable(mapInfo.id, _cookieHousePointProvider);
+            }
+
+            if (_specialEffects.GuildBoss.IsActive && (hasGuildBossRuntimeNodes || IsGuildBossMap(mapInfo)))
+            {
+                ActiveArea = SpecialFieldBacklogArea.GuildBossEventFields;
+                return;
             }
 
             for (int i = 0; i < _catalog.Count; i++)
@@ -300,7 +315,25 @@ namespace HaCreator.MapSimulator.Fields
 
             return mapInfo.fieldType == FieldType.FIELDTYPE_GUILDBOSS
                 || (mapInfo.id >= 610030000 && mapInfo.id <= 610030099)
-                || (mapInfo.id >= 673000000 && mapInfo.id <= 673000099);
+                || (mapInfo.id >= 673000000 && mapInfo.id <= 673000099)
+                || mapInfo.id == 990000900;
+        }
+
+        private static bool HasGuildBossRuntimeNodes(Board board)
+        {
+            WzImage mapImage = board?.MapInfo?.Image;
+            if (mapImage == null)
+            {
+                return false;
+            }
+
+            if (!mapImage.Parsed)
+            {
+                mapImage.ParseImage();
+            }
+
+            return mapImage["healer"] is WzSubProperty
+                && mapImage["pulley"] is WzSubProperty;
         }
 
         private static bool IsMassacreMap(MapInfo mapInfo)

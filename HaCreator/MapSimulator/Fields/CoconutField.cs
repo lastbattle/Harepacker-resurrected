@@ -437,7 +437,7 @@ namespace HaCreator.MapSimulator.Fields
                 return;
             coconut.Hit(byTeam);
         }
-        public bool TryHandleNormalAttack(Rectangle attackBounds, int currentTick, int skillId = 0)
+        public bool TryHandleNormalAttack(Rectangle attackBounds, int currentTick, int skillId = 0, bool allowLocalPreview = true)
         {
             if (!_gameActive || skillId != 0 || attackBounds.Width <= 0 || attackBounds.Height <= 0)
             {
@@ -473,7 +473,10 @@ namespace HaCreator.MapSimulator.Fields
                 return false;
             }
             QueueAttackPacketRequest(target.Id, LocalNormalAttackDelayMs, currentTick);
-            QueueHit(target.Id, ResolveLocalAttackState(target, _localTeam), currentTick + LocalNormalAttackDelayMs);
+            if (allowLocalPreview)
+            {
+                QueueHit(target.Id, ResolveLocalAttackState(target, _localTeam), currentTick + LocalNormalAttackDelayMs);
+            }
             return true;
         }
         public bool TryConsumeAttackPacketRequest(out AttackPacketRequest request)

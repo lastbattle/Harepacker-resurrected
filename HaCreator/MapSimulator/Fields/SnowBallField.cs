@@ -281,8 +281,9 @@ namespace HaCreator.MapSimulator.Fields
         private bool _hasReceivedStateSnapshot;
         private int _lastTouchImpactTime;
         private Vector2? _localPlayerPosition;
-        private TouchPacketRequest? _pendingTouchPacketRequest;
+        private readonly Queue<TouchPacketRequest> _pendingTouchPacketRequests = new();
         private int _touchPacketSequence;
+        private readonly Random _random = new();
         #endregion
         #region Properties
         public GameState State => _state;
@@ -292,7 +293,8 @@ namespace HaCreator.MapSimulator.Fields
         public int Team1Score => _team1Score;
         public bool IsActive => _state == GameState.Active;
         public string CurrentMessage => _currentMessage;
-        public TouchPacketRequest? PendingTouchPacketRequest => _pendingTouchPacketRequest;
+        public TouchPacketRequest? PendingTouchPacketRequest => _pendingTouchPacketRequests.Count > 0 ? _pendingTouchPacketRequests.Peek() : null;
+        internal int PendingTouchPacketRequestCount => _pendingTouchPacketRequests.Count;
         public int TouchPacketSequence => _touchPacketSequence;
         internal int DamageSnowBall => _damageSnowBall;
         internal int DamageSnowMan0 => _damageSnowMan[0];
@@ -500,18 +502,31 @@ namespace HaCreator.MapSimulator.Fields
         /// </summary>
         public void OnSnowBallTouch(int team)
         {
-            if (_pendingTouchPacketRequest?.Team == team)
+            if (_pendingTouchPacketRequests.Count > 0)
             {
-                _pendingTouchPacketRequest = null;
+                Queue<TouchPacketRequest> retainedRequests = new();
+                while (_pendingTouchPacketRequests.Count > 0)
+                {
+                    TouchPacketRequest request = _pendingTouchPacketRequests.Dequeue();
+                    if (request.Team != team)
+                    {
+                        retainedRequests.Enqueue(request);
+                    }
+                }
+
+                while (retainedRequests.Count > 0)
+                {
+                    _pendingTouchPacketRequests.Enqueue(retainedRequests.Dequeue());
+                }
             }
+
             _lastTouchImpactTime = Environment.TickCount;
         }
         public bool TryConsumeTouchPacketRequest(out TouchPacketRequest request)
         {
-            if (_pendingTouchPacketRequest.HasValue)
+            if (_pendingTouchPacketRequests.Count > 0)
             {
-                request = _pendingTouchPacketRequest.Value;
-                _pendingTouchPacketRequest = null;
+                request = _pendingTouchPacketRequests.Dequeue();
                 return true;
             }
             request = default;
@@ -564,7 +579,9 @@ namespace HaCreator.MapSimulator.Fields
                     int snowManIndex = target - 2;
                     if (_snowMen[snowManIndex] != null)
                     {
-                        int resolvedDamage = damage > 0 ? damage : _damageSnowMan[Math.Min(snowManIndex, _damageSnowMan.Length - 1)];
+                        int resolvedDamage = damage > 0
+                            ? damage
+                            : RollSnowManHitDamage(_random.Next(100), _damageSnowMan[0], _damageSnowMan[1]);
                         QueueDamage(target, resolvedDamage, tickCount);
                     }
                     break;
@@ -715,7 +732,7 @@ namespace HaCreator.MapSimulator.Fields
                 return;
             }
             _touchPacketSequence++;
-            _pendingTouchPacketRequest = new TouchPacketRequest(touchedTeam, tickCount, _touchPacketSequence);
+            _pendingTouchPacketRequests.Enqueue(new TouchPacketRequest(touchedTeam, tickCount, _touchPacketSequence));
         }
         private int GetTouchedSnowBallTeam(Vector2 worldPosition)
         {
@@ -859,7 +876,7 @@ namespace HaCreator.MapSimulator.Fields
             _hasReceivedStateSnapshot = false;
             _lastTouchImpactTime = 0;
             _localPlayerPosition = null;
-            _pendingTouchPacketRequest = null;
+            _pendingTouchPacketRequests.Clear();
             _touchPacketSequence = 0;
             // Reset snowballs
             int centerX = (_leftGoalX + _rightGoalX) / 2;
@@ -890,6 +907,17 @@ namespace HaCreator.MapSimulator.Fields
         public bool ContainsPoint(int x, int y)
         {
             return ms_rgBall.Contains(x, y);
+        }
+
+        internal static int RollSnowManHitDamage(int roll, int damageSnowMan0, int damageSnowMan1)
+        {
+            int normalizedRoll = Math.Clamp(roll, 0, 99);
+            if (normalizedRoll < 20)
+            {
+                return 0;
+            }
+
+            return normalizedRoll < 90 ? damageSnowMan0 : damageSnowMan1;
         }
         #endregion
     }

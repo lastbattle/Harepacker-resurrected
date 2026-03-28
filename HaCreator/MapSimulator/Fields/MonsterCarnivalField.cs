@@ -52,6 +52,8 @@ namespace HaCreator.MapSimulator.Fields
         GameResult = 353
     }
 
+    internal readonly record struct MonsterCarnivalStringPoolMessage(int StringPoolId, string FallbackFormat);
+
     public sealed class MonsterCarnivalEntry
     {
         public MonsterCarnivalEntry(
@@ -108,16 +110,19 @@ namespace HaCreator.MapSimulator.Fields
 
     public sealed class MonsterCarnivalGuardianPlacement
     {
-        public MonsterCarnivalGuardianPlacement(MonsterCarnivalEntry entry, MonsterCarnivalGuardianSpawnPoint spawnPoint, int reactorId)
+        public MonsterCarnivalGuardianPlacement(MonsterCarnivalEntry entry, MonsterCarnivalGuardianSpawnPoint spawnPoint, int reactorId, MonsterCarnivalTeam team)
         {
             Entry = entry;
             SpawnPoint = spawnPoint;
             ReactorId = reactorId;
+            Team = team;
         }
 
         public MonsterCarnivalEntry Entry { get; }
         public MonsterCarnivalGuardianSpawnPoint SpawnPoint { get; }
         public int ReactorId { get; }
+        public MonsterCarnivalTeam Team { get; }
+        public int ReactorHitCount { get; set; }
     }
 
     public sealed class MonsterCarnivalFieldDefinition
@@ -225,6 +230,26 @@ namespace HaCreator.MapSimulator.Fields
                 SkillEntries = LoadNamedEntries(property["skill"], MonsterCarnivalTab.Skill, McSkillImageName),
                 GuardianEntries = LoadNamedEntries(property["guardian"], MonsterCarnivalTab.Guardian, McGuardianImageName)
             };
+        }
+
+        public static MonsterCarnivalEntry CreateResolvedMobEntry(int mobId, int index = -1)
+        {
+            if (mobId <= 0)
+            {
+                return null;
+            }
+
+            string name = ResolveMobName(mobId) ?? $"Mob {mobId}";
+            MonsterCarnivalMobMetadata metadata = ResolveMobMetadata(mobId);
+            return new MonsterCarnivalEntry(
+                MonsterCarnivalTab.Mob,
+                index,
+                mobId,
+                0,
+                name,
+                BuildMobDescription(name, metadata),
+                metadata?.RewardCp ?? 0,
+                metadata?.ReviveMobIds ?? Array.Empty<int>());
         }
 
         private static WzImageProperty FindMonsterCarnivalProperty(MapInfo mapInfo)
@@ -679,7 +704,9 @@ namespace HaCreator.MapSimulator.Fields
                 return false;
             }
 
-            SetEntryCount(_mobSpellCounts, entry.Id, count);
+            int normalizedCount = Math.Max(0, count);
+            SetEntryCount(_mobSpellCounts, entry.Id, normalizedCount);
+            ReconcileSummonedMobStates(entry, normalizedCount);
             message = $"{entry.Name} summon count set to {GetEntryCount(_mobSpellCounts, entry.Id)}.";
             return true;
         }
@@ -747,16 +774,91 @@ namespace HaCreator.MapSimulator.Fields
             int deathCp = Math.Max(0, _definition?.DeathCp ?? 0);
             MonsterCarnivalTeamState teamState = GetTeamState(team);
             teamState.CurrentCp = Math.Max(0, teamState.CurrentCp - deathCp);
+            string deathMessage = BuildProcessForDeathMessage(team, characterName, remainingRevives);
+            if (deathCp > 0)
+            {
+                deathMessage = $"{deathMessage} {deathCp} CP was removed from {FormatTeam(team)}.";
+            }
 
-            string normalizedName = string.IsNullOrWhiteSpace(characterName) ? "A party member" : characterName.Trim();
-            string reviveSummary = remainingRevives > 0
-                ? $"{remainingRevives} revive(s) remaining."
-                : "No revives remaining.";
-            string cpSummary = deathCp > 0
-                ? $" {deathCp} CP was removed from {FormatTeam(team)}."
+            ShowStatus(deathMessage, tickCount);
+        }
+
+        public bool TryProcessMobDefeat(int spawnPointIndex, MonsterCarnivalTeam rewardedTeam, int tickCount, out string message)
+        {
+            message = null;
+            if (!_isVisible)
+            {
+                message = "Monster Carnival runtime inactive.";
+                return false;
+            }
+
+            MonsterCarnivalSummonedMobState defeatedMob = _summonedMobs.FirstOrDefault(mob => mob.SpawnPoint.Index == spawnPointIndex);
+            if (defeatedMob?.Entry == null)
+            {
+                message = $"No Monster Carnival summon is tracked at spawn slot {spawnPointIndex}.";
+                return false;
+            }
+
+            _summonedMobs.Remove(defeatedMob);
+            SetEntryCount(_mobSpellCounts, defeatedMob.Entry.Id, Math.Max(0, GetEntryCount(_mobSpellCounts, defeatedMob.Entry.Id) - 1));
+
+            int rewardCp = Math.Max(0, defeatedMob.Entry.RewardCp);
+            if (rewardCp > 0)
+            {
+                MonsterCarnivalTeamState rewardedTeamState = GetTeamState(rewardedTeam);
+                rewardedTeamState.CurrentCp += rewardCp;
+                rewardedTeamState.TotalCp += rewardCp;
+
+                if (rewardedTeam == _localTeam)
+                {
+                    _personalCp += rewardCp;
+                    _personalTotalCp += rewardCp;
+                }
+            }
+
+            IReadOnlyList<MonsterCarnivalSummonedMobState> revivedMobs = SpawnReviveChain(defeatedMob);
+            string rewardText = rewardCp > 0
+                ? $" {FormatTeam(rewardedTeam)} gained {rewardCp} CP."
+                : string.Empty;
+            string reviveText = revivedMobs.Count > 0
+                ? $" Revived into {string.Join(", ", revivedMobs.Select(mob => mob.Entry.Name))}."
                 : string.Empty;
 
-            ShowStatus($"{normalizedName} of {FormatTeam(team)} was defeated. {reviveSummary}{cpSummary}".Trim(), tickCount);
+            message = $"{defeatedMob.Entry.Name} was defeated at slot {spawnPointIndex}.{rewardText}{reviveText}".Trim();
+            ShowStatus(message, tickCount);
+            return true;
+        }
+
+        public bool TryApplyGuardianReactorHit(int slotIndex, bool destroyPlacement, int tickCount, out string message)
+        {
+            message = null;
+            if (!_isVisible)
+            {
+                message = "Monster Carnival runtime inactive.";
+                return false;
+            }
+
+            if (!_guardianPlacements.TryGetValue(slotIndex, out MonsterCarnivalGuardianPlacement placement) || placement?.Entry == null)
+            {
+                message = $"No Monster Carnival guardian is tracked at slot {slotIndex}.";
+                return false;
+            }
+
+            placement.ReactorHitCount++;
+            if (destroyPlacement)
+            {
+                _guardianPlacements.Remove(slotIndex);
+                _occupiedGuardianSlots.Remove(slotIndex);
+                SetEntryCount(_guardianCounts, placement.Entry.Id, Math.Max(0, GetEntryCount(_guardianCounts, placement.Entry.Id) - 1));
+                message = $"{placement.Entry.Name} at slot {slotIndex + 1} was destroyed after reactor hit {placement.ReactorHitCount}.";
+            }
+            else
+            {
+                message = $"{placement.Entry.Name} at slot {slotIndex + 1} took reactor hit {placement.ReactorHitCount}.";
+            }
+
+            ShowStatus(message, tickCount);
+            return true;
         }
 
         public void OnShowMemberOutMessage(int messageType, MonsterCarnivalTeam team, string characterName, int tickCount)
@@ -766,11 +868,7 @@ namespace HaCreator.MapSimulator.Fields
                 return;
             }
 
-            string normalizedName = string.IsNullOrWhiteSpace(characterName) ? "A party member" : characterName.Trim();
-            string summary = messageType == 6
-                ? $"Monster Carnival member-out update: {FormatTeam(team)} and {normalizedName} changed teams."
-                : $"Monster Carnival member-out update: {normalizedName} left {FormatTeam(team)}.";
-            ShowStatus(summary, tickCount);
+            ShowStatus(BuildMemberOutMessage(messageType, team, characterName), tickCount);
         }
 
         public bool TryApplyPacket(MonsterCarnivalPacketType packetType, byte[] payload, int currentTimeMs, out string errorMessage)
@@ -796,7 +894,10 @@ namespace HaCreator.MapSimulator.Fields
 
                         for (int i = 0; i < (_definition?.MobEntries.Count ?? 0); i++)
                         {
-                            SetEntryCount(_mobSpellCounts, _definition.MobEntries[i].Id, reader.ReadByte());
+                            int count = reader.ReadByte();
+                            MonsterCarnivalEntry entry = _definition.MobEntries[i];
+                            SetEntryCount(_mobSpellCounts, entry.Id, count);
+                            ReconcileSummonedMobStates(entry, count);
                         }
 
                         EnsurePacketConsumed(stream, "enter");
@@ -876,7 +977,10 @@ namespace HaCreator.MapSimulator.Fields
 
                         for (int i = 0; i < (_definition?.MobEntries.Count ?? 0); i++)
                         {
-                            SetEntryCount(_mobSpellCounts, _definition.MobEntries[i].Id, reader.ReadByte());
+                            int count = reader.ReadByte();
+                            MonsterCarnivalEntry entry = _definition.MobEntries[i];
+                            SetEntryCount(_mobSpellCounts, entry.Id, count);
+                            ReconcileSummonedMobStates(entry, count);
                         }
 
                         EnsurePacketConsumed(stream, "raw-enter");
@@ -1015,10 +1119,10 @@ namespace HaCreator.MapSimulator.Fields
             string personalText = $"Personal CP  {_personalCp}/{_personalTotalCp}";
             DrawShadowedText(spriteBatch, font, personalText, new Vector2(x + 10, y + 6), Color.White);
 
-            string team0Text = $"Team 0  {_team0.CurrentCp}/{_team0.TotalCp}";
-            string team1Text = $"Team 1  {_team1.CurrentCp}/{_team1.TotalCp}";
-            DrawShadowedText(spriteBatch, font, team0Text, new Vector2(x + 10, y + 24), new Color(128, 191, 255));
-            DrawShadowedText(spriteBatch, font, team1Text, new Vector2(x + width / 2 + 4, y + 24), new Color(255, 153, 153));
+            string team0Text = $"{FormatTeam(MonsterCarnivalTeam.Team0)}  {_team0.CurrentCp}/{_team0.TotalCp}";
+            string team1Text = $"{FormatTeam(MonsterCarnivalTeam.Team1)}  {_team1.CurrentCp}/{_team1.TotalCp}";
+            DrawShadowedText(spriteBatch, font, team0Text, new Vector2(x + 10, y + 24), GetTeamColor(MonsterCarnivalTeam.Team0));
+            DrawShadowedText(spriteBatch, font, team1Text, new Vector2(x + width / 2 + 4, y + 24), GetTeamColor(MonsterCarnivalTeam.Team1));
         }
 
         private void DrawTabs(SpriteBatch spriteBatch, Texture2D pixelTexture, SpriteFont font, int x, int y, int width)
@@ -1229,10 +1333,11 @@ namespace HaCreator.MapSimulator.Fields
             teamState.CurrentCp = Math.Max(0, teamState.CurrentCp - entry.Cost);
 
             Dictionary<int, int> counts = GetCountDictionary(entry.Tab);
-            SetEntryCount(counts, entry.Id, GetEntryCount(counts, entry.Id) + 1);
+            int nextCount = GetEntryCount(counts, entry.Id) + 1;
+            SetEntryCount(counts, entry.Id, nextCount);
             if (entry.Tab == MonsterCarnivalTab.Mob)
             {
-                _summonedMobs.Add(new MonsterCarnivalSummonedMobState(entry, ResolveNextMobSpawnPoint()));
+                ReconcileSummonedMobStates(entry, nextCount);
             }
             else if (entry.Tab == MonsterCarnivalTab.Guardian)
             {
@@ -1240,7 +1345,8 @@ namespace HaCreator.MapSimulator.Fields
                 _guardianPlacements[entry.Index] = new MonsterCarnivalGuardianPlacement(
                     entry,
                     ResolveGuardianSpawnPoint(entry.Index),
-                    ResolveGuardianReactorId());
+                    ResolveGuardianReactorId(),
+                    _localTeam);
             }
         }
 
@@ -1291,6 +1397,71 @@ namespace HaCreator.MapSimulator.Fields
             }
 
             return GetEntryCount(GetCountDictionary(entry.Tab), entry.Id);
+        }
+
+        private void ReconcileSummonedMobStates(MonsterCarnivalEntry entry, int desiredCount)
+        {
+            if (entry == null || entry.Tab != MonsterCarnivalTab.Mob)
+            {
+                return;
+            }
+
+            int normalizedCount = Math.Max(0, desiredCount);
+            List<MonsterCarnivalSummonedMobState> matchingStates = _summonedMobs
+                .Where(mob => mob.Entry?.Id == entry.Id)
+                .ToList();
+
+            while (matchingStates.Count > normalizedCount)
+            {
+                MonsterCarnivalSummonedMobState removedState = matchingStates[^1];
+                _summonedMobs.Remove(removedState);
+                matchingStates.RemoveAt(matchingStates.Count - 1);
+            }
+
+            while (matchingStates.Count < normalizedCount)
+            {
+                MonsterCarnivalSummonedMobState newState = new(entry, ResolveNextMobSpawnPoint());
+                _summonedMobs.Add(newState);
+                matchingStates.Add(newState);
+            }
+        }
+
+        private IReadOnlyList<MonsterCarnivalSummonedMobState> SpawnReviveChain(MonsterCarnivalSummonedMobState defeatedMob)
+        {
+            var revivedMobs = new List<MonsterCarnivalSummonedMobState>();
+            IReadOnlyList<int> reviveMobIds = defeatedMob?.Entry?.ReviveMobIds;
+            if (reviveMobIds == null || reviveMobIds.Count == 0)
+            {
+                return revivedMobs;
+            }
+
+            foreach (int reviveMobId in reviveMobIds)
+            {
+                MonsterCarnivalEntry reviveEntry = FindMobEntryById(reviveMobId) ?? MonsterCarnivalFieldDataLoader.CreateResolvedMobEntry(reviveMobId);
+                if (reviveEntry == null)
+                {
+                    continue;
+                }
+
+                var revivedState = new MonsterCarnivalSummonedMobState(
+                    reviveEntry,
+                    new MonsterCarnivalSpawnPoint(
+                        defeatedMob.SpawnPoint.Index,
+                        defeatedMob.SpawnPoint.X,
+                        defeatedMob.SpawnPoint.Y,
+                        defeatedMob.SpawnPoint.Foothold,
+                        defeatedMob.SpawnPoint.Cy));
+                _summonedMobs.Add(revivedState);
+                SetEntryCount(_mobSpellCounts, reviveEntry.Id, GetEntryCount(_mobSpellCounts, reviveEntry.Id) + 1);
+                revivedMobs.Add(revivedState);
+            }
+
+            return revivedMobs;
+        }
+
+        private MonsterCarnivalEntry FindMobEntryById(int mobId)
+        {
+            return _definition?.MobEntries?.FirstOrDefault(entry => entry.Id == mobId);
         }
 
         private Dictionary<int, int> GetCountDictionary(MonsterCarnivalTab tab)
@@ -1350,39 +1521,24 @@ namespace HaCreator.MapSimulator.Fields
 
         private static string DescribeRequestFailure(int reasonCode)
         {
-            return reasonCode switch
+            MonsterCarnivalStringPoolMessage? definition = GetRequestFailureMessage(reasonCode);
+            if (definition.HasValue)
             {
-                1 => "Monster Carnival request rejected: not enough CP.",
-                2 => "Monster Carnival request rejected: that action is not available right now.",
-                3 => "Monster Carnival request rejected: the monster summon limit has been reached.",
-                4 => "Monster Carnival request rejected: the guardian limit has been reached.",
-                5 => "Monster Carnival request rejected: that guardian slot is already occupied.",
-                _ => $"Monster Carnival request rejected (reason {reasonCode})."
-            };
+                return FormatStringPoolMessage(definition.Value);
+            }
+
+            return $"Monster Carnival request rejected (reason {reasonCode}).";
         }
 
         private string DescribeGameResult(int resultCode)
         {
-            string resultText = resultCode switch
+            MonsterCarnivalStringPoolMessage? definition = GetGameResultMessage(resultCode);
+            if (!definition.HasValue)
             {
-                8 => _definition?.IsReviveMode == true ? "Monster Carnival revive round ended in victory." : "Monster Carnival round ended in victory.",
-                9 => _definition?.IsReviveMode == true ? "Monster Carnival revive round ended in defeat." : "Monster Carnival round ended in defeat.",
-                10 => _definition?.IsReviveMode == true ? "Monster Carnival revive round ended in a draw." : "Monster Carnival round ended in a draw.",
-                11 => _definition?.IsReviveMode == true ? "Monster Carnival revive round ended." : "Monster Carnival round ended.",
-                _ => $"Monster Carnival result packet {resultCode} received."
-            };
-
-            if (_definition == null)
-            {
-                return resultText;
+                return $"Monster Carnival result packet {resultCode} received.";
             }
 
-            return resultCode switch
-            {
-                8 => $"{resultText} Reward map {_definition.RewardMapWin}.",
-                9 => $"{resultText} Reward map {_definition.RewardMapLose}.",
-                _ => resultText
-            };
+            return FormatStringPoolMessage(definition.Value);
         }
 
         private static string ReadPacketString(BinaryReader reader)
@@ -1415,6 +1571,83 @@ namespace HaCreator.MapSimulator.Fields
             return value >= 0 ? $"+{value}" : value.ToString(CultureInfo.InvariantCulture);
         }
 
+        private string BuildProcessForDeathMessage(MonsterCarnivalTeam team, string characterName, int remainingRevives)
+        {
+            MonsterCarnivalStringPoolMessage definition = remainingRevives > 0
+                ? new(0x1019, "{0} of {1} was defeated. {2} revive(s) remaining.")
+                : new(0x101A, "{0} of {1} was defeated. No revives remaining.");
+            MonsterCarnivalStringPoolMessage teamLabel = GetTeamLabelMessage(team);
+            string normalizedName = string.IsNullOrWhiteSpace(characterName) ? "A party member" : characterName.Trim();
+            string teamName = FormatTeam(team);
+            string fallback = remainingRevives > 0
+                ? string.Format(CultureInfo.InvariantCulture, definition.FallbackFormat, normalizedName, teamName, remainingRevives)
+                : string.Format(CultureInfo.InvariantCulture, definition.FallbackFormat, normalizedName, teamName);
+            return FormatStringPoolMessage(definition, fallback, teamLabel.StringPoolId);
+        }
+
+        private string BuildMemberOutMessage(int messageType, MonsterCarnivalTeam team, string characterName)
+        {
+            bool changedTeams = messageType == 6;
+            MonsterCarnivalStringPoolMessage definition = changedTeams
+                ? new(0x102A, "{0} and {1} changed teams.")
+                : new(0x1029, "{0} left {1}.");
+            MonsterCarnivalStringPoolMessage teamLabel = GetTeamLabelMessage(team);
+            string normalizedName = string.IsNullOrWhiteSpace(characterName) ? "A party member" : characterName.Trim();
+            string fallback = changedTeams
+                ? string.Format(CultureInfo.InvariantCulture, definition.FallbackFormat, FormatTeam(team), normalizedName)
+                : string.Format(CultureInfo.InvariantCulture, definition.FallbackFormat, normalizedName, FormatTeam(team));
+            return FormatStringPoolMessage(definition, fallback, teamLabel.StringPoolId);
+        }
+
+        private static MonsterCarnivalStringPoolMessage GetTeamLabelMessage(MonsterCarnivalTeam team)
+        {
+            return team == MonsterCarnivalTeam.Team0
+                ? new MonsterCarnivalStringPoolMessage(0x1017, "Red")
+                : new MonsterCarnivalStringPoolMessage(0x1018, "Blue");
+        }
+
+        private static MonsterCarnivalStringPoolMessage? GetRequestFailureMessage(int reasonCode)
+        {
+            return reasonCode switch
+            {
+                1 => new MonsterCarnivalStringPoolMessage(0x101B, "You do not have enough CP."),
+                2 => new MonsterCarnivalStringPoolMessage(0x101C, "You cannot use that request right now."),
+                3 => new MonsterCarnivalStringPoolMessage(0x101D, "You cannot summon any more monsters."),
+                4 => new MonsterCarnivalStringPoolMessage(0x101E, "You cannot summon any more guardians."),
+                5 => new MonsterCarnivalStringPoolMessage(0x101F, "A guardian is already active in that slot."),
+                _ => null
+            };
+        }
+
+        private static MonsterCarnivalStringPoolMessage? GetGameResultMessage(int resultCode)
+        {
+            return resultCode switch
+            {
+                8 => new MonsterCarnivalStringPoolMessage(0x1020, "Monster Carnival round ended in victory."),
+                9 => new MonsterCarnivalStringPoolMessage(0x1021, "Monster Carnival round ended in defeat."),
+                10 => new MonsterCarnivalStringPoolMessage(0x1022, "Monster Carnival round ended in a draw."),
+                11 => new MonsterCarnivalStringPoolMessage(0x1023, "Monster Carnival round ended."),
+                _ => null
+            };
+        }
+
+        private static string FormatStringPoolMessage(MonsterCarnivalStringPoolMessage definition, string fallbackText = null, params int[] relatedStringPoolIds)
+        {
+            string text = string.IsNullOrWhiteSpace(fallbackText)
+                ? definition.FallbackFormat
+                : fallbackText.Trim();
+            return $"{text} {BuildStringPoolSuffix(definition.StringPoolId, relatedStringPoolIds)}";
+        }
+
+        private static string BuildStringPoolSuffix(int primaryStringPoolId, params int[] relatedStringPoolIds)
+        {
+            IEnumerable<int> ids = new[] { primaryStringPoolId }
+                .Concat(relatedStringPoolIds ?? Array.Empty<int>())
+                .Where(id => id > 0)
+                .Distinct();
+            return $"[StringPool {string.Join(", ", ids.Select(id => $"0x{id:X}"))}]";
+        }
+
         private string BuildMobPlacementSummary()
         {
             MonsterCarnivalSummonedMobState lastSummon = _summonedMobs.Count > 0 ? _summonedMobs[^1] : null;
@@ -1441,7 +1674,7 @@ namespace HaCreator.MapSimulator.Fields
 
             KeyValuePair<int, MonsterCarnivalGuardianPlacement> latestPlacement = _guardianPlacements.OrderBy(pair => pair.Key).Last();
             MonsterCarnivalGuardianPlacement placement = latestPlacement.Value;
-            return $"Guardian slot {latestPlacement.Key + 1}: {placement.Entry.Name} at ({placement.SpawnPoint.X}, {placement.SpawnPoint.Y}) reactor {placement.ReactorId}.";
+            return $"Guardian slot {latestPlacement.Key + 1}: {placement.Entry.Name} at ({placement.SpawnPoint.X}, {placement.SpawnPoint.Y}) reactor {placement.ReactorId} hits {placement.ReactorHitCount}.";
         }
 
         private void ShowStatus(string message, int tickCount)
@@ -1452,7 +1685,14 @@ namespace HaCreator.MapSimulator.Fields
 
         private static string FormatTeam(MonsterCarnivalTeam team)
         {
-            return team == MonsterCarnivalTeam.Team0 ? "Team 0" : "Team 1";
+            return team == MonsterCarnivalTeam.Team0 ? "Red Team" : "Blue Team";
+        }
+
+        private static Color GetTeamColor(MonsterCarnivalTeam team)
+        {
+            return team == MonsterCarnivalTeam.Team0
+                ? new Color(255, 153, 153)
+                : new Color(128, 191, 255);
         }
 
         private static void DrawShadowedText(SpriteBatch spriteBatch, SpriteFont font, string text, Vector2 position, Color color, float scale = 1f)

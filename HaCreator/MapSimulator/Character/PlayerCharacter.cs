@@ -137,6 +137,7 @@ namespace HaCreator.MapSimulator.Character
         {
             public int SkillId { get; init; }
             public IReadOnlyDictionary<string, SkillAnimation> ActionAnimations { get; init; }
+            public int HorizontalOffsetPx { get; init; }
             public string CurrentActionName { get; set; }
             public int CurrentActionStartTime { get; set; }
             public bool CurrentFacingRight { get; set; }
@@ -194,7 +195,6 @@ namespace HaCreator.MapSimulator.Character
         private const int FACE_BLINK_MAX_INTERVAL_MS = 4500;
         private const int PORTABLE_CHAIR_RECOVERY_INTERVAL_MS = 10000;
         private const int ShadowPartnerAttackDelayMs = 90;
-        private const int ShadowPartnerHorizontalOffsetPx = 26;
 
         // Float idle should ignore the tiny passive sink applied by swim physics.
         private const float FLOAT_ANIMATION_MOVEMENT_THRESHOLD = 20f;
@@ -265,6 +265,7 @@ namespace HaCreator.MapSimulator.Character
         private bool _sustainedSkillAnimation;
         private SkillAvatarTransformState _activeSkillAvatarTransform;
         private SkillAvatarTransformState _activeExternalAvatarTransform;
+        private int _activeExternalAvatarTransformExpiresAt = int.MaxValue;
         private readonly System.Collections.Generic.List<SkillAvatarEffectState> _activeSkillAvatarEffects = new();
         private readonly System.Collections.Generic.List<TransientSkillAvatarEffectState> _transientSkillAvatarEffects = new();
         private MeleeAfterImageState _activeMeleeAfterImage;
@@ -302,6 +303,7 @@ namespace HaCreator.MapSimulator.Character
         private bool _mobUndeadRecoveryActive;
         private int _mobHpRecoveryCapPercent = 100;
         private int _mobMpRecoveryCapPercent = 100;
+        private int _mobHpRecoveryDamagePercent = 100;
         private bool _jumpPressedThisFrame;
         private int _lastFloatJumpTime = int.MinValue;
         private float _externalMoveSpeedMultiplier = 1f;
@@ -330,6 +332,10 @@ namespace HaCreator.MapSimulator.Character
         private Point _portableChairPairOffset;
         private bool _portableChairPairFacingRight;
         private string _portableChairPairActionName;
+        private bool _portableChairExternalPairRequested;
+        private bool _portableChairHasExternalPair;
+        private Vector2 _portableChairExternalPairPosition;
+        private bool _portableChairExternalPairFacingRight;
         private ShadowPartnerState _activeShadowPartner;
 
         // Preserve ladder context across hit knockback so holding UP can immediately re-grab it.
@@ -487,6 +493,7 @@ namespace HaCreator.MapSimulator.Character
 
             Build.ActivePortableChair = null;
             ClearPortableChairPairPreview();
+            SetPortableChairPairRequestActive(false);
             ClearPortableChairMountState();
             _nextPortableChairRecoveryTime = int.MaxValue;
             if (standUp && State == PlayerState.Sitting)
@@ -616,6 +623,7 @@ namespace HaCreator.MapSimulator.Character
         {
             if (!IsAlive) return;
 
+            ExpireExternalAvatarTransformIfNeeded(currentTime);
             _jumpPressedThisFrame = _inputJump && !_wasJumpHeldLastFrame;
 
             // Handle GM fly mode toggle
@@ -1792,7 +1800,7 @@ namespace HaCreator.MapSimulator.Character
             return true;
         }
 
-        public bool ApplyExternalAvatarTransform(int sourceId, string actionName, int morphTemplateId = 0)
+        public bool ApplyExternalAvatarTransform(int sourceId, string actionName, int morphTemplateId = 0, int expirationTime = int.MaxValue)
         {
             if (!TryCreateExternalAvatarTransform(sourceId, actionName, morphTemplateId, out SkillAvatarTransformState transform))
             {
@@ -1800,6 +1808,7 @@ namespace HaCreator.MapSimulator.Character
             }
 
             _activeExternalAvatarTransform = transform;
+            _activeExternalAvatarTransformExpiresAt = expirationTime > 0 ? expirationTime : int.MaxValue;
             UpdateAssemblerAvatarOverride();
             return true;
         }
@@ -1813,6 +1822,7 @@ namespace HaCreator.MapSimulator.Character
         public void ClearExternalAvatarTransform()
         {
             _activeExternalAvatarTransform = null;
+            _activeExternalAvatarTransformExpiresAt = int.MaxValue;
             UpdateAssemblerAvatarOverride();
         }
 
@@ -1858,6 +1868,18 @@ namespace HaCreator.MapSimulator.Character
             return _activeExternalAvatarTransform != null && _activeExternalAvatarTransform.SourceId == sourceId;
         }
 
+        private void ExpireExternalAvatarTransformIfNeeded(int currentTime)
+        {
+            if (_activeExternalAvatarTransform == null ||
+                _activeExternalAvatarTransformExpiresAt == int.MaxValue ||
+                currentTime < _activeExternalAvatarTransformExpiresAt)
+            {
+                return;
+            }
+
+            ClearExternalAvatarTransform();
+        }
+
         public bool ApplyShadowPartner(int skillId, SkillData skill, int currentTime)
         {
             if (skillId <= 0 || skill?.HasShadowPartnerActionAnimations != true)
@@ -1873,6 +1895,7 @@ namespace HaCreator.MapSimulator.Character
             {
                 SkillId = skillId,
                 ActionAnimations = skill.ShadowPartnerActionAnimations,
+                HorizontalOffsetPx = skill.ShadowPartnerHorizontalOffsetPx,
                 CurrentActionName = useSpawnAction ? spawnActionName : resolvedActionName,
                 CurrentActionStartTime = currentTime,
                 CurrentFacingRight = FacingRight,
@@ -2604,11 +2627,12 @@ namespace HaCreator.MapSimulator.Character
             }
         }
 
-        public void ApplyMobRecoveryModifiers(bool hpRecoveryReversed, int maxHpPercentCap, int maxMpPercentCap)
+        public void ApplyMobRecoveryModifiers(bool hpRecoveryReversed, int maxHpPercentCap, int maxMpPercentCap, int hpRecoveryDamagePercent = 100)
         {
             _mobUndeadRecoveryActive = hpRecoveryReversed;
             _mobHpRecoveryCapPercent = Math.Clamp(maxHpPercentCap, 1, 100);
             _mobMpRecoveryCapPercent = Math.Clamp(maxMpPercentCap, 1, 100);
+            _mobHpRecoveryDamagePercent = Math.Clamp(hpRecoveryDamagePercent, 1, 100);
 
             int hpCap = Math.Max(1, MaxHP * _mobHpRecoveryCapPercent / 100);
             int mpCap = Math.Max(0, MaxMP * _mobMpRecoveryCapPercent / 100);
@@ -2634,7 +2658,8 @@ namespace HaCreator.MapSimulator.Character
             {
                 if (_mobUndeadRecoveryActive)
                 {
-                    TakeStatusDamage(hp);
+                    int reflectedDamage = Math.Max(1, (int)Math.Ceiling(hp * (_mobHpRecoveryDamagePercent / 100f)));
+                    TakeStatusDamage(reflectedDamage);
                 }
                 else
                 {
@@ -2662,6 +2687,7 @@ namespace HaCreator.MapSimulator.Character
             if (_portableChairPairAssembler == null
                 || string.IsNullOrWhiteSpace(_portableChairPairActionName)
                 || Build?.ActivePortableChair?.IsCoupleChair != true
+                || _portableChairExternalPairRequested
                 || !ShouldDrawPortableChairPairPreview())
             {
                 return;
@@ -2693,17 +2719,36 @@ namespace HaCreator.MapSimulator.Character
             bool drawFrontLayers)
         {
             PortableChair chair = Build?.ActivePortableChair;
-            if (_portableChairPairAssembler == null
-                || chair?.IsCoupleChair != true
+            if (chair?.IsCoupleChair != true
                 || chair.CoupleMidpointLayers == null
-                || chair.CoupleMidpointLayers.Count == 0
-                || !ShouldDrawPortableChairPairPreview())
+                || chair.CoupleMidpointLayers.Count == 0)
             {
                 return;
             }
 
-            float partnerX = X + _portableChairPairOffset.X;
-            float partnerY = Y + _portableChairPairOffset.Y;
+            float partnerX;
+            float partnerY;
+            if (_portableChairExternalPairRequested)
+            {
+                if (!_portableChairHasExternalPair)
+                {
+                    return;
+                }
+
+                partnerX = _portableChairExternalPairPosition.X;
+                partnerY = _portableChairExternalPairPosition.Y;
+            }
+            else
+            {
+                if (_portableChairPairAssembler == null || !ShouldDrawPortableChairPairPreview())
+                {
+                    return;
+                }
+
+                partnerX = X + _portableChairPairOffset.X;
+                partnerY = Y + _portableChairPairOffset.Y;
+            }
+
             int midpointScreenX = (int)Math.Round((X + partnerX) * 0.5f) - mapShiftX + centerX;
             int midpointScreenY = (int)Math.Round((Y + partnerY) * 0.5f) - mapShiftY + centerY;
             int animationTime = GetRenderAnimationTime(currentTime);
@@ -2925,7 +2970,8 @@ namespace HaCreator.MapSimulator.Character
             }
 
             bool flip = facingRight ^ frame.Flip;
-            int drawX = screenX + (facingRight ? -ShadowPartnerHorizontalOffsetPx : ShadowPartnerHorizontalOffsetPx);
+            int horizontalOffsetPx = ResolveShadowPartnerHorizontalOffsetPx();
+            int drawX = screenX + (facingRight ? -horizontalOffsetPx : horizontalOffsetPx);
             drawX = flip
                 ? drawX - (frame.Texture.Width - frame.Origin.X)
                 : drawX - frame.Origin.X;
@@ -2956,6 +3002,11 @@ namespace HaCreator.MapSimulator.Character
             animationTime = Math.Max(0, currentTime - _activeShadowPartner.CurrentActionStartTime);
             facingRight = _activeShadowPartner.CurrentFacingRight;
             return true;
+        }
+
+        private int ResolveShadowPartnerHorizontalOffsetPx()
+        {
+            return Math.Max(0, _activeShadowPartner?.HorizontalOffsetPx ?? 26);
         }
 
         private void DrawAvatarEffectPlane(
@@ -3076,7 +3127,7 @@ namespace HaCreator.MapSimulator.Character
                     if (!string.IsNullOrWhiteSpace(delayedAttackAction))
                     {
                         _activeShadowPartner.PendingActionName = delayedAttackAction;
-                        _activeShadowPartner.PendingActionReadyTime = currentTime + ShadowPartnerAttackDelayMs;
+                        _activeShadowPartner.PendingActionReadyTime = currentTime + ResolveShadowPartnerAttackDelayMs(delayedAttackAction);
                         _activeShadowPartner.PendingFacingRight = FacingRight;
                     }
                 }
@@ -3100,14 +3151,43 @@ namespace HaCreator.MapSimulator.Character
             if (!string.IsNullOrWhiteSpace(_activeShadowPartner.PendingActionName)
                 && currentTime >= _activeShadowPartner.PendingActionReadyTime)
             {
-                SetShadowPartnerAction(_activeShadowPartner.PendingActionName, currentTime, _activeShadowPartner.PendingFacingRight);
+                string pendingActionName = _activeShadowPartner.PendingActionName;
+                bool pendingFacingRight = _activeShadowPartner.PendingFacingRight;
                 _activeShadowPartner.PendingActionName = null;
+
+                if (ShouldHoldShadowPartnerCurrentAction(currentTime))
+                {
+                    _activeShadowPartner.QueuedActionName = pendingActionName;
+                    _activeShadowPartner.QueuedFacingRight = pendingFacingRight;
+                }
+                else
+                {
+                    SetShadowPartnerAction(pendingActionName, currentTime, pendingFacingRight);
+                }
             }
 
             if (string.IsNullOrWhiteSpace(_activeShadowPartner.CurrentActionName))
             {
                 SetShadowPartnerAction(ResolveShadowPartnerFallbackAction(), currentTime, FacingRight);
             }
+        }
+
+        private int ResolveShadowPartnerAttackDelayMs(string actionName)
+        {
+            if (_activeShadowPartner?.ActionAnimations != null
+                && !string.IsNullOrWhiteSpace(actionName)
+                && _activeShadowPartner.ActionAnimations.TryGetValue(actionName, out SkillAnimation animation)
+                && animation?.Frames != null
+                && animation.Frames.Count > 0)
+            {
+                int frameDelay = animation.Frames[0]?.Delay ?? 0;
+                if (frameDelay > 0)
+                {
+                    return frameDelay;
+                }
+            }
+
+            return ShadowPartnerAttackDelayMs;
         }
 
         private void SetShadowPartnerAction(string actionName, int currentTime, bool facingRight)
@@ -3215,14 +3295,17 @@ namespace HaCreator.MapSimulator.Character
 
             if (!string.IsNullOrWhiteSpace(playerActionName))
             {
-                if (yielded.Add(playerActionName))
+                foreach (string candidate in CharacterPart.GetActionLookupStrings(playerActionName))
                 {
-                    yield return playerActionName;
+                    if (yielded.Add(candidate))
+                    {
+                        yield return candidate;
+                    }
                 }
 
-                if (playerActionName.StartsWith("swing", StringComparison.OrdinalIgnoreCase))
+                if (string.Equals(playerActionName, "attack1", StringComparison.OrdinalIgnoreCase))
                 {
-                    foreach (string candidate in new[] { playerActionName, "swingO1", "swingO2", "swingO3", "swingOF" })
+                    foreach (string candidate in new[] { "stabO1", "stabO2", "stabOF" })
                     {
                         if (yielded.Add(candidate))
                         {
@@ -3230,9 +3313,9 @@ namespace HaCreator.MapSimulator.Character
                         }
                     }
                 }
-                else if (playerActionName.StartsWith("stab", StringComparison.OrdinalIgnoreCase) || string.Equals(playerActionName, "attack1", StringComparison.OrdinalIgnoreCase))
+                else if (string.Equals(playerActionName, "attack2", StringComparison.OrdinalIgnoreCase))
                 {
-                    foreach (string candidate in new[] { playerActionName, "stabO1", "stabO2", "stabOF" })
+                    foreach (string candidate in new[] { "swingO1", "swingO2", "swingO3", "swingOF" })
                     {
                         if (yielded.Add(candidate))
                         {
@@ -3240,27 +3323,15 @@ namespace HaCreator.MapSimulator.Character
                         }
                     }
                 }
-                else if (playerActionName.StartsWith("shoot", StringComparison.OrdinalIgnoreCase))
+                else if (string.Equals(playerActionName, "hit", StringComparison.OrdinalIgnoreCase))
                 {
-                    foreach (string candidate in new[] { playerActionName, "shoot1", "shoot2", "shootF" })
+                    foreach (string candidate in new[] { "alert", "stand1" })
                     {
                         if (yielded.Add(candidate))
                         {
                             yield return candidate;
                         }
                     }
-                }
-                else if (string.Equals(playerActionName, "stand2", StringComparison.OrdinalIgnoreCase) && yielded.Add("stand1"))
-                {
-                    yield return "stand1";
-                }
-                else if (string.Equals(playerActionName, "walk2", StringComparison.OrdinalIgnoreCase) && yielded.Add("walk1"))
-                {
-                    yield return "walk1";
-                }
-                else if (string.Equals(playerActionName, "prone", StringComparison.OrdinalIgnoreCase) && yielded.Add("proneStab"))
-                {
-                    yield return "proneStab";
                 }
             }
 
@@ -3395,12 +3466,37 @@ namespace HaCreator.MapSimulator.Character
             return IsPortableChairPairPlacementValid(Build?.ActivePortableChair, FacingRight, X, Y, _findFoothold);
         }
 
+        public void SetPortableChairPairRequestActive(bool requested)
+        {
+            _portableChairExternalPairRequested = requested;
+            if (!requested)
+            {
+                ClearPortableChairExternalPair();
+            }
+        }
+
+        public void SetPortableChairExternalPair(Vector2 position, bool facingRight)
+        {
+            _portableChairExternalPairRequested = true;
+            _portableChairHasExternalPair = true;
+            _portableChairExternalPairPosition = position;
+            _portableChairExternalPairFacingRight = facingRight;
+        }
+
+        public void ClearPortableChairExternalPair()
+        {
+            _portableChairHasExternalPair = false;
+            _portableChairExternalPairPosition = Vector2.Zero;
+            _portableChairExternalPairFacingRight = false;
+        }
+
         private void ClearPortableChairPairPreview()
         {
             _portableChairPairAssembler = null;
             _portableChairPairOffset = Point.Zero;
             _portableChairPairFacingRight = false;
             _portableChairPairActionName = null;
+            ClearPortableChairExternalPair();
         }
 
         internal static Point ResolvePortableChairPairOffset(PortableChair chair, bool facingRight)
@@ -3459,12 +3555,8 @@ namespace HaCreator.MapSimulator.Character
                 return !facingRight;
             }
 
-            return chair.CoupleDirection switch
-            {
-                0 => !facingRight,
-                1 => facingRight,
-                _ => !facingRight
-            };
+            ResolvePortableChairPairPreviewLayout(chair, facingRight, out _, out bool partnerFacingRight);
+            return partnerFacingRight;
         }
 
         internal static int ResolvePortableChairPairDirectionSign(PortableChair chair, bool facingRight)
@@ -3474,12 +3566,84 @@ namespace HaCreator.MapSimulator.Character
                 return facingRight ? 1 : -1;
             }
 
-            return chair.CoupleDirection switch
+            ResolvePortableChairPairPreviewLayout(chair, facingRight, out int directionSign, out _);
+            return directionSign;
+        }
+
+        internal static bool IsPortableChairActualPairActive(
+            PortableChair chair,
+            bool ownerFacingRight,
+            float ownerX,
+            float ownerY,
+            bool partnerFacingRight,
+            float partnerX,
+            float partnerY)
+        {
+            if (chair?.IsCoupleChair != true)
             {
-                0 => facingRight ? 1 : -1,
-                1 => facingRight ? -1 : 1,
-                _ => facingRight ? 1 : -1
+                return false;
+            }
+
+            int distanceX = Math.Abs(chair.CoupleDistanceX ?? 0);
+            int distanceY = Math.Abs(chair.CoupleDistanceY ?? 0);
+            int tolerance = Math.Max(0, chair.CoupleMaxDiff ?? 0);
+            int actualDistanceX = (int)Math.Round(Math.Abs(ownerX - partnerX));
+            int actualDistanceY = (int)Math.Round(Math.Abs(ownerY - partnerY));
+            if (Math.Abs(actualDistanceX - distanceX) > tolerance
+                || Math.Abs(actualDistanceY - distanceY) > tolerance)
+            {
+                return false;
+            }
+
+            bool ownerIsLeft = ownerX <= partnerX;
+            bool leftFacingRight = ownerIsLeft ? ownerFacingRight : partnerFacingRight;
+            bool rightFacingRight = ownerIsLeft ? partnerFacingRight : ownerFacingRight;
+
+            return (chair.CoupleDirection ?? 0) switch
+            {
+                0 => true,
+                3 => leftFacingRight == rightFacingRight,
+                11 => !leftFacingRight && !rightFacingRight,
+                12 => !leftFacingRight && rightFacingRight,
+                21 => leftFacingRight && !rightFacingRight,
+                22 => leftFacingRight && rightFacingRight,
+                _ => false
             };
+        }
+
+        private static void ResolvePortableChairPairPreviewLayout(
+            PortableChair chair,
+            bool ownerFacingRight,
+            out int directionSign,
+            out bool partnerFacingRight)
+        {
+            switch (chair?.CoupleDirection ?? 0)
+            {
+                case 3:
+                    directionSign = ownerFacingRight ? 1 : -1;
+                    partnerFacingRight = ownerFacingRight;
+                    return;
+                case 11:
+                    directionSign = ownerFacingRight ? -1 : 1;
+                    partnerFacingRight = false;
+                    return;
+                case 12:
+                    directionSign = ownerFacingRight ? -1 : 1;
+                    partnerFacingRight = !ownerFacingRight;
+                    return;
+                case 21:
+                    directionSign = ownerFacingRight ? 1 : -1;
+                    partnerFacingRight = !ownerFacingRight;
+                    return;
+                case 22:
+                    directionSign = ownerFacingRight ? 1 : -1;
+                    partnerFacingRight = true;
+                    return;
+                default:
+                    directionSign = ownerFacingRight ? 1 : -1;
+                    partnerFacingRight = !ownerFacingRight;
+                    return;
+            }
         }
 
         private static float CalculateYOnFoothold(FootholdLine foothold, float x)
@@ -4075,6 +4239,11 @@ namespace HaCreator.MapSimulator.Character
             return mountPart.GetAnimation(actionName) != null;
         }
 
+        public bool CanRenderAction(string actionName)
+        {
+            return HasAvatarAction(actionName) || HasMountedAction(actionName);
+        }
+
         private bool TryCreateSkillAvatarTransform(int skillId, string actionName, int morphTemplateId, out SkillAvatarTransformState transform)
         {
             if (TryCreateMorphAvatarTransform(skillId, morphTemplateId, actionName, out transform))
@@ -4149,6 +4318,9 @@ namespace HaCreator.MapSimulator.Character
                     return true;
                 case 23121000:
                     transform = CreateSingleActionTransform(skillId, "dualVulcanLoop", "dualVulcanEnd");
+                    return true;
+                case 14111006:
+                    transform = CreateSingleActionTransform(skillId, "darkTornado", "darkTornado_after");
                     return true;
                 case 5311002:
                     transform = CreateSingleActionTransform(skillId, "noiseWave_ing", "noiseWave");
@@ -4235,6 +4407,13 @@ namespace HaCreator.MapSimulator.Character
                 || string.Equals(normalizedAction, "dualVulcanLoop", StringComparison.OrdinalIgnoreCase))
             {
                 transform = CreateSingleActionTransform(skillId, "dualVulcanLoop", "dualVulcanEnd");
+                return true;
+            }
+
+            if (string.Equals(normalizedAction, "darkTornado_pre", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(normalizedAction, "darkTornado", StringComparison.OrdinalIgnoreCase))
+            {
+                transform = CreateSingleActionTransform(skillId, "darkTornado", "darkTornado_after");
                 return true;
             }
 
@@ -4345,11 +4524,17 @@ namespace HaCreator.MapSimulator.Character
 
         private static SkillAvatarTransformState CreateRocketBoosterTransform(int skillId, string actionName)
         {
-            string exitActionName = string.Equals(actionName, "tank_rbooster_pre", StringComparison.OrdinalIgnoreCase)
+            string normalizedActionName = actionName?.Trim();
+            string transformActionName = string.Equals(normalizedActionName, "tank_rbooster_pre", StringComparison.OrdinalIgnoreCase)
+                ? "tank_rbooster_pre"
+                : string.Equals(normalizedActionName, "rbooster_pre", StringComparison.OrdinalIgnoreCase)
+                    ? "rbooster_pre"
+                    : "rbooster";
+            string exitActionName = string.Equals(transformActionName, "tank_rbooster_pre", StringComparison.OrdinalIgnoreCase)
                 ? "tank_rbooster_after"
                 : "rbooster_after";
 
-            return CreateSingleActionTransform(skillId, "rbooster", exitActionName);
+            return CreateSingleActionTransform(skillId, transformActionName, exitActionName);
         }
 
         private static SkillAvatarTransformState CreateDarkSightTransform(int skillId)

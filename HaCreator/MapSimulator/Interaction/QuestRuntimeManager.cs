@@ -28,6 +28,7 @@ namespace HaCreator.MapSimulator.Interaction
     {
         public string Label { get; init; } = string.Empty;
         public string Text { get; init; } = string.Empty;
+        public string ValueText { get; init; } = string.Empty;
         public bool IsComplete { get; init; }
         public int? ItemId { get; init; }
     }
@@ -96,7 +97,7 @@ namespace HaCreator.MapSimulator.Interaction
             public int RequiredCount { get; init; }
         }
 
-        private sealed class QuestSkillRequirement
+        internal sealed class QuestSkillRequirement
         {
             public int SkillId { get; init; }
             public bool MustBeAcquired { get; init; }
@@ -170,6 +171,8 @@ namespace HaCreator.MapSimulator.Interaction
             public string ProgressDescription { get; init; } = string.Empty;
             public string CompletionDescription { get; init; } = string.Empty;
             public IReadOnlyList<string> ShowLayerTags { get; init; } = Array.Empty<string>();
+            public IReadOnlyList<string> StartScriptNames { get; init; } = Array.Empty<string>();
+            public IReadOnlyList<string> EndScriptNames { get; init; } = Array.Empty<string>();
             public int? StartNpcId { get; init; }
             public int? EndNpcId { get; init; }
             public int? MinLevel { get; init; }
@@ -217,10 +220,23 @@ namespace HaCreator.MapSimulator.Interaction
         private Func<int, int, bool> _addInventoryItem;
         private Func<int, int> _skillLevelProvider;
         private Action<int, int> _setSkillLevel;
+        private Func<int, int> _skillMasterLevelProvider;
+        private Action<int, int> _setSkillMasterLevel;
         private Func<int, string> _skillNameProvider;
         private Action<int> _addSkillPoints;
         private bool _definitionsLoaded;
         private const long QuestAlarmRecentUpdateWindowMs = 8000;
+        private const int QuestDeliveryAcceptCashItemId = 5660000;
+        private const int QuestDeliveryCompleteCashItemId = 5660001;
+
+        private NpcDialogueFormattingContext CreateDialogueFormattingContext()
+        {
+            return new NpcDialogueFormattingContext
+            {
+                ResolveItemCountText = itemId => GetResolvedItemCount(itemId).ToString(CultureInfo.InvariantCulture),
+                ResolveQuestStateText = questId => FormatQuestStateForDialogue(GetQuestState(questId))
+            };
+        }
 
         public void ConfigureMesoRuntime(Func<long> mesoCountProvider, Func<long, bool> consumeMeso, Action<long> addMeso)
         {
@@ -244,11 +260,15 @@ namespace HaCreator.MapSimulator.Interaction
         public void ConfigureSkillRuntime(
             Func<int, int> skillLevelProvider,
             Action<int, int> setSkillLevel,
+            Func<int, int> skillMasterLevelProvider,
+            Action<int, int> setSkillMasterLevel,
             Func<int, string> skillNameProvider,
             Action<int> addSkillPoints)
         {
             _skillLevelProvider = skillLevelProvider;
             _setSkillLevel = setSkillLevel;
+            _skillMasterLevelProvider = skillMasterLevelProvider;
+            _setSkillMasterLevel = setSkillMasterLevel;
             _skillNameProvider = skillNameProvider;
             _addSkillPoints = addSkillPoints;
         }
@@ -371,7 +391,7 @@ namespace HaCreator.MapSimulator.Interaction
                 {
                     QuestId = definition.QuestId,
                     Title = definition.Name,
-                    Summary = NpcDialogueTextFormatter.Format(summary),
+                    Summary = NpcDialogueTextFormatter.Format(summary, CreateDialogueFormattingContext()),
                     State = state,
                     CurrentProgress = currentProgress,
                     TotalProgress = totalProgress
@@ -405,8 +425,8 @@ namespace HaCreator.MapSimulator.Interaction
 
             string requirementText = state switch
             {
-                QuestStateType.Not_Started => NpcDialogueTextFormatter.Format(definition.DemandSummary),
-                QuestStateType.Started => NpcDialogueTextFormatter.Format(definition.DemandSummary),
+                QuestStateType.Not_Started => NpcDialogueTextFormatter.Format(definition.DemandSummary, CreateDialogueFormattingContext()),
+                QuestStateType.Started => NpcDialogueTextFormatter.Format(definition.DemandSummary, CreateDialogueFormattingContext()),
                 QuestStateType.Completed => string.Empty,
                 _ => string.Empty
             };
@@ -416,6 +436,14 @@ namespace HaCreator.MapSimulator.Interaction
             string npcText = BuildNpcText(definition);
             List<QuestLogLineSnapshot> requirementLines = BuildDetailRequirementLines(definition, state, build);
             List<QuestLogLineSnapshot> rewardLines = BuildRewardLines(definition);
+            QuestItemRequirement activeDeliveryRequirement = GetActiveDeliveryRequirement(definition, state);
+            int? targetItemId = activeDeliveryRequirement?.ItemId;
+            int? deliveryCashItemId = state switch
+            {
+                QuestStateType.Not_Started when targetItemId.HasValue => QuestDeliveryAcceptCashItemId,
+                QuestStateType.Started when targetItemId.HasValue => QuestDeliveryCompleteCashItemId,
+                _ => null
+            };
             (QuestWindowActionKind primaryAction, bool primaryEnabled, string primaryLabel) = GetPrimaryAction(definition, state, startIssues, completionIssues);
             (QuestWindowActionKind secondaryAction, bool secondaryEnabled, string secondaryLabel) = GetSecondaryAction(state);
             (QuestWindowActionKind tertiaryAction, bool tertiaryEnabled, string tertiaryLabel, int? targetNpcId, string targetNpcName, QuestDetailNpcButtonStyle npcButtonStyle) =
@@ -428,7 +456,7 @@ namespace HaCreator.MapSimulator.Interaction
                 QuestId = definition.QuestId,
                 Title = definition.Name,
                 State = state,
-                SummaryText = NpcDialogueTextFormatter.Format(summaryText),
+                SummaryText = NpcDialogueTextFormatter.Format(summaryText, CreateDialogueFormattingContext()),
                 RequirementText = requirementText,
                 RewardText = rewardText,
                 HintText = hintText,
@@ -453,6 +481,10 @@ namespace HaCreator.MapSimulator.Interaction
                 TargetNpcName = targetNpcName,
                 TargetMobId = targetMobId,
                 TargetMobName = targetMobName,
+                TargetItemId = targetItemId,
+                TargetItemName = targetItemId.HasValue ? GetItemName(targetItemId.Value) : string.Empty,
+                DeliveryCashItemId = deliveryCashItemId,
+                DeliveryCashItemName = deliveryCashItemId.HasValue ? GetItemName(deliveryCashItemId.Value) : string.Empty,
                 NpcButtonStyle = npcButtonStyle
             };
         }
@@ -756,7 +788,7 @@ namespace HaCreator.MapSimulator.Interaction
                         IsRecentlyUpdated = IsQuestAlarmRecentlyUpdated(item.Definition.QuestId),
                         RequirementLines = BuildRequirementLines(item.Definition, build, QuestStateType.Started),
                         IssueLines = issues,
-                        DemandText = NpcDialogueTextFormatter.Format(item.Definition.DemandSummary)
+                        DemandText = NpcDialogueTextFormatter.Format(item.Definition.DemandSummary, CreateDialogueFormattingContext())
                     };
                 })
                 .OrderByDescending(entry => entry.IsReadyToComplete)
@@ -956,7 +988,8 @@ namespace HaCreator.MapSimulator.Interaction
                 {
                     StateChanged = true,
                     PreferredQuestId = questId,
-                    Messages = messages
+                    Messages = messages,
+                    PublishedScriptNames = definition.StartScriptNames
                 };
             }
 
@@ -998,7 +1031,8 @@ namespace HaCreator.MapSimulator.Interaction
                 {
                     StateChanged = true,
                     PreferredQuestId = definition.EndActions?.NextQuestId,
-                    Messages = messages
+                    Messages = messages,
+                    PublishedScriptNames = definition.EndScriptNames
                 };
             }
 
@@ -1163,6 +1197,7 @@ namespace HaCreator.MapSimulator.Interaction
             bool isCompletionNpc)
         {
             var pages = new List<NpcInteractionPage>();
+            NpcDialogueFormattingContext formattingContext = CreateDialogueFormattingContext();
 
             string summary = definition.Name;
             if (!string.IsNullOrWhiteSpace(definition.Summary))
@@ -1195,11 +1230,12 @@ namespace HaCreator.MapSimulator.Interaction
             {
                 pages.Add(new NpcInteractionPage
                 {
-                    Text = NpcDialogueTextFormatter.Format(summary)
+                    RawText = summary,
+                    Text = NpcDialogueTextFormatter.Format(summary, formattingContext)
                 });
             }
 
-            AppendConversationPages(conversationPages, pages);
+            AppendConversationPages(conversationPages, pages, formattingContext);
 
             var details = new List<string>();
             if (!string.IsNullOrWhiteSpace(definition.RewardSummary))
@@ -1226,23 +1262,32 @@ namespace HaCreator.MapSimulator.Interaction
 
             if (details.Count > 0)
             {
+                string detailText = string.Join("\n", details);
                 pages.Add(new NpcInteractionPage
                 {
-                    Text = NpcDialogueTextFormatter.Format(string.Join("\n", details))
+                    RawText = detailText,
+                    Text = NpcDialogueTextFormatter.Format(detailText, formattingContext)
                 });
             }
 
             return pages;
         }
 
-        private static void AppendConversationPages(IEnumerable<NpcInteractionPage> sourcePages, ICollection<NpcInteractionPage> pages)
+        private static void AppendConversationPages(
+            IEnumerable<NpcInteractionPage> sourcePages,
+            ICollection<NpcInteractionPage> pages,
+            NpcDialogueFormattingContext formattingContext)
         {
             if (sourcePages == null)
             {
                 return;
             }
 
-            foreach (NpcInteractionPage page in sourcePages)
+            IReadOnlyList<NpcInteractionPage> formattedPages = NpcDialogueTextFormatter.FormatPages(
+                sourcePages as IReadOnlyList<NpcInteractionPage> ?? sourcePages.ToList(),
+                formattingContext);
+
+            foreach (NpcInteractionPage page in formattedPages)
             {
                 if (page != null && !string.IsNullOrWhiteSpace(page.Text))
                 {
@@ -1461,7 +1506,7 @@ namespace HaCreator.MapSimulator.Interaction
                 lines.Add(new QuestLogLineSnapshot
                 {
                     Label = "Fame",
-                    Text = $"{currentFame}/{definition.StartFameRequirement.Value}",
+                    ValueText = $"{currentFame}/{definition.StartFameRequirement.Value}",
                     IsComplete = currentFame >= definition.StartFameRequirement.Value
                 });
             }
@@ -1475,7 +1520,8 @@ namespace HaCreator.MapSimulator.Interaction
                 lines.Add(new QuestLogLineSnapshot
                 {
                     Label = "Item",
-                    Text = $"{GetItemName(requirement.ItemId)} {currentCount}/{requirement.RequiredCount}",
+                    Text = GetItemName(requirement.ItemId),
+                    ValueText = $"{currentCount}/{requirement.RequiredCount}",
                     IsComplete = currentCount >= requirement.RequiredCount,
                     ItemId = requirement.ItemId
                 });
@@ -1530,7 +1576,8 @@ namespace HaCreator.MapSimulator.Interaction
                 lines.Add(new QuestLogLineSnapshot
                 {
                     Label = "Mob",
-                    Text = $"{GetMobName(requirement.MobId)} {visibleCount}/{requirement.RequiredCount}",
+                    Text = GetMobName(requirement.MobId),
+                    ValueText = $"{visibleCount}/{requirement.RequiredCount}",
                     IsComplete = visibleCount >= requirement.RequiredCount
                 });
             }
@@ -1542,7 +1589,8 @@ namespace HaCreator.MapSimulator.Interaction
                 lines.Add(new QuestLogLineSnapshot
                 {
                     Label = "Item",
-                    Text = $"{GetItemName(requirement.ItemId)} {currentCount}/{requirement.RequiredCount}",
+                    Text = GetItemName(requirement.ItemId),
+                    ValueText = $"{currentCount}/{requirement.RequiredCount}",
                     IsComplete = currentCount >= requirement.RequiredCount,
                     ItemId = requirement.ItemId
                 });
@@ -1576,12 +1624,12 @@ namespace HaCreator.MapSimulator.Interaction
 
             if (definition.EndActions.MesoReward > 0)
             {
-                lines.Add(new QuestLogLineSnapshot { Label = "Meso", Text = $"+{definition.EndActions.MesoReward}", IsComplete = true });
+                lines.Add(new QuestLogLineSnapshot { Label = "Meso", ValueText = $"+{definition.EndActions.MesoReward}", IsComplete = true });
             }
 
             if (definition.EndActions.FameReward > 0)
             {
-                lines.Add(new QuestLogLineSnapshot { Label = "Fame", Text = $"+{definition.EndActions.FameReward}", IsComplete = true });
+                lines.Add(new QuestLogLineSnapshot { Label = "Fame", ValueText = $"+{definition.EndActions.FameReward}", IsComplete = true });
             }
 
             for (int i = 0; i < definition.EndActions.TraitRewards.Count; i++)
@@ -1590,7 +1638,8 @@ namespace HaCreator.MapSimulator.Interaction
                 lines.Add(new QuestLogLineSnapshot
                 {
                     Label = "Trait",
-                    Text = $"{FormatTraitName(reward.Trait)} {reward.Amount:+#;-#;0}",
+                    Text = FormatTraitName(reward.Trait),
+                    ValueText = reward.Amount.ToString("+#;-#;0", CultureInfo.InvariantCulture),
                     IsComplete = true
                 });
             }
@@ -1861,7 +1910,8 @@ namespace HaCreator.MapSimulator.Interaction
                 lines.Add(new QuestLogLineSnapshot
                 {
                     Label = "Trait",
-                    Text = $"{FormatTraitName(requirement.Trait)} {currentValue}/{requirement.MinimumValue}",
+                    Text = FormatTraitName(requirement.Trait),
+                    ValueText = $"{currentValue}/{requirement.MinimumValue}",
                     IsComplete = currentValue >= requirement.MinimumValue
                 });
             }
@@ -1913,9 +1963,28 @@ namespace HaCreator.MapSimulator.Interaction
             return !requirement.MustBeAcquired || (_skillLevelProvider?.Invoke(requirement.SkillId) ?? 0) > 0;
         }
 
-        private static bool MatchesAllowedJobs(int currentJob, IReadOnlyList<int> allowedJobs)
+        internal static bool MatchesAllowedJobs(int currentJob, IReadOnlyList<int> allowedJobs)
         {
-            return allowedJobs == null || allowedJobs.Count == 0 || allowedJobs.Contains(currentJob);
+            if (allowedJobs == null || allowedJobs.Count == 0)
+            {
+                return true;
+            }
+
+            if (currentJob <= 0)
+            {
+                return allowedJobs.Contains(0);
+            }
+
+            HashSet<int> aliases = GetQuestJobAliases(currentJob);
+            for (int i = 0; i < allowedJobs.Count; i++)
+            {
+                if (aliases.Contains(allowedJobs[i]))
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         private string GetSkillName(int skillId)
@@ -2006,6 +2075,7 @@ namespace HaCreator.MapSimulator.Interaction
                 if (_setSkillLevel != null)
                 {
                     _setSkillLevel(reward.SkillId, 0);
+                    _setSkillMasterLevel?.Invoke(reward.SkillId, 0);
                     messages.Add($"Skill removed: {GetSkillName(reward.SkillId)}");
                 }
                 else
@@ -2017,7 +2087,9 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             int currentLevel = _skillLevelProvider?.Invoke(reward.SkillId) ?? 0;
+            int currentMasterLevel = _skillMasterLevelProvider?.Invoke(reward.SkillId) ?? 0;
             int targetLevel = Math.Max(currentLevel, reward.SkillLevel);
+            int targetMasterLevel = Math.Max(currentMasterLevel, reward.MasterLevel);
             if (targetLevel > currentLevel)
             {
                 if (_setSkillLevel != null)
@@ -2030,13 +2102,26 @@ namespace HaCreator.MapSimulator.Interaction
                     messages.Add($"Skill reward: {GetSkillName(reward.SkillId)} Lv. {targetLevel} (skill runtime unavailable)");
                 }
             }
+
+            if (targetMasterLevel > currentMasterLevel)
+            {
+                if (_setSkillMasterLevel != null)
+                {
+                    _setSkillMasterLevel(reward.SkillId, targetMasterLevel);
+                    messages.Add($"Skill master level set: {GetSkillName(reward.SkillId)} Master Lv. {targetMasterLevel}");
+                }
+                else
+                {
+                    messages.Add($"Skill reward: {GetSkillName(reward.SkillId)} Master Lv. {targetMasterLevel} (master level runtime unavailable)");
+                }
+            }
             else if (reward.MasterLevel > 0 && reward.OnlyMasterLevel)
             {
-                messages.Add($"Skill reward: {GetSkillName(reward.SkillId)} Master Lv. {reward.MasterLevel} only (master level not tracked)");
+                messages.Add($"Skill reward: {GetSkillName(reward.SkillId)} Master Lv. {reward.MasterLevel} only");
             }
             else if (reward.MasterLevel > 0)
             {
-                messages.Add($"Skill reward: {GetSkillRewardText(reward)} (master level not tracked)");
+                messages.Add($"Skill reward: {GetSkillRewardText(reward)}");
             }
         }
 
@@ -2515,6 +2600,8 @@ namespace HaCreator.MapSimulator.Interaction
                 ProgressDescription = (questInfo["1"] as WzStringProperty)?.Value ?? string.Empty,
                 CompletionDescription = (questInfo["2"] as WzStringProperty)?.Value ?? string.Empty,
                 ShowLayerTags = ParseLayerTags((questInfo["showLayerTag"] as WzStringProperty)?.Value),
+                StartScriptNames = ParseScriptNames(startCheck?["startscript"]),
+                EndScriptNames = ParseScriptNames(endCheck?["endscript"]),
                 StartNpcId = ParseNpcId(startCheck?["npc"]),
                 EndNpcId = ParseNpcId(endCheck?["npc"]),
                 MinLevel = ParseInt(startCheck?["lvmin"]),
@@ -2629,6 +2716,51 @@ namespace HaCreator.MapSimulator.Interaction
 
             return tags
                 .Split(new[] { ',', ';' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        }
+
+        internal static IReadOnlyList<string> ParseScriptNames(WzImageProperty property)
+        {
+            if (property == null)
+            {
+                return Array.Empty<string>();
+            }
+
+            if (property is WzStringProperty stringProperty)
+            {
+                return ParseDelimitedStrings(stringProperty.Value);
+            }
+
+            if (property.WzProperties == null || property.WzProperties.Count == 0)
+            {
+                return ParseDelimitedStrings((property as WzStringProperty)?.Value);
+            }
+
+            var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            for (int i = 0; i < property.WzProperties.Count; i++)
+            {
+                IReadOnlyList<string> childNames = ParseScriptNames(property.WzProperties[i]);
+                for (int childIndex = 0; childIndex < childNames.Count; childIndex++)
+                {
+                    names.Add(childNames[childIndex]);
+                }
+            }
+
+            return names.Count == 0 ? Array.Empty<string>() : names.ToArray();
+        }
+
+        private static IReadOnlyList<string> ParseDelimitedStrings(string value)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                return Array.Empty<string>();
+            }
+
+            string[] parts = value
+                .Split(new[] { ',', ';' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
+            return parts.Length == 0
+                ? Array.Empty<string>()
+                : parts.Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
         }
 
         private static IReadOnlyList<int> ParseJobIds(WzImageProperty property)
@@ -2758,7 +2890,7 @@ namespace HaCreator.MapSimulator.Interaction
             return requirements;
         }
 
-        private static IReadOnlyList<QuestSkillRequirement> ParseSkillRequirements(WzImageProperty property)
+        internal static IReadOnlyList<QuestSkillRequirement> ParseSkillRequirements(WzImageProperty property)
         {
             if (property?.WzProperties == null)
             {
@@ -2771,7 +2903,7 @@ namespace HaCreator.MapSimulator.Interaction
                 WzImageProperty skillRequirement = property.WzProperties[i];
                 int skillId = ParseInt(skillRequirement["id"]).GetValueOrDefault();
                 bool mustBeAcquired = ParsePositiveInt(skillRequirement["acquire"]).GetValueOrDefault() > 0;
-                if (skillId <= 0 || !mustBeAcquired)
+                if (skillId <= 0)
                 {
                     continue;
                 }
@@ -2779,7 +2911,7 @@ namespace HaCreator.MapSimulator.Interaction
                 requirements.Add(new QuestSkillRequirement
                 {
                     SkillId = skillId,
-                    MustBeAcquired = true
+                    MustBeAcquired = mustBeAcquired || skillRequirement["acquire"] == null
                 });
             }
 
@@ -3056,6 +3188,7 @@ namespace HaCreator.MapSimulator.Interaction
                 {
                     pages[i] = new NpcInteractionPage
                     {
+                        RawText = rawText ?? string.Empty,
                         Text = text,
                         Choices = choices
                     };
@@ -3131,6 +3264,7 @@ namespace HaCreator.MapSimulator.Interaction
 
             return new NpcInteractionPage
             {
+                RawText = rawText ?? string.Empty,
                 Text = text,
                 Choices = choices
             };
@@ -3327,6 +3461,7 @@ namespace HaCreator.MapSimulator.Interaction
             {
                 new NpcInteractionPage
                 {
+                    RawText = $"\"{selectionLabel}\" requires simulator script execution that is not implemented yet.",
                     Text = $"\"{selectionLabel}\" requires simulator script execution that is not implemented yet."
                 }
             };
@@ -3478,6 +3613,17 @@ namespace HaCreator.MapSimulator.Interaction
             };
         }
 
+        private static string FormatQuestStateForDialogue(QuestStateType state)
+        {
+            return state switch
+            {
+                QuestStateType.Started => "In progress",
+                QuestStateType.Completed => "Completed",
+                QuestStateType.Not_Started => "Not started",
+                _ => FormatQuestState(state)
+            };
+        }
+
         private static CharacterSubJobFlagType GetRewardSubJobFlags(int currentJob, int currentSubJob)
         {
             CharacterSubJobFlagType flags = CharacterSubJobFlagType.Any;
@@ -3511,13 +3657,9 @@ namespace HaCreator.MapSimulator.Interaction
             bool matchesJob = true;
             if (jobClassBitfield > 0)
             {
-                MapleStoryLocalisation localisation = Enum.IsDefined(typeof(MapleStoryLocalisation), ApplicationSettings.MapleStoryClientLocalisation)
-                    ? (MapleStoryLocalisation)ApplicationSettings.MapleStoryClientLocalisation
-                    : MapleStoryLocalisation.MapleStoryGlobal;
-                CharacterClassTypeInfo classInfo = CharacterClassTypeInfo.GetByJobId(currentJob, localisation);
-                matchesJob = classInfo != null &&
-                             classInfo.Type != CharacterClassType.NULL &&
-                             MapleJobTypeExtensions.IsJobMatching(classInfo.Type, jobClassBitfield);
+                CharacterClassType currentClass = ResolveQuestRewardClassType(currentJob, currentSubJob);
+                matchesJob = currentClass != CharacterClassType.NULL &&
+                             MapleJobTypeExtensions.IsJobMatching(currentClass, jobClassBitfield);
             }
 
             bool matchesJobEx = jobExBitfield <= 0 ||
@@ -3527,6 +3669,176 @@ namespace HaCreator.MapSimulator.Interaction
                                  (gender == CharacterGenderType.Female && currentGender == CharacterGender.Female);
 
             return matchesJob && matchesJobEx && matchesGender;
+        }
+
+        private static HashSet<int> GetQuestJobAliases(int currentJob)
+        {
+            var aliases = new HashSet<int> { currentJob };
+            if (currentJob <= 0)
+            {
+                aliases.Add(0);
+                return aliases;
+            }
+
+            int job = currentJob;
+            while (job > 0)
+            {
+                aliases.Add(job);
+                aliases.Add((job / 10) * 10);
+                aliases.Add((job / 100) * 100);
+                aliases.Add((job / 1000) * 1000);
+                aliases.Add((job / 10000) * 10000);
+                job /= 10;
+            }
+
+            foreach (int alias in GetSpecialQuestJobAliases(currentJob))
+            {
+                aliases.Add(alias);
+            }
+
+            aliases.Add(0);
+            aliases.RemoveWhere(static value => value < 0);
+            return aliases;
+        }
+
+        private static IEnumerable<int> GetSpecialQuestJobAliases(int currentJob)
+        {
+            return ResolveQuestRewardClassType(currentJob, 0) switch
+            {
+                CharacterClassType.Adventurer => new[] { 0 },
+                CharacterClassType.Cygnus => new[] { 1000, 5000 },
+                CharacterClassType.Aran => new[] { 2000 },
+                CharacterClassType.Evan => new[] { 2001 },
+                CharacterClassType.Mercedes => new[] { 2002 },
+                CharacterClassType.Phantom => new[] { 2003 },
+                CharacterClassType.Luminous => new[] { 2004 },
+                CharacterClassType.Shade => new[] { 2005 },
+                CharacterClassType.Resistance => new[] { 3000 },
+                CharacterClassType.Demon => new[] { 3001 },
+                CharacterClassType.Xenon => new[] { 3002 },
+                CharacterClassType.Hayato => new[] { 4001 },
+                CharacterClassType.Kanna => new[] { 4002 },
+                CharacterClassType.Mihile => new[] { 5000 },
+                CharacterClassType.Kaiser => new[] { 6000 },
+                CharacterClassType.AngelicBuster => new[] { 6001 },
+                CharacterClassType.Zero => new[] { 10000, 10100, 10110, 10112 },
+                CharacterClassType.BeastTamer => new[] { 11000, 11200, 11210, 11211, 11212 },
+                CharacterClassType.PinkBean => new[] { 13000, 13100 },
+                CharacterClassType.Kinesis => new[] { 14000, 14200, 14210, 14211, 14212 },
+                _ => Array.Empty<int>()
+            };
+        }
+
+        private static CharacterClassType ResolveQuestRewardClassType(int currentJob, int currentSubJob)
+        {
+            if (currentSubJob == 1 || currentJob / 10 == 43)
+            {
+                return CharacterClassType.DualBlade;
+            }
+
+            if (currentSubJob == 2 || currentJob == 501 || currentJob / 10 == 53)
+            {
+                return CharacterClassType.Cannoneer;
+            }
+
+            if (currentJob == 0 || (currentJob >= 100 && currentJob <= 522))
+            {
+                return CharacterClassType.Adventurer;
+            }
+
+            if ((currentJob >= 1000 && currentJob <= 1512) || currentJob == 5000 || (currentJob >= 5100 && currentJob <= 5112))
+            {
+                return currentJob == 5000 || (currentJob >= 5100 && currentJob <= 5112)
+                    ? CharacterClassType.Mihile
+                    : CharacterClassType.Cygnus;
+            }
+
+            if (currentJob == 2000 || (currentJob >= 2100 && currentJob <= 2112))
+            {
+                return CharacterClassType.Aran;
+            }
+
+            if (currentJob == 2001 || (currentJob >= 2200 && currentJob <= 2218))
+            {
+                return CharacterClassType.Evan;
+            }
+
+            if (currentJob == 2002 || (currentJob >= 2300 && currentJob <= 2312))
+            {
+                return CharacterClassType.Mercedes;
+            }
+
+            if (currentJob == 2003 || (currentJob >= 2400 && currentJob <= 2412))
+            {
+                return CharacterClassType.Phantom;
+            }
+
+            if (currentJob == 2004 || (currentJob >= 2700 && currentJob <= 2712))
+            {
+                return CharacterClassType.Luminous;
+            }
+
+            if (currentJob == 2005 || (currentJob >= 2500 && currentJob <= 2512))
+            {
+                return CharacterClassType.Shade;
+            }
+
+            if (currentJob == 3001 || (currentJob >= 3100 && currentJob <= 3112))
+            {
+                return CharacterClassType.Demon;
+            }
+
+            if (currentJob == 3002 || (currentJob >= 3600 && currentJob <= 3612))
+            {
+                return CharacterClassType.Xenon;
+            }
+
+            if (currentJob == 3000 || (currentJob >= 3200 && currentJob <= 3512))
+            {
+                return CharacterClassType.Resistance;
+            }
+
+            if (currentJob == 4001 || (currentJob >= 4100 && currentJob <= 4112))
+            {
+                return CharacterClassType.Hayato;
+            }
+
+            if (currentJob == 4002 || (currentJob >= 4200 && currentJob <= 4212))
+            {
+                return CharacterClassType.Kanna;
+            }
+
+            if (currentJob == 6000 || (currentJob >= 6100 && currentJob <= 6112))
+            {
+                return CharacterClassType.Kaiser;
+            }
+
+            if (currentJob == 6001 || (currentJob >= 6500 && currentJob <= 6512))
+            {
+                return CharacterClassType.AngelicBuster;
+            }
+
+            if (currentJob == 10000 || currentJob == 10100 || (currentJob >= 10110 && currentJob <= 10112))
+            {
+                return CharacterClassType.Zero;
+            }
+
+            if (currentJob == 11000 || currentJob == 11200 || (currentJob >= 11210 && currentJob <= 11212))
+            {
+                return CharacterClassType.BeastTamer;
+            }
+
+            if (currentJob == 13000 || currentJob == 13100)
+            {
+                return CharacterClassType.PinkBean;
+            }
+
+            if (currentJob == 14000 || currentJob == 14200 || (currentJob >= 14210 && currentJob <= 14212))
+            {
+                return CharacterClassType.Kinesis;
+            }
+
+            return CharacterClassType.NULL;
         }
 
         internal static int SelectWeightedRewardIndexCore(IReadOnlyList<int> weights, int roll)
@@ -3957,12 +4269,12 @@ namespace HaCreator.MapSimulator.Interaction
                    func.IndexOf("cube", StringComparison.OrdinalIgnoreCase) >= 0;
         }
 
-        private static string JoinQuestSections(params string[] sections)
+        private string JoinQuestSections(params string[] sections)
         {
             var builder = new StringBuilder();
             for (int i = 0; i < sections.Length; i++)
             {
-                string formatted = NpcDialogueTextFormatter.Format(sections[i]);
+                string formatted = NpcDialogueTextFormatter.Format(sections[i], CreateDialogueFormattingContext());
                 if (string.IsNullOrWhiteSpace(formatted))
                 {
                     continue;
@@ -4014,7 +4326,7 @@ namespace HaCreator.MapSimulator.Interaction
 
             if (!string.IsNullOrWhiteSpace(definition.DemandSummary))
             {
-                lines.Add(NpcDialogueTextFormatter.Format(definition.DemandSummary));
+                lines.Add(NpcDialogueTextFormatter.Format(definition.DemandSummary, CreateDialogueFormattingContext()));
             }
 
             if (issues != null && issues.Count > 0)
@@ -4049,7 +4361,7 @@ namespace HaCreator.MapSimulator.Interaction
 
             if (!string.IsNullOrWhiteSpace(definition.DemandSummary))
             {
-                lines.Add(NpcDialogueTextFormatter.Format(definition.DemandSummary));
+                lines.Add(NpcDialogueTextFormatter.Format(definition.DemandSummary, CreateDialogueFormattingContext()));
             }
 
             if (issues != null && issues.Count > 0)
@@ -4085,7 +4397,7 @@ namespace HaCreator.MapSimulator.Interaction
             lines.Add(new QuestLogLineSnapshot
             {
                 Label = "Meso",
-                Text = $"{current.ToString("N0", CultureInfo.InvariantCulture)}/{required.ToString("N0", CultureInfo.InvariantCulture)}",
+                ValueText = $"{current.ToString("N0", CultureInfo.InvariantCulture)}/{required.ToString("N0", CultureInfo.InvariantCulture)}",
                 IsComplete = current >= required
             });
         }
@@ -4137,7 +4449,7 @@ namespace HaCreator.MapSimulator.Interaction
             var rewards = new List<string>();
             if (!string.IsNullOrWhiteSpace(definition.RewardSummary))
             {
-                rewards.Add(NpcDialogueTextFormatter.Format(definition.RewardSummary));
+                rewards.Add(NpcDialogueTextFormatter.Format(definition.RewardSummary, CreateDialogueFormattingContext()));
             }
 
             if (definition.EndActions.ExpReward > 0)
@@ -4346,6 +4658,32 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             return (QuestWindowActionKind.None, false, string.Empty, null, string.Empty);
+        }
+
+        private QuestItemRequirement GetActiveDeliveryRequirement(QuestDefinition definition, QuestStateType state)
+        {
+            if (definition == null)
+            {
+                return null;
+            }
+
+            IReadOnlyList<QuestItemRequirement> requirements = state switch
+            {
+                QuestStateType.Not_Started => definition.StartItemRequirements,
+                QuestStateType.Started => definition.EndItemRequirements,
+                _ => Array.Empty<QuestItemRequirement>()
+            };
+
+            for (int i = 0; i < requirements.Count; i++)
+            {
+                QuestItemRequirement requirement = requirements[i];
+                if (GetResolvedItemCount(requirement.ItemId) < requirement.RequiredCount)
+                {
+                    return requirement;
+                }
+            }
+
+            return null;
         }
 
         private static string ResolveNpcName(int npcId)

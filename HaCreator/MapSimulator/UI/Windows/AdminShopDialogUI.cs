@@ -171,6 +171,7 @@ namespace HaCreator.MapSimulator.UI
             [AdminShopPane.User] = new AdminShopPaneState()
         };
         private readonly AdminShopTabVisual[] _browseTabs = new AdminShopTabVisual[5];
+        private readonly AdminShopTabVisual[] _mtsBrowseTabs = new AdminShopTabVisual[4];
         private readonly AdminShopTabVisual[] _quickCategoryTabs = new AdminShopTabVisual[5];
         private readonly AdminShopTabVisual[] _categoryTabs = new AdminShopTabVisual[10];
         private readonly Texture2D _modalTexture;
@@ -612,10 +613,10 @@ namespace HaCreator.MapSimulator.UI
 
         private void DrawTabs(SpriteBatch sprite, int windowX, int windowY)
         {
-            int browseTabCount = _currentMode == AdminShopServiceMode.CashShop ? _browseTabs.Length : _browseTabs.Length - 1;
-            for (int i = 0; i < browseTabCount; i++)
+            IReadOnlyList<AdminShopTabVisual> browseTabs = GetBrowseTabsForCurrentMode();
+            for (int i = 0; i < browseTabs.Count; i++)
             {
-                DrawTab(sprite, windowX, windowY, _browseTabs[i], _activeBrowseMode == (AdminShopBrowseMode)i, ServiceTabTextY);
+                DrawTab(sprite, windowX, windowY, browseTabs[i], _activeBrowseMode == (AdminShopBrowseMode)i, ServiceTabTextY);
             }
 
             for (int i = 0; i < _quickCategoryTabs.Length; i++)
@@ -798,6 +799,16 @@ namespace HaCreator.MapSimulator.UI
 
         private void OnBuyButtonClicked(UIObject sender)
         {
+            SubmitSelectedEntryRequest();
+        }
+
+        private void OnSellButtonClicked(UIObject sender)
+        {
+            SubmitSelectedEntryRequest();
+        }
+
+        private void SubmitSelectedEntryRequest()
+        {
             AdminShopEntry entry = GetSelectedEntry();
             if (entry == null)
             {
@@ -819,18 +830,6 @@ namespace HaCreator.MapSimulator.UI
             entry.State = AdminShopEntryState.PendingResponse;
             entry.StateLabel = "Pending";
             _footerMessage = $"Submitted a {_currentMode} request for {entry.Title}. Waiting for simulator response.";
-            UpdateActionButtonStates();
-        }
-
-        private void OnSellButtonClicked(UIObject sender)
-        {
-            AdminShopServiceMode nextMode = _currentMode == AdminShopServiceMode.CashShop
-                ? AdminShopServiceMode.Mts
-                : AdminShopServiceMode.CashShop;
-            ResetMode(nextMode);
-            _footerMessage = nextMode == AdminShopServiceMode.CashShop
-                ? "Switched to Cash Shop offers."
-                : "Switched to MTS offers.";
             UpdateActionButtonStates();
         }
 
@@ -1091,8 +1090,9 @@ namespace HaCreator.MapSimulator.UI
         {
             AdminShopEntry entry = GetSelectedEntry();
             bool modalBlocked = _wishlistModalVisible;
-            _buyButton?.SetEnabled(!modalBlocked && entry != null && CanRequestEntry(entry));
-            _sellButton?.SetEnabled(!modalBlocked);
+            bool canSubmitRequest = !modalBlocked && entry != null && CanRequestEntry(entry);
+            _buyButton?.SetEnabled(canSubmitRequest);
+            _sellButton?.SetEnabled(canSubmitRequest);
             _exitButton?.SetEnabled(!modalBlocked);
             _rechargeButton?.SetEnabled(!modalBlocked && entry?.SupportsWishlist == true && entry.State == AdminShopEntryState.Available);
         }
@@ -1184,6 +1184,16 @@ namespace HaCreator.MapSimulator.UI
                 };
             }
 
+            string[] mtsBrowseLabels = { "ALL", "MOST", "SELL", "BUY" };
+            for (int i = 0; i < _mtsBrowseTabs.Length; i++)
+            {
+                _mtsBrowseTabs[i] = new AdminShopTabVisual
+                {
+                    Label = mtsBrowseLabels[i],
+                    Offset = browseOffsets[Math.Min(i, browseOffsets.Length - 1)]
+                };
+            }
+
             Point[] quickCategoryOffsets =
             {
                 new Point(241, 91),
@@ -1214,6 +1224,14 @@ namespace HaCreator.MapSimulator.UI
             Point[] offsets = null)
         {
             SetTabTextures(_browseTabs, enabledTextures, disabledTextures, offsets);
+        }
+
+        public void SetMtsBrowseTabTextures(
+            Texture2D[] enabledTextures,
+            Texture2D[] disabledTextures,
+            Point[] offsets = null)
+        {
+            SetTabTextures(_mtsBrowseTabs, enabledTextures, disabledTextures, offsets);
         }
 
         public void SetQuickCategoryTabTextures(
@@ -1257,10 +1275,10 @@ namespace HaCreator.MapSimulator.UI
 
         private bool TryHandleBrowseTabClick(MouseState mouseState)
         {
-            int tabCount = _currentMode == AdminShopServiceMode.CashShop ? _browseTabs.Length : _browseTabs.Length - 1;
-            for (int i = 0; i < tabCount; i++)
+            IReadOnlyList<AdminShopTabVisual> browseTabs = GetBrowseTabsForCurrentMode();
+            for (int i = 0; i < browseTabs.Count; i++)
             {
-                if (!GetTabBounds(_browseTabs[i]).Contains(mouseState.X, mouseState.Y))
+                if (!GetTabBounds(browseTabs[i]).Contains(mouseState.X, mouseState.Y))
                 {
                     continue;
                 }
@@ -1288,6 +1306,31 @@ namespace HaCreator.MapSimulator.UI
             }
 
             return false;
+        }
+
+        private IReadOnlyList<AdminShopTabVisual> GetBrowseTabsForCurrentMode()
+        {
+            if (_currentMode != AdminShopServiceMode.Mts)
+            {
+                return _browseTabs;
+            }
+
+            bool hasModeSpecificTextures = false;
+            for (int i = 0; i < _mtsBrowseTabs.Length; i++)
+            {
+                if (_mtsBrowseTabs[i]?.EnabledTexture != null || _mtsBrowseTabs[i]?.DisabledTexture != null)
+                {
+                    hasModeSpecificTextures = true;
+                    break;
+                }
+            }
+
+            if (hasModeSpecificTextures)
+            {
+                return _mtsBrowseTabs;
+            }
+
+            return Array.AsReadOnly(_browseTabs[..4]);
         }
 
         private bool TryHandleCategoryTabClick(MouseState mouseState)
@@ -2222,15 +2265,15 @@ namespace HaCreator.MapSimulator.UI
 
             if (_activePane == AdminShopPane.User || _activeBrowseMode == AdminShopBrowseMode.Sell)
             {
-                return "BtBuy submits a relay request for the highlighted listing.";
+                return "BtBuy or BtSell submits a relay request for the highlighted listing.";
             }
 
             if (entry.SupportsWishlist)
             {
-                return "BtBuy submits the request. BtRecharge opens the wish-list confirmation.";
+                return "BtBuy or BtSell submits the request. BtRecharge opens the wish-list confirmation.";
             }
 
-            return "BtBuy submits the request. BtSell switches service pages.";
+            return "BtBuy or BtSell submits the request. BtRecharge opens the wish-list confirmation when supported.";
         }
 
         private static string FormatPriceLabel(long price)

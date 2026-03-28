@@ -26,7 +26,8 @@ namespace HaCreator.MapSimulator.Managers
 
     /// <summary>
     /// Optional loopback packet inbox for driving the login runtime from an external source.
-    /// The listener accepts newline-delimited packet names or numeric ids and queues them for the
+    /// The listener accepts newline-delimited packet names or numeric ids as either
+    /// "<packet> <args>", "<packet>:<args>", or "<packet>=<args>" and queues them for the
     /// simulator to drain on the main thread.
     /// </summary>
     public sealed class LoginPacketInboxManager : IDisposable
@@ -162,7 +163,7 @@ namespace HaCreator.MapSimulator.Managers
             }
         }
 
-        private static bool TryParsePacketLine(string text, out LoginPacketType packetType, out string[] arguments)
+        internal static bool TryParsePacketLine(string text, out LoginPacketType packetType, out string[] arguments)
         {
             packetType = LoginPacketType.CheckPasswordResult;
             arguments = Array.Empty<string>();
@@ -172,27 +173,53 @@ namespace HaCreator.MapSimulator.Managers
             }
 
             string trimmed = text.Trim();
-            string[] tokens = trimmed.Split((char[])null, StringSplitOptions.RemoveEmptyEntries);
-            if (tokens.Length == 0)
+            if (trimmed.Length == 0)
             {
                 return false;
             }
 
-            int packetTokenIndex = 0;
-            if (tokens[0].Equals("/loginpacket", StringComparison.OrdinalIgnoreCase))
+            if (trimmed.StartsWith("/loginpacket", StringComparison.OrdinalIgnoreCase))
             {
-                if (tokens.Length < 2)
+                trimmed = trimmed["/loginpacket".Length..].TrimStart();
+                if (trimmed.Length == 0)
                 {
                     return false;
                 }
-
-                packetTokenIndex = 1;
             }
 
-            string token = tokens[packetTokenIndex];
-            if (tokens.Length > packetTokenIndex + 1)
+            string token;
+            string argumentText = null;
+            int separatorIndex = FindTokenSeparatorIndex(trimmed);
+            if (separatorIndex >= 0)
             {
-                arguments = tokens[(packetTokenIndex + 1)..];
+                token = trimmed[..separatorIndex].Trim();
+                char separator = trimmed[separatorIndex];
+                int argumentStart = separatorIndex + 1;
+                if (separator != ':' && separator != '=')
+                {
+                    while (argumentStart < trimmed.Length && char.IsWhiteSpace(trimmed[argumentStart]))
+                    {
+                        argumentStart++;
+                    }
+                }
+
+                argumentText = argumentStart < trimmed.Length
+                    ? trimmed[argumentStart..].Trim()
+                    : null;
+            }
+            else
+            {
+                token = trimmed;
+            }
+
+            if (string.IsNullOrWhiteSpace(token))
+            {
+                return false;
+            }
+
+            if (!string.IsNullOrWhiteSpace(argumentText))
+            {
+                arguments = argumentText.Split((char[])null, StringSplitOptions.RemoveEmptyEntries);
             }
 
             if (LoginRuntimeManager.TryParsePacketType(token, out packetType))
@@ -203,6 +230,19 @@ namespace HaCreator.MapSimulator.Managers
             return int.TryParse(token, out int numericPacket) &&
                    Enum.IsDefined(typeof(LoginPacketType), numericPacket) &&
                    LoginRuntimeManager.TryParsePacketType(((LoginPacketType)numericPacket).ToString(), out packetType);
+        }
+
+        private static int FindTokenSeparatorIndex(string text)
+        {
+            for (int i = 0; i < text.Length; i++)
+            {
+                if (char.IsWhiteSpace(text[i]) || text[i] == ':' || text[i] == '=')
+                {
+                    return i;
+                }
+            }
+
+            return -1;
         }
 
         private void StopInternal()

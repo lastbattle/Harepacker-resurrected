@@ -13,6 +13,17 @@ namespace HaCreator.MapSimulator.Managers
         public byte? SecondaryCode { get; init; }
         public int? AccountId { get; init; }
         public int? CharacterId { get; init; }
+        public byte? Gender { get; init; }
+        public byte? GradeCode { get; init; }
+        public ushort? AccountFlags { get; init; }
+        public byte? CountryId { get; init; }
+        public string ClubId { get; init; }
+        public byte? PurchaseExperience { get; init; }
+        public byte? ChatBlockReason { get; init; }
+        public long? ChatUnblockFileTime { get; init; }
+        public long? RegisterDateFileTime { get; init; }
+        public int? CharacterCount { get; init; }
+        public byte[] ClientKey { get; init; } = Array.Empty<byte>();
         public string TextValue { get; init; }
     }
 
@@ -48,17 +59,44 @@ namespace HaCreator.MapSimulator.Managers
                 int? characterId = null;
                 byte? resultCode = null;
                 byte? secondaryCode = null;
+                byte? gender = null;
+                byte? gradeCode = null;
+                ushort? accountFlags = null;
+                byte? countryId = null;
+                string clubId = null;
+                byte? purchaseExperience = null;
+                byte? chatBlockReason = null;
+                long? chatUnblockFileTime = null;
+                long? registerDateFileTime = null;
+                int? characterCount = null;
+                byte[] clientKey = Array.Empty<byte>();
                 string textValue = null;
 
                 switch (packetType)
                 {
                     case LoginPacketType.AccountInfoResult:
-                        accountId = reader.ReadInt32();
-                        if (HasRemaining(reader, stream, 1))
+                        resultCode = reader.ReadByte();
+                        if (resultCode is 0 or 12 or 23)
                         {
-                            resultCode = reader.ReadByte();
+                            accountId = reader.ReadInt32();
+                            gender = reader.ReadByte();
+                            gradeCode = reader.ReadByte();
+                            accountFlags = reader.ReadUInt16();
+                            countryId = reader.ReadByte();
+                            clubId = ReadMapleString(reader);
+                            purchaseExperience = reader.ReadByte();
+                            chatBlockReason = reader.ReadByte();
+                            chatUnblockFileTime = reader.ReadInt64();
+                            registerDateFileTime = reader.ReadInt64();
+                            characterCount = reader.ReadInt32();
+                            clientKey = reader.ReadBytes(8);
                         }
 
+                        textValue = TryReadTrailingMapleString(reader, stream);
+                        break;
+
+                    case LoginPacketType.SetAccountResult:
+                        resultCode = reader.ReadByte();
                         if (HasRemaining(reader, stream, 1))
                         {
                             secondaryCode = reader.ReadByte();
@@ -67,14 +105,24 @@ namespace HaCreator.MapSimulator.Managers
                         textValue = TryReadTrailingMapleString(reader, stream);
                         break;
 
-                    case LoginPacketType.CreateNewCharacterResult:
-                    case LoginPacketType.DeleteCharacterResult:
-                        resultCode = reader.ReadByte();
-                        if (HasRemaining(reader, stream, sizeof(int)))
+                    case LoginPacketType.EnableSpwResult:
+                        secondaryCode = reader.ReadByte();
+                        if (HasRemaining(reader, stream, 1))
                         {
-                            characterId = reader.ReadInt32();
+                            resultCode = reader.ReadByte();
                         }
 
+                        textValue = TryReadTrailingMapleString(reader, stream);
+                        break;
+
+                    case LoginPacketType.DeleteCharacterResult:
+                        characterId = reader.ReadInt32();
+                        resultCode = reader.ReadByte();
+                        textValue = TryReadTrailingMapleString(reader, stream);
+                        break;
+
+                    case LoginPacketType.CreateNewCharacterResult:
+                        resultCode = reader.ReadByte();
                         textValue = TryReadTrailingMapleString(reader, stream);
                         break;
 
@@ -103,6 +151,17 @@ namespace HaCreator.MapSimulator.Managers
                     SecondaryCode = secondaryCode,
                     AccountId = accountId,
                     CharacterId = characterId,
+                    Gender = gender,
+                    GradeCode = gradeCode,
+                    AccountFlags = accountFlags,
+                    CountryId = countryId,
+                    ClubId = clubId,
+                    PurchaseExperience = purchaseExperience,
+                    ChatBlockReason = chatBlockReason,
+                    ChatUnblockFileTime = chatUnblockFileTime,
+                    RegisterDateFileTime = registerDateFileTime,
+                    CharacterCount = characterCount,
+                    ClientKey = clientKey,
                     TextValue = textValue,
                 };
                 return true;
@@ -153,6 +212,17 @@ namespace HaCreator.MapSimulator.Managers
             }
 
             return length == 0 ? string.Empty : Encoding.ASCII.GetString(reader.ReadBytes(length));
+        }
+
+        private static string ReadMapleString(BinaryReader reader)
+        {
+            short length = reader.ReadInt16();
+            if (length <= 0)
+            {
+                return string.Empty;
+            }
+
+            return Encoding.ASCII.GetString(reader.ReadBytes(length));
         }
     }
 }

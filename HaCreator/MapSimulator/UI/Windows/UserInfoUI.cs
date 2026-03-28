@@ -1,4 +1,4 @@
-using HaCreator.MapSimulator.Character;
+﻿using HaCreator.MapSimulator.Character;
 using HaCreator.MapSimulator.Companions;
 using HaCreator.MapSimulator.Managers;
 using HaSharedLibrary.Render;
@@ -29,14 +29,35 @@ namespace HaCreator.MapSimulator.UI
             Personality
         }
 
+        private enum LegacyExpandedPanel
+        {
+            None,
+            Pet,
+            Ride,
+            Collection
+        }
+
+        private enum LegacyCollectionMode
+        {
+            Overview,
+            Book
+        }
+
         private readonly struct PageLayer
         {
-            public PageLayer(IDXObject texture, Point offset)
+            public PageLayer(string name, IDXObject texture, Point offset)
             {
+                Name = name ?? string.Empty;
                 Texture = texture;
                 Offset = offset;
             }
 
+            public PageLayer(IDXObject texture, Point offset)
+                : this(string.Empty, texture, offset)
+            {
+            }
+
+            public string Name { get; }
             public IDXObject Texture { get; }
             public Point Offset { get; }
         }
@@ -68,6 +89,19 @@ namespace HaCreator.MapSimulator.UI
             public IDXObject BaseBottom { get; set; }
             public IDXObject Title { get; set; }
             public Dictionary<string, IDXObject> BodyByTrait { get; } = new Dictionary<string, IDXObject>(StringComparer.OrdinalIgnoreCase);
+            public Dictionary<char, IDXObject> NumberGlyphs { get; } = new Dictionary<char, IDXObject>();
+        }
+
+        public readonly struct RankDeltaSnapshot
+        {
+            public RankDeltaSnapshot(int? previousWorldRank, int? previousJobRank)
+            {
+                PreviousWorldRank = previousWorldRank;
+                PreviousJobRank = previousJobRank;
+            }
+
+            public int? PreviousWorldRank { get; }
+            public int? PreviousJobRank { get; }
         }
 
         private enum AuxiliaryPopupKind
@@ -83,6 +117,7 @@ namespace HaCreator.MapSimulator.UI
         private readonly List<UIObject> _petTabButtons = new List<UIObject>();
         private readonly List<UIObject> _primaryButtons = new List<UIObject>();
         private readonly Dictionary<UserInfoPage, PageVisual> _pageVisuals = new Dictionary<UserInfoPage, PageVisual>();
+        private readonly Dictionary<LegacyExpandedPanel, IDXObject> _legacyFrames = new Dictionary<LegacyExpandedPanel, IDXObject>();
         private readonly List<string> _petExceptionEntries = new List<string> { "Meso Bag", "Throwing Star" };
         private readonly string[] _itemPopupEntries = { "Mini Room", "Personal Shop", "Entrusted Shop" };
         private readonly List<string> _wishEntries = new List<string> { "White Scroll", "Brown Work Gloves", "Ilbi Throwing-Star" };
@@ -112,6 +147,7 @@ namespace HaCreator.MapSimulator.UI
         private UIObject _popupDownButton;
         private PersonalityTooltipVisual _personalityTooltipVisual;
         private Func<ItemMakerProgressionSnapshot> _collectionSnapshotProvider;
+        private Func<RankDeltaSnapshot> _rankDeltaProvider;
         private AuxiliaryPopupKind _activePopup;
         private int _selectedPetTabIndex;
         private int _selectedItemPopupIndex;
@@ -120,6 +156,19 @@ namespace HaCreator.MapSimulator.UI
         private int _selectedPetExceptionIndex = -1;
         private bool _collectSortByName;
         private bool _collectRewardClaimed;
+        private LegacyExpandedPanel _legacyExpandedPanel;
+        private LegacyCollectionMode _legacyCollectionMode;
+        private UIObject _legacyPetShowButton;
+        private UIObject _legacyPetHideButton;
+        private UIObject _legacyRideShowButton;
+        private UIObject _legacyRideHideButton;
+        private UIObject _legacyCollectionShowButton;
+        private UIObject _legacyCollectionHideButton;
+        private UIObject _legacyCollectionBookShowButton;
+        private UIObject _legacyCollectionBookHideButton;
+        private UIObject _legacyCollectionSearchButton;
+        private UIObject _legacyExceptionShowButton;
+        private UIObject _legacyExceptionHideButton;
         private MouseState _previousMouseState;
 
         private static readonly Color ValueColor = new Color(45, 45, 45);
@@ -156,6 +205,7 @@ namespace HaCreator.MapSimulator.UI
         public Action FamilyRequested { get; set; }
         public Action PersonalShopRequested { get; set; }
         public Action EntrustedShopRequested { get; set; }
+        public Action BookCollectionRequested { get; set; }
 
         public override CharacterBuild CharacterBuild
         {
@@ -194,14 +244,14 @@ namespace HaCreator.MapSimulator.UI
             }
         }
 
-        public void AddPageLayer(string pageName, IDXObject layer, int offsetX, int offsetY)
+        public void AddPageLayer(string pageName, IDXObject layer, int offsetX, int offsetY, string layerName = null)
         {
             if (layer == null || !TryGetPage(pageName, out UserInfoPage page))
             {
                 return;
             }
 
-            GetOrCreateVisual(page).Layers.Add(new PageLayer(layer, new Point(offsetX, offsetY)));
+            GetOrCreateVisual(page).Layers.Add(new PageLayer(layerName, layer, new Point(offsetX, offsetY)));
         }
 
         public void SetPageIcon(string pageName, IDXObject icon, int offsetX, int offsetY)
@@ -265,7 +315,7 @@ namespace HaCreator.MapSimulator.UI
 
             BindActionButton(_petExceptionButton, "Pet exception list opened.", ToggleExceptionPopup);
             BindActionButton(_collectSortButton, "Collection entries sorted by name.", ToggleCollectSortMode);
-            BindActionButton(_collectClaimButton, "Collection reward is not ready yet.", ClaimCollectReward);
+            BindActionButton(_collectClaimButton, "Collection book opened.", OpenCollectionBook);
             UpdateButtonStates();
         }
 
@@ -371,6 +421,11 @@ namespace HaCreator.MapSimulator.UI
             _collectionSnapshotProvider = snapshotProvider;
         }
 
+        public void SetRankDeltaProvider(Func<RankDeltaSnapshot> rankDeltaProvider)
+        {
+            _rankDeltaProvider = rankDeltaProvider;
+        }
+
         public void SetProductSkillIcon(ItemMakerRecipeFamily family, IDXObject icon)
         {
             if (icon != null)
@@ -384,7 +439,8 @@ namespace HaCreator.MapSimulator.UI
             IDXObject baseMiddle,
             IDXObject baseBottom,
             IDXObject title,
-            IDictionary<string, IDXObject> bodyByTrait)
+            IDictionary<string, IDXObject> bodyByTrait,
+            IDictionary<char, IDXObject> numberGlyphs = null)
         {
             _personalityTooltipVisual = new PersonalityTooltipVisual
             {
@@ -404,6 +460,19 @@ namespace HaCreator.MapSimulator.UI
                 if (entry.Value != null && !string.IsNullOrWhiteSpace(entry.Key))
                 {
                     _personalityTooltipVisual.BodyByTrait[entry.Key] = entry.Value;
+                }
+            }
+
+            if (numberGlyphs == null)
+            {
+                return;
+            }
+
+            foreach (KeyValuePair<char, IDXObject> entry in numberGlyphs)
+            {
+                if (entry.Value != null)
+                {
+                    _personalityTooltipVisual.NumberGlyphs[entry.Key] = entry.Value;
                 }
             }
         }
@@ -553,6 +622,13 @@ namespace HaCreator.MapSimulator.UI
 
             foreach (PageLayer layer in visual.Layers)
             {
+                if (_currentPage == UserInfoPage.Personality &&
+                    string.Equals(layer.Name, "before30level", StringComparison.OrdinalIgnoreCase) &&
+                    (_characterBuild?.Level ?? 0) >= 30)
+                {
+                    continue;
+                }
+
                 DrawLayer(layer.Texture, layer.Offset, sprite, skeletonMeshRenderer, gameTime, drawReflectionInfo);
             }
 
@@ -565,8 +641,9 @@ namespace HaCreator.MapSimulator.UI
             string job = _characterBuild?.JobName;
             string level = _characterBuild != null ? _characterBuild.Level.ToString() : "-";
             string fame = _characterBuild != null ? _characterBuild.Fame.ToString() : "-";
-            string rank = FormatRank(_characterBuild?.WorldRank ?? 0);
-            string jobRank = FormatRank(_characterBuild?.JobRank ?? 0);
+            RankDeltaSnapshot rankSnapshot = GetRankDeltaSnapshot();
+            string rank = FormatRank(_characterBuild?.WorldRank ?? 0, rankSnapshot.PreviousWorldRank);
+            string jobRank = FormatRank(_characterBuild?.JobRank ?? 0, rankSnapshot.PreviousJobRank);
             string guild = _characterBuild?.GuildDisplayText ?? "-";
             string alliance = _characterBuild?.AllianceDisplayText ?? "-";
             string guildAlliance = guild == "-" && alliance == "-"
@@ -960,13 +1037,7 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
-            int value = GetPersonalityTraitValue(traitKey);
-            DrawPlainText(
-                sprite,
-                $"Lv {value}",
-                new Vector2(tooltipPosition.X + 102, tooltipPosition.Y + 16),
-                WarningColor,
-                0.5f);
+            DrawTooltipNumber(sprite, tooltipPosition, GetPersonalityTraitValue(traitKey));
         }
 
         private void DrawItemPopupContents(SpriteBatch sprite, Point popupPosition)
@@ -1139,7 +1210,7 @@ namespace HaCreator.MapSimulator.UI
             {
                 bool showCollectButtons = _currentPage == UserInfoPage.Collect;
                 _collectClaimButton.ButtonVisible = showCollectButtons;
-                _collectClaimButton.SetEnabled(showCollectButtons && CanClaimCollectReward() && !_collectRewardClaimed && !_exceptionPopupOpen);
+                _collectClaimButton.SetEnabled(showCollectButtons && !_exceptionPopupOpen);
             }
 
             if (_exceptionRegisterButton != null)
@@ -1399,6 +1470,18 @@ namespace HaCreator.MapSimulator.UI
                 : "Collection summary sorted by equipped slot order.";
         }
 
+        private void OpenCollectionBook()
+        {
+            if (BookCollectionRequested == null)
+            {
+                _statusMessage = "The collection book owner is not available in this simulator session.";
+                return;
+            }
+
+            BookCollectionRequested.Invoke();
+            _statusMessage = "Detailed collection book opened.";
+        }
+
         private void ClaimCollectReward()
         {
             if (!CanClaimCollectReward())
@@ -1530,6 +1613,11 @@ namespace HaCreator.MapSimulator.UI
 
             if (_currentPage != UserInfoPage.Character)
             {
+                if (_currentPage == UserInfoPage.Collect)
+                {
+                    HandleCollectPageClick(mouseState.Position);
+                }
+
                 return;
             }
 
@@ -1572,6 +1660,14 @@ namespace HaCreator.MapSimulator.UI
                 _selectedItemPopupIndex = i;
                 OpenItemPopupSelection(i);
                 return;
+            }
+        }
+
+        private void HandleCollectPageClick(Point mousePosition)
+        {
+            if (GetCollectBookLaunchBounds().Contains(mousePosition))
+            {
+                OpenCollectionBook();
             }
         }
 
@@ -1651,6 +1747,20 @@ namespace HaCreator.MapSimulator.UI
             return new Rectangle(popupPosition.X + 10, popupPosition.Y + 48 + (index * 18), 136, 16);
         }
 
+        private Rectangle GetCollectBookLaunchBounds()
+        {
+            if (_pageVisuals.TryGetValue(UserInfoPage.Collect, out PageVisual visual) && visual?.Icon != null)
+            {
+                return new Rectangle(
+                    Position.X + visual.IconOffset.X,
+                    Position.Y + visual.IconOffset.Y,
+                    visual.Icon.Width,
+                    visual.Icon.Height);
+            }
+
+            return new Rectangle(Position.X + 20, Position.Y + 24, 40, 40);
+        }
+
         private static string GetItemPopupDescription(int index)
         {
             return index switch
@@ -1674,9 +1784,16 @@ namespace HaCreator.MapSimulator.UI
             return new Point(x, y);
         }
 
-        private static string FormatRank(int rank)
+        private string FormatRank(int rank, int? previousRank)
         {
-            return rank > 0 ? $"#{rank:N0}" : "-";
+            if (rank <= 0)
+            {
+                return "-";
+            }
+
+            string baseText = $"#{rank:N0}";
+            string delta = FormatRankDelta(rank, previousRank);
+            return string.IsNullOrWhiteSpace(delta) ? baseText : $"{baseText} ({delta})";
         }
 
         private string FitText(string text, float maxWidth)
@@ -1703,6 +1820,11 @@ namespace HaCreator.MapSimulator.UI
         private ItemMakerProgressionSnapshot GetCollectionSnapshot()
         {
             return _collectionSnapshotProvider?.Invoke() ?? ItemMakerProgressionSnapshot.Default;
+        }
+
+        private RankDeltaSnapshot GetRankDeltaSnapshot()
+        {
+            return _rankDeltaProvider?.Invoke() ?? default;
         }
 
         private bool CanMovePopupSelection(int delta)
@@ -1751,6 +1873,47 @@ namespace HaCreator.MapSimulator.UI
                 "charm" => _characterBuild?.TraitCharm ?? 0,
                 _ => 0
             };
+        }
+
+        private static string FormatRankDelta(int currentRank, int? previousRank)
+        {
+            if (currentRank <= 0 || !previousRank.HasValue || previousRank.Value <= 0 || previousRank.Value == currentRank)
+            {
+                return null;
+            }
+
+            int delta = Math.Abs(previousRank.Value - currentRank);
+            return previousRank.Value > currentRank ? $"up {delta}" : $"down {delta}";
+        }
+
+        private void DrawTooltipNumber(SpriteBatch sprite, Point tooltipPosition, int value)
+        {
+            if (_personalityTooltipVisual?.NumberGlyphs == null || _personalityTooltipVisual.NumberGlyphs.Count == 0)
+            {
+                DrawPlainText(
+                    sprite,
+                    value.ToString(),
+                    new Vector2(tooltipPosition.X + 110, tooltipPosition.Y + 16),
+                    WarningColor,
+                    0.5f);
+                return;
+            }
+
+            string text = Math.Max(0, value).ToString();
+            int x = tooltipPosition.X + 106;
+            int y = tooltipPosition.Y + 16;
+            foreach (char ch in text)
+            {
+                if (!_personalityTooltipVisual.NumberGlyphs.TryGetValue(ch, out IDXObject glyph) || glyph == null)
+                {
+                    DrawPlainText(sprite, ch.ToString(), new Vector2(x, y - 1), WarningColor, 0.5f);
+                    x += 6;
+                    continue;
+                }
+
+                glyph.DrawBackground(sprite, null, null, x, y, Color.White, false, null);
+                x += glyph.Width + 1;
+            }
         }
 
         private void DrawLayer(

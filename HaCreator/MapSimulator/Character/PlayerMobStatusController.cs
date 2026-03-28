@@ -26,7 +26,7 @@ namespace HaCreator.MapSimulator.Character
 
     internal readonly struct PlayerMobStatusFrameState
     {
-        public static readonly PlayerMobStatusFrameState Default = new(1f, 0f, false, false, false, false, 0, false, 100, 100);
+        public static readonly PlayerMobStatusFrameState Default = new(1f, 0f, false, false, false, false, 0, false, 100, 100, 100);
 
         public PlayerMobStatusFrameState(
             float moveSpeedMultiplier,
@@ -38,7 +38,8 @@ namespace HaCreator.MapSimulator.Character
             int forcedHorizontalDirection,
             bool hpRecoveryReversed,
             int maxHpPercentCap,
-            int maxMpPercentCap)
+            int maxMpPercentCap,
+            int hpRecoveryDamagePercent)
         {
             MoveSpeedMultiplier = moveSpeedMultiplier;
             AdditionalMissChance = additionalMissChance;
@@ -50,6 +51,7 @@ namespace HaCreator.MapSimulator.Character
             HpRecoveryReversed = hpRecoveryReversed;
             MaxHpPercentCap = maxHpPercentCap;
             MaxMpPercentCap = maxMpPercentCap;
+            HpRecoveryDamagePercent = hpRecoveryDamagePercent;
         }
 
         public float MoveSpeedMultiplier { get; }
@@ -62,6 +64,7 @@ namespace HaCreator.MapSimulator.Character
         public bool HpRecoveryReversed { get; }
         public int MaxHpPercentCap { get; }
         public int MaxMpPercentCap { get; }
+        public int HpRecoveryDamagePercent { get; }
     }
 
     internal sealed class PlayerMobStatusController
@@ -131,17 +134,21 @@ namespace HaCreator.MapSimulator.Character
                 }
             }
 
-            bool movementLocked = HasStatus(PlayerMobStatusEffect.Stun) || HasStatus(PlayerMobStatusEffect.Freeze);
+            bool movementLocked = HasStatus(PlayerMobStatusEffect.Stun) ||
+                                  HasStatus(PlayerMobStatusEffect.Freeze) ||
+                                  HasStatus(PlayerMobStatusEffect.Banish);
             bool seduced = HasStatus(PlayerMobStatusEffect.Attract);
             bool banished = HasStatus(PlayerMobStatusEffect.Banish);
             bool jumpBlocked = movementLocked || seduced || HasStatus(PlayerMobStatusEffect.Weakness);
-            bool skillCastBlocked = movementLocked || seduced || banished || HasStatus(PlayerMobStatusEffect.Seal);
+            bool polymorphed = HasStatus(PlayerMobStatusEffect.Polymorph);
+            bool skillCastBlocked = movementLocked || seduced || banished || polymorphed || HasStatus(PlayerMobStatusEffect.Seal);
             float moveSpeedMultiplier = ResolveMoveSpeedMultiplier();
             float additionalMissChance = ResolveAdditionalMissChance();
             bool inputReversed = HasStatus(PlayerMobStatusEffect.ReverseInput);
             bool hpRecoveryReversed = HasStatus(PlayerMobStatusEffect.Undead);
             int forcedHorizontalDirection = ResolveForcedHorizontalDirection();
             int maxVitalPercentCap = ResolveCurseVitalCapPercent();
+            int hpRecoveryDamagePercent = ResolveUndeadRecoveryDamagePercent();
 
             return new PlayerMobStatusFrameState(
                 moveSpeedMultiplier,
@@ -153,7 +160,8 @@ namespace HaCreator.MapSimulator.Character
                 forcedHorizontalDirection,
                 hpRecoveryReversed,
                 maxVitalPercentCap,
-                maxVitalPercentCap);
+                maxVitalPercentCap,
+                hpRecoveryDamagePercent);
         }
 
         public string GetSkillCastRestrictionMessage(int currentTime)
@@ -178,6 +186,11 @@ namespace HaCreator.MapSimulator.Character
             if (HasStatus(PlayerMobStatusEffect.Attract))
             {
                 return "Skills cannot be used while seduced.";
+            }
+
+            if (HasStatus(PlayerMobStatusEffect.Polymorph))
+            {
+                return "Skills cannot be used while polymorphed.";
             }
 
             if (HasStatus(PlayerMobStatusEffect.Banish))
@@ -246,7 +259,7 @@ namespace HaCreator.MapSimulator.Character
                     ApplyStatus(PlayerMobStatusEffect.ReverseInput, runtimeData.DurationMs, currentTime, 1);
                     return true;
                 case 133:
-                    ApplyStatus(PlayerMobStatusEffect.Undead, runtimeData.DurationMs, currentTime, 1);
+                    ApplyStatus(PlayerMobStatusEffect.Undead, runtimeData.DurationMs, currentTime, ResolveValue(runtimeData, 100));
                     return true;
                 case 134:
                     ApplyPeriodicDamageStatus(
@@ -412,6 +425,22 @@ namespace HaCreator.MapSimulator.Character
             }
 
             return percent;
+        }
+
+        private int ResolveUndeadRecoveryDamagePercent()
+        {
+            if (!_entries.TryGetValue(PlayerMobStatusEffect.Undead, out PlayerMobStatusEntry entry))
+            {
+                return 100;
+            }
+
+            int percent = entry.Value;
+            if (percent <= 0)
+            {
+                return 100;
+            }
+
+            return Math.Clamp(percent, 1, 100);
         }
 
         private int ResolveSeduceDirection(float sourceX)

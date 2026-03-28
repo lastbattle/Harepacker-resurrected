@@ -25,7 +25,7 @@ namespace HaCreator.MapSimulator.UI
         bool CanAcceptItem(InventoryType type, InventorySlotData slotData);
         bool TryRemoveSlotAt(InventoryType type, int slotIndex, out InventorySlotData slotData);
         void SortSlots(InventoryType type);
-        void ConfigureAccess(string accountLabel, string currentCharacterName, IEnumerable<string> sharedCharacterNames);
+        void ConfigureAccess(string accountLabel, string accountKey, string currentCharacterName, IEnumerable<string> sharedCharacterNames);
         bool TrySetSecondaryPassword(string password);
         bool TryVerifySecondaryPassword(string password);
         void ClearSecondaryPasswordVerification();

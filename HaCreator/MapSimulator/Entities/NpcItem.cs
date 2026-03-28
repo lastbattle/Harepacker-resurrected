@@ -30,6 +30,9 @@ namespace HaCreator.MapSimulator.Entities
         private readonly AnimationController _animationController;
         private readonly string[] _idleSpeechLines;
         private int _nextIdleSpeechIndex;
+        private bool _hasRenderPositionOverride;
+        private int _renderOverrideX;
+        private int _renderOverrideY;
 
         // Action cycling (based on MapleNecrocer) - only when standing
         private int _actionCycleCounter = 0;
@@ -158,6 +161,23 @@ namespace HaCreator.MapSimulator.Entities
         /// Gets the current animation action
         /// </summary>
         public string CurrentAction => _animationController?.CurrentAction ?? AnimationKeys.Stand;
+
+        public bool HasAction(string action)
+        {
+            return _animationSet != null && _animationSet.HasAnimation(action);
+        }
+
+        public void SetRenderPositionOverride(int x, int y)
+        {
+            _hasRenderPositionOverride = true;
+            _renderOverrideX = x;
+            _renderOverrideY = y;
+        }
+
+        public void ClearRenderPositionOverride()
+        {
+            _hasRenderPositionOverride = false;
+        }
 
         /// <summary>
         /// Update NPC movement and action cycling
@@ -330,7 +350,12 @@ namespace HaCreator.MapSimulator.Entities
             int positionOffsetX = 0;
             int positionOffsetY = 0;
 
-            if (MovementEnabled && MovementInfo != null && MovementInfo.CanMove)
+            if (_hasRenderPositionOverride)
+            {
+                positionOffsetX = _renderOverrideX - _npcInstance.X;
+                positionOffsetY = _renderOverrideY - _npcInstance.Y;
+            }
+            else if (MovementEnabled && MovementInfo != null && MovementInfo.CanMove)
             {
                 positionOffsetX = (int)(MovementInfo.X - _npcInstance.X);
                 positionOffsetY = (int)(MovementInfo.Y - _npcInstance.Y);
@@ -383,14 +408,18 @@ namespace HaCreator.MapSimulator.Entities
         /// </summary>
         public int CurrentX => MovementEnabled && MovementInfo != null && MovementInfo.CanMove
             ? (int)MovementInfo.X
-            : _npcInstance.X;
+            : _hasRenderPositionOverride
+                ? _renderOverrideX
+                : _npcInstance.X;
 
         /// <summary>
         /// Gets the current Y position of the NPC (considering movement)
         /// </summary>
         public int CurrentY => MovementEnabled && MovementInfo != null && MovementInfo.CanMove
             ? (int)MovementInfo.Y
-            : _npcInstance.Y;
+            : _hasRenderPositionOverride
+                ? _renderOverrideY
+                : _npcInstance.Y;
 
         /// <summary>
         /// Gets the cached mirror boundary for this NPC

@@ -30,6 +30,7 @@ namespace HaCreator.MapSimulator.UI
         public UIWindowBase AbilityWindow { get; private set; }
         public QuickSlotUI QuickSlotWindow { get; private set; }
         public SkillMacroUI SkillMacroWindow { get; private set; }
+        internal SoftKeyboardUI SoftKeyboardWindow { get; private set; }
 
         // Window that currently has focus (topmost)
         private UIWindowBase _focusedWindow;
@@ -63,6 +64,7 @@ namespace HaCreator.MapSimulator.UI
         // Last key states for toggle detection
         private KeyboardState _previousKeyState;
         private MouseState _previousMouseState;
+        private SpriteFont _windowFont;
         #endregion
 
         #region Properties
@@ -169,6 +171,15 @@ namespace HaCreator.MapSimulator.UI
         {
             SkillMacroWindow = skillMacroWindow;
             RegisterWindow(skillMacroWindow);
+        }
+
+        internal void RegisterSoftKeyboardWindow(SoftKeyboardUI softKeyboardWindow)
+        {
+            SoftKeyboardWindow = softKeyboardWindow;
+            if (_windowFont != null)
+            {
+                softKeyboardWindow?.SetFont(_windowFont);
+            }
         }
 
         /// <summary>
@@ -367,6 +378,12 @@ namespace HaCreator.MapSimulator.UI
                 }
             }
 
+            SoftKeyboardWindow?.SyncHost(GetActiveSoftKeyboardHost());
+            if (SoftKeyboardWindow?.IsVisible == true)
+            {
+                SoftKeyboardWindow.Update(gameTime);
+            }
+
             return escHandled;
         }
         #endregion
@@ -393,6 +410,13 @@ namespace HaCreator.MapSimulator.UI
             }
 
             DrawDraggedSkillOverlay(sprite);
+
+            if (SoftKeyboardWindow?.IsVisible == true)
+            {
+                SoftKeyboardWindow.Draw(sprite, skeletonMeshRenderer, gameTime,
+                    mapShiftX, mapShiftY, centerX, centerY,
+                    drawReflectionInfo, renderParameters, tickCount);
+            }
         }
         #endregion
 
@@ -406,6 +430,16 @@ namespace HaCreator.MapSimulator.UI
             bool leftJustPressed = mouseState.LeftButton == ButtonState.Pressed && _previousMouseState.LeftButton == ButtonState.Released;
             bool leftJustReleased = mouseState.LeftButton == ButtonState.Released && _previousMouseState.LeftButton == ButtonState.Pressed;
             bool rightJustPressed = mouseState.RightButton == ButtonState.Pressed && _previousMouseState.RightButton == ButtonState.Released;
+
+            if (SoftKeyboardWindow?.IsVisible == true)
+            {
+                bool handled = SoftKeyboardWindow.CheckMouseEvent(shiftCenteredX, shiftCenteredY, mouseState, mouseCursor, renderWidth, renderHeight);
+                if (handled)
+                {
+                    _previousMouseState = mouseState;
+                    return true;
+                }
+            }
 
             if ((GetActiveSkillDragSource() != null || (InventoryWindow as InventoryUI)?.IsDraggingItem == true || IsDraggingEquipment() || QuickSlotWindow?.IsDraggingSlot == true || SkillMacroWindow?.IsDraggingMacroBinding == true ||
                  SkillMacroWindow?.IsDraggingSkillSlot == true || (_draggingWindow != null && mouseState.LeftButton == ButtonState.Pressed))
@@ -869,6 +903,19 @@ namespace HaCreator.MapSimulator.UI
             return null;
         }
 
+        private ISoftKeyboardHost GetActiveSoftKeyboardHost()
+        {
+            for (int i = windows.Count - 1; i >= 0; i--)
+            {
+                if (windows[i] is ISoftKeyboardHost host && host.WantsSoftKeyboard)
+                {
+                    return host;
+                }
+            }
+
+            return null;
+        }
+
         private static bool TryBeginSkillDrag(UIWindowBase window, int mouseX, int mouseY)
         {
             switch (window)
@@ -963,10 +1010,13 @@ namespace HaCreator.MapSimulator.UI
         /// </summary>
         public void SetFonts(SpriteFont font)
         {
+            _windowFont = font;
             foreach (var window in windows)
             {
                 window.SetFont(font);
             }
+
+            SoftKeyboardWindow?.SetFont(font);
         }
 
         /// <summary>

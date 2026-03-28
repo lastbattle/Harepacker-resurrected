@@ -54,6 +54,11 @@ namespace HaCreator.MapSimulator.Fields
         }
         private const int MaxRankEntries = 6;
         private const int MaxScore = 9999;
+        private const int PacketTypeUserEnterField = 179;
+        private const int PacketTypeUserLeaveField = 180;
+        private const int PacketTypeUserMove = 210;
+        private const int PacketTypeSetActivePortableChair = 222;
+        private const int PacketTypeAvatarModified = 223;
         private const int PacketTypeShowResult = 171;
         private const int PacketTypeUserScore = 354;
         private const int IconX = 5;
@@ -80,6 +85,7 @@ namespace HaCreator.MapSimulator.Fields
         private int _scoreRefreshSerial;
         private int _localPlayerJob;
         private SoundManager _soundManager;
+        private Func<LoginAvatarLook, string, CharacterBuild> _remoteBuildFactory;
         private string _resultSoundKey;
         private string _lastResultMessage;
         private string _localPlayerName;
@@ -88,10 +94,14 @@ namespace HaCreator.MapSimulator.Fields
         public IReadOnlyList<AriantArenaScoreEntry> Entries => _entries;
         public int ScoreRefreshSerial => _scoreRefreshSerial;
         public int RemoteParticipantCount => _remoteParticipants.Count;
-        public void Initialize(GraphicsDevice graphicsDevice, SoundManager soundManager = null)
+        public void Initialize(
+            GraphicsDevice graphicsDevice,
+            SoundManager soundManager = null,
+            Func<LoginAvatarLook, string, CharacterBuild> remoteBuildFactory = null)
         {
             _graphicsDevice = graphicsDevice;
             _soundManager = soundManager;
+            _remoteBuildFactory = remoteBuildFactory;
             EnsureAssetsLoaded();
         }
         public void Enable()
@@ -134,6 +144,16 @@ namespace HaCreator.MapSimulator.Fields
                     case PacketTypeShowResult:
                         OnShowResult(currentTimeMs);
                         return true;
+                    case PacketTypeUserEnterField:
+                        return TryApplyRemoteSpawnPacket(payload, out errorMessage);
+                    case PacketTypeUserLeaveField:
+                        return TryApplyRemoteLeavePacket(payload, out errorMessage);
+                    case PacketTypeUserMove:
+                        return TryApplyRemoteMovePacket(payload, out errorMessage);
+                    case PacketTypeSetActivePortableChair:
+                        return TryApplyRemoteChairPacket(payload, out errorMessage);
+                    case PacketTypeAvatarModified:
+                        return TryApplyRemoteAvatarModifiedPacket(payload, out errorMessage);
                     case PacketTypeUserScore:
                         ApplyUserScoreBatch(DecodeUserScorePacket(payload));
                         return true;
@@ -244,15 +264,25 @@ namespace HaCreator.MapSimulator.Fields
             {
                 return;
             }
+
             string normalizedName = build.Name.Trim();
+            if (_remoteParticipants.TryGetValue(normalizedName, out RemoteParticipant existingParticipant)
+                && existingParticipant.CharacterId.HasValue
+                && (!characterId.HasValue || existingParticipant.CharacterId.Value != characterId.Value))
+            {
+                _remoteParticipantNamesById.Remove(existingParticipant.CharacterId.Value);
+            }
+
             if (characterId.HasValue
                 && _remoteParticipantNamesById.TryGetValue(characterId.Value, out string previousName)
                 && !string.Equals(previousName, normalizedName, StringComparison.OrdinalIgnoreCase))
             {
                 _remoteParticipants.Remove(previousName);
             }
+
             _remoteParticipants[normalizedName] = new RemoteParticipant
             {
+                CharacterId = characterId,
                 Name = normalizedName,
                 Build = build,
                 Assembler = new CharacterAssembler(build),
@@ -260,7 +290,13 @@ namespace HaCreator.MapSimulator.Fields
                 FacingRight = facingRight,
                 ActionName = NormalizeRemoteActionName(actionName)
             };
+
+            if (characterId.HasValue)
+            {
+                _remoteParticipantNamesById[characterId.Value] = normalizedName;
+            }
         }
+
         public bool TryMoveRemoteParticipant(string name, Vector2 position, bool? facingRight, string actionName, out string message)
         {
             message = null;
@@ -291,15 +327,52 @@ namespace HaCreator.MapSimulator.Fields
             }
             return true;
         }
+
+        public bool TryMoveRemoteParticipant(int characterId, Vector2 position, bool? facingRight, string actionName, out string message)
+        {
+            message = null;
+            if (!_remoteParticipantNamesById.TryGetValue(characterId, out string participantName))
+            {
+                message = $"Remote Ariant actor id {characterId} does not exist.";
+                return false;
+            }
+
+            return TryMoveRemoteParticipant(participantName, position, facingRight, actionName, out message);
+        }
+
         public bool RemoveRemoteParticipant(string name)
         {
-            return !string.IsNullOrWhiteSpace(name) && _remoteParticipants.Remove(name.Trim());
+            if (string.IsNullOrWhiteSpace(name))
+            {
+                return false;
+            }
+
+            string normalizedName = name.Trim();
+            if (!_remoteParticipants.TryGetValue(normalizedName, out RemoteParticipant participant))
+            {
+                return false;
+            }
+
+            if (participant.CharacterId.HasValue)
+            {
+                _remoteParticipantNamesById.Remove(participant.CharacterId.Value);
+            }
+
+            return _remoteParticipants.Remove(normalizedName);
         }
+
+        public bool RemoveRemoteParticipant(int characterId)
+        {
+            return _remoteParticipantNamesById.TryGetValue(characterId, out string participantName)
+                && RemoveRemoteParticipant(participantName);
+        }
+
         public void ClearRemoteParticipants()
         {
             _remoteParticipants.Clear();
             _remoteParticipantNamesById.Clear();
         }
+
         public bool TryGetRemoteParticipant(string name, out AriantArenaRemoteParticipantSnapshot snapshot)
         {
             if (!string.IsNullOrWhiteSpace(name)
@@ -312,6 +385,17 @@ namespace HaCreator.MapSimulator.Fields
                     participant.ActionName);
                 return true;
             }
+            snapshot = default;
+            return false;
+        }
+
+        public bool TryGetRemoteParticipant(int characterId, out AriantArenaRemoteParticipantSnapshot snapshot)
+        {
+            if (_remoteParticipantNamesById.TryGetValue(characterId, out string participantName))
+            {
+                return TryGetRemoteParticipant(participantName, out snapshot);
+            }
+
             snapshot = default;
             return false;
         }
@@ -647,6 +731,458 @@ namespace HaCreator.MapSimulator.Fields
             }
             return Encoding.Default.GetString(bytes);
         }
+        private bool TryApplyRemoteSpawnPacket(byte[] payload, out string errorMessage)
+        {
+            errorMessage = null;
+            if (!TryDecodeRemoteSpawnPacket(payload, out AriantArenaRemoteSpawnPacket spawn, out errorMessage))
+            {
+                return false;
+            }
+
+            CharacterBuild build = CreateRemoteBuildFromAvatarLook(
+                spawn.Name,
+                spawn.AvatarLook,
+                out errorMessage);
+            if (build == null)
+            {
+                return false;
+            }
+
+            UpsertRemoteParticipant(
+                build,
+                spawn.Position,
+                facingRight: true,
+                ResolveRemoteActionName(spawn.MoveAction, spawn.PortableChairItemId),
+                spawn.CharacterId);
+            return true;
+        }
+
+        private bool TryApplyRemoteLeavePacket(byte[] payload, out string errorMessage)
+        {
+            errorMessage = null;
+            if (!TryDecodeRemoteCharacterIdPacket(payload, PacketTypeUserLeaveField, out int characterId, out errorMessage))
+            {
+                return false;
+            }
+
+            if (!RemoveRemoteParticipant(characterId))
+            {
+                errorMessage = $"Remote Ariant actor id {characterId} does not exist.";
+                return false;
+            }
+
+            return true;
+        }
+
+        private bool TryApplyRemoteMovePacket(byte[] payload, out string errorMessage)
+        {
+            errorMessage = null;
+            if (!TryDecodeRemoteMovePacket(payload, out AriantArenaRemoteMovePacket move, out errorMessage))
+            {
+                return false;
+            }
+
+            return TryMoveRemoteParticipant(
+                move.CharacterId,
+                move.Position,
+                facingRight: null,
+                ResolveRemoteActionName(move.MoveAction, portableChairItemId: 0),
+                out errorMessage);
+        }
+
+        private bool TryApplyRemoteChairPacket(byte[] payload, out string errorMessage)
+        {
+            errorMessage = null;
+            if (!TryDecodeRemoteChairPacket(payload, out AriantArenaRemoteChairPacket chair, out errorMessage))
+            {
+                return false;
+            }
+
+            if (!TryGetRemoteParticipant(chair.CharacterId, out AriantArenaRemoteParticipantSnapshot snapshot))
+            {
+                errorMessage = $"Remote Ariant actor id {chair.CharacterId} does not exist.";
+                return false;
+            }
+
+            string actionName = chair.PortableChairItemId > 0
+                ? CharacterPart.GetActionString(CharacterAction.Sit)
+                : CharacterPart.GetActionString(CharacterAction.Stand1);
+            return TryMoveRemoteParticipant(
+                chair.CharacterId,
+                snapshot.Position,
+                facingRight: null,
+                actionName,
+                out errorMessage);
+        }
+
+        private bool TryApplyRemoteAvatarModifiedPacket(byte[] payload, out string errorMessage)
+        {
+            errorMessage = null;
+            if (!TryDecodeRemoteAvatarModifiedPacket(payload, out AriantArenaRemoteAvatarModifiedPacket avatarUpdate, out errorMessage))
+            {
+                return false;
+            }
+
+            if (avatarUpdate.AvatarLook == null)
+            {
+                return true;
+            }
+
+            if (!_remoteParticipantNamesById.TryGetValue(avatarUpdate.CharacterId, out string participantName)
+                || !_remoteParticipants.TryGetValue(participantName, out RemoteParticipant participant))
+            {
+                errorMessage = $"Remote Ariant actor id {avatarUpdate.CharacterId} does not exist.";
+                return false;
+            }
+
+            CharacterBuild build = CreateRemoteBuildFromAvatarLook(
+                participant.Name,
+                avatarUpdate.AvatarLook,
+                out errorMessage);
+            if (build == null)
+            {
+                return false;
+            }
+
+            UpsertRemoteParticipant(
+                build,
+                participant.Position,
+                participant.FacingRight,
+                participant.ActionName,
+                avatarUpdate.CharacterId);
+            return true;
+        }
+
+        private CharacterBuild CreateRemoteBuildFromAvatarLook(string actorName, LoginAvatarLook avatarLook, out string errorMessage)
+        {
+            errorMessage = null;
+            if (avatarLook == null)
+            {
+                errorMessage = "Remote Ariant AvatarLook payload is missing.";
+                return null;
+            }
+
+            CharacterBuild build = _remoteBuildFactory?.Invoke(avatarLook, actorName);
+            if (build == null)
+            {
+                errorMessage = "Remote Ariant AvatarLook payload could not be converted into a character build.";
+                return null;
+            }
+
+            build.Name = string.IsNullOrWhiteSpace(actorName) ? build.Name : actorName.Trim();
+            return build;
+        }
+
+        private static bool TryDecodeRemoteSpawnPacket(byte[] payload, out AriantArenaRemoteSpawnPacket packet, out string errorMessage)
+        {
+            packet = default;
+            errorMessage = null;
+            if (!TryCreatePacketReader(payload, PacketTypeUserEnterField, out PacketReader reader, out errorMessage))
+            {
+                return false;
+            }
+
+            try
+            {
+                int characterId = reader.ReadInt();
+                reader.ReadByte();
+                string name = reader.ReadMapleString();
+                reader.ReadMapleString();
+                reader.Skip(6);
+                if (!TrySkipEmptyRemoteSecondaryStat(reader, out errorMessage))
+                {
+                    return false;
+                }
+
+                reader.ReadShort();
+                if (!LoginAvatarLookCodec.TryDecode(reader, out LoginAvatarLook avatarLook, out string avatarError))
+                {
+                    errorMessage = avatarError ?? "Remote Ariant AvatarLook payload could not be decoded.";
+                    return false;
+                }
+
+                reader.ReadInt();
+                reader.ReadInt();
+                reader.ReadInt();
+                reader.ReadInt();
+                reader.ReadInt();
+                int portableChairItemId = reader.ReadInt();
+                short x = reader.ReadShort();
+                short y = reader.ReadShort();
+                byte moveAction = reader.ReadByte();
+
+                packet = new AriantArenaRemoteSpawnPacket(
+                    characterId,
+                    string.IsNullOrWhiteSpace(name) ? $"Remote{characterId}" : name.Trim(),
+                    avatarLook,
+                    new Vector2(x, y),
+                    moveAction,
+                    portableChairItemId);
+                return true;
+            }
+            catch (EndOfStreamException)
+            {
+                errorMessage = "Ariant remote spawn packet ended before decoding completed.";
+                return false;
+            }
+        }
+
+        private static bool TryDecodeRemoteCharacterIdPacket(byte[] payload, int packetType, out int characterId, out string errorMessage)
+        {
+            characterId = 0;
+            errorMessage = null;
+            if (!TryCreatePacketReader(payload, packetType, out PacketReader reader, out errorMessage))
+            {
+                return false;
+            }
+
+            try
+            {
+                characterId = reader.ReadInt();
+                return true;
+            }
+            catch (EndOfStreamException)
+            {
+                errorMessage = "Ariant remote actor packet ended before the character id was fully read.";
+                return false;
+            }
+        }
+
+        private static bool TryDecodeRemoteMovePacket(byte[] payload, out AriantArenaRemoteMovePacket packet, out string errorMessage)
+        {
+            packet = default;
+            errorMessage = null;
+            if (!TryCreatePacketReader(payload, PacketTypeUserMove, out PacketReader reader, out errorMessage))
+            {
+                return false;
+            }
+
+            try
+            {
+                int characterId = reader.ReadInt();
+                short x = reader.ReadShort();
+                short y = reader.ReadShort();
+                reader.ReadShort();
+                reader.ReadShort();
+                int movementCount = reader.ReadByte();
+                byte moveAction = 0;
+                Vector2 position = new Vector2(x, y);
+
+                for (int i = 0; i < movementCount; i++)
+                {
+                    byte movementType = reader.ReadByte();
+                    short nextX = x;
+                    short nextY = y;
+
+                    switch (movementType)
+                    {
+                        case 0:
+                        case 5:
+                        case 12:
+                        case 14:
+                        case 35:
+                        case 36:
+                            nextX = reader.ReadShort();
+                            nextY = reader.ReadShort();
+                            reader.Skip(6);
+                            if (movementType == 12)
+                            {
+                                reader.ReadShort();
+                            }
+                            reader.Skip(4);
+                            break;
+
+                        case 1:
+                        case 2:
+                        case 13:
+                        case 16:
+                        case 18:
+                        case 31:
+                        case 32:
+                        case 33:
+                        case 34:
+                            reader.Skip(4);
+                            break;
+
+                        case 3:
+                        case 4:
+                        case 6:
+                        case 7:
+                        case 8:
+                        case 10:
+                            nextX = reader.ReadShort();
+                            nextY = reader.ReadShort();
+                            reader.Skip(2);
+                            break;
+
+                        case 9:
+                            reader.ReadByte();
+                            break;
+
+                        case 11:
+                            reader.Skip(6);
+                            break;
+
+                        case 17:
+                            nextX = reader.ReadShort();
+                            nextY = reader.ReadShort();
+                            reader.Skip(4);
+                            break;
+
+                        case 20:
+                        case 21:
+                        case 22:
+                        case 23:
+                        case 24:
+                        case 25:
+                        case 26:
+                        case 27:
+                        case 28:
+                        case 29:
+                        case 30:
+                            break;
+
+                        default:
+                            errorMessage = $"Unsupported Ariant remote move fragment type: {movementType}";
+                            return false;
+                    }
+
+                    moveAction = reader.ReadByte();
+                    reader.ReadShort();
+                    x = nextX;
+                    y = nextY;
+                    position = new Vector2(nextX, nextY);
+                }
+
+                packet = new AriantArenaRemoteMovePacket(characterId, position, moveAction);
+                return true;
+            }
+            catch (EndOfStreamException)
+            {
+                errorMessage = "Ariant remote move packet ended before decoding completed.";
+                return false;
+            }
+        }
+
+        private static bool TryDecodeRemoteChairPacket(byte[] payload, out AriantArenaRemoteChairPacket packet, out string errorMessage)
+        {
+            packet = default;
+            errorMessage = null;
+            if (!TryCreatePacketReader(payload, PacketTypeSetActivePortableChair, out PacketReader reader, out errorMessage))
+            {
+                return false;
+            }
+
+            try
+            {
+                int characterId = reader.ReadInt();
+                int portableChairItemId = reader.ReadInt();
+                packet = new AriantArenaRemoteChairPacket(characterId, portableChairItemId);
+                return true;
+            }
+            catch (EndOfStreamException)
+            {
+                errorMessage = "Ariant remote chair packet ended before decoding completed.";
+                return false;
+            }
+        }
+
+        private static bool TryDecodeRemoteAvatarModifiedPacket(byte[] payload, out AriantArenaRemoteAvatarModifiedPacket packet, out string errorMessage)
+        {
+            packet = default;
+            errorMessage = null;
+            if (!TryCreatePacketReader(payload, PacketTypeAvatarModified, out PacketReader reader, out errorMessage))
+            {
+                return false;
+            }
+
+            try
+            {
+                int characterId = reader.ReadInt();
+                byte flags = reader.ReadByte();
+                LoginAvatarLook avatarLook = null;
+
+                if ((flags & 0x01) != 0)
+                {
+                    if (!LoginAvatarLookCodec.TryDecode(reader, out avatarLook, out string avatarError))
+                    {
+                        errorMessage = avatarError ?? "Remote Ariant avatar-modified packet could not decode AvatarLook.";
+                        return false;
+                    }
+                }
+
+                if ((flags & 0x02) != 0)
+                {
+                    reader.ReadByte();
+                }
+
+                if ((flags & 0x04) != 0)
+                {
+                    reader.ReadByte();
+                }
+
+                packet = new AriantArenaRemoteAvatarModifiedPacket(characterId, avatarLook);
+                return true;
+            }
+            catch (EndOfStreamException)
+            {
+                errorMessage = "Ariant remote avatar-modified packet ended before decoding completed.";
+                return false;
+            }
+        }
+
+        private static bool TryCreatePacketReader(byte[] payload, int packetType, out PacketReader reader, out string errorMessage)
+        {
+            reader = null;
+            errorMessage = null;
+            if (payload == null || payload.Length == 0)
+            {
+                errorMessage = $"Ariant packet {packetType} payload is missing.";
+                return false;
+            }
+
+            reader = new PacketReader(payload);
+            return true;
+        }
+
+        private static bool TrySkipEmptyRemoteSecondaryStat(PacketReader reader, out string errorMessage)
+        {
+            errorMessage = null;
+            byte[] remoteSecondaryStatMask = reader.ReadBytes(16);
+            if (remoteSecondaryStatMask.Length != 16)
+            {
+                errorMessage = "Ariant remote spawn packet ended before the 16-byte remote secondary-stat mask was fully read.";
+                return false;
+            }
+
+            if (remoteSecondaryStatMask.Any(value => value != 0))
+            {
+                errorMessage = "Ariant remote spawn packets with non-empty remote secondary-stat masks are not decoded yet.";
+                return false;
+            }
+
+            return true;
+        }
+
+        private static string ResolveRemoteActionName(byte moveAction, int portableChairItemId)
+        {
+            if (portableChairItemId > 0)
+            {
+                return CharacterPart.GetActionString(CharacterAction.Sit);
+            }
+
+            return (moveAction >> 1) switch
+            {
+                1 => CharacterPart.GetActionString(CharacterAction.Walk1),
+                4 => CharacterPart.GetActionString(CharacterAction.Alert),
+                5 => CharacterPart.GetActionString(CharacterAction.Jump),
+                6 => CharacterPart.GetActionString(CharacterAction.Sit),
+                17 => CharacterPart.GetActionString(CharacterAction.Ladder),
+                18 => CharacterPart.GetActionString(CharacterAction.Rope),
+                _ => CharacterPart.GetActionString(CharacterAction.Stand1)
+            };
+        }
+
         private int GetNextIconIndex()
         {
             if (MaxRankEntries <= 0)
@@ -721,5 +1257,9 @@ namespace HaCreator.MapSimulator.Fields
     public readonly record struct AriantArenaScoreEntry(string Name, int Score, int IconIndex = -1);
     public readonly record struct AriantArenaScoreUpdate(string UserName, int Score);
     public readonly record struct AriantArenaRemoteParticipantSnapshot(string Name, Vector2 Position, bool FacingRight, string ActionName);
+    internal readonly record struct AriantArenaRemoteSpawnPacket(int CharacterId, string Name, LoginAvatarLook AvatarLook, Vector2 Position, byte MoveAction, int PortableChairItemId);
+    internal readonly record struct AriantArenaRemoteMovePacket(int CharacterId, Vector2 Position, byte MoveAction);
+    internal readonly record struct AriantArenaRemoteChairPacket(int CharacterId, int PortableChairItemId);
+    internal readonly record struct AriantArenaRemoteAvatarModifiedPacket(int CharacterId, LoginAvatarLook AvatarLook);
     #endregion
 }

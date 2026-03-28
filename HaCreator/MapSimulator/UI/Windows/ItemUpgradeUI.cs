@@ -82,27 +82,27 @@ namespace HaCreator.MapSimulator.UI
                 [ThreeStarEnhancementScrollId] = new(ThreeStarEnhancementScrollId, "3 Star Enhancement Scroll", 3, false, false, 0.8f),
                 [FourStarEnhancementScrollId] = new(FourStarEnhancementScrollId, "4 Star Enhancement Scroll", 4, false, false, 0.6f),
                 [FiveStarEnhancementScrollId] = new(FiveStarEnhancementScrollId, "5 Star Enhancement Scroll", 5, false, false, 0.5f),
-                [AdvancedPotentialScrollId] = new(AdvancedPotentialScrollId, "Advanced Potential Scroll", 0, false, false, 0.9f, InventoryType.USE, ConsumableEffectType.PotentialScroll, PotentialTier.Epic, true),
-                [PotentialScrollId] = new(PotentialScrollId, "Potential Scroll", 0, false, false, 0.7f, InventoryType.USE, ConsumableEffectType.PotentialScroll, PotentialTier.Rare, true),
-                [SpecialPotentialScrollIdLegacy] = new(SpecialPotentialScrollIdLegacy, "Special Potential Scroll", 0, false, false, 1.0f, InventoryType.USE, ConsumableEffectType.PotentialScroll, PotentialTier.Epic, false),
-                [SpecialPotentialScrollId] = new(SpecialPotentialScrollId, "Special Potential Scroll", 0, false, false, 1.0f, InventoryType.USE, ConsumableEffectType.PotentialScroll, PotentialTier.Epic, false),
-                [AdvancedPotentialScrollId2] = new(AdvancedPotentialScrollId2, "Advanced Potential Scroll", 0, false, false, 0.9f, InventoryType.USE, ConsumableEffectType.PotentialScroll, PotentialTier.Epic, true),
-                [PotentialScrollId2] = new(PotentialScrollId2, "Potential Scroll", 0, false, false, 0.7f, InventoryType.USE, ConsumableEffectType.PotentialScroll, PotentialTier.Rare, true),
-                [EpicPotentialScrollId] = new(EpicPotentialScrollId, "Epic Potential Scroll 100%", 0, false, false, 1.0f, InventoryType.USE, ConsumableEffectType.PotentialScroll, PotentialTier.Epic, false),
-                [EpicPotentialScrollId2] = new(EpicPotentialScrollId2, "Epic Potential Scroll 80%", 0, false, false, 0.8f, InventoryType.USE, ConsumableEffectType.PotentialScroll, PotentialTier.Epic, true),
-                [EpicPotentialScrollId3] = new(EpicPotentialScrollId3, "Epic Potential Scroll 100%", 0, false, false, 1.0f, InventoryType.USE, ConsumableEffectType.PotentialScroll, PotentialTier.Epic, false),
-                [EpicPotentialScrollId4] = new(EpicPotentialScrollId4, "Epic Potential Scroll 100%", 0, false, false, 1.0f, InventoryType.USE, ConsumableEffectType.PotentialScroll, PotentialTier.Epic, false),
-                [CarvedGoldenSealId] = new(CarvedGoldenSealId, "Carved Golden Seal", 0, false, false, 0.8f, InventoryType.USE, ConsumableEffectType.PotentialStamp, PotentialTier.Rare, false),
-                [CarvedSilverSealId] = new(CarvedSilverSealId, "Carved Silver Seal", 0, false, false, 0.5f, InventoryType.USE, ConsumableEffectType.PotentialStamp, PotentialTier.Rare, false),
-                [UretesTimeLabId] = new(UretesTimeLabId, "Urete's Time Lab", 0, false, false, 1.0f, InventoryType.CASH, ConsumableEffectType.PotentialScroll, PotentialTier.Rare, false),
-                [MiracleCubeId] = new(MiracleCubeId, "Miracle Cube", 0, false, false, 1.0f, InventoryType.CASH, ConsumableEffectType.Cube, PotentialTier.Rare, false, CubeBehavior.Miracle),
-                [PremiumMiracleCubeId] = new(PremiumMiracleCubeId, "Premium Miracle Cube", 0, false, false, 1.0f, InventoryType.CASH, ConsumableEffectType.Cube, PotentialTier.Rare, false, CubeBehavior.Premium),
-                [SuperMiracleCubeId] = new(SuperMiracleCubeId, "Super Miracle Cube", 0, false, false, 1.0f, InventoryType.CASH, ConsumableEffectType.Cube, PotentialTier.Rare, false, CubeBehavior.Super),
-                [RevolutionaryMiracleCubeId] = new(RevolutionaryMiracleCubeId, "Revolutionary Miracle Cube", 0, false, false, 1.0f, InventoryType.CASH, ConsumableEffectType.Cube, PotentialTier.Rare, false, CubeBehavior.Revolutionary),
-                [GoldenMiracleCubeId] = new(GoldenMiracleCubeId, "Golden Miracle Cube", 0, false, false, 1.0f, InventoryType.CASH, ConsumableEffectType.Cube, PotentialTier.Rare, false, CubeBehavior.Golden),
-                [EnlighteningMiracleCubeId] = new(EnlighteningMiracleCubeId, "Enlightening Miracle Cube", 0, false, false, 1.0f, InventoryType.CASH, ConsumableEffectType.Cube, PotentialTier.Rare, false, CubeBehavior.Enlightening),
-                [VegasSpellTenPercentId] = new(VegasSpellTenPercentId, "Vega's Spell(10%)", 0, false, false, 1.0f, InventoryType.CASH, ConsumableEffectType.Modifier, PotentialTier.Rare, false, CubeBehavior.Miracle, ModifierBehavior.VegaTenPercent, 0.3f),
-                [VegasSpellSixtyPercentId] = new(VegasSpellSixtyPercentId, "Vega's Spell(60%)", 0, false, false, 1.0f, InventoryType.CASH, ConsumableEffectType.Modifier, PotentialTier.Rare, false, CubeBehavior.Miracle, ModifierBehavior.VegaSixtyPercent, 0.9f)
+                [AdvancedPotentialScrollId] = new(AdvancedPotentialScrollId, "Advanced Potential Scroll", 0, false, false, 0.9f, InventoryType.USE, ConsumableEffectType.PotentialScroll, PotentialTier.Epic, 1.0f),
+                [PotentialScrollId] = new(PotentialScrollId, "Potential Scroll", 0, false, false, 0.7f, InventoryType.USE, ConsumableEffectType.PotentialScroll, PotentialTier.Rare, 1.0f),
+                [SpecialPotentialScrollIdLegacy] = new(SpecialPotentialScrollIdLegacy, "Special Potential Scroll", 0, false, false, 1.0f, InventoryType.USE, ConsumableEffectType.PotentialScroll, PotentialTier.Epic, 0f),
+                [SpecialPotentialScrollId] = new(SpecialPotentialScrollId, "Special Potential Scroll", 0, false, false, 1.0f, InventoryType.USE, ConsumableEffectType.PotentialScroll, PotentialTier.Epic, 0f),
+                [AdvancedPotentialScrollId2] = new(AdvancedPotentialScrollId2, "Advanced Potential Scroll", 0, false, false, 0.9f, InventoryType.USE, ConsumableEffectType.PotentialScroll, PotentialTier.Epic, 1.0f),
+                [PotentialScrollId2] = new(PotentialScrollId2, "Potential Scroll", 0, false, false, 0.7f, InventoryType.USE, ConsumableEffectType.PotentialScroll, PotentialTier.Rare, 1.0f),
+                [EpicPotentialScrollId] = new(EpicPotentialScrollId, "Epic Potential Scroll 100%", 0, false, false, 1.0f, InventoryType.USE, ConsumableEffectType.PotentialScroll, PotentialTier.Epic, 0f),
+                [EpicPotentialScrollId2] = new(EpicPotentialScrollId2, "Epic Potential Scroll 80%", 0, false, false, 0.8f, InventoryType.USE, ConsumableEffectType.PotentialScroll, PotentialTier.Epic, 0.2f),
+                [EpicPotentialScrollId3] = new(EpicPotentialScrollId3, "Epic Potential Scroll 100%", 0, false, false, 1.0f, InventoryType.USE, ConsumableEffectType.PotentialScroll, PotentialTier.Epic, 0f),
+                [EpicPotentialScrollId4] = new(EpicPotentialScrollId4, "Epic Potential Scroll 100%", 0, false, false, 1.0f, InventoryType.USE, ConsumableEffectType.PotentialScroll, PotentialTier.Epic, 0f),
+                [CarvedGoldenSealId] = new(CarvedGoldenSealId, "Carved Golden Seal", 0, false, false, 0.8f, InventoryType.USE, ConsumableEffectType.PotentialStamp, PotentialTier.Rare, 0f),
+                [CarvedSilverSealId] = new(CarvedSilverSealId, "Carved Silver Seal", 0, false, false, 0.5f, InventoryType.USE, ConsumableEffectType.PotentialStamp, PotentialTier.Rare, 0f),
+                [UretesTimeLabId] = new(UretesTimeLabId, "Urete's Time Lab", 0, false, false, 1.0f, InventoryType.CASH, ConsumableEffectType.PotentialScroll, PotentialTier.Rare, 0f),
+                [MiracleCubeId] = new(MiracleCubeId, "Miracle Cube", 0, false, false, 1.0f, InventoryType.CASH, ConsumableEffectType.Cube, PotentialTier.Rare, 0f, CubeBehavior.Miracle),
+                [PremiumMiracleCubeId] = new(PremiumMiracleCubeId, "Premium Miracle Cube", 0, false, false, 1.0f, InventoryType.CASH, ConsumableEffectType.Cube, PotentialTier.Rare, 0f, CubeBehavior.Premium),
+                [SuperMiracleCubeId] = new(SuperMiracleCubeId, "Super Miracle Cube", 0, false, false, 1.0f, InventoryType.CASH, ConsumableEffectType.Cube, PotentialTier.Rare, 0f, CubeBehavior.Super),
+                [RevolutionaryMiracleCubeId] = new(RevolutionaryMiracleCubeId, "Revolutionary Miracle Cube", 0, false, false, 1.0f, InventoryType.CASH, ConsumableEffectType.Cube, PotentialTier.Rare, 0f, CubeBehavior.Revolutionary, ModifierBehavior.None, 0f, SuperMiracleCubeFragmentId),
+                [GoldenMiracleCubeId] = new(GoldenMiracleCubeId, "Golden Miracle Cube", 0, false, false, 1.0f, InventoryType.CASH, ConsumableEffectType.Cube, PotentialTier.Rare, 0f, CubeBehavior.Golden, ModifierBehavior.None, 0f, MiracleCubeFragmentId),
+                [EnlighteningMiracleCubeId] = new(EnlighteningMiracleCubeId, "Enlightening Miracle Cube", 0, false, false, 1.0f, InventoryType.CASH, ConsumableEffectType.Cube, PotentialTier.Rare, 0f, CubeBehavior.Enlightening),
+                [VegasSpellTenPercentId] = new(VegasSpellTenPercentId, "Vega's Spell(10%)", 0, false, false, 1.0f, InventoryType.CASH, ConsumableEffectType.Modifier, PotentialTier.Rare, 0f, CubeBehavior.Miracle, ModifierBehavior.VegaTenPercent, 0.3f),
+                [VegasSpellSixtyPercentId] = new(VegasSpellSixtyPercentId, "Vega's Spell(60%)", 0, false, false, 1.0f, InventoryType.CASH, ConsumableEffectType.Modifier, PotentialTier.Rare, 0f, CubeBehavior.Miracle, ModifierBehavior.VegaSixtyPercent, 0.9f)
             };
 
         private Texture2D _backgroundOverlay;
@@ -677,7 +677,10 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
-            _statusMessage = $"{ResolveItemName(selectedPart)} failed to gain potential with {consumable.Name}.";
+            _statusMessage = consumable.Definition.DestroyChanceOnFailure > 0f &&
+                             consumable.Definition.DestroyChanceOnFailure < 1.0f
+                ? $"{ResolveItemName(selectedPart)} failed to gain potential with {consumable.Name}, but it survived."
+                : $"{ResolveItemName(selectedPart)} failed to gain potential with {consumable.Name}.";
         }
 
         private void ApplyPotentialStamp(CharacterPart selectedPart, UpgradeState state, EnhancementConsumable consumable, bool success)
@@ -1079,7 +1082,13 @@ namespace HaCreator.MapSimulator.UI
 
         private bool ResolveDestroyOnFailure(EnhancementConsumable consumable)
         {
-            return consumable?.Definition.DestroysOnFailure ?? false;
+            if (consumable == null)
+            {
+                return false;
+            }
+
+            float destroyChance = MathHelper.Clamp(consumable.Definition.DestroyChanceOnFailure, 0f, 1.0f);
+            return destroyChance > 0f && _random.NextDouble() < destroyChance;
         }
 
         private int GetConsumableCount(int itemId)
@@ -1331,12 +1340,7 @@ namespace HaCreator.MapSimulator.UI
                 return 0;
             }
 
-            return consumable.CubeBehavior switch
-            {
-                CubeBehavior.Golden => MiracleCubeFragmentId,
-                CubeBehavior.Revolutionary => SuperMiracleCubeFragmentId,
-                _ => 0
-            };
+            return consumable.Definition.RewardItemId;
         }
 
         private PotentialTier MaybeUpgradePotentialTier(PotentialTier currentTier, CubeBehavior behavior)
@@ -1503,10 +1507,11 @@ namespace HaCreator.MapSimulator.UI
                 InventoryType inventoryType = InventoryType.USE,
                 ConsumableEffectType effectType = ConsumableEffectType.Enhancement,
                 PotentialTier potentialTierOnSuccess = PotentialTier.Rare,
-                bool destroysOnFailure = true,
+                float destroyChanceOnFailure = 1.0f,
                 CubeBehavior cubeBehavior = CubeBehavior.Miracle,
                 ModifierBehavior modifierBehavior = ModifierBehavior.None,
-                float modifiedSuccessRate = 0f)
+                float modifiedSuccessRate = 0f,
+                int rewardItemId = 0)
             {
                 ItemId = itemId;
                 Name = name;
@@ -1517,10 +1522,11 @@ namespace HaCreator.MapSimulator.UI
                 InventoryType = inventoryType;
                 EffectType = effectType;
                 PotentialTierOnSuccess = potentialTierOnSuccess;
-                DestroysOnFailure = destroysOnFailure;
+                DestroyChanceOnFailure = destroyChanceOnFailure;
                 CubeBehavior = cubeBehavior;
                 ModifierBehavior = modifierBehavior;
                 ModifiedSuccessRate = modifiedSuccessRate;
+                RewardItemId = rewardItemId;
             }
 
             public int ItemId { get; }
@@ -1532,10 +1538,11 @@ namespace HaCreator.MapSimulator.UI
             public InventoryType InventoryType { get; }
             public ConsumableEffectType EffectType { get; }
             public PotentialTier PotentialTierOnSuccess { get; }
-            public bool DestroysOnFailure { get; }
+            public float DestroyChanceOnFailure { get; }
             public CubeBehavior CubeBehavior { get; }
             public ModifierBehavior ModifierBehavior { get; }
             public float ModifiedSuccessRate { get; }
+            public int RewardItemId { get; }
         }
 
         private sealed class EnhancementConsumable

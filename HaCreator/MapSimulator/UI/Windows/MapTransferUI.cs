@@ -9,7 +9,7 @@ using System.Collections.Generic;
 
 namespace HaCreator.MapSimulator.UI
 {
-    public sealed class MapTransferUI : UIWindowBase
+    public sealed class MapTransferUI : UIWindowBase, ISoftKeyboardHost
     {
         public sealed class DestinationEntry
         {
@@ -105,6 +105,15 @@ namespace HaCreator.MapSimulator.UI
         public override bool CapturesKeyboardInput => IsVisible && _editTargetFocused;
         public int MaxSavedDestinations => _maxSavedDestinations;
         public int SavedDestinationCount => _destinations.FindAll(entry => entry.IsSavedSlot && entry.MapId > 0).Count;
+        bool ISoftKeyboardHost.WantsSoftKeyboard => IsVisible && _editTargetFocused;
+        SoftKeyboardConstraintProfile ISoftKeyboardHost.SoftKeyboardConstraintProfile => SoftKeyboardConstraintProfile.NumericOnly;
+        SoftKeyboardInputMode ISoftKeyboardHost.SoftKeyboardInputMode
+        {
+            get => SoftKeyboardInputMode.Numeric;
+            set { }
+        }
+        int ISoftKeyboardHost.SoftKeyboardTextLength => _manualTargetText?.Length ?? 0;
+        int ISoftKeyboardHost.SoftKeyboardMaxLength => EditTargetMaxLength;
 
         public Action<DestinationEntry> RegisterCurrentMapRequested { get; set; }
         public Action<DestinationEntry> DeleteDestinationRequested { get; set; }
@@ -193,9 +202,14 @@ namespace HaCreator.MapSimulator.UI
             if (_confirmationVisible)
             {
                 KeyboardState keyboardState = Keyboard.GetState();
+                if (WasPressed(keyboardState, Keys.Enter))
+                {
+                    ConfirmPendingRequest();
+                }
+
                 if (WasPressed(keyboardState, Keys.Escape))
                 {
-                    CancelMoveRequest();
+                    CancelPendingRequest();
                 }
 
                 _previousKeyboardState = keyboardState;
@@ -291,7 +305,7 @@ namespace HaCreator.MapSimulator.UI
             if (registerButton != null)
             {
                 AddButton(registerButton);
-                registerButton.ButtonClickReleased += _ => RegisterCurrentMapRequested?.Invoke(GetSelectedEntry());
+                registerButton.ButtonClickReleased += _ => RequestRegisterConfirmation(GetSelectedEntry());
             }
 
             if (deleteButton != null)
@@ -302,7 +316,7 @@ namespace HaCreator.MapSimulator.UI
                     DestinationEntry entry = GetSelectedEntry();
                     if (entry != null && entry.CanDelete)
                     {
-                        DeleteDestinationRequested?.Invoke(entry);
+                        RequestDeleteConfirmation(entry);
                     }
                 };
             }
@@ -345,7 +359,7 @@ namespace HaCreator.MapSimulator.UI
                 AddButton(_confirmationOkButton);
                 _confirmationButtons.Add(_confirmationOkButton);
                 _confirmationOkButton.SetVisible(false);
-                _confirmationOkButton.ButtonClickReleased += _ => ConfirmMoveRequest();
+                _confirmationOkButton.ButtonClickReleased += _ => ConfirmPendingRequest();
             }
 
             if (_confirmationCancelButton != null)
@@ -353,7 +367,7 @@ namespace HaCreator.MapSimulator.UI
                 AddButton(_confirmationCancelButton);
                 _confirmationButtons.Add(_confirmationCancelButton);
                 _confirmationCancelButton.SetVisible(false);
-                _confirmationCancelButton.ButtonClickReleased += _ => CancelMoveRequest();
+                _confirmationCancelButton.ButtonClickReleased += _ => CancelPendingRequest();
             }
         }
 
@@ -622,6 +636,37 @@ namespace HaCreator.MapSimulator.UI
             return int.TryParse(_manualTargetText, out targetMapId) && targetMapId > 0;
         }
 
+        private void RequestRegisterConfirmation(DestinationEntry selectedEntry)
+        {
+            string targetLabel = ResolveRegisterTargetLabel(selectedEntry);
+            if (string.IsNullOrWhiteSpace(targetLabel))
+            {
+                targetLabel = "this destination";
+            }
+
+            RequestConfirmation(
+                $"Register {targetLabel}?",
+                () => RegisterCurrentMapRequested?.Invoke(selectedEntry));
+        }
+
+        private void RequestDeleteConfirmation(DestinationEntry entry)
+        {
+            if (entry == null || !entry.CanDelete)
+            {
+                return;
+            }
+
+            string targetLabel = TrimToWidth(entry.DisplayName, 150f);
+            if (string.IsNullOrWhiteSpace(targetLabel))
+            {
+                targetLabel = entry.MapId > 0 ? entry.MapId.ToString() : $"saved slot {entry.SavedSlotIndex + 1}";
+            }
+
+            RequestConfirmation(
+                $"Delete {targetLabel}?",
+                () => DeleteDestinationRequested?.Invoke(entry));
+        }
+
         private void RequestMoveConfirmation(DestinationEntry entry, int? manualTargetMapId)
         {
             string targetLabel;
@@ -642,13 +687,23 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
+            RequestConfirmation($"Move to {targetLabel}?", confirmationAction);
+        }
+
+        private void RequestConfirmation(string message, Action confirmationAction)
+        {
+            if (confirmationAction == null)
+            {
+                return;
+            }
+
             if (_confirmationTexture == null || _confirmationOkButton == null || _confirmationCancelButton == null)
             {
                 confirmationAction.Invoke();
                 return;
             }
 
-            _confirmationMessage = $"Move to {targetLabel}?";
+            _confirmationMessage = message ?? string.Empty;
             _pendingConfirmationAction = confirmationAction;
             _confirmationVisible = true;
             _editTargetFocused = false;
@@ -656,20 +711,43 @@ namespace HaCreator.MapSimulator.UI
             UpdateButtonStates();
         }
 
-        private void ConfirmMoveRequest()
+        private void ConfirmPendingRequest()
         {
             Action action = _pendingConfirmationAction;
-            CancelMoveRequest();
+            CancelPendingRequest();
             action?.Invoke();
         }
 
-        private void CancelMoveRequest()
+        private void CancelPendingRequest()
         {
             _confirmationVisible = false;
             _confirmationMessage = string.Empty;
             _pendingConfirmationAction = null;
             UpdateConfirmationLayout();
             UpdateButtonStates();
+        }
+
+        private string ResolveRegisterTargetLabel(DestinationEntry selectedEntry)
+        {
+            if (_selectedIndex < 0 && TryParseManualTargetMapId(out int manualTargetMapId))
+            {
+                return manualTargetMapId.ToString();
+            }
+
+            DestinationEntry registerTarget = selectedEntry?.IsSavedSlot == true
+                ? null
+                : selectedEntry;
+            if (registerTarget != null)
+            {
+                if (registerTarget.MapId > 0)
+                {
+                    return TrimToWidth(registerTarget.DisplayName, 150f);
+                }
+            }
+
+            return string.IsNullOrWhiteSpace(_currentMapName)
+                ? "the current field"
+                : TrimToWidth(_currentMapName, 150f);
         }
 
         private void UpdateConfirmationLayout()
@@ -765,6 +843,40 @@ namespace HaCreator.MapSimulator.UI
                 Position.Y + EditTargetY,
                 EditTargetWidth,
                 EditTargetHeight);
+        }
+
+        Rectangle ISoftKeyboardHost.GetSoftKeyboardAnchorBounds() => GetEditTargetBounds();
+
+        bool ISoftKeyboardHost.TryInsertSoftKeyboardCharacter(char character, out string errorMessage)
+        {
+            errorMessage = string.Empty;
+            if (!char.IsDigit(character) || _manualTargetText.Length >= EditTargetMaxLength)
+            {
+                return false;
+            }
+
+            _manualTargetText += character;
+            UpdateButtonStates();
+            return true;
+        }
+
+        bool ISoftKeyboardHost.TryBackspaceSoftKeyboard(out string errorMessage)
+        {
+            errorMessage = string.Empty;
+            if (string.IsNullOrEmpty(_manualTargetText))
+            {
+                return false;
+            }
+
+            _manualTargetText = _manualTargetText[..^1];
+            UpdateButtonStates();
+            return true;
+        }
+
+        void ISoftKeyboardHost.OnSoftKeyboardClosed()
+        {
+            _editTargetFocused = false;
+            UpdateButtonStates();
         }
 
         private bool WasPressed(KeyboardState keyboardState, Keys key)

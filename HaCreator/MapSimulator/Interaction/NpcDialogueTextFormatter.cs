@@ -1,3 +1,5 @@
+using System;
+using System.Collections.Generic;
 using System.Text;
 using System.Text.RegularExpressions;
 using MapleLib.WzLib;
@@ -5,27 +7,35 @@ using MapleLib.WzLib.WzProperties;
 
 namespace HaCreator.MapSimulator.Interaction
 {
+    internal sealed class NpcDialogueFormattingContext
+    {
+        public Func<int, string> ResolveItemCountText { get; init; }
+        public Func<int, string> ResolveQuestStateText { get; init; }
+    }
+
     internal static class NpcDialogueTextFormatter
     {
         private static readonly Regex InlineSelectionRegex = new(@"#L(?<id>-?\d+)#(?<text>.*?)#l", RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.Singleline);
         private static readonly Regex SelectionRegex = new(@"#L\d+#", RegexOptions.Compiled);
-        private static readonly Regex NpcRegex = new(@"#p(\d+)#", RegexOptions.Compiled);
-        private static readonly Regex ItemNameRegex = new(@"#t(\d+)#", RegexOptions.Compiled);
-        private static readonly Regex MobNameRegex = new(@"#o(\d+)#", RegexOptions.Compiled | RegexOptions.IgnoreCase);
-        private static readonly Regex QuestNameRegex = new(@"#q(\d+)#", RegexOptions.Compiled);
-        private static readonly Regex QuestReferenceNameRegex = new(@"#y(\d+)#", RegexOptions.Compiled | RegexOptions.IgnoreCase);
-        private static readonly Regex SkillNameRegex = new(@"#s(\d+)#", RegexOptions.Compiled);
-        private static readonly Regex MapNameRegex = new(@"#m(\d+)#", RegexOptions.Compiled);
-        private static readonly Regex SelectedMobRegex = new(@"#M(\d+)#", RegexOptions.Compiled);
-        private static readonly Regex QuestAmountRegex = new(@"#a(\d+)#", RegexOptions.Compiled | RegexOptions.IgnoreCase);
-        private static readonly Regex QuestValueRegex = new(@"#x(\d+)#", RegexOptions.Compiled | RegexOptions.IgnoreCase);
-        private static readonly Regex ItemNameAliasRegex = new(@"#z(\d+)#", RegexOptions.Compiled);
-        private static readonly Regex ItemIconRegex = new(@"#(?:i|v)\d+#", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+        private static readonly Regex ItemCountRegex = new(@"#c(\d+):?#", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+        private static readonly Regex NpcRegex = new(@"#p(\d+):?#", RegexOptions.Compiled);
+        private static readonly Regex ItemNameRegex = new(@"#t(\d+):?#", RegexOptions.Compiled);
+        private static readonly Regex MobNameRegex = new(@"#o(\d+):?#", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+        private static readonly Regex QuestNameRegex = new(@"#q(\d+):?#", RegexOptions.Compiled);
+        private static readonly Regex QuestReferenceNameRegex = new(@"#y(\d+):?#", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+        private static readonly Regex QuestStateRegex = new(@"#u(\d+):?#", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+        private static readonly Regex SkillNameRegex = new(@"#s(\d+):?#", RegexOptions.Compiled);
+        private static readonly Regex MapNameRegex = new(@"#m(\d+):?#", RegexOptions.Compiled);
+        private static readonly Regex SelectedMobRegex = new(@"#M(\d+):?#", RegexOptions.Compiled);
+        private static readonly Regex QuestAmountRegex = new(@"#a(\d+):?#", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+        private static readonly Regex QuestValueRegex = new(@"#x(\d+):?#", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+        private static readonly Regex ItemNameAliasRegex = new(@"#z(\d+):?#", RegexOptions.Compiled);
+        private static readonly Regex ItemIconRegex = new(@"#(?:i|v)\d+:?#", RegexOptions.Compiled | RegexOptions.IgnoreCase);
         private static readonly Regex PlayerNameRegex = new(@"#h\d*#", RegexOptions.Compiled);
         private static readonly Regex StyleTagRegex = new(@"#(?:[bkrgdenmc])", RegexOptions.Compiled | RegexOptions.IgnoreCase);
         private static readonly Regex ClientPromptTagRegex = new(@"#(?:E|I)", RegexOptions.Compiled);
 
-        public static string Format(string text)
+        public static string Format(string text, NpcDialogueFormattingContext context = null)
         {
             if (string.IsNullOrWhiteSpace(text))
             {
@@ -39,12 +49,14 @@ namespace HaCreator.MapSimulator.Interaction
             formatted = SelectionRegex.Replace(formatted, string.Empty);
             formatted = PlayerNameRegex.Replace(formatted, "You");
             formatted = ItemIconRegex.Replace(formatted, string.Empty);
+            formatted = ItemCountRegex.Replace(formatted, match => ResolveItemCountText(match.Groups[1].Value, context));
             formatted = NpcRegex.Replace(formatted, static match => ResolveNpcName(match.Groups[1].Value));
             formatted = ItemNameRegex.Replace(formatted, static match => ResolveItemName(match.Groups[1].Value));
             formatted = MobNameRegex.Replace(formatted, static match => ResolveMobName(match.Groups[1].Value));
             formatted = ItemNameAliasRegex.Replace(formatted, static match => ResolveItemName(match.Groups[1].Value));
             formatted = QuestNameRegex.Replace(formatted, static match => ResolveQuestName(match.Groups[1].Value));
             formatted = QuestReferenceNameRegex.Replace(formatted, static match => ResolveQuestName(match.Groups[1].Value));
+            formatted = QuestStateRegex.Replace(formatted, match => ResolveQuestStateText(match.Groups[1].Value, context));
             formatted = SkillNameRegex.Replace(formatted, static match => ResolveSkillName(match.Groups[1].Value));
             formatted = MapNameRegex.Replace(formatted, static match => ResolveMapName(match.Groups[1].Value));
             formatted = SelectedMobRegex.Replace(formatted, static match => ResolveSelectedMobText(match.Groups[1].Value));
@@ -82,6 +94,39 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             return builder.ToString().Trim();
+        }
+
+        public static IReadOnlyList<NpcInteractionPage> FormatPages(IReadOnlyList<NpcInteractionPage> pages, NpcDialogueFormattingContext context)
+        {
+            if (pages == null || pages.Count == 0)
+            {
+                return Array.Empty<NpcInteractionPage>();
+            }
+
+            var formattedPages = new NpcInteractionPage[pages.Count];
+            int count = 0;
+            for (int i = 0; i < pages.Count; i++)
+            {
+                NpcInteractionPage formattedPage = FormatPage(pages[i], context);
+                if (formattedPage != null)
+                {
+                    formattedPages[count++] = formattedPage;
+                }
+            }
+
+            if (count == 0)
+            {
+                return Array.Empty<NpcInteractionPage>();
+            }
+
+            if (count == formattedPages.Length)
+            {
+                return formattedPages;
+            }
+
+            var resizedPages = new NpcInteractionPage[count];
+            Array.Copy(formattedPages, resizedPages, count);
+            return resizedPages;
         }
 
         public static NpcInlineSelection[] ExtractInlineSelections(string text)
@@ -147,6 +192,68 @@ namespace HaCreator.MapSimulator.Interaction
             }
         }
 
+        private static NpcInteractionPage FormatPage(NpcInteractionPage page, NpcDialogueFormattingContext context)
+        {
+            if (page == null)
+            {
+                return null;
+            }
+
+            string rawText = !string.IsNullOrWhiteSpace(page.RawText) ? page.RawText : page.Text;
+            string text = Format(rawText, context);
+            IReadOnlyList<NpcInteractionChoice> choices = FormatChoices(page.Choices, context);
+            if (string.IsNullOrWhiteSpace(text) && choices.Count == 0)
+            {
+                return null;
+            }
+
+            return new NpcInteractionPage
+            {
+                RawText = rawText ?? string.Empty,
+                Text = text,
+                Choices = choices
+            };
+        }
+
+        private static IReadOnlyList<NpcInteractionChoice> FormatChoices(IReadOnlyList<NpcInteractionChoice> choices, NpcDialogueFormattingContext context)
+        {
+            if (choices == null || choices.Count == 0)
+            {
+                return Array.Empty<NpcInteractionChoice>();
+            }
+
+            var formattedChoices = new NpcInteractionChoice[choices.Count];
+            int count = 0;
+            for (int i = 0; i < choices.Count; i++)
+            {
+                NpcInteractionChoice choice = choices[i];
+                if (choice == null || string.IsNullOrWhiteSpace(choice.Label))
+                {
+                    continue;
+                }
+
+                formattedChoices[count++] = new NpcInteractionChoice
+                {
+                    Label = choice.Label,
+                    Pages = FormatPages(choice.Pages, context)
+                };
+            }
+
+            if (count == 0)
+            {
+                return Array.Empty<NpcInteractionChoice>();
+            }
+
+            if (count == formattedChoices.Length)
+            {
+                return formattedChoices;
+            }
+
+            var resizedChoices = new NpcInteractionChoice[count];
+            Array.Copy(formattedChoices, resizedChoices, count);
+            return resizedChoices;
+        }
+
         private static string ResolveNpcName(string npcIdText)
         {
             return Program.InfoManager?.NpcNameCache != null &&
@@ -206,6 +313,38 @@ namespace HaCreator.MapSimulator.Interaction
                    !string.IsNullOrWhiteSpace(mobName)
                 ? mobName
                 : $"Mob #{mobIdText}";
+        }
+
+        private static string ResolveItemCountText(string itemIdText, NpcDialogueFormattingContext context)
+        {
+            if (context?.ResolveItemCountText != null &&
+                int.TryParse(itemIdText, out int itemId) &&
+                itemId > 0)
+            {
+                string resolvedText = context.ResolveItemCountText(itemId);
+                if (!string.IsNullOrWhiteSpace(resolvedText))
+                {
+                    return resolvedText;
+                }
+            }
+
+            return "0";
+        }
+
+        private static string ResolveQuestStateText(string questIdText, NpcDialogueFormattingContext context)
+        {
+            if (context?.ResolveQuestStateText != null &&
+                int.TryParse(questIdText, out int questId) &&
+                questId > 0)
+            {
+                string resolvedText = context.ResolveQuestStateText(questId);
+                if (!string.IsNullOrWhiteSpace(resolvedText))
+                {
+                    return resolvedText;
+                }
+            }
+
+            return "Not started";
         }
 
         private static string ResolveSelectedMobText(string questIdText)

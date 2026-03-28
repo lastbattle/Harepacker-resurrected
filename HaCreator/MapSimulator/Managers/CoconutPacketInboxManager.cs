@@ -7,6 +7,7 @@ using System.Net.Sockets;
 using System.Threading;
 using System.Threading.Tasks;
 using HaCreator.MapSimulator.Fields;
+using MapleLib.PacketLib;
 
 namespace HaCreator.MapSimulator.Managers
 {
@@ -34,6 +35,7 @@ namespace HaCreator.MapSimulator.Managers
     /// </summary>
     public sealed class CoconutPacketInboxManager : IDisposable
     {
+        private const int OutboundNormalAttackOpcode = 257;
         public const int DefaultPort = 18486;
         private const int PacketTypeHit = 342;
         private const int PacketTypeScore = 343;
@@ -150,6 +152,7 @@ namespace HaCreator.MapSimulator.Managers
             }
 
             string line = $"attack {request.TargetId} {request.DelayMs} {request.RequestedAtTick}";
+            string rawPacketLine = $"packetoutraw {BuildOutboundAttackPacketHex(request)}";
             int sent = 0;
 
             foreach (ConnectedClient client in clients)
@@ -159,6 +162,7 @@ namespace HaCreator.MapSimulator.Managers
                     lock (client.WriteLock)
                     {
                         client.Writer.WriteLine(line);
+                        client.Writer.WriteLine(rawPacketLine);
                     }
 
                     sent++;
@@ -177,7 +181,7 @@ namespace HaCreator.MapSimulator.Managers
             }
 
             SentCount++;
-            status = $"Sent Coconut attack request for target {request.TargetId} to {sent} transport client(s).";
+            status = $"Sent Coconut attack request for target {request.TargetId} to {sent} transport client(s), including packetoutraw opcode {OutboundNormalAttackOpcode}.";
             LastStatus = status;
             return true;
         }
@@ -201,31 +205,56 @@ namespace HaCreator.MapSimulator.Managers
 
         public static bool TryParsePacketLine(string text, out int packetType, out byte[] payload, out string error)
         {
+            bool parsed = TryParsePacketLine(text, out packetType, out payload, out _, out string message);
+            error = parsed ? null : message;
+            return parsed;
+        }
+
+        public static bool TryParsePacketLine(string text, out int packetType, out byte[] payload, out bool ignored, out string message)
+        {
             packetType = 0;
             payload = Array.Empty<byte>();
-            error = null;
+            ignored = false;
+            message = null;
 
             if (string.IsNullOrWhiteSpace(text))
             {
-                error = "Coconut inbox line is empty.";
+                message = "Coconut inbox line is empty.";
                 return false;
             }
 
             string trimmed = text.Trim();
+            if (TryParseRawPacket(trimmed, out packetType, out payload, out ignored, out message))
+            {
+                return true;
+            }
+
+            if (ignored)
+            {
+                return false;
+            }
+
             int separatorIndex = trimmed.IndexOfAny(new[] { ' ', '\t' });
             string typeToken = separatorIndex >= 0 ? trimmed[..separatorIndex] : trimmed;
             string payloadToken = separatorIndex >= 0 ? trimmed[(separatorIndex + 1)..].Trim() : string.Empty;
 
             if (!TryParsePacketType(typeToken, out packetType))
             {
-                error = $"Unsupported Coconut packet type: {typeToken}";
+                message = $"Unsupported Coconut packet type: {typeToken}";
+                return false;
+            }
+
+            if (packetType == OutboundNormalAttackOpcode)
+            {
+                ignored = true;
+                message = $"Ignored outbound Coconut attack packet opcode: {OutboundNormalAttackOpcode}.";
                 return false;
             }
 
             string compactHex = RemoveWhitespace(payloadToken);
             if (string.IsNullOrWhiteSpace(compactHex))
             {
-                error = "Coconut packet requires a hex payload.";
+                message = "Coconut packet requires a hex payload.";
                 return false;
             }
 
@@ -241,9 +270,66 @@ namespace HaCreator.MapSimulator.Managers
             }
             catch (FormatException)
             {
-                error = $"Invalid Coconut packet hex payload: {payloadToken}";
+                message = $"Invalid Coconut packet hex payload: {payloadToken}";
                 return false;
             }
+        }
+
+        private static bool TryParseRawPacket(string text, out int packetType, out byte[] payload, out bool ignored, out string error)
+        {
+            packetType = 0;
+            payload = Array.Empty<byte>();
+            ignored = false;
+            error = null;
+
+            string[] tokens = text.Split((char[])null, StringSplitOptions.RemoveEmptyEntries);
+            if (tokens.Length == 0 || !string.Equals(tokens[0], "packetraw", StringComparison.OrdinalIgnoreCase))
+            {
+                return false;
+            }
+
+            if (!TryParseHexPayload(tokens, 1, out byte[] rawPacket))
+            {
+                error = "Coconut raw packet requires a decrypted packet hex payload.";
+                return false;
+            }
+
+            if (rawPacket.Length < sizeof(short))
+            {
+                error = "Coconut raw packet must include a 2-byte opcode.";
+                return false;
+            }
+
+            try
+            {
+                PacketReader reader = new PacketReader(rawPacket);
+                packetType = reader.ReadShort();
+                payload = reader.ReadBytes(rawPacket.Length - sizeof(short));
+            }
+            catch (Exception ex) when (ex is EndOfStreamException || ex is IOException)
+            {
+                error = $"Coconut raw packet decode failed: {ex.Message}";
+                return false;
+            }
+
+            if (packetType == OutboundNormalAttackOpcode)
+            {
+                ignored = true;
+                error = $"Ignored outbound Coconut raw attack packet opcode: {OutboundNormalAttackOpcode}.";
+                packetType = 0;
+                payload = Array.Empty<byte>();
+                return false;
+            }
+
+            if (packetType != PacketTypeHit && packetType != PacketTypeScore)
+            {
+                error = $"Unsupported Coconut raw packet opcode: {packetType}";
+                packetType = 0;
+                payload = Array.Empty<byte>();
+                return false;
+            }
+
+            return true;
         }
 
         private async Task ListenLoopAsync(CancellationToken cancellationToken)
@@ -288,15 +374,18 @@ namespace HaCreator.MapSimulator.Managers
                             break;
                         }
 
-                        if (line.StartsWith("attack", StringComparison.OrdinalIgnoreCase))
+                        if (line.StartsWith("attack", StringComparison.OrdinalIgnoreCase)
+                            || line.StartsWith("packetoutraw", StringComparison.OrdinalIgnoreCase))
                         {
                             LastStatus = $"Ignored outbound echo from {client.Endpoint}: {line}";
                             continue;
                         }
 
-                        if (!TryParsePacketLine(line, out int packetType, out byte[] payload, out string error))
+                        if (!TryParsePacketLine(line, out int packetType, out byte[] payload, out bool ignored, out string message))
                         {
-                            LastStatus = $"Ignored Coconut transport line from {client.Endpoint}: {error}";
+                            LastStatus = ignored
+                                ? $"Ignored outbound echo from {client.Endpoint}: {message}"
+                                : $"Ignored Coconut transport line from {client.Endpoint}: {message}";
                             continue;
                         }
 
@@ -346,6 +435,46 @@ namespace HaCreator.MapSimulator.Managers
         {
             packetType = value;
             return true;
+        }
+
+        private static bool TryParseHexPayload(string[] tokens, int startIndex, out byte[] payload)
+        {
+            payload = Array.Empty<byte>();
+            if (tokens.Length <= startIndex)
+            {
+                return false;
+            }
+
+            string compactHex = RemoveWhitespace(string.Join(string.Empty, tokens.Skip(startIndex)));
+            if (string.IsNullOrWhiteSpace(compactHex))
+            {
+                return false;
+            }
+
+            if (compactHex.StartsWith("0x", StringComparison.OrdinalIgnoreCase))
+            {
+                compactHex = compactHex[2..];
+            }
+
+            try
+            {
+                payload = Convert.FromHexString(compactHex);
+                return true;
+            }
+            catch (FormatException)
+            {
+                payload = Array.Empty<byte>();
+                return false;
+            }
+        }
+
+        private static string BuildOutboundAttackPacketHex(CoconutField.AttackPacketRequest request)
+        {
+            PacketWriter packetWriter = new PacketWriter();
+            packetWriter.WriteShort(OutboundNormalAttackOpcode);
+            packetWriter.WriteShort(request.TargetId);
+            packetWriter.WriteShort(request.DelayMs);
+            return Convert.ToHexString(packetWriter.ToArray()).ToLowerInvariant();
         }
 
         private static string DescribePacketType(int packetType)

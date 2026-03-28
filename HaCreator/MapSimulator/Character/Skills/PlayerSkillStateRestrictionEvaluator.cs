@@ -121,8 +121,7 @@ namespace HaCreator.MapSimulator.Character.Skills
 
         private static bool IsSwallowSkill(SkillData skill)
         {
-            return skill?.IsSwallowSkill == true
-                   || (skill?.DummySkillParents?.Length > 0);
+            return skill?.IsSwallowFamilySkill == true;
         }
 
         private static bool UsesBoundJumpStateGate(SkillData skill)

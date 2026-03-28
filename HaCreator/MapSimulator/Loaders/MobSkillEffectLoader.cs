@@ -2,6 +2,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
+using HaCreator.MapSimulator.Character.Skills;
 using HaCreator.MapSimulator.Pools;
 using HaSharedLibrary.Render.DX;
 using MapleLib.WzLib;
@@ -61,11 +62,17 @@ namespace HaCreator.MapSimulator.Loaders
         /// <summary>Total animation duration for affected effect in ms</summary>
         public int AffectedDuration { get; set; }
 
+        /// <summary>Tile animation for field-owned mist / affected-area visuals</summary>
+        public SkillAnimation TileAnimation { get; set; }
+
         /// <summary>Whether this effect has valid affected frames</summary>
         public bool HasAffectedEffect => AffectedFrames != null && AffectedFrames.Count > 0;
 
         /// <summary>Whether this effect has valid skill effect frames</summary>
         public bool HasEffect => EffectFrames != null && EffectFrames.Count > 0;
+
+        /// <summary>Whether this effect has valid tile frames for field-area rendering</summary>
+        public bool HasTileAnimation => TileAnimation?.Frames.Count > 0;
     }
 
     /// <summary>
@@ -227,6 +234,12 @@ namespace HaCreator.MapSimulator.Loaders
                 }
             }
 
+            var tileNode = specificLevelNode["tile"];
+            if (tileNode != null)
+            {
+                effectData.TileAnimation = LoadTileAnimation(tileNode);
+            }
+
             // Load mob icon effect
             var mobNode = specificLevelNode["mob"];
             if (mobNode != null)
@@ -243,6 +256,98 @@ namespace HaCreator.MapSimulator.Loaders
             }
 
             return effectData;
+        }
+
+        private SkillAnimation LoadTileAnimation(WzImageProperty tileNode)
+        {
+            if (tileNode == null)
+            {
+                return null;
+            }
+
+            foreach (WzImageProperty child in tileNode.WzProperties)
+            {
+                if (!int.TryParse(child.Name, out _))
+                {
+                    continue;
+                }
+
+                SkillAnimation animation = LoadAnimation(child, "tile");
+                if (animation.Frames.Count > 0)
+                {
+                    animation.Loop = true;
+                    return animation;
+                }
+            }
+
+            SkillAnimation fallbackAnimation = LoadAnimation(tileNode, "tile");
+            if (fallbackAnimation.Frames.Count > 0)
+            {
+                fallbackAnimation.Loop = true;
+                return fallbackAnimation;
+            }
+
+            return null;
+        }
+
+        private SkillAnimation LoadAnimation(WzImageProperty node, string name)
+        {
+            var animation = new SkillAnimation { Name = name };
+            if (node == null)
+            {
+                return animation;
+            }
+
+            foreach (WzImageProperty child in node.WzProperties)
+            {
+                if (!int.TryParse(child.Name, out _))
+                {
+                    continue;
+                }
+
+                var usedProps = new ConcurrentBag<WzObject>();
+                List<IDXObject> frames = MapSimulatorLoader.LoadFrames(_texturePool, child, 0, 0, _device, usedProps);
+                if (frames.Count == 0)
+                {
+                    continue;
+                }
+
+                int frameDelay = 100;
+                if (child["delay"] is WzIntProperty delayProperty)
+                {
+                    frameDelay = Math.Max(1, delayProperty.Value);
+                }
+
+                IDXObject texture = frames[0];
+                animation.Frames.Add(new SkillFrame
+                {
+                    Texture = texture,
+                    Delay = frameDelay,
+                    Bounds = new Microsoft.Xna.Framework.Rectangle(0, 0, texture.Width, texture.Height),
+                    Origin = new Microsoft.Xna.Framework.Point(0, 0),
+                    Flip = false
+                });
+            }
+
+            if (animation.Frames.Count == 0)
+            {
+                var usedProps = new ConcurrentBag<WzObject>();
+                List<IDXObject> frames = MapSimulatorLoader.LoadFrames(_texturePool, node, 0, 0, _device, usedProps);
+                foreach (IDXObject texture in frames)
+                {
+                    animation.Frames.Add(new SkillFrame
+                    {
+                        Texture = texture,
+                        Delay = Math.Max(1, texture.Delay > 0 ? texture.Delay : 100),
+                        Bounds = new Microsoft.Xna.Framework.Rectangle(0, 0, texture.Width, texture.Height),
+                        Origin = new Microsoft.Xna.Framework.Point(0, 0),
+                        Flip = false
+                    });
+                }
+            }
+
+            animation.CalculateDuration();
+            return animation;
         }
 
         /// <summary>

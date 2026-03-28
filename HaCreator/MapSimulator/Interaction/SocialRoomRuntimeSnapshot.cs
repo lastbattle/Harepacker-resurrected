@@ -28,6 +28,8 @@ namespace HaCreator.MapSimulator.Interaction
         public List<SocialRoomChatEntrySnapshot> ChatEntries { get; set; } = new();
         public List<string> SavedVisitors { get; set; } = new();
         public List<string> BlockedVisitors { get; set; } = new();
+        public int RemoteInventoryMeso { get; set; }
+        public List<SocialRoomRemoteInventoryEntrySnapshot> RemoteInventoryEntries { get; set; } = new();
     }
 
     public sealed class SocialRoomOccupantSnapshot
@@ -53,5 +55,12 @@ namespace HaCreator.MapSimulator.Interaction
     {
         public string Text { get; set; }
         public SocialRoomChatTone Tone { get; set; }
+    }
+
+    public sealed class SocialRoomRemoteInventoryEntrySnapshot
+    {
+        public int ItemId { get; set; }
+        public string ItemName { get; set; }
+        public int Quantity { get; set; }
     }
 }

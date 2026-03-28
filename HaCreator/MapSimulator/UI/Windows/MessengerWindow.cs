@@ -56,6 +56,7 @@ namespace HaCreator.MapSimulator.UI
         private readonly Point _maxMinimizeButtonPosition;
         private readonly Point _minMinimizeButtonPosition;
         private readonly Point _collapsedMinimizeButtonPosition;
+        private readonly List<string> _inputHistory = new();
 
         private SpriteFont _font;
         private KeyboardState _previousKeyboardState;
@@ -76,11 +77,15 @@ namespace HaCreator.MapSimulator.UI
         private Func<bool, string> _stateCycleHandler;
         private Func<string, string> _sendMessageHandler;
         private Func<string, string> _sendWhisperHandler;
+        private Func<MessengerDeleteResult> _closeRequestHandler;
+        private Action _closeAcknowledgeHandler;
         private Action<string> _feedbackHandler;
         private UIObject _enterButton;
         private UIObject _claimButton;
         private UIObject _maximizeButton;
         private UIObject _minimizeButton;
+        private int _historyIndex = -1;
+        private string _historyDraft = string.Empty;
 
         public MessengerWindow(
             IDXObject maximizedFrame,
@@ -171,6 +176,8 @@ namespace HaCreator.MapSimulator.UI
             Func<bool, string> stateCycleHandler,
             Func<string, string> sendMessageHandler,
             Func<string, string> sendWhisperHandler,
+            Func<MessengerDeleteResult> closeRequestHandler,
+            Action closeAcknowledgeHandler,
             Action<string> feedbackHandler)
         {
             _slotSelectionHandler = slotSelectionHandler;
@@ -179,6 +186,8 @@ namespace HaCreator.MapSimulator.UI
             _stateCycleHandler = stateCycleHandler;
             _sendMessageHandler = sendMessageHandler;
             _sendWhisperHandler = sendWhisperHandler;
+            _closeRequestHandler = closeRequestHandler;
+            _closeAcknowledgeHandler = closeAcknowledgeHandler;
             _feedbackHandler = feedbackHandler;
         }
 
@@ -214,6 +223,15 @@ namespace HaCreator.MapSimulator.UI
             ApplyWindowState(snapshot.WindowState);
             UpdateButtonStates(snapshot);
 
+            if (snapshot.ShouldCloseWindow)
+            {
+                Hide();
+                _closeAcknowledgeHandler?.Invoke();
+                _previousKeyboardState = Keyboard.GetState();
+                _previousMouseState = Mouse.GetState();
+                return;
+            }
+
             KeyboardState keyboardState = Keyboard.GetState();
             if (_inputActive)
             {
@@ -222,6 +240,13 @@ namespace HaCreator.MapSimulator.UI
             else
             {
                 ResetKeyRepeat();
+
+                if (!IsCollapsed
+                    && keyboardState.IsKeyDown(Keys.Enter)
+                    && _previousKeyboardState.IsKeyUp(Keys.Enter))
+                {
+                    ActivateInput(whisperMode: false, snapshot, clearText: false);
+                }
             }
 
             MouseState mouseState = Mouse.GetState();
@@ -479,11 +504,19 @@ namespace HaCreator.MapSimulator.UI
                 }
 
                 DrawCentered(sprite, Truncate(participant.Name, 11), slotBounds.X, slotBounds.Y + 4, slotBounds.Width, participant.IsLocalPlayer ? new Color(255, 242, 178) : Color.White, 0.42f);
-                DrawCentered(sprite, participant.IsLocalPlayer ? "You" : $"CH {participant.Channel}", cardBounds.X, cardBounds.Y + 8, cardBounds.Width, new Color(156, 228, 188), 0.4f);
-                DrawCentered(sprite, Truncate(participant.LocationSummary, 13), cardBounds.X, cardBounds.Y + 22, cardBounds.Width, new Color(224, 228, 235), 0.38f);
+                string channelLine = participant.IsLocalPlayer
+                    ? $"You  Lv {Math.Max(1, participant.Level)}"
+                    : $"CH {participant.Channel}  Lv {Math.Max(1, participant.Level)}";
+                DrawCentered(sprite, Truncate(channelLine, 16), cardBounds.X, cardBounds.Y + 8, cardBounds.Width, new Color(156, 228, 188), 0.4f);
+                DrawCentered(sprite, Truncate(participant.JobName, 14), cardBounds.X, cardBounds.Y + 22, cardBounds.Width, new Color(224, 228, 235), 0.36f);
                 if (!IsCompact)
                 {
-                    DrawCentered(sprite, Truncate(participant.StatusText, 15), cardBounds.X, cardBounds.Y + 40, cardBounds.Width, new Color(197, 205, 216), 0.35f);
+                    DrawCentered(sprite, Truncate(participant.LocationSummary, 13), cardBounds.X, cardBounds.Y + 38, cardBounds.Width, new Color(224, 228, 235), 0.35f);
+                    DrawCentered(sprite, Truncate(participant.StatusText, 15), cardBounds.X, cardBounds.Y + 52, cardBounds.Width, new Color(197, 205, 216), 0.34f);
+                }
+                else
+                {
+                    DrawCentered(sprite, Truncate(participant.LocationSummary, 13), cardBounds.X, cardBounds.Y + 36, cardBounds.Width, new Color(224, 228, 235), 0.35f);
                 }
             }
         }
@@ -806,6 +839,8 @@ namespace HaCreator.MapSimulator.UI
         {
             _inputActive = true;
             _whisperMode = whisperMode && snapshot.CanWhisper;
+            _historyIndex = -1;
+            _historyDraft = string.Empty;
             if (clearText)
             {
                 _inputText.Clear();
@@ -836,7 +871,7 @@ namespace HaCreator.MapSimulator.UI
         {
             if (keyboardState.IsKeyDown(Keys.Escape) && _previousKeyboardState.IsKeyUp(Keys.Escape))
             {
-                DeactivateInput(clearText: false);
+                RequestClose();
                 return;
             }
 
@@ -940,6 +975,18 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
+            if (keyboardState.IsKeyDown(Keys.Up) && _previousKeyboardState.IsKeyUp(Keys.Up))
+            {
+                NavigateHistory(previous: true);
+                return;
+            }
+
+            if (keyboardState.IsKeyDown(Keys.Down) && _previousKeyboardState.IsKeyUp(Keys.Down))
+            {
+                NavigateHistory(previous: false);
+                return;
+            }
+
             bool shift = keyboardState.IsKeyDown(Keys.LeftShift) || keyboardState.IsKeyDown(Keys.RightShift);
             foreach (Keys key in keyboardState.GetPressedKeys())
             {
@@ -950,6 +997,8 @@ namespace HaCreator.MapSimulator.UI
                     || key == Keys.Delete
                     || key == Keys.Left
                     || key == Keys.Right
+                    || key == Keys.Up
+                    || key == Keys.Down
                     || key == Keys.Home
                     || key == Keys.End
                     || key == Keys.LeftShift
@@ -1011,10 +1060,13 @@ namespace HaCreator.MapSimulator.UI
                 ? _sendWhisperHandler?.Invoke(text)
                 : _sendMessageHandler?.Invoke(text);
             ShowFeedback(result);
+            RecordHistory(text);
 
             _inputText.Clear();
             _cursorPosition = 0;
             _cursorBlinkTimer = Environment.TickCount;
+            _historyIndex = -1;
+            _historyDraft = string.Empty;
 
             if (_whisperMode && !snapshot.CanWhisper)
             {
@@ -1085,8 +1137,64 @@ namespace HaCreator.MapSimulator.UI
 
         protected override void OnCloseButtonClicked(UIObject sender)
         {
+            RequestClose();
+        }
+
+        private void RequestClose()
+        {
             DeactivateInput(clearText: false);
-            base.OnCloseButtonClicked(sender);
+            MessengerDeleteResult result = _closeRequestHandler?.Invoke();
+            ShowFeedback(result?.Message);
+            if (result?.ShouldHideWindow == true)
+            {
+                Hide();
+                _closeAcknowledgeHandler?.Invoke();
+            }
+        }
+
+        private void NavigateHistory(bool previous)
+        {
+            if (_inputHistory.Count == 0)
+            {
+                return;
+            }
+
+            if (_historyIndex < 0)
+            {
+                _historyDraft = _inputText.ToString();
+                _historyIndex = _inputHistory.Count;
+            }
+
+            _historyIndex = previous
+                ? Math.Max(0, _historyIndex - 1)
+                : Math.Min(_inputHistory.Count, _historyIndex + 1);
+
+            string historyValue = _historyIndex >= 0 && _historyIndex < _inputHistory.Count
+                ? _inputHistory[_historyIndex]
+                : _historyDraft;
+            _inputText.Clear();
+            _inputText.Append(historyValue);
+            _cursorPosition = _inputText.Length;
+            _cursorBlinkTimer = Environment.TickCount;
+        }
+
+        private void RecordHistory(string text)
+        {
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                return;
+            }
+
+            if (_inputHistory.Count > 0 && string.Equals(_inputHistory[^1], text, StringComparison.Ordinal))
+            {
+                return;
+            }
+
+            _inputHistory.Add(text);
+            if (_inputHistory.Count > 20)
+            {
+                _inputHistory.RemoveAt(0);
+            }
         }
 
         private static char? KeyToChar(Keys key, bool shift)

@@ -75,7 +75,7 @@ namespace HaCreator.MapSimulator.Loaders
         /// Get the total width for rendering a number string.
         /// Uses the authentic MapleStory spacing algorithm from CAnimationDisplayer::Effect_HP.
         ///
-        /// Binary analysis (v115, address 0x444eb0) revealed the spacing formula:
+        /// Binary analysis (address 0x444eb0) revealed the spacing formula:
         /// - For each digit: overlap = 3 * (origin.x - width) / 5
         /// - Total width is accumulated using: accumulatedX = accumulatedX - previousOverlap + originX
         /// </summary>

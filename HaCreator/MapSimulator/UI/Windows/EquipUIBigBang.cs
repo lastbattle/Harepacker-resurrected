@@ -168,6 +168,10 @@ namespace HaCreator.MapSimulator.UI
         // Slot labels and character silhouette (backgrnd3)
         private IDXObject _slotLabels;
         private Point _slotLabelsOffset;
+        private IDXObject _cashPendantChrome;
+        private Point _cashPendantChromeOffset;
+        private IDXObject _charmPocketChrome;
+        private Point _charmPocketChromeOffset;
 
         // Tab buttons
         private UIObject _btnPet;
@@ -370,6 +374,20 @@ namespace HaCreator.MapSimulator.UI
             _slotLabelsOffset = new Point(offsetX, offsetY);
         }
 
+        public void SetSpecialSlotChrome(
+            IDXObject cashPendantChrome,
+            int cashPendantOffsetX,
+            int cashPendantOffsetY,
+            IDXObject charmPocketChrome,
+            int charmPocketOffsetX,
+            int charmPocketOffsetY)
+        {
+            _cashPendantChrome = cashPendantChrome;
+            _cashPendantChromeOffset = new Point(cashPendantOffsetX, cashPendantOffsetY);
+            _charmPocketChrome = charmPocketChrome;
+            _charmPocketChromeOffset = new Point(charmPocketOffsetX, charmPocketOffsetY);
+        }
+
         public void SetCompanionTabLayout(int tabIndex, IDXObject frame, IDXObject foreground, int foregroundOffsetX, int foregroundOffsetY, IDXObject slotLabels, int slotLabelOffsetX, int slotLabelOffsetY)
         {
             if (tabIndex < TAB_PET || tabIndex > TAB_ANDROID || frame == null)
@@ -505,6 +523,8 @@ namespace HaCreator.MapSimulator.UI
                     Color.White, false, drawReflectionInfo);
             }
 
+            DrawSpecialSlotChrome(sprite, skeletonMeshRenderer, gameTime, drawReflectionInfo, windowX, windowY);
+
             foreach ((EquipSlot uiSlot, Point slotPosition) in slotPositions)
             {
                 int slotX = windowX + slotPosition.X;
@@ -635,8 +655,13 @@ namespace HaCreator.MapSimulator.UI
                     }
 
                     PetRuntime targetPet = ResolvePetByIndex(targetIndex.Value);
-                    if (!_petEquipmentController.TryEquipItem(targetPet, draggedSlotData.ItemId, out IReadOnlyList<CompanionEquipItem> displacedItems, out _))
+                    if (!_petEquipmentController.TryEquipItem(targetPet, draggedSlotData.ItemId, out IReadOnlyList<CompanionEquipItem> displacedItems, out string rejectReason))
                     {
+                        if (!string.IsNullOrWhiteSpace(rejectReason))
+                        {
+                            EquipmentEquipBlocked?.Invoke(rejectReason);
+                        }
+
                         return false;
                     }
 
@@ -646,10 +671,17 @@ namespace HaCreator.MapSimulator.UI
                 case TAB_DRAGON:
                 {
                     DragonEquipSlot? targetSlot = GetDragonSlotAtPosition(mouseX, mouseY);
+                    IReadOnlyList<CompanionEquipItem> displacedItems = Array.Empty<CompanionEquipItem>();
+                    string rejectReason = null;
                     if (!targetSlot.HasValue
                         || _dragonEquipmentController == null
-                        || !_dragonEquipmentController.TryEquipItem(targetSlot.Value, draggedSlotData.ItemId, out IReadOnlyList<CompanionEquipItem> displacedItems, out _))
+                        || !_dragonEquipmentController.TryEquipItem(targetSlot.Value, draggedSlotData.ItemId, out displacedItems, out rejectReason))
                     {
+                        if (!string.IsNullOrWhiteSpace(rejectReason))
+                        {
+                            EquipmentEquipBlocked?.Invoke(rejectReason);
+                        }
+
                         return false;
                     }
 
@@ -659,10 +691,17 @@ namespace HaCreator.MapSimulator.UI
                 case TAB_MECHANIC:
                 {
                     MechanicEquipSlot? targetSlot = GetMechanicSlotAtPosition(mouseX, mouseY);
+                    IReadOnlyList<CompanionEquipItem> displacedItems = Array.Empty<CompanionEquipItem>();
+                    string rejectReason = null;
                     if (!targetSlot.HasValue
                         || _mechanicEquipmentController == null
-                        || !_mechanicEquipmentController.TryEquipItem(targetSlot.Value, draggedSlotData.ItemId, out IReadOnlyList<CompanionEquipItem> displacedItems, out _))
+                        || !_mechanicEquipmentController.TryEquipItem(targetSlot.Value, draggedSlotData.ItemId, out displacedItems, out rejectReason))
                     {
+                        if (!string.IsNullOrWhiteSpace(rejectReason))
+                        {
+                            EquipmentEquipBlocked?.Invoke(rejectReason);
+                        }
+
                         return false;
                     }
 
@@ -672,10 +711,17 @@ namespace HaCreator.MapSimulator.UI
                 case TAB_ANDROID:
                 {
                     AndroidEquipSlot? targetSlot = GetAndroidSlotAtPosition(mouseX, mouseY);
+                    IReadOnlyList<CompanionEquipItem> displacedItems = Array.Empty<CompanionEquipItem>();
+                    string rejectReason = null;
                     if (!targetSlot.HasValue
                         || _androidEquipmentController == null
-                        || !_androidEquipmentController.TryEquipItem(targetSlot.Value, draggedSlotData.ItemId, out IReadOnlyList<CompanionEquipItem> displacedItems, out _))
+                        || !_androidEquipmentController.TryEquipItem(targetSlot.Value, draggedSlotData.ItemId, out displacedItems, out rejectReason))
                     {
+                        if (!string.IsNullOrWhiteSpace(rejectReason))
+                        {
+                            EquipmentEquipBlocked?.Invoke(rejectReason);
+                        }
+
                         return false;
                     }
 
@@ -725,24 +771,15 @@ namespace HaCreator.MapSimulator.UI
             }
 
             CharacterPart targetPart = ResolveEquippedPart(targetUiSlot.Value);
-            List<InventorySlotData> displaced = new();
-            if (targetPart != null)
+            if (targetPart != null && ReferenceEquals(targetPart, incomingPart))
             {
-                InventorySlotData displacedSlot = CreateInventorySlot(targetPart);
-                if (displacedSlot != null)
-                {
-                    displaced.Add(displacedSlot);
-                }
-
-                _characterBuild?.Unequip(targetPart.Slot);
+                return true;
             }
 
-            incomingPart.Slot = ResolveTargetSlot(targetUiSlot.Value, incomingPart);
-            _characterBuild?.Unequip(incomingPart.Slot);
-            _characterBuild?.Equip(incomingPart);
-            displacedSlots = displaced.Count == 0
-                ? Array.Empty<InventorySlotData>()
-                : new ReadOnlyCollection<InventorySlotData>(displaced);
+            CharacterEquipSlot resolvedTargetSlot = ResolveTargetSlot(targetUiSlot.Value, incomingPart);
+            IReadOnlyList<CharacterPart> displacedParts = _characterBuild?.PlaceEquipment(incomingPart, resolvedTargetSlot)
+                ?? Array.Empty<CharacterPart>();
+            displacedSlots = CreateInventorySlots(displacedParts);
             return true;
         }
 
@@ -1087,6 +1124,41 @@ namespace HaCreator.MapSimulator.UI
             }
         }
 
+        private void DrawSpecialSlotChrome(
+            SpriteBatch sprite,
+            SkeletonMeshRenderer skeletonMeshRenderer,
+            GameTime gameTime,
+            ReflectionDrawableBoundary drawReflectionInfo,
+            int windowX,
+            int windowY)
+        {
+            if (_characterBuild?.IsPendantSlotExtensionActive == true && _cashPendantChrome != null)
+            {
+                _cashPendantChrome.DrawBackground(
+                    sprite,
+                    skeletonMeshRenderer,
+                    gameTime,
+                    windowX + _cashPendantChromeOffset.X,
+                    windowY + _cashPendantChromeOffset.Y,
+                    Color.White,
+                    false,
+                    drawReflectionInfo);
+            }
+
+            if (_characterBuild?.IsPocketSlotAvailable == true && _charmPocketChrome != null)
+            {
+                _charmPocketChrome.DrawBackground(
+                    sprite,
+                    skeletonMeshRenderer,
+                    gameTime,
+                    windowX + _charmPocketChromeOffset.X,
+                    windowY + _charmPocketChromeOffset.Y,
+                    Color.White,
+                    false,
+                    drawReflectionInfo);
+            }
+        }
+
         private void DrawDisabledOverlay(SpriteBatch sprite, int slotX, int slotY, EquipSlotVisualState visualState)
         {
             Color overlay = visualState.IsExpired
@@ -1108,6 +1180,27 @@ namespace HaCreator.MapSimulator.UI
 
             if (_currentTab == TAB_PET && TryBuildPetTooltip(out string petTitle, out string petLine1, out string petLine2, out string petDescription, out IDXObject petIcon))
             {
+                int petIndex = _hoveredPetIndex ?? -1;
+                IReadOnlyList<PetRuntime> pets = _petController?.ActivePets;
+                PetRuntime hoveredPet = petIndex >= 0 && pets != null && petIndex < pets.Count ? pets[petIndex] : null;
+                if (hoveredPet != null
+                    && _petEquipmentController != null
+                    && _petEquipmentController.TryGetItem(hoveredPet, out CompanionEquipItem petEquipItem)
+                    && TryCreateTooltipPart(petEquipItem, out CharacterPart petTooltipPart))
+                {
+                    DrawCharacterPartTooltip(
+                        sprite,
+                        petTooltipPart,
+                        petTitle,
+                        petDescription,
+                        petIcon ?? petEquipItem.IconRaw ?? petEquipItem.Icon ?? petTooltipPart.IconRaw ?? petTooltipPart.Icon,
+                        $"Pet {petIndex + 1}",
+                        renderWidth,
+                        renderHeight,
+                        BuildPetTooltipSections(petEquipItem, petLine2));
+                    return;
+                }
+
                 DrawItemTooltip(
                     sprite,
                     petTitle,
@@ -1129,14 +1222,14 @@ namespace HaCreator.MapSimulator.UI
                 if (_hoveredDragonSlot.HasValue
                     && _dragonEquipmentController != null
                     && _dragonEquipmentController.TryGetItem(_hoveredDragonSlot.Value, out CompanionEquipItem dragonItem)
-                    && dragonItem?.CharacterPart != null)
+                    && TryCreateTooltipPart(dragonItem, out CharacterPart dragonTooltipPart))
                 {
                     DrawCharacterPartTooltip(
                         sprite,
-                        dragonItem.CharacterPart,
+                        dragonTooltipPart,
                         dragonTitle,
                         dragonDescription,
-                        dragonIcon ?? dragonItem.IconRaw ?? dragonItem.Icon ?? dragonItem.CharacterPart.IconRaw ?? dragonItem.CharacterPart.Icon,
+                        dragonIcon ?? dragonItem.IconRaw ?? dragonItem.Icon ?? dragonTooltipPart.IconRaw ?? dragonTooltipPart.Icon,
                         ResolveDragonSlotLabel(_hoveredDragonSlot.Value),
                         renderWidth,
                         renderHeight,
@@ -1165,14 +1258,14 @@ namespace HaCreator.MapSimulator.UI
                 if (_hoveredMechanicSlot.HasValue
                     && _mechanicEquipmentController != null
                     && _mechanicEquipmentController.TryGetItem(_hoveredMechanicSlot.Value, out CompanionEquipItem mechanicItem)
-                    && mechanicItem?.CharacterPart != null)
+                    && TryCreateTooltipPart(mechanicItem, out CharacterPart mechanicTooltipPart))
                 {
                     DrawCharacterPartTooltip(
                         sprite,
-                        mechanicItem.CharacterPart,
+                        mechanicTooltipPart,
                         mechanicTitle,
                         mechanicDescription,
-                        mechanicIcon ?? mechanicItem.IconRaw ?? mechanicItem.Icon ?? mechanicItem.CharacterPart.IconRaw ?? mechanicItem.CharacterPart.Icon,
+                        mechanicIcon ?? mechanicItem.IconRaw ?? mechanicItem.Icon ?? mechanicTooltipPart.IconRaw ?? mechanicTooltipPart.Icon,
                         ResolveMechanicSlotLabel(_hoveredMechanicSlot.Value),
                         renderWidth,
                         renderHeight,
@@ -1201,14 +1294,14 @@ namespace HaCreator.MapSimulator.UI
                 if (_hoveredAndroidSlot.HasValue
                     && _androidEquipmentController != null
                     && _androidEquipmentController.TryGetItem(_hoveredAndroidSlot.Value, out CompanionEquipItem androidItem)
-                    && androidItem?.CharacterPart != null)
+                    && TryCreateTooltipPart(androidItem, out CharacterPart androidTooltipPart))
                 {
                     DrawCharacterPartTooltip(
                         sprite,
-                        androidItem.CharacterPart,
+                        androidTooltipPart,
                         androidTitle,
                         androidDescription,
-                        androidIcon ?? androidItem.IconRaw ?? androidItem.Icon ?? androidItem.CharacterPart.IconRaw ?? androidItem.CharacterPart.Icon,
+                        androidIcon ?? androidItem.IconRaw ?? androidItem.Icon ?? androidTooltipPart.IconRaw ?? androidTooltipPart.Icon,
                         ResolveAndroidSlotLabel(_hoveredAndroidSlot.Value),
                         renderWidth,
                         renderHeight,
@@ -1291,22 +1384,27 @@ namespace HaCreator.MapSimulator.UI
                 ResolveSlotLabel(hoveredSlot),
                 renderWidth,
                 renderHeight,
-                BuildEquipmentVisualStateSections(characterSlot));
+                BuildEquipmentVisualStateSections(part, characterSlot));
         }
 
         private void DrawDraggedComparisonTooltip(SpriteBatch sprite, EquipSlot hoveredSlot, int renderWidth, int renderHeight)
         {
             string itemName = string.IsNullOrWhiteSpace(_draggedPart.Name) ? $"Equip {_draggedPart.ItemId}" : _draggedPart.Name;
-            DrawItemTooltip(
+            CharacterEquipSlot? targetSlot = MapToCharacterEquipSlot(hoveredSlot);
+            var sections = new List<TooltipSection>(BuildEquipmentVisualStateSections(_draggedPart, targetSlot))
+            {
+                new TooltipSection(BuildDragCompareDescription(hoveredSlot), new Color(255, 214, 156))
+            };
+            DrawCharacterPartTooltip(
                 sprite,
+                _draggedPart,
                 itemName,
-                BuildEquipmentSummaryLine(_draggedPart),
-                $"Drop on {ResolveSlotLabel(hoveredSlot)}",
-                BuildDragCompareDescription(hoveredSlot),
-                null,
+                BuildEquipmentDescription(_draggedPart),
                 _draggedPart.IconRaw ?? _draggedPart.Icon,
+                ResolveSlotLabel(hoveredSlot),
                 renderWidth,
-                renderHeight);
+                renderHeight,
+                sections);
         }
 
         private bool TryBuildPetTooltip(out string title, out string line1, out string line2, out string description, out IDXObject icon)
@@ -1470,9 +1568,14 @@ namespace HaCreator.MapSimulator.UI
 
         private static string BuildEquipmentRequirementLine(CharacterPart part, EquipSlot hoveredSlot)
         {
+            return BuildEquipmentRequirementLine(part, ResolveSlotLabel(hoveredSlot));
+        }
+
+        private static string BuildEquipmentRequirementLine(CharacterPart part, string slotLabel)
+        {
             var segments = new List<string>
             {
-                $"Slot: {ResolveSlotLabel(hoveredSlot)}"
+                $"Slot: {slotLabel}"
             };
 
             if (part.RequiredLevel > 0)
@@ -1615,7 +1718,38 @@ namespace HaCreator.MapSimulator.UI
                 return BuildEquipmentSummaryLine(item.CharacterPart);
             }
 
-            return item != null ? $"Item ID: {item.ItemId}" : string.Empty;
+            if (item == null)
+            {
+                return string.Empty;
+            }
+
+            var segments = new List<string> { $"Item ID: {item.ItemId}" };
+            if (!string.IsNullOrWhiteSpace(item.ItemCategory))
+            {
+                segments.Add(item.ItemCategory);
+            }
+
+            AppendStatSegment(segments, "STR", item.BonusSTR);
+            AppendStatSegment(segments, "DEX", item.BonusDEX);
+            AppendStatSegment(segments, "INT", item.BonusINT);
+            AppendStatSegment(segments, "LUK", item.BonusLUK);
+            AppendStatSegment(segments, "HP", item.BonusHP);
+            AppendStatSegment(segments, "MP", item.BonusMP);
+            AppendStatSegment(segments, "ATT", item.BonusWeaponAttack);
+            AppendStatSegment(segments, "M.ATT", item.BonusMagicAttack);
+            AppendStatSegment(segments, "DEF", item.BonusWeaponDefense);
+            AppendStatSegment(segments, "M.DEF", item.BonusMagicDefense);
+            AppendStatSegment(segments, "ACC", item.BonusAccuracy);
+            AppendStatSegment(segments, "AVOID", item.BonusAvoidability);
+            AppendStatSegment(segments, "Hands", item.BonusHands);
+            AppendStatSegment(segments, "Speed", item.BonusSpeed);
+            AppendStatSegment(segments, "Jump", item.BonusJump);
+            if (item.UpgradeSlots > 0)
+            {
+                segments.Add($"Slots +{item.UpgradeSlots}");
+            }
+
+            return string.Join("  ", segments);
         }
 
         private static string BuildCompanionEquipmentDescription(CompanionEquipItem item)
@@ -1630,20 +1764,157 @@ namespace HaCreator.MapSimulator.UI
                 return BuildEquipmentDescription(item.CharacterPart);
             }
 
-            return string.Empty;
+            return item?.ItemCategory ?? string.Empty;
         }
 
         private static string BuildCompanionRequirementLine(CompanionEquipItem item, string slotLabel)
         {
-            if (item?.CharacterPart == null)
+            if (item == null)
             {
                 return $"Slot: {slotLabel}";
+            }
+
+            if (item.CharacterPart == null)
+            {
+                var segments = new List<string> { $"Slot: {slotLabel}" };
+                if (item.RequiredLevel > 0)
+                {
+                    segments.Add($"Req Lv {item.RequiredLevel}");
+                }
+
+                AppendRequirementSegment(segments, "STR", item.RequiredSTR);
+                AppendRequirementSegment(segments, "DEX", item.RequiredDEX);
+                AppendRequirementSegment(segments, "INT", item.RequiredINT);
+                AppendRequirementSegment(segments, "LUK", item.RequiredLUK);
+                if (item.RequiredFame > 0)
+                {
+                    segments.Add($"Req Fame {item.RequiredFame}");
+                }
+
+                string requiredJobs = ResolveRequiredJobNames(item.RequiredJobMask);
+                if (!string.IsNullOrWhiteSpace(requiredJobs))
+                {
+                    segments.Add($"Req Job {requiredJobs}");
+                }
+
+                return string.Join("  ", segments);
             }
 
             string requirementLine = BuildDetailedRequirementLine(item.CharacterPart);
             return string.IsNullOrWhiteSpace(requirementLine)
                 ? $"Slot: {slotLabel}"
                 : $"Slot: {slotLabel}  {requirementLine}";
+        }
+
+        private static bool TryCreateTooltipPart(CompanionEquipItem item, out CharacterPart tooltipPart)
+        {
+            tooltipPart = item?.CharacterPart;
+            if (tooltipPart != null)
+            {
+                return true;
+            }
+
+            if (item == null || item.ItemId <= 0)
+            {
+                return false;
+            }
+
+            tooltipPart = new CharacterPart
+            {
+                ItemId = item.ItemId,
+                Name = item.Name,
+                Description = item.Description,
+                ItemCategory = item.ItemCategory,
+                IsCash = item.IsCash,
+                RequiredJobMask = item.RequiredJobMask,
+                RequiredFame = item.RequiredFame,
+                RequiredLevel = item.RequiredLevel,
+                RequiredSTR = item.RequiredSTR,
+                RequiredDEX = item.RequiredDEX,
+                RequiredINT = item.RequiredINT,
+                RequiredLUK = item.RequiredLUK,
+                BonusSTR = item.BonusSTR,
+                BonusDEX = item.BonusDEX,
+                BonusINT = item.BonusINT,
+                BonusLUK = item.BonusLUK,
+                BonusHP = item.BonusHP,
+                BonusMP = item.BonusMP,
+                BonusWeaponAttack = item.BonusWeaponAttack,
+                BonusMagicAttack = item.BonusMagicAttack,
+                BonusWeaponDefense = item.BonusWeaponDefense,
+                BonusMagicDefense = item.BonusMagicDefense,
+                BonusAccuracy = item.BonusAccuracy,
+                BonusAvoidability = item.BonusAvoidability,
+                BonusHands = item.BonusHands,
+                BonusSpeed = item.BonusSpeed,
+                BonusJump = item.BonusJump,
+                UpgradeSlots = item.UpgradeSlots,
+                KnockbackRate = item.KnockbackRate,
+                TradeAvailable = item.TradeAvailable,
+                IsTimeLimited = item.IsTimeLimited,
+                Durability = item.Durability,
+                MaxDurability = item.MaxDurability,
+                Icon = item.Icon,
+                IconRaw = item.IconRaw
+            };
+            return true;
+        }
+
+        private static IReadOnlyList<TooltipSection> BuildPetTooltipSections(CompanionEquipItem item, string petContextLine)
+        {
+            var sections = new List<TooltipSection>();
+            if (!string.IsNullOrWhiteSpace(petContextLine))
+            {
+                sections.Add(new TooltipSection(petContextLine, Color.White));
+            }
+
+            string supportedPetsLine = BuildSupportedPetsLine(item);
+            if (!string.IsNullOrWhiteSpace(supportedPetsLine))
+            {
+                sections.Add(new TooltipSection(supportedPetsLine, new Color(181, 224, 255)));
+            }
+
+            string excludedPetsLine = BuildExcludedPetsLine(item);
+            if (!string.IsNullOrWhiteSpace(excludedPetsLine))
+            {
+                sections.Add(new TooltipSection(excludedPetsLine, new Color(255, 214, 156)));
+            }
+
+            return sections;
+        }
+
+        private static string BuildSupportedPetsLine(CompanionEquipItem item)
+        {
+            if (item?.SupportedPetItemIds == null || item.SupportedPetItemIds.Count == 0)
+            {
+                return string.Empty;
+            }
+
+            var petNames = new List<string>();
+            foreach (int petItemId in item.SupportedPetItemIds)
+            {
+                if (HaCreator.Program.InfoManager?.ItemNameCache != null
+                    && HaCreator.Program.InfoManager.ItemNameCache.TryGetValue(petItemId, out Tuple<string, string, string> petInfo)
+                    && !string.IsNullOrWhiteSpace(petInfo.Item2))
+                {
+                    petNames.Add(petInfo.Item2);
+                }
+                else
+                {
+                    petNames.Add(petItemId.ToString(CultureInfo.InvariantCulture));
+                }
+            }
+
+            return petNames.Count == 0
+                ? string.Empty
+                : $"Usable by: {string.Join(", ", petNames)}";
+        }
+
+        private static string BuildExcludedPetsLine(CompanionEquipItem item)
+        {
+            return item?.ExcludedPetNames == null || item.ExcludedPetNames.Count == 0
+                ? string.Empty
+                : $"Except: {string.Join(", ", item.ExcludedPetNames)}";
         }
 
         private static void AppendStatSegment(List<string> segments, string label, int value)
@@ -1977,6 +2248,30 @@ namespace HaCreator.MapSimulator.UI
             IReadOnlyList<TooltipSection> existingSections)
         {
             var sections = new List<TooltipSection>();
+            string summaryLine = BuildEquipmentSummaryLine(part);
+            if (!string.IsNullOrWhiteSpace(summaryLine))
+            {
+                sections.Add(new TooltipSection(summaryLine, new Color(181, 224, 255)));
+            }
+
+            string requirementLine = BuildEquipmentRequirementLine(part, slotLabel);
+            if (!string.IsNullOrWhiteSpace(requirementLine))
+            {
+                sections.Add(new TooltipSection(requirementLine, Color.White));
+            }
+
+            string detailedRequirementLine = BuildDetailedRequirementLine(part);
+            if (!string.IsNullOrWhiteSpace(detailedRequirementLine))
+            {
+                sections.Add(new TooltipSection(detailedRequirementLine, new Color(255, 232, 176)));
+            }
+
+            string metadataLine = BuildAdditionalEquipmentMetadataLine(part);
+            if (!string.IsNullOrWhiteSpace(metadataLine))
+            {
+                sections.Add(new TooltipSection(metadataLine, new Color(255, 214, 156)));
+            }
+
             string slotLine = string.IsNullOrWhiteSpace(slotLabel)
                 ? $"Item ID: {part.ItemId}"
                 : $"Item ID: {part.ItemId}  Slot: {slotLabel}";
@@ -2010,6 +2305,32 @@ namespace HaCreator.MapSimulator.UI
             return sections;
         }
 
+        private static string BuildAdditionalEquipmentMetadataLine(CharacterPart part)
+        {
+            if (part == null)
+            {
+                return string.Empty;
+            }
+
+            var segments = new List<string>();
+            if (part.TradeAvailable > 0)
+            {
+                segments.Add($"Trade available {part.TradeAvailable} time{(part.TradeAvailable == 1 ? string.Empty : "s")}");
+            }
+
+            if (part.KnockbackRate > 0)
+            {
+                segments.Add($"Knockback resistance {part.KnockbackRate}%");
+            }
+
+            if (part.IsTimeLimited)
+            {
+                segments.Add("Time-limited item");
+            }
+
+            return string.Join("  ", segments);
+        }
+
         private List<TooltipLabeledValueRow> BuildTooltipStatRows(CharacterPart part)
         {
             var rows = new List<TooltipLabeledValueRow>();
@@ -2025,6 +2346,7 @@ namespace HaCreator.MapSimulator.UI
             AppendStatRow(rows, null, ResolvePropertyLabel("9"), part.BonusMagicDefense, new Color(176, 255, 176), includePlusPrefix: true);
             AppendStatRow(rows, null, ResolvePropertyLabel("10"), part.BonusAccuracy, new Color(176, 255, 176), includePlusPrefix: true);
             AppendStatRow(rows, null, ResolvePropertyLabel("11"), part.BonusAvoidability, new Color(176, 255, 176), includePlusPrefix: true);
+            AppendStatRow(rows, null, ResolvePropertyLabel("12"), part.BonusHands, new Color(176, 255, 176), includePlusPrefix: true);
             AppendStatRow(rows, null, ResolvePropertyLabel("13"), part.BonusSpeed, new Color(176, 255, 176), includePlusPrefix: true);
             AppendStatRow(rows, null, ResolvePropertyLabel("14"), part.BonusJump, new Color(176, 255, 176), includePlusPrefix: true);
             AppendStatRow(rows, null, ResolvePropertyLabel("16"), part.UpgradeSlots, new Color(255, 232, 176), includePlusPrefix: false);
@@ -2171,11 +2493,18 @@ namespace HaCreator.MapSimulator.UI
             return sections;
         }
 
-        private IReadOnlyList<TooltipSection> BuildEquipmentVisualStateSections(CharacterEquipSlot? characterSlot)
+        private IReadOnlyList<TooltipSection> BuildEquipmentVisualStateSections(CharacterPart part, CharacterEquipSlot? characterSlot)
         {
             var sections = new List<TooltipSection>();
             if (characterSlot.HasValue)
             {
+                CharacterPart hiddenPart = EquipSlotStateResolver.ResolveUnderlyingPart(_characterBuild, characterSlot.Value);
+                string cashLayerLine = BuildCashLayerLine(part, hiddenPart);
+                if (!string.IsNullOrWhiteSpace(cashLayerLine))
+                {
+                    sections.Add(new TooltipSection(cashLayerLine, new Color(255, 214, 156)));
+                }
+
                 EquipSlotVisualState visualState = EquipSlotStateResolver.ResolveVisualState(_characterBuild, characterSlot.Value);
                 if (!string.IsNullOrWhiteSpace(visualState.Message))
                 {
@@ -2679,7 +3008,16 @@ namespace HaCreator.MapSimulator.UI
 
             PetRuntime sourcePet = ResolveDraggedPet();
             PetRuntime targetPet = ResolvePetByIndex(targetIndex.Value);
-            return sourcePet != null && targetPet != null && _petEquipmentController.TryMoveItem(sourcePet, targetPet);
+            string rejectReason = null;
+            bool moved = sourcePet != null
+                         && targetPet != null
+                         && _petEquipmentController.TryMoveItem(sourcePet, targetPet, out rejectReason);
+            if (!moved && !string.IsNullOrWhiteSpace(rejectReason))
+            {
+                EquipmentEquipBlocked?.Invoke(rejectReason);
+            }
+
+            return moved;
         }
 
         private bool TryUnequipDraggedPetItem()
@@ -2721,19 +3059,25 @@ namespace HaCreator.MapSimulator.UI
             if (targetPart != null && !CanDisplayPartInSlot(targetPart, _draggedSlot ?? targetUiSlot.Value))
                 return false;
 
-            if (_draggedPart.Slot == targetSlot.Value || (targetPart != null && ReferenceEquals(targetPart, _draggedPart)))
+            CharacterEquipSlot resolvedTargetSlot = ResolveTargetSlot(targetUiSlot.Value, _draggedPart);
+            if (_draggedPart.Slot == resolvedTargetSlot || (targetPart != null && ReferenceEquals(targetPart, _draggedPart)))
                 return true;
 
-            _characterBuild?.Unequip(_draggedPart.Slot);
-            if (targetPart != null)
+            CharacterEquipSlot sourceSlot = _draggedPart.Slot;
+            CharacterPart movingPart = _characterBuild?.Unequip(sourceSlot);
+            if (movingPart == null)
             {
-                _characterBuild?.Unequip(targetPart.Slot);
-                targetPart.Slot = _draggedPart.Slot;
-                _characterBuild?.Equip(targetPart);
+                return false;
             }
 
-            _draggedPart.Slot = ResolveTargetSlot(targetUiSlot.Value, _draggedPart);
-            _characterBuild?.Equip(_draggedPart);
+            IReadOnlyList<CharacterPart> displacedParts = _characterBuild?.PlaceEquipment(movingPart, resolvedTargetSlot)
+                ?? Array.Empty<CharacterPart>();
+            CharacterPart swapCandidate = SelectSwapCandidateForSource(displacedParts, _draggedSlot);
+            if (swapCandidate != null)
+            {
+                _characterBuild?.PlaceEquipment(swapCandidate, sourceSlot);
+            }
+
             return true;
         }
 
@@ -2766,7 +3110,53 @@ namespace HaCreator.MapSimulator.UI
                 return "Release to move this equipment item.";
             }
 
+            if (targetPart.IsCash && !_draggedPart.IsCash)
+            {
+                CharacterPart hiddenTargetPart = targetSlot.HasValue
+                    ? EquipSlotStateResolver.ResolveUnderlyingPart(_characterBuild, targetSlot.Value)
+                    : null;
+                string cashName = string.IsNullOrWhiteSpace(targetPart.Name)
+                    ? $"Equip {targetPart.ItemId}"
+                    : targetPart.Name;
+                if (hiddenTargetPart != null && _draggedSlot.HasValue)
+                {
+                    string hiddenName = string.IsNullOrWhiteSpace(hiddenTargetPart.Name)
+                        ? $"Equip {hiddenTargetPart.ItemId}"
+                        : hiddenTargetPart.Name;
+                    return $"Release to equip underneath {cashName}. {hiddenName} will move to {ResolveSlotLabel(_draggedSlot.Value)}.";
+                }
+
+                return $"Release to equip underneath {cashName}.";
+            }
+
+            if (_draggedPart.IsCash && !targetPart.IsCash)
+            {
+                string targetName = string.IsNullOrWhiteSpace(targetPart.Name)
+                    ? $"Equip {targetPart.ItemId}"
+                    : targetPart.Name;
+                return $"Release to cover {targetName}. It will remain equipped underneath.";
+            }
+
             return $"Swap with {(string.IsNullOrWhiteSpace(targetPart.Name) ? $"Equip {targetPart.ItemId}" : targetPart.Name)}.";
+        }
+
+        private CharacterPart SelectSwapCandidateForSource(IReadOnlyList<CharacterPart> displacedParts, EquipSlot? sourceUiSlot)
+        {
+            if (displacedParts == null || displacedParts.Count == 0 || !sourceUiSlot.HasValue)
+            {
+                return null;
+            }
+
+            for (int i = 0; i < displacedParts.Count; i++)
+            {
+                CharacterPart candidate = displacedParts[i];
+                if (candidate != null && CanDisplayPartInSlot(candidate, sourceUiSlot.Value))
+                {
+                    return candidate;
+                }
+            }
+
+            return null;
         }
 
         private static CharacterEquipSlot ResolveTargetSlot(EquipSlot uiSlot, CharacterPart part)
@@ -2838,6 +3228,7 @@ namespace HaCreator.MapSimulator.UI
                 EquipSlot.Cape => CharacterEquipSlot.Cape,
                 EquipSlot.Medal => CharacterEquipSlot.Medal,
                 EquipSlot.Android => CharacterEquipSlot.Android,
+                EquipSlot.Heart => CharacterEquipSlot.AndroidHeart,
                 EquipSlot.AndroidHeart => CharacterEquipSlot.AndroidHeart,
                 EquipSlot.Totem1 => CharacterEquipSlot.TamingMob,
                 EquipSlot.Totem2 => CharacterEquipSlot.Saddle,
@@ -2857,6 +3248,7 @@ namespace HaCreator.MapSimulator.UI
                 EquipSlot.Pocket => "Pocket",
                 EquipSlot.Badge => "Badge",
                 EquipSlot.Shoulder => "Shoulder",
+                EquipSlot.Heart => "Heart",
                 EquipSlot.AndroidHeart => "Heart",
                 _ => slot.ToString()
             };
@@ -2997,6 +3389,28 @@ namespace HaCreator.MapSimulator.UI
             };
         }
 
+        private IReadOnlyList<InventorySlotData> CreateInventorySlots(IReadOnlyList<CharacterPart> parts)
+        {
+            if (parts == null || parts.Count == 0)
+            {
+                return Array.Empty<InventorySlotData>();
+            }
+
+            List<InventorySlotData> slots = new(parts.Count);
+            for (int i = 0; i < parts.Count; i++)
+            {
+                InventorySlotData slot = CreateInventorySlot(parts[i]);
+                if (slot != null)
+                {
+                    slots.Add(slot);
+                }
+            }
+
+            return slots.Count == 0
+                ? Array.Empty<InventorySlotData>()
+                : new ReadOnlyCollection<InventorySlotData>(slots);
+        }
+
         private static IReadOnlyList<InventorySlotData> CreateInventorySlots(IReadOnlyList<CompanionEquipItem> items)
         {
             if (items == null || items.Count == 0)
@@ -3021,7 +3435,7 @@ namespace HaCreator.MapSimulator.UI
                     MaxStackSize = 1,
                     GradeFrameIndex = 0,
                     ItemName = item.Name,
-                    ItemTypeName = "Equip",
+                    ItemTypeName = string.IsNullOrWhiteSpace(item.ItemCategory) ? "Equip" : item.ItemCategory,
                     Description = BuildCompanionEquipmentDescription(item)
                 });
             }
@@ -3046,7 +3460,7 @@ namespace HaCreator.MapSimulator.UI
                 MaxStackSize = 1,
                 GradeFrameIndex = 0,
                 ItemName = item.Name,
-                ItemTypeName = "Equip",
+                ItemTypeName = string.IsNullOrWhiteSpace(item.ItemCategory) ? "Equip" : item.ItemCategory,
                 Description = BuildCompanionEquipmentDescription(item)
             };
         }

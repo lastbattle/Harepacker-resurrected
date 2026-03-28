@@ -140,10 +140,18 @@ namespace HaCreator.MapSimulator
             Guild = 4,
             Alliance = 5,
             Notice = 13,
+            OutgoingWhisper = 14,
             System = 12,
             Error = 15,
-            Whisper = 16,
+            IncomingWhisper = 16,
             Expedition = 26
+        }
+
+        internal static Color ResolveRenderedClientChatLogColor(int chatLogType)
+        {
+            return Enum.IsDefined(typeof(ClientChatLogType), chatLogType)
+                ? ResolveClientChatLogColor((ClientChatLogType)chatLogType)
+                : DefaultMessageColor;
         }
 
         #region Initialization
@@ -982,7 +990,7 @@ namespace HaCreator.MapSimulator
                 $"> {whisperTarget}: {message}",
                 WhisperMessageColor,
                 tickCount,
-                (int)ClientChatLogType.Whisper,
+                (int)ClientChatLogType.OutgoingWhisper,
                 whisperTarget);
             MessageSubmitted?.Invoke(message, tickCount);
         }
@@ -1004,9 +1012,10 @@ namespace HaCreator.MapSimulator
                 ClientChatLogType.Alliance => AllianceMessageColor,
                 ClientChatLogType.Expedition => ExpeditionMessageColor,
                 ClientChatLogType.Notice => NoticeMessageColor,
+                ClientChatLogType.OutgoingWhisper => WhisperMessageColor,
                 ClientChatLogType.Error => ErrorMessageColor,
                 ClientChatLogType.System => SystemMessageColor,
-                ClientChatLogType.Whisper => WhisperMessageColor,
+                ClientChatLogType.IncomingWhisper => WhisperMessageColor,
                 _ => DefaultMessageColor
             };
         }
@@ -1043,11 +1052,6 @@ namespace HaCreator.MapSimulator
                 return (int)ClientChatLogType.Expedition;
             }
 
-            if (ColorsMatch(color, WhisperMessageColor))
-            {
-                return (int)ClientChatLogType.Whisper;
-            }
-
             if (ColorsMatch(color, ErrorMessageColor))
             {
                 return (int)ClientChatLogType.Error;
@@ -1061,6 +1065,11 @@ namespace HaCreator.MapSimulator
             if (ColorsMatch(color, SystemMessageColor))
             {
                 return (int)ClientChatLogType.System;
+            }
+
+            if (ColorsMatch(color, WhisperMessageColor))
+            {
+                return InferWhisperChatLogType(text);
             }
 
             return -1;
@@ -1098,79 +1107,61 @@ namespace HaCreator.MapSimulator
                 return true;
             }
 
+            if (text.StartsWith("[Association]", StringComparison.OrdinalIgnoreCase))
+            {
+                chatLogType = ClientChatLogType.Alliance;
+                return true;
+            }
+
             if (text.StartsWith("[Expedition]", StringComparison.OrdinalIgnoreCase))
             {
                 chatLogType = ClientChatLogType.Expedition;
                 return true;
             }
 
-            if (text.StartsWith("[Whisper]", StringComparison.OrdinalIgnoreCase))
+            if (text.StartsWith("[System]", StringComparison.OrdinalIgnoreCase))
             {
-                chatLogType = ClientChatLogType.Whisper;
+                chatLogType = ClientChatLogType.System;
                 return true;
             }
 
-            if (text.StartsWith("[Whisper]", StringComparison.OrdinalIgnoreCase))
+            if (text.StartsWith("[Notice]", StringComparison.OrdinalIgnoreCase))
             {
-                chatLogType = ClientChatLogType.Whisper;
+                chatLogType = ClientChatLogType.Notice;
                 return true;
             }
 
-            if (text.StartsWith("[Whisper]", StringComparison.OrdinalIgnoreCase))
+            if (text.StartsWith("[Error]", StringComparison.OrdinalIgnoreCase))
             {
-                chatLogType = ClientChatLogType.Whisper;
+                chatLogType = ClientChatLogType.Error;
                 return true;
             }
 
-            if (text.StartsWith("[Whisper]", StringComparison.OrdinalIgnoreCase))
+            if (text.StartsWith("[Whisper]", StringComparison.OrdinalIgnoreCase)
+                || text.StartsWith(">", StringComparison.Ordinal))
             {
-                chatLogType = ClientChatLogType.Whisper;
-                return true;
-            }
-
-            if (text.StartsWith("[Whisper]", StringComparison.OrdinalIgnoreCase))
-            {
-                chatLogType = ClientChatLogType.Whisper;
-                return true;
-            }
-
-            if (text.StartsWith("[Whisper]", StringComparison.OrdinalIgnoreCase))
-            {
-                chatLogType = ClientChatLogType.Whisper;
-                return true;
-            }
-
-            if (text.StartsWith("[Whisper]", StringComparison.OrdinalIgnoreCase))
-            {
-                chatLogType = ClientChatLogType.Whisper;
-                return true;
-            }
-
-            if (text.StartsWith("[Whisper]", StringComparison.OrdinalIgnoreCase))
-            {
-                chatLogType = ClientChatLogType.Whisper;
-                return true;
-            }
-
-            if (text.StartsWith("[Whisper]", StringComparison.OrdinalIgnoreCase))
-            {
-                chatLogType = ClientChatLogType.Whisper;
-                return true;
-            }
-
-            if (text.StartsWith("[Whisper]", StringComparison.OrdinalIgnoreCase))
-            {
-                chatLogType = ClientChatLogType.Whisper;
-                return true;
-            }
-
-            if (text.StartsWith("[Whisper]", StringComparison.OrdinalIgnoreCase))
-            {
-                chatLogType = ClientChatLogType.Whisper;
+                chatLogType = (ClientChatLogType)InferWhisperChatLogType(text);
                 return true;
             }
 
             return false;
+        }
+
+        private static int InferWhisperChatLogType(string text)
+        {
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                return (int)ClientChatLogType.IncomingWhisper;
+            }
+
+            if (text.StartsWith(">", StringComparison.Ordinal)
+                || (text.StartsWith("[Whisper]", StringComparison.OrdinalIgnoreCase)
+                    && text.IndexOf("->", StringComparison.Ordinal) >= 0))
+            {
+                return (int)ClientChatLogType.OutgoingWhisper;
+            }
+
+            return (int)ClientChatLogType.IncomingWhisper;
         }
 
         private static bool ColorsMatch(Color left, Color right)

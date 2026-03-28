@@ -383,7 +383,14 @@ namespace HaCreator.MapSimulator.Loaders
                         new Point(dxObj_backgrnd.X, dxObj_backgrnd.Y),
                         new List<UIObject> { });
                     statusBar.InitializeButtons();
-                    statusBar.SetLeftLayoutMetric(ResolveCanvasPosition(Point.Zero, mainBarProperties?["lvBacktrnd"] as WzCanvasProperty));
+                    Point mainBarFrameOrigin = GetCanvasOrigin(mainBarProperties?["backgrnd"] as WzCanvasProperty);
+                    statusBar.SetLayoutMetrics(
+                        ResolveCanvasPosition(mainBarFrameOrigin, mainBarProperties?["lvBacktrnd"] as WzCanvasProperty),
+                        ResolveCanvasPosition(mainBarFrameOrigin, mainBarProperties?["gaugeBackgrd"] as WzCanvasProperty));
+                    statusBar.SetGaugeTextAnchors(
+                        new Vector2(163, 4),
+                        new Vector2(332, 4),
+                        new Vector2(332, 20));
 
                     // Set gauge textures if loaded from WZ files
                     if (hpGaugeTexture != null || mpGaugeTexture != null || expGaugeTexture != null) {
@@ -534,18 +541,30 @@ namespace HaCreator.MapSimulator.Loaders
                              obj_Ui_BtChat, obj_Ui_BtClaim,
                              obj_Ui_MemoIcon,
                              obj_Ui_BtCharacter, obj_Ui_BtStat, obj_Ui_BtQuest, obj_Ui_BtInven, obj_Ui_BtEquip, obj_Ui_BtSkill, obj_Ui_BtKeysetting
-                          }
+                           }
                         );
                     chatUI.InitializeButtons();
-                    chatUI.SetChatEnterTexture(LoadCanvasTexture(chatEnterCanvas, device));
+                    Texture2D chatEnterTexture = LoadCanvasTexture(chatEnterCanvas, device);
+                    chatUI.SetChatEnterTexture(chatEnterTexture);
                     (Dictionary<MapSimulatorChatTargetType, Texture2D> chatTargetTextures,
                         Dictionary<MapSimulatorChatTargetType, Point> chatTargetOrigins) =
                         LoadChatTargetTextures(subProperty_chatTarget, device);
                     chatUI.SetChatTargetTextures(chatTargetTextures, chatTargetOrigins);
+                    Vector2 chatTargetLabelPos = ResolveCanvasPosition(chatFrameAnchorOrigin, subProperty_chatTarget?["all"] as WzCanvasProperty).ToVector2();
+                    Vector2 chatEnterPos = ResolveCanvasPosition(chatFrameAnchorOrigin, chatEnterCanvas).ToVector2();
+                    Vector2 chatTargetButtonPos = ResolveCanvasPosition(
+                        chatFrameAnchorOrigin,
+                        subProperty_chatTargetBase?["normal"]?["0"] as WzCanvasProperty).ToVector2();
+                    Vector2 chatInputPos = new Vector2(
+                        chatTargetButtonPos.X + obj_Ui_chatTarget.CanvasSnapshotWidth + 4,
+                        chatEnterPos.Y + 3);
                     chatUI.SetLayoutMetrics(
                         chatFrameAnchorOrigin,
-                        ResolveCanvasPosition(chatFrameAnchorOrigin, subProperty_chatTarget?["all"] as WzCanvasProperty).ToVector2(),
-                        ResolveCanvasPosition(chatFrameAnchorOrigin, chatEnterCanvas).ToVector2());
+                        chatTargetLabelPos,
+                        chatEnterPos,
+                        chatInputPos,
+                        new Vector2(ResolveCanvasPosition(chatFrameAnchorOrigin, chatSpace2Canvas).X + 4, -16),
+                        Math.Max(1, (chatEnterTexture?.Width ?? 457) - 5));
                     chatUI.SetPointNotificationAnimations(
                         LoadPointNotificationAnimation(mainBarProperties?["ApNotify"] as WzSubProperty, device),
                         LoadPointNotificationAnimation(mainBarProperties?["SpNotify"] as WzSubProperty, device));
@@ -827,6 +846,19 @@ namespace HaCreator.MapSimulator.Loaders
 
             LoadBuffIconsRecursive(buffIconTextures, uiBuffIcon, device, string.Empty);
             return buffIconTextures;
+        }
+
+        public static IReadOnlyDictionary<string, BuffIconCatalogEntry> LoadBuffIconCatalogEntries(WzImage uiBuffIcon)
+        {
+            var catalogEntries = new Dictionary<string, BuffIconCatalogEntry>(StringComparer.OrdinalIgnoreCase);
+            if (uiBuffIcon == null)
+            {
+                return catalogEntries;
+            }
+
+            int sortOrder = 0;
+            LoadBuffIconCatalogEntriesRecursive(catalogEntries, uiBuffIcon, string.Empty, ref sortOrder);
+            return catalogEntries;
         }
 
         private static Texture2D[] LoadSkillTooltipTextures(GraphicsDevice device)
@@ -1231,6 +1263,80 @@ namespace HaCreator.MapSimulator.Loaders
                     : $"{currentPath}/{child.Name}";
                 LoadBuffIconsRecursive(buffIconTextures, child, device, childPath);
             }
+        }
+
+        private static void LoadBuffIconCatalogEntriesRecursive(
+            Dictionary<string, BuffIconCatalogEntry> catalogEntries,
+            WzObject currentNode,
+            string currentPath,
+            ref int sortOrder)
+        {
+            if (currentNode == null)
+            {
+                return;
+            }
+
+            if (TryCreateBuffIconCatalogEntry(currentNode, currentPath, ref sortOrder, out BuffIconCatalogEntry entry)
+                && !string.IsNullOrWhiteSpace(entry.IconKey)
+                && !catalogEntries.ContainsKey(entry.IconKey))
+            {
+                catalogEntries[entry.IconKey] = entry;
+            }
+
+            if (!(currentNode is IPropertyContainer container))
+            {
+                return;
+            }
+
+            foreach (WzImageProperty child in container.WzProperties)
+            {
+                string childPath = string.IsNullOrWhiteSpace(currentPath)
+                    ? child.Name
+                    : $"{currentPath}/{child.Name}";
+                LoadBuffIconCatalogEntriesRecursive(catalogEntries, child, childPath, ref sortOrder);
+            }
+        }
+
+        private static bool TryCreateBuffIconCatalogEntry(
+            WzObject currentNode,
+            string currentPath,
+            ref int sortOrder,
+            out BuffIconCatalogEntry entry)
+        {
+            entry = null;
+            if (!(currentNode is IPropertyContainer container))
+            {
+                return false;
+            }
+
+            string normalizedPath = NormalizeBuffIconKey(currentPath);
+            if (string.IsNullOrWhiteSpace(normalizedPath))
+            {
+                return false;
+            }
+
+            WzStringProperty nameProperty = container["name"] as WzStringProperty;
+            WzCanvasProperty iconCanvas = container["0"] as WzCanvasProperty;
+            string displayName = nameProperty?.GetString();
+            if (iconCanvas == null || string.IsNullOrWhiteSpace(displayName))
+            {
+                return false;
+            }
+
+            int entrySortOrder = 0;
+            if (normalizedPath.StartsWith("buff/", StringComparison.OrdinalIgnoreCase))
+            {
+                sortOrder += 10;
+                entrySortOrder = sortOrder;
+            }
+
+            entry = new BuffIconCatalogEntry
+            {
+                IconKey = normalizedPath,
+                DisplayName = displayName.Trim(),
+                SortOrder = entrySortOrder
+            };
+            return true;
         }
 
         private static string NormalizeBuffIconKey(string path)

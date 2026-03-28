@@ -7,5 +7,6 @@ namespace HaCreator.MapSimulator
         Accept = 2,
         NowLater = 3,
         RestartExit = 4,
+        Nexon = 5,
     }
 }

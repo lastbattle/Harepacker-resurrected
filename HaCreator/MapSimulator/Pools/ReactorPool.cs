@@ -293,12 +293,13 @@ namespace HaCreator.MapSimulator.Pools
         /// <summary>
         /// Find reactor at position
         /// </summary>
-        public (ReactorItem reactor, int index)? FindReactorAtPosition(float x, float y, float range = 40f)
+        public (ReactorItem reactor, int index)? FindReactorAtPosition(float x, float y, float range = 40f, int? currentTick = null)
         {
             if (_reactors == null)
                 return null;
 
             float rangeSq = range * range;
+            int resolvedTick = currentTick ?? _lastUpdateTick;
 
             for (int i = 0; i < _reactors.Length; i++)
             {
@@ -311,8 +312,9 @@ namespace HaCreator.MapSimulator.Pools
                 if (data?.State == ReactorState.Destroyed || data?.State == ReactorState.Respawning)
                     continue;
 
-                float dx = reactor.ReactorInstance.X - x;
-                float dy = reactor.ReactorInstance.Y - y;
+                Rectangle reactorBounds = reactor.GetCurrentBounds(resolvedTick);
+                float dx = reactorBounds.Center.X - x;
+                float dy = reactorBounds.Center.Y - y;
 
                 if (dx * dx + dy * dy <= rangeSq)
                     return (reactor, i);
@@ -334,12 +336,15 @@ namespace HaCreator.MapSimulator.Pools
         /// <returns>List of touch-able reactors in range</returns>
         public List<(ReactorItem reactor, int index)> FindTouchReactorAroundLocalUser(
             float playerX, float playerY,
-            int playerWidth = 40, int playerHeight = 60)
+            int playerWidth = 40, int playerHeight = 60,
+            int? currentTick = null)
         {
             var results = new List<(ReactorItem reactor, int index)>();
 
             if (_reactors == null)
                 return results;
+
+            int resolvedTick = currentTick ?? _lastUpdateTick;
 
             // Create player hitbox (centered on X, Y at feet)
             var playerRect = new Rectangle(
@@ -367,15 +372,7 @@ namespace HaCreator.MapSimulator.Pools
                     continue;
 
                 // Get reactor hitbox
-                var instance = reactor.ReactorInstance;
-                int reactorWidth = instance.Width;
-                int reactorHeight = instance.Height;
-
-                var reactorRect = new Rectangle(
-                    instance.X - instance.Origin.X,
-                    instance.Y - instance.Origin.Y,
-                    reactorWidth,
-                    reactorHeight);
+                Rectangle reactorRect = reactor.GetCurrentBounds(resolvedTick);
 
                 // Check intersection
                 if (playerRect.Intersects(reactorRect))
@@ -399,7 +396,8 @@ namespace HaCreator.MapSimulator.Pools
         public List<(ReactorItem reactor, int index)> FindSkillReactor(
             float skillX, float skillY,
             float skillRange,
-            int skillId = 0)
+            int skillId = 0,
+            int? currentTick = null)
         {
             var results = new List<(ReactorItem reactor, int index)>();
 
@@ -407,6 +405,7 @@ namespace HaCreator.MapSimulator.Pools
                 return results;
 
             float rangeSq = skillRange * skillRange;
+            int resolvedTick = currentTick ?? _lastUpdateTick;
 
             for (int i = 0; i < _reactors.Length; i++)
             {
@@ -431,9 +430,9 @@ namespace HaCreator.MapSimulator.Pools
                 if (!MeetsQuestRequirement(data))
                     continue;
 
-                var instance = reactor.ReactorInstance;
-                float dx = instance.X - skillX;
-                float dy = instance.Y - skillY;
+                Rectangle reactorBounds = reactor.GetCurrentBounds(resolvedTick);
+                float dx = reactorBounds.Center.X - skillX;
+                float dy = reactorBounds.Center.Y - skillY;
 
                 if (dx * dx + dy * dy <= rangeSq)
                 {
@@ -447,12 +446,14 @@ namespace HaCreator.MapSimulator.Pools
         /// <summary>
         /// Find skill or hit reactors intersecting a world-space attack area.
         /// </summary>
-        public List<(ReactorItem reactor, int index)> FindSkillReactorsInBounds(Rectangle attackBounds, int skillId = 0)
+        public List<(ReactorItem reactor, int index)> FindSkillReactorsInBounds(Rectangle attackBounds, int skillId = 0, int? currentTick = null)
         {
             var results = new List<(ReactorItem reactor, int index)>();
 
             if (_reactors == null || attackBounds.Width <= 0 || attackBounds.Height <= 0)
                 return results;
+
+            int resolvedTick = currentTick ?? _lastUpdateTick;
 
             for (int i = 0; i < _reactors.Length; i++)
             {
@@ -477,10 +478,10 @@ namespace HaCreator.MapSimulator.Pools
                 if (!MeetsQuestRequirement(data))
                     continue;
 
-                if (!IsAttackDirectionValid(data.ReactorType, attackBounds, reactor.ReactorInstance))
+                Rectangle reactorBounds = reactor.GetCurrentBounds(resolvedTick);
+                if (!IsAttackDirectionValid(data.ReactorType, attackBounds, reactorBounds))
                     continue;
 
-                Rectangle reactorBounds = GetReactorBounds(reactor.ReactorInstance);
                 if (reactorBounds.Intersects(attackBounds))
                 {
                     results.Add((reactor, i));
@@ -504,7 +505,7 @@ namespace HaCreator.MapSimulator.Pools
         {
             var triggeredReactors = new List<ReactorItem>();
 
-            foreach (var (reactor, index) in FindSkillReactor(skillX, skillY, skillRange, skillId))
+            foreach (var (reactor, index) in FindSkillReactor(skillX, skillY, skillRange, skillId, currentTick))
             {
                 ReactorRuntimeData data = GetReactorData(index);
                 if (data == null)
@@ -543,7 +544,7 @@ namespace HaCreator.MapSimulator.Pools
         {
             var triggeredReactors = new List<ReactorItem>();
 
-            foreach (var (reactor, index) in FindSkillReactorsInBounds(attackBounds, skillId))
+            foreach (var (reactor, index) in FindSkillReactorsInBounds(attackBounds, skillId, currentTick))
             {
                 ReactorRuntimeData data = GetReactorData(index);
                 if (data == null)
@@ -604,12 +605,15 @@ namespace HaCreator.MapSimulator.Pools
             float playerY,
             int itemId,
             int playerWidth = 40,
-            int playerHeight = 60)
+            int playerHeight = 60,
+            int? currentTick = null)
         {
             var results = new List<(ReactorItem reactor, int index)>();
 
             if (_reactors == null || itemId <= 0)
                 return results;
+
+            int resolvedTick = currentTick ?? _lastUpdateTick;
 
             var playerRect = new Rectangle(
                 (int)(playerX - playerWidth / 2f),
@@ -633,7 +637,7 @@ namespace HaCreator.MapSimulator.Pools
                     continue;
                 }
 
-                if (!GetReactorBounds(reactor.ReactorInstance).Intersects(playerRect))
+                if (!reactor.GetCurrentBounds(resolvedTick).Intersects(playerRect))
                     continue;
 
                 results.Add((reactor, i));
@@ -664,7 +668,7 @@ namespace HaCreator.MapSimulator.Pools
         {
             var triggeredReactors = new List<ReactorItem>();
 
-            foreach (var (reactor, index) in FindItemReactorsAroundLocalUser(playerX, playerY, itemId))
+            foreach (var (reactor, index) in FindItemReactorsAroundLocalUser(playerX, playerY, itemId, currentTick: currentTick))
             {
                 ActivateReactor(index, playerId, currentTick, ReactorActivationType.Item);
                 triggeredReactors.Add(reactor);
@@ -1056,14 +1060,27 @@ namespace HaCreator.MapSimulator.Pools
             {
                 int index = kvp.Key;
                 var data = kvp.Value;
+                ReactorItem reactor = GetReactor(index);
+
+                if (reactor != null)
+                {
+                    data.StateFrame = reactor.GetCurrentFrameIndex(currentTick);
+                }
 
                 switch (data.State)
                 {
                     case ReactorState.Activated:
                         if (currentTick - data.StateStartTime >= GetActivationDuration(index))
                         {
+                            if (ShouldAutoChainStates(data)
+                                && TryAdvanceToNextVisualState(reactor, data, currentTick))
+                            {
+                                break;
+                            }
+
                             data.State = ReactorState.Active;
                             data.StateStartTime = currentTick;
+                            data.StateFrame = 0;
                         }
                         break;
 
@@ -1231,12 +1248,12 @@ namespace HaCreator.MapSimulator.Pools
                 : ReactorType.UNKNOWN;
         }
 
-        private static bool IsAttackDirectionValid(ReactorType reactorType, Rectangle attackBounds, ReactorInstance instance)
+        private static bool IsAttackDirectionValid(ReactorType reactorType, Rectangle attackBounds, Rectangle reactorBounds)
         {
-            if (instance == null || attackBounds.Width <= 0)
+            if (attackBounds.Width <= 0 || reactorBounds.Width <= 0)
                 return false;
 
-            float reactorCenterX = GetReactorBounds(instance).Center.X;
+            float reactorCenterX = reactorBounds.Center.X;
             float attackCenterX = attackBounds.Center.X;
 
             return reactorType switch
@@ -1271,6 +1288,29 @@ namespace HaCreator.MapSimulator.Pools
 
             int stateDuration = reactor.GetStateDuration(data.VisualState);
             return stateDuration > 0 ? stateDuration : ACTIVATION_ANIMATION_TIME;
+        }
+
+        private static bool ShouldAutoChainStates(ReactorRuntimeData data)
+        {
+            return data != null
+                && data.ActivationType != ReactorActivationType.Hit
+                && data.ActivationType != ReactorActivationType.None;
+        }
+
+        private static bool TryAdvanceToNextVisualState(ReactorItem reactor, ReactorRuntimeData data, int currentTick)
+        {
+            if (reactor == null
+                || data == null
+                || !reactor.TryGetNextState(data.VisualState, out int nextVisualState))
+            {
+                return false;
+            }
+
+            data.VisualState = nextVisualState;
+            data.State = ReactorState.Activated;
+            data.StateStartTime = currentTick;
+            data.StateFrame = 0;
+            return true;
         }
 
         private void PublishScriptState(ReactorItem reactor, ReactorRuntimeData data, bool isEnabled, int currentTick)

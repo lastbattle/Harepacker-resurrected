@@ -202,10 +202,15 @@ namespace HaCreator.MapSimulator.UI
             {
                 Point position = SlotPositions[node.SlotIndex];
                 IDXObject plate = ResolvePlate(node);
+                Rectangle bounds = CreateNodeBounds(
+                    new Point(Position.X + position.X, Position.Y + position.Y),
+                    plate?.Width ?? _memberOnlinePlate?.Width ?? 133,
+                    plate?.Height ?? _memberOnlinePlate?.Height ?? 34);
+                _nodeBounds[node.SlotIndex] = bounds;
 
                 if (node.MemberId == 0 || plate == null)
                 {
-                    DrawPlaceholderNode(sprite, node, position);
+                    DrawPlaceholderNode(sprite, node, bounds);
                     continue;
                 }
 
@@ -232,8 +237,6 @@ namespace HaCreator.MapSimulator.UI
                     false,
                     drawReflectionInfo);
 
-                Rectangle bounds = CreateNodeBounds(new Point(Position.X + position.X, Position.Y + position.Y), plate.Width, plate.Height);
-                _nodeBounds[node.SlotIndex] = bounds;
                 DrawNodeText(sprite, node, bounds);
             }
         }
@@ -248,14 +251,13 @@ namespace HaCreator.MapSimulator.UI
             return node.IsOnline ? _memberOnlinePlate : _memberOfflinePlate;
         }
 
-        private void DrawPlaceholderNode(SpriteBatch sprite, FamilyTreeNodeSnapshot node, Point position)
+        private void DrawPlaceholderNode(SpriteBatch sprite, FamilyTreeNodeSnapshot node, Rectangle bounds)
         {
             if (string.IsNullOrWhiteSpace(node.PlaceholderText))
             {
                 return;
             }
 
-            Rectangle bounds = CreateNodeBounds(position, _memberOnlinePlate?.Width ?? 133, _memberOnlinePlate?.Height ?? 34);
             DrawCenteredText(sprite, node.PlaceholderText, bounds, new Color(165, 165, 165), 0.30f, 10);
         }
 

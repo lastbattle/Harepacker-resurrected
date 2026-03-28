@@ -14,18 +14,21 @@ namespace HaCreator.MapSimulator.Managers
         Clock,
         Stage,
         Clear,
-        TimeOver
+        TimeOver,
+        RawPacket
     }
 
     public sealed class DojoPacketInboxMessage
     {
-        public DojoPacketInboxMessage(DojoPacketMessageKind kind, int value, string option, string source, string rawText)
+        public DojoPacketInboxMessage(DojoPacketMessageKind kind, int value, string option, string source, string rawText, int packetType = -1, byte[] payload = null)
         {
             Kind = kind;
             Value = value;
             Option = option ?? string.Empty;
             Source = string.IsNullOrWhiteSpace(source) ? "dojo-inbox" : source;
             RawText = rawText ?? string.Empty;
+            PacketType = packetType;
+            Payload = payload != null ? (byte[])payload.Clone() : Array.Empty<byte>();
         }
 
         public DojoPacketMessageKind Kind { get; }
@@ -33,6 +36,8 @@ namespace HaCreator.MapSimulator.Managers
         public string Option { get; }
         public string Source { get; }
         public string RawText { get; }
+        public int PacketType { get; }
+        public byte[] Payload { get; }
     }
 
     /// <summary>
@@ -43,6 +48,8 @@ namespace HaCreator.MapSimulator.Managers
     /// - "stage <0-32>"
     /// - "clear [auto|none|<nextMapId>]"
     /// - "timeover [<exitMapId>]"
+    /// - "raw <packetType> <hex-payload>"
+    /// - "<packetType> <hex-payload>"
     /// </summary>
     public sealed class DojoPacketInboxManager : IDisposable
     {
@@ -124,11 +131,15 @@ namespace HaCreator.MapSimulator.Managers
             out DojoPacketMessageKind kind,
             out int value,
             out string option,
+            out int packetType,
+            out byte[] payload,
             out string error)
         {
             kind = DojoPacketMessageKind.Energy;
             value = 0;
             option = string.Empty;
+            packetType = -1;
+            payload = Array.Empty<byte>();
             error = null;
 
             if (string.IsNullOrWhiteSpace(text))
@@ -145,6 +156,34 @@ namespace HaCreator.MapSimulator.Managers
             }
 
             string action = parts[0].Trim().ToLowerInvariant();
+            if (action == "raw" || int.TryParse(parts[0], out packetType))
+            {
+                int payloadTokenIndex = action == "raw" ? 2 : 1;
+                if (action == "raw")
+                {
+                    if (parts.Length < 3 || !int.TryParse(parts[1], out packetType) || packetType < 0)
+                    {
+                        error = "Dojo raw packet lines must be 'raw <packetType> <hex-payload>'.";
+                        return false;
+                    }
+                }
+                else if (parts.Length < 2)
+                {
+                    error = "Dojo raw packet lines must be '<packetType> <hex-payload>'.";
+                    return false;
+                }
+
+                string hexPayload = parts.Length > payloadTokenIndex ? parts[payloadTokenIndex] : string.Empty;
+                if (!TryParseHexPayload(hexPayload, out payload))
+                {
+                    error = "Dojo raw packet payload must be valid hex.";
+                    return false;
+                }
+
+                kind = DojoPacketMessageKind.RawPacket;
+                return true;
+            }
+
             switch (action)
             {
                 case "energy":
@@ -256,15 +295,15 @@ namespace HaCreator.MapSimulator.Managers
                             break;
                         }
 
-                        if (!TryParsePacketLine(line, out DojoPacketMessageKind kind, out int value, out string option, out string error))
+                        if (!TryParsePacketLine(line, out DojoPacketMessageKind kind, out int value, out string option, out int packetType, out byte[] payload, out string error))
                         {
                             LastStatus = $"Ignored Dojo inbox line from {remoteEndpoint}: {error}";
                             continue;
                         }
 
-                        _pendingMessages.Enqueue(new DojoPacketInboxMessage(kind, value, option, remoteEndpoint, line));
+                        _pendingMessages.Enqueue(new DojoPacketInboxMessage(kind, value, option, remoteEndpoint, line, packetType, payload));
                         ReceivedCount++;
-                        LastStatus = $"Queued {DescribeMessage(kind, value, option)} from {remoteEndpoint}.";
+                        LastStatus = $"Queued {DescribeMessage(kind, value, option, packetType, payload)} from {remoteEndpoint}.";
                     }
                 }
             }
@@ -285,10 +324,10 @@ namespace HaCreator.MapSimulator.Managers
 
         private static string DescribeMessage(DojoPacketInboxMessage message)
         {
-            return DescribeMessage(message.Kind, message.Value, message.Option);
+            return DescribeMessage(message.Kind, message.Value, message.Option, message.PacketType, message.Payload);
         }
 
-        private static string DescribeMessage(DojoPacketMessageKind kind, int value, string option)
+        private static string DescribeMessage(DojoPacketMessageKind kind, int value, string option, int packetType, byte[] payload)
         {
             return kind switch
             {
@@ -297,8 +336,43 @@ namespace HaCreator.MapSimulator.Managers
                 DojoPacketMessageKind.Stage => $"Dojo stage {value}",
                 DojoPacketMessageKind.Clear => string.IsNullOrWhiteSpace(option) ? "Dojo clear" : $"Dojo clear {option}",
                 DojoPacketMessageKind.TimeOver => string.IsNullOrWhiteSpace(option) ? "Dojo time-over" : $"Dojo time-over {option}",
+                DojoPacketMessageKind.RawPacket => $"Dojo packet {packetType} ({payload?.Length ?? 0} bytes)",
                 _ => "Dojo packet"
             };
+        }
+
+        private static bool TryParseHexPayload(string text, out byte[] payload)
+        {
+            payload = Array.Empty<byte>();
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                return false;
+            }
+
+            string normalized = text
+                .Replace(" ", string.Empty)
+                .Replace("-", string.Empty)
+                .Trim();
+
+            if (normalized.StartsWith("0x", StringComparison.OrdinalIgnoreCase))
+            {
+                normalized = normalized.Substring(2);
+            }
+
+            if ((normalized.Length & 1) != 0)
+            {
+                return false;
+            }
+
+            try
+            {
+                payload = Convert.FromHexString(normalized);
+                return true;
+            }
+            catch (FormatException)
+            {
+                return false;
+            }
         }
 
         private void StopInternal(bool clearPending)

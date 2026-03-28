@@ -62,6 +62,22 @@ namespace HaCreator.MapSimulator.Character.Skills
             14111000
         };
 
+        private static readonly Dictionary<int, int> FlagOnlyMorphSkillAliasTemplateIds = new()
+        {
+            // v115 exposes only info/morph=1 for these skills, but the available Morph assets and
+            // the client morph loader both operate on concrete template ids.
+            [10109] = 109,
+            [20020111] = 111
+        };
+
+        private static readonly string[] PreferredShadowPartnerOffsetActions =
+        {
+            "stand1",
+            "alert",
+            "stand2",
+            "walk1"
+        };
+
         private readonly WzFile _skillWz;
         private readonly GraphicsDevice _device;
         private readonly TexturePool _texturePool;
@@ -72,7 +88,9 @@ namespace HaCreator.MapSimulator.Character.Skills
         private readonly HashSet<int> _skillsWithoutCastSound = new();
         private readonly HashSet<int> _skillsWithoutRepeatSound = new();
         private readonly Dictionary<string, MeleeAfterImageCatalog> _characterAfterImageCache = new(StringComparer.OrdinalIgnoreCase);
+        private readonly Dictionary<string, MeleeAfterImageCatalog> _characterChargeAfterImageCache = new(StringComparer.OrdinalIgnoreCase);
         private readonly HashSet<string> _missingCharacterAfterImageKeys = new(StringComparer.OrdinalIgnoreCase);
+        private readonly HashSet<string> _missingCharacterChargeAfterImageKeys = new(StringComparer.OrdinalIgnoreCase);
         private WzImage _skillSoundImage;
         private WzImage _skillStringImage;
 
@@ -306,18 +324,18 @@ namespace HaCreator.MapSimulator.Character.Skills
 
             // Check common nodes
             var commonNode = skillNode["common"];
+            var pvpCommonNode = skillNode["PVPcommon"];
+            skill.HasMorphMetadata = HasProperty(commonNode, "morph")
+                || HasProperty(pvpCommonNode, "morph")
+                || HasProperty(infoNode, "morph");
             if (commonNode != null)
             {
                 skill.MaxLevel = GetInt(commonNode, "maxLevel", 1);
-                skill.MorphId = GetInt(commonNode, "morph");
                 skill.SummonSubTimeFormula = GetString(commonNode, "subTime");
                 skill.SummonSelfDestructionFormula = GetString(commonNode, "selfDestruction");
             }
 
-            if (skill.MorphId <= 0 && infoNode != null)
-            {
-                skill.MorphId = GetInt(infoNode, "morph");
-            }
+            skill.MorphId = ResolveMorphTemplateId(skill.SkillId, commonNode, pvpCommonNode, infoNode);
 
             if (!skill.Invisible)
             {
@@ -384,7 +402,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return;
             }
 
-            if (skill.IsPassiveSkillData && skill.AffectedSkillId > 0)
+            if (skill.UsesAffectedSkillPassiveData)
             {
                 skill.Type = SkillType.Passive;
                 skill.IsPassive = true;
@@ -565,6 +583,11 @@ namespace HaCreator.MapSimulator.Character.Skills
         private void ParseSkillLevels(SkillData skill, WzImageProperty skillNode)
         {
             int eventTamingMobId = GetInt(skillNode, "eventTamingMob");
+            if (eventTamingMobId > 0)
+            {
+                skill.UsesTamingMobMount = true;
+            }
+
             var levelNode = skillNode["level"];
             if (levelNode != null)
             {
@@ -729,11 +752,26 @@ namespace HaCreator.MapSimulator.Character.Skills
             string actionName,
             int characterLevel,
             int masteryPercent,
+            int chargeElement,
             out MeleeAfterImageAction afterImageAction)
         {
             afterImageAction = null;
             if (string.IsNullOrWhiteSpace(actionName))
             {
+                return false;
+            }
+
+            if (chargeElement > 0)
+            {
+                foreach (string weaponTypeKey in ResolveAfterImageWeaponTypeKeys(weapon))
+                {
+                    MeleeAfterImageCatalog chargeCatalog = GetOrLoadCharacterChargeAfterImageCatalog(weaponTypeKey, chargeElement);
+                    if (chargeCatalog != null && chargeCatalog.TryGetAction(actionName, out afterImageAction))
+                    {
+                        return true;
+                    }
+                }
+
                 return false;
             }
 
@@ -864,6 +902,45 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
 
             _characterAfterImageCache[cacheKey] = catalog;
+            return catalog;
+        }
+
+        private MeleeAfterImageCatalog GetOrLoadCharacterChargeAfterImageCatalog(string weaponTypeKey, int chargeElement)
+        {
+            string cacheKey = $"{weaponTypeKey}/charge/{chargeElement}";
+            if (_characterChargeAfterImageCache.TryGetValue(cacheKey, out MeleeAfterImageCatalog cachedCatalog))
+            {
+                return cachedCatalog;
+            }
+
+            if (_missingCharacterChargeAfterImageKeys.Contains(cacheKey))
+            {
+                return null;
+            }
+
+            WzImage image = Program.FindImage("Character", $"Afterimage/{weaponTypeKey}");
+            if (image == null)
+            {
+                _missingCharacterChargeAfterImageKeys.Add(cacheKey);
+                return null;
+            }
+
+            image.ParseImage();
+            WzImageProperty chargeNode = image["charge"]?[chargeElement.ToString(CultureInfo.InvariantCulture)];
+            if (chargeNode == null)
+            {
+                _missingCharacterChargeAfterImageKeys.Add(cacheKey);
+                return null;
+            }
+
+            MeleeAfterImageCatalog catalog = LoadAfterImageCatalog(chargeNode);
+            if (catalog.Actions.Count == 0)
+            {
+                _missingCharacterChargeAfterImageKeys.Add(cacheKey);
+                return null;
+            }
+
+            _characterChargeAfterImageCache[cacheKey] = catalog;
             return catalog;
         }
 
@@ -1116,6 +1193,38 @@ namespace HaCreator.MapSimulator.Character.Skills
                 animation.Loop = ShouldLoopShadowPartnerAction(child.Name);
                 skill.ShadowPartnerActionAnimations[child.Name] = animation;
             }
+
+            skill.ShadowPartnerHorizontalOffsetPx = ResolveShadowPartnerHorizontalOffsetPx(skill.ShadowPartnerActionAnimations);
+        }
+
+        private static int ResolveShadowPartnerHorizontalOffsetPx(IReadOnlyDictionary<string, SkillAnimation> actionAnimations)
+        {
+            if (actionAnimations == null || actionAnimations.Count == 0)
+            {
+                return 26;
+            }
+
+            foreach (string actionName in PreferredShadowPartnerOffsetActions)
+            {
+                if (!actionAnimations.TryGetValue(actionName, out SkillAnimation animation)
+                    || animation?.Frames == null
+                    || animation.Frames.Count == 0)
+                {
+                    continue;
+                }
+
+                SkillFrame firstFrame = animation.Frames[0];
+                if (firstFrame == null)
+                {
+                    continue;
+                }
+
+                // Shadow Partner `special/*` idle origins resolve to a 26px separation;
+                // use the authored origin as the baseline instead of a second hardcoded render offset.
+                return Math.Max(0, firstFrame.Origin.X - 2);
+            }
+
+            return 26;
         }
 
         private static bool IsShadowPartnerSkill(SkillData skill, WzImageProperty skillNode)
@@ -1411,6 +1520,16 @@ namespace HaCreator.MapSimulator.Character.Skills
                 PopulateSummonSupportMetadata(skill, summonNode[supportBranchName]);
             }
 
+            WzImageProperty prepareBranch = summonNode["prepare"];
+            if (prepareBranch != null)
+            {
+                SkillAnimation prepareAnimation = LoadSkillAnimation(prepareBranch, "prepare");
+                if (prepareAnimation.Frames.Count > 0)
+                {
+                    skill.SummonAttackPrepareAnimation = prepareAnimation;
+                }
+            }
+
             string attackBranchName = SelectPreferredSummonAttackBranch(branchNames);
             if (attackBranchName == null && skill.SelfDestructMinion)
             {
@@ -1427,7 +1546,20 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return;
             }
 
+            string removalBranchName = skill.SelfDestructMinion
+                ? SelectPreferredSummonBranch(branchNames, new[] { "die", "die1" })
+                : null;
+            WzImageProperty removalBranch = !string.IsNullOrWhiteSpace(removalBranchName)
+                ? summonNode[removalBranchName]
+                : null;
+
             PopulateSummonAttackMetadata(skill, attackBranch);
+            if (skill.SelfDestructMinion
+                && removalBranch != null
+                && !string.Equals(removalBranchName, attackBranchName, StringComparison.OrdinalIgnoreCase))
+            {
+                PopulateSummonAttackMetadata(skill, removalBranch);
+            }
             skill.SummonAttackBranchName = attackBranchName;
 
             var attackAnimation = LoadSkillAnimation(attackBranch, attackBranchName);
@@ -1436,8 +1568,24 @@ namespace HaCreator.MapSimulator.Character.Skills
                 skill.SummonAttackAnimation = attackAnimation;
             }
 
-            PopulateSummonHitTimingMetadata(skill, attackBranchName, (summonNode.Parent as WzImageProperty)?["hit"]);
-        }
+              if (removalBranch != null)
+              {
+                  SkillAnimation removalAnimation = LoadSkillAnimation(removalBranch, removalBranchName);
+                  if (removalAnimation.Frames.Count > 0)
+                  {
+                      skill.SummonRemovalAnimation = removalAnimation;
+                  }
+              }
+
+              WzImageProperty hitNode = summonNode["hit"] ?? (summonNode.Parent as WzImageProperty)?["hit"];
+              SkillAnimation hitAnimation = LoadSummonHitAnimation(hitNode);
+              if (hitAnimation?.Frames.Count > 0)
+              {
+                  skill.SummonHitAnimation = hitAnimation;
+              }
+
+              PopulateSummonHitTimingMetadata(skill, attackBranchName, hitNode);
+          }
 
         private static void PopulateSummonAttackMetadata(SkillData skill, WzImageProperty attackBranch)
         {
@@ -1453,25 +1601,25 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
 
             int attackAfter = GetInt(infoNode, "attackAfter");
-            if (attackAfter > 0)
+            if (attackAfter > 0 && skill.SummonAttackIntervalMs <= 0)
             {
                 skill.SummonAttackIntervalMs = attackAfter;
             }
 
             int attackCount = GetInt(infoNode, "attackCount");
-            if (attackCount > 0)
+            if (attackCount > 0 && skill.SummonAttackCountOverride <= 0)
             {
                 skill.SummonAttackCountOverride = attackCount;
             }
 
             int mobCount = GetInt(infoNode, "mobCount");
-            if (mobCount > 0)
+            if (mobCount > 0 && skill.SummonMobCountOverride <= 0)
             {
                 skill.SummonMobCountOverride = mobCount;
             }
 
             int bulletSpeed = GetInt(infoNode, "bulletSpeed");
-            if (bulletSpeed > 0)
+            if (bulletSpeed > 0 && skill.SummonAttackProjectileSpeed <= 0)
             {
                 skill.SummonAttackProjectileSpeed = bulletSpeed;
             }
@@ -1484,7 +1632,11 @@ namespace HaCreator.MapSimulator.Character.Skills
 
             Point? lt = GetVector(rangeNode, "lt");
             Point? rb = GetVector(rangeNode, "rb");
-            if (lt.HasValue || rb.HasValue)
+            if ((lt.HasValue || rb.HasValue)
+                && skill.SummonAttackRangeLeft <= 0
+                && skill.SummonAttackRangeRight <= 0
+                && skill.SummonAttackRangeTop == 0
+                && skill.SummonAttackRangeBottom == 0)
             {
                 skill.SummonAttackRangeLeft = Math.Abs(lt?.X ?? 0);
                 skill.SummonAttackRangeRight = rb?.X ?? 0;
@@ -1494,7 +1646,7 @@ namespace HaCreator.MapSimulator.Character.Skills
 
             Point? center = GetVector(rangeNode, "sp");
             int radius = GetInt(rangeNode, "r");
-            if (center.HasValue && radius > 0)
+            if (center.HasValue && radius > 0 && !skill.SummonAttackCenterOffset.HasValue && skill.SummonAttackRadius <= 0)
             {
                 skill.SummonAttackCenterOffset = center.Value;
                 skill.SummonAttackRadius = radius;
@@ -1528,6 +1680,58 @@ namespace HaCreator.MapSimulator.Character.Skills
             {
                 skill.SummonAttackHitDelayMs = skill.SummonAttackAnimation.TotalDuration;
             }
+        }
+
+        private SkillAnimation LoadSummonHitAnimation(WzImageProperty hitNode)
+        {
+            if (hitNode == null)
+            {
+                return null;
+            }
+
+            if (hitNode.WzProperties.OfType<WzCanvasProperty>().Any())
+            {
+                SkillAnimation directAnimation = LoadSkillAnimation(hitNode, "hit");
+                return directAnimation.Frames.Count > 0 ? directAnimation : null;
+            }
+
+            foreach (WzImageProperty child in hitNode.WzProperties)
+            {
+                if (child == null)
+                {
+                    continue;
+                }
+
+                if (int.TryParse(child.Name, out _))
+                {
+                    if (child.WzProperties.OfType<WzCanvasProperty>().Any())
+                    {
+                        SkillAnimation indexedAnimation = LoadSkillAnimation(child, $"hit/{child.Name}");
+                        if (indexedAnimation.Frames.Count > 0)
+                        {
+                            return indexedAnimation;
+                        }
+                    }
+                    else
+                    {
+                        foreach (WzImageProperty nestedChild in child.WzProperties)
+                        {
+                            if (nestedChild == null || !int.TryParse(nestedChild.Name, out _))
+                            {
+                                continue;
+                            }
+
+                            SkillAnimation nestedAnimation = LoadSkillAnimation(nestedChild, $"hit/{child.Name}/{nestedChild.Name}");
+                            if (nestedAnimation.Frames.Count > 0)
+                            {
+                                return nestedAnimation;
+                            }
+                        }
+                    }
+                }
+            }
+
+            return null;
         }
 
         private static void PopulateSummonSupportMetadata(SkillData skill, WzImageProperty supportBranch)
@@ -2236,6 +2440,8 @@ namespace HaCreator.MapSimulator.Character.Skills
             levelData.EnhancedMDD = GetInt(node, "emdd", 0, level);
             levelData.EnhancedMaxHP = GetInt(node, "emhp", 0, level);
             levelData.EnhancedMaxMP = GetInt(node, "emmp", 0, level);
+            levelData.MaxHPPercent = PreferPrimaryStat(GetInt(node, "mhpR", 0, level), GetInt(node, "indieMhpR", 0, level));
+            levelData.MaxMPPercent = PreferPrimaryStat(GetInt(node, "mmpR", 0, level), GetInt(node, "indieMmpR", 0, level));
         }
 
         private static int PreferPrimaryStat(int currentValue, int aliasValue)
@@ -2410,6 +2616,75 @@ namespace HaCreator.MapSimulator.Character.Skills
             if (child is WzStringProperty stringProp)
                 return stringProp.Value;
             return defaultValue;
+        }
+
+        private static bool HasProperty(WzImageProperty node, string name)
+        {
+            return node?[name] != null;
+        }
+
+        private static int ResolveMorphTemplateId(int skillId, WzImageProperty commonNode, WzImageProperty pvpCommonNode, WzImageProperty infoNode)
+        {
+            int morphTemplateId = TryGetConcreteMorphTemplateId(commonNode, "morph");
+            if (morphTemplateId > 0)
+            {
+                return morphTemplateId;
+            }
+
+            morphTemplateId = TryGetConcreteMorphTemplateId(pvpCommonNode, "morph");
+            if (morphTemplateId > 0)
+            {
+                return morphTemplateId;
+            }
+
+            morphTemplateId = TryGetConcreteMorphTemplateId(infoNode, "morph");
+            if (morphTemplateId > 0)
+            {
+                return morphTemplateId;
+            }
+
+            return ResolveFlagOnlyMorphAliasTemplateId(skillId, commonNode, pvpCommonNode, infoNode);
+        }
+
+        private static int TryGetConcreteMorphTemplateId(WzImageProperty node, string name)
+        {
+            WzImageProperty child = node?[name];
+            if (child == null)
+            {
+                return 0;
+            }
+
+            int morphTemplateId = GetInt(node, name);
+            return morphTemplateId > 1 ? morphTemplateId : 0;
+        }
+
+        private static int ResolveFlagOnlyMorphAliasTemplateId(int skillId, WzImageProperty commonNode, WzImageProperty pvpCommonNode, WzImageProperty infoNode)
+        {
+            if (!HasFlagOnlyMorphMetadata(commonNode, "morph")
+                && !HasFlagOnlyMorphMetadata(pvpCommonNode, "morph")
+                && !HasFlagOnlyMorphMetadata(infoNode, "morph"))
+            {
+                return 0;
+            }
+
+            if (!FlagOnlyMorphSkillAliasTemplateIds.TryGetValue(skillId, out int morphTemplateId) || morphTemplateId <= 0)
+            {
+                return 0;
+            }
+
+            return Program.FindImage("Morph", morphTemplateId.ToString("D4") + ".img") != null
+                ? morphTemplateId
+                : 0;
+        }
+
+        private static bool HasFlagOnlyMorphMetadata(WzImageProperty node, string name)
+        {
+            if (node?[name] == null)
+            {
+                return false;
+            }
+
+            return GetInt(node, name) == 1;
         }
 
         public void ClearCache()

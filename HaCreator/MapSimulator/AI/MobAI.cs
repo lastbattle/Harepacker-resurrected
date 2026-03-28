@@ -138,6 +138,10 @@ namespace HaCreator.MapSimulator.AI
         public int RangeTop { get; set; }           // Relative top bound from attack info
         public int RangeRight { get; set; }         // Relative right bound from attack info
         public int RangeBottom { get; set; }        // Relative bottom bound from attack info
+        public bool HasRangeOrigin { get; set; }    // True when attackN/info/range/sp exists
+        public int RangeOriginX { get; set; }       // Relative projectile launch origin from attack info
+        public int RangeOriginY { get; set; }       // Relative projectile launch origin from attack info
+        public int RangeRadius { get; set; }        // Radius from attackN/info/range/r
         public int AreaCount { get; set; }          // Number of possible area slots from attackN/info/range/areaCount
         public int AttackCount { get; set; }        // Number of chosen area slots from attackN/info/range/attackCount
         public int StartOffset { get; set; }        // Starting slot offset from attackN/info/range/start
@@ -1470,6 +1474,28 @@ namespace HaCreator.MapSimulator.AI
             return cleared;
         }
 
+        public int ClearPositiveStatusEffects()
+        {
+            if (_statusEntries.Count == 0)
+            {
+                return 0;
+            }
+
+            int cleared = 0;
+            foreach (MobStatusEffect effect in new List<MobStatusEffect>(_statusEntries.Keys))
+            {
+                if (!IsPositiveStatusEffect(effect, _statusEntries[effect]))
+                {
+                    continue;
+                }
+
+                RemoveStatusEffect(effect);
+                cleared++;
+            }
+
+            return cleared;
+        }
+
         /// <summary>
         /// Update status effect durations (call from Update)
         /// </summary>
@@ -2017,6 +2043,32 @@ namespace HaCreator.MapSimulator.AI
                    effect == MobStatusEffect.Weakness ||
                    effect == MobStatusEffect.Neutralise ||
                    effect == MobStatusEffect.Hypnotize;
+        }
+
+        private static bool IsPositiveStatusEffect(MobStatusEffect effect, MobStatusEntry entry)
+        {
+            switch (effect)
+            {
+                case MobStatusEffect.PowerUp:
+                case MobStatusEffect.MagicUp:
+                case MobStatusEffect.PGuardUp:
+                case MobStatusEffect.MGuardUp:
+                case MobStatusEffect.PImmune:
+                case MobStatusEffect.MImmune:
+                case MobStatusEffect.HardSkin:
+                case MobStatusEffect.Reflect:
+                    return true;
+                case MobStatusEffect.PADamage:
+                case MobStatusEffect.PDamage:
+                case MobStatusEffect.MADamage:
+                case MobStatusEffect.MDamage:
+                case MobStatusEffect.ACC:
+                case MobStatusEffect.EVA:
+                case MobStatusEffect.Speed:
+                    return entry?.Value > 0;
+                default:
+                    return false;
+            }
         }
 
         private static int ApplyPercentModifier(int baseValue, int percent)

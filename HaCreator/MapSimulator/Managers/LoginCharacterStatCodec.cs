@@ -14,6 +14,16 @@ namespace HaCreator.MapSimulator.Managers
 
         public static LoginSelectWorldCharacterEntry DecodeCharacterEntry(PacketReader reader)
         {
+            return DecodeCharacterEntry(reader, includeFamilyAndRank: true);
+        }
+
+        public static LoginSelectWorldCharacterEntry DecodeCharacterEntryForCreateNewCharacter(PacketReader reader)
+        {
+            return DecodeCharacterEntry(reader, includeFamilyAndRank: false);
+        }
+
+        private static LoginSelectWorldCharacterEntry DecodeCharacterEntry(PacketReader reader, bool includeFamilyAndRank)
+        {
             int characterId = reader.ReadInt();
             string name = ReadFixedAsciiString(reader, CharacterNameLength);
             CharacterGender gender = DecodeGender(reader.ReadByte());
@@ -49,8 +59,13 @@ namespace HaCreator.MapSimulator.Managers
                 throw new InvalidDataException(avatarError);
             }
 
-            bool onFamily = reader.ReadByte() != 0;
-            LoginCharacterRankInfo rankInfo = ReadRankBlock(reader);
+            bool onFamily = false;
+            LoginCharacterRankInfo rankInfo = LoginCharacterRankInfo.Empty;
+            if (includeFamilyAndRank)
+            {
+                onFamily = reader.ReadByte() != 0;
+                rankInfo = ReadRankBlock(reader);
+            }
 
             return new LoginSelectWorldCharacterEntry
             {

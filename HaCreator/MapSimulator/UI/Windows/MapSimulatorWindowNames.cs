@@ -1,4 +1,4 @@
-namespace HaCreator.MapSimulator.UI
+﻿namespace HaCreator.MapSimulator.UI
 {
     /// <summary>
     /// Centralized window identifiers used by the simulator window manager.
@@ -31,6 +31,7 @@ namespace HaCreator.MapSimulator.UI
         public const string LoginUtilityDialog = "LoginUtilityDialog";
         public const string CharacterDetail = "CharacterDetail";
         public const string ItemMaker = "ItemMaker";
+        public const string BookCollection = "BookCollection";
         public const string ItemUpgrade = "ItemUpgrade";
         public const string VegaSpell = "VegaSpell";
         public const string Trunk = "Trunk";
@@ -44,6 +45,8 @@ namespace HaCreator.MapSimulator.UI
         public const string SocialList = "SocialList";
         public const string SocialSearch = "SocialSearch";
         public const string GuildSearch = "GuildSearch";
+        public const string GuildManage = "GuildManage";
+        public const string AllianceEditor = "AllianceEditor";
         public const string GuildSkill = "GuildSkill";
         public const string GuildBbs = "GuildBbs";
         public const string Messenger = "Messenger";
@@ -51,8 +54,10 @@ namespace HaCreator.MapSimulator.UI
         public const string MemoMailbox = "MemoMailbox";
         public const string MemoSend = "MemoSend";
         public const string MemoGet = "MemoGet";
+        public const string QuestDelivery = "QuestDelivery";
         public const string QuestDetail = "QuestDetail";
         public const string QuestAlarm = "QuestAlarm";
+        public const string ClassCompetition = "ClassCompetition";
         public const string AranSkillGuide = "AranSkillGuide";
         public const string MiniRoom = "MiniRoom";
         public const string PersonalShop = "PersonalShop";

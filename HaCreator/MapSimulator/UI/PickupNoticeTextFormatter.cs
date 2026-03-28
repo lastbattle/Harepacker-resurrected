@@ -49,11 +49,39 @@ namespace HaCreator.MapSimulator.UI
             int quantity = 1,
             int mesoAmount = 0)
         {
-            string actorLabel = string.IsNullOrWhiteSpace(sourceName) ? "A monster" : sourceName;
+            return FormatRemotePickup(
+                DropPickupActorKind.Mob,
+                dropType,
+                sourceName,
+                itemName,
+                quantity,
+                mesoAmount);
+        }
+
+        public static PickupNoticeMessagePair FormatRemotePickup(
+            DropPickupActorKind actorKind,
+            DropType dropType,
+            string sourceName,
+            string itemName = null,
+            int quantity = 1,
+            int mesoAmount = 0)
+        {
             string dropLabel = FormatDropLabel(dropType, itemName, quantity, mesoAmount);
-            return new PickupNoticeMessagePair(
-                "A monster picked up the drop.",
-                $"{actorLabel} picked up {dropLabel}.");
+            return actorKind switch
+            {
+                DropPickupActorKind.Pet => new PickupNoticeMessagePair(
+                    "A pet picked up the drop.",
+                    $"{FormatActorLabel(sourceName, "A pet")} picked up {dropLabel}."),
+                DropPickupActorKind.Mob => new PickupNoticeMessagePair(
+                    "A monster picked up the drop.",
+                    $"{FormatActorLabel(sourceName, "A monster")} picked up {dropLabel}."),
+                DropPickupActorKind.Player => new PickupNoticeMessagePair(
+                    "Another player picked up the drop.",
+                    $"{FormatActorLabel(sourceName, "Another player")} picked up {dropLabel}."),
+                _ => new PickupNoticeMessagePair(
+                    "Another character picked up the drop.",
+                    $"{FormatActorLabel(sourceName, "Another character")} picked up {dropLabel}.")
+            };
         }
 
         private static PickupNoticeMessagePair FormatPetPickupBlocked(string itemName, string sourceName, bool pickedByPet)
@@ -85,22 +113,7 @@ namespace HaCreator.MapSimulator.UI
                 return new PickupNoticeMessagePair("Unable to pick up the item.", "Unable to pick up the item.");
             }
 
-            string dropLabel = FormatDropLabel(dropType, itemName, quantity, mesoAmount);
-            return recentPickup.ActorKind switch
-            {
-                DropPickupActorKind.Pet => new PickupNoticeMessagePair(
-                    "A pet picked up the drop.",
-                    $"{FormatActorLabel(recentActorName, "A pet")} picked up {dropLabel}."),
-                DropPickupActorKind.Mob => new PickupNoticeMessagePair(
-                    "A monster picked up the drop.",
-                    $"{FormatActorLabel(recentActorName, "A monster")} picked up {dropLabel}."),
-                DropPickupActorKind.Player => new PickupNoticeMessagePair(
-                    "Another player picked up the drop.",
-                    $"{FormatActorLabel(recentActorName, "Another player")} picked up {dropLabel}."),
-                _ => new PickupNoticeMessagePair(
-                    "Another character picked up the drop.",
-                    $"{FormatActorLabel(recentActorName, "Another character")} picked up {dropLabel}.")
-            };
+            return FormatRemotePickup(recentPickup.ActorKind, dropType, recentActorName, itemName, quantity, mesoAmount);
         }
 
         private static string FormatActorLabel(string actorName, string fallback)

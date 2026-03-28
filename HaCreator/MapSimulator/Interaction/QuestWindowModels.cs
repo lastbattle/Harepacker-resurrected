@@ -12,7 +12,9 @@ namespace HaCreator.MapSimulator.Interaction
         GiveUp,
         Track,
         LocateNpc,
-        LocateMob
+        LocateMob,
+        QuestDeliveryAccept,
+        QuestDeliveryComplete
     }
 
     internal enum QuestDetailNpcButtonStyle
@@ -71,6 +73,10 @@ namespace HaCreator.MapSimulator.Interaction
         public string TargetNpcName { get; init; } = string.Empty;
         public int? TargetMobId { get; init; }
         public string TargetMobName { get; init; } = string.Empty;
+        public int? TargetItemId { get; init; }
+        public string TargetItemName { get; init; } = string.Empty;
+        public int? DeliveryCashItemId { get; init; }
+        public string DeliveryCashItemName { get; init; } = string.Empty;
         public QuestDetailNpcButtonStyle NpcButtonStyle { get; set; }
     }
 
