@@ -24,6 +24,7 @@ Use it to make focused, low-risk changes that match this codebase.
 - Visual Studio 2022 (Desktop development with C++)
 - .NET SDK supporting `net10.0-windows`
 - Git with submodule support
+- In the current Codex desktop environment for this repo, `rg` may be present on `PATH` but fail to execute. Prefer PowerShell-based file and text searches unless `rg` is confirmed to work in the current session.
 
 ## Setup
 ```powershell
@@ -69,6 +70,11 @@ Notes:
 - Do not refactor unrelated files in the same pass.
 - Avoid broad formatting-only edits.
 - Preserve existing WinForms/WPF patterns and project structure.
+- Use PowerShell-based searches by default in this repository unless you have already confirmed `rg` executes successfully in the current session.
+- Preferred PowerShell equivalents:
+  - File discovery: `Get-ChildItem -Recurse -File`
+  - Name filtering: `Get-ChildItem -Recurse -Filter <name>`
+  - Text search: `Get-ChildItem -Recurse -File | Select-String -Pattern <text>`
 - Do not change framework/runtime targets or package baselines unless requested.
 - When committing, include only files added or modified by the agent in this task; do not include unrelated pre-existing uncommitted changes; include a short commit message description/body of what changed in addition to the title/subject line.
 - For commits that include `HaCreator` changes, prefix the commit subject with `[HaCreator] ` (example: `[HaCreator] Update minimap render bounds`).
