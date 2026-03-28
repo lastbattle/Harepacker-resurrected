@@ -472,6 +472,7 @@ namespace HaCreator.MapSimulator.Loaders
             var metadata = new MobAnimationSet.AttackInfoMetadata
             {
                 AttackType = InfoTool.GetInt(infoNode["type"], -1),
+                HitAttach = InfoTool.GetInt(infoNode["bHitAttach"], InfoTool.GetInt(infoNode["hitAttach"], 0)) > 0,
                 EffectAfter = InfoTool.GetInt(infoNode["effectAfter"], 0),
                 AttackAfter = InfoTool.GetInt(infoNode["attackAfter"], 0),
                 HasPrimaryEffect = infoNode["effect"] != null,

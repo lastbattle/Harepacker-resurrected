@@ -40,6 +40,8 @@ namespace HaCreator.MapSimulator.UI
         private static readonly int SummaryValueRowHeight = 31;
         private static readonly Rectangle PageIndexBounds = new(158, 286, 156, 18);
         private static readonly Rectangle StatusBounds = new(18, 286, 180, 18);
+        private static readonly Point PageMarkerAnchor = new(236, 296);
+        private const int PageMarkerSpacing = 16;
         private static readonly Color TitleColor = new(82, 59, 29);
         private static readonly Color ValueColor = new(56, 45, 33);
         private static readonly Color AccentColor = new(173, 120, 48);
@@ -57,6 +59,8 @@ namespace HaCreator.MapSimulator.UI
         private Texture2D _coveredSlotTexture;
         private Texture2D _selectedSlotTexture;
         private Texture2D _fullMarkTexture;
+        private Texture2D _inactivePageMarkerTexture;
+        private Texture2D _activePageMarkerTexture;
         private SpriteFont _font;
         private Func<MonsterBookSnapshot> _snapshotProvider;
         private MonsterBookSnapshot _snapshot;
@@ -98,6 +102,12 @@ namespace HaCreator.MapSimulator.UI
             _coveredSlotTexture = coveredSlotTexture;
             _selectedSlotTexture = selectedSlotTexture;
             _fullMarkTexture = fullMarkTexture;
+        }
+
+        public void SetPageMarkerTextures(Texture2D inactiveMarkerTexture, Texture2D activeMarkerTexture)
+        {
+            _inactivePageMarkerTexture = inactiveMarkerTexture;
+            _activePageMarkerTexture = activeMarkerTexture;
         }
 
         public void InitializeButtons(UIObject prevButton, UIObject nextButton, UIObject closeButton)
@@ -146,13 +156,26 @@ namespace HaCreator.MapSimulator.UI
             DrawCardSlotPanel(sprite);
             DrawInfoPanel(sprite);
             DrawPageIndex(sprite);
+            DrawPageMarkers(sprite);
             DrawStatus(sprite);
         }
 
         protected override void OnCloseButtonClicked(UIObject sender)
         {
-            base.OnCloseButtonClicked(sender);
+            CloseBook();
             _closeRequested?.Invoke();
+        }
+
+        public void CloseBook()
+        {
+            ResetBookState();
+            base.Hide();
+        }
+
+        public override void Hide()
+        {
+            ResetBookState();
+            base.Hide();
         }
 
         private void RegisterButton(UIObject button, int buttonId, Action action)
@@ -392,6 +415,34 @@ namespace HaCreator.MapSimulator.UI
                 0.62f);
         }
 
+        private void DrawPageMarkers(SpriteBatch sprite)
+        {
+            Texture2D activeMarker = _activePageMarkerTexture ?? _fullMarkTexture;
+            Texture2D inactiveMarker = _inactivePageMarkerTexture ?? _coveredSlotTexture;
+            if (activeMarker == null && inactiveMarker == null)
+            {
+                return;
+            }
+
+            bool hasCurrentPage = (_snapshot?.Pages?.Count ?? 0) > 0;
+            bool hasNextPage = _currentPageIndex + 1 < (_snapshot?.Pages?.Count ?? 0);
+
+            DrawPageMarker(
+                sprite,
+                Position.X + PageMarkerAnchor.X - PageMarkerSpacing,
+                Position.Y + PageMarkerAnchor.Y,
+                hasCurrentPage,
+                inactiveMarker,
+                activeMarker);
+            DrawPageMarker(
+                sprite,
+                Position.X + PageMarkerAnchor.X + PageMarkerSpacing,
+                Position.Y + PageMarkerAnchor.Y,
+                hasNextPage,
+                inactiveMarker,
+                activeMarker);
+        }
+
         private void DrawStatus(SpriteBatch sprite)
         {
             string text = _snapshot?.StatusText;
@@ -553,6 +604,29 @@ namespace HaCreator.MapSimulator.UI
         private float Measure(string text, float scale)
         {
             return _font.MeasureString(text ?? string.Empty).X * scale;
+        }
+
+        private void DrawPageMarker(SpriteBatch sprite, int centerX, int centerY, bool active, Texture2D inactiveMarker, Texture2D activeMarker)
+        {
+            Texture2D marker = active ? activeMarker ?? inactiveMarker : inactiveMarker ?? activeMarker;
+            if (marker == null)
+            {
+                return;
+            }
+
+            Rectangle destination = new(
+                centerX - (marker.Width / 2),
+                centerY - (marker.Height / 2),
+                marker.Width,
+                marker.Height);
+            sprite.Draw(marker, destination, Color.White);
+        }
+
+        private void ResetBookState()
+        {
+            _currentPageIndex = 0;
+            _selectedSlotIndex = 0;
+            _previousMouseState = default;
         }
     }
 }

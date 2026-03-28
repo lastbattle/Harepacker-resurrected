@@ -135,6 +135,7 @@ namespace HaCreator.MapSimulator.UI
         private int _currentMapId;
         private int _selectedMapId;
         private string _selectedSearchResultKey = string.Empty;
+        private string _hoveredSearchResultKey = string.Empty;
         private int _pageIndex;
         private SearchFilterMode _searchFilterMode;
         private MouseState _previousMouseState;
@@ -402,6 +403,7 @@ namespace HaCreator.MapSimulator.UI
                 && !string.IsNullOrWhiteSpace(selectedRegionCode)
                 && !string.Equals(selectedRegionCode, currentRegionCode, StringComparison.Ordinal);
             _selectedSearchResultKey = string.Empty;
+            _hoveredSearchResultKey = string.Empty;
             EnsureSelectedEntryVisible();
             UpdateButtonStates();
         }
@@ -428,6 +430,7 @@ namespace HaCreator.MapSimulator.UI
                 : resolvedResults.FirstOrDefault() is SearchResultEntry firstEntry
                     ? BuildSearchResultKey(firstEntry)
                     : string.Empty;
+            _hoveredSearchResultKey = string.Empty;
             _pageIndex = 0;
             UpdateButtonStates();
         }
@@ -464,6 +467,7 @@ namespace HaCreator.MapSimulator.UI
             _selectedSearchResultKey = selectedEntry != null
                 ? BuildSearchResultKey(selectedEntry)
                 : string.Empty;
+            _hoveredSearchResultKey = string.Empty;
             EnsureSelectedSearchResultVisible();
             UpdateButtonStates();
             return selectedEntry != null;
@@ -482,6 +486,7 @@ namespace HaCreator.MapSimulator.UI
             MouseState mouseState = Mouse.GetState();
             int tickCount = Environment.TickCount;
 
+            UpdateHoveredSearchResult(mouseState);
             HandleSearchMouseInput(mouseState);
             HandleSearchKeyboardInput(keyboardState, tickCount);
             _previousSearchKeyboardState = keyboardState;
@@ -983,6 +988,7 @@ namespace HaCreator.MapSimulator.UI
         {
             _searchMode = false;
             _searchFilterMode = SearchFilterMode.All;
+            _hoveredSearchResultKey = string.Empty;
             _pageIndex = 0;
             UpdateButtonStates();
         }
@@ -1062,7 +1068,7 @@ namespace HaCreator.MapSimulator.UI
             SearchResultVisualStyle? style = GetResultStyle(entry.Kind);
             Texture2D hoverTexture = style?.HoverTexture;
             Rectangle rowBounds = new Rectangle(Position.X + ListStartX, Position.Y + ListStartY + (row * RowHeight), ListWidth, RowHeight);
-            if (IsSearchResultSelected(entry))
+            if (IsSearchResultHovered(entry))
             {
                 if (hoverTexture != null)
                 {
@@ -1071,8 +1077,13 @@ namespace HaCreator.MapSimulator.UI
                 }
                 else if (_selectionTexture != null)
                 {
-                    sprite.Draw(_selectionTexture, rowBounds, new Color(86, 120, 186, 165));
+                    sprite.Draw(_selectionTexture, rowBounds, new Color(72, 98, 145, 120));
                 }
+            }
+
+            if (IsSearchResultSelected(entry) && _selectionTexture != null)
+            {
+                sprite.Draw(_selectionTexture, rowBounds, new Color(86, 120, 186, 165));
             }
 
             Texture2D iconTexture = style?.IconTexture;
@@ -1592,6 +1603,12 @@ namespace HaCreator.MapSimulator.UI
                 && string.Equals(BuildSearchResultKey(entry), _selectedSearchResultKey, StringComparison.OrdinalIgnoreCase);
         }
 
+        private bool IsSearchResultHovered(SearchResultEntry entry)
+        {
+            return entry != null
+                && string.Equals(BuildSearchResultKey(entry), _hoveredSearchResultKey, StringComparison.OrdinalIgnoreCase);
+        }
+
         private static bool MatchesSearchQuery(SearchResultEntry entry, string query)
         {
             if (string.IsNullOrWhiteSpace(query))
@@ -1875,6 +1892,28 @@ namespace HaCreator.MapSimulator.UI
             ClearCompositionText();
             _searchCursorPosition = ResolveSearchCursorFromMouse(mouseState.X);
             ResetSearchKeyRepeat();
+        }
+
+        private void UpdateHoveredSearchResult(MouseState mouseState)
+        {
+            _hoveredSearchResultKey = string.Empty;
+
+            IReadOnlyList<SearchResultEntry> visibleResults = GetVisibleSearchResults();
+            for (int row = 0; row < visibleResults.Count; row++)
+            {
+                Rectangle rowBounds = new Rectangle(
+                    Position.X + ListStartX,
+                    Position.Y + ListStartY + (row * RowHeight),
+                    ListWidth,
+                    RowHeight);
+                if (!rowBounds.Contains(mouseState.X, mouseState.Y))
+                {
+                    continue;
+                }
+
+                _hoveredSearchResultKey = BuildSearchResultKey(visibleResults[row]);
+                break;
+            }
         }
 
         private int ResolveSearchCursorFromMouse(int mouseX)

@@ -3,6 +3,7 @@ using HaCreator.MapSimulator.Character.Skills;
 using HaCreator.MapSimulator.AI;
 using HaCreator.MapSimulator.Animation;
 using HaCreator.MapSimulator.Entities;
+using HaCreator.MapSimulator.Effects;
 using HaCreator.MapSimulator.Managers;
 using HaCreator.MapSimulator.Physics;
 using HaSharedLibrary.Render;
@@ -68,6 +69,11 @@ namespace HaCreator.MapSimulator.Pools
         IReadOnlyList<SummonedAttackTargetPacket> Targets,
         byte TailByte);
 
+    public readonly record struct PacketOwnedSummonTimerExpiration(
+        int SkillId,
+        int SummonedObjectId,
+        int ExpireTime);
+
     public sealed class SummonedPool
     {
         private const int TeslaCoilSkillId = 35111002;
@@ -110,6 +116,8 @@ namespace HaCreator.MapSimulator.Pools
         {
             public float X { get; init; }
             public float Y { get; init; }
+            public int AttachedSummonObjectId { get; init; }
+            public bool FollowSummon { get; init; }
             public List<IDXObject> Frames { get; init; }
             public int CurrentFrame { get; set; }
             public int LastFrameTime { get; set; }
@@ -146,6 +154,7 @@ namespace HaCreator.MapSimulator.Pools
         private readonly List<ActiveHitEffect> _hitEffects = new();
         private readonly List<PacketOwnedMobAttackHitEffectDisplay> _mobAttackHitEffects = new();
         private readonly List<PacketOwnedSummonTimer> _summonExpiryTimers = new();
+        private IReadOnlyCollection<SkillData> _cancelSkillCatalog;
         private readonly Random _random = new();
         private SkillLoader _skillLoader;
         private MobPool _mobPool;
@@ -153,6 +162,10 @@ namespace HaCreator.MapSimulator.Pools
         private Func<PlayerCharacter> _localPlayerAccessor;
         private Func<int, int> _localSkillLevelAccessor;
         private SoundManager _soundManager;
+        private CombatEffects _combatEffects;
+
+        public Action<PacketOwnedSummonTimerExpiration[]> OnSummonExpiryTimersExpiredBatch { get; set; }
+        public Action<int, int> OnSummonExpiryTimerExpired { get; set; }
 
         public int Count => _summonsByObjectId.Count;
 
@@ -162,7 +175,8 @@ namespace HaCreator.MapSimulator.Pools
             RemoteUserActorPool remoteUserPool,
             Func<PlayerCharacter> localPlayerAccessor,
             Func<int, int> localSkillLevelAccessor = null,
-            SoundManager soundManager = null)
+            SoundManager soundManager = null,
+            CombatEffects combatEffects = null)
         {
             _skillLoader = skillLoader;
             _mobPool = mobPool;
@@ -170,6 +184,8 @@ namespace HaCreator.MapSimulator.Pools
             _localPlayerAccessor = localPlayerAccessor;
             _localSkillLevelAccessor = localSkillLevelAccessor;
             _soundManager = soundManager;
+            _combatEffects = combatEffects;
+            _cancelSkillCatalog = null;
         }
 
         public void Clear()
@@ -184,6 +200,7 @@ namespace HaCreator.MapSimulator.Pools
             _hitEffects.Clear();
             _mobAttackHitEffects.Clear();
             _summonExpiryTimers.Clear();
+            _cancelSkillCatalog = null;
         }
 
         public IReadOnlyList<ActiveSummon> GetSummonsForOwner(int ownerCharacterId)
@@ -202,6 +219,42 @@ namespace HaCreator.MapSimulator.Pools
 
             RemoveState(state);
             return true;
+        }
+
+        public bool TryCancelLocalOwnerSummonsBySkillRequest(int requestedSkillId, int currentTime)
+        {
+            if (requestedSkillId <= 0)
+            {
+                return false;
+            }
+
+            PlayerCharacter localPlayer = _localPlayerAccessor?.Invoke();
+            int localOwnerId = localPlayer?.Build?.Id ?? 0;
+            if (localOwnerId <= 0
+                || !_summonsByOwnerId.TryGetValue(localOwnerId, out List<PacketOwnedSummonState> summons)
+                || summons.Count == 0)
+            {
+                return false;
+            }
+
+            int removedCount = 0;
+            foreach (PacketOwnedSummonState state in summons
+                         .OrderByDescending(static candidate => candidate?.Summon?.StartTime ?? int.MinValue)
+                         .ThenByDescending(static candidate => candidate?.Summon?.ObjectId ?? int.MinValue)
+                         .ToArray())
+            {
+                if (state?.Summon == null
+                    || state.Summon.IsPendingRemoval
+                    || !DoesClientCancelMatchSkillId(state.Summon.SkillId, requestedSkillId))
+                {
+                    continue;
+                }
+
+                BeginRemoval(state, currentTime, reason: 0);
+                removedCount++;
+            }
+
+            return removedCount > 0;
         }
 
         public bool TryDamageSummonByObjectId(int objectId, int damage, int currentTime)
@@ -441,6 +494,7 @@ namespace HaCreator.MapSimulator.Pools
                 StartSummonHitReaction(state.Summon, packet.Damage, currentTime);
             }
 
+            PlayPacketIncDecHpFeedback(state.Summon, packet.Damage, currentTime);
             return true;
         }
 
@@ -1375,11 +1429,20 @@ namespace HaCreator.MapSimulator.Pools
                 return;
             }
 
-            foreach (PacketOwnedSummonTimer timer in expiredTimers
+            PacketOwnedSummonTimer[] orderedTimers = expiredTimers
                 .OrderBy(static timer => timer.ExpireTime)
                 .ThenBy(static timer => timer.SkillId)
-                .ThenBy(static timer => timer.SummonedObjectId))
+                .ThenBy(static timer => timer.SummonedObjectId)
+                .ToArray();
+
+            OnSummonExpiryTimersExpiredBatch?.Invoke(orderedTimers
+                .Select(static timer => new PacketOwnedSummonTimerExpiration(timer.SkillId, timer.SummonedObjectId, timer.ExpireTime))
+                .ToArray());
+
+            foreach (PacketOwnedSummonTimer timer in orderedTimers)
             {
+                OnSummonExpiryTimerExpired?.Invoke(timer.SkillId, timer.SummonedObjectId);
+
                 if (!_summonsByObjectId.TryGetValue(timer.SummonedObjectId, out PacketOwnedSummonState state)
                     || state.Summon == null
                     || state.Summon.IsPendingRemoval
@@ -1395,6 +1458,26 @@ namespace HaCreator.MapSimulator.Pools
         private static int ResolveSummonDurationMs(SkillData skill, SkillLevelData levelData)
         {
             return SummonRuntimeRules.ResolveDurationMs(skill, levelData);
+        }
+
+        private bool DoesClientCancelMatchSkillId(int activeSkillId, int requestedSkillId)
+        {
+            return ClientSkillCancelResolver.DoesClientCancelMatchSkillId(
+                activeSkillId,
+                requestedSkillId,
+                ResolveCancelSkillData,
+                GetCancelSkillCatalog());
+        }
+
+        private SkillData ResolveCancelSkillData(int skillId)
+        {
+            return _skillLoader?.LoadSkill(skillId);
+        }
+
+        private IReadOnlyCollection<SkillData> GetCancelSkillCatalog()
+        {
+            _cancelSkillCatalog ??= _skillLoader?.LoadAllSkills();
+            return _cancelSkillCatalog;
         }
 
         private static SummonAssistType ResolveSummonAssistType(SkillData skill)
@@ -1499,11 +1582,14 @@ namespace HaCreator.MapSimulator.Pools
                 return;
             }
 
-            Vector2 hitPosition = ResolvePacketHitEffectPosition(summon, mob, attackAction, currentTime);
+            MobAnimationSet.AttackInfoMetadata attackInfo = mob?.GetAttackInfo(attackAction);
+            Vector2 hitPosition = ResolvePacketHitEffectPosition(summon, attackInfo, currentTime);
             _mobAttackHitEffects.Add(new PacketOwnedMobAttackHitEffectDisplay
             {
                 X = hitPosition.X,
                 Y = hitPosition.Y,
+                AttachedSummonObjectId = summon.ObjectId,
+                FollowSummon = attackInfo?.HitAttach == true,
                 Frames = frames,
                 CurrentFrame = 0,
                 LastFrameTime = currentTime,
@@ -1511,26 +1597,39 @@ namespace HaCreator.MapSimulator.Pools
             });
         }
 
-        private Vector2 ResolvePacketHitEffectPosition(ActiveSummon summon, MobItem mob, string attackAction, int currentTime)
+        private Vector2 ResolvePacketHitEffectPosition(ActiveSummon summon, MobAnimationSet.AttackInfoMetadata attackInfo, int currentTime)
         {
             Rectangle hitbox = GetSummonHitbox(summon, currentTime);
+            Vector2 summonPosition = new(summon.PositionX, summon.PositionY);
+            return ResolvePacketHitEffectPosition(hitbox, summonPosition, attackInfo, _random);
+        }
+
+        private static Vector2 ResolvePacketHitEffectPosition(
+            Rectangle hitbox,
+            Vector2 summonPosition,
+            MobAnimationSet.AttackInfoMetadata attackInfo,
+            Random random)
+        {
+            if (attackInfo?.HitAttach == true)
+            {
+                return summonPosition;
+            }
+
             if (!hitbox.IsEmpty)
             {
                 return new Vector2(
-                    hitbox.Left + _random.Next(Math.Max(1, hitbox.Width)),
-                    hitbox.Top + _random.Next(Math.Max(1, hitbox.Height)));
+                    hitbox.Left + random.Next(Math.Max(1, hitbox.Width)),
+                    hitbox.Top + random.Next(Math.Max(1, hitbox.Height)));
             }
 
-            Vector2 fallback = new(summon.PositionX, summon.PositionY);
-            MobAnimationSet.AttackInfoMetadata attackInfo = mob?.GetAttackInfo(attackAction);
             if (attackInfo?.HasRangeOrigin == true)
             {
                 return new Vector2(
-                    fallback.X + attackInfo.RangeOrigin.X,
-                    fallback.Y + attackInfo.RangeOrigin.Y);
+                    summonPosition.X + attackInfo.RangeOrigin.X,
+                    summonPosition.Y + attackInfo.RangeOrigin.Y);
             }
 
-            return fallback;
+            return summonPosition;
         }
 
         private static void PlayPacketMobAttackSound(MobItem mob, sbyte attackIndex)
@@ -1572,9 +1671,45 @@ namespace HaCreator.MapSimulator.Pools
                 return;
             }
 
-            int screenX = (int)MathF.Round(hitEffect.X) - mapShiftX + centerX;
-            int screenY = (int)MathF.Round(hitEffect.Y) - mapShiftY + centerY;
+            Vector2 drawPosition = ResolveHitEffectDrawPosition(hitEffect);
+            int screenX = (int)MathF.Round(drawPosition.X) - mapShiftX + centerX;
+            int screenY = (int)MathF.Round(drawPosition.Y) - mapShiftY + centerY;
             frame.DrawBackground(spriteBatch, null, null, screenX, screenY, hitEffect.Tint, hitEffect.Flip, null);
+        }
+
+        private Vector2 ResolveHitEffectDrawPosition(PacketOwnedMobAttackHitEffectDisplay hitEffect)
+        {
+            if (hitEffect?.FollowSummon != true)
+            {
+                return new Vector2(hitEffect?.X ?? 0f, hitEffect?.Y ?? 0f);
+            }
+
+            if (_summonsByObjectId.TryGetValue(hitEffect.AttachedSummonObjectId, out PacketOwnedSummonState state)
+                && state?.Summon != null)
+            {
+                return new Vector2(state.Summon.PositionX, state.Summon.PositionY);
+            }
+
+            return new Vector2(hitEffect.X, hitEffect.Y);
+        }
+
+        private void PlayPacketIncDecHpFeedback(ActiveSummon summon, int delta, int currentTime)
+        {
+            if (_combatEffects == null || summon == null)
+            {
+                return;
+            }
+
+            Rectangle hitbox = GetSummonHitbox(summon, currentTime);
+            float x = summon.PositionX;
+            float y = !hitbox.IsEmpty ? hitbox.Top : summon.PositionY - 40f;
+            if (delta > 0)
+            {
+                _combatEffects.AddPartyDamage(delta, x, y, isCritical: false, currentTime);
+                return;
+            }
+
+            _combatEffects.AddMiss(x, y, currentTime);
         }
 
         private void DrawSummon(SpriteBatch spriteBatch, ActiveSummon summon, int mapShiftX, int mapShiftY, int centerX, int centerY, int currentTime)

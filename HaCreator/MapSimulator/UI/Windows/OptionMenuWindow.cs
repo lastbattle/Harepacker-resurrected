@@ -162,7 +162,7 @@ namespace HaCreator.MapSimulator.UI
             BuildJoypadRows();
         }
 
-        public void ShowMode(OptionMenuMode mode)
+        public void SetMode(OptionMenuMode mode)
         {
             _mode = mode;
             _statusMessage = mode switch
@@ -173,6 +173,11 @@ namespace HaCreator.MapSimulator.UI
                 OptionMenuMode.Joypad => "Joypad page now cycles simulator controller bindings directly from the shared owner.",
                 _ => string.Empty,
             };
+        }
+
+        public void ShowMode(OptionMenuMode mode)
+        {
+            SetMode(mode);
             Show();
         }
 

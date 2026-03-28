@@ -82,7 +82,8 @@ namespace HaCreator.MapSimulator
             if (uiWindowManager != null)
             {
                 RefreshQuestUiState();
-                uiWindowsHandledEsc = uiWindowManager.Update(gameTime, currTickCount, _chat.IsActive, isWindowActive);
+                uiWindowsHandledEsc = uiWindowManager.Update(gameTime, currTickCount, _chat.IsActive, isWindowActive);
+                ProcessPendingRepairDurabilityRequest();
             }
 
             // Allows the game to exit via gamepad Back button only
@@ -233,8 +234,9 @@ namespace HaCreator.MapSimulator
             UpdatePacketOwnedLocalOverlayState(currTickCount);
             _localOverlayRuntime.Update(currTickCount);
 
+            _engagementProposalRuntime.UpdateLocalContext(_playerManager?.Player?.Build);
             _mapleTvRuntime.UpdateLocalContext(_playerManager?.Player?.Build);
-            _mapleTvRuntime.Update(currTickCount);
+            _mapleTvRuntime.Update(currTickCount);
 
             // Handle portal UP key interaction (player presses UP near portal)
             if (isWindowActive)

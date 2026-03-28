@@ -4,6 +4,7 @@ using Microsoft.Xna.Framework.Graphics;
 using Spine;
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Runtime.CompilerServices;
 
 namespace HaCreator.MapSimulator.Fields
@@ -108,6 +109,14 @@ namespace HaCreator.MapSimulator.Fields
         public bool HasBalrogTextures => _balrogFrames != null && _balrogFrames.Count > 0;
         public bool IsActive => _state != ShipState.Idle;
         public bool IsBalrogVisible => _balrogState != BalrogState.Hidden && _balrogAlpha > 0;
+        public bool HasRouteConfiguration => !string.IsNullOrWhiteSpace(_shipPath) || _x != 0 || _y != 0 || _x0 != 0 || _tMove != 0;
+        public int ShipKind => _shipKind;
+        public int DockX => _x;
+        public int DockY => _y;
+        public int AwayX => _x0;
+        public int Flip => _f;
+        public int MoveDurationSeconds => _tMove;
+        public string ShipPath => _shipPath ?? string.Empty;
 
         public float VoyageProgress
         {
@@ -166,6 +175,41 @@ namespace HaCreator.MapSimulator.Fields
             _balrogState = BalrogState.Hidden;
 
             System.Diagnostics.Debug.WriteLine($"[TransportField] Initialized: kind={shipKind}, x={x}, y={y}, x0={x0}, f={f}, tMove={tMove}s");
+        }
+
+        public void SetIdleDockedState(bool queueAnnouncement = false)
+        {
+            _state = ShipState.Docked;
+            _currentX = _x;
+            _currentY = _y;
+            _currentAlpha = 255f;
+            _deltaX = 0f;
+            _deltaY = 0f;
+
+            if (queueAnnouncement)
+            {
+                QueueAnnouncement("The ship is waiting at the dock.", 2000);
+            }
+        }
+
+        public void SetIdleAwayState()
+        {
+            _state = ShipState.InTransit;
+            _currentX = _x0;
+            _currentY = _y;
+            _currentAlpha = 255f;
+            _deltaX = 0f;
+            _deltaY = 0f;
+        }
+
+        public void SetIdleHiddenState()
+        {
+            _state = ShipState.Idle;
+            _currentX = _x;
+            _currentY = _y;
+            _currentAlpha = 0f;
+            _deltaX = 0f;
+            _deltaY = 0f;
         }
 
         /// <summary>
@@ -388,6 +432,104 @@ namespace HaCreator.MapSimulator.Fields
             _currentX = _x;
             OnArrival?.Invoke();
             QueueAnnouncement("We have arrived at our destination.", 3000);
+        }
+
+        public bool TryApplyStartShipMovePacket(int value, out string message)
+        {
+            if (value == 2)
+            {
+                LeaveShipMove();
+                message = "Applied OnStartShipMoveField value 2 -> LeaveShipMove.";
+                return true;
+            }
+
+            message = $"Ignored OnStartShipMoveField value {value}; client only reacts to 2.";
+            return false;
+        }
+
+        public bool TryApplyEndShipMovePacket(int value, out string message)
+        {
+            if (value == 6)
+            {
+                EnterShipMove();
+                message = "Applied OnEndShipMoveField value 6 -> EnterShipMove.";
+                return true;
+            }
+
+            message = $"Ignored OnEndShipMoveField value {value}; client only reacts to 6.";
+            return false;
+        }
+
+        public bool TryApplyMoveFieldPacket(int value, out string message)
+        {
+            switch (value)
+            {
+                case 4:
+                    AppearShip();
+                    message = "Applied OnMoveField value 4 -> AppearShip.";
+                    return true;
+                case 5:
+                    DisappearShip();
+                    message = "Applied OnMoveField value 5 -> DisappearShip.";
+                    return true;
+                default:
+                    message = $"Ignored OnMoveField value {value}; client only reacts to 4 and 5.";
+                    return false;
+            }
+        }
+
+        public bool TryApplyContiState(int state, int stateValue, out string message)
+        {
+            switch (state)
+            {
+                case 0:
+                case 1:
+                case 6:
+                    if (_shipKind == 0)
+                    {
+                        EnterShipMove();
+                        message = $"Applied OnContiState ({state}, {stateValue}) -> EnterShipMove.";
+                        return true;
+                    }
+
+                    message = $"Ignored OnContiState ({state}, {stateValue}); client EnterShipMove branch only applies to regular ships.";
+                    return false;
+
+                case 2:
+                case 5:
+                    if (_shipKind == 0)
+                    {
+                        LeaveShipMove();
+                        message = $"Applied OnContiState ({state}, {stateValue}) -> LeaveShipMove.";
+                        return true;
+                    }
+
+                    message = $"Ignored OnContiState ({state}, {stateValue}); client LeaveShipMove branch only applies to regular ships.";
+                    return false;
+
+                case 3:
+                case 4:
+                    if (_shipKind == 1 && stateValue == 1)
+                    {
+                        AppearShip();
+                        message = $"Applied OnContiState ({state}, {stateValue}) -> AppearShip.";
+                        return true;
+                    }
+
+                    if (_shipKind == 0)
+                    {
+                        LeaveShipMove();
+                        message = $"Applied OnContiState ({state}, {stateValue}) -> LeaveShipMove.";
+                        return true;
+                    }
+
+                    message = $"Ignored OnContiState ({state}, {stateValue}); Balrog-type maps only react when the second byte is 1.";
+                    return false;
+
+                default:
+                    message = $"Ignored OnContiState ({state}, {stateValue}); client switch has no handler for this state.";
+                    return false;
+            }
         }
 
         #endregion
@@ -821,6 +963,15 @@ namespace HaCreator.MapSimulator.Fields
             _bgScrollX = 0;
             _announcements.Clear();
             _currentAnnouncement = null;
+        }
+
+        public string DescribeStatus()
+        {
+            string shipPath = string.IsNullOrWhiteSpace(_shipPath) ? "<none>" : _shipPath;
+            string announcement = _currentAnnouncement?.Message ?? "<none>";
+            return string.Create(
+                CultureInfo.InvariantCulture,
+                $"Transport state={_state}, balrog={_balrogState}, shipKind={_shipKind}, dock=({_x}, {_y}), awayX={_x0}, flip={_f}, tMove={_tMove}s, current=({_currentX:0.##}, {_currentY:0.##}), alpha={_currentAlpha:0.##}, shipPath={shipPath}, shipTextures={(_shipFrames?.Count ?? 0)}, balrogTextures={(_balrogFrames?.Count ?? 0)}, announcement={announcement}");
         }
 
         #endregion

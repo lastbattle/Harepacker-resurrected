@@ -25,6 +25,9 @@ namespace HaCreator.MapSimulator.Character
     /// </summary>
     public class PlayerManager
     {
+        private const int AmplifierRobotSkillId = 35121010;
+        private const int AmplifierRobotAvatarEffectSkillId = -35121010;
+
         #region Properties
 
         public PlayerCharacter Player { get; private set; }
@@ -68,11 +71,13 @@ namespace HaCreator.MapSimulator.Character
         private MobSkillEffectLoader _mobSkillEffectLoader;
         private AffectedAreaPool _affectedAreaPool;
         private Func<int, bool> _remoteAffectedAreaDamageBlockEvaluator;
+        private Func<int, bool> _affectedAreaOwnerPartyMembershipEvaluator;
         private SoundManager _soundManager;
         private Action<Rectangle, int, int, int> _reactorAttackAreaHandler;
         private PlayerMobStatusController _mobStatusController;
         private PlayerMobStatusFrameState _currentMobStatusState = PlayerMobStatusFrameState.Default;
         private Action<PlayerCharacter, Rectangle, int> _attackHitboxHandler;
+        private const int TankSiegeModeEndFallbackDelayMs = 180;
         private int _pendingRepeatSkillModeEndSkillId;
         private int _pendingRepeatSkillModeEndReturnSkillId;
         private int _pendingRepeatSkillModeEndRequestTime = int.MinValue;
@@ -286,6 +291,11 @@ namespace HaCreator.MapSimulator.Character
         public void SetRemoteAffectedAreaDamageBlockEvaluator(Func<int, bool> evaluator)
         {
             _remoteAffectedAreaDamageBlockEvaluator = evaluator;
+        }
+
+        public void SetAffectedAreaOwnerPartyMembershipEvaluator(Func<int, bool> evaluator)
+        {
+            _affectedAreaOwnerPartyMembershipEvaluator = evaluator;
         }
 
         public void SetSoundManager(SoundManager soundManager)
@@ -789,6 +799,7 @@ namespace HaCreator.MapSimulator.Character
 
             // Update skills (projectiles, buffs, cooldowns)
             Skills?.Update(currentTime, deltaTime);
+            UpdateAffectedAreaAvatarEffects(currentTime);
             TryAcknowledgePendingRepeatSkillModeEnd(currentTime);
             Pets.Update(Player, _dropPool, currentTime, deltaTime);
             Dragon.Update(Player, currentTime);
@@ -881,6 +892,112 @@ namespace HaCreator.MapSimulator.Character
             return _remoteAffectedAreaDamageBlockEvaluator?.Invoke(currentTime) == true;
         }
 
+        private void UpdateAffectedAreaAvatarEffects(int currentTime)
+        {
+            if (Player == null)
+            {
+                return;
+            }
+
+            bool shouldShowAmplifierRobotAura = ShouldShowAmplifierRobotAura(currentTime);
+            bool hasAmplifierRobotAura = Player.HasSkillAvatarEffect(AmplifierRobotAvatarEffectSkillId);
+            if (!shouldShowAmplifierRobotAura)
+            {
+                if (hasAmplifierRobotAura)
+                {
+                    Player.ClearSkillAvatarEffect(AmplifierRobotAvatarEffectSkillId, currentTime, playFinish: false);
+                }
+
+                return;
+            }
+
+            if (hasAmplifierRobotAura)
+            {
+                return;
+            }
+
+            SkillData effectSkill = CreateAmplifierRobotAvatarEffectSkill();
+            if (effectSkill != null)
+            {
+                Player.ApplySkillAvatarEffect(AmplifierRobotAvatarEffectSkillId, effectSkill, currentTime);
+            }
+        }
+
+        private bool ShouldShowAmplifierRobotAura(int currentTime)
+        {
+            if (Player == null
+                || !Player.IsAlive
+                || _affectedAreaPool == null)
+            {
+                return false;
+            }
+
+            int localPlayerId = Player.Build?.Id ?? 0;
+            foreach (ActiveAffectedArea area in _affectedAreaPool.ActiveAreas)
+            {
+                if (area?.SourceKind != AffectedAreaSourceKind.PlayerSkill
+                    || area.SkillId != AmplifierRobotSkillId
+                    || !area.IsActive(currentTime)
+                    || !area.Contains(Player.X, Player.Y))
+                {
+                    continue;
+                }
+
+                SkillData skill = SkillLoader?.LoadSkill(area.SkillId);
+                if (skill?.AffectedEffect?.Frames?.Count <= 0)
+                {
+                    continue;
+                }
+
+                bool ownerIsPartyMember = _affectedAreaOwnerPartyMembershipEvaluator?.Invoke(area.OwnerId) == true;
+                if (!RemoteAffectedAreaSupportResolver.CanAffectLocalPlayer(
+                        skill,
+                        localPlayerId,
+                        area.OwnerId,
+                        ownerIsPartyMember))
+                {
+                    continue;
+                }
+
+                return true;
+            }
+
+            return false;
+        }
+
+        private SkillData CreateAmplifierRobotAvatarEffectSkill()
+        {
+            SkillData skill = SkillLoader?.LoadSkill(AmplifierRobotSkillId);
+            SkillAnimation loopingAffectedAnimation = CreateLoopingAvatarEffect(skill?.AffectedEffect);
+            if (loopingAffectedAnimation == null)
+            {
+                return null;
+            }
+
+            return new SkillData
+            {
+                SkillId = AmplifierRobotAvatarEffectSkillId,
+                AvatarUnderFaceEffect = loopingAffectedAnimation
+            };
+        }
+
+        private static SkillAnimation CreateLoopingAvatarEffect(SkillAnimation animation)
+        {
+            if (animation?.Frames?.Count <= 0)
+            {
+                return null;
+            }
+
+            return new SkillAnimation
+            {
+                Name = animation.Name,
+                Frames = new List<SkillFrame>(animation.Frames),
+                Loop = true,
+                Origin = animation.Origin,
+                ZOrder = animation.ZOrder
+            };
+        }
+
         internal bool TryApplyMobSkillStatus(int skillId, MobSkillRuntimeData runtimeData, int currentTime, float sourceX = 0f)
         {
             if (Player == null)
@@ -910,13 +1027,26 @@ namespace HaCreator.MapSimulator.Character
 
         private void TryAcknowledgePendingRepeatSkillModeEnd(int currentTime)
         {
-            if (Skills == null || _pendingRepeatSkillModeEndRequestTime == int.MinValue || currentTime <= _pendingRepeatSkillModeEndRequestTime)
+            if (Skills == null || _pendingRepeatSkillModeEndRequestTime == int.MinValue)
             {
                 return;
             }
 
             int skillId = _pendingRepeatSkillModeEndSkillId;
             int returnSkillId = _pendingRepeatSkillModeEndReturnSkillId;
+            if (!Skills.HasPendingRepeatSkillModeEndRequest(skillId, returnSkillId))
+            {
+                _pendingRepeatSkillModeEndSkillId = 0;
+                _pendingRepeatSkillModeEndReturnSkillId = 0;
+                _pendingRepeatSkillModeEndRequestTime = int.MinValue;
+                return;
+            }
+
+            if (currentTime < _pendingRepeatSkillModeEndRequestTime + TankSiegeModeEndFallbackDelayMs)
+            {
+                return;
+            }
+
             if (Skills.TryAcknowledgeRepeatSkillModeEndRequest(skillId, currentTime)
                 || Skills.TryAcknowledgeRepeatSkillModeEndRequest(returnSkillId, currentTime))
             {

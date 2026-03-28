@@ -520,6 +520,17 @@ namespace HaCreator.MapSimulator.Character
             }
         }
 
+        public static bool TryGetActionStringFromCode(int actionCode, out string actionName)
+        {
+            actionName = actionCode switch
+            {
+                >= 0 and <= (int)CharacterAction.Ghost => GetActionString((CharacterAction)actionCode),
+                _ => null
+            };
+
+            return !string.IsNullOrWhiteSpace(actionName);
+        }
+
         public static string GetActionString(CharacterAction action)
         {
             return action switch

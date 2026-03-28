@@ -30,9 +30,11 @@ namespace HaCreator.MapSimulator.UI
         private const int BalloonWidth = 220;
         private const int BalloonHeight = 40;
         private const int BalloonTextInsetX = 10;
-        private const int BalloonTextInsetY = 15;
+        private const int BalloonSingleLineTextInsetY = 15;
+        private const int BalloonMultiLineTextInsetY = 9;
         private const int StatusTextWrapWidth = 170;
         private const float StatusTextScale = 0.50f;
+        private const int BasicBlackFontHeight = 12;
         private const string DefaultInstructionMessage = "Double-click to enter.";
         private const string DefaultStatusMessage = "Select a character.";
 
@@ -89,7 +91,7 @@ namespace HaCreator.MapSimulator.UI
             _measureBitmap = new SD.Bitmap(1, 1);
             _measureGraphics = SD.Graphics.FromImage(_measureBitmap);
             _measureGraphics.TextRenderingHint = SDText.TextRenderingHint.SingleBitPerPixelGridFit;
-            _basicBlackFont = new SD.Font("Tahoma", 11f, SD.FontStyle.Regular, SD.GraphicsUnit.Pixel);
+            _basicBlackFont = new SD.Font("Tahoma", BasicBlackFontHeight, SD.FontStyle.Regular, SD.GraphicsUnit.Pixel);
 
             if (_enterButton != null)
             {
@@ -196,16 +198,14 @@ namespace HaCreator.MapSimulator.UI
 
         private void DrawStatusText(SpriteBatch sprite)
         {
-            if (_font == null)
-            {
-                return;
-            }
-
             if (ShouldDrawStatusScrollText())
             {
                 Point statusPosition = new(Position.X + ClientStatusScrollPosition.X + 21, Position.Y + ClientStatusScrollPosition.Y + 79);
                 string wrappedMessage = WrapText(_statusMessage, StatusTextWrapWidth, StatusTextScale, 2);
-                DrawShadowedText(sprite, wrappedMessage, statusPosition.ToVector2(), new Color(92, 63, 44), StatusTextScale);
+                if (!DrawWrappedRasterText(sprite, wrappedMessage, statusPosition.X, statusPosition.Y, new Color(92, 63, 44)))
+                {
+                    DrawShadowedText(sprite, wrappedMessage, statusPosition.ToVector2(), new Color(92, 63, 44), StatusTextScale);
+                }
             }
         }
 
@@ -226,7 +226,7 @@ namespace HaCreator.MapSimulator.UI
 
         private void DrawInstructionBalloon(SpriteBatch sprite)
         {
-            if (_font == null || !_instructionBalloonStyle.IsReady)
+            if (!_instructionBalloonStyle.IsReady)
             {
                 return;
             }
@@ -248,13 +248,11 @@ namespace HaCreator.MapSimulator.UI
             }
 
             string wrappedMessage = WrapText(balloonMessage, BalloonWidth - 20, StatusTextScale, 2);
-            int textY = bodyBounds.Y + (wrappedMessage.Contains(Environment.NewLine, StringComparison.Ordinal) ? 9 : BalloonTextInsetY);
-            DrawRasterText(
-                sprite,
-                wrappedMessage,
-                bodyBounds.X + BalloonTextInsetX,
-                textY,
-                _instructionBalloonStyle.TextColor);
+            int textY = bodyBounds.Y + (wrappedMessage.Contains(Environment.NewLine, StringComparison.Ordinal)
+                ? BalloonMultiLineTextInsetY
+                : BalloonSingleLineTextInsetY);
+            // CUIAvatar::OnCreate draws the balloon copy into a 220x40 canvas at (10, 15).
+            DrawWrappedRasterText(sprite, wrappedMessage, bodyBounds.X + BalloonTextInsetX, textY, _instructionBalloonStyle.TextColor);
         }
 
         private void DrawBalloonNineSlice(SpriteBatch sprite, Rectangle bodyBounds)
@@ -491,6 +489,27 @@ namespace HaCreator.MapSimulator.UI
 
             sprite.Draw(texture, new Vector2(x, y), Color.White);
             return true;
+        }
+
+        private bool DrawWrappedRasterText(SpriteBatch sprite, string text, int x, int y, Color color)
+        {
+            if (string.IsNullOrEmpty(text))
+            {
+                return false;
+            }
+
+            string[] lines = text.Split(new[] { Environment.NewLine }, StringSplitOptions.None);
+            int lineHeight = Math.Max(1, (int)Math.Ceiling(MeasureText("Ay", StatusTextScale).Y));
+            bool drewAny = false;
+            for (int i = 0; i < lines.Length; i++)
+            {
+                if (DrawRasterText(sprite, lines[i], x, y + (i * lineHeight), color))
+                {
+                    drewAny = true;
+                }
+            }
+
+            return drewAny;
         }
 
         private Texture2D GetOrCreateTextTexture(string text, Color color)

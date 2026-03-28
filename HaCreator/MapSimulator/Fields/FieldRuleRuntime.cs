@@ -62,6 +62,7 @@ namespace HaCreator.MapSimulator.Fields
             _recoveryRate > 0f ||
             _ambientWeather != WeatherType.None ||
             _allowedItems.Count > 0 ||
+            FieldInteractionRestrictionEvaluator.GetFieldEntryItemRestrictionMessages(_fieldLimit).Count > 0 ||
             FieldInteractionRestrictionEvaluator.GetJumpRestrictionMessage(_fieldLimit) != null ||
             FieldInteractionRestrictionEvaluator.GetTeleportItemRestrictionMessage(_fieldLimit) != null ||
             FieldInteractionRestrictionEvaluator.GetTransferRestrictionMessage(_fieldLimit) != null ||
@@ -269,6 +270,12 @@ namespace HaCreator.MapSimulator.Fields
             if (_consumeItemCoolTimeSeconds > 0)
             {
                 messages.Add($"Consumable item cooldown active: {_consumeItemCoolTimeSeconds}s between use-item activations.");
+            }
+
+            IReadOnlyList<string> itemRestrictionNotices = FieldInteractionRestrictionEvaluator.GetFieldEntryItemRestrictionMessages(_fieldLimit);
+            for (int i = 0; i < itemRestrictionNotices.Count; i++)
+            {
+                messages.Add(itemRestrictionNotices[i]);
             }
 
             if (_moveLimit is > 0)

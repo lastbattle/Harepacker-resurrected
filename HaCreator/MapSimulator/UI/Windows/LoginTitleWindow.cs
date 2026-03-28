@@ -26,7 +26,7 @@ namespace HaCreator.MapSimulator.UI
         public bool RememberId { get; }
     }
 
-    public sealed class LoginTitleWindow : UIWindowBase
+    public sealed class LoginTitleWindow : UIWindowBase, ISoftKeyboardHost
     {
         private enum LoginFieldFocus
         {
@@ -63,6 +63,7 @@ namespace HaCreator.MapSimulator.UI
         private string _socketStatusMessage = string.Empty;
         private bool _rememberId;
         private bool _busy;
+        private bool _softKeyboardActive;
 
         private static readonly Keys[] AlphaKeys = Enumerable.Range((int)Keys.A, 26).Select(value => (Keys)value).ToArray();
         private static readonly Keys[] NumberKeys = Enumerable.Range((int)Keys.D0, 10).Select(value => (Keys)value).ToArray();
@@ -161,6 +162,13 @@ namespace HaCreator.MapSimulator.UI
         public override string WindowName => MapSimulatorWindowNames.LoginTitle;
         public override bool SupportsDragging => false;
         public override bool CapturesKeyboardInput => true;
+        bool ISoftKeyboardHost.WantsSoftKeyboard => IsVisible && _softKeyboardActive && !_busy && _focusedField != LoginFieldFocus.None;
+        SoftKeyboardKeyboardType ISoftKeyboardHost.SoftKeyboardKeyboardType => SoftKeyboardKeyboardType.AlphaNumeric;
+        int ISoftKeyboardHost.SoftKeyboardTextLength => GetFocusedFieldValue().Length;
+        int ISoftKeyboardHost.SoftKeyboardMaxLength => 16;
+        public string AccountName => _accountName;
+        public string Password => _password;
+        public bool RememberId => _rememberId;
 
         public event Action<LoginTitleSubmission> SubmitRequested;
         public event Action GuestLoginRequested;
@@ -211,6 +219,7 @@ namespace HaCreator.MapSimulator.UI
             if (Pressed(keyboardState, Keys.Tab))
             {
                 _focusedField = _focusedField == LoginFieldFocus.Account ? LoginFieldFocus.Password : LoginFieldFocus.Account;
+                _softKeyboardActive = _focusedField != LoginFieldFocus.None;
             }
 
             if (Pressed(keyboardState, Keys.Enter))
@@ -283,12 +292,14 @@ namespace HaCreator.MapSimulator.UI
             if (GetAccountFieldBounds().Contains(mousePoint))
             {
                 _focusedField = LoginFieldFocus.Account;
+                _softKeyboardActive = !_busy;
                 return true;
             }
 
             if (GetPasswordFieldBounds().Contains(mousePoint))
             {
                 _focusedField = LoginFieldFocus.Password;
+                _softKeyboardActive = !_busy;
                 return true;
             }
 
@@ -470,6 +481,51 @@ namespace HaCreator.MapSimulator.UI
             return new Rectangle(Position.X + 348, Position.Y + 266, 160, 23);
         }
 
+        Rectangle ISoftKeyboardHost.GetSoftKeyboardAnchorBounds()
+        {
+            return _focusedField == LoginFieldFocus.Password
+                ? GetPasswordFieldBounds()
+                : GetAccountFieldBounds();
+        }
+
+        bool ISoftKeyboardHost.TryInsertSoftKeyboardCharacter(char character, out string errorMessage)
+        {
+            errorMessage = string.Empty;
+            if (_busy || _focusedField == LoginFieldFocus.None)
+            {
+                errorMessage = "This field is not editable right now.";
+                return false;
+            }
+
+            string value = GetFocusedFieldValue();
+            if (!SoftKeyboardUI.CanAcceptCharacter(SoftKeyboardKeyboardType.AlphaNumeric, value.Length, 16, character))
+            {
+                errorMessage = "That key is disabled for this field.";
+                return false;
+            }
+
+            AppendCharacter(character);
+            return true;
+        }
+
+        bool ISoftKeyboardHost.TryBackspaceSoftKeyboard(out string errorMessage)
+        {
+            errorMessage = string.Empty;
+            if (!SoftKeyboardUI.CanBackspace(GetFocusedFieldValue().Length))
+            {
+                errorMessage = "Nothing to remove.";
+                return false;
+            }
+
+            RemoveLastCharacter();
+            return true;
+        }
+
+        void ISoftKeyboardHost.OnSoftKeyboardClosed()
+        {
+            _softKeyboardActive = false;
+        }
+
         private void ToggleRememberId()
         {
             _rememberId = !_rememberId;
@@ -527,6 +583,16 @@ namespace HaCreator.MapSimulator.UI
                     }
                     break;
             }
+        }
+
+        private string GetFocusedFieldValue()
+        {
+            return _focusedField switch
+            {
+                LoginFieldFocus.Password => _password ?? string.Empty,
+                LoginFieldFocus.Account => _accountName ?? string.Empty,
+                _ => string.Empty,
+            };
         }
 
         private IEnumerable<string> WrapText(string text, float maxWidth)

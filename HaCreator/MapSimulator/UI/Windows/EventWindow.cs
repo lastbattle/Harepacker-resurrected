@@ -28,19 +28,42 @@ namespace HaCreator.MapSimulator.UI
         private readonly string _windowName;
         private readonly Texture2D _normalRowTexture;
         private readonly Texture2D _selectedRowTexture;
+        private readonly Texture2D _slotTexture;
+        private readonly Texture2D[] _statusIcons;
+        private readonly Texture2D _todayTexture;
         private SpriteFont _font;
         private Func<EventWindowSnapshot> _snapshotProvider;
         private EventEntryStatus? _filter;
         private int _selectedIndex;
         private int _pageIndex;
         private bool _showCalendar;
+        private DateTime _calendarMonth = new(DateTime.Today.Year, DateTime.Today.Month, 1);
 
-        public EventWindow(IDXObject frame, string windowName, Texture2D normalRowTexture, Texture2D selectedRowTexture)
+        public EventWindow(
+            IDXObject frame,
+            string windowName,
+            Texture2D normalRowTexture,
+            Texture2D selectedRowTexture)
+            : this(frame, windowName, normalRowTexture, selectedRowTexture, null, Array.Empty<Texture2D>(), null)
+        {
+        }
+
+        public EventWindow(
+            IDXObject frame,
+            string windowName,
+            Texture2D normalRowTexture,
+            Texture2D selectedRowTexture,
+            Texture2D slotTexture,
+            Texture2D[] statusIcons,
+            Texture2D todayTexture)
             : base(frame)
         {
             _windowName = windowName ?? throw new ArgumentNullException(nameof(windowName));
             _normalRowTexture = normalRowTexture;
             _selectedRowTexture = selectedRowTexture ?? normalRowTexture;
+            _slotTexture = slotTexture;
+            _statusIcons = statusIcons ?? Array.Empty<Texture2D>();
+            _todayTexture = todayTexture;
         }
 
         public override string WindowName => _windowName;
@@ -79,7 +102,7 @@ namespace HaCreator.MapSimulator.UI
             BindActionButton(inProgressButton, () => SetFilter(EventEntryStatus.InProgress, showCalendar: false));
             BindActionButton(clearButton, () => SetFilter(EventEntryStatus.Clear, showCalendar: false));
             BindActionButton(upcomingButton, () => SetFilter(EventEntryStatus.Upcoming, showCalendar: false));
-            BindActionButton(calendarButton, () => _showCalendar = !_showCalendar);
+            BindActionButton(calendarButton, ToggleCalendarView);
             BindActionButton(previousButton, MovePreviousPage);
             BindActionButton(nextButton, MoveNextPage);
 
@@ -149,7 +172,7 @@ namespace HaCreator.MapSimulator.UI
 
             EventWindowSnapshot snapshot = _snapshotProvider?.Invoke() ?? new EventWindowSnapshot();
             string subtitle = _showCalendar
-                ? "Calendar view groups simulator event entries by day."
+                ? $"Calendar view groups simulator event entries by day for {_calendarMonth:MMMM yyyy}."
                 : snapshot.Subtitle;
 
             sprite.DrawString(_font, snapshot.Title, new Vector2(Position.X + 18, Position.Y + 20), Color.White);
@@ -196,15 +219,29 @@ namespace HaCreator.MapSimulator.UI
                 }
 
                 EventEntrySnapshot entry = visibleEntries[i];
-                sprite.DrawString(_font, entry.Title, new Vector2(bounds.X + 12, bounds.Y + 8), Color.White);
+                Rectangle slotBounds = new(bounds.X + 10, bounds.Y + 8, 35, 35);
+                if (_slotTexture != null)
+                {
+                    sprite.Draw(_slotTexture, slotBounds, Color.White);
+                }
+
+                Texture2D statusIcon = ResolveStatusIcon(entry.Status);
+                if (statusIcon != null)
+                {
+                    Vector2 iconPosition = new(slotBounds.X + ((slotBounds.Width - statusIcon.Width) / 2f), slotBounds.Y + ((slotBounds.Height - statusIcon.Height) / 2f));
+                    sprite.Draw(statusIcon, iconPosition, Color.White);
+                }
+
+                int contentLeft = slotBounds.Right + 10;
+                sprite.DrawString(_font, entry.Title, new Vector2(contentLeft, bounds.Y + 8), Color.White);
                 sprite.DrawString(_font, entry.StatusText, new Vector2(bounds.Right - Math.Min(86, (int)_font.MeasureString(entry.StatusText).X) - 10, bounds.Y + 8), new Color(255, 228, 151));
-                DrawWrappedText(sprite, entry.Detail, bounds.X + 12, bounds.Y + 30, bounds.Width - 24f, new Color(224, 224, 224));
+                DrawWrappedText(sprite, entry.Detail, contentLeft, bounds.Y + 30, bounds.Right - contentLeft - 12f, new Color(224, 224, 224));
             }
         }
 
         private void DrawCalendar(SpriteBatch sprite, EventWindowSnapshot snapshot)
         {
-            DateTime month = DateTime.Today;
+            DateTime month = _calendarMonth;
             IReadOnlyList<EventEntrySnapshot> entries = GetFilteredEntries(snapshot);
             var entryCountsByDay = entries
                 .Where(static entry => entry.ScheduledAt.Year > 1)
@@ -239,6 +276,11 @@ namespace HaCreator.MapSimulator.UI
                 }
 
                 DateTime date = new(month.Year, month.Month, day);
+                if (isToday && _todayTexture != null)
+                {
+                    sprite.Draw(_todayTexture, new Vector2(cellBounds.X, cellBounds.Y), Color.White);
+                }
+
                 sprite.DrawString(_font, day.ToString(), new Vector2(cellBounds.X + 6, cellBounds.Y + 4), Color.White);
                 if (entryCountsByDay.TryGetValue(date, out int entryCount) && entryCount > 0)
                 {
@@ -253,6 +295,10 @@ namespace HaCreator.MapSimulator.UI
             _pageIndex = 0;
             _selectedIndex = 0;
             _showCalendar = showCalendar;
+            if (_showCalendar)
+            {
+                _calendarMonth = new DateTime(DateTime.Today.Year, DateTime.Today.Month, 1);
+            }
         }
 
         private IReadOnlyList<EventEntrySnapshot> GetVisibleEntries()
@@ -285,6 +331,7 @@ namespace HaCreator.MapSimulator.UI
         {
             if (_showCalendar)
             {
+                _calendarMonth = _calendarMonth.AddMonths(-1);
                 return;
             }
 
@@ -295,10 +342,20 @@ namespace HaCreator.MapSimulator.UI
         {
             if (_showCalendar)
             {
+                _calendarMonth = _calendarMonth.AddMonths(1);
                 return;
             }
 
             _pageIndex++;
+        }
+
+        private void ToggleCalendarView()
+        {
+            _showCalendar = !_showCalendar;
+            if (_showCalendar)
+            {
+                _calendarMonth = new DateTime(DateTime.Today.Year, DateTime.Today.Month, 1);
+            }
         }
 
         private Rectangle GetRowBounds(int visibleIndex)
@@ -320,6 +377,23 @@ namespace HaCreator.MapSimulator.UI
 
             AddButton(button);
             button.ButtonClickReleased += _ => action?.Invoke();
+        }
+
+        private Texture2D ResolveStatusIcon(EventEntryStatus status)
+        {
+            if (_statusIcons.Length == 0)
+            {
+                return null;
+            }
+
+            return status switch
+            {
+                EventEntryStatus.Start => _statusIcons.ElementAtOrDefault(0),
+                EventEntryStatus.InProgress => _statusIcons.ElementAtOrDefault(1),
+                EventEntryStatus.Clear => _statusIcons.ElementAtOrDefault(2),
+                EventEntryStatus.Upcoming => _statusIcons.ElementAtOrDefault(0),
+                _ => null,
+            };
         }
 
         private void DrawWrappedText(SpriteBatch sprite, string text, int x, int y, float maxWidth, Color color)

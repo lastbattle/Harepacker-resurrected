@@ -115,6 +115,7 @@ namespace HaCreator.MapSimulator.Interaction
         public int EntryId { get; init; }
         public string EntryTitle { get; init; } = string.Empty;
         public string NpcName { get; init; } = "NPC";
+        public NpcInteractionPresentationStyle PresentationStyle { get; init; }
         public NpcInteractionInputKind Kind { get; init; }
         public string Value { get; init; } = string.Empty;
         public int? NumericValue { get; init; }

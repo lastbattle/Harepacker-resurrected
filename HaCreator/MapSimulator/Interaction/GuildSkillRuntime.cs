@@ -16,6 +16,16 @@ namespace HaCreator.MapSimulator.Interaction
 
     internal sealed class GuildSkillRuntime
     {
+        private static readonly HashSet<string> PlaceholderGuildNames = new(StringComparer.OrdinalIgnoreCase)
+        {
+            "-",
+            "No Guild",
+            "Maple Guild",
+            "Maple GM",
+            "Lith Harbor",
+            "Sleepywood"
+        };
+
         private readonly List<SkillDisplayData> _skills = new();
         private readonly Dictionary<int, int> _savedSkillLevels = new();
         private int _selectedIndex;
@@ -30,7 +40,8 @@ namespace HaCreator.MapSimulator.Interaction
 
         internal static bool HasGuildMembership(CharacterBuild build)
         {
-            return !string.IsNullOrWhiteSpace(build?.GuildName);
+            string guildName = build?.GuildName?.Trim();
+            return !string.IsNullOrWhiteSpace(guildName) && !PlaceholderGuildNames.Contains(guildName);
         }
 
         internal void UpdateLocalContext(CharacterBuild build, string guildRoleLabel)

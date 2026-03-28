@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Net;
 using System.Net.Sockets;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -244,9 +245,12 @@ namespace HaCreator.MapSimulator.Managers
                 return true;
             }
 
-            return int.TryParse(token, out int numericPacket) &&
-                   Enum.IsDefined(typeof(LoginPacketType), numericPacket) &&
-                   LoginRuntimeManager.TryParsePacketType(((LoginPacketType)numericPacket).ToString(), out packetType);
+            if (TryResolvePacketToken(token, out packetType))
+            {
+                return true;
+            }
+
+            return TryParseOpcodeFramedPacketLine(trimmed, out packetType, out arguments);
         }
 
         private static bool TryParseRelayPacketLine(string text, out LoginPacketType packetType, out string[] arguments)
@@ -342,6 +346,107 @@ namespace HaCreator.MapSimulator.Managers
                    LoginRuntimeManager.TryParsePacketType(((LoginPacketType)numericPacket).ToString(), out packetType);
         }
 
+        internal static bool TryDecodeOpcodeFramedPacket(
+            byte[] packetBytes,
+            out LoginPacketType packetType,
+            out string[] arguments)
+        {
+            packetType = LoginPacketType.CheckPasswordResult;
+            arguments = Array.Empty<string>();
+
+            if (packetBytes == null || packetBytes.Length < sizeof(ushort))
+            {
+                return false;
+            }
+
+            ushort rawPacketType = BitConverter.ToUInt16(packetBytes, 0);
+            if (!TryResolvePacketToken(rawPacketType.ToString(), out packetType))
+            {
+                return false;
+            }
+
+            byte[] payloadBytes = packetBytes.Length > sizeof(ushort)
+                ? packetBytes[sizeof(ushort)..]
+                : Array.Empty<byte>();
+
+            arguments = new[] { $"payloadhex={Convert.ToHexString(payloadBytes)}" };
+            return true;
+        }
+
+        private static bool TryParseOpcodeFramedPacketLine(string text, out LoginPacketType packetType, out string[] arguments)
+        {
+            packetType = LoginPacketType.CheckPasswordResult;
+            arguments = Array.Empty<string>();
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                return false;
+            }
+
+            string trimmed = text.Trim();
+            if (TryDecodeBinaryPacketFrame(trimmed, out byte[] framedPacketBytes))
+            {
+                return TryDecodeOpcodeFramedPacket(framedPacketBytes, out packetType, out arguments);
+            }
+
+            string[] tokens = trimmed.Split((char[])null, StringSplitOptions.RemoveEmptyEntries);
+            if (tokens.Length == 0)
+            {
+                return false;
+            }
+
+            LoginPacketType explicitPacketType = LoginPacketType.CheckPasswordResult;
+            bool hasExplicitPacketType = false;
+            byte[] payloadBytes = null;
+            byte[] framedBytes = null;
+
+            foreach (string rawToken in tokens)
+            {
+                string token = SanitizeRelayToken(rawToken);
+                if (string.IsNullOrWhiteSpace(token) ||
+                    !TryParseRelayKeyValueToken(token, out string key, out string value))
+                {
+                    continue;
+                }
+
+                if (!hasExplicitPacketType &&
+                    IsRelayOpcodeKey(key) &&
+                    TryResolvePacketToken(NormalizeNumericToken(value), out explicitPacketType))
+                {
+                    hasExplicitPacketType = true;
+                    continue;
+                }
+
+                if (payloadBytes == null &&
+                    IsRelayPayloadKey(key) &&
+                    TryDecodeBinaryPacketValue(key, value, out byte[] decodedPayloadBytes))
+                {
+                    payloadBytes = decodedPayloadBytes;
+                    continue;
+                }
+
+                if (framedBytes == null &&
+                    IsRelayFramedPacketKey(key) &&
+                    TryDecodeBinaryPacketValue(key, value, out byte[] decodedFramedBytes))
+                {
+                    framedBytes = decodedFramedBytes;
+                }
+            }
+
+            if (framedBytes != null)
+            {
+                return TryDecodeOpcodeFramedPacket(framedBytes, out packetType, out arguments);
+            }
+
+            if (!hasExplicitPacketType || payloadBytes == null)
+            {
+                return false;
+            }
+
+            packetType = explicitPacketType;
+            arguments = new[] { $"payloadhex={Convert.ToHexString(payloadBytes)}" };
+            return true;
+        }
+
         private static string SanitizeRelayToken(string token)
         {
             return token?.Trim().Trim('"', '\'', '[', ']', '(', ')', '{', '}', ',', ';');
@@ -376,6 +481,15 @@ namespace HaCreator.MapSimulator.Managers
                    key.Equals("handler", StringComparison.OrdinalIgnoreCase);
         }
 
+        private static bool IsRelayOpcodeKey(string key)
+        {
+            return key.Equals("opcode", StringComparison.OrdinalIgnoreCase) ||
+                   key.Equals("op", StringComparison.OrdinalIgnoreCase) ||
+                   key.Equals("header", StringComparison.OrdinalIgnoreCase) ||
+                   key.Equals("packetid", StringComparison.OrdinalIgnoreCase) ||
+                   key.Equals("id", StringComparison.OrdinalIgnoreCase);
+        }
+
         private static bool IsRelayPayloadKey(string key)
         {
             return key.Equals("payload", StringComparison.OrdinalIgnoreCase) ||
@@ -387,6 +501,19 @@ namespace HaCreator.MapSimulator.Managers
                    key.Equals("raw", StringComparison.OrdinalIgnoreCase) ||
                    key.Equals("b64", StringComparison.OrdinalIgnoreCase) ||
                    key.Equals("base64", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static bool IsRelayFramedPacketKey(string key)
+        {
+            return key.Equals("frame", StringComparison.OrdinalIgnoreCase) ||
+                   key.Equals("framehex", StringComparison.OrdinalIgnoreCase) ||
+                   key.Equals("frameb64", StringComparison.OrdinalIgnoreCase) ||
+                   key.Equals("packethex", StringComparison.OrdinalIgnoreCase) ||
+                   key.Equals("packetb64", StringComparison.OrdinalIgnoreCase) ||
+                   key.Equals("capturehex", StringComparison.OrdinalIgnoreCase) ||
+                   key.Equals("captureb64", StringComparison.OrdinalIgnoreCase) ||
+                   key.Equals("rawhex", StringComparison.OrdinalIgnoreCase) ||
+                   key.Equals("rawb64", StringComparison.OrdinalIgnoreCase);
         }
 
         private static bool IsRelayMetadataKey(string key)
@@ -452,6 +579,128 @@ namespace HaCreator.MapSimulator.Managers
             }
 
             return -1;
+        }
+
+        private static bool TryDecodeBinaryPacketFrame(string text, out byte[] packetBytes)
+        {
+            packetBytes = Array.Empty<byte>();
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                return false;
+            }
+
+            string trimmed = text.Trim();
+            if (TryParseRelayKeyValueToken(trimmed, out string key, out string value) &&
+                IsRelayFramedPacketKey(key))
+            {
+                return TryDecodeBinaryPacketValue(key, value, out packetBytes);
+            }
+
+            if (LooksLikeHexByteSequence(trimmed))
+            {
+                return TryDecodeHexString(trimmed, out packetBytes);
+            }
+
+            return TryDecodeBase64String(trimmed, out packetBytes);
+        }
+
+        private static bool TryDecodeBinaryPacketValue(string key, string value, out byte[] bytes)
+        {
+            bytes = Array.Empty<byte>();
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                return false;
+            }
+
+            if (key.EndsWith("b64", StringComparison.OrdinalIgnoreCase) ||
+                key.Equals("base64", StringComparison.OrdinalIgnoreCase) ||
+                key.Equals("b64", StringComparison.OrdinalIgnoreCase))
+            {
+                return TryDecodeBase64String(value, out bytes);
+            }
+
+            if (key.EndsWith("hex", StringComparison.OrdinalIgnoreCase))
+            {
+                return TryDecodeHexString(value, out bytes);
+            }
+
+            return LooksLikeHexByteSequence(value)
+                ? TryDecodeHexString(value, out bytes)
+                : TryDecodeBase64String(value, out bytes);
+        }
+
+        private static bool LooksLikeHexByteSequence(string text)
+        {
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                return false;
+            }
+
+            string normalized = new(text
+                .Where(ch => !char.IsWhiteSpace(ch) && ch != '-' && ch != ':')
+                .ToArray());
+            return normalized.Length >= 4 &&
+                   (normalized.Length & 1) == 0 &&
+                   normalized.All(Uri.IsHexDigit);
+        }
+
+        private static bool TryDecodeHexString(string text, out byte[] bytes)
+        {
+            bytes = Array.Empty<byte>();
+            if (!LooksLikeHexByteSequence(text))
+            {
+                return false;
+            }
+
+            string normalized = new(text
+                .Where(ch => !char.IsWhiteSpace(ch) && ch != '-' && ch != ':')
+                .ToArray());
+
+            try
+            {
+                bytes = Convert.FromHexString(normalized);
+                return true;
+            }
+            catch (FormatException)
+            {
+                return false;
+            }
+        }
+
+        private static bool TryDecodeBase64String(string text, out byte[] bytes)
+        {
+            bytes = Array.Empty<byte>();
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                return false;
+            }
+
+            try
+            {
+                bytes = Convert.FromBase64String(text.Trim());
+                return bytes.Length >= sizeof(ushort);
+            }
+            catch (FormatException)
+            {
+                return false;
+            }
+        }
+
+        private static string NormalizeNumericToken(string value)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                return string.Empty;
+            }
+
+            string trimmed = value.Trim();
+            if (trimmed.StartsWith("0x", StringComparison.OrdinalIgnoreCase) &&
+                int.TryParse(trimmed[2..], System.Globalization.NumberStyles.HexNumber, null, out int hexValue))
+            {
+                return hexValue.ToString();
+            }
+
+            return trimmed;
         }
 
         private void StopInternal()

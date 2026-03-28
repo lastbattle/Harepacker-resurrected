@@ -197,7 +197,7 @@ namespace HaCreator.MapSimulator.UI
                 sprite.Draw(_backgroundTexture, new Vector2(Position.X, Position.Y), Color.White);
             }
 
-            SoftKeyboardKeyMode keyMode = ResolveKeyMode();
+            SoftKeyboardKeyMode keyMode = ResolveKeyMode(_host.SoftKeyboardKeyboardType, _host.SoftKeyboardTextLength, _host.SoftKeyboardMaxLength);
             DrawModeButton(sprite, GetAlphaButtonBounds(), "ABC", IsAlphabeticModeActive(keyMode), disabled: !IsAlphabeticFamilyEnabled(keyMode));
             DrawModeButton(sprite, GetNumericButtonBounds(), "123", IsNumericModeActive(keyMode), disabled: !IsNumericFamilyEnabled(keyMode));
             DrawCloseButton(sprite, GetCloseButtonBounds());
@@ -565,14 +565,43 @@ namespace HaCreator.MapSimulator.UI
                 return SoftKeyboardKeyMode.Disabled;
             }
 
-            int textLength = Math.Max(0, _host.SoftKeyboardTextLength);
-            int maxLength = _host.SoftKeyboardMaxLength;
+            return ResolveKeyMode(_host.SoftKeyboardKeyboardType, _host.SoftKeyboardTextLength, _host.SoftKeyboardMaxLength);
+        }
+
+        internal static bool CanAcceptCharacter(
+            SoftKeyboardKeyboardType keyboardType,
+            int textLength,
+            int maxLength,
+            char character)
+        {
+            if (!char.IsLetterOrDigit(character))
+            {
+                return false;
+            }
+
+            SoftKeyboardKeyMode keyMode = ResolveKeyMode(keyboardType, textLength, maxLength);
+            return char.IsDigit(character)
+                ? IsNumericFamilyEnabled(keyMode)
+                : IsAlphabeticFamilyEnabled(keyMode);
+        }
+
+        internal static bool CanBackspace(int textLength)
+        {
+            return textLength > 0;
+        }
+
+        internal static SoftKeyboardKeyMode ResolveKeyMode(
+            SoftKeyboardKeyboardType keyboardType,
+            int textLength,
+            int maxLength)
+        {
+            textLength = Math.Max(0, textLength);
             if (maxLength < 0)
             {
                 return SoftKeyboardKeyMode.Disabled;
             }
 
-            return _host.SoftKeyboardKeyboardType switch
+            return keyboardType switch
             {
                 SoftKeyboardKeyboardType.AlphaNumeric => textLength < maxLength
                     ? SoftKeyboardKeyMode.AlphaNumeric

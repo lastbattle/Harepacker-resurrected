@@ -257,6 +257,7 @@ namespace HaCreator.MapSimulator.Pools
             int characterId,
             int skillId,
             string actionName,
+            int? actionCode,
             int masteryPercent,
             int chargeSkillId,
             bool? facingRight,
@@ -279,6 +280,11 @@ namespace HaCreator.MapSimulator.Pools
             {
                 actor.BeginMeleeAfterImageFade(currentTime);
                 actor.ActionName = NormalizeActionName(actionName, actor.Build.ActivePortableChair != null);
+            }
+            else if (actionCode.HasValue && CharacterPart.TryGetActionStringFromCode(actionCode.Value, out string resolvedActionName))
+            {
+                actor.BeginMeleeAfterImageFade(currentTime);
+                actor.ActionName = NormalizeActionName(resolvedActionName, actor.Build.ActivePortableChair != null);
             }
 
             int chargeElement = AfterImageChargeSkillResolver.TryGetChargeElement(chargeSkillId, out int resolvedChargeElement)
@@ -608,11 +614,37 @@ namespace HaCreator.MapSimulator.Pools
                     MaxHoldDurationMs = prepared.MaxHoldDurationMs,
                     TextVariant = prepared.TextVariant,
                     ShowText = prepared.ShowText && !PreparedSkillHudRules.IsDragonOverlaySkill(prepared.SkillId),
-                    WorldAnchor = new Vector2(actor.Position.X, actor.Position.Y - 92f)
+                    WorldAnchor = ResolvePreparedSkillWorldAnchor(actor, prepared, currentTime)
                 });
             }
 
             return overlays;
+        }
+
+        private static Vector2 ResolvePreparedSkillWorldAnchor(RemoteUserActor actor, RemotePreparedSkillState prepared, int currentTime)
+        {
+            if (actor == null)
+            {
+                return Vector2.Zero;
+            }
+
+            if (prepared != null
+                && PreparedSkillHudRules.IsDragonOverlaySkill(prepared.SkillId))
+            {
+                // Remote prepared-skill packets still do not carry dragon companion state,
+                // so keep the older actor-top fallback until a remote dragon runtime exists.
+                return new Vector2(actor.Position.X, actor.Position.Y - 92f);
+            }
+
+            AssembledFrame frame = actor.Assembler?.GetFrameAtTime(actor.ActionName, currentTime)
+                ?? actor.Assembler?.GetFrameAtTime(CharacterPart.GetActionString(CharacterAction.Stand1), currentTime);
+            if (frame != null)
+            {
+                float topY = actor.Position.Y - frame.FeetOffset + frame.Bounds.Top;
+                return new Vector2(actor.Position.X, topY - 18f);
+            }
+
+            return new Vector2(actor.Position.X, actor.Position.Y - 80f);
         }
 
         public IReadOnlyList<MinimapUI.TrackedUserMarker> BuildHelperMarkers()

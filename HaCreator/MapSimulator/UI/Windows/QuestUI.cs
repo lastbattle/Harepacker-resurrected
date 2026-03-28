@@ -58,6 +58,8 @@ namespace HaCreator.MapSimulator.UI
         private Texture2D _iconInProgress;
         private Texture2D _iconCompleted;
         private Texture2D _categoryLegendTexture;
+        private Texture2D _categoryLegendInnerTexture;
+        private Texture2D[] _categoryLegendSheetTextures = Array.Empty<Texture2D>();
         private Texture2D _pixel;
         private readonly GraphicsDevice _graphicsDevice;
         private readonly Dictionary<int, Texture2D> _itemIconCache = new();
@@ -244,9 +246,19 @@ namespace HaCreator.MapSimulator.UI
             UpdateTabStates();
         }
 
-        public void SetCategoryLegendTexture(Texture2D categoryLegendTexture)
+        public void SetCategoryLegendTextures(Texture2D categoryLegendTexture, Texture2D categoryLegendInnerTexture, params Texture2D[] categoryLegendSheetTextures)
         {
             _categoryLegendTexture = categoryLegendTexture;
+            _categoryLegendInnerTexture = categoryLegendInnerTexture;
+            _categoryLegendSheetTextures = categoryLegendSheetTextures?
+                .Where(texture => texture != null)
+                .ToArray()
+                ?? Array.Empty<Texture2D>();
+        }
+
+        public void SetCategoryLegendTexture(Texture2D categoryLegendTexture)
+        {
+            SetCategoryLegendTextures(categoryLegendTexture, null);
         }
 
         public void SetQuestIcons(Texture2D available, Texture2D inProgress, Texture2D completed)
@@ -820,18 +832,14 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
-            sprite.Draw(_pixel, panelRect, new Color(7, 16, 29, 188));
-
             if (_categoryLegendVisible && _categoryLegendTexture != null)
             {
-                Rectangle legendRect = new(
-                    panelRect.X + CATEGORY_PANEL_PADDING,
-                    panelRect.Y + CATEGORY_PANEL_PADDING,
-                    Math.Min(panelRect.Width - (CATEGORY_PANEL_PADDING * 2), _categoryLegendTexture.Width),
-                    Math.Min(panelRect.Height - (CATEGORY_PANEL_PADDING * 2), _categoryLegendTexture.Height));
-                sprite.Draw(_categoryLegendTexture, legendRect, Color.White);
+                sprite.Draw(_categoryLegendTexture, panelRect, Color.White);
+                DrawCategoryLegendContents(sprite, panelRect);
                 return;
             }
+
+            sprite.Draw(_pixel, panelRect, new Color(7, 16, 29, 188));
 
             IReadOnlyList<QuestAreaFilterEntry> areaFilters = GetVisibleAreaFilters();
             if (areaFilters.Count == 0)
@@ -949,13 +957,114 @@ namespace HaCreator.MapSimulator.UI
             int y = (_currentTab == TAB_AVAILABLE && HasClientLevelButtons()) ? tabRect.Bottom + 24 : tabRect.Bottom + 4;
             if (_categoryLegendVisible && _categoryLegendTexture != null)
             {
-                int legendHeight = Math.Min(96, _categoryLegendTexture.Height + (CATEGORY_PANEL_PADDING * 2));
-                return new Rectangle(x, y, width, legendHeight);
+                width = _categoryLegendTexture.Width;
+                x = Position.X + Math.Max(0, ((CurrentFrame?.Width ?? width) - width) / 2);
+                return new Rectangle(x, y, width, _categoryLegendTexture.Height);
             }
 
             int rowCount = Math.Max(1, Math.Min(4, GetVisibleAreaFilters().Count));
             int height = (rowCount * CATEGORY_ROW_HEIGHT) + (CATEGORY_PANEL_PADDING * 2);
             return new Rectangle(x, y, width, height);
+        }
+
+        private void DrawCategoryLegendContents(SpriteBatch sprite, Rectangle panelRect)
+        {
+            Rectangle innerRect = ResolveCategoryLegendInnerRectangle(panelRect);
+            if (_categoryLegendInnerTexture != null)
+            {
+                sprite.Draw(_categoryLegendInnerTexture, innerRect, Color.White);
+            }
+
+            if (_categoryLegendSheetTextures.Length == 0)
+            {
+                return;
+            }
+
+            int totalSheetHeight = _categoryLegendSheetTextures.Sum(texture => texture.Height);
+            int gap = 4;
+            int totalGapHeight = gap * Math.Max(0, _categoryLegendSheetTextures.Length - 1);
+            int startY = innerRect.Y + Math.Max(0, (innerRect.Height - totalSheetHeight - totalGapHeight) / 2);
+
+            for (int i = 0; i < _categoryLegendSheetTextures.Length; i++)
+            {
+                Texture2D sheetTexture = _categoryLegendSheetTextures[i];
+                if (sheetTexture == null)
+                {
+                    continue;
+                }
+
+                Rectangle rowRect = new(
+                    innerRect.X + Math.Max(0, (innerRect.Width - sheetTexture.Width) / 2),
+                    startY,
+                    sheetTexture.Width,
+                    sheetTexture.Height);
+                sprite.Draw(sheetTexture, rowRect, Color.White);
+                DrawCategoryLegendRow(sprite, i, rowRect);
+                startY += sheetTexture.Height + gap;
+            }
+        }
+
+        private Rectangle ResolveCategoryLegendInnerRectangle(Rectangle panelRect)
+        {
+            if (_categoryLegendInnerTexture == null)
+            {
+                return new Rectangle(
+                    panelRect.X + CATEGORY_PANEL_PADDING,
+                    panelRect.Y + CATEGORY_PANEL_PADDING,
+                    Math.Max(1, panelRect.Width - (CATEGORY_PANEL_PADDING * 2)),
+                    Math.Max(1, panelRect.Height - (CATEGORY_PANEL_PADDING * 2)));
+            }
+
+            int offsetX = _categoryLegendTexture != null
+                ? Math.Max(0, (_categoryLegendTexture.Width - _categoryLegendInnerTexture.Width) / 2)
+                : CATEGORY_PANEL_PADDING;
+            int offsetY = _categoryLegendTexture != null
+                ? Math.Max(0, (_categoryLegendTexture.Height - _categoryLegendInnerTexture.Height) / 2)
+                : CATEGORY_PANEL_PADDING;
+            return new Rectangle(
+                panelRect.X + offsetX,
+                panelRect.Y + offsetY,
+                _categoryLegendInnerTexture.Width,
+                _categoryLegendInnerTexture.Height);
+        }
+
+        private void DrawCategoryLegendRow(SpriteBatch sprite, int rowIndex, Rectangle rowRect)
+        {
+            Texture2D iconTexture = rowIndex switch
+            {
+                0 => _iconAvailable,
+                1 => _iconInProgress,
+                2 => _iconCompleted,
+                _ => null
+            };
+
+            if (iconTexture != null)
+            {
+                int iconX = rowRect.X + 6;
+                int iconY = rowRect.Y + Math.Max(0, (rowRect.Height - iconTexture.Height) / 2);
+                sprite.Draw(iconTexture, new Vector2(iconX, iconY), Color.White);
+            }
+
+            string label = rowIndex switch
+            {
+                0 => "Available quests",
+                1 => "In-progress quests",
+                2 => "Completed quests",
+                _ => string.Empty
+            };
+
+            if (string.IsNullOrEmpty(label))
+            {
+                return;
+            }
+
+            DrawText(
+                sprite,
+                label,
+                new Vector2(rowRect.X + 34, rowRect.Y + 3),
+                new Color(49, 49, 49),
+                SMALL_TEXT_SCALE,
+                rowRect.Width - 40);
         }
 
         private int GetVisibleCategoryRowCount(Rectangle panelRect)

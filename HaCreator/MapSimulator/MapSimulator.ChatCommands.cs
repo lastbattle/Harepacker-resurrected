@@ -2111,6 +2111,78 @@ namespace HaCreator.MapSimulator
                     return ChatCommandHandler.CommandResult.Error("Usage: /wedding [status|progress <step> <groomId> <brideId>|respond <yes|no>|actor <groom|bride> <x> <y> [action] [left|right]|actor avatar <groom|bride> <x> <y> <avatarLookHex> [action] [left|right]|guest <add|avatar|move|remove|clear|status> ...|inbox [status|start [port]|stop]|end]");
                 });
 
+            _chat.CommandHandler.RegisterCommand(
+
+                "engage",
+
+                "Inspect or drive the dedicated engagement proposal dialog seam",
+
+                "/engage [open <proposerName> <partnerName> [ringItemId] [sealItemId] [message...]|incoming <proposerName> [ringItemId] [sealItemId] [message...]|accept|dismiss|clear|status]",
+
+                args =>
+
+                {
+
+                    _engagementProposalRuntime.UpdateLocalContext(_playerManager?.Player?.Build);
+
+                    if (args.Length == 0 || string.Equals(args[0], "status", StringComparison.OrdinalIgnoreCase))
+
+                    {
+
+                        return ChatCommandHandler.CommandResult.Info(_engagementProposalRuntime.DescribeStatus());
+
+                    }
+
+                    switch (args[0].ToLowerInvariant())
+                    {
+                        case "open":
+                            if (args.Length < 3)
+                            {
+                                return ChatCommandHandler.CommandResult.Error("Usage: /engage open <proposerName> <partnerName> [ringItemId] [sealItemId] [message...]");
+                            }
+
+                            return ChatCommandHandler.CommandResult.Ok(
+                                OpenEngagementProposal(
+                                    args[1],
+                                    args[2],
+                                    TryParseOptionalPositiveInt(args, 3, out int openRingItemId) ? openRingItemId : EngagementProposalRuntime.DefaultRingItemId,
+                                    TryParseOptionalPositiveInt(args, 4, out int openSealItemId) ? openSealItemId : EngagementProposalRuntime.DefaultSealItemId,
+                                    args.Length > 5 ? string.Join(" ", args, 5, args.Length - 5) : null));
+
+                        case "incoming":
+                            if (args.Length < 2)
+                            {
+                                return ChatCommandHandler.CommandResult.Error("Usage: /engage incoming <proposerName> [ringItemId] [sealItemId] [message...]");
+                            }
+
+                            return ChatCommandHandler.CommandResult.Ok(
+                                OpenEngagementProposal(
+                                    args[1],
+                                    _playerManager?.Player?.Build?.Name,
+                                    TryParseOptionalPositiveInt(args, 2, out int incomingRingItemId) ? incomingRingItemId : EngagementProposalRuntime.DefaultRingItemId,
+                                    TryParseOptionalPositiveInt(args, 3, out int incomingSealItemId) ? incomingSealItemId : EngagementProposalRuntime.DefaultSealItemId,
+                                    args.Length > 4 ? string.Join(" ", args, 4, args.Length - 4) : null));
+
+                        case "accept":
+                            string acceptMessage = AcceptEngagementProposal();
+                            if (string.Equals(acceptMessage, "No engagement proposal is active.", StringComparison.Ordinal))
+                            {
+                                return ChatCommandHandler.CommandResult.Error(acceptMessage);
+                            }
+
+                            return ChatCommandHandler.CommandResult.Ok(acceptMessage);
+
+                        case "dismiss":
+                            return ChatCommandHandler.CommandResult.Ok(DismissEngagementProposal());
+
+                        case "clear":
+                            return ChatCommandHandler.CommandResult.Ok(ClearEngagementProposal());
+
+                        default:
+                            return ChatCommandHandler.CommandResult.Error("Usage: /engage [open <proposerName> <partnerName> [ringItemId] [sealItemId] [message...]|incoming <proposerName> [ringItemId] [sealItemId] [message...]|accept|dismiss|clear|status]");
+                    }
+                });
+
 
 
             _chat.CommandHandler.RegisterCommand(
@@ -8195,7 +8267,7 @@ namespace HaCreator.MapSimulator
 
                 "Inspect or drive packet-authored local utility and event dispatch handlers",
 
-                "/localutility [status|openui <uiType> [defaultTab]|openuiwithoption <uiType> <option>|commodity <serialNumber>|notice <text>|chat [channel] <text>|buffzone [text]|eventsound <image/path or path>|minigamesound <image/path or path>|questguide <questId> <mobId:mapId[,mapId...]>...|questguide clear|delivery <questId> <itemId> [blockedQuestIdsCsv]|classcompetition|apsp [text]|followfail [text]|packet <openui|openuiwithoption|commodity|fade|balloon|damagemeter|hpdec|notice|chat|buffzone|eventsound|minigamesound|questguide|delivery|classcompetition|apspevent|followfail> [payloadhex=..|payloadb64=..]|packetraw <type> <hex>]",
+                    "/localutility [status|openui <uiType> [defaultTab]|openuiwithoption <uiType> <option>|commodity <serialNumber>|notice <text>|chat [channel] <text>|buffzone [text]|eventsound <image/path or path>|minigamesound <image/path or path>|questguide <questId> <mobId:mapId[,mapId...]>...|questguide clear|delivery <questId> <itemId> [blockedQuestIdsCsv]|classcompetition|apsp [text]|followfail [text]|packet <openui|openuiwithoption|commodity|fade|balloon|damagemeter|hpdec|notice|chat|buffzone|eventsound|minigamesound|questguide|delivery|classcompetition|apspevent|followfail|skillcooltime|243|246|247|250|251|252|263|264|265|266|267|270|273|274|275|276> [payloadhex=..|payloadb64=..]|packetraw <type> <hex>]",
 
                 HandlePacketOwnedUtilityCommand);
 
@@ -8218,7 +8290,7 @@ namespace HaCreator.MapSimulator
 
                 "Inspect or inject packet-owned local utility and event dispatch payloads through the loopback inbox",
 
-                "/localutilitypacket [status|packet <openui|openuiwithoption|commodity|notice|chat|buffzone|eventsound|minigamesound|apspevent|followfail|damagemeter|hpdec|243|250|267|274|275|classcompetition|questguide|deliveryquest> [payloadhex=..|payloadb64=..]|packetraw <type> [hex]]",
+                    "/localutilitypacket [status|packet <openui|openuiwithoption|commodity|notice|chat|buffzone|eventsound|minigamesound|apspevent|followfail|damagemeter|hpdec|skillcooltime|243|246|247|250|251|252|263|264|265|266|267|270|273|274|275|276|classcompetition|questguide|deliveryquest> [payloadhex=..|payloadb64=..]|packetraw <type> [hex]]",
 
                 HandlePacketOwnedUtilityCommand);
 
@@ -10056,6 +10128,15 @@ namespace HaCreator.MapSimulator
             byte[] bytes = Encoding.Default.GetBytes(text ?? string.Empty);
             writer.Write((ushort)bytes.Length);
             writer.Write(bytes);
+        }
+
+        private static bool TryParseOptionalPositiveInt(string[] args, int index, out int value)
+        {
+            value = 0;
+            return args != null
+                && args.Length > index
+                && int.TryParse(args[index], out value)
+                && value > 0;
         }
 
     }

@@ -30,6 +30,7 @@ namespace HaCreator.MapSimulator.Companions
 
     public sealed class PetRuntime
     {
+        internal const int AutoSpeakingSkillMask = 0x100;
         private const int MinFullness = 0;
         private const int MaxFullness = 100;
         private const int DefaultFullness = 60;
@@ -92,6 +93,8 @@ namespace HaCreator.MapSimulator.Companions
         public string Name => Definition.Name;
         public int ChatBalloonStyle => Definition.ChatBalloonStyle;
         public int CommandLevel => _commandLevel;
+        public int SkillMask { get; private set; }
+        public bool CanAutoSpeak => HasSkillMask(AutoSpeakingSkillMask);
         public int Fullness { get; private set; }
         public bool IsFull => Fullness >= MaxFullness;
         public bool HasIdleAutoSpeech => HasAutoSpeechEvent(PetAutoSpeechEvent.Rest);
@@ -116,6 +119,11 @@ namespace HaCreator.MapSimulator.Companions
                    lines.Length > 0;
         }
 
+        public bool HasSkillMask(int skillMask)
+        {
+            return skillMask > 0 && (SkillMask & skillMask) == skillMask;
+        }
+
         public string GetNextAutoSpeechLine(PetAutoSpeechEvent eventType)
         {
             if (!HasAutoSpeechEvent(eventType))
@@ -137,6 +145,11 @@ namespace HaCreator.MapSimulator.Companions
 
         public bool TryTriggerAutoSpeechEvent(PetAutoSpeechEvent eventType, int currentTime)
         {
+            if (!CanAutoSpeak)
+            {
+                return false;
+            }
+
             string line = GetNextAutoSpeechLine(eventType);
             if (string.IsNullOrWhiteSpace(line))
             {
@@ -150,6 +163,23 @@ namespace HaCreator.MapSimulator.Companions
                 SetTemporaryAction("chat", currentTime + TemporaryActionDurationMs);
             }
 
+            return true;
+        }
+
+        internal bool AddSkillMask(int skillMask)
+        {
+            if (skillMask <= 0)
+            {
+                return false;
+            }
+
+            int updatedMask = SkillMask | skillMask;
+            if (updatedMask == SkillMask)
+            {
+                return false;
+            }
+
+            SkillMask = updatedMask;
             return true;
         }
 
@@ -452,7 +482,10 @@ namespace HaCreator.MapSimulator.Companions
 
         private void UpdateAutoSpeech(int currentTime)
         {
-            if (_nextAutoSpeechTick == 0 || currentTime < _nextAutoSpeechTick || !HasAutoSpeechEvent(PetAutoSpeechEvent.Rest))
+            if (!CanAutoSpeak ||
+                _nextAutoSpeechTick == 0 ||
+                currentTime < _nextAutoSpeechTick ||
+                !HasAutoSpeechEvent(PetAutoSpeechEvent.Rest))
             {
                 return;
             }
@@ -760,6 +793,15 @@ namespace HaCreator.MapSimulator.Companions
             return pet != null && pet.TryTriggerFoodFeedback(variant, success, currentTime);
         }
 
+        internal bool TryGrantSkillMask(
+            IReadOnlyCollection<int> supportedPetItemIds,
+            int? recallLimit,
+            int skillMask,
+            out int slotIndex)
+        {
+            return TryGrantSkillMask(_activePets, supportedPetItemIds, recallLimit, skillMask, out slotIndex);
+        }
+
         internal bool TryPlanFoodItemUse(
             IReadOnlyCollection<int> supportedPetItemIds,
             int fullnessIncrease,
@@ -827,6 +869,25 @@ namespace HaCreator.MapSimulator.Companions
             return handled || success || !plan.ConsumeItem;
         }
 
+        internal static bool TryGrantSkillMask(
+            IReadOnlyList<PetRuntime> activePets,
+            IReadOnlyCollection<int> supportedPetItemIds,
+            int? recallLimit,
+            int skillMask,
+            out int slotIndex)
+        {
+            slotIndex = -1;
+
+            PetRuntime pet = SelectPetForSkillReward(activePets, supportedPetItemIds, recallLimit, skillMask);
+            if (pet == null || !pet.AddSkillMask(skillMask))
+            {
+                return false;
+            }
+
+            slotIndex = pet.SlotIndex;
+            return true;
+        }
+
         private static PetRuntime SelectPetForFoodItem(
             IReadOnlyList<PetRuntime> activePets,
             IReadOnlyCollection<int> supportedPetItemIds,
@@ -848,6 +909,30 @@ namespace HaCreator.MapSimulator.Companions
             }
 
             return compatiblePets.FirstOrDefault();
+        }
+
+        private static PetRuntime SelectPetForSkillReward(
+            IReadOnlyList<PetRuntime> activePets,
+            IReadOnlyCollection<int> supportedPetItemIds,
+            int? recallLimit,
+            int skillMask)
+        {
+            if (activePets == null || activePets.Count == 0)
+            {
+                return null;
+            }
+
+            if (recallLimit.HasValue && recallLimit.Value > 0 && activePets.Count > recallLimit.Value)
+            {
+                return null;
+            }
+
+            IEnumerable<PetRuntime> compatiblePets = supportedPetItemIds == null || supportedPetItemIds.Count == 0
+                ? activePets.Where(pet => pet != null)
+                : activePets.Where(pet => pet != null && supportedPetItemIds.Contains(pet.ItemId));
+
+            return compatiblePets.FirstOrDefault(pet => !pet.HasSkillMask(skillMask))
+                ?? compatiblePets.FirstOrDefault();
         }
 
         private static int ResolveFoodFeedbackVariant(PetRuntime pet)

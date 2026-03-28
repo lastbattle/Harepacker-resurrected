@@ -31,6 +31,22 @@ namespace HaCreator.MapSimulator.UI
         Maximize
     }
 
+    internal enum SkillMacroSoftKeyboardConstraintType
+    {
+        AlphaNumeric = 0,
+        AlphaNumericWithAlphaEdges = 1,
+        NumericOnly = 2,
+        NumericOnlyAlt = 3
+    }
+
+    internal enum SkillMacroSoftKeyboardConstraintMode
+    {
+        AlphaNumeric = 0,
+        AlphabeticOnly = 1,
+        NumericOnly = 2,
+        Disabled = 3
+    }
+
     internal sealed class SkillMacroSoftKeyboardKeyTextures
     {
         public Texture2D Normal { get; init; }
@@ -233,6 +249,65 @@ namespace HaCreator.MapSimulator.UI
             {
                 yield return i;
             }
+        }
+
+        internal static bool IsAlphabeticKey(int keyIndex)
+        {
+            return keyIndex >= 10 && keyIndex < LowercaseKeyTexts.Length;
+        }
+
+        internal static bool IsNumericKey(int keyIndex)
+        {
+            return keyIndex >= 0 && keyIndex <= 9;
+        }
+
+        internal static SkillMacroSoftKeyboardConstraintMode ResolveConstraintMode(
+            SkillMacroSoftKeyboardConstraintType constraintType,
+            int currentLength,
+            int maxLength)
+        {
+            int safeLength = Math.Max(0, currentLength);
+            int safeMaxLength = Math.Max(0, maxLength);
+
+            return constraintType switch
+            {
+                SkillMacroSoftKeyboardConstraintType.AlphaNumeric => safeLength < safeMaxLength
+                    ? SkillMacroSoftKeyboardConstraintMode.AlphaNumeric
+                    : SkillMacroSoftKeyboardConstraintMode.Disabled,
+                SkillMacroSoftKeyboardConstraintType.AlphaNumericWithAlphaEdges => ResolveAlphaEdgeConstraintMode(safeLength, safeMaxLength),
+                SkillMacroSoftKeyboardConstraintType.NumericOnly or SkillMacroSoftKeyboardConstraintType.NumericOnlyAlt => safeLength < safeMaxLength
+                    ? SkillMacroSoftKeyboardConstraintMode.NumericOnly
+                    : SkillMacroSoftKeyboardConstraintMode.Disabled,
+                _ => SkillMacroSoftKeyboardConstraintMode.Disabled
+            };
+        }
+
+        internal static bool IsAlphabeticFamilyEnabled(SkillMacroSoftKeyboardConstraintMode mode)
+        {
+            return mode is SkillMacroSoftKeyboardConstraintMode.AlphaNumeric or SkillMacroSoftKeyboardConstraintMode.AlphabeticOnly;
+        }
+
+        internal static bool IsNumericFamilyEnabled(SkillMacroSoftKeyboardConstraintMode mode)
+        {
+            return mode is SkillMacroSoftKeyboardConstraintMode.AlphaNumeric or SkillMacroSoftKeyboardConstraintMode.NumericOnly;
+        }
+
+        private static SkillMacroSoftKeyboardConstraintMode ResolveAlphaEdgeConstraintMode(int currentLength, int maxLength)
+        {
+            if (currentLength <= 0)
+            {
+                return SkillMacroSoftKeyboardConstraintMode.AlphabeticOnly;
+            }
+
+            int finalAlphabeticIndex = maxLength - 1;
+            if (currentLength < finalAlphabeticIndex)
+            {
+                return SkillMacroSoftKeyboardConstraintMode.NumericOnly;
+            }
+
+            return currentLength == finalAlphabeticIndex
+                ? SkillMacroSoftKeyboardConstraintMode.AlphabeticOnly
+                : SkillMacroSoftKeyboardConstraintMode.Disabled;
         }
 
         private static int ResolveLinearKeyIndex(int localX, int startX, int count, int baseIndex)

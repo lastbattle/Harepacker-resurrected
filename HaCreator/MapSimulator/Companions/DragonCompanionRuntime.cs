@@ -51,6 +51,8 @@ namespace HaCreator.MapSimulator.Companions
 
         private readonly GraphicsDevice _device;
         private readonly Dictionary<int, DragonAnimationSet> _animationCache = new();
+        private SkillAnimation _dragonFuryAnimation;
+        private SkillAnimation _dragonBlinkAnimation;
         private static readonly HashSet<int> HiddenDragonMountIds = new()
         {
             1902040,
@@ -67,8 +69,11 @@ namespace HaCreator.MapSimulator.Companions
         private Vector2 _visualAnchor;
         private Vector2 _followVelocity;
         private float _alpha;
+        private float _dragonFuryAlpha;
         private int _lastUpdateTime = int.MinValue;
+        private int _lastBlinkStartTime = int.MinValue;
         private bool _isSuppressed;
+        private bool _isFollowActive;
 
         private const float SnapDistance = 140f;
         private const float AlphaFadeRate = 5.5f;
@@ -87,6 +92,17 @@ namespace HaCreator.MapSimulator.Companions
         private const float FollowVerticalForceScale = 0.55f;
         private const float FollowBrakeScale = 1.35f;
         private const float FollowArrivalDistance = 1.5f;
+        private const float ActiveFollowEngageDistance = 36f;
+        private const float ActiveFollowReleaseDistance = 14f;
+        private const float PassiveHorizontalResponse = 3.2f;
+        private const float PassiveVerticalResponse = 3.8f;
+        private const float PassiveHorizontalForceScale = 0.3f;
+        private const float PassiveVerticalForceScale = 0.34f;
+        private const float PassiveMaxHorizontalSpeed = 92f;
+        private const float PassiveMaxVerticalSpeed = 108f;
+        private const float PassiveArrivalDistance = 4f;
+        private const float PassiveHoldDistance = 7f;
+        private const float PassiveVerticalHoldDistance = 5f;
 
         public DragonCompanionRuntime(GraphicsDevice device)
         {
@@ -119,7 +135,12 @@ namespace HaCreator.MapSimulator.Companions
             _isSuppressed = ShouldSuppress(owner);
 
             float deltaSeconds = GetDeltaSeconds(currentTime);
-            UpdateVisualAnchor(deltaSeconds);
+            UpdateFollowState(owner);
+            bool snappedToTarget = UpdateVisualAnchor(deltaSeconds);
+            if (snappedToTarget)
+            {
+                TriggerBlink(currentTime);
+            }
 
             bool explicitActionSelected = false;
             string ownerActionName = owner.CurrentActionName;
@@ -165,6 +186,7 @@ namespace HaCreator.MapSimulator.Companions
             }
 
             _alpha = Approach(_alpha, _isSuppressed ? 0f : 1f, deltaSeconds * AlphaFadeRate);
+            UpdateAuxiliaryLayers(owner, currentTime, deltaSeconds);
         }
 
         public void Draw(
@@ -176,6 +198,8 @@ namespace HaCreator.MapSimulator.Companions
             int centerY,
             int currentTime)
         {
+            DrawAuxiliaryLayers(spriteBatch, skeletonRenderer, mapShiftX, mapShiftY, centerX, centerY, currentTime);
+
             if (!TryResolveCurrentFrame(currentTime, out SkillFrame frame, out float frameAlpha)
                 || frame?.Texture == null
                 || frameAlpha <= 0.01f)
@@ -232,8 +256,11 @@ namespace HaCreator.MapSimulator.Companions
             _visualAnchor = Vector2.Zero;
             _followVelocity = Vector2.Zero;
             _alpha = 0f;
+            _dragonFuryAlpha = 0f;
             _lastUpdateTime = int.MinValue;
+            _lastBlinkStartTime = int.MinValue;
             _isSuppressed = false;
+            _isFollowActive = false;
         }
 
         private DragonAnimationSet GetOrLoadAnimationSet(int dragonJob)
@@ -532,13 +559,43 @@ namespace HaCreator.MapSimulator.Companions
             return MathHelper.Clamp(elapsedMs / 1000f, 1f / 240f, 0.1f);
         }
 
-        private void UpdateVisualAnchor(float deltaSeconds)
+        private void UpdateFollowState(PlayerCharacter owner)
+        {
+            float horizontalDelta = Math.Abs(_worldAnchor.X - _visualAnchor.X);
+            float verticalDelta = Math.Abs(_worldAnchor.Y - _visualAnchor.Y);
+            bool ownerInMotion = owner?.State is PlayerState.Walking
+                or PlayerState.Jumping
+                or PlayerState.Falling
+                or PlayerState.Ladder
+                or PlayerState.Rope
+                or PlayerState.Swimming
+                or PlayerState.Flying;
+            bool ownerHasMomentum = owner?.Physics != null
+                && (Math.Abs(owner.Physics.VelocityX) > FollowMinSpeed || Math.Abs(owner.Physics.VelocityY) > FollowMinSpeed);
+
+            if (_isFollowActive)
+            {
+                _isFollowActive = ownerInMotion
+                    || ownerHasMomentum
+                    || horizontalDelta > ActiveFollowReleaseDistance
+                    || verticalDelta > ActiveFollowReleaseDistance;
+            }
+            else
+            {
+                _isFollowActive = ownerInMotion
+                    || ownerHasMomentum
+                    || horizontalDelta > ActiveFollowEngageDistance
+                    || verticalDelta > ActiveFollowEngageDistance;
+            }
+        }
+
+        private bool UpdateVisualAnchor(float deltaSeconds)
         {
             if (_visualAnchor == Vector2.Zero)
             {
                 _visualAnchor = _worldAnchor;
                 _followVelocity = Vector2.Zero;
-                return;
+                return false;
             }
 
             float distance = Vector2.Distance(_visualAnchor, _worldAnchor);
@@ -546,31 +603,61 @@ namespace HaCreator.MapSimulator.Companions
             {
                 _visualAnchor = _worldAnchor;
                 _followVelocity = Vector2.Zero;
-                return;
+                return true;
             }
 
             double velocityX = _followVelocity.X;
             double velocityY = _followVelocity.Y;
 
-            UpdateFollowAxis(
-                ref _visualAnchor.X,
-                _worldAnchor.X,
-                ref velocityX,
-                deltaSeconds,
-                FollowHorizontalResponse,
-                FollowMaxHorizontalSpeed,
-                CVecCtrl.WalkAcceleration * FollowHorizontalForceScale);
+            if (_isFollowActive)
+            {
+                UpdateFollowAxis(
+                    ref _visualAnchor.X,
+                    _worldAnchor.X,
+                    ref velocityX,
+                    deltaSeconds,
+                    FollowHorizontalResponse,
+                    FollowMaxHorizontalSpeed,
+                    CVecCtrl.WalkAcceleration * FollowHorizontalForceScale,
+                    FollowArrivalDistance);
 
-            UpdateFollowAxis(
-                ref _visualAnchor.Y,
-                _worldAnchor.Y,
-                ref velocityY,
-                deltaSeconds,
-                FollowVerticalResponse,
-                FollowMaxVerticalSpeed,
-                CVecCtrl.AirDragDeceleration * FollowVerticalForceScale);
+                UpdateFollowAxis(
+                    ref _visualAnchor.Y,
+                    _worldAnchor.Y,
+                    ref velocityY,
+                    deltaSeconds,
+                    FollowVerticalResponse,
+                    FollowMaxVerticalSpeed,
+                    CVecCtrl.AirDragDeceleration * FollowVerticalForceScale,
+                    FollowArrivalDistance);
+            }
+            else
+            {
+                UpdatePassiveFollowAxis(
+                    ref _visualAnchor.X,
+                    _worldAnchor.X,
+                    ref velocityX,
+                    deltaSeconds,
+                    PassiveHorizontalResponse,
+                    PassiveMaxHorizontalSpeed,
+                    CVecCtrl.WalkAcceleration * PassiveHorizontalForceScale,
+                    PassiveHoldDistance,
+                    PassiveArrivalDistance);
+
+                UpdatePassiveFollowAxis(
+                    ref _visualAnchor.Y,
+                    _worldAnchor.Y,
+                    ref velocityY,
+                    deltaSeconds,
+                    PassiveVerticalResponse,
+                    PassiveMaxVerticalSpeed,
+                    CVecCtrl.AirDragDeceleration * PassiveVerticalForceScale,
+                    PassiveVerticalHoldDistance,
+                    PassiveArrivalDistance);
+            }
 
             _followVelocity = new Vector2((float)velocityX, (float)velocityY);
+            return false;
         }
 
         private static void UpdateFollowAxis(
@@ -580,10 +667,11 @@ namespace HaCreator.MapSimulator.Companions
             float deltaSeconds,
             float responseScale,
             float maxSpeed,
-            double force)
+            double force,
+            float arrivalDistance)
         {
             float delta = target - position;
-            if (Math.Abs(delta) <= FollowArrivalDistance)
+            if (Math.Abs(delta) <= arrivalDistance)
             {
                 position = target;
                 velocity = 0d;
@@ -624,6 +712,35 @@ namespace HaCreator.MapSimulator.Companions
             }
 
             position = nextPosition;
+        }
+
+        private static void UpdatePassiveFollowAxis(
+            ref float position,
+            float target,
+            ref double velocity,
+            float deltaSeconds,
+            float responseScale,
+            float maxSpeed,
+            double force,
+            float holdDistance,
+            float arrivalDistance)
+        {
+            float delta = target - position;
+            if (Math.Abs(delta) <= arrivalDistance)
+            {
+                position = target;
+                velocity = 0d;
+                return;
+            }
+
+            if (Math.Abs(delta) <= holdDistance)
+            {
+                CVecCtrl.DecSpeed(ref velocity, Math.Max(force, CVecCtrl.WalkDeceleration), PhysicsConstants.Instance.DefaultMass, 0d, deltaSeconds);
+                position += (float)(velocity * deltaSeconds);
+                return;
+            }
+
+            UpdateFollowAxis(ref position, target, ref velocity, deltaSeconds, responseScale, maxSpeed, force, arrivalDistance);
         }
 
         private static Vector2 ResolveGroundAnchor(PlayerCharacter owner, DragonAnimationSet animationSet, int currentTime)
@@ -740,6 +857,144 @@ namespace HaCreator.MapSimulator.Companions
             int endAlpha = Math.Clamp(frame.AlphaEnd, 0, 255);
             float progress = MathHelper.Clamp(frameElapsedMs / (float)Math.Max(1, frame.Delay), 0f, 1f);
             return MathHelper.Lerp(startAlpha, endAlpha, progress) / 255f;
+        }
+
+        private void UpdateAuxiliaryLayers(PlayerCharacter owner, int currentTime, float deltaSeconds)
+        {
+            EnsureAuxiliaryAnimationsLoaded();
+
+            bool shouldShowFury = ShouldShowDragonFury(owner);
+            if (!shouldShowFury)
+            {
+                _dragonFuryAlpha = 0f;
+                return;
+            }
+
+            _dragonFuryAlpha = Approach(_dragonFuryAlpha, _alpha, deltaSeconds * AlphaFadeRate * 1.5f);
+        }
+
+        private void DrawAuxiliaryLayers(
+            SpriteBatch spriteBatch,
+            SkeletonMeshRenderer skeletonRenderer,
+            int mapShiftX,
+            int mapShiftY,
+            int centerX,
+            int centerY,
+            int currentTime)
+        {
+            DrawAnimationLayer(_dragonFuryAnimation, _dragonFuryAlpha, spriteBatch, skeletonRenderer, mapShiftX, mapShiftY, centerX, centerY, currentTime);
+
+            if (_lastBlinkStartTime != int.MinValue)
+            {
+                DrawAnimationLayer(_dragonBlinkAnimation, _alpha, spriteBatch, skeletonRenderer, mapShiftX, mapShiftY, centerX, centerY, currentTime, _lastBlinkStartTime);
+            }
+        }
+
+        private void DrawAnimationLayer(
+            SkillAnimation animation,
+            float alpha,
+            SpriteBatch spriteBatch,
+            SkeletonMeshRenderer skeletonRenderer,
+            int mapShiftX,
+            int mapShiftY,
+            int centerX,
+            int centerY,
+            int currentTime,
+            int? startTime = null)
+        {
+            if (animation == null || alpha <= 0.01f)
+            {
+                return;
+            }
+
+            int animationStartTime = startTime ?? _currentActionStartTime;
+            if (!animation.TryGetFrameAtTime(Math.Max(0, currentTime - animationStartTime), out SkillFrame frame, out int frameElapsedMs)
+                || frame?.Texture == null)
+            {
+                return;
+            }
+
+            if (!animation.Loop && animation.IsComplete(Math.Max(0, currentTime - animationStartTime)))
+            {
+                if (ReferenceEquals(animation, _dragonBlinkAnimation))
+                {
+                    _lastBlinkStartTime = int.MinValue;
+                }
+
+                return;
+            }
+
+            float frameAlpha = alpha * ResolveFrameAlpha(frame, frameElapsedMs);
+            if (frameAlpha <= 0.01f)
+            {
+                return;
+            }
+
+            int screenX = (int)_visualAnchor.X - mapShiftX + centerX;
+            int screenY = (int)_visualAnchor.Y - mapShiftY + centerY;
+            frame.Texture.DrawBackground(spriteBatch, skeletonRenderer, null, screenX, screenY, Color.White * frameAlpha, !_facingRight, null);
+        }
+
+        private void EnsureAuxiliaryAnimationsLoaded()
+        {
+            _dragonFuryAnimation ??= LoadEffectAnimation("BasicEff.img", "dragonFury", loop: true);
+            _dragonBlinkAnimation ??= LoadEffectAnimation("BasicEff.img", "dragonBlink", loop: false);
+        }
+
+        private SkillAnimation LoadEffectAnimation(string imageName, string propertyPath, bool loop)
+        {
+            WzImage image = global::HaCreator.Program.FindImage("Effect", imageName);
+            if (image == null)
+            {
+                return null;
+            }
+
+            WzImageProperty property = image[propertyPath];
+            if (property is not WzSubProperty subProperty)
+            {
+                return null;
+            }
+
+            SkillAnimation animation = LoadAnimation(subProperty);
+            if (animation == null)
+            {
+                return null;
+            }
+
+            animation.Loop = loop;
+            animation.CalculateDuration();
+            return animation;
+        }
+
+        private bool ShouldShowDragonFury(PlayerCharacter owner)
+        {
+            if (_dragonFuryAnimation == null || _isSuppressed || _alpha <= 0.01f)
+            {
+                return false;
+            }
+
+            if (ShouldSuppressForCurrentMount(owner))
+            {
+                return false;
+            }
+
+            return !IsExplicitDragonAction(_currentActionName);
+        }
+
+        private void TriggerBlink(int currentTime)
+        {
+            if (_isSuppressed)
+            {
+                return;
+            }
+
+            EnsureAuxiliaryAnimationsLoaded();
+            if (_dragonBlinkAnimation == null)
+            {
+                return;
+            }
+
+            _lastBlinkStartTime = currentTime;
         }
     }
 }

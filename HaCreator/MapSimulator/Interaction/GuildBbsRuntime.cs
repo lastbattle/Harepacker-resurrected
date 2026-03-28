@@ -211,20 +211,12 @@ namespace HaCreator.MapSimulator.Interaction
             EnsureThreadPageInRange(orderedThreads.Count);
 
             GuildBbsThreadState selectedThread = orderedThreads.FirstOrDefault(thread => thread.ThreadId == _selectedThreadId);
+            GuildBbsThreadState noticeThread = orderedThreads.FirstOrDefault(thread => thread.IsNotice);
             int threadPageCount = Math.Max(1, (int)Math.Ceiling(orderedThreads.Count / (double)VisibleThreadCount));
             IReadOnlyList<GuildBbsThreadEntrySnapshot> visibleThreads = orderedThreads
                 .Skip(_threadPageIndex * VisibleThreadCount)
                 .Take(VisibleThreadCount)
-                .Select(thread => new GuildBbsThreadEntrySnapshot
-                {
-                    ThreadId = thread.ThreadId,
-                    Title = thread.Title,
-                    Author = thread.Author,
-                    DateText = thread.CreatedAt.ToLocalTime().ToString("yyyy.MM.dd"),
-                    CommentCount = thread.Comments.Count,
-                    IsNotice = thread.IsNotice,
-                    Emoticon = CreateEmoticonSnapshot(thread.EmoticonKind, thread.EmoticonSlot, thread.CashEmoticonPageIndex)
-                })
+                .Select(CreateThreadEntrySnapshot)
                 .ToArray();
 
             GuildBbsThreadSnapshot selectedThreadSnapshot = null;
@@ -284,6 +276,7 @@ namespace HaCreator.MapSimulator.Interaction
                 ThreadPageIndex = _threadPageIndex,
                 ThreadPageCount = threadPageCount,
                 SelectedThread = selectedThreadSnapshot,
+                NoticeThread = noticeThread == null ? null : CreateThreadEntrySnapshot(noticeThread),
                 Permission = BuildPermissionSnapshot(selectedThread),
                 Compose = new GuildBbsComposeSnapshot
                 {
@@ -732,6 +725,25 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             return ownership;
+        }
+
+        private static GuildBbsThreadEntrySnapshot CreateThreadEntrySnapshot(GuildBbsThreadState thread)
+        {
+            if (thread == null)
+            {
+                return null;
+            }
+
+            return new GuildBbsThreadEntrySnapshot
+            {
+                ThreadId = thread.ThreadId,
+                Title = thread.Title,
+                Author = thread.Author,
+                DateText = thread.CreatedAt.ToLocalTime().ToString("yyyy.MM.dd"),
+                CommentCount = thread.Comments.Count,
+                IsNotice = thread.IsNotice,
+                Emoticon = CreateEmoticonSnapshot(thread.EmoticonKind, thread.EmoticonSlot, thread.CashEmoticonPageIndex)
+            };
         }
 
         private void EnsureSelection(IReadOnlyList<GuildBbsThreadState> orderedThreads)
@@ -1187,6 +1199,7 @@ namespace HaCreator.MapSimulator.Interaction
         public int ThreadPageIndex { get; init; }
         public int ThreadPageCount { get; init; }
         public IReadOnlyList<GuildBbsThreadEntrySnapshot> Threads { get; init; } = Array.Empty<GuildBbsThreadEntrySnapshot>();
+        public GuildBbsThreadEntrySnapshot NoticeThread { get; init; }
         public GuildBbsThreadSnapshot SelectedThread { get; init; }
         public GuildBbsPermissionSnapshot Permission { get; init; } = new();
         public GuildBbsComposeSnapshot Compose { get; init; } = new();

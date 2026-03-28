@@ -18,6 +18,10 @@ namespace HaCreator.MapSimulator.Interaction
 
     internal sealed class MapleTvRuntime
     {
+        internal const int PacketTypeSetMessage = 405;
+        internal const int PacketTypeClearMessage = 406;
+        internal const int PacketTypeSendMessageResult = 407;
+
         private const int DefaultMediaIndex = 1;
         private const int DefaultDurationMs = 15000;
         private const int MinDurationMs = 1000;
@@ -396,6 +400,31 @@ namespace HaCreator.MapSimulator.Interaction
             MapleTvSendResultFeedback feedback = _pendingSendResultFeedback;
             _pendingSendResultFeedback = null;
             return feedback;
+        }
+
+        internal bool TryApplyPacket(
+            int packetType,
+            byte[] payload,
+            int currentTick,
+            Func<LoginAvatarLook, CharacterBuild> buildResolver,
+            out string message)
+        {
+            switch (packetType)
+            {
+                case PacketTypeSetMessage:
+                    return TryApplySetMessagePacket(payload, currentTick, buildResolver, out message);
+
+                case PacketTypeClearMessage:
+                    message = ApplyClearMessagePacket();
+                    return true;
+
+                case PacketTypeSendMessageResult:
+                    return TryApplySendMessageResultPacket(payload, out message);
+
+                default:
+                    message = $"Unsupported MapleTV packet type {packetType}.";
+                    return false;
+            }
         }
 
         internal string BuildMegassengerChatMirrorMessage()

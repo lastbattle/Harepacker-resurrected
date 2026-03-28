@@ -65,6 +65,15 @@ namespace HaCreator.MapSimulator.Combat
             public bool Triggered { get; set; }
         }
 
+        private sealed class ProjectileLaneCandidate
+        {
+            public int Order { get; set; }
+            public Vector2 LanePosition { get; set; }
+            public Vector2 TargetPoint { get; set; }
+            public MobTargetInfo TargetInfo { get; set; }
+            public float ResolutionScore { get; set; }
+        }
+
         private sealed class ScheduledMobVisualEffect
         {
             public List<IDXObject> Frames { get; set; }
@@ -980,12 +989,22 @@ namespace HaCreator.MapSimulator.Combat
                 }
 
                 float width = Math.Abs(right - left);
+                int effectDistanceSpawnCount = 0;
                 if (effectNode.EffectDistance > 0 && width > 0f)
                 {
-                    spawnCount = Math.Max(spawnCount, (int)Math.Floor(width / effectNode.EffectDistance) + 1);
+                    effectDistanceSpawnCount = Math.Max(2, (int)Math.Floor(width / effectNode.EffectDistance) + 1);
+                    spawnCount = Math.Max(spawnCount, effectDistanceSpawnCount);
                 }
 
-                return BuildRangePositions(left, right, spawnCount, effectNode.RandomPos, GetRelativeBottom(mobItem, effectNode.HasRangeBounds, effectNode.RangeBounds.Bottom, impactPosition.Y));
+                float baseY = GetRelativeBottom(mobItem, effectNode.HasRangeBounds, effectNode.RangeBounds.Bottom, impactPosition.Y);
+                if (!effectNode.RandomPos &&
+                    effectDistanceSpawnCount > 1 &&
+                    spawnCount == effectDistanceSpawnCount)
+                {
+                    return BuildRangePositionsWithSpacing(left, right, spawnCount, effectNode.EffectDistance, baseY);
+                }
+
+                return BuildRangePositions(left, right, spawnCount, effectNode.RandomPos, baseY);
             }
 
             return new List<Vector2> { ResolveGroundPoint(impactPosition.X, impactPosition.Y) };
@@ -1102,6 +1121,61 @@ namespace HaCreator.MapSimulator.Combat
             return offsets;
         }
 
+        internal static List<float> BuildRangePositionXs(float left, float right, int count, bool randomPos, Random random = null)
+        {
+            count = Math.Max(1, count);
+            if (count == 1)
+            {
+                return new List<float> { (left + right) * 0.5f };
+            }
+
+            var positions = new List<float>(count);
+            float minX = Math.Min(left, right);
+            float maxX = Math.Max(left, right);
+            if (randomPos)
+            {
+                Random resolvedRandom = random ?? Random.Shared;
+                float width = Math.Max(1f, maxX - minX);
+                for (int i = 0; i < count; i++)
+                {
+                    positions.Add(minX + (float)resolvedRandom.NextDouble() * width);
+                }
+
+                return positions;
+            }
+
+            float step = (right - left) / (count - 1);
+            for (int i = 0; i < count; i++)
+            {
+                positions.Add(left + step * i);
+            }
+
+            return positions;
+        }
+
+        internal static List<float> BuildRangePositionXsWithSpacing(float left, float right, int count, float spacing)
+        {
+            count = Math.Max(1, count);
+            if (count == 1)
+            {
+                return new List<float> { (left + right) * 0.5f };
+            }
+
+            if (spacing <= 0f)
+            {
+                return BuildRangePositionXs(left, right, count, randomPos: false);
+            }
+
+            var positions = new List<float>(count);
+            float direction = right >= left ? 1f : -1f;
+            for (int i = 0; i < count; i++)
+            {
+                positions.Add(left + (spacing * i * direction));
+            }
+
+            return positions;
+        }
+
         private List<Vector2> BuildRangeSlotPositions(MobItem mobItem, MobAttackEntry attack, int slotCount, float? playerX, float? playerY)
         {
             if (slotCount <= 0)
@@ -1180,31 +1254,23 @@ namespace HaCreator.MapSimulator.Combat
 
         private List<Vector2> BuildRangePositions(float left, float right, int count, bool randomPos, float baseY)
         {
-            count = Math.Max(1, count);
-            if (count == 1)
+            List<float> xs = BuildRangePositionXs(left, right, count, randomPos, _random);
+            var positions = new List<Vector2>(xs.Count);
+            for (int i = 0; i < xs.Count; i++)
             {
-                return new List<Vector2> { ResolveGroundPoint((left + right) * 0.5f, baseY) };
+                positions.Add(ResolveGroundPoint(xs[i], baseY));
             }
 
-            var positions = new List<Vector2>(count);
-            float minX = Math.Min(left, right);
-            float maxX = Math.Max(left, right);
-            if (randomPos)
-            {
-                for (int i = 0; i < count; i++)
-                {
-                    float x = minX + (float)_random.NextDouble() * Math.Max(1f, maxX - minX);
-                    positions.Add(ResolveGroundPoint(x, baseY));
-                }
+            return positions;
+        }
 
-                positions.Sort((a, b) => a.X.CompareTo(b.X));
-                return positions;
-            }
-
-            float step = (right - left) / (count - 1);
-            for (int i = 0; i < count; i++)
+        private List<Vector2> BuildRangePositionsWithSpacing(float left, float right, int count, float spacing, float baseY)
+        {
+            List<float> xs = BuildRangePositionXsWithSpacing(left, right, count, spacing);
+            var positions = new List<Vector2>(xs.Count);
+            for (int i = 0; i < xs.Count; i++)
             {
-                positions.Add(ResolveGroundPoint(left + step * i, baseY));
+                positions.Add(ResolveGroundPoint(xs[i], baseY));
             }
 
             return positions;
@@ -1391,6 +1457,9 @@ namespace HaCreator.MapSimulator.Combat
             int laneCount = ResolveProjectileLaneCount(attack);
             var assignments = new List<(Vector2 Target, MobTargetInfo TargetInfo)>(laneCount);
             var usedLaneTargets = new HashSet<long>();
+            float preferredLaneX = targetX
+                ?? targetInfo?.TargetX
+                ?? spawn.X;
 
             if (targetInfo?.IsValid == true)
             {
@@ -1406,9 +1475,14 @@ namespace HaCreator.MapSimulator.Combat
                 targetY ?? targetInfo?.TargetY,
                 laneCount);
 
-            for (int i = 0; i < lanePositions.Count && assignments.Count < laneCount; i++)
+            int requestedAdditionalLanes = Math.Max(0, laneCount - assignments.Count);
+            var laneCandidates = new List<ProjectileLaneCandidate>(lanePositions.Count);
+            for (int i = 0; i < lanePositions.Count; i++)
             {
                 Vector2 lanePosition = lanePositions[i];
+                MobTargetInfo laneTargetInfo = null;
+                Vector2 resolvedLaneTarget = lanePosition;
+
                 if (TryResolveProjectileLaneTarget(
                         mobItem,
                         attack,
@@ -1416,29 +1490,61 @@ namespace HaCreator.MapSimulator.Combat
                         targetInfo,
                         usedLaneTargets,
                         currentTime,
-                        out MobTargetInfo laneTargetInfo,
-                        out Vector2 resolvedLaneTarget))
-                {
-                    assignments.Add((resolvedLaneTarget, laneTargetInfo));
-                    usedLaneTargets.Add(GetLaneTargetKey(laneTargetInfo));
-                    continue;
-                }
-
-                if (TryResolveProjectileLaneTarget(
-                        mobItem,
-                        attack,
-                        lanePosition,
-                        targetInfo,
-                        null,
-                        currentTime,
                         out laneTargetInfo,
                         out resolvedLaneTarget))
                 {
-                    assignments.Add((resolvedLaneTarget, laneTargetInfo));
-                    continue;
+                    usedLaneTargets.Add(GetLaneTargetKey(laneTargetInfo));
+                }
+                else if (!TryResolveProjectileLaneTarget(
+                             mobItem,
+                             attack,
+                             lanePosition,
+                             targetInfo,
+                             null,
+                             currentTime,
+                             out laneTargetInfo,
+                             out resolvedLaneTarget))
+                {
+                    laneTargetInfo = null;
+                    resolvedLaneTarget = lanePosition;
                 }
 
-                assignments.Add((lanePosition, null));
+                laneCandidates.Add(new ProjectileLaneCandidate
+                {
+                    Order = i,
+                    LanePosition = lanePosition,
+                    TargetPoint = resolvedLaneTarget,
+                    TargetInfo = laneTargetInfo,
+                    ResolutionScore = laneTargetInfo != null
+                        ? ScoreLaneTarget(lanePosition, resolvedLaneTarget)
+                        : float.MaxValue
+                });
+            }
+
+            if (requestedAdditionalLanes > 0 && laneCandidates.Count > 0)
+            {
+                var laneXs = new float[laneCandidates.Count];
+                var hasResolvedTarget = new bool[laneCandidates.Count];
+                var resolutionScores = new float[laneCandidates.Count];
+                for (int i = 0; i < laneCandidates.Count; i++)
+                {
+                    ProjectileLaneCandidate candidate = laneCandidates[i];
+                    laneXs[i] = candidate.LanePosition.X;
+                    hasResolvedTarget[i] = candidate.TargetInfo != null;
+                    resolutionScores[i] = candidate.ResolutionScore;
+                }
+
+                List<int> selectedCandidateIndices = SelectProjectileLaneIndices(
+                    laneXs,
+                    hasResolvedTarget,
+                    resolutionScores,
+                    requestedAdditionalLanes,
+                    preferredLaneX);
+                for (int i = 0; i < selectedCandidateIndices.Count; i++)
+                {
+                    ProjectileLaneCandidate candidate = laneCandidates[selectedCandidateIndices[i]];
+                    assignments.Add((candidate.TargetPoint, candidate.TargetInfo?.Clone()));
+                }
             }
 
             while (assignments.Count < laneCount)
@@ -1478,24 +1584,23 @@ namespace HaCreator.MapSimulator.Combat
                 float left = GetRelativeLeft(mobItem, true, attack.RangeLeft, attack.RangeRight);
                 float right = GetRelativeRight(mobItem, true, attack.RangeLeft, attack.RangeRight);
                 float y = targetY ?? (mobItem.CurrentY + ((attack.RangeTop + attack.RangeBottom) * 0.5f));
-                int slotCount = Math.Max(laneCount, Math.Max(1, attack.AreaCount));
+                int slotCount = Math.Max(Math.Max(1, attack.AreaCount), laneCount);
                 if (slotCount == 1)
                 {
                     lanePositions.Add(new Vector2((left + right) * 0.5f, y));
                     return lanePositions;
                 }
 
-                float center = (left + right) * 0.5f;
-                float spacing = Math.Abs(right - left) / Math.Max(1, slotCount - 1);
-                if (spacing <= 0f)
+                List<float> slotOffsets = BuildRangeSlotOffsets(attack, slotCount);
+                if (slotOffsets.Count == 0)
                 {
-                    spacing = Math.Max(40f, attack.EffectAfter > 0 ? attack.EffectAfter / 10f : 60f);
+                    slotOffsets.Add(0f);
                 }
 
-                for (int i = 0; i < laneCount; i++)
+                float center = (left + right) * 0.5f;
+                for (int i = 0; i < slotOffsets.Count; i++)
                 {
-                    float slotIndex = attack.StartOffset + i;
-                    lanePositions.Add(new Vector2(center + (slotIndex * spacing), y));
+                    lanePositions.Add(new Vector2(center + slotOffsets[i], y));
                 }
 
                 return lanePositions;
@@ -1855,6 +1960,79 @@ namespace HaCreator.MapSimulator.Combat
         private static float ScoreLaneTarget(Vector2 lanePosition, Vector2 candidatePoint)
         {
             return Vector2.DistanceSquared(lanePosition, candidatePoint);
+        }
+
+        internal static List<int> SelectProjectileLaneIndices(
+            IReadOnlyList<float> laneXs,
+            IReadOnlyList<bool> hasResolvedTarget,
+            IReadOnlyList<float> resolutionScores,
+            int requestedCount,
+            float preferredX)
+        {
+            var selected = new List<int>();
+            if (laneXs == null || requestedCount <= 0)
+            {
+                return selected;
+            }
+
+            int candidateCount = laneXs.Count;
+            if (candidateCount == 0)
+            {
+                return selected;
+            }
+
+            requestedCount = Math.Min(requestedCount, candidateCount);
+            var available = new List<int>(candidateCount);
+            for (int i = 0; i < candidateCount; i++)
+            {
+                available.Add(i);
+            }
+
+            available.Sort((leftIndex, rightIndex) =>
+            {
+                bool leftResolved = hasResolvedTarget != null &&
+                    leftIndex < hasResolvedTarget.Count &&
+                    hasResolvedTarget[leftIndex];
+                bool rightResolved = hasResolvedTarget != null &&
+                    rightIndex < hasResolvedTarget.Count &&
+                    hasResolvedTarget[rightIndex];
+                if (leftResolved != rightResolved)
+                {
+                    return leftResolved ? -1 : 1;
+                }
+
+                float leftResolutionScore = resolutionScores != null &&
+                    leftIndex < resolutionScores.Count
+                    ? resolutionScores[leftIndex]
+                    : float.MaxValue;
+                float rightResolutionScore = resolutionScores != null &&
+                    rightIndex < resolutionScores.Count
+                    ? resolutionScores[rightIndex]
+                    : float.MaxValue;
+                int resolutionComparison = leftResolutionScore.CompareTo(rightResolutionScore);
+                if (resolutionComparison != 0)
+                {
+                    return resolutionComparison;
+                }
+
+                float leftPreferredScore = Math.Abs(laneXs[leftIndex] - preferredX);
+                float rightPreferredScore = Math.Abs(laneXs[rightIndex] - preferredX);
+                int preferredComparison = leftPreferredScore.CompareTo(rightPreferredScore);
+                if (preferredComparison != 0)
+                {
+                    return preferredComparison;
+                }
+
+                return leftIndex.CompareTo(rightIndex);
+            });
+
+            for (int i = 0; i < requestedCount; i++)
+            {
+                selected.Add(available[i]);
+            }
+
+            selected.Sort();
+            return selected;
         }
 
         private static bool IntersectsOrNear(Rectangle searchRect, Rectangle targetRect, float padding)

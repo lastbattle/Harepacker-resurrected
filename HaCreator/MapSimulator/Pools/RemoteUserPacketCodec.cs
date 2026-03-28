@@ -64,7 +64,8 @@ namespace HaCreator.MapSimulator.Pools
         int MasteryPercent,
         int ChargeSkillId,
         bool? FacingRight,
-        string ActionName);
+        string ActionName,
+        int? ActionCode);
 
     public readonly record struct RemoteUserHelperPacket(int CharacterId, MinimapUI.HelperMarkerType? MarkerType, bool ShowDirectionOverlay);
 
@@ -370,8 +371,28 @@ namespace HaCreator.MapSimulator.Pools
                     return false;
                 }
 
-                string actionName = reader.ReadString8();
-                packet = new RemoteUserMeleeAttackPacket(characterId, skillId, masteryPercent, chargeSkillId, facingRight, actionName);
+                int? actionCode = null;
+                string actionName;
+                if (reader.RemainingLength == 1)
+                {
+                    actionCode = reader.ReadByte();
+                    actionName = ResolveActionNameFromActionCode(actionCode);
+                }
+                else
+                {
+                    actionName = reader.ReadString8();
+                    if (reader.CanRead(1))
+                    {
+                        actionCode = reader.ReadByte();
+                    }
+
+                    if (string.IsNullOrWhiteSpace(actionName))
+                    {
+                        actionName = ResolveActionNameFromActionCode(actionCode);
+                    }
+                }
+
+                packet = new RemoteUserMeleeAttackPacket(characterId, skillId, masteryPercent, chargeSkillId, facingRight, actionName, actionCode);
                 return true;
             }
             catch (InvalidOperationException ex)
@@ -523,6 +544,13 @@ namespace HaCreator.MapSimulator.Pools
                 18 => CharacterPart.GetActionString(CharacterAction.Rope),
                 _ => CharacterPart.GetActionString(CharacterAction.Stand1)
             };
+        }
+
+        private static string ResolveActionNameFromActionCode(int? actionCode)
+        {
+            return actionCode.HasValue && CharacterPart.TryGetActionStringFromCode(actionCode.Value, out string actionName)
+                ? actionName
+                : null;
         }
 
         private static bool TryDecodeMoveSnapshot(ref PacketReader reader, int currentTime, out PlayerMovementSyncSnapshot snapshot, out byte moveAction)
@@ -762,6 +790,8 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             public int Offset => _offset;
+
+            public int RemainingLength => _buffer.Length - _offset;
 
             private void EnsureReadable(int byteCount)
             {

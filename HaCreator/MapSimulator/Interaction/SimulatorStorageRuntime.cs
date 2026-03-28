@@ -33,6 +33,11 @@ namespace HaCreator.MapSimulator.Interaction
         private int _slotLimit = DefaultSlotLimit;
         private long _meso;
         private string _currentAccountKey = StorageAccountStore.ResolveAccountKey("Simulator Account Storage");
+        private string _loginAccountPicCode = string.Empty;
+        private bool _loginAccountPicVerified;
+        private bool _loginAccountSpwEnabled;
+        private string _loginAccountSecondaryPassword = string.Empty;
+        private bool _loginAccountSecondaryPasswordVerified;
         private string _secondaryPassword = string.Empty;
         private bool _secondaryPasswordVerified;
         private bool _isAccessSessionActive;
@@ -49,6 +54,12 @@ namespace HaCreator.MapSimulator.Interaction
                   || (!string.IsNullOrWhiteSpace(CurrentCharacterName) && _sharedCharacterLookup.Contains(CurrentCharacterName))
                 : !string.IsNullOrWhiteSpace(CurrentCharacterName) && _authorizedCharacterLookup.Contains(CurrentCharacterName);
         public bool IsAccessSessionActive => _isAccessSessionActive;
+        public bool HasAccountPic => !string.IsNullOrWhiteSpace(_loginAccountPicCode);
+        public bool IsAccountPicVerified => !HasAccountPic || (_isAccessSessionActive && _loginAccountPicVerified);
+        public bool HasAccountSecondaryPassword => _loginAccountSpwEnabled && !string.IsNullOrWhiteSpace(_loginAccountSecondaryPassword);
+        public bool IsAccountSecondaryPasswordVerified => !HasAccountSecondaryPassword || (_isAccessSessionActive && _loginAccountSecondaryPasswordVerified);
+        public bool RequiresClientAccountAuthority => HasAccountPic || HasAccountSecondaryPassword;
+        public bool IsClientAccountAuthorityVerified => IsAccountPicVerified && IsAccountSecondaryPasswordVerified;
         public bool HasSecondaryPassword => !string.IsNullOrWhiteSpace(_secondaryPassword);
         public bool IsSecondaryPasswordVerified => !HasSecondaryPassword || (_isAccessSessionActive && _secondaryPasswordVerified);
 
@@ -218,12 +229,16 @@ namespace HaCreator.MapSimulator.Interaction
         public void BeginAccessSession()
         {
             _isAccessSessionActive = true;
+            _loginAccountPicVerified = false;
+            _loginAccountSecondaryPasswordVerified = false;
             _secondaryPasswordVerified = false;
         }
 
         public void EndAccessSession()
         {
             _isAccessSessionActive = false;
+            _loginAccountPicVerified = false;
+            _loginAccountSecondaryPasswordVerified = false;
             _secondaryPasswordVerified = false;
         }
 
@@ -256,6 +271,54 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             ReconcileAuthorizedCharacters();
+        }
+
+        public void ConfigureLoginAccountSecurity(string picCode, bool secondaryPasswordEnabled, string secondaryPassword)
+        {
+            _loginAccountPicCode = NormalizeAccountSecret(picCode);
+            _loginAccountSpwEnabled = secondaryPasswordEnabled;
+            _loginAccountSecondaryPassword = NormalizeAccountSecret(secondaryPassword);
+            _loginAccountPicVerified = false;
+            _loginAccountSecondaryPasswordVerified = false;
+        }
+
+        public bool TryVerifyAccountPic(string password)
+        {
+            if (!CanCurrentCharacterAccess || !_isAccessSessionActive)
+            {
+                _loginAccountPicVerified = false;
+                return false;
+            }
+
+            if (!HasAccountPic)
+            {
+                _loginAccountPicVerified = true;
+                return true;
+            }
+
+            _loginAccountPicVerified = string.Equals(_loginAccountPicCode, NormalizeAccountSecret(password), StringComparison.Ordinal);
+            return _loginAccountPicVerified;
+        }
+
+        public bool TryVerifyAccountSecondaryPassword(string password)
+        {
+            if (!CanCurrentCharacterAccess || !_isAccessSessionActive)
+            {
+                _loginAccountSecondaryPasswordVerified = false;
+                return false;
+            }
+
+            if (!HasAccountSecondaryPassword)
+            {
+                _loginAccountSecondaryPasswordVerified = true;
+                return true;
+            }
+
+            _loginAccountSecondaryPasswordVerified = string.Equals(
+                _loginAccountSecondaryPassword,
+                NormalizeAccountSecret(password),
+                StringComparison.Ordinal);
+            return _loginAccountSecondaryPasswordVerified;
         }
 
         public bool TrySetSecondaryPassword(string password)
@@ -453,6 +516,11 @@ namespace HaCreator.MapSimulator.Interaction
         private static bool IsStackable(InventoryType type, int maxStackSize)
         {
             return type != InventoryType.EQUIP && maxStackSize > 1;
+        }
+
+        private static string NormalizeAccountSecret(string password)
+        {
+            return string.IsNullOrWhiteSpace(password) ? string.Empty : password.Trim();
         }
 
         private static string NormalizeSecondaryPassword(string password)

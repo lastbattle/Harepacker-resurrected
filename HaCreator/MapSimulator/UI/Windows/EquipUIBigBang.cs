@@ -779,12 +779,29 @@ namespace HaCreator.MapSimulator.UI
             EquipSlotVisualState targetState = EquipSlotStateResolver.ResolveVisualState(_characterBuild, targetSlot.Value);
             if (targetState.IsDisabled)
             {
+                NotifyEquipmentEquipBlocked(targetState.Message);
                 return false;
             }
 
             CharacterPart incomingPart = _characterLoader?.LoadEquipment(draggedSlotData.ItemId) ?? CreateInventoryEquipmentPart(draggedSlotData);
-            if (incomingPart == null || !CanDisplayPartInSlot(incomingPart, targetUiSlot.Value))
+            if (incomingPart == null)
             {
+                string itemName = string.IsNullOrWhiteSpace(draggedSlotData.ItemName)
+                    ? $"Item #{draggedSlotData.ItemId}"
+                    : draggedSlotData.ItemName;
+                NotifyEquipmentEquipBlocked($"Unable to load {itemName} as an equipment item.");
+                return false;
+            }
+
+            if (!CanDisplayPartInSlot(incomingPart, targetUiSlot.Value))
+            {
+                NotifyEquipmentEquipBlocked(BuildSlotMismatchRejectReason(incomingPart));
+                return false;
+            }
+
+            if (!TryGetEquipRequirementRejectReason(incomingPart, _characterBuild, out string requirementRejectReason))
+            {
+                NotifyEquipmentEquipBlocked(requirementRejectReason);
                 return false;
             }
 
@@ -3094,12 +3111,24 @@ namespace HaCreator.MapSimulator.UI
                 return false;
 
             EquipSlotVisualState targetState = EquipSlotStateResolver.ResolveVisualState(_characterBuild, targetSlot.Value);
-            if (targetState.IsDisabled || !CanDisplayPartInSlot(_draggedPart, targetUiSlot.Value))
+            if (targetState.IsDisabled)
+            {
+                NotifyEquipmentEquipBlocked(targetState.Message);
                 return false;
+            }
+
+            if (!CanDisplayPartInSlot(_draggedPart, targetUiSlot.Value))
+            {
+                NotifyEquipmentEquipBlocked(BuildSlotMismatchRejectReason(_draggedPart));
+                return false;
+            }
 
             CharacterPart targetPart = ResolveEquippedPart(targetUiSlot.Value);
             if (targetPart != null && !CanDisplayPartInSlot(targetPart, _draggedSlot ?? targetUiSlot.Value))
+            {
+                NotifyEquipmentEquipBlocked(BuildSwapRejectReason(targetPart, _draggedSlot));
                 return false;
+            }
 
             CharacterEquipSlot resolvedTargetSlot = ResolveTargetSlot(targetUiSlot.Value, _draggedPart);
             if (_draggedPart.Slot == resolvedTargetSlot || (targetPart != null && ReferenceEquals(targetPart, _draggedPart)))
@@ -3121,6 +3150,14 @@ namespace HaCreator.MapSimulator.UI
             }
 
             return true;
+        }
+
+        private void NotifyEquipmentEquipBlocked(string message)
+        {
+            if (!string.IsNullOrWhiteSpace(message))
+            {
+                EquipmentEquipBlocked?.Invoke(message);
+            }
         }
 
         private string BuildDragCompareDescription(EquipSlot hoveredSlot)
@@ -3199,6 +3236,99 @@ namespace HaCreator.MapSimulator.UI
             }
 
             return null;
+        }
+
+        private static bool TryGetEquipRequirementRejectReason(CharacterPart part, CharacterBuild build, out string rejectReason)
+        {
+            rejectReason = null;
+            if (part == null || build == null)
+            {
+                return true;
+            }
+
+            if (part.RequiredLevel > 0 && build.Level < part.RequiredLevel)
+            {
+                rejectReason = $"Requires level {part.RequiredLevel}.";
+                return false;
+            }
+
+            if (part.RequiredSTR > 0 && build.TotalSTR < part.RequiredSTR)
+            {
+                rejectReason = $"Requires {part.RequiredSTR} STR.";
+                return false;
+            }
+
+            if (part.RequiredDEX > 0 && build.TotalDEX < part.RequiredDEX)
+            {
+                rejectReason = $"Requires {part.RequiredDEX} DEX.";
+                return false;
+            }
+
+            if (part.RequiredINT > 0 && build.TotalINT < part.RequiredINT)
+            {
+                rejectReason = $"Requires {part.RequiredINT} INT.";
+                return false;
+            }
+
+            if (part.RequiredLUK > 0 && build.TotalLUK < part.RequiredLUK)
+            {
+                rejectReason = $"Requires {part.RequiredLUK} LUK.";
+                return false;
+            }
+
+            if (part.RequiredFame > 0 && build.Fame < part.RequiredFame)
+            {
+                rejectReason = $"Requires {part.RequiredFame} Fame.";
+                return false;
+            }
+
+            if (part.RequiredJobMask != 0 && !MatchesRequiredJobMask(part.RequiredJobMask, build.Job))
+            {
+                rejectReason = $"Requires {ResolveRequiredJobNames(part.RequiredJobMask)}.";
+                return false;
+            }
+
+            return true;
+        }
+
+        private static string BuildSlotMismatchRejectReason(CharacterPart part)
+        {
+            string slotLabel = part == null ? null : ResolvePreferredSlotLabel(part.Slot);
+            return string.IsNullOrWhiteSpace(slotLabel)
+                ? "Drop this item on the matching equipment slot."
+                : $"Drop this item on the {slotLabel} slot.";
+        }
+
+        private static string BuildSwapRejectReason(CharacterPart part, EquipSlot? sourceUiSlot)
+        {
+            string targetName = string.IsNullOrWhiteSpace(part?.Name)
+                ? $"Equip {part?.ItemId ?? 0}"
+                : part.Name;
+
+            if (!sourceUiSlot.HasValue)
+            {
+                return $"{targetName} cannot be moved to complete that swap.";
+            }
+
+            return $"{targetName} cannot be moved to the {ResolveSlotLabel(sourceUiSlot.Value)} slot.";
+        }
+
+        private static string ResolvePreferredSlotLabel(CharacterEquipSlot slot)
+        {
+            return slot switch
+            {
+                CharacterEquipSlot.Ring1 or CharacterEquipSlot.Ring2 or CharacterEquipSlot.Ring3 or CharacterEquipSlot.Ring4 => "Ring",
+                CharacterEquipSlot.Pendant or CharacterEquipSlot.Pendant2 => "Pendant",
+                CharacterEquipSlot.Coat or CharacterEquipSlot.Longcoat => "Top",
+                CharacterEquipSlot.Pants => "Bottom",
+                CharacterEquipSlot.FaceAccessory => "Face Accessory",
+                CharacterEquipSlot.EyeAccessory => "Eye Accessory",
+                CharacterEquipSlot.Earrings => "Earring",
+                CharacterEquipSlot.AndroidHeart => "Heart",
+                CharacterEquipSlot.TamingMob => "Monster Riding",
+                CharacterEquipSlot.Saddle => "Saddle",
+                _ => Enum.GetName(typeof(CharacterEquipSlot), slot)
+            };
         }
 
         private static CharacterEquipSlot ResolveTargetSlot(EquipSlot uiSlot, CharacterPart part)

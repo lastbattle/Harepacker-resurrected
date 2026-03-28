@@ -16,15 +16,6 @@ namespace HaCreator.MapSimulator.Interaction
 {
     internal sealed class FieldMessageBoxRuntime
     {
-        private static readonly string[] ClientVisualPropertyPreference =
-        {
-            "messageBox",
-            "sample",
-            "message",
-            "board",
-            "chalkboard"
-        };
-
         private const int DefaultItemId = 5370000;
         private const int DefaultFrameDelayMs = 100;
         private const int DefaultLeaveFadeMs = 1000;
@@ -34,6 +25,10 @@ namespace HaCreator.MapSimulator.Interaction
         private const float DefaultBobPeriodMs = 360f;
         private const int MinBoardWidth = 92;
         private const int MaxBodyLineCount = 4;
+        private const int CreateFailedStringPoolId = 0x1EA;
+        private const string ClientMessageBoxPropertyName = "messageBox";
+        private const string ChalkboardSamplePropertyName = "sample";
+        private const string CreateFailedFallbackText = "The client refused to create the field message-box.";
 
         private readonly Dictionary<int, FieldMessageBoxEntry> _entries = new();
         private readonly List<LeavingMessageBoxEntry> _leavingEntries = new();
@@ -138,7 +133,7 @@ namespace HaCreator.MapSimulator.Interaction
 
         internal string ApplyCreateFailed()
         {
-            _statusMessage = "The client refused to create the field message-box.";
+            _statusMessage = $"{CreateFailedFallbackText} [StringPool 0x{CreateFailedStringPoolId:X}]";
             return _statusMessage;
         }
 
@@ -198,7 +193,7 @@ namespace HaCreator.MapSimulator.Interaction
             int renderHeight,
             int currentTick)
         {
-            if (spriteBatch == null || font == null || _pixelTexture == null || _entries.Count == 0)
+            if (spriteBatch == null || font == null || _pixelTexture == null || (_entries.Count == 0 && _leavingEntries.Count == 0))
             {
                 return;
             }
@@ -431,31 +426,9 @@ namespace HaCreator.MapSimulator.Interaction
             Texture2D iconTexture = LoadCanvasTexture(infoProperty?["iconRaw"] as WzCanvasProperty)
                                     ?? LoadCanvasTexture(infoProperty?["icon"] as WzCanvasProperty);
 
-            foreach ((WzSubProperty parent, string propertyName) in EnumerateClientVisualCandidates(itemProperty, infoProperty))
+            if (TryLoadClientMessageBoxVisual(itemProperty, infoProperty, itemId, iconTexture, out MessageBoxVisual visual))
             {
-                if (TryLoadNamedVisual(parent, propertyName, out MessageBoxVisual messageBoxVisual))
-                {
-                    return messageBoxVisual with { IconTexture = iconTexture ?? messageBoxVisual.IconTexture };
-                }
-            }
-
-            List<(WzSubProperty Property, int Score)> candidates = new();
-            foreach (WzImageProperty child in itemProperty.WzProperties)
-            {
-                if (child is not WzSubProperty subProperty || string.Equals(subProperty.Name, "info", StringComparison.OrdinalIgnoreCase))
-                {
-                    continue;
-                }
-
-                candidates.Add((subProperty, ScoreVisualProperty(subProperty.Name, subProperty)));
-            }
-
-            foreach ((WzSubProperty property, _) in candidates.OrderByDescending(candidate => candidate.Score))
-            {
-                if (TryLoadVisualFromProperty(property, property.Name, out MessageBoxVisual visual))
-                {
-                    return visual with { IconTexture = iconTexture ?? visual.IconTexture };
-                }
+                return visual;
             }
 
             return iconTexture == null
@@ -463,7 +436,52 @@ namespace HaCreator.MapSimulator.Interaction
                 : new MessageBoxVisual(Array.Empty<Texture2D>(), Array.Empty<Point>(), Array.Empty<int>(), iconTexture, MessageBoxTextLayout.Default);
         }
 
-        private bool TryLoadNamedVisual(WzSubProperty parent, string propertyName, out MessageBoxVisual visual)
+        private bool TryLoadClientMessageBoxVisual(
+            WzSubProperty itemProperty,
+            WzSubProperty infoProperty,
+            int itemId,
+            Texture2D iconTexture,
+            out MessageBoxVisual visual)
+        {
+            visual = null;
+
+            if (TryLoadNamedVisual(itemProperty, ClientMessageBoxPropertyName, ClientMessageBoxPropertyName, out visual) ||
+                TryLoadNamedVisual(infoProperty, ClientMessageBoxPropertyName, ClientMessageBoxPropertyName, out visual))
+            {
+                visual = visual with { IconTexture = iconTexture ?? visual.IconTexture };
+                return true;
+            }
+
+            if (IsKnownChalkboardItem(itemId) &&
+                (TryLoadNamedVisual(infoProperty, ChalkboardSamplePropertyName, ClientMessageBoxPropertyName, out visual) ||
+                 TryLoadNamedVisual(itemProperty, ChalkboardSamplePropertyName, ClientMessageBoxPropertyName, out visual)))
+            {
+                visual = visual with { IconTexture = iconTexture ?? visual.IconTexture };
+                return true;
+            }
+
+            foreach (WzImageProperty child in itemProperty.WzProperties)
+            {
+                if (child is not WzImageProperty property)
+                {
+                    continue;
+                }
+
+                WzImageProperty linked = property.GetLinkedWzImageProperty();
+                if (linked is WzCanvasProperty canvas && string.Equals(property.Name, ChalkboardSamplePropertyName, StringComparison.OrdinalIgnoreCase))
+                {
+                    if (TryLoadVisualFromCanvas(canvas, ClientMessageBoxPropertyName, out visual))
+                    {
+                        visual = visual with { IconTexture = iconTexture ?? visual.IconTexture };
+                        return true;
+                    }
+                }
+            }
+
+            return false;
+        }
+
+        private bool TryLoadNamedVisual(WzSubProperty parent, string propertyName, string layoutKey, out MessageBoxVisual visual)
         {
             visual = null;
             if (parent == null || string.IsNullOrWhiteSpace(propertyName))
@@ -471,16 +489,24 @@ namespace HaCreator.MapSimulator.Interaction
                 return false;
             }
 
-            if (parent[propertyName] is WzCanvasProperty canvas && TryLoadVisualFromCanvas(canvas, propertyName, out visual))
+            if (parent[propertyName] is WzImageProperty property)
             {
-                return true;
+                WzImageProperty linked = property.GetLinkedWzImageProperty();
+                if (linked is WzCanvasProperty canvas && TryLoadVisualFromCanvas(canvas, layoutKey, out visual))
+                {
+                    return true;
+                }
+
+                if (linked is WzSubProperty subProperty && TryLoadVisualFromProperty(subProperty, layoutKey, out visual))
+                {
+                    return true;
+                }
             }
 
-            return parent[propertyName] is WzSubProperty subProperty
-                   && TryLoadVisualFromProperty(subProperty, propertyName, out visual);
+            return false;
         }
 
-        private bool TryLoadVisualFromProperty(WzSubProperty property, string propertyName, out MessageBoxVisual visual)
+        private bool TryLoadVisualFromProperty(WzSubProperty property, string layoutKey, out MessageBoxVisual visual)
         {
             visual = null;
             if (property == null)
@@ -488,32 +514,26 @@ namespace HaCreator.MapSimulator.Interaction
                 return false;
             }
 
-            if (TryCollectFrames(property, out List<Texture2D> textures, out List<Point> origins, out List<int> delays))
+            if (TryCollectFrames(property, layoutKey, out List<Texture2D> textures, out List<Point> origins, out List<int> delays, out MessageBoxTextLayout textLayout))
             {
-                visual = new MessageBoxVisual(textures, origins, delays, null, MessageBoxTextLayout.Default);
+                visual = new MessageBoxVisual(textures, origins, delays, null, textLayout);
                 return true;
             }
 
-            List<(WzSubProperty Property, int Score)> nestedCandidates = new();
             foreach (WzImageProperty child in property.WzProperties)
             {
-                if (child is not WzSubProperty nested)
+                if (child is not WzImageProperty nestedCandidate)
                 {
                     continue;
                 }
 
-                nestedCandidates.Add((nested, ScoreVisualProperty($"{propertyName}/{nested.Name}", nested)));
-            }
-
-            foreach ((WzSubProperty nestedProperty, _) in nestedCandidates.OrderByDescending(candidate => candidate.Score))
-            {
-                if (!TryCollectFrames(nestedProperty, out List<Texture2D> nestedTextures, out List<Point> nestedOrigins, out List<int> nestedDelays))
+                WzImageProperty linked = nestedCandidate.GetLinkedWzImageProperty();
+                if (linked is WzSubProperty nestedProperty &&
+                    TryCollectFrames(nestedProperty, layoutKey, out List<Texture2D> nestedTextures, out List<Point> nestedOrigins, out List<int> nestedDelays, out MessageBoxTextLayout nestedLayout))
                 {
-                    continue;
+                    visual = new MessageBoxVisual(nestedTextures, nestedOrigins, nestedDelays, null, nestedLayout);
+                    return true;
                 }
-
-                visual = new MessageBoxVisual(nestedTextures, nestedOrigins, nestedDelays, null, MessageBoxTextLayout.Default);
-                return true;
             }
 
             return false;
@@ -542,19 +562,28 @@ namespace HaCreator.MapSimulator.Interaction
 
         private bool TryCollectFrames(
             WzSubProperty property,
+            string layoutKey,
             out List<Texture2D> textures,
             out List<Point> origins,
-            out List<int> delays)
+            out List<int> delays,
+            out MessageBoxTextLayout textLayout)
         {
             textures = new List<Texture2D>();
             origins = new List<Point>();
             delays = new List<int>();
+            textLayout = MessageBoxTextLayout.Default;
 
             List<(int Index, WzCanvasProperty Canvas)> orderedCanvases = new();
             int fallbackIndex = 0;
             foreach (WzImageProperty child in property.WzProperties)
             {
-                if (child is not WzCanvasProperty canvas)
+                if (child is not WzImageProperty imageProperty)
+                {
+                    continue;
+                }
+
+                WzImageProperty linked = imageProperty.GetLinkedWzImageProperty();
+                if (linked is not WzCanvasProperty canvas)
                 {
                     continue;
                 }
@@ -590,22 +619,21 @@ namespace HaCreator.MapSimulator.Interaction
                 return false;
             }
 
-            string layoutKey = property.Name;
-            if (property.WzProperties.OfType<WzCanvasProperty>().Count() == 1)
+            string resolvedLayoutKey = string.IsNullOrWhiteSpace(layoutKey) ? property.Name : layoutKey;
+            if (orderedCanvases.Count == 1)
             {
-                layoutKey = property.WzProperties.OfType<WzCanvasProperty>().First().Name;
+                resolvedLayoutKey = orderedCanvases[0].Canvas.Name;
             }
 
-            MessageBoxTextLayout layout = ResolveTextLayout(layoutKey, textures[0]);
+            textLayout = ResolveTextLayout(resolvedLayoutKey, textures[0]);
 
             if (property.Name.Equals("info", StringComparison.OrdinalIgnoreCase) &&
                 textures.Count > 1 &&
-                property.WzProperties.OfType<WzCanvasProperty>().Any(canvas => canvas.Name.Equals("sample", StringComparison.OrdinalIgnoreCase)))
+                orderedCanvases.Any(frame => frame.Canvas.Name.Equals(ChalkboardSamplePropertyName, StringComparison.OrdinalIgnoreCase)))
             {
-                int sampleIndex = property.WzProperties
-                    .OfType<WzCanvasProperty>()
-                    .Select((canvas, index) => new { canvas.Name, index })
-                    .First(candidate => candidate.Name.Equals("sample", StringComparison.OrdinalIgnoreCase))
+                int sampleIndex = orderedCanvases
+                    .Select((frame, index) => new { frame.Canvas.Name, index })
+                    .First(candidate => candidate.Name.Equals(ChalkboardSamplePropertyName, StringComparison.OrdinalIgnoreCase))
                     .index;
                 Texture2D sampleTexture = textures[Math.Clamp(sampleIndex, 0, textures.Count - 1)];
                 Point sampleOrigin = origins[Math.Clamp(sampleIndex, 0, origins.Count - 1)];
@@ -613,7 +641,7 @@ namespace HaCreator.MapSimulator.Interaction
                 textures = new List<Texture2D> { sampleTexture };
                 origins = new List<Point> { sampleOrigin };
                 delays = new List<int> { sampleDelay };
-                layout = ResolveTextLayout("sample", sampleTexture);
+                textLayout = ResolveTextLayout(ClientMessageBoxPropertyName, sampleTexture);
             }
 
             return textures.Count > 0;
@@ -645,55 +673,9 @@ namespace HaCreator.MapSimulator.Interaction
             return Math.Max(30, delay ?? DefaultFrameDelayMs);
         }
 
-        private static int ScoreVisualProperty(string propertyName, WzSubProperty property)
+        private static bool IsKnownChalkboardItem(int itemId)
         {
-            int score = 0;
-            if (property == null)
-            {
-                return score;
-            }
-
-            string name = propertyName ?? string.Empty;
-            if (name.IndexOf("chalk", StringComparison.OrdinalIgnoreCase) >= 0)
-            {
-                score += 80;
-            }
-
-            if (name.IndexOf("board", StringComparison.OrdinalIgnoreCase) >= 0)
-            {
-                score += 70;
-            }
-
-            if (name.IndexOf("message", StringComparison.OrdinalIgnoreCase) >= 0 ||
-                name.IndexOf("box", StringComparison.OrdinalIgnoreCase) >= 0)
-            {
-                score += 60;
-            }
-
-            if (name.IndexOf("sample", StringComparison.OrdinalIgnoreCase) >= 0)
-            {
-                score += 50;
-            }
-
-            score += property.WzProperties.OfType<WzCanvasProperty>().Count() * 12;
-            score += property.WzProperties.OfType<WzSubProperty>().Count() * 3;
-            return score;
-        }
-
-        private static IEnumerable<(WzSubProperty Parent, string PropertyName)> EnumerateClientVisualCandidates(WzSubProperty itemProperty, WzSubProperty infoProperty)
-        {
-            foreach (string propertyName in ClientVisualPropertyPreference)
-            {
-                if (infoProperty != null)
-                {
-                    yield return (infoProperty, propertyName);
-                }
-
-                if (itemProperty != null)
-                {
-                    yield return (itemProperty, propertyName);
-                }
-            }
+            return itemId is >= 5370000 and <= 5370002;
         }
 
         private static MessageBoxTextLayout ResolveTextLayout(string propertyName, Texture2D texture)

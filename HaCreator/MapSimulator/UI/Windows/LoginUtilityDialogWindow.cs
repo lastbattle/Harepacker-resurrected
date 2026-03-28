@@ -469,12 +469,17 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
+            if (!CanAcceptCharacter(c))
+            {
+                return;
+            }
+
             _inputValue += c;
         }
 
         private void RemoveLastCharacter()
         {
-            if (string.IsNullOrEmpty(_inputValue))
+            if (!SoftKeyboardUI.CanBackspace(_inputValue?.Length ?? 0))
             {
                 return;
             }
@@ -499,6 +504,12 @@ namespace HaCreator.MapSimulator.UI
                 return false;
             }
 
+            if (!CanAcceptCharacter(character))
+            {
+                errorMessage = "That key is disabled for this field.";
+                return false;
+            }
+
             AppendCharacter(character);
             return true;
         }
@@ -518,6 +529,15 @@ namespace HaCreator.MapSimulator.UI
 
         void ISoftKeyboardHost.OnSoftKeyboardClosed()
         {
+        }
+
+        private bool CanAcceptCharacter(char character)
+        {
+            return SoftKeyboardUI.CanAcceptCharacter(
+                _softKeyboardType,
+                _inputValue?.Length ?? 0,
+                _inputMaxLength,
+                character);
         }
 
         private Rectangle GetInputBounds()

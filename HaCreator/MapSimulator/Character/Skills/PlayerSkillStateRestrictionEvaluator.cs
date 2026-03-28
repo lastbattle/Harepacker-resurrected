@@ -20,7 +20,9 @@ namespace HaCreator.MapSimulator.Character.Skills
         private const int FlameLauncherSkillId = 35001001;
         private const int EnhancedFlameLauncherSkillId = 35101009;
         private const int NightWalkerPoisonBombSkillId = 14111006;
+        private const int HermitTauntSkillId = 4121003;
         private const int NightlordTauntSkillId = 4341003;
+        private const int ShadowerTauntSkillId = 4221003;
         private const int GunslingerBlankShotSkillId = 5201002;
         private const int HermitNinjaAmbushSkillId = 4121004;
         private const int ShadowerNinjaAmbushSkillId = 4221004;
@@ -225,7 +227,9 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
 
             int skillId = skill.SkillId;
-            return skillId == HermitNinjaAmbushSkillId
+            return skillId == HermitTauntSkillId
+                   || skillId == ShadowerTauntSkillId
+                   || skillId == HermitNinjaAmbushSkillId
                    || skillId == ShadowerNinjaAmbushSkillId
                    || skillId == PirateDashSkillId
                    || skillId == ThunderBreakerDashSkillId
@@ -268,21 +272,37 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return true;
             }
 
-            if (skill.ClientInfoType != 13)
+            if (skill.ClientInfoType == 13)
             {
-                return false;
+                if (skill.SkillId == CorsairBattleshipSkillId || skill.SkillId == JaguarRiderSkillId)
+                {
+                    return true;
+                }
+
+                if (LooksLikeRideDescriptionBuff(skill))
+                {
+                    return true;
+                }
             }
 
-            if (skill.SkillId == CorsairBattleshipSkillId || skill.SkillId == JaguarRiderSkillId)
+            return LooksLikeRideDescriptionBuff(skill);
+        }
+
+        private static bool LooksLikeRideDescriptionBuff(SkillData skill)
+        {
+            if (skill?.IsBuff != true)
             {
-                return true;
+                return false;
             }
 
             string combinedText = $"{skill.Name} {skill.Description}";
             return combinedText.IndexOf("mount/unmount", StringComparison.OrdinalIgnoreCase) >= 0
                    || combinedText.IndexOf("summon and mount", StringComparison.OrdinalIgnoreCase) >= 0
                    || combinedText.IndexOf("monster rider", StringComparison.OrdinalIgnoreCase) >= 0
-                   || combinedText.IndexOf("jaguar rider", StringComparison.OrdinalIgnoreCase) >= 0;
+                   || combinedText.IndexOf("jaguar rider", StringComparison.OrdinalIgnoreCase) >= 0
+                   || combinedText.IndexOf("allows you to ride", StringComparison.OrdinalIgnoreCase) >= 0
+                   || combinedText.IndexOf("enables one to ride", StringComparison.OrdinalIgnoreCase) >= 0
+                   || combinedText.IndexOf("method of transportation", StringComparison.OrdinalIgnoreCase) >= 0;
         }
 
         private static bool UsesBoundJumpStateGate(SkillData skill)

@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using HaCreator.MapEditor.Instance;
 using HaCreator.MapSimulator.Character;
+using HaCreator.MapSimulator.Companions;
 using HaCreator.MapSimulator.Entities;
 using HaCreator.MapSimulator.Pools;
 using MapleLib.ClientLib;
@@ -100,6 +101,11 @@ namespace HaCreator.MapSimulator.Interaction
             public bool IsSecret { get; init; }
         }
 
+        private sealed class QuestPetRequirement
+        {
+            public int ItemId { get; init; }
+        }
+
         internal sealed class QuestSkillRequirement
         {
             public int SkillId { get; init; }
@@ -154,6 +160,7 @@ namespace HaCreator.MapSimulator.Interaction
             public int ExpReward { get; set; }
             public int MesoReward { get; set; }
             public int FameReward { get; set; }
+            public int PetSkillRewardMask { get; set; }
             public int? NextQuestId { get; set; }
             public List<QuestStateMutation> QuestMutations { get; } = new();
             public List<QuestTraitReward> TraitRewards { get; } = new();
@@ -183,15 +190,20 @@ namespace HaCreator.MapSimulator.Interaction
             public int? MinLevel { get; init; }
             public int? MaxLevel { get; init; }
             public int? StartFameRequirement { get; init; }
+            public int StartSubJobFlagsRequirement { get; init; }
             public int EndMesoRequirement { get; init; }
             public IReadOnlyList<int> AllowedJobs { get; init; } = Array.Empty<int>();
             public IReadOnlyList<QuestStateRequirement> StartQuestRequirements { get; init; } = Array.Empty<QuestStateRequirement>();
             public IReadOnlyList<QuestTraitRequirement> StartTraitRequirements { get; init; } = Array.Empty<QuestTraitRequirement>();
             public IReadOnlyList<QuestItemRequirement> StartItemRequirements { get; init; } = Array.Empty<QuestItemRequirement>();
+            public IReadOnlyList<QuestPetRequirement> StartPetRequirements { get; init; } = Array.Empty<QuestPetRequirement>();
+            public int? StartPetRecallLimit { get; init; }
             public IReadOnlyList<QuestSkillRequirement> StartSkillRequirements { get; init; } = Array.Empty<QuestSkillRequirement>();
             public IReadOnlyList<QuestStateRequirement> EndQuestRequirements { get; init; } = Array.Empty<QuestStateRequirement>();
             public IReadOnlyList<QuestMobRequirement> EndMobRequirements { get; init; } = Array.Empty<QuestMobRequirement>();
             public IReadOnlyList<QuestItemRequirement> EndItemRequirements { get; init; } = Array.Empty<QuestItemRequirement>();
+            public IReadOnlyList<QuestPetRequirement> EndPetRequirements { get; init; } = Array.Empty<QuestPetRequirement>();
+            public int? EndPetRecallLimit { get; init; }
             public IReadOnlyList<NpcInteractionPage> StartSayPages { get; init; } = Array.Empty<NpcInteractionPage>();
             public IReadOnlyList<NpcInteractionPage> EndSayPages { get; init; } = Array.Empty<NpcInteractionPage>();
             public IReadOnlyDictionary<string, IReadOnlyList<NpcInteractionPage>> StartStopPages { get; init; } =
@@ -229,6 +241,8 @@ namespace HaCreator.MapSimulator.Interaction
         private Action<int, int> _setSkillMasterLevel;
         private Func<int, string> _skillNameProvider;
         private Action<int> _addSkillPoints;
+        private Func<IReadOnlyCollection<int>, int?, bool> _hasCompatibleActivePetProvider;
+        private Func<IReadOnlyCollection<int>, int?, int, bool> _grantPetSkillProvider;
         private bool _definitionsLoaded;
         private const long QuestAlarmRecentUpdateWindowMs = 8000;
         private const int QuestDeliveryAcceptCashItemId = 5660000;
@@ -276,6 +290,14 @@ namespace HaCreator.MapSimulator.Interaction
             _setSkillMasterLevel = setSkillMasterLevel;
             _skillNameProvider = skillNameProvider;
             _addSkillPoints = addSkillPoints;
+        }
+
+        public void ConfigurePetRuntime(
+            Func<IReadOnlyCollection<int>, int?, bool> hasCompatibleActivePetProvider,
+            Func<IReadOnlyCollection<int>, int?, int, bool> grantPetSkillProvider)
+        {
+            _hasCompatibleActivePetProvider = hasCompatibleActivePetProvider;
+            _grantPetSkillProvider = grantPetSkillProvider;
         }
 
         public void RecordMobKill(MobInstance mobInstance)
@@ -677,7 +699,7 @@ namespace HaCreator.MapSimulator.Interaction
             progress.MobKills.Clear();
             MarkQuestAlarmUpdated(questId);
 
-            ApplyActions(definition.StartActions, build, messages, resolvedStartRewards);
+            ApplyActions(definition.StartActions, build, messages, resolvedStartRewards, definition.StartPetRequirements, definition.StartPetRecallLimit);
 
             return new QuestWindowActionResult
             {
@@ -780,7 +802,7 @@ namespace HaCreator.MapSimulator.Interaction
             QuestProgress progress = GetOrCreateProgress(questId);
             progress.State = QuestStateType.Completed;
             MarkQuestAlarmUpdated(questId);
-            ApplyActions(definition.EndActions, build, messages, resolvedCompletionRewards);
+            ApplyActions(definition.EndActions, build, messages, resolvedCompletionRewards, definition.EndPetRequirements, definition.EndPetRecallLimit);
 
             return new QuestWindowActionResult
             {
@@ -1191,7 +1213,7 @@ namespace HaCreator.MapSimulator.Interaction
                 progress.MobKills.Clear();
                 MarkQuestAlarmUpdated(questId);
 
-                ApplyActions(definition.StartActions, build, messages, resolvedStartRewards);
+                ApplyActions(definition.StartActions, build, messages, resolvedStartRewards, definition.StartPetRequirements, definition.StartPetRecallLimit);
                 return new QuestActionResult
                 {
                     StateChanged = true,
@@ -1244,7 +1266,7 @@ namespace HaCreator.MapSimulator.Interaction
                 QuestProgress progress = GetOrCreateProgress(questId);
                 progress.State = QuestStateType.Completed;
                 MarkQuestAlarmUpdated(questId);
-                ApplyActions(definition.EndActions, build, messages, resolvedCompletionRewards);
+                ApplyActions(definition.EndActions, build, messages, resolvedCompletionRewards, definition.EndPetRequirements, definition.EndPetRecallLimit);
                 return new QuestActionResult
                 {
                     StateChanged = true,
@@ -1634,6 +1656,11 @@ namespace HaCreator.MapSimulator.Interaction
                 details.Add($"Jobs: {string.Join(", ", definition.AllowedJobs.Select(FormatJobName))}");
             }
 
+            if (definition.StartSubJobFlagsRequirement > 0)
+            {
+                details.Add($"Branch: {FormatQuestSubJobFlagsText(definition.StartSubJobFlagsRequirement)}");
+            }
+
             if (definition.StartFameRequirement.HasValue)
             {
                 int currentFame = build == null
@@ -1725,6 +1752,18 @@ namespace HaCreator.MapSimulator.Interaction
                 });
             }
 
+            if (definition.StartSubJobFlagsRequirement > 0)
+            {
+                bool matchesSubJob = build != null &&
+                                     MatchesQuestSubJobFlags(build.Job, build.SubJob, definition.StartSubJobFlagsRequirement);
+                lines.Add(new QuestLogLineSnapshot
+                {
+                    Label = "Req",
+                    Text = $"Branch: {FormatQuestSubJobFlagsText(definition.StartSubJobFlagsRequirement)}",
+                    IsComplete = matchesSubJob
+                });
+            }
+
             if (definition.StartFameRequirement.HasValue)
             {
                 int currentFame = Math.Min(GetCurrentFame(build), definition.StartFameRequirement.Value);
@@ -1752,6 +1791,7 @@ namespace HaCreator.MapSimulator.Interaction
                 });
             }
 
+            AppendPetRequirementLines(definition.StartPetRequirements, definition.StartPetRecallLimit, lines);
             AppendSkillRequirementLines(definition.StartSkillRequirements, lines);
 
             AppendMesoRequirementLine(definition.StartActions.MesoReward, lines);
@@ -1820,6 +1860,8 @@ namespace HaCreator.MapSimulator.Interaction
                     ItemId = requirement.ItemId
                 });
             }
+
+            AppendPetRequirementLines(definition.EndPetRequirements, definition.EndPetRecallLimit, lines);
         }
 
         private void AppendSkillRequirementLines(
@@ -1836,6 +1878,28 @@ namespace HaCreator.MapSimulator.Interaction
                     IsComplete = MeetsSkillRequirement(requirement)
                 });
             }
+        }
+
+        private void AppendPetRequirementLines(
+            IReadOnlyList<QuestPetRequirement> requirements,
+            int? recallLimit,
+            ICollection<QuestLogLineSnapshot> lines)
+        {
+            if ((requirements == null || requirements.Count == 0) && !recallLimit.HasValue)
+            {
+                return;
+            }
+
+            bool isComplete = _hasCompatibleActivePetProvider?.Invoke(
+                requirements?.Select(static requirement => requirement.ItemId).ToArray() ?? Array.Empty<int>(),
+                recallLimit) == true;
+
+            lines.Add(new QuestLogLineSnapshot
+            {
+                Label = "Pet",
+                Text = BuildPetRequirementText(requirements, recallLimit),
+                IsComplete = isComplete
+            });
         }
 
         private List<QuestLogLineSnapshot> BuildRewardLines(QuestDefinition definition)
@@ -1896,6 +1960,16 @@ namespace HaCreator.MapSimulator.Interaction
                 });
             }
 
+            if (definition.EndActions.PetSkillRewardMask > 0)
+            {
+                lines.Add(new QuestLogLineSnapshot
+                {
+                    Label = "Pet",
+                    Text = GetPetSkillRewardText(definition.EndActions.PetSkillRewardMask),
+                    IsComplete = true
+                });
+            }
+
             for (int i = 0; i < definition.EndActions.SpRewards.Count; i++)
             {
                 lines.Add(new QuestLogLineSnapshot
@@ -1939,6 +2013,12 @@ namespace HaCreator.MapSimulator.Interaction
                 {
                     issues.Add($"Required job: {string.Join(", ", definition.AllowedJobs.Select(FormatJobName))}.");
                 }
+
+                if (definition.StartSubJobFlagsRequirement > 0 &&
+                    !MatchesQuestSubJobFlags(build.Job, build.SubJob, definition.StartSubJobFlagsRequirement))
+                {
+                    issues.Add($"Required branch: {FormatQuestSubJobFlagsText(definition.StartSubJobFlagsRequirement)}.");
+                }
             }
 
             if (definition.StartFameRequirement.HasValue && GetCurrentFame(build) < definition.StartFameRequirement.Value)
@@ -1946,11 +2026,12 @@ namespace HaCreator.MapSimulator.Interaction
                 issues.Add($"Reach fame {definition.StartFameRequirement.Value}.");
             }
 
-            AppendTraitIssues(definition.StartTraitRequirements, build, issues);
-            AppendQuestStateIssues(definition.StartQuestRequirements, issues);
-            AppendItemIssues(definition.StartItemRequirements, issues);
-            AppendSkillIssues(definition.StartSkillRequirements, issues);
-            AppendMesoIssues(definition.StartActions.MesoReward, issues, "start");
+              AppendTraitIssues(definition.StartTraitRequirements, build, issues);
+              AppendQuestStateIssues(definition.StartQuestRequirements, issues);
+              AppendItemIssues(definition.StartItemRequirements, issues);
+              AppendPetIssues(definition.StartPetRequirements, definition.StartPetRecallLimit, issues);
+              AppendSkillIssues(definition.StartSkillRequirements, issues);
+              AppendMesoIssues(definition.StartActions.MesoReward, issues, "start");
             AppendChoiceRewardIssues(definition.StartActions.RewardItems, build, issues);
             issues.AddRange(EvaluateRewardInventoryIssues(ResolveGrantedRewardItems(definition.StartActions.RewardItems, build, messages: null)));
             return issues;
@@ -1973,17 +2054,18 @@ namespace HaCreator.MapSimulator.Interaction
                 }
             }
 
-            for (int i = 0; i < definition.EndItemRequirements.Count; i++)
-            {
-                QuestItemRequirement requirement = definition.EndItemRequirements[i];
-                int currentCount = GetResolvedItemCount(requirement.ItemId);
-                if (currentCount < requirement.RequiredCount)
+              for (int i = 0; i < definition.EndItemRequirements.Count; i++)
+              {
+                  QuestItemRequirement requirement = definition.EndItemRequirements[i];
+                  int currentCount = GetResolvedItemCount(requirement.ItemId);
+                  if (currentCount < requirement.RequiredCount)
                 {
                     issues.Add($"Collect {GetItemName(requirement.ItemId)} x{requirement.RequiredCount - currentCount} more.");
-                }
-            }
+                  }
+              }
 
-            AppendMesoIssues(-definition.EndMesoRequirement, issues, "complete");
+              AppendPetIssues(definition.EndPetRequirements, definition.EndPetRecallLimit, issues);
+              AppendMesoIssues(-definition.EndMesoRequirement, issues, "complete");
             AppendChoiceRewardIssues(definition.EndActions.RewardItems, build, issues);
             issues.AddRange(EvaluateRewardInventoryIssues(ResolveGrantedRewardItems(definition.EndActions.RewardItems, build, messages: null)));
 
@@ -2047,6 +2129,26 @@ namespace HaCreator.MapSimulator.Interaction
             }
         }
 
+        private void AppendPetIssues(
+            IReadOnlyList<QuestPetRequirement> requirements,
+            int? recallLimit,
+            ICollection<string> issues)
+        {
+            if ((requirements == null || requirements.Count == 0) && !recallLimit.HasValue)
+            {
+                return;
+            }
+
+            if (_hasCompatibleActivePetProvider?.Invoke(
+                    requirements?.Select(static requirement => requirement.ItemId).ToArray() ?? Array.Empty<int>(),
+                    recallLimit) == true)
+            {
+                return;
+            }
+
+            issues.Add(BuildPetRequirementIssueText(requirements, recallLimit));
+        }
+
         private void AppendSkillIssues(IReadOnlyList<QuestSkillRequirement> requirements, ICollection<string> issues)
         {
             for (int i = 0; i < requirements.Count; i++)
@@ -2062,6 +2164,34 @@ namespace HaCreator.MapSimulator.Interaction
         private static int GetCurrentFame(CharacterBuild build)
         {
             return Math.Max(0, build?.Fame ?? 0);
+        }
+
+        private string BuildPetRequirementIssueText(
+            IReadOnlyList<QuestPetRequirement> requirements,
+            int? recallLimit)
+        {
+            string requirementText = BuildPetRequirementText(requirements, recallLimit);
+            return string.IsNullOrWhiteSpace(requirementText)
+                ? "Summon a compatible pet."
+                : $"{requirementText}.";
+        }
+
+        private string BuildPetRequirementText(
+            IReadOnlyList<QuestPetRequirement> requirements,
+            int? recallLimit)
+        {
+            string petText = requirements == null || requirements.Count == 0
+                ? "Summon a pet"
+                : requirements.Count == 1
+                    ? $"Summon {GetItemName(requirements[0].ItemId)}"
+                    : $"Summon 1 of {requirements.Count} compatible pets";
+
+            if (recallLimit.HasValue && recallLimit.Value > 0)
+            {
+                return $"{petText} with at most {recallLimit.Value} active";
+            }
+
+            return petText;
         }
 
         private static int GetCurrentTraitValue(CharacterBuild build, QuestTraitType trait)
@@ -2294,6 +2424,18 @@ namespace HaCreator.MapSimulator.Interaction
             return string.Join(" ", parts);
         }
 
+        private static string GetPetSkillRewardText(int skillMask)
+        {
+            if (skillMask <= 0)
+            {
+                return "Pet skill reward";
+            }
+
+            return skillMask == PetRuntime.AutoSpeakingSkillMask
+                ? "Pet skill: Auto speaking"
+                : $"Pet skill flag 0x{skillMask:X}";
+        }
+
         private static string GetSpRewardText(QuestSpReward reward)
         {
             if (reward == null)
@@ -2373,6 +2515,33 @@ namespace HaCreator.MapSimulator.Interaction
             }
         }
 
+        private void ApplyPetSkillReward(
+            int skillMask,
+            IReadOnlyList<QuestPetRequirement> petRequirements,
+            int? petRecallLimit,
+            ICollection<string> messages)
+        {
+            if (skillMask <= 0)
+            {
+                return;
+            }
+
+            int[] supportedPetItemIds = petRequirements?
+                .Select(static requirement => requirement.ItemId)
+                .Where(static itemId => itemId > 0)
+                .Distinct()
+                .ToArray()
+                ?? Array.Empty<int>();
+
+            if (_grantPetSkillProvider?.Invoke(supportedPetItemIds, petRecallLimit, skillMask) == true)
+            {
+                messages.Add(GetPetSkillRewardText(skillMask));
+                return;
+            }
+
+            messages.Add($"{GetPetSkillRewardText(skillMask)} (no compatible active pet)");
+        }
+
         private void ApplySpReward(QuestSpReward reward, CharacterBuild build, ICollection<string> messages)
         {
             if (reward == null || reward.Amount <= 0)
@@ -2400,7 +2569,9 @@ namespace HaCreator.MapSimulator.Interaction
             QuestActionBundle actions,
             CharacterBuild build,
             ICollection<string> messages,
-            IReadOnlyList<QuestRewardItem> resolvedGrantedItems = null)
+            IReadOnlyList<QuestRewardItem> resolvedGrantedItems = null,
+            IReadOnlyList<QuestPetRequirement> petRequirements = null,
+            int? petRecallLimit = null)
         {
             if (actions == null)
             {
@@ -2477,6 +2648,8 @@ namespace HaCreator.MapSimulator.Interaction
             {
                 ApplySkillReward(actions.SkillRewards[i], build, messages);
             }
+
+            ApplyPetSkillReward(actions.PetSkillRewardMask, petRequirements, petRecallLimit, messages);
 
             for (int i = 0; i < actions.SpRewards.Count; i++)
             {
@@ -2861,15 +3034,20 @@ namespace HaCreator.MapSimulator.Interaction
                 MinLevel = ParseInt(startCheck?["lvmin"]),
                 MaxLevel = ParseInt(startCheck?["lvmax"]) ?? ParseInt(endCheck?["lvmax"]),
                 StartFameRequirement = ParsePositiveInt(startCheck?["pop"]),
+                StartSubJobFlagsRequirement = ParsePositiveInt(startCheck?["subJobFlags"]).GetValueOrDefault(),
                 EndMesoRequirement = ParsePositiveInt(endCheck?["endmeso"]).GetValueOrDefault(),
                 AllowedJobs = ParseJobIds(startCheck?["job"]),
                 StartQuestRequirements = ParseQuestRequirements(startCheck?["quest"]),
                 StartTraitRequirements = ParseTraitRequirements(startCheck),
                 StartItemRequirements = ParseItemRequirements(startCheck?["item"]),
+                StartPetRequirements = ParsePetRequirements(startCheck?["pet"]),
+                StartPetRecallLimit = ParsePositiveInt(startCheck?["petRecallLimit"]),
                 StartSkillRequirements = ParseSkillRequirements(startCheck?["skill"]),
                 EndQuestRequirements = ParseQuestRequirements(endCheck?["quest"]),
                 EndMobRequirements = ParseMobRequirements(endCheck?["mob"]),
                 EndItemRequirements = ParseItemRequirements(endCheck?["item"]),
+                EndPetRequirements = ParsePetRequirements(endCheck?["pet"]),
+                EndPetRecallLimit = ParsePositiveInt(endCheck?["petRecallLimit"]),
                 StartSayPages = ParseConversationPages(startSay),
                 EndSayPages = ParseConversationPages(endSay),
                 StartStopPages = ParseConversationStopPages(startSay),
@@ -3186,6 +3364,32 @@ namespace HaCreator.MapSimulator.Interaction
             return requirements;
         }
 
+        private static IReadOnlyList<QuestPetRequirement> ParsePetRequirements(WzImageProperty property)
+        {
+            if (property?.WzProperties == null)
+            {
+                return Array.Empty<QuestPetRequirement>();
+            }
+
+            var requirements = new List<QuestPetRequirement>();
+            for (int i = 0; i < property.WzProperties.Count; i++)
+            {
+                WzImageProperty pet = property.WzProperties[i];
+                int itemId = ParseInt(pet["id"]).GetValueOrDefault();
+                if (itemId <= 0)
+                {
+                    continue;
+                }
+
+                requirements.Add(new QuestPetRequirement
+                {
+                    ItemId = itemId
+                });
+            }
+
+            return requirements;
+        }
+
         private static void AppendTraitRequirement(WzImageProperty property, QuestTraitType trait, ICollection<QuestTraitRequirement> requirements)
         {
             int minimumValue = ParsePositiveInt(property).GetValueOrDefault();
@@ -3282,6 +3486,9 @@ namespace HaCreator.MapSimulator.Interaction
                         break;
                     case "sp":
                         AppendSpRewards(actions, child);
+                        break;
+                    case "petskill":
+                        actions.PetSkillRewardMask = ParseInt(child).GetValueOrDefault();
                         break;
                     case "charismaEXP":
                         AppendTraitReward(actions, child, QuestTraitType.Charisma);
@@ -3666,7 +3873,7 @@ namespace HaCreator.MapSimulator.Interaction
                 IReadOnlyList<NpcInteractionPage> selectionPages = ParseStopSelectionPages(pageStopProperty, selection.SelectionId);
                 if (selectionPages.Count == 0 &&
                     nextPages.Count > 0 &&
-                    ShouldContinueToNextPages(pageStopProperty, selection.SelectionId))
+                    ShouldContinueToNextPages(pageStopProperty, selection.SelectionId, i, inlineSelections.Length))
                 {
                     selectionPages = nextPages;
                 }
@@ -3684,7 +3891,11 @@ namespace HaCreator.MapSimulator.Interaction
             }
         }
 
-        private static bool ShouldContinueToNextPages(WzImageProperty stopProperty, int selectionId)
+        private static bool ShouldContinueToNextPages(
+            WzImageProperty stopProperty,
+            int selectionId,
+            int selectionIndex,
+            int selectionCount)
         {
             if (stopProperty == null)
             {
@@ -3697,7 +3908,13 @@ namespace HaCreator.MapSimulator.Interaction
                 return true;
             }
 
-            return GetIntValue(answerProperty) == selectionId;
+            int answerValue = GetIntValue(answerProperty);
+            if (answerValue > 0 && answerValue <= selectionCount)
+            {
+                return selectionIndex + 1 == answerValue;
+            }
+
+            return answerValue == selectionId;
         }
 
         private static IReadOnlyList<NpcInteractionPage> ParseStopSelectionPages(WzImageProperty stopProperty, int selectionId)
@@ -3870,7 +4087,7 @@ namespace HaCreator.MapSimulator.Interaction
             };
         }
 
-        private static CharacterSubJobFlagType GetRewardSubJobFlags(int currentJob, int currentSubJob)
+        internal static CharacterSubJobFlagType GetRewardSubJobFlags(int currentJob, int currentSubJob)
         {
             CharacterSubJobFlagType flags = CharacterSubJobFlagType.Any;
             if (currentJob / 1000 != 0)
@@ -3890,6 +4107,12 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             return flags;
+        }
+
+        internal static bool MatchesQuestSubJobFlags(int currentJob, int currentSubJob, int requiredFlagsBitfield)
+        {
+            return requiredFlagsBitfield <= 0 ||
+                   (GetRewardSubJobFlags(currentJob, currentSubJob) & (CharacterSubJobFlagType)requiredFlagsBitfield) != 0;
         }
 
         internal static bool MatchesRewardItemFilterCore(
@@ -4290,7 +4513,7 @@ namespace HaCreator.MapSimulator.Interaction
 
             if (includeFilters && reward.JobExBitfield > 0)
             {
-                parts.Add($"[{FormatRewardSubJobText(reward.JobExBitfield)}]");
+                parts.Add($"[{FormatQuestSubJobFlagsText(reward.JobExBitfield)}]");
             }
 
             if (includeSelectionTag)
@@ -4360,7 +4583,7 @@ namespace HaCreator.MapSimulator.Interaction
             return $"{periodMinutes}m";
         }
 
-        private static string FormatRewardSubJobText(int jobExBitfield)
+        internal static string FormatQuestSubJobFlagsText(int jobExBitfield)
         {
             var labels = new List<string>();
             CharacterSubJobFlagType flags = (CharacterSubJobFlagType)jobExBitfield;
@@ -4764,6 +4987,11 @@ namespace HaCreator.MapSimulator.Interaction
             for (int i = 0; i < definition.EndActions.SkillRewards.Count; i++)
             {
                 rewards.Add(GetSkillRewardText(definition.EndActions.SkillRewards[i]));
+            }
+
+            if (definition.EndActions.PetSkillRewardMask > 0)
+            {
+                rewards.Add(GetPetSkillRewardText(definition.EndActions.PetSkillRewardMask));
             }
 
             for (int i = 0; i < definition.EndActions.SpRewards.Count; i++)

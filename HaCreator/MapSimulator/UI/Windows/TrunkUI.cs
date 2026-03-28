@@ -37,6 +37,7 @@ namespace HaCreator.MapSimulator.UI
         private const int StatusTextY = 308;
         private const int StatusTextWidth = 430;
         private const int MaxMesoDigits = 10;
+        private const int MaxAccountSecurityLength = 16;
         private const int MinSecondaryPasswordDigits = 4;
         private const int MaxSecondaryPasswordDigits = 8;
 
@@ -105,6 +106,8 @@ namespace HaCreator.MapSimulator.UI
             None,
             Withdraw,
             Deposit,
+            VerifyAccountPic,
+            VerifyAccountSecondaryPassword,
             SetupSecondaryPassword,
             ConfirmSecondaryPassword,
             VerifySecondaryPassword
@@ -210,6 +213,13 @@ namespace HaCreator.MapSimulator.UI
         {
             _storageRuntime?.ConfigureAccess(accountLabel, accountKey, currentCharacterName, sharedCharacterNames);
             ClampSelection();
+            UpdateAccessStatusMessage();
+            UpdateButtonStates();
+        }
+
+        public void ConfigureStorageLoginSecurity(string picCode, bool secondaryPasswordEnabled, string secondaryPassword)
+        {
+            _storageRuntime?.ConfigureLoginAccountSecurity(picCode, secondaryPasswordEnabled, secondaryPassword);
             UpdateAccessStatusMessage();
             UpdateButtonStates();
         }
@@ -609,11 +619,15 @@ namespace HaCreator.MapSimulator.UI
             _mesoEntryMaxValue = maxValue;
             _mesoEntryText = isMesoTransfer
                 ? maxValue.ToString(CultureInfo.InvariantCulture)
-                : "0";
+                : IsNumericEntryMode(mode)
+                    ? "0"
+                    : string.Empty;
             _mesoEntryPrompt = mode switch
             {
                 MesoEntryMode.Withdraw => "Withdraw meso amount",
                 MesoEntryMode.Deposit => "Deposit meso amount",
+                MesoEntryMode.VerifyAccountPic => "Enter account PIC",
+                MesoEntryMode.VerifyAccountSecondaryPassword => "Enter account secondary password",
                 MesoEntryMode.SetupSecondaryPassword => "Create storage passcode",
                 MesoEntryMode.ConfirmSecondaryPassword => "Confirm storage passcode",
                 MesoEntryMode.VerifySecondaryPassword => "Enter storage passcode",
@@ -626,11 +640,13 @@ namespace HaCreator.MapSimulator.UI
 
         private void ConfirmMesoEntry()
         {
-            if (_mesoEntryMode == MesoEntryMode.SetupSecondaryPassword ||
+            if (_mesoEntryMode == MesoEntryMode.VerifyAccountPic ||
+                _mesoEntryMode == MesoEntryMode.VerifyAccountSecondaryPassword ||
+                _mesoEntryMode == MesoEntryMode.SetupSecondaryPassword ||
                 _mesoEntryMode == MesoEntryMode.ConfirmSecondaryPassword ||
                 _mesoEntryMode == MesoEntryMode.VerifySecondaryPassword)
             {
-                ConfirmSecondaryPasswordEntry();
+                ConfirmSecurityEntry();
                 return;
             }
 
@@ -826,8 +842,12 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
-            string amountText = string.IsNullOrEmpty(_mesoEntryText) ? "0" : _mesoEntryText;
-            string prompt = $"{_mesoEntryPrompt}: {amountText} / {_mesoEntryMaxValue.ToString("N0", CultureInfo.InvariantCulture)}";
+            string amountText = IsMesoTransferMode(_mesoEntryMode)
+                ? (string.IsNullOrEmpty(_mesoEntryText) ? "0" : _mesoEntryText)
+                : _mesoEntryText ?? string.Empty;
+            string prompt = IsMesoTransferMode(_mesoEntryMode)
+                ? $"{_mesoEntryPrompt}: {amountText} / {_mesoEntryMaxValue.ToString("N0", CultureInfo.InvariantCulture)}"
+                : $"{_mesoEntryPrompt}: {new string('*', amountText.Length)}";
             InventoryRenderUtil.DrawOutlinedText(
                 sprite,
                 _font,
@@ -1100,7 +1120,9 @@ namespace HaCreator.MapSimulator.UI
 
                 if (IsPressed(keyboardState, Keys.Escape))
                 {
-                    _statusMessage = "Meso transfer cancelled.";
+                    _statusMessage = IsMesoTransferMode(_mesoEntryMode)
+                        ? "Meso transfer cancelled."
+                        : "Trunk security entry cancelled.";
                     CancelMesoEntry();
                     UpdateButtonStates();
                     return;
@@ -1118,6 +1140,7 @@ namespace HaCreator.MapSimulator.UI
                     _mesoEntryReplaceOnDigit = false;
                 }
 
+                bool shift = keyboardState.IsKeyDown(Keys.LeftShift) || keyboardState.IsKeyDown(Keys.RightShift);
                 foreach (Keys key in keyboardState.GetPressedKeys())
                 {
                     if (_previousKeyboardState.IsKeyDown(key))
@@ -1125,31 +1148,44 @@ namespace HaCreator.MapSimulator.UI
                         continue;
                     }
 
-                    char? digit = KeyToDigit(key);
-                    if (!digit.HasValue)
+                    if (KeyboardTextInputHelper.IsControlKey(key))
                     {
                         continue;
                     }
 
-                    string source = _mesoEntryReplaceOnDigit ? digit.Value.ToString() : _mesoEntryText + digit.Value;
-                    string rawValue = source.TrimStart('0');
-                    string candidate = string.IsNullOrEmpty(rawValue) ? "0" : rawValue;
-                    int maxDigits = (_mesoEntryMode == MesoEntryMode.SetupSecondaryPassword ||
-                                     _mesoEntryMode == MesoEntryMode.ConfirmSecondaryPassword ||
-                                     _mesoEntryMode == MesoEntryMode.VerifySecondaryPassword)
-                        ? MaxSecondaryPasswordDigits
-                        : MaxMesoDigits;
-                    if (candidate.Length > maxDigits)
+                    char? character = ResolveEntryCharacter(_mesoEntryMode, key, shift);
+                    if (!character.HasValue)
                     {
                         continue;
                     }
 
-                    if (long.TryParse(candidate, NumberStyles.None, CultureInfo.InvariantCulture, out long parsed) &&
-                        parsed <= int.MaxValue)
+                    string source = _mesoEntryReplaceOnDigit ? character.Value.ToString() : _mesoEntryText + character.Value;
+                    if (IsNumericEntryMode(_mesoEntryMode))
                     {
-                        _mesoEntryText = candidate;
-                        _mesoEntryReplaceOnDigit = false;
+                        string rawValue = source.TrimStart('0');
+                        string candidate = string.IsNullOrEmpty(rawValue) ? "0" : rawValue;
+                        if (candidate.Length > GetEntryMaxLength(_mesoEntryMode))
+                        {
+                            continue;
+                        }
+
+                        if (long.TryParse(candidate, NumberStyles.None, CultureInfo.InvariantCulture, out long parsed) &&
+                            parsed <= int.MaxValue)
+                        {
+                            _mesoEntryText = candidate;
+                            _mesoEntryReplaceOnDigit = false;
+                        }
+
+                        continue;
                     }
+
+                    if (source.Length > GetEntryMaxLength(_mesoEntryMode))
+                    {
+                        continue;
+                    }
+
+                    _mesoEntryText = source;
+                    _mesoEntryReplaceOnDigit = false;
                 }
             }
             finally
@@ -1194,6 +1230,7 @@ namespace HaCreator.MapSimulator.UI
         private bool HasStorageAccess()
         {
             return (_storageRuntime?.CanCurrentCharacterAccess ?? true) &&
+                   (_storageRuntime?.IsClientAccountAuthorityVerified ?? true) &&
                    (_storageRuntime?.IsSecondaryPasswordVerified ?? true);
         }
 
@@ -1261,6 +1298,21 @@ namespace HaCreator.MapSimulator.UI
             {
                 _statusMessage = BuildAccessDeniedMessage();
                 return;
+            }
+
+            if (_storageRuntime != null && !_storageRuntime.IsClientAccountAuthorityVerified)
+            {
+                if (_storageRuntime.HasAccountPic && !_storageRuntime.IsAccountPicVerified)
+                {
+                    _statusMessage = "Enter the simulator account PIC to unlock this trunk session.";
+                    return;
+                }
+
+                if (_storageRuntime.HasAccountSecondaryPassword && !_storageRuntime.IsAccountSecondaryPasswordVerified)
+                {
+                    _statusMessage = "Enter the simulator account secondary password to unlock this trunk session.";
+                    return;
+                }
             }
 
             if (_storageRuntime != null && !_storageRuntime.IsSecondaryPasswordVerified)
@@ -1339,6 +1391,20 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
+            if (_storageRuntime.HasAccountPic && !_storageRuntime.IsAccountPicVerified)
+            {
+                BeginMesoEntry(MesoEntryMode.VerifyAccountPic);
+                _statusMessage = "Storage access is account-locked. Enter the configured PIC first.";
+                return;
+            }
+
+            if (_storageRuntime.HasAccountSecondaryPassword && !_storageRuntime.IsAccountSecondaryPasswordVerified)
+            {
+                BeginMesoEntry(MesoEntryMode.VerifyAccountSecondaryPassword);
+                _statusMessage = "Storage access is account-locked. Enter the account secondary password.";
+                return;
+            }
+
             BeginMesoEntry(_storageRuntime.HasSecondaryPassword
                 ? MesoEntryMode.VerifySecondaryPassword
                 : MesoEntryMode.SetupSecondaryPassword);
@@ -1347,19 +1413,67 @@ namespace HaCreator.MapSimulator.UI
                 : "Set a 4-8 digit storage passcode for this shared trunk.";
         }
 
-        private void ConfirmSecondaryPasswordEntry()
+        private void ConfirmSecurityEntry()
         {
             string password = _mesoEntryText == "0" ? string.Empty : _mesoEntryText;
-            if (password.Length < MinSecondaryPasswordDigits || password.Length > MaxSecondaryPasswordDigits)
-            {
-                _statusMessage = $"Storage passcodes must be {MinSecondaryPasswordDigits}-{MaxSecondaryPasswordDigits} digits.";
-                UpdateButtonStates();
-                return;
-            }
 
             if (_storageRuntime == null)
             {
                 CancelMesoEntry();
+                UpdateButtonStates();
+                return;
+            }
+
+            if (_mesoEntryMode == MesoEntryMode.VerifyAccountPic)
+            {
+                _statusMessage = _storageRuntime.TryVerifyAccountPic(password)
+                    ? "Simulator account PIC accepted."
+                    : "Simulator account PIC rejected.";
+                if (_storageRuntime.IsAccountPicVerified)
+                {
+                    CancelMesoEntry();
+                    if ((_storageRuntime.HasAccountSecondaryPassword && !_storageRuntime.IsAccountSecondaryPasswordVerified) ||
+                        (_storageRuntime.HasSecondaryPassword && !_storageRuntime.IsSecondaryPasswordVerified))
+                    {
+                        BeginSecondaryPasswordEntry();
+                    }
+                }
+                else
+                {
+                    _mesoEntryText = string.Empty;
+                    _mesoEntryReplaceOnDigit = true;
+                }
+
+                UpdateButtonStates();
+                return;
+            }
+
+            if (_mesoEntryMode == MesoEntryMode.VerifyAccountSecondaryPassword)
+            {
+                _statusMessage = _storageRuntime.TryVerifyAccountSecondaryPassword(password)
+                    ? "Simulator account secondary password accepted."
+                    : "Simulator account secondary password rejected.";
+                if (_storageRuntime.IsAccountSecondaryPasswordVerified)
+                {
+                    CancelMesoEntry();
+                    if (_storageRuntime.HasSecondaryPassword && !_storageRuntime.IsSecondaryPasswordVerified)
+                    {
+                        BeginSecondaryPasswordEntry();
+                    }
+                }
+                else
+                {
+                    _mesoEntryText = string.Empty;
+                    _mesoEntryReplaceOnDigit = true;
+                }
+
+                UpdateButtonStates();
+                return;
+            }
+
+            if (password.Length < MinSecondaryPasswordDigits || password.Length > MaxSecondaryPasswordDigits)
+            {
+                _statusMessage = $"Storage passcodes must be {MinSecondaryPasswordDigits}-{MaxSecondaryPasswordDigits} digits.";
                 UpdateButtonStates();
                 return;
             }
@@ -1416,6 +1530,41 @@ namespace HaCreator.MapSimulator.UI
             }
 
             UpdateButtonStates();
+        }
+
+        private static bool IsMesoTransferMode(MesoEntryMode mode)
+        {
+            return mode is MesoEntryMode.Withdraw or MesoEntryMode.Deposit;
+        }
+
+        private static bool IsNumericEntryMode(MesoEntryMode mode)
+        {
+            return mode is MesoEntryMode.Withdraw
+                or MesoEntryMode.Deposit
+                or MesoEntryMode.SetupSecondaryPassword
+                or MesoEntryMode.ConfirmSecondaryPassword
+                or MesoEntryMode.VerifySecondaryPassword;
+        }
+
+        private static int GetEntryMaxLength(MesoEntryMode mode)
+        {
+            return mode switch
+            {
+                MesoEntryMode.Withdraw or MesoEntryMode.Deposit => MaxMesoDigits,
+                MesoEntryMode.SetupSecondaryPassword or MesoEntryMode.ConfirmSecondaryPassword or MesoEntryMode.VerifySecondaryPassword => MaxSecondaryPasswordDigits,
+                MesoEntryMode.VerifyAccountPic or MesoEntryMode.VerifyAccountSecondaryPassword => MaxAccountSecurityLength,
+                _ => MaxMesoDigits
+            };
+        }
+
+        private static char? ResolveEntryCharacter(MesoEntryMode mode, Keys key, bool shift)
+        {
+            if (IsNumericEntryMode(mode))
+            {
+                return KeyToDigit(key);
+            }
+
+            return KeyboardTextInputHelper.KeyToChar(key, shift);
         }
 
         private static char? KeyToDigit(Keys key)

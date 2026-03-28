@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using HaCreator.MapSimulator.Character.Skills;
 using HaCreator.MapSimulator.Loaders;
+using HaCreator.MapSimulator.UI;
 using HaSharedLibrary.Render.DX;
 using HaSharedLibrary.Util;
 using MapleLib.WzLib;
@@ -313,13 +314,15 @@ namespace HaCreator.MapSimulator.Pools
 
         private ActiveAffectedArea BuildAreaBuffItemArea(AffectedAreaCreateInfo createInfo, int currentTime)
         {
-            SkillAnimation animation = LoadAreaBuffItemFogAnimation(createInfo.SkillId);
+            WzSubProperty itemProperty = LoadItemProperty(createInfo.SkillId);
+            SkillAnimation animation = LoadAreaBuffItemFogAnimation(createInfo.SkillId, itemProperty);
             if (animation == null)
             {
                 return null;
             }
 
             int startTime = ResolveStartTime(currentTime, createInfo.StartDelayUnits);
+            int expireTime = ResolveAreaBuffItemExpireTime(startTime, itemProperty, createInfo.SkillId);
             return new ActiveAffectedArea
             {
                 ObjectId = createInfo.ObjectId,
@@ -330,7 +333,7 @@ namespace HaCreator.MapSimulator.Pools
                 Phase = createInfo.Phase,
                 ElementAttribute = createInfo.ElementAttribute,
                 StartTime = startTime,
-                ExpireTime = 0,
+                ExpireTime = expireTime,
                 NextGameplayTickTime = startTime,
                 WorldBounds = createInfo.WorldBounds,
                 ZoneType = "fog",
@@ -367,6 +370,28 @@ namespace HaCreator.MapSimulator.Pools
         private static int ResolveExpireTime(int currentTime, int durationSeconds)
         {
             return durationSeconds > 0 ? currentTime + (durationSeconds * 1000) : 0;
+        }
+
+        private static int ResolveAreaBuffItemExpireTime(int startTime, WzSubProperty itemProperty, int itemId)
+        {
+            int durationMs = ResolveAreaBuffItemDurationMs(itemProperty, itemId);
+            return durationMs > 0 ? startTime + durationMs : 0;
+        }
+
+        internal static int ResolveAreaBuffItemDurationMs(WzSubProperty itemProperty, int itemId)
+        {
+            if (itemProperty == null || itemId <= 0)
+            {
+                return 0;
+            }
+
+            WzSubProperty infoProperty = itemProperty["info"] as WzSubProperty;
+            int durationSeconds = Math.Max(
+                0,
+                GetInt(infoProperty, "time",
+                    GetInt(itemProperty["spec"] as WzSubProperty, "time",
+                        GetInt(itemProperty, "time"))));
+            return durationSeconds > 0 ? durationSeconds * 1000 : 0;
         }
 
         private static int ResolveStartTime(int currentTime, short startDelayUnits)
@@ -445,7 +470,7 @@ namespace HaCreator.MapSimulator.Pools
             }
         }
 
-        private SkillAnimation LoadAreaBuffItemFogAnimation(int itemId)
+        private SkillAnimation LoadAreaBuffItemFogAnimation(int itemId, WzSubProperty itemProperty = null)
         {
             if (itemId <= 0 || _graphicsDevice == null)
             {
@@ -457,7 +482,7 @@ namespace HaCreator.MapSimulator.Pools
                 return cachedAnimation;
             }
 
-            WzSubProperty itemProperty = LoadItemProperty(itemId);
+            itemProperty ??= LoadItemProperty(itemId);
             WzImageProperty fogNode = (itemProperty?["effect"] as WzSubProperty)?["darkFog"];
             SkillAnimation animation = LoadCanvasAnimation(fogNode);
             if (animation == null)
@@ -472,20 +497,20 @@ namespace HaCreator.MapSimulator.Pools
 
         private static WzSubProperty LoadItemProperty(int itemId)
         {
-            string folderName = InventoryItemFolderResolver.ResolveItemFolderName(itemId);
-            if (string.IsNullOrWhiteSpace(folderName))
+            if (!InventoryItemMetadataResolver.TryResolveImageSource(itemId, out string category, out string imagePath))
             {
                 return null;
             }
 
-            WzImage itemImage = global::HaCreator.Program.FindImage("Item", $"{folderName}/{itemId / 10000:D4}.img");
+            WzImage itemImage = global::HaCreator.Program.FindImage(category, imagePath);
             if (itemImage == null)
             {
                 return null;
             }
 
             itemImage.ParseImage();
-            return itemImage[itemId.ToString("D7")] as WzSubProperty;
+            string itemNodeName = category == "Character" ? itemId.ToString("D8") : itemId.ToString("D7");
+            return itemImage[itemNodeName] as WzSubProperty;
         }
 
         private SkillAnimation LoadCanvasAnimation(WzImageProperty node)
@@ -582,21 +607,6 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             return screenX + frame.Origin.X - frame.Bounds.Width;
-        }
-    }
-
-    internal static class InventoryItemFolderResolver
-    {
-        public static string ResolveItemFolderName(int itemId)
-        {
-            return (itemId / 1000000) switch
-            {
-                2 => "Consume",
-                3 => "Install",
-                4 => "Etc",
-                5 => "Cash",
-                _ => null
-            };
         }
     }
 }

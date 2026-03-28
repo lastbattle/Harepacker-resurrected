@@ -26,6 +26,9 @@ namespace HaCreator.MapSimulator.Managers
             public int SlotCount { get; set; } = 3;
             public int BuyCharacterCount { get; set; }
             public int NextCharacterId { get; set; } = 1;
+            public string PicCode { get; set; }
+            public bool IsSecondaryPasswordEnabled { get; set; }
+            public string SecondaryPassword { get; set; }
             public List<LoginCharacterAccountEntryState> Entries { get; set; } = new();
         }
 
@@ -37,6 +40,9 @@ namespace HaCreator.MapSimulator.Managers
             public int SlotCount { get; init; } = 3;
             public int BuyCharacterCount { get; init; }
             public int NextCharacterId { get; init; } = 1;
+            public string PicCode { get; init; } = string.Empty;
+            public bool IsSecondaryPasswordEnabled { get; init; }
+            public string SecondaryPassword { get; init; } = string.Empty;
             public IReadOnlyList<LoginCharacterAccountEntryState> Entries { get; init; } = Array.Empty<LoginCharacterAccountEntryState>();
         }
 
@@ -139,6 +145,9 @@ namespace HaCreator.MapSimulator.Managers
                 SlotCount = Math.Max(0, persisted.SlotCount),
                 BuyCharacterCount = Math.Max(0, persisted.BuyCharacterCount),
                 NextCharacterId = nextCharacterId,
+                PicCode = NormalizeSecret(persisted.PicCode),
+                IsSecondaryPasswordEnabled = persisted.IsSecondaryPasswordEnabled,
+                SecondaryPassword = NormalizeSecret(persisted.SecondaryPassword),
                 Entries = entries
             };
         }
@@ -150,6 +159,9 @@ namespace HaCreator.MapSimulator.Managers
             int buyCharacterCount,
             int nextCharacterId,
             IEnumerable<LoginCharacterAccountEntryState> entries,
+            string picCode = null,
+            bool isSecondaryPasswordEnabled = false,
+            string secondaryPassword = null,
             int? accountId = null)
         {
             string normalizedAccountName = string.IsNullOrWhiteSpace(accountName) ? "explorergm" : accountName.Trim();
@@ -170,6 +182,9 @@ namespace HaCreator.MapSimulator.Managers
                 SlotCount = Math.Max(0, slotCount),
                 BuyCharacterCount = Math.Max(0, buyCharacterCount),
                 NextCharacterId = normalizedNextCharacterId,
+                PicCode = NormalizeSecret(picCode),
+                IsSecondaryPasswordEnabled = isSecondaryPasswordEnabled,
+                SecondaryPassword = NormalizeSecret(secondaryPassword),
                 Entries = normalizedEntries
             };
             _accountsByKey[ResolveAccountKey(normalizedAccountName, worldId, accountId)] = persistedState;
@@ -293,6 +308,11 @@ namespace HaCreator.MapSimulator.Managers
             };
         }
 
+        private static string NormalizeSecret(string value)
+        {
+            return string.IsNullOrWhiteSpace(value) ? string.Empty : value.Trim();
+        }
+
         private static PersistedAccountState ClonePersistedState(PersistedAccountState state)
         {
             return new PersistedAccountState
@@ -303,6 +323,9 @@ namespace HaCreator.MapSimulator.Managers
                 SlotCount = state?.SlotCount ?? 3,
                 BuyCharacterCount = state?.BuyCharacterCount ?? 0,
                 NextCharacterId = state?.NextCharacterId ?? 1,
+                PicCode = NormalizeSecret(state?.PicCode),
+                IsSecondaryPasswordEnabled = state?.IsSecondaryPasswordEnabled ?? false,
+                SecondaryPassword = NormalizeSecret(state?.SecondaryPassword),
                 Entries = state?.Entries?
                     .Where(entry => entry != null)
                     .Select(CloneEntryState)

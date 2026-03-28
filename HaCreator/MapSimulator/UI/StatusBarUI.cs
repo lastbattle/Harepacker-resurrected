@@ -172,8 +172,12 @@ namespace HaCreator.MapSimulator.UI {
         private static readonly Vector2 JOB_TEXT_POS = new Vector2(74, 5);
         private static readonly Vector2 NAME_TEXT_POS = new Vector2(74, 17);
         private const float JOB_TEXT_SCALE = 0.75f;
+        private const float NAME_TEXT_SCALE = 0.8f;
         private const float JOB_TEXT_MAX_WIDTH = 92f;
+        private const float DEFAULT_NAME_TEXT_MAX_WIDTH = 140f;
         private static readonly Color JOB_TEXT_COLOR = new Color(132, 182, 104);
+        private static readonly Color NAME_TEXT_COLOR = new Color(255, 255, 255, 248);
+        private static readonly Color NAME_TEXT_SHADOW_COLOR = new Color(0, 0, 0, 208);
 
         // gaugeBackgrd area - HP/MP/EXP text and gauges
         // lvBacktrnd is ~64px wide, so gauge area starts at X~64
@@ -209,6 +213,8 @@ namespace HaCreator.MapSimulator.UI {
         private Vector2 _hpTextPos = HP_TEXT_POS;
         private Vector2 _mpTextPos = MP_TEXT_POS;
         private Vector2 _expTextPos = EXP_TEXT_POS;
+        private float _jobTextMaxWidth = JOB_TEXT_MAX_WIDTH;
+        private float _nameTextMaxWidth = DEFAULT_NAME_TEXT_MAX_WIDTH;
         private const int BUFF_ICON_SIZE = 32;
         private const int BUFF_ICON_SPACING = 2;
         private const int BUFF_TRAY_COLUMNS = 10;
@@ -336,6 +342,14 @@ namespace HaCreator.MapSimulator.UI {
         public void SetLeftLayoutMetric(Point leftBaseOffset)
         {
             _statusBarLeftBaseOffset = leftBaseOffset;
+        }
+
+        public void SetLeftClusterWidth(int leftClusterWidth)
+        {
+            float availableJobWidth = Math.Max(1f, leftClusterWidth - JOB_TEXT_POS.X - 4f);
+            float availableNameWidth = Math.Max(1f, leftClusterWidth - NAME_TEXT_POS.X - 4f);
+            _jobTextMaxWidth = Math.Min(JOB_TEXT_MAX_WIDTH, availableJobWidth);
+            _nameTextMaxWidth = availableNameWidth;
         }
 
         public Action<int> BuffCancelRequested { get; set; }
@@ -648,7 +662,13 @@ namespace HaCreator.MapSimulator.UI {
 
             // Character name - drawn with shadow effect (from IDA: multiple positions for shadow)
             Vector2 namePos = SnapToPixel(basePosLeft + NAME_TEXT_POS);
-            DrawDiagonalShadowText(sprite, stats.Name, namePos, Color.White, Color.Black, 0.8f);
+            DrawDiagonalShadowText(
+                sprite,
+                FormatStatusBarNameLabel(stats.Name),
+                namePos,
+                NAME_TEXT_COLOR,
+                NAME_TEXT_SHADOW_COLOR,
+                NAME_TEXT_SCALE);
 
             // Draw gauge text section (HP/MP/EXP area) - use basePosGauge
             // HP text - format from client: [HP/MaxHP]
@@ -1143,7 +1163,7 @@ namespace HaCreator.MapSimulator.UI {
                 SanitizeTooltipText(cooldownEntry.SkillName),
                 cooldownEntry.RemainingMs > 0
                     ? $"Cooldown: {Math.Max(1, (int)Math.Ceiling(cooldownEntry.RemainingMs / 1000f))} sec"
-                    : "Cooldown: --",
+                    : "Cooldown: Ready",
                 string.Empty,
                 SanitizeTooltipText(cooldownEntry.Description),
                 cooldownEntry.IconTexture);
@@ -1635,9 +1655,29 @@ namespace HaCreator.MapSimulator.UI {
                 .Replace("\t", " ");
         }
 
+        private static string SanitizeStatusBarText(string text)
+        {
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                return string.Empty;
+            }
+
+            return string.Join(" ",
+                text
+                    .Replace("\r", " ")
+                    .Replace("\n", " ")
+                    .Replace("\t", " ")
+                    .Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries));
+        }
+
         private string FormatStatusBarJobLabel(string jobName)
         {
-            string resolvedName = string.IsNullOrWhiteSpace(jobName) ? "Beginner" : jobName.Trim();
+            string resolvedName = SanitizeStatusBarText(jobName);
+            if (string.IsNullOrWhiteSpace(resolvedName))
+            {
+                resolvedName = "Beginner";
+            }
+
             int openParen = resolvedName.IndexOf('(');
             int closeParen = resolvedName.IndexOf(')', openParen + 1);
             if (openParen >= 0 && closeParen > openParen + 1)
@@ -1645,7 +1685,18 @@ namespace HaCreator.MapSimulator.UI {
                 resolvedName = resolvedName.Substring(openParen + 1, closeParen - openParen - 1).Trim();
             }
 
-            return FitTextToWidth(resolvedName, JOB_TEXT_MAX_WIDTH, JOB_TEXT_SCALE);
+            return FitTextToWidth(resolvedName, _jobTextMaxWidth, JOB_TEXT_SCALE);
+        }
+
+        private string FormatStatusBarNameLabel(string name)
+        {
+            string resolvedName = SanitizeStatusBarText(name);
+            if (string.IsNullOrWhiteSpace(resolvedName))
+            {
+                resolvedName = "Player";
+            }
+
+            return FitTextToWidth(resolvedName, _nameTextMaxWidth, NAME_TEXT_SCALE);
         }
 
         private string FitTextToWidth(string text, float maxWidth, float scale)

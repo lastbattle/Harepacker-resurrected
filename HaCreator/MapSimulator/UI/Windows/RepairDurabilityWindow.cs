@@ -1,4 +1,5 @@
 using HaCreator.MapSimulator.Character;
+using HaCreator.MapSimulator.Entities;
 using HaSharedLibrary.Render;
 using HaSharedLibrary.Render.DX;
 using Microsoft.Xna.Framework;
@@ -57,8 +58,10 @@ namespace HaCreator.MapSimulator.UI
         private const int RepairFeeLabelY = 83;
         private const int RepairFeeValueRight = 200;
         private const int RepairFeeValueY = 83;
-        private const int NpcNameX = 14;
-        private const int NpcNameY = 54;
+        private const int NpcNameX = 72;
+        private const int NpcNameY = 53;
+        private const int NpcPreviewX = 41;
+        private const int NpcPreviewY = 104;
         private const int StatusTextX = 14;
         private const int StatusTextY = 303;
         private const int ScrollBarX = 212;
@@ -77,6 +80,7 @@ namespace HaCreator.MapSimulator.UI
         private readonly Texture2D _pixel;
 
         private SpriteFont _font;
+        private NpcItem _npcPreview;
         private UIObject _repairAllButton;
         private UIObject _repairButton;
         private IInventoryRuntime _inventory;
@@ -86,6 +90,7 @@ namespace HaCreator.MapSimulator.UI
         private int _lastNpcTemplateId;
         private string _npcName = string.Empty;
         private string _statusMessage = "Select an item to preview repair cost.";
+        private bool _awaitingRepairResponse;
 
         internal event Action<RepairEntry> RepairRequested;
         internal event Action<IReadOnlyList<RepairEntry>> RepairAllRequested;
@@ -106,7 +111,9 @@ namespace HaCreator.MapSimulator.UI
         }
 
         public override string WindowName => MapSimulatorWindowNames.RepairDurability;
+        public override CharacterBuild CharacterBuild { get; set; }
         public int NpcTemplateId => _lastNpcTemplateId;
+        public bool HasNpcPreview => _npcPreview != null;
 
         public override void Show()
         {
@@ -167,9 +174,25 @@ namespace HaCreator.MapSimulator.UI
             _npcName = npcName ?? string.Empty;
         }
 
+        public void SetNpcPreview(NpcItem npcPreview)
+        {
+            _npcPreview = npcPreview;
+            if (_npcPreview != null)
+            {
+                _npcPreview.MovementEnabled = false;
+                _npcPreview.SetRenderPositionOverride(Position.X + NpcPreviewX, Position.Y + NpcPreviewY);
+            }
+        }
+
         public void SetStatusMessage(string statusMessage)
         {
             _statusMessage = statusMessage ?? string.Empty;
+        }
+
+        public void SetAwaitingRepairResponse(bool awaitingRepairResponse)
+        {
+            _awaitingRepairResponse = awaitingRepairResponse;
+            UpdateButtonStates();
         }
 
         public void SetEntries(IReadOnlyList<RepairEntry> entries, int preferredItemId = 0)
@@ -201,6 +224,8 @@ namespace HaCreator.MapSimulator.UI
         public override void Update(GameTime gameTime)
         {
             base.Update(gameTime);
+            _npcPreview?.SetRenderPositionOverride(Position.X + NpcPreviewX, Position.Y + NpcPreviewY);
+            _npcPreview?.Update((int)Math.Round(gameTime.ElapsedGameTime.TotalMilliseconds));
             UpdateButtonStates();
         }
 
@@ -277,6 +302,7 @@ namespace HaCreator.MapSimulator.UI
             }
 
             DrawNpcName(sprite);
+            DrawNpcPreview(sprite, skeletonMeshRenderer, gameTime, drawReflectionInfo, renderParameters, TickCount);
             DrawRepairFee(sprite);
             DrawRows(sprite, skeletonMeshRenderer, gameTime, drawReflectionInfo);
             DrawStatus(sprite);
@@ -285,12 +311,21 @@ namespace HaCreator.MapSimulator.UI
 
         private void DrawNpcName(SpriteBatch sprite)
         {
-            string npcLabel = _lastNpcTemplateId > 0
-                ? $"{(string.IsNullOrWhiteSpace(_npcName) ? "NPC" : _npcName)}  #{_lastNpcTemplateId}"
-                : string.IsNullOrWhiteSpace(_npcName)
-                    ? "Repair NPC unavailable"
-                    : _npcName;
+            string npcLabel = string.IsNullOrWhiteSpace(_npcName)
+                ? _lastNpcTemplateId > 0 ? $"NPC #{_lastNpcTemplateId}" : "Repair NPC unavailable"
+                : _npcName;
             DrawOutlinedText(sprite, npcLabel, new Vector2(Position.X + NpcNameX, Position.Y + NpcNameY), new Color(89, 66, 32), SecondaryTextScale);
+        }
+
+        private void DrawNpcPreview(
+            SpriteBatch sprite,
+            SkeletonMeshRenderer skeletonMeshRenderer,
+            GameTime gameTime,
+            ReflectionDrawableBoundary drawReflectionInfo,
+            RenderParameters renderParameters,
+            int tickCount)
+        {
+            _npcPreview?.Draw(sprite, skeletonMeshRenderer, gameTime, 0, 0, 0, 0, drawReflectionInfo, renderParameters, tickCount);
         }
 
         private void DrawRepairFee(SpriteBatch sprite)
@@ -389,9 +424,15 @@ namespace HaCreator.MapSimulator.UI
         {
             RepairEntry selectedEntry = GetSelectedEntry();
             long mesoCount = _inventory?.GetMesoCount() ?? 0;
-            bool canRepairSelected = selectedEntry != null && selectedEntry.RepairCost > 0 && mesoCount >= selectedEntry.RepairCost;
+            bool canRepairSelected = !_awaitingRepairResponse
+                && selectedEntry != null
+                && selectedEntry.RepairCost > 0
+                && mesoCount >= selectedEntry.RepairCost;
             int repairAllCost = _entries.Sum(entry => Math.Max(0, entry.RepairCost));
-            bool canRepairAll = _entries.Count > 0 && repairAllCost > 0 && mesoCount >= repairAllCost;
+            bool canRepairAll = !_awaitingRepairResponse
+                && _entries.Count > 0
+                && repairAllCost > 0
+                && mesoCount >= repairAllCost;
 
             _repairButton?.SetEnabled(canRepairSelected);
             _repairAllButton?.SetEnabled(canRepairAll);

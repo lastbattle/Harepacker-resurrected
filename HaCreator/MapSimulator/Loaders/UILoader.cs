@@ -55,16 +55,22 @@ namespace HaCreator.MapSimulator.Loaders
                 WzSubProperty mainBarProperties = (uiStatusBar2?["mainBar"] as WzSubProperty);
                 if (mainBarProperties != null)
                 {
-                    System.Drawing.Bitmap backgrnd = ((WzCanvasProperty)mainBarProperties?["backgrnd"])?.GetLinkedWzCanvasBitmap();
+                    WzCanvasProperty backgrndCanvas = mainBarProperties?["backgrnd"] as WzCanvasProperty;
+                    WzCanvasProperty lvBacktrndCanvas = mainBarProperties?["lvBacktrnd"] as WzCanvasProperty;
+                    WzCanvasProperty lvCoverCanvas = mainBarProperties?["lvCover"] as WzCanvasProperty;
+                    WzCanvasProperty gaugeBackgrdCanvas = mainBarProperties?["gaugeBackgrd"] as WzCanvasProperty;
+                    WzCanvasProperty gaugeCoverCanvas = mainBarProperties?["gaugeCover"] as WzCanvasProperty;
+
+                    System.Drawing.Bitmap backgrnd = backgrndCanvas?.GetLinkedWzCanvasBitmap();
 
                     const int UI_PADDING_PX = 2;
 
-                    System.Drawing.Bitmap bitmap_lvBacktrnd = ((WzCanvasProperty)mainBarProperties?["lvBacktrnd"])?.GetLinkedWzCanvasBitmap();
-                    System.Drawing.Bitmap bitmap_lvCover = ((WzCanvasProperty)mainBarProperties?["lvCover"])?.GetLinkedWzCanvasBitmap();
+                    System.Drawing.Bitmap bitmap_lvBacktrnd = lvBacktrndCanvas?.GetLinkedWzCanvasBitmap();
+                    System.Drawing.Bitmap bitmap_lvCover = lvCoverCanvas?.GetLinkedWzCanvasBitmap();
 
                     // Draw HP, MP, EXP area
-                    System.Drawing.Bitmap bitmap_gaugeBackgrd = ((WzCanvasProperty)mainBarProperties?["gaugeBackgrd"])?.GetLinkedWzCanvasBitmap();
-                    System.Drawing.Bitmap bitmap_gaugeCover = ((WzCanvasProperty)mainBarProperties?["gaugeCover"])?.GetLinkedWzCanvasBitmap();
+                    System.Drawing.Bitmap bitmap_gaugeBackgrd = gaugeBackgrdCanvas?.GetLinkedWzCanvasBitmap();
+                    System.Drawing.Bitmap bitmap_gaugeCover = gaugeCoverCanvas?.GetLinkedWzCanvasBitmap();
                     System.Drawing.Bitmap composedMainBar = ComposeBigBangStatusBarFrame(
                         mainBarProperties,
                         backgrnd,
@@ -383,10 +389,17 @@ namespace HaCreator.MapSimulator.Loaders
                         new Point(dxObj_backgrnd.X, dxObj_backgrnd.Y),
                         new List<UIObject> { });
                     statusBar.InitializeButtons();
-                    Point mainBarFrameOrigin = GetCanvasOrigin(mainBarProperties?["backgrnd"] as WzCanvasProperty);
+                    Point mainBarFrameOrigin = GetCanvasOrigin(backgrndCanvas);
+                    Point leftBaseOffset = ResolveCanvasPosition(mainBarFrameOrigin, lvBacktrndCanvas);
+                    Point gaugeBaseOffset = ResolveCanvasPosition(mainBarFrameOrigin, gaugeBackgrdCanvas);
                     statusBar.SetLayoutMetrics(
-                        ResolveCanvasPosition(mainBarFrameOrigin, mainBarProperties?["lvBacktrnd"] as WzCanvasProperty),
-                        ResolveCanvasPosition(mainBarFrameOrigin, mainBarProperties?["gaugeBackgrd"] as WzCanvasProperty));
+                        leftBaseOffset,
+                        gaugeBaseOffset);
+                    statusBar.SetLeftClusterWidth(ResolveBigBangStatusBarClusterWidth(
+                        mainBarFrameOrigin,
+                        leftBaseOffset,
+                        (lvBacktrndCanvas, bitmap_lvBacktrnd),
+                        (lvCoverCanvas, bitmap_lvCover)));
                     statusBar.SetGaugeTextAnchors(
                         new Vector2(163, 4),
                         new Vector2(332, 4),
@@ -985,6 +998,28 @@ namespace HaCreator.MapSimulator.Loaders
             }
 
             return GetCanvasOrigin(chatSpaceCanvas);
+        }
+
+        private static int ResolveBigBangStatusBarClusterWidth(
+            Point frameOrigin,
+            Point clusterBaseOffset,
+            params (WzCanvasProperty Canvas, System.Drawing.Bitmap Bitmap)[] layers)
+        {
+            int maxWidth = 0;
+
+            foreach ((WzCanvasProperty Canvas, System.Drawing.Bitmap Bitmap) layer in layers)
+            {
+                if (layer.Canvas == null || layer.Bitmap == null)
+                {
+                    continue;
+                }
+
+                Point layerOffset = ResolveCanvasPosition(frameOrigin, layer.Canvas);
+                int relativeRight = (layerOffset.X - clusterBaseOffset.X) + layer.Bitmap.Width;
+                maxWidth = Math.Max(maxWidth, relativeRight);
+            }
+
+            return maxWidth;
         }
 
         private static System.Drawing.Bitmap ComposeBigBangStatusBarChatFrame(

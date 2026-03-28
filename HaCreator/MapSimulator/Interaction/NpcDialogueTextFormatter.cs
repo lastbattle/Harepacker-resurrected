@@ -32,6 +32,7 @@ namespace HaCreator.MapSimulator.Interaction
         private static readonly Regex ItemNameAliasRegex = new(@"#z(\d+):?#", RegexOptions.Compiled);
         private static readonly Regex ItemIconRegex = new(@"#(?:i|v)\d+:?#", RegexOptions.Compiled | RegexOptions.IgnoreCase);
         private static readonly Regex RewardCategoryRegex = new(@"#W[^#\s]*#", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+        private static readonly Regex PluralSuffixRegex = new(@"#s(?!\d)", RegexOptions.Compiled | RegexOptions.IgnoreCase);
         private static readonly Regex PlayerNameRegex = new(@"#h\d*#", RegexOptions.Compiled);
         private static readonly Regex StyleTagRegex = new(@"#(?:[bkrgdenmc])", RegexOptions.Compiled | RegexOptions.IgnoreCase);
         private static readonly Regex ClientPromptTagRegex = new(@"#(?:E|I)", RegexOptions.Compiled);
@@ -66,6 +67,7 @@ namespace HaCreator.MapSimulator.Interaction
             formatted = QuestValueRegex.Replace(formatted, static match => ResolveQuestValueText(match.Groups[1].Value));
             formatted = StyleTagRegex.Replace(formatted, string.Empty);
             formatted = ClientPromptTagRegex.Replace(formatted, string.Empty);
+            formatted = PluralSuffixRegex.Replace(formatted, "s");
 
             var builder = new StringBuilder(formatted.Length);
             bool previousWasSpace = false;

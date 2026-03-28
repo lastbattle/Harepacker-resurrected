@@ -145,6 +145,11 @@ namespace HaCreator.MapSimulator
         {
             SkillData skill = _playerManager?.SkillLoader?.LoadSkill(area.SkillId);
             SkillLevelData levelData = ResolveRemoteAffectedAreaSkillLevel(skill, area.SkillLevel);
+            if (skill == null || levelData == null)
+            {
+                return;
+            }
+
             if (TryApplyRemotePlayerSupportAffectedAreaGameplay(area, skill, levelData, currentTime))
             {
                 return;
@@ -155,16 +160,18 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
-            if (!TryResolveRemotePlayerAffectedAreaStatus(skill, levelData, out MobStatusEffect effect, out int durationMs, out int value))
-            {
-                return;
-            }
-
             if (!_affectedAreaPool.TryBeginGameplayTick(area, currentTime, RemoteAffectedAreaFallbackTickMs))
             {
                 return;
             }
 
+            SkillManager skillManager = _playerManager?.Skills;
+            if (skillManager == null)
+            {
+                return;
+            }
+
+            int fallbackDamage = ResolveRemoteAffectedAreaFallbackDamage(skill, levelData);
             foreach (MobItem mob in _mobPool.ActiveMobs)
             {
                 if (mob?.AI == null || mob.AI.IsDead || !area.Contains(mob.CurrentX, mob.CurrentY))
@@ -172,7 +179,7 @@ namespace HaCreator.MapSimulator
                     continue;
                 }
 
-                mob.AI.ApplyStatusEffect(effect, durationMs, currentTime, value, RemoteAffectedAreaFallbackTickMs, sourceSkillId: skill.SkillId);
+                skillManager.ApplyInferredMobStatusesFromSkill(skill, levelData, mob.AI, currentTime, fallbackDamage);
             }
         }
 
@@ -257,86 +264,19 @@ namespace HaCreator.MapSimulator
             return null;
         }
 
-        private static bool TryResolveRemotePlayerAffectedAreaStatus(
-            SkillData skill,
-            SkillLevelData levelData,
-            out MobStatusEffect effect,
-            out int durationMs,
-            out int value)
+        private static int ResolveRemoteAffectedAreaFallbackDamage(SkillData skill, SkillLevelData levelData)
         {
-            effect = MobStatusEffect.None;
-            durationMs = 0;
-            value = 0;
-
-            if (skill == null || levelData == null)
+            if (levelData == null)
             {
-                return false;
-            }
-
-            string searchText = BuildRemoteAffectedAreaSkillSearchText(skill);
-            durationMs = Math.Max(1000, levelData.Time > 0 ? levelData.Time * 1000 : 10000);
-
-            if (searchText.Contains("venom", StringComparison.OrdinalIgnoreCase))
-            {
-                effect = MobStatusEffect.Venom;
-                value = ResolveRemoteAffectedAreaDotValue(skill, levelData, 3);
-                return true;
-            }
-
-            if (searchText.Contains("poison", StringComparison.OrdinalIgnoreCase)
-                || skill.Element == SkillElement.Poison
-                || string.Equals(skill.DotType, "poison", StringComparison.OrdinalIgnoreCase))
-            {
-                effect = MobStatusEffect.Poison;
-                value = ResolveRemoteAffectedAreaDotValue(skill, levelData, 4);
-                return true;
-            }
-
-            if (searchText.Contains("burn", StringComparison.OrdinalIgnoreCase)
-                || searchText.Contains("flame", StringComparison.OrdinalIgnoreCase)
-                || string.Equals(skill.DotType, "burn", StringComparison.OrdinalIgnoreCase))
-            {
-                effect = MobStatusEffect.Burned;
-                value = ResolveRemoteAffectedAreaDotValue(skill, levelData, 5);
-                return true;
-            }
-
-            return false;
-        }
-
-        private static int ResolveRemoteAffectedAreaDotValue(SkillData skill, SkillLevelData levelData, int fallbackDivisor)
-        {
-            int explicitValue = Math.Max(levelData.X, levelData.Y);
-            if (explicitValue > 0)
-            {
-                return explicitValue;
+                return 0;
             }
 
             int damage = Math.Max(1, levelData.Damage);
             int attackCount = Math.Max(1, levelData.AttackCount);
-            int scaledDamage = Math.Max(1, damage * attackCount / Math.Max(1, fallbackDivisor));
+            int scaledDamage = Math.Max(1, damage * attackCount);
             return skill?.IsMagicDamageSkill == true
                 ? scaledDamage
                 : Math.Max(1, scaledDamage / 2);
-        }
-
-        private static string BuildRemoteAffectedAreaSkillSearchText(SkillData skill)
-        {
-            if (skill == null)
-            {
-                return string.Empty;
-            }
-
-            return string.Join(
-                " ",
-                new[]
-                {
-                    skill.Name,
-                    skill.Description,
-                    skill.DebuffMessageToken,
-                    skill.DotType,
-                    skill.ZoneType
-                }.Where(static value => !string.IsNullOrWhiteSpace(value)));
         }
 
         private bool IsRemoteAffectedAreaProtectionActive(int currentTime)

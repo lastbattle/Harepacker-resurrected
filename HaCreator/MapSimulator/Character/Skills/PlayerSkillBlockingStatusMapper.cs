@@ -5,7 +5,8 @@ namespace HaCreator.MapSimulator.Character.Skills
         Stun,
         Freeze,
         Seal,
-        Attract
+        Attract,
+        Polymorph
     }
 
     public static class PlayerSkillBlockingStatusMapper
@@ -26,6 +27,10 @@ namespace HaCreator.MapSimulator.Character.Skills
                 case 128:
                     status = PlayerSkillBlockingStatus.Attract;
                     return true;
+                case 172:
+                case 173:
+                    status = PlayerSkillBlockingStatus.Polymorph;
+                    return true;
                 default:
                     status = default;
                     return false;
@@ -40,6 +45,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 PlayerSkillBlockingStatus.Freeze => "Skills cannot be used while frozen.",
                 PlayerSkillBlockingStatus.Seal => "Skills cannot be used while sealed.",
                 PlayerSkillBlockingStatus.Attract => "Skills cannot be used while seduced.",
+                PlayerSkillBlockingStatus.Polymorph => "Skills cannot be used while polymorphed.",
                 _ => null
             };
         }

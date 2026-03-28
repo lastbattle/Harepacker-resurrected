@@ -12,22 +12,48 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Rectangle = Microsoft.Xna.Framework.Rectangle;
+using MapleLib.WzLib.WzStructure.Data;
 
 namespace HaCreator.MapSimulator.Entities
 {
+    internal readonly struct ReactorTransitionRequest
+    {
+        public ReactorTransitionRequest(
+            ReactorActivationType activationType,
+            ReactorType reactorType = ReactorType.UNKNOWN,
+            int activationValue = 0)
+        {
+            ActivationType = activationType;
+            ReactorType = reactorType;
+            ActivationValue = activationValue;
+        }
+
+        public ReactorActivationType ActivationType { get; }
+
+        public ReactorType ReactorType { get; }
+
+        public int ActivationValue { get; }
+    }
+
     public class ReactorItem : BaseDXDrawableItem
     {
         private readonly struct AuthoredStateTransition
         {
-            public AuthoredStateTransition(int eventType, int targetState)
+            public AuthoredStateTransition(int eventType, int targetState, int? selectorValue, int order)
             {
                 EventType = eventType;
                 TargetState = targetState;
+                SelectorValue = selectorValue;
+                Order = order;
             }
 
             public int EventType { get; }
 
             public int TargetState { get; }
+
+            public int? SelectorValue { get; }
+
+            public int Order { get; }
         }
 
         private readonly ReactorInstance _reactorInstance;
@@ -109,9 +135,34 @@ namespace HaCreator.MapSimulator.Entities
 
         public bool TryGetNextState(int currentState, ReactorActivationType activationType, out int nextState)
         {
+            return TryGetNextState(currentState, new ReactorTransitionRequest(activationType), out nextState);
+        }
+
+        internal bool CanActivateFromState(int currentState, ReactorTransitionRequest request)
+        {
+            int resolvedState = ResolveState(currentState);
+            if (!_stateTransitions.TryGetValue(resolvedState, out AuthoredStateTransition[] transitions)
+                || transitions.Length == 0)
+            {
+                return true;
+            }
+
+            AuthoredStateTransition[] matchingTransitions = transitions
+                .Where(transition => MatchesAuthoredEventType(transition.EventType, request.ActivationType))
+                .ToArray();
+            if (matchingTransitions.Length == 0)
+            {
+                return true;
+            }
+
+            return FilterTransitionsBySelector(matchingTransitions, request).Length > 0;
+        }
+
+        internal bool TryGetNextState(int currentState, ReactorTransitionRequest request, out int nextState)
+        {
             nextState = currentState;
 
-            if (TryGetAuthoredNextState(currentState, activationType, out nextState))
+            if (TryGetAuthoredNextState(currentState, request, out nextState))
                 return true;
 
             if (_availableStates.Length == 0)
@@ -132,7 +183,7 @@ namespace HaCreator.MapSimulator.Entities
 
         public bool TryGetTimedStateTransition(int currentState, out int nextState)
         {
-            return TryGetAuthoredNextState(currentState, ReactorActivationType.Time, out nextState);
+            return TryGetAuthoredNextState(currentState, new ReactorTransitionRequest(ReactorActivationType.Time), out nextState);
         }
 
         public IReadOnlyCollection<int> GetAuthoredEventTypes()
@@ -285,7 +336,7 @@ namespace HaCreator.MapSimulator.Entities
             return _stateFrames.ContainsKey(0) ? 0 : _availableStates[0];
         }
 
-        private bool TryGetAuthoredNextState(int currentState, ReactorActivationType activationType, out int nextState)
+        private bool TryGetAuthoredNextState(int currentState, ReactorTransitionRequest request, out int nextState)
         {
             nextState = currentState;
 
@@ -296,22 +347,125 @@ namespace HaCreator.MapSimulator.Entities
                 return false;
             }
 
-            int[] candidateTargets = transitions
-                .Where(transition => MatchesAuthoredEventType(transition.EventType, activationType))
-                .Select(transition => transition.TargetState)
-                .Where(targetState => _stateFrames.ContainsKey(targetState))
-                .Distinct()
+            AuthoredStateTransition[] candidateTransitions = FilterTransitionsBySelector(
+                transitions.Where(transition => MatchesAuthoredEventType(transition.EventType, request.ActivationType)).ToArray(),
+                request)
+                .Where(transition => _stateFrames.ContainsKey(transition.TargetState))
+                .Where(transition => transition.TargetState != resolvedState)
+                .OrderBy(transition => GetEventTypePriority(transition.EventType, request))
+                .ThenBy(transition => GetSelectorPriority(transition, request))
+                .ThenBy(transition => transition.Order)
                 .ToArray();
 
-            if (candidateTargets.Length != 1)
+            if (candidateTransitions.Length == 0)
                 return false;
 
-            int targetState = candidateTargets[0];
-            if (targetState == resolvedState)
-                return false;
-
-            nextState = targetState;
+            nextState = candidateTransitions[0].TargetState;
             return true;
+        }
+
+        private static AuthoredStateTransition[] FilterTransitionsBySelector(
+            AuthoredStateTransition[] transitions,
+            ReactorTransitionRequest request)
+        {
+            if (transitions == null || transitions.Length == 0)
+            {
+                return Array.Empty<AuthoredStateTransition>();
+            }
+
+            if (request.ActivationValue <= 0
+                || (request.ActivationType != ReactorActivationType.Item
+                    && request.ActivationType != ReactorActivationType.Skill))
+            {
+                return transitions;
+            }
+
+            AuthoredStateTransition[] filteredTransitions = transitions
+                .Where(transition => !transition.SelectorValue.HasValue || transition.SelectorValue.Value == request.ActivationValue)
+                .ToArray();
+
+            return filteredTransitions.Length > 0
+                ? filteredTransitions
+                : Array.Empty<AuthoredStateTransition>();
+        }
+
+        private static int GetSelectorPriority(AuthoredStateTransition transition, ReactorTransitionRequest request)
+        {
+            if (request.ActivationValue <= 0)
+            {
+                return 0;
+            }
+
+            if (transition.SelectorValue == request.ActivationValue)
+            {
+                return 0;
+            }
+
+            return transition.SelectorValue.HasValue ? 2 : 1;
+        }
+
+        private static int GetEventTypePriority(int eventType, ReactorTransitionRequest request)
+        {
+            return request.ActivationType switch
+            {
+                ReactorActivationType.Touch => eventType switch
+                {
+                    0 => 0,
+                    6 => 1,
+                    100 => 2,
+                    _ => 3
+                },
+                ReactorActivationType.Quest => eventType switch
+                {
+                    100 => 0,
+                    6 => 1,
+                    0 => 2,
+                    _ => 3
+                },
+                ReactorActivationType.Hit => GetHitEventPriority(eventType, request.ReactorType),
+                ReactorActivationType.Time => eventType switch
+                {
+                    101 => 0,
+                    7 => 1,
+                    _ => 2
+                },
+                _ => 0
+            };
+        }
+
+        private static int GetHitEventPriority(int eventType, ReactorType reactorType)
+        {
+            return reactorType switch
+            {
+                ReactorType.ActivatedLeftHit => eventType switch
+                {
+                    1 => 0,
+                    2 => 1,
+                    8 => 2,
+                    _ => 3
+                },
+                ReactorType.ActivatedRightHit => eventType switch
+                {
+                    2 => 0,
+                    1 => 1,
+                    8 => 2,
+                    _ => 3
+                },
+                ReactorType.ActivatedByHarvesting => eventType switch
+                {
+                    8 => 0,
+                    1 => 1,
+                    2 => 2,
+                    _ => 3
+                },
+                _ => eventType switch
+                {
+                    1 => 0,
+                    2 => 1,
+                    8 => 2,
+                    _ => 3
+                }
+            };
         }
 
         private static bool MatchesAuthoredEventType(int eventType, ReactorActivationType activationType)
@@ -345,7 +499,7 @@ namespace HaCreator.MapSimulator.Entities
 
                 AuthoredStateTransition[] stateTransitions = eventProperty.WzProperties
                     .OfType<WzSubProperty>()
-                    .Select(static eventNode => TryCreateTransition(eventNode))
+                    .Select((eventNode, index) => TryCreateTransition(eventNode, index))
                     .Where(static transition => transition.HasValue)
                     .Select(static transition => transition.Value)
                     .ToArray();
@@ -359,14 +513,43 @@ namespace HaCreator.MapSimulator.Entities
             return transitions;
         }
 
-        private static AuthoredStateTransition? TryCreateTransition(WzSubProperty eventNode)
+        private static AuthoredStateTransition? TryCreateTransition(WzSubProperty eventNode, int order)
         {
             int? eventType = TryReadOptionalInt(WzInfoTools.GetRealProperty(eventNode?["type"]));
             int? targetState = TryReadOptionalInt(WzInfoTools.GetRealProperty(eventNode?["state"]));
             if (!eventType.HasValue || !targetState.HasValue)
                 return null;
 
-            return new AuthoredStateTransition(eventType.Value, targetState.Value);
+            int? selectorValue = TryReadSelectorValue(eventNode);
+            return new AuthoredStateTransition(eventType.Value, targetState.Value, selectorValue, order);
+        }
+
+        private static int? TryReadSelectorValue(WzSubProperty eventNode)
+        {
+            if (eventNode == null)
+            {
+                return null;
+            }
+
+            int? namedSelectorValue =
+                TryReadOptionalInt(WzInfoTools.GetRealProperty(eventNode["id"])) ??
+                TryReadOptionalInt(WzInfoTools.GetRealProperty(eventNode["item"])) ??
+                TryReadOptionalInt(WzInfoTools.GetRealProperty(eventNode["itemID"])) ??
+                TryReadOptionalInt(WzInfoTools.GetRealProperty(eventNode["itemid"])) ??
+                TryReadOptionalInt(WzInfoTools.GetRealProperty(eventNode["skill"])) ??
+                TryReadOptionalInt(WzInfoTools.GetRealProperty(eventNode["skillID"])) ??
+                TryReadOptionalInt(WzInfoTools.GetRealProperty(eventNode["skillid"]));
+
+            if (namedSelectorValue.HasValue)
+            {
+                return namedSelectorValue;
+            }
+
+            return eventNode.WzProperties
+                .Where(property => int.TryParse(property?.Name, out _))
+                .OrderBy(property => int.Parse(property.Name))
+                .Select(property => TryReadOptionalInt(WzInfoTools.GetRealProperty(property)))
+                .FirstOrDefault(value => value.HasValue);
         }
 
         private static int? TryReadOptionalInt(WzImageProperty property)

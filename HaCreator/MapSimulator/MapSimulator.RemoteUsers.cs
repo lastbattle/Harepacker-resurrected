@@ -542,6 +542,7 @@ namespace HaCreator.MapSimulator
                         meleePacket.CharacterId,
                         meleePacket.SkillId,
                         meleePacket.ActionName,
+                        meleePacket.ActionCode,
                         meleePacket.MasteryPercent,
                         meleePacket.ChargeSkillId,
                         meleePacket.FacingRight,

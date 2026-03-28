@@ -107,6 +107,23 @@ namespace HaCreator.MapSimulator.Interaction
         public string FallbackNpcName { get; init; } = string.Empty;
     }
 
+    internal sealed class QuestDeliveryEntrySnapshot
+    {
+        public int QuestId { get; init; }
+        public int DisplayQuestId { get; init; }
+        public int TargetNpcId { get; init; }
+        public string Title { get; init; } = string.Empty;
+        public string NpcName { get; init; } = string.Empty;
+        public string StatusText { get; init; } = string.Empty;
+        public string DetailText { get; init; } = string.Empty;
+        public bool CompletionPhase { get; init; }
+        public bool CanConfirm { get; init; }
+        public bool IsBlocked { get; init; }
+        public bool IsSeriesRepresentative { get; init; }
+        public int? DeliveryCashItemId { get; init; }
+        public string DeliveryCashItemName { get; init; } = string.Empty;
+    }
+
     internal sealed class QuestAlarmEntrySnapshot
     {
         public int QuestId { get; init; }

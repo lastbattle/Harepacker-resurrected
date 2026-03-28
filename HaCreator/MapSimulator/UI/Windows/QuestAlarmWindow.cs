@@ -112,6 +112,7 @@ namespace HaCreator.MapSimulator.UI
 
         internal event Action<int> QuestRequested;
         internal event Action<int, bool> QuestLogRequested;
+        internal event Action<string> StatusMessageRequested;
 
         internal void SetSnapshotProvider(Func<QuestAlarmSnapshot> provider)
         {
@@ -168,7 +169,7 @@ namespace HaCreator.MapSimulator.UI
 
             ConfigureButton(_autoButton, 102, 4, ToggleAutoTrack);
             ConfigureButton(_questButton, 136, 4, OpenQuestLog);
-            ConfigureButton(_maximizeButton, 150, 4, () => SetMinimized(false));
+            ConfigureButton(_maximizeButton, 150, 4, ShowMaximizedIfAvailable);
             ConfigureButton(_minimizeButton, 150, 4, () => SetMinimized(true));
 
             if (deleteButton != null)
@@ -335,13 +336,15 @@ namespace HaCreator.MapSimulator.UI
                     : entry.IsRecentlyUpdated
                         ? new Color(151, 221, 255)
                         : new Color(255, 228, 153);
-                sprite.DrawString(_font, Truncate(entry.Title, 26), new Vector2(Position.X + ClientTitleX, titleRect.Y + 1), titleColor, 0f, Vector2.Zero, TitleScale, SpriteEffects.None, 0f);
-
                 string progressText = entry.TotalProgress > 0
                     ? $"{Math.Min(entry.CurrentProgress, entry.TotalProgress)}/{entry.TotalProgress}"
                     : entry.StatusText;
                 Vector2 progressSize = _font.MeasureString(progressText) * DetailScale;
-                sprite.DrawString(_font, progressText, new Vector2(deleteRect.X - progressSize.X - 6, titleRect.Y + 3), new Color(214, 220, 229), 0f, Vector2.Zero, DetailScale, SpriteEffects.None, 0f);
+                float progressX = deleteRect.X - progressSize.X - 6;
+                float titleMaxWidth = Math.Max(28f, progressX - (Position.X + ClientTitleX) - 4f);
+                string titleText = TruncateToWidth(entry.Title, titleMaxWidth, TitleScale);
+                sprite.DrawString(_font, titleText, new Vector2(Position.X + ClientTitleX, titleRect.Y + 1), titleColor, 0f, Vector2.Zero, TitleScale, SpriteEffects.None, 0f);
+                sprite.DrawString(_font, progressText, new Vector2(progressX, titleRect.Y + 3), new Color(214, 220, 229), 0f, Vector2.Zero, DetailScale, SpriteEffects.None, 0f);
 
                 DrawInlineDelete(sprite, deleteRect, entry.QuestId);
 
@@ -398,6 +401,18 @@ namespace HaCreator.MapSimulator.UI
         {
             QuestAlarmSnapshot snapshot = GetFilteredSnapshot();
             QuestLogRequested?.Invoke(_selectedQuestId, snapshot.HasAlertAnimation);
+        }
+
+        private void ShowMaximizedIfAvailable()
+        {
+            QuestAlarmSnapshot snapshot = GetFilteredSnapshot();
+            if (snapshot.Entries.Count == 0)
+            {
+                StatusMessageRequested?.Invoke("There are no active quests registered in Quest Alarm.");
+                return;
+            }
+
+            SetMinimized(false);
         }
 
         private void SetMinimized(bool minimized)
@@ -662,9 +677,9 @@ namespace HaCreator.MapSimulator.UI
                 currentY = DrawRequirementLine(sprite, detailRect.X, detailRect.Right, currentY, line);
             }
 
-            foreach (string line in WrapText(entry.DemandText, ClientDetailWidth - 6, DetailScale))
+            foreach (QuestAlarmTextLine line in BuildDemandTextLines(entry, ClientDetailWidth - 6, DetailScale))
             {
-                sprite.DrawString(_font, line, new Vector2(detailRect.X + 2, currentY), new Color(201, 207, 221), 0f, Vector2.Zero, DetailScale, SpriteEffects.None, 0f);
+                sprite.DrawString(_font, line.Text, new Vector2(detailRect.X + 2, currentY), line.Color, 0f, Vector2.Zero, DetailScale, SpriteEffects.None, 0f);
                 currentY += ClientTitleHeight;
             }
         }
@@ -810,6 +825,7 @@ namespace HaCreator.MapSimulator.UI
             }
 
             EnsurePersistedStateLoaded();
+            string questTitle = GetFilteredSnapshot().Entries.FirstOrDefault(entry => entry.QuestId == questId)?.Title;
             _trackedQuestIds.Remove(questId);
             if (_autoTrackEnabled)
             {
@@ -824,6 +840,11 @@ namespace HaCreator.MapSimulator.UI
             ClampScrollOffset(GetFilteredSnapshot());
             UpdateButtonStates();
             SavePersistedState();
+
+            if (!string.IsNullOrWhiteSpace(questTitle))
+            {
+                StatusMessageRequested?.Invoke($"Quest Alarm removed '{questTitle}'.");
+            }
         }
 
         private void DismissAll(QuestAlarmSnapshot snapshot)
@@ -846,6 +867,8 @@ namespace HaCreator.MapSimulator.UI
             _scrollOffset = 0;
             UpdateButtonStates();
             SavePersistedState();
+            Hide();
+            StatusMessageRequested?.Invoke("Quest Alarm cleared all tracked quests.");
         }
 
         private void HandleKeyboardInput(KeyboardState keyboardState, QuestAlarmSnapshot snapshot)
@@ -873,6 +896,18 @@ namespace HaCreator.MapSimulator.UI
             if (WasPressed(keyboardState, Keys.PageDown))
             {
                 ScrollEntries(MaxVisibleEntries, snapshot);
+            }
+
+            if (WasPressed(keyboardState, Keys.Home))
+            {
+                _selectedQuestId = snapshot.Entries[0].QuestId;
+                EnsureSelectionVisible(snapshot);
+            }
+
+            if (WasPressed(keyboardState, Keys.End))
+            {
+                _selectedQuestId = snapshot.Entries[snapshot.Entries.Count - 1].QuestId;
+                EnsureSelectionVisible(snapshot);
             }
 
             if (WasPressed(keyboardState, Keys.Enter) && _selectedQuestId > 0)
@@ -944,7 +979,7 @@ namespace HaCreator.MapSimulator.UI
             rowHeight += ClientDetailPaddingTop;
             rowHeight += Math.Max(ClientTitleHeight, _progressFrameTexture?.Height ?? 13) + ClientDetailRowGap;
             rowHeight += (entry.RequirementLines?.Count ?? 0) * ClientTitleHeight;
-            rowHeight += WrapText(entry.DemandText, ClientDetailWidth - 6, DetailScale).Count() * ClientTitleHeight;
+            rowHeight += BuildDemandTextLines(entry, ClientDetailWidth - 6, DetailScale).Count() * ClientTitleHeight;
             rowHeight += ClientDetailPaddingBottom;
             return rowHeight;
         }
@@ -1024,16 +1059,6 @@ namespace HaCreator.MapSimulator.UI
             }
         }
 
-        private static string Truncate(string text, int maxChars)
-        {
-            if (string.IsNullOrEmpty(text) || text.Length <= maxChars)
-            {
-                return text ?? string.Empty;
-            }
-
-            return $"{text.Substring(0, Math.Max(0, maxChars - 3))}...";
-        }
-
         private string TruncateToWidth(string text, float maxWidth, float scale)
         {
             if (string.IsNullOrWhiteSpace(text) || _font == null || maxWidth <= 0f)
@@ -1059,6 +1084,37 @@ namespace HaCreator.MapSimulator.UI
             return ellipsis;
         }
 
+        private static string Truncate(string text, int maxChars)
+        {
+            if (string.IsNullOrEmpty(text) || text.Length <= maxChars)
+            {
+                return text ?? string.Empty;
+            }
+
+            return $"{text.Substring(0, Math.Max(0, maxChars - 3))}...";
+        }
+
+        private IEnumerable<QuestAlarmTextLine> BuildDemandTextLines(QuestAlarmEntrySnapshot entry, float maxWidth, float scale)
+        {
+            if (entry == null)
+            {
+                yield break;
+            }
+
+            foreach (string line in WrapText(entry.DemandText, maxWidth, scale))
+            {
+                yield return new QuestAlarmTextLine(line, new Color(201, 207, 221));
+            }
+
+            foreach (string issue in entry.IssueLines ?? Array.Empty<string>())
+            {
+                foreach (string line in WrapText(issue, maxWidth, scale))
+                {
+                    yield return new QuestAlarmTextLine(line, new Color(255, 210, 164));
+                }
+            }
+        }
+
         private IEnumerable<string> WrapText(string text, float maxWidth, float scale)
         {
             if (_font == null || string.IsNullOrWhiteSpace(text))
@@ -1068,7 +1124,15 @@ namespace HaCreator.MapSimulator.UI
 
             foreach (string block in text.Replace("\r", string.Empty).Split('\n'))
             {
-                string[] words = block.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
+                string trimmedBlock = block.Trim();
+                if (trimmedBlock.Length == 0)
+                {
+                    continue;
+                }
+
+                string[] words = trimmedBlock.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries)
+                    .SelectMany(word => SplitWordToWidth(word, maxWidth, scale))
+                    .ToArray();
                 if (words.Length == 0)
                 {
                     continue;
@@ -1095,6 +1159,37 @@ namespace HaCreator.MapSimulator.UI
                 }
             }
         }
+
+        private IEnumerable<string> SplitWordToWidth(string word, float maxWidth, float scale)
+        {
+            if (string.IsNullOrWhiteSpace(word) || _font == null || maxWidth <= 0f)
+            {
+                yield break;
+            }
+
+            if (_font.MeasureString(word).X * scale <= maxWidth)
+            {
+                yield return word;
+                yield break;
+            }
+
+            int index = 0;
+            while (index < word.Length)
+            {
+                int length = 1;
+                while (index + length <= word.Length &&
+                    _font.MeasureString(word.Substring(index, length)).X * scale <= maxWidth)
+                {
+                    length++;
+                }
+
+                length = Math.Max(1, length - 1);
+                yield return word.Substring(index, length);
+                index += length;
+            }
+        }
+
+        private readonly record struct QuestAlarmTextLine(string Text, Color Color);
 
         private bool WasPressed(KeyboardState keyboardState, Keys key)
         {

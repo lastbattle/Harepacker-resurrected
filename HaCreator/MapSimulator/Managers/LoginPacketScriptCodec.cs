@@ -57,13 +57,38 @@ namespace HaCreator.MapSimulator.Managers
 
             if (args == null || args.Length == 0)
             {
-                error = "Usage: /loginpacket stream <line1 | line2 | ... | payloadhex=<utf8-hex> | payloadb64=<utf8-base64>>";
+                error = "Usage: /loginpacket stream <line1 | line2 | ... | payloadhex=<utf8-or-framed-hex> | payloadb64=<utf8-or-framed-base64>>";
                 return false;
             }
 
-            if (TryDecodePayloadArgument(args, out string payloadText, out error))
+            if (TryDecodePayloadArgument(args, out string payloadText, out byte[] payloadBytes, out error))
             {
-                return TryDecode(payloadText, source, out messages, out error);
+                if (!string.IsNullOrWhiteSpace(payloadText) &&
+                    TryDecode(payloadText, source, out messages, out error))
+                {
+                    return true;
+                }
+
+                if (payloadBytes?.Length >= sizeof(ushort) &&
+                    LoginPacketInboxManager.TryDecodeOpcodeFramedPacket(
+                        payloadBytes,
+                        out LoginPacketType packetType,
+                        out string[] packetArguments))
+                {
+                    messages = new[]
+                    {
+                        new LoginPacketInboxMessage(
+                            packetType,
+                            string.IsNullOrWhiteSpace(source) ? "login-script" : source,
+                            Convert.ToHexString(payloadBytes),
+                            packetArguments)
+                    };
+                    error = null;
+                    return true;
+                }
+
+                error ??= "The login packet payload was neither a valid script transcript nor a supported opcode-framed packet capture.";
+                return false;
             }
 
             if (error != null)
@@ -90,9 +115,10 @@ namespace HaCreator.MapSimulator.Managers
             return normalized;
         }
 
-        private static bool TryDecodePayloadArgument(string[] args, out string scriptText, out string error)
+        private static bool TryDecodePayloadArgument(string[] args, out string scriptText, out byte[] payloadBytes, out string error)
         {
             scriptText = null;
+            payloadBytes = Array.Empty<byte>();
             error = null;
             if (args == null || args.Length != 1)
             {
@@ -115,6 +141,7 @@ namespace HaCreator.MapSimulator.Managers
                     return false;
                 }
 
+                payloadBytes = bytes;
                 scriptText = Encoding.UTF8.GetString(bytes);
                 return true;
             }
@@ -125,7 +152,8 @@ namespace HaCreator.MapSimulator.Managers
             {
                 try
                 {
-                    scriptText = Encoding.UTF8.GetString(Convert.FromBase64String(base64Text));
+                    payloadBytes = Convert.FromBase64String(base64Text);
+                    scriptText = Encoding.UTF8.GetString(payloadBytes);
                     return true;
                 }
                 catch (FormatException)

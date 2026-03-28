@@ -206,8 +206,13 @@ namespace HaCreator.MapSimulator.Character.Skills
         public int EnhancedMDD { get; set; }         // Mechanic-only magic defense boost
         public int EnhancedMaxHP { get; set; }       // Mechanic-only max HP boost
         public int EnhancedMaxMP { get; set; }       // Mechanic-only max MP boost
+        public int IndieMaxHP { get; set; }          // Big Bang indie max HP boost
+        public int IndieMaxMP { get; set; }          // Big Bang indie max MP boost
         public int MaxHPPercent { get; set; }        // Percentage max HP boost
         public int MaxMPPercent { get; set; }        // Percentage max MP boost
+        public int AllStat { get; set; }             // Big Bang indie all-stat boost
+        public int AbnormalStatusResistance { get; set; } // asrR / indieAsrR
+        public int ElementalResistance { get; set; } // terR / indieTerR
 
         // Requirements
         public int RequiredLevel { get; set; }       // Level required
@@ -429,6 +434,8 @@ namespace HaCreator.MapSimulator.Character.Skills
         public SkillAnimation SummonAttackAnimation { get; set; } // Summon attack sequence
         public SkillAnimation SummonHitAnimation { get; set; } // Summon hit reaction sequence
         public SkillAnimation SummonRemovalAnimation { get; set; } // Optional self-destruct / removal branch
+        public List<SkillAnimation> SummonProjectileAnimations { get; set; } = new();
+        public List<SkillAnimation> SummonTargetHitAnimations { get; set; } = new();
         public string SummonAttackBranchName { get; set; }
         public SkillAnimation AvatarOverlayEffect { get; set; } // Avatar-bound looping overlay
         public SkillAnimation AvatarOverlaySecondaryEffect { get; set; } // Optional second overlay on the same avatar-owned plane
@@ -1008,6 +1015,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         public bool IsExpired { get; set; }
         public bool IsExploding { get; set; }
         public int ExplodeTime { get; set; }
+        public bool VisualOnly { get; set; }
 
         // Owner
         public int OwnerId { get; set; }

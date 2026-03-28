@@ -16,16 +16,20 @@ namespace HaCreator.MapSimulator.UI
         {
             new(224, 41),
             new(223, 93),
-            new(156, 143),
-            new(190, 194),
-            new(334, 194),
-            new(50, 250),
-            new(288, 250),
-            new(16, 304),
-            new(166, 304),
+            new(224, 148),
+            new(224, 199),
+            new(367, 200),
+            new(82, 252),
+            new(367, 252),
+            new(15, 304),
+            new(150, 304),
             new(299, 304),
-            new(447, 304)
+            new(434, 304)
         };
+
+        private const int CenterFocusSlotIndex = 3;
+        private const int MemberPlateWidth = 133;
+        private const int MemberPlateHeight = 34;
 
         private readonly IDXObject _selectedOverlay;
         private readonly Point _selectedOverlayOffset;
@@ -204,8 +208,8 @@ namespace HaCreator.MapSimulator.UI
                 IDXObject plate = ResolvePlate(node);
                 Rectangle bounds = CreateNodeBounds(
                     new Point(Position.X + position.X, Position.Y + position.Y),
-                    plate?.Width ?? _memberOnlinePlate?.Width ?? 133,
-                    plate?.Height ?? _memberOnlinePlate?.Height ?? 34);
+                    plate?.Width ?? MemberPlateWidth,
+                    plate?.Height ?? MemberPlateHeight);
                 _nodeBounds[node.SlotIndex] = bounds;
 
                 if (node.MemberId == 0 || plate == null)
@@ -243,6 +247,11 @@ namespace HaCreator.MapSimulator.UI
 
         private IDXObject ResolvePlate(FamilyTreeNodeSnapshot node)
         {
+            if (node.SlotIndex == CenterFocusSlotIndex)
+            {
+                return null;
+            }
+
             if (node.IsLeader)
             {
                 return node.IsOnline ? _leaderOnlinePlate : _leaderOfflinePlate;

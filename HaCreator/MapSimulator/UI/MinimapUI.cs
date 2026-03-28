@@ -495,7 +495,7 @@ namespace HaCreator.MapSimulator.UI
         /// </summary>
         private void ObjUIBtNpc_ButtonClickReleased(UIObject sender)
         {
-            if (_btnNpc == null || _npcMarker == null || _npcMarkers.Count == 0)
+            if (_btnNpc == null || ResolveAnyNpcMarker() == null || _npcMarkers.Count == 0)
                 return;
 
             _showNpcMarkers = !_showNpcMarkers;
@@ -518,7 +518,7 @@ namespace HaCreator.MapSimulator.UI
             RenderParameters renderParameters,
             int tickCount)
         {
-            if (_bIsCollapsedState || !_showNpcMarkers || _npcMarker == null || _npcMarkers.Count == 0)
+            if (_bIsCollapsedState || !_showNpcMarkers || ResolveAnyNpcMarker() == null || _npcMarkers.Count == 0)
                 return;
 
             foreach (NpcItem npc in _npcMarkers)
@@ -596,6 +596,11 @@ namespace HaCreator.MapSimulator.UI
                 NpcMarkerType.QuestEnd when _questEndNpcMarker != null => _questEndNpcMarker,
                 _ => _npcMarker ?? _questStartNpcMarker ?? _questEndNpcMarker
             };
+        }
+
+        private BaseDXDrawableItem ResolveAnyNpcMarker()
+        {
+            return _npcMarker ?? _questStartNpcMarker ?? _questEndNpcMarker;
         }
 
         private BaseDXDrawableItem ResolveLocalPlayerMarker()

@@ -11,6 +11,12 @@ namespace HaCreator.MapSimulator.UI
         IReadOnlyList<string> AuthorizedCharacterNames { get; }
         bool CanCurrentCharacterAccess { get; }
         bool IsAccessSessionActive { get; }
+        bool HasAccountPic { get; }
+        bool IsAccountPicVerified { get; }
+        bool HasAccountSecondaryPassword { get; }
+        bool IsAccountSecondaryPasswordVerified { get; }
+        bool RequiresClientAccountAuthority { get; }
+        bool IsClientAccountAuthorityVerified { get; }
         bool HasSecondaryPassword { get; }
         bool IsSecondaryPasswordVerified { get; }
 
@@ -29,6 +35,9 @@ namespace HaCreator.MapSimulator.UI
         void BeginAccessSession();
         void EndAccessSession();
         void ConfigureAccess(string accountLabel, string accountKey, string currentCharacterName, IEnumerable<string> sharedCharacterNames);
+        void ConfigureLoginAccountSecurity(string picCode, bool secondaryPasswordEnabled, string secondaryPassword);
+        bool TryVerifyAccountPic(string password);
+        bool TryVerifyAccountSecondaryPassword(string password);
         bool TrySetSecondaryPassword(string password);
         bool TryVerifySecondaryPassword(string password);
         void ClearSecondaryPasswordVerification();

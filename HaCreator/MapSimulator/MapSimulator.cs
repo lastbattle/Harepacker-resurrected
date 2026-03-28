@@ -513,6 +513,8 @@ namespace HaCreator.MapSimulator
 
         private readonly MapleTvRuntime _mapleTvRuntime = new MapleTvRuntime();
 
+        private PendingRepairDurabilityRequest _pendingRepairDurabilityRequest;
+
         private readonly FieldMessageBoxRuntime _fieldMessageBoxRuntime = new FieldMessageBoxRuntime();
         private readonly PacketFieldStateRuntime _packetFieldStateRuntime = new PacketFieldStateRuntime();
         private readonly PacketScriptMessageRuntime _packetScriptMessageRuntime = new PacketScriptMessageRuntime();
@@ -806,6 +808,8 @@ namespace HaCreator.MapSimulator
 
         private const int SKILL_COOLDOWN_BLOCKED_MESSAGE_COOLDOWN_MS = 600;
 
+        private const int PICKUP_REMOTE_NOTICE_SUPPRESSION_MS = 900;
+
         private const string SkillCooldownNoticeSoundKey = "SkillCooldownNotice";
 
         private const int DefaultSimulatorWorldId = 0;
@@ -849,6 +853,8 @@ namespace HaCreator.MapSimulator
         private string _lastFieldRestrictionMessage = null;
 
         private readonly Dictionary<int, int> _lastSkillCooldownBlockedMessageTimes = new();
+
+        private readonly Dictionary<long, int> _recentPickupRemoteNoticeTimes = new();
 
         private int _simulatorWorldId = DefaultSimulatorWorldId;
 
@@ -966,6 +972,8 @@ namespace HaCreator.MapSimulator
 
         private string _loginPendingCreateCharacterName;
 
+        private LoginCreateCharacterFlowState _loginCreateCharacterFlow;
+
         private LoginUtilityDialogAction _loginUtilityDialogAction;
 
         private string _loginUtilityDialogTitle = "Login Utility";
@@ -981,6 +989,8 @@ namespace HaCreator.MapSimulator
         private string _loginUtilityDialogInputPlaceholder = string.Empty;
 
         private string _loginUtilityDialogInputValue = string.Empty;
+
+        private SoftKeyboardKeyboardType _loginUtilityDialogSoftKeyboardType = SoftKeyboardKeyboardType.AlphaNumeric;
 
         private LoginUtilityDialogButtonLayout _loginUtilityDialogButtonLayout = LoginUtilityDialogButtonLayout.Ok;
 
@@ -2294,6 +2304,7 @@ namespace HaCreator.MapSimulator
                 .ToArray();
 
             trunkWindow.ConfigureStorageAccess(accountLabel, accountKey, currentCharacterName, sharedCharacterNames);
+            trunkWindow.ConfigureStorageLoginSecurity(_loginAccountPicCode, _loginAccountSpwEnabled, _loginAccountSecondaryPassword);
 
         }
 
@@ -2904,6 +2915,10 @@ namespace HaCreator.MapSimulator
                     if (string.Equals(actionKey, "Guild.Skill", StringComparison.Ordinal))
 
                     {
+                        if (!GuildSkillRuntime.HasGuildMembership(_playerManager?.Player?.Build))
+                        {
+                            return "Join a guild before opening the dedicated guild skill surface.";
+                        }
 
                         WireGuildSkillWindowData();
 
@@ -3850,13 +3865,11 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
-            if (ShouldTrackInheritedDirectionModeOwner())
-            {
-                _scriptedDirectionModeWindows.TrackWindow(MapSimulatorWindowNames.OptionMenu);
-            }
-
-            optionMenuWindow.ShowMode(mode);
-            uiWindowManager.BringToFront(optionMenuWindow);
+            optionMenuWindow.SetMode(mode);
+            ShowWindow(
+                MapSimulatorWindowNames.OptionMenu,
+                optionMenuWindow,
+                trackDirectionModeOwner: ShouldTrackInheritedDirectionModeOwner());
         }
 
         private void ShowUtilityWindow(string windowName)
@@ -4958,6 +4971,20 @@ namespace HaCreator.MapSimulator
 
         }
 
+        private sealed class PendingRepairDurabilityRequest
+        {
+            public long SentTick { get; init; }
+            public int NpcTemplateId { get; init; }
+            public bool RepairAll { get; init; }
+            public int TotalCost { get; init; }
+            public int PreferredItemId { get; init; }
+            public RepairDurabilityWindow.RepairEntry Entry { get; init; }
+            public IReadOnlyList<RepairDurabilityWindow.RepairEntry> Entries { get; init; }
+            public string RequestLabel { get; init; } = string.Empty;
+        }
+
+        private const int RepairDurabilityResponseDelayMs = 120;
+
 
 
         private void RefreshRepairDurabilityWindow(int npcTemplateId, int preferredItemId = 0)
@@ -4975,12 +5002,21 @@ namespace HaCreator.MapSimulator
 
 
             int effectiveNpcTemplateId = npcTemplateId > 0 ? npcTemplateId : repairWindow.NpcTemplateId;
+            int previousNpcTemplateId = repairWindow.NpcTemplateId;
 
             repairWindow.ConfigureNpc(effectiveNpcTemplateId, ResolveNpcDisplayName(effectiveNpcTemplateId));
+            if (effectiveNpcTemplateId <= 0)
+            {
+                repairWindow.SetNpcPreview(null);
+            }
+            else if (effectiveNpcTemplateId != previousNpcTemplateId || !repairWindow.HasNpcPreview)
+            {
+                repairWindow.SetNpcPreview(CreateRepairDurabilityNpcPreview(effectiveNpcTemplateId));
+            }
 
             repairWindow.SetEntries(BuildRepairDurabilityEntries(), preferredItemId);
-
-            repairWindow.SetStatusMessage(GetRepairDurabilityStatusMessage());
+            repairWindow.SetAwaitingRepairResponse(_pendingRepairDurabilityRequest != null);
+            repairWindow.SetStatusMessage(_pendingRepairDurabilityRequest?.RequestLabel ?? GetRepairDurabilityStatusMessage());
 
         }
 
@@ -5044,12 +5080,49 @@ namespace HaCreator.MapSimulator
 
             return entries
 
-                .OrderBy(entry => entry.Slot)
+                .OrderBy(entry => GetRepairDurabilitySortKey(entry.Slot, entry.IsHiddenSlot))
 
                 .ThenBy(entry => entry.Part?.ItemId ?? 0)
 
                 .ToList();
 
+        }
+
+        private static int GetRepairDurabilitySortKey(Character.EquipSlot slot, bool hiddenSlot)
+        {
+            int baseOrder = slot switch
+            {
+                Character.EquipSlot.Cap => 1,
+                Character.EquipSlot.FaceAccessory => 2,
+                Character.EquipSlot.EyeAccessory => 3,
+                Character.EquipSlot.Earrings => 4,
+                Character.EquipSlot.Coat => 5,
+                Character.EquipSlot.Longcoat => 5,
+                Character.EquipSlot.Pants => 6,
+                Character.EquipSlot.Shoes => 7,
+                Character.EquipSlot.Glove => 8,
+                Character.EquipSlot.Cape => 9,
+                Character.EquipSlot.Shield => 10,
+                Character.EquipSlot.Weapon => 11,
+                Character.EquipSlot.Ring1 => 12,
+                Character.EquipSlot.Ring2 => 13,
+                Character.EquipSlot.Ring3 => 15,
+                Character.EquipSlot.Ring4 => 16,
+                Character.EquipSlot.Pendant => 17,
+                Character.EquipSlot.TamingMob => 18,
+                Character.EquipSlot.Saddle => 19,
+                Character.EquipSlot.Medal => 49,
+                Character.EquipSlot.Belt => 50,
+                Character.EquipSlot.Shoulder => 51,
+                Character.EquipSlot.Pocket => 52,
+                Character.EquipSlot.Badge => 53,
+                Character.EquipSlot.Pendant2 => 59,
+                Character.EquipSlot.Android => 166,
+                Character.EquipSlot.AndroidHeart => 167,
+                _ => 1000 + (int)slot
+            };
+
+            return (hiddenSlot ? 10000 : 0) + baseOrder;
         }
 
 
@@ -5270,7 +5343,14 @@ namespace HaCreator.MapSimulator
 
 
 
-            if (!inventory.TryConsumeMeso(entry.RepairCost))
+            if (_pendingRepairDurabilityRequest != null)
+            {
+                ShowUtilityFeedbackMessage("A durability repair request is already awaiting a result.");
+                RefreshRepairDurabilityWindow(0, entry.Part.ItemId);
+                return;
+            }
+
+            if (inventory.GetMesoCount() < entry.RepairCost)
 
             {
 
@@ -5284,11 +5364,23 @@ namespace HaCreator.MapSimulator
 
 
 
-            entry.Part.Durability = entry.MaxDurability;
+            int npcTemplateId = GetActiveRepairDurabilityNpcTemplateId();
+            string npcName = ResolveNpcDisplayName(npcTemplateId);
+            string requestLabel = $"Sent repair request for {entry.ItemName} to {npcName}.";
+            _pendingRepairDurabilityRequest = new PendingRepairDurabilityRequest
+            {
+                SentTick = Environment.TickCount64,
+                NpcTemplateId = npcTemplateId,
+                RepairAll = false,
+                TotalCost = entry.RepairCost,
+                PreferredItemId = entry.Part.ItemId,
+                Entry = entry,
+                Entries = new[] { entry },
+                RequestLabel = requestLabel
+            };
 
-            ShowUtilityFeedbackMessage($"Repaired {entry.ItemName} for {entry.RepairCost.ToString("N0", CultureInfo.InvariantCulture)} meso.");
-
-            RefreshRepairDurabilityWindow(0, entry.Part.ItemId);
+            ShowUtilityFeedbackMessage(requestLabel);
+            RefreshRepairDurabilityWindow(npcTemplateId, entry.Part.ItemId);
 
         }
 
@@ -5338,7 +5430,14 @@ namespace HaCreator.MapSimulator
 
 
 
-            if (!inventory.TryConsumeMeso(totalCost))
+            if (_pendingRepairDurabilityRequest != null)
+            {
+                ShowUtilityFeedbackMessage("A durability repair request is already awaiting a result.");
+                RefreshRepairDurabilityWindow(0);
+                return;
+            }
+
+            if (inventory.GetMesoCount() < totalCost)
 
             {
 
@@ -5352,39 +5451,160 @@ namespace HaCreator.MapSimulator
 
 
 
-            int repairedCount = 0;
-
-            for (int i = 0; i < entries.Count; i++)
-
+            int npcTemplateId = GetActiveRepairDurabilityNpcTemplateId();
+            string npcName = ResolveNpcDisplayName(npcTemplateId);
+            string requestLabel = $"Sent repair-all request for {entries.Count} item(s) to {npcName}.";
+            _pendingRepairDurabilityRequest = new PendingRepairDurabilityRequest
             {
+                SentTick = Environment.TickCount64,
+                NpcTemplateId = npcTemplateId,
+                RepairAll = true,
+                TotalCost = totalCost,
+                Entries = entries.Where(candidate => candidate?.Part != null).ToArray(),
+                RequestLabel = requestLabel
+            };
 
-                RepairDurabilityWindow.RepairEntry entry = entries[i];
-
-                if (entry?.Part == null || entry.MaxDurability <= 0)
-
-                {
-
-                    continue;
-
-                }
-
-
-
-                entry.Part.Durability = entry.MaxDurability;
-
-                repairedCount++;
-
-            }
-
-
-
-            ShowUtilityFeedbackMessage($"Repaired {repairedCount} item(s) for {totalCost.ToString("N0", CultureInfo.InvariantCulture)} meso.");
-
-            RefreshRepairDurabilityWindow(0);
+            ShowUtilityFeedbackMessage(requestLabel);
+            RefreshRepairDurabilityWindow(npcTemplateId);
 
         }
 
 
+
+        private int GetActiveRepairDurabilityNpcTemplateId()
+        {
+            return uiWindowManager?.GetWindow(MapSimulatorWindowNames.RepairDurability) is RepairDurabilityWindow repairWindow
+                ? repairWindow.NpcTemplateId
+                : 0;
+        }
+
+        private NpcItem CreateRepairDurabilityNpcPreview(int npcTemplateId)
+        {
+            if (npcTemplateId <= 0 || GraphicsDevice == null)
+            {
+                return null;
+            }
+
+            NpcInfo npcInfo = NpcInfo.Get(npcTemplateId.ToString(CultureInfo.InvariantCulture));
+            if (npcInfo == null)
+            {
+                return null;
+            }
+
+            var npcInstance = new NpcInstance(
+                npcInfo,
+                null,
+                0,
+                0,
+                0,
+                0,
+                0,
+                null,
+                0,
+                false,
+                false,
+                null,
+                null);
+            var usedProps = new ConcurrentBag<WzObject>();
+            NpcItem npcPreview = LifeLoader.CreateNpcFromProperty(_texturePool, npcInstance, UserScreenScaleFactor, GraphicsDevice, usedProps, includeTooltips: false);
+            npcPreview?.SetAction(AnimationKeys.Stand);
+            return npcPreview;
+        }
+
+        private void ProcessPendingRepairDurabilityRequest()
+        {
+            PendingRepairDurabilityRequest request = _pendingRepairDurabilityRequest;
+            if (request == null)
+            {
+                return;
+            }
+
+            if ((Environment.TickCount64 - request.SentTick) < RepairDurabilityResponseDelayMs)
+            {
+                return;
+            }
+
+            _pendingRepairDurabilityRequest = null;
+
+            IInventoryRuntime inventory = uiWindowManager?.InventoryWindow as IInventoryRuntime;
+            if (inventory == null)
+            {
+                ShowUtilityFeedbackMessage("Durability repair response failed because the inventory runtime is not active.");
+                RefreshRepairDurabilityWindow(request.NpcTemplateId, request.PreferredItemId);
+                return;
+            }
+
+            if (request.TotalCost <= 0)
+            {
+                RefreshRepairDurabilityWindow(request.NpcTemplateId, request.PreferredItemId);
+                return;
+            }
+
+            if (!request.RepairAll)
+            {
+                if (request.Entry?.Part == null || request.Entry.MaxDurability <= 0)
+                {
+                    ShowUtilityFeedbackMessage("Durability repair response failed because the selected equipment is no longer available.");
+                    RefreshRepairDurabilityWindow(request.NpcTemplateId, request.PreferredItemId);
+                    return;
+                }
+
+                if (!inventory.TryConsumeMeso(request.TotalCost))
+                {
+                    ShowUtilityFeedbackMessage($"Repair response for {request.Entry.ItemName} failed because you no longer have enough meso.");
+                    RefreshRepairDurabilityWindow(request.NpcTemplateId, request.PreferredItemId);
+                    return;
+                }
+
+                request.Entry.Part.Durability = request.Entry.MaxDurability;
+                ShowUtilityFeedbackMessage($"Repair response restored {request.Entry.ItemName} for {request.TotalCost.ToString("N0", CultureInfo.InvariantCulture)} meso.");
+                RefreshRepairDurabilityWindow(request.NpcTemplateId, request.PreferredItemId);
+                return;
+            }
+
+            int repairedCount = 0;
+            IReadOnlyList<RepairDurabilityWindow.RepairEntry> entries = request.Entries ?? Array.Empty<RepairDurabilityWindow.RepairEntry>();
+            bool hasRepairableEntry = false;
+            for (int i = 0; i < entries.Count; i++)
+            {
+                RepairDurabilityWindow.RepairEntry repairEntry = entries[i];
+                if (repairEntry?.Part == null || repairEntry.MaxDurability <= 0)
+                {
+                    continue;
+                }
+
+                hasRepairableEntry = true;
+            }
+
+            if (!hasRepairableEntry)
+            {
+                ShowUtilityFeedbackMessage("Repair-all response failed because none of the requested equipment entries are still available.");
+                RefreshRepairDurabilityWindow(request.NpcTemplateId, request.PreferredItemId);
+                return;
+            }
+
+            if (!inventory.TryConsumeMeso(request.TotalCost))
+            {
+                ShowUtilityFeedbackMessage("Repair-all response failed because you no longer have enough meso.");
+                RefreshRepairDurabilityWindow(request.NpcTemplateId, request.PreferredItemId);
+                return;
+            }
+
+            for (int i = 0; i < entries.Count; i++)
+            {
+                RepairDurabilityWindow.RepairEntry repairEntry = entries[i];
+                if (repairEntry?.Part == null || repairEntry.MaxDurability <= 0)
+                {
+                    continue;
+                }
+
+                repairEntry.Part.Durability = repairEntry.MaxDurability;
+                repairedCount++;
+            }
+
+            ShowUtilityFeedbackMessage($"Repair-all response restored {repairedCount} item(s) for {request.TotalCost.ToString("N0", CultureInfo.InvariantCulture)} meso.");
+            RefreshRepairDurabilityWindow(request.NpcTemplateId, request.PreferredItemId);
+        }
 
         private static string ResolveNpcDisplayName(int npcTemplateId)
 
@@ -5508,9 +5728,19 @@ namespace HaCreator.MapSimulator
 
 
 
-            window.Show();
+            if (uiWindowManager != null)
 
-            uiWindowManager?.BringToFront(window);
+            {
+
+                uiWindowManager.ShowWindow(window);
+
+                return;
+
+            }
+
+
+
+            window.Show();
 
         }
 
@@ -5945,6 +6175,62 @@ namespace HaCreator.MapSimulator
 
         }
 
+        private void WireLoginCreateCharacterWindow()
+
+        {
+
+            if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.LoginCreateCharacter) is not LoginCreateCharacterWindow createCharacterWindow)
+
+            {
+
+                return;
+
+            }
+
+
+
+            createCharacterWindow.RaceSelected -= HandleLoginCreateCharacterRaceSelected;
+
+            createCharacterWindow.RaceSelected += HandleLoginCreateCharacterRaceSelected;
+
+            createCharacterWindow.JobSelected -= HandleLoginCreateCharacterJobSelected;
+
+            createCharacterWindow.JobSelected += HandleLoginCreateCharacterJobSelected;
+
+            createCharacterWindow.AvatarShiftRequested -= HandleLoginCreateCharacterAvatarShiftRequested;
+
+            createCharacterWindow.AvatarShiftRequested += HandleLoginCreateCharacterAvatarShiftRequested;
+
+            createCharacterWindow.GenderToggleRequested -= HandleLoginCreateCharacterGenderToggleRequested;
+
+            createCharacterWindow.GenderToggleRequested += HandleLoginCreateCharacterGenderToggleRequested;
+
+            createCharacterWindow.DiceRequested -= HandleLoginCreateCharacterDiceRequested;
+
+            createCharacterWindow.DiceRequested += HandleLoginCreateCharacterDiceRequested;
+
+            createCharacterWindow.NameEditRequested -= HandleLoginCreateCharacterNameEditRequested;
+
+            createCharacterWindow.NameEditRequested += HandleLoginCreateCharacterNameEditRequested;
+
+            createCharacterWindow.NameChanged -= HandleLoginCreateCharacterNameChanged;
+
+            createCharacterWindow.NameChanged += HandleLoginCreateCharacterNameChanged;
+
+            createCharacterWindow.ConfirmRequested -= HandleLoginCreateCharacterConfirmRequested;
+
+            createCharacterWindow.ConfirmRequested += HandleLoginCreateCharacterConfirmRequested;
+
+            createCharacterWindow.CancelRequested -= HandleLoginCreateCharacterCancelRequested;
+
+            createCharacterWindow.CancelRequested += HandleLoginCreateCharacterCancelRequested;
+
+            createCharacterWindow.DuplicateCheckRequested -= HandleLoginCreateCharacterDuplicateCheckRequested;
+
+            createCharacterWindow.DuplicateCheckRequested += HandleLoginCreateCharacterDuplicateCheckRequested;
+
+        }
+
 
 
         private void WireLoginTitleWindow()
@@ -6227,6 +6513,18 @@ namespace HaCreator.MapSimulator
             bool busy = _loginRuntime.PendingStep.HasValue ||
 
                         _selectorRequestKind != SelectorRequestKind.None;
+
+            if (titleWindow.IsVisible)
+
+            {
+
+                _loginTitleAccountName = titleWindow.AccountName ?? _loginTitleAccountName;
+
+                _loginTitlePassword = titleWindow.Password ?? _loginTitlePassword;
+
+                _loginTitleRememberId = titleWindow.RememberId;
+
+            }
 
             titleWindow.Configure(
 
@@ -8447,11 +8745,23 @@ namespace HaCreator.MapSimulator
 
 
 
+                _loginAccountPicCode = string.Empty;
+
+                _loginAccountSpwEnabled = false;
+
+                _loginAccountSecondaryPassword = string.Empty;
+
+                SyncStorageAccessContext();
+
                 return false;
 
 
 
             }
+
+
+
+            ApplyStoredLoginAccountSecurity(storedState);
 
 
 
@@ -8830,12 +9140,23 @@ namespace HaCreator.MapSimulator
             if (packetProfile.ResultCode.Value != 0)
             {
                 _loginCharacterStatusMessage = BuildCheckDuplicatedIdPacketFailureMessage(packetProfile);
+                _loginCreateCharacterFlow?.ClearCheckedName(_loginCharacterStatusMessage);
                 return;
             }
 
             if (string.IsNullOrWhiteSpace(resolvedName))
             {
                 _loginCharacterStatusMessage = "CheckDuplicatedIdResult succeeded, but no character name was present.";
+                _loginCreateCharacterFlow?.ClearCheckedName(_loginCharacterStatusMessage);
+                return;
+            }
+
+            if (_loginCreateCharacterFlow != null)
+            {
+                _loginCreateCharacterFlow.AcceptCheckedName(resolvedName);
+                _loginCreateCharacterFlow.SetStage(LoginCreateCharacterStage.AvatarSelect, _loginCreateCharacterFlow.StatusMessage);
+                _loginRuntime.ForceStep(LoginStep.NewCharacterAvatar, "Returned to avatar selection after duplicate-name validation.");
+                _loginCharacterStatusMessage = _loginCreateCharacterFlow.StatusMessage;
                 return;
             }
 
@@ -8866,6 +9187,14 @@ namespace HaCreator.MapSimulator
                 _loginCharacterStatusMessage =
 
                     $"CreateNewCharacterResult returned server code {FormatSelectorPacketCode(_loginPacketCreateNewCharacterResultProfile.ResultCode)}.";
+
+                if (_loginCreateCharacterFlow != null)
+
+                {
+
+                    _loginCreateCharacterFlow.ClearCheckedName(_loginCharacterStatusMessage);
+
+                }
 
                 return;
 
@@ -8949,6 +9278,8 @@ namespace HaCreator.MapSimulator
                 existingIndex >= 0
                     ? $"Updated {build.Name} from CreateNewCharacterResult."
                     : $"Created {build.Name} Lv.{Math.Max(1, build.Level)} {build.JobName} from CreateNewCharacterResult.";
+
+            _loginCreateCharacterFlow = null;
         }
 
         private void ApplyDeleteCharacterResultProfile()
@@ -9661,6 +9992,62 @@ namespace HaCreator.MapSimulator
 
 
 
+        private void ApplyStoredLoginAccountSecurity(LoginCharacterAccountStore.LoginCharacterAccountState storedState)
+
+
+
+        {
+
+
+
+            _loginAccountPicCode = storedState?.PicCode?.Trim() ?? string.Empty;
+
+
+
+            _loginAccountSpwEnabled = storedState?.IsSecondaryPasswordEnabled ?? false;
+
+
+
+            _loginAccountSecondaryPassword = storedState?.SecondaryPassword?.Trim() ?? string.Empty;
+
+
+
+            SyncStorageAccessContext();
+
+        }
+
+
+
+        private void PersistLoginAccountSecurityState()
+
+
+
+        {
+
+
+
+            PersistLoginCharacterRosterToAccountStore(
+
+
+
+                _loginCharacterRoster.Entries,
+
+
+
+                _loginCharacterRoster.SlotCount,
+
+
+
+                _loginCharacterRoster.BuyCharacterCount);
+
+
+
+            SyncStorageAccessContext();
+
+        }
+
+
+
         private void PersistLoginCharacterRosterToAccountStore(
 
 
@@ -9729,7 +10116,19 @@ namespace HaCreator.MapSimulator
 
 
 
-                storedEntries);
+                storedEntries,
+
+
+
+                _loginAccountPicCode,
+
+
+
+                _loginAccountSpwEnabled,
+
+
+
+                _loginAccountSecondaryPassword);
 
 
 
@@ -10341,6 +10740,54 @@ namespace HaCreator.MapSimulator
 
         }
 
+        private void SyncLoginCreateCharacterWindow()
+
+        {
+
+            WireLoginCreateCharacterWindow();
+
+
+
+            if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.LoginCreateCharacter) is not LoginCreateCharacterWindow createCharacterWindow)
+
+            {
+
+                return;
+
+            }
+
+
+
+            bool shouldShow = IsLoginRuntimeSceneActive &&
+
+                              _loginCreateCharacterFlow != null &&
+
+                              (_loginRuntime.CurrentStep == LoginStep.NewCharacter ||
+
+                               _loginRuntime.CurrentStep == LoginStep.NewCharacterAvatar);
+
+            if (!shouldShow)
+
+            {
+
+                createCharacterWindow.Hide();
+
+                return;
+
+            }
+
+
+
+            CharacterBuild previewBuild = _loginCreateCharacterFlow.CreatePreviewBuild(_playerManager?.Loader);
+
+            createCharacterWindow.Configure(_loginCreateCharacterFlow, previewBuild);
+
+            createCharacterWindow.Show();
+
+            uiWindowManager.BringToFront(createCharacterWindow);
+
+        }
+
 
 
         private void SyncAvatarPreviewCarouselWindow()
@@ -10655,7 +11102,9 @@ namespace HaCreator.MapSimulator
 
                 _loginUtilityDialogInputMaxLength,
 
-                _loginUtilityDialogInputValue);
+                _loginUtilityDialogInputValue,
+
+                _loginUtilityDialogSoftKeyboardType);
 
             utilityDialogWindow.Show();
 
@@ -10691,7 +11140,9 @@ namespace HaCreator.MapSimulator
 
             int inputMaxLength = 0,
 
-            string inputValue = null)
+            string inputValue = null,
+
+            SoftKeyboardKeyboardType softKeyboardType = SoftKeyboardKeyboardType.AlphaNumeric)
 
         {
 
@@ -10720,6 +11171,8 @@ namespace HaCreator.MapSimulator
             _loginUtilityDialogInputMaxLength = Math.Max(0, inputMaxLength);
 
             _loginUtilityDialogInputValue = inputValue ?? string.Empty;
+
+            _loginUtilityDialogSoftKeyboardType = softKeyboardType;
 
             ClearActiveConnectionNotice();
 
@@ -10750,6 +11203,8 @@ namespace HaCreator.MapSimulator
             _loginUtilityDialogInputMasked = false;
 
             _loginUtilityDialogInputMaxLength = 0;
+
+            _loginUtilityDialogSoftKeyboardType = SoftKeyboardKeyboardType.AlphaNumeric;
 
             _loginUtilityDialogInputValue = string.Empty;
 
@@ -11399,27 +11854,376 @@ namespace HaCreator.MapSimulator
 
 
 
-            string suggestedName = BuildSuggestedLoginCharacterName();
+            _loginCreateCharacterFlow = new LoginCreateCharacterFlowState();
 
-            ShowLoginUtilityDialog(
+            _loginCreateCharacterFlow.Start();
 
-                "Login Utility",
+            _loginCreateCharacterFlow.SetEnteredName(BuildSuggestedLoginCharacterName());
 
-                "Enter a name for the new account-backed character.",
+            _loginCreateCharacterFlow.RollRandom(_playerManager?.Loader);
 
-                LoginUtilityDialogButtonLayout.Ok,
+            _loginRuntime.ForceStep(LoginStep.NewCharacter, "Opened the dedicated login create-character flow.");
 
-                LoginUtilityDialogAction.CreateCharacter,
+            HideLoginUtilityDialog();
 
-                primaryLabel: "Create",
+            _loginCharacterStatusMessage = _loginCreateCharacterFlow.StatusMessage;
 
-                inputLabel: "Character Name",
+            SyncLoginCharacterSelectWindow();
 
-                inputPlaceholder: suggestedName,
+            SyncLoginCreateCharacterWindow();
 
-                inputMaxLength: 13,
+        }
 
-                inputValue: suggestedName);
+
+        private void HandleLoginCreateCharacterRaceSelected(int raceIndex)
+
+        {
+
+            if (_loginCreateCharacterFlow == null)
+
+            {
+
+                return;
+
+            }
+
+
+
+            _loginCreateCharacterFlow.SelectRace(raceIndex);
+
+            _loginCreateCharacterFlow.ResetAvatarIndices();
+
+            _loginCreateCharacterFlow.RollRandom(_playerManager?.Loader);
+
+            _loginCharacterStatusMessage = _loginCreateCharacterFlow.StatusMessage;
+
+            SyncLoginCreateCharacterWindow();
+
+        }
+
+        private void HandleLoginCreateCharacterJobSelected(int jobIndex)
+
+        {
+
+            _loginCreateCharacterFlow?.SelectJob(jobIndex);
+
+            if (_loginCreateCharacterFlow != null)
+
+            {
+
+                _loginCharacterStatusMessage = _loginCreateCharacterFlow.StatusMessage;
+
+            }
+
+            SyncLoginCreateCharacterWindow();
+
+        }
+
+        private void HandleLoginCreateCharacterAvatarShiftRequested(LoginCreateCharacterAvatarPart part, int delta)
+
+        {
+
+            if (_loginCreateCharacterFlow == null)
+
+            {
+
+                return;
+
+            }
+
+
+
+            _loginCreateCharacterFlow.ShiftAvatarPart(
+
+                _playerManager?.Loader?.GetLoginStarterAvatarCatalog(_loginCreateCharacterFlow.SelectedRace, _loginCreateCharacterFlow.SelectedGender),
+
+                part,
+
+                delta);
+
+            _loginCharacterStatusMessage = _loginCreateCharacterFlow.StatusMessage;
+
+            SyncLoginCreateCharacterWindow();
+
+        }
+
+        private void HandleLoginCreateCharacterGenderToggleRequested()
+
+        {
+
+            if (_loginCreateCharacterFlow == null)
+
+            {
+
+                return;
+
+            }
+
+
+
+            _loginCreateCharacterFlow.ToggleGender();
+
+            _loginCharacterStatusMessage = _loginCreateCharacterFlow.StatusMessage;
+
+            SyncLoginCreateCharacterWindow();
+
+        }
+
+        private void HandleLoginCreateCharacterDiceRequested()
+
+        {
+
+            if (_loginCreateCharacterFlow == null)
+
+            {
+
+                return;
+
+            }
+
+
+
+            _loginCreateCharacterFlow.RollRandom(_playerManager?.Loader);
+
+            _loginCharacterStatusMessage = _loginCreateCharacterFlow.StatusMessage;
+
+            SyncLoginCreateCharacterWindow();
+
+        }
+
+        private void HandleLoginCreateCharacterNameEditRequested()
+
+        {
+
+            if (_loginCreateCharacterFlow == null)
+
+            {
+
+                return;
+
+            }
+
+
+
+            _loginCreateCharacterFlow.SetStage(LoginCreateCharacterStage.NameSelect, "Type a name, then send CheckDuplicatedIdResult through the dedicated name owner.");
+
+            _loginRuntime.ForceStep(LoginStep.NewCharacter, "Opened the dedicated create-character name owner.");
+
+            _loginCharacterStatusMessage = _loginCreateCharacterFlow.StatusMessage;
+
+            SyncLoginCreateCharacterWindow();
+
+        }
+
+        private void HandleLoginCreateCharacterNameChanged(string name)
+
+        {
+
+            _loginCreateCharacterFlow?.SetEnteredName(name);
+
+            SyncLoginCreateCharacterWindow();
+
+        }
+
+        private void HandleLoginCreateCharacterConfirmRequested()
+
+        {
+
+            if (_loginCreateCharacterFlow == null)
+
+            {
+
+                return;
+
+            }
+
+
+
+            switch (_loginCreateCharacterFlow.Stage)
+
+            {
+
+                case LoginCreateCharacterStage.RaceSelect:
+
+                    _loginCreateCharacterFlow.SetStage(LoginCreateCharacterStage.JobSelect, "Choose the starter job banner for the new character.");
+
+                    _loginRuntime.ForceStep(LoginStep.NewCharacter, "Advanced the dedicated create-character flow to job selection.");
+
+                    break;
+
+                case LoginCreateCharacterStage.JobSelect:
+
+                    _loginCreateCharacterFlow.SetStage(LoginCreateCharacterStage.AvatarSelect, "Adjust the starter avatar, check the name, then create the character.");
+
+                    _loginRuntime.ForceStep(LoginStep.NewCharacterAvatar, "Advanced the dedicated create-character flow to avatar selection.");
+
+                    break;
+
+                case LoginCreateCharacterStage.AvatarSelect:
+
+                    ExecuteLoginCharacterCreateConfirmation();
+
+                    return;
+
+            }
+
+
+
+            _loginCharacterStatusMessage = _loginCreateCharacterFlow.StatusMessage;
+
+            SyncLoginCreateCharacterWindow();
+
+        }
+
+        private void HandleLoginCreateCharacterCancelRequested()
+
+        {
+
+            if (_loginCreateCharacterFlow == null)
+
+            {
+
+                return;
+
+            }
+
+
+
+            switch (_loginCreateCharacterFlow.Stage)
+
+            {
+
+                case LoginCreateCharacterStage.NameSelect:
+
+                    _loginCreateCharacterFlow.SetStage(LoginCreateCharacterStage.AvatarSelect, "Returned to the avatar owner after name entry.");
+
+                    _loginRuntime.ForceStep(LoginStep.NewCharacterAvatar, "Closed the dedicated create-character name owner.");
+
+                    break;
+
+                case LoginCreateCharacterStage.AvatarSelect:
+
+                    _loginCreateCharacterFlow.SetStage(LoginCreateCharacterStage.JobSelect, "Returned to the job-selection owner.");
+
+                    _loginRuntime.ForceStep(LoginStep.NewCharacter, "Moved back from avatar selection to job selection.");
+
+                    break;
+
+                case LoginCreateCharacterStage.JobSelect:
+
+                    _loginCreateCharacterFlow.SetStage(LoginCreateCharacterStage.RaceSelect, "Returned to the race-selection owner.");
+
+                    _loginRuntime.ForceStep(LoginStep.NewCharacter, "Moved back from job selection to race selection.");
+
+                    break;
+
+                default:
+
+                    CloseLoginCreateCharacterFlow("Cancelled the dedicated create-character flow and returned to character selection.");
+
+                    return;
+
+            }
+
+
+
+            _loginCharacterStatusMessage = _loginCreateCharacterFlow.StatusMessage;
+
+            SyncLoginCreateCharacterWindow();
+
+        }
+
+        private void HandleLoginCreateCharacterDuplicateCheckRequested()
+
+        {
+
+            if (_loginCreateCharacterFlow == null)
+
+            {
+
+                return;
+
+            }
+
+
+
+            string characterName = _loginCreateCharacterFlow.EnteredName?.Trim();
+
+            if (string.IsNullOrWhiteSpace(characterName))
+
+            {
+
+                _loginCreateCharacterFlow.ClearCheckedName("Enter a character name before checking duplication.");
+
+                _loginCharacterStatusMessage = _loginCreateCharacterFlow.StatusMessage;
+
+                SyncLoginCreateCharacterWindow();
+
+                return;
+
+            }
+
+
+
+            _loginPendingCreateCharacterName = characterName;
+
+            if (!TryGetLoginCheckDuplicatedIdPacketProfile(out LoginAccountDialogPacketProfile duplicatedIdProfile) ||
+
+                duplicatedIdProfile.Payload == null ||
+
+                duplicatedIdProfile.Payload.Length == 0)
+
+            {
+
+                _loginPacketAccountDialogProfiles[LoginPacketType.CheckDuplicatedIdResult] =
+
+                    BuildGeneratedCheckDuplicatedIdResultProfile(characterName);
+
+            }
+
+
+
+            DispatchLoginRuntimePacket(
+
+                LoginPacketType.CheckDuplicatedIdResult,
+
+                out string runtimeMessage,
+
+                applySelectorSideEffects: false);
+
+            if (string.IsNullOrWhiteSpace(_loginCharacterStatusMessage))
+
+            {
+
+                _loginCharacterStatusMessage = runtimeMessage;
+
+            }
+
+            SyncLoginCreateCharacterWindow();
+
+        }
+
+        private void CloseLoginCreateCharacterFlow(string statusMessage = null)
+
+        {
+
+            _loginCreateCharacterFlow = null;
+
+            _loginPendingCreateCharacterName = null;
+
+            _loginRuntime.ForceStep(LoginStep.CharacterSelect, statusMessage ?? "Returned to character selection.");
+
+            if (!string.IsNullOrWhiteSpace(statusMessage))
+
+            {
+
+                _loginCharacterStatusMessage = statusMessage;
+
+            }
+
+            SyncLoginCharacterSelectWindow();
+
+            SyncLoginCreateCharacterWindow();
 
         }
 
@@ -11637,6 +12441,8 @@ namespace HaCreator.MapSimulator
 
                     _loginAccountPicCode = newPic;
 
+                    PersistLoginAccountSecurityState();
+
                     HideLoginUtilityDialog();
 
                     _loginCharacterStatusMessage = "Saved the simulator PIC.";
@@ -11665,7 +12471,9 @@ namespace HaCreator.MapSimulator
 
                         inputMasked: true,
 
-                        inputMaxLength: 16);
+                        inputMaxLength: 16,
+
+                        softKeyboardType: SoftKeyboardKeyboardType.AlphaNumeric);
 
                     _loginTitleStatusMessage = "Opened secondary-password setup.";
 
@@ -11771,6 +12579,8 @@ namespace HaCreator.MapSimulator
 
                     _loginAccountSecondaryPassword = newSpw;
 
+                    PersistLoginAccountSecurityState();
+
                     CompleteLoginAccountBootstrap(
 
                         "LoginUtility.Spw.Setup",
@@ -11872,6 +12682,8 @@ namespace HaCreator.MapSimulator
                 case LoginUtilityDialogAction.SecondaryPasswordDecision:
 
                     _loginAccountSpwEnabled = false;
+                    _loginAccountSecondaryPassword = string.Empty;
+                    PersistLoginAccountSecurityState();
 
                     CompleteLoginAccountBootstrap(
 
@@ -11925,6 +12737,12 @@ namespace HaCreator.MapSimulator
 
 
 
+            if (_loginCreateCharacterFlow != null &&
+                (packetType == LoginPacketType.CheckDuplicatedIdResult || packetType == LoginPacketType.CreateNewCharacterResult))
+            {
+                return;
+            }
+
             _loginCharacterStatusMessage = BuildLoginPacketDialogStatusMessage(packetType, prompt, packetProfile);
 
             if (prompt.Owner == LoginPacketDialogOwner.ConnectionNotice)
@@ -11961,7 +12779,9 @@ namespace HaCreator.MapSimulator
 
                 inputMasked: prompt.InputMasked,
 
-                inputMaxLength: prompt.InputMaxLength);
+                inputMaxLength: prompt.InputMaxLength,
+
+                softKeyboardType: prompt.SoftKeyboardType);
 
         }
 
@@ -12482,6 +13302,7 @@ namespace HaCreator.MapSimulator
                     InputPlaceholder = "At least 4 characters",
                     InputMasked = true,
                     InputMaxLength = 16,
+                    SoftKeyboardType = SoftKeyboardKeyboardType.NumericOnlyAlt,
                 },
                 2 or 4 => new LoginPacketDialogPromptConfiguration
                 {
@@ -12494,6 +13315,7 @@ namespace HaCreator.MapSimulator
                     InputPlaceholder = "Enter PIC",
                     InputMasked = true,
                     InputMaxLength = 16,
+                    SoftKeyboardType = SoftKeyboardKeyboardType.NumericOnlyAlt,
                 },
                 3 => BuildClientNoticePrompt(packetText, "PIC verification failed.", packetDetail, 15),
                 7 => BuildClientNoticePrompt(packetText, "PIC verification returned the client to the title step.", packetDetail, 17),
@@ -12594,6 +13416,11 @@ namespace HaCreator.MapSimulator
             return packetProfile?.ResultCode == 0;
         }
 
+        private static bool IsSuccessfulEnableSpwResult(LoginAccountDialogPacketProfile packetProfile)
+        {
+            return packetProfile?.ResultCode == 0;
+        }
+
         private void TryContinueLoginBootstrapFromPacketProfile(LoginPacketType packetType)
         {
             if (!IsLoginRuntimeSceneActive ||
@@ -12652,6 +13479,27 @@ namespace HaCreator.MapSimulator
                     HideLoginUtilityDialog();
                     _loginCharacterStatusMessage = "Packet-authored PIC verification succeeded.";
                     ContinueLoginAccountBootstrapAfterPic("LoginPacket.CheckPin.Success");
+                    break;
+                case LoginPacketType.EnableSpwResult:
+                    _loginUtilityDialogInputValue = string.Empty;
+                    if (!IsSuccessfulEnableSpwResult(packetProfile))
+                    {
+                        return;
+                    }
+
+                    _loginAccountSpwEnabled = packetProfile.SecondaryCode.GetValueOrDefault() != 0;
+                    if (!_loginAccountSpwEnabled)
+                    {
+                        _loginAccountSecondaryPassword = string.Empty;
+                    }
+
+                    _loginTitleStatusMessage = _loginAccountSpwEnabled
+                        ? "Packet-authored EnableSpwResult enabled the secondary-password login option and surfaced the client notice path."
+                        : "Packet-authored EnableSpwResult disabled the secondary-password login option and surfaced the client notice path.";
+                    break;
+                case LoginPacketType.CheckSpwResult:
+                    _loginUtilityDialogInputValue = string.Empty;
+                    _loginTitleStatusMessage = "Packet-authored CheckSpwResult surfaced the client security warning notice.";
                     break;
             }
         }
@@ -12876,13 +13724,34 @@ namespace HaCreator.MapSimulator
 
 
 
-            if (!TryGetLoginUtilityDialogInput(out string characterName))
+            string characterName;
+            if (_loginCreateCharacterFlow != null)
+            {
+                characterName = _loginCreateCharacterFlow.EnteredName?.Trim();
+
+                if (!_loginCreateCharacterFlow.HasCheckedName)
+
+                {
+
+                    _loginCreateCharacterFlow.ClearCheckedName("CheckDuplicatedIdResult must succeed before CreateNewCharacterResult can continue.");
+
+                    _loginCharacterStatusMessage = _loginCreateCharacterFlow.StatusMessage;
+
+                    SyncLoginCreateCharacterWindow();
+
+                    return;
+
+                }
+            }
+            else if (!TryGetLoginUtilityDialogInput(out characterName))
 
             {
 
                 _loginCharacterStatusMessage = "Enter a character name before continuing.";
 
                 SyncLoginCharacterSelectWindow();
+
+                SyncLoginCreateCharacterWindow();
 
                 return;
 
@@ -12899,18 +13768,26 @@ namespace HaCreator.MapSimulator
                     BuildGeneratedCheckDuplicatedIdResultProfile(characterName);
             }
 
-            HideLoginUtilityDialog();
-            DispatchLoginRuntimePacket(
-                LoginPacketType.CheckDuplicatedIdResult,
-                out string runtimeMessage,
-                applySelectorSideEffects: false);
+            if (_loginCreateCharacterFlow == null)
 
-            if (string.IsNullOrWhiteSpace(_loginCharacterStatusMessage))
             {
-                _loginCharacterStatusMessage = runtimeMessage;
+
+                HideLoginUtilityDialog();
+
+                DispatchLoginRuntimePacket(
+                    LoginPacketType.CheckDuplicatedIdResult,
+                    out string runtimeMessage,
+                    applySelectorSideEffects: false);
+
+                if (string.IsNullOrWhiteSpace(_loginCharacterStatusMessage))
+                {
+                    _loginCharacterStatusMessage = runtimeMessage;
+                }
             }
-
-
+            else
+            {
+                ContinueLoginCharacterCreateAfterDuplicateCheck(characterName);
+            }
         }
 
         private void ContinueLoginCharacterCreateAfterDuplicateCheck(string characterName)
@@ -17709,7 +18586,7 @@ namespace HaCreator.MapSimulator
 
             WzSubProperty levelNode = skillNode?["level"] as WzSubProperty;
 
-            WzSubProperty selectedLevel = levelNode?[level.ToString()] as WzSubProperty ?? levelNode?["1"] as WzSubProperty;
+            WzSubProperty selectedLevel = ResolveMobSkillLevelNode(levelNode, level);
 
             if (selectedLevel == null)
 
@@ -17827,7 +18704,7 @@ namespace HaCreator.MapSimulator
 
             WzSubProperty levelNode = skillNode?["level"] as WzSubProperty;
 
-            WzSubProperty selectedLevel = levelNode?[level.ToString()] as WzSubProperty ?? levelNode?["1"] as WzSubProperty;
+            WzSubProperty selectedLevel = ResolveMobSkillLevelNode(levelNode, level);
 
             if (selectedLevel == null)
 
@@ -17851,7 +18728,7 @@ namespace HaCreator.MapSimulator
 
             {
 
-                X = MapleLib.WzLib.WzStructure.InfoTool.GetInt(selectedLevel["x"], 0),
+                X = ResolveMobSkillInheritedInt(levelNode, level, "x"),
 
                 Y = MapleLib.WzLib.WzStructure.InfoTool.GetInt(selectedLevel["y"], 0),
 
@@ -17886,6 +18763,136 @@ namespace HaCreator.MapSimulator
             _mobSkillRuntimeCache[cacheKey] = runtimeData;
 
             return runtimeData;
+
+        }
+
+        private static WzSubProperty ResolveMobSkillLevelNode(WzSubProperty levelNode, int level)
+
+        {
+
+            return levelNode?[level.ToString()] as WzSubProperty ?? levelNode?["1"] as WzSubProperty;
+
+        }
+
+        private static int ResolveMobSkillInheritedInt(WzSubProperty levelNode, int level, string propertyName, int defaultValue = 0)
+
+        {
+
+            if (levelNode == null || string.IsNullOrWhiteSpace(propertyName))
+
+            {
+
+                return defaultValue;
+
+            }
+
+
+
+            if (TryGetMobSkillLevelInt(levelNode, level, propertyName, out int resolvedValue))
+
+            {
+
+                return resolvedValue;
+
+            }
+
+
+
+            return defaultValue;
+
+        }
+
+        private static bool TryGetMobSkillLevelInt(WzSubProperty levelNode, int level, string propertyName, out int value)
+
+        {
+
+            value = 0;
+            if (levelNode == null || string.IsNullOrWhiteSpace(propertyName))
+
+            {
+
+                return false;
+
+            }
+
+
+
+            if (TryReadMobSkillLevelInt(levelNode, level, propertyName, out value))
+
+            {
+
+                return true;
+
+            }
+
+
+
+            var fallbackLevels = new List<int>();
+            foreach (WzImageProperty child in levelNode.WzProperties)
+
+            {
+
+                if (int.TryParse(child.Name, out int candidateLevel) && candidateLevel < level)
+
+                {
+
+                    fallbackLevels.Add(candidateLevel);
+
+                }
+
+            }
+
+
+
+            fallbackLevels.Sort((left, right) => right.CompareTo(left));
+            foreach (int candidateLevel in fallbackLevels)
+
+            {
+
+                if (TryReadMobSkillLevelInt(levelNode, candidateLevel, propertyName, out value))
+
+                {
+
+                    return true;
+
+                }
+
+            }
+
+
+
+            return TryReadMobSkillLevelInt(levelNode, 1, propertyName, out value);
+
+        }
+
+        private static bool TryReadMobSkillLevelInt(WzSubProperty levelNode, int level, string propertyName, out int value)
+
+        {
+
+            value = 0;
+            if (levelNode?[level.ToString()] is not WzSubProperty levelProperty)
+
+            {
+
+                return false;
+
+            }
+
+
+
+            WzImageProperty child = levelProperty[propertyName];
+            if (child == null)
+
+            {
+
+                return false;
+
+            }
+
+
+
+            value = MapleLib.WzLib.WzStructure.InfoTool.GetInt(child, 0);
+            return true;
 
         }
 
@@ -18826,7 +19833,7 @@ namespace HaCreator.MapSimulator
 
                 PetRuntime pet = activePets[i];
 
-                if (pet != null && pet.HasAutoSpeechEvent(eventType))
+                if (pet != null && pet.CanAutoSpeak && pet.HasAutoSpeechEvent(eventType))
 
                 {
 
@@ -26307,13 +27314,20 @@ namespace HaCreator.MapSimulator
                 _remoteUserPool,
                 () => _playerManager?.Player,
                 skillId => _playerManager?.Skills?.GetSkillLevel(skillId) ?? 0,
-                _soundManager);
+                _soundManager,
+                _combatEffects);
+            if (_playerManager?.Skills != null)
+            {
+                _playerManager.Skills.OnClientSkillCancelRequested = (cancelSkillId, _, currentTime) =>
+                    _summonedPool.TryCancelLocalOwnerSummonsBySkillRequest(cancelSkillId, currentTime);
+            }
             Debug.WriteLine($"[Player] PlayerManager initialized with Character.wz: {characterWz != null}, Skill.wz: {skillWz != null}");
 
             _affectedAreaPool = new AffectedAreaPool(_playerManager.SkillLoader, _playerManager.GetMobSkillEffectLoader(), GraphicsDevice);
 
             _playerManager.SetAffectedAreaPool(_affectedAreaPool);
             _playerManager.SetRemoteAffectedAreaDamageBlockEvaluator(IsRemoteAffectedAreaProtectionActive);
+            _playerManager.SetAffectedAreaOwnerPartyMembershipEvaluator(IsAffectedAreaOwnerPartyMember);
 
 
 
@@ -27209,6 +28223,52 @@ namespace HaCreator.MapSimulator
 
                 AddQuestGrantedSkillPoints);
 
+            _questRuntime.ConfigurePetRuntime(
+
+                (supportedPetItemIds, recallLimit) =>
+
+                {
+
+                    IReadOnlyList<PetRuntime> activePets = _playerManager?.Pets?.ActivePets;
+
+                    if (activePets == null || activePets.Count == 0)
+
+                    {
+
+                        return false;
+
+                    }
+
+
+
+                    if (recallLimit.HasValue && recallLimit.Value > 0 && activePets.Count > recallLimit.Value)
+
+                    {
+
+                        return false;
+
+                    }
+
+
+
+                    if (supportedPetItemIds == null || supportedPetItemIds.Count == 0)
+
+                    {
+
+                        return true;
+
+                    }
+
+
+
+                    return activePets.Any(pet => pet != null && supportedPetItemIds.Contains(pet.ItemId));
+
+                },
+
+                (supportedPetItemIds, recallLimit, skillMask) =>
+
+                    _playerManager?.Pets?.TryGrantSkillMask(supportedPetItemIds, recallLimit, skillMask, out _) == true);
+
 
 
             if (uiWindowManager.QuestWindow is QuestUI questWindow)
@@ -27258,6 +28318,14 @@ namespace HaCreator.MapSimulator
                 questAlarmWindow.QuestRequested += OpenQuestFromAlarmWindow;
 
                 questAlarmWindow.QuestLogRequested += OpenQuestLogFromAlarmWindow;
+
+                questAlarmWindow.StatusMessageRequested += message =>
+                {
+                    if (!string.IsNullOrWhiteSpace(message))
+                    {
+                        _chat.AddMessage(message, new Color(255, 228, 151), Environment.TickCount);
+                    }
+                };
 
             }
 
@@ -29038,6 +30106,22 @@ namespace HaCreator.MapSimulator
 
                 return battlefieldRestriction;
 
+            }
+
+            InventoryItemMetadataResolver.TryResolveItemName(itemId, out string itemName);
+            InventoryItemMetadataResolver.TryResolveItemDescription(itemId, out string itemDescription);
+
+            ConsumableItemEffect consumableEffect = ResolveConsumableItemEffect(itemId);
+            string fieldLimitRestriction = FieldInteractionRestrictionEvaluator.GetItemUseRestrictionMessage(
+                _mapBoard?.MapInfo?.fieldLimit ?? 0,
+                inventoryType,
+                itemId,
+                itemName,
+                itemDescription,
+                consumableEffect.HasSupportedTemporaryBuff || consumableEffect.HasSupportedMorph);
+            if (!string.IsNullOrWhiteSpace(fieldLimitRestriction))
+            {
+                return fieldLimitRestriction;
             }
 
 
@@ -31858,7 +32942,7 @@ namespace HaCreator.MapSimulator
 
 
 
-            CharacterBuild starterBuild = loader.LoadRandom();
+            CharacterBuild starterBuild = _loginCreateCharacterFlow?.CreatePreviewBuild(loader) ?? loader.LoadRandom();
 
 
 
@@ -31917,11 +33001,15 @@ namespace HaCreator.MapSimulator
 
 
 
-            starterBuild.Job = 0;
+            starterBuild.Job = _loginCreateCharacterFlow?.SelectedJob?.BeginnerJobId ?? 0;
 
 
 
-            starterBuild.JobName = "Beginner";
+            starterBuild.SubJob = _loginCreateCharacterFlow?.SelectedJob?.SubJob ?? 0;
+
+
+
+            starterBuild.JobName = _loginCreateCharacterFlow?.SelectedJob?.Label ?? "Beginner";
 
 
 
@@ -32049,11 +33137,11 @@ namespace HaCreator.MapSimulator
 
 
 
-                    JobId = 0,
+                    JobId = starterBuild.Job,
 
 
 
-                    SubJob = 0,
+                    SubJob = starterBuild.SubJob,
 
 
 
@@ -35058,6 +36146,8 @@ namespace HaCreator.MapSimulator
             SyncLoginWorldSelectionWindows();
 
             SyncLoginCharacterSelectWindow();
+
+            SyncLoginCreateCharacterWindow();
 
             SyncLoginEntryDialogs();
 

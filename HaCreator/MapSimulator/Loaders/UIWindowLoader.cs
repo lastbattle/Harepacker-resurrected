@@ -873,6 +873,102 @@ namespace HaCreator.MapSimulator.Loaders
 
 
 
+        public static void RegisterLoginCreateCharacterWindow(
+
+            UIWindowManager manager,
+
+            WzImage loginImage,
+
+            WzImage soundUIImage,
+
+            GraphicsDevice device,
+
+            int screenWidth,
+
+            int screenHeight)
+
+        {
+
+            if (manager == null || manager.GetWindow(MapSimulatorWindowNames.LoginCreateCharacter) != null)
+
+            {
+
+                return;
+
+            }
+
+
+
+            WzSubProperty newCharProperty = loginImage?["NewChar"] as WzSubProperty;
+
+            if (newCharProperty == null)
+
+            {
+
+                return;
+
+            }
+
+
+
+            WzBinaryProperty btClickSound = soundUIImage?["BtMouseClick"] as WzBinaryProperty;
+
+            WzBinaryProperty btOverSound = soundUIImage?["BtMouseOver"] as WzBinaryProperty;
+
+            Texture2D frameTexture = CreateFilledTexture(device, 520, 360, Color.Transparent, Color.Transparent);
+
+
+
+            var stageTextures = new Dictionary<LoginCreateCharacterStage, Texture2D>
+
+            {
+
+                [LoginCreateCharacterStage.RaceSelect] = LoadCanvasTexture(newCharProperty, "charAlert", device),
+
+                [LoginCreateCharacterStage.JobSelect] = LoadCanvasTexture(newCharProperty, "charJob", device),
+
+                [LoginCreateCharacterStage.AvatarSelect] = LoadCanvasTexture(newCharProperty, "charSet", device),
+
+                [LoginCreateCharacterStage.NameSelect] = LoadCanvasTexture(newCharProperty, "charName", device)
+
+            };
+
+
+
+            LoginCreateCharacterWindow window = new LoginCreateCharacterWindow(
+
+                new DXObject(0, 0, frameTexture, 0),
+
+                stageTextures,
+
+                LoadIndexedCanvasTextureList(newCharProperty?["jobSelect"] as WzSubProperty, device),
+
+                LoadIndexedCanvasTextureList(newCharProperty?["avatarSel"] as WzSubProperty, "normal", device),
+
+                LoadIndexedCanvasTextureList(newCharProperty?["avatarSel"] as WzSubProperty, "disabled", device),
+
+                LoadCharacterSelectAnimationFrames(newCharProperty?["dice"] as WzSubProperty, device),
+
+                LoadButton(newCharProperty, "BtYes", btClickSound, btOverSound, device),
+
+                LoadButton(newCharProperty, "BtNo", btClickSound, btOverSound, device),
+
+                LoadButton(newCharProperty, "BtCheck", btClickSound, btOverSound, device))
+
+            {
+
+                Position = new Point(Math.Max(24, (screenWidth / 2) - 180), Math.Max(24, (screenHeight / 2) - 120))
+
+            };
+
+
+
+            manager.RegisterCustomWindow(window);
+
+        }
+
+
+
         private static void RegisterAvatarPreviewCarouselWindow(
 
             UIWindowManager manager,
@@ -1622,6 +1718,60 @@ namespace HaCreator.MapSimulator.Loaders
 
         }
 
+        private static IReadOnlyList<Texture2D> LoadIndexedCanvasTextureList(WzSubProperty property, GraphicsDevice device)
+
+        {
+
+            if (property == null)
+
+            {
+
+                return Array.Empty<Texture2D>();
+
+            }
+
+
+
+            return property.WzProperties
+
+                .Where(child => int.TryParse(child.Name, out _))
+
+                .OrderBy(child => int.Parse(child.Name, CultureInfo.InvariantCulture))
+
+                .Select(child => LoadCanvasTexture(property, child.Name, device))
+
+                .ToArray();
+
+        }
+
+        private static IReadOnlyList<Texture2D> LoadIndexedCanvasTextureList(WzSubProperty property, string childName, GraphicsDevice device)
+
+        {
+
+            if (property == null)
+
+            {
+
+                return Array.Empty<Texture2D>();
+
+            }
+
+
+
+            return property.WzProperties
+
+                .Where(child => int.TryParse(child.Name, out _))
+
+                .OrderBy(child => int.Parse(child.Name, CultureInfo.InvariantCulture))
+
+                .Select(child => child[childName] as WzCanvasProperty)
+
+                .Select(canvas => canvas?.GetLinkedWzCanvasBitmap()?.ToTexture2DAndDispose(device))
+
+                .ToArray();
+
+        }
+
 
 
         public static void RegisterLoginEntryWindows(
@@ -2159,6 +2309,10 @@ namespace HaCreator.MapSimulator.Loaders
             RegisterMessengerWindow(manager, uiWindow1Image, uiWindow2Image, basicImage, soundUIImage, device,
 
                 new Point(x + (cascade * 3), y + (cascade * 3)));
+
+            RegisterEngagementProposalWindow(manager, uiWindow1Image, uiWindow2Image, basicImage, soundUIImage, device,
+
+                new Point(x + (cascade * 4), y + (cascade * 3)));
 
             RegisterMapleTvWindow(manager, uiWindow1Image, mapleTvImage, basicImage, soundUIImage, device,
 
@@ -3739,7 +3893,25 @@ namespace HaCreator.MapSimulator.Loaders
 
         }
 
+        private static void RegisterEngagementProposalWindow(
+            UIWindowManager manager,
+            WzImage uiWindow1Image,
+            WzImage uiWindow2Image,
+            WzImage basicImage,
+            WzImage soundUIImage,
+            GraphicsDevice device,
+            Point position)
+        {
+            if (manager == null || manager.GetWindow(MapSimulatorWindowNames.EngagementProposal) != null)
+            {
+                return;
+            }
 
+            EngagementProposalWindow window = CreateEngagementProposalWindow(uiWindow1Image, uiWindow2Image, soundUIImage, device)
+                ?? CreateFallbackEngagementProposalWindow(device);
+            window.Position = position;
+            manager.RegisterCustomWindow(window);
+        }
 
         private static UIWindowBase CreateMiniRoomWindow(
 
@@ -7210,6 +7382,77 @@ namespace HaCreator.MapSimulator.Loaders
 
             return window;
 
+        }
+
+        private static EngagementProposalWindow CreateEngagementProposalWindow(
+            WzImage uiWindow1Image,
+            WzImage uiWindow2Image,
+            WzImage soundUIImage,
+            GraphicsDevice device)
+        {
+            WzSubProperty sourceProperty = uiWindow2Image?["MateMessage"] as WzSubProperty
+                ?? uiWindow1Image?["MateMessage"] as WzSubProperty;
+            if (sourceProperty == null)
+            {
+                return null;
+            }
+
+            WzBinaryProperty clickSound = soundUIImage?["BtMouseClick"] as WzBinaryProperty;
+            WzBinaryProperty overSound = soundUIImage?["BtMouseOver"] as WzBinaryProperty;
+            UIObject acceptButton = LoadButton(sourceProperty, "BtSend", clickSound, overSound, device)
+                ?? UiButtonFactory.CreateSolidButton(
+                    device,
+                    48,
+                    18,
+                    new Color(240, 220, 168),
+                    new Color(225, 196, 120),
+                    new Color(255, 236, 183),
+                    new Color(170, 170, 170));
+
+            EngagementProposalWindow window = new(
+                new EngagementProposalWindowAssets(
+                    LoadEngagementProposalBand(sourceProperty["top"] as WzSubProperty, device, 35),
+                    LoadEngagementProposalBand(sourceProperty["center"] as WzSubProperty, device, 5),
+                    LoadEngagementProposalBand(sourceProperty["bottom"] as WzSubProperty, device, 35)),
+                device);
+            window.InitializeControls(acceptButton);
+            return window;
+        }
+
+        private static EngagementProposalWindow CreateFallbackEngagementProposalWindow(GraphicsDevice device)
+        {
+            EngagementProposalWindow window = new(
+                new EngagementProposalWindowAssets(
+                    LoadEngagementProposalFallbackBand(device, 35),
+                    LoadEngagementProposalFallbackBand(device, 5),
+                    LoadEngagementProposalFallbackBand(device, 35)),
+                device);
+            window.InitializeControls(
+                UiButtonFactory.CreateSolidButton(
+                    device,
+                    48,
+                    18,
+                    new Color(240, 220, 168),
+                    new Color(225, 196, 120),
+                    new Color(255, 236, 183),
+                    new Color(170, 170, 170)));
+            return window;
+        }
+
+        private static EngagementProposalBand LoadEngagementProposalBand(WzSubProperty sourceProperty, GraphicsDevice device, int fallbackHeight)
+        {
+            return new EngagementProposalBand(
+                LoadCanvasTexture(sourceProperty, "left", device) ?? CreateFilledTexture(device, 8, fallbackHeight, new Color(247, 233, 214), new Color(147, 112, 73)),
+                LoadCanvasTexture(sourceProperty, "center", device) ?? CreateFilledTexture(device, 1, fallbackHeight, new Color(247, 233, 214), new Color(247, 233, 214)),
+                LoadCanvasTexture(sourceProperty, "right", device) ?? CreateFilledTexture(device, 7, fallbackHeight, new Color(247, 233, 214), new Color(147, 112, 73)));
+        }
+
+        private static EngagementProposalBand LoadEngagementProposalFallbackBand(GraphicsDevice device, int height)
+        {
+            return new EngagementProposalBand(
+                CreateFilledTexture(device, 8, height, new Color(247, 233, 214), new Color(147, 112, 73)),
+                CreateFilledTexture(device, 1, height, new Color(247, 233, 214), new Color(247, 233, 214)),
+                CreateFilledTexture(device, 7, height, new Color(247, 233, 214), new Color(147, 112, 73)));
         }
 
 

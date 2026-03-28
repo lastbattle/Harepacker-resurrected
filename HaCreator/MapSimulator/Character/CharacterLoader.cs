@@ -88,6 +88,17 @@ namespace HaCreator.MapSimulator.Character
             public IReadOnlyList<int> WeaponIds { get; init; } = Array.Empty<int>();
         }
 
+        public sealed class LoginStarterAvatarCatalog
+        {
+            public IReadOnlyList<SkinColor> Skins { get; init; } = Array.Empty<SkinColor>();
+            public IReadOnlyList<int> FaceIds { get; init; } = Array.Empty<int>();
+            public IReadOnlyList<int> HairIds { get; init; } = Array.Empty<int>();
+            public IReadOnlyList<int> CoatIds { get; init; } = Array.Empty<int>();
+            public IReadOnlyList<int> PantsIds { get; init; } = Array.Empty<int>();
+            public IReadOnlyList<int> ShoesIds { get; init; } = Array.Empty<int>();
+            public IReadOnlyList<int> WeaponIds { get; init; } = Array.Empty<int>();
+        }
+
         public CharacterLoader(WzFile characterWz, GraphicsDevice device, TexturePool texturePool)
         {
             _characterWz = characterWz; // Can be null - will use Program.FindImage fallback
@@ -2174,6 +2185,52 @@ namespace HaCreator.MapSimulator.Character
             return build;
         }
 
+        public LoginStarterAvatarCatalog GetLoginStarterAvatarCatalog(
+            LoginCreateCharacterRaceKind race,
+            CharacterGender gender)
+        {
+            return new LoginStarterAvatarCatalog
+            {
+                Skins = ResolveStarterSkinCandidates(gender, race),
+                FaceIds = ResolveStarterFaceCandidates(gender, race),
+                HairIds = ResolveStarterHairCandidates(gender, race),
+                CoatIds = ResolveStarterEquipmentCandidates(gender, 4, race),
+                PantsIds = ResolveStarterEquipmentCandidates(gender, 5, race),
+                ShoesIds = ResolveStarterEquipmentCandidates(gender, 6, race),
+                WeaponIds = ResolveStarterEquipmentCandidates(gender, 7, race)
+            };
+        }
+
+        public CharacterBuild LoadLoginStarterBuild(
+            CharacterGender gender,
+            SkinColor skin,
+            int faceId,
+            int hairId,
+            int coatId,
+            int pantsId,
+            int shoesId,
+            int weaponId)
+        {
+            var build = new CharacterBuild
+            {
+                Gender = gender,
+                Skin = skin,
+                Body = LoadBody(skin),
+                Head = LoadHead(skin),
+                Face = LoadFace(faceId) ?? LoadFace(gender == CharacterGender.Male ? DefaultMaleFaceId : DefaultFemaleFaceId),
+                Hair = LoadHair(hairId) ?? LoadHair(gender == CharacterGender.Male ? DefaultMaleHairId : DefaultFemaleHairId),
+                Name = "Starter",
+                Job = 0,
+                JobName = "Beginner"
+            };
+
+            EquipDefaultItem(build, coatId, nameof(EquipSlot.Coat), DefaultWizetSuitId);
+            EquipDefaultItem(build, pantsId, nameof(EquipSlot.Pants), DefaultWizetPantsId);
+            EquipDefaultItem(build, shoesId, nameof(EquipSlot.Shoes), DefaultLeatherSandalsId);
+            EquipDefaultItem(build, weaponId, nameof(EquipSlot.Weapon), DefaultWizetSuitcaseId);
+            return build;
+        }
+
         private StarterAvatarRandomizationCatalog GetStarterAvatarRandomizationCatalog(CharacterGender gender)
         {
             if (_starterAvatarCatalogCache.TryGetValue(gender, out StarterAvatarRandomizationCatalog cachedCatalog))
@@ -2200,10 +2257,18 @@ namespace HaCreator.MapSimulator.Character
 
         private IReadOnlyList<SkinColor> ResolveStarterSkinCandidates()
         {
-            List<int> makeCharInfoValues = ResolveMakeCharInfoStarterValues(CharacterGender.Male, "2");
+            return ResolveStarterSkinCandidates(CharacterGender.Male, LoginCreateCharacterRaceKind.Explorer);
+        }
+
+        private IReadOnlyList<SkinColor> ResolveStarterSkinCandidates(CharacterGender gender, LoginCreateCharacterRaceKind race)
+        {
+            List<int> makeCharInfoValues = ResolveMakeCharInfoStarterValues(gender, "2", race);
             if (makeCharInfoValues.Count == 0)
             {
-                makeCharInfoValues = ResolveMakeCharInfoStarterValues(CharacterGender.Female, "2");
+                makeCharInfoValues = ResolveMakeCharInfoStarterValues(
+                    gender == CharacterGender.Male ? CharacterGender.Female : CharacterGender.Male,
+                    "2",
+                    race);
             }
 
             List<SkinColor> skins = new();
@@ -2242,8 +2307,13 @@ namespace HaCreator.MapSimulator.Character
 
         private IReadOnlyList<int> ResolveStarterFaceCandidates(CharacterGender gender)
         {
+            return ResolveStarterFaceCandidates(gender, LoginCreateCharacterRaceKind.Explorer);
+        }
+
+        private IReadOnlyList<int> ResolveStarterFaceCandidates(CharacterGender gender, LoginCreateCharacterRaceKind race)
+        {
             int defaultFaceId = gender == CharacterGender.Male ? DefaultMaleFaceId : DefaultFemaleFaceId;
-            List<int> makeCharInfoValues = ResolveMakeCharInfoStarterValues(gender, "0");
+            List<int> makeCharInfoValues = ResolveMakeCharInfoStarterValues(gender, "0", race);
             if (makeCharInfoValues.Count > 0)
             {
                 return makeCharInfoValues;
@@ -2259,8 +2329,13 @@ namespace HaCreator.MapSimulator.Character
 
         private IReadOnlyList<int> ResolveStarterHairCandidates(CharacterGender gender)
         {
+            return ResolveStarterHairCandidates(gender, LoginCreateCharacterRaceKind.Explorer);
+        }
+
+        private IReadOnlyList<int> ResolveStarterHairCandidates(CharacterGender gender, LoginCreateCharacterRaceKind race)
+        {
             int defaultHairId = gender == CharacterGender.Male ? DefaultMaleHairId : DefaultFemaleHairId;
-            List<int> makeCharInfoValues = ResolveMakeCharInfoStarterValues(gender, "1");
+            List<int> makeCharInfoValues = ResolveMakeCharInfoStarterValues(gender, "1", race);
             if (makeCharInfoValues.Count > 0)
             {
                 return makeCharInfoValues;
@@ -2276,7 +2351,16 @@ namespace HaCreator.MapSimulator.Character
 
         private IReadOnlyList<int> ResolveStarterEquipmentCandidates(CharacterGender gender, string categoryName, int fallbackItemId)
         {
-            List<int> candidates = ResolveMakeCharInfoStarterValues(gender, categoryName);
+            return ResolveStarterEquipmentCandidates(gender, categoryName, fallbackItemId, LoginCreateCharacterRaceKind.Explorer);
+        }
+
+        private IReadOnlyList<int> ResolveStarterEquipmentCandidates(
+            CharacterGender gender,
+            string categoryName,
+            int fallbackItemId,
+            LoginCreateCharacterRaceKind race)
+        {
+            List<int> candidates = ResolveMakeCharInfoStarterValues(gender, categoryName, race);
             if (candidates.Count == 0)
             {
                 candidates.Add(fallbackItemId);
@@ -2287,12 +2371,20 @@ namespace HaCreator.MapSimulator.Character
 
         private IReadOnlyList<int> ResolveStarterEquipmentCandidates(CharacterGender gender, int categoryIndex)
         {
+            return ResolveStarterEquipmentCandidates(gender, categoryIndex, LoginCreateCharacterRaceKind.Explorer);
+        }
+
+        private IReadOnlyList<int> ResolveStarterEquipmentCandidates(
+            CharacterGender gender,
+            int categoryIndex,
+            LoginCreateCharacterRaceKind race)
+        {
             return categoryIndex switch
             {
-                4 => ResolveStarterEquipmentCandidates(gender, "4", gender == CharacterGender.Male ? DefaultWizetSuitId : DefaultWizetSuitId),
-                5 => ResolveStarterEquipmentCandidates(gender, "5", gender == CharacterGender.Male ? DefaultWizetPantsId : DefaultWizetPantsId),
-                6 => ResolveStarterEquipmentCandidates(gender, "6", DefaultLeatherSandalsId),
-                7 => ResolveStarterEquipmentCandidates(gender, "7", DefaultWizetSuitcaseId),
+                4 => ResolveStarterEquipmentCandidates(gender, "4", DefaultWizetSuitId, race),
+                5 => ResolveStarterEquipmentCandidates(gender, "5", DefaultWizetPantsId, race),
+                6 => ResolveStarterEquipmentCandidates(gender, "6", DefaultLeatherSandalsId, race),
+                7 => ResolveStarterEquipmentCandidates(gender, "7", DefaultWizetSuitcaseId, race),
                 _ => Array.Empty<int>()
             };
         }
@@ -2317,6 +2409,14 @@ namespace HaCreator.MapSimulator.Character
 
         private List<int> ResolveMakeCharInfoStarterValues(CharacterGender gender, string categoryName)
         {
+            return ResolveMakeCharInfoStarterValues(gender, categoryName, LoginCreateCharacterRaceKind.Explorer);
+        }
+
+        private List<int> ResolveMakeCharInfoStarterValues(
+            CharacterGender gender,
+            string categoryName,
+            LoginCreateCharacterRaceKind race)
+        {
             var candidates = new List<int>();
             WzImage makeCharInfoImage = Program.FindImage("Etc", "MakeCharInfo.img");
             if (makeCharInfoImage == null)
@@ -2324,8 +2424,8 @@ namespace HaCreator.MapSimulator.Character
                 return candidates;
             }
 
-            WzImageProperty explorerNode = makeCharInfoImage["000"] as WzImageProperty;
-            WzImageProperty genderNode = explorerNode?[gender == CharacterGender.Female ? "female" : "male"] as WzImageProperty;
+            WzImageProperty raceNode = makeCharInfoImage[ResolveMakeCharInfoRaceNodeName(race)] as WzImageProperty;
+            WzImageProperty genderNode = raceNode?[gender == CharacterGender.Female ? "female" : "male"] as WzImageProperty;
             WzImageProperty categoryNode = genderNode?[categoryName] as WzImageProperty;
             if (categoryNode == null)
             {
@@ -2369,6 +2469,18 @@ namespace HaCreator.MapSimulator.Character
             }
 
             return candidates;
+        }
+
+        private static string ResolveMakeCharInfoRaceNodeName(LoginCreateCharacterRaceKind race)
+        {
+            return race switch
+            {
+                LoginCreateCharacterRaceKind.Cygnus => "1000",
+                LoginCreateCharacterRaceKind.Aran => "2000",
+                LoginCreateCharacterRaceKind.Evan => "2001",
+                LoginCreateCharacterRaceKind.Resistance => "3000",
+                _ => "000"
+            };
         }
 
         private static IReadOnlyList<int> ResolveStarterPartCandidates(

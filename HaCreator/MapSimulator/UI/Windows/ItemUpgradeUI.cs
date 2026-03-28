@@ -75,6 +75,7 @@ namespace HaCreator.MapSimulator.UI
         private readonly Random _random = new Random();
         private readonly Dictionary<EquipSlot, UpgradeState> _upgradeStates = new Dictionary<EquipSlot, UpgradeState>();
         private static readonly Dictionary<int, IReadOnlyCollection<int>> ConsumableRequirementCache = new Dictionary<int, IReadOnlyCollection<int>>();
+        private static readonly Dictionary<int, string> ConsumableOwnerPathCache = new Dictionary<int, string>();
         private static readonly IReadOnlyDictionary<int, EnhancementConsumableDefinition> ConsumableDefinitions =
             new Dictionary<int, EnhancementConsumableDefinition>
             {
@@ -120,6 +121,7 @@ namespace HaCreator.MapSimulator.UI
         private Texture2D _gaugeBarTexture;
         private Texture2D _gaugeFillTexture;
         private Point _gaugeOffset;
+        private readonly Dictionary<VisualThemeKind, WindowVisualTheme> _visualThemes = new Dictionary<VisualThemeKind, WindowVisualTheme>();
         private SpriteFont _font;
         private UIObject _startButton;
         private UIObject _cancelButton;
@@ -132,6 +134,7 @@ namespace HaCreator.MapSimulator.UI
         private int? _preferredModifierItemId;
         private string _statusMessage = "Select equipment and begin enhancement.";
         private bool? _lastUpgradeSucceeded;
+        private VisualThemeKind _activeThemeKind = VisualThemeKind.Enhancement;
 
         public ItemUpgradeUI(IDXObject frame)
             : base(frame)
@@ -255,6 +258,20 @@ namespace HaCreator.MapSimulator.UI
             _gaugeOffset = gaugeOffset;
         }
 
+        public void RegisterVisualTheme(VisualThemeKind themeKind, WindowVisualTheme theme)
+        {
+            if (theme == null)
+            {
+                return;
+            }
+
+            _visualThemes[themeKind] = theme;
+            if (_visualThemes.Count == 1 || _activeThemeKind == themeKind)
+            {
+                ApplyVisualTheme(themeKind);
+            }
+        }
+
         public void InitializeUpgradeButtons(UIObject startButton, UIObject cancelButton, UIObject prevButton, UIObject nextButton)
         {
             _startButton = startButton;
@@ -301,6 +318,7 @@ namespace HaCreator.MapSimulator.UI
         {
             base.Update(gameTime);
             ClampSelection();
+            RefreshVisualTheme();
             UpdateButtonStates();
         }
 
@@ -826,6 +844,7 @@ namespace HaCreator.MapSimulator.UI
             CharacterPart selectedPart = candidates[_selectedIndex].Value;
             _statusMessage = $"{ResolveItemName(selectedPart)} selected for enhancement.";
             _lastUpgradeSucceeded = null;
+            RefreshVisualTheme();
             UpdateButtonStates();
         }
 
@@ -879,6 +898,78 @@ namespace HaCreator.MapSimulator.UI
                                 _ => false
                             };
             _startButton?.SetEnabled(canApply);
+        }
+
+        private void RefreshVisualTheme()
+        {
+            ApplyVisualTheme(ResolveCurrentVisualThemeKind());
+        }
+
+        private VisualThemeKind ResolveCurrentVisualThemeKind()
+        {
+            if (_preferredConsumableItemId.HasValue &&
+                TryGetConsumableDefinition(_preferredConsumableItemId.Value, out EnhancementConsumableDefinition preferredDefinition) &&
+                preferredDefinition.EffectType != ConsumableEffectType.Modifier)
+            {
+                return ResolveVisualThemeKind(preferredDefinition);
+            }
+
+            IReadOnlyList<KeyValuePair<EquipSlot, CharacterPart>> candidates = GetCandidates();
+            if (candidates.Count == 0)
+            {
+                return VisualThemeKind.Enhancement;
+            }
+
+            KeyValuePair<EquipSlot, CharacterPart> selection = candidates[_selectedIndex];
+            UpgradeState state = GetOrCreateState(selection.Key, selection.Value);
+            EnhancementConsumable consumable = ResolveConsumable(state, selection.Value);
+            return consumable != null
+                ? ResolveVisualThemeKind(consumable.Definition)
+                : VisualThemeKind.Enhancement;
+        }
+
+        private VisualThemeKind ResolveVisualThemeKind(EnhancementConsumableDefinition definition)
+        {
+            return definition.EffectType switch
+            {
+                ConsumableEffectType.PotentialScroll => VisualThemeKind.Potential,
+                ConsumableEffectType.PotentialStamp => VisualThemeKind.PotentialStamp,
+                ConsumableEffectType.Cube => ResolveCubeVisualThemeKind(definition.ItemId),
+                _ => VisualThemeKind.Enhancement
+            };
+        }
+
+        private VisualThemeKind ResolveCubeVisualThemeKind(int itemId)
+        {
+            string ownerPath = ResolveConsumableOwnerPath(itemId);
+            if (!string.IsNullOrWhiteSpace(ownerPath) &&
+                ownerPath.IndexOf("MiracleCube_8th", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                return VisualThemeKind.MapleMiracleCube;
+            }
+
+            return VisualThemeKind.MiracleCube;
+        }
+
+        private void ApplyVisualTheme(VisualThemeKind themeKind)
+        {
+            if (!_visualThemes.TryGetValue(themeKind, out WindowVisualTheme theme) &&
+                !_visualThemes.TryGetValue(VisualThemeKind.Enhancement, out theme))
+            {
+                return;
+            }
+
+            _activeThemeKind = _visualThemes.ContainsKey(themeKind)
+                ? themeKind
+                : VisualThemeKind.Enhancement;
+            Frame = theme.Frame;
+            _backgroundOverlay = theme.BackgroundOverlay;
+            _backgroundOverlayOffset = theme.BackgroundOverlayOffset;
+            _headerOverlay = theme.HeaderOverlay;
+            _headerOverlayOffset = theme.HeaderOverlayOffset;
+            _gaugeBarTexture = theme.GaugeBarTexture;
+            _gaugeFillTexture = theme.GaugeFillTexture;
+            _gaugeOffset = theme.GaugeOffset;
         }
 
         private IReadOnlyList<KeyValuePair<EquipSlot, CharacterPart>> GetCandidates()
@@ -1431,6 +1522,30 @@ namespace HaCreator.MapSimulator.UI
             return consumable.Definition.RewardItemId;
         }
 
+        private static string ResolveConsumableOwnerPath(int itemId)
+        {
+            if (ConsumableOwnerPathCache.TryGetValue(itemId, out string cachedPath))
+            {
+                return cachedPath;
+            }
+
+            string ownerPath = null;
+            if (TryGetConsumableDefinition(itemId, out EnhancementConsumableDefinition definition) &&
+                definition.InventoryType == InventoryType.CASH)
+            {
+                string imagePath = $"Cash/{(itemId / 10000):D4}.img";
+                WzImage image = HaCreator.Program.DataSource?.GetImage("Item", imagePath);
+                if (image != null)
+                {
+                    image.ParseImage();
+                    ownerPath = (image.GetFromPath($"{itemId:D8}/info/path") as WzStringProperty)?.GetString();
+                }
+            }
+
+            ConsumableOwnerPathCache[itemId] = ownerPath;
+            return ownerPath;
+        }
+
         private PotentialTier MaybeUpgradePotentialTier(PotentialTier currentTier, CubeBehavior behavior)
         {
             double roll = _random.NextDouble();
@@ -1693,6 +1808,47 @@ namespace HaCreator.MapSimulator.UI
             public string StatusMessage { get; }
             public int ConsumableItemId { get; }
             public int ModifierItemId { get; }
+        }
+
+        public enum VisualThemeKind
+        {
+            Enhancement,
+            Potential,
+            PotentialStamp,
+            MiracleCube,
+            MapleMiracleCube
+        }
+
+        public sealed class WindowVisualTheme
+        {
+            public WindowVisualTheme(
+                IDXObject frame,
+                Texture2D backgroundOverlay,
+                Point backgroundOverlayOffset,
+                Texture2D headerOverlay,
+                Point headerOverlayOffset,
+                Texture2D gaugeBarTexture,
+                Texture2D gaugeFillTexture,
+                Point gaugeOffset)
+            {
+                Frame = frame;
+                BackgroundOverlay = backgroundOverlay;
+                BackgroundOverlayOffset = backgroundOverlayOffset;
+                HeaderOverlay = headerOverlay;
+                HeaderOverlayOffset = headerOverlayOffset;
+                GaugeBarTexture = gaugeBarTexture;
+                GaugeFillTexture = gaugeFillTexture;
+                GaugeOffset = gaugeOffset;
+            }
+
+            public IDXObject Frame { get; }
+            public Texture2D BackgroundOverlay { get; }
+            public Point BackgroundOverlayOffset { get; }
+            public Texture2D HeaderOverlay { get; }
+            public Point HeaderOverlayOffset { get; }
+            public Texture2D GaugeBarTexture { get; }
+            public Texture2D GaugeFillTexture { get; }
+            public Point GaugeOffset { get; }
         }
 
         public readonly struct ModifierPreview

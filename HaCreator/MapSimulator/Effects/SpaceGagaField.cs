@@ -50,13 +50,16 @@ namespace HaCreator.MapSimulator.Effects
     /// - StringPool::GetString (0x746750) shows that StringPool id 0x140D is not a WZ string:
     ///   it decodes an entry from StringPool::ms_aString where the first byte is the decode seed
     ///   and the remaining bytes are the encoded literal used by OnCreate.
+    /// - CTimerboard_SpaceGAGA::GetFontTime (0x5629f0) resolves a second StringPool entry,
+    ///   0x140E, for the timer digit property instead of scanning generic UIWindow shapes.
     /// - CTimerboard_SpaceGAGA::Draw (0x5626c0) renders a dedicated source canvas and draws
     ///   zero-padded minutes and seconds at fixed positions: (44, 23) and (131, 23).
     ///
     /// This simulator pass adds the dedicated timerboard flow and clock ownership seam.
-    /// The client still references this through StringPool id 0x140D in OnCreate, but the
-    /// literal bytes for ms_aString[0x140D] are still unrecovered in this workspace, so the
-    /// runtime keeps the verified WZ node mapping while reporting the exact client decode path.
+    /// The client still references this through StringPool ids 0x140D/0x140E, but the
+    /// literal bytes for those ms_aString entries are still unrecovered in this workspace,
+    /// so the runtime keeps the verified WZ node mapping while reporting the exact client
+    /// decode path and the inferred decoded object targets.
     /// </summary>
     public class SpaceGagaField
     {
@@ -74,11 +77,13 @@ namespace HaCreator.MapSimulator.Effects
         private const int ResetPulseDurationMs = 600;
         public const int PacketTypeClock = 1;
         private const int TimerboardSourceStringPoolId = 0x140D;
+        private const int TimerboardFontStringPoolId = 0x140E;
         private const string SpaceMapObjectImageName = "Obj/etc.img";
         private const string SpaceTimerboardSourceRoot = "Map/Obj/etc.img/space";
         private const string SpaceTimerboardBackgroundSourcePath = "Map/Obj/etc.img/space/backgrnd";
         private const string SpaceTimerboardBitmapFontSourcePath = "Map/Obj/etc.img/space/fontTime";
-        private const string SpaceTimerboardClientStringPoolSource = "StringPool::ms_aString[0x140D]";
+        private const string SpaceTimerboardBackgroundClientStringPoolSource = "StringPool::ms_aString[0x140D]";
+        private const string SpaceTimerboardFontClientStringPoolSource = "StringPool::ms_aString[0x140E]";
         private const string SpaceTimerboardRootPath = "space";
         private const string SpaceTimerboardBackgroundPath = "space/backgrnd";
         private const string SpaceTimerboardDigitsPath = "space/fontTime";
@@ -235,7 +240,7 @@ namespace HaCreator.MapSimulator.Effects
             string rawClockText = _lastDecodedClockType >= 0
                 ? $", rawClock={_lastDecodedClockType}:{_lastDecodedClockDurationSec}s"
                 : string.Empty;
-            return $"SpaceGAGA timerboard active on map {_mapId}, timer={timerText}, duration={_durationSec}s, root={SpaceTimerboardSourceRoot}, source={SpaceTimerboardBackgroundSourcePath}, font={SpaceTimerboardBitmapFontSourcePath}{rawClockText} [StringPool 0x{TimerboardSourceStringPoolId:X}: {SpaceTimerboardClientStringPoolSource} encoded entry; first byte is the decode seed, literal bytes still unrecovered]";
+            return $"SpaceGAGA timerboard active on map {_mapId}, timer={timerText}, duration={_durationSec}s, root={SpaceTimerboardSourceRoot}, source={SpaceTimerboardBackgroundSourcePath}, font={SpaceTimerboardBitmapFontSourcePath}{rawClockText} [StringPool 0x{TimerboardSourceStringPoolId:X}->{SpaceTimerboardBackgroundSourcePath} via {SpaceTimerboardBackgroundClientStringPoolSource}; 0x{TimerboardFontStringPoolId:X}->{SpaceTimerboardBitmapFontSourcePath} via {SpaceTimerboardFontClientStringPoolSource}; encoded entries use StringPool decode seeds and literal bytes remain unrecovered]";
         }
         public void Reset()
         {

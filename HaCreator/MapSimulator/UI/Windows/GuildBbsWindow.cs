@@ -14,21 +14,28 @@ namespace HaCreator.MapSimulator.UI
 {
     internal sealed class GuildBbsWindow : UIWindowBase
     {
-        private const int ThreadListLeft = 395;
-        private const int ThreadListTop = 55;
-        private const int ThreadListWidth = 314;
+        private const int NoticeLeft = 22;
+        private const int NoticeTop = 103;
+        private const int NoticeWidth = 344;
+        private const int NoticeHeight = 31;
+        private const int ThreadListLeft = 22;
+        private const int ThreadListTop = 134;
+        private const int ThreadListWidth = 344;
         private const int ThreadRowHeight = 31;
-        private const int DetailLeft = 20;
-        private const int DetailTop = 62;
-        private const int DetailWidth = 352;
+        private const int DetailLeft = 395;
+        private const int DetailTop = 30;
+        private const int DetailWidth = 314;
         private const int DetailHeight = 430;
-        private const int TitleInputHeight = 22;
+        private const int TitleInputHeight = 16;
         private const int ReplyInputHeight = 22;
         private const int BasicEmoticonSize = 18;
         private const int CashEmoticonSize = 18;
         private const int EmoticonSelectionSize = 22;
         private const int CashEmoticonSpacing = 23;
         private const int BasicEmoticonSpacing = 23;
+        private const int ComposeBodyLineHeight = 12;
+        private const int ComposeBodyVisibleLineCount = 15;
+        private const int ComposeScrollBarWidth = 12;
         private const int KeyRepeatDelayMs = 400;
         private const int KeyRepeatRateMs = 35;
 
@@ -52,6 +59,7 @@ namespace HaCreator.MapSimulator.UI
         private readonly StringBuilder _inputBuffer = new();
         private int _cursorPosition;
         private int _cursorBlinkTimer;
+        private int _composeBodyScrollLine;
 
         private Func<GuildBbsSnapshot> _snapshotProvider;
         private Action<int> _selectThreadHandler;
@@ -98,6 +106,15 @@ namespace HaCreator.MapSimulator.UI
         {
             public int ThreadId { get; init; }
             public Rectangle Bounds { get; init; }
+        }
+
+        private sealed class ScrollMetrics
+        {
+            public int TotalLines { get; init; }
+            public int VisibleLines { get; init; }
+            public int MaxScrollLine { get; init; }
+            public Rectangle TrackBounds { get; init; }
+            public Rectangle ThumbBounds { get; init; }
         }
 
         private sealed class TextLineLayout
@@ -286,6 +303,7 @@ namespace HaCreator.MapSimulator.UI
                 new Color(92, 95, 102),
                 0.33f);
             DrawGuildMark(sprite, snapshot.GuildName);
+            DrawNoticeRow(sprite, snapshot);
             DrawThreadList(sprite, snapshot);
 
             if (snapshot.IsWriteMode)
@@ -365,6 +383,11 @@ namespace HaCreator.MapSimulator.UI
 
         private void HandleMouseClick(GuildBbsSnapshot snapshot, Point mousePosition)
         {
+            if (TryHandleNoticeSelection(snapshot, mousePosition))
+            {
+                return;
+            }
+
             if (snapshot.IsWriteMode)
             {
                 if (GetComposeTitleBounds().Contains(mousePosition))
@@ -378,6 +401,11 @@ namespace HaCreator.MapSimulator.UI
                 {
                     ActivateInput(InputTarget.ComposeBody, snapshot, clearExisting: false);
                     SetCursorFromPoint(InputTarget.ComposeBody, snapshot, mousePosition);
+                    return;
+                }
+
+                if (TryHandleComposeScrollClick(snapshot, mousePosition))
+                {
                     return;
                 }
 
@@ -506,6 +534,12 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
+            if (snapshot.IsWriteMode && GetComposeBodyBounds().Contains(mouseState.Position))
+            {
+                ScrollComposeBody(direction);
+                return;
+            }
+
             if (!snapshot.IsWriteMode && snapshot.SelectedThread != null && GetCommentPaneBounds().Contains(mouseState.Position))
             {
                 _moveCommentPageHandler?.Invoke(direction);
@@ -566,12 +600,14 @@ namespace HaCreator.MapSimulator.UI
             if (keyboardState.IsKeyDown(Keys.Home) && _previousKeyboardState.IsKeyUp(Keys.Home))
             {
                 _cursorPosition = ResolveHomeCursorPosition();
+                EnsureComposeCursorVisible();
                 return;
             }
 
             if (keyboardState.IsKeyDown(Keys.End) && _previousKeyboardState.IsKeyUp(Keys.End))
             {
                 _cursorPosition = ResolveEndCursorPosition();
+                EnsureComposeCursorVisible();
                 return;
             }
 
@@ -653,6 +689,7 @@ namespace HaCreator.MapSimulator.UI
             if (_previousKeyboardState.IsKeyUp(key))
             {
                 _cursorPosition = Math.Clamp(_cursorPosition + delta, 0, _inputBuffer.Length);
+                EnsureComposeCursorVisible();
                 _lastHeldKey = key;
                 _keyHoldStartTime = tickCount;
                 _lastKeyRepeatTime = tickCount;
@@ -662,6 +699,7 @@ namespace HaCreator.MapSimulator.UI
             if (ShouldRepeatKey(key, tickCount))
             {
                 _cursorPosition = Math.Clamp(_cursorPosition + delta, 0, _inputBuffer.Length);
+                EnsureComposeCursorVisible();
                 _lastKeyRepeatTime = tickCount;
                 return true;
             }
@@ -734,6 +772,11 @@ namespace HaCreator.MapSimulator.UI
 
             _cursorPosition = _inputBuffer.Length;
             _cursorBlinkTimer = Environment.TickCount;
+            if (target == InputTarget.ComposeBody)
+            {
+                EnsureComposeCursorVisible();
+            }
+
             ResetKeyRepeat();
         }
 
@@ -766,6 +809,7 @@ namespace HaCreator.MapSimulator.UI
             }
 
             _cursorBlinkTimer = Environment.TickCount;
+            EnsureComposeCursorVisible();
         }
 
         private void UpdateButtonStates(GuildBbsSnapshot snapshot)
@@ -817,17 +861,16 @@ namespace HaCreator.MapSimulator.UI
 
         private void UpdateDynamicButtonLayout(GuildBbsSnapshot snapshot)
         {
-            Rectangle cashRowBounds = GetCashEmoticonRowBounds();
             if (_emoticonLeftButton != null)
             {
-                _emoticonLeftButton.X = cashRowBounds.X - 24;
-                _emoticonLeftButton.Y = cashRowBounds.Y - 4;
+                _emoticonLeftButton.X = Position.X + 404;
+                _emoticonLeftButton.Y = Position.Y + 243;
             }
 
             if (_emoticonRightButton != null)
             {
-                _emoticonRightButton.X = cashRowBounds.Right + 4;
-                _emoticonRightButton.Y = cashRowBounds.Y - 4;
+                _emoticonRightButton.X = Position.X + 704;
+                _emoticonRightButton.Y = Position.Y + 243;
             }
         }
 
@@ -864,6 +907,40 @@ namespace HaCreator.MapSimulator.UI
             Rectangle markBounds = new Rectangle(Position.X + 20, Position.Y + 24, 20, 20);
             sprite.Draw(_pixel, markBounds, ResolveGuildMarkColor(guildName));
             sprite.Draw(_pixel, new Rectangle(markBounds.X + 3, markBounds.Y + 3, 14, 14), new Color(255, 255, 255, 180));
+        }
+
+        private void DrawNoticeRow(SpriteBatch sprite, GuildBbsSnapshot snapshot)
+        {
+            Rectangle bounds = GetNoticeBounds();
+            sprite.Draw(_pixel, bounds, new Color(255, 255, 255, 28));
+
+            GuildBbsThreadEntrySnapshot noticeThread = snapshot.NoticeThread;
+            if (noticeThread == null)
+            {
+                DrawString(sprite, "No guild notice is registered.", bounds.X + 6, bounds.Y + 9, new Color(104, 109, 117), 0.36f);
+                return;
+            }
+
+            bool selected = noticeThread.ThreadId == snapshot.SelectedThreadId;
+            if (selected)
+            {
+                sprite.Draw(_pixel, bounds, new Color(211, 146, 66, 60));
+            }
+
+            Rectangle badgeBounds = new Rectangle(bounds.X + 6, bounds.Y + 8, 24, 14);
+            sprite.Draw(_pixel, badgeBounds, new Color(218, 143, 57, 210));
+            DrawString(sprite, "NOTICE", badgeBounds.X + 2, badgeBounds.Y - 1, new Color(46, 28, 7), 0.26f);
+
+            int titleX = badgeBounds.Right + 8;
+            DrawInlineEmoticon(sprite, noticeThread.Emoticon, new Point(titleX, bounds.Y + 6), isSmall: true);
+            if (noticeThread.Emoticon != null)
+            {
+                titleX += 20;
+            }
+
+            DrawString(sprite, Truncate(noticeThread.Title, 30), titleX, bounds.Y + 4, new Color(61, 53, 44), 0.41f);
+            DrawString(sprite, Truncate(noticeThread.Author, 10), titleX, bounds.Y + 16, new Color(90, 92, 99), 0.32f);
+            DrawString(sprite, noticeThread.DateText, bounds.Right - 72, bounds.Y + 16, new Color(102, 104, 111), 0.30f);
         }
 
         private void DrawThreadList(SpriteBatch sprite, GuildBbsSnapshot snapshot)
@@ -929,17 +1006,18 @@ namespace HaCreator.MapSimulator.UI
             Rectangle titleBounds = GetComposeTitleBounds();
             Rectangle bodyBounds = GetComposeBodyBounds();
             DrawString(sprite, compose.ModeText, detailBounds.X, detailBounds.Y - 22, new Color(83, 86, 92), 0.42f);
-            DrawString(sprite, compose.IsNotice ? "[Notice]" : "[Thread]", detailBounds.X + 232, detailBounds.Y - 22, compose.IsNotice ? new Color(212, 143, 61) : new Color(85, 94, 110), 0.42f);
+            DrawString(sprite, compose.IsNotice ? "[Notice]" : "[Thread]", detailBounds.X + 219, detailBounds.Y - 22, compose.IsNotice ? new Color(212, 143, 61) : new Color(85, 94, 110), 0.42f);
 
             DrawTextInputBox(sprite, titleBounds, _activeInputTarget == InputTarget.ComposeTitle);
             DrawTextInputBox(sprite, bodyBounds, _activeInputTarget == InputTarget.ComposeBody);
             DrawEditableText(sprite, compose.Title, titleBounds, 0.46f, new Color(58, 49, 39), InputTarget.ComposeTitle, tickCount);
-            DrawEditableMultilineText(sprite, compose.Body, bodyBounds, 0.40f, new Color(78, 82, 91), InputTarget.ComposeBody, tickCount, 12);
+            DrawEditableMultilineText(sprite, compose.Body, bodyBounds, 0.37f, new Color(78, 82, 91), InputTarget.ComposeBody, tickCount, ComposeBodyVisibleLineCount);
+            DrawComposeScrollBar(sprite, compose.Body, bodyBounds);
 
             DrawString(sprite, "Title", titleBounds.X, titleBounds.Y - 16, new Color(101, 106, 115), 0.35f);
             DrawString(sprite, "Body", bodyBounds.X, bodyBounds.Y - 16, new Color(101, 106, 115), 0.35f);
             DrawEmoticonStrip(sprite, compose.SelectedEmoticon, compose.CashEmoticonPageIndex, compose.CashEmoticonPageCount, compose.CashEmoticonOwnership);
-            DrawString(sprite, "TAB switches fields. REGISTER posts the current draft.", detailBounds.X, detailBounds.Bottom - 16, new Color(111, 117, 127), 0.36f);
+            DrawString(sprite, "TAB switches fields. Mouse wheel scrolls the body editor.", detailBounds.X, detailBounds.Bottom - 16, new Color(111, 117, 127), 0.34f);
         }
 
         private void DrawDetailPane(SpriteBatch sprite, GuildBbsSnapshot snapshot, int tickCount)
@@ -995,6 +1073,18 @@ namespace HaCreator.MapSimulator.UI
             {
                 DrawString(sprite, DescribePermissions(snapshot.Permission, snapshot.SelectedThread), detailBounds.X, detailBounds.Bottom - 10, new Color(111, 117, 127), 0.33f);
             }
+        }
+
+        private void DrawComposeScrollBar(SpriteBatch sprite, string text, Rectangle bodyBounds)
+        {
+            ScrollMetrics metrics = BuildComposeScrollMetrics(text, bodyBounds);
+            if (metrics.MaxScrollLine <= 0)
+            {
+                return;
+            }
+
+            sprite.Draw(_pixel, metrics.TrackBounds, new Color(41, 46, 56, 45));
+            sprite.Draw(_pixel, metrics.ThumbBounds, new Color(101, 112, 131, 155));
         }
 
         private void DrawEmoticonStrip(SpriteBatch sprite, GuildBbsEmoticonSnapshot selectedEmoticon, int cashPageIndex, int cashPageCount, IReadOnlyList<bool> cashOwnership)
@@ -1076,10 +1166,12 @@ namespace HaCreator.MapSimulator.UI
             }
 
             float y = bounds.Y + 2;
-            for (int i = 0; i < lines.Count && i < maxLines; i++)
+            int startLine = target == InputTarget.ComposeBody ? Math.Clamp(_composeBodyScrollLine, 0, Math.Max(0, lines.Count - maxLines)) : 0;
+            int visibleLineCount = Math.Min(maxLines, lines.Count - startLine);
+            for (int i = 0; i < visibleLineCount; i++)
             {
-                sprite.DrawString(_font, lines[i].Text, new Vector2(bounds.X + 2, y), color, 0f, Vector2.Zero, scale, SpriteEffects.None, 0f);
-                y += 15f;
+                sprite.DrawString(_font, lines[startLine + i].Text, new Vector2(bounds.X + 2, y), color, 0f, Vector2.Zero, scale, SpriteEffects.None, 0f);
+                y += ComposeBodyLineHeight;
             }
 
             if (_activeInputTarget != target || ((tickCount - _cursorBlinkTimer) / 500) % 2 != 0)
@@ -1088,7 +1180,7 @@ namespace HaCreator.MapSimulator.UI
             }
 
             int lineIndex = ResolveCursorLineIndex(lines, _cursorPosition);
-            if (lineIndex < 0 || lineIndex >= Math.Min(lines.Count, maxLines))
+            if (lineIndex < startLine || lineIndex >= startLine + maxLines)
             {
                 return;
             }
@@ -1097,7 +1189,7 @@ namespace HaCreator.MapSimulator.UI
             int relativeIndex = Math.Clamp(_cursorPosition - line.StartIndex, 0, line.Text.Length);
             string cursorText = line.Text[..relativeIndex];
             float cursorX = bounds.X + 2 + (_font.MeasureString(cursorText).X * scale);
-            int cursorY = bounds.Y + 2 + (lineIndex * 15);
+            int cursorY = bounds.Y + 2 + ((lineIndex - startLine) * ComposeBodyLineHeight);
             sprite.Draw(_pixel, new Rectangle((int)cursorX, cursorY, 1, 12), new Color(66, 76, 94));
         }
 
@@ -1158,15 +1250,17 @@ namespace HaCreator.MapSimulator.UI
             }
         }
 
+        private Rectangle GetNoticeBounds() => new(Position.X + NoticeLeft, Position.Y + NoticeTop, NoticeWidth, NoticeHeight);
         private Rectangle GetThreadListBounds() => new(Position.X + ThreadListLeft, Position.Y + ThreadListTop, ThreadListWidth, ThreadRowHeight * 8);
         private Rectangle GetDetailBounds() => new(Position.X + DetailLeft, Position.Y + DetailTop, DetailWidth, DetailHeight);
-        private Rectangle GetComposeTitleBounds() => new(GetDetailBounds().X, GetDetailBounds().Y, DetailWidth - 10, TitleInputHeight);
-        private Rectangle GetComposeBodyBounds() => new(GetDetailBounds().X, GetDetailBounds().Y + 38, DetailWidth - 10, 300);
+        private Rectangle GetComposeTitleBounds() => new(Position.X + 449, Position.Y + 30, 256, TitleInputHeight);
+        private Rectangle GetComposeBodyBounds() => new(Position.X + 449, Position.Y + 56, 250, 180);
+        private Rectangle GetComposeScrollBarBounds() => new(Position.X + 706, Position.Y + 53, ComposeScrollBarWidth, 187);
         private Rectangle GetCommentPaneBounds() => new(GetDetailBounds().X, GetDetailBounds().Y + 186, DetailWidth - 4, 148);
         private Rectangle GetReplyInputBounds() => new(GetDetailBounds().X, GetDetailBounds().Bottom - 74, DetailWidth - 6, ReplyInputHeight);
-        private Rectangle GetBasicEmoticonBounds(int index) => new(GetDetailBounds().X + 8 + (index * BasicEmoticonSpacing), GetDetailBounds().Bottom - 38, BasicEmoticonSize, BasicEmoticonSize);
-        private Rectangle GetCashEmoticonBounds(int index) => new(GetDetailBounds().X + 86 + (index * CashEmoticonSpacing), GetDetailBounds().Bottom - 38, CashEmoticonSize, CashEmoticonSize);
-        private Rectangle GetCashEmoticonRowBounds() => new(GetDetailBounds().X + 86, GetDetailBounds().Bottom - 38, (_cashEmoticonTextures.Length * CashEmoticonSpacing), CashEmoticonSize);
+        private Rectangle GetBasicEmoticonBounds(int index) => new(Position.X + 426 + (index * BasicEmoticonSpacing), Position.Y + 246, BasicEmoticonSize, BasicEmoticonSize);
+        private Rectangle GetCashEmoticonBounds(int index) => new(Position.X + 495 + (index * CashEmoticonSpacing), Position.Y + 246, CashEmoticonSize, CashEmoticonSize);
+        private Rectangle GetCashEmoticonRowBounds() => new(Position.X + 495, Position.Y + 246, (_cashEmoticonTextures.Length * CashEmoticonSpacing), CashEmoticonSize);
 
         private void DrawString(SpriteBatch sprite, string text, float x, float y, Color color, float scale)
         {
@@ -1332,6 +1426,116 @@ namespace HaCreator.MapSimulator.UI
             return new Color(red, green, blue);
         }
 
+        private bool TryHandleNoticeSelection(GuildBbsSnapshot snapshot, Point mousePosition)
+        {
+            GuildBbsThreadEntrySnapshot noticeThread = snapshot.NoticeThread;
+            if (noticeThread == null || !GetNoticeBounds().Contains(mousePosition))
+            {
+                return false;
+            }
+
+            _selectThreadHandler?.Invoke(noticeThread.ThreadId);
+            DeactivateInput(clearText: true);
+            return true;
+        }
+
+        private bool TryHandleComposeScrollClick(GuildBbsSnapshot snapshot, Point mousePosition)
+        {
+            Rectangle scrollBounds = GetComposeScrollBarBounds();
+            if (!scrollBounds.Contains(mousePosition))
+            {
+                return false;
+            }
+
+            ScrollMetrics metrics = BuildComposeScrollMetrics(snapshot.Compose?.Body, GetComposeBodyBounds());
+            if (metrics.MaxScrollLine <= 0)
+            {
+                return true;
+            }
+
+            if (mousePosition.Y < metrics.ThumbBounds.Top)
+            {
+                ScrollComposeBody(-ComposeBodyVisibleLineCount);
+                return true;
+            }
+
+            if (mousePosition.Y > metrics.ThumbBounds.Bottom)
+            {
+                ScrollComposeBody(ComposeBodyVisibleLineCount);
+                return true;
+            }
+
+            float relative = (mousePosition.Y - scrollBounds.Y) / (float)Math.Max(1, scrollBounds.Height - metrics.ThumbBounds.Height);
+            _composeBodyScrollLine = Math.Clamp((int)Math.Round(relative * metrics.MaxScrollLine), 0, metrics.MaxScrollLine);
+            return true;
+        }
+
+        private void ScrollComposeBody(int deltaLines)
+        {
+            ScrollMetrics metrics = BuildComposeScrollMetrics(_inputBuffer.ToString(), GetComposeBodyBounds());
+            _composeBodyScrollLine = Math.Clamp(_composeBodyScrollLine + deltaLines, 0, metrics.MaxScrollLine);
+        }
+
+        private void EnsureComposeCursorVisible()
+        {
+            if (_activeInputTarget != InputTarget.ComposeBody)
+            {
+                return;
+            }
+
+            IReadOnlyList<TextLineLayout> lines = BuildTextLines(_inputBuffer.ToString(), GetComposeBodyBounds().Width - 8, 0.37f);
+            int lineIndex = ResolveCursorLineIndex(lines, _cursorPosition);
+            if (lineIndex < 0)
+            {
+                _composeBodyScrollLine = 0;
+                return;
+            }
+
+            if (lineIndex < _composeBodyScrollLine)
+            {
+                _composeBodyScrollLine = lineIndex;
+                return;
+            }
+
+            int maxVisibleLine = _composeBodyScrollLine + ComposeBodyVisibleLineCount - 1;
+            if (lineIndex > maxVisibleLine)
+            {
+                _composeBodyScrollLine = lineIndex - ComposeBodyVisibleLineCount + 1;
+            }
+        }
+
+        private ScrollMetrics BuildComposeScrollMetrics(string text, Rectangle bodyBounds)
+        {
+            IReadOnlyList<TextLineLayout> lines = BuildTextLines(text ?? string.Empty, bodyBounds.Width - 8, 0.37f);
+            int totalLines = Math.Max(1, lines.Count);
+            int visibleLines = Math.Min(ComposeBodyVisibleLineCount, totalLines);
+            int maxScrollLine = Math.Max(0, totalLines - visibleLines);
+            Rectangle trackBounds = GetComposeScrollBarBounds();
+            if (maxScrollLine <= 0)
+            {
+                return new ScrollMetrics
+                {
+                    TotalLines = totalLines,
+                    VisibleLines = visibleLines,
+                    MaxScrollLine = 0,
+                    TrackBounds = trackBounds,
+                    ThumbBounds = trackBounds
+                };
+            }
+
+            int thumbHeight = Math.Max(18, (int)Math.Round(trackBounds.Height * (visibleLines / (float)totalLines)));
+            int travel = Math.Max(1, trackBounds.Height - thumbHeight);
+            int thumbTop = trackBounds.Y + (int)Math.Round((_composeBodyScrollLine / (float)maxScrollLine) * travel);
+            return new ScrollMetrics
+            {
+                TotalLines = totalLines,
+                VisibleLines = visibleLines,
+                MaxScrollLine = maxScrollLine,
+                TrackBounds = trackBounds,
+                ThumbBounds = new Rectangle(trackBounds.X, thumbTop, trackBounds.Width, thumbHeight)
+            };
+        }
+
         private void SetCursorFromPoint(InputTarget target, GuildBbsSnapshot snapshot, Point mousePosition)
         {
             string source = target switch
@@ -1343,7 +1547,7 @@ namespace HaCreator.MapSimulator.UI
             };
 
             _cursorPosition = target == InputTarget.ComposeBody
-                ? ResolveMultilineCursorPosition(source, GetComposeBodyBounds(), mousePosition, 0.40f)
+                ? ResolveMultilineCursorPosition(source, GetComposeBodyBounds(), mousePosition, 0.37f)
                 : ResolveSingleLineCursorPosition(
                     source,
                     target == InputTarget.ComposeTitle ? GetComposeTitleBounds() : GetReplyInputBounds(),
@@ -1381,7 +1585,7 @@ namespace HaCreator.MapSimulator.UI
                 return 0;
             }
 
-            int lineIndex = Math.Clamp((mousePosition.Y - (bounds.Y + 2)) / 15, 0, lines.Count - 1);
+            int lineIndex = Math.Clamp(_composeBodyScrollLine + ((mousePosition.Y - (bounds.Y + 2)) / ComposeBodyLineHeight), 0, lines.Count - 1);
             TextLineLayout line = lines[lineIndex];
             float relativeX = Math.Max(0f, mousePosition.X - (bounds.X + 2));
             int bestIndex = line.StartIndex;
@@ -1408,7 +1612,7 @@ namespace HaCreator.MapSimulator.UI
                 return 0;
             }
 
-            IReadOnlyList<TextLineLayout> lines = BuildTextLines(_inputBuffer.ToString(), GetComposeBodyBounds().Width - 8, 0.40f);
+            IReadOnlyList<TextLineLayout> lines = BuildTextLines(_inputBuffer.ToString(), GetComposeBodyBounds().Width - 8, 0.37f);
             int lineIndex = ResolveCursorLineIndex(lines, _cursorPosition);
             return lineIndex >= 0 ? lines[lineIndex].StartIndex : 0;
         }
@@ -1420,14 +1624,14 @@ namespace HaCreator.MapSimulator.UI
                 return _inputBuffer.Length;
             }
 
-            IReadOnlyList<TextLineLayout> lines = BuildTextLines(_inputBuffer.ToString(), GetComposeBodyBounds().Width - 8, 0.40f);
+            IReadOnlyList<TextLineLayout> lines = BuildTextLines(_inputBuffer.ToString(), GetComposeBodyBounds().Width - 8, 0.37f);
             int lineIndex = ResolveCursorLineIndex(lines, _cursorPosition);
             return lineIndex >= 0 ? lines[lineIndex].EndIndex : _inputBuffer.Length;
         }
 
         private void MoveComposeBodyCursorVertical(int delta)
         {
-            IReadOnlyList<TextLineLayout> lines = BuildTextLines(_inputBuffer.ToString(), GetComposeBodyBounds().Width - 8, 0.40f);
+            IReadOnlyList<TextLineLayout> lines = BuildTextLines(_inputBuffer.ToString(), GetComposeBodyBounds().Width - 8, 0.37f);
             if (lines.Count == 0)
             {
                 _cursorPosition = 0;
@@ -1450,6 +1654,7 @@ namespace HaCreator.MapSimulator.UI
             TextLineLayout targetLine = lines[targetLineIndex];
             int column = Math.Clamp(_cursorPosition - currentLine.StartIndex, 0, currentLine.Text.Length);
             _cursorPosition = Math.Clamp(targetLine.StartIndex + column, targetLine.StartIndex, targetLine.EndIndex);
+            EnsureComposeCursorVisible();
         }
 
         private IReadOnlyList<TextLineLayout> BuildTextLines(string text, float maxWidth, float scale)

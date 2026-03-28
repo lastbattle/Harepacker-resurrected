@@ -43,11 +43,22 @@ namespace HaCreator.MapSimulator.Managers
         public const int PlayMinigameSoundPacketType = 1007;
         public const int AskApspEventPacketType = 1008;
         public const int FollowCharacterFailedPacketType = 1009;
+        public const int PlayEventSoundClientPacketType = 246;
+        public const int PlayMinigameSoundClientPacketType = 247;
         public const int OpenClassCompetitionPagePacketType = 250;
+        public const int OpenUiClientPacketType = 251;
+        public const int OpenUiWithOptionClientPacketType = 252;
         public const int NotifyHpDecByFieldPacketType = 243;
+        public const int NoticeMsgClientPacketType = 263;
+        public const int ChatMsgClientPacketType = 264;
+        public const int BuffzoneEffectClientPacketType = 265;
+        public const int GoToCommoditySnClientPacketType = 266;
         public const int QuestGuideResultPacketType = 274;
         public const int DeliveryQuestPacketType = 275;
         public const int DamageMeterPacketType = 267;
+        public const int FollowCharacterFailedClientPacketType = 270;
+        public const int AskApspEventClientPacketType = 273;
+        public const int SkillCooltimeSetPacketType = 276;
 
         private readonly ConcurrentQueue<LocalUtilityPacketInboxMessage> _pendingMessages = new();
         private readonly object _listenerLock = new();
@@ -243,20 +254,31 @@ namespace HaCreator.MapSimulator.Managers
             if (int.TryParse(token, out packetType))
             {
                 return packetType == OpenUiPacketType
+                    || packetType == OpenUiClientPacketType
                     || packetType == OpenUiWithOptionPacketType
+                    || packetType == OpenUiWithOptionClientPacketType
                     || packetType == GoToCommoditySnPacketType
+                    || packetType == GoToCommoditySnClientPacketType
                     || packetType == NoticeMsgPacketType
+                    || packetType == NoticeMsgClientPacketType
                     || packetType == ChatMsgPacketType
+                    || packetType == ChatMsgClientPacketType
                     || packetType == BuffzoneEffectPacketType
+                    || packetType == BuffzoneEffectClientPacketType
                     || packetType == PlayEventSoundPacketType
+                    || packetType == PlayEventSoundClientPacketType
                     || packetType == PlayMinigameSoundPacketType
+                    || packetType == PlayMinigameSoundClientPacketType
                     || packetType == AskApspEventPacketType
+                    || packetType == AskApspEventClientPacketType
                     || packetType == FollowCharacterFailedPacketType
+                    || packetType == FollowCharacterFailedClientPacketType
                     || packetType == NotifyHpDecByFieldPacketType
                     || packetType == OpenClassCompetitionPagePacketType
                     || packetType == DamageMeterPacketType
                     || packetType == QuestGuideResultPacketType
-                    || packetType == DeliveryQuestPacketType;
+                    || packetType == DeliveryQuestPacketType
+                    || packetType == SkillCooltimeSetPacketType;
             }
 
             if (token.Equals("openui", StringComparison.OrdinalIgnoreCase))
@@ -367,6 +389,14 @@ namespace HaCreator.MapSimulator.Managers
                 return true;
             }
 
+            if (token.Equals("skillcooltime", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("skillcooltimeset", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("cooltime", StringComparison.OrdinalIgnoreCase))
+            {
+                packetType = SkillCooltimeSetPacketType;
+                return true;
+            }
+
             return false;
         }
 
@@ -463,11 +493,22 @@ namespace HaCreator.MapSimulator.Managers
                 PlayMinigameSoundPacketType => "PlayMinigameSound(1007)",
                 AskApspEventPacketType => "AskAPSPEvent(1008)",
                 FollowCharacterFailedPacketType => "FollowCharacterFailed(1009)",
+                PlayEventSoundClientPacketType => "PlayEventSound(246)",
+                PlayMinigameSoundClientPacketType => "PlayMinigameSound(247)",
                 NotifyHpDecByFieldPacketType => "NotifyHPDecByField(243)",
                 OpenClassCompetitionPagePacketType => "OpenClassCompetitionPage(250)",
+                OpenUiClientPacketType => "OpenUI(251)",
+                OpenUiWithOptionClientPacketType => "OpenUIWithOption(252)",
+                NoticeMsgClientPacketType => "NoticeMsg(263)",
+                ChatMsgClientPacketType => "ChatMsg(264)",
+                BuffzoneEffectClientPacketType => "BuffzoneEffect(265)",
+                GoToCommoditySnClientPacketType => "GoToCommoditySN(266)",
                 DamageMeterPacketType => "DamageMeter(267)",
+                FollowCharacterFailedClientPacketType => "FollowCharacterFailed(270)",
+                AskApspEventClientPacketType => "AskAPSPEvent(273)",
                 QuestGuideResultPacketType => "QuestGuideResult(274)",
                 DeliveryQuestPacketType => "DeliveryQuest(275)",
+                SkillCooltimeSetPacketType => "SkillCooltimeSet(276)",
                 _ => $"packet {packetType}"
             };
         }

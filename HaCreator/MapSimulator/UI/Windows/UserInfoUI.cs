@@ -123,6 +123,7 @@ namespace HaCreator.MapSimulator.UI
         private readonly string[] _itemPopupEntries = { "Mini Room", "Personal Shop", "Entrusted Shop" };
         private readonly List<string> _wishEntries = new List<string> { "White Scroll", "Brown Work Gloves", "Ilbi Throwing-Star" };
         private readonly Dictionary<ItemMakerRecipeFamily, IDXObject> _productSkillIcons = new Dictionary<ItemMakerRecipeFamily, IDXObject>();
+        private IDXObject _productSkillRecipeIcon;
 
         private IDXObject _foreground;
         private Point _foregroundOffset;
@@ -441,6 +442,11 @@ namespace HaCreator.MapSimulator.UI
             }
         }
 
+        public void SetProductSkillRecipeIcon(IDXObject icon)
+        {
+            _productSkillRecipeIcon = icon;
+        }
+
         public void InitializePersonalityTooltip(
             IDXObject baseTop,
             IDXObject baseMiddle,
@@ -682,6 +688,7 @@ namespace HaCreator.MapSimulator.UI
                     fame,
                     guildAlliance);
                 DrawProductSkillSummary(sprite);
+                DrawProfileProgressSummary(sprite);
                 return;
             }
 
@@ -698,6 +705,7 @@ namespace HaCreator.MapSimulator.UI
                 fame,
                 guildAlliance);
             DrawProductSkillSummary(sprite);
+            DrawProfileProgressSummary(sprite);
         }
 
         private void DrawRidePage(SpriteBatch sprite)
@@ -754,6 +762,7 @@ namespace HaCreator.MapSimulator.UI
 
         private void DrawCollectPage(SpriteBatch sprite)
         {
+            ItemMakerProgressionSnapshot progression = GetCollectionSnapshot();
             List<(string Label, string Value)> entries = BuildCollectEntries();
             MonsterBookSnapshot snapshot = GetMonsterBookSnapshot();
 
@@ -764,14 +773,12 @@ namespace HaCreator.MapSimulator.UI
                 DrawLabeledRow(sprite, 40 + (i * 24), label, value, ValueColor, 144);
             }
 
-            string rewardStatus = snapshot.TotalCardTypes > 0
-                ? $"{snapshot.OwnedCardTypes}/{snapshot.TotalCardTypes} card entries registered locally."
-                : "Monster Book card data is not available in this session.";
+            string rewardStatus = BuildCollectStatusText(progression, snapshot);
             DrawPlainText(
                 sprite,
-                rewardStatus,
+                FitText(rewardStatus, 220),
                 new Vector2(Position.X + 20, Position.Y + 188),
-                snapshot.OwnedCardTypes > 0 ? SuccessColor : MutedColor,
+                CanClaimCollectReward() ? SuccessColor : MutedColor,
                 0.58f);
         }
 
@@ -837,10 +844,25 @@ namespace HaCreator.MapSimulator.UI
                 icon.DrawBackground(sprite, null, null, Position.X + position.X, Position.Y + position.Y, tint, false, null);
             }
 
+            if (_productSkillRecipeIcon != null)
+            {
+                bool active = snapshot.DiscoveredRecipeIds.Count > 0 || snapshot.UnlockedHiddenRecipeIds.Count > 0;
+                Color tint = active ? Color.White : new Color(255, 255, 255, 96);
+                _productSkillRecipeIcon.DrawBackground(sprite, null, null, Position.X + 98, Position.Y + 130, tint, false, null);
+            }
+
             string makerText = snapshot.SuccessfulCrafts > 0
                 ? $"Maker Lv {snapshot.GenericLevel}  Crafts {snapshot.SuccessfulCrafts}"
                 : "Maker profile has no crafted items yet.";
             DrawPlainText(sprite, FitText(makerText, 116), new Vector2(Position.X + 18, Position.Y + 112), MutedColor, 0.48f);
+        }
+
+        private void DrawProfileProgressSummary(SpriteBatch sprite)
+        {
+            string medalText = BuildMedalSummary();
+            string pocketText = BuildPocketSummary();
+            DrawPlainText(sprite, FitText(medalText, 150), new Vector2(Position.X + 18, Position.Y + 152), MutedColor, 0.48f);
+            DrawPlainText(sprite, FitText(pocketText, 150), new Vector2(Position.X + 18, Position.Y + 166), MutedColor, 0.48f);
         }
 
         private void DrawSectionHeader(SpriteBatch sprite, string title)
@@ -1318,6 +1340,13 @@ namespace HaCreator.MapSimulator.UI
                 return part.Name;
             }
 
+            if (_characterBuild?.HiddenEquipment != null &&
+                _characterBuild.HiddenEquipment.TryGetValue(slot, out CharacterPart hiddenPart) &&
+                !string.IsNullOrWhiteSpace(hiddenPart?.Name))
+            {
+                return hiddenPart.Name;
+            }
+
             return "-";
         }
 
@@ -1537,20 +1566,25 @@ namespace HaCreator.MapSimulator.UI
 
         private bool CanClaimCollectReward()
         {
-            return (_characterBuild?.Equipment?.Count ?? 0) >= 5;
+            ItemMakerProgressionSnapshot progression = GetCollectionSnapshot();
+            MonsterBookSnapshot snapshot = GetMonsterBookSnapshot();
+            return progression.SuccessfulCrafts > 0
+                || progression.DiscoveredRecipeIds.Count > 0
+                || progression.UnlockedHiddenRecipeIds.Count > 0
+                || snapshot.OwnedCardTypes > 0;
         }
 
         private List<(string Label, string Value)> BuildCollectEntries()
         {
-            MonsterBookSnapshot snapshot = GetMonsterBookSnapshot();
+            ItemMakerProgressionSnapshot snapshot = GetCollectionSnapshot();
             List<(string Label, string Value)> entries = new List<(string Label, string Value)>
             {
-                ("Entries", $"{snapshot.OwnedCardTypes}/{snapshot.TotalCardTypes}"),
-                ("Complete", snapshot.CompletedCardTypes.ToString()),
-                ("Boss", snapshot.OwnedBossCardTypes.ToString()),
-                ("Normal", snapshot.OwnedNormalCardTypes.ToString()),
-                ("Copies", snapshot.TotalOwnedCopies.ToString()),
-                ("Pages", snapshot.Pages.Count.ToString())
+                ("Maker", BuildCollectFamilySummary(snapshot, ItemMakerRecipeFamily.Generic)),
+                ("Glove", BuildCollectFamilySummary(snapshot, ItemMakerRecipeFamily.Gloves)),
+                ("Shoe", BuildCollectFamilySummary(snapshot, ItemMakerRecipeFamily.Shoes)),
+                ("Toy", BuildCollectFamilySummary(snapshot, ItemMakerRecipeFamily.Toys)),
+                ("Craft", snapshot.SuccessfulCrafts.ToString()),
+                ("Recipes", BuildRecipeSummary(snapshot))
             };
 
             return _collectSortByName
@@ -1576,6 +1610,56 @@ namespace HaCreator.MapSimulator.UI
             return target > 0
                 ? $"Lv {level} ({progress}/{target})"
                 : $"Lv {level}";
+        }
+
+        private string BuildRecipeSummary(ItemMakerProgressionSnapshot snapshot)
+        {
+            if (snapshot == null)
+            {
+                return "-";
+            }
+
+            int discovered = snapshot.DiscoveredRecipeIds.Count;
+            int hidden = snapshot.UnlockedHiddenRecipeIds.Count;
+            if (hidden <= 0)
+            {
+                return discovered.ToString();
+            }
+
+            return $"{discovered} + {hidden} hidden";
+        }
+
+        private string BuildCollectStatusText(ItemMakerProgressionSnapshot progression, MonsterBookSnapshot snapshot)
+        {
+            string bookText = snapshot.TotalCardTypes > 0
+                ? $"Monster Book {snapshot.OwnedCardTypes}/{snapshot.TotalCardTypes}"
+                : "Monster Book local only";
+            string recipeText = progression.DiscoveredRecipeIds.Count > 0 || progression.UnlockedHiddenRecipeIds.Count > 0
+                ? $"{progression.DiscoveredRecipeIds.Count} recipes, {progression.UnlockedHiddenRecipeIds.Count} hidden"
+                : "No recipes discovered yet";
+            return $"{bookText}. {recipeText}.";
+        }
+
+        private string BuildMedalSummary()
+        {
+            string medalName = GetEquippedItemName(EquipSlot.Medal);
+            return string.Equals(medalName, "-", StringComparison.Ordinal)
+                ? "Medal: none equipped locally"
+                : $"Medal: {medalName}";
+        }
+
+        private string BuildPocketSummary()
+        {
+            string pocketName = GetEquippedItemName(EquipSlot.Pocket);
+            if (!string.Equals(pocketName, "-", StringComparison.Ordinal))
+            {
+                return $"Pocket: {pocketName}";
+            }
+
+            int charm = Math.Max(0, _characterBuild?.TraitCharm ?? 0);
+            return _characterBuild?.IsPocketSlotAvailable == true
+                ? $"Pocket unlocked at Charm {charm}"
+                : $"Pocket locked ({charm}/30 Charm)";
         }
 
         private string ResolveNextPetExceptionEntry()

@@ -424,17 +424,43 @@ namespace HaCreator.MapSimulator.UI
             int bodyHeight = Math.Max(0, bodyBottom - bodyTop + 1);
             int titleTop = titleBandStart;
             int titleBottom = titleBandEnd;
+            int contentLeft = innerLeft;
+            int contentRight = innerRight;
 
-            _messageY = bodyTop + LayoutBodyPaddingTop;
+            if (TryResolveBandInnerBounds(bodyBandStart, bodyBandEnd, out int bodyLeft, out int bodyRight))
+            {
+                contentLeft = bodyLeft;
+                contentRight = bodyRight;
+                _iconX = Math.Max(bodyLeft + LayoutIconInsetX, 12);
+                _textRightPadding = Math.Max(8, _panelWidth - bodyRight + LayoutIconInsetX);
+            }
+
+            if (TryResolveBandInnerBounds(titleBandStart, titleBandEnd, out int titleLeft, out int titleRight))
+            {
+                contentLeft = Math.Min(contentLeft, titleLeft);
+                contentRight = Math.Max(contentRight, titleRight);
+                _textRightPadding = Math.Max(_textRightPadding, Math.Max(8, _panelWidth - titleRight + LayoutIconInsetX));
+            }
+
+            _titleX = Math.Max(_iconX + IconSize + LayoutIconGapX, contentLeft + LayoutIconInsetX);
+
+            float titleHeight = _font != null ? _font.LineSpacing * TitleScale : 12f;
+            int titleLaneTop = Math.Max(8, titleTop + LayoutTitlePaddingTop);
+            int titleLaneBottomExclusive = Math.Max(titleLaneTop + 1, Math.Min(bodyTop - LayoutBodyToTitleGap, titleBottom + 1));
+            int maxTitleY = Math.Max(8, titleLaneBottomExclusive - (int)Math.Ceiling(titleHeight));
+            int centeredTitleY = titleLaneTop;
+            if (titleLaneBottomExclusive > titleLaneTop)
+            {
+                float remainingTitleLane = Math.Max(0f, titleLaneBottomExclusive - titleLaneTop - titleHeight);
+                centeredTitleY = titleLaneTop + (int)Math.Round(remainingTitleLane * 0.5f);
+            }
+
+            _titleY = Math.Clamp(centeredTitleY, 8, maxTitleY);
+            _messageY = Math.Max(bodyTop + LayoutBodyPaddingTop, _titleY + (int)Math.Ceiling(titleHeight) + LayoutBodyToTitleGap);
             _textBottomPadding = Math.Max(LayoutBodyPaddingBottom, GetMinimumPanelHeight() - bodyBottom + LayoutBodyPaddingBottom);
 
             int iconTop = bodyTop + Math.Max(0, (bodyHeight - IconSize) / 2);
             _iconY = Math.Max(12, iconTop);
-
-            float titleHeight = _font != null ? _font.LineSpacing * TitleScale : 12f;
-            int resolvedTitleY = (int)Math.Round((double)(titleTop + LayoutTitlePaddingTop));
-            int maxTitleY = Math.Max(8, Math.Min(bodyTop - LayoutBodyToTitleGap, titleBottom + 1) - (int)Math.Ceiling(titleHeight));
-            _titleY = Math.Max(8, Math.Min(resolvedTitleY, maxTitleY));
         }
 
         private bool TryResolveNoticeBands(out int titleBandStart, out int titleBandEnd, out int bodyBandStart, out int bodyBandEnd)
@@ -481,70 +507,64 @@ namespace HaCreator.MapSimulator.UI
             return -1;
         }
 
-        private static void FindDominantNeutralBand(Texture2D texture, out int bandStart, out int bandEnd)
+        private bool TryResolveBandInnerBounds(int bandStart, int bandEnd, out int innerLeft, out int innerRight)
         {
-            bandStart = -1;
-            bandEnd = -1;
-            if (texture == null || texture.Width <= 0 || texture.Height <= 0)
+            innerLeft = int.MaxValue;
+            innerRight = int.MinValue;
+            if (bandStart < 0 || bandEnd < bandStart || _panelWidth <= 0)
             {
-                return;
+                return false;
             }
 
-            Color[] row = new Color[texture.Width];
-            int currentStart = -1;
-            int currentLength = 0;
-            int bestStart = -1;
-            int bestLength = 0;
-
-            for (int y = 0; y < texture.Height; y++)
+            bool found = false;
+            Color[] row = new Color[_panelWidth];
+            for (int y = bandStart; y <= bandEnd; y++)
             {
-                texture.GetData(0, new Rectangle(0, y, texture.Width, 1), row, 0, row.Length);
-                int neutralCount = 0;
-                for (int x = 0; x < row.Length; x++)
+                if (!TryGetCombinedRow(y, row))
                 {
-                    if (IsNeutralPanelPixel(row[x]))
-                    {
-                        neutralCount++;
-                    }
+                    continue;
                 }
 
-                bool isDominantNeutral = neutralCount >= texture.Width - LayoutRowDominanceThreshold;
-                if (isDominantNeutral)
+                int rowLeft = FindRowEdge(row, fromLeft: true);
+                int rowRight = FindRowEdge(row, fromLeft: false);
+                if (rowLeft < 0 || rowRight <= rowLeft)
                 {
-                    if (currentStart < 0)
-                    {
-                        currentStart = y;
-                        currentLength = 1;
-                    }
-                    else
-                    {
-                        currentLength++;
-                    }
+                    continue;
                 }
-                else if (currentStart >= 0)
+
+                innerLeft = Math.Min(innerLeft, rowLeft);
+                innerRight = Math.Max(innerRight, rowRight);
+                found = true;
+            }
+
+            if (!found)
+            {
+                innerLeft = -1;
+                innerRight = -1;
+            }
+
+            return found;
+        }
+
+        private static int FindRowEdge(Color[] row, bool fromLeft)
+        {
+            if (row == null || row.Length == 0)
+            {
+                return -1;
+            }
+
+            int start = fromLeft ? 0 : row.Length - 1;
+            int end = fromLeft ? row.Length : -1;
+            int step = fromLeft ? 1 : -1;
+            for (int x = start; x != end; x += step)
+            {
+                if (IsFrameFillPixel(row[x]))
                 {
-                    if (currentLength > bestLength)
-                    {
-                        bestStart = currentStart;
-                        bestLength = currentLength;
-                    }
-
-                    currentStart = -1;
-                    currentLength = 0;
+                    return x;
                 }
             }
 
-            if (currentStart >= 0 && currentLength > bestLength)
-            {
-                bestStart = currentStart;
-                bestLength = currentLength;
-            }
-
-            if (bestStart >= 0)
-            {
-                bandStart = bestStart;
-                bandEnd = bestStart + bestLength - 1;
-            }
+            return -1;
         }
 
         private bool TryFindDominantBandAcrossNotice(Func<Color, bool> predicate, out int bandStart, out int bandEnd, int searchStartY = 0)

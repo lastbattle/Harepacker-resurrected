@@ -77,8 +77,8 @@ namespace HaCreator.MapSimulator.UI
             public string Title { get; init; } = string.Empty;
             public string Detail { get; init; } = string.Empty;
             public string Seller { get; init; } = string.Empty;
-            public string PriceLabel { get; init; } = string.Empty;
-            public long Price { get; init; }
+            public string PriceLabel { get; set; } = string.Empty;
+            public long Price { get; set; }
             public AdminShopCategory Category { get; init; }
             public Texture2D IconTexture { get; set; }
             public bool SupportsWishlist { get; init; }
@@ -89,13 +89,15 @@ namespace HaCreator.MapSimulator.UI
             public InventoryType InventoryExpansionType { get; init; } = InventoryType.NONE;
             public InventoryType RewardInventoryType { get; init; } = InventoryType.NONE;
             public int RewardItemId { get; init; }
-            public int RewardQuantity { get; init; } = 1;
+            public int RewardQuantity { get; set; } = 1;
             public bool ConsumeOnSuccess { get; init; } = true;
             public bool LockAfterSuccess { get; init; }
             public AdminShopResponse Response { get; init; }
             public string ResponseMessage { get; init; } = string.Empty;
             public bool Featured { get; init; }
             public bool WasPurchased { get; set; }
+            public int CommoditySerialNumber { get; set; }
+            public bool CommodityOnSale { get; set; }
         }
 
         private sealed class AdminShopPaneState
@@ -118,6 +120,17 @@ namespace HaCreator.MapSimulator.UI
             public Texture2D DisabledTexture { get; set; }
             public Point Offset { get; set; }
             public string Label { get; set; } = string.Empty;
+        }
+
+        private sealed class AdminShopCommodityData
+        {
+            public int SerialNumber { get; init; }
+            public int ItemId { get; init; }
+            public int Count { get; init; } = 1;
+            public long Price { get; init; }
+            public int Priority { get; init; }
+            public int PeriodDays { get; init; }
+            public bool OnSale { get; init; }
         }
 
         private const int MaxVisibleRows = 5;
@@ -161,6 +174,9 @@ namespace HaCreator.MapSimulator.UI
         private const int CategoryTabColumns = 5;
         private const int CategoryTabStrideX = 42;
         private const int CategoryTabStrideY = 19;
+        private static readonly object CommodityCacheLock = new();
+        private static Dictionary<int, AdminShopCommodityData> _bestCommodityByItemId;
+        private static Dictionary<int, AdminShopCommodityData> _commodityBySerialNumber;
         private readonly string _windowName;
         private readonly AdminShopServiceMode _defaultMode;
         private readonly IDXObject _frameOverlay;
@@ -341,6 +357,59 @@ namespace HaCreator.MapSimulator.UI
         public override void SetFont(SpriteFont font)
         {
             _font = font;
+        }
+
+        public bool TryFocusCommoditySerialNumber(int commoditySerialNumber)
+        {
+            if (_currentMode != AdminShopServiceMode.CashShop || commoditySerialNumber <= 0)
+            {
+                return false;
+            }
+
+            if (!TryGetCommodityBySerialNumber(commoditySerialNumber, out AdminShopCommodityData commodity))
+            {
+                _footerMessage = $"Commodity SN {commoditySerialNumber} does not resolve to a loaded Cash Shop sample row.";
+                UpdateActionButtonStates();
+                return false;
+            }
+
+            AdminShopEntry matchedEntry = FindCommodityEntry(commodity);
+            if (matchedEntry == null)
+            {
+                _footerMessage = $"Commodity SN {commoditySerialNumber} resolved to item {commodity.ItemId}, but no matching sample row is present in this simulator dialog.";
+                UpdateActionButtonStates();
+                return false;
+            }
+
+            _activeBrowseMode = AdminShopBrowseMode.All;
+            _activeCategory = ResolveCommodityCategory(matchedEntry);
+            ApplyFilters();
+
+            AdminShopPaneState paneState = _paneStates[AdminShopPane.Npc];
+            int selectedIndex = paneState.Entries.IndexOf(matchedEntry);
+            if (selectedIndex < 0)
+            {
+                _activeCategory = AdminShopCategory.All;
+                ApplyFilters();
+                paneState = _paneStates[AdminShopPane.Npc];
+                selectedIndex = paneState.Entries.IndexOf(matchedEntry);
+            }
+
+            if (selectedIndex < 0)
+            {
+                _footerMessage = $"Commodity SN {commoditySerialNumber} resolved, but the row could not be focused after filter rebuild.";
+                UpdateActionButtonStates();
+                return false;
+            }
+
+            _activePane = AdminShopPane.Npc;
+            paneState.SelectedIndex = selectedIndex;
+            ClampPaneState(paneState);
+            _pendingWishlistEntry = null;
+            _footerMessage = $"Focused packet-owned commodity SN {commoditySerialNumber} on {matchedEntry.Title}.";
+            UpdateRowButtons();
+            UpdateActionButtonStates();
+            return true;
         }
 
         public override void Update(GameTime gameTime)
@@ -944,6 +1013,7 @@ namespace HaCreator.MapSimulator.UI
             _paneStates[AdminShopPane.User].SourceEntries.Clear();
             _paneStates[AdminShopPane.Npc].SourceEntries.AddRange(CreateNpcEntries(mode));
             _paneStates[AdminShopPane.User].SourceEntries.AddRange(CreateUserEntries(mode));
+            ApplyCommodityMetadata(_paneStates[AdminShopPane.Npc].SourceEntries, mode);
             RestoreEntryFlags(_paneStates[AdminShopPane.Npc].SourceEntries, mode);
             RestoreEntryFlags(_paneStates[AdminShopPane.User].SourceEntries, mode);
             RestoreEntryStates(_paneStates[AdminShopPane.Npc].SourceEntries, mode);
@@ -1114,6 +1184,33 @@ namespace HaCreator.MapSimulator.UI
             _sellButton?.SetEnabled(canSubmitRequest);
             _exitButton?.SetEnabled(!modalBlocked);
             _rechargeButton?.SetEnabled(!modalBlocked && entry?.SupportsWishlist == true && entry.State == AdminShopEntryState.Available);
+        }
+
+        private void ApplyCommodityMetadata(IEnumerable<AdminShopEntry> entries, AdminShopServiceMode mode)
+        {
+            if (mode != AdminShopServiceMode.CashShop || entries == null)
+            {
+                return;
+            }
+
+            EnsureCommodityCache();
+            foreach (AdminShopEntry entry in entries)
+            {
+                if (entry == null
+                    || entry.IsStorageExpansion
+                    || entry.InventoryExpansionType != InventoryType.NONE
+                    || entry.RewardItemId <= 0
+                    || !TryGetBestCommodityForItem(entry.RewardItemId, out AdminShopCommodityData commodity))
+                {
+                    continue;
+                }
+
+                entry.Price = commodity.Price;
+                entry.PriceLabel = FormatPriceLabel(commodity.Price);
+                entry.RewardQuantity = Math.Max(1, commodity.Count);
+                entry.CommoditySerialNumber = commodity.SerialNumber;
+                entry.CommodityOnSale = commodity.OnSale;
+            }
         }
 
         private AdminShopEntry GetSelectedEntry()
@@ -1968,6 +2065,7 @@ namespace HaCreator.MapSimulator.UI
 
             return _storageRuntime.IsAccessSessionActive
                    && _storageRuntime.CanCurrentCharacterAccess
+                   && _storageRuntime.IsClientAccountAuthorityVerified
                    && _storageRuntime.IsSecondaryPasswordVerified
                    && _storageRuntime.CanExpandSlotLimit()
                    && _inventory.GetMesoCount() >= entry.Price;
@@ -2025,6 +2123,19 @@ namespace HaCreator.MapSimulator.UI
             if (!_storageRuntime.IsAccessSessionActive)
             {
                 return "Open storage and unlock the trunk session before purchasing storage-slot expansion.";
+            }
+
+            if (!_storageRuntime.IsClientAccountAuthorityVerified)
+            {
+                if (_storageRuntime.HasAccountPic && !_storageRuntime.IsAccountPicVerified)
+                {
+                    return "Verify the simulator account PIC before purchasing storage-slot expansion.";
+                }
+
+                if (_storageRuntime.HasAccountSecondaryPassword && !_storageRuntime.IsAccountSecondaryPasswordVerified)
+                {
+                    return "Verify the simulator account secondary password before purchasing storage-slot expansion.";
+                }
             }
 
             if (!_storageRuntime.IsSecondaryPasswordVerified)
@@ -2113,7 +2224,9 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
-            if (!_storageRuntime.IsAccessSessionActive || !_storageRuntime.IsSecondaryPasswordVerified)
+            if (!_storageRuntime.IsAccessSessionActive ||
+                !_storageRuntime.IsClientAccountAuthorityVerified ||
+                !_storageRuntime.IsSecondaryPasswordVerified)
             {
                 _footerMessage = BuildStorageExpansionBlockedMessage(entry);
                 _pendingRequestEntry = null;
@@ -2582,6 +2695,174 @@ namespace HaCreator.MapSimulator.UI
             }
 
             return string.IsNullOrEmpty(value) ? ellipsis : value + ellipsis;
+        }
+
+        private AdminShopEntry FindCommodityEntry(AdminShopCommodityData commodity)
+        {
+            if (commodity == null)
+            {
+                return null;
+            }
+
+            foreach (AdminShopEntry entry in _paneStates[AdminShopPane.Npc].SourceEntries)
+            {
+                if (entry == null || entry.RewardItemId != commodity.ItemId)
+                {
+                    continue;
+                }
+
+                if (entry.CommoditySerialNumber == commodity.SerialNumber)
+                {
+                    return entry;
+                }
+            }
+
+            foreach (AdminShopEntry entry in _paneStates[AdminShopPane.Npc].SourceEntries)
+            {
+                if (entry?.RewardItemId == commodity.ItemId)
+                {
+                    return entry;
+                }
+            }
+
+            return null;
+        }
+
+        private static AdminShopCategory ResolveCommodityCategory(AdminShopEntry entry)
+        {
+            if (entry == null)
+            {
+                return AdminShopCategory.All;
+            }
+
+            return entry.Category == AdminShopCategory.Button
+                ? AdminShopCategory.All
+                : entry.Category;
+        }
+
+        private static void EnsureCommodityCache()
+        {
+            if (_bestCommodityByItemId != null && _commodityBySerialNumber != null)
+            {
+                return;
+            }
+
+            lock (CommodityCacheLock)
+            {
+                if (_bestCommodityByItemId != null && _commodityBySerialNumber != null)
+                {
+                    return;
+                }
+
+                Dictionary<int, AdminShopCommodityData> bestByItemId = new();
+                Dictionary<int, AdminShopCommodityData> bySerial = new();
+                WzImage commodityImage = global::HaCreator.Program.FindImage("Etc", "Commodity.img");
+                commodityImage?.ParseImage();
+                if (commodityImage?.WzProperties != null)
+                {
+                    foreach (WzImageProperty property in commodityImage.WzProperties)
+                    {
+                        if (property is not WzSubProperty commodityProperty
+                            || !TryGetIntProperty(commodityProperty, "SN", out int serialNumber)
+                            || !TryGetIntProperty(commodityProperty, "ItemId", out int itemId)
+                            || !TryGetIntProperty(commodityProperty, "Price", out int price))
+                        {
+                            continue;
+                        }
+
+                        AdminShopCommodityData commodity = new()
+                        {
+                            SerialNumber = serialNumber,
+                            ItemId = itemId,
+                            Count = TryGetIntProperty(commodityProperty, "Count", out int count) ? Math.Max(1, count) : 1,
+                            Price = Math.Max(0, price),
+                            Priority = TryGetIntProperty(commodityProperty, "Priority", out int priority) ? priority : 0,
+                            PeriodDays = TryGetIntProperty(commodityProperty, "Period", out int periodDays) ? periodDays : 0,
+                            OnSale = TryGetIntProperty(commodityProperty, "OnSale", out int onSale) && onSale != 0
+                        };
+
+                        bySerial[serialNumber] = commodity;
+                        if (!bestByItemId.TryGetValue(itemId, out AdminShopCommodityData existing)
+                            || IsPreferredCommodity(commodity, existing))
+                        {
+                            bestByItemId[itemId] = commodity;
+                        }
+                    }
+                }
+
+                _bestCommodityByItemId = bestByItemId;
+                _commodityBySerialNumber = bySerial;
+            }
+        }
+
+        private static bool TryGetBestCommodityForItem(int itemId, out AdminShopCommodityData commodity)
+        {
+            commodity = null;
+            EnsureCommodityCache();
+            return _bestCommodityByItemId != null
+                   && _bestCommodityByItemId.TryGetValue(itemId, out commodity);
+        }
+
+        private static bool TryGetCommodityBySerialNumber(int serialNumber, out AdminShopCommodityData commodity)
+        {
+            commodity = null;
+            EnsureCommodityCache();
+            return _commodityBySerialNumber != null
+                   && _commodityBySerialNumber.TryGetValue(serialNumber, out commodity);
+        }
+
+        private static bool IsPreferredCommodity(AdminShopCommodityData candidate, AdminShopCommodityData existing)
+        {
+            if (candidate == null)
+            {
+                return false;
+            }
+
+            if (existing == null)
+            {
+                return true;
+            }
+
+            if (candidate.OnSale != existing.OnSale)
+            {
+                return candidate.OnSale;
+            }
+
+            if (candidate.Priority != existing.Priority)
+            {
+                return candidate.Priority > existing.Priority;
+            }
+
+            if (candidate.PeriodDays != existing.PeriodDays)
+            {
+                return candidate.PeriodDays > existing.PeriodDays;
+            }
+
+            if (candidate.Price != existing.Price)
+            {
+                return candidate.Price < existing.Price;
+            }
+
+            return candidate.SerialNumber < existing.SerialNumber;
+        }
+
+        private static bool TryGetIntProperty(WzSubProperty property, string name, out int value)
+        {
+            switch (property?[name])
+            {
+                case WzIntProperty intProperty:
+                    value = intProperty.Value;
+                    return true;
+                case WzShortProperty shortProperty:
+                    value = shortProperty.Value;
+                    return true;
+                case WzLongProperty longProperty:
+                    value = (int)Math.Clamp(longProperty.Value, int.MinValue, int.MaxValue);
+                    return true;
+                default:
+                    value = 0;
+                    return false;
+            }
         }
     }
 }

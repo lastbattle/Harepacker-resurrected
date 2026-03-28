@@ -403,7 +403,7 @@ namespace HaCreator.MapSimulator.Character.Skills
 
             // Check for various type indicators
             var infoNode = skillNode["info"];
-            SkillAttackType? clientAttackType = ResolveClientAttackType(GetInt(infoNode, "type"));
+            SkillAttackType? clientAttackType = ResolveClientAttackType(skill.SkillId, infoNode);
             bool hasBall = skillNode["ball"] != null;
             bool hasHit = skillNode["hit"] != null;
             bool hasAffected = skillNode["affected"] != null;
@@ -561,8 +561,9 @@ namespace HaCreator.MapSimulator.Character.Skills
             return SkillType.Attack;
         }
 
-        private static SkillAttackType? ResolveClientAttackType(int infoType)
+        private static SkillAttackType? ResolveClientAttackType(int skillId, WzImageProperty infoNode)
         {
+            int infoType = GetInt(infoNode, "type");
             return infoType switch
             {
                 1 => SkillAttackType.Melee,
@@ -571,6 +572,8 @@ namespace HaCreator.MapSimulator.Character.Skills
                 // but the client keeps them on the shoot-attack path instead of falling back to melee.
                 52 => SkillAttackType.Ranged,
                 10 => SkillAttackType.Magic,
+                // WZ `massSpell=1` type-32 families are spell-owned area resolution, not melee.
+                32 when GetInt(infoNode, "massSpell") == 1 => SkillAttackType.Magic,
                 _ => null
             };
         }
@@ -761,7 +764,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 foreach (string weaponTypeKey in ResolveAfterImageWeaponTypeKeys(weapon))
                 {
                     MeleeAfterImageCatalog chargeCatalog = GetOrLoadCharacterChargeAfterImageCatalog(weaponTypeKey, chargeElement);
-                    if (chargeCatalog != null && chargeCatalog.TryGetAction(actionName, out afterImageAction))
+                    if (TryResolveMeleeAfterImageCatalogAction(chargeCatalog, actionName, out afterImageAction))
                     {
                         return true;
                     }
@@ -773,7 +776,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             foreach (string weaponTypeKey in ResolveAfterImageWeaponTypeKeys(weapon))
             {
                 MeleeAfterImageCatalog skillCatalog = skill?.GetAfterImageCatalogForCharacterLevel(weaponTypeKey, characterLevel);
-                if (skillCatalog != null && skillCatalog.TryGetAction(actionName, out afterImageAction))
+                if (TryResolveMeleeAfterImageCatalogAction(skillCatalog, actionName, out afterImageAction))
                 {
                     return true;
                 }
@@ -781,13 +784,172 @@ namespace HaCreator.MapSimulator.Character.Skills
                 MeleeAfterImageCatalog weaponCatalog = GetOrLoadCharacterAfterImageCatalog(
                     weaponTypeKey,
                     GetWeaponAfterImageMasteryIndex(masteryPercent));
-                if (weaponCatalog != null && weaponCatalog.TryGetAction(actionName, out afterImageAction))
+                if (TryResolveMeleeAfterImageCatalogAction(weaponCatalog, actionName, out afterImageAction))
                 {
                     return true;
                 }
             }
 
             return false;
+        }
+
+        private static bool TryResolveMeleeAfterImageCatalogAction(
+            MeleeAfterImageCatalog catalog,
+            string actionName,
+            out MeleeAfterImageAction action)
+        {
+            action = null;
+            if (catalog?.Actions == null || string.IsNullOrWhiteSpace(actionName))
+            {
+                return false;
+            }
+
+            foreach (string candidate in EnumerateMeleeAfterImageActionCandidates(actionName))
+            {
+                if (catalog.TryGetAction(candidate, out action))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static IEnumerable<string> EnumerateMeleeAfterImageActionCandidates(string actionName)
+        {
+            var yielded = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (string candidate in CharacterPart.GetActionLookupStrings(actionName))
+            {
+                if (yielded.Add(candidate))
+                {
+                    yield return candidate;
+                }
+
+                foreach (string alias in EnumerateMeleeAfterImageFamilyAliases(candidate))
+                {
+                    if (yielded.Add(alias))
+                    {
+                        yield return alias;
+                    }
+                }
+            }
+        }
+
+        private static IEnumerable<string> EnumerateMeleeAfterImageFamilyAliases(string actionName)
+        {
+            if (string.IsNullOrWhiteSpace(actionName))
+            {
+                yield break;
+            }
+
+            if (string.Equals(actionName, "attack1", StringComparison.OrdinalIgnoreCase))
+            {
+                foreach (string candidate in new[]
+                {
+                    "stabO1", "stabO2", "stabOF",
+                    "stabT1", "stabT2", "stabTF",
+                    "proneStab"
+                })
+                {
+                    yield return candidate;
+                }
+
+                yield break;
+            }
+
+            if (string.Equals(actionName, "attack2", StringComparison.OrdinalIgnoreCase))
+            {
+                foreach (string candidate in new[]
+                {
+                    "swingO1", "swingO2", "swingO3", "swingOF",
+                    "swingT1", "swingT2", "swingT3", "swingTF",
+                    "swingP1", "swingP2", "swingPF"
+                })
+                {
+                    yield return candidate;
+                }
+
+                yield break;
+            }
+
+            if (actionName.StartsWith("stabO", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(actionName, "stabD1", StringComparison.OrdinalIgnoreCase))
+            {
+                foreach (string candidate in new[] { "stabO1", "stabO2", "stabOF", "stabD1" })
+                {
+                    yield return candidate;
+                }
+
+                yield break;
+            }
+
+            if (actionName.StartsWith("stabT", StringComparison.OrdinalIgnoreCase))
+            {
+                foreach (string candidate in new[] { "stabT1", "stabT2", "stabTF" })
+                {
+                    yield return candidate;
+                }
+
+                yield break;
+            }
+
+            if (actionName.StartsWith("swingO", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(actionName, "swingD1", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(actionName, "swingD2", StringComparison.OrdinalIgnoreCase))
+            {
+                foreach (string candidate in new[] { "swingO1", "swingO2", "swingO3", "swingOF", "swingD1", "swingD2" })
+                {
+                    yield return candidate;
+                }
+
+                yield break;
+            }
+
+            if (actionName.StartsWith("swingT", StringComparison.OrdinalIgnoreCase))
+            {
+                foreach (string candidate in new[] { "swingT1", "swingT2", "swingT3", "swingTF", "swingT2PoleArm" })
+                {
+                    yield return candidate;
+                }
+
+                yield break;
+            }
+
+            if (actionName.StartsWith("swingP", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(actionName, "doubleSwing", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(actionName, "tripleSwing", StringComparison.OrdinalIgnoreCase))
+            {
+                foreach (string candidate in new[]
+                {
+                    "swingP1", "swingP2", "swingPF",
+                    "swingP1PoleArm", "swingP2PoleArm",
+                    "doubleSwing", "tripleSwing"
+                })
+                {
+                    yield return candidate;
+                }
+
+                yield break;
+            }
+
+            if (actionName.StartsWith("shoot", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(actionName, "shotC1", StringComparison.OrdinalIgnoreCase))
+            {
+                foreach (string candidate in new[] { "shoot1", "shoot2", "shootF", "shotC1" })
+                {
+                    yield return candidate;
+                }
+
+                yield break;
+            }
+
+            if (actionName.StartsWith("swingC", StringComparison.OrdinalIgnoreCase))
+            {
+                foreach (string candidate in new[] { "swingC1", "swingC2" })
+                {
+                    yield return candidate;
+                }
+            }
         }
 
         private void LoadPersistentAvatarEffects(SkillData skill, WzImageProperty skillNode)
@@ -1574,6 +1736,9 @@ namespace HaCreator.MapSimulator.Character.Skills
                   }
               }
 
+              skill.SummonProjectileAnimations = LoadSummonIndexedAnimations(summonNode["ball"], "ball");
+              skill.SummonTargetHitAnimations = LoadSummonIndexedAnimations(summonNode["mob"], "mob");
+
               WzImageProperty hitNode = summonNode["hit"] ?? (summonNode.Parent as WzImageProperty)?["hit"];
               SkillAnimation hitAnimation = LoadSummonHitAnimation(hitNode);
               if (hitAnimation?.Frames.Count > 0)
@@ -1729,6 +1894,54 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
 
             return null;
+        }
+
+        private List<SkillAnimation> LoadSummonIndexedAnimations(WzImageProperty rootNode, string baseName)
+        {
+            var animations = new List<SkillAnimation>();
+            if (rootNode == null)
+            {
+                return animations;
+            }
+
+            if (rootNode.WzProperties.OfType<WzCanvasProperty>().Any())
+            {
+                SkillAnimation directAnimation = LoadSkillAnimation(rootNode, baseName);
+                if (directAnimation.Frames.Count > 0)
+                {
+                    if (directAnimation.Frames.Count > 1)
+                    {
+                        directAnimation.Loop = true;
+                    }
+
+                    animations.Add(directAnimation);
+                }
+
+                return animations;
+            }
+
+            foreach (WzImageProperty child in rootNode.WzProperties)
+            {
+                if (child == null || !int.TryParse(child.Name, out _))
+                {
+                    continue;
+                }
+
+                SkillAnimation animation = LoadSkillAnimation(child, $"{baseName}/{child.Name}");
+                if (animation.Frames.Count <= 0)
+                {
+                    continue;
+                }
+
+                if (animation.Frames.Count > 1)
+                {
+                    animation.Loop = true;
+                }
+
+                animations.Add(animation);
+            }
+
+            return animations;
         }
 
         private static void PopulateSummonSupportMetadata(SkillData skill, WzImageProperty supportBranch)
@@ -2382,6 +2595,10 @@ namespace HaCreator.MapSimulator.Character.Skills
             levelData.MAD = GetInt(node, "mad", 0, level);
             levelData.PDD = GetInt(node, "pdd", 0, level);
             levelData.MDD = GetInt(node, "mdd", 0, level);
+            levelData.STR = GetInt(node, "str", 0, level);
+            levelData.DEX = GetInt(node, "dex", 0, level);
+            levelData.INT = GetInt(node, "int", 0, level);
+            levelData.LUK = GetInt(node, "luk", 0, level);
             levelData.ACC = GetInt(node, "acc", 0, level);
             levelData.EVA = GetInt(node, "eva", 0, level);
             levelData.Speed = GetInt(node, "speed", 0, level);
@@ -2414,11 +2631,17 @@ namespace HaCreator.MapSimulator.Character.Skills
             if (levelData == null || node == null)
                 return;
 
+            levelData.ACC = PreferPrimaryStat(levelData.ACC, GetInt(node, "ar", 0, level));
             levelData.ACC = PreferPrimaryStat(levelData.ACC, GetInt(node, "accX", 0, level));
             levelData.PAD = PreferPrimaryStat(levelData.PAD, GetInt(node, "padX", 0, level));
             levelData.MAD = PreferPrimaryStat(levelData.MAD, GetInt(node, "madX", 0, level));
             levelData.PDD = PreferPrimaryStat(levelData.PDD, GetInt(node, "pddX", 0, level));
             levelData.MDD = PreferPrimaryStat(levelData.MDD, GetInt(node, "mddX", 0, level));
+            levelData.STR = PreferPrimaryStat(levelData.STR, GetInt(node, "strX", 0, level));
+            levelData.DEX = PreferPrimaryStat(levelData.DEX, GetInt(node, "dexX", 0, level));
+            levelData.INT = PreferPrimaryStat(levelData.INT, GetInt(node, "intX", 0, level));
+            levelData.LUK = PreferPrimaryStat(levelData.LUK, GetInt(node, "lukX", 0, level));
+            levelData.EVA = PreferPrimaryStat(levelData.EVA, GetInt(node, "er", 0, level));
             levelData.EVA = PreferPrimaryStat(levelData.EVA, GetInt(node, "evaX", 0, level));
 
             if (levelData.ACC == 0 && UsesAccuracyXAlias(skill, node))
@@ -2431,14 +2654,25 @@ namespace HaCreator.MapSimulator.Character.Skills
                 levelData.PAD = GetInt(node, "x", 0, level);
             }
 
+            levelData.PAD = PreferPrimaryStat(levelData.PAD, GetInt(node, "indiePad", 0, level));
+            levelData.MAD = PreferPrimaryStat(levelData.MAD, GetInt(node, "indieMad", 0, level));
+            levelData.ACC = PreferPrimaryStat(levelData.ACC, GetInt(node, "indieAcc", 0, level));
+            levelData.EVA = PreferPrimaryStat(levelData.EVA, GetInt(node, "indieEva", 0, level));
+            levelData.Speed = PreferPrimaryStat(levelData.Speed, GetInt(node, "indieSpeed", 0, level));
+            levelData.Jump = PreferPrimaryStat(levelData.Jump, GetInt(node, "indieJump", 0, level));
             levelData.EnhancedPAD = GetInt(node, "epad", 0, level);
             levelData.EnhancedMAD = GetInt(node, "emad", 0, level);
             levelData.EnhancedPDD = GetInt(node, "epdd", 0, level);
             levelData.EnhancedMDD = GetInt(node, "emdd", 0, level);
             levelData.EnhancedMaxHP = GetInt(node, "emhp", 0, level);
             levelData.EnhancedMaxMP = GetInt(node, "emmp", 0, level);
+            levelData.IndieMaxHP = GetInt(node, "indieMhp", 0, level);
+            levelData.IndieMaxMP = GetInt(node, "indieMmp", 0, level);
             levelData.MaxHPPercent = PreferPrimaryStat(GetInt(node, "mhpR", 0, level), GetInt(node, "indieMhpR", 0, level));
             levelData.MaxMPPercent = PreferPrimaryStat(GetInt(node, "mmpR", 0, level), GetInt(node, "indieMmpR", 0, level));
+            levelData.AllStat = GetInt(node, "indieAllStat", 0, level);
+            levelData.AbnormalStatusResistance = PreferPrimaryStat(GetInt(node, "asrR", 0, level), GetInt(node, "indieAsrR", 0, level));
+            levelData.ElementalResistance = PreferPrimaryStat(GetInt(node, "terR", 0, level), GetInt(node, "indieTerR", 0, level));
         }
 
         private static int PreferPrimaryStat(int currentValue, int aliasValue)

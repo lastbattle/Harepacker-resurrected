@@ -24,7 +24,7 @@ namespace HaCreator.MapSimulator
         private readonly record struct FieldHazardHpPotionCandidate(int ItemId, InventoryType InventoryType, string ItemName);
 
         private const int PacketOwnedBalloonHorizontalPadding = 10;
-        private const int PacketOwnedBalloonVerticalPadding = 8;
+        private const int PacketOwnedBalloonVerticalPadding = 10;
         private const int PacketOwnedBalloonMinWidth = 64;
         private const int PacketOwnedBalloonMaxWidth = 360;
         private const int PacketOwnedBalloonScreenMargin = 6;
@@ -32,6 +32,7 @@ namespace HaCreator.MapSimulator
         private const int PacketOwnedBalloonFadeOutMs = 220;
         private const int PacketOwnedBalloonCornerThreshold = 28;
         private const int PacketOwnedBalloonLongArrowThreshold = 18;
+        private const int PacketOwnedBalloonBodyExtraWidth = PacketOwnedBalloonHorizontalPadding * 2;
 
         private readonly PacketFieldFadeOverlay _packetOwnedFieldFadeOverlay = new();
         private readonly LocalOverlayBalloonState _packetOwnedBalloonState = new();
@@ -292,8 +293,7 @@ namespace HaCreator.MapSimulator
 
         private int ResolvePacketOwnedBalloonWrapWidth(int requestedWidth)
         {
-            int clampedWidth = Math.Clamp(requestedWidth, PacketOwnedBalloonMinWidth, PacketOwnedBalloonMaxWidth);
-            return Math.Max(32, clampedWidth - (PacketOwnedBalloonHorizontalPadding * 2));
+            return Math.Clamp(requestedWidth, PacketOwnedBalloonMinWidth, PacketOwnedBalloonMaxWidth);
         }
 
         private string[] WrapPacketOwnedBalloonText(string text, int maxWidth)
@@ -318,19 +318,22 @@ namespace HaCreator.MapSimulator
                 var builder = new StringBuilder();
                 for (int j = 0; j < words.Length; j++)
                 {
-                    string candidate = builder.Length == 0
-                        ? words[j]
-                        : $"{builder} {words[j]}";
-                    if (MeasureChatTextWithFallback(candidate).X <= maxWidth || builder.Length == 0)
+                    foreach (string segment in SplitPacketOwnedBalloonToken(words[j], maxWidth))
                     {
-                        builder.Clear();
-                        builder.Append(candidate);
-                        continue;
-                    }
+                        string candidate = builder.Length == 0
+                            ? segment
+                            : $"{builder} {segment}";
+                        if (MeasureChatTextWithFallback(candidate).X <= maxWidth || builder.Length == 0)
+                        {
+                            builder.Clear();
+                            builder.Append(candidate);
+                            continue;
+                        }
 
-                    wrappedLines.Add(builder.ToString());
-                    builder.Clear();
-                    builder.Append(words[j]);
+                        wrappedLines.Add(builder.ToString());
+                        builder.Clear();
+                        builder.Append(segment);
+                    }
                 }
 
                 if (builder.Length > 0)
@@ -340,6 +343,45 @@ namespace HaCreator.MapSimulator
             }
 
             return wrappedLines.Count == 0 ? Array.Empty<string>() : wrappedLines.ToArray();
+        }
+
+        private IEnumerable<string> SplitPacketOwnedBalloonToken(string token, int maxWidth)
+        {
+            if (string.IsNullOrEmpty(token))
+            {
+                yield break;
+            }
+
+            if (MeasureChatTextWithFallback(token).X <= maxWidth)
+            {
+                yield return token;
+                yield break;
+            }
+
+            var builder = new StringBuilder();
+            for (int i = 0; i < token.Length; i++)
+            {
+                builder.Append(token[i]);
+                if (builder.Length == 1)
+                {
+                    continue;
+                }
+
+                if (MeasureChatTextWithFallback(builder.ToString()).X <= maxWidth)
+                {
+                    continue;
+                }
+
+                builder.Length--;
+                yield return builder.ToString();
+                builder.Clear();
+                builder.Append(token[i]);
+            }
+
+            if (builder.Length > 0)
+            {
+                yield return builder.ToString();
+            }
         }
 
         private bool TryBuildPacketOwnedBalloonLayout(
@@ -370,8 +412,9 @@ namespace HaCreator.MapSimulator
                 textWidth = Math.Max(textWidth, (int)Math.Ceiling(MeasureChatTextWithFallback(lines[i]).X));
             }
 
-            int requestedWidth = Math.Clamp(message.RequestedWidth, PacketOwnedBalloonMinWidth, PacketOwnedBalloonMaxWidth);
-            int bodyWidth = Math.Max(requestedWidth, textWidth + (PacketOwnedBalloonHorizontalPadding * 2));
+            int contentWidth = Math.Clamp(message.RequestedWidth, PacketOwnedBalloonMinWidth, PacketOwnedBalloonMaxWidth);
+            int bodyWidth = Math.Max(contentWidth + PacketOwnedBalloonBodyExtraWidth, textWidth + (PacketOwnedBalloonHorizontalPadding * 2));
+            int contentAreaWidth = Math.Max(0, bodyWidth - PacketOwnedBalloonBodyExtraWidth);
             int bodyHeight = Math.Max(26, (lines.Length * lineHeight) + (PacketOwnedBalloonVerticalPadding * 2));
             int bodyX = Math.Clamp(
                 anchor.X - (bodyWidth / 2),
@@ -412,7 +455,12 @@ namespace HaCreator.MapSimulator
                 }
             }
 
-            layout = new PacketOwnedBalloonLayout(message, anchor, bodyBounds, lines, lineHeight, arrowKind, arrowSprite);
+            Rectangle contentBounds = new(
+                bodyBounds.X + PacketOwnedBalloonHorizontalPadding,
+                bodyBounds.Y + PacketOwnedBalloonVerticalPadding,
+                contentAreaWidth,
+                Math.Max(0, bodyHeight - (PacketOwnedBalloonVerticalPadding * 2)));
+            layout = new PacketOwnedBalloonLayout(message, anchor, bodyBounds, contentBounds, lines, lineHeight, arrowKind, arrowSprite);
             return true;
         }
 
@@ -444,10 +492,12 @@ namespace HaCreator.MapSimulator
                 _spriteBatch.Draw(_debugBoundaryTexture, new Rectangle(layout.BodyBounds.Right - 1, layout.BodyBounds.Y, 1, layout.BodyBounds.Height), border);
             }
 
-            float drawY = layout.BodyBounds.Y + PacketOwnedBalloonVerticalPadding;
+            float drawY = layout.ContentBounds.Y;
             for (int i = 0; i < layout.Lines.Length; i++)
             {
-                DrawChatTextWithFallback(layout.Lines[i], new Vector2(layout.BodyBounds.X + PacketOwnedBalloonHorizontalPadding, drawY), textColor);
+                float lineWidth = MeasureChatTextWithFallback(layout.Lines[i]).X;
+                float drawX = layout.ContentBounds.X + Math.Max(0f, (layout.ContentBounds.Width - lineWidth) / 2f);
+                DrawChatTextWithFallback(layout.Lines[i], new Vector2(drawX, drawY), textColor);
                 drawY += layout.LineHeight;
             }
         }
@@ -1336,6 +1386,7 @@ namespace HaCreator.MapSimulator
             LocalOverlayBalloonMessage Message,
             Point Anchor,
             Rectangle BodyBounds,
+            Rectangle ContentBounds,
             string[] Lines,
             int LineHeight,
             PacketOwnedBalloonArrowKind ArrowKind,

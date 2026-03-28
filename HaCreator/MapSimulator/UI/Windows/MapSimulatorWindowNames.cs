@@ -27,6 +27,7 @@
         public const string CharacterSelect = "CharacterSelect";
         public const string AvatarPreviewCarousel = "AvatarPreviewCarousel";
         public const string LoginTitle = "LoginTitle";
+        public const string LoginCreateCharacter = "LoginCreateCharacter";
         public const string ConnectionNotice = "ConnectionNotice";
         public const string LoginUtilityDialog = "LoginUtilityDialog";
         public const string CharacterDetail = "CharacterDetail";
@@ -51,6 +52,7 @@
         public const string GuildBbs = "GuildBbs";
         public const string Messenger = "Messenger";
         public const string MapleTv = "MapleTv";
+        public const string EngagementProposal = "EngagementProposal";
         public const string MemoMailbox = "MemoMailbox";
         public const string MemoSend = "MemoSend";
         public const string MemoGet = "MemoGet";

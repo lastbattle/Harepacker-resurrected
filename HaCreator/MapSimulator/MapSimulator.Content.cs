@@ -344,7 +344,23 @@ namespace HaCreator.MapSimulator
                         soundUIImage,
                         GraphicsDevice,
                         _renderParams.RenderWidth,
-                        _renderParams.RenderHeight);
+                        _renderParams.RenderHeight);
+
+
+
+                    UIWindowLoader.RegisterLoginCreateCharacterWindow(
+
+                        uiWindowManager,
+
+                        uiLoginImage,
+
+                        soundUIImage,
+
+                        GraphicsDevice,
+
+                        _renderParams.RenderWidth,
+
+                        _renderParams.RenderHeight);
                     UIWindowLoader.RegisterLoginCharacterDetailWindow(
                         uiWindowManager,
                         uiBasicImage,
@@ -404,7 +420,8 @@ namespace HaCreator.MapSimulator
             WireSocialSearchWindowData();
             WireGuildSearchWindowData();
             WireGuildSkillWindowData();
-            WireGuildBbsWindowData();
+            WireGuildBbsWindowData();
+            WireEngagementProposalWindowData();
             WireProgressionUtilityWindowLaunchers();
             if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.ItemMaker) is ItemMakerUI itemMakerWindow)
             {
@@ -1225,7 +1242,8 @@ namespace HaCreator.MapSimulator
             WireSocialSearchWindowData();
             WireGuildSearchWindowData();
             WireGuildSkillWindowData();
-            WireGuildBbsWindowData();
+            WireGuildBbsWindowData();
+            WireEngagementProposalWindowData();
             WireProgressionUtilityWindowLaunchers();
             RefreshMapTransferWindow();
             RefreshWorldMapWindow();

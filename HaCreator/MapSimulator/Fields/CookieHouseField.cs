@@ -62,10 +62,10 @@ namespace HaCreator.MapSimulator.Fields
         private static readonly string[] PreferredUiWindowImages = { "UIWindow.img", "UIWindow2.img" };
         private const string ClientPreferredBitmapRootHint = "raise";
 
-        // IDA confirms the client uses a dedicated s_anGrade table to select
-        // five bitmap-number styles. These placeholder thresholds keep the
-        // redraw path alive until the actual table is recovered.
-        public static readonly int[] GradeThresholds = { 1000, 3000, 6000, 10000 };
+        // Recovered from MapleStory.exe v95:
+        // s_nGradeCount @ 0x00C568DC == 4 and s_anGrade @ 0x00C568CC == { 90, 160, 230, 350 }.
+        // The client returns style index 4 when the point total reaches or exceeds the final threshold.
+        public static readonly int[] GradeThresholds = { 90, 160, 230, 350 };
 
         private bool _isActive;
         private int _mapId;
@@ -131,7 +131,7 @@ namespace HaCreator.MapSimulator.Fields
 
         public string DescribeStatus()
         {
-            return $"Cookie House map={_mapId}, point={_point}, grade={_gradeIndex + 1}/{GradeCount}, thresholds=client-s_anGrade-unresolved(4 thresholds/5 styles), {DescribeBackgroundSource()}, {DescribeBitmapSource()}";
+            return $"Cookie House map={_mapId}, point={_point}, grade={_gradeIndex + 1}/{GradeCount}, thresholds=s_anGrade[{string.Join(",", GradeThresholds)}], {DescribeBackgroundSource()}, {DescribeBitmapSource()}";
         }
 
         public void Draw(SpriteBatch spriteBatch, Texture2D pixelTexture, SpriteFont font, int centerX)

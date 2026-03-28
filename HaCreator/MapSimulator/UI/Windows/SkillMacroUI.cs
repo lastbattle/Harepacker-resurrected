@@ -673,7 +673,7 @@ namespace HaCreator.MapSimulator.UI
             }
 
             bounds.Offset(origin);
-            bool enabled = key != SkillMacroSoftKeyboardFunctionKey.Enter || CanSaveCurrentMacro();
+            bool enabled = IsSoftKeyboardFunctionKeyEnabled(key);
             bool active = key switch
             {
                 SkillMacroSoftKeyboardFunctionKey.CapsLock => _softKeyboardCapsLock,
@@ -957,10 +957,72 @@ namespace HaCreator.MapSimulator.UI
             return _softKeyboardCapsLock ^ _softKeyboardShift;
         }
 
+        private SkillMacroSoftKeyboardConstraintType GetSoftKeyboardConstraintType()
+        {
+            return SkillMacroSoftKeyboardConstraintType.AlphaNumeric;
+        }
+
+        private int GetSoftKeyboardConstraintLength()
+        {
+            return (_editingMacroName ?? string.Empty).Length;
+        }
+
+        private int GetSoftKeyboardConstraintMaxLength()
+        {
+            return SkillMacroNameRules.MaxNameBytes;
+        }
+
+        private SkillMacroSoftKeyboardConstraintMode GetSoftKeyboardConstraintMode()
+        {
+            return SkillMacroSoftKeyboardLayout.ResolveConstraintMode(
+                GetSoftKeyboardConstraintType(),
+                GetSoftKeyboardConstraintLength(),
+                GetSoftKeyboardConstraintMaxLength());
+        }
+
         private bool IsSoftKeyboardKeyEnabled(int keyIndex)
         {
+            SkillMacroSoftKeyboardConstraintMode mode = GetSoftKeyboardConstraintMode();
+            if (!IsSoftKeyboardKeyFamilyEnabled(keyIndex, mode))
+            {
+                return false;
+            }
+
             string insertedText = SkillMacroSoftKeyboardLayout.GetKeyText(keyIndex, IsSoftKeyboardUppercase());
             return CanInsertSoftKeyboardText(insertedText);
+        }
+
+        private bool IsSoftKeyboardFunctionKeyEnabled(SkillMacroSoftKeyboardFunctionKey key)
+        {
+            SkillMacroSoftKeyboardConstraintMode mode = GetSoftKeyboardConstraintMode();
+            return key switch
+            {
+                SkillMacroSoftKeyboardFunctionKey.CapsLock => SkillMacroSoftKeyboardLayout.IsAlphabeticFamilyEnabled(mode),
+                SkillMacroSoftKeyboardFunctionKey.LeftShift or SkillMacroSoftKeyboardFunctionKey.RightShift => SkillMacroSoftKeyboardLayout.IsAlphabeticFamilyEnabled(mode),
+                SkillMacroSoftKeyboardFunctionKey.Enter => CanSaveCurrentMacro(),
+                SkillMacroSoftKeyboardFunctionKey.Backspace => !string.IsNullOrEmpty(_editingMacroName),
+                _ => false
+            };
+        }
+
+        private static bool IsSoftKeyboardKeyFamilyEnabled(int keyIndex, SkillMacroSoftKeyboardConstraintMode mode)
+        {
+            if (mode == SkillMacroSoftKeyboardConstraintMode.Disabled)
+            {
+                return false;
+            }
+
+            if (SkillMacroSoftKeyboardLayout.IsNumericKey(keyIndex))
+            {
+                return SkillMacroSoftKeyboardLayout.IsNumericFamilyEnabled(mode);
+            }
+
+            if (SkillMacroSoftKeyboardLayout.IsAlphabeticKey(keyIndex))
+            {
+                return SkillMacroSoftKeyboardLayout.IsAlphabeticFamilyEnabled(mode);
+            }
+
+            return false;
         }
 
         private bool CanInsertSoftKeyboardText(string text)
@@ -1458,6 +1520,11 @@ namespace HaCreator.MapSimulator.UI
             SkillMacroSoftKeyboardFunctionKey functionKey = SkillMacroSoftKeyboardLayout.GetFunctionKeyFromPoint(localX, localY, _softKeyboardMinimized);
             if (functionKey != SkillMacroSoftKeyboardFunctionKey.None)
             {
+                if (!IsSoftKeyboardFunctionKeyEnabled(functionKey))
+                {
+                    return;
+                }
+
                 _pressedSoftKeyboardFunctionKey = functionKey;
                 _softKeyboardPressedVisualUntil = Environment.TickCount + 120;
 

@@ -36,6 +36,7 @@ namespace HaCreator.MapSimulator.Fields
         private readonly Dictionary<uint, RemoteTownPortalState> _remoteTownPortals = new();
         private readonly Dictionary<RemoteOpenGateKey, RemoteOpenGateState> _remoteOpenGates = new();
         private readonly Dictionary<uint, RemoteTownPortalFieldMetadata> _remoteTownPortalFieldMetadata = new();
+        private readonly Dictionary<uint, RemoteTownPortalRuntimePair> _remoteTownPortalRuntimes = new();
         private PortalVisualSet _openGateVisuals;
         private PortalVisualSet _mysticDoorCurrentMapVisuals;
         private PortalVisualSet _mysticDoorTownVisuals;
@@ -204,6 +205,7 @@ namespace HaCreator.MapSimulator.Fields
         {
             _remoteTownPortals.Clear();
             _remoteOpenGates.Clear();
+            _remoteTownPortalRuntimes.Clear();
             RemovePortalsBySource(TemporaryPortalSource.RemoteTownPortalPool);
             RemovePortalsBySource(TemporaryPortalSource.RemoteOpenGatePool);
         }
@@ -469,14 +471,18 @@ namespace HaCreator.MapSimulator.Fields
 
         private void SyncRemoteTownPortalVisuals()
         {
-            RemovePortalsBySource(TemporaryPortalSource.RemoteTownPortalPool);
-
             if (!EnsureMysticDoorVisuals(out PortalVisualSet currentMapVisuals, out PortalVisualSet townVisuals, out PortalVisualSet frameVisuals))
                 return;
 
+            HashSet<uint> activeOwners = new();
+
             foreach (RemoteTownPortalState state in _remoteTownPortals.Values.OrderBy(portal => portal.OwnerCharacterId))
             {
-                TemporaryPortal fieldPortal = CreateRemoteTownPortal(
+                activeOwners.Add(state.OwnerCharacterId);
+                _remoteTownPortalRuntimes.TryGetValue(state.OwnerCharacterId, out RemoteTownPortalRuntimePair runtime);
+
+                TemporaryPortal fieldPortal = UpsertRemoteTownPortalRuntime(
+                    runtime?.FieldPortal,
                     state,
                     state.MapId,
                     state.X,
@@ -486,13 +492,17 @@ namespace HaCreator.MapSimulator.Fields
                     townVisuals,
                     frameVisuals);
 
-                _portals.Add(fieldPortal);
-
                 if (!state.Destination.HasValue)
+                {
+                    fieldPortal.LinkedPortalId = null;
+                    RemoveRemoteTownPortalRuntime(runtime?.TownPortal);
+                    _remoteTownPortalRuntimes[state.OwnerCharacterId] = new RemoteTownPortalRuntimePair(fieldPortal, null);
                     continue;
+                }
 
                 RemoteTownPortalResolvedDestination destination = state.Destination.Value;
-                TemporaryPortal townPortal = CreateRemoteTownPortal(
+                TemporaryPortal townPortal = UpsertRemoteTownPortalRuntime(
+                    runtime?.TownPortal,
                     state,
                     destination.MapId,
                     destination.X,
@@ -504,9 +514,74 @@ namespace HaCreator.MapSimulator.Fields
 
                 fieldPortal.LinkedPortalId = townPortal.Id;
                 townPortal.LinkedPortalId = fieldPortal.Id;
-
-                _portals.Add(townPortal);
+                _remoteTownPortalRuntimes[state.OwnerCharacterId] = new RemoteTownPortalRuntimePair(fieldPortal, townPortal);
             }
+
+            foreach (uint ownerId in _remoteTownPortalRuntimes.Keys.Except(activeOwners).ToArray())
+            {
+                if (_remoteTownPortalRuntimes.TryGetValue(ownerId, out RemoteTownPortalRuntimePair runtime))
+                {
+                    RemoveRemoteTownPortalRuntime(runtime.FieldPortal);
+                    RemoveRemoteTownPortalRuntime(runtime.TownPortal);
+                }
+
+                _remoteTownPortalRuntimes.Remove(ownerId);
+            }
+        }
+
+        private TemporaryPortal UpsertRemoteTownPortalRuntime(
+            TemporaryPortal portal,
+            RemoteTownPortalState state,
+            int mapId,
+            float x,
+            float y,
+            bool useTownVisuals,
+            PortalVisualSet currentMapVisuals,
+            PortalVisualSet townVisuals,
+            PortalVisualSet frameVisuals)
+        {
+            BaseDXDrawableItem[] drawables = CreateRemoteTownPortalDrawables(
+                state,
+                x,
+                y,
+                useTownVisuals,
+                currentMapVisuals,
+                townVisuals,
+                frameVisuals);
+
+            if (portal == null)
+            {
+                portal = new TemporaryPortal(
+                    _nextPortalId++,
+                    TemporaryPortalKind.MysticDoor,
+                    TemporaryPortalSource.RemoteTownPortalPool,
+                    mapId,
+                    x,
+                    y,
+                    int.MaxValue,
+                    CrossMapPortalTeleportDelayMs,
+                    drawables)
+                {
+                    OwnerCharacterId = state.OwnerCharacterId
+                };
+                _portals.Add(portal);
+                return portal;
+            }
+
+            portal.MapId = mapId;
+            portal.X = x;
+            portal.Y = y;
+            portal.Drawables = drawables;
+            portal.OwnerCharacterId = state.OwnerCharacterId;
+            return portal;
+        }
+
+        private void RemoveRemoteTownPortalRuntime(TemporaryPortal portal)
+        {
+            if (portal == null)
+                return;
+
+            RemovePortal(portal);
         }
 
         private void SyncRemoteOpenGateVisuals()
@@ -604,9 +679,8 @@ namespace HaCreator.MapSimulator.Fields
             return true;
         }
 
-        private TemporaryPortal CreateRemoteTownPortal(
+        private BaseDXDrawableItem[] CreateRemoteTownPortalDrawables(
             RemoteTownPortalState state,
-            int mapId,
             float x,
             float y,
             bool useTownVisuals,
@@ -662,19 +736,7 @@ namespace HaCreator.MapSimulator.Fields
                 }
             }
 
-            return new TemporaryPortal(
-                _nextPortalId++,
-                TemporaryPortalKind.MysticDoor,
-                TemporaryPortalSource.RemoteTownPortalPool,
-                mapId,
-                x,
-                y,
-                int.MaxValue,
-                CrossMapPortalTeleportDelayMs,
-                drawables.ToArray())
-            {
-                OwnerCharacterId = state.OwnerCharacterId
-            };
+            return drawables.ToArray();
         }
 
         private static bool ShouldDrawRemoteTownPortalFrame(RemoteTownPortalState state, bool useTownVisuals)
@@ -965,12 +1027,12 @@ namespace HaCreator.MapSimulator.Fields
             public int Id { get; }
             public TemporaryPortalKind Kind { get; }
             internal TemporaryPortalSource Source { get; }
-            public int MapId { get; }
-            public float X { get; }
-            public float Y { get; }
+            public int MapId { get; set; }
+            public float X { get; set; }
+            public float Y { get; set; }
             public int ExpireTime { get; }
             public int DelayMs { get; }
-            public IReadOnlyList<BaseDXDrawableItem> Drawables { get; }
+            public IReadOnlyList<BaseDXDrawableItem> Drawables { get; set; }
             public int? LinkedPortalId { get; set; }
             public int? DirectDestinationMapId { get; set; }
             public float? DirectDestinationX { get; set; }
@@ -1004,6 +1066,10 @@ namespace HaCreator.MapSimulator.Fields
             short SourceX,
             short SourceY,
             int TownMapId);
+
+        private sealed record RemoteTownPortalRuntimePair(
+            TemporaryPortal FieldPortal,
+            TemporaryPortal TownPortal);
 
         private readonly record struct RemoteOpenGateState(
             uint OwnerCharacterId,

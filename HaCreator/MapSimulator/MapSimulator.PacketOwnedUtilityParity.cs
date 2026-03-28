@@ -63,6 +63,7 @@ namespace HaCreator.MapSimulator
             MapSimulatorWindowNames.GuildSkill,
             MapSimulatorWindowNames.GuildBbs,
             MapSimulatorWindowNames.Messenger,
+            MapSimulatorWindowNames.EngagementProposal,
             MapSimulatorWindowNames.MapleTv,
             MapSimulatorWindowNames.MemoMailbox,
             MapSimulatorWindowNames.MemoSend,
@@ -440,6 +441,7 @@ namespace HaCreator.MapSimulator
                 MapSimulatorWindowNames.GuildSearch => "Guild Search",
                 MapSimulatorWindowNames.GuildSkill => "Guild Skill",
                 MapSimulatorWindowNames.GuildBbs => "Guild BBS",
+                MapSimulatorWindowNames.EngagementProposal => "Engagement Proposal",
                 MapSimulatorWindowNames.MapleTv => "MapleTV",
                 MapSimulatorWindowNames.MemoMailbox => "Memo Mailbox",
                 MapSimulatorWindowNames.MemoSend => "Memo Send",
@@ -693,33 +695,43 @@ namespace HaCreator.MapSimulator
             switch (packetType)
             {
                 case LocalUtilityPacketInboxManager.OpenUiPacketType:
+                case LocalUtilityPacketInboxManager.OpenUiClientPacketType:
                     return TryApplyPacketOwnedOpenUiPayload(payload, out message);
 
                 case LocalUtilityPacketInboxManager.OpenUiWithOptionPacketType:
+                case LocalUtilityPacketInboxManager.OpenUiWithOptionClientPacketType:
                     return TryApplyPacketOwnedOpenUiWithOptionPayload(payload, out message);
 
                 case LocalUtilityPacketInboxManager.GoToCommoditySnPacketType:
+                case LocalUtilityPacketInboxManager.GoToCommoditySnClientPacketType:
                     return TryApplyPacketOwnedCommodityPayload(payload, out message);
 
                 case LocalUtilityPacketInboxManager.NoticeMsgPacketType:
-                    return TryApplyPacketOwnedStringPayload(payload, ApplyPacketOwnedNoticeMessage, "Notice payload is missing.", out message);
+                case LocalUtilityPacketInboxManager.NoticeMsgClientPacketType:
+                    return TryApplyPacketOwnedNoticePayload(payload, out message);
 
                 case LocalUtilityPacketInboxManager.ChatMsgPacketType:
-                    return TryApplyPacketOwnedStringPayload(payload, value => ApplyPacketOwnedChatMessage(value), "Chat payload is missing.", out message);
+                case LocalUtilityPacketInboxManager.ChatMsgClientPacketType:
+                    return TryApplyPacketOwnedChatPayload(payload, out message);
 
                 case LocalUtilityPacketInboxManager.BuffzoneEffectPacketType:
+                case LocalUtilityPacketInboxManager.BuffzoneEffectClientPacketType:
                     return TryApplyPacketOwnedStringPayload(payload, ApplyPacketOwnedBuffzoneEffect, "Buff-zone payload is missing.", out message);
 
                 case LocalUtilityPacketInboxManager.PlayEventSoundPacketType:
+                case LocalUtilityPacketInboxManager.PlayEventSoundClientPacketType:
                     return TryApplyPacketOwnedStringPayload(payload, descriptor => ApplyPacketOwnedEventSound(descriptor, minigame: false), "Event-sound payload is missing.", out message);
 
                 case LocalUtilityPacketInboxManager.PlayMinigameSoundPacketType:
+                case LocalUtilityPacketInboxManager.PlayMinigameSoundClientPacketType:
                     return TryApplyPacketOwnedStringPayload(payload, descriptor => ApplyPacketOwnedEventSound(descriptor, minigame: true), "Minigame-sound payload is missing.", out message);
 
                 case LocalUtilityPacketInboxManager.AskApspEventPacketType:
+                case LocalUtilityPacketInboxManager.AskApspEventClientPacketType:
                     return TryApplyPacketOwnedStringPayload(payload, ApplyPacketOwnedAskApspEvent, "AP/SP payload is missing.", out message);
 
                 case LocalUtilityPacketInboxManager.FollowCharacterFailedPacketType:
+                case LocalUtilityPacketInboxManager.FollowCharacterFailedClientPacketType:
                     return TryApplyPacketOwnedFollowCharacterFailedPayload(payload, out message);
 
                 case LocalUtilityPacketInboxManager.NotifyHpDecByFieldPacketType:
@@ -737,6 +749,9 @@ namespace HaCreator.MapSimulator
 
                 case LocalUtilityPacketInboxManager.DeliveryQuestPacketType:
                     return TryApplyPacketOwnedDeliveryQuestPayload(payload, out message);
+
+                case LocalUtilityPacketInboxManager.SkillCooltimeSetPacketType:
+                    return TryApplyPacketOwnedSkillCooltimePayload(payload, out message);
 
                 default:
                     message = $"Unsupported local utility packet type {packetType}.";
@@ -924,9 +939,7 @@ namespace HaCreator.MapSimulator
 
             if (uiType == 7)
             {
-                string toggleMessage = $"Packet-owned UI toggle #{uiType} requested option {option}, but the exact toggle owner is not mapped in the simulator yet.";
-                ShowUtilityFeedbackMessage(toggleMessage);
-                return toggleMessage;
+                return ApplyPacketOwnedSocialListToggle(option);
             }
 
             string baseMessage = ApplyPacketOwnedOpenUi(uiType);
@@ -953,6 +966,62 @@ namespace HaCreator.MapSimulator
                 : "Opened packet-owned party search.";
             ShowUtilityFeedbackMessage(message);
             return message;
+        }
+
+        private string ApplyPacketOwnedSocialListToggle(int option)
+        {
+            WireSocialListWindowData();
+
+            if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.SocialList) is not UIWindowBase socialListWindow)
+            {
+                const string unavailable = "Social List owner is not available in this UI build.";
+                ShowUtilityFeedbackMessage(unavailable);
+                return unavailable;
+            }
+
+            bool hasRequestedTab = TryResolvePacketOwnedSocialListTab(option, out SocialListTab requestedTab);
+            SocialListTab targetTab = hasRequestedTab ? requestedTab : _socialListRuntime.CurrentTab;
+            if (socialListWindow.IsVisible && hasRequestedTab && _socialListRuntime.CurrentTab == targetTab)
+            {
+                uiWindowManager.HideWindow(MapSimulatorWindowNames.SocialList);
+                string closedMessage = $"Closed packet-owned Social List ({DescribePacketOwnedSocialListTab(targetTab)} tab).";
+                ShowUtilityFeedbackMessage(closedMessage);
+                return closedMessage;
+            }
+
+            _socialListRuntime.SelectTab(targetTab);
+            ShowWindow(MapSimulatorWindowNames.SocialList, socialListWindow, trackDirectionModeOwner: true);
+
+            string message = hasRequestedTab
+                ? $"Opened packet-owned Social List on the {DescribePacketOwnedSocialListTab(targetTab)} tab."
+                : $"Opened packet-owned Social List and preserved unmapped tab option {option} on the existing simulator tab seam.";
+            ShowUtilityFeedbackMessage(message);
+            return message;
+        }
+
+        private static bool TryResolvePacketOwnedSocialListTab(int option, out SocialListTab tab)
+        {
+            tab = SocialListTab.Friend;
+            if (!Enum.IsDefined(typeof(SocialListTab), option))
+            {
+                return false;
+            }
+
+            tab = (SocialListTab)option;
+            return true;
+        }
+
+        private static string DescribePacketOwnedSocialListTab(SocialListTab tab)
+        {
+            return tab switch
+            {
+                SocialListTab.Friend => "Friend",
+                SocialListTab.Party => "Party",
+                SocialListTab.Guild => "Guild",
+                SocialListTab.Alliance => "Alliance",
+                SocialListTab.Blacklist => "Blacklist",
+                _ => "Social"
+            };
         }
 
         private string ReportUnsupportedPacketOwnedOpenUi(int uiType, int defaultTab)
@@ -984,7 +1053,16 @@ namespace HaCreator.MapSimulator
             _lastPacketOwnedCommodityRequestTick = Environment.TickCount;
 
             string shopMessage = ShowPacketOwnedWindow(MapSimulatorWindowNames.CashShop, "Cash Shop");
-            string message = $"Stored packet-owned commodity SN {_lastPacketOwnedCommoditySerialNumber} and requested shop migration. {shopMessage}";
+            bool focusedCommodity = false;
+            if (_lastPacketOwnedCommoditySerialNumber > 0
+                && uiWindowManager?.GetWindow(MapSimulatorWindowNames.CashShop) is AdminShopDialogUI cashShopWindow)
+            {
+                focusedCommodity = cashShopWindow.TryFocusCommoditySerialNumber(_lastPacketOwnedCommoditySerialNumber);
+            }
+
+            string message = focusedCommodity
+                ? $"Stored packet-owned commodity SN {_lastPacketOwnedCommoditySerialNumber}, requested shop migration, and focused the matching Cash Shop sample row. {shopMessage}"
+                : $"Stored packet-owned commodity SN {_lastPacketOwnedCommoditySerialNumber} and requested shop migration. {shopMessage}";
             ShowUtilityFeedbackMessage(message);
             return message;
         }
@@ -1008,11 +1086,22 @@ namespace HaCreator.MapSimulator
 
         private string ApplyPacketOwnedChatMessage(string message, string channel = null)
         {
+            return ApplyPacketOwnedChatMessage(message, null, channel);
+        }
+
+        private string ApplyPacketOwnedChatMessage(string message, int? chatLogType, string channel = null)
+        {
             StampPacketOwnedUtilityRequestState();
             _lastPacketOwnedChatMessage = message?.Trim() ?? string.Empty;
             if (string.IsNullOrWhiteSpace(_lastPacketOwnedChatMessage))
             {
                 return "Packet-owned chat line was empty.";
+            }
+
+            if (chatLogType.HasValue)
+            {
+                _chat?.AddClientChatMessage(_lastPacketOwnedChatMessage, Environment.TickCount, chatLogType.Value);
+                return $"Queued packet-owned chat line (type {chatLogType.Value}): {_lastPacketOwnedChatMessage}";
             }
 
             if (string.IsNullOrWhiteSpace(channel)
@@ -1029,6 +1118,42 @@ namespace HaCreator.MapSimulator
             _chat?.AddClientChatMessage(route.Line, Environment.TickCount, route.ChatLogType, route.WhisperTargetCandidate);
             string line = route.Line;
             return $"Queued packet-owned chat line: {line}";
+        }
+
+        private string ApplyPacketOwnedSkillCooltime(int skillId, int remainingSeconds)
+        {
+            StampPacketOwnedUtilityRequestState();
+            if (skillId <= 0)
+            {
+                const string invalidSkill = "Packet-owned skill cooldown payload did not contain a valid skill id.";
+                ShowUtilityFeedbackMessage(invalidSkill);
+                return invalidSkill;
+            }
+
+            if (_playerManager?.Skills == null)
+            {
+                const string unavailable = "Skill cooldown runtime is not available in this simulator build.";
+                ShowUtilityFeedbackMessage(unavailable);
+                return unavailable;
+            }
+
+            int remainingMs = Math.Max(0, remainingSeconds) * 1000;
+            if (remainingMs > 0)
+            {
+                _playerManager.Skills.SetServerCooldownRemaining(skillId, remainingMs, currTickCount);
+            }
+            else
+            {
+                _playerManager.Skills.ClearServerCooldown(skillId);
+            }
+
+            var skill = _playerManager.Skills.GetSkillData(skillId) ?? _playerManager.SkillLoader?.LoadSkill(skillId);
+            string skillName = skill?.Name ?? $"Skill {skillId}";
+            string message = remainingMs > 0
+                ? $"Applied packet-owned skill cooldown for {skillName}: {FormatCooldownNotificationSeconds(remainingMs)} remaining."
+                : $"Cleared packet-owned skill cooldown for {skillName}.";
+            ShowUtilityFeedbackMessage(message);
+            return message;
         }
 
         private string ApplyPacketOwnedBuffzoneEffect(string message)
@@ -1457,6 +1582,39 @@ namespace HaCreator.MapSimulator
             return true;
         }
 
+        private bool TryApplyPacketOwnedNoticePayload(byte[] payload, out string message)
+        {
+            return TryApplyPacketOwnedStringPayload(payload, ApplyPacketOwnedNoticeMessage, "Notice payload is missing.", out message);
+        }
+
+        private bool TryApplyPacketOwnedChatPayload(byte[] payload, out string message)
+        {
+            message = null;
+            if (payload == null || payload.Length == 0)
+            {
+                message = "Chat payload is missing.";
+                return false;
+            }
+
+            try
+            {
+                using MemoryStream stream = new(payload, writable: false);
+                using BinaryReader reader = new(stream);
+                ushort chatLogType = reader.ReadUInt16();
+                string chatText = ReadPacketOwnedMapleString(reader);
+                if (reader.BaseStream.Position == reader.BaseStream.Length && !string.IsNullOrWhiteSpace(chatText))
+                {
+                    message = ApplyPacketOwnedChatMessage(chatText, chatLogType);
+                    return true;
+                }
+            }
+            catch
+            {
+            }
+
+            return TryApplyPacketOwnedStringPayload(payload, value => ApplyPacketOwnedChatMessage(value), "Chat payload is missing.", out message);
+        }
+
         private bool TryApplyPacketOwnedOpenUiWithOptionPayload(byte[] payload, out string message)
         {
             message = null;
@@ -1485,6 +1643,31 @@ namespace HaCreator.MapSimulator
             using BinaryReader reader = new(stream);
             message = ApplyPacketOwnedGoToCommoditySn(reader.ReadInt32());
             return true;
+        }
+
+        private bool TryApplyPacketOwnedSkillCooltimePayload(byte[] payload, out string message)
+        {
+            message = null;
+            if (payload == null || payload.Length < 6)
+            {
+                message = "Skill-cooltime payload must contain skillId Int32 and remainSec UInt16 values.";
+                return false;
+            }
+
+            try
+            {
+                using MemoryStream stream = new(payload, writable: false);
+                using BinaryReader reader = new(stream);
+                int skillId = reader.ReadInt32();
+                int remainSeconds = reader.ReadUInt16();
+                message = ApplyPacketOwnedSkillCooltime(skillId, remainSeconds);
+                return true;
+            }
+            catch (Exception ex)
+            {
+                message = $"Skill-cooltime payload could not be decoded: {ex.Message}";
+                return false;
+            }
         }
 
         private bool TryApplyPacketOwnedQuestGuidePayload(byte[] payload, out string message)
@@ -1966,8 +2149,8 @@ namespace HaCreator.MapSimulator
                 default:
                     return ChatCommandHandler.CommandResult.Error(
                         rawHex
-                            ? "Usage: /localutility packetraw <openui|openuiwithoption|commodity|fade|balloon|damagemeter|hpdec|notice|chat|buffzone|eventsound|minigamesound|questguide|delivery|classcompetition|apspevent|followfail|243|250|267|274|275> <hex>"
-                            : "Usage: /localutility packet <openui|openuiwithoption|commodity|fade|balloon|damagemeter|hpdec|notice|chat|buffzone|eventsound|minigamesound|questguide|delivery|classcompetition|apspevent|followfail|243|250|267|274|275> [payloadhex=..|payloadb64=..]");
+                        ? "Usage: /localutility packetraw <openui|openuiwithoption|commodity|fade|balloon|damagemeter|hpdec|notice|chat|buffzone|eventsound|minigamesound|questguide|delivery|classcompetition|apspevent|followfail|skillcooltime|243|246|247|250|251|252|263|264|265|266|267|270|273|274|275|276> <hex>"
+                        : "Usage: /localutility packet <openui|openuiwithoption|commodity|fade|balloon|damagemeter|hpdec|notice|chat|buffzone|eventsound|minigamesound|questguide|delivery|classcompetition|apspevent|followfail|skillcooltime|243|246|247|250|251|252|263|264|265|266|267|270|273|274|275|276> [payloadhex=..|payloadb64=..]");
             }
 
             return applied

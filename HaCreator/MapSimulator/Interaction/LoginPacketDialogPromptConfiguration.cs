@@ -1,3 +1,5 @@
+using HaCreator.MapSimulator.UI;
+
 namespace HaCreator.MapSimulator
 {
     internal enum LoginPacketDialogOwner
@@ -21,6 +23,7 @@ namespace HaCreator.MapSimulator
         public string InputPlaceholder { get; init; }
         public bool InputMasked { get; init; }
         public int InputMaxLength { get; init; }
+        public SoftKeyboardKeyboardType SoftKeyboardType { get; init; } = SoftKeyboardKeyboardType.AlphaNumeric;
         public int DurationMs { get; init; } = 2400;
     }
 }

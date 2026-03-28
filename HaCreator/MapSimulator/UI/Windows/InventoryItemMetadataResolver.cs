@@ -39,8 +39,8 @@ namespace HaCreator.MapSimulator.UI
             itemName = null;
             return global::HaCreator.Program.InfoManager?.ItemNameCache != null
                    && global::HaCreator.Program.InfoManager.ItemNameCache.TryGetValue(itemId, out System.Tuple<string, string, string> itemInfo)
-                   && !string.IsNullOrWhiteSpace(itemInfo?.Item1)
-                ? (itemName = itemInfo.Item1) != null
+                   && !string.IsNullOrWhiteSpace(itemInfo?.Item2)
+                ? (itemName = itemInfo.Item2) != null
                 : false;
         }
 

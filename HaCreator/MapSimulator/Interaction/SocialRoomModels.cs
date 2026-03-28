@@ -316,6 +316,7 @@ namespace HaCreator.MapSimulator.Interaction
         private bool _inventoryBackedRows;
         private bool _suspendPersistence;
         private string _persistenceKey;
+        private string _lastPacketOwnerSummary;
         private Action _miniRoomToggleReadyHandler;
         private Action _miniRoomStartHandler;
         private Action _miniRoomModeHandler;
@@ -370,6 +371,7 @@ namespace HaCreator.MapSimulator.Interaction
             StatusMessage = statusMessage ?? string.Empty;
             RoomState = roomState ?? string.Empty;
             ModeName = modeName ?? string.Empty;
+            _lastPacketOwnerSummary = BuildDefaultPacketOwnerSummary();
             SeedDefaultRemoteInventory();
             if (kind == SocialRoomKind.MiniRoom && string.Equals(ModeName, "Omok", StringComparison.OrdinalIgnoreCase))
             {
@@ -642,11 +644,16 @@ namespace HaCreator.MapSimulator.Interaction
             return Kind switch
             {
                 SocialRoomKind.MiniRoom => $"{RoomTitle}: state={RoomState}, mode={ModeName}, wager={_miniRoomWagerAmount:N0}, occupants={_occupants.Count}/{Capacity}, omokTurn={ResolveOmokTurnName()}, winner={ResolveOmokWinnerName()}",
-                SocialRoomKind.PersonalShop => $"{RoomTitle}: state={RoomState}, listed={_items.Count}, savedVisitors={_savedVisitors.Count}, blacklist={_blockedVisitors.Count}, ledger={MesoAmount:N0}, employee={DescribeEmployeeState()}",
-                SocialRoomKind.EntrustedShop => $"{RoomTitle}: state={RoomState}, listed={_items.Count}, ledger={MesoAmount:N0}, permit={FormatPermitStatus(DateTime.UtcNow)}, employee={DescribeEmployeeState()}",
+                SocialRoomKind.PersonalShop => $"{RoomTitle}: state={RoomState}, listed={_items.Count}, savedVisitors={_savedVisitors.Count}, blacklist={_blockedVisitors.Count}, ledger={MesoAmount:N0}, employee={DescribeEmployeeState()}, packet={_lastPacketOwnerSummary}",
+                SocialRoomKind.EntrustedShop => $"{RoomTitle}: state={RoomState}, listed={_items.Count}, ledger={MesoAmount:N0}, permit={FormatPermitStatus(DateTime.UtcNow)}, employee={DescribeEmployeeState()}, packet={_lastPacketOwnerSummary}",
                 SocialRoomKind.TradingRoom => $"{RoomTitle}: state={RoomState}, localMeso={MesoAmount:N0}, remoteMeso={_tradeRemoteOfferMeso:N0}, remoteWallet={_remoteInventoryMeso:N0}, remoteItems={_remoteInventoryEntries.Sum(entry => entry.Quantity)}, lock={FormatTradePartyState(_tradeLocalLocked, _tradeRemoteLocked)}, accept={FormatTradePartyState(_tradeLocalAccepted, _tradeRemoteAccepted)}, escrowRows={_inventoryEscrow.Count}",
                 _ => RoomState
             };
+        }
+
+        public string DescribePacketOwnerStatus()
+        {
+            return _lastPacketOwnerSummary;
         }
 
         public void RefreshTimedState(DateTime utcNow)
@@ -891,8 +898,8 @@ namespace HaCreator.MapSimulator.Interaction
                 return Kind switch
                 {
                     SocialRoomKind.MiniRoom => TryDispatchMiniRoomPacket(reader, packetType, tickCount, out message),
-                    SocialRoomKind.PersonalShop => TryDispatchPersonalShopPacket(reader, packetType, out message),
-                    SocialRoomKind.EntrustedShop => TryDispatchEntrustedShopPacket(reader, packetType, out message),
+                    SocialRoomKind.PersonalShop => TryDispatchPersonalShopDialogPacket(reader, packetType, tickCount, out message),
+                    SocialRoomKind.EntrustedShop => TryDispatchEntrustedShopDialogPacket(reader, packetType, tickCount, out message),
                     SocialRoomKind.TradingRoom => TryDispatchTradingRoomPacket(reader, packetType, out message),
                     _ => FailPacket(packetType, out message)
                 };
@@ -902,6 +909,79 @@ namespace HaCreator.MapSimulator.Interaction
                 message = $"Social-room packet ended unexpectedly: {BitConverter.ToString(payload)}";
                 return false;
             }
+        }
+
+        private bool TryDispatchPersonalShopDialogPacket(PacketReader reader, byte packetType, int tickCount, out string message)
+        {
+            if (!TryDispatchPersonalShopPacket(reader, packetType, out message))
+            {
+                TrackPacketOwnerSummary("CPersonalShopDlg::OnPacket", packetType, tickCount, handled: false, message);
+                return false;
+            }
+
+            TrackPacketOwnerSummary("CPersonalShopDlg::OnPacket", packetType, tickCount, handled: true, message);
+            return true;
+        }
+
+        private bool TryDispatchEntrustedShopDialogPacket(PacketReader reader, byte packetType, int tickCount, out string message)
+        {
+            bool handled;
+            string detail;
+            string forwardedOwner = "CPersonalShopDlg::OnPacket";
+            switch (packetType)
+            {
+                case EntrustedShopArrangeItemResultPacketType:
+                    ApplyEntrustedArrangeResult(reader.ReadInt());
+                    handled = true;
+                    detail = $"{StatusMessage} Forwarded through {forwardedOwner}.";
+                    break;
+                case EntrustedShopWithdrawAllResultPacketType:
+                    ApplyEntrustedWithdrawAllResult(reader.ReadByte());
+                    handled = true;
+                    detail = $"{StatusMessage} Forwarded through {forwardedOwner}.";
+                    break;
+                case EntrustedShopWithdrawMoneyResultPacketType:
+                    ApplyEntrustedWithdrawMoneyResult();
+                    handled = true;
+                    detail = $"{StatusMessage} Forwarded through {forwardedOwner}.";
+                    break;
+                case EntrustedShopVisitListResultPacketType:
+                    handled = TryApplyEntrustedVisitListPacket(reader, out detail);
+                    if (handled)
+                    {
+                        detail = $"{detail} Forwarded through {forwardedOwner}.";
+                    }
+
+                    break;
+                case EntrustedShopBlackListResultPacketType:
+                    handled = TryApplyEntrustedBlackListPacket(reader, out detail);
+                    if (handled)
+                    {
+                        detail = $"{detail} Forwarded through {forwardedOwner}.";
+                    }
+
+                    break;
+                case PersonalShopBuyResultPacketType:
+                case PersonalShopBasePacketType:
+                case PersonalShopSoldItemResultPacketType:
+                case PersonalShopMoveItemToInventoryPacketType:
+                    handled = TryDispatchPersonalShopPacket(reader, packetType, out detail);
+                    if (handled)
+                    {
+                        detail = $"CEntrustedShopDlg::OnPacket forwarded packet {packetType} to {forwardedOwner}. {detail}";
+                    }
+
+                    break;
+                default:
+                    detail = $"Entrusted-shop packet {packetType} is not modeled for the dialog-owned dispatcher.";
+                    TrackPacketOwnerSummary("CEntrustedShopDlg::OnPacket", packetType, tickCount, handled: false, detail);
+                    message = detail;
+                    return false;
+            }
+
+            TrackPacketOwnerSummary("CEntrustedShopDlg::OnPacket -> CPersonalShopDlg::OnPacket", packetType, tickCount, handled, detail);
+            message = detail;
+            return handled;
         }
 
         private bool TryDispatchMiniRoomPacket(PacketReader reader, byte packetType, int tickCount, out string message)
@@ -1024,7 +1104,7 @@ namespace HaCreator.MapSimulator.Interaction
                 case PersonalShopMoveItemToInventoryPacketType:
                     return TryApplyPersonalShopMoveItemPacket(reader, out message);
                 case PersonalShopBasePacketType:
-                    StatusMessage = "Received a personal-shop base lifecycle packet. The deeper client-owned base dialog flow is still partial.";
+                    StatusMessage = "Received a personal-shop base lifecycle packet through the dialog-owned owner. The deeper base dialog flow is still partial.";
                     PersistState();
                     message = StatusMessage;
                     return true;
@@ -1097,6 +1177,23 @@ namespace HaCreator.MapSimulator.Interaction
         {
             message = $"Social-room packet {packetType} is not modeled for this room.";
             return false;
+        }
+
+        private void TrackPacketOwnerSummary(string ownerName, byte packetType, int tickCount, bool handled, string detail)
+        {
+            string result = handled ? "handled" : "rejected";
+            string suffix = string.IsNullOrWhiteSpace(detail) ? string.Empty : $" | {detail}";
+            _lastPacketOwnerSummary = $"{ownerName} {result} type {packetType} at tick {tickCount}{suffix}";
+        }
+
+        private string BuildDefaultPacketOwnerSummary()
+        {
+            return Kind switch
+            {
+                SocialRoomKind.PersonalShop => "CPersonalShopDlg::OnPacket idle.",
+                SocialRoomKind.EntrustedShop => "CEntrustedShopDlg::OnPacket idle.",
+                _ => "No dedicated packet-owned dialog for this room."
+            };
         }
 
         public void SyncMiniRoomMatchCards(

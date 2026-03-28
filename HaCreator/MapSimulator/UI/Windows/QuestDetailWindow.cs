@@ -40,6 +40,10 @@ namespace HaCreator.MapSimulator.UI
         private Point _foregroundOffset;
         private IDXObject _bottomPanel;
         private Point _bottomPanelOffset;
+        private IDXObject _summaryPanel;
+        private Point _summaryPanelOffset;
+        private IDXObject _detailTip;
+        private Point _detailTipOffset;
         private UIObject _previousButton;
         private UIObject _nextButton;
         private QuestWindowDetailState _state;
@@ -98,6 +102,18 @@ namespace HaCreator.MapSimulator.UI
         {
             _bottomPanel = panel;
             _bottomPanelOffset = offset;
+        }
+
+        public void SetSummaryPanel(IDXObject panel, Point offset)
+        {
+            _summaryPanel = panel;
+            _summaryPanelOffset = offset;
+        }
+
+        public void SetDetailTip(IDXObject tip, Point offset)
+        {
+            _detailTip = tip;
+            _detailTipOffset = offset;
         }
 
         public void SetSectionTextures(
@@ -359,6 +375,20 @@ namespace HaCreator.MapSimulator.UI
             {
                 _bottomPanel.DrawBackground(sprite, skeletonMeshRenderer, gameTime,
                     Position.X + _bottomPanelOffset.X, Position.Y + _bottomPanelOffset.Y,
+                    Color.White, false, drawReflectionInfo);
+            }
+
+            if (_summaryPanel != null && HasSummaryPaneContent())
+            {
+                _summaryPanel.DrawBackground(sprite, skeletonMeshRenderer, gameTime,
+                    Position.X + _summaryPanelOffset.X, Position.Y + _summaryPanelOffset.Y,
+                    Color.White, false, drawReflectionInfo);
+            }
+
+            if (_detailTip != null && ShouldDrawDetailTip())
+            {
+                _detailTip.DrawBackground(sprite, skeletonMeshRenderer, gameTime,
+                    Position.X + _detailTipOffset.X, Position.Y + _detailTipOffset.Y,
                     Color.White, false, drawReflectionInfo);
             }
 
@@ -852,18 +882,23 @@ namespace HaCreator.MapSimulator.UI
 
         private int GetLogContentBaseY()
         {
-            return (int)ClientLogY + GetDeliveryButtonHeight();
+            return (int)ClientLogY + GetDetailTipHeight();
         }
 
         private int GetLogClipHeight()
         {
-            int clipHeight = (HasSummaryPaneContent() ? 120 : 238) - GetDeliveryButtonHeight() - 2;
+            int clipHeight = (HasSummaryPaneContent() ? 120 : 238) - GetDetailTipHeight() - 2;
             return Math.Max(32, clipHeight);
         }
 
-        private int GetDeliveryButtonHeight()
+        private int GetDetailTipHeight()
         {
-            return ResolveDeliveryAction(_state) == QuestWindowActionKind.None ? 0 : 15;
+            return ShouldDrawDetailTip() ? 15 : 0;
+        }
+
+        private bool ShouldDrawDetailTip()
+        {
+            return ResolveDeliveryAction(_state) != QuestWindowActionKind.None;
         }
 
         private int GetMaxLogScrollOffset()

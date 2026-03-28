@@ -152,6 +152,7 @@ namespace HaCreator.MapSimulator.Character
             public bool PendingFacingRight { get; set; }
             public string QueuedActionName { get; set; }
             public bool QueuedFacingRight { get; set; }
+            public bool ObservedPlayerFacingRight { get; set; }
             public bool ObservedPlayerFloatingState { get; set; }
         }
 
@@ -573,6 +574,11 @@ namespace HaCreator.MapSimulator.Character
             if (_activeSkillBlockingStatuses.ContainsKey(PlayerSkillBlockingStatus.Attract))
             {
                 return PlayerSkillBlockingStatusMapper.GetRestrictionMessage(PlayerSkillBlockingStatus.Attract);
+            }
+
+            if (_activeSkillBlockingStatuses.ContainsKey(PlayerSkillBlockingStatus.Polymorph))
+            {
+                return PlayerSkillBlockingStatusMapper.GetRestrictionMessage(PlayerSkillBlockingStatus.Polymorph);
             }
 
             return null;
@@ -1953,7 +1959,8 @@ namespace HaCreator.MapSimulator.Character
                 CurrentFacingRight = FacingRight,
                 ObservedPlayerActionName = CurrentActionName,
                 QueuedActionName = useSpawnAction ? resolvedActionName : null,
-                QueuedFacingRight = FacingRight
+                QueuedFacingRight = FacingRight,
+                ObservedPlayerFacingRight = FacingRight
             };
 
             return !string.IsNullOrWhiteSpace(_activeShadowPartner.CurrentActionName);
@@ -3287,13 +3294,15 @@ namespace HaCreator.MapSimulator.Character
                 return;
             }
 
-            string playerActionName = CurrentActionName;
+            string playerActionName = GetShadowPartnerObservedPlayerActionName();
             bool isFloatingState = State is PlayerState.Swimming or PlayerState.Flying;
             if (!string.Equals(playerActionName, _activeShadowPartner.ObservedPlayerActionName, StringComparison.OrdinalIgnoreCase)
-                || isFloatingState != _activeShadowPartner.ObservedPlayerFloatingState)
+                || isFloatingState != _activeShadowPartner.ObservedPlayerFloatingState
+                || FacingRight != _activeShadowPartner.ObservedPlayerFacingRight)
             {
                 _activeShadowPartner.ObservedPlayerActionName = playerActionName;
                 _activeShadowPartner.ObservedPlayerFloatingState = isFloatingState;
+                _activeShadowPartner.ObservedPlayerFacingRight = FacingRight;
                 if (IsShadowPartnerAttackAction(playerActionName))
                 {
                     string delayedAttackAction = ResolveShadowPartnerActionName(playerActionName, _activeShadowPartner.CurrentActionName);
@@ -3314,7 +3323,7 @@ namespace HaCreator.MapSimulator.Character
                     }
                     else
                     {
-                        SetShadowPartnerAction(resolvedAction, currentTime, FacingRight);
+                        SetShadowPartnerAction(resolvedAction, currentTime, FacingRight, preserveTimingWhenOnlyFacingChanges: true);
                     }
 
                     _activeShadowPartner.PendingActionName = null;
@@ -3365,6 +3374,11 @@ namespace HaCreator.MapSimulator.Character
 
         private void SetShadowPartnerAction(string actionName, int currentTime, bool facingRight)
         {
+            SetShadowPartnerAction(actionName, currentTime, facingRight, preserveTimingWhenOnlyFacingChanges: false);
+        }
+
+        private void SetShadowPartnerAction(string actionName, int currentTime, bool facingRight, bool preserveTimingWhenOnlyFacingChanges)
+        {
             if (_activeShadowPartner == null || string.IsNullOrWhiteSpace(actionName))
             {
                 return;
@@ -3375,15 +3389,33 @@ namespace HaCreator.MapSimulator.Character
                 return;
             }
 
-            if (string.Equals(_activeShadowPartner.CurrentActionName, actionName, StringComparison.OrdinalIgnoreCase)
-                && _activeShadowPartner.CurrentFacingRight == facingRight)
+            if (string.Equals(_activeShadowPartner.CurrentActionName, actionName, StringComparison.OrdinalIgnoreCase))
             {
-                return;
+                if (_activeShadowPartner.CurrentFacingRight == facingRight)
+                {
+                    return;
+                }
+
+                _activeShadowPartner.CurrentFacingRight = facingRight;
+                if (preserveTimingWhenOnlyFacingChanges)
+                {
+                    return;
+                }
             }
 
             _activeShadowPartner.CurrentActionName = actionName;
             _activeShadowPartner.CurrentActionStartTime = currentTime;
             _activeShadowPartner.CurrentFacingRight = facingRight;
+        }
+
+        private string GetShadowPartnerObservedPlayerActionName()
+        {
+            return State switch
+            {
+                PlayerState.Hit => "hit",
+                PlayerState.Dead => "dead",
+                _ => CurrentActionName
+            };
         }
 
         private string ResolveShadowPartnerActionName(string playerActionName, string fallbackActionName)

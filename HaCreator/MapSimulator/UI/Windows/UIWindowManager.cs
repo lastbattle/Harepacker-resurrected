@@ -257,10 +257,20 @@ namespace HaCreator.MapSimulator.UI
         {
             if (windowsByName.TryGetValue(windowName, out var window))
             {
-                BeforeShowWindow?.Invoke(windowName);
-                window.Show();
-                BringToFront(window);
+                ShowWindow(window);
             }
+        }
+
+        public void ShowWindow(UIWindowBase window)
+        {
+            if (window == null)
+            {
+                return;
+            }
+
+            BeforeShowWindow?.Invoke(window.WindowName);
+            window.Show();
+            BringToFront(window);
         }
 
         /// <summary>

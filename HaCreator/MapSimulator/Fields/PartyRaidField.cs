@@ -95,6 +95,15 @@ namespace HaCreator.MapSimulator.Fields
         private const int PartyRaidTotalStringId = 0x156E;
         private const int PartyRaidBossRedDamageStringId = 0x1ACE;
         private const int PartyRaidBossBlueDamageStringId = 0x1AA3;
+        private const int HuntingAdballoonRedChargeStringId = 0x174D;
+        private const int HuntingAdballoonBlueChargeStringId = 0x174E;
+        private const int HuntingAdballoonChargeSegments = 10;
+        private const int BossChargeOriginX = 54;
+        private const int BossChargeRedY = 29;
+        private const int BossChargeBlueY = 37;
+        private const int BossChargeSegmentWidth = 8;
+        private const int BossChargeSegmentHeight = 5;
+        private const int BossChargeSegmentSpacing = 2;
 
         private bool _isActive;
         private bool _assetsLoaded;
@@ -113,6 +122,8 @@ namespace HaCreator.MapSimulator.Fields
         private int _batteryCapacity;
         private int _redDamage;
         private int _blueDamage;
+        private int _redCharge;
+        private int _blueCharge;
         private int _gaugeCapacity;
         private int _resultPoint;
         private int _resultBonus;
@@ -168,6 +179,8 @@ namespace HaCreator.MapSimulator.Fields
         public int BatteryCapacity => _batteryCapacity;
         public int RedDamage => _redDamage;
         public int BlueDamage => _blueDamage;
+        public int RedCharge => _redCharge;
+        public int BlueCharge => _blueCharge;
         public int GaugeCapacity => _gaugeCapacity;
         public int ResultPoint => _resultPoint;
         public int ResultBonus => _resultBonus;
@@ -412,6 +425,20 @@ namespace HaCreator.MapSimulator.Fields
                 return true;
             }
 
+            if (MatchesAlias(key, "redCharge", "chargeRed", "charge0", "adballoonChargeRed")
+                || MatchesStringPoolKey(key, HuntingAdballoonRedChargeStringId))
+            {
+                _redCharge = ClampBossCharge(parsedValue);
+                return true;
+            }
+
+            if (MatchesAlias(key, "blueCharge", "chargeBlue", "charge1", "adballoonChargeBlue")
+                || MatchesStringPoolKey(key, HuntingAdballoonBlueChargeStringId))
+            {
+                _blueCharge = ClampBossCharge(parsedValue);
+                return true;
+            }
+
             if (MatchesAlias(key, "stageMine", "mineStage", "myStage", "ourStage"))
             {
                 _mineStage = ClampStage(parsedValue);
@@ -532,7 +559,7 @@ namespace HaCreator.MapSimulator.Fields
             return _mode switch
             {
                 PartyRaidFieldMode.Field => $"Party Raid field map {_mapId}: team {GetTeamLabel(_teamColor)}, stage {_mineStage}{DescribeOtherStageStatus()}, point {_point}{DescribeBatteryStatus()}{timerText}.",
-                PartyRaidFieldMode.Boss => $"Party Raid boss map {_mapId}: point {_point}, red damage {_redDamage}, blue damage {_blueDamage}, gauge cap {_gaugeCapacity}{timerText}.",
+                PartyRaidFieldMode.Boss => $"Party Raid boss map {_mapId}: point {_point}, red damage {_redDamage}, blue damage {_blueDamage}, charge {_redCharge}/{_blueCharge}, gauge cap {_gaugeCapacity}, ids=0x{PartyRaidBossRedDamageStringId:X}/0x{PartyRaidBossBlueDamageStringId:X}/0x{HuntingAdballoonRedChargeStringId:X}/0x{HuntingAdballoonBlueChargeStringId:X}{timerText}.",
                 PartyRaidFieldMode.Result => $"Party Raid result map {_mapId}: point {_resultPoint}, bonus {_resultBonus}, total {_resultTotal}, outcome {GetOutcomeLabel(_resultOutcome)}{timerText}.",
                 _ => "Party Raid runtime inactive."
             };
@@ -584,6 +611,8 @@ namespace HaCreator.MapSimulator.Fields
             _batteryCapacity = DefaultBatteryCapacity;
             _redDamage = 0;
             _blueDamage = 0;
+            _redCharge = 0;
+            _blueCharge = 0;
             _gaugeCapacity = DefaultGaugeCapacity;
             _resultPoint = -1;
             _resultBonus = -1;
@@ -759,9 +788,9 @@ namespace HaCreator.MapSimulator.Fields
 
             if (_fieldBoard.IsLoaded)
             {
-                DrawSprite(spriteBatch, _fieldBoard, centerX + FieldBoardOffsetX, FieldBoardY);
-                DrawNumber(spriteBatch, _fieldPointDigits, _point, centerX + FieldBoardOffsetX + FieldPointDrawX, FieldBoardY + FieldPointDrawY);
-                DrawSingleDigit(spriteBatch, _fieldStageDigits, ClampStage(_mineStage), centerX + FieldBoardOffsetX + FieldStageDrawX, FieldBoardY + FieldStageDrawY);
+                DrawSpriteCopy(spriteBatch, _fieldBoard, centerX + FieldBoardOffsetX, FieldBoardY);
+                DrawNumberCopy(spriteBatch, _fieldPointDigits, _point, centerX + FieldBoardOffsetX + FieldPointDrawX, FieldBoardY + FieldPointDrawY);
+                DrawSingleDigitCopy(spriteBatch, _fieldStageDigits, ClampStage(_mineStage), centerX + FieldBoardOffsetX + FieldStageDrawX, FieldBoardY + FieldStageDrawY);
                 return;
             }
 
@@ -781,13 +810,13 @@ namespace HaCreator.MapSimulator.Fields
         {
             if (_bossGaugeBackground.IsLoaded)
             {
-                DrawSprite(spriteBatch, _bossGaugeBackground, BossHudX + BossGaugeBackgrdX, BossHudY);
+                DrawSpriteCopy(spriteBatch, _bossGaugeBackground, BossHudX + BossGaugeBackgrdX, BossHudY);
             }
 
             if (_bossPointBoard.IsLoaded)
             {
-                DrawSprite(spriteBatch, _bossPointBoard, BossHudX, BossHudY);
-                DrawNumber(spriteBatch, _fieldPointDigits, _point, BossHudX + FieldPointDrawX, BossHudY + FieldPointDrawY);
+                DrawSpriteCopy(spriteBatch, _bossPointBoard, BossHudX, BossHudY);
+                DrawNumberCopy(spriteBatch, _fieldPointDigits, _point, BossHudX + FieldPointDrawX, BossHudY + FieldPointDrawY);
             }
 
             if (_bossGaugeFillPixel.IsLoaded)
@@ -807,12 +836,15 @@ namespace HaCreator.MapSimulator.Fields
 
             if (_bossGaugeText.IsLoaded)
             {
-                DrawSprite(spriteBatch, _bossGaugeText, BossHudX, BossHudY + BossGaugeTextY);
+                DrawSpriteCopy(spriteBatch, _bossGaugeText, BossHudX, BossHudY + BossGaugeTextY);
             }
+
+            DrawBossChargeMeter(spriteBatch, pixelTexture, BossHudX + BossChargeOriginX, BossHudY + BossChargeRedY, _redCharge, new Color(217, 88, 82), alignRight: false);
+            DrawBossChargeMeter(spriteBatch, pixelTexture, BossHudX + BossChargeOriginX, BossHudY + BossChargeBlueY, _blueCharge, new Color(94, 169, 255), alignRight: true);
 
             if (_bossGaugeMobIcon.IsLoaded)
             {
-                DrawSprite(spriteBatch, _bossGaugeMobIcon, BossHudX + BossGaugeIconX, BossHudY + BossGaugeIconY);
+                DrawSpriteCopy(spriteBatch, _bossGaugeMobIcon, BossHudX + BossGaugeIconX, BossHudY + BossGaugeIconY);
             }
 
             if (!_bossGaugeBackground.IsLoaded && pixelTexture != null)
@@ -827,6 +859,26 @@ namespace HaCreator.MapSimulator.Fields
             }
         }
 
+        private void DrawBossChargeMeter(SpriteBatch spriteBatch, Texture2D pixelTexture, int x, int y, int charge, Color fillColor, bool alignRight)
+        {
+            Texture2D fillTexture = _batteryChargeFill.IsLoaded ? _batteryChargeFill.Texture : pixelTexture;
+            if (fillTexture == null)
+            {
+                return;
+            }
+
+            int clampedCharge = ClampBossCharge(charge);
+            for (int i = 0; i < HuntingAdballoonChargeSegments; i++)
+            {
+                int segmentX = alignRight
+                    ? x + ((HuntingAdballoonChargeSegments - 1 - i) * (BossChargeSegmentWidth + BossChargeSegmentSpacing))
+                    : x + (i * (BossChargeSegmentWidth + BossChargeSegmentSpacing));
+                Rectangle bounds = new(segmentX, y, BossChargeSegmentWidth, BossChargeSegmentHeight);
+                Color color = i < clampedCharge ? fillColor : new Color(34, 42, 56, 220);
+                spriteBatch.Draw(fillTexture, bounds, color);
+            }
+        }
+
         private void DrawBatteryHud(SpriteBatch spriteBatch, int centerX)
         {
             if (!_batteryTop.IsLoaded || !_batteryMiddle.IsLoaded || !_batteryEnd.IsLoaded || !_batteryChargeFill.IsLoaded)
@@ -836,22 +888,22 @@ namespace HaCreator.MapSimulator.Fields
 
             int batteryX = centerX + BatteryOffsetX;
             int batteryY = BatteryOffsetY;
-            DrawSprite(spriteBatch, _batteryTop, batteryX, batteryY);
+            DrawSpriteCopy(spriteBatch, _batteryTop, batteryX, batteryY);
 
-            int middleStartX = batteryX + (_batteryTop.Width - _batteryTop.Origin.X);
-            int middleCount = Math.Max(0, (BatteryFillLength - _batteryTop.Width - _batteryEnd.Width + _batteryTop.Origin.X + _batteryEnd.Origin.X + _batteryMiddle.Width - 1) / _batteryMiddle.Width);
+            int middleStartX = batteryX + _batteryTop.Width;
+            int middleCount = Math.Max(0, (BatteryFillLength - _batteryTop.Width - _batteryEnd.Width + _batteryMiddle.Width - 1) / _batteryMiddle.Width);
             for (int i = 0; i < middleCount; i++)
             {
-                DrawSprite(spriteBatch, _batteryMiddle, middleStartX + (i * _batteryMiddle.Width), batteryY);
+                DrawSpriteCopy(spriteBatch, _batteryMiddle, middleStartX + (i * _batteryMiddle.Width), batteryY);
             }
 
-            int batteryEndX = batteryX + BatteryFillLength + _batteryEnd.Origin.X - _batteryEnd.Width;
-            DrawSprite(spriteBatch, _batteryEnd, batteryEndX, batteryY);
+            int batteryEndX = batteryX + BatteryFillLength - _batteryEnd.Width;
+            DrawSpriteCopy(spriteBatch, _batteryEnd, batteryEndX, batteryY);
 
             int chargeWidth = GetBatteryFillWidth();
             for (int x = 0; x < chargeWidth; x++)
             {
-                DrawSprite(spriteBatch, _batteryChargeFill, batteryX + BatteryFillOffsetX + x, batteryY + BatteryFillOffsetY);
+                DrawSpriteCopy(spriteBatch, _batteryChargeFill, batteryX + BatteryFillOffsetX + x, batteryY + BatteryFillOffsetY);
             }
         }
 
@@ -869,7 +921,7 @@ namespace HaCreator.MapSimulator.Fields
 
             if (_resultBackground.IsLoaded)
             {
-                DrawSprite(spriteBatch, _resultBackground, left, top);
+                DrawSpriteCopy(spriteBatch, _resultBackground, left, top);
             }
             else if (pixelTexture != null)
             {
@@ -881,12 +933,12 @@ namespace HaCreator.MapSimulator.Fields
             {
                 int badgeX = UsesWinBadge(_resultOutcome) ? ResultWinX : ResultLoseX;
                 int badgeY = UsesWinBadge(_resultOutcome) ? ResultWinY : ResultLoseY;
-                DrawSprite(spriteBatch, badge, left + badgeX, top + badgeY);
+                DrawSpriteCopy(spriteBatch, badge, left + badgeX, top + badgeY);
             }
 
-            DrawNumber(spriteBatch, _resultDigits, Math.Max(0, _resultPoint), left + ResultPointX, top + ResultPointY);
-            DrawNumber(spriteBatch, _resultDigits, Math.Max(0, _resultBonus), left + ResultBonusX, top + ResultBonusY);
-            DrawNumber(spriteBatch, _resultBigDigits, Math.Max(0, _resultTotal), left + ResultTotalX, top + ResultTotalY);
+            DrawNumberCopy(spriteBatch, _resultDigits, Math.Max(0, _resultPoint), left + ResultPointX, top + ResultPointY);
+            DrawNumberCopy(spriteBatch, _resultDigits, Math.Max(0, _resultBonus), left + ResultBonusX, top + ResultBonusY);
+            DrawNumberCopy(spriteBatch, _resultBigDigits, Math.Max(0, _resultTotal), left + ResultTotalX, top + ResultTotalY);
 
             if (!_resultBackground.IsLoaded && font != null)
             {
@@ -923,13 +975,12 @@ namespace HaCreator.MapSimulator.Fields
             if (_timerBoardBackground.IsLoaded && HasTimerDigits())
             {
                 int boardLeft = (viewport.Width - _timerBoardBackground.Width) / 2;
-                int boardAnchorX = boardLeft + _timerBoardBackground.Origin.X;
-                DrawSprite(spriteBatch, _timerBoardBackground, boardAnchorX, TimerBoardTop);
-                DrawTimerDigit(spriteBatch, timerText[0], boardLeft + TimerBoardMinuteTensX, TimerBoardTop + TimerBoardDigitsY);
-                DrawTimerDigit(spriteBatch, timerText[1], boardLeft + TimerBoardMinuteOnesX, TimerBoardTop + TimerBoardDigitsY);
-                DrawSprite(spriteBatch, _timerSeparator, boardLeft + TimerBoardSeparatorX, TimerBoardTop + TimerBoardDigitsY + 7);
-                DrawTimerDigit(spriteBatch, timerText[3], boardLeft + TimerBoardSecondTensX, TimerBoardTop + TimerBoardDigitsY);
-                DrawTimerDigit(spriteBatch, timerText[4], boardLeft + TimerBoardSecondOnesX, TimerBoardTop + TimerBoardDigitsY);
+                DrawSpriteCopy(spriteBatch, _timerBoardBackground, boardLeft, TimerBoardTop);
+                DrawTimerDigitCopy(spriteBatch, timerText[0], boardLeft + TimerBoardMinuteTensX, TimerBoardTop + TimerBoardDigitsY);
+                DrawTimerDigitCopy(spriteBatch, timerText[1], boardLeft + TimerBoardMinuteOnesX, TimerBoardTop + TimerBoardDigitsY);
+                DrawSpriteCopy(spriteBatch, _timerSeparator, boardLeft + TimerBoardSeparatorX, TimerBoardTop + TimerBoardDigitsY + 7);
+                DrawTimerDigitCopy(spriteBatch, timerText[3], boardLeft + TimerBoardSecondTensX, TimerBoardTop + TimerBoardDigitsY);
+                DrawTimerDigitCopy(spriteBatch, timerText[4], boardLeft + TimerBoardSecondOnesX, TimerBoardTop + TimerBoardDigitsY);
                 return;
             }
 
@@ -952,6 +1003,16 @@ namespace HaCreator.MapSimulator.Fields
             spriteBatch.Draw(sprite.Texture, new Vector2(x - sprite.Origin.X, y - sprite.Origin.Y), Color.White);
         }
 
+        private static void DrawSpriteCopy(SpriteBatch spriteBatch, CanvasSprite sprite, int x, int y)
+        {
+            if (!sprite.IsLoaded)
+            {
+                return;
+            }
+
+            spriteBatch.Draw(sprite.Texture, new Vector2(x, y), Color.White);
+        }
+
         private void DrawAnimationFrame(SpriteBatch spriteBatch, List<AnimationFrame> frames, AnimationState state, int x, int y)
         {
             if (frames == null || frames.Count == 0 || !state.Active)
@@ -972,6 +1033,16 @@ namespace HaCreator.MapSimulator.Fields
             DrawSprite(spriteBatch, digits[digit], x, y);
         }
 
+        private static void DrawSingleDigitCopy(SpriteBatch spriteBatch, CanvasSprite[] digits, int digit, int x, int y)
+        {
+            if (digit < 0 || digit >= digits.Length || !digits[digit].IsLoaded)
+            {
+                return;
+            }
+
+            DrawSpriteCopy(spriteBatch, digits[digit], x, y);
+        }
+
         private void DrawNumber(SpriteBatch spriteBatch, CanvasSprite[] digits, int number, int x, int y)
         {
             string text = Math.Max(0, number).ToString(CultureInfo.InvariantCulture);
@@ -989,6 +1060,23 @@ namespace HaCreator.MapSimulator.Fields
             }
         }
 
+        private static void DrawNumberCopy(SpriteBatch spriteBatch, CanvasSprite[] digits, int number, int x, int y)
+        {
+            string text = Math.Max(0, number).ToString(CultureInfo.InvariantCulture);
+            int drawX = x;
+            for (int i = 0; i < text.Length; i++)
+            {
+                int digit = text[i] - '0';
+                if (digit < 0 || digit >= digits.Length || !digits[digit].IsLoaded)
+                {
+                    continue;
+                }
+
+                DrawSpriteCopy(spriteBatch, digits[digit], drawX, y);
+                drawX += digits[digit].Width;
+            }
+        }
+
         private void DrawTimerDigit(SpriteBatch spriteBatch, char digitChar, int x, int y)
         {
             int digit = digitChar - '0';
@@ -998,6 +1086,17 @@ namespace HaCreator.MapSimulator.Fields
             }
 
             DrawSprite(spriteBatch, _timerDigits[digit], x, y);
+        }
+
+        private void DrawTimerDigitCopy(SpriteBatch spriteBatch, char digitChar, int x, int y)
+        {
+            int digit = digitChar - '0';
+            if (digit < 0 || digit >= _timerDigits.Length)
+            {
+                return;
+            }
+
+            DrawSpriteCopy(spriteBatch, _timerDigits[digit], x, y);
         }
 
         private void StartResultEffect(List<AnimationFrame> frames, int currentTimeMs)
@@ -1086,6 +1185,8 @@ namespace HaCreator.MapSimulator.Fields
             int width = (BossGaugeLength * remainingHp) / halfGaugeCapacity;
             return remainingHp > 0 && width == 0 ? 1 : Math.Clamp(width, 0, BossGaugeLength);
         }
+
+        private static int ClampBossCharge(int charge) => Math.Clamp(charge, 0, HuntingAdballoonChargeSegments);
 
         private static PartyRaidFieldMode GetMode(FieldType fieldType) => fieldType switch
         {
