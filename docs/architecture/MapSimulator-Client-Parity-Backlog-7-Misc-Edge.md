@@ -78,6 +78,13 @@ It does three things that the old notes did not do well:
 - `CMob::GetAttackInfo` at `0x641330`
 - `CField::IsFearEffectOn` at `0x52a420`
 - `CField::OffFearEffect` at `0x52b810`
+- `CField::OnFieldSpecificData` at `0x52a7e0`
+- `CField::OnSetQuestTime` at `0x52b790`
+- `CField::OnSetQuestClear` at `0x52c870`
+- `CField::OnDesc` at `0x5313d0`
+- `CField::OnSetObjectState` at `0x539890`
+- `CField::OnPacket` at `0x546d50`
+- `CScriptMan::OnPacket` at `0x6de360`
 - `CUISkill::Draw` at `0x84ed90`
 - `CUISkill::GetSkillRootVisible` at `0x84a6f0`
 - `CUISkill::GetRecommendSKill` at `0x84e710`
@@ -104,6 +111,19 @@ These are the first functions to inspect before changing simulator behavior.
 
 Notes:
 `CUserLocal::TalkToNpc` is the first concrete client seam for future NPC bridge work. `CUserLocal::Update` also shows client-side quest-alert refresh calls, emotion reset / balloon lifetime upkeep, timer refresh, timed direction-mode release, and status-bar chat logging, while `CUserLocal::TryAutoRequestFollowCharacter` covers automatic escort/follow requests and `CUser::PetAutoSpeaking` covers one of the idle-feedback surfaces tied to those broader interaction loops.
+
+### 2. Scripted field-state and quest-timer parity
+
+- `CField::OnPacket` at `0x546d50`
+- `CField::OnFieldSpecificData` at `0x52a7e0`
+- `CField::OnDesc` at `0x5313d0`
+- `CField::OnSetQuestClear` at `0x52c870`
+- `CField::OnSetQuestTime` at `0x52b790`
+- `CField::OnSetObjectState` at `0x539890`
+- `CScriptMan::OnPacket` at `0x6de360`
+
+Notes:
+This packet cluster is a distinct client owner that the current backlog did not call out directly. `CField::OnPacket` dispatches field-specific data, help-message dialogs, quest-timer refresh and clear, and object-state flips from one place, while `CScriptMan::OnPacket` owns script-message delivery separately from NPC click handling or reactor collision.
 
 ## Current State Summary
 
@@ -143,6 +163,12 @@ The main baseline updates worth keeping visible are:
 | Partial | Reactor interaction parity | Local player movement now runs reactor touch checks through `ReactorPool`, throttles the local touch sweep to the client's once-per-second cadence from `CUserLocal::CheckReactor_Collision`, reactor visuals now load full WZ-defined direct frame sequences plus sparse numeric state branches instead of collapsing many reactors to `0/0` or hard-falling back to state `0`, runtime reactor activation now resolves `info/reactorType` back into touch, hit, skill, item, or animation-only handling instead of collapsing most non-quest reactors to touch, the non-touch branch stays wired into the simulator's actual player attack surfaces by forwarding world-space melee or magic hitboxes, projectile impacts and explosion areas, summon strike areas, and the basic no-skill attack fallback into bounded reactor hit checks with left-versus-right hit gating for directional reactor types, item-backed reactors now only activate from matching inventory use near the local player and can consume the matching item even when the simulator has no richer local effect for that item yet, quest-backed reactors now bind directly to the simulator quest runtime so they enter or reset their active state as quest requirements change, reactor runtime state progression now keeps the real WZ state ids and per-state frame durations alive during activation or follow-up hits instead of collapsing back to synthetic `1/2/3/4` states or destroying multi-state hit reactors after the first post-activation strike, and reactors with WZ `info/script` names now feed the simulator's existing dynamic object-tag publication seam through the same alias resolver used for field-entry scripts so script-backed tagged objects can turn on when those reactors activate and turn back off when the reactor resets, destroys, or respawns, but moving reactors and script behaviors that need a fuller named event bridge than object-tag publication are still incomplete | Environmental interaction now covers the client-like touch-reactor path, its collision polling cadence, more of the WZ reactor animation surface, WZ-backed touch versus hit versus skill versus item versus quest activation selection, local inventory-driven item reactor use, quest-state-driven reactor refresh, and a first pass of script-backed object-state publishing for tagged map objects driven by reactor `info/script`; the remaining gap is narrowed to moving-reactor motion plus richer named script or field-event execution beyond those existing dynamic-tag toggles | `ReactorPool.cs`, `ReactorItem.cs`, `MapSimulator.cs`, `EffectLoader.cs`, `PlayerManager.cs`, `SkillManager.cs`, `ReactorScriptStatePublisher.cs`, `UnitTest_MapSimulator/ReactorScriptStatePublisherTests.cs` (`CUserLocal::CheckReactor_Collision`) |
 | Partial | Quest-alert, balloon, and idle social feedback loops | NPCs with available, in-progress, or completable quests now render the client-backed `QuestIcon` alert art above their heads based on the simulator quest runtime, quest accept/complete actions now queue timed in-world feedback balloons above the speaking NPC instead of collapsing to a single fixed message while also holding the NPC in `speak` until the active balloon expires, nearby NPCs with WZ `info/speak/*` idle lines now periodically surface those lines through the same in-world balloon path, and pets now mirror the client-backed `PetAutoSpeaking` surfaces for level-up, pre-level-up, idle `e_rest`, low-HP alert, and HP/MP potion failure speech with the same six WZ-backed `String/PetDialog.img` event keys that exist in this data set; USE-item clicks or hotkeys now parse WZ `Item/Consume/*/spec` recovery fields including numeric-string `hpR`/`mpR` values seen in this data set, HP/MP potion failure speech is throttled to the client-shaped first-few repeats instead of firing forever, and zero-count USE hotkey bindings now persist across config reloads instead of being dropped when the stack is empty, but broader non-`PetAutoSpeaking` specialist pet chatter call sites and pet-care subsystems are still not modeled | The simulator now surfaces both static quest-state alerts and closer client-like NPC and pet idle feedback loops in-world instead of hiding all progression feedback inside the dialogue overlay alone, and this pass closes one remaining WZ-read mismatch on consume recovery by honoring numeric-string recovery ratios in `Item/Consume/*/spec`; the remaining gap is narrowed to chatter that lives outside the client’s six `PetAutoSpeaking` events plus deeper pet-care/runtime ownership that would have to originate those other call sites | `QuestRuntimeManager.cs`, `NpcFeedbackBalloonQueue.cs`, `NpcItem.cs`, `LifeLoader.cs`, `PetLoader.cs`, `PetController.cs`, `MapSimulator.cs`, `UIWindow*.img/QuestIcon`, `String/PetDialog.img` (`CUserLocal::Update`, `CUser::PetAutoSpeaking`) |
 
+### 2. Scripted field-state and quest-timer parity
+
+| Status | Area | Gap | Why it matters | Primary seam |
+|--------|------|-----|----------------|--------------|
+| Missing | Field-owned script/message and quest-timer packet parity | A broader IDA pass surfaced a client-owned coordination layer that is not tracked as its own backlog area today. `CField::OnPacket` dispatches `OnFieldSpecificData` (`149`), `OnDesc` (`162`), `OnSetQuestClear` (`166`), `OnSetQuestTime` (`167`), and `OnSetObjectState` (`169`), while `CScriptMan::OnPacket` separately routes script messages (`363`) into `OnScriptMessage`. The simulator already mirrors pieces of the downstream consequences through NPC overlays, quest lists, direction-mode ownership, and tagged-object publication, but it still has no dedicated packet-authored runtime for field help messages, quest-timer start/end windows, quest-timer clear resets, field-specific data handoff, or named object-state flips sourced from the actual client dispatch seam | Map scripts and event fields are not driven only by NPC clicks or reactor collisions. Without this packet-owned bridge, parity work keeps re-implementing isolated outcomes while missing the client seam that coordinates post-entry scripted help dialogs, timed quest deadlines, quest-clear resets, and `CMapLoadable::SetObjectState` updates for object-tag and map-state changes | field/script runtime bridge (`CField::OnPacket`, `CField::OnFieldSpecificData`, `CField::OnDesc`, `CField::OnSetQuestClear`, `CField::OnSetQuestTime`, `CField::OnSetObjectState`, `CScriptMan::OnPacket`) |
+
 ## Priority Order
 
 If the goal is visible parity first, the next work should be sequenced like this:
@@ -157,6 +183,8 @@ If the goal is visible parity first, the next work should be sequenced like this
    Remove the remaining ladder/float stubs, add passive transfer-field handoff, and tighten platform/dynamic foothold sync.
 5. Interaction pass:
    Add NPC talk/quest flow, follow and direction-mode handling, and richer reactor interactions.
+6. Scripted field-state pass:
+   Add the packet-owned bridge for field help messages, quest timers, quest-clear resets, and object-state flips before layering more one-off script behavior onto NPC or reactor seams.
 
 ## Working Rule For Future Updates
 
