@@ -372,9 +372,13 @@ namespace HaCreator.MapSimulator.Character
         public int BonusMagicDefense { get; set; }
         public int BonusAccuracy { get; set; }
         public int BonusAvoidability { get; set; }
+        public int BonusHands { get; set; }
         public int BonusSpeed { get; set; }
         public int BonusJump { get; set; }
         public int UpgradeSlots { get; set; }
+        public int KnockbackRate { get; set; }
+        public int TradeAvailable { get; set; }
+        public bool IsTimeLimited { get; set; }
 
         // Icon for UI
         public IDXObject Icon { get; set; }
@@ -416,9 +420,13 @@ namespace HaCreator.MapSimulator.Character
                 BonusMagicDefense = BonusMagicDefense,
                 BonusAccuracy = BonusAccuracy,
                 BonusAvoidability = BonusAvoidability,
+                BonusHands = BonusHands,
                 BonusSpeed = BonusSpeed,
                 BonusJump = BonusJump,
                 UpgradeSlots = UpgradeSlots,
+                KnockbackRate = KnockbackRate,
+                TradeAvailable = TradeAvailable,
+                IsTimeLimited = IsTimeLimited,
                 Icon = Icon,
                 IconRaw = IconRaw
             };
@@ -695,9 +703,13 @@ namespace HaCreator.MapSimulator.Character
                 BonusMagicDefense = BonusMagicDefense,
                 BonusAccuracy = BonusAccuracy,
                 BonusAvoidability = BonusAvoidability,
+                BonusHands = BonusHands,
                 BonusSpeed = BonusSpeed,
                 BonusJump = BonusJump,
                 UpgradeSlots = UpgradeSlots,
+                KnockbackRate = KnockbackRate,
+                TradeAvailable = TradeAvailable,
+                IsTimeLimited = IsTimeLimited,
                 Icon = Icon,
                 IconRaw = IconRaw,
                 AttackSpeed = AttackSpeed,

@@ -893,6 +893,11 @@ namespace HaCreator.MapSimulator.UI
                 return string.Empty;
             }
 
+            if (TryExtractDirectedWhisperTarget(message.Text, out string directedWhisperTarget))
+            {
+                return directedWhisperTarget;
+            }
+
             string speakerToken = ExtractSpeakerToken(message.Text);
             return string.IsNullOrWhiteSpace(speakerToken) ? string.Empty : speakerToken.Trim();
         }
@@ -952,6 +957,32 @@ namespace HaCreator.MapSimulator.UI
             }
 
             return prefix.Trim();
+        }
+
+        private static bool TryExtractDirectedWhisperTarget(string text, out string whisperTarget)
+        {
+            whisperTarget = string.Empty;
+            if (string.IsNullOrWhiteSpace(text)
+                || !text.StartsWith("[Whisper]", StringComparison.OrdinalIgnoreCase))
+            {
+                return false;
+            }
+
+            int separatorIndex = text.IndexOf(':');
+            if (separatorIndex < 0)
+            {
+                return false;
+            }
+
+            string prefix = text.Substring(0, separatorIndex).Trim();
+            int arrowIndex = prefix.LastIndexOf("->", StringComparison.Ordinal);
+            if (arrowIndex < 0 || arrowIndex + 2 >= prefix.Length)
+            {
+                return false;
+            }
+
+            whisperTarget = prefix.Substring(arrowIndex + 2).Trim();
+            return !string.IsNullOrWhiteSpace(whisperTarget);
         }
         #endregion
     }

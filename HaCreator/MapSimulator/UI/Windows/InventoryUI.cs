@@ -1437,6 +1437,7 @@ namespace HaCreator.MapSimulator.UI
         public Texture2D ItemTexture { get; set; }
         public int Quantity { get; set; } = 1;
         public int? MaxStackSize { get; set; }
+        public InventoryType? PreferredInventoryType { get; set; }
         public bool IsEquipped { get; set; }
         public bool IsDisabled { get; set; }
         public bool IsActiveBullet { get; set; }
@@ -1453,6 +1454,7 @@ namespace HaCreator.MapSimulator.UI
                 ItemTexture = ItemTexture,
                 Quantity = Quantity,
                 MaxStackSize = MaxStackSize,
+                PreferredInventoryType = PreferredInventoryType,
                 IsEquipped = IsEquipped,
                 IsDisabled = IsDisabled,
                 IsActiveBullet = IsActiveBullet,

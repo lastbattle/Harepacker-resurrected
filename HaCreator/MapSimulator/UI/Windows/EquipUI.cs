@@ -762,21 +762,25 @@ namespace HaCreator.MapSimulator.UI
             if (targetPart != null && !CanDisplayPartInSlot(targetPart, _draggedSlot ?? targetUiSlot.Value))
                 return false;
 
-            if (_draggedPart.Slot == targetSlot.Value || (targetPart != null && ReferenceEquals(targetPart, _draggedPart)))
+            CharacterEquipSlot resolvedTargetSlot = ResolveTargetSlot(targetUiSlot.Value, _draggedPart);
+            if (_draggedPart.Slot == resolvedTargetSlot || (targetPart != null && ReferenceEquals(targetPart, _draggedPart)))
                 return true;
 
-            _characterBuild?.Unequip(_draggedPart.Slot);
-            if (targetPart != null)
-                _characterBuild?.Unequip(targetPart.Slot);
-
-            if (targetPart != null)
+            CharacterEquipSlot sourceSlot = _draggedPart.Slot;
+            CharacterPart movingPart = _characterBuild?.Unequip(sourceSlot);
+            if (movingPart == null)
             {
-                targetPart.Slot = _draggedPart.Slot;
-                _characterBuild?.Equip(targetPart);
+                return false;
             }
 
-            _draggedPart.Slot = ResolveTargetSlot(targetUiSlot.Value, _draggedPart);
-            _characterBuild?.Equip(_draggedPart);
+            IReadOnlyList<CharacterPart> displacedParts = _characterBuild?.PlaceEquipment(movingPart, resolvedTargetSlot)
+                ?? Array.Empty<CharacterPart>();
+            CharacterPart swapCandidate = SelectSwapCandidateForSource(displacedParts, _draggedSlot);
+            if (swapCandidate != null)
+            {
+                _characterBuild?.PlaceEquipment(swapCandidate, sourceSlot);
+            }
+
             return true;
         }
 
@@ -826,7 +830,53 @@ namespace HaCreator.MapSimulator.UI
                 return "Release to move this equipment item.";
             }
 
+            if (targetPart.IsCash && !_draggedPart.IsCash)
+            {
+                CharacterPart hiddenTargetPart = targetSlot.HasValue
+                    ? EquipSlotStateResolver.ResolveUnderlyingPart(_characterBuild, targetSlot.Value)
+                    : null;
+                string cashName = string.IsNullOrWhiteSpace(targetPart.Name)
+                    ? $"Equip {targetPart.ItemId}"
+                    : targetPart.Name;
+                if (hiddenTargetPart != null && _draggedSlot.HasValue)
+                {
+                    string hiddenName = string.IsNullOrWhiteSpace(hiddenTargetPart.Name)
+                        ? $"Equip {hiddenTargetPart.ItemId}"
+                        : hiddenTargetPart.Name;
+                    return $"Release to equip underneath {cashName}. {hiddenName} will move to {ResolveSlotLabel(_draggedSlot.Value)}.";
+                }
+
+                return $"Release to equip underneath {cashName}.";
+            }
+
+            if (_draggedPart.IsCash && !targetPart.IsCash)
+            {
+                string targetName = string.IsNullOrWhiteSpace(targetPart.Name)
+                    ? $"Equip {targetPart.ItemId}"
+                    : targetPart.Name;
+                return $"Release to cover {targetName}. It will remain equipped underneath.";
+            }
+
             return $"Swap with {(string.IsNullOrWhiteSpace(targetPart.Name) ? $"Equip {targetPart.ItemId}" : targetPart.Name)}.";
+        }
+
+        private CharacterPart SelectSwapCandidateForSource(IReadOnlyList<CharacterPart> displacedParts, EquipSlot? sourceUiSlot)
+        {
+            if (displacedParts == null || displacedParts.Count == 0 || !sourceUiSlot.HasValue)
+            {
+                return null;
+            }
+
+            for (int i = 0; i < displacedParts.Count; i++)
+            {
+                CharacterPart candidate = displacedParts[i];
+                if (candidate != null && CanDisplayPartInSlot(candidate, sourceUiSlot.Value))
+                {
+                    return candidate;
+                }
+            }
+
+            return null;
         }
 
         private static bool CanDisplayPartInSlot(CharacterPart part, EquipSlot uiSlot)

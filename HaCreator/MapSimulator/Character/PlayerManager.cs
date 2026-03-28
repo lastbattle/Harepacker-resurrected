@@ -71,6 +71,9 @@ namespace HaCreator.MapSimulator.Character
         private PlayerMobStatusController _mobStatusController;
         private PlayerMobStatusFrameState _currentMobStatusState = PlayerMobStatusFrameState.Default;
         private Action<PlayerCharacter, Rectangle, int> _attackHitboxHandler;
+        private int _pendingRepeatSkillModeEndSkillId;
+        private int _pendingRepeatSkillModeEndReturnSkillId;
+        private int _pendingRepeatSkillModeEndRequestTime = int.MinValue;
 
         // Sound callbacks
         private Action _onJumpSound;
@@ -325,6 +328,10 @@ namespace HaCreator.MapSimulator.Character
             if (SkillLoader != null)
             {
                 Skills = new SkillManager(SkillLoader, Player);
+                _pendingRepeatSkillModeEndSkillId = 0;
+                _pendingRepeatSkillModeEndSkillId = 0;
+                _pendingRepeatSkillModeEndReturnSkillId = 0;
+                _pendingRepeatSkillModeEndRequestTime = int.MinValue;
                 Skills.SetMobPool(_mobPool);
                 Skills.SetDropPool(_dropPool);
                 Skills.SetCombatEffects(_combatEffects);
@@ -332,6 +339,7 @@ namespace HaCreator.MapSimulator.Character
                 Skills.SetFootholdLookup(_findFoothold);
                 Skills.SetTamingMobLoader(Loader.LoadEquipment);
                 Skills.OnAttackAreaResolved = _reactorAttackAreaHandler;
+                Skills.OnRepeatSkillModeEndRequested = HandleRepeatSkillModeEndRequested;
                 build.SkillStatBonusProvider = stat => Skills.GetPassiveBonus(stat) + Skills.GetBuffStat(stat);
                 build.SkillMasteryProvider = () => Skills.GetMastery(build.GetWeapon());
 
@@ -352,7 +360,11 @@ namespace HaCreator.MapSimulator.Character
             Player.SetFootholdLookup(_findFoothold);
             Player.SetLadderLookup(_findLadder);
             Player.SetSwimAreaCheck(_checkSwimArea);
-            Player.SetPortableChairTamingMobLoader(Loader.LoadEquipment);
+            Func<int, CharacterPart> tamingMobLoader = Loader != null
+                ? new Func<int, CharacterPart>(Loader.LoadEquipment)
+                : null;
+            Player.SetTamingMobLoader(tamingMobLoader);
+            Player.SetPortableChairTamingMobLoader(tamingMobLoader);
             Player.SetSkillMorphLoader(Loader.LoadMorph);
             Player.SetJumpSoundCallback(_onJumpSound);
             Player.SetJumpRestrictionHandler(_jumpRestrictionMessageProvider, _onJumpRestricted);
@@ -474,6 +486,10 @@ namespace HaCreator.MapSimulator.Character
             Player.SetFootholdLookup(_findFoothold);
             Player.SetLadderLookup(_findLadder);
             Player.SetSwimAreaCheck(_checkSwimArea);
+            Func<int, CharacterPart> tamingMobLoader = Loader != null
+                ? new Func<int, CharacterPart>(Loader.LoadEquipment)
+                : null;
+            Player.SetTamingMobLoader(tamingMobLoader);
             Func<int, CharacterPart> portableChairTamingMobLoader = Loader != null
                 ? new Func<int, CharacterPart>(Loader.LoadEquipment)
                 : null;
@@ -744,6 +760,7 @@ namespace HaCreator.MapSimulator.Character
 
             // Update skills (projectiles, buffs, cooldowns)
             Skills?.Update(currentTime, deltaTime);
+            TryAcknowledgePendingRepeatSkillModeEnd(currentTime);
             Pets.Update(Player, _dropPool, currentTime, deltaTime);
             Dragon.Update(Player, currentTime);
 
@@ -839,6 +856,31 @@ namespace HaCreator.MapSimulator.Character
         internal bool HasMobStatus(PlayerMobStatusEffect effect)
         {
             return _mobStatusController?.HasStatusEffect(effect) == true;
+        }
+
+        private void HandleRepeatSkillModeEndRequested(int skillId, int returnSkillId)
+        {
+            _pendingRepeatSkillModeEndSkillId = skillId;
+            _pendingRepeatSkillModeEndReturnSkillId = returnSkillId;
+            _pendingRepeatSkillModeEndRequestTime = Environment.TickCount;
+        }
+
+        private void TryAcknowledgePendingRepeatSkillModeEnd(int currentTime)
+        {
+            if (Skills == null || _pendingRepeatSkillModeEndRequestTime == int.MinValue || currentTime <= _pendingRepeatSkillModeEndRequestTime)
+            {
+                return;
+            }
+
+            int skillId = _pendingRepeatSkillModeEndSkillId;
+            int returnSkillId = _pendingRepeatSkillModeEndReturnSkillId;
+            if (Skills.TryAcknowledgeRepeatSkillModeEndRequest(skillId, currentTime)
+                || Skills.TryAcknowledgeRepeatSkillModeEndRequest(returnSkillId, currentTime))
+            {
+                _pendingRepeatSkillModeEndSkillId = 0;
+                _pendingRepeatSkillModeEndReturnSkillId = 0;
+                _pendingRepeatSkillModeEndRequestTime = int.MinValue;
+            }
         }
 
         private void UpdateMobStatusState(int currentTime)

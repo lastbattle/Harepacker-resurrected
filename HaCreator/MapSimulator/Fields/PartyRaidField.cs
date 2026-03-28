@@ -1,6 +1,7 @@
 using HaSharedLibrary.Wz;
 using HaSharedLibrary.Util;
 using MapleLib.Converters;
+using MapleLib.Helpers;
 using MapleLib.WzLib;
 using MapleLib.WzLib.WzProperties;
 using MapleLib.WzLib.WzStructure;
@@ -206,7 +207,7 @@ namespace HaCreator.MapSimulator.Fields
             _batteryCharge = 0;
             _batteryCapacity = DefaultBatteryCapacity;
             _gaugeCapacity = DefaultGaugeCapacity;
-            _teamColor = InferTeamColor(mapInfo.id);
+            _teamColor = InferTeamColor(mapInfo);
             _resultSideBorder = Math.Max(0, mapInfo.LBSide ?? 0);
             _resultTopBorder = Math.Max(0, mapInfo.LBTop ?? 0);
             _resultBottomBorder = Math.Max(0, mapInfo.LBBottom ?? 0);
@@ -214,6 +215,11 @@ namespace HaCreator.MapSimulator.Fields
             _resultBonus = -1;
             _resultTotal = -1;
             _resultOutcome = InferOutcomeFromMap(mapInfo);
+
+            if (_mode == PartyRaidFieldMode.Boss && TryResolveBossGaugeCapacity(_mapId, out int gaugeCapacity))
+            {
+                _gaugeCapacity = gaugeCapacity;
+            }
         }
 
         public void Update(int currentTimeMs)
@@ -544,7 +550,8 @@ namespace HaCreator.MapSimulator.Fields
             _graphicsDevice = graphicsDevice;
             WzImage uiWindow = global::HaCreator.Program.FindImage("UI", "UIWindow.img") ?? global::HaCreator.Program.FindImage("UI", "UIWindow2.img");
             WzImage effectImage = global::HaCreator.Program.FindImage("Map", "Effect.img");
-            WzImage mapEtcImage = global::HaCreator.Program.FindImage("Map", "etc.img");
+            WzImage mapEtcImage = global::HaCreator.Program.FindImage("Map", "Obj/etc.img")
+                ?? global::HaCreator.Program.FindImage("Map", "etc.img");
             uiWindow?.ParseImage();
             effectImage?.ParseImage();
             mapEtcImage?.ParseImage();
@@ -1026,14 +1033,20 @@ namespace HaCreator.MapSimulator.Fields
 
         private static PartyRaidResultOutcome InferOutcomeFromMap(MapInfo mapInfo)
         {
-            if (!string.IsNullOrWhiteSpace(mapInfo?.onUserEnter))
+            string onUserEnter = mapInfo?.onUserEnter;
+            if (string.IsNullOrWhiteSpace(onUserEnter) && TryResolveMapScripts(mapInfo?.id ?? 0, out string resolvedOnUserEnter, out _))
             {
-                if (mapInfo.onUserEnter.StartsWith("PRaid_Win", StringComparison.OrdinalIgnoreCase))
+                onUserEnter = resolvedOnUserEnter;
+            }
+
+            if (!string.IsNullOrWhiteSpace(onUserEnter))
+            {
+                if (onUserEnter.StartsWith("PRaid_Win", StringComparison.OrdinalIgnoreCase))
                 {
                     return PartyRaidResultOutcome.Win;
                 }
 
-                if (mapInfo.onUserEnter.StartsWith("PRaid_Fail", StringComparison.OrdinalIgnoreCase))
+                if (onUserEnter.StartsWith("PRaid_Fail", StringComparison.OrdinalIgnoreCase))
                 {
                     return PartyRaidResultOutcome.Lose;
                 }
@@ -1049,12 +1062,202 @@ namespace HaCreator.MapSimulator.Fields
             _ => PartyRaidResultOutcome.Unknown
         };
 
-        private static PartyRaidTeamColor InferTeamColor(int mapId) => mapId == 923020120 ? PartyRaidTeamColor.Blue : PartyRaidTeamColor.Red;
+        private static PartyRaidTeamColor InferTeamColor(MapInfo mapInfo)
+        {
+            PartyRaidTeamColor? scriptTeamColor = InferTeamColorFromScripts(mapInfo?.onUserEnter, mapInfo?.onFirstUserEnter);
+            if (scriptTeamColor.HasValue)
+            {
+                return scriptTeamColor.Value;
+            }
+
+            if (TryResolveMapScripts(mapInfo?.id ?? 0, out string onUserEnter, out string onFirstUserEnter))
+            {
+                scriptTeamColor = InferTeamColorFromScripts(onUserEnter, onFirstUserEnter);
+                if (scriptTeamColor.HasValue)
+                {
+                    return scriptTeamColor.Value;
+                }
+            }
+
+            return InferTeamColorFromMapId(mapInfo?.id ?? 0);
+        }
+
+        private static PartyRaidTeamColor InferTeamColorFromMapId(int mapId) => mapId == 923020120 ? PartyRaidTeamColor.Blue : PartyRaidTeamColor.Red;
         private static bool UsesWinBadge(PartyRaidResultOutcome outcome) => outcome == PartyRaidResultOutcome.Win || outcome == PartyRaidResultOutcome.Clear;
         private static string GetOutcomeLabel(PartyRaidResultOutcome outcome) => outcome switch { PartyRaidResultOutcome.Win => "WIN", PartyRaidResultOutcome.Lose => "LOSE", PartyRaidResultOutcome.Clear => "CLEAR", _ => "RESULT" };
         private static string GetTeamLabel(PartyRaidTeamColor teamColor) => teamColor == PartyRaidTeamColor.Blue ? "blue" : "red";
         private string DescribeBatteryStatus() => _batteryCharge > 0 ? $", battery {_batteryCharge}/{Math.Max(1, _batteryCapacity)}" : string.Empty;
         private static string FormatTimer(int remainingSeconds) { int clamped = Math.Max(0, remainingSeconds); return string.Format(CultureInfo.InvariantCulture, "{0:D2}:{1:D2}", clamped / 60, clamped % 60); }
+
+        private static PartyRaidTeamColor? InferTeamColorFromScripts(string onUserEnter, string onFirstUserEnter)
+        {
+            if (StartsWithPartyRaidScript(onUserEnter, "PRaid_D_")
+                || StartsWithPartyRaidScript(onFirstUserEnter, "PRaid_D_"))
+            {
+                return PartyRaidTeamColor.Blue;
+            }
+
+            if (StartsWithPartyRaidScript(onUserEnter, "PRaid_W_")
+                || StartsWithPartyRaidScript(onFirstUserEnter, "PRaid_W_"))
+            {
+                return PartyRaidTeamColor.Red;
+            }
+
+            return null;
+        }
+
+        private static bool StartsWithPartyRaidScript(string scriptName, string prefix)
+        {
+            return !string.IsNullOrWhiteSpace(scriptName)
+                && scriptName.StartsWith(prefix, StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static bool TryResolveMapScripts(int mapId, out string onUserEnter, out string onFirstUserEnter)
+        {
+            onUserEnter = null;
+            onFirstUserEnter = null;
+            WzImage mapImage = FindResolvedMapImage(mapId);
+            if (mapImage?["info"] is not WzImageProperty infoProperty)
+            {
+                return false;
+            }
+
+            onUserEnter = GetStringProperty(infoProperty["onUserEnter"]);
+            onFirstUserEnter = GetStringProperty(infoProperty["onFirstUserEnter"]);
+            return !string.IsNullOrWhiteSpace(onUserEnter) || !string.IsNullOrWhiteSpace(onFirstUserEnter);
+        }
+
+        private static bool TryResolveBossGaugeCapacity(int mapId, out int gaugeCapacity)
+        {
+            gaugeCapacity = DefaultGaugeCapacity;
+            WzImage mapImage = FindResolvedMapImage(mapId);
+            if (mapImage?["life"] is not WzSubProperty lifeProperty)
+            {
+                return false;
+            }
+
+            foreach (WzImageProperty child in lifeProperty.WzProperties)
+            {
+                if (child is not WzSubProperty lifeEntry)
+                {
+                    continue;
+                }
+
+                if (!string.Equals(GetStringProperty(lifeEntry["type"]), "m", StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                string mobIdText = GetStringProperty(lifeEntry["id"]);
+                if (TryResolveMobMaxHp(mobIdText, out gaugeCapacity))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static bool TryResolveMobMaxHp(string mobIdText, out int maxHp)
+        {
+            maxHp = 0;
+            if (!int.TryParse(mobIdText, NumberStyles.Integer, CultureInfo.InvariantCulture, out int mobId) || mobId <= 0)
+            {
+                return false;
+            }
+
+            WzImage mobImage = FindResolvedMobImage(mobId);
+            int mobMaxHp = GetIntProperty(mobImage?["info"]?["maxHP"]);
+            if (mobMaxHp <= 0)
+            {
+                return false;
+            }
+
+            maxHp = mobMaxHp;
+            return true;
+        }
+
+        private static WzImage FindResolvedMapImage(int mapId)
+        {
+            if (mapId <= 0 || global::HaCreator.Program.WzManager == null)
+            {
+                return null;
+            }
+
+            HashSet<int> visitedMapIds = new();
+            int currentMapId = mapId;
+            while (currentMapId > 0 && visitedMapIds.Add(currentMapId))
+            {
+                WzImage mapImage = WzInfoTools.FindMapImage(currentMapId.ToString(CultureInfo.InvariantCulture), global::HaCreator.Program.WzManager);
+                if (mapImage == null)
+                {
+                    return null;
+                }
+
+                mapImage.ParseImage();
+                string linkedMapText = GetStringProperty(mapImage["info"]?["link"]);
+                if (!int.TryParse(linkedMapText, NumberStyles.Integer, CultureInfo.InvariantCulture, out int linkedMapId) || linkedMapId <= 0)
+                {
+                    return mapImage;
+                }
+
+                currentMapId = linkedMapId;
+            }
+
+            return null;
+        }
+
+        private static WzImage FindResolvedMobImage(int mobId)
+        {
+            if (mobId <= 0)
+            {
+                return null;
+            }
+
+            HashSet<int> visitedMobIds = new();
+            int currentMobId = mobId;
+            while (currentMobId > 0 && visitedMobIds.Add(currentMobId))
+            {
+                WzImage mobImage = global::HaCreator.Program.FindImage("Mob", WzInfoTools.AddLeadingZeros(currentMobId.ToString(CultureInfo.InvariantCulture), 7) + ".img");
+                if (mobImage == null)
+                {
+                    return null;
+                }
+
+                mobImage.ParseImage();
+                string linkedMobText = GetStringProperty(mobImage["info"]?["link"]);
+                if (!int.TryParse(linkedMobText, NumberStyles.Integer, CultureInfo.InvariantCulture, out int linkedMobId) || linkedMobId <= 0)
+                {
+                    return mobImage;
+                }
+
+                currentMobId = linkedMobId;
+            }
+
+            return null;
+        }
+
+        private static string GetStringProperty(WzImageProperty property)
+        {
+            return WzInfoTools.GetRealProperty(property) switch
+            {
+                WzStringProperty stringProperty => stringProperty.Value,
+                WzIntProperty intProperty => intProperty.Value.ToString(CultureInfo.InvariantCulture),
+                _ => null
+            };
+        }
+
+        private static int GetIntProperty(WzImageProperty property)
+        {
+            return WzInfoTools.GetRealProperty(property) switch
+            {
+                WzIntProperty intProperty => intProperty.Value,
+                WzShortProperty shortProperty => shortProperty.Value,
+                WzLongProperty longProperty => longProperty.Value > int.MaxValue ? int.MaxValue : (int)Math.Max(0L, longProperty.Value),
+                WzStringProperty stringProperty when int.TryParse(stringProperty.Value, NumberStyles.Integer, CultureInfo.InvariantCulture, out int parsedValue) => parsedValue,
+                _ => 0
+            };
+        }
 
         private static bool TryParseTeamColor(string text, out PartyRaidTeamColor teamColor)
         {

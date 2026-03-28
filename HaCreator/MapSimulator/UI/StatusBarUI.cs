@@ -19,6 +19,13 @@ namespace HaCreator.MapSimulator.UI {
         World
     }
 
+    public enum PreparedSkillHudTextVariant
+    {
+        Default,
+        ReleaseArmed,
+        Amplify
+    }
+
     /// <summary>
     /// Character stats data for display on the status bar.
     /// Positions based on analysis of MapleStory client CUIStatusBar::SetNumberValue and CUIStatusBar::SetStatusValue functions.
@@ -63,6 +70,7 @@ namespace HaCreator.MapSimulator.UI {
         public bool IsHolding { get; set; }
         public int HoldElapsedMs { get; set; }
         public int MaxHoldDurationMs { get; set; }
+        public PreparedSkillHudTextVariant TextVariant { get; set; }
         public bool ShowText { get; set; } = true;
         public Vector2 WorldAnchor { get; set; }
     }
@@ -160,7 +168,6 @@ namespace HaCreator.MapSimulator.UI {
 
         // lvBacktrnd area (left side - character info)
         private static readonly Vector2 LEVEL_TEXT_POS = new Vector2(44, 8);
-        private const float LEVEL_TEXT_CENTER_X = 50f;
         private static readonly Vector2 JOB_TEXT_POS = new Vector2(74, 5);
         private static readonly Vector2 NAME_TEXT_POS = new Vector2(74, 17);
         private const float JOB_TEXT_SCALE = 0.75f;
@@ -313,6 +320,11 @@ namespace HaCreator.MapSimulator.UI {
         {
             _statusBarLeftBaseOffset = leftBaseOffset;
             _statusBarGaugeBaseOffset = gaugeBaseOffset;
+        }
+
+        public void SetLeftLayoutMetric(Point leftBaseOffset)
+        {
+            _statusBarLeftBaseOffset = leftBaseOffset;
         }
 
         public Action<int> BuffCancelRequested { get; set; }
@@ -584,7 +596,7 @@ namespace HaCreator.MapSimulator.UI {
 
             // Draw character info section (left side) - use basePosLeft
             string levelText = stats.Level.ToString();
-            Vector2 levelPos = GetCenteredLevelTextPosition(basePosLeft, levelText);
+            Vector2 levelPos = GetClientLevelTextPosition(basePosLeft, levelText);
             if (_useLevelBitmapFont)
             {
                 DrawDigitBitmapString(sprite, levelText, levelPos, _levelDigitTextures, _levelDigitOrigins, 1.0f);
@@ -1230,8 +1242,20 @@ namespace HaCreator.MapSimulator.UI {
                 return string.Empty;
             }
 
+            if (preparedSkill.TextVariant == PreparedSkillHudTextVariant.Amplify)
+            {
+                return hudProfile.GaugeDurationMs > 0 && progress < 0.999f
+                    ? $"Amplifying {Math.Clamp((int)Math.Round(progress * 100f), 0, 100)}%"
+                    : "Amplified";
+            }
+
             if (preparedSkill.IsHolding)
             {
+                if (preparedSkill.TextVariant == PreparedSkillHudTextVariant.ReleaseArmed)
+                {
+                    return "Release";
+                }
+
                 if (preparedSkill.MaxHoldDurationMs > 0)
                 {
                     int remainingHoldMs = Math.Max(0, preparedSkill.MaxHoldDurationMs - preparedSkill.HoldElapsedMs);
@@ -1253,6 +1277,11 @@ namespace HaCreator.MapSimulator.UI {
 
             if (hudProfile.GaugeDurationMs > 0)
             {
+                if (preparedSkill.TextVariant == PreparedSkillHudTextVariant.ReleaseArmed && progress >= 0.999f)
+                {
+                    return "Release";
+                }
+
                 return progress >= 0.999f
                     ? "Ready"
                     : $"Charging {Math.Clamp((int)Math.Round(progress * 100f), 0, 100)}%";
@@ -1295,7 +1324,7 @@ namespace HaCreator.MapSimulator.UI {
                 return PreparedSkillHudProfile.Default;
             }
 
-            return new PreparedSkillHudProfile(preparedSkill.SkinKey, preparedSkill.GaugeDurationMs);
+            return new PreparedSkillHudProfile(preparedSkill.SkinKey, preparedSkill.GaugeDurationMs, preparedSkill.TextVariant);
         }
 
         private void DrawStatusBarSkillTooltip(
@@ -1624,47 +1653,13 @@ namespace HaCreator.MapSimulator.UI {
             return _font.MeasureString(text).X * spriteFontScale;
         }
 
-        private Vector2 GetCenteredLevelTextPosition(Vector2 basePosLeft, string levelText)
+        private Vector2 GetClientLevelTextPosition(Vector2 basePosLeft, string levelText)
         {
-            float textWidth = MeasureLevelTextWidth(levelText, 1.0f);
+            int digitCount = Math.Clamp(string.IsNullOrEmpty(levelText) ? 1 : levelText.Length, 1, 3);
+            float clientSlotX = LEVEL_TEXT_POS.X - ((digitCount - 1) * 6);
             return new Vector2(
-                basePosLeft.X + LEVEL_TEXT_CENTER_X - (textWidth * 0.5f),
+                basePosLeft.X + clientSlotX,
                 basePosLeft.Y + LEVEL_TEXT_POS.Y);
-        }
-
-        private float MeasureLevelTextWidth(string text, float scale)
-        {
-            if (string.IsNullOrEmpty(text))
-            {
-                return 0f;
-            }
-
-            if (_useLevelBitmapFont && _levelDigitTextures != null)
-            {
-                float width = 0f;
-                foreach (char c in text)
-                {
-                    if (c < '0' || c > '9')
-                    {
-                        continue;
-                    }
-
-                    Texture2D texture = _levelDigitTextures[c - '0'];
-                    if (texture != null)
-                    {
-                        width += texture.Width * scale;
-                    }
-                }
-
-                return width;
-            }
-
-            if (_font == null)
-            {
-                return 0f;
-            }
-
-            return _font.MeasureString(text).X * scale;
         }
 
         private Rectangle GetKeyDownBarRectangle(Vector2 basePosGauge, StatusBarKeyDownBarTextures textures, bool anchorIsWorldPosition = false)
@@ -1694,16 +1689,18 @@ namespace HaCreator.MapSimulator.UI {
 
         private readonly struct PreparedSkillHudProfile
         {
-            public static PreparedSkillHudProfile Default => new PreparedSkillHudProfile("KeyDownBar", 0);
+            public static PreparedSkillHudProfile Default => new PreparedSkillHudProfile("KeyDownBar", 0, PreparedSkillHudTextVariant.Default);
 
-            public PreparedSkillHudProfile(string skinKey, int gaugeDurationMs)
+            public PreparedSkillHudProfile(string skinKey, int gaugeDurationMs, PreparedSkillHudTextVariant textVariant)
             {
                 SkinKey = string.IsNullOrWhiteSpace(skinKey) ? "KeyDownBar" : skinKey;
                 GaugeDurationMs = gaugeDurationMs;
+                TextVariant = textVariant;
             }
 
             public string SkinKey { get; }
             public int GaugeDurationMs { get; }
+            public PreparedSkillHudTextVariant TextVariant { get; }
         }
 
         /// <summary>

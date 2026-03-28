@@ -36,6 +36,7 @@ namespace HaCreator.MapSimulator.Pools
         public int PickerId { get; set; }       // Player or pet ID
         public bool PickedByPet { get; set; }
         public DropPickupActorKind ActorKind { get; set; } = DropPickupActorKind.Other;
+        public string ActorName { get; set; }
     }
 
     /// <summary>
@@ -386,6 +387,8 @@ namespace HaCreator.MapSimulator.Pools
         private Action<DropPickupAttemptResult, int, bool> _onPickupFailed;
         private Func<DropItem, DropPickupFailureReason> _pickupAvailabilityEvaluator;
         private Func<DropItem, DropPickupFailureReason> _petPickupAvailabilityEvaluator;
+        private Action<DropItem, int, string> _onRemotePlayerPickedUp;
+        private Action<DropItem, int, string> _onRemotePetPickedUp;
 
         // Ground level lookup function
         private Func<float, float, float> _getGroundY;
@@ -410,6 +413,8 @@ namespace HaCreator.MapSimulator.Pools
         public void SetPickupAvailabilityEvaluator(Func<DropItem, DropPickupFailureReason> callback) => _pickupAvailabilityEvaluator = callback;
         public void SetPetPickupAvailabilityEvaluator(Func<DropItem, DropPickupFailureReason> callback) => _petPickupAvailabilityEvaluator = callback;
         public void SetGroundLevelLookup(Func<float, float, float> getGroundY) => _getGroundY = getGroundY;
+        public void SetOnRemotePlayerPickedUp(Action<DropItem, int, string> callback) => _onRemotePlayerPickedUp = callback;
+        public void SetOnRemotePetPickedUp(Action<DropItem, int, string> callback) => _onRemotePetPickedUp = callback;
 
         // Pet pickup events
         private Action<DropItem, int> _onPetPickedUp;          // (drop, petId)
@@ -684,11 +689,33 @@ namespace HaCreator.MapSimulator.Pools
             if (drop.OwnerId > 0 && drop.OwnerId != playerId && currentTime < drop.OwnerExpireTime)
                 return false;
 
-            drop.StartPickup(currentTime);
-            RecordRecentPickupItem(drop, playerId, false, currentTime, DropPickupActorKind.Player);
-            _onDropPickedUp?.Invoke(drop);
-            _onPickupResolved?.Invoke(drop, playerId, false);
-            return true;
+            return CompletePickup(drop, playerId, pickedByPet: false, currentTime, DropPickupActorKind.Player, notifyLocalPickup: true);
+        }
+
+        public bool ResolveRemotePickup(
+            DropItem drop,
+            int actorId,
+            int currentTime,
+            DropPickupActorKind actorKind,
+            string actorName = null,
+            bool pickedByPet = false)
+        {
+            if (actorKind == DropPickupActorKind.Player)
+            {
+                return CompletePickup(drop, actorId, pickedByPet: false, currentTime, actorKind, notifyLocalPickup: false, actorName);
+            }
+
+            if (actorKind == DropPickupActorKind.Pet)
+            {
+                return CompletePickup(drop, actorId, pickedByPet: true, currentTime, actorKind, notifyLocalPickup: false, actorName);
+            }
+
+            if (actorKind == DropPickupActorKind.Mob)
+            {
+                return CompletePickup(drop, actorId, pickedByPet: false, currentTime, actorKind, notifyLocalPickup: false, actorName);
+            }
+
+            return false;
         }
 
         /// <summary>
@@ -977,23 +1004,14 @@ namespace HaCreator.MapSimulator.Pools
 
             if (closestDrop != null)
             {
-                // Perform pickup
-                closestDrop.StartPickup(currentTime);
-                _petLastPickupTime[petId] = currentTime;
-
-                // Record pickup
-                RecordRecentPickupItem(closestDrop, petId, true, currentTime, DropPickupActorKind.Pet);
-
                 // Clear chase target if this was it
                 if (_petTargets.TryGetValue(petId, out var target) && target.DropId == closestDrop.PoolId)
                 {
                     _petTargets.Remove(petId);
                 }
 
-                // Invoke callbacks
-                _onDropPickedUp?.Invoke(closestDrop);
-                _onPickupResolved?.Invoke(closestDrop, petId, true);
-                _onPetPickedUp?.Invoke(closestDrop, petId);
+                _petLastPickupTime[petId] = currentTime;
+                CompletePickup(closestDrop, petId, pickedByPet: true, currentTime, DropPickupActorKind.Pet, notifyLocalPickup: true);
 
                 return new DropPickupAttemptResult
                 {
@@ -1236,18 +1254,9 @@ namespace HaCreator.MapSimulator.Pools
 
             if (closestDrop != null)
             {
-                // Mark as picked up by mob (stolen)
-                closestDrop.CanPickup = false;
-                closestDrop.State = DropState.PickingUp;
-                closestDrop.LastStateChangeTime = currentTime;
-
-                // Record pickup
-                RecordRecentPickupItem(closestDrop, mobId, false, currentTime, DropPickupActorKind.Mob);
-
-                // Invoke callback
-                _onMobPickedUp?.Invoke(closestDrop, mobId);
-
-                return closestDrop;
+                return ResolveRemotePickup(closestDrop, mobId, currentTime, DropPickupActorKind.Mob)
+                    ? closestDrop
+                    : null;
             }
 
             return null;
@@ -1434,15 +1443,16 @@ namespace HaCreator.MapSimulator.Pools
         /// Record a recently picked up item for history tracking.
         /// Based on CDropPool::RecordRecentPickupItem from MapleStory client.
         /// </summary>
-        public void RecordRecentPickupItem(
+        public RecentPickupRecord RecordRecentPickupItem(
             DropItem drop,
             int pickerId,
             bool pickedByPet,
             int currentTime,
-            DropPickupActorKind actorKind = DropPickupActorKind.Other)
+            DropPickupActorKind actorKind = DropPickupActorKind.Other,
+            string actorName = null)
         {
             if (drop == null)
-                return;
+                return null;
 
             PruneRecentPickupHistory(currentTime);
 
@@ -1463,10 +1473,12 @@ namespace HaCreator.MapSimulator.Pools
                 PickupTime = currentTime,
                 PickerId = pickerId,
                 PickedByPet = pickedByPet,
-                ActorKind = actorKind
+                ActorKind = actorKind,
+                ActorName = actorName
             };
 
             _recentPickups.Enqueue(record);
+            return record;
         }
 
         public RecentPickupRecord FindRecentPickup(int dropId, int currentTime)
@@ -1530,6 +1542,51 @@ namespace HaCreator.MapSimulator.Pools
 
                 break;
             }
+        }
+
+        private bool CompletePickup(
+            DropItem drop,
+            int pickerId,
+            bool pickedByPet,
+            int currentTime,
+            DropPickupActorKind actorKind,
+            bool notifyLocalPickup,
+            string actorName = null)
+        {
+            if (drop == null || drop.State != DropState.Idle || !drop.CanPickup)
+            {
+                return false;
+            }
+
+            drop.StartPickup(currentTime);
+            RecordRecentPickupItem(drop, pickerId, pickedByPet, currentTime, actorKind, actorName);
+            _onDropPickedUp?.Invoke(drop);
+
+            if (notifyLocalPickup)
+            {
+                _onPickupResolved?.Invoke(drop, pickerId, pickedByPet);
+                if (pickedByPet)
+                {
+                    _onPetPickedUp?.Invoke(drop, pickerId);
+                }
+
+                return true;
+            }
+
+            switch (actorKind)
+            {
+                case DropPickupActorKind.Player:
+                    _onRemotePlayerPickedUp?.Invoke(drop, pickerId, actorName);
+                    break;
+                case DropPickupActorKind.Pet:
+                    _onRemotePetPickedUp?.Invoke(drop, pickerId, actorName);
+                    break;
+                case DropPickupActorKind.Mob:
+                    _onMobPickedUp?.Invoke(drop, pickerId);
+                    break;
+            }
+
+            return true;
         }
 
         #endregion

@@ -2,6 +2,7 @@ using HaCreator.MapEditor;
 using HaCreator.MapSimulator;
 using HaCreator.MapSimulator.Entities;
 using HaCreator.MapSimulator.Animation;
+using HaCreator.MapSimulator.Character.Skills;
 using HaCreator.MapSimulator.Pools;
 using HaCreator.MapSimulator.UI;
 using HaSharedLibrary.Render;
@@ -382,6 +383,7 @@ namespace HaCreator.MapSimulator.Loaders
                         new Point(dxObj_backgrnd.X, dxObj_backgrnd.Y),
                         new List<UIObject> { });
                     statusBar.InitializeButtons();
+                    statusBar.SetLeftLayoutMetric(ResolveCanvasPosition(Point.Zero, mainBarProperties?["lvBacktrnd"] as WzCanvasProperty));
 
                     // Set gauge textures if loaded from WZ files
                     if (hpGaugeTexture != null || mpGaugeTexture != null || expGaugeTexture != null) {
@@ -813,7 +815,12 @@ namespace HaCreator.MapSimulator.Loaders
         private static Dictionary<string, Texture2D> LoadBuffIconTextures(WzImage uiBuffIcon, GraphicsDevice device)
         {
             var buffIconTextures = new Dictionary<string, Texture2D>(StringComparer.OrdinalIgnoreCase);
-            if (uiBuffIcon == null || device == null)
+            if (uiBuffIcon == null)
+            {
+                return buffIconTextures;
+            }
+
+            if (device == null)
             {
                 return buffIconTextures;
             }

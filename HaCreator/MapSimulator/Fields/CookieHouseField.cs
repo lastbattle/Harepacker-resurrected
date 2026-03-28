@@ -50,9 +50,13 @@ namespace HaCreator.MapSimulator.Fields
         public const int ScoreDrawX = 92;
         public const int ScoreDrawY = 9;
         public const int GradeCount = 5;
+        internal const int ClientBackgroundStringPoolId = 0x13FB;
+        internal const int ClientBitmapRootStringPoolId = 0x13FC;
+        internal const int ClientBitmapPlusStringPoolId = 0x14FA;
+        internal const int ClientBitmapMinusStringPoolId = 0x14F7;
         private const int ClientBitmapDigitWidth = 27;
         private const int ClientBitmapDigitCount = 3;
-        private const string PreferredBackgroundPath = "raise/backgrnd";
+        private const string FallbackBackgroundPath = "raise/backgrnd";
         private static readonly string[] BitmapNumberSignPlusNames = { "plus", "signPlus", "Plus", "SignPlus" };
         private static readonly string[] BitmapNumberSignMinusNames = { "minus", "signMinus", "Minus", "SignMinus" };
         private static readonly string[] PreferredUiWindowImages = { "UIWindow.img", "UIWindow2.img" };
@@ -91,6 +95,8 @@ namespace HaCreator.MapSimulator.Fields
             .ToArray();
         private string _backgroundSourcePath;
         private string _bitmapNumberSourcePath;
+        private bool _usesFallbackBackgroundSource;
+        private bool _usesFallbackBitmapSource;
 
         public bool IsActive => _isActive;
         public int MapId => _mapId;
@@ -129,13 +135,7 @@ namespace HaCreator.MapSimulator.Fields
 
         public string DescribeStatus()
         {
-            string backgroundSourceSummary = string.IsNullOrWhiteSpace(_backgroundSourcePath)
-                ? "background=unresolved"
-                : $"background={_backgroundSourcePath}";
-            string digitSourceSummary = string.IsNullOrWhiteSpace(_bitmapNumberSourcePath)
-                ? "bitmap=unresolved"
-                : $"bitmap={_bitmapNumberSourcePath}";
-            return $"Cookie House map={_mapId}, point={_point}, grade={_gradeIndex + 1}/{GradeCount}, {backgroundSourceSummary}, {digitSourceSummary}";
+            return $"Cookie House map={_mapId}, point={_point}, grade={_gradeIndex + 1}/{GradeCount}, thresholds=placeholder, {DescribeBackgroundSource()}, {DescribeBitmapSource()}";
         }
 
         public void Draw(SpriteBatch spriteBatch, Texture2D pixelTexture, SpriteFont font, int centerX)
@@ -192,14 +192,16 @@ namespace HaCreator.MapSimulator.Fields
 
             WzImageProperty background = null;
             _backgroundSourcePath = null;
+            _usesFallbackBackgroundSource = false;
             foreach (string imageName in PreferredUiWindowImages)
             {
                 WzImage uiWindow = global::HaCreator.Program.FindImage("UI", imageName);
-                WzImageProperty candidate = ResolvePropertyPath(uiWindow, PreferredBackgroundPath);
+                WzImageProperty candidate = ResolvePropertyPath(uiWindow, FallbackBackgroundPath);
                 if (candidate != null)
                 {
                     background = candidate;
-                    _backgroundSourcePath = $"UI/{imageName}/{PreferredBackgroundPath}";
+                    _backgroundSourcePath = $"UI/{imageName}/{FallbackBackgroundPath}";
+                    _usesFallbackBackgroundSource = true;
                     break;
                 }
             }
@@ -231,6 +233,7 @@ namespace HaCreator.MapSimulator.Fields
             }
 
             _bitmapNumberSourcePath = null;
+            _usesFallbackBitmapSource = false;
             foreach (string imageName in PreferredUiWindowImages)
             {
                 WzImage image = global::HaCreator.Program.FindImage("UI", imageName);
@@ -247,6 +250,7 @@ namespace HaCreator.MapSimulator.Fields
                         && TryLoadBitmapNumberStyles(sourceRoot))
                     {
                         _bitmapNumberSourcePath = sourcePath;
+                        _usesFallbackBitmapSource = true;
                         return;
                     }
                 }
@@ -256,6 +260,7 @@ namespace HaCreator.MapSimulator.Fields
                     && TryLoadBitmapNumberStyles(fallbackRoot))
                 {
                     _bitmapNumberSourcePath = fallbackPath;
+                    _usesFallbackBitmapSource = true;
                     return;
                 }
             }
@@ -556,23 +561,9 @@ namespace HaCreator.MapSimulator.Fields
 
         private static WzImageProperty ResolveCookieDigitContainer(WzImageProperty styleRoot)
         {
-            if (styleRoot == null)
-            {
-                return null;
-            }
-
-            if (HasDigitRange(styleRoot))
-            {
-                return styleRoot;
-            }
-
-            WzImageProperty numberChild = styleRoot["number"];
-            if (HasDigitRange(numberChild))
-            {
-                return numberChild;
-            }
-
-            return null;
+            return HasDigitRange(styleRoot)
+                ? styleRoot
+                : null;
         }
 
         private static WzCanvasProperty ResolveNamedCanvas(WzImageProperty property, IEnumerable<string> names)
@@ -738,6 +729,37 @@ namespace HaCreator.MapSimulator.Fields
             }
 
             return score;
+        }
+
+        private string DescribeBackgroundSource()
+        {
+            if (string.IsNullOrWhiteSpace(_backgroundSourcePath))
+            {
+                return $"background=unresolved [client StringPool 0x{ClientBackgroundStringPoolId:X} unresolved]";
+            }
+
+            if (_usesFallbackBackgroundSource)
+            {
+                return $"background=fallback:{_backgroundSourcePath} [client StringPool 0x{ClientBackgroundStringPoolId:X} unresolved]";
+            }
+
+            return $"background={_backgroundSourcePath}";
+        }
+
+        private string DescribeBitmapSource()
+        {
+            string signIds = $"signs=0x{ClientBitmapPlusStringPoolId:X}/0x{ClientBitmapMinusStringPoolId:X}";
+            if (string.IsNullOrWhiteSpace(_bitmapNumberSourcePath))
+            {
+                return $"bitmap=unresolved [client StringPool 0x{ClientBitmapRootStringPoolId:X} unresolved, {signIds}]";
+            }
+
+            if (_usesFallbackBitmapSource)
+            {
+                return $"bitmap=fallback:{_bitmapNumberSourcePath} [client StringPool 0x{ClientBitmapRootStringPoolId:X} unresolved, {signIds}]";
+            }
+
+            return $"bitmap={_bitmapNumberSourcePath} [{signIds}]";
         }
     }
 }

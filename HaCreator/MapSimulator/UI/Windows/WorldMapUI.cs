@@ -16,7 +16,8 @@ namespace HaCreator.MapSimulator.UI
         {
             Field,
             Npc,
-            Mob
+            Mob,
+            Item
         }
 
         public sealed class MapEntry
@@ -754,11 +755,12 @@ namespace HaCreator.MapSimulator.UI
             int fieldCount = resolvedResults.Count(entry => entry.Kind == SearchResultKind.Field);
             int npcCount = resolvedResults.Count(entry => entry.Kind == SearchResultKind.Npc);
             int mobCount = resolvedResults.Count(entry => entry.Kind == SearchResultKind.Mob);
+            int itemCount = resolvedResults.Count(entry => entry.Kind == SearchResultKind.Item);
             string filterText = _searchFilterMode == SearchFilterMode.MobOnly ? "Mob-only filter active." : "All live result families are visible.";
             string queryText = string.IsNullOrWhiteSpace(_searchQuery)
                 ? "Type a field, NPC, mob, or map id query."
                 : $"Query: {_searchQuery}";
-            return $"Current field search surface.\nFields: {fieldCount}  NPCs: {npcCount}  Mobs: {mobCount}\n{filterText}\n{queryText}\nClick a result row to focus its map, then click again to queue transfer.";
+            return $"Current field search surface.\nFields: {fieldCount}  NPCs: {npcCount}  Mobs: {mobCount}  Quest items: {itemCount}\n{filterText}\n{queryText}\nClick a result row to focus its map, then click again to queue transfer.";
         }
 
         private int GetMaxPageIndex()
@@ -992,6 +994,7 @@ namespace HaCreator.MapSimulator.UI
                 SearchResultKind.Field => _resultFieldHoverTexture,
                 SearchResultKind.Npc => _resultNpcHoverTexture,
                 SearchResultKind.Mob => _resultMobHoverTexture,
+                SearchResultKind.Item => _resultFieldHoverTexture ?? _resultNpcHoverTexture,
                 _ => null
             };
         }
@@ -1003,6 +1006,7 @@ namespace HaCreator.MapSimulator.UI
                 SearchResultKind.Field => _resultFieldIconTexture,
                 SearchResultKind.Npc => _resultNpcIconTexture,
                 SearchResultKind.Mob => _resultMobIconTexture,
+                SearchResultKind.Item => _resultNpcIconTexture ?? _resultFieldIconTexture,
                 _ => null
             };
         }

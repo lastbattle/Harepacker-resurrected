@@ -648,7 +648,7 @@ namespace HaCreator.MapSimulator.Character
             DropPickupAttemptResult result = dropPool.TryPickupClosestDetailed(
                 _player.X,
                 _player.Y,
-                0,
+                _player.Build?.Id ?? 0,
                 currentTime,
                 pickupRange,
                 EvaluatePickupAvailability);

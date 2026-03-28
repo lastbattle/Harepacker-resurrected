@@ -1,6 +1,7 @@
 using MapleLib.WzLib.WzStructure;
 using MapleLib.WzLib.WzStructure.Data;
 using MapleLib.WzLib.WzStructure.Data.ItemStructure;
+using MapleLib.WzLib.WzProperties;
 using System;
 using System.Collections.Generic;
 using System.Globalization;
@@ -26,6 +27,7 @@ namespace HaCreator.MapSimulator.Fields
         private readonly bool _partyOnly;
         private readonly bool _expeditionOnly;
         private readonly int _consumeItemCoolTimeSeconds;
+        private readonly List<string> _entryScripts;
         private readonly Func<int, bool> _hasItem;
 
         private readonly HashSet<int> _announcedThresholds = new HashSet<int>();
@@ -50,6 +52,7 @@ namespace HaCreator.MapSimulator.Fields
             _partyOnly = mapInfo?.partyOnly == true;
             _expeditionOnly = mapInfo?.expeditionOnly == true;
             _consumeItemCoolTimeSeconds = Math.Max(0, mapInfo?.consumeItemCoolTime ?? 0);
+            _entryScripts = CollectEntryScripts(mapInfo);
             _hasItem = hasItem;
         }
 
@@ -66,6 +69,7 @@ namespace HaCreator.MapSimulator.Fields
             _moveLimit.HasValue ||
             _partyOnly ||
             _expeditionOnly ||
+            _entryScripts.Count > 0 ||
             _consumeItemCoolTimeSeconds > 0;
 
         public IReadOnlyList<string> Reset(int currentTimeMs)
@@ -248,7 +252,23 @@ namespace HaCreator.MapSimulator.Fields
                 messages.Add(partialRestrictionNotice);
             }
 
+            string fieldScriptNotice = BuildFieldScriptNotice();
+            if (!string.IsNullOrWhiteSpace(fieldScriptNotice))
+            {
+                messages.Add(fieldScriptNotice);
+            }
+
             return messages;
+        }
+
+        private string BuildFieldScriptNotice()
+        {
+            if (_entryScripts.Count == 0)
+            {
+                return null;
+            }
+
+            return $"Field scripts detected but not executed by the simulator: {string.Join(", ", _entryScripts)}.";
         }
 
         private string BuildPartialRestrictionNotice()
@@ -324,6 +344,41 @@ namespace HaCreator.MapSimulator.Fields
             List<int> ids = itemIds.Take(4).ToList();
             string suffix = itemIds.Skip(4).Any() ? ", ..." : string.Empty;
             return string.Join(", ", ids) + suffix;
+        }
+
+        private static List<string> CollectEntryScripts(MapInfo mapInfo)
+        {
+            var scripts = new List<string>();
+            var seenScripts = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+            AddScriptIfPresent(scripts, seenScripts, "onUserEnter", mapInfo?.onUserEnter);
+            AddScriptIfPresent(scripts, seenScripts, "onFirstUserEnter", mapInfo?.onFirstUserEnter);
+
+            string fieldScript = (mapInfo?.Image?["info"]?["fieldScript"] as WzStringProperty)?.Value;
+            AddScriptIfPresent(scripts, seenScripts, "fieldScript", fieldScript);
+
+            return scripts;
+        }
+
+        private static void AddScriptIfPresent(
+            ICollection<string> scripts,
+            ISet<string> seenScripts,
+            string sourceName,
+            string scriptName)
+        {
+            if (string.IsNullOrWhiteSpace(scriptName))
+            {
+                return;
+            }
+
+            string normalizedScript = scriptName.Trim();
+            string dedupeKey = string.Concat(sourceName, ":", normalizedScript);
+            if (!seenScripts.Add(dedupeKey))
+            {
+                return;
+            }
+
+            scripts.Add($"{sourceName}={normalizedScript}");
         }
 
         private bool HasProtectItemEquipped()

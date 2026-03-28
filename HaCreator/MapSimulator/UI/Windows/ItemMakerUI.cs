@@ -43,6 +43,7 @@ namespace HaCreator.MapSimulator.UI
             public int BucketKey { get; init; }
             public int CategoryKey { get; init; }
             public ItemMakerRecipeFamily Family { get; init; }
+            public bool IsHidden { get; init; }
             public string CategoryLabel { get; init; }
             public string Title { get; init; }
             public string Description { get; init; }
@@ -95,6 +96,7 @@ namespace HaCreator.MapSimulator.UI
         private const int CraftDurationMs = 1400;
         private const int VisibleRecipeCount = 6;
         private const int AllCategoryKey = -1;
+        private const int HiddenCategoryKey = 999;
         private static readonly int[] ClientRecipeBuckets = { 0, 1, 2, 4, 8, 16 };
 
         private readonly List<BackgroundLayer> _backgroundLayers = new();
@@ -432,6 +434,15 @@ namespace HaCreator.MapSimulator.UI
             string masteryText = BuildMasteryDisplayText(selectedRecipe);
             sprite.DrawString(_font, masteryText, new Vector2(detailOrigin.X, y), new Color(153, 210, 255));
             y += 18;
+
+            if (selectedRecipe.IsHidden)
+            {
+                string hiddenText = selectedRecipe.RequiredItemId > 0
+                    ? $"Hidden recipe unlocked by {GetItemName(selectedRecipe.RequiredItemId)}."
+                    : "Hidden recipe entry.";
+                sprite.DrawString(_font, hiddenText, new Vector2(detailOrigin.X, y), new Color(214, 196, 255));
+                y += 18;
+            }
 
             if (selectedRecipe.RequiredLevel > 0 || selectedRecipe.RequiredSkillLevel > 0)
             {
@@ -1332,12 +1343,15 @@ namespace HaCreator.MapSimulator.UI
             int categoryKey = GetCategoryKey(outputItemId);
             bool usesRandomReward = randomRewards.Count > 0;
             int outputQuantity = (recipeData["itemNum"] as WzIntProperty)?.Value ?? 1;
+            int requiredItemId = Math.Max(0, (recipeData["reqItem"] as WzIntProperty)?.Value ?? 0);
+            bool isHidden = ((recipeData["hide"] as WzIntProperty)?.Value ?? 0) != 0 || requiredItemId > 0;
 
             return new ItemMakerRecipe
             {
                 BucketKey = bucketKey,
                 CategoryKey = categoryKey,
                 Family = ResolveRecipeFamily(outputItemId, categoryKey, ResolveInventoryType(outputItemId), GetItemName(outputItemId)),
+                IsHidden = isHidden,
                 CategoryLabel = ResolveCategoryLabel(categoryKey, outputItemId),
                 Title = GetItemName(outputItemId),
                 Description = CreateRecipeDescription(outputItemId, usesRandomReward),
@@ -1346,7 +1360,7 @@ namespace HaCreator.MapSimulator.UI
                 OutputQuantity = Math.Max(1, outputQuantity),
                 RequiredLevel = (recipeData["reqLevel"] as WzIntProperty)?.Value ?? 0,
                 RequiredSkillLevel = (recipeData["reqSkillLevel"] as WzIntProperty)?.Value ?? 0,
-                RequiredItemId = Math.Max(0, (recipeData["reqItem"] as WzIntProperty)?.Value ?? 0),
+                RequiredItemId = requiredItemId,
                 RequiredEquipItemId = Math.Max(0, (recipeData["reqEquip"] as WzIntProperty)?.Value ?? 0),
                 MesoCost = Math.Max(0, (recipeData["meso"] as WzIntProperty)?.Value ?? 0),
                 CatalystItemId = Math.Max(0, (recipeData["catalyst"] as WzIntProperty)?.Value ?? 0),
@@ -1400,6 +1414,7 @@ namespace HaCreator.MapSimulator.UI
         {
             return categoryKey switch
             {
+                HiddenCategoryKey => 995,
                 426 => 20,
                 425 => 30,
                 200 => 500,
@@ -1469,20 +1484,29 @@ namespace HaCreator.MapSimulator.UI
                 .ToList();
 
             List<ItemMakerRecipe> launchFilteredRecipes = ApplyLaunchFilter(visibleRecipes);
+            List<ItemMakerRecipe> normalRecipes = launchFilteredRecipes
+                .Where(recipe => !recipe.IsHidden)
+                .ToList();
+            List<ItemMakerRecipe> hiddenRecipes = launchFilteredRecipes
+                .Where(recipe => recipe.IsHidden)
+                .ToList();
 
             _pages.Clear();
-            if (launchFilteredRecipes.Count > 0)
+            if (normalRecipes.Count > 0 || hiddenRecipes.Count > 0)
             {
-                AddPage(AllCategoryKey, -1000, "All", launchFilteredRecipes);
+                if (normalRecipes.Count > 0)
+                {
+                    AddPage(AllCategoryKey, -1000, "All", normalRecipes);
+                }
 
-                Dictionary<int, List<ItemMakerRecipe>> groupedRecipes = launchFilteredRecipes
+                Dictionary<int, List<ItemMakerRecipe>> groupedRecipes = normalRecipes
                     .GroupBy(recipe => recipe.CategoryKey)
                     .ToDictionary(group => group.Key, group => group.ToList());
 
                 AddCategoryPageIfPresent(groupedRecipes, 426, -900, "Gem");
                 AddCategoryPageIfPresent(groupedRecipes, 425, -890, "Monster Crystal");
 
-                foreach (IGrouping<int, ItemMakerRecipe> group in launchFilteredRecipes
+                foreach (IGrouping<int, ItemMakerRecipe> group in normalRecipes
                              .Where(recipe => recipe.CategoryKey is not 200 and not 300 and not 400 and not 425 and not 426)
                              .GroupBy(recipe => recipe.CategoryKey)
                              .OrderBy(group => GetCategorySortOrder(group.Key))
@@ -1494,6 +1518,11 @@ namespace HaCreator.MapSimulator.UI
                 AddCategoryPageIfPresent(groupedRecipes, 200, 900, "Use");
                 AddCategoryPageIfPresent(groupedRecipes, 300, 910, "Setup");
                 AddCategoryPageIfPresent(groupedRecipes, 400, 920, "Etc");
+
+                if (hiddenRecipes.Count > 0)
+                {
+                    AddPage(HiddenCategoryKey, GetCategorySortOrder(HiddenCategoryKey), "???", hiddenRecipes);
+                }
             }
 
             if (_pages.Count == 0)

@@ -62,8 +62,8 @@ namespace HaCreator.MapSimulator.UI
         private const int SP_UP_BUTTON_Y_OFFSET = 1;
         private const int SP_UP_BUTTON_FALLBACK_WIDTH = 18;
         private const int SP_UP_BUTTON_FALLBACK_HEIGHT = 18;
-        private const int SKILL_NAME_MAX_WIDTH = 78;
-        private const int SKILL_LEVEL_MAX_WIDTH = 74;
+        private const int SKILL_NAME_MAX_WIDTH = 95;
+        private const int SKILL_LEVEL_MAX_WIDTH = 30;
         private const float SKILL_NAME_TEXT_SCALE = 0.38f;
         private const float SKILL_LEVEL_TEXT_SCALE = 0.34f;
 
@@ -820,7 +820,7 @@ namespace HaCreator.MapSimulator.UI
             }
 
             bool isUnlearned = skill.CurrentLevel <= 0;
-            Texture2D icon = skill.GetIconForState(isUnlearned, isHovered && !isUnlearned);
+            Texture2D icon = skill.GetIconForState(isUnlearned, canLevelUp && isHovered);
             int iconX = windowX + ICON_X;
             int iconY = windowY + nTop + ICON_Y_OFFSET;
 
@@ -854,14 +854,26 @@ namespace HaCreator.MapSimulator.UI
                     Color.Black,
                     SKILL_NAME_TEXT_SCALE);
 
-                string levelText = FitTextToWidth($"Lv. {skill.CurrentLevel}", SKILL_LEVEL_MAX_WIDTH, SKILL_LEVEL_TEXT_SCALE);
-                Color levelColor = canLevelUp ? new Color(0, 102, 255) : Color.Black;
+                int bonusLevel = Math.Max(0, skill.BonusLevel);
+                int displayLevel = Math.Max(0, skill.CurrentLevel) + bonusLevel;
+                string levelText = FitTextToWidth(displayLevel.ToString(), SKILL_LEVEL_MAX_WIDTH, SKILL_LEVEL_TEXT_SCALE);
                 DrawSkillBookText(
                     sprite,
                     levelText,
                     new Vector2(windowX + LEVEL_X, windowY + nTop + LEVEL_Y_OFFSET),
-                    levelColor,
+                    bonusLevel > 0 ? new Color(0, 102, 255) : Color.Black,
                     SKILL_LEVEL_TEXT_SCALE);
+
+                if (bonusLevel > 0)
+                {
+                    string bonusText = FitTextToWidth($"(+{bonusLevel})", SKILL_LEVEL_MAX_WIDTH, SKILL_LEVEL_TEXT_SCALE);
+                    DrawSkillBookText(
+                        sprite,
+                        bonusText,
+                        new Vector2(windowX + BONUS_X, windowY + nTop + LEVEL_Y_OFFSET),
+                        new Color(0, 102, 255),
+                        SKILL_LEVEL_TEXT_SCALE);
+                }
             }
 
             if (skill.CurrentLevel < skill.MaxLevel)
@@ -1542,7 +1554,7 @@ namespace HaCreator.MapSimulator.UI
 
             jobName = SanitizeFontText(jobName);
             float width = MeasureSkillBookText(jobName, BOOK_NAME_TEXT_SCALE).X;
-            if (width <= BOOK_NAME_MAX_WIDTH)
+            if (width < BOOK_NAME_MAX_WIDTH)
             {
                 DrawSkillBookText(
                     sprite,
@@ -1602,7 +1614,7 @@ namespace HaCreator.MapSimulator.UI
             while (splitIndex > 0 && splitIndex < jobName.Length - 1)
             {
                 string candidateSecondLine = jobName.Substring(splitIndex + 1);
-                if (_font.MeasureString(candidateSecondLine).X <= BOOK_NAME_MAX_WIDTH)
+                if (MeasureSkillBookText(candidateSecondLine, BOOK_NAME_TEXT_SCALE).X < BOOK_NAME_MAX_WIDTH)
                     break;
 
                 int nextSplit = jobName.IndexOf(' ', splitIndex + 1);

@@ -127,6 +127,10 @@ namespace HaCreator.MapSimulator.Character
             public string ActionName { get; init; }
             public MeleeAfterImageAction AfterImageAction { get; init; }
             public int AnimationStartTime { get; set; }
+            public bool FacingRight { get; init; }
+            public int ActionDuration { get; init; }
+            public int FadeDuration { get; init; }
+            public int FadeStartTime { get; set; } = -1;
         }
 
         private sealed class ShadowPartnerState
@@ -158,6 +162,7 @@ namespace HaCreator.MapSimulator.Character
 
         #region Constants
 
+        private const int MinimumMeleeAfterImageFadeDurationMs = 60;
         // ============================================================
         // Physics constants loaded from Map.wz/Physics.img at runtime
         // See PhysicsConstants.cs for the loader
@@ -170,6 +175,7 @@ namespace HaCreator.MapSimulator.Character
 
         // GM Fly Mode - not in Physics.img, hardcoded for convenience
         private const float GM_FLY_SPEED = 400f; // pixels per second - fast flying for map exploration
+        private const int MechanicTamingMobItemId = 1932016;
 
         // Hitboxes - Y position is now at feet, so hitbox extends upward from feet
         private const int HITBOX_WIDTH = 30;
@@ -192,7 +198,8 @@ namespace HaCreator.MapSimulator.Character
 
         // Float idle should ignore the tiny passive sink applied by swim physics.
         private const float FLOAT_ANIMATION_MOVEMENT_THRESHOLD = 20f;
-        private static readonly Color ShadowPartnerTint = new(255, 255, 255, 168);
+        // CActionMan action metadata uses 150 as the default alpha for composed character pieces.
+        private static readonly Color ShadowPartnerTint = new(255, 255, 255, 150);
 
         #endregion
 
@@ -268,6 +275,9 @@ namespace HaCreator.MapSimulator.Character
         private int _hitExpressionEndTime;
         private int _nextPortableChairRecoveryTime = int.MaxValue;
         private CharacterPart _observedTamingMobPart;
+        private CharacterPart _transitionTamingMobOverridePart;
+        private CharacterPart _stateDrivenTamingMobOverridePart;
+        private CharacterPart _sharedMechanicTamingMobPart;
         private bool _suppressAutomaticTamingMobTransition;
         private readonly Dictionary<PlayerSkillBlockingStatus, PlayerSkillBlockingStatusState> _activeSkillBlockingStatuses = new();
 
@@ -311,6 +321,7 @@ namespace HaCreator.MapSimulator.Character
         private Func<float, float, float, FootholdLine> _findFoothold;
         private Func<float, float, float, (int x, int top, int bottom, bool isLadder)?> _findLadder;
         private Func<float, float, float, bool> _checkSwimArea;
+        private Func<int, CharacterPart> _tamingMobLoader;
         private Func<int, CharacterPart> _portableChairTamingMobLoader;
         private Func<int, CharacterPart> _skillMorphLoader;
         private CharacterPart _portableChairPreviousMount;
@@ -394,6 +405,12 @@ namespace HaCreator.MapSimulator.Character
         public void SetPortableChairTamingMobLoader(Func<int, CharacterPart> loader)
         {
             _portableChairTamingMobLoader = loader;
+        }
+
+        public void SetTamingMobLoader(Func<int, CharacterPart> loader)
+        {
+            _tamingMobLoader = loader;
+            _sharedMechanicTamingMobPart = null;
         }
 
         public void SetSkillMorphLoader(Func<int, CharacterPart> loader)
@@ -613,6 +630,7 @@ namespace HaCreator.MapSimulator.Character
             {
                 UpdateGmFlyMode(deltaTime);
                 UpdateAnimation(currentTime);
+                UpdateOwnedTamingMobRenderState();
                 UpdateShadowPartnerRenderState(currentTime);
                 UpdateAvatarEffects(currentTime);
                 UpdateFaceExpression(currentTime);
@@ -653,6 +671,7 @@ namespace HaCreator.MapSimulator.Character
 
             // Update animation
             UpdateAnimation(currentTime);
+            UpdateOwnedTamingMobRenderState();
             UpdateShadowPartnerRenderState(currentTime);
             UpdateAvatarEffects(currentTime);
             UpdateFaceExpression(currentTime);
@@ -1914,8 +1933,8 @@ namespace HaCreator.MapSimulator.Character
                 Animation = animation,
                 SecondaryAnimation = secondaryAnimation,
                 AnimationStartTime = currentTime,
-                Plane = SkillAvatarEffectPlane.UnderFace,
-                SecondaryPlane = SkillAvatarEffectPlane.UnderFace
+                Plane = ResolveTransientSkillAvatarEffectPlane(animation),
+                SecondaryPlane = ResolveTransientSkillAvatarEffectPlane(secondaryAnimation)
             });
             return true;
         }
@@ -2642,7 +2661,8 @@ namespace HaCreator.MapSimulator.Character
         {
             if (_portableChairPairAssembler == null
                 || string.IsNullOrWhiteSpace(_portableChairPairActionName)
-                || Build?.ActivePortableChair?.IsCoupleChair != true)
+                || Build?.ActivePortableChair?.IsCoupleChair != true
+                || !ShouldDrawPortableChairPairPreview())
             {
                 return;
             }
@@ -2676,7 +2696,8 @@ namespace HaCreator.MapSimulator.Character
             if (_portableChairPairAssembler == null
                 || chair?.IsCoupleChair != true
                 || chair.CoupleMidpointLayers == null
-                || chair.CoupleMidpointLayers.Count == 0)
+                || chair.CoupleMidpointLayers.Count == 0
+                || !ShouldDrawPortableChairPairPreview())
             {
                 return;
             }
@@ -3369,6 +3390,11 @@ namespace HaCreator.MapSimulator.Character
             _portableChairPairActionName = GetPortableChairActionName(chair);
         }
 
+        private bool ShouldDrawPortableChairPairPreview()
+        {
+            return IsPortableChairPairPlacementValid(Build?.ActivePortableChair, FacingRight, X, Y, _findFoothold);
+        }
+
         private void ClearPortableChairPairPreview()
         {
             _portableChairPairAssembler = null;
@@ -3388,6 +3414,37 @@ namespace HaCreator.MapSimulator.Character
             int distanceY = chair.CoupleDistanceY ?? 0;
             int directionSign = ResolvePortableChairPairDirectionSign(chair, facingRight);
             return new Point(directionSign * distanceX, distanceY);
+        }
+
+        internal static bool IsPortableChairPairPlacementValid(
+            PortableChair chair,
+            bool facingRight,
+            float originX,
+            float originY,
+            Func<float, float, float, FootholdLine> findFoothold)
+        {
+            if (chair?.IsCoupleChair != true)
+            {
+                return false;
+            }
+
+            if (chair.CoupleMaxDiff is not int maxDiff || maxDiff < 0 || findFoothold == null)
+            {
+                return true;
+            }
+
+            Point offset = ResolvePortableChairPairOffset(chair, facingRight);
+            float partnerX = originX + offset.X;
+            float partnerY = originY + offset.Y;
+            float searchRange = Math.Max(8f, Math.Abs(offset.Y) + maxDiff + 4f);
+            FootholdLine foothold = findFoothold(partnerX, partnerY, searchRange);
+            if (foothold == null)
+            {
+                return false;
+            }
+
+            float footholdY = CalculateYOnFoothold(foothold, partnerX);
+            return Math.Abs(footholdY - partnerY) <= maxDiff;
         }
 
         internal static bool ResolvePortableChairPairFacingRight(bool facingRight)
@@ -3423,6 +3480,26 @@ namespace HaCreator.MapSimulator.Character
                 1 => facingRight ? -1 : 1,
                 _ => facingRight ? 1 : -1
             };
+        }
+
+        private static float CalculateYOnFoothold(FootholdLine foothold, float x)
+        {
+            if (foothold == null)
+            {
+                return float.NaN;
+            }
+
+            float x1 = foothold.FirstDot.X;
+            float y1 = foothold.FirstDot.Y;
+            float x2 = foothold.SecondDot.X;
+            float y2 = foothold.SecondDot.Y;
+            if (Math.Abs(x2 - x1) < 0.001f)
+            {
+                return Math.Min(y1, y2);
+            }
+
+            float t = (x - x1) / (x2 - x1);
+            return y1 + ((y2 - y1) * t);
         }
 
         private static string GetPortableChairActionName(PortableChair chair)
@@ -3492,6 +3569,13 @@ namespace HaCreator.MapSimulator.Character
         public void ClearAllTransientSkillAvatarEffects()
         {
             _transientSkillAvatarEffects.Clear();
+        }
+
+        private static SkillAvatarEffectPlane ResolveTransientSkillAvatarEffectPlane(SkillAnimation animation)
+        {
+            return animation?.ZOrder < 0
+                ? SkillAvatarEffectPlane.UnderFace
+                : SkillAvatarEffectPlane.OverCharacter;
         }
 
         private static void AddAvatarEffectRenderable(
@@ -3681,10 +3765,98 @@ namespace HaCreator.MapSimulator.Character
 
         private void SetTransientTamingMobOverride(CharacterPart mountPart)
         {
-            if (Assembler != null)
+            _transitionTamingMobOverridePart = mountPart?.Slot == EquipSlot.TamingMob ? mountPart : null;
+            UpdateAssemblerTamingMobOverride();
+        }
+
+        private void SetStateDrivenTamingMobOverride(CharacterPart mountPart)
+        {
+            _stateDrivenTamingMobOverridePart = mountPart?.Slot == EquipSlot.TamingMob ? mountPart : null;
+            UpdateAssemblerTamingMobOverride();
+        }
+
+        private void UpdateAssemblerTamingMobOverride()
+        {
+            if (Assembler == null)
             {
-                Assembler.OverrideTamingMobPart = mountPart?.Slot == EquipSlot.TamingMob ? mountPart : null;
+                return;
             }
+
+            CharacterPart overridePart = _transitionTamingMobOverridePart?.Slot == EquipSlot.TamingMob
+                ? _transitionTamingMobOverridePart
+                : _stateDrivenTamingMobOverridePart?.Slot == EquipSlot.TamingMob
+                    ? _stateDrivenTamingMobOverridePart
+                    : null;
+            Assembler.OverrideTamingMobPart = overridePart;
+        }
+
+        private void UpdateOwnedTamingMobRenderState()
+        {
+            if (Assembler == null)
+            {
+                return;
+            }
+
+            if (_portableChairAppliedMount || Build?.ActivePortableChair != null)
+            {
+                SetStateDrivenTamingMobOverride(null);
+                return;
+            }
+
+            CharacterPart equippedMount = GetEquippedTamingMobPart();
+            if (equippedMount?.Slot == EquipSlot.TamingMob)
+            {
+                SetStateDrivenTamingMobOverride(null);
+                return;
+            }
+
+            if (!IsStateDrivenMechanicVehicleAction(CurrentActionName))
+            {
+                SetStateDrivenTamingMobOverride(null);
+                return;
+            }
+
+            CharacterPart mechanicMountPart = ResolveMechanicVehicleTamingMobPart();
+            if (CharacterAssembler.IsTamingMobRenderOwnershipAction(mechanicMountPart, CurrentActionName))
+            {
+                SetStateDrivenTamingMobOverride(mechanicMountPart);
+                return;
+            }
+
+            SetStateDrivenTamingMobOverride(null);
+        }
+
+        private CharacterPart ResolveMechanicVehicleTamingMobPart()
+        {
+            CharacterPart equippedMount = GetEquippedTamingMobPart();
+            if (IsMechanicTamingMobPart(equippedMount))
+            {
+                return equippedMount;
+            }
+
+            if (IsMechanicTamingMobPart(_transitionTamingMobOverridePart))
+            {
+                return _transitionTamingMobOverridePart;
+            }
+
+            if (IsMechanicTamingMobPart(_observedTamingMobPart))
+            {
+                return _observedTamingMobPart;
+            }
+
+            if (IsMechanicTamingMobPart(_sharedMechanicTamingMobPart))
+            {
+                return _sharedMechanicTamingMobPart;
+            }
+
+            CharacterPart loadedMount = _tamingMobLoader?.Invoke(MechanicTamingMobItemId);
+            if (IsMechanicTamingMobPart(loadedMount))
+            {
+                _sharedMechanicTamingMobPart = loadedMount;
+                return loadedMount;
+            }
+
+            return null;
         }
 
         private static bool SupportsTamingMobTransitionAction(CharacterPart mountPart, string actionName)
@@ -3697,6 +3869,35 @@ namespace HaCreator.MapSimulator.Character
         {
             return string.Equals(actionName, "ride2", StringComparison.OrdinalIgnoreCase)
                    || string.Equals(actionName, "getoff2", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static bool IsMechanicTamingMobPart(CharacterPart mountPart)
+        {
+            return mountPart?.Slot == EquipSlot.TamingMob
+                   && mountPart.ItemId == MechanicTamingMobItemId;
+        }
+
+        private static bool IsStateDrivenMechanicVehicleAction(string actionName)
+        {
+            if (string.IsNullOrWhiteSpace(actionName))
+            {
+                return false;
+            }
+
+            return actionName.StartsWith("tank_", StringComparison.OrdinalIgnoreCase)
+                   || actionName.StartsWith("siege_", StringComparison.OrdinalIgnoreCase)
+                   || actionName.StartsWith("flamethrower", StringComparison.OrdinalIgnoreCase)
+                   || actionName.StartsWith("rbooster", StringComparison.OrdinalIgnoreCase)
+                   || actionName.StartsWith("gatlingshot", StringComparison.OrdinalIgnoreCase)
+                   || actionName.StartsWith("drillrush", StringComparison.OrdinalIgnoreCase)
+                   || actionName.StartsWith("earthslug", StringComparison.OrdinalIgnoreCase)
+                   || actionName.StartsWith("rpunch", StringComparison.OrdinalIgnoreCase)
+                   || actionName.StartsWith("mbooster", StringComparison.OrdinalIgnoreCase)
+                   || actionName.StartsWith("msummon", StringComparison.OrdinalIgnoreCase)
+                   || actionName.StartsWith("mRush", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(actionName, "alert3", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(actionName, "herbalism_mechanic", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(actionName, "mining_mechanic", StringComparison.OrdinalIgnoreCase);
         }
 
         private static bool SameTamingMob(CharacterPart left, CharacterPart right)
@@ -3775,26 +3976,52 @@ namespace HaCreator.MapSimulator.Character
         {
             if (string.IsNullOrWhiteSpace(actionName)
                 || actionName.StartsWith("tank_", StringComparison.OrdinalIgnoreCase)
+                || actionName.StartsWith("siege_", StringComparison.OrdinalIgnoreCase)
+                || actionName.StartsWith("tank_siege", StringComparison.OrdinalIgnoreCase)
                 || GetActiveAvatarTransform() == null)
             {
                 return actionName;
             }
 
-            if (!HasTankSkillTransformPrefix())
+            string[] transformPrefixes = GetActiveSkillTransformPrefixes();
+            if (transformPrefixes.Length == 0)
             {
                 return actionName;
             }
 
-            string tankActionName = $"tank_{actionName}";
-            return HasAvatarAction(tankActionName) || HasMountedAction(tankActionName)
-                ? tankActionName
-                : actionName;
+            foreach (string prefix in transformPrefixes)
+            {
+                string prefixedActionName = $"{prefix}{actionName}";
+                if (HasAvatarAction(prefixedActionName) || HasMountedAction(prefixedActionName))
+                {
+                    return prefixedActionName;
+                }
+            }
+
+            return actionName;
         }
 
-        private bool HasTankSkillTransformPrefix()
+        private string[] GetActiveSkillTransformPrefixes()
         {
-            return EnumerateTransformActionNames(GetActiveAvatarTransform()?.StandActionNames)
-                .Any(actionName => actionName.StartsWith("tank_", StringComparison.OrdinalIgnoreCase));
+            foreach (string actionName in EnumerateTransformActionNames(GetActiveAvatarTransform()?.StandActionNames))
+            {
+                if (actionName.StartsWith("tank_siege", StringComparison.OrdinalIgnoreCase))
+                {
+                    return new[] { "tank_siege", "tank_" };
+                }
+
+                if (actionName.StartsWith("siege_", StringComparison.OrdinalIgnoreCase))
+                {
+                    return new[] { "siege_" };
+                }
+
+                if (actionName.StartsWith("tank_", StringComparison.OrdinalIgnoreCase))
+                {
+                    return new[] { "tank_" };
+                }
+            }
+
+            return Array.Empty<string>();
         }
 
         private IEnumerable<string> EnumerateTransformActionNames(params IReadOnlyList<string>[] actionGroups)
@@ -3926,6 +4153,10 @@ namespace HaCreator.MapSimulator.Character
                 case 5311002:
                     transform = CreateSingleActionTransform(skillId, "noiseWave_ing", "noiseWave");
                     return true;
+                case 5221004:
+                case 5721001:
+                    transform = CreateSingleActionTransform(skillId, "rapidfire", exitActionName: null);
+                    return true;
                 case 35001001:
                     transform = CreateMechanicTransform(skillId, "flamethrower", "flamethrower", "flamethrower", "flamethrower", "flamethrower_after");
                     return true;
@@ -4011,6 +4242,12 @@ namespace HaCreator.MapSimulator.Character
                 || string.Equals(normalizedAction, "noiseWave_ing", StringComparison.OrdinalIgnoreCase))
             {
                 transform = CreateSingleActionTransform(skillId, "noiseWave_ing", "noiseWave");
+                return true;
+            }
+
+            if (string.Equals(normalizedAction, "rapidfire", StringComparison.OrdinalIgnoreCase))
+            {
+                transform = CreateSingleActionTransform(skillId, "rapidfire", exitActionName: null);
                 return true;
             }
 

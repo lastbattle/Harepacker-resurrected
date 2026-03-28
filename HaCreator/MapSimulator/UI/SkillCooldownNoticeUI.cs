@@ -18,6 +18,7 @@ namespace HaCreator.MapSimulator.UI
         private const int DisplayDurationMs = 2200;
         private const int FadeDurationMs = 260;
         private const int SlideSpeed = 480;
+        private const float SpawnSlideOffset = 18f;
         private const int TopMargin = 42;
         private const int NoticeSpacing = 6;
         private const int IconSize = 32;
@@ -112,11 +113,23 @@ namespace HaCreator.MapSimulator.UI
             {
                 while (_notices.Count >= MaxNotices)
                 {
-                    _notices.RemoveAt(0);
+                    _notices.RemoveAt(_notices.Count - 1);
                 }
 
                 existingEntry = new NoticeEntry();
-                _notices.Add(existingEntry);
+                _notices.Insert(0, existingEntry);
+                existingEntry.YOffset = -SpawnSlideOffset;
+            }
+            else
+            {
+                int existingIndex = _notices.IndexOf(existingEntry);
+                if (existingIndex > 0)
+                {
+                    _notices.RemoveAt(existingIndex);
+                    _notices.Insert(0, existingEntry);
+                }
+
+                existingEntry.YOffset = Math.Min(existingEntry.YOffset, -SpawnSlideOffset);
             }
 
             existingEntry.SkillId = skillId;
@@ -126,7 +139,6 @@ namespace HaCreator.MapSimulator.UI
             existingEntry.IconTexture = iconTexture;
             existingEntry.SpawnTime = currentTime;
             existingEntry.Alpha = 1f;
-            existingEntry.YOffset = 0f;
             existingEntry.TargetYOffset = 0f;
             existingEntry.IsExpired = false;
             ApplyLayout(existingEntry);

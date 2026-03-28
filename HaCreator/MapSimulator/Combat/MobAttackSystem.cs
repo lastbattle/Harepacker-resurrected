@@ -164,7 +164,7 @@ namespace HaCreator.MapSimulator.Combat
             float? targetX = targetInfo?.TargetX;
             float? targetY = targetInfo?.TargetY;
             if (UsesLockedTargetResolution(attack, targetInfo) &&
-                !CanQueueLockedTargetAttack(mobItem, attack, targetInfo))
+                !CanQueueLockedTargetAttack(mobItem, attack, targetInfo, currentTime))
             {
                 targetInfo = null;
             }
@@ -657,12 +657,14 @@ namespace HaCreator.MapSimulator.Combat
                 return;
             }
 
+            bool effectFlip = mobItem?.MovementInfo?.FlipX ?? false;
+
             List<IDXObject> effectFrames = mobItem.GetAttackEffectFrames(attack.AnimationName);
             bool usedEffectAsProjectile = attack.IsRanged && !attack.IsAreaOfEffect && mobItem.GetAttackProjectileFrames(attack.AnimationName) == null;
             if (effectFrames != null && effectFrames.Count > 0 && (!usedEffectAsProjectile || attack.IsAreaOfEffect))
             {
                 Vector2 groundedPosition = attack.IsAreaOfEffect ? ResolveGroundPoint(position.X, position.Y) : position;
-                animationEffects?.AddOneTime(effectFrames, groundedPosition.X, groundedPosition.Y, false, currentTime);
+                animationEffects?.AddOneTime(effectFrames, groundedPosition.X, groundedPosition.Y, effectFlip, currentTime);
             }
 
             IReadOnlyList<MobAnimationSet.AttackEffectNode> extraEffects = mobItem.GetAttackExtraEffects(attack.AnimationName);
@@ -673,7 +675,7 @@ namespace HaCreator.MapSimulator.Combat
 
             foreach (MobAnimationSet.AttackEffectNode extraEffect in extraEffects)
             {
-                ScheduleAttackEffectNode(mobItem, attack, extraEffect, position, currentTime, false);
+                ScheduleAttackEffectNode(mobItem, attack, extraEffect, position, currentTime, effectFlip);
             }
         }
 
@@ -942,7 +944,7 @@ namespace HaCreator.MapSimulator.Combat
                 right = impactPosition.X;
             }
 
-            return BuildRangePositions(left, right, spawnCount, effectNode.RandomPos || spawnCount > effectNode.Sequences.Count, baseY);
+            return BuildRangePositions(left, right, spawnCount, effectNode.RandomPos, baseY);
         }
 
         private static int ResolveTimedRangeSpawnCount(MobAnimationSet.AttackEffectNode effectNode)
@@ -1355,27 +1357,50 @@ namespace HaCreator.MapSimulator.Combat
             return ApplyMobDamage(sourceMob, attack, targetMob, currentTime);
         }
 
-        private bool CanQueueLockedTargetAttack(MobItem sourceMob, MobAttackEntry attack, MobTargetInfo targetInfo)
+        private bool CanQueueLockedTargetAttack(MobItem sourceMob, MobAttackEntry attack, MobTargetInfo targetInfo, int currentTime)
         {
             if (sourceMob == null || attack == null || targetInfo?.IsValid != true)
             {
                 return false;
             }
 
-            Rectangle admissionArea = BuildAttackAdmissionArea(sourceMob, attack);
-            if (admissionArea.IsEmpty)
+            if (!TryGetLockedTargetAdmissionSource(sourceMob, attack, out Vector2 sourcePoint))
             {
-                return true;
+                Rectangle fallbackAdmissionArea = BuildAttackAdmissionArea(sourceMob, attack);
+                if (fallbackAdmissionArea.IsEmpty)
+                {
+                    return true;
+                }
+
+                Rectangle fallbackTargetHitbox = GetTargetHitbox(targetInfo, currentTime);
+                if (!fallbackTargetHitbox.IsEmpty)
+                {
+                    return fallbackAdmissionArea.Intersects(fallbackTargetHitbox);
+                }
+
+                Point fallbackTargetPoint = new Point(
+                    (int)MathF.Round(targetInfo.TargetX),
+                    (int)MathF.Round(targetInfo.TargetY));
+                return fallbackAdmissionArea.Contains(fallbackTargetPoint);
             }
 
-            Rectangle targetHitbox = GetTargetHitbox(targetInfo);
+            Rectangle targetHitbox = GetTargetHitbox(targetInfo, currentTime);
             if (!targetHitbox.IsEmpty)
             {
-                return admissionArea.Intersects(targetHitbox);
+                Vector2 targetPoint = ResolveLockedTargetAdmissionPoint(
+                    targetHitbox,
+                    sourcePoint.Y,
+                    sourceMob.MovementInfo?.FlipX ?? true);
+
+                float distanceSquared = Vector2.DistanceSquared(sourcePoint, targetPoint);
+                float maxDistance = Math.Max(Math.Abs(attack.Range), 1) + 10f;
+                return distanceSquared <= (maxDistance * maxDistance);
             }
 
-            Point targetPoint = new Point((int)MathF.Round(targetInfo.TargetX), (int)MathF.Round(targetInfo.TargetY));
-            return admissionArea.Contains(targetPoint);
+            Vector2 fallbackPoint = new Vector2(targetInfo.TargetX, targetInfo.TargetY);
+            float fallbackDistanceSquared = Vector2.DistanceSquared(sourcePoint, fallbackPoint);
+            float fallbackMaxDistance = Math.Max(Math.Abs(attack.Range), 1) + 10f;
+            return fallbackDistanceSquared <= (fallbackMaxDistance * fallbackMaxDistance);
         }
 
         private static bool UsesLockedTargetResolution(MobAttackEntry attack, MobTargetInfo targetInfo)
@@ -1581,7 +1606,7 @@ namespace HaCreator.MapSimulator.Combat
             return null;
         }
 
-        private Rectangle GetTargetHitbox(MobTargetInfo targetInfo)
+        private Rectangle GetTargetHitbox(MobTargetInfo targetInfo, int currentTime)
         {
             if (targetInfo == null)
             {
@@ -1606,8 +1631,44 @@ namespace HaCreator.MapSimulator.Combat
 
             MobItem targetMob = _mobAccessor?.Invoke(targetInfo.TargetId);
             return targetMob?.AI != null && !targetMob.AI.IsDead
-                ? targetMob.GetBodyHitbox(Environment.TickCount)
+                ? targetMob.GetBodyHitbox(currentTime)
                 : Rectangle.Empty;
+        }
+
+        private static bool TryGetLockedTargetAdmissionSource(MobItem sourceMob, MobAttackEntry attack, out Vector2 sourcePoint)
+        {
+            sourcePoint = Vector2.Zero;
+            if (sourceMob == null || attack == null)
+            {
+                return false;
+            }
+
+            bool faceRight = sourceMob.MovementInfo?.FlipX ?? true;
+            if (attack.HasRangeBounds)
+            {
+                float originX = faceRight
+                    ? sourceMob.CurrentX + attack.RangeLeft
+                    : sourceMob.CurrentX - attack.RangeLeft;
+                float originY = sourceMob.CurrentY + attack.RangeTop;
+                sourcePoint = new Vector2(originX, originY);
+                return true;
+            }
+
+            float fallbackOffsetX = Math.Max(Math.Abs(attack.Range) * 0.5f, 12f);
+            float fallbackX = sourceMob.CurrentX + (faceRight ? fallbackOffsetX : -fallbackOffsetX);
+            float fallbackY = sourceMob.CurrentY - Math.Max(attack.AreaHeight * 0.5f, 20f);
+            sourcePoint = new Vector2(fallbackX, fallbackY);
+            return true;
+        }
+
+        private static Vector2 ResolveLockedTargetAdmissionPoint(Rectangle targetHitbox, float sourceY, bool sourceFacesRight)
+        {
+            float centerX = (targetHitbox.Left + targetHitbox.Right) * 0.5f;
+            float anchorX = sourceFacesRight
+                ? Math.Min(centerX, targetHitbox.Left + 10f)
+                : Math.Max(centerX, targetHitbox.Right - 10f);
+            float anchorY = MathHelper.Clamp(sourceY, targetHitbox.Top, targetHitbox.Bottom);
+            return new Vector2(anchorX, anchorY);
         }
 
         private static Rectangle BuildAttackAdmissionArea(MobItem mobItem, MobAttackEntry attack)

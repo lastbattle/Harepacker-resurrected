@@ -607,7 +607,19 @@ namespace HaCreator.MapSimulator
         {
             if (chatLogType < 0)
             {
-                chatLogType = InferClientChatLogType(text, color);
+                if (TryInferClientChatLogTypeFromPrefix(text, out ClientChatLogType prefixedType))
+                {
+                    chatLogType = (int)prefixedType;
+                    color = ResolveClientChatLogColor(prefixedType);
+                }
+                else
+                {
+                    chatLogType = InferClientChatLogType(text, color);
+                    if (Enum.IsDefined(typeof(ClientChatLogType), chatLogType))
+                    {
+                        color = ResolveClientChatLogColor((ClientChatLogType)chatLogType);
+                    }
+                }
             }
 
             _messages.Add(new ChatMessage(text, color, tickCount, chatLogType, whisperTargetCandidate));
@@ -1089,6 +1101,72 @@ namespace HaCreator.MapSimulator
             if (text.StartsWith("[Expedition]", StringComparison.OrdinalIgnoreCase))
             {
                 chatLogType = ClientChatLogType.Expedition;
+                return true;
+            }
+
+            if (text.StartsWith("[Whisper]", StringComparison.OrdinalIgnoreCase))
+            {
+                chatLogType = ClientChatLogType.Whisper;
+                return true;
+            }
+
+            if (text.StartsWith("[Whisper]", StringComparison.OrdinalIgnoreCase))
+            {
+                chatLogType = ClientChatLogType.Whisper;
+                return true;
+            }
+
+            if (text.StartsWith("[Whisper]", StringComparison.OrdinalIgnoreCase))
+            {
+                chatLogType = ClientChatLogType.Whisper;
+                return true;
+            }
+
+            if (text.StartsWith("[Whisper]", StringComparison.OrdinalIgnoreCase))
+            {
+                chatLogType = ClientChatLogType.Whisper;
+                return true;
+            }
+
+            if (text.StartsWith("[Whisper]", StringComparison.OrdinalIgnoreCase))
+            {
+                chatLogType = ClientChatLogType.Whisper;
+                return true;
+            }
+
+            if (text.StartsWith("[Whisper]", StringComparison.OrdinalIgnoreCase))
+            {
+                chatLogType = ClientChatLogType.Whisper;
+                return true;
+            }
+
+            if (text.StartsWith("[Whisper]", StringComparison.OrdinalIgnoreCase))
+            {
+                chatLogType = ClientChatLogType.Whisper;
+                return true;
+            }
+
+            if (text.StartsWith("[Whisper]", StringComparison.OrdinalIgnoreCase))
+            {
+                chatLogType = ClientChatLogType.Whisper;
+                return true;
+            }
+
+            if (text.StartsWith("[Whisper]", StringComparison.OrdinalIgnoreCase))
+            {
+                chatLogType = ClientChatLogType.Whisper;
+                return true;
+            }
+
+            if (text.StartsWith("[Whisper]", StringComparison.OrdinalIgnoreCase))
+            {
+                chatLogType = ClientChatLogType.Whisper;
+                return true;
+            }
+
+            if (text.StartsWith("[Whisper]", StringComparison.OrdinalIgnoreCase))
+            {
+                chatLogType = ClientChatLogType.Whisper;
                 return true;
             }
 

@@ -1448,6 +1448,28 @@ namespace HaCreator.MapSimulator.AI
             }
         }
 
+        public int ClearNegativeStatusEffects()
+        {
+            if (_statusEntries.Count == 0)
+            {
+                return 0;
+            }
+
+            int cleared = 0;
+            foreach (MobStatusEffect effect in new List<MobStatusEffect>(_statusEntries.Keys))
+            {
+                if (!IsNegativeStatusEffect(effect))
+                {
+                    continue;
+                }
+
+                RemoveStatusEffect(effect);
+                cleared++;
+            }
+
+            return cleared;
+        }
+
         /// <summary>
         /// Update status effect durations (call from Update)
         /// </summary>
@@ -1974,6 +1996,27 @@ namespace HaCreator.MapSimulator.AI
         private static int NormalizeStatusValue(MobStatusEffect effect, int value)
         {
             return IsDotEffect(effect) ? Math.Max(0, value) : value;
+        }
+
+        private static bool IsNegativeStatusEffect(MobStatusEffect effect)
+        {
+            return effect == MobStatusEffect.Stun ||
+                   effect == MobStatusEffect.Freeze ||
+                   effect == MobStatusEffect.Poison ||
+                   effect == MobStatusEffect.Seal ||
+                   effect == MobStatusEffect.Darkness ||
+                   effect == MobStatusEffect.Doom ||
+                   effect == MobStatusEffect.Web ||
+                   effect == MobStatusEffect.Ambush ||
+                   effect == MobStatusEffect.Dazzle ||
+                   effect == MobStatusEffect.Venom ||
+                   effect == MobStatusEffect.Blind ||
+                   effect == MobStatusEffect.SealSkill ||
+                   effect == MobStatusEffect.Burned ||
+                   effect == MobStatusEffect.Showdown ||
+                   effect == MobStatusEffect.Weakness ||
+                   effect == MobStatusEffect.Neutralise ||
+                   effect == MobStatusEffect.Hypnotize;
         }
 
         private static int ApplyPercentModifier(int baseValue, int percent)

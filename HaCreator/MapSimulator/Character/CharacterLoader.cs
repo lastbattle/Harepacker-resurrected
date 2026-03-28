@@ -28,6 +28,18 @@ namespace HaCreator.MapSimulator.Character
         private const int DefaultFemaleFaceId = 21000;
         private const int DefaultMaleHairId = 30000;
         private const int DefaultFemaleHairId = 31000;
+        private const int LoginStarterAvatarSelectionCount = 8;
+        private const int StarterFaceSearchSpan = 100;
+        private const int StarterHairSearchSpan = 100;
+
+        private static readonly SkinColor[] PreferredStarterSkins =
+        {
+            SkinColor.Light,
+            SkinColor.Tan,
+            SkinColor.Dark,
+            SkinColor.Pale,
+            SkinColor.Blue
+        };
 
         private readonly WzFile _characterWz;
         private readonly GraphicsDevice _device;
@@ -40,6 +52,7 @@ namespace HaCreator.MapSimulator.Character
         private readonly Dictionary<int, CharacterPart> _equipCache = new();
         private readonly Dictionary<int, CharacterPart> _morphCache = new();
         private readonly Dictionary<int, PortableChair> _portableChairCache = new();
+        private readonly Dictionary<CharacterGender, StarterAvatarRandomizationCatalog> _starterAvatarCatalogCache = new();
 
         // Standard actions to load
         private static readonly string[] StandardActions = new[]
@@ -62,6 +75,13 @@ namespace HaCreator.MapSimulator.Character
             "icon",
             "iconRaw"
         };
+
+        private sealed class StarterAvatarRandomizationCatalog
+        {
+            public IReadOnlyList<SkinColor> Skins { get; init; } = Array.Empty<SkinColor>();
+            public IReadOnlyList<int> FaceIds { get; init; } = Array.Empty<int>();
+            public IReadOnlyList<int> HairIds { get; init; } = Array.Empty<int>();
+        }
 
         public CharacterLoader(WzFile characterWz, GraphicsDevice device, TexturePool texturePool)
         {
@@ -196,7 +216,7 @@ namespace HaCreator.MapSimulator.Character
             }
 
             var loadedTemplateIds = new HashSet<int>();
-            foreach (int candidateTemplateId in EnumerateMorphTemplateCandidates(morphTemplateId))
+            foreach (int candidateTemplateId in EnumerateMorphTemplateCandidates(morphTemplateId, exactMorphImage))
             {
                 if (!loadedTemplateIds.Add(candidateTemplateId))
                 {
@@ -224,8 +244,23 @@ namespace HaCreator.MapSimulator.Character
             }
         }
 
-        private static IEnumerable<int> EnumerateMorphTemplateCandidates(int morphTemplateId)
+        private static IEnumerable<int> EnumerateMorphTemplateCandidates(int morphTemplateId, WzImage exactMorphImage)
         {
+            var seen = new HashSet<int>();
+
+            foreach (int candidate in EnumerateMorphLinkChain(morphTemplateId, exactMorphImage, seen))
+            {
+                yield return candidate;
+            }
+
+            foreach (int candidate in EnumeratePairedMorphTemplateCandidates(morphTemplateId))
+            {
+                if (seen.Add(candidate))
+                {
+                    yield return candidate;
+                }
+            }
+
             yield return morphTemplateId;
 
             int[] familyBases =
@@ -235,7 +270,6 @@ namespace HaCreator.MapSimulator.Character
                 (morphTemplateId / 1000) * 1000
             };
 
-            var seen = new HashSet<int> { morphTemplateId };
             foreach (int candidate in familyBases)
             {
                 if (candidate > 0 && seen.Add(candidate))
@@ -243,6 +277,74 @@ namespace HaCreator.MapSimulator.Character
                     yield return candidate;
                 }
             }
+        }
+
+        private static IEnumerable<int> EnumerateMorphLinkChain(int morphTemplateId, WzImage exactMorphImage, HashSet<int> seen)
+        {
+            if (morphTemplateId <= 0 || seen == null || !seen.Add(morphTemplateId))
+            {
+                yield break;
+            }
+
+            yield return morphTemplateId;
+
+            WzImage morphImage = exactMorphImage ?? Program.FindImage("Morph", morphTemplateId.ToString("D4") + ".img");
+            int linkedTemplateId = GetMorphLinkTemplateId(morphImage);
+            if (linkedTemplateId <= 0 || linkedTemplateId == morphTemplateId)
+            {
+                yield break;
+            }
+
+            foreach (int linkedCandidate in EnumerateMorphLinkChain(linkedTemplateId, exactMorphImage: null, seen))
+            {
+                yield return linkedCandidate;
+            }
+        }
+
+        private static IEnumerable<int> EnumeratePairedMorphTemplateCandidates(int morphTemplateId)
+        {
+            // v115 WZ shows paired 100x/110x morph families with matching action sets
+            // (for example 1001 <-> 1101 and 1003 <-> 1103), so prefer that sibling
+            // before the coarser id -> id0 -> id00 -> id000 truncation fallback.
+            if (morphTemplateId >= 1000 && morphTemplateId < 1200)
+            {
+                int pairedTemplateId = morphTemplateId >= 1100
+                    ? morphTemplateId - 100
+                    : morphTemplateId + 100;
+                if (pairedTemplateId > 0)
+                {
+                    yield return pairedTemplateId;
+                }
+            }
+        }
+
+        private static int GetMorphLinkTemplateId(WzImage morphImage)
+        {
+            if (morphImage == null)
+            {
+                return 0;
+            }
+
+            morphImage.ParseImage();
+
+            if (morphImage["info"] is not WzSubProperty infoNode)
+            {
+                return 0;
+            }
+
+            if (GetIntValue(infoNode["link"]) is int linkedTemplateId && linkedTemplateId > 0)
+            {
+                return linkedTemplateId;
+            }
+
+            if (GetStringValue(infoNode["link"]) is string linkedTemplateText
+                && int.TryParse(linkedTemplateText, out linkedTemplateId)
+                && linkedTemplateId > 0)
+            {
+                return linkedTemplateId;
+            }
+
+            return 0;
         }
 
         private static void MergeMissingAnimations(CharacterPart targetPart, CharacterPart sourcePart)
@@ -1207,9 +1309,13 @@ namespace HaCreator.MapSimulator.Character
             part.BonusMagicDefense = GetIntValue(info["incMDD"]) ?? 0;
             part.BonusAccuracy = GetIntValue(info["incACC"]) ?? 0;
             part.BonusAvoidability = GetIntValue(info["incEVA"]) ?? 0;
+            part.BonusHands = GetIntValue(info["incCraft"]) ?? 0;
             part.BonusSpeed = GetIntValue(info["incSpeed"]) ?? 0;
             part.BonusJump = GetIntValue(info["incJump"]) ?? 0;
             part.UpgradeSlots = GetIntValue(info["tuc"]) ?? 0;
+            part.KnockbackRate = GetIntValue(info["knockback"]) ?? 0;
+            part.TradeAvailable = GetIntValue(info["tradeAvailable"]) ?? 0;
+            part.IsTimeLimited = GetIntValue(info["timeLimited"]) == 1;
             part.MaxDurability = GetIntValue(info["durability"]);
             part.Durability = part.MaxDurability;
 
@@ -2010,9 +2116,15 @@ namespace HaCreator.MapSimulator.Character
         /// </summary>
         public CharacterBuild LoadRandom()
         {
-            var random = new Random();
-            var gender = random.Next(2) == 0 ? CharacterGender.Male : CharacterGender.Female;
-            var skin = (SkinColor)random.Next(5);
+            CharacterGender gender = Random.Shared.Next(2) == 0 ? CharacterGender.Male : CharacterGender.Female;
+            StarterAvatarRandomizationCatalog starterCatalog = GetStarterAvatarRandomizationCatalog(gender);
+            SkinColor skin = PickRandomCandidate(starterCatalog.Skins, SkinColor.Light);
+            int faceId = PickRandomCandidate(
+                starterCatalog.FaceIds,
+                gender == CharacterGender.Male ? DefaultMaleFaceId : DefaultFemaleFaceId);
+            int hairId = PickRandomCandidate(
+                starterCatalog.HairIds,
+                gender == CharacterGender.Male ? DefaultMaleHairId : DefaultFemaleHairId);
 
             return new CharacterBuild
             {
@@ -2020,10 +2132,106 @@ namespace HaCreator.MapSimulator.Character
                 Skin = skin,
                 Body = LoadBody(skin),
                 Head = LoadHead(skin),
-                Face = LoadFace(gender == CharacterGender.Male ? 20000 + random.Next(30) : 21000 + random.Next(30)),
-                Hair = LoadHair(gender == CharacterGender.Male ? 30000 + random.Next(50) : 31000 + random.Next(50)),
-                Name = "Random"
+                Face = LoadFace(faceId) ?? LoadFace(gender == CharacterGender.Male ? DefaultMaleFaceId : DefaultFemaleFaceId),
+                Hair = LoadHair(hairId) ?? LoadHair(gender == CharacterGender.Male ? DefaultMaleHairId : DefaultFemaleHairId),
+                Name = "Random",
+                Job = 0,
+                JobName = "Beginner"
             };
+        }
+
+        private StarterAvatarRandomizationCatalog GetStarterAvatarRandomizationCatalog(CharacterGender gender)
+        {
+            if (_starterAvatarCatalogCache.TryGetValue(gender, out StarterAvatarRandomizationCatalog cachedCatalog))
+            {
+                return cachedCatalog;
+            }
+
+            // v115 Login.img/NewChar and CustomizeChar/* expose eight avatar selection rows plus the dice randomizer,
+            // so the simulator limits its non-packet starter pool to the first eight loadable options per classic id family.
+            StarterAvatarRandomizationCatalog catalog = new()
+            {
+                Skins = ResolveStarterSkinCandidates(),
+                FaceIds = ResolveStarterFaceCandidates(gender),
+                HairIds = ResolveStarterHairCandidates(gender)
+            };
+
+            _starterAvatarCatalogCache[gender] = catalog;
+            return catalog;
+        }
+
+        private IReadOnlyList<SkinColor> ResolveStarterSkinCandidates()
+        {
+            List<SkinColor> skins = new();
+            foreach (SkinColor skin in PreferredStarterSkins)
+            {
+                if (LoadBody(skin) != null && LoadHead(skin) != null)
+                {
+                    skins.Add(skin);
+                }
+            }
+
+            if (skins.Count == 0)
+            {
+                skins.Add(SkinColor.Light);
+            }
+
+            return skins;
+        }
+
+        private IReadOnlyList<int> ResolveStarterFaceCandidates(CharacterGender gender)
+        {
+            int defaultFaceId = gender == CharacterGender.Male ? DefaultMaleFaceId : DefaultFemaleFaceId;
+            int startId = gender == CharacterGender.Male ? DefaultMaleFaceId : DefaultFemaleFaceId;
+            return ResolveStarterPartCandidates(
+                startId,
+                StarterFaceSearchSpan,
+                id => LoadFace(id) != null,
+                defaultFaceId);
+        }
+
+        private IReadOnlyList<int> ResolveStarterHairCandidates(CharacterGender gender)
+        {
+            int defaultHairId = gender == CharacterGender.Male ? DefaultMaleHairId : DefaultFemaleHairId;
+            int startId = gender == CharacterGender.Male ? DefaultMaleHairId : DefaultFemaleHairId;
+            return ResolveStarterPartCandidates(
+                startId,
+                StarterHairSearchSpan,
+                id => LoadHair(id) != null,
+                defaultHairId);
+        }
+
+        private static IReadOnlyList<int> ResolveStarterPartCandidates(
+            int startId,
+            int searchSpan,
+            Func<int, bool> isValidCandidate,
+            int fallbackId)
+        {
+            List<int> candidates = new(LoginStarterAvatarSelectionCount);
+            for (int id = startId; id < startId + searchSpan && candidates.Count < LoginStarterAvatarSelectionCount; id++)
+            {
+                if (isValidCandidate(id))
+                {
+                    candidates.Add(id);
+                }
+            }
+
+            if (candidates.Count == 0)
+            {
+                candidates.Add(fallbackId);
+            }
+
+            return candidates;
+        }
+
+        private static T PickRandomCandidate<T>(IReadOnlyList<T> candidates, T fallback)
+        {
+            if (candidates == null || candidates.Count == 0)
+            {
+                return fallback;
+            }
+
+            return candidates[Random.Shared.Next(candidates.Count)];
         }
 
         private CharacterBuild LoadDefaultAvatar(CharacterGender gender)
@@ -2230,6 +2438,7 @@ namespace HaCreator.MapSimulator.Character
             _faceCache.Clear();
             _hairCache.Clear();
             _equipCache.Clear();
+            _starterAvatarCatalogCache.Clear();
         }
 
         public int GetCacheCount()

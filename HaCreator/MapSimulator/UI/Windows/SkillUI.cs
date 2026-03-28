@@ -1102,6 +1102,7 @@ namespace HaCreator.MapSimulator.UI
         public string SkillName { get; set; }
         public string Description { get; set; }
         public int CurrentLevel { get; set; }
+        public int BonusLevel { get; set; }
         public int MaxLevel { get; set; }
         public int RequiredCharacterLevel { get; set; }
         public int RequiredSkillId { get; set; }
