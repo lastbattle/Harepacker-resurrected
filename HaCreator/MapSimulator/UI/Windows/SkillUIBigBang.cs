@@ -80,6 +80,15 @@ namespace HaCreator.MapSimulator.UI
         private const int TOOLTIP_SECTION_GAP = 6;
         private const int HOVER_TOOLTIP_CURSOR_GAP = 20;
         private const float COOLDOWN_TEXT_SCALE = 0.55f;
+        private const int CLIENT_TOOLTIP_WIDTH = 320;
+        private const int CLIENT_TOOLTIP_BASE_HEIGHT = 114;
+        private const int CLIENT_TOOLTIP_TITLE_X = 10;
+        private const int CLIENT_TOOLTIP_TITLE_Y = 10;
+        private const int CLIENT_TOOLTIP_ICON_X = 10;
+        private const int CLIENT_TOOLTIP_ICON_Y = 32;
+        private const int CLIENT_TOOLTIP_TEXT_X = 87;
+        private const int CLIENT_TOOLTIP_TEXT_Y = 32;
+        private const int CLIENT_TOOLTIP_RIGHT_PADDING = 20;
         private static readonly Color TOOLTIP_BACKGROUND_COLOR = new Color(28, 28, 28, 228);
         private static readonly Color TOOLTIP_BORDER_COLOR = new Color(112, 112, 112, 235);
 
@@ -1146,17 +1155,9 @@ namespace HaCreator.MapSimulator.UI
                 ? SanitizeFontText(skill.GetLevelDescription(nextLevel))
                 : string.Empty;
 
-            int tooltipWidth = ResolveHoveredTooltipWidth(
-                skillName,
-                description,
-                cooldownLine,
-                currentLevelHeader,
-                currentLevelDescription,
-                nextLevelHeader,
-                nextLevelDescription);
-            int textLeftOffset = TOOLTIP_PADDING + SKILL_ICON_SIZE + TOOLTIP_ICON_GAP;
-            float titleWidth = tooltipWidth - (TOOLTIP_PADDING * 2);
-            float sectionWidth = tooltipWidth - textLeftOffset - TOOLTIP_PADDING;
+            int tooltipWidth = ResolveHoveredTooltipWidth();
+            float titleWidth = tooltipWidth - CLIENT_TOOLTIP_TITLE_X - CLIENT_TOOLTIP_RIGHT_PADDING;
+            float sectionWidth = tooltipWidth - CLIENT_TOOLTIP_TEXT_X - CLIENT_TOOLTIP_RIGHT_PADDING;
             string[] wrappedName = WrapTooltipText(skillName, titleWidth);
             string[] wrappedDescription = WrapTooltipText(description, sectionWidth);
             string[] wrappedCooldown = WrapTooltipText(cooldownLine, sectionWidth);
@@ -1179,13 +1180,14 @@ namespace HaCreator.MapSimulator.UI
                 currentDescriptionHeight,
                 nextHeaderHeight,
                 nextDescriptionHeight);
-            float iconBlockHeight = Math.Max(SKILL_ICON_SIZE, sectionHeight);
-
-            int tooltipHeight = (int)Math.Ceiling(
-                (TOOLTIP_PADDING * 2)
-                + titleHeight
-                + TOOLTIP_TITLE_GAP
-                + iconBlockHeight);
+            float contentY = Math.Max(
+                CLIENT_TOOLTIP_TEXT_Y,
+                CLIENT_TOOLTIP_TITLE_Y + titleHeight + 2f);
+            float iconBottom = contentY + SKILL_ICON_SIZE;
+            float textBottom = contentY + sectionHeight;
+            int tooltipHeight = Math.Max(
+                CLIENT_TOOLTIP_BASE_HEIGHT,
+                (int)Math.Ceiling(Math.Max(iconBottom, textBottom) + TOOLTIP_PADDING));
 
             Point anchorPoint = new Point(_lastMousePosition.X, _lastMousePosition.Y + HOVER_TOOLTIP_CURSOR_GAP);
             Rectangle backgroundRect = ResolveHoverTooltipRect(
@@ -1196,20 +1198,20 @@ namespace HaCreator.MapSimulator.UI
                 renderHeight);
             DrawHoverTooltipBackground(sprite, backgroundRect);
 
-            int titleX = backgroundRect.X + TOOLTIP_PADDING;
-            int titleY = backgroundRect.Y + TOOLTIP_PADDING;
+            int titleX = backgroundRect.X + CLIENT_TOOLTIP_TITLE_X;
+            int titleY = backgroundRect.Y + CLIENT_TOOLTIP_TITLE_Y;
             DrawTooltipLines(sprite, wrappedName, titleX, titleY, new Color(255, 220, 120));
 
-            int contentY = backgroundRect.Y + TOOLTIP_PADDING + (int)Math.Ceiling(titleHeight) + TOOLTIP_TITLE_GAP;
-            int iconX = backgroundRect.X + TOOLTIP_PADDING;
+            int clientContentY = backgroundRect.Y + (int)Math.Ceiling(contentY);
+            int iconX = backgroundRect.X + CLIENT_TOOLTIP_ICON_X;
             Texture2D icon = skill.GetIconForState(false, true) ?? skill.IconTexture;
             if (icon != null)
             {
-                sprite.Draw(icon, new Rectangle(iconX, contentY, SKILL_ICON_SIZE, SKILL_ICON_SIZE), Color.White);
+                sprite.Draw(icon, new Rectangle(iconX, clientContentY, SKILL_ICON_SIZE, SKILL_ICON_SIZE), Color.White);
             }
 
-            int textX = backgroundRect.X + textLeftOffset;
-            float sectionY = contentY;
+            int textX = backgroundRect.X + CLIENT_TOOLTIP_TEXT_X;
+            float sectionY = clientContentY;
             if (descriptionHeight > 0f)
             {
                 DrawTooltipLines(sprite, wrappedDescription, textX, sectionY, Color.White);
@@ -1276,24 +1278,9 @@ namespace HaCreator.MapSimulator.UI
             return height;
         }
 
-        private int ResolveHoveredTooltipWidth(params string[] sections)
+        private int ResolveHoveredTooltipWidth()
         {
-            int minimumWidth = ResolveHintTooltipBaseWidth();
-            float titleWidth = MeasureTooltipTextWidth(sections.ElementAtOrDefault(0));
-            float sectionWidth = 0f;
-            for (int i = 1; i < sections.Length; i++)
-            {
-                sectionWidth = Math.Max(sectionWidth, MeasureTooltipTextWidth(sections[i]));
-            }
-
-            float desiredWidth = Math.Max(
-                (TOOLTIP_PADDING * 2) + titleWidth,
-                (TOOLTIP_PADDING * 2) + SKILL_ICON_SIZE + TOOLTIP_ICON_GAP + sectionWidth);
-
-            return Math.Clamp(
-                (int)Math.Ceiling(desiredWidth),
-                minimumWidth,
-                TOOLTIP_FALLBACK_WIDTH);
+            return CLIENT_TOOLTIP_WIDTH;
         }
 
         private int ResolveHintTooltipBaseWidth()

@@ -1,6 +1,9 @@
+using HaCreator.MapSimulator.Character;
 using HaSharedLibrary.Render;
 using HaSharedLibrary.Render.DX;
 using MapleLib.WzLib.WzStructure.Data.ItemStructure;
+using MapleLib.WzLib;
+using MapleLib.WzLib.WzProperties;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using Microsoft.Xna.Framework.Input;
@@ -8,10 +11,11 @@ using Spine;
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.Linq;
 
 namespace HaCreator.MapSimulator.UI
 {
-    public sealed class TrunkUI : UIWindowBase
+    public sealed partial class TrunkUI : UIWindowBase
     {
         private const int MaxVisibleRows = 6;
         private const int RowHeight = 35;
@@ -40,6 +44,14 @@ namespace HaCreator.MapSimulator.UI
         private const int MaxAccountSecurityLength = 16;
         private const int MinSecondaryPasswordDigits = 4;
         private const int MaxSecondaryPasswordDigits = 8;
+        private const int TooltipPadding = 10;
+        private const int TooltipIconSize = 32;
+        private const int TooltipIconGap = 8;
+        private const int TooltipOffsetX = 18;
+        private const int TooltipOffsetY = 14;
+        private const int TooltipSectionGap = 6;
+        private const int TooltipFallbackWidth = 214;
+        private const int TooltipBitmapGap = 1;
 
         private readonly IDXObject _foreground;
         private readonly Point _foregroundOffset;
@@ -69,10 +81,14 @@ namespace HaCreator.MapSimulator.UI
         private readonly UIObject _sortButton;
         private readonly UIObject _withdrawMesoButton;
         private readonly UIObject _depositMesoButton;
+        private readonly Texture2D[] _tooltipFrames = new Texture2D[3];
+        private readonly Texture2D _debugTooltipTexture;
 
         private InventoryUI _inventory;
         private IStorageRuntime _storageRuntime;
         private SpriteFont _font;
+        private EquipUIBigBang.EquipTooltipAssets _equipTooltipAssets;
+        private CharacterLoader _characterLoader;
         private UIObject _tabEquip;
         private UIObject _tabUse;
         private UIObject _tabSetup;
@@ -93,6 +109,45 @@ namespace HaCreator.MapSimulator.UI
         private string _mesoEntryPrompt = string.Empty;
         private bool _mesoEntryReplaceOnDigit;
         private string _secondaryPasswordConfirmationText = string.Empty;
+        private Point _lastMousePosition;
+        private TrunkPane _hoveredPane = TrunkPane.None;
+        private int _hoveredStorageIndex = -1;
+        private int _hoveredInventoryIndex = -1;
+
+        private readonly struct TooltipSection
+        {
+            public TooltipSection(string text, Color color)
+            {
+                Text = text;
+                Color = color;
+            }
+
+            public string Text { get; }
+            public Color Color { get; }
+        }
+
+        private readonly struct TooltipLabeledValueRow
+        {
+            public TooltipLabeledValueRow(
+                Texture2D labelTexture,
+                string fallbackLabel,
+                string valueText,
+                Color valueColor,
+                IReadOnlyList<Texture2D> valueTextures = null)
+            {
+                LabelTexture = labelTexture;
+                FallbackLabel = fallbackLabel;
+                ValueText = valueText;
+                ValueColor = valueColor;
+                ValueTextures = valueTextures;
+            }
+
+            public Texture2D LabelTexture { get; }
+            public string FallbackLabel { get; }
+            public string ValueText { get; }
+            public Color ValueColor { get; }
+            public IReadOnlyList<Texture2D> ValueTextures { get; }
+        }
 
         private enum TrunkPane
         {
@@ -140,6 +195,12 @@ namespace HaCreator.MapSimulator.UI
             _withdrawMesoButton = withdrawMesoButton;
             _depositMesoButton = depositMesoButton;
 
+            if (device != null)
+            {
+                _debugTooltipTexture = new Texture2D(device, 1, 1);
+                _debugTooltipTexture.SetData(new[] { Color.White });
+            }
+
             InitializeActionButtons(withdrawButton, depositButton, sortButton, exitButton, withdrawMesoButton, depositMesoButton);
             InitializeRowButtons(device);
             UpdateButtonStates();
@@ -170,6 +231,29 @@ namespace HaCreator.MapSimulator.UI
         public override void SetFont(SpriteFont font)
         {
             _font = font;
+        }
+
+        public void SetTooltipTextures(Texture2D[] tooltipFrames)
+        {
+            if (tooltipFrames == null)
+            {
+                return;
+            }
+
+            for (int i = 0; i < Math.Min(_tooltipFrames.Length, tooltipFrames.Length); i++)
+            {
+                _tooltipFrames[i] = tooltipFrames[i];
+            }
+        }
+
+        public void SetEquipTooltipAssets(EquipUIBigBang.EquipTooltipAssets assets)
+        {
+            _equipTooltipAssets = assets;
+        }
+
+        public void SetCharacterLoader(CharacterLoader characterLoader)
+        {
+            _characterLoader = characterLoader;
         }
 
         public void InitializeTabs(UIObject equipTab, UIObject useTab, UIObject setupTab, UIObject etcTab, UIObject cashTab)
@@ -306,6 +390,10 @@ namespace HaCreator.MapSimulator.UI
             HandleMesoEntryInput();
 
             MouseState mouseState = Mouse.GetState();
+            _lastMousePosition = new Point(mouseState.X, mouseState.Y);
+            _hoveredPane = ResolvePane(mouseState.X, mouseState.Y);
+            _hoveredStorageIndex = _hoveredPane == TrunkPane.Storage ? ResolveRowIndex(mouseState.X, mouseState.Y, true) : -1;
+            _hoveredInventoryIndex = _hoveredPane == TrunkPane.Inventory ? ResolveRowIndex(mouseState.X, mouseState.Y, false) : -1;
             int wheelDelta = mouseState.ScrollWheelValue - _previousScrollWheelValue;
             _previousScrollWheelValue = mouseState.ScrollWheelValue;
             if (wheelDelta == 0)
@@ -352,6 +440,21 @@ namespace HaCreator.MapSimulator.UI
             DrawMoneyValues(sprite);
             DrawMesoPrompt(sprite);
             DrawStatusText(sprite);
+        }
+
+        protected override void DrawOverlay(
+            SpriteBatch sprite,
+            SkeletonMeshRenderer skeletonMeshRenderer,
+            GameTime gameTime,
+            int mapShiftX,
+            int mapShiftY,
+            int centerX,
+            int centerY,
+            ReflectionDrawableBoundary drawReflectionInfo,
+            RenderParameters renderParameters,
+            int TickCount)
+        {
+            DrawHoveredSlotTooltip(sprite, renderParameters.RenderWidth, renderParameters.RenderHeight);
         }
 
         private void InitializeActionButtons(
@@ -1005,6 +1108,7 @@ namespace HaCreator.MapSimulator.UI
                 existing.ItemName ??= slotData.ItemName;
                 existing.GradeFrameIndex ??= slotData.GradeFrameIndex;
                 existing.IsActiveBullet |= slotData.IsActiveBullet;
+                existing.TooltipPart ??= slotData.TooltipPart?.Clone();
                 remainingQuantity -= quantityToMerge;
             }
 

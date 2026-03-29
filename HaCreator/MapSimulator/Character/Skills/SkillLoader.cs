@@ -280,7 +280,8 @@ namespace HaCreator.MapSimulator.Character.Skills
 
         private void ParseSkillInfo(SkillData skill, WzImageProperty skillNode)
         {
-            skill.ActionName = GetPrimaryActionName(skillNode);
+            skill.ActionNames = GetActionNames(skillNode);
+            skill.ActionName = skill.ActionNames.FirstOrDefault() ?? string.Empty;
             skill.IsPassiveSkillData = GetInt(skillNode, "psd") == 1;
             ParseFinalAttackTriggers(skill, skillNode);
 
@@ -776,44 +777,78 @@ namespace HaCreator.MapSimulator.Character.Skills
             int chargeElement,
             out MeleeAfterImageAction afterImageAction)
         {
+            return TryResolveMeleeAfterImageAction(
+                skill,
+                weapon,
+                string.IsNullOrWhiteSpace(actionName) ? null : new[] { actionName },
+                characterLevel,
+                masteryPercent,
+                chargeElement,
+                out afterImageAction);
+        }
+
+        public bool TryResolveMeleeAfterImageAction(
+            SkillData skill,
+            WeaponPart weapon,
+            IEnumerable<string> actionNames,
+            int characterLevel,
+            int masteryPercent,
+            int chargeElement,
+            out MeleeAfterImageAction afterImageAction)
+        {
             afterImageAction = null;
-            if (string.IsNullOrWhiteSpace(actionName))
+            if (actionNames == null)
             {
                 return false;
             }
 
-            if (chargeElement > 0)
+            foreach (string actionName in EnumerateDistinctActionNames(actionNames))
             {
+                if (chargeElement > 0)
+                {
+                    foreach (string weaponTypeKey in ResolveAfterImageWeaponTypeKeys(weapon))
+                    {
+                        MeleeAfterImageCatalog chargeCatalog = GetOrLoadCharacterChargeAfterImageCatalog(weaponTypeKey, chargeElement);
+                        if (TryResolveMeleeAfterImageCatalogAction(chargeCatalog, actionName, out afterImageAction))
+                        {
+                            return true;
+                        }
+                    }
+
+                    continue;
+                }
+
                 foreach (string weaponTypeKey in ResolveAfterImageWeaponTypeKeys(weapon))
                 {
-                    MeleeAfterImageCatalog chargeCatalog = GetOrLoadCharacterChargeAfterImageCatalog(weaponTypeKey, chargeElement);
-                    if (TryResolveMeleeAfterImageCatalogAction(chargeCatalog, actionName, out afterImageAction))
+                    MeleeAfterImageCatalog skillCatalog = skill?.GetAfterImageCatalogForCharacterLevel(weaponTypeKey, characterLevel);
+                    if (TryResolveMeleeAfterImageCatalogAction(skillCatalog, actionName, out afterImageAction))
+                    {
+                        return true;
+                    }
+
+                    MeleeAfterImageCatalog weaponCatalog = GetOrLoadCharacterAfterImageCatalog(
+                        weaponTypeKey,
+                        GetWeaponAfterImageMasteryIndex(masteryPercent));
+                    if (TryResolveMeleeAfterImageCatalogAction(weaponCatalog, actionName, out afterImageAction))
                     {
                         return true;
                     }
                 }
-
-                return false;
-            }
-
-            foreach (string weaponTypeKey in ResolveAfterImageWeaponTypeKeys(weapon))
-            {
-                MeleeAfterImageCatalog skillCatalog = skill?.GetAfterImageCatalogForCharacterLevel(weaponTypeKey, characterLevel);
-                if (TryResolveMeleeAfterImageCatalogAction(skillCatalog, actionName, out afterImageAction))
-                {
-                    return true;
-                }
-
-                MeleeAfterImageCatalog weaponCatalog = GetOrLoadCharacterAfterImageCatalog(
-                    weaponTypeKey,
-                    GetWeaponAfterImageMasteryIndex(masteryPercent));
-                if (TryResolveMeleeAfterImageCatalogAction(weaponCatalog, actionName, out afterImageAction))
-                {
-                    return true;
-                }
             }
 
             return false;
+        }
+
+        private static IEnumerable<string> EnumerateDistinctActionNames(IEnumerable<string> actionNames)
+        {
+            var yielded = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (string actionName in actionNames)
+            {
+                if (!string.IsNullOrWhiteSpace(actionName) && yielded.Add(actionName.Trim()))
+                {
+                    yield return actionName.Trim();
+                }
+            }
         }
 
         public MeleeAfterImageAction ApplyClientMeleeRangeOverride(
@@ -2489,16 +2524,39 @@ namespace HaCreator.MapSimulator.Character.Skills
             return true;
         }
 
-        private static string GetPrimaryActionName(WzImageProperty skillNode)
+        private static IReadOnlyList<string> GetActionNames(WzImageProperty skillNode)
         {
             var actionNode = skillNode["action"];
             if (actionNode == null)
-                return string.Empty;
+            {
+                return Array.Empty<string>();
+            }
 
-            return GetString(actionNode, "0")
-                   ?? GetString(actionNode, "action")
-                   ?? actionNode.WzProperties.Select(prop => GetPropertyStringValue(prop)).FirstOrDefault(value => !string.IsNullOrWhiteSpace(value))
-                   ?? string.Empty;
+            var actionNames = new List<string>();
+            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+            foreach (string preferredName in new[]
+            {
+                GetString(actionNode, "0"),
+                GetString(actionNode, "action")
+            })
+            {
+                if (!string.IsNullOrWhiteSpace(preferredName) && seen.Add(preferredName.Trim()))
+                {
+                    actionNames.Add(preferredName.Trim());
+                }
+            }
+
+            foreach (WzImageProperty property in actionNode.WzProperties)
+            {
+                string actionName = GetPropertyStringValue(property);
+                if (!string.IsNullOrWhiteSpace(actionName) && seen.Add(actionName.Trim()))
+                {
+                    actionNames.Add(actionName.Trim());
+                }
+            }
+
+            return actionNames;
         }
 
         private static string GetPropertyStringValue(WzImageProperty property)
@@ -2744,6 +2802,9 @@ namespace HaCreator.MapSimulator.Character.Skills
             levelData.CriticalDamageMin = PreferPrimaryStat(levelData.CriticalDamageMin, GetInt(node, "criticalDamageMin", 0, level));
             levelData.CriticalDamageMax = PreferPrimaryStat(levelData.CriticalDamageMax, GetInt(node, "criticalDamageMax", 0, level));
             levelData.DamageReductionRate = PreferPrimaryStat(levelData.DamageReductionRate, GetInt(node, "indieDamR", 0, level));
+            levelData.ExperienceRate = GetInt(node, "expR", 0, level);
+            levelData.DropRate = GetInt(node, "dropR", 0, level);
+            levelData.MesoRate = GetInt(node, "mesoR", 0, level);
         }
 
         private static int PreferPrimaryStat(int currentValue, int aliasValue)

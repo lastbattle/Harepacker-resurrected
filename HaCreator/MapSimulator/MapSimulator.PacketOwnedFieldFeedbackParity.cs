@@ -25,7 +25,6 @@ namespace HaCreator.MapSimulator
         private static readonly string[] PacketOwnedScreenEffectImageNames =
         {
             "BasicEff.img",
-            "MapEff.img",
             "CharacterEff.img",
             "Direction.img",
             "Direction1.img",
@@ -76,6 +75,7 @@ namespace HaCreator.MapSimulator
                 ClearFieldFade = () => ClearPacketOwnedLocalOverlayState("fade"),
                 RequestBgm = RequestSpecialFieldBgmOverride,
                 PlayFieldSound = descriptor => TryPlayPacketOwnedFieldFeedbackSound(descriptor),
+                PlaySummonEffectSound = TryPlayPacketOwnedSummonEffectSound,
                 SetObjectTagState = (tag, state, transition, currentTime) => SetDynamicObjectTagState(tag, state, transition, currentTime),
                 ShowSummonEffectVisual = TryShowPacketOwnedSummonEffect,
                 ShowScreenEffectVisual = TryShowPacketOwnedScreenEffect,
@@ -122,6 +122,15 @@ namespace HaCreator.MapSimulator
 
             ShowUtilityFeedbackMessage($"Played packet-owned field sound {resolvedDescriptor}.");
             return true;
+        }
+
+        private bool TryPlayPacketOwnedSummonEffectSound(byte effectId)
+        {
+            return TryPlayPacketOwnedWzSound(
+                effectId.ToString(CultureInfo.InvariantCulture),
+                "Summon.img",
+                out _,
+                out _);
         }
 
         private static string ResolvePacketFieldFeedbackMobName(int mobId)
@@ -347,6 +356,11 @@ namespace HaCreator.MapSimulator
                 normalized,
                 normalized.Contains('/') ? normalized[(normalized.IndexOf('/') + 1)..] : normalized
             };
+
+            foreach (string variant in variants.Where(static entry => !string.IsNullOrWhiteSpace(entry)).Distinct(StringComparer.OrdinalIgnoreCase))
+            {
+                yield return ("MapEff.img", variant);
+            }
 
             foreach (string imageName in PacketOwnedScreenEffectImageNames)
             {

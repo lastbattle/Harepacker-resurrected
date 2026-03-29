@@ -49,7 +49,7 @@ namespace HaCreator.MapSimulator
             catch (Exception ex)
             {
                 _summonedPacketInbox.Stop();
-                _chat?.AddMessage($"Summoned packet inbox failed to start: {ex.Message}", Color.OrangeRed, currTickCount);
+                _chat?.AddErrorMessage($"Summoned packet inbox failed to start: {ex.Message}", currTickCount);
             }
         }
 
@@ -66,7 +66,14 @@ namespace HaCreator.MapSimulator
                 _summonedPacketInbox.RecordDispatchResult(message, applied, detail);
                 if (!string.IsNullOrWhiteSpace(detail))
                 {
-                    _chat?.AddMessage(detail, applied ? new Color(255, 228, 151) : Color.OrangeRed, currTickCount);
+                    if (applied)
+                    {
+                        _chat?.AddSystemMessage(detail, currTickCount);
+                    }
+                    else
+                    {
+                        _chat?.AddErrorMessage(detail, currTickCount);
+                    }
                 }
             }
         }

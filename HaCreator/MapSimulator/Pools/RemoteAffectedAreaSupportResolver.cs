@@ -94,6 +94,76 @@ namespace HaCreator.MapSimulator.Pools
             return IsInvincibleZone(skill) || IsRecoveryZone(skill, levelData);
         }
 
+        public static bool HasProjectableSupportBuffMetadata(SkillLevelData levelData)
+        {
+            if (levelData == null)
+            {
+                return false;
+            }
+
+            return levelData.PAD > 0
+                   || levelData.MAD > 0
+                   || levelData.PDD > 0
+                   || levelData.MDD > 0
+                   || levelData.ACC > 0
+                   || levelData.EVA > 0
+                   || levelData.Speed > 0
+                   || levelData.Jump > 0
+                   || levelData.CriticalRate > 0
+                   || levelData.EnhancedPAD > 0
+                   || levelData.EnhancedMAD > 0
+                   || levelData.EnhancedPDD > 0
+                   || levelData.EnhancedMDD > 0
+                   || levelData.EnhancedMaxHP > 0
+                   || levelData.EnhancedMaxMP > 0
+                   || levelData.IndieMaxHP > 0
+                   || levelData.IndieMaxMP > 0
+                   || levelData.MaxHPPercent > 0
+                   || levelData.MaxMPPercent > 0
+                   || levelData.STR > 0
+                   || levelData.DEX > 0
+                   || levelData.INT > 0
+                   || levelData.LUK > 0
+                   || levelData.AllStat > 0;
+        }
+
+        public static SkillLevelData CreateProjectedSupportBuffLevelData(SkillLevelData levelData)
+        {
+            if (!HasProjectableSupportBuffMetadata(levelData))
+            {
+                return null;
+            }
+
+            return new SkillLevelData
+            {
+                Level = levelData.Level,
+                PAD = levelData.PAD,
+                MAD = levelData.MAD,
+                PDD = levelData.PDD,
+                MDD = levelData.MDD,
+                ACC = levelData.ACC,
+                EVA = levelData.EVA,
+                Speed = levelData.Speed,
+                Jump = levelData.Jump,
+                STR = levelData.STR,
+                DEX = levelData.DEX,
+                INT = levelData.INT,
+                LUK = levelData.LUK,
+                CriticalRate = levelData.CriticalRate,
+                EnhancedPAD = levelData.EnhancedPAD,
+                EnhancedMAD = levelData.EnhancedMAD,
+                EnhancedPDD = levelData.EnhancedPDD,
+                EnhancedMDD = levelData.EnhancedMDD,
+                EnhancedMaxHP = levelData.EnhancedMaxHP,
+                EnhancedMaxMP = levelData.EnhancedMaxMP,
+                IndieMaxHP = levelData.IndieMaxHP,
+                IndieMaxMP = levelData.IndieMaxMP,
+                MaxHPPercent = levelData.MaxHPPercent,
+                MaxMPPercent = levelData.MaxMPPercent,
+                AllStat = levelData.AllStat
+            };
+        }
+
         public static RemotePlayerAffectedAreaDisposition ResolveDisposition(SkillData skill, SkillLevelData levelData = null)
         {
             if (IsFriendlyPlayerAreaSkill(skill, levelData))

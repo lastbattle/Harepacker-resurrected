@@ -3179,21 +3179,34 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             resolvedGrantedItems ??= ResolveGrantedRewardItems(actions.RewardItems, build, messages);
+            var grantedInventoryItems = new List<QuestRewardItem>();
+            var grantedItemMessages = new List<string>();
             for (int i = 0; i < resolvedGrantedItems.Count; i++)
             {
                 QuestRewardItem item = resolvedGrantedItems[i];
                 bool addedToInventory = TryGrantRewardItem(item.ItemId, item.Count, out bool storedInTrackedState, out string itemFailureMessage);
                 if (!addedToInventory)
                 {
+                    RollBackGrantedRewardItems(grantedInventoryItems);
                     failureMessage = itemFailureMessage;
                     return false;
                 }
 
-                messages.Add($"Item reward: {GetRewardItemDescription(item, includeSelectionTag: false, includeFilters: false)}");
+                if (!storedInTrackedState)
+                {
+                    grantedInventoryItems.Add(item);
+                }
+
+                grantedItemMessages.Add($"Item reward: {GetRewardItemDescription(item, includeSelectionTag: false, includeFilters: false)}");
                 if (storedInTrackedState)
                 {
-                    messages.Add("Reward item was stored in quest progress because the inventory runtime could not accept it directly.");
+                    grantedItemMessages.Add("Reward item was stored in quest progress because the inventory runtime could not accept it directly.");
                 }
+            }
+
+            foreach (string itemMessage in grantedItemMessages)
+            {
+                messages.Add(itemMessage);
             }
 
             if (build != null && actions.ExpReward != 0)
@@ -3290,6 +3303,25 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             return true;
+        }
+
+        private void RollBackGrantedRewardItems(IReadOnlyList<QuestRewardItem> grantedItems)
+        {
+            if (grantedItems == null || grantedItems.Count == 0 || _consumeInventoryItem == null)
+            {
+                return;
+            }
+
+            for (int i = grantedItems.Count - 1; i >= 0; i--)
+            {
+                QuestRewardItem grantedItem = grantedItems[i];
+                if (grantedItem == null || grantedItem.ItemId <= 0 || grantedItem.Count <= 0)
+                {
+                    continue;
+                }
+
+                _consumeInventoryItem(grantedItem.ItemId, grantedItem.Count);
+            }
         }
 
         private static bool MatchesQuestLogTab(QuestLogTabType tab, QuestStateType state)
@@ -3830,7 +3862,7 @@ namespace HaCreator.MapSimulator.Interaction
                 : parts.Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
         }
 
-        private static IReadOnlyList<int> ParseJobIds(WzImageProperty property)
+        internal static IReadOnlyList<int> ParseJobIds(WzImageProperty property)
         {
             if (property == null)
             {
@@ -3840,20 +3872,20 @@ namespace HaCreator.MapSimulator.Interaction
             if (property.WzProperties == null || property.WzProperties.Count == 0)
             {
                 int? singleJob = ParseInt(property);
-                return singleJob.HasValue && singleJob.Value > 0 ? new[] { singleJob.Value } : Array.Empty<int>();
+                return singleJob.HasValue && singleJob.Value >= 0 ? new[] { singleJob.Value } : Array.Empty<int>();
             }
 
             var jobs = new List<int>();
             for (int i = 0; i < property.WzProperties.Count; i++)
             {
                 int? jobId = ParseInt(property.WzProperties[i]);
-                if (jobId.HasValue && jobId.Value > 0)
+                if (jobId.HasValue && jobId.Value >= 0)
                 {
                     jobs.Add(jobId.Value);
                 }
             }
 
-            return jobs;
+            return jobs.Distinct().ToArray();
         }
 
         private static IReadOnlyList<QuestStateRequirement> ParseQuestRequirements(WzImageProperty property)

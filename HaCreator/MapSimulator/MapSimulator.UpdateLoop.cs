@@ -247,6 +247,7 @@ namespace HaCreator.MapSimulator
             _engagementProposalRuntime.UpdateLocalContext(_playerManager?.Player?.Build);
             _mapleTvRuntime.UpdateLocalContext(_playerManager?.Player?.Build);
             _mapleTvRuntime.Update(currTickCount);
+            FlushPendingMapleTvSendResultFeedback(currTickCount);
 
             // Handle portal UP key interaction (player presses UP near portal)
             if (isWindowActive)

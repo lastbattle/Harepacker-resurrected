@@ -854,6 +854,7 @@ namespace HaCreator.MapSimulator.Character
         public HairPart Hair { get; set; }
         public CharacterPart WeaponSticker { get; set; }
         public PortableChair ActivePortableChair { get; set; }
+        public IReadOnlyList<int> RemotePetItemIds { get; set; } = Array.Empty<int>();
 
         // Equipment slots
         public Dictionary<EquipSlot, CharacterPart> Equipment { get; set; } = new();
@@ -939,10 +940,10 @@ namespace HaCreator.MapSimulator.Character
             return AP > 0 && currentValue < MaxPrimaryStat;
         }
 
-        public int TotalSTR => STR + SumEquipmentBonus(part => part.BonusSTR);
-        public int TotalDEX => DEX + SumEquipmentBonus(part => part.BonusDEX);
-        public int TotalINT => INT + SumEquipmentBonus(part => part.BonusINT);
-        public int TotalLUK => LUK + SumEquipmentBonus(part => part.BonusLUK);
+        public int TotalSTR => STR + SumEquipmentBonus(part => part.BonusSTR) + GetSkillStatBonus(BuffStatType.Strength);
+        public int TotalDEX => DEX + SumEquipmentBonus(part => part.BonusDEX) + GetSkillStatBonus(BuffStatType.Dexterity);
+        public int TotalINT => INT + SumEquipmentBonus(part => part.BonusINT) + GetSkillStatBonus(BuffStatType.Intelligence);
+        public int TotalLUK => LUK + SumEquipmentBonus(part => part.BonusLUK) + GetSkillStatBonus(BuffStatType.Luck);
         public int TotalMaxHP => Math.Clamp(ApplyRateBonus(MaxHP + SumEquipmentBonus(part => part.BonusHP) + GetSkillStatBonus(BuffStatType.MaxHP), GetSkillStatBonus(BuffStatType.MaxHPPercent)), 1, MaxHpMpStat);
         public int TotalMaxMP => Math.Clamp(ApplyRateBonus(MaxMP + SumEquipmentBonus(part => part.BonusMP) + GetSkillStatBonus(BuffStatType.MaxMP), GetSkillStatBonus(BuffStatType.MaxMPPercent)), 0, MaxHpMpStat);
         public int TotalHP => Math.Clamp(HP + SumEquipmentBonus(part => part.BonusHP), 0, TotalMaxHP);
@@ -1465,6 +1466,7 @@ namespace HaCreator.MapSimulator.Character
                 Hair = Hair,
                 WeaponSticker = WeaponSticker,
                 ActivePortableChair = ActivePortableChair,
+                RemotePetItemIds = RemotePetItemIds != null ? new List<int>(RemotePetItemIds) : Array.Empty<int>(),
                 Equipment = new Dictionary<EquipSlot, CharacterPart>(Equipment),
                 HiddenEquipment = new Dictionary<EquipSlot, CharacterPart>(HiddenEquipment),
                 Level = Level,

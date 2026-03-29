@@ -163,8 +163,8 @@ namespace HaCreator.MapSimulator.Managers
                 Title = "Monster Book",
                 Subtitle = build == null
                     ? "Monster card ownership is unavailable because there is no active character build."
-                    : "Card ownership is persisted per character and built from the WZ-backed monster-card catalog, with chapter tabs derived from the client's 0238xxxx card buckets, client-shaped right-tab detail panes, and local registered-card state.",
-                StatusText = "The Monster Book owner now routes the overview tab, the nine chapter tabs, the four right-tab detail panes, and local search plus register or release context actions through the dedicated Monster Book runtime. Official packet or drop-authored ownership and the deeper client close lifecycle still remain outside this simulator runtime.",
+                    : "Card ownership is persisted per character and built from the WZ-backed monster-card catalog, with chapter tabs derived from the client's 0238xxxx card buckets, client-shaped right-tab detail panes, local registered-card state, and pickup-backed Monster Card ownership.",
+                StatusText = "The Monster Book owner now routes the overview tab, the nine chapter tabs, the four right-tab detail panes, local search, and register or release context actions through the dedicated Monster Book runtime. Ownership now follows picked-up Monster Card drops sourced from the WZ-backed card catalog, while packet-authored save flow and deeper client search semantics still remain outside this simulator runtime.",
                 TotalCardTypes = cards.Count,
                 OwnedCardTypes = ownedCardTypes,
                 CompletedCardTypes = completedCardTypes,
@@ -216,6 +216,23 @@ namespace HaCreator.MapSimulator.Managers
             }
 
             return RecordMobKill(build, definition.MobId, count);
+        }
+
+        public bool TryResolveCardItemId(int mobId, out int cardItemId)
+        {
+            cardItemId = 0;
+            if (mobId <= 0)
+            {
+                return false;
+            }
+
+            if (!EnsureCatalogByMobId().TryGetValue(mobId, out MonsterBookCardDefinition definition) || definition == null)
+            {
+                return false;
+            }
+
+            cardItemId = definition.CardItemId;
+            return cardItemId > 0;
         }
 
         public MonsterBookSnapshot SetRegisteredCard(CharacterBuild build, int mobId, bool registered)

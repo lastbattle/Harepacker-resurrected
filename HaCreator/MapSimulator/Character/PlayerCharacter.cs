@@ -64,6 +64,7 @@ namespace HaCreator.MapSimulator.Character
             public IReadOnlyList<string> StandActionNames { get; init; }
             public IReadOnlyList<string> WalkActionNames { get; init; }
             public IReadOnlyList<string> JumpActionNames { get; init; }
+            public IReadOnlyList<string> SitActionNames { get; init; }
             public IReadOnlyList<string> ProneActionNames { get; init; }
             public IReadOnlyList<string> AttackActionNames { get; init; }
             public IReadOnlyList<string> LadderActionNames { get; init; }
@@ -3578,7 +3579,7 @@ namespace HaCreator.MapSimulator.Character
         {
             var yielded = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
-            foreach (string candidate in GetShadowPartnerClientMappedCandidates(playerActionName, fallbackActionName))
+            foreach (string candidate in ShadowPartnerClientActionResolver.EnumerateClientMappedCandidates(playerActionName, State, fallbackActionName))
             {
                 if (!string.IsNullOrWhiteSpace(candidate) && yielded.Add(candidate))
                 {
@@ -3589,88 +3590,9 @@ namespace HaCreator.MapSimulator.Character
 
         private IEnumerable<string> GetShadowPartnerClientMappedCandidates(string playerActionName, string fallbackActionName)
         {
-            if (string.IsNullOrWhiteSpace(playerActionName))
+            foreach (string candidate in ShadowPartnerClientActionResolver.EnumerateClientMappedCandidates(playerActionName, State, fallbackActionName))
             {
-                yield break;
-            }
-
-            switch (playerActionName.ToLowerInvariant())
-            {
-                case "ghostwalk":
-                    yield return "walk1";
-                    yield return "walk2";
-                    yield break;
-                case "ghoststand":
-                    yield return "stand1";
-                    yield return "stand2";
-                    yield break;
-                case "ghostjump":
-                    yield return "jump";
-                    yield break;
-                case "ghostladder":
-                    yield return "ladder";
-                    yield break;
-                case "ghostrope":
-                    yield return "rope";
-                    yield break;
-                case "ghostprone":
-                    yield return "prone";
-                    yield break;
-                case "ghostpronestab":
-                    yield return "proneStab";
-                    yield return "prone";
-                    yield break;
-                case "ghostfly":
-                    // Client `MoveAction2RawAction` collapses ghost float/swim move actions
-                    // back onto the stand-family raw action before `load_character_action`.
-                    yield return "stand1";
-                    yield return "stand2";
-                    yield return "fly";
-                    yield return "jump";
-                    yield break;
-                case "ghostsit":
-                    yield return "sit";
-                    yield break;
-            }
-
-            if (State is PlayerState.Swimming or PlayerState.Flying)
-            {
-                yield return "stand1";
-                yield return "stand2";
-                yield return "fly";
-                yield return "jump";
-            }
-            else if (State == PlayerState.Ladder)
-            {
-                yield return "ladder";
-            }
-            else if (State == PlayerState.Rope)
-            {
-                yield return "rope";
-            }
-            else if (State == PlayerState.Prone)
-            {
-                yield return "prone";
-                yield return "proneStab";
-            }
-            else if (State == PlayerState.Sitting)
-            {
-                yield return "sit";
-            }
-            else if (State == PlayerState.Walking)
-            {
-                yield return "walk1";
-                yield return "walk2";
-            }
-            else if (State == PlayerState.Standing)
-            {
-                yield return "stand1";
-                yield return "stand2";
-            }
-
-            if (!string.IsNullOrWhiteSpace(fallbackActionName))
-            {
-                yield return fallbackActionName;
+                yield return candidate;
             }
         }
 
@@ -3935,53 +3857,9 @@ namespace HaCreator.MapSimulator.Character
 
         private static IEnumerable<string> EnumerateShadowPartnerClientActionAliases(string playerActionName)
         {
-            if (string.IsNullOrWhiteSpace(playerActionName))
+            foreach (string candidate in ShadowPartnerClientActionResolver.EnumerateClientActionAliases(playerActionName))
             {
-                yield break;
-            }
-
-            if (playerActionName.StartsWith("alert", StringComparison.OrdinalIgnoreCase))
-            {
-                yield return "alert";
-            }
-            else if (string.Equals(playerActionName, "ladder2", StringComparison.OrdinalIgnoreCase))
-            {
-                yield return "ladder";
-            }
-            else if (string.Equals(playerActionName, "rope2", StringComparison.OrdinalIgnoreCase))
-            {
-                yield return "rope";
-            }
-
-            switch (playerActionName.ToLowerInvariant())
-            {
-                case "ghoststand":
-                    yield return "stand1";
-                    yield return "stand2";
-                    break;
-                case "ghostwalk":
-                    yield return "walk1";
-                    yield return "walk2";
-                    break;
-                case "ghostjump":
-                    yield return "jump";
-                    break;
-                case "ghostpronestab":
-                    yield return "proneStab";
-                    yield return "prone";
-                    break;
-                case "ghostladder":
-                    yield return "ladder";
-                    break;
-                case "ghostrope":
-                    yield return "rope";
-                    break;
-                case "ghostfly":
-                    yield return "fly";
-                    break;
-                case "ghostsit":
-                    yield return "sit";
-                    break;
+                yield return candidate;
             }
         }
 
@@ -4941,6 +4819,7 @@ namespace HaCreator.MapSimulator.Character
             {
                 PlayerState.Walking => ResolveSkillTransformActionName(activeTransform.WalkActionNames, activeTransform.StandActionNames),
                 PlayerState.Jumping or PlayerState.Falling => ResolveSkillTransformActionName(activeTransform.JumpActionNames, activeTransform.StandActionNames),
+                PlayerState.Sitting => ResolveSkillTransformActionName(activeTransform.SitActionNames, activeTransform.StandActionNames),
                 PlayerState.Prone => ResolveSkillTransformActionName(activeTransform.ProneActionNames, activeTransform.StandActionNames),
                 PlayerState.Ladder => ResolveSkillTransformActionName(activeTransform.LadderActionNames, activeTransform.StandActionNames),
                 PlayerState.Rope => ResolveSkillTransformActionName(activeTransform.RopeActionNames, activeTransform.StandActionNames),
@@ -5357,6 +5236,7 @@ namespace HaCreator.MapSimulator.Character
                 StandActionNames = CreateMorphActionVariants(morphPart, normalizedAction, "stand", "stand1", "stand2"),
                 WalkActionNames = CreateMorphActionVariants(morphPart, "walk", "move", "walk1", "walk2", "stand"),
                 JumpActionNames = CreateMorphActionVariants(morphPart, "jump", "fly", "stand"),
+                SitActionNames = CreateMorphActionVariants(morphPart, "sit", "stand"),
                 ProneActionNames = CreateMorphActionVariants(morphPart, "prone", "stand"),
                 AttackActionNames = CreateMorphAttackActionVariants(morphPart, normalizedAction),
                 LadderActionNames = isSuperManMorph
@@ -5390,6 +5270,7 @@ namespace HaCreator.MapSimulator.Character
                 StandActionNames = CreateActionVariants(standActionName),
                 WalkActionNames = CreateActionVariants(walkActionName, standActionName),
                 JumpActionNames = CreateActionVariants(GetActionFamilyVariant(standActionName, "jump"), standActionName),
+                SitActionNames = CreateActionVariants(standActionName),
                 ProneActionNames = CreateActionVariants(proneActionName, standActionName),
                 AttackActionNames = CreateActionVariants(attackActionName, standActionName),
                 LadderActionNames = CreateActionVariants(GetActionFamilyVariant(standActionName, "ladder"), GetActionFamilyVariant(standActionName, "rope"), standActionName),
@@ -5411,6 +5292,7 @@ namespace HaCreator.MapSimulator.Character
                 StandActionNames = CreateActionVariants(actionName),
                 WalkActionNames = CreateActionVariants(actionName),
                 JumpActionNames = CreateActionVariants(actionName),
+                SitActionNames = CreateActionVariants(actionName),
                 ProneActionNames = CreateActionVariants(actionName),
                 AttackActionNames = CreateActionVariants(actionName),
                 LadderActionNames = CreateActionVariants(actionName),
@@ -5505,6 +5387,7 @@ namespace HaCreator.MapSimulator.Character
                 StandActionNames = CreateActionVariants("ghoststand", "darksight"),
                 WalkActionNames = CreateActionVariants("ghostwalk", "ghoststand", "darksight"),
                 JumpActionNames = CreateActionVariants("ghostjump", "ghostfly", "ghoststand", "darksight"),
+                SitActionNames = CreateActionVariants("ghoststand", "darksight"),
                 ProneActionNames = CreateActionVariants("ghostproneStab", "ghoststand", "darksight"),
                 AttackActionNames = CreateActionVariants("ghoststand", "darksight"),
                 LadderActionNames = CreateActionVariants("ghostladder", "ghostrope", "ghoststand", "darksight"),
@@ -5531,6 +5414,7 @@ namespace HaCreator.MapSimulator.Character
                 StandActionNames = transform.StandActionNames,
                 WalkActionNames = transform.WalkActionNames,
                 JumpActionNames = transform.JumpActionNames,
+                SitActionNames = transform.SitActionNames,
                 ProneActionNames = transform.ProneActionNames,
                 AttackActionNames = transform.AttackActionNames,
                 LadderActionNames = transform.LadderActionNames,
@@ -5709,7 +5593,7 @@ namespace HaCreator.MapSimulator.Character
 
         private static IReadOnlyList<string> CreateMorphHitActionVariants(CharacterPart morphPart)
         {
-            return CreateMorphActionVariants(morphPart, "hit", "alert", "alert2", "alert3", "alert4", "alert5", "stand");
+            return CreateMorphActionVariants(morphPart, "hit", "recovery", "alert", "alert2", "alert3", "alert4", "alert5", "stand");
         }
 
         private static IReadOnlyList<string> CreateMorphDeadActionVariants(CharacterPart morphPart)
@@ -5728,6 +5612,7 @@ namespace HaCreator.MapSimulator.Character
                    || actionName.IndexOf("stab", StringComparison.OrdinalIgnoreCase) >= 0
                    || actionName.IndexOf("swing", StringComparison.OrdinalIgnoreCase) >= 0
                    || actionName.IndexOf("shoot", StringComparison.OrdinalIgnoreCase) >= 0
+                   || actionName.IndexOf("leap", StringComparison.OrdinalIgnoreCase) >= 0
                    || actionName.IndexOf("smash", StringComparison.OrdinalIgnoreCase) >= 0
                    || actionName.IndexOf("panic", StringComparison.OrdinalIgnoreCase) >= 0
                    || actionName.IndexOf("chop", StringComparison.OrdinalIgnoreCase) >= 0

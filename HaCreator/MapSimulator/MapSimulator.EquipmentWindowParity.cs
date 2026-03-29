@@ -26,13 +26,15 @@ namespace HaCreator.MapSimulator
                 return EquipmentChangeResult.Reject("No live character build is available for this equipment action.");
             }
 
-            return request.Kind switch
+            EquipmentChangeResult result = request.Kind switch
             {
                 EquipmentChangeRequestKind.InventoryToCharacter => HandleInventoryToCharacterChange(request, build),
                 EquipmentChangeRequestKind.CharacterToCharacter => HandleCharacterToCharacterChange(request, build),
                 EquipmentChangeRequestKind.CharacterToInventory => HandleCharacterToInventoryChange(request, build),
                 _ => EquipmentChangeResult.Reject("Unsupported equipment change request.")
             };
+
+            return result.WithCompletionMetadata(request.RequestId, request.RequestedAtTick, currTickCount);
         }
 
         private EquipmentChangeResult HandleInventoryToCharacterChange(EquipmentChangeRequest request, CharacterBuild build)
@@ -112,10 +114,15 @@ namespace HaCreator.MapSimulator
                 return EquipmentChangeResult.Reject("The equipped item changed before the move request was accepted.");
             }
 
-            EquipSlotVisualState targetState = EquipSlotStateResolver.ResolveVisualState(build, request.TargetEquipSlot.Value);
-            if (targetState.IsDisabled)
+            if (EquipmentChangeRequestValidator.TryGetCharacterMoveRejectReason(
+                    build,
+                    liveSourcePart,
+                    request.SourceEquipSlot.Value,
+                    request.TargetEquipSlot.Value,
+                    GetBattlefieldEquipRestrictionMessage,
+                    out string moveRejectReason))
             {
-                return EquipmentChangeResult.Reject(targetState.Message);
+                return EquipmentChangeResult.Reject(moveRejectReason);
             }
 
             if (!EquipUIBigBang.CanDisplayPartInSlot(liveSourcePart, request.TargetEquipSlot.Value))
@@ -179,6 +186,14 @@ namespace HaCreator.MapSimulator
             if (liveSourcePart == null || liveSourcePart.ItemId != request.ItemId)
             {
                 return EquipmentChangeResult.Reject("The equipped item changed before the unequip request was accepted.");
+            }
+
+            if (EquipmentChangeRequestValidator.TryGetCharacterUnequipRejectReason(
+                    liveSourcePart,
+                    GetBattlefieldEquipRestrictionMessage,
+                    out string unequipRejectReason))
+            {
+                return EquipmentChangeResult.Reject(unequipRejectReason);
             }
 
             CharacterPart removedPart = build.Unequip(request.SourceEquipSlot.Value);

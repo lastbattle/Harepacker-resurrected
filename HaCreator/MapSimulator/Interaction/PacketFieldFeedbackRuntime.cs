@@ -41,6 +41,7 @@ namespace HaCreator.MapSimulator.Interaction
         internal Action ClearFieldFade { get; init; }
         internal Action<string> RequestBgm { get; init; }
         internal Func<string, bool> PlayFieldSound { get; init; }
+        internal Func<byte, bool> PlaySummonEffectSound { get; init; }
         internal Func<string, bool?, int, int?, bool> SetObjectTagState { get; init; }
         internal Func<byte, int, int, bool> ShowSummonEffectVisual { get; init; }
         internal Func<string, bool> ShowScreenEffectVisual { get; init; }
@@ -72,7 +73,49 @@ namespace HaCreator.MapSimulator.Interaction
         private string _lastWhisperTarget = string.Empty;
         private string _lastJukeboxSummary = string.Empty;
         private string _lastBossTimerSummary = string.Empty;
+        private int _nextSwindleWarningTick;
         private BossHpState _bossHpState;
+        private static readonly string[] SwindleWarningNeedles =
+        {
+            "account",
+            "acc ",
+            "passwd",
+            "password",
+            "pin",
+            "pic",
+            "ssn",
+            "social security",
+            "paypal",
+            "western union",
+            "gift card",
+            "nx",
+            "cash trade",
+            "real money",
+            "real-world",
+            "website",
+            "web site",
+            "www.",
+            ".com",
+            ".net",
+            ".org",
+            "hotmail",
+            "gmail",
+            "yahoo",
+            "phone",
+            "cell",
+            "text me",
+            "call me",
+            "email me",
+            "e-mail",
+            "drop first",
+            "go first",
+            "trade first",
+            "mule",
+            "mesos",
+            "meso",
+            "dollar",
+            "usd"
+        };
 
         internal void Initialize(GraphicsDevice graphicsDevice)
         {
@@ -96,6 +139,7 @@ namespace HaCreator.MapSimulator.Interaction
             _lastWhisperTarget = string.Empty;
             _lastJukeboxSummary = string.Empty;
             _lastBossTimerSummary = string.Empty;
+            _nextSwindleWarningTick = 0;
         }
 
         internal void Update(int currentTick)
@@ -458,6 +502,7 @@ namespace HaCreator.MapSimulator.Interaction
 
             string text = $"{prefix} {sender}: {body}".Trim();
             callbacks?.AddClientChatMessage?.Invoke(text, chatLogType, null);
+            TryAddSwindleWarning(body, family == 1, currentTick, callbacks);
             _statusMessage = $"Applied packet-owned {prefix.Trim('[', ']')} chat from {sender}.";
             message = _statusMessage;
             return true;
@@ -491,6 +536,7 @@ namespace HaCreator.MapSimulator.Interaction
                             ? $"{prefix} {sender}: {body}"
                             : $"{prefix} {sender} ({channelText}): {body}";
                         callbacks?.AddClientChatMessage?.Invoke(text, 16, sender);
+                        TryAddSwindleWarning(body, allowGroupFamilyWarning: true, currentTick, callbacks);
                         callbacks?.RememberWhisperTarget?.Invoke(sender);
                         _lastWhisperTarget = sender;
                         _statusMessage = $"Applied packet-owned incoming whisper from {sender}.";
@@ -617,6 +663,7 @@ namespace HaCreator.MapSimulator.Interaction
                         int x = reader.ReadInt32();
                         int y = reader.ReadInt32();
                         bool shown = callbacks?.ShowSummonEffectVisual?.Invoke(effectId, x, y) == true;
+                        callbacks?.PlaySummonEffectSound?.Invoke(effectId);
                         _lastFieldEffectSummary = $"summon effect #{effectId} at ({x}, {y})";
                         _statusMessage = shown
                             ? $"Applied packet-owned summon effect #{effectId}."
@@ -972,6 +1019,68 @@ namespace HaCreator.MapSimulator.Interaction
             x = reader.ReadInt32();
             y = reader.ReadInt32();
             return true;
+        }
+
+        private void TryAddSwindleWarning(string message, bool allowGroupFamilyWarning, int currentTick, PacketFieldFeedbackCallbacks callbacks)
+        {
+            if (!allowGroupFamilyWarning
+                || callbacks?.AddClientChatMessage == null
+                || currentTick < _nextSwindleWarningTick
+                || !TryBuildSwindleWarning(message, out string warningText))
+            {
+                return;
+            }
+
+            callbacks.AddClientChatMessage(warningText, 8, null);
+            _nextSwindleWarningTick = currentTick + 10000;
+        }
+
+        private static bool TryBuildSwindleWarning(string message, out string warningText)
+        {
+            warningText = null;
+            string normalized = NormalizeSwindleText(message);
+            if (string.IsNullOrWhiteSpace(normalized))
+            {
+                return false;
+            }
+
+            foreach (string needle in SwindleWarningNeedles)
+            {
+                if (normalized.Contains(needle, StringComparison.Ordinal))
+                {
+                    warningText = "Warning: This message may contain scam or account-trade content.";
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static string NormalizeSwindleText(string message)
+        {
+            if (string.IsNullOrWhiteSpace(message))
+            {
+                return string.Empty;
+            }
+
+            StringBuilder builder = new(message.Length);
+            foreach (char ch in message)
+            {
+                if (char.IsLetterOrDigit(ch))
+                {
+                    builder.Append(char.ToLowerInvariant(ch));
+                }
+                else if (char.IsWhiteSpace(ch) || ch is '.' or '@' or '-' or '_')
+                {
+                    builder.Append(ch == '@' ? ' ' : char.ToLowerInvariant(ch));
+                }
+                else
+                {
+                    builder.Append(' ');
+                }
+            }
+
+            return builder.ToString();
         }
 
         private void DrawBossHp(SpriteBatch spriteBatch, SpriteFont font, int renderWidth, int currentTick)

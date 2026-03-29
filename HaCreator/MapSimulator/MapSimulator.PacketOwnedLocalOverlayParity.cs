@@ -201,7 +201,7 @@ namespace HaCreator.MapSimulator
                 && TryBuildPacketOwnedBalloonLayout(avatarMessage, currentTickCount, mapCenterX, mapCenterY, occupiedBounds, out PacketOwnedBalloonLayout avatarLayout))
             {
                 DrawPacketOwnedBalloonLayout(avatarLayout, currentTickCount);
-                occupiedBounds.Add(avatarLayout.BodyBounds);
+                occupiedBounds.Add(avatarLayout.CanvasBounds);
             }
 
             IReadOnlyList<LocalOverlayBalloonMessage> fieldMessages = _packetOwnedBalloonState.GetFieldMessages(currentTickCount);
@@ -213,7 +213,7 @@ namespace HaCreator.MapSimulator
                 }
 
                 DrawPacketOwnedBalloonLayout(fieldLayout, currentTickCount);
-                occupiedBounds.Add(fieldLayout.BodyBounds);
+                occupiedBounds.Add(fieldLayout.CanvasBounds);
             }
         }
 
@@ -267,25 +267,25 @@ namespace HaCreator.MapSimulator
                 PacketOwnedBalloonArrowKind.TopRight or PacketOwnedBalloonArrowKind.TopRightLong
                     => new Vector2(layout.BodyBounds.Right - arrow.Origin.X, layout.BodyBounds.Y - arrow.Origin.Y),
                 PacketOwnedBalloonArrowKind.BottomCenter or PacketOwnedBalloonArrowKind.BottomCenterLong
-                    => ResolvePacketOwnedBalloonBottomCenterArrowPosition(layout.BodyBounds, arrowTexture, arrow, topMounted: false),
+                    => ResolvePacketOwnedBalloonBottomCenterArrowPosition(layout.CanvasBounds, arrowTexture, arrow, topMounted: false),
                 PacketOwnedBalloonArrowKind.TopCenter or PacketOwnedBalloonArrowKind.TopCenterLong
-                    => ResolvePacketOwnedBalloonBottomCenterArrowPosition(layout.BodyBounds, arrowTexture, arrow, topMounted: true),
-                _ => ResolvePacketOwnedBalloonBottomCenterArrowPosition(layout.BodyBounds, arrowTexture, arrow, topMounted: false)
+                    => ResolvePacketOwnedBalloonBottomCenterArrowPosition(layout.CanvasBounds, arrowTexture, arrow, topMounted: true),
+                _ => ResolvePacketOwnedBalloonBottomCenterArrowPosition(layout.CanvasBounds, arrowTexture, arrow, topMounted: false)
             };
             _spriteBatch.Draw(arrowTexture, arrowPosition, tint);
         }
 
         private Vector2 ResolvePacketOwnedBalloonBottomCenterArrowPosition(
-            Rectangle bodyBounds,
+            Rectangle canvasBounds,
             Texture2D arrowTexture,
             LocalOverlayBalloonArrowSprite arrow,
             bool topMounted)
         {
-            int anchorOffsetX = (int)Math.Floor((bodyBounds.Width * PacketOwnedBalloonClientArrowAnchorRatio) - arrowTexture.Width);
-            float drawX = bodyBounds.X + Math.Clamp(anchorOffsetX, 0, Math.Max(0, bodyBounds.Width - arrowTexture.Width));
+            int anchorOffsetX = (int)Math.Floor((canvasBounds.Width * PacketOwnedBalloonClientArrowAnchorRatio) - arrowTexture.Width);
+            float drawX = canvasBounds.X + Math.Clamp(anchorOffsetX, 0, Math.Max(0, canvasBounds.Width - arrowTexture.Width));
             float drawY = topMounted
-                ? bodyBounds.Y - (arrowTexture.Height - PacketOwnedBalloonClientArrowYOffset)
-                : bodyBounds.Bottom - PacketOwnedBalloonClientArrowYOffset;
+                ? canvasBounds.Y
+                : canvasBounds.Bottom - arrowTexture.Height;
 
             return new Vector2(drawX - arrow.Origin.X, drawY - arrow.Origin.Y);
         }
@@ -617,51 +617,61 @@ namespace HaCreator.MapSimulator
             int bodyWidth = contentWidth + PacketOwnedBalloonBodyExtraWidth;
             int contentAreaWidth = Math.Max(0, bodyWidth - PacketOwnedBalloonBodyExtraWidth);
             int bodyHeight = Math.Max(26, (lines.Length * lineHeight) + (PacketOwnedBalloonVerticalPadding * 2));
-            int bodyX = Math.Clamp(
-                anchor.X - (bodyWidth / 2),
+            bool placeAbove = anchor.Y >= bodyHeight + PacketOwnedBalloonScreenMargin + 16;
+            int canvasX = Math.Clamp(
+                anchor.X - (contentWidth / 2),
                 PacketOwnedBalloonScreenMargin,
                 Math.Max(PacketOwnedBalloonScreenMargin, Width - bodyWidth - PacketOwnedBalloonScreenMargin));
-            bool placeAbove = anchor.Y >= bodyHeight + PacketOwnedBalloonScreenMargin + 16;
-            PacketOwnedBalloonArrowKind arrowKind = SelectPacketOwnedBalloonArrowKind(anchor, bodyX, bodyWidth, placeAbove);
+            PacketOwnedBalloonArrowKind arrowKind = SelectPacketOwnedBalloonArrowKind(anchor, canvasX, bodyWidth, placeAbove);
             LocalOverlayBalloonArrowSprite arrowSprite = ResolvePacketOwnedBalloonArrowSprite(arrowKind);
             int arrowHeight = arrowSprite?.Texture?.Height ?? 14;
-            int desiredBodyY = placeAbove
-                ? anchor.Y - bodyHeight - arrowHeight + 1
-                : anchor.Y + arrowHeight - 1;
-            Rectangle bodyBounds = new(
-                bodyX,
+            int canvasHeight = bodyHeight + Math.Max(0, arrowHeight - PacketOwnedBalloonClientArrowYOffset);
+            int desiredCanvasY = placeAbove
+                ? anchor.Y - canvasHeight
+                : anchor.Y;
+            Rectangle canvasBounds = new(
+                canvasX,
                 Math.Clamp(
-                    desiredBodyY,
+                    desiredCanvasY,
                     PacketOwnedBalloonScreenMargin,
-                    Math.Max(PacketOwnedBalloonScreenMargin, Height - bodyHeight - PacketOwnedBalloonScreenMargin)),
+                    Math.Max(PacketOwnedBalloonScreenMargin, Height - canvasHeight - PacketOwnedBalloonScreenMargin)),
                 bodyWidth,
-                bodyHeight);
+                canvasHeight);
+            int bodyY = placeAbove
+                ? canvasBounds.Y
+                : canvasBounds.Bottom - bodyHeight;
+            Rectangle bodyBounds = new(canvasBounds.X, bodyY, bodyWidth, bodyHeight);
 
             if (occupiedBounds != null)
             {
                 for (int i = 0; i < occupiedBounds.Count; i++)
                 {
-                    if (!bodyBounds.Intersects(occupiedBounds[i]))
+                    if (!canvasBounds.Intersects(occupiedBounds[i]))
                     {
                         continue;
                     }
 
-                    int adjustedY = placeAbove
-                        ? occupiedBounds[i].Y - bodyHeight - PacketOwnedBalloonScreenMargin
+                    int adjustedCanvasY = placeAbove
+                        ? occupiedBounds[i].Y - canvasHeight - PacketOwnedBalloonScreenMargin
                         : occupiedBounds[i].Bottom + PacketOwnedBalloonScreenMargin;
-                    bodyBounds.Y = Math.Clamp(
-                        adjustedY,
+                    canvasBounds.Y = Math.Clamp(
+                        adjustedCanvasY,
                         PacketOwnedBalloonScreenMargin,
-                        Math.Max(PacketOwnedBalloonScreenMargin, Height - bodyHeight - PacketOwnedBalloonScreenMargin));
+                        Math.Max(PacketOwnedBalloonScreenMargin, Height - canvasHeight - PacketOwnedBalloonScreenMargin));
+                    bodyBounds.Y = placeAbove
+                        ? canvasBounds.Y
+                        : canvasBounds.Bottom - bodyHeight;
                 }
             }
 
+            bodyBounds.X = canvasBounds.X;
+            bodyBounds.Width = canvasBounds.Width;
             Rectangle contentBounds = new(
                 bodyBounds.X + PacketOwnedBalloonHorizontalPadding,
                 bodyBounds.Y + PacketOwnedBalloonVerticalPadding,
                 contentAreaWidth,
                 Math.Max(0, bodyHeight - (PacketOwnedBalloonVerticalPadding * 2)));
-            layout = new PacketOwnedBalloonLayout(message, anchor, bodyBounds, contentBounds, lines, lineHeight, arrowKind, arrowSprite);
+            layout = new PacketOwnedBalloonLayout(message, anchor, canvasBounds, bodyBounds, contentBounds, lines, lineHeight, arrowKind, arrowSprite);
             return true;
         }
 
@@ -899,7 +909,7 @@ namespace HaCreator.MapSimulator
                 }
 
                 TryTriggerLimitedPetSpeechEvent(PetAutoSpeechEvent.NoHpPotion, ref _petHpPotionFailureSpeechCount, currentTickCount);
-                _chat?.AddMessage(FieldHazardNoHpPotionNoticeText, new Color(255, 206, 145), currentTickCount);
+                _chat?.AddSystemMessage(FieldHazardNoHpPotionNoticeText, currentTickCount);
                 string failureDetail = $"{DescribeFieldHazardAutoConsumePet(target.PetSlotIndex, target.PetName)} could not find an HP potion to use.";
                 _localOverlayRuntime.SetFieldHazardFollowUp(failureDetail, FieldHazardFollowUpKind.Failure, currentTickCount);
                 return failureDetail;
@@ -914,7 +924,7 @@ namespace HaCreator.MapSimulator
                     out int inventorySlotIndex))
             {
                 TryTriggerLimitedPetSpeechEvent(PetAutoSpeechEvent.NoHpPotion, ref _petHpPotionFailureSpeechCount, currentTickCount);
-                _chat?.AddMessage(FieldHazardNoHpPotionNoticeText, new Color(255, 206, 145), currentTickCount);
+                _chat?.AddSystemMessage(FieldHazardNoHpPotionNoticeText, currentTickCount);
                 string missingSlotDetail = $"{petLabel} {requestMode} could not queue {target.Candidate.ItemName} because the shared inventory slot could not be resolved.";
                 _localOverlayRuntime.SetFieldHazardFollowUp(missingSlotDetail, FieldHazardFollowUpKind.Failure, currentTickCount);
                 return missingSlotDetail;
@@ -986,7 +996,7 @@ namespace HaCreator.MapSimulator
                 || resolvedInventorySlotIndex != request.InventorySlotIndex)
             {
                 TryTriggerLimitedPetSpeechEvent(PetAutoSpeechEvent.NoHpPotion, ref _petHpPotionFailureSpeechCount, currentTickCount);
-                _chat?.AddMessage(FieldHazardNoHpPotionNoticeText, new Color(255, 206, 145), currentTickCount);
+                _chat?.AddSystemMessage(FieldHazardNoHpPotionNoticeText, currentTickCount);
                 string slotExpiredDetail = $"{petLabel} {requestMode} request for {request.Candidate.ItemName} lost {request.Candidate.InventoryType} slot {request.InventorySlotIndex} before the synthetic ack arrived.";
                 _localOverlayRuntime.SetFieldHazardFollowUp(slotExpiredDetail, FieldHazardFollowUpKind.Failure, currentTickCount);
                 return;
@@ -1008,7 +1018,7 @@ namespace HaCreator.MapSimulator
             }
 
             TryTriggerLimitedPetSpeechEvent(PetAutoSpeechEvent.NoHpPotion, ref _petHpPotionFailureSpeechCount, currentTickCount);
-            _chat?.AddMessage(FieldHazardNoHpPotionNoticeText, new Color(255, 206, 145), currentTickCount);
+            _chat?.AddSystemMessage(FieldHazardNoHpPotionNoticeText, currentTickCount);
             string failureDetail = $"{petLabel} {requestMode} request for {request.Candidate.ItemName} failed before the client could consume it.";
             _localOverlayRuntime.SetFieldHazardFollowUp(failureDetail, FieldHazardFollowUpKind.Failure, currentTickCount);
         }
@@ -1755,7 +1765,7 @@ namespace HaCreator.MapSimulator
             catch (Exception ex)
             {
                 _localOverlayPacketInbox.Stop();
-                _chat?.AddMessage($"Local overlay packet inbox failed to start: {ex.Message}", Color.OrangeRed, currTickCount);
+                _chat?.AddErrorMessage($"Local overlay packet inbox failed to start: {ex.Message}", currTickCount);
             }
         }
 
@@ -1772,7 +1782,14 @@ namespace HaCreator.MapSimulator
                 _localOverlayPacketInbox.RecordDispatchResult(message, applied, detail);
                 if (!string.IsNullOrWhiteSpace(detail))
                 {
-                    _chat?.AddMessage(detail, applied ? new Color(255, 228, 151) : Color.OrangeRed, currTickCount);
+                    if (applied)
+                    {
+                        _chat?.AddSystemMessage(detail, currTickCount);
+                    }
+                    else
+                    {
+                        _chat?.AddErrorMessage(detail, currTickCount);
+                    }
                 }
             }
         }
@@ -1933,6 +1950,7 @@ namespace HaCreator.MapSimulator
         private readonly record struct PacketOwnedBalloonLayout(
             LocalOverlayBalloonMessage Message,
             Point Anchor,
+            Rectangle CanvasBounds,
             Rectangle BodyBounds,
             Rectangle ContentBounds,
             PacketOwnedBalloonWrappedLine[] Lines,

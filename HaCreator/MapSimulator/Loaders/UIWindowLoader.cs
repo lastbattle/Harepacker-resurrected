@@ -7762,6 +7762,8 @@ namespace HaCreator.MapSimulator.Loaders
 
             return new MapleTvVisualAssets(
 
+                LoadMapleTvAnimationFrames(mapleTvImage["TVon"] as WzSubProperty, device),
+
                 LoadMapleTvAnimationFrames(mapleTvImage["TVbasic"] as WzSubProperty, device),
 
                 LoadMapleTvAnimationFrames(mapleTvImage["TVoff"] as WzSubProperty, device),
@@ -8855,11 +8857,24 @@ namespace HaCreator.MapSimulator.Loaders
             WzSubProperty eventListProperty = sourceProperty["event"] as WzSubProperty;
             Texture2D normalRowTexture = LoadCanvasTexture(eventListProperty, "normal", device);
             Texture2D selectedRowTexture = LoadCanvasTexture(eventListProperty, "select", device) ?? normalRowTexture;
+            Texture2D slotTexture = LoadCanvasTexture(eventListProperty, "slot", device);
+            Texture2D[] statusIcons = LoadIndexedCanvasTextureList(eventListProperty?["icon"] as WzSubProperty, device).ToArray();
+            WzSubProperty calendarProperty = eventRoot?["calendar"] as WzSubProperty;
+            WzSubProperty calendarBackgroundProperty = calendarProperty?["bg"]?["1"] as WzSubProperty
+                ?? calendarProperty?["bg"]?["0"] as WzSubProperty;
             EventWindow window = new EventWindow(
                 new DXObject(0, 0, frameTexture, 0),
                 MapSimulatorWindowNames.Event,
                 normalRowTexture,
-                selectedRowTexture)
+                selectedRowTexture,
+                slotTexture,
+                statusIcons,
+                LoadCanvasTexture(calendarProperty, "today", device),
+                LoadCanvasTexture(calendarBackgroundProperty, "backgrnd", device),
+                LoadCanvasTexture(calendarBackgroundProperty, "backgrnd2", device),
+                LoadCanvasTexture(calendarBackgroundProperty, "backgrnd3", device),
+                LoadIndexedCanvasTextureList(calendarProperty?["number"] as WzSubProperty, "normal", device).ToArray(),
+                LoadIndexedCanvasTextureList(calendarProperty?["number"] as WzSubProperty, "select", device).ToArray())
             {
                 Position = position
             };
@@ -8892,7 +8907,6 @@ namespace HaCreator.MapSimulator.Loaders
                 }
             }
 
-            WzSubProperty calendarProperty = eventRoot?["calendar"] as WzSubProperty;
             window.InitializeButtons(
                 LoadButton(eventListProperty, "BtNone", btClickSound, btOverSound, device),
                 LoadButton(eventListProperty, "BtStart", btClickSound, btOverSound, device),
@@ -9954,6 +9968,66 @@ namespace HaCreator.MapSimulator.Loaders
             {
 
                 inventory.AddItem(InventoryType.USE, 2049703, null, 1); // Epic Potential Scroll 100%
+
+            }
+
+
+
+            if (inventory.GetItemCount(InventoryType.USE, 2049000) <= 0)
+
+            {
+
+                inventory.AddItem(InventoryType.USE, 2049000, null, 1); // Reverse Scroll 1%
+
+            }
+
+
+
+            if (inventory.GetItemCount(InventoryType.USE, 2049600) <= 0)
+
+            {
+
+                inventory.AddItem(InventoryType.USE, 2049600, null, 1); // Innocence Scroll 70%
+
+            }
+
+
+
+            if (inventory.GetItemCount(InventoryType.USE, 2470000) <= 0)
+
+            {
+
+                inventory.AddItem(InventoryType.USE, 2470000, null, 1); // Golden Hammer
+
+            }
+
+
+
+            if (inventory.GetItemCount(InventoryType.USE, 2470001) <= 0)
+
+            {
+
+                inventory.AddItem(InventoryType.USE, 2470001, null, 1); // Golden Hammer 50%
+
+            }
+
+
+
+            if (inventory.GetItemCount(InventoryType.USE, 2470002) <= 0)
+
+            {
+
+                inventory.AddItem(InventoryType.USE, 2470002, null, 1); // Golden Hammer 50% (trade block)
+
+            }
+
+
+
+            if (inventory.GetItemCount(InventoryType.CASH, 5570000) <= 0)
+
+            {
+
+                inventory.AddItem(InventoryType.CASH, 5570000, null, 1); // Vicious' Hammer
 
             }
 

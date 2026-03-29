@@ -406,7 +406,8 @@ namespace HaCreator.MapSimulator
 
             ReplaceQuestGatedMapObjects(questGatedMapObjects);
 
-            RegisterStatusBarPopupUtilityWindows(uiStatus2BarImage, uiBasicImage, soundUIImage);
+            RegisterStatusBarPopupUtilityWindows(uiStatus2BarImage, uiBasicImage, soundUIImage);
+            RegisterPacketOwnedAntiMacroWindows();
 
             // Set fonts on UI windows after all tasks complete
             uiWindowManager?.SetFonts(_fontChat);
@@ -740,8 +741,16 @@ namespace HaCreator.MapSimulator
 
             }
 
+            if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.Trunk) is TrunkUI trunkWindow
+                && _playerManager?.Player?.Build != null)
+            {
+                trunkWindow.SetFont(_fontChat);
+                trunkWindow.CharacterBuild = _playerManager.Player.Build;
+                trunkWindow.SetCharacterLoader(_playerManager.Loader);
+            }
+
             if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.ItemUpgrade) is ItemUpgradeUI itemUpgradeWindow && _playerManager?.Player?.Build != null)
-            {
+            {
                 itemUpgradeWindow.CharacterBuild = _playerManager.Player.Build;
                 itemUpgradeWindow.SetFont(_fontChat);
                 itemUpgradeWindow.SetInventory(uiWindowManager.InventoryWindow as IInventoryRuntime);

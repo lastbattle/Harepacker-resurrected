@@ -8,6 +8,7 @@ using HaCreator.MapSimulator.UI;
 using MapleLib.Helpers;
 using Microsoft.Xna.Framework;
 using System;
+using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 
@@ -274,28 +275,149 @@ namespace HaCreator.MapSimulator
                 || !int.TryParse(args[2], out int skillId)
                 || !int.TryParse(args[3], out int durationMs))
             {
-                return ChatCommandHandler.CommandResult.Error("Usage: /remoteuser prepare <characterId> <skillId> <durationMs> [skinKey] [skillName]");
+                return ChatCommandHandler.CommandResult.Error(
+                    "Usage: /remoteuser prepare <characterId> <skillId> <durationMs> [skinKey] [skillName] [gauge=<ms>] [hold=<ms>] [state=prepare|holding|auto]");
             }
 
             PreparedSkillHudRules.PreparedSkillHudProfile hudProfile = PreparedSkillHudRules.ResolveProfile(skillId);
-            string skinKey = args.Length >= 5 ? args[4] : hudProfile.SkinKey;
-            string skillName = args.Length >= 6 ? string.Join(" ", args.Skip(5)) : null;
+            string skinKey = null;
+            List<string> skillNameParts = null;
+            int gaugeDurationMs = hudProfile.GaugeDurationMs > 0 ? hudProfile.GaugeDurationMs : durationMs;
+            int holdDurationMs = 0;
+            string stateToken = null;
+
+            for (int index = 4; index < args.Length; index++)
+            {
+                string token = args[index];
+                if (string.IsNullOrWhiteSpace(token))
+                {
+                    continue;
+                }
+
+                if (TryParsePreparedSkillCommandOption(token, out string optionName, out string optionValue))
+                {
+                    switch (optionName)
+                    {
+                        case "gauge":
+                            if (!int.TryParse(optionValue, out gaugeDurationMs))
+                            {
+                                return ChatCommandHandler.CommandResult.Error($"Invalid prepared-skill gauge duration: {optionValue}");
+                            }
+
+                            break;
+
+                        case "hold":
+                            if (!int.TryParse(optionValue, out holdDurationMs))
+                            {
+                                return ChatCommandHandler.CommandResult.Error($"Invalid prepared-skill hold duration: {optionValue}");
+                            }
+
+                            break;
+
+                        case "state":
+                            stateToken = optionValue;
+                            break;
+                    }
+
+                    continue;
+                }
+
+                if (skinKey == null)
+                {
+                    skinKey = token;
+                    continue;
+                }
+
+                skillNameParts ??= new List<string>();
+                skillNameParts.Add(token);
+            }
+
+            string normalizedState = string.IsNullOrWhiteSpace(stateToken)
+                ? (holdDurationMs > 0 ? "auto" : "prepare")
+                : stateToken.Trim().ToLowerInvariant();
+            bool startHolding = string.Equals(normalizedState, "holding", StringComparison.OrdinalIgnoreCase);
+            bool autoEnterHold = string.Equals(normalizedState, "auto", StringComparison.OrdinalIgnoreCase);
+            if (!startHolding
+                && !autoEnterHold
+                && !string.Equals(normalizedState, "prepare", StringComparison.OrdinalIgnoreCase))
+            {
+                return ChatCommandHandler.CommandResult.Error($"Invalid prepared-skill state: {stateToken}");
+            }
+
+            if (gaugeDurationMs < 0 || holdDurationMs < 0)
+            {
+                return ChatCommandHandler.CommandResult.Error("Prepared-skill gauge and hold durations must be zero or greater.");
+            }
+
+            if (autoEnterHold && holdDurationMs <= 0)
+            {
+                return ChatCommandHandler.CommandResult.Error("Prepared-skill auto state requires hold=<ms>.");
+            }
+
+            skinKey ??= hudProfile.SkinKey;
+            string skillName = skillNameParts != null && skillNameParts.Count > 0
+                ? string.Join(" ", skillNameParts)
+                : null;
+            int activeDurationMs = startHolding
+                ? Math.Max(0, holdDurationMs > 0 ? holdDurationMs : durationMs)
+                : autoEnterHold
+                    ? Math.Max(0, holdDurationMs)
+                    : Math.Max(0, durationMs);
+            int maxHoldDurationMs = startHolding || autoEnterHold
+                ? Math.Max(0, holdDurationMs > 0 ? holdDurationMs : durationMs)
+                : Math.Max(0, durationMs);
             return _remoteUserPool.TrySetPreparedSkill(
                 characterId,
                 skillId,
                 skillName,
-                durationMs,
+                activeDurationMs,
                 skinKey,
                 isKeydownSkill: true,
-                isHolding: false,
-                gaugeDurationMs: hudProfile.GaugeDurationMs > 0 ? hudProfile.GaugeDurationMs : durationMs,
-                maxHoldDurationMs: durationMs,
+                isHolding: startHolding,
+                gaugeDurationMs: Math.Max(0, gaugeDurationMs),
+                maxHoldDurationMs: maxHoldDurationMs,
                 PreparedSkillHudRules.ResolveTextVariant(skillId),
                 showText: hudProfile.ShowText,
                 currentTime,
-                out string message)
-                ? ChatCommandHandler.CommandResult.Ok($"Remote user {characterId} prepared skill {skillId} armed for {durationMs}ms.")
+                out string message,
+                prepareDurationMs: autoEnterHold ? Math.Max(0, durationMs) : 0,
+                autoEnterHold: autoEnterHold)
+                ? ChatCommandHandler.CommandResult.Ok(
+                    startHolding
+                        ? $"Remote user {characterId} prepared skill {skillId} entered hold state for {activeDurationMs}ms."
+                        : autoEnterHold
+                            ? $"Remote user {characterId} prepared skill {skillId} armed for {durationMs}ms then holds for {maxHoldDurationMs}ms."
+                            : $"Remote user {characterId} prepared skill {skillId} armed for {activeDurationMs}ms.")
                 : ChatCommandHandler.CommandResult.Error(message);
+        }
+
+        private static bool TryParsePreparedSkillCommandOption(string token, out string optionName, out string optionValue)
+        {
+            optionName = null;
+            optionValue = null;
+            if (string.IsNullOrWhiteSpace(token))
+            {
+                return false;
+            }
+
+            int separatorIndex = token.IndexOf('=');
+            if (separatorIndex > 0)
+            {
+                optionName = token[..separatorIndex].Trim().ToLowerInvariant();
+                optionValue = token[(separatorIndex + 1)..].Trim();
+                return optionName is "gauge" or "hold" or "state";
+            }
+
+            if (token.Equals("prepare", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("holding", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("auto", StringComparison.OrdinalIgnoreCase))
+            {
+                optionName = "state";
+                optionValue = token;
+                return true;
+            }
+
+            return false;
         }
 
         private ChatCommandHandler.CommandResult HandleRemoteUserPreparedClearCommand(string[] args)
@@ -393,15 +515,28 @@ namespace HaCreator.MapSimulator
         {
             if (args.Length < 3 || !TryParseRemoteUserPacketType(args[1], out int packetType))
             {
-                return ChatCommandHandler.CommandResult.Error("Usage: /remoteuser packet <179|180|181|182|183|184|210|211|212|213|214|enter|leave|move|state|helper|team|follow|chair|mount|prepare|preparedclear|melee> <payloadhex=..|payloadb64=..>");
+                return ChatCommandHandler.CommandResult.Error("Usage: /remoteuser packet <179|180|181|182|183|184|210|211|212|213|214|enter|leave|move|state|helper|team|follow|chair|mount|prepare|preparedclear|melee> [followCharacterId] <payloadhex=..|payloadb64=..>");
             }
 
-            if (!TryParseBinaryPayloadArgument(args[2], out byte[] payload, out string payloadError))
+            int? followCharacterId = null;
+            int payloadArgumentIndex = 2;
+            if ((RemoteUserPacketType)packetType == RemoteUserPacketType.UserFollowCharacter
+                && args.Length >= 4
+                && int.TryParse(args[2], out int parsedFollowCharacterId))
+            {
+                followCharacterId = parsedFollowCharacterId;
+                payloadArgumentIndex = 3;
+            }
+
+            byte[] payload = null;
+            string payloadError = null;
+            if (args.Length <= payloadArgumentIndex
+                || !TryParseBinaryPayloadArgument(args[payloadArgumentIndex], out payload, out payloadError))
             {
                 return ChatCommandHandler.CommandResult.Error(payloadError ?? "Packet payload must use payloadhex=.. or payloadb64=..");
             }
 
-            return TryApplyRemoteUserPacket(packetType, payload, currentTime, out string result)
+            return TryApplyRemoteUserPacket(packetType, payload, currentTime, out string result, followCharacterId)
                 ? ChatCommandHandler.CommandResult.Ok(result)
                 : ChatCommandHandler.CommandResult.Error(result);
         }
@@ -410,25 +545,40 @@ namespace HaCreator.MapSimulator
         {
             if (args.Length < 3 || !TryParseRemoteUserPacketType(args[1], out int packetType))
             {
-                return ChatCommandHandler.CommandResult.Error("Usage: /remoteuser packetraw <179|180|181|182|183|184|210|211|212|213|214|enter|leave|move|state|helper|team|follow|chair|mount|prepare|preparedclear|melee> <hex>");
+                return ChatCommandHandler.CommandResult.Error("Usage: /remoteuser packetraw <179|180|181|182|183|184|210|211|212|213|214|enter|leave|move|state|helper|team|follow|chair|mount|prepare|preparedclear|melee> [followCharacterId] <hex>");
+            }
+
+            int? followCharacterId = null;
+            int payloadArgumentIndex = 2;
+            if ((RemoteUserPacketType)packetType == RemoteUserPacketType.UserFollowCharacter
+                && args.Length >= 4
+                && int.TryParse(args[2], out int parsedFollowCharacterId))
+            {
+                followCharacterId = parsedFollowCharacterId;
+                payloadArgumentIndex = 3;
+            }
+
+            if (args.Length <= payloadArgumentIndex)
+            {
+                return ChatCommandHandler.CommandResult.Error("Invalid packet hex payload: payload is missing.");
             }
 
             byte[] payload;
             try
             {
-                payload = ByteUtils.HexToBytes(args[2]);
+                payload = ByteUtils.HexToBytes(args[payloadArgumentIndex]);
             }
             catch (Exception ex)
             {
                 return ChatCommandHandler.CommandResult.Error($"Invalid packet hex payload: {ex.Message}");
             }
 
-            return TryApplyRemoteUserPacket(packetType, payload, currentTime, out string result)
+            return TryApplyRemoteUserPacket(packetType, payload, currentTime, out string result, followCharacterId)
                 ? ChatCommandHandler.CommandResult.Ok(result)
                 : ChatCommandHandler.CommandResult.Error(result);
         }
 
-        private bool TryApplyRemoteUserPacket(int packetType, byte[] payload, int currentTime, out string result)
+        private bool TryApplyRemoteUserPacket(int packetType, byte[] payload, int currentTime, out string result, int? followCharacterId = null)
         {
             result = null;
             switch ((RemoteUserPacketType)packetType)
@@ -539,7 +689,11 @@ namespace HaCreator.MapSimulator
                     return teamApplied;
 
                 case RemoteUserPacketType.UserFollowCharacter:
-                    if (!RemoteUserPacketCodec.TryParseFollowCharacter(payload, out RemoteUserFollowCharacterPacket followPacket, out string followError))
+                    if (!RemoteUserPacketCodec.TryParseFollowCharacter(
+                            payload,
+                            out RemoteUserFollowCharacterPacket followPacket,
+                            out string followError,
+                            followCharacterId))
                     {
                         result = followError;
                         return false;
@@ -567,7 +721,11 @@ namespace HaCreator.MapSimulator
                         return false;
                     }
 
-                    bool chairApplied = _remoteUserPool.TrySetPortableChair(chairPacket.CharacterId, chairPacket.ChairItemId, out string chairMessage);
+                    bool chairApplied = _remoteUserPool.TrySetPortableChair(
+                        chairPacket.CharacterId,
+                        chairPacket.ChairItemId,
+                        out string chairMessage,
+                        chairPacket.PairCharacterId);
                     result = chairApplied
                         ? $"Applied {DescribeRemoteUserPacketType(packetType)} for {chairPacket.CharacterId}."
                         : chairMessage;

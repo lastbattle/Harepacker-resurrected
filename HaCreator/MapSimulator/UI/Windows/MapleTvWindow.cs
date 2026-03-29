@@ -222,6 +222,11 @@ namespace HaCreator.MapSimulator.UI
             MapleTvAnimationFrame mediaFrame = SelectFrame(_visualAssets.GetMediaFrames(snapshot.ResolvedMediaIndex), tickCount);
             DrawAnimationFrame(sprite, mediaFrame, overlayOrigin, drawReflectionInfo, skeletonMeshRenderer, gameTime);
 
+            MapleTvAnimationFrame onFrame = SelectFrame(
+                _visualAssets.OnFrames.Count > 0 ? _visualAssets.OnFrames : _visualAssets.BasicFrames,
+                tickCount);
+            DrawAnimationFrame(sprite, onFrame, overlayOrigin, drawReflectionInfo, skeletonMeshRenderer, gameTime);
+
             MapleTvAnimationFrame chatFrame = SelectFrame(_visualAssets.GetChatFrames(snapshot.ResolvedMediaIndex), tickCount);
             DrawAnimationFrame(sprite, chatFrame, overlayOrigin, drawReflectionInfo, skeletonMeshRenderer, gameTime);
 
@@ -354,6 +359,10 @@ namespace HaCreator.MapSimulator.UI
                     _visualAssets.GetMediaFrames(snapshot.ResolvedMediaIndex),
                     tickCount);
                 DrawAnimationFrame(sprite, mediaFrame, previewOrigin, drawReflectionInfo, skeletonMeshRenderer, gameTime);
+                MapleTvAnimationFrame onFrame = SelectFrame(
+                    _visualAssets.OnFrames.Count > 0 ? _visualAssets.OnFrames : _visualAssets.BasicFrames,
+                    tickCount);
+                DrawAnimationFrame(sprite, onFrame, previewOrigin, drawReflectionInfo, skeletonMeshRenderer, gameTime);
                 MapleTvAnimationFrame chatFrame = SelectFrame(
                     _visualAssets.GetChatFrames(snapshot.ResolvedMediaIndex),
                     tickCount);
@@ -601,12 +610,14 @@ namespace HaCreator.MapSimulator.UI
     internal sealed class MapleTvVisualAssets
     {
         internal MapleTvVisualAssets(
+            IReadOnlyList<MapleTvAnimationFrame> onFrames,
             IReadOnlyList<MapleTvAnimationFrame> basicFrames,
             IReadOnlyList<MapleTvAnimationFrame> offFrames,
             IReadOnlyDictionary<int, IReadOnlyList<MapleTvAnimationFrame>> chatFrames,
             IReadOnlyDictionary<int, IReadOnlyList<MapleTvAnimationFrame>> mediaFrames,
             int defaultMediaIndex)
         {
+            OnFrames = onFrames ?? Array.Empty<MapleTvAnimationFrame>();
             BasicFrames = basicFrames ?? Array.Empty<MapleTvAnimationFrame>();
             OffFrames = offFrames ?? Array.Empty<MapleTvAnimationFrame>();
             ChatFrames = chatFrames ?? new Dictionary<int, IReadOnlyList<MapleTvAnimationFrame>>();
@@ -614,6 +625,7 @@ namespace HaCreator.MapSimulator.UI
             DefaultMediaIndex = defaultMediaIndex;
         }
 
+        internal IReadOnlyList<MapleTvAnimationFrame> OnFrames { get; }
         internal IReadOnlyList<MapleTvAnimationFrame> BasicFrames { get; }
         internal IReadOnlyList<MapleTvAnimationFrame> OffFrames { get; }
         internal IReadOnlyDictionary<int, IReadOnlyList<MapleTvAnimationFrame>> ChatFrames { get; }

@@ -75,5 +75,19 @@ namespace HaCreator.MapSimulator
             string petRestrictionMessage = FieldInteractionRestrictionEvaluator.GetPetRuntimeRestrictionMessage(_mapBoard?.MapInfo?.fieldLimit ?? 0);
             pets.SetFieldUsageRestriction(!string.IsNullOrWhiteSpace(petRestrictionMessage), petRestrictionMessage);
         }
+
+        private void ApplyFieldRuntimeMinimapRestrictions()
+        {
+            if (miniMapUi == null)
+            {
+                return;
+            }
+
+            long fieldLimit = _mapBoard?.MapInfo?.fieldLimit ?? 0;
+            if (FieldInteractionRestrictionEvaluator.ShouldAutoExpandMinimap(fieldLimit))
+            {
+                miniMapUi.EnsureExpanded();
+            }
+        }
     }
 }

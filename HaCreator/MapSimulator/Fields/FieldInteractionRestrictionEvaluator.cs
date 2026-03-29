@@ -47,6 +47,18 @@ namespace HaCreator.MapSimulator.Fields
                 : null;
         }
 
+        public static bool ShouldAutoExpandMinimap(long fieldLimit)
+        {
+            return FieldLimitType.Auto_Expand_Minimap.Check(fieldLimit);
+        }
+
+        public static string GetAutoExpandMinimapMessage(long fieldLimit)
+        {
+            return ShouldAutoExpandMinimap(fieldLimit)
+                ? "The minimap automatically expands in this map."
+                : null;
+        }
+
         public static string GetPetRuntimeRestrictionMessage(long fieldLimit)
         {
             return FieldLimitType.Unable_To_Use_Pet.Check(fieldLimit)

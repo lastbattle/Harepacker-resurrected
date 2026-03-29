@@ -32,6 +32,8 @@ namespace HaCreator.MapSimulator.UI
         public const string LoginCreateCharacter = "LoginCreateCharacter";
         public const string ConnectionNotice = "ConnectionNotice";
         public const string LoginUtilityDialog = "LoginUtilityDialog";
+        public const string AntiMacro = "AntiMacro";
+        public const string AdminAntiMacro = "AdminAntiMacro";
         public const string CharacterDetail = "CharacterDetail";
         public const string ItemMaker = "ItemMaker";
         public const string BookCollection = "BookCollection";

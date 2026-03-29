@@ -44,6 +44,8 @@ namespace HaCreator.MapSimulator.Managers
         public const int AskApspEventPacketType = 1008;
         public const int FollowCharacterFailedPacketType = 1009;
         public const int RadioSchedulePacketType = 1010;
+        public const int AntiMacroResultPacketType = 1011;
+        public const int OpenSkillGuideClientPacketType = 262;
         public const int PlayEventSoundClientPacketType = 246;
         public const int PlayMinigameSoundClientPacketType = 247;
         public const int OpenClassCompetitionPagePacketType = 250;
@@ -277,6 +279,8 @@ namespace HaCreator.MapSimulator.Managers
                     || packetType == FollowCharacterFailedClientPacketType
                     || packetType == RadioSchedulePacketType
                     || packetType == RadioScheduleClientPacketType
+                    || packetType == AntiMacroResultPacketType
+                    || packetType == OpenSkillGuideClientPacketType
                     || packetType == NotifyHpDecByFieldPacketType
                     || packetType == OpenClassCompetitionPagePacketType
                     || packetType == DamageMeterPacketType
@@ -359,6 +363,21 @@ namespace HaCreator.MapSimulator.Managers
                 || token.Equals("onradioschedule", StringComparison.OrdinalIgnoreCase))
             {
                 packetType = RadioSchedulePacketType;
+                return true;
+            }
+
+            if (token.Equals("antimacro", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("antimacroresult", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("liedetector", StringComparison.OrdinalIgnoreCase))
+            {
+                packetType = AntiMacroResultPacketType;
+                return true;
+            }
+
+            if (token.Equals("skillguide", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("openskillguide", StringComparison.OrdinalIgnoreCase))
+            {
+                packetType = OpenSkillGuideClientPacketType;
                 return true;
             }
 
@@ -506,6 +525,7 @@ namespace HaCreator.MapSimulator.Managers
                 AskApspEventPacketType => "AskAPSPEvent(1008)",
                 FollowCharacterFailedPacketType => "FollowCharacterFailed(1009)",
                 RadioSchedulePacketType => "RadioSchedule(1010)",
+                AntiMacroResultPacketType => "AntiMacroResult(1011)",
                 PlayEventSoundClientPacketType => "PlayEventSound(246)",
                 PlayMinigameSoundClientPacketType => "PlayMinigameSound(247)",
                 NotifyHpDecByFieldPacketType => "NotifyHPDecByField(243)",
@@ -517,6 +537,7 @@ namespace HaCreator.MapSimulator.Managers
                 BuffzoneEffectClientPacketType => "BuffzoneEffect(265)",
                 GoToCommoditySnClientPacketType => "GoToCommoditySN(266)",
                 RadioScheduleClientPacketType => "RadioSchedule(261)",
+                OpenSkillGuideClientPacketType => "OpenSkillGuide(262)",
                 DamageMeterPacketType => "DamageMeter(267)",
                 FollowCharacterFailedClientPacketType => "FollowCharacterFailed(270)",
                 AskApspEventClientPacketType => "AskAPSPEvent(273)",

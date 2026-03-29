@@ -316,7 +316,7 @@ namespace HaCreator.MapSimulator.Pools
                 return false;
             }
 
-            ApplySummonDamage(state, Math.Max(1, damage), currentTime);
+            ApplySummonDamage(state, Math.Max(1, damage), currentTime, useHitAnimationState: true);
             return true;
         }
 
@@ -536,8 +536,8 @@ namespace HaCreator.MapSimulator.Pools
             PlayPacketMobAttackFeedback(state, packet, currentTime);
             if (packet.Damage > 0)
             {
-                PreparePacketOwnedHitAction(state, currentTime);
-                ApplySummonDamage(state, packet.Damage, currentTime);
+                bool useHitAnimationState = PreparePacketOwnedHitAction(state, currentTime);
+                ApplySummonDamage(state, packet.Damage, currentTime, useHitAnimationState);
             }
             else
             {
@@ -633,8 +633,8 @@ namespace HaCreator.MapSimulator.Pools
                         BeginPacketOwnedAttackAnimation(teslaState, currentTime);
                     }
 
-                    SpawnPacketTeslaAttackProjectiles(teslaStates, targets, currentTime);
-                    SchedulePacketAttackImpactEffects(teslaStates[0].Summon, targets, currentTime);
+                    SpawnPacketTeslaAttackProjectiles(teslaStates, targets, currentTime, useTeslaPerTargetDelayJitter: true);
+                    SchedulePacketAttackImpactEffects(teslaStates[0].Summon, targets, currentTime, useTeslaPerTargetDelayJitter: true);
                     return;
                 }
             }
@@ -1311,14 +1311,32 @@ namespace HaCreator.MapSimulator.Pools
             return Math.Max(240, hitAnimationDuration);
         }
 
-        private static void PreparePacketOwnedHitAction(PacketOwnedSummonState state, int currentTime)
+        private static int ResolveOneTimeActionFallbackDurationMs(SkillAnimation animation, int animationTime)
+        {
+            if (animation?.Frames.Count <= 0)
+            {
+                return 240;
+            }
+
+            int totalDuration = GetSkillAnimationDuration(animation) ?? 0;
+            if (totalDuration <= 0)
+            {
+                return 240;
+            }
+
+            int remainingDuration = Math.Max(0, totalDuration - Math.Max(0, animationTime));
+            return Math.Max(240, remainingDuration);
+        }
+
+        private static bool PreparePacketOwnedHitAction(PacketOwnedSummonState state, int currentTime)
         {
             if (state?.Summon == null)
             {
-                return;
+                return false;
             }
 
-            if (state.Summon.SkillData?.SummonHitAnimation?.Frames.Count > 0)
+            bool hasHitAnimation = state.Summon.SkillData?.SummonHitAnimation?.Frames.Count > 0;
+            if (hasHitAnimation)
             {
                 state.Summon.OneTimeActionFallbackAnimation = null;
                 state.Summon.OneTimeActionFallbackAnimationTime = int.MinValue;
@@ -1328,17 +1346,25 @@ namespace HaCreator.MapSimulator.Pools
             {
                 int elapsed = Math.Max(0, currentTime - state.Summon.StartTime);
                 SkillAnimation fallbackAnimation = ResolveSummonAnimation(state.Summon, currentTime, elapsed, out int fallbackAnimationTime);
+                int fallbackDuration = ResolveOneTimeActionFallbackDurationMs(fallbackAnimation, fallbackAnimationTime);
                 state.Summon.OneTimeActionFallbackAnimation = fallbackAnimation;
                 state.Summon.OneTimeActionFallbackAnimationTime = fallbackAnimation?.Frames.Count > 0
                     ? Math.Max(0, fallbackAnimationTime)
                     : int.MinValue;
-                state.Summon.OneTimeActionFallbackEndTime = currentTime + ResolveSummonHitActionDurationMs(state.Summon);
+                state.Summon.OneTimeActionFallbackEndTime = currentTime + fallbackDuration;
             }
 
             state.OneTimeAction = 15;
-            state.OneTimeActionEndTime = currentTime + ResolveSummonHitActionDurationMs(state.Summon);
-            state.Summon.ActorState = SummonActorState.Hit;
-            state.Summon.LastStateChangeTime = currentTime;
+            state.OneTimeActionEndTime = hasHitAnimation
+                ? currentTime + ResolveSummonHitActionDurationMs(state.Summon)
+                : state.Summon.OneTimeActionFallbackEndTime;
+            if (hasHitAnimation)
+            {
+                state.Summon.ActorState = SummonActorState.Hit;
+                state.Summon.LastStateChangeTime = currentTime;
+            }
+
+            return hasHitAnimation;
         }
 
         private static Color ResolveSummonDrawColor(ActiveSummon summon)
@@ -1353,14 +1379,14 @@ namespace HaCreator.MapSimulator.Pools
                 : Color.White;
         }
 
-        private void ApplySummonDamage(PacketOwnedSummonState state, int damage, int currentTime)
+        private void ApplySummonDamage(PacketOwnedSummonState state, int damage, int currentTime, bool useHitAnimationState)
         {
             if (state?.Summon == null || state.Summon.IsPendingRemoval)
             {
                 return;
             }
 
-            StartSummonHitReaction(state.Summon, damage, currentTime);
+            StartSummonHitReaction(state.Summon, damage, currentTime, useHitAnimationState);
             state.Summon.MaxHealth = Math.Max(1, state.Summon.MaxHealth);
             int startingHealth = state.Summon.CurrentHealth > 0 ? state.Summon.CurrentHealth : state.Summon.MaxHealth;
             state.Summon.CurrentHealth = Math.Max(0, startingHealth - Math.Max(1, damage));
@@ -1370,20 +1396,24 @@ namespace HaCreator.MapSimulator.Pools
             }
         }
 
-        private void StartSummonHitReaction(ActiveSummon summon, int hitDamage, int currentTime)
+        private void StartSummonHitReaction(ActiveSummon summon, int hitDamage, int currentTime, bool useHitAnimationState)
         {
             if (summon == null)
             {
                 return;
             }
 
-            summon.LastHitAnimationStartTime = currentTime;
+            if (useHitAnimationState)
+            {
+                summon.LastHitAnimationStartTime = currentTime;
+                summon.ActorState = SummonActorState.Hit;
+                summon.LastStateChangeTime = currentTime;
+            }
+
             summon.HitPeriodRemainingMs = hitDamage > 0
                 ? ResolveSummonHitPeriodDurationMs(summon)
                 : -ResolveSummonHitPeriodDurationMs(summon);
             summon.LastHitPeriodUpdateTime = currentTime;
-            summon.ActorState = SummonActorState.Hit;
-            summon.LastStateChangeTime = currentTime;
 
             if (hitDamage > 0 && summon.SkillData?.HitEffect != null)
             {
@@ -1853,7 +1883,8 @@ namespace HaCreator.MapSimulator.Pools
         private void SpawnPacketTeslaAttackProjectiles(
             IReadOnlyList<PacketOwnedSummonState> teslaStates,
             IReadOnlyList<MobItem> targets,
-            int currentTime)
+            int currentTime,
+            bool useTeslaPerTargetDelayJitter = false)
         {
             if (teslaStates == null || teslaStates.Count == 0 || targets == null || targets.Count == 0)
             {
@@ -1880,7 +1911,11 @@ namespace HaCreator.MapSimulator.Pools
 
                 Vector2 source = new(teslaCoil.PositionX, teslaCoil.PositionY);
                 Vector2 targetCenter = GetMobHitboxCenter(target, currentTime);
-                int impactDelayMs = Math.Max(60, ResolvePacketAttackImpactDelayMs(teslaCoil, target, currentTime));
+                int impactDelayMs = Math.Max(
+                    60,
+                    useTeslaPerTargetDelayJitter
+                        ? ResolvePacketTeslaTargetImpactDelayMs(teslaCoil, target, currentTime)
+                        : ResolvePacketAttackImpactDelayMs(teslaCoil, target, currentTime));
                 SpawnPacketProjectileVisual(
                     teslaCoil,
                     source,
@@ -1945,7 +1980,11 @@ namespace HaCreator.MapSimulator.Pools
             });
         }
 
-        private void SchedulePacketAttackImpactEffects(ActiveSummon summon, IReadOnlyList<MobItem> targets, int currentTime)
+        private void SchedulePacketAttackImpactEffects(
+            ActiveSummon summon,
+            IReadOnlyList<MobItem> targets,
+            int currentTime,
+            bool useTeslaPerTargetDelayJitter = false)
         {
             if (summon?.SkillData == null || targets == null || targets.Count == 0)
             {
@@ -1967,7 +2006,9 @@ namespace HaCreator.MapSimulator.Pools
                 }
 
                 Vector2 targetCenter = GetMobHitboxCenter(target, currentTime);
-                int executeTime = currentTime + ResolvePacketAttackImpactDelayMs(summon, target, currentTime);
+                int executeTime = currentTime + (useTeslaPerTargetDelayJitter
+                    ? ResolvePacketTeslaTargetImpactDelayMs(summon, target, currentTime)
+                    : ResolvePacketAttackImpactDelayMs(summon, target, currentTime));
                 _scheduledHitEffects.Add(new ScheduledPacketOwnedHitEffect
                 {
                     ExecuteTime = executeTime,
@@ -2014,6 +2055,23 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             return skill?.HitEffect;
+        }
+
+        private int ResolvePacketTeslaTargetImpactDelayMs(ActiveSummon summon, MobItem target, int currentTime)
+        {
+            int baseDelayMs = ResolvePacketAttackImpactDelayMs(summon, target, currentTime);
+            return baseDelayMs + ResolveTeslaPerTargetJitterMs(baseDelayMs);
+        }
+
+        private int ResolveTeslaPerTargetJitterMs(int baseDelayMs)
+        {
+            int jitterWindowMs = Math.Max(0, baseDelayMs - 300);
+            if (jitterWindowMs <= 0)
+            {
+                return 0;
+            }
+
+            return _random.Next(jitterWindowMs);
         }
 
         private static int ResolvePacketAttackImpactDelayMs(ActiveSummon summon, MobItem target, int currentTime)

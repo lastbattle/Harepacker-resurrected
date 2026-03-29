@@ -1,5 +1,6 @@
 using HaCreator.MapSimulator.Character.Skills;
 using MapleLib.WzLib.WzStructure.Data;
+using MapleLib.WzLib.WzStructure;
 using System;
 
 namespace HaCreator.MapSimulator.Fields
@@ -10,6 +11,25 @@ namespace HaCreator.MapSimulator.Fields
     public static class FieldSkillRestrictionEvaluator
     {
         private const int RocketBoosterSkillId = 35101004;
+
+        public static bool CanUseSkill(MapInfo mapInfo, SkillData skill)
+        {
+            return GetRestrictionMessage(mapInfo, skill) == null;
+        }
+
+        public static string GetRestrictionMessage(MapInfo mapInfo, SkillData skill)
+        {
+            if (skill == null)
+                return "Skill data is unavailable.";
+
+            string fieldLimitRestrictionMessage = GetRestrictionMessage(mapInfo?.fieldLimit ?? 0, skill);
+            if (!string.IsNullOrWhiteSpace(fieldLimitRestrictionMessage))
+            {
+                return fieldLimitRestrictionMessage;
+            }
+
+            return GetClientOwnedFieldRestrictionMessage(mapInfo, skill);
+        }
 
         public static bool CanUseSkill(long fieldLimit, SkillData skill)
         {
@@ -66,6 +86,21 @@ namespace HaCreator.MapSimulator.Fields
                 return "Mount and mechanic vehicle skills are disabled in this map.";
 
             return null;
+        }
+
+        private static string GetClientOwnedFieldRestrictionMessage(MapInfo mapInfo, SkillData skill)
+        {
+            if (mapInfo == null || skill == null)
+            {
+                return null;
+            }
+
+            return mapInfo.fieldType switch
+            {
+                FieldType.FIELDTYPE_COCONUT => "Skills cannot be used while the Coconut minigame owns basic attacks.",
+                FieldType.FIELDTYPE_SNOWBALL => "Skills cannot be used while the Snowball minigame owns basic attacks.",
+                _ => null
+            };
         }
 
         private static bool IsMysticDoorSkill(SkillData skill)

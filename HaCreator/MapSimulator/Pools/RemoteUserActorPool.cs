@@ -467,7 +467,7 @@ namespace HaCreator.MapSimulator.Pools
             }
         }
 
-        public bool TrySetPortableChair(int characterId, int? chairItemId, out string message)
+        public bool TrySetPortableChair(int characterId, int? chairItemId, out string message, int? pairCharacterId = null)
         {
             message = null;
             if (_loader == null)
@@ -486,6 +486,7 @@ namespace HaCreator.MapSimulator.Pools
             if (!chairItemId.HasValue || chairItemId.Value <= 0)
             {
                 actor.Build.ActivePortableChair = null;
+                actor.PreferredPortableChairPairCharacterId = null;
                 actor.ActionName = CharacterPart.GetActionString(CharacterAction.Stand1);
                 actor.RefreshAssembler();
                 actor.ClearMeleeAfterImage();
@@ -500,6 +501,7 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             actor.Build.ActivePortableChair = chair;
+            actor.PreferredPortableChairPairCharacterId = pairCharacterId;
             ApplyPortableChairMount(actor, chair);
             actor.ActionName = NormalizeActionName("sit", allowSitFallback: true);
             actor.RefreshAssembler();
@@ -556,7 +558,9 @@ namespace HaCreator.MapSimulator.Pools
             PreparedSkillHudTextVariant textVariant,
             bool showText,
             int currentTime,
-            out string message)
+            out string message,
+            int prepareDurationMs = 0,
+            bool autoEnterHold = false)
         {
             message = null;
             if (!_actorsById.TryGetValue(characterId, out RemoteUserActor actor))
@@ -571,10 +575,12 @@ namespace HaCreator.MapSimulator.Pools
                 SkillName = string.IsNullOrWhiteSpace(skillName) ? $"Skill {skillId}" : skillName.Trim(),
                 SkinKey = string.IsNullOrWhiteSpace(skinKey) ? "KeyDownBar" : skinKey.Trim(),
                 DurationMs = Math.Max(0, durationMs),
+                PrepareDurationMs = Math.Max(0, prepareDurationMs),
                 GaugeDurationMs = gaugeDurationMs > 0 ? gaugeDurationMs : Math.Max(0, durationMs),
                 StartTime = currentTime,
                 IsKeydownSkill = isKeydownSkill,
                 IsHolding = isHolding,
+                AutoEnterHold = autoEnterHold && prepareDurationMs > 0,
                 MaxHoldDurationMs = Math.Max(0, maxHoldDurationMs),
                 TextVariant = textVariant,
                 ShowText = showText
@@ -634,8 +640,7 @@ namespace HaCreator.MapSimulator.Pools
 
                 if (actor.PreparedSkill != null && actor.PreparedSkill.DurationMs > 0)
                 {
-                    int elapsed = Math.Max(0, currentTime - actor.PreparedSkill.StartTime);
-                    if (elapsed >= actor.PreparedSkill.DurationMs)
+                    if (!TryResolvePreparedSkillPhase(actor.PreparedSkill, currentTime, out _, out _, out _, out _, out _))
                     {
                         actor.PreparedSkill = null;
                     }
@@ -660,12 +665,14 @@ namespace HaCreator.MapSimulator.Pools
                 return;
             }
 
+            int localCharacterId = player.Build?.Id ?? 0;
             RemoteUserActor pairActor = FindPortableChairPairActor(
                 chair,
-                player.FacingRight,
-                player.X,
-                player.Y,
-                skipCharacterId: player.Build?.Id ?? 0,
+                ownerCharacterId: localCharacterId,
+                ownerFacingRight: player.FacingRight,
+                ownerX: player.X,
+                ownerY: player.Y,
+                skipCharacterId: localCharacterId,
                 preferVisibleOnly: true);
             if (pairActor != null)
             {
@@ -702,12 +709,17 @@ namespace HaCreator.MapSimulator.Pools
                 return null;
             }
 
-            int elapsed = Math.Max(0, currentTime - prepared.StartTime);
-            int duration = Math.Max(0, prepared.DurationMs);
-            int remainingMs = duration > 0 ? Math.Max(0, duration - elapsed) : 0;
-            float progress = duration > 0
-                ? MathHelper.Clamp(elapsed / (float)duration, 0f, 1f)
-                : 0f;
+            if (!TryResolvePreparedSkillPhase(
+                    prepared,
+                    currentTime,
+                    out int remainingMs,
+                    out int duration,
+                    out float progress,
+                    out bool isHolding,
+                    out int holdElapsedMs))
+            {
+                return null;
+            }
 
             return new StatusBarPreparedSkillRenderData
             {
@@ -720,13 +732,81 @@ namespace HaCreator.MapSimulator.Pools
                 GaugeDurationMs = prepared.GaugeDurationMs > 0 ? prepared.GaugeDurationMs : duration,
                 Progress = progress,
                 IsKeydownSkill = prepared.IsKeydownSkill,
-                IsHolding = prepared.IsHolding,
-                HoldElapsedMs = prepared.IsHolding ? elapsed : 0,
+                IsHolding = isHolding,
+                HoldElapsedMs = holdElapsedMs,
                 MaxHoldDurationMs = prepared.MaxHoldDurationMs,
                 TextVariant = prepared.TextVariant,
                 ShowText = prepared.ShowText && !PreparedSkillHudRules.IsDragonOverlaySkill(prepared.SkillId),
                 WorldAnchor = ResolvePreparedSkillWorldAnchor(actor, prepared, currentTime)
             };
+        }
+
+        private static bool TryResolvePreparedSkillPhase(
+            RemotePreparedSkillState prepared,
+            int currentTime,
+            out int remainingMs,
+            out int durationMs,
+            out float progress,
+            out bool isHolding,
+            out int holdElapsedMs)
+        {
+            remainingMs = 0;
+            durationMs = 0;
+            progress = 0f;
+            isHolding = false;
+            holdElapsedMs = 0;
+
+            if (prepared == null)
+            {
+                return false;
+            }
+
+            int elapsed = Math.Max(0, currentTime - prepared.StartTime);
+            if (prepared.AutoEnterHold && prepared.PrepareDurationMs > 0)
+            {
+                if (elapsed < prepared.PrepareDurationMs)
+                {
+                    durationMs = prepared.PrepareDurationMs;
+                    remainingMs = Math.Max(0, prepared.PrepareDurationMs - elapsed);
+                    progress = durationMs > 0
+                        ? MathHelper.Clamp(elapsed / (float)durationMs, 0f, 1f)
+                        : 0f;
+                    return true;
+                }
+
+                int holdDurationMs = Math.Max(0, prepared.MaxHoldDurationMs);
+                holdElapsedMs = Math.Max(0, elapsed - prepared.PrepareDurationMs);
+                if (holdDurationMs > 0 && holdElapsedMs >= holdDurationMs)
+                {
+                    return false;
+                }
+
+                durationMs = holdDurationMs;
+                remainingMs = holdDurationMs > 0
+                    ? Math.Max(0, holdDurationMs - holdElapsedMs)
+                    : 0;
+                progress = holdDurationMs > 0
+                    ? MathHelper.Clamp(holdElapsedMs / (float)holdDurationMs, 0f, 1f)
+                    : 1f;
+                isHolding = true;
+                return true;
+            }
+
+            durationMs = Math.Max(0, prepared.DurationMs);
+            if (durationMs > 0 && elapsed >= durationMs)
+            {
+                return false;
+            }
+
+            remainingMs = durationMs > 0
+                ? Math.Max(0, durationMs - elapsed)
+                : 0;
+            progress = durationMs > 0
+                ? MathHelper.Clamp(elapsed / (float)durationMs, 0f, 1f)
+                : 0f;
+            isHolding = prepared.IsHolding;
+            holdElapsedMs = isHolding ? elapsed : 0;
+            return true;
         }
 
         private static Vector2 ResolvePreparedSkillWorldAnchor(RemoteUserActor actor, RemotePreparedSkillState prepared, int currentTime)
@@ -908,7 +988,8 @@ namespace HaCreator.MapSimulator.Pools
                     WorldX = actor.Position.X,
                     WorldY = actor.Position.Y,
                     MarkerType = markerType.Value,
-                    ShowDirectionOverlay = actor.ShowDirectionOverlay
+                    ShowDirectionOverlay = actor.ShowDirectionOverlay,
+                    TooltipText = actor.Name
                 });
             }
 
@@ -1042,6 +1123,7 @@ namespace HaCreator.MapSimulator.Pools
 
             RemoteUserActor partnerActor = FindPortableChairPairActor(
                 chair,
+                actor.CharacterId,
                 actor.FacingRight,
                 actor.Position.X,
                 actor.Position.Y,
@@ -1112,6 +1194,7 @@ namespace HaCreator.MapSimulator.Pools
             {
                 hasPair = FindPortableChairPairActor(
                               chair,
+                              actor.CharacterId,
                               actor.FacingRight,
                               actor.Position.X,
                               actor.Position.Y,
@@ -1261,6 +1344,7 @@ namespace HaCreator.MapSimulator.Pools
 
         private RemoteUserActor FindPortableChairPairActor(
             PortableChair chair,
+            int ownerCharacterId,
             bool ownerFacingRight,
             float ownerX,
             float ownerY,
@@ -1270,6 +1354,19 @@ namespace HaCreator.MapSimulator.Pools
             if (chair?.IsCoupleChair != true)
             {
                 return null;
+            }
+
+            if (TryResolveExplicitPortableChairPairActor(ownerCharacterId, skipCharacterId, preferVisibleOnly, out RemoteUserActor explicitPairActor)
+                && PlayerCharacter.IsPortableChairActualPairActive(
+                    chair,
+                    ownerFacingRight,
+                    ownerX,
+                    ownerY,
+                    explicitPairActor.FacingRight,
+                    explicitPairActor.Position.X,
+                    explicitPairActor.Position.Y))
+            {
+                return explicitPairActor;
             }
 
             Point expectedOffset = PlayerCharacter.ResolvePortableChairPairOffset(chair, ownerFacingRight);
@@ -1306,6 +1403,45 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             return bestActor;
+        }
+
+        private bool TryResolveExplicitPortableChairPairActor(
+            int ownerCharacterId,
+            int skipCharacterId,
+            bool preferVisibleOnly,
+            out RemoteUserActor actor)
+        {
+            actor = null;
+            if (ownerCharacterId <= 0)
+            {
+                return false;
+            }
+
+            if (_actorsById.TryGetValue(ownerCharacterId, out RemoteUserActor ownerActor)
+                && ownerActor.PreferredPortableChairPairCharacterId is int preferredPairId
+                && preferredPairId > 0
+                && preferredPairId != skipCharacterId
+                && _actorsById.TryGetValue(preferredPairId, out RemoteUserActor preferredPairActor)
+                && (!preferVisibleOnly || preferredPairActor.IsVisibleInWorld))
+            {
+                actor = preferredPairActor;
+                return true;
+            }
+
+            foreach (RemoteUserActor candidate in _actorsById.Values)
+            {
+                if (candidate.CharacterId == skipCharacterId
+                    || candidate.PreferredPortableChairPairCharacterId != ownerCharacterId
+                    || (preferVisibleOnly && !candidate.IsVisibleInWorld))
+                {
+                    continue;
+                }
+
+                actor = candidate;
+                return true;
+            }
+
+            return false;
         }
 
         private void SyncBattlefieldAppearance(RemoteUserActor actor, BattlefieldField battlefield)
@@ -1484,7 +1620,7 @@ namespace HaCreator.MapSimulator.Pools
             if (!_skillLoader.TryResolveMeleeAfterImageAction(
                     skill,
                     weapon,
-                    actionName,
+                    EnumerateRemoteAfterImageActionNames(actor, skill, actionName),
                     actor.Build.Level,
                     masteryPercent,
                     chargeElement,
@@ -1522,6 +1658,40 @@ namespace HaCreator.MapSimulator.Pools
                 actor.FacingRight,
                 GetActionDuration(actor.Assembler, actionName),
                 GetAfterImageFadeDuration(actor.Assembler, actionName));
+        }
+
+        private static IEnumerable<string> EnumerateRemoteAfterImageActionNames(
+            RemoteUserActor actor,
+            SkillData skill,
+            string actionName)
+        {
+            var yielded = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+            if (!string.IsNullOrWhiteSpace(actionName) && yielded.Add(actionName.Trim()))
+            {
+                yield return actionName.Trim();
+            }
+
+            if (skill?.ActionNames != null)
+            {
+                foreach (string skillActionName in skill.ActionNames)
+                {
+                    if (!string.IsNullOrWhiteSpace(skillActionName) && yielded.Add(skillActionName.Trim()))
+                    {
+                        yield return skillActionName.Trim();
+                    }
+                }
+            }
+
+            if (!string.IsNullOrWhiteSpace(skill?.ActionName) && yielded.Add(skill.ActionName.Trim()))
+            {
+                yield return skill.ActionName.Trim();
+            }
+
+            if (!string.IsNullOrWhiteSpace(actor?.ActionName) && yielded.Add(actor.ActionName.Trim()))
+            {
+                yield return actor.ActionName.Trim();
+            }
         }
 
         private static int GetActionDuration(CharacterAssembler assembler, string actionName)
@@ -1752,6 +1922,7 @@ namespace HaCreator.MapSimulator.Pools
         public RemotePreparedSkillState PreparedSkill { get; set; }
         public CharacterPart PortableChairPreviousMount { get; set; }
         public bool PortableChairAppliedMount { get; set; }
+        public int? PreferredPortableChairPairCharacterId { get; set; }
         public PlayerMovementSyncSnapshot MovementSnapshot { get; set; }
         public byte LastMoveActionRaw { get; set; }
         public int CurrentFootholdId { get; set; }
@@ -1858,9 +2029,10 @@ namespace HaCreator.MapSimulator.Pools
             string helperText = HelperMarkerType?.ToString() ?? "none";
             string teamText = BattlefieldTeamId?.ToString() ?? "none";
             string preparedText = PreparedSkill != null ? PreparedSkill.SkillId.ToString() : "none";
+            string chairPairText = PreferredPortableChairPairCharacterId?.ToString() ?? "none";
             string followDriverText = FollowDriverId > 0 ? FollowDriverId.ToString() : "none";
             string followPassengerText = FollowPassengerId > 0 ? FollowPassengerId.ToString() : "none";
-            return $"{CharacterId}:{Name}@({Position.X:0},{Position.Y:0}) action={ActionName} source={SourceTag} helper={helperText} team={teamText} prep={preparedText} followDriver={followDriverText} followPassenger={followPassengerText}";
+            return $"{CharacterId}:{Name}@({Position.X:0},{Position.Y:0}) action={ActionName} source={SourceTag} helper={helperText} team={teamText} prep={preparedText} chairPair={chairPairText} followDriver={followDriverText} followPassenger={followPassengerText}";
         }
     }
 
@@ -1883,10 +2055,12 @@ namespace HaCreator.MapSimulator.Pools
         public string SkillName { get; init; }
         public string SkinKey { get; init; } = "KeyDownBar";
         public int DurationMs { get; init; }
+        public int PrepareDurationMs { get; init; }
         public int GaugeDurationMs { get; init; }
         public int StartTime { get; init; }
         public bool IsKeydownSkill { get; init; }
         public bool IsHolding { get; init; }
+        public bool AutoEnterHold { get; init; }
         public int MaxHoldDurationMs { get; init; }
         public PreparedSkillHudTextVariant TextVariant { get; init; }
         public bool ShowText { get; init; } = true;

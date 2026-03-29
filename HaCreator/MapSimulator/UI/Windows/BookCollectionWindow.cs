@@ -647,11 +647,18 @@ namespace HaCreator.MapSimulator.UI
         private void ResetBookState()
         {
             _contextMenuVisible = false;
+            _contextMenuMobId = 0;
             _searchMode = false;
             _searchQuery = string.Empty;
             _compositionText = string.Empty;
             _searchMatches.Clear();
             _selectedSearchMatchIndex = -1;
+            _selectedLeftTabIndex = 0;
+            _currentGradeIndex = 0;
+            _currentPageIndex = 0;
+            _selectedSlotIndex = 0;
+            _detailTab = MonsterBookDetailTab.BasicInfo;
+            _snapshot = null;
         }
 
         private bool WasPressed(KeyboardState keyboard, Keys key) => keyboard.IsKeyDown(key) && !_previousKeyboardState.IsKeyDown(key);

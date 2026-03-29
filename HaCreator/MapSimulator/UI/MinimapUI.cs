@@ -74,6 +74,7 @@ namespace HaCreator.MapSimulator.UI
         private IReadOnlyList<NpcItem> _npcMarkers = Array.Empty<NpcItem>();
         private IReadOnlyList<PortalItem> _portalMarkers = Array.Empty<PortalItem>();
         private IReadOnlyList<TrackedUserMarker> _trackedUserMarkers = Array.Empty<TrackedUserMarker>();
+        private IReadOnlyList<EmployeeMarker> _employeeMarkers = Array.Empty<EmployeeMarker>();
         private bool _showNpcMarkers;
         private SpriteFont _tooltipFont;
         private Texture2D _tooltipPixelTexture;
@@ -104,6 +105,14 @@ namespace HaCreator.MapSimulator.UI
             public float WorldX { get; init; }
             public float WorldY { get; init; }
             public HelperMarkerType MarkerType { get; init; }
+            public bool ShowDirectionOverlay { get; init; } = true;
+            public string TooltipText { get; init; }
+        }
+
+        public sealed class EmployeeMarker
+        {
+            public float WorldX { get; init; }
+            public float WorldY { get; init; }
             public bool ShowDirectionOverlay { get; init; } = true;
             public string TooltipText { get; init; }
         }
@@ -221,6 +230,11 @@ namespace HaCreator.MapSimulator.UI
             _trackedUserMarkers = trackedUserMarkers ?? Array.Empty<TrackedUserMarker>();
         }
 
+        public void SetEmployeeMarkers(IReadOnlyList<EmployeeMarker> employeeMarkers)
+        {
+            _employeeMarkers = employeeMarkers ?? Array.Empty<EmployeeMarker>();
+        }
+
         public void SetLocalPlayerHelperMarker(HelperMarkerType? helperMarkerType)
         {
             _localPlayerHelperMarkerType = helperMarkerType;
@@ -291,6 +305,7 @@ namespace HaCreator.MapSimulator.UI
 
                 DrawPortalMarkers(sprite, skeletonMeshRenderer, gameTime, drawReflectionInfo, renderParameters, TickCount);
                 DrawTrackedUserMarkers(sprite, skeletonMeshRenderer, gameTime, drawReflectionInfo, renderParameters, TickCount);
+                DrawEmployeeMarkers(sprite, skeletonMeshRenderer, gameTime, drawReflectionInfo, renderParameters, TickCount);
                 DrawNpcMarkers(sprite, skeletonMeshRenderer, gameTime, drawReflectionInfo, renderParameters, TickCount);
                 DrawNpcListPanel(sprite, skeletonMeshRenderer, gameTime, centerX, centerY, renderParameters, TickCount);
                 DrawHoveredTooltip(sprite, renderParameters.RenderWidth, renderParameters.RenderHeight);
@@ -646,6 +661,11 @@ namespace HaCreator.MapSimulator.UI
             return _npcMarker ?? _questStartNpcMarker ?? _questEndNpcMarker;
         }
 
+        private BaseDXDrawableItem ResolveEmployeeMarker()
+        {
+            return ResolveAnyNpcMarker();
+        }
+
         private BaseDXDrawableItem ResolveLocalPlayerMarker()
         {
             if (_localPlayerHelperMarkerType.HasValue
@@ -684,6 +704,28 @@ namespace HaCreator.MapSimulator.UI
                     continue;
 
                 DrawMarkerWithDirectionOverlay(marker, minimapPoint, trackedUser.ShowDirectionOverlay, sprite, skeletonMeshRenderer, gameTime, drawReflectionInfo, renderParameters, tickCount);
+            }
+        }
+
+        private void DrawEmployeeMarkers(
+            SpriteBatch sprite,
+            SkeletonMeshRenderer skeletonMeshRenderer,
+            GameTime gameTime,
+            ReflectionDrawableBoundary drawReflectionInfo,
+            RenderParameters renderParameters,
+            int tickCount)
+        {
+            BaseDXDrawableItem marker = ResolveEmployeeMarker();
+            if (_bIsCollapsedState || marker == null || _employeeMarkers.Count == 0)
+                return;
+
+            foreach (EmployeeMarker employee in _employeeMarkers)
+            {
+                if (employee == null)
+                    continue;
+
+                Point minimapPoint = WorldToMinimap((int)employee.WorldX, (int)employee.WorldY);
+                DrawMarkerWithDirectionOverlay(marker, minimapPoint, employee.ShowDirectionOverlay, sprite, skeletonMeshRenderer, gameTime, drawReflectionInfo, renderParameters, tickCount);
             }
         }
 
@@ -808,6 +850,11 @@ namespace HaCreator.MapSimulator.UI
                 return true;
             }
 
+            if (TrySetHoveredEmployeeTooltip(mouseState))
+            {
+                return true;
+            }
+
             return TrySetHoveredPortalTooltip(mouseState);
         }
 
@@ -880,6 +927,46 @@ namespace HaCreator.MapSimulator.UI
 
                 SetHoveredTooltip(tooltipText, hoverRect);
                 return true;
+            }
+
+            return false;
+        }
+
+        private bool TrySetHoveredEmployeeTooltip(MouseState mouseState)
+        {
+            BaseDXDrawableItem marker = ResolveEmployeeMarker();
+            if (marker == null || _employeeMarkers.Count == 0)
+            {
+                return false;
+            }
+
+            foreach (EmployeeMarker employee in _employeeMarkers)
+            {
+                if (employee == null || string.IsNullOrWhiteSpace(employee.TooltipText))
+                {
+                    continue;
+                }
+
+                Point minimapPoint = WorldToMinimap((int)employee.WorldX, (int)employee.WorldY);
+                Rectangle hoverRect = Rectangle.Empty;
+                if (IsWithinMinimapImage(minimapPoint))
+                {
+                    hoverRect = GetMarkerScreenBounds(marker, minimapPoint, mouseState);
+                }
+                else if (employee.ShowDirectionOverlay)
+                {
+                    DirectionArrow direction = ResolveDirectionArrow(minimapPoint);
+                    if (_directionMarkers.TryGetValue(direction, out BaseDXDrawableItem arrow) && arrow != null)
+                    {
+                        hoverRect = GetMarkerScreenBounds(arrow, ClampDirectionArrowPoint(minimapPoint), mouseState);
+                    }
+                }
+
+                if (!hoverRect.IsEmpty)
+                {
+                    SetHoveredTooltip(employee.TooltipText, hoverRect);
+                    return true;
+                }
             }
 
             return false;

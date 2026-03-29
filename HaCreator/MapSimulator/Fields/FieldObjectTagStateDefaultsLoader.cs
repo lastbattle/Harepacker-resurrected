@@ -57,12 +57,21 @@ namespace HaCreator.MapSimulator.Fields
 
         private static void ParseProperty(WzImageProperty property, IDictionary<string, bool> states)
         {
+            ParseProperty(property, states, inheritedState: null);
+        }
+
+        private static void ParseProperty(
+            WzImageProperty property,
+            IDictionary<string, bool> states,
+            bool? inheritedState)
+        {
             if (property == null)
             {
                 return;
             }
 
-            if (TryExtractTagStates(property, out IReadOnlyList<string> tags, out bool state))
+            bool? resolvedState = ReadExplicitState(property) ?? inheritedState;
+            if (TryExtractTagStates(property, resolvedState, out IReadOnlyList<string> tags, out bool state))
             {
                 for (int i = 0; i < tags.Count; i++)
                 {
@@ -79,11 +88,15 @@ namespace HaCreator.MapSimulator.Fields
 
             for (int i = 0; i < property.WzProperties.Count; i++)
             {
-                ParseProperty(property.WzProperties[i], states);
+                ParseProperty(property.WzProperties[i], states, resolvedState);
             }
         }
 
-        private static bool TryExtractTagStates(WzImageProperty property, out IReadOnlyList<string> tags, out bool state)
+        private static bool TryExtractTagStates(
+            WzImageProperty property,
+            bool? inheritedState,
+            out IReadOnlyList<string> tags,
+            out bool state)
         {
             tags = null;
             state = false;
@@ -95,7 +108,7 @@ namespace HaCreator.MapSimulator.Fields
             string explicitTag = ReadString(property["tag"])
                                  ?? ReadString(property["name"])
                                  ?? ReadString(property["tags"]);
-            bool? explicitState = ReadExplicitState(property);
+            bool? resolvedState = ReadExplicitState(property) ?? inheritedState;
 
             if (!string.IsNullOrWhiteSpace(explicitTag))
             {
@@ -105,7 +118,7 @@ namespace HaCreator.MapSimulator.Fields
                     return false;
                 }
 
-                state = explicitState ?? true;
+                state = resolvedState ?? true;
                 return true;
             }
 
@@ -120,14 +133,14 @@ namespace HaCreator.MapSimulator.Fields
                         return false;
                     }
 
-                    state = explicitState ?? true;
+                    state = resolvedState ?? true;
                     return true;
                 }
 
                 return false;
             }
 
-            bool? stateFromName = explicitState ?? ReadBool(property);
+            bool? stateFromName = resolvedState ?? ReadBool(property);
             if (!stateFromName.HasValue)
             {
                 return false;

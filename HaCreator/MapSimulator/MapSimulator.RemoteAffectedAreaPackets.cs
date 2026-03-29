@@ -95,6 +95,10 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
+            var activeProjectedSupportAreaIds = _playerManager?.Skills != null
+                ? new System.Collections.Generic.HashSet<int>()
+                : null;
+
             foreach (ActiveAffectedArea area in _affectedAreaPool.ActiveAreas.ToArray())
             {
                 if (area?.IsActive(currentTime) != true)
@@ -109,13 +113,15 @@ namespace HaCreator.MapSimulator
                         break;
 
                     case AffectedAreaSourceKind.PlayerSkill:
-                        UpdateRemotePlayerAffectedAreaGameplay(area, currentTime);
+                        UpdateRemotePlayerAffectedAreaGameplay(area, currentTime, activeProjectedSupportAreaIds);
                         break;
 
                     case AffectedAreaSourceKind.AreaBuffItem:
                         break;
                 }
             }
+
+            _playerManager?.Skills?.SyncExternalAreaSupportBuffs(activeProjectedSupportAreaIds, currentTime);
         }
 
         private void UpdateRemoteMobAffectedAreaGameplay(ActiveAffectedArea area, int currentTime)
@@ -141,7 +147,10 @@ namespace HaCreator.MapSimulator
             _fieldEffects?.TriggerDamageMist(0.35f, Math.Max(250, intervalMs), currentTime);
         }
 
-        private void UpdateRemotePlayerAffectedAreaGameplay(ActiveAffectedArea area, int currentTime)
+        private void UpdateRemotePlayerAffectedAreaGameplay(
+            ActiveAffectedArea area,
+            int currentTime,
+            System.Collections.Generic.ISet<int> activeProjectedSupportAreaIds)
         {
             SkillData skill = _playerManager?.SkillLoader?.LoadSkill(area.SkillId);
             SkillLevelData levelData = ResolveRemoteAffectedAreaSkillLevel(skill, area.SkillLevel);
@@ -150,7 +159,7 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
-            if (TryApplyRemotePlayerSupportAffectedAreaGameplay(area, skill, levelData, currentTime))
+            if (TryApplyRemotePlayerSupportAffectedAreaGameplay(area, skill, levelData, currentTime, activeProjectedSupportAreaIds))
             {
                 return;
             }
@@ -192,7 +201,8 @@ namespace HaCreator.MapSimulator
             ActiveAffectedArea area,
             SkillData skill,
             SkillLevelData levelData,
-            int currentTime)
+            int currentTime,
+            System.Collections.Generic.ISet<int> activeProjectedSupportAreaIds)
         {
             if (RemoteAffectedAreaSupportResolver.ResolveDisposition(skill, levelData) != RemotePlayerAffectedAreaDisposition.FriendlySupport)
             {
@@ -213,6 +223,19 @@ namespace HaCreator.MapSimulator
                     IsAffectedAreaOwnerPartyMember(area.OwnerId)))
             {
                 return true;
+            }
+
+            SkillManager skillManager = _playerManager?.Skills;
+            if (skillManager != null
+                && RemoteAffectedAreaSupportResolver.HasProjectableSupportBuffMetadata(levelData)
+                && skillManager.ApplyOrRefreshExternalAreaSupportBuff(
+                    area.ObjectId,
+                    skill,
+                    levelData,
+                    currentTime,
+                    RemoteAffectedAreaFallbackTickMs + 250))
+            {
+                activeProjectedSupportAreaIds?.Add(area.ObjectId);
             }
 
             if (RemoteAffectedAreaSupportResolver.IsInvincibleZone(skill))

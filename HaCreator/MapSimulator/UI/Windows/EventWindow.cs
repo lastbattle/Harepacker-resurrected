@@ -92,7 +92,7 @@ namespace HaCreator.MapSimulator.UI
             _selectedIndex = 0;
             _pageIndex = 0;
             _showCalendar = false;
-            SetCalendarMonth(new DateTime(DateTime.Today.Year, DateTime.Today.Month, 1));
+            InitializeCalendarSelection(snapshot);
             _autoDismissTick = snapshot.AutoDismissDelayMs > 0
                 ? unchecked(Environment.TickCount + snapshot.AutoDismissDelayMs)
                 : int.MinValue;
@@ -441,7 +441,7 @@ namespace HaCreator.MapSimulator.UI
             _showCalendar = !_showCalendar;
             if (_showCalendar)
             {
-                SetCalendarMonth(new DateTime(DateTime.Today.Year, DateTime.Today.Month, 1));
+                InitializeCalendarSelection(_snapshotProvider?.Invoke() ?? new EventWindowSnapshot());
             }
         }
 
@@ -535,10 +535,17 @@ namespace HaCreator.MapSimulator.UI
 
         private void DrawCalendarDayNumber(SpriteBatch sprite, int day, Point location, bool selected)
         {
-            string dayText = day.ToString();
             Texture2D[] digitFamily = selected && _calendarSelectedNumberTextures.Length > 0
                 ? _calendarSelectedNumberTextures
                 : _calendarNumberTextures;
+            if (digitFamily.Length > day && digitFamily[day] != null)
+            {
+                Texture2D dayTexture = digitFamily[day];
+                sprite.Draw(dayTexture, new Vector2(location.X, location.Y), Color.White);
+                return;
+            }
+
+            string dayText = day.ToString();
             if (digitFamily.Length == 0)
             {
                 sprite.DrawString(_font, dayText, new Vector2(location.X + 4, location.Y + 2), Color.White);
@@ -558,6 +565,25 @@ namespace HaCreator.MapSimulator.UI
                 sprite.Draw(texture, new Vector2(drawX, location.Y + 1), Color.White);
                 drawX += texture.Width - 1;
             }
+        }
+
+        private void InitializeCalendarSelection(EventWindowSnapshot snapshot)
+        {
+            IReadOnlyList<EventEntrySnapshot> entries = GetFilteredEntries(snapshot);
+            DateTime targetDate = entries
+                .Where(static entry => entry.ScheduledAt.Year > 1)
+                .Select(entry => entry.ScheduledAt.Date)
+                .OrderBy(date => Math.Abs((date - DateTime.Today.Date).Ticks))
+                .ThenBy(date => date)
+                .FirstOrDefault();
+
+            if (targetDate.Year <= 1)
+            {
+                targetDate = DateTime.Today.Date;
+            }
+
+            _selectedCalendarDate = targetDate;
+            SetCalendarMonth(new DateTime(targetDate.Year, targetDate.Month, 1));
         }
 
         private void DrawCalendarSelectionSummary(SpriteBatch sprite, IReadOnlyList<EventEntrySnapshot> entries, Rectangle calendarBounds)

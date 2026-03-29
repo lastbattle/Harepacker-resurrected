@@ -777,6 +777,68 @@ namespace HaCreator.MapSimulator.Pools
                 : null;
         }
 
+        public DropItem TryPickUpDropByRemotePet(
+            int petId,
+            int ownerId,
+            float petX,
+            float petY,
+            int currentTime,
+            string petName = null,
+            float petPickupRange = 0,
+            Func<DropItem, DropPickupFailureReason> pickupValidator = null)
+        {
+            if (petPickupRange <= 0)
+            {
+                petPickupRange = PET_PICKUP_RANGE;
+            }
+
+            float rangeSq = petPickupRange * petPickupRange;
+            DropItem closestDrop = null;
+            float closestDistSq = float.MaxValue;
+
+            foreach (var drop in _activeDrops)
+            {
+                if (drop.State != DropState.Idle || !drop.CanPickup)
+                {
+                    continue;
+                }
+
+                float dx = drop.X - petX;
+                float dy = drop.Y - petY;
+                float distSq = dx * dx + dy * dy;
+                if (distSq > rangeSq)
+                {
+                    continue;
+                }
+
+                if (drop.OwnerId > 0 && drop.OwnerId != ownerId && currentTime < drop.OwnerExpireTime)
+                {
+                    continue;
+                }
+
+                if ((pickupValidator?.Invoke(drop) ?? DropPickupFailureReason.None) != DropPickupFailureReason.None)
+                {
+                    continue;
+                }
+
+                if (distSq < closestDistSq)
+                {
+                    closestDistSq = distSq;
+                    closestDrop = drop;
+                }
+            }
+
+            return ResolveRemotePickup(
+                closestDrop,
+                petId,
+                currentTime,
+                DropPickupActorKind.Pet,
+                petName,
+                pickedByPet: true)
+                ? closestDrop
+                : null;
+        }
+
         /// <summary>
         /// Pick up closest drop in range
         /// </summary>

@@ -640,6 +640,21 @@ namespace HaCreator.MapSimulator
             AddClientChatMessage(text, tickCount, chatLogType, whisperTargetCandidate, -1);
         }
 
+        public void AddSystemMessage(string text, int tickCount)
+        {
+            AddClientMessage(text, tickCount, ClientChatLogType.System);
+        }
+
+        public void AddNoticeMessage(string text, int tickCount)
+        {
+            AddClientMessage(text, tickCount, ClientChatLogType.Notice);
+        }
+
+        public void AddErrorMessage(string text, int tickCount)
+        {
+            AddClientMessage(text, tickCount, ClientChatLogType.Error);
+        }
+
         public void AddClientChatMessage(
             string text,
             int tickCount,

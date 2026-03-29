@@ -192,6 +192,7 @@ namespace HaCreator.MapSimulator.Character
         private GamePadState _previousGamepad;
         private PlayerIndex _gamepadIndex = PlayerIndex.One;
         private int _nextInputOwnershipToken = 1;
+        private bool _ctrlComboSuppressed;
 
         // Default key bindings (matching MapleStory)
         private static readonly (InputAction action, Keys primary, Keys secondary, Buttons gamepad)[] DefaultBindings = new[]
@@ -358,6 +359,16 @@ namespace HaCreator.MapSimulator.Character
             _nextInputOwnershipToken = 1;
         }
 
+        public void SetCtrlComboSuppressed(bool suppressed)
+        {
+            _ctrlComboSuppressed = suppressed;
+        }
+
+        public bool IsCtrlComboSuppressed()
+        {
+            return _ctrlComboSuppressed;
+        }
+
         /// <summary>
         /// Get the current input state
         /// </summary>
@@ -432,8 +443,10 @@ namespace HaCreator.MapSimulator.Character
 
             // Ctrl+Number secondary skill slots (8 slots)
             // These check for Ctrl modifier + number key
-            bool ctrlHeld = _currentKeyboard.IsKeyDown(Keys.LeftControl) || _currentKeyboard.IsKeyDown(Keys.RightControl);
-            bool prevCtrlHeld = _previousKeyboard.IsKeyDown(Keys.LeftControl) || _previousKeyboard.IsKeyDown(Keys.RightControl);
+            bool ctrlHeld = !_ctrlComboSuppressed
+                && (_currentKeyboard.IsKeyDown(Keys.LeftControl) || _currentKeyboard.IsKeyDown(Keys.RightControl));
+            bool prevCtrlHeld = !_ctrlComboSuppressed
+                && (_previousKeyboard.IsKeyDown(Keys.LeftControl) || _previousKeyboard.IsKeyDown(Keys.RightControl));
             if (ctrlHeld)
             {
                 Keys[] ctrlKeys = { Keys.D1, Keys.D2, Keys.D3, Keys.D4, Keys.D5, Keys.D6, Keys.D7, Keys.D8 };

@@ -69,9 +69,14 @@ namespace HaCreator.MapSimulator.Combat
         {
             public int Order { get; set; }
             public Vector2 LanePosition { get; set; }
-            public Vector2 TargetPoint { get; set; }
             public MobTargetInfo TargetInfo { get; set; }
             public float ResolutionScore { get; set; }
+        }
+
+        private sealed class ProjectileLaneAssignment
+        {
+            public Vector2 LanePoint { get; set; }
+            public MobTargetInfo TargetInfo { get; set; }
         }
 
         private sealed class ScheduledMobVisualEffect
@@ -296,15 +301,15 @@ namespace HaCreator.MapSimulator.Combat
             int currentTime)
         {
             Vector2 spawn = ResolveProjectileSpawnPoint(mobItem, attack);
-            List<(Vector2 Target, MobTargetInfo TargetInfo)> projectileLanes =
+            List<ProjectileLaneAssignment> projectileLanes =
                 BuildProjectileLaneAssignments(mobItem, attack, targetInfo, targetX, targetY, spawn, currentTime);
             int laneCount = Math.Max(1, projectileLanes.Count);
             for (int i = 0; i < projectileLanes.Count; i++)
             {
-                (Vector2 impactPoint, MobTargetInfo laneTargetInfo) = projectileLanes[i];
+                ProjectileLaneAssignment laneAssignment = projectileLanes[i];
                 Vector2 projectileDestination = ResolveProjectileTravelDestination(
                     spawn,
-                    impactPoint,
+                    laneAssignment.LanePoint,
                     mobItem.MovementInfo?.FlipX ?? true,
                     attack?.RangeRadius ?? 0);
                 Vector2 direction = projectileDestination - spawn;
@@ -325,12 +330,12 @@ namespace HaCreator.MapSimulator.Combat
                 {
                     SourceMob = mobItem,
                     Attack = attack,
-                    TargetInfo = laneTargetInfo?.Clone(),
+                    TargetInfo = laneAssignment.TargetInfo?.Clone(),
                     Frames = mobItem.GetAttackProjectileFrames(attack.AnimationName),
                     Position = spawn,
                     Velocity = direction * speed,
                     Target = projectileDestination,
-                    ImpactPoint = impactPoint,
+                    ImpactPoint = laneAssignment.LanePoint,
                     SpawnTime = currentTime,
                     ExpireTime = currentTime + travelTime,
                     CreatesGroundHazard = mobItem.AI.IsBoss && (attack.IsAreaOfEffect || attack.Range >= 180),
@@ -1558,7 +1563,7 @@ namespace HaCreator.MapSimulator.Combat
             return 200;
         }
 
-        private List<(Vector2 Target, MobTargetInfo TargetInfo)> BuildProjectileLaneAssignments(
+        private List<ProjectileLaneAssignment> BuildProjectileLaneAssignments(
             MobItem mobItem,
             MobAttackEntry attack,
             MobTargetInfo targetInfo,
@@ -1568,7 +1573,7 @@ namespace HaCreator.MapSimulator.Combat
             int currentTime)
         {
             int laneCount = ResolveProjectileLaneCount(attack);
-            var assignments = new List<(Vector2 Target, MobTargetInfo TargetInfo)>(laneCount);
+            var assignments = new List<ProjectileLaneAssignment>(laneCount);
             var usedLaneTargets = new HashSet<long>();
             float preferredLaneX = targetX
                 ?? targetInfo?.TargetX
@@ -1576,8 +1581,11 @@ namespace HaCreator.MapSimulator.Combat
 
             if (targetInfo?.IsValid == true)
             {
-                Vector2 primaryTarget = ResolveProjectileDestination(mobItem, targetInfo, spawn, currentTime);
-                assignments.Add((primaryTarget, targetInfo.Clone()));
+                assignments.Add(new ProjectileLaneAssignment
+                {
+                    LanePoint = new Vector2(targetInfo.TargetX, targetInfo.TargetY),
+                    TargetInfo = targetInfo.Clone()
+                });
                 usedLaneTargets.Add(GetLaneTargetKey(targetInfo));
             }
 
@@ -1626,7 +1634,6 @@ namespace HaCreator.MapSimulator.Combat
                 {
                     Order = i,
                     LanePosition = lanePosition,
-                    TargetPoint = resolvedLaneTarget,
                     TargetInfo = laneTargetInfo,
                     ResolutionScore = laneTargetInfo != null
                         ? ScoreLaneTarget(lanePosition, resolvedLaneTarget)
@@ -1656,13 +1663,20 @@ namespace HaCreator.MapSimulator.Combat
                 for (int i = 0; i < selectedCandidateIndices.Count; i++)
                 {
                     ProjectileLaneCandidate candidate = laneCandidates[selectedCandidateIndices[i]];
-                    assignments.Add((candidate.TargetPoint, candidate.TargetInfo?.Clone()));
+                    assignments.Add(new ProjectileLaneAssignment
+                    {
+                        LanePoint = candidate.LanePosition,
+                        TargetInfo = candidate.TargetInfo?.Clone()
+                    });
                 }
             }
 
             while (assignments.Count < laneCount)
             {
-                assignments.Add((ResolveFallbackProjectileTarget(mobItem, attack, targetX, targetY, assignments.Count, laneCount), null));
+                assignments.Add(new ProjectileLaneAssignment
+                {
+                    LanePoint = ResolveFallbackProjectileTarget(mobItem, attack, targetX, targetY, assignments.Count, laneCount)
+                });
             }
 
             return assignments;

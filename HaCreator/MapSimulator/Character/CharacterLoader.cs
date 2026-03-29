@@ -2711,6 +2711,11 @@ namespace HaCreator.MapSimulator.Character
             build.Head = LoadHead(avatarLook.Skin) ?? LoadHead(fallbackSelection.Skin);
             build.Face = LoadFace(avatarLook.FaceId) ?? LoadFace(fallbackSelection.FaceId);
             build.Hair = LoadHair(avatarLook.HairId) ?? LoadHair(fallbackSelection.HairId);
+            build.RemotePetItemIds = avatarLook.PetIds?
+                .Where(petId => petId > 0)
+                .Distinct()
+                .ToArray()
+                ?? Array.Empty<int>();
             build.Equipment = new Dictionary<EquipSlot, CharacterPart>();
             build.HiddenEquipment = new Dictionary<EquipSlot, CharacterPart>();
 

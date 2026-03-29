@@ -9381,7 +9381,7 @@ namespace HaCreator.MapSimulator
 
                 "Inspect or drive packet-authored local utility and event dispatch handlers",
 
-                    "/localutility [status|openui <uiType> [defaultTab]|openuiwithoption <uiType> <option>|commodity <serialNumber>|notice <text>|chat [channel] <text>|buffzone [text]|eventsound <image/path or path>|minigamesound <image/path or path>|questguide <questId> <mobId:mapId[,mapId...]>...|questguide clear|delivery <questId> <itemId> [blockedQuestIdsCsv]|classcompetition|apsp [text]|followfail [text]|packet <openui|openuiwithoption|commodity|fade|balloon|damagemeter|hpdec|notice|chat|buffzone|eventsound|minigamesound|questguide|delivery|classcompetition|apspevent|followfail|skillcooltime|243|246|247|250|251|252|263|264|265|266|267|270|273|274|275|276> [payloadhex=..|payloadb64=..]|packetraw <type> <hex>]",
+                    "/localutility [status|openui <uiType> [defaultTab]|openuiwithoption <uiType> <option>|commodity <serialNumber>|notice <text>|chat [channel] <text>|buffzone [text]|eventsound <image/path or path>|minigamesound <image/path or path>|questguide <questId> <mobId:mapId[,mapId...]>...|questguide clear|delivery <questId> <itemId> [blockedQuestIdsCsv]|classcompetition|skillguide|antimacro [status|launch <normal|admin> [first|retry]|notice <noticeType> [antiMacroType]|result <mode> [antiMacroType] [userName]|clear]|apsp [text]|apsp <contextToken> <11|12|13>|followfail [text]|packet <openui|openuiwithoption|commodity|fade|balloon|damagemeter|hpdec|notice|chat|buffzone|eventsound|minigamesound|questguide|delivery|classcompetition|skillguide|antimacro|apspevent|followfail|skillcooltime|243|246|247|250|251|252|262|263|264|265|266|267|270|273|274|275|276|1011> [payloadhex=..|payloadb64=..]|packetraw <type> <hex>]",
 
                 HandlePacketOwnedUtilityCommand);
 
@@ -9404,7 +9404,7 @@ namespace HaCreator.MapSimulator
 
                 "Inspect or inject packet-owned local utility and event dispatch payloads through the loopback inbox",
 
-                    "/localutilitypacket [status|packet <openui|openuiwithoption|commodity|notice|chat|buffzone|eventsound|minigamesound|apspevent|followfail|damagemeter|hpdec|skillcooltime|243|246|247|250|251|252|263|264|265|266|267|270|273|274|275|276|classcompetition|questguide|deliveryquest> [payloadhex=..|payloadb64=..]|packetraw <type> [hex]]",
+                    "/localutilitypacket [status|packet <openui|openuiwithoption|commodity|notice|chat|buffzone|eventsound|minigamesound|skillguide|antimacro|apspevent|followfail|damagemeter|hpdec|skillcooltime|243|246|247|250|251|252|262|263|264|265|266|267|270|273|274|275|276|1011|classcompetition|questguide|deliveryquest> [payloadhex=..|payloadb64=..]|packetraw <type> [hex]]",
 
                 HandlePacketOwnedUtilityCommand);
 
@@ -9689,7 +9689,11 @@ namespace HaCreator.MapSimulator
 
                                 case "clear":
 
-                                    return ChatCommandHandler.CommandResult.Ok(_mapleTvRuntime.ApplyClearMessagePacket());
+                                    return TryApplyMapleTvPacket(MapleTvRuntime.PacketTypeClearMessage, Array.Empty<byte>(), out string clearPacketMessage)
+
+                                        ? ChatCommandHandler.CommandResult.Ok(clearPacketMessage)
+
+                                        : ChatCommandHandler.CommandResult.Error(clearPacketMessage);
 
 
 
@@ -9709,7 +9713,7 @@ namespace HaCreator.MapSimulator
 
 
 
-                                    return _mapleTvRuntime.TryApplySendMessageResultPacket(resultPayload, out string resultPacketMessage)
+                                    return TryApplyMapleTvPacket(MapleTvRuntime.PacketTypeSendMessageResult, resultPayload, out string resultPacketMessage)
 
                                         ? ChatCommandHandler.CommandResult.Ok(resultPacketMessage)
 
@@ -9771,7 +9775,11 @@ namespace HaCreator.MapSimulator
 
                                 case "clear":
 
-                                    return ChatCommandHandler.CommandResult.Ok(_mapleTvRuntime.ApplyClearMessagePacket());
+                                    return TryApplyMapleTvPacket(MapleTvRuntime.PacketTypeClearMessage, Array.Empty<byte>(), out string rawClearMessage)
+
+                                        ? ChatCommandHandler.CommandResult.Ok(rawClearMessage)
+
+                                        : ChatCommandHandler.CommandResult.Error(rawClearMessage);
 
 
 
@@ -9787,7 +9795,7 @@ namespace HaCreator.MapSimulator
 
 
 
-                                    return _mapleTvRuntime.TryApplySendMessageResultPacket(rawResultPayload, out string rawResultMessage)
+                                    return TryApplyMapleTvPacket(MapleTvRuntime.PacketTypeSendMessageResult, rawResultPayload, out string rawResultMessage)
 
                                         ? ChatCommandHandler.CommandResult.Ok(rawResultMessage)
 

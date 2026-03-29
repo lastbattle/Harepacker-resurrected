@@ -472,9 +472,13 @@ namespace HaCreator.MapSimulator.UI
             if (SoftKeyboardWindow?.IsVisible == true)
             {
                 bool handled = SoftKeyboardWindow.CheckMouseEvent(shiftCenteredX, shiftCenteredY, mouseState, mouseCursor, renderWidth, renderHeight);
-                if (handled)
+                _previousMouseState = mouseState;
+
+                // Client soft-keyboard launch paths use CDialog::DoModal, so the keyboard
+                // keeps mouse ownership until it closes instead of letting clicks fall
+                // through to the underlying utility dialog or other windows.
+                if (handled || SoftKeyboardWindow.IsVisible)
                 {
-                    _previousMouseState = mouseState;
                     return true;
                 }
             }

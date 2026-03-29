@@ -1737,7 +1737,34 @@ namespace HaCreator.MapSimulator.Loaders
                 LoadInventoryCanvasTabButton(trunkProperty, "2", btClickSound, btOverSound, device),
                 LoadInventoryCanvasTabButton(trunkProperty, "3", btClickSound, btOverSound, device),
                 LoadInventoryCanvasTabButton(trunkProperty, "4", btClickSound, btOverSound, device));
-            window.SetInventory(inventory);
+            WzSubProperty skillMainProperty = uiWindow2Image?["Skill"]?["main"] as WzSubProperty;
+            if (skillMainProperty != null)
+            {
+                Texture2D[] tooltipFrames = new Texture2D[3];
+                tooltipFrames[0] = LoadCanvasTexture(skillMainProperty, "tip0", device);
+                tooltipFrames[1] = LoadCanvasTexture(skillMainProperty, "tip1", device);
+                tooltipFrames[2] = LoadCanvasTexture(skillMainProperty, "tip2", device);
+                window.SetTooltipTextures(tooltipFrames);
+            }
+
+            WzSubProperty equipTooltipProperty = uiWindow2Image?["ToolTip"]?["Equip"] as WzSubProperty;
+            if (equipTooltipProperty != null)
+            {
+                window.SetEquipTooltipAssets(new EquipUIBigBang.EquipTooltipAssets
+                {
+                    CanLabels = LoadCanvasTextureMap(equipTooltipProperty["Can"] as WzSubProperty, device),
+                    CannotLabels = LoadCanvasTextureMap(equipTooltipProperty["Cannot"] as WzSubProperty, device),
+                    PropertyLabels = LoadCanvasTextureMap(equipTooltipProperty["Property"] as WzSubProperty, device),
+                    ItemCategoryLabels = LoadCanvasTextureMap(equipTooltipProperty["ItemCategory"] as WzSubProperty, device),
+                    WeaponCategoryLabels = LoadCanvasTextureMap(equipTooltipProperty["WeaponCategory"] as WzSubProperty, device),
+                    SpeedLabels = LoadCanvasTextureMap(equipTooltipProperty["Speed"] as WzSubProperty, device),
+                    GrowthEnabledLabels = LoadCanvasTextureMap(equipTooltipProperty["GrowthEnabled"] as WzSubProperty, device),
+                    GrowthDisabledLabels = LoadCanvasTextureMap(equipTooltipProperty["GrowthDisabled"] as WzSubProperty, device),
+                    CashLabel = LoadCanvasTexture(equipTooltipProperty, "cash", device)
+                });
+            }
+
+            window.SetInventory(inventory);
             window.SetStorageRuntime(storageRuntime);
             return window;
         }

@@ -277,7 +277,8 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return true;
             }
 
-            return LooksLikeRideDescriptionBuff(skill);
+            return LooksLikeRideDescriptionBuff(skill)
+                   || ClientOwnedVehicleSkillClassifier.IsClientOwnedVehicleActionSkill(skill);
         }
 
         private static bool LooksLikeRideDescriptionBuff(SkillData skill)
@@ -293,6 +294,13 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
 
             if (IsExplicitBoundJumpSkill(skill.SkillId))
+            {
+                return true;
+            }
+
+            if (skill.CasterMove
+                && skill.AvailableInJumpingState
+                && UsesBoundJumpActionProfile(skill))
             {
                 return true;
             }
@@ -318,6 +326,30 @@ namespace HaCreator.MapSimulator.Character.Skills
             return skill.SkillId == WindWalkSkillId
                    || skill.SkillId == WildHunterJaguarJumpSkillId
                    || skill.SkillId == RocketBoosterSkillId;
+        }
+
+        private static bool UsesBoundJumpActionProfile(SkillData skill)
+        {
+            return IsBoundJumpActionName(skill?.PrepareActionName)
+                   || IsBoundJumpActionName(skill?.ActionName)
+                   || ActionTextContains(skill?.Name, "flash jump");
+        }
+
+        private static bool IsBoundJumpActionName(string actionName)
+        {
+            return ActionTextContains(actionName, "doublejump")
+                   || ActionTextContains(actionName, "flash jump")
+                   || ActionTextContains(actionName, "archerdoublejump")
+                   || ActionTextContains(actionName, "backspin")
+                   || ActionTextContains(actionName, "assaulter")
+                   || ActionTextContains(actionName, "screw");
+        }
+
+        private static bool ActionTextContains(string actionName, string value)
+        {
+            return !string.IsNullOrWhiteSpace(actionName)
+                   && !string.IsNullOrWhiteSpace(value)
+                   && actionName.IndexOf(value, StringComparison.OrdinalIgnoreCase) >= 0;
         }
 
         private static bool IsExplicitBoundJumpSkill(int skillId)

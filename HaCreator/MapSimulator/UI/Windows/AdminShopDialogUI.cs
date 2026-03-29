@@ -73,6 +73,12 @@ namespace HaCreator.MapSimulator.UI
             Rebuy
         }
 
+        private enum AdminShopModalMode
+        {
+            None,
+            WishlistOwnerConfirm
+        }
+
         private sealed class AdminShopEntry
         {
             public string Title { get; set; } = string.Empty;
@@ -261,6 +267,7 @@ namespace HaCreator.MapSimulator.UI
         private AdminShopPane? _draggingScrollPane;
         private int _scrollThumbDragOffsetY;
         private bool _wishlistModalVisible;
+        private AdminShopModalMode _modalMode;
         private AdminShopPane? _lastClickedPane;
         private int _lastRowClickTick;
         private int _requestResolveTick;
@@ -1077,11 +1084,10 @@ namespace HaCreator.MapSimulator.UI
             {
                 _footerMessage = "Wish-list owner is unavailable for this simulator session.";
                 UpdateActionButtonStates();
+                return;
             }
 
-            WishlistWindowRequested?.Invoke(this);
-            _footerMessage = $"Opened the dedicated wish-list owner for {entry.Title}.";
-            UpdateActionButtonStates();
+            OpenWishlistConfirmation(entry);
         }
 
         private void InitializeRowButtons(GraphicsDevice device)
@@ -1341,10 +1347,14 @@ namespace HaCreator.MapSimulator.UI
             AdminShopEntry entry = GetSelectedEntry();
             bool modalBlocked = _wishlistModalVisible;
             bool canSubmitRequest = !modalBlocked && entry != null && CanRequestEntry(entry);
+            bool canOpenWishlist = !modalBlocked
+                                   && WishlistWindowRequested != null
+                                   && entry?.SupportsWishlist == true
+                                   && entry.State == AdminShopEntryState.Available;
             _buyButton?.SetEnabled(canSubmitRequest);
             _sellButton?.SetEnabled(canSubmitRequest);
             _exitButton?.SetEnabled(!modalBlocked);
-            _rechargeButton?.SetEnabled(!modalBlocked && entry?.SupportsWishlist == true && entry.State == AdminShopEntryState.Available);
+            _rechargeButton?.SetEnabled(canOpenWishlist);
         }
 
         private void ApplyCommodityMetadata(IEnumerable<AdminShopEntry> entries, AdminShopServiceMode mode)
@@ -1825,9 +1835,10 @@ namespace HaCreator.MapSimulator.UI
         private void OpenWishlistConfirmation(AdminShopEntry entry)
         {
             _pendingWishlistEntry = entry;
+            _modalMode = AdminShopModalMode.WishlistOwnerConfirm;
             _wishlistModalVisible = true;
-            _modalMessage = $"Add {entry.Title} to the wish list?";
-            _footerMessage = $"Wish list dialog opened for {entry.Title}.";
+            _modalMessage = $"Open the wish list for {entry.Title}?";
+            _footerMessage = $"Wish-list confirmation opened for {entry.Title}.";
             PositionModalButtons();
             UpdateModalButtons();
             UpdateActionButtonStates();
@@ -1841,25 +1852,30 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
-            _pendingWishlistEntry.Wishlisted = true;
-            _wishlistedEntryKeys[_currentMode].Add(GetEntryKey(_pendingWishlistEntry));
-            PersistEntrySessionState(_pendingWishlistEntry);
             string title = _pendingWishlistEntry.Title;
-            CloseWishlistConfirmation($"Wish list confirmed for {title}.");
+            if (_modalMode == AdminShopModalMode.WishlistOwnerConfirm && WishlistWindowRequested != null)
+            {
+                WishlistWindowRequested.Invoke(this);
+                CloseWishlistConfirmation($"Opened the dedicated wish-list owner for {title}.");
+                return;
+            }
+
+            CloseWishlistConfirmation($"Wish-list request confirmed for {title}.");
         }
 
         private void OnModalCancelClicked(UIObject sender)
         {
             string title = _pendingWishlistEntry?.Title;
             CloseWishlistConfirmation(string.IsNullOrWhiteSpace(title)
-                ? "Wish list dialog cancelled."
-                : $"Wish list dialog cancelled for {title}.");
+                ? "Wish-list confirmation cancelled."
+                : $"Wish-list confirmation cancelled for {title}.");
         }
 
         private void CloseWishlistConfirmation(string footerMessage)
         {
             _pendingWishlistEntry = null;
             _wishlistModalVisible = false;
+            _modalMode = AdminShopModalMode.None;
             _modalMessage = string.Empty;
             _footerMessage = footerMessage;
             UpdateModalButtons();

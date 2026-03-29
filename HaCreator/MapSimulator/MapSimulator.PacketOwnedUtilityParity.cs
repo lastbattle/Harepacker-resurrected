@@ -1,3 +1,4 @@
+using HaCreator.MapSimulator.Character;
 using HaCreator.MapSimulator.Interaction;
 using HaCreator.MapSimulator.Managers;
 using HaCreator.MapSimulator.UI;
@@ -20,6 +21,12 @@ namespace HaCreator.MapSimulator
     {
         private const int PacketOwnedBattleshipCooldownSentinel = 0x004FAE6F;
         private const int PacketOwnedBattleshipSkillId = 5221006;
+        private const int PacketOwnedBattleshipMountItemId = 1932000;
+        private const int PacketOwnedApspPromptStringPoolId = 0x17BA;
+        private const int PacketOwnedApspFollowUpOpcode = 195;
+        private const int PacketOwnedApspFollowUpResponseCode = 6;
+        private const int PacketOwnedApspMinEventType = 11;
+        private const int PacketOwnedApspMaxEventType = 13;
 
         private readonly Dictionary<int, HashSet<int>> _packetQuestGuideTargetsByMobId = new();
         private readonly LocalUtilityPacketInboxManager _localUtilityPacketInbox = new();
@@ -41,10 +48,17 @@ namespace HaCreator.MapSimulator
         private string _lastPacketOwnedChatMessage;
         private string _lastPacketOwnedBuffzoneMessage;
         private string _lastPacketOwnedAskApspMessage;
+        private string _lastPacketOwnedSkillGuideMessage;
         private string _lastPacketOwnedFollowFailureMessage;
         private int? _lastPacketOwnedFollowFailureReason;
         private int _lastPacketOwnedFollowFailureDriverId;
         private bool _lastPacketOwnedFollowFailureClearedPending;
+        private int _lastPacketOwnedSkillGuideGrade;
+        private bool _packetOwnedApspPromptActive;
+        private int _packetOwnedApspPromptContextToken;
+        private int _packetOwnedApspPromptEventType;
+        private int _lastPacketOwnedApspFollowUpContextToken;
+        private int _lastPacketOwnedApspFollowUpResponseCode;
         private string _lastPacketOwnedEventSoundDescriptor;
         private string _lastPacketOwnedMinigameSoundDescriptor;
         private MonoGameBgmPlayer _packetOwnedRadioAudio;
@@ -566,7 +580,7 @@ namespace HaCreator.MapSimulator
             if (targetNpcId <= 0)
             {
                 string error = $"{entry.Title} does not have a delivery NPC in the loaded quest data.";
-                _chat?.AddMessage(error, Color.OrangeRed, currTickCount);
+                _chat?.AddErrorMessage(error, currTickCount);
                 return;
             }
 
@@ -669,7 +683,7 @@ namespace HaCreator.MapSimulator
             catch (Exception ex)
             {
                 _localUtilityPacketInbox.Stop();
-                _chat?.AddMessage($"Local utility packet inbox failed to start: {ex.Message}", Color.OrangeRed, currTickCount);
+                _chat?.AddErrorMessage($"Local utility packet inbox failed to start: {ex.Message}", currTickCount);
             }
         }
 
@@ -686,7 +700,14 @@ namespace HaCreator.MapSimulator
                 _localUtilityPacketInbox.RecordDispatchResult(message, applied, detail);
                 if (!string.IsNullOrWhiteSpace(detail))
                 {
-                    _chat?.AddMessage(detail, applied ? new Color(255, 228, 151) : Color.OrangeRed, currTickCount);
+                    if (applied)
+                    {
+                        _chat?.AddSystemMessage(detail, currTickCount);
+                    }
+                    else
+                    {
+                        _chat?.AddErrorMessage(detail, currTickCount);
+                    }
                 }
             }
         }
@@ -705,6 +726,11 @@ namespace HaCreator.MapSimulator
             message = null;
             switch (packetType)
             {
+                case MapleTvRuntime.PacketTypeSetMessage:
+                case MapleTvRuntime.PacketTypeClearMessage:
+                case MapleTvRuntime.PacketTypeSendMessageResult:
+                    return TryApplyMapleTvPacket(packetType, payload, out message);
+
                 case LocalUtilityPacketInboxManager.OpenUiPacketType:
                 case LocalUtilityPacketInboxManager.OpenUiClientPacketType:
                     return TryApplyPacketOwnedOpenUiPayload(payload, out message);
@@ -741,9 +767,16 @@ namespace HaCreator.MapSimulator
                 case LocalUtilityPacketInboxManager.RadioScheduleClientPacketType:
                     return TryApplyPacketOwnedRadioSchedulePayload(payload, out message);
 
+                case PacketOwnedAntiMacroPacketType:
+                    return TryApplyPacketOwnedAntiMacroPayload(payload, out message);
+
+                case LocalUtilityPacketInboxManager.OpenSkillGuideClientPacketType:
+                    message = ApplyPacketOwnedSkillGuideLaunch();
+                    return true;
+
                 case LocalUtilityPacketInboxManager.AskApspEventPacketType:
                 case LocalUtilityPacketInboxManager.AskApspEventClientPacketType:
-                    return TryApplyPacketOwnedStringPayload(payload, ApplyPacketOwnedAskApspEvent, "AP/SP payload is missing.", out message);
+                    return TryApplyPacketOwnedAskApspEventPayload(payload, out message);
 
                 case LocalUtilityPacketInboxManager.FollowCharacterFailedPacketType:
                 case LocalUtilityPacketInboxManager.FollowCharacterFailedClientPacketType:
@@ -846,9 +879,18 @@ namespace HaCreator.MapSimulator
             string buffzoneStatus = string.IsNullOrWhiteSpace(_lastPacketOwnedBuffzoneMessage)
                 ? "Buff zone: none."
                 : $"Buff zone: {TruncatePacketOwnedUtilityText(_lastPacketOwnedBuffzoneMessage)}";
+            string skillGuideStatus = string.IsNullOrWhiteSpace(_lastPacketOwnedSkillGuideMessage)
+                ? "Skill guide: none."
+                : _lastPacketOwnedSkillGuideGrade > 0
+                    ? $"Skill guide: grade {_lastPacketOwnedSkillGuideGrade}. {TruncatePacketOwnedUtilityText(_lastPacketOwnedSkillGuideMessage)}"
+                    : $"Skill guide: {TruncatePacketOwnedUtilityText(_lastPacketOwnedSkillGuideMessage)}";
             string apspStatus = string.IsNullOrWhiteSpace(_lastPacketOwnedAskApspMessage)
                 ? "AP/SP event: none."
-                : $"AP/SP event: {TruncatePacketOwnedUtilityText(_lastPacketOwnedAskApspMessage)}";
+                : _packetOwnedApspPromptActive
+                    ? $"AP/SP event: prompt active for context {_packetOwnedApspPromptContextToken}, event {_packetOwnedApspPromptEventType}. {TruncatePacketOwnedUtilityText(_lastPacketOwnedAskApspMessage)}"
+                    : _lastPacketOwnedApspFollowUpContextToken > 0
+                        ? $"AP/SP event: last follow-up {PacketOwnedApspFollowUpOpcode} ({_lastPacketOwnedApspFollowUpContextToken}, {_lastPacketOwnedApspFollowUpResponseCode}). {TruncatePacketOwnedUtilityText(_lastPacketOwnedAskApspMessage)}"
+                        : $"AP/SP event: {TruncatePacketOwnedUtilityText(_lastPacketOwnedAskApspMessage)}";
             string followStatus = string.IsNullOrWhiteSpace(_lastPacketOwnedFollowFailureMessage)
                 ? "Follow failure: none."
                 : _lastPacketOwnedFollowFailureReason.HasValue
@@ -860,6 +902,7 @@ namespace HaCreator.MapSimulator
             string radioStatus = IsPacketOwnedRadioPlaying()
                 ? $"Radio: \"{TruncatePacketOwnedUtilityText(_lastPacketOwnedRadioDisplayName ?? _lastPacketOwnedRadioTrackDescriptor)}\", authoredTime={_lastPacketOwnedRadioTimeValue}, age={Math.Max(0, unchecked(currentTickCount - _lastPacketOwnedRadioStartTick))} ms."
                 : $"Radio: {TruncatePacketOwnedUtilityText(_lastPacketOwnedRadioStatusMessage)}";
+            string antiMacroStatus = $"Anti-macro: {TruncatePacketOwnedUtilityText(DescribePacketOwnedAntiMacroStatus(currentTickCount), 140)}";
 
             return string.Join(" ", new[]
             {
@@ -873,10 +916,12 @@ namespace HaCreator.MapSimulator
                 noticeStatus,
                 chatStatus,
                 buffzoneStatus,
+                skillGuideStatus,
                 apspStatus,
                 followStatus,
                 soundStatus,
-                radioStatus
+                radioStatus,
+                antiMacroStatus
             });
         }
 
@@ -1436,6 +1481,11 @@ namespace HaCreator.MapSimulator
                 _playerManager.Skills.ClearServerCooldown(normalizedSkillId, currTickCount);
             }
 
+            if (isVehicleSentinel)
+            {
+                ApplyPacketOwnedBattleshipCooldownSideEffects(remainingSeconds);
+            }
+
             var skill = _playerManager.Skills.GetSkillData(normalizedSkillId) ?? _playerManager.SkillLoader?.LoadSkill(normalizedSkillId);
             string skillName = skill?.Name
                 ?? (isVehicleSentinel ? "Battleship" : $"Skill {normalizedSkillId}");
@@ -1444,6 +1494,55 @@ namespace HaCreator.MapSimulator
                 : $"Cleared packet-owned {(isVehicleSentinel ? "vehicle " : string.Empty)}skill cooldown for {skillName}.";
             ShowUtilityFeedbackMessage(message);
             return message;
+        }
+
+        private void ApplyPacketOwnedBattleshipCooldownSideEffects(int remainingUnits)
+        {
+            if (_playerManager?.Player?.Build?.Equipment == null
+                || !_playerManager.Player.Build.Equipment.TryGetValue(EquipSlot.TamingMob, out CharacterPart mountPart)
+                || mountPart?.Slot != EquipSlot.TamingMob
+                || mountPart.ItemId != PacketOwnedBattleshipMountItemId)
+            {
+                return;
+            }
+
+            int skillLevel = Math.Max(0, _playerManager.Skills?.GetSkillLevel(PacketOwnedBattleshipSkillId) ?? 0);
+            int characterLevel = Math.Max(0, _playerManager.Player.Build.Level);
+            int maxDurability = ResolvePacketOwnedBattleshipMaxDurability(skillLevel, characterLevel);
+            if (maxDurability > 0)
+            {
+                mountPart.MaxDurability = maxDurability;
+            }
+
+            if (remainingUnits > 0)
+            {
+                int boundedMaxDurability = Math.Max(0, mountPart.MaxDurability ?? maxDurability);
+                mountPart.Durability = boundedMaxDurability > 0
+                    ? Math.Clamp(remainingUnits, 0, boundedMaxDurability)
+                    : Math.Max(0, remainingUnits);
+            }
+            else
+            {
+                mountPart.Durability = mountPart.MaxDurability;
+            }
+
+            if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.RepairDurability) is RepairDurabilityWindow repairWindow)
+            {
+                int npcTemplateId = repairWindow.NpcTemplateId;
+                RefreshRepairDurabilityWindow(npcTemplateId, mountPart.ItemId);
+            }
+        }
+
+        private static int ResolvePacketOwnedBattleshipMaxDurability(int skillLevel, int characterLevel)
+        {
+            if (skillLevel <= 0 || characterLevel <= 0)
+            {
+                return 0;
+            }
+
+            // Client evidence: get_max_durability_of_vehicle(5221006, slv, charLevel)
+            // returns 300 * level + 500 * (slv - 72) for the Battleship sentinel branch.
+            return Math.Max(0, (300 * characterLevel) + (500 * (skillLevel - 72)));
         }
 
         private string ApplyPacketOwnedBuffzoneEffect(string message)
@@ -1459,11 +1558,164 @@ namespace HaCreator.MapSimulator
         private string ApplyPacketOwnedAskApspEvent(string message)
         {
             StampPacketOwnedUtilityRequestState();
+            _packetOwnedApspPromptActive = false;
+            _lastPacketOwnedApspFollowUpContextToken = 0;
+            _lastPacketOwnedApspFollowUpResponseCode = 0;
             _lastPacketOwnedAskApspMessage = string.IsNullOrWhiteSpace(message)
                 ? "Packet-owned AP/SP event prompt triggered."
                 : message.Trim();
             ShowUtilityFeedbackMessage(_lastPacketOwnedAskApspMessage);
             return _lastPacketOwnedAskApspMessage;
+        }
+
+        private string ApplyPacketOwnedSkillGuideLaunch()
+        {
+            string skillWindowMessage = ApplyPacketOwnedOpenUi(3, 1);
+            int currentJobId = _playerManager?.Player?.Build?.Job ?? 0;
+            int guideGrade = ResolvePacketOwnedAranGuideGrade(currentJobId);
+            _lastPacketOwnedSkillGuideGrade = guideGrade;
+
+            if (guideGrade <= 0)
+            {
+                _lastPacketOwnedSkillGuideMessage = $"{skillWindowMessage} The current job does not expose an Aran skill-guide page.";
+                ShowUtilityFeedbackMessage(_lastPacketOwnedSkillGuideMessage);
+                return _lastPacketOwnedSkillGuideMessage;
+            }
+
+            if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.AranSkillGuide) is not AranSkillGuideUI aranSkillGuideWindow)
+            {
+                _lastPacketOwnedSkillGuideMessage = $"{skillWindowMessage} Aran skill-guide owner is not available in this UI build.";
+                ShowUtilityFeedbackMessage(_lastPacketOwnedSkillGuideMessage);
+                return _lastPacketOwnedSkillGuideMessage;
+            }
+
+            aranSkillGuideWindow.SetPage(guideGrade);
+            aranSkillGuideWindow.Show();
+            uiWindowManager.BringToFront(aranSkillGuideWindow);
+            _lastPacketOwnedSkillGuideMessage = $"{skillWindowMessage} Opened the packet-owned current skill guide at Aran grade {guideGrade}.";
+            ShowUtilityFeedbackMessage(_lastPacketOwnedSkillGuideMessage);
+            return _lastPacketOwnedSkillGuideMessage;
+        }
+
+        private bool TryApplyPacketOwnedAskApspEventPayload(byte[] payload, out string message)
+        {
+            message = null;
+            if (payload == null || payload.Length == 0)
+            {
+                message = "AP/SP payload is missing.";
+                return false;
+            }
+
+            if (payload.Length == sizeof(int) * 2)
+            {
+                try
+                {
+                    using MemoryStream stream = new(payload, writable: false);
+                    using BinaryReader reader = new(stream);
+                    int contextToken = reader.ReadInt32();
+                    int eventType = reader.ReadInt32();
+                    return TryApplyPacketOwnedAskApspEvent(contextToken, eventType, out message);
+                }
+                catch (Exception ex)
+                {
+                    message = $"AP/SP payload could not be decoded: {ex.Message}";
+                    return false;
+                }
+            }
+
+            return TryApplyPacketOwnedStringPayload(payload, ApplyPacketOwnedAskApspEvent, "AP/SP payload is missing.", out message);
+        }
+
+        private bool TryApplyPacketOwnedAskApspEvent(int contextToken, int eventType, out string message)
+        {
+            StampPacketOwnedUtilityRequestState();
+            int expectedContextToken = ResolvePacketOwnedApspContextToken();
+            if (contextToken != expectedContextToken)
+            {
+                _packetOwnedApspPromptActive = false;
+                _lastPacketOwnedAskApspMessage = $"Suppressed packet-owned AP/SP helper prompt because context token {contextToken} did not match the active local context {expectedContextToken}.";
+                message = _lastPacketOwnedAskApspMessage;
+                ShowUtilityFeedbackMessage(message);
+                return false;
+            }
+
+            if (eventType < PacketOwnedApspMinEventType || eventType > PacketOwnedApspMaxEventType)
+            {
+                _packetOwnedApspPromptActive = false;
+                _lastPacketOwnedAskApspMessage = $"Packet-owned AP/SP helper prompt rejected unsupported event type {eventType}.";
+                message = _lastPacketOwnedAskApspMessage;
+                ShowUtilityFeedbackMessage(message);
+                return false;
+            }
+
+            _packetOwnedApspPromptActive = true;
+            _packetOwnedApspPromptContextToken = contextToken;
+            _packetOwnedApspPromptEventType = eventType;
+            _lastPacketOwnedApspFollowUpContextToken = 0;
+            _lastPacketOwnedApspFollowUpResponseCode = 0;
+            _lastPacketOwnedAskApspMessage = $"Opened packet-owned AP/SP helper prompt for context {contextToken}, event {eventType}, StringPool 0x{PacketOwnedApspPromptStringPoolId:X}.";
+            ShowLoginUtilityDialog(
+                "AP/SP Helper",
+                BuildPacketOwnedApspPromptBody(contextToken, eventType),
+                LoginUtilityDialogButtonLayout.YesNo,
+                LoginUtilityDialogAction.ConfirmApspEvent);
+            message = _lastPacketOwnedAskApspMessage;
+            return true;
+        }
+
+        private void AcceptPacketOwnedAskApspEventPrompt()
+        {
+            if (!_packetOwnedApspPromptActive)
+            {
+                HideLoginUtilityDialog();
+                return;
+            }
+
+            _lastPacketOwnedApspFollowUpContextToken = _packetOwnedApspPromptContextToken;
+            _lastPacketOwnedApspFollowUpResponseCode = PacketOwnedApspFollowUpResponseCode;
+            _lastPacketOwnedAskApspMessage =
+                $"Accepted packet-owned AP/SP helper event {_packetOwnedApspPromptEventType}; simulated outpacket {PacketOwnedApspFollowUpOpcode} ({_lastPacketOwnedApspFollowUpContextToken}, {PacketOwnedApspFollowUpResponseCode}).";
+            _packetOwnedApspPromptActive = false;
+            HideLoginUtilityDialog();
+            ShowUtilityFeedbackMessage(_lastPacketOwnedAskApspMessage);
+        }
+
+        private void DeclinePacketOwnedAskApspEventPrompt()
+        {
+            if (!_packetOwnedApspPromptActive)
+            {
+                HideLoginUtilityDialog();
+                return;
+            }
+
+            _lastPacketOwnedAskApspMessage =
+                $"Declined packet-owned AP/SP helper event {_packetOwnedApspPromptEventType}; outpacket {PacketOwnedApspFollowUpOpcode} was not emitted.";
+            _packetOwnedApspPromptActive = false;
+            HideLoginUtilityDialog();
+            ShowUtilityFeedbackMessage(_lastPacketOwnedAskApspMessage);
+        }
+
+        private int ResolvePacketOwnedApspContextToken()
+        {
+            return Math.Max(1, _playerManager?.Player?.Build?.Id ?? 0);
+        }
+
+        private static int ResolvePacketOwnedAranGuideGrade(int jobId)
+        {
+            return jobId switch
+            {
+                2000 => 1,
+                2100 => 1,
+                2110 => 2,
+                2111 => 3,
+                2112 => 4,
+                _ => 0
+            };
+        }
+
+        private static string BuildPacketOwnedApspPromptBody(int contextToken, int eventType)
+        {
+            return $"Client helper prompt StringPool 0x{PacketOwnedApspPromptStringPoolId:X} opened for AP/SP event {eventType} on local context {contextToken}. Press Yes to simulate the client follow-up outpacket {PacketOwnedApspFollowUpOpcode} with response {PacketOwnedApspFollowUpResponseCode}.";
         }
 
         private string ApplyPacketOwnedFollowCharacterFailed(string message)
@@ -2354,7 +2606,22 @@ namespace HaCreator.MapSimulator
                 case "classcompetition":
                     return ChatCommandHandler.CommandResult.Ok(ApplyClassCompetitionPageLaunch());
 
+                case "skillguide":
+                    return ChatCommandHandler.CommandResult.Ok(ApplyPacketOwnedSkillGuideLaunch());
+
+                case "antimacro":
+                    return HandlePacketOwnedAntiMacroCommand(args.Skip(1).ToArray());
+
                 case "apsp":
+                    if (args.Length >= 3
+                        && int.TryParse(args[1], NumberStyles.Integer, CultureInfo.InvariantCulture, out int apspContextToken)
+                        && int.TryParse(args[2], NumberStyles.Integer, CultureInfo.InvariantCulture, out int apspEventType))
+                    {
+                        return TryApplyPacketOwnedAskApspEvent(apspContextToken, apspEventType, out string structuredApspMessage)
+                            ? ChatCommandHandler.CommandResult.Ok(structuredApspMessage)
+                            : ChatCommandHandler.CommandResult.Error(structuredApspMessage);
+                    }
+
                     return ChatCommandHandler.CommandResult.Ok(ApplyPacketOwnedAskApspEvent(args.Length >= 2 ? string.Join(" ", args.Skip(1)) : null));
 
                 case "followfail":
@@ -2383,7 +2650,7 @@ namespace HaCreator.MapSimulator
 
                 default:
                     return ChatCommandHandler.CommandResult.Error(
-                        "Usage: /localutility [status|openui <uiType> [defaultTab]|openuiwithoption <uiType> <option>|commodity <serialNumber>|notice <text>|chat [channel|type19|whisper:name|whisperout:name] <text>|buffzone [text]|eventsound <image/path or path>|minigamesound <image/path or path>|questguide <questId> <mobId:mapId[,mapId...]>...|questguide clear|delivery <questId> <itemId> [blockedQuestIdsCsv]|classcompetition|apsp [text]|followfail [reasonCode [driverId]|text]|packet <openui|openuiwithoption|commodity|fade|balloon|damagemeter|hpdec|notice|chat|buffzone|eventsound|minigamesound|questguide|delivery|classcompetition|apspevent|followfail|243|250|267|274|275> [payloadhex=..|payloadb64=..]|packetraw <type> <hex>]");
+                        "Usage: /localutility [status|openui <uiType> [defaultTab]|openuiwithoption <uiType> <option>|commodity <serialNumber>|notice <text>|chat [channel|type19|whisper:name|whisperout:name] <text>|buffzone [text]|eventsound <image/path or path>|minigamesound <image/path or path>|questguide <questId> <mobId:mapId[,mapId...]>...|questguide clear|delivery <questId> <itemId> [blockedQuestIdsCsv]|classcompetition|skillguide|antimacro [status|launch <normal|admin> [first|retry]|notice <noticeType> [antiMacroType]|result <mode> [antiMacroType] [userName]|clear]|apsp [text]|apsp <contextToken> <11|12|13>|followfail [reasonCode [driverId]|text]|packet <openui|openuiwithoption|commodity|fade|balloon|damagemeter|hpdec|notice|chat|buffzone|eventsound|minigamesound|questguide|delivery|classcompetition|skillguide|antimacro|apspevent|followfail|243|250|251|252|262|263|264|265|266|267|270|273|274|275|276|1011> [payloadhex=..|payloadb64=..]|packetraw <type> <hex>]");
             }
         }
 
@@ -2468,8 +2735,15 @@ namespace HaCreator.MapSimulator
                     message = ApplyClassCompetitionPageLaunch();
                     applied = true;
                     break;
+                case "skillguide":
+                    message = ApplyPacketOwnedSkillGuideLaunch();
+                    applied = true;
+                    break;
+                case "antimacro":
+                    applied = TryApplyPacketOwnedAntiMacroPayload(payload, out message);
+                    break;
                 case "apspevent":
-                    applied = TryApplyPacketOwnedStringPayload(payload, ApplyPacketOwnedAskApspEvent, "AP/SP payload is missing.", out message);
+                    applied = TryApplyPacketOwnedAskApspEventPayload(payload, out message);
                     break;
                 case "followfail":
                     applied = TryApplyPacketOwnedFollowCharacterFailedPayload(payload, out message);
@@ -2477,8 +2751,8 @@ namespace HaCreator.MapSimulator
                 default:
                     return ChatCommandHandler.CommandResult.Error(
                         rawHex
-                        ? "Usage: /localutility packetraw <openui|openuiwithoption|commodity|fade|balloon|damagemeter|hpdec|notice|chat|buffzone|eventsound|minigamesound|questguide|delivery|classcompetition|apspevent|followfail|skillcooltime|243|246|247|250|251|252|263|264|265|266|267|270|273|274|275|276> <hex>"
-                        : "Usage: /localutility packet <openui|openuiwithoption|commodity|fade|balloon|damagemeter|hpdec|notice|chat|buffzone|eventsound|minigamesound|questguide|delivery|classcompetition|apspevent|followfail|skillcooltime|243|246|247|250|251|252|263|264|265|266|267|270|273|274|275|276> [payloadhex=..|payloadb64=..]");
+                        ? "Usage: /localutility packetraw <openui|openuiwithoption|commodity|fade|balloon|damagemeter|hpdec|notice|chat|buffzone|eventsound|minigamesound|questguide|delivery|classcompetition|skillguide|antimacro|apspevent|followfail|skillcooltime|243|246|247|250|251|252|262|263|264|265|266|267|270|273|274|275|276|1011> <hex>"
+                        : "Usage: /localutility packet <openui|openuiwithoption|commodity|fade|balloon|damagemeter|hpdec|notice|chat|buffzone|eventsound|minigamesound|questguide|delivery|classcompetition|skillguide|antimacro|apspevent|followfail|skillcooltime|243|246|247|250|251|252|262|263|264|265|266|267|270|273|274|275|276|1011> [payloadhex=..|payloadb64=..]");
             }
 
             return applied

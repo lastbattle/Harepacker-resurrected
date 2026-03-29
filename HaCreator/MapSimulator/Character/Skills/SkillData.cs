@@ -216,6 +216,9 @@ namespace HaCreator.MapSimulator.Character.Skills
         public int AllStat { get; set; }             // Big Bang indie all-stat boost
         public int AbnormalStatusResistance { get; set; } // asrR / indieAsrR
         public int ElementalResistance { get; set; } // terR / indieTerR
+        public int ExperienceRate { get; set; }      // expR bonus rate
+        public int DropRate { get; set; }            // dropR bonus rate
+        public int MesoRate { get; set; }            // mesoR bonus rate
 
         // Requirements
         public int RequiredLevel { get; set; }       // Level required
@@ -499,6 +502,7 @@ namespace HaCreator.MapSimulator.Character.Skills
 
         // Action
         public string ActionName { get; set; }       // Animation action to play
+        public IReadOnlyList<string> ActionNames { get; set; } = Array.Empty<string>();
         public string PrepareActionName { get; set; }
         public string KeydownActionName { get; set; }
         public string KeydownEndActionName { get; set; }

@@ -559,6 +559,7 @@ namespace HaCreator.MapSimulator.Interaction
                 existing.ItemName ??= slotData.ItemName;
                 existing.ItemTypeName ??= slotData.ItemTypeName;
                 existing.Description ??= slotData.Description;
+                existing.TooltipPart ??= slotData.TooltipPart?.Clone();
                 existing.GradeFrameIndex ??= slotData.GradeFrameIndex;
                 existing.IsActiveBullet |= slotData.IsActiveBullet;
                 remainingQuantity -= quantityToMerge;

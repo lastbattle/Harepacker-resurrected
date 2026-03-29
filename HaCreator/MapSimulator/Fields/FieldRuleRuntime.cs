@@ -68,6 +68,7 @@ namespace HaCreator.MapSimulator.Fields
             FieldInteractionRestrictionEvaluator.GetTransferRestrictionMessage(_fieldLimit) != null ||
             FieldInteractionRestrictionEvaluator.GetMiniGameRestrictionMessage(_fieldLimit) != null ||
             FieldInteractionRestrictionEvaluator.GetPetRuntimeRestrictionMessage(_fieldLimit) != null ||
+            FieldInteractionRestrictionEvaluator.GetAutoExpandMinimapMessage(_fieldLimit) != null ||
             FieldSkillRestrictionEvaluator.HasFieldEntryNotice(_fieldLimit) ||
             _moveLimit.HasValue ||
             _entryScripts.Count > 0 ||
@@ -307,6 +308,12 @@ namespace HaCreator.MapSimulator.Fields
             if (!string.IsNullOrWhiteSpace(skillRestrictionNotice))
             {
                 messages.Add(skillRestrictionNotice);
+            }
+
+            string autoExpandMinimapNotice = FieldInteractionRestrictionEvaluator.GetAutoExpandMinimapMessage(_fieldLimit);
+            if (!string.IsNullOrWhiteSpace(autoExpandMinimapNotice))
+            {
+                messages.Add(autoExpandMinimapNotice);
             }
 
             string fieldScriptNotice = BuildFieldScriptNotice();

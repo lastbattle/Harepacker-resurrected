@@ -1570,8 +1570,6 @@ namespace HaCreator.MapSimulator.UI
             var allowedBuckets = GetAllowedBucketKeys(_characterJobId);
             List<ItemMakerRecipe> allowedRecipes = _allRecipes
                 .Where(recipe => allowedBuckets.Contains(recipe.BucketKey))
-                .OrderBy(recipe => recipe.RequiredLevel)
-                .ThenBy(recipe => recipe.Title, StringComparer.OrdinalIgnoreCase)
                 .ToList();
 
             List<ItemMakerRecipe> launchFilteredRecipes = ApplyLaunchFilter(allowedRecipes);
@@ -1603,9 +1601,7 @@ namespace HaCreator.MapSimulator.UI
 
                 foreach (IGrouping<int, ItemMakerRecipe> group in normalRecipes
                              .Where(recipe => recipe.CategoryKey is not 200 and not 300 and not 400 and not 425 and not 426)
-                             .GroupBy(recipe => recipe.CategoryKey)
-                             .OrderBy(group => GetCategorySortOrder(group.Key))
-                             .ThenBy(group => group.First().CategoryLabel, StringComparer.OrdinalIgnoreCase))
+                             .GroupBy(recipe => recipe.CategoryKey))
                 {
                     AddPage(group.Key, GetCategorySortOrder(group.Key), group.First().CategoryLabel, group);
                 }

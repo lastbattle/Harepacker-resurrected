@@ -105,7 +105,40 @@ namespace HaCreator.MapSimulator.Pools
             return false;
         }
 
-        public static bool TryParseFollowCharacter(ReadOnlySpan<byte> payload, out RemoteUserFollowCharacterPacket packet, out string error)
+        public static bool TryParseFollowCharacter(
+            ReadOnlySpan<byte> payload,
+            out RemoteUserFollowCharacterPacket packet,
+            out string error,
+            int? characterIdOverride = null)
+        {
+            packet = default;
+            error = null;
+
+            if (characterIdOverride.HasValue)
+            {
+                if (TryParseOfficialFollowCharacter(payload, characterIdOverride.Value, out packet, out error))
+                {
+                    return true;
+                }
+
+                string officialError = error;
+                if (TryParseCompactFollowCharacter(payload, out packet, out error))
+                {
+                    return true;
+                }
+
+                if (!string.IsNullOrWhiteSpace(officialError) && !string.IsNullOrWhiteSpace(error))
+                {
+                    error = $"{error} Official parse also failed: {officialError}";
+                }
+
+                return false;
+            }
+
+            return TryParseCompactFollowCharacter(payload, out packet, out error);
+        }
+
+        private static bool TryParseCompactFollowCharacter(ReadOnlySpan<byte> payload, out RemoteUserFollowCharacterPacket packet, out string error)
         {
             packet = default;
             error = null;
@@ -127,6 +160,49 @@ namespace HaCreator.MapSimulator.Pools
                         transferX = reader.ReadInt32();
                         transferY = reader.ReadInt32();
                     }
+                }
+
+                packet = new RemoteUserFollowCharacterPacket(characterId, driverId, transferField, transferX, transferY);
+                return true;
+            }
+            catch (InvalidOperationException ex)
+            {
+                error = ex.Message;
+                return false;
+            }
+        }
+
+        private static bool TryParseOfficialFollowCharacter(
+            ReadOnlySpan<byte> payload,
+            int characterId,
+            out RemoteUserFollowCharacterPacket packet,
+            out string error)
+        {
+            packet = default;
+            error = null;
+
+            try
+            {
+                var reader = new PacketReader(payload);
+                int driverId = reader.ReadInt32();
+                bool transferField = false;
+                int? transferX = null;
+                int? transferY = null;
+
+                if (driverId == 0)
+                {
+                    transferField = reader.ReadByte() != 0;
+                    if (transferField)
+                    {
+                        transferX = reader.ReadInt32();
+                        transferY = reader.ReadInt32();
+                    }
+                }
+
+                if (reader.RemainingLength != 0)
+                {
+                    error = $"Remote user official follow packet has {reader.RemainingLength} unread bytes remaining.";
+                    return false;
                 }
 
                 packet = new RemoteUserFollowCharacterPacket(characterId, driverId, transferField, transferX, transferY);

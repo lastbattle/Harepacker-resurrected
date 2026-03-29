@@ -183,6 +183,7 @@ namespace HaCreator.MapSimulator
 
 
         private SpriteBatch _spriteBatch;
+        private Texture2D _minimapTooltipPixelTexture;
 
 
 
@@ -821,6 +822,7 @@ namespace HaCreator.MapSimulator
         private const int SKILL_COOLDOWN_BLOCKED_MESSAGE_COOLDOWN_MS = 600;
 
         private const int REMOTE_PLAYER_PICKUP_INTERVAL_MS = 220;
+        private const int REMOTE_PET_PICKUP_INTERVAL_MS = 260;
 
         private const int PICKUP_REMOTE_NOTICE_SUPPRESSION_MS = 900;
 
@@ -869,6 +871,7 @@ namespace HaCreator.MapSimulator
         private readonly Dictionary<int, int> _lastSkillCooldownBlockedMessageTimes = new();
 
         private readonly Dictionary<int, int> _lastRemotePlayerPickupTimes = new();
+        private readonly Dictionary<long, int> _lastRemotePetPickupTimes = new();
 
         private readonly Dictionary<long, int> _recentPickupRemoteNoticeTimes = new();
 
@@ -1036,6 +1039,8 @@ namespace HaCreator.MapSimulator
         private string _activeConnectionNoticeTitle = "Connection Notice";
 
         private string _activeConnectionNoticeBody = string.Empty;
+
+        private const int ClientPicEditMaxLength = 8;
 
         private ConnectionNoticeWindowVariant _activeConnectionNoticeVariant = ConnectionNoticeWindowVariant.Notice;
 
@@ -3539,7 +3544,7 @@ namespace HaCreator.MapSimulator
 
                 visibleIndex => _guildSkillRuntime.SelectEntry(visibleIndex),
 
-                () => _guildSkillRuntime.RefreshRecommendation(),
+                () => _guildSkillRuntime.TryRenewSelectedSkill(),
 
                 () => _guildSkillRuntime.TryLevelSelectedSkill(),
 
@@ -4122,6 +4127,9 @@ namespace HaCreator.MapSimulator
             {
 
                 miniMapUi.ResolveNpcMarkerType = ResolveMinimapNpcMarkerType;
+                miniMapUi.ResolveNpcTooltipText = ResolveMinimapNpcTooltipText;
+                miniMapUi.ResolvePortalTooltipText = ResolveMinimapPortalTooltipText;
+                EnsureMinimapTooltipResources();
 
                 miniMapUi.FullMapRequested = () =>
 
@@ -5429,15 +5437,19 @@ namespace HaCreator.MapSimulator
         {
             public long SentTick { get; init; }
             public int NpcTemplateId { get; init; }
+            public short OperationCode { get; init; }
             public bool RepairAll { get; init; }
             public int TotalCost { get; init; }
             public int PreferredItemId { get; init; }
+            public int EncodedSlotPosition { get; init; }
             public RepairDurabilityWindow.RepairEntry Entry { get; init; }
             public IReadOnlyList<RepairDurabilityWindow.RepairEntry> Entries { get; init; }
             public string RequestLabel { get; init; } = string.Empty;
         }
 
         private const int RepairDurabilityResponseDelayMs = 120;
+        private const short RepairDurabilityAllOpcode = 130;
+        private const short RepairDurabilitySingleOpcode = 131;
 
 
 
@@ -5635,10 +5647,12 @@ namespace HaCreator.MapSimulator
 
                     Part = part,
 
+                    EncodedSlotPosition = EncodeRepairDurabilitySlotPosition(slot, hiddenSlot, part.IsCash),
                     Slot = slot,
 
                     IsHiddenSlot = hiddenSlot,
 
+                    IsInventorySlot = false,
                     SlotLabel = BuildRepairDurabilitySlotLabel(slot, hiddenSlot),
 
                     ItemName = string.IsNullOrWhiteSpace(part.Name) ? $"Item {part.ItemId}" : part.Name,
@@ -5825,9 +5839,11 @@ namespace HaCreator.MapSimulator
             {
                 SentTick = Environment.TickCount64,
                 NpcTemplateId = npcTemplateId,
+                OperationCode = RepairDurabilitySingleOpcode,
                 RepairAll = false,
                 TotalCost = entry.RepairCost,
                 PreferredItemId = entry.Part.ItemId,
+                EncodedSlotPosition = entry.EncodedSlotPosition,
                 Entry = entry,
                 Entries = new[] { entry },
                 RequestLabel = requestLabel
@@ -5912,6 +5928,7 @@ namespace HaCreator.MapSimulator
             {
                 SentTick = Environment.TickCount64,
                 NpcTemplateId = npcTemplateId,
+                OperationCode = RepairDurabilityAllOpcode,
                 RepairAll = true,
                 TotalCost = totalCost,
                 Entries = entries.Where(candidate => candidate?.Part != null).ToArray(),
@@ -6001,57 +6018,62 @@ namespace HaCreator.MapSimulator
 
             if (!request.RepairAll)
             {
-                if (request.Entry?.Part == null || request.Entry.MaxDurability <= 0)
+                RepairDurabilityWindow.RepairEntry liveEntry = FindLiveRepairDurabilityEntry(request.EncodedSlotPosition, request.PreferredItemId);
+                if (liveEntry?.Part == null || liveEntry.MaxDurability <= 0)
                 {
                     ShowUtilityFeedbackMessage("Durability repair response failed because the selected equipment is no longer available.");
                     RefreshRepairDurabilityWindow(request.NpcTemplateId, request.PreferredItemId);
                     return;
                 }
 
-                if (!inventory.TryConsumeMeso(request.TotalCost))
+                int liveRepairCost = Math.Max(0, liveEntry.RepairCost);
+                if (liveRepairCost <= 0)
                 {
-                    ShowUtilityFeedbackMessage($"Repair response for {request.Entry.ItemName} failed because you no longer have enough meso.");
+                    ShowUtilityFeedbackMessage($"{liveEntry.ItemName} no longer needs durability repair.");
                     RefreshRepairDurabilityWindow(request.NpcTemplateId, request.PreferredItemId);
                     return;
                 }
 
-                request.Entry.Part.Durability = request.Entry.MaxDurability;
-                ShowUtilityFeedbackMessage($"Repair response restored {request.Entry.ItemName} for {request.TotalCost.ToString("N0", CultureInfo.InvariantCulture)} meso.");
+                if (!inventory.TryConsumeMeso(liveRepairCost))
+                {
+                    ShowUtilityFeedbackMessage($"Repair response for {liveEntry.ItemName} failed because you no longer have enough meso.");
+                    RefreshRepairDurabilityWindow(request.NpcTemplateId, request.PreferredItemId);
+                    return;
+                }
+
+                liveEntry.Part.Durability = liveEntry.MaxDurability;
+                ShowUtilityFeedbackMessage($"Repair response restored {liveEntry.ItemName} for {liveRepairCost.ToString("N0", CultureInfo.InvariantCulture)} meso.");
                 RefreshRepairDurabilityWindow(request.NpcTemplateId, request.PreferredItemId);
                 return;
             }
 
             int repairedCount = 0;
-            IReadOnlyList<RepairDurabilityWindow.RepairEntry> entries = request.Entries ?? Array.Empty<RepairDurabilityWindow.RepairEntry>();
-            bool hasRepairableEntry = false;
-            for (int i = 0; i < entries.Count; i++)
-            {
-                RepairDurabilityWindow.RepairEntry repairEntry = entries[i];
-                if (repairEntry?.Part == null || repairEntry.MaxDurability <= 0)
-                {
-                    continue;
-                }
-
-                hasRepairableEntry = true;
-            }
-
-            if (!hasRepairableEntry)
+            List<RepairDurabilityWindow.RepairEntry> liveEntries = BuildRepairDurabilityEntries();
+            if (liveEntries.Count <= 0)
             {
                 ShowUtilityFeedbackMessage("Repair-all response failed because none of the requested equipment entries are still available.");
                 RefreshRepairDurabilityWindow(request.NpcTemplateId, request.PreferredItemId);
                 return;
             }
 
-            if (!inventory.TryConsumeMeso(request.TotalCost))
+            int liveRepairAllCost = liveEntries.Sum(entry => Math.Max(0, entry?.RepairCost ?? 0));
+            if (liveRepairAllCost <= 0)
+            {
+                ShowUtilityFeedbackMessage("Repair-all response found no remaining damaged equipment.");
+                RefreshRepairDurabilityWindow(request.NpcTemplateId, request.PreferredItemId);
+                return;
+            }
+
+            if (!inventory.TryConsumeMeso(liveRepairAllCost))
             {
                 ShowUtilityFeedbackMessage("Repair-all response failed because you no longer have enough meso.");
                 RefreshRepairDurabilityWindow(request.NpcTemplateId, request.PreferredItemId);
                 return;
             }
 
-            for (int i = 0; i < entries.Count; i++)
+            for (int i = 0; i < liveEntries.Count; i++)
             {
-                RepairDurabilityWindow.RepairEntry repairEntry = entries[i];
+                RepairDurabilityWindow.RepairEntry repairEntry = liveEntries[i];
                 if (repairEntry?.Part == null || repairEntry.MaxDurability <= 0)
                 {
                     continue;
@@ -6061,7 +6083,7 @@ namespace HaCreator.MapSimulator
                 repairedCount++;
             }
 
-            ShowUtilityFeedbackMessage($"Repair-all response restored {repairedCount} item(s) for {request.TotalCost.ToString("N0", CultureInfo.InvariantCulture)} meso.");
+            ShowUtilityFeedbackMessage($"Repair-all response restored {repairedCount} item(s) for {liveRepairAllCost.ToString("N0", CultureInfo.InvariantCulture)} meso.");
             RefreshRepairDurabilityWindow(request.NpcTemplateId, request.PreferredItemId);
         }
 
@@ -6201,6 +6223,62 @@ namespace HaCreator.MapSimulator
 
             window.Show();
 
+        }
+
+        private static int EncodeRepairDurabilitySlotPosition(Character.EquipSlot slot, bool hiddenSlot, bool isCashItem)
+        {
+            int absolutePosition = slot switch
+            {
+                Character.EquipSlot.Cap => 1,
+                Character.EquipSlot.FaceAccessory => 2,
+                Character.EquipSlot.EyeAccessory => 3,
+                Character.EquipSlot.Earrings => 4,
+                Character.EquipSlot.Coat => 5,
+                Character.EquipSlot.Longcoat => 5,
+                Character.EquipSlot.Pants => 6,
+                Character.EquipSlot.Shoes => 7,
+                Character.EquipSlot.Glove => 8,
+                Character.EquipSlot.Cape => 9,
+                Character.EquipSlot.Shield => 10,
+                Character.EquipSlot.Weapon => 11,
+                Character.EquipSlot.Ring1 => 12,
+                Character.EquipSlot.Ring2 => 13,
+                Character.EquipSlot.Ring3 => 15,
+                Character.EquipSlot.Ring4 => 16,
+                Character.EquipSlot.Pendant => 17,
+                Character.EquipSlot.TamingMob => 18,
+                Character.EquipSlot.Saddle => 19,
+                Character.EquipSlot.Medal => 49,
+                Character.EquipSlot.Belt => 50,
+                Character.EquipSlot.Shoulder => 51,
+                Character.EquipSlot.Pocket => 52,
+                Character.EquipSlot.Badge => 53,
+                Character.EquipSlot.Pendant2 => 59,
+                Character.EquipSlot.Android => 166,
+                Character.EquipSlot.AndroidHeart => 167,
+                _ => 1000 + (int)slot
+            };
+
+            if (hiddenSlot && !isCashItem)
+            {
+                return -absolutePosition;
+            }
+
+            return isCashItem ? -(100 + absolutePosition) : -absolutePosition;
+        }
+
+        private RepairDurabilityWindow.RepairEntry FindLiveRepairDurabilityEntry(int encodedSlotPosition, int preferredItemId)
+        {
+            List<RepairDurabilityWindow.RepairEntry> liveEntries = BuildRepairDurabilityEntries();
+            RepairDurabilityWindow.RepairEntry positionMatch = liveEntries.FirstOrDefault(entry => entry.EncodedSlotPosition == encodedSlotPosition);
+            if (positionMatch != null)
+            {
+                return positionMatch;
+            }
+
+            return preferredItemId > 0
+                ? liveEntries.FirstOrDefault(entry => entry.Part?.ItemId == preferredItemId)
+                : null;
         }
 
 
@@ -6492,6 +6570,23 @@ namespace HaCreator.MapSimulator
 
         }
 
+        private bool TryApplyMapleTvPacket(int packetType, byte[] payload, out string message)
+        {
+            bool applied = _mapleTvRuntime.TryApplyPacket(
+                packetType,
+                payload,
+                currTickCount,
+                ResolveMapleTvBuildFromAvatarLook,
+                out message);
+
+            if (applied && packetType == MapleTvRuntime.PacketTypeSetMessage)
+            {
+                ShowMapleTvWindow();
+            }
+
+            return applied;
+        }
+
 
 
         private bool TryApplyFieldMessageBoxPacket(int packetType, byte[] payload, out string message)
@@ -6518,8 +6613,19 @@ namespace HaCreator.MapSimulator
 
         {
 
-            return _mapleTvRuntime.TryApplySetMessagePacket(payload, currTickCount, ResolveMapleTvBuildFromAvatarLook, out message);
+            return TryApplyMapleTvPacket(MapleTvRuntime.PacketTypeSetMessage, payload, out message);
 
+        }
+
+        private void FlushPendingMapleTvSendResultFeedback(int tickCount)
+        {
+            MapleTvSendResultFeedback feedback = _mapleTvRuntime.ConsumePendingSendResultFeedback();
+            if (feedback == null)
+            {
+                return;
+            }
+
+            _chat?.AddClientChatMessage(feedback.ChatMessage, tickCount, feedback.ChatLogType);
         }
 
 
@@ -7277,6 +7383,8 @@ namespace HaCreator.MapSimulator
 
         {
 
+            bool suppressGenericDialogPrompt = false;
+
             if (applySelectorSideEffects &&
 
                 packetType == LoginPacketType.SelectWorldResult &&
@@ -7362,6 +7470,23 @@ namespace HaCreator.MapSimulator
                 summaryOverride = guestSummary;
             }
 
+            if (packetType == LoginPacketType.AccountInfoResult &&
+                TryHandlePacketOwnedAccountInfoResult(out string accountInfoSummary, out bool continueAccountInfoRuntimeDispatch))
+            {
+                message = accountInfoSummary;
+                suppressGenericDialogPrompt = true;
+                if (!continueAccountInfoRuntimeDispatch)
+                {
+                    SyncLoginTitleWindow();
+                    RefreshWorldChannelSelectorWindows();
+                    SyncRecommendWorldWindow();
+                    SyncLoginEntryDialogs();
+                    return;
+                }
+
+                summaryOverride = accountInfoSummary;
+            }
+
 
 
             _loginRuntime.TryDispatchPacket(packetType, currTickCount, out message);
@@ -7410,7 +7535,10 @@ namespace HaCreator.MapSimulator
 
 
 
-            ApplyLoginPacketDialogPrompt(packetType);
+            if (!suppressGenericDialogPrompt)
+            {
+                ApplyLoginPacketDialogPrompt(packetType);
+            }
             TryContinueLoginBootstrapFromPacketProfile(packetType);
 
 
@@ -9772,7 +9900,39 @@ namespace HaCreator.MapSimulator
             return true;
         }
 
-        private void ApplyPacketOwnedAccountInfo(LoginCheckPasswordResultProfile packetProfile)
+        private bool TryHandlePacketOwnedAccountInfoResult(out string summary, out bool continueRuntimeDispatch)
+        {
+            summary = null;
+            continueRuntimeDispatch = true;
+
+            if (!IsLoginRuntimeSceneActive ||
+                !_loginPacketAccountDialogProfiles.TryGetValue(LoginPacketType.AccountInfoResult, out LoginAccountDialogPacketProfile packetProfile) ||
+                packetProfile == null)
+            {
+                return false;
+            }
+
+            if (!IsSuccessfulAccountInfoResult(packetProfile))
+            {
+                summary = BuildAccountInfoResultFailureMessage(packetProfile);
+                _loginTitleStatusMessage = summary;
+                _loginCharacterStatusMessage = summary;
+                ShowAccountInfoResultFailureDialog(packetProfile, summary);
+                continueRuntimeDispatch = false;
+                return true;
+            }
+
+            ApplyPacketOwnedAccountInfo(packetProfile);
+            _loginAccountMigrationAccepted = true;
+            _loginAccountAcceptedEula = true;
+            summary = BuildAccountInfoResultSuccessSummary(packetProfile);
+            _loginTitleStatusMessage = summary;
+            _loginCharacterStatusMessage = summary;
+            HideLoginUtilityDialog();
+            return true;
+        }
+
+        private void ApplyPacketOwnedAccountInfo(LoginAccountDialogPacketProfile packetProfile)
         {
             if (packetProfile == null)
             {
@@ -9784,7 +9944,9 @@ namespace HaCreator.MapSimulator
                 PacketType = LoginPacketType.AccountInfoResult,
                 Payload = packetProfile.Payload,
                 ResultCode = packetProfile.ResultCode,
+                SecondaryCode = packetProfile.SecondaryCode,
                 AccountId = packetProfile.AccountId,
+                CharacterId = packetProfile.CharacterId,
                 Gender = packetProfile.Gender,
                 GradeCode = packetProfile.GradeCode,
                 AccountFlags = packetProfile.AccountFlags,
@@ -9796,32 +9958,55 @@ namespace HaCreator.MapSimulator
                 RegisterDateFileTime = packetProfile.RegisterDateFileTime,
                 CharacterCount = packetProfile.CharacterCount,
                 ClientKey = packetProfile.ClientKey,
+                RequestedName = packetProfile.RequestedName,
+                TextValue = packetProfile.TextValue,
             };
+        }
+
+        private void ApplyPacketOwnedAccountInfo(LoginCheckPasswordResultProfile packetProfile)
+        {
+            ApplyPacketOwnedAccountInfo(packetProfile == null
+                ? null
+                : new LoginAccountDialogPacketProfile
+                {
+                    PacketType = LoginPacketType.AccountInfoResult,
+                    Payload = packetProfile.Payload,
+                    ResultCode = packetProfile.ResultCode,
+                    AccountId = packetProfile.AccountId,
+                    Gender = packetProfile.Gender,
+                    GradeCode = packetProfile.GradeCode,
+                    AccountFlags = packetProfile.AccountFlags,
+                    CountryId = packetProfile.CountryId,
+                    ClubId = packetProfile.ClubId,
+                    PurchaseExperience = packetProfile.PurchaseExperience,
+                    ChatBlockReason = packetProfile.ChatBlockReason,
+                    ChatUnblockFileTime = packetProfile.ChatUnblockFileTime,
+                    RegisterDateFileTime = packetProfile.RegisterDateFileTime,
+                    CharacterCount = packetProfile.CharacterCount,
+                    ClientKey = packetProfile.ClientKey,
+                });
         }
 
         private void ApplyPacketOwnedAccountInfo(LoginGuestIdLoginResultProfile packetProfile)
         {
-            if (packetProfile == null)
-            {
-                return;
-            }
-
-            _loginPacketAccountDialogProfiles[LoginPacketType.AccountInfoResult] = new LoginAccountDialogPacketProfile
-            {
-                PacketType = LoginPacketType.AccountInfoResult,
-                Payload = packetProfile.Payload,
-                ResultCode = packetProfile.ResultCode,
-                AccountId = packetProfile.AccountId,
-                Gender = packetProfile.Gender,
-                GradeCode = packetProfile.GradeCode,
-                CountryId = packetProfile.CountryId,
-                ClubId = packetProfile.ClubId,
-                PurchaseExperience = packetProfile.PurchaseExperience,
-                ChatBlockReason = packetProfile.ChatBlockReason,
-                ChatUnblockFileTime = packetProfile.ChatUnblockFileTime,
-                RegisterDateFileTime = packetProfile.RegisterDateFileTime,
-                CharacterCount = packetProfile.CharacterCount,
-            };
+            ApplyPacketOwnedAccountInfo(packetProfile == null
+                ? null
+                : new LoginAccountDialogPacketProfile
+                {
+                    PacketType = LoginPacketType.AccountInfoResult,
+                    Payload = packetProfile.Payload,
+                    ResultCode = packetProfile.ResultCode,
+                    AccountId = packetProfile.AccountId,
+                    Gender = packetProfile.Gender,
+                    GradeCode = packetProfile.GradeCode,
+                    CountryId = packetProfile.CountryId,
+                    ClubId = packetProfile.ClubId,
+                    PurchaseExperience = packetProfile.PurchaseExperience,
+                    ChatBlockReason = packetProfile.ChatBlockReason,
+                    ChatUnblockFileTime = packetProfile.ChatUnblockFileTime,
+                    RegisterDateFileTime = packetProfile.RegisterDateFileTime,
+                    CharacterCount = packetProfile.CharacterCount,
+                });
         }
 
         private static string BuildCheckPasswordSuccessSummary(LoginCheckPasswordResultProfile packetProfile)
@@ -9840,12 +10025,84 @@ namespace HaCreator.MapSimulator
 
         private static string BuildCheckPasswordLicenseSummary(LoginCheckPasswordResultProfile packetProfile)
         {
-            return $"Packet-authored CheckPasswordResult returned the client license-dialog path (result {packetProfile?.ResultCode}, mode {packetProfile?.AccountBootstrapMode}). The simulator surfaces the login-owner handoff but does not consume the live license dialog response.";
+            return $"Packet-authored CheckPasswordResult returned the client license-dialog path (result {packetProfile?.ResultCode}, mode {packetProfile?.AccountBootstrapMode}). The simulator now waits for the follow-up account-info owner instead of forcing a generic transition.";
         }
 
         private static string BuildCheckPasswordRegistrationSummary(LoginCheckPasswordResultProfile packetProfile)
         {
             return $"Packet-authored CheckPasswordResult requested the client website handoff for account bootstrap mode {packetProfile?.AccountBootstrapMode}.";
+        }
+
+        private static string BuildAccountInfoResultSuccessSummary(LoginAccountDialogPacketProfile packetProfile)
+        {
+            string accountText = packetProfile?.AccountId.HasValue == true
+                ? $" for account {packetProfile.AccountId.Value}"
+                : string.Empty;
+            string characterText = packetProfile?.CharacterCount.HasValue == true
+                ? $" Character count {packetProfile.CharacterCount.Value}."
+                : string.Empty;
+            string keyText = packetProfile?.ClientKey?.Length == 8
+                ? $" Client key {Convert.ToHexString(packetProfile.ClientKey)}."
+                : string.Empty;
+            return $"Packet-authored AccountInfoResult promoted the client-owned account-info payload{accountText}.{characterText}{keyText}".Trim();
+        }
+
+        private static string BuildAccountInfoResultFailureMessage(LoginAccountDialogPacketProfile packetProfile)
+        {
+            return packetProfile?.ResultCode switch
+            {
+                4 => "Packet-authored AccountInfoResult rejected the account password.",
+                5 => "Packet-authored AccountInfoResult rejected the account ID.",
+                7 => "Packet-authored AccountInfoResult returned the login flow to title.",
+                10 => "Packet-authored AccountInfoResult blocked the login request.",
+                11 => "Packet-authored AccountInfoResult reported that the service is unavailable.",
+                25 => "Packet-authored AccountInfoResult reported the client warning path 40.",
+                _ => $"Packet-authored AccountInfoResult failed with result {packetProfile?.ResultCode}.",
+            };
+        }
+
+        private void ShowAccountInfoResultFailureDialog(LoginAccountDialogPacketProfile packetProfile, string message)
+        {
+            int? noticeTextIndex = packetProfile?.ResultCode switch
+            {
+                255 or 6 or 8 or 9 => 15,
+                2 or 3 => 16,
+                4 => 3,
+                5 => 20,
+                7 => 17,
+                10 => 19,
+                11 => 14,
+                13 => 21,
+                14 => 27,
+                15 => 26,
+                16 or 21 => 33,
+                17 => 27,
+                25 => 40,
+                _ => null,
+            };
+
+            if (packetProfile?.ResultCode == 7)
+            {
+                _loginRuntime.ForceStep(LoginStep.Title, "Packet-authored AccountInfoResult returned the login flow to title.");
+            }
+
+            if (packetProfile?.ResultCode is 14 or 15)
+            {
+                ShowLoginUtilityDialog(
+                    "Login Utility",
+                    message,
+                    LoginUtilityDialogButtonLayout.YesNo,
+                    LoginUtilityDialogAction.WebsiteHandoffDecision,
+                    noticeTextIndex: noticeTextIndex);
+                return;
+            }
+
+            ShowLoginUtilityDialog(
+                "Login Utility",
+                message,
+                LoginUtilityDialogButtonLayout.Ok,
+                LoginUtilityDialogAction.DismissOnly,
+                noticeTextIndex: noticeTextIndex);
         }
 
         private static string BuildCheckPasswordResultFailureMessage(LoginCheckPasswordResultProfile packetProfile)
@@ -13537,6 +13794,12 @@ namespace HaCreator.MapSimulator
 
                     break;
 
+                case LoginUtilityDialogAction.ConfirmApspEvent:
+
+                    AcceptPacketOwnedAskApspEventPrompt();
+
+                    break;
+
 
 
                 case LoginUtilityDialogAction.AccountMigrationDecision:
@@ -13962,6 +14225,12 @@ namespace HaCreator.MapSimulator
                         "Skipped secondary-password setup and queued CheckPasswordResult.");
 
                     return;
+
+                case LoginUtilityDialogAction.ConfirmApspEvent:
+
+                    DeclinePacketOwnedAskApspEventPrompt();
+
+                    break;
 
             }
 
@@ -14589,7 +14858,7 @@ namespace HaCreator.MapSimulator
                     InputLabel = "New PIC",
                     InputPlaceholder = "At least 4 characters",
                     InputMasked = true,
-                    InputMaxLength = 16,
+                    InputMaxLength = ClientPicEditMaxLength,
                     SoftKeyboardType = SoftKeyboardKeyboardType.NumericOnlyAlt,
                 },
                 2 or 4 => new LoginPacketDialogPromptConfiguration
@@ -14602,7 +14871,7 @@ namespace HaCreator.MapSimulator
                     InputLabel = "PIC",
                     InputPlaceholder = "Enter PIC",
                     InputMasked = true,
-                    InputMaxLength = 16,
+                    InputMaxLength = ClientPicEditMaxLength,
                     SoftKeyboardType = SoftKeyboardKeyboardType.NumericOnlyAlt,
                 },
                 3 => BuildClientNoticePrompt(packetText, "PIC verification failed.", packetDetail, 15),
@@ -14692,6 +14961,11 @@ namespace HaCreator.MapSimulator
         private static bool IsSuccessfulSetAccountResult(LoginAccountDialogPacketProfile packetProfile)
         {
             return packetProfile?.SecondaryCode.HasValue == true && packetProfile.SecondaryCode.Value != 0;
+        }
+
+        private static bool IsSuccessfulAccountInfoResult(LoginAccountDialogPacketProfile packetProfile)
+        {
+            return packetProfile?.ResultCode is 0 or 12 or 23 && packetProfile.AccountId.HasValue;
         }
 
         private static bool IsSuccessfulConfirmEulaResult(LoginAccountDialogPacketProfile packetProfile)
@@ -18972,6 +19246,7 @@ namespace HaCreator.MapSimulator
 
             _dropPool?.Update(tickCount, deltaSecondsLocal);
             UpdateRemotePlayerDropPickups(tickCount);
+            UpdateRemotePetDropPickups(tickCount);
 
 
 
@@ -19034,6 +19309,56 @@ namespace HaCreator.MapSimulator
                 if (pickedDrop != null)
                 {
                     _lastRemotePlayerPickupTimes[actor.CharacterId] = currentTime;
+                }
+            }
+        }
+
+        private void UpdateRemotePetDropPickups(int currentTime)
+        {
+            if (_dropPool == null || _remoteUserPool.Count == 0)
+            {
+                return;
+            }
+
+            foreach (RemoteUserActor actor in _remoteUserPool.Actors)
+            {
+                if (actor?.Build?.RemotePetItemIds == null
+                    || !actor.IsVisibleInWorld
+                    || actor.CharacterId <= 0)
+                {
+                    continue;
+                }
+
+                for (int slotIndex = 0; slotIndex < actor.Build.RemotePetItemIds.Count; slotIndex++)
+                {
+                    int petItemId = actor.Build.RemotePetItemIds[slotIndex];
+                    if (petItemId <= 0)
+                    {
+                        continue;
+                    }
+
+                    long pickupKey = BuildRemotePetPickupKey(actor.CharacterId, slotIndex);
+                    if (_lastRemotePetPickupTimes.TryGetValue(pickupKey, out int lastPickupTime)
+                        && currentTime - lastPickupTime < REMOTE_PET_PICKUP_INTERVAL_MS)
+                    {
+                        continue;
+                    }
+
+                    Vector2 petPosition = ResolveRemotePetPickupPosition(actor, slotIndex);
+                    int petActorId = BuildRemotePetPickupActorId(actor.CharacterId, slotIndex);
+                    string petName = ResolveRemotePetPickupName(petItemId, slotIndex);
+                    DropItem pickedDrop = _dropPool.TryPickUpDropByRemotePet(
+                        petActorId,
+                        actor.CharacterId,
+                        petPosition.X,
+                        petPosition.Y,
+                        currentTime,
+                        petName,
+                        pickupValidator: EvaluateRemotePetPickupAvailability);
+                    if (pickedDrop != null)
+                    {
+                        _lastRemotePetPickupTimes[pickupKey] = currentTime;
+                    }
                 }
             }
         }
@@ -21958,6 +22283,18 @@ namespace HaCreator.MapSimulator
 
         }
 
+        private Pools.DropPickupFailureReason EvaluateRemotePetPickupAvailability(DropItem drop)
+
+        {
+
+            return IsPetPickupBlocked(drop)
+
+                ? Pools.DropPickupFailureReason.PetPickupBlocked
+
+                : Pools.DropPickupFailureReason.None;
+
+        }
+
 
 
         private string ResolvePickupSourceName(int pickerId, bool pickedByPet)
@@ -22009,6 +22346,48 @@ namespace HaCreator.MapSimulator
 
 
             return null;
+
+        }
+
+        private static int BuildRemotePetPickupActorId(int ownerCharacterId, int slotIndex)
+
+        {
+
+            return -((ownerCharacterId * 10) + slotIndex + 1);
+
+        }
+
+        private static long BuildRemotePetPickupKey(int ownerCharacterId, int slotIndex)
+
+        {
+
+            return ((long)ownerCharacterId << 8) | (uint)(slotIndex + 1);
+
+        }
+
+        private static Vector2 ResolveRemotePetPickupPosition(RemoteUserActor actor, int slotIndex)
+
+        {
+
+            float direction = actor.FacingRight ? -1f : 1f;
+
+            float offsetX = direction * (28f + slotIndex * 18f);
+
+            return new Vector2(actor.Position.X + offsetX, actor.Position.Y);
+
+        }
+
+        private static string ResolveRemotePetPickupName(int petItemId, int slotIndex)
+
+        {
+
+            string petName = ResolvePickupItemName(petItemId);
+
+            return string.IsNullOrWhiteSpace(petName)
+
+                ? $"Pet {slotIndex + 1}"
+
+                : petName;
 
         }
 
@@ -22525,6 +22904,14 @@ namespace HaCreator.MapSimulator
 
             }
 
+            if (!string.IsNullOrWhiteSpace(recentPickup.ActorName))
+
+            {
+
+                return recentPickup.ActorName;
+
+            }
+
 
 
             return recentPickup.ActorKind switch
@@ -22659,6 +23046,10 @@ namespace HaCreator.MapSimulator
 
             public int Jump { get; init; }
 
+            public int IndieMaxHp { get; init; }
+
+            public int IndieMaxMp { get; init; }
+
             public int MaxHpPercent { get; init; }
 
             public int MaxMpPercent { get; init; }
@@ -22744,6 +23135,10 @@ namespace HaCreator.MapSimulator
                  Speed != 0 ||
 
                  Jump != 0 ||
+
+                 IndieMaxHp != 0 ||
+
+                 IndieMaxMp != 0 ||
 
                  MaxHpPercent != 0 ||
 
@@ -23239,6 +23634,10 @@ namespace HaCreator.MapSimulator
 
                 Jump = ResolveConsumableIntValue(specProperty, "jump", "indieJump"),
 
+                IndieMaxHp = ResolveConsumableIntValue(specProperty, "indieMhp"),
+
+                IndieMaxMp = ResolveConsumableIntValue(specProperty, "indieMmp"),
+
                 MaxHpPercent = ResolveConsumablePercentValue(specProperty, "mhpR", "mhpRRate"),
 
                 MaxMpPercent = ResolveConsumablePercentValue(specProperty, "mmpR", "mmpRRate"),
@@ -23492,6 +23891,10 @@ namespace HaCreator.MapSimulator
                 Speed = effect.Speed,
 
                 Jump = effect.Jump,
+
+                IndieMaxHP = effect.IndieMaxHp,
+
+                IndieMaxMP = effect.IndieMaxMp,
 
                 MaxHPPercent = effect.MaxHpPercent,
 
@@ -24713,6 +25116,314 @@ namespace HaCreator.MapSimulator
 
         }
 
+        private void EnsureMinimapTooltipResources()
+
+        {
+
+            if (miniMapUi == null || _fontChat == null || GraphicsDevice == null)
+
+            {
+
+                return;
+
+            }
+
+
+
+            if (_minimapTooltipPixelTexture == null)
+
+            {
+
+                _minimapTooltipPixelTexture = new Texture2D(GraphicsDevice, 1, 1);
+
+                _minimapTooltipPixelTexture.SetData(new[] { Color.White });
+
+            }
+
+
+
+            miniMapUi.SetTooltipResources(_fontChat, _minimapTooltipPixelTexture);
+
+        }
+
+
+
+        private string ResolveMinimapNpcTooltipText(NpcItem npc)
+
+        {
+
+            if (npc?.NpcInstance == null)
+
+            {
+
+                return null;
+
+            }
+
+
+
+            string npcName = npc.NpcInstance.NpcInfo?.StringName;
+
+            if (string.IsNullOrWhiteSpace(npcName))
+
+            {
+
+                npcName = npc.NpcInstance.NpcInfo?.ID;
+
+            }
+
+
+
+            string questState = ResolveMinimapNpcQuestStateText(npc);
+
+            return BuildMinimapTooltipText(npcName, questState);
+
+        }
+
+
+
+        private string ResolveMinimapPortalTooltipText(PortalItem portal)
+
+        {
+
+            PortalInstance instance = portal?.PortalInstance;
+
+            if (instance == null || instance.hideTooltip == MapleBool.True)
+
+            {
+
+                return null;
+
+            }
+
+
+
+            string scriptText = string.IsNullOrWhiteSpace(instance.script) ? null : instance.script.Trim();
+            string targetMapText = instance.tm > 0 && instance.tm != MapConstants.MaxMap
+                ? ResolveMapTransferDisplayName(instance.tm)
+                : null;
+            string portalNameText = string.IsNullOrWhiteSpace(instance.pn) ? null : $"Portal: {instance.pn.Trim()}";
+            string targetPortalText = string.IsNullOrWhiteSpace(instance.tn) ? null : $"Target: {instance.tn.Trim()}";
+
+            return BuildMinimapTooltipText(
+                scriptText,
+                targetMapText,
+                portalNameText,
+                targetPortalText);
+
+        }
+
+
+
+        private string ResolveMinimapNpcQuestStateText(NpcItem npc)
+
+        {
+
+            if (npc == null || _questRuntime == null || _playerManager?.Player?.Build == null)
+
+            {
+
+                return null;
+
+            }
+
+
+
+            NpcInteractionEntryKind? alertKind = _questRuntime.GetNpcQuestAlertKind(npc, _playerManager.Player.Build);
+
+            return alertKind switch
+
+            {
+
+                NpcInteractionEntryKind.AvailableQuest => "Quest available",
+
+                NpcInteractionEntryKind.InProgressQuest => "Quest in progress",
+
+                NpcInteractionEntryKind.CompletableQuest => "Quest complete",
+
+                _ => null
+
+            };
+
+        }
+
+
+
+        private static string BuildMinimapTooltipText(params string[] lines)
+
+        {
+
+            if (lines == null || lines.Length == 0)
+
+            {
+
+                return null;
+
+            }
+
+
+
+            List<string> normalizedLines = new(lines.Length);
+            foreach (string line in lines)
+
+            {
+
+                string normalized = NormalizeSpriteFontPunctuation(line)?.Trim();
+                if (!string.IsNullOrWhiteSpace(normalized) && !normalizedLines.Contains(normalized, StringComparer.Ordinal))
+
+                {
+
+                    normalizedLines.Add(normalized);
+
+                }
+
+            }
+
+
+
+            return normalizedLines.Count == 0 ? null : string.Join(Environment.NewLine, normalizedLines);
+
+        }
+
+
+
+        private static string BuildMinimapTrackedUserTooltipText(MinimapTrackedUserState state)
+
+        {
+
+            if (state == null)
+
+            {
+
+                return null;
+
+            }
+
+
+
+            List<string> relationshipLines = new();
+            if (state.IsTrader)
+
+            {
+
+                relationshipLines.Add("Trader");
+
+            }
+
+            if (state.IsMatchParticipant)
+
+            {
+
+                relationshipLines.Add("Match Cards participant");
+
+            }
+
+            if (state.IsPartyMember)
+
+            {
+
+                relationshipLines.Add(state.IsPartyLeader ? "Party leader" : "Party member");
+
+            }
+
+            if (state.IsGuildMember)
+
+            {
+
+                relationshipLines.Add(state.IsGuildLeader ? "Guild leader" : "Guild member");
+
+            }
+
+            if (state.IsFriend)
+
+            {
+
+                relationshipLines.Add("Friend");
+
+            }
+
+
+
+            return BuildMinimapTooltipText(
+                state.Name,
+                relationshipLines.Count > 0 ? string.Join(", ", relationshipLines) : "Remote user");
+
+        }
+
+
+
+        private IReadOnlyList<MinimapUI.EmployeeMarker> BuildMinimapEmployeeMarkers(PlayerCharacter player)
+
+        {
+
+            SocialRoomFieldActorSnapshot snapshot = GetSocialRoomEmployeeFieldActorSnapshot();
+            if (snapshot == null || player == null)
+
+            {
+
+                return Array.Empty<MinimapUI.EmployeeMarker>();
+
+            }
+
+
+
+            int worldX;
+            int worldY;
+            if (snapshot.HasWorldPosition && !snapshot.UseOwnerAnchor)
+
+            {
+
+                worldX = snapshot.WorldX;
+
+                worldY = snapshot.WorldY;
+
+            }
+
+            else
+
+            {
+
+                int horizontalOffset = player.FacingRight ? snapshot.AnchorOffsetX : -snapshot.AnchorOffsetX;
+                worldX = (int)Math.Round(player.Position.X) + horizontalOffset;
+                worldY = (int)Math.Round(player.Position.Y) + snapshot.AnchorOffsetY;
+
+            }
+
+
+
+            string tooltipText = BuildMinimapTooltipText(snapshot.Headline, snapshot.Detail);
+            if (string.IsNullOrWhiteSpace(tooltipText))
+
+            {
+
+                return Array.Empty<MinimapUI.EmployeeMarker>();
+
+            }
+
+
+
+            return new[]
+
+            {
+
+                new MinimapUI.EmployeeMarker
+
+                {
+
+                    WorldX = worldX,
+
+                    WorldY = worldY,
+
+                    ShowDirectionOverlay = true,
+
+                    TooltipText = tooltipText
+
+                }
+
+            };
+
+        }
+
 
 
         private void RefreshMinimapTrackedUserMarkers()
@@ -24730,7 +25441,9 @@ namespace HaCreator.MapSimulator
 
 
             miniMapUi.SetLocalPlayerHelperMarker(ResolveLocalPlayerMinimapHelperMarker());
+            EnsureMinimapTooltipResources();
             miniMapUi.SetTrackedUserMarkers(BuildMinimapTrackedUserMarkers());
+            miniMapUi.SetEmployeeMarkers(BuildMinimapEmployeeMarkers(_playerManager?.Player));
 
         }
 
@@ -24932,7 +25645,9 @@ namespace HaCreator.MapSimulator
 
                     MarkerType = ResolveMinimapTrackedUserMarkerType(state),
 
-                    ShowDirectionOverlay = true
+                    ShowDirectionOverlay = true,
+
+                    TooltipText = BuildMinimapTrackedUserTooltipText(state)
 
                 });
 
@@ -26508,6 +27223,19 @@ namespace HaCreator.MapSimulator
 
             mesoDrop.Icon = frames[0];
 
+            if (mob?.MobInstance?.MobInfo != null
+                && int.TryParse(mob.MobInstance.MobInfo.ID, out int killedMobId)
+                && _monsterBookManager.TryResolveCardItemId(killedMobId, out int monsterCardItemId))
+            {
+                _dropPool.SpawnItemDrop(
+                    mobX + 18f,
+                    mobY,
+                    monsterCardItemId.ToString(CultureInfo.InvariantCulture),
+                    1,
+                    currentTick,
+                    isRare: true);
+            }
+
         }
 
 
@@ -27671,14 +28399,6 @@ namespace HaCreator.MapSimulator
                 _combatEffects.AddDeathEffectForMob(mob, currentTick);
 
                 _questRuntime.RecordMobKill(mob?.MobInstance);
-
-                if (mob?.MobInstance?.MobInfo != null && int.TryParse(mob.MobInstance.MobInfo.ID, out int killedMobId))
-
-                {
-
-                    _monsterBookManager.RecordMobKill(_playerManager?.Player?.Build, killedMobId);
-
-                }
 
 
 
@@ -29494,28 +30214,23 @@ namespace HaCreator.MapSimulator
 
 
 
-            long fieldLimit = _mapBoard?.MapInfo?.fieldLimit ?? 0;
-
             _playerManager.Skills.SetAdditionalStateRestrictionMessageProvider(GetPlayerSkillStateRestrictionMessage);
             _playerManager.Skills.SetCurrentMapInfoProvider(() => _mapBoard?.MapInfo);
             _playerManager.Skills.SetExternalFriendlySupportSummonsProvider(
                 () => _summonedPool.GetSupportSummonsAffectingLocalPlayer(IsAffectedAreaOwnerPartyMember));
 
             _playerManager.Skills.SetFieldSkillRestrictionEvaluator(
-
-                skill => FieldSkillRestrictionEvaluator.CanUseSkill(fieldLimit, skill)
+                skill => FieldSkillRestrictionEvaluator.CanUseSkill(_mapBoard?.MapInfo, skill)
 
                     && (_fieldRuleRuntime?.CanUseSkill(skill) ?? true));
 
             _playerManager.Skills.SetFieldSkillRestrictionMessageProvider(
-
-                skill => FieldSkillRestrictionEvaluator.GetRestrictionMessage(fieldLimit, skill)
+                skill => FieldSkillRestrictionEvaluator.GetRestrictionMessage(_mapBoard?.MapInfo, skill)
 
                     ?? _fieldRuleRuntime?.GetSkillRestrictionMessage(skill));
 
             _playerManager.SetJumpRestrictionHandler(
-
-                () => FieldInteractionRestrictionEvaluator.GetJumpRestrictionMessage(fieldLimit),
+                () => FieldInteractionRestrictionEvaluator.GetJumpRestrictionMessage(_mapBoard?.MapInfo?.fieldLimit ?? 0),
 
                 ShowFieldRestrictionMessage);
 
@@ -31126,6 +31841,7 @@ namespace HaCreator.MapSimulator
 
             ApplyAmbientFieldWeather(currentTime);
             ApplyFieldRuntimeInteractionRestrictions();
+            ApplyFieldRuntimeMinimapRestrictions();
 
 
 
@@ -31731,7 +32447,11 @@ namespace HaCreator.MapSimulator
                 itemId,
                 itemName,
                 itemDescription,
-                consumableEffect.HasSupportedTemporaryBuff || consumableEffect.HasSupportedMorph);
+                FieldInteractionRestrictionEvaluator.IsStatChangeConsumable(
+                    consumableEffect.HasSupportedRecovery,
+                    consumableEffect.HasSupportedTemporaryBuff,
+                    consumableEffect.HasSupportedMorph,
+                    consumableEffect.HasSupportedCure));
             if (!string.IsNullOrWhiteSpace(fieldLimitRestriction))
             {
                 return fieldLimitRestriction;

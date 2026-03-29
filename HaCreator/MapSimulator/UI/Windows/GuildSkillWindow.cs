@@ -364,9 +364,9 @@ namespace HaCreator.MapSimulator.UI
             else if (WasKeyPressed(keyboardState, Keys.Down))
                 nextSelection = Math.Min(entryCount - 1, selection + 1);
             else if (WasKeyPressed(keyboardState, Keys.PageUp))
-                nextSelection = Math.Max(0, selection - 3);
+                nextSelection = Math.Max(0, selection - VisibleRows);
             else if (WasKeyPressed(keyboardState, Keys.PageDown))
-                nextSelection = Math.Min(entryCount - 1, selection + 3);
+                nextSelection = Math.Min(entryCount - 1, selection + VisibleRows);
             else if (WasKeyPressed(keyboardState, Keys.Home))
                 nextSelection = 0;
             else if (WasKeyPressed(keyboardState, Keys.End))
@@ -495,6 +495,10 @@ namespace HaCreator.MapSimulator.UI
             if (entry.DurationMinutes > 0)
             {
                 lines.Add($"Duration: {FormatDuration(entry.DurationMinutes)}");
+                if (entry.RemainingDurationMinutes > 0)
+                {
+                    lines.Add($"Remaining: {FormatDuration(entry.RemainingDurationMinutes)}");
+                }
             }
 
             if (entry.ActivationCost > 0)
@@ -505,6 +509,11 @@ namespace HaCreator.MapSimulator.UI
             if (entry.RenewalCost > 0)
             {
                 lines.Add($"Renew: {FormatMeso(entry.RenewalCost)}");
+            }
+
+            if (entry.CurrentLevel > 0 && entry.DurationMinutes > 0 && entry.RemainingDurationMinutes <= 0)
+            {
+                lines.Add(entry.CanRenew ? "State: Inactive" : "State: View only");
             }
 
             return lines;

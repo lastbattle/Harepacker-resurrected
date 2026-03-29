@@ -55,5 +55,91 @@ namespace HaCreator.MapSimulator.UI
         public string RejectReason { get; init; } = string.Empty;
         public IReadOnlyList<CharacterPart> DisplacedParts { get; init; } = Array.Empty<CharacterPart>();
         public CharacterPart ReturnedPart { get; init; }
+        public int RequestId { get; init; }
+        public int RequestedAtTick { get; init; }
+        public int CompletedAtTick { get; init; }
+
+        internal EquipmentChangeResult WithCompletionMetadata(int requestId, int requestedAtTick, int completedAtTick)
+        {
+            return new EquipmentChangeResult
+            {
+                Accepted = Accepted,
+                RejectReason = RejectReason,
+                DisplacedParts = DisplacedParts,
+                ReturnedPart = ReturnedPart,
+                RequestId = requestId,
+                RequestedAtTick = requestedAtTick,
+                CompletedAtTick = completedAtTick
+            };
+        }
+    }
+
+    internal static class EquipmentChangeRequestValidator
+    {
+        internal static bool TryGetCharacterMoveRejectReason(
+            CharacterBuild build,
+            CharacterPart liveSourcePart,
+            HaCreator.MapSimulator.Character.EquipSlot sourceSlot,
+            HaCreator.MapSimulator.Character.EquipSlot targetSlot,
+            Func<int, string> battlefieldRestrictionResolver,
+            out string rejectReason)
+        {
+            if (TryGetSlotStateRejectReason(build, sourceSlot, out rejectReason)
+                || TryGetSlotStateRejectReason(build, targetSlot, out rejectReason)
+                || TryGetBattlefieldRejectReason(liveSourcePart, battlefieldRestrictionResolver, out rejectReason))
+            {
+                return true;
+            }
+
+            if (!EquipUIBigBang.TryGetEquipRequirementRejectReason(liveSourcePart, build, out rejectReason))
+            {
+                return true;
+            }
+
+            rejectReason = string.Empty;
+            return false;
+        }
+
+        internal static bool TryGetCharacterUnequipRejectReason(
+            CharacterPart liveSourcePart,
+            Func<int, string> battlefieldRestrictionResolver,
+            out string rejectReason)
+        {
+            return TryGetBattlefieldRejectReason(liveSourcePart, battlefieldRestrictionResolver, out rejectReason);
+        }
+
+        private static bool TryGetSlotStateRejectReason(
+            CharacterBuild build,
+            HaCreator.MapSimulator.Character.EquipSlot slot,
+            out string rejectReason)
+        {
+            EquipSlotVisualState visualState = EquipSlotStateResolver.ResolveVisualState(build, slot);
+            if (visualState.IsDisabled)
+            {
+                rejectReason = string.IsNullOrWhiteSpace(visualState.Message)
+                    ? "The equipment slot is currently unavailable."
+                    : visualState.Message;
+                return true;
+            }
+
+            rejectReason = string.Empty;
+            return false;
+        }
+
+        private static bool TryGetBattlefieldRejectReason(
+            CharacterPart liveSourcePart,
+            Func<int, string> battlefieldRestrictionResolver,
+            out string rejectReason)
+        {
+            string restrictionMessage = battlefieldRestrictionResolver?.Invoke(liveSourcePart?.ItemId ?? 0);
+            if (!string.IsNullOrWhiteSpace(restrictionMessage))
+            {
+                rejectReason = restrictionMessage;
+                return true;
+            }
+
+            rejectReason = string.Empty;
+            return false;
+        }
     }
 }

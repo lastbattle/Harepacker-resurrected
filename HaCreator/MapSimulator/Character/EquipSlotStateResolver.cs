@@ -6,6 +6,8 @@ namespace HaCreator.MapSimulator.Character
     {
         None,
         OverallOccupiesPantsSlot,
+        PendantSlotExtensionRequired,
+        PocketSlotUnavailable,
         TwoHandedWeapon,
         BeginnerSubJobShieldRestriction,
         MonsterRidingRequired,
@@ -71,6 +73,16 @@ namespace HaCreator.MapSimulator.Character
             if (slot == EquipSlot.Pants && HasDisplayedOverallEquipped(build))
             {
                 return CreateDisabled(EquipSlotDisableReason.OverallOccupiesPantsSlot, "Overall equipped");
+            }
+
+            if (slot == EquipSlot.Pendant2 && !build.IsPendantSlotExtensionActive)
+            {
+                return CreateDisabled(EquipSlotDisableReason.PendantSlotExtensionRequired, "Pendant Slot Expansion required");
+            }
+
+            if (slot == EquipSlot.Pocket && !build.IsPocketSlotAvailable)
+            {
+                return CreateDisabled(EquipSlotDisableReason.PocketSlotUnavailable, "Charm 30 required");
             }
 
             if (slot == EquipSlot.Shield && ShouldDisableShieldSlot(build))

@@ -411,6 +411,11 @@ namespace HaCreator.MapSimulator.UI
             }
 
             DrawShadowedText(sprite, scrollText, new Vector2(windowX + DetailTextX, windowY + DetailTextY + (DetailLineGap * 4)), new Color(255, 232, 173));
+            DrawShadowedText(
+                sprite,
+                $"Recovery: {state.RecoveredSlotCount}  Golden/Vicious: {state.GoldenHammerCount}/{state.ViciousHammerCount}",
+                new Vector2(windowX + DetailTextX, windowY + DetailTextY + (DetailLineGap * 5)),
+                new Color(255, 214, 170));
 
             Color statusColor = _lastUpgradeSucceeded switch
             {
@@ -602,6 +607,22 @@ namespace HaCreator.MapSimulator.UI
                 return new ItemUpgradeAttemptResult(false, _statusMessage, consumable.ItemId);
             }
 
+            if (consumable.EffectType == ConsumableEffectType.SlotRecovery &&
+                state.RemainingSlots >= state.TotalSlots)
+            {
+                _statusMessage = $"{ResolveItemName(selectedPart)} has no lost upgrade slots to recover.";
+                _lastUpgradeSucceeded = false;
+                return new ItemUpgradeAttemptResult(false, _statusMessage, consumable.ItemId);
+            }
+
+            if (consumable.EffectType == ConsumableEffectType.Hammer &&
+                !TryGetHammerBlockReason(consumable, selectedPart, state, out string hammerBlockReason))
+            {
+                _statusMessage = hammerBlockReason;
+                _lastUpgradeSucceeded = false;
+                return new ItemUpgradeAttemptResult(false, _statusMessage, consumable.ItemId);
+            }
+
             if (TryGetCubeRewardBlockReason(consumable, out string cubeRewardBlockReason))
             {
                 _statusMessage = cubeRewardBlockReason;
@@ -628,6 +649,12 @@ namespace HaCreator.MapSimulator.UI
 
             switch (consumable.EffectType)
             {
+                case ConsumableEffectType.SlotRecovery:
+                    ApplySlotRecovery(selectedPart, state, consumable, success);
+                    break;
+                case ConsumableEffectType.Reset:
+                    ApplyResetScroll(selection.Key, selectedPart, state, consumable, success);
+                    break;
                 case ConsumableEffectType.PotentialScroll:
                     ApplyPotentialScroll(selection.Key, selectedPart, state, consumable, success);
                     break;
@@ -637,6 +664,9 @@ namespace HaCreator.MapSimulator.UI
                 case ConsumableEffectType.Cube:
                     ApplyCube(selectedPart, state, consumable);
                     success = true;
+                    break;
+                case ConsumableEffectType.Hammer:
+                    ApplyHammer(selectedPart, state, consumable, success);
                     break;
                 default:
                     ApplyEnhancementScroll(selection.Key, selectedPart, state, consumable, modifier, success);
@@ -773,6 +803,83 @@ namespace HaCreator.MapSimulator.UI
 
             state.FailCount++;
             _statusMessage = $"{ResolveItemName(selectedPart)} failed to gain an extra potential line with {consumable.Name}.";
+        }
+
+        private void ApplySlotRecovery(CharacterPart selectedPart, UpgradeState state, EnhancementConsumable consumable, bool success)
+        {
+            if (state.RemainingSlots >= state.TotalSlots)
+            {
+                _statusMessage = $"{ResolveItemName(selectedPart)} has no lost upgrade slots to recover.";
+                return;
+            }
+
+            if (success)
+            {
+                int recoveredSlots = Math.Min(consumable.SuccessCountGain, state.TotalSlots - state.RemainingSlots);
+                state.RemainingSlots += recoveredSlots;
+                state.RecoveredSlotCount += recoveredSlots;
+                _statusMessage = $"{ResolveItemName(selectedPart)} recovered {recoveredSlots} upgrade slot" +
+                                 (recoveredSlots == 1 ? string.Empty : "s") +
+                                 $" with {consumable.Name}.";
+                return;
+            }
+
+            state.FailCount++;
+            if (ResolveDestroyOnFailure(consumable))
+            {
+                DestroySelectedItem(selectedPart?.Slot ?? EquipSlot.None, selectedPart, state, consumable.Name);
+                return;
+            }
+
+            _statusMessage = $"{ResolveItemName(selectedPart)} failed to recover an upgrade slot with {consumable.Name}.";
+        }
+
+        private void ApplyResetScroll(EquipSlot slot, CharacterPart selectedPart, UpgradeState state, EnhancementConsumable consumable, bool success)
+        {
+            if (success)
+            {
+                ResetAppliedEnhancementState(slot, selectedPart, state);
+                _statusMessage = $"{ResolveItemName(selectedPart)} was reset with {consumable.Name} while keeping its potential.";
+                return;
+            }
+
+            state.FailCount++;
+            if (ResolveDestroyOnFailure(consumable))
+            {
+                DestroySelectedItem(slot, selectedPart, state, consumable.Name);
+                return;
+            }
+
+            _statusMessage = $"{ResolveItemName(selectedPart)} failed to reset with {consumable.Name}.";
+        }
+
+        private void ApplyHammer(CharacterPart selectedPart, UpgradeState state, EnhancementConsumable consumable, bool success)
+        {
+            if (!TryGetHammerBlockReason(consumable, selectedPart, state, out string hammerBlockReason))
+            {
+                _statusMessage = hammerBlockReason;
+                return;
+            }
+
+            if (success)
+            {
+                state.TotalSlots++;
+                state.RemainingSlots++;
+                if (consumable.Definition.HammerBehavior == HammerBehavior.Vicious)
+                {
+                    state.ViciousHammerCount++;
+                }
+                else
+                {
+                    state.GoldenHammerCount++;
+                }
+
+                _statusMessage = $"{ResolveItemName(selectedPart)} gained an extra upgrade slot with {consumable.Name}.";
+                return;
+            }
+
+            state.FailCount++;
+            _statusMessage = $"{ResolveItemName(selectedPart)} failed to gain an extra slot with {consumable.Name}.";
         }
 
         private void ApplyCube(CharacterPart selectedPart, UpgradeState state, EnhancementConsumable consumable)
@@ -922,11 +1029,14 @@ namespace HaCreator.MapSimulator.UI
                             consumable switch
                             {
                                 { EffectType: ConsumableEffectType.Enhancement } => state.RemainingSlots > 0 && state.RemainingSlots >= consumable.SuccessCountGain,
+                                { EffectType: ConsumableEffectType.SlotRecovery } => state.RemainingSlots < state.TotalSlots,
+                                { EffectType: ConsumableEffectType.Reset } => true,
                                 { EffectType: ConsumableEffectType.PotentialScroll } => !state.HasPotential || (consumable.PotentialTierOnSuccess == PotentialTier.Epic && state.PotentialTier <= PotentialTier.Rare),
                                 { EffectType: ConsumableEffectType.PotentialStamp } => state.HasPotential && state.PotentialLineCount < UpgradeState.MaxPotentialLines && state.PotentialLineCount <= 2,
                                 { EffectType: ConsumableEffectType.Cube } => state.HasPotential &&
                                                                               (consumable.CubeBehavior != CubeBehavior.Golden || state.PotentialTier <= PotentialTier.Unique) &&
                                                                               !TryGetCubeRewardBlockReason(consumable, out _),
+                                { EffectType: ConsumableEffectType.Hammer } => TryGetHammerBlockReason(consumable, selection.Value, state, out _),
                                 _ => false
                             };
             _startButton?.SetEnabled(canApply);
@@ -1089,6 +1199,24 @@ namespace HaCreator.MapSimulator.UI
             if (starConsumable != null)
             {
                 return starConsumable;
+            }
+
+            EnhancementConsumable slotRecoveryConsumable = GetFirstAvailableConsumable(state, selectedPart, CleanSlateScrollIds);
+            if (slotRecoveryConsumable != null)
+            {
+                return slotRecoveryConsumable;
+            }
+
+            EnhancementConsumable innocenceConsumable = GetFirstAvailableConsumable(state, selectedPart, InnocenceScrollIds);
+            if (innocenceConsumable != null)
+            {
+                return innocenceConsumable;
+            }
+
+            EnhancementConsumable hammerConsumable = GetFirstAvailableConsumable(state, selectedPart, GoldenHammerIds.Concat(new[] { ViciousHammerId }).ToArray());
+            if (hammerConsumable != null)
+            {
+                return hammerConsumable;
             }
 
             EnhancementConsumable potentialStamp = GetFirstAvailableConsumable(state, selectedPart, CarvedGoldenSealId, CarvedSilverSealId);
@@ -1271,7 +1399,15 @@ namespace HaCreator.MapSimulator.UI
                 ? itemInfo.Item2
                 : (TryGetConsumableDefinition(itemId, out EnhancementConsumableDefinition definition)
                     ? definition.Name
-                    : $"Item #{itemId}");
+                    : ResolveCachedItemNameOrFallback(itemId));
+        }
+
+        private static string ResolveCachedItemNameOrFallback(int itemId)
+        {
+            return HaCreator.Program.InfoManager.ItemNameCache.TryGetValue(itemId, out Tuple<string, string, string> itemInfo) &&
+                   !string.IsNullOrWhiteSpace(itemInfo?.Item2)
+                ? itemInfo.Item2
+                : $"Item #{itemId}";
         }
 
         private void DestroySelectedItem(EquipSlot slot, CharacterPart selectedPart, UpgradeState state, string consumableName)
@@ -1303,6 +1439,7 @@ namespace HaCreator.MapSimulator.UI
                     TotalSlots = Math.Max(totalSlots, remainingSlots),
                     RemainingSlots = remainingSlots,
                     SuccessCount = Math.Max(0, Math.Max(totalSlots, remainingSlots) - remainingSlots),
+                    OriginalSuccessfulUpgradeCount = Math.Max(0, Math.Max(totalSlots, remainingSlots) - remainingSlots),
                     HasPotential = potentialLineCount > 0 || !string.IsNullOrWhiteSpace(part?.PotentialTierText),
                     PotentialTier = ParsePotentialTier(part?.PotentialTierText),
                     PotentialLineCount = potentialLineCount,
@@ -1324,6 +1461,7 @@ namespace HaCreator.MapSimulator.UI
             part.TotalUpgradeSlotCount = state.TotalSlots;
             part.RemainingUpgradeSlotCount = state.RemainingSlots;
             part.UpgradeSlots = state.RemainingSlots;
+            part.EnhancementStarCount = Math.Max(0, state.SuccessCount);
 
             if (state.HasPotential)
             {
@@ -1472,6 +1610,10 @@ namespace HaCreator.MapSimulator.UI
             AppendConsumableSummary(segments, ThreeStarEnhancementScrollId, "3-Star");
             AppendConsumableSummary(segments, FourStarEnhancementScrollId, "4-Star");
             AppendConsumableSummary(segments, FiveStarEnhancementScrollId, "5-Star");
+            AppendConsumableSummary(segments, CleanSlateScrollIds, "Clean Slate");
+            AppendConsumableSummary(segments, InnocenceScrollIds, "Innocence");
+            AppendConsumableSummary(segments, GoldenHammerIds, "Gold Hammer");
+            AppendConsumableSummary(segments, ViciousHammerId, "Vicious");
             AppendConsumableSummary(segments, PotentialScrollId, "Pot");
             AppendConsumableSummary(segments, PotentialScrollId2, "Pot");
             AppendConsumableSummary(segments, AdvancedPotentialScrollId, "Adv Pot");
@@ -1535,8 +1677,20 @@ namespace HaCreator.MapSimulator.UI
                 int itemId = itemIds[i];
                 if (GetConsumableCount(itemId) <= 0 ||
                     !TryGetConsumableDefinition(itemId, out EnhancementConsumableDefinition definition) ||
-                    definition.SuccessCountGain > state.RemainingSlots ||
+                    (definition.EffectType == ConsumableEffectType.Enhancement && definition.SuccessCountGain > state.RemainingSlots) ||
                     !IsConsumableCompatibleWithItem(definition, selectedPart?.ItemId ?? 0))
+                {
+                    continue;
+                }
+
+                if (definition.EffectType == ConsumableEffectType.SlotRecovery &&
+                    state.RemainingSlots >= state.TotalSlots)
+                {
+                    continue;
+                }
+
+                if (definition.EffectType == ConsumableEffectType.Hammer &&
+                    !TryGetHammerBlockReason(new EnhancementConsumable(definition), selectedPart, state, out _))
                 {
                     continue;
                 }
@@ -1549,7 +1703,23 @@ namespace HaCreator.MapSimulator.UI
 
         private static bool TryGetConsumableDefinition(int itemId, out EnhancementConsumableDefinition definition)
         {
-            return ConsumableDefinitions.TryGetValue(itemId, out definition);
+            if (ConsumableDefinitions.TryGetValue(itemId, out definition))
+            {
+                return true;
+            }
+
+            if (DynamicConsumableDefinitionCache.TryGetValue(itemId, out definition))
+            {
+                return true;
+            }
+
+            if (TryCreateDynamicConsumableDefinition(itemId, out definition))
+            {
+                DynamicConsumableDefinitionCache[itemId] = definition;
+                return true;
+            }
+
+            return false;
         }
 
         private static bool IsConsumableCompatibleWithItem(EnhancementConsumableDefinition definition, int equipItemId)
@@ -1615,6 +1785,54 @@ namespace HaCreator.MapSimulator.UI
                 ? $"{consumable.Name} only applies to Maple 8th Anniversary Crimson equipment."
                 : $"{consumable.Name} does not apply to {ResolveItemName(selectedPart)}.";
             return false;
+        }
+
+        private bool TryGetHammerBlockReason(EnhancementConsumable consumable, CharacterPart selectedPart, UpgradeState state, out string reason)
+        {
+            reason = null;
+            if (consumable == null || consumable.EffectType != ConsumableEffectType.Hammer)
+            {
+                return true;
+            }
+
+            if (selectedPart == null || state == null)
+            {
+                reason = "No equipped item is selected for hammer use.";
+                return false;
+            }
+
+            bool isViciousHammer = consumable.Definition.HammerBehavior == HammerBehavior.Vicious;
+            if (!isViciousHammer && state.ViciousHammerCount > 0)
+            {
+                reason = $"{consumable.Name} cannot be used after Vicious' Hammer has already tempered {ResolveItemName(selectedPart)}.";
+                return false;
+            }
+
+            if (!isViciousHammer && state.GoldenHammerCount > 0)
+            {
+                reason = $"{ResolveItemName(selectedPart)} already used its Golden Hammer chance.";
+                return false;
+            }
+
+            if (isViciousHammer && state.GoldenHammerCount > 0)
+            {
+                reason = $"{consumable.Name} cannot be used after Golden Hammer has already tempered {ResolveItemName(selectedPart)}.";
+                return false;
+            }
+
+            if (isViciousHammer && state.ViciousHammerCount >= 2)
+            {
+                reason = $"{ResolveItemName(selectedPart)} already used the maximum two Vicious' Hammer applications.";
+                return false;
+            }
+
+            if (isViciousHammer && HorntailNecklaceIds.Contains(selectedPart.ItemId))
+            {
+                reason = $"{consumable.Name} cannot be used on the Horntail Necklace family.";
+                return false;
+            }
+
+            return true;
         }
 
         private bool TryGetCubeRewardBlockReason(EnhancementConsumable consumable, out string reason)
@@ -1783,6 +2001,132 @@ namespace HaCreator.MapSimulator.UI
                 .Where(line => !string.IsNullOrWhiteSpace(line));
         }
 
+        private void ResetAppliedEnhancementState(EquipSlot slot, CharacterPart selectedPart, UpgradeState state)
+        {
+            if (_characterBuild != null)
+            {
+                _characterBuild.Attack = Math.Max(0, _characterBuild.Attack - state.AttackBonus);
+                _characterBuild.Defense = Math.Max(0, _characterBuild.Defense - state.DefenseBonus);
+            }
+
+            if (selectedPart != null)
+            {
+                selectedPart.BonusWeaponAttack = Math.Max(0, selectedPart.BonusWeaponAttack - state.AttackBonus);
+                selectedPart.BonusWeaponDefense = Math.Max(0, selectedPart.BonusWeaponDefense - state.DefenseBonus);
+            }
+
+            state.AttackBonus = 0;
+            state.DefenseBonus = 0;
+            state.SuccessCount = state.OriginalSuccessfulUpgradeCount;
+            state.FailCount = 0;
+            state.RemainingSlots = state.TotalSlots;
+
+            if (_characterBuild?.Equipment != null &&
+                _characterBuild.Equipment.TryGetValue(slot, out CharacterPart currentPart) &&
+                ReferenceEquals(currentPart, selectedPart))
+            {
+                SyncStateToPart(currentPart, state);
+            }
+        }
+
+        private static bool TryCreateDynamicConsumableDefinition(int itemId, out EnhancementConsumableDefinition definition)
+        {
+            definition = default;
+            if (CleanSlateScrollIds.Contains(itemId))
+            {
+                return TryCreateWzConsumeDefinition(itemId, ConsumableEffectType.SlotRecovery, out definition);
+            }
+
+            if (InnocenceScrollIds.Contains(itemId))
+            {
+                return TryCreateWzConsumeDefinition(itemId, ConsumableEffectType.Reset, out definition);
+            }
+
+            if (GoldenHammerIds.Contains(itemId))
+            {
+                return TryCreateWzHammerDefinition(itemId, InventoryType.USE, HammerBehavior.None, out definition);
+            }
+
+            if (itemId == ViciousHammerId)
+            {
+                return TryCreateWzHammerDefinition(itemId, InventoryType.CASH, HammerBehavior.Vicious, out definition);
+            }
+
+            return false;
+        }
+
+        private static bool TryCreateWzConsumeDefinition(int itemId, ConsumableEffectType effectType, out EnhancementConsumableDefinition definition)
+        {
+            definition = default;
+            string imagePath = $"Consume/{(itemId / 10000):D4}.img";
+            WzImage image = HaCreator.Program.DataSource?.GetImage("Item", imagePath);
+            if (image == null)
+            {
+                return false;
+            }
+
+            image.ParseImage();
+            WzSubProperty info = image.GetFromPath($"{itemId:D8}/info") as WzSubProperty;
+            if (info == null)
+            {
+                return false;
+            }
+
+            int success = Math.Max(0, (info["success"] as WzIntProperty)?.Value ?? 100);
+            int cursed = Math.Max(0, (info["cursed"] as WzIntProperty)?.Value ?? 0);
+            int recover = Math.Max(1, (info["recover"] as WzIntProperty)?.Value ?? 1);
+            definition = new EnhancementConsumableDefinition(
+                itemId,
+                ResolveCachedItemNameOrFallback(itemId),
+                effectType == ConsumableEffectType.SlotRecovery ? recover : 0,
+                false,
+                false,
+                MathHelper.Clamp(success / 100f, 0f, 1.0f),
+                InventoryType.USE,
+                effectType,
+                PotentialTier.Rare,
+                MathHelper.Clamp(cursed / 100f, 0f, 1.0f));
+            return true;
+        }
+
+        private static bool TryCreateWzHammerDefinition(int itemId, InventoryType inventoryType, HammerBehavior hammerBehavior, out EnhancementConsumableDefinition definition)
+        {
+            definition = default;
+            string category = inventoryType == InventoryType.CASH ? "Cash" : "Consume";
+            string imagePath = $"{category}/{(itemId / 10000):D4}.img";
+            WzImage image = HaCreator.Program.DataSource?.GetImage("Item", imagePath);
+            if (image == null)
+            {
+                return false;
+            }
+
+            image.ParseImage();
+            WzSubProperty info = image.GetFromPath($"{itemId:D8}/info") as WzSubProperty;
+            if (info == null)
+            {
+                return false;
+            }
+
+            int success = Math.Max(0, (info["success"] as WzIntProperty)?.Value ?? 100);
+            definition = new EnhancementConsumableDefinition(
+                itemId,
+                ResolveCachedItemNameOrFallback(itemId),
+                1,
+                false,
+                false,
+                MathHelper.Clamp(success / 100f, 0f, 1.0f),
+                inventoryType,
+                ConsumableEffectType.Hammer,
+                PotentialTier.Rare,
+                0f,
+                CubeBehavior.Miracle,
+                ModifierBehavior.None,
+                0f,
+                0,
+                hammerBehavior);
+            return true;
+        }
+
         private sealed class UpgradeState
         {
             public const int MaxPotentialLines = 3;
@@ -1792,7 +2136,11 @@ namespace HaCreator.MapSimulator.UI
             public int RemainingSlots { get; set; }
             public int Attempts { get; set; }
             public int SuccessCount { get; set; }
+            public int OriginalSuccessfulUpgradeCount { get; set; }
             public int FailCount { get; set; }
+            public int RecoveredSlotCount { get; set; }
+            public int GoldenHammerCount { get; set; }
+            public int ViciousHammerCount { get; set; }
             public int AttackBonus { get; set; }
             public int DefenseBonus { get; set; }
             public bool HasPotential { get; set; }
@@ -1804,6 +2152,8 @@ namespace HaCreator.MapSimulator.UI
         private enum ConsumableEffectType
         {
             Enhancement,
+            SlotRecovery,
+            Reset,
             PotentialScroll,
             PotentialStamp,
             Cube,
