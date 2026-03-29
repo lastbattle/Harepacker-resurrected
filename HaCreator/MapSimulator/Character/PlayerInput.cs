@@ -150,6 +150,38 @@ namespace HaCreator.MapSimulator.Character
     /// </summary>
     public class PlayerInput
     {
+        private static readonly Keys[] IgnoredBindingCaptureKeys =
+        {
+            Keys.LeftShift,
+            Keys.RightShift,
+            Keys.LeftControl,
+            Keys.RightControl,
+            Keys.LeftAlt,
+            Keys.RightAlt,
+        };
+
+        private static readonly Buttons[] AssignableGamepadButtons =
+        {
+            Buttons.A,
+            Buttons.B,
+            Buttons.X,
+            Buttons.Y,
+            Buttons.LeftShoulder,
+            Buttons.RightShoulder,
+            Buttons.LeftTrigger,
+            Buttons.RightTrigger,
+            Buttons.Back,
+            Buttons.Start,
+            Buttons.DPadUp,
+            Buttons.DPadDown,
+            Buttons.DPadLeft,
+            Buttons.DPadRight,
+            Buttons.LeftThumbstickUp,
+            Buttons.LeftThumbstickDown,
+            Buttons.LeftThumbstickLeft,
+            Buttons.LeftThumbstickRight,
+        };
+
         #region Key Bindings
 
         private readonly Dictionary<InputAction, KeyBinding> _bindings = new();
@@ -252,6 +284,26 @@ namespace HaCreator.MapSimulator.Character
 
         public void SetBinding(InputAction action, Keys primary, Keys secondary = Keys.None, Buttons gamepad = 0)
         {
+            if (primary != Keys.None)
+            {
+                RemoveAssignedKeyFromOtherBindings(action, primary);
+            }
+
+            if (secondary != Keys.None && secondary != primary)
+            {
+                RemoveAssignedKeyFromOtherBindings(action, secondary);
+            }
+
+            if (gamepad != 0)
+            {
+                RemoveAssignedGamepadButtonFromOtherBindings(action, gamepad);
+            }
+
+            if (secondary == primary)
+            {
+                secondary = Keys.None;
+            }
+
             _bindings[action] = new KeyBinding(action, primary, secondary, gamepad);
         }
 
@@ -714,6 +766,49 @@ namespace HaCreator.MapSimulator.Character
         public bool IsKeyReleased(Keys key) =>
             !_currentKeyboard.IsKeyDown(key) && _previousKeyboard.IsKeyDown(key);
 
+        public bool TryGetPressedBindingKey(out Keys key)
+        {
+            foreach (Keys candidate in _currentKeyboard.GetPressedKeys())
+            {
+                if (_previousKeyboard.IsKeyDown(candidate))
+                {
+                    continue;
+                }
+
+                if (Array.IndexOf(IgnoredBindingCaptureKeys, candidate) >= 0)
+                {
+                    continue;
+                }
+
+                key = candidate;
+                return true;
+            }
+
+            key = Keys.None;
+            return false;
+        }
+
+        public bool TryGetPressedBindingGamepadButton(out Buttons button)
+        {
+            if (!_currentGamepad.IsConnected)
+            {
+                button = 0;
+                return false;
+            }
+
+            foreach (Buttons candidate in AssignableGamepadButtons)
+            {
+                if (_currentGamepad.IsButtonDown(candidate) && !_previousGamepad.IsButtonDown(candidate))
+                {
+                    button = candidate;
+                    return true;
+                }
+            }
+
+            button = 0;
+            return false;
+        }
+
         #endregion
 
         #region Serialization
@@ -748,6 +843,60 @@ namespace HaCreator.MapSimulator.Character
                     Enum.TryParse<Keys>(kv.Value.secondary, out var secondary);
                     Enum.TryParse<Buttons>(kv.Value.gamepad, out var gamepad);
                     SetBinding(action, primary, secondary, gamepad);
+                }
+            }
+        }
+
+        private void RemoveAssignedKeyFromOtherBindings(InputAction action, Keys key)
+        {
+            if (key == Keys.None)
+            {
+                return;
+            }
+
+            foreach (KeyValuePair<InputAction, KeyBinding> entry in _bindings)
+            {
+                if (entry.Key == action)
+                {
+                    continue;
+                }
+
+                KeyBinding binding = entry.Value;
+                if (binding == null)
+                {
+                    continue;
+                }
+
+                if (binding.PrimaryKey == key)
+                {
+                    binding.PrimaryKey = binding.SecondaryKey;
+                    binding.SecondaryKey = Keys.None;
+                }
+                else if (binding.SecondaryKey == key)
+                {
+                    binding.SecondaryKey = Keys.None;
+                }
+            }
+        }
+
+        private void RemoveAssignedGamepadButtonFromOtherBindings(InputAction action, Buttons gamepadButton)
+        {
+            if (gamepadButton == 0)
+            {
+                return;
+            }
+
+            foreach (KeyValuePair<InputAction, KeyBinding> entry in _bindings)
+            {
+                if (entry.Key == action)
+                {
+                    continue;
+                }
+
+                KeyBinding binding = entry.Value;
+                if (binding?.GamepadButton == gamepadButton)
+                {
+                    binding.GamepadButton = 0;
                 }
             }
         }

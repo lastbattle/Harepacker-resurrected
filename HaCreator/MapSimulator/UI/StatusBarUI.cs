@@ -931,11 +931,17 @@ namespace HaCreator.MapSimulator.UI {
                 && buffEntry.TemporaryStatDisplayNames.Count > 0
                 ? buffEntry.TemporaryStatDisplayNames
                 : buffEntry.TemporaryStatLabels;
+            string familyText = !string.IsNullOrWhiteSpace(buffEntry.FamilyDisplayName)
+                ? $"Buff Type: {buffEntry.FamilyDisplayName}"
+                : string.Empty;
             string temporaryStatText = temporaryStatDisplayNames != null && temporaryStatDisplayNames.Count > 0
                 ? $"Temp Stats: {string.Join(", ", temporaryStatDisplayNames)}"
-                : !string.IsNullOrWhiteSpace(buffEntry.FamilyDisplayName)
-                    ? $"Buff Type: {buffEntry.FamilyDisplayName}"
-                    : string.Empty;
+                : string.Empty;
+            string secondaryLine = string.IsNullOrWhiteSpace(familyText)
+                ? temporaryStatText
+                : string.IsNullOrWhiteSpace(temporaryStatText)
+                    ? familyText
+                    : $"{familyText} | {temporaryStatText}";
             Texture2D iconTexture = ResolveBuffIconTexture(buffEntry.IconTexture, buffEntry.IconKey);
 
             DrawStatusBarSkillTooltip(
@@ -947,7 +953,7 @@ namespace HaCreator.MapSimulator.UI {
                 buffEntry.RemainingMs > 0
                     ? $"Time Left: {Math.Max(1, (int)Math.Ceiling(buffEntry.RemainingMs / 1000f))} sec"
                     : "Time Left: --",
-                temporaryStatText,
+                secondaryLine,
                 SanitizeTooltipText(buffEntry.Description),
                 iconTexture);
         }

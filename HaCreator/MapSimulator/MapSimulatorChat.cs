@@ -16,14 +16,22 @@ namespace HaCreator.MapSimulator
         public Color Color;
         public int Timestamp;
         public int ChatLogType;
+        public int ChannelId;
         public string WhisperTargetCandidate;
 
-        public ChatMessage(string text, Color color, int timestamp, int chatLogType = -1, string whisperTargetCandidate = null)
+        public ChatMessage(
+            string text,
+            Color color,
+            int timestamp,
+            int chatLogType = -1,
+            string whisperTargetCandidate = null,
+            int channelId = -1)
         {
             Text = text;
             Color = color;
             Timestamp = timestamp;
             ChatLogType = chatLogType;
+            ChannelId = channelId;
             WhisperTargetCandidate = whisperTargetCandidate ?? string.Empty;
         }
     }
@@ -158,10 +166,10 @@ namespace HaCreator.MapSimulator
             Expedition = 26
         }
 
-        internal static Color ResolveRenderedClientChatLogColor(int chatLogType)
+        internal static Color ResolveRenderedClientChatLogColor(int chatLogType, int channelId = -1)
         {
             return Enum.IsDefined(typeof(ClientChatLogType), chatLogType)
-                ? ResolveClientChatLogColor((ClientChatLogType)chatLogType)
+                ? ResolveClientChatLogColor((ClientChatLogType)chatLogType, channelId)
                 : DefaultMessageColor;
         }
 
@@ -624,39 +632,61 @@ namespace HaCreator.MapSimulator
 
         public void AddClientChatMessage(string text, int tickCount, int chatLogType)
         {
-            AddClientChatMessage(text, tickCount, chatLogType, null);
+            AddClientChatMessage(text, tickCount, chatLogType, null, -1);
         }
 
         public void AddClientChatMessage(string text, int tickCount, int chatLogType, string whisperTargetCandidate)
         {
+            AddClientChatMessage(text, tickCount, chatLogType, whisperTargetCandidate, -1);
+        }
+
+        public void AddClientChatMessage(
+            string text,
+            int tickCount,
+            int chatLogType,
+            string whisperTargetCandidate,
+            int channelId)
+        {
             AddMessage(
                 text,
-                ResolveRenderedClientChatLogColor(chatLogType),
+                ResolveRenderedClientChatLogColor(chatLogType, channelId),
                 tickCount,
                 chatLogType,
-                whisperTargetCandidate);
+                whisperTargetCandidate,
+                channelId);
         }
 
         public void AddMessage(string text, Color color, int tickCount, int chatLogType, string whisperTargetCandidate)
+        {
+            AddMessage(text, color, tickCount, chatLogType, whisperTargetCandidate, -1);
+        }
+
+        public void AddMessage(
+            string text,
+            Color color,
+            int tickCount,
+            int chatLogType,
+            string whisperTargetCandidate,
+            int channelId)
         {
             if (chatLogType < 0)
             {
                 if (TryInferClientChatLogTypeFromPrefix(text, out ClientChatLogType prefixedType))
                 {
                     chatLogType = (int)prefixedType;
-                    color = ResolveClientChatLogColor(prefixedType);
+                    color = ResolveClientChatLogColor(prefixedType, channelId);
                 }
                 else
                 {
                     chatLogType = InferClientChatLogType(text, color);
                     if (Enum.IsDefined(typeof(ClientChatLogType), chatLogType))
                     {
-                        color = ResolveClientChatLogColor((ClientChatLogType)chatLogType);
+                        color = ResolveClientChatLogColor((ClientChatLogType)chatLogType, channelId);
                     }
                 }
             }
 
-            _messages.Add(new ChatMessage(text, color, tickCount, chatLogType, whisperTargetCandidate));
+            _messages.Add(new ChatMessage(text, color, tickCount, chatLogType, whisperTargetCandidate, channelId));
 
             // Remove old messages if exceeding limit
             while (_messages.Count > MAX_CHAT_MESSAGES)
@@ -1027,7 +1057,7 @@ namespace HaCreator.MapSimulator
             AddMessage(text, color, tickCount, (int)chatLogType);
         }
 
-        private static Color ResolveClientChatLogColor(ClientChatLogType chatLogType)
+        private static Color ResolveClientChatLogColor(ClientChatLogType chatLogType, int channelId = -1)
         {
             return chatLogType switch
             {
@@ -1044,7 +1074,7 @@ namespace HaCreator.MapSimulator
                 ClientChatLogType.System => SystemMessageColor,
                 ClientChatLogType.IncomingWhisper => WhisperMessageColor,
                 ClientChatLogType.Type18 => ClientType18Color,
-                ClientChatLogType.Type19 => ClientType20Color,
+                ClientChatLogType.Type19 => channelId != -1 ? ClientType22Color : ClientType20Color,
                 ClientChatLogType.Type20 => ClientType20Color,
                 ClientChatLogType.Type21 => new Color(255, 198, 0, 221),
                 ClientChatLogType.Type22 => ClientType22Color,

@@ -8,6 +8,7 @@ using Microsoft.Xna.Framework.Graphics;
 using Spine;
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using SD = System.Drawing;
 using SDText = System.Drawing.Text;
 using SWF = System.Windows.Forms;
@@ -40,6 +41,7 @@ namespace HaCreator.MapSimulator.UI
         private static readonly XnaColor ValueColor = XnaColor.Black;
         private static readonly XnaColor StatusColor = new XnaColor(64, 64, 64);
         private const int BasicBlackFontHeight = 12;
+        private const string PreferredBasicBlackFontFamily = "Arial";
         private const int TextRasterPadding = 2;
         private const SWF.TextFormatFlags BasicBlackTextFormatFlags =
             SWF.TextFormatFlags.NoPadding |
@@ -58,6 +60,7 @@ namespace HaCreator.MapSimulator.UI
         private readonly SD.Bitmap _measureBitmap;
         private readonly SD.Graphics _measureGraphics;
         private readonly SD.Font _basicBlackFont;
+        private readonly string _basicBlackFontFamilyName;
 
         private LoginCharacterRosterEntry _entry;
         private string _statusMessage = "Select a character to inspect details.";
@@ -82,7 +85,7 @@ namespace HaCreator.MapSimulator.UI
             _measureBitmap = new SD.Bitmap(1, 1);
             _measureGraphics = SD.Graphics.FromImage(_measureBitmap);
             _measureGraphics.TextRenderingHint = SDText.TextRenderingHint.SingleBitPerPixelGridFit;
-            _basicBlackFont = new SD.Font("Tahoma", BasicBlackFontHeight, SD.FontStyle.Regular, SD.GraphicsUnit.Pixel);
+            _basicBlackFont = CreateBasicBlackFont(out _basicBlackFontFamilyName);
         }
 
         public override string WindowName => MapSimulatorWindowNames.CharacterDetail;
@@ -320,6 +323,40 @@ namespace HaCreator.MapSimulator.UI
         private static string FormatRank(int rank)
         {
             return rank > 0 ? rank.ToString() : "-";
+        }
+
+        private static SD.Font CreateBasicBlackFont(out string fontFamilyName)
+        {
+            string selectedFamilyName = ResolveInstalledFontFamilyName(
+                PreferredBasicBlackFontFamily,
+                "Tahoma",
+                SD.SystemFonts.MessageBoxFont?.FontFamily?.Name,
+                SD.FontFamily.GenericSansSerif.Name);
+
+            fontFamilyName = selectedFamilyName;
+            return new SD.Font(selectedFamilyName, BasicBlackFontHeight, SD.FontStyle.Regular, SD.GraphicsUnit.Pixel);
+        }
+
+        private static string ResolveInstalledFontFamilyName(params string[] candidates)
+        {
+            if (candidates == null || candidates.Length == 0)
+            {
+                return SD.FontFamily.GenericSansSerif.Name;
+            }
+
+            HashSet<string> installedFamilies = new HashSet<string>(
+                SD.FontFamily.Families.Select(static family => family.Name),
+                StringComparer.OrdinalIgnoreCase);
+
+            foreach (string candidate in candidates)
+            {
+                if (!string.IsNullOrWhiteSpace(candidate) && installedFamilies.Contains(candidate))
+                {
+                    return candidate;
+                }
+            }
+
+            return SD.FontFamily.GenericSansSerif.Name;
         }
 
         public override void SetFont(SpriteFont font)

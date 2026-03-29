@@ -21,10 +21,23 @@ namespace HaCreator.MapSimulator.Fields
             }
 
             int publishedCount = 0;
-            IReadOnlyList<string> resolvedTags = FieldObjectScriptTagAliasResolver.ResolvePublishedTags(scriptName, availableTags);
-            for (int i = 0; i < resolvedTags.Count; i++)
+            FieldObjectScriptTagAliasResolver.PublishedTagMutation mutation =
+                FieldObjectScriptTagAliasResolver.ResolvePublishedTagMutation(scriptName, availableTags);
+
+            if (isEnabled)
             {
-                if (setDynamicObjectTagState(resolvedTags[i], isEnabled, transitionTimeMs, currentTick))
+                for (int i = 0; i < mutation.TagsToDisable.Count; i++)
+                {
+                    if (setDynamicObjectTagState(mutation.TagsToDisable[i], false, transitionTimeMs, currentTick))
+                    {
+                        publishedCount++;
+                    }
+                }
+            }
+
+            for (int i = 0; i < mutation.TagsToEnable.Count; i++)
+            {
+                if (setDynamicObjectTagState(mutation.TagsToEnable[i], isEnabled, transitionTimeMs, currentTick))
                 {
                     publishedCount++;
                 }

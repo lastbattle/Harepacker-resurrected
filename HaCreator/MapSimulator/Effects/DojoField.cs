@@ -49,7 +49,7 @@ namespace HaCreator.MapSimulator.Effects
     /// </summary>
     public class DojoField
     {
-        private const int PacketTypeClock = 1;
+        public const int PacketTypeClock = 1;
         private const int TimerLayerOffsetX = -55;
         private const int TimerLayerY = 16;
         private const int ClockOffsetY = 26;
@@ -92,6 +92,7 @@ namespace HaCreator.MapSimulator.Effects
         private int _pendingTransferAtTick = int.MinValue;
         private int _playerHp;
         private int _playerMaxHp = 100;
+        private bool _hasPlayerState;
         private float? _bossHpPercent;
         private float? _lastBossHpPercent;
         private int _energy;
@@ -119,6 +120,8 @@ namespace HaCreator.MapSimulator.Effects
         public bool IsActive => _isActive;
         public int Stage => _stage;
         public int Energy => _energy;
+        public bool HasPlayerGauge => _hasPlayerState;
+        public bool HasMonsterGauge => _bossHpPercent.HasValue;
         public int LastDecodedClockType => _lastDecodedClockType;
         public int LastDecodedClockDurationSec => _lastDecodedClockDurationSec;
         public int RemainingSeconds
@@ -158,6 +161,7 @@ namespace HaCreator.MapSimulator.Effects
             _pendingTransferAtTick = int.MinValue;
             _playerHp = 0;
             _playerMaxHp = 100;
+            _hasPlayerState = false;
             _bossHpPercent = null;
             _lastBossHpPercent = null;
             _energy = 0;
@@ -207,10 +211,12 @@ namespace HaCreator.MapSimulator.Effects
             if (playerMaxHp.HasValue && playerMaxHp.Value > 0)
             {
                 _playerMaxHp = playerMaxHp.Value;
+                _hasPlayerState = true;
             }
             if (playerHp.HasValue)
             {
                 _playerHp = Math.Clamp(playerHp.Value, 0, _playerMaxHp);
+                _hasPlayerState = true;
             }
             if (bossHpPercent.HasValue)
             {
@@ -346,12 +352,15 @@ namespace HaCreator.MapSimulator.Effects
             string bossText = _bossHpPercent.HasValue
                 ? $"{(int)MathF.Round(_bossHpPercent.Value * 100f)}%"
                 : "--";
+            string playerText = _hasPlayerState
+                ? $"{_playerHp}/{_playerMaxHp}"
+                : "--";
             string timerText = _timeOverTick == int.MinValue ? "stopped" : FormatTimer(RemainingSeconds);
             string transferText = _pendingTransferMapId > 0 ? $", pendingReturn={_pendingTransferMapId}" : string.Empty;
             string clockPacketText = _lastDecodedClockType >= 0
                 ? $", rawClock={_lastDecodedClockType}:{_lastDecodedClockDurationSec}s"
                 : string.Empty;
-            return $"Mu Lung Dojo floor {_stage}, timer={timerText}, boss={bossText}, player={_playerHp}/{_playerMaxHp}, energy={_energy}/{EnergyMax}{transferText}{clockPacketText}";
+            return $"Mu Lung Dojo floor {_stage}, timer={timerText}, boss={bossText}, player={playerText}, energy={_energy}/{EnergyMax}{transferText}{clockPacketText}";
         }
         public void Reset()
         {
@@ -369,6 +378,7 @@ namespace HaCreator.MapSimulator.Effects
             _pendingTransferAtTick = int.MinValue;
             _playerHp = 0;
             _playerMaxHp = 100;
+            _hasPlayerState = false;
             _bossHpPercent = null;
             _lastBossHpPercent = null;
             _energy = 0;
@@ -654,22 +664,29 @@ namespace HaCreator.MapSimulator.Effects
         }
         private void DrawGaugeBars(SpriteBatch spriteBatch, Viewport viewport, Texture2D pixelTexture)
         {
-            Vector2 playerAnchor = new((viewport.Width / 2f) + PlayerOffsetX, PlayerOffsetY);
-            Rectangle playerBounds = DrawTextureAtOrigin(spriteBatch, _playerTexture, playerAnchor, PlayerOrigin);
-            Rectangle playerGaugeBounds = new(
-                playerBounds.X + PlayerGaugeOffsetX,
-                playerBounds.Y + BarGaugeOffsetY,
-                BarGaugeWidth,
-                BarGaugeHeight);
-            DrawHorizontalGauge(spriteBatch, pixelTexture, _playerGaugeTexture, playerGaugeBounds, _playerMaxHp > 0 ? (float)_playerHp / _playerMaxHp : 0f);
-            Vector2 monsterAnchor = new((viewport.Width / 2f) + MonsterOffsetX, MonsterOffsetY);
-            Rectangle monsterBounds = DrawTextureAtOrigin(spriteBatch, _monsterTexture, monsterAnchor, MonsterOrigin);
-            Rectangle monsterGaugeBounds = new(
-                monsterBounds.X + MonsterGaugeOffsetX,
-                monsterBounds.Y + BarGaugeOffsetY,
-                BarGaugeWidth,
-                BarGaugeHeight);
-            DrawHorizontalGauge(spriteBatch, pixelTexture, _monsterGaugeTexture, monsterGaugeBounds, _bossHpPercent ?? 0f);
+            if (_hasPlayerState)
+            {
+                Vector2 playerAnchor = new((viewport.Width / 2f) + PlayerOffsetX, PlayerOffsetY);
+                Rectangle playerBounds = DrawTextureAtOrigin(spriteBatch, _playerTexture, playerAnchor, PlayerOrigin);
+                Rectangle playerGaugeBounds = new(
+                    playerBounds.X + PlayerGaugeOffsetX,
+                    playerBounds.Y + BarGaugeOffsetY,
+                    BarGaugeWidth,
+                    BarGaugeHeight);
+                DrawHorizontalGauge(spriteBatch, pixelTexture, _playerGaugeTexture, playerGaugeBounds, _playerMaxHp > 0 ? (float)_playerHp / _playerMaxHp : 0f);
+            }
+
+            if (_bossHpPercent.HasValue)
+            {
+                Vector2 monsterAnchor = new((viewport.Width / 2f) + MonsterOffsetX, MonsterOffsetY);
+                Rectangle monsterBounds = DrawTextureAtOrigin(spriteBatch, _monsterTexture, monsterAnchor, MonsterOrigin);
+                Rectangle monsterGaugeBounds = new(
+                    monsterBounds.X + MonsterGaugeOffsetX,
+                    monsterBounds.Y + BarGaugeOffsetY,
+                    BarGaugeWidth,
+                    BarGaugeHeight);
+                DrawHorizontalGauge(spriteBatch, pixelTexture, _monsterGaugeTexture, monsterGaugeBounds, _bossHpPercent.Value);
+            }
         }
         private void DrawEnergy(SpriteBatch spriteBatch, Viewport viewport, Texture2D pixelTexture)
         {

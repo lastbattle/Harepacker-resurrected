@@ -4,6 +4,8 @@ using HaCreator.MapSimulator.Effects;
 using HaCreator.MapSimulator.Managers;
 using HaCreator.MapSimulator.Physics;
 using HaCreator.MapSimulator.UI;
+using MapleLib.WzLib;
+using MapleLib.WzLib.WzProperties;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using Spine;
@@ -21,6 +23,10 @@ namespace HaCreator.MapSimulator.Pools
     public sealed class RemoteUserActorPool
     {
         private const int MinimumMeleeAfterImageFadeDurationMs = 60;
+        private const float RemoteDragonGroundSideOffset = 42f;
+        private const float RemoteDragonGroundVerticalOffset = -12f;
+        private const float RemoteDragonKeyDownBarHalfWidth = 36f;
+        private const float RemoteDragonKeyDownBarVerticalGap = 30f;
         private static readonly EquipSlot[] BattlefieldAppearanceSlots =
         {
             EquipSlot.Cap,
@@ -31,6 +37,7 @@ namespace HaCreator.MapSimulator.Pools
             EquipSlot.Glove,
             EquipSlot.Cape,
         };
+        private static readonly Dictionary<int, RemoteDragonHudMetadata> RemoteDragonHudMetadataCache = new();
 
         private readonly Dictionary<int, RemoteUserActor> _actorsById = new();
         private readonly Dictionary<string, int> _actorIdsByName = new(StringComparer.OrdinalIgnoreCase);
@@ -631,11 +638,19 @@ namespace HaCreator.MapSimulator.Pools
             if (prepared != null
                 && PreparedSkillHudRules.IsDragonOverlaySkill(prepared.SkillId))
             {
-                // Remote prepared-skill packets still do not carry dragon companion state,
-                // so keep the older actor-top fallback until a remote dragon runtime exists.
+                if (TryResolveRemoteDragonKeyDownBarAnchor(actor, prepared.SkillId, currentTime, out Vector2 dragonAnchor))
+                {
+                    return dragonAnchor;
+                }
+
                 return new Vector2(actor.Position.X, actor.Position.Y - 92f);
             }
 
+            return ResolveStandardPreparedSkillWorldAnchor(actor, currentTime);
+        }
+
+        private static Vector2 ResolveStandardPreparedSkillWorldAnchor(RemoteUserActor actor, int currentTime)
+        {
             AssembledFrame frame = actor.Assembler?.GetFrameAtTime(actor.ActionName, currentTime)
                 ?? actor.Assembler?.GetFrameAtTime(CharacterPart.GetActionString(CharacterAction.Stand1), currentTime);
             if (frame != null)
@@ -645,6 +660,130 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             return new Vector2(actor.Position.X, actor.Position.Y - 80f);
+        }
+
+        private static bool TryResolveRemoteDragonKeyDownBarAnchor(
+            RemoteUserActor actor,
+            int skillId,
+            int currentTime,
+            out Vector2 anchor)
+        {
+            anchor = Vector2.Zero;
+            if (actor?.Build == null
+                || !TryResolveRemoteDragonHudMetadata(actor.Build.Job, out RemoteDragonHudMetadata metadata))
+            {
+                return false;
+            }
+
+            AssembledFrame ownerFrame = actor.Assembler?.GetFrameAtTime(actor.ActionName, currentTime)
+                ?? actor.Assembler?.GetFrameAtTime(CharacterPart.GetActionString(CharacterAction.Stand1), currentTime);
+            float ownerBodyOriginY = ownerFrame != null
+                ? actor.Position.Y - ownerFrame.FeetOffset
+                : actor.Position.Y;
+            float side = actor.FacingRight ? -1f : 1f;
+            float horizontalOffset = Math.Max(RemoteDragonGroundSideOffset, metadata.StandOriginX * 0.55f);
+            Vector2 dragonAnchor = new(
+                actor.Position.X + (side * horizontalOffset),
+                ownerBodyOriginY + RemoteDragonGroundVerticalOffset);
+
+            int dragonFrameHeight = metadata.ResolveFrameHeight(ResolveRemoteDragonActionName(skillId));
+            anchor = new Vector2(
+                dragonAnchor.X - RemoteDragonKeyDownBarHalfWidth,
+                dragonAnchor.Y - dragonFrameHeight - RemoteDragonKeyDownBarVerticalGap);
+            return true;
+        }
+
+        private static bool TryResolveRemoteDragonHudMetadata(int jobId, out RemoteDragonHudMetadata metadata)
+        {
+            metadata = default;
+            int dragonJob = jobId switch
+            {
+                >= 2200 and <= 2218 => jobId,
+                _ => 0
+            };
+            if (dragonJob == 0)
+            {
+                return false;
+            }
+
+            if (RemoteDragonHudMetadataCache.TryGetValue(dragonJob, out metadata))
+            {
+                return true;
+            }
+
+            WzImage image = global::HaCreator.Program.FindImage("Skill", $"Dragon/{dragonJob}.img");
+            if (image == null)
+            {
+                return false;
+            }
+
+            var actionHeights = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+            int standOriginX = 79;
+
+            foreach (WzSubProperty actionNode in image.WzProperties.OfType<WzSubProperty>())
+            {
+                if (string.Equals(actionNode.Name, "info", StringComparison.OrdinalIgnoreCase)
+                    || !TryReadRemoteDragonFrameMetrics(actionNode, out int originX, out int height))
+                {
+                    continue;
+                }
+
+                actionHeights[actionNode.Name] = height;
+                if (string.Equals(actionNode.Name, "stand", StringComparison.OrdinalIgnoreCase))
+                {
+                    standOriginX = originX;
+                }
+            }
+
+            if (actionHeights.Count == 0)
+            {
+                return false;
+            }
+
+            metadata = new RemoteDragonHudMetadata(standOriginX, actionHeights);
+            RemoteDragonHudMetadataCache[dragonJob] = metadata;
+            return true;
+        }
+
+        private static bool TryReadRemoteDragonFrameMetrics(WzSubProperty actionNode, out int originX, out int height)
+        {
+            originX = 0;
+            height = 0;
+
+            WzCanvasProperty frame = actionNode.WzProperties
+                .OfType<WzCanvasProperty>()
+                .OrderBy(static canvas => ParseRemoteDragonFrameIndex(canvas.Name))
+                .FirstOrDefault();
+            if (frame == null)
+            {
+                return false;
+            }
+
+            if (frame["origin"] is not WzVectorProperty origin
+                || frame["lt"] is not WzVectorProperty lt
+                || frame["rb"] is not WzVectorProperty rb)
+            {
+                return false;
+            }
+
+            originX = origin.X.Value;
+            height = Math.Max(1, rb.Y.Value - lt.Y.Value);
+            return true;
+        }
+
+        private static int ParseRemoteDragonFrameIndex(string value)
+        {
+            return int.TryParse(value, out int parsed) ? parsed : int.MaxValue;
+        }
+
+        private static string ResolveRemoteDragonActionName(int skillId)
+        {
+            return skillId switch
+            {
+                22121000 => "icebreathe_prepare",
+                22151001 => "breathe_prepare",
+                _ => "stand"
+            };
         }
 
         public IReadOnlyList<MinimapUI.TrackedUserMarker> BuildHelperMarkers()
@@ -713,8 +852,26 @@ namespace HaCreator.MapSimulator.Pools
                     tickCount,
                     drawFrontLayers: false,
                     renderedCouplePairs);
+                DrawPortableChairCoupleSharedLayers(
+                    spriteBatch,
+                    skeletonMeshRenderer,
+                    actor,
+                    localPlayer,
+                    screenX,
+                    screenY,
+                    tickCount,
+                    drawFrontLayers: false);
                 DrawMeleeAfterImage(spriteBatch, skeletonMeshRenderer, actor, screenX, screenY, tickCount);
                 frame.Draw(spriteBatch, skeletonMeshRenderer, screenX, screenY, actor.FacingRight, Color.White);
+                DrawPortableChairCoupleSharedLayers(
+                    spriteBatch,
+                    skeletonMeshRenderer,
+                    actor,
+                    localPlayer,
+                    screenX,
+                    screenY,
+                    tickCount,
+                    drawFrontLayers: true);
                 DrawPortableChairCoupleMidpointEffects(
                     spriteBatch,
                     skeletonMeshRenderer,
@@ -813,6 +970,52 @@ namespace HaCreator.MapSimulator.Pools
                     midpointScreenY,
                     actor.FacingRight);
             }
+        }
+
+        private void DrawPortableChairCoupleSharedLayers(
+            SpriteBatch spriteBatch,
+            SkeletonMeshRenderer skeletonMeshRenderer,
+            RemoteUserActor actor,
+            PlayerCharacter localPlayer,
+            int screenX,
+            int screenY,
+            int currentTime,
+            bool drawFrontLayers)
+        {
+            PortableChair chair = actor?.Build?.ActivePortableChair;
+            if (chair?.IsCoupleChair != true
+                || chair.CoupleSharedLayers == null
+                || chair.CoupleSharedLayers.Count == 0)
+            {
+                return;
+            }
+
+            bool hasPair = TryResolvePortableChairPairWithLocalPlayer(actor, chair, localPlayer, out _, out _);
+            if (!hasPair)
+            {
+                hasPair = FindPortableChairPairActor(
+                              chair,
+                              actor.FacingRight,
+                              actor.Position.X,
+                              actor.Position.Y,
+                              skipCharacterId: actor.CharacterId,
+                              preferVisibleOnly: true) != null;
+            }
+
+            if (!hasPair)
+            {
+                return;
+            }
+
+            PlayerCharacter.DrawPortableChairLayers(
+                spriteBatch,
+                skeletonMeshRenderer,
+                chair.CoupleSharedLayers,
+                screenX,
+                screenY,
+                actor.FacingRight,
+                currentTime,
+                drawFrontLayers);
         }
 
         public string DescribeStatus()
@@ -1373,6 +1576,7 @@ namespace HaCreator.MapSimulator.Pools
         public float? BattlefieldOriginalSpeed { get; set; }
         public int? BattlefieldAppliedTeamId { get; set; }
         public RemoteMeleeAfterImageState MeleeAfterImage { get; private set; }
+        public PacketOwnedUserSummonRegistry PacketOwnedSummons { get; } = new();
 
         public void RefreshAssembler()
         {
@@ -1498,5 +1702,34 @@ namespace HaCreator.MapSimulator.Pools
         public int MaxHoldDurationMs { get; init; }
         public PreparedSkillHudTextVariant TextVariant { get; init; }
         public bool ShowText { get; init; } = true;
+    }
+
+    internal readonly struct RemoteDragonHudMetadata
+    {
+        public RemoteDragonHudMetadata(int standOriginX, IReadOnlyDictionary<string, int> actionHeights)
+        {
+            StandOriginX = standOriginX;
+            ActionHeights = actionHeights ?? throw new ArgumentNullException(nameof(actionHeights));
+        }
+
+        public int StandOriginX { get; }
+        public IReadOnlyDictionary<string, int> ActionHeights { get; }
+
+        public int ResolveFrameHeight(string actionName)
+        {
+            if (!string.IsNullOrWhiteSpace(actionName)
+                && ActionHeights.TryGetValue(actionName, out int actionHeight)
+                && actionHeight > 0)
+            {
+                return actionHeight;
+            }
+
+            if (ActionHeights.TryGetValue("stand", out int standHeight) && standHeight > 0)
+            {
+                return standHeight;
+            }
+
+            return 1;
+        }
     }
 }

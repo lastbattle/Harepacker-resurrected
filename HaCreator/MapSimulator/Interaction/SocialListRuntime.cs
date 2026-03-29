@@ -151,6 +151,18 @@ namespace HaCreator.MapSimulator.Interaction
             return entries;
         }
 
+        internal bool IsBlacklisted(string entryName)
+        {
+            if (string.IsNullOrWhiteSpace(entryName)
+                || !_entriesByTab.TryGetValue(SocialListTab.Blacklist, out List<SocialEntryState> entries)
+                || entries == null)
+            {
+                return false;
+            }
+
+            return entries.Any(entry => string.Equals(entry.Name, entryName, StringComparison.OrdinalIgnoreCase));
+        }
+
         internal void SelectTab(SocialListTab tab)
         {
             _currentTab = tab;
@@ -219,6 +231,32 @@ namespace HaCreator.MapSimulator.Interaction
             int count = GetFilteredEntries(SocialListTab.Friend).Count;
             _selectedIndexByTab[SocialListTab.Friend] = count > 0 ? 0 : -1;
             _firstVisibleIndexByTab[SocialListTab.Friend] = 0;
+        }
+
+        internal string InviteCharacterToParty(string characterName, string jobName, int level, string locationSummary, int channel)
+        {
+            if (TryStagePacketOwnedRequest(SocialListTab.Party, "Party invite", out string requestMessage))
+            {
+                return requestMessage;
+            }
+
+            string resolvedName = string.IsNullOrWhiteSpace(characterName) ? "Remote Character" : characterName.Trim();
+            if (_entriesByTab[SocialListTab.Party].Any(entry => string.Equals(entry.Name, resolvedName, StringComparison.OrdinalIgnoreCase)))
+            {
+                return $"{resolvedName} is already in the simulated party roster.";
+            }
+
+            _entriesByTab[SocialListTab.Party].Add(new SocialEntryState(
+                resolvedName,
+                string.IsNullOrWhiteSpace(jobName) ? "Adventurer" : jobName.Trim(),
+                $"Lv. {Math.Max(1, level)}",
+                string.IsNullOrWhiteSpace(locationSummary) ? "Current map" : locationSummary.Trim(),
+                Math.Max(1, channel),
+                true,
+                false,
+                false));
+            SelectTab(SocialListTab.Party);
+            return $"Queued a simulated party invite for {resolvedName} from the profile window.";
         }
 
         internal string ExecuteAction(string actionKey)

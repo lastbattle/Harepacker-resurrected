@@ -220,8 +220,14 @@ namespace HaCreator.MapSimulator.UI
             if (window == null)
                 return;
 
+            window.BeforeShow = HandleBeforeShowWindow;
             windows.Add(window);
             windowsByName[window.WindowName] = window;
+        }
+
+        private void HandleBeforeShowWindow(UIWindowBase window)
+        {
+            BeforeShowWindow?.Invoke(window?.WindowName);
         }
 
         /// <summary>
@@ -268,7 +274,6 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
-            BeforeShowWindow?.Invoke(window.WindowName);
             window.Show();
             BringToFront(window);
         }

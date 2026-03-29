@@ -41,11 +41,12 @@ namespace HaCreator.MapSimulator.Interaction
         internal Action ClearFieldFade { get; init; }
         internal Action<string> RequestBgm { get; init; }
         internal Func<string, bool> PlayFieldSound { get; init; }
-        internal Func<string, bool, int, int?, bool> SetObjectTagState { get; init; }
+        internal Func<string, bool?, int, int?, bool> SetObjectTagState { get; init; }
         internal Func<int, string> ResolveMobName { get; init; }
         internal Func<int, string> ResolveMapName { get; init; }
         internal Func<int, string> ResolveItemName { get; init; }
         internal Func<int, string> ResolveChannelName { get; init; }
+        internal Func<string, bool> IsBlacklistedName { get; init; }
     }
 
     internal sealed class PacketFieldFeedbackRuntime
@@ -54,6 +55,7 @@ namespace HaCreator.MapSimulator.Interaction
         private const int BossHpBarWidth = 288;
         private const int BossHpBarHeight = 16;
         private const int BossHpFramePadding = 4;
+        private const int BossTimerOverlayDurationMs = 5000;
 
         private readonly Dictionary<string, bool> _obstacleStates = new(StringComparer.OrdinalIgnoreCase);
         private Texture2D _pixelTexture;
@@ -67,6 +69,7 @@ namespace HaCreator.MapSimulator.Interaction
         private string _lastJukeboxSummary = string.Empty;
         private string _lastBossTimerSummary = string.Empty;
         private BossHpState _bossHpState;
+        private BossTimerState _bossTimerState;
 
         internal void Initialize(GraphicsDevice graphicsDevice)
         {
@@ -90,6 +93,7 @@ namespace HaCreator.MapSimulator.Interaction
             _lastWhisperTarget = string.Empty;
             _lastJukeboxSummary = string.Empty;
             _lastBossTimerSummary = string.Empty;
+            _bossTimerState = null;
         }
 
         internal void Update(int currentTick)
@@ -97,6 +101,13 @@ namespace HaCreator.MapSimulator.Interaction
             if (_bossHpState != null && currentTick >= _bossHpState.ExpiresAtTick)
             {
                 _bossHpState = null;
+            }
+
+            if (_bossTimerState != null
+                && _bossTimerState.ExpiresAtTick.HasValue
+                && currentTick >= _bossTimerState.ExpiresAtTick.Value)
+            {
+                _bossTimerState = null;
             }
         }
 
@@ -114,6 +125,9 @@ namespace HaCreator.MapSimulator.Interaction
             string obstacleStatus = _obstacleStates.Count == 0
                 ? "obstacles=none"
                 : $"obstacles={string.Join(", ", _obstacleStates.OrderBy(static pair => pair.Key).Take(4).Select(static pair => $"{pair.Key}:{(pair.Value ? "on" : "off")}"))}";
+            string bossTimerStatus = _bossTimerState == null
+                ? string.IsNullOrWhiteSpace(_lastBossTimerSummary) ? "bosstimer=none" : $"bosstimer=\"{TrimForStatus(_lastBossTimerSummary)}\""
+                : $"bosstimer=\"{TrimForStatus(_bossTimerState.BuildDisplayText(currentTick))}\"";
 
             return string.Join(
                 "; ",
@@ -125,68 +139,80 @@ namespace HaCreator.MapSimulator.Interaction
                 string.IsNullOrWhiteSpace(_lastFieldSoundDescriptor) ? "fieldsound=none" : $"fieldsound={_lastFieldSoundDescriptor}",
                 string.IsNullOrWhiteSpace(_lastTransferFailureMessage) ? "transfer=none" : $"transfer=\"{TrimForStatus(_lastTransferFailureMessage)}\"",
                 string.IsNullOrWhiteSpace(_lastJukeboxSummary) ? "jukebox=none" : $"jukebox=\"{TrimForStatus(_lastJukeboxSummary)}\"",
-                string.IsNullOrWhiteSpace(_lastBossTimerSummary) ? "bosstimer=none" : $"bosstimer=\"{TrimForStatus(_lastBossTimerSummary)}\"",
+                bossTimerStatus,
                 obstacleStatus,
                 bossHpStatus);
         }
 
         internal void Draw(SpriteBatch spriteBatch, SpriteFont font, int renderWidth, int currentTick)
         {
-            if (spriteBatch == null || font == null || _pixelTexture == null || _bossHpState == null)
+            if (spriteBatch == null || font == null || _pixelTexture == null)
             {
                 return;
             }
 
-            float alpha = MathHelper.Clamp((_bossHpState.ExpiresAtTick - currentTick) / (float)BossHpDisplayDurationMs, 0f, 1f);
-            if (alpha <= 0f)
+            DrawBossTimer(spriteBatch, font, renderWidth, currentTick);
+            DrawBossHp(spriteBatch, font, renderWidth, currentTick);
+        }
+
+        internal static byte[] BuildWhisperAvailabilityPayload(string target, bool available)
+        {
+            using MemoryStream stream = new();
+            using BinaryWriter writer = new(stream, Encoding.Default, leaveOpen: true);
+            writer.Write((byte)34);
+            WriteMapleString(writer, target);
+            writer.Write(available ? (byte)1 : (byte)0);
+            writer.Flush();
+            return stream.ToArray();
+        }
+
+        internal static byte[] BuildWhisperLocationPayload(byte subtype, string target, byte result, int value)
+        {
+            using MemoryStream stream = new();
+            using BinaryWriter writer = new(stream, Encoding.Default, leaveOpen: true);
+            writer.Write(subtype);
+            WriteMapleString(writer, target);
+            writer.Write(result);
+            writer.Write(value);
+            writer.Flush();
+            return stream.ToArray();
+        }
+
+        internal static byte[] BuildCoupleNoticePayload(string message)
+        {
+            using MemoryStream stream = new();
+            using BinaryWriter writer = new(stream, Encoding.Default, leaveOpen: true);
+            writer.Write((byte)4);
+            writer.Write(string.IsNullOrWhiteSpace(message) ? (byte)0 : (byte)1);
+            if (!string.IsNullOrWhiteSpace(message))
             {
-                return;
+                WriteMapleString(writer, message);
             }
 
-            Rectangle frameBounds = new(
-                Math.Max(0, (renderWidth - (BossHpBarWidth + (BossHpFramePadding * 2))) / 2),
-                56,
-                BossHpBarWidth + (BossHpFramePadding * 2),
-                44);
-            Rectangle barBounds = new(
-                frameBounds.X + BossHpFramePadding,
-                frameBounds.Y + 20,
-                BossHpBarWidth,
-                BossHpBarHeight);
-            int fillWidth = _bossHpState.MaxHp <= 0
-                ? 0
-                : (int)Math.Round(Math.Clamp(_bossHpState.CurrentHp / (float)_bossHpState.MaxHp, 0f, 1f) * barBounds.Width);
+            writer.Flush();
+            return stream.ToArray();
+        }
 
-            Color frameColor = new Color(14, 18, 28, 220) * alpha;
-            Color borderColor = new Color(227, 205, 110) * alpha;
-            Color fillColor = ResolveBossHpColor(_bossHpState.ColorCode) * alpha;
-            Color backColor = new Color(54, 17, 17, 220) * alpha;
-            Color textColor = Color.White * alpha;
+        internal static byte[] BuildCoupleChatPayload(string sender, string message)
+        {
+            using MemoryStream stream = new();
+            using BinaryWriter writer = new(stream, Encoding.Default, leaveOpen: true);
+            writer.Write((byte)5);
+            WriteMapleString(writer, sender);
+            writer.Write((byte)0);
+            WriteMapleString(writer, message);
+            writer.Flush();
+            return stream.ToArray();
+        }
 
-            spriteBatch.Draw(_pixelTexture, frameBounds, frameColor);
-            DrawBorder(spriteBatch, frameBounds, borderColor);
-            spriteBatch.Draw(_pixelTexture, barBounds, backColor);
-            if (fillWidth > 0)
-            {
-                spriteBatch.Draw(_pixelTexture, new Rectangle(barBounds.X, barBounds.Y, fillWidth, barBounds.Height), fillColor);
-            }
-
-            string title = _bossHpState.Phase > 0
-                ? $"{_bossHpState.Name} P{_bossHpState.Phase}"
-                : _bossHpState.Name;
-            string hpText = string.Format(CultureInfo.InvariantCulture, "{0}/{1}", _bossHpState.CurrentHp, _bossHpState.MaxHp);
-            spriteBatch.DrawString(font, title, new Vector2(frameBounds.X + 8, frameBounds.Y + 4), textColor, 0f, Vector2.Zero, 0.54f, SpriteEffects.None, 0f);
-            Vector2 hpTextSize = font.MeasureString(hpText) * 0.48f;
-            spriteBatch.DrawString(
-                font,
-                hpText,
-                new Vector2(frameBounds.Right - hpTextSize.X - 8, frameBounds.Y + 22),
-                textColor,
-                0f,
-                Vector2.Zero,
-                0.48f,
-                SpriteEffects.None,
-                0f);
+        internal static byte[] BuildJukeBoxPayload(int itemId, string owner)
+        {
+            using MemoryStream stream = new();
+            using BinaryWriter writer = new(stream, Encoding.Default, leaveOpen: true);
+            writer.Write(itemId);
+            WriteMapleString(writer, owner);
+            writer.Flush();
+            return stream.ToArray();
         }
 
         internal bool TryApplyPacket(
@@ -395,6 +421,13 @@ namespace HaCreator.MapSimulator.Interaction
                 return false;
             }
 
+            if (ShouldSuppressBlacklistedGroupMessage(family, sender, callbacks))
+            {
+                _statusMessage = $"Suppressed packet-owned {prefix.Trim('[', ']')} chat from blacklisted sender {sender}.";
+                message = _statusMessage;
+                return true;
+            }
+
             string text = $"{prefix} {sender}: {body}".Trim();
             callbacks?.AddClientChatMessage?.Invoke(text, chatLogType, null);
             _statusMessage = $"Applied packet-owned {prefix.Trim('[', ']')} chat from {sender}.";
@@ -413,14 +446,22 @@ namespace HaCreator.MapSimulator.Interaction
                     {
                         string sender = ReadMapleString(reader);
                         byte channelId = reader.ReadByte();
-                        reader.ReadByte();
+                        bool fromAdmin = reader.ReadByte() != 0;
                         string body = ReadMapleString(reader);
+                        if (!fromAdmin && callbacks?.IsBlacklistedName?.Invoke(sender) == true)
+                        {
+                            _statusMessage = $"Suppressed packet-owned whisper from blacklisted sender {sender}.";
+                            message = _statusMessage;
+                            return true;
+                        }
+
                         string channelText = channelId > 0
                             ? callbacks?.ResolveChannelName?.Invoke(channelId) ?? $"Ch. {channelId}"
                             : string.Empty;
+                        string prefix = fromAdmin ? "[GM Whisper]" : "[Whisper]";
                         string text = string.IsNullOrWhiteSpace(channelText)
-                            ? $"[Whisper] {sender}: {body}"
-                            : $"[Whisper] {sender} ({channelText}): {body}";
+                            ? $"{prefix} {sender}: {body}"
+                            : $"{prefix} {sender} ({channelText}): {body}";
                         callbacks?.AddClientChatMessage?.Invoke(text, 16, sender);
                         callbacks?.RememberWhisperTarget?.Invoke(sender);
                         _lastWhisperTarget = sender;
@@ -429,6 +470,7 @@ namespace HaCreator.MapSimulator.Interaction
                         return true;
                     }
                 case 10:
+                case 138:
                     {
                         string target = ReadMapleString(reader);
                         bool success = reader.ReadByte() != 0;
@@ -555,6 +597,7 @@ namespace HaCreator.MapSimulator.Interaction
                 case 2:
                     {
                         string tag = ReadMapleString(reader);
+                        callbacks?.SetObjectTagState?.Invoke(tag, null, 0, currentTick);
                         _lastFieldEffectSummary = $"object-state push for '{tag}'";
                         _statusMessage = "Applied packet-owned field object-state push.";
                         message = _statusMessage;
@@ -771,6 +814,7 @@ namespace HaCreator.MapSimulator.Interaction
 
         private bool ApplyDestroyClock(out string message)
         {
+            _bossTimerState = null;
             _lastBossTimerSummary = "destroyed";
             _statusMessage = "Cleared packet-owned boss-timer state.";
             message = _statusMessage;
@@ -783,6 +827,7 @@ namespace HaCreator.MapSimulator.Interaction
             using BinaryReader reader = new(stream, Encoding.Default, leaveOpen: false);
             byte mode = reader.ReadByte();
             int value = reader.ReadInt32();
+            _bossTimerState = BuildBossTimerState(bossName, mode, value, currentTick);
             string text = mode switch
             {
                 0 when value > 0 => $"{bossName} timer update: {value} remaining.",
@@ -840,6 +885,134 @@ namespace HaCreator.MapSimulator.Interaction
                 _ => (-1, string.Empty)
             };
             return chatLogType >= 0;
+        }
+
+        private static bool ShouldSuppressBlacklistedGroupMessage(byte family, string sender, PacketFieldFeedbackCallbacks callbacks)
+        {
+            if (string.IsNullOrWhiteSpace(sender) || callbacks?.IsBlacklistedName == null)
+            {
+                return false;
+            }
+
+            return family switch
+            {
+                0 or 2 or 3 or 6 => callbacks.IsBlacklistedName(sender),
+                _ => false
+            };
+        }
+
+        private static BossTimerState BuildBossTimerState(string bossName, byte mode, int value, int currentTick)
+        {
+            return mode switch
+            {
+                0 when value > 0 => new BossTimerState(bossName, mode, value, currentTick, currentTick + (Math.Max(0, value) * 1000)),
+                0 => null,
+                _ => new BossTimerState(bossName, mode, value, currentTick, currentTick + BossTimerOverlayDurationMs)
+            };
+        }
+
+        private void DrawBossHp(SpriteBatch spriteBatch, SpriteFont font, int renderWidth, int currentTick)
+        {
+            if (_bossHpState == null)
+            {
+                return;
+            }
+
+            float alpha = MathHelper.Clamp((_bossHpState.ExpiresAtTick - currentTick) / (float)BossHpDisplayDurationMs, 0f, 1f);
+            if (alpha <= 0f)
+            {
+                return;
+            }
+
+            Rectangle frameBounds = new(
+                Math.Max(0, (renderWidth - (BossHpBarWidth + (BossHpFramePadding * 2))) / 2),
+                56,
+                BossHpBarWidth + (BossHpFramePadding * 2),
+                44);
+            Rectangle barBounds = new(
+                frameBounds.X + BossHpFramePadding,
+                frameBounds.Y + 20,
+                BossHpBarWidth,
+                BossHpBarHeight);
+            int fillWidth = _bossHpState.MaxHp <= 0
+                ? 0
+                : (int)Math.Round(Math.Clamp(_bossHpState.CurrentHp / (float)_bossHpState.MaxHp, 0f, 1f) * barBounds.Width);
+
+            Color frameColor = new Color(14, 18, 28, 220) * alpha;
+            Color borderColor = new Color(227, 205, 110) * alpha;
+            Color fillColor = ResolveBossHpColor(_bossHpState.ColorCode) * alpha;
+            Color backColor = new Color(54, 17, 17, 220) * alpha;
+            Color textColor = Color.White * alpha;
+
+            spriteBatch.Draw(_pixelTexture, frameBounds, frameColor);
+            DrawBorder(spriteBatch, frameBounds, borderColor);
+            spriteBatch.Draw(_pixelTexture, barBounds, backColor);
+            if (fillWidth > 0)
+            {
+                spriteBatch.Draw(_pixelTexture, new Rectangle(barBounds.X, barBounds.Y, fillWidth, barBounds.Height), fillColor);
+            }
+
+            string title = _bossHpState.Phase > 0
+                ? $"{_bossHpState.Name} P{_bossHpState.Phase}"
+                : _bossHpState.Name;
+            string hpText = string.Format(CultureInfo.InvariantCulture, "{0}/{1}", _bossHpState.CurrentHp, _bossHpState.MaxHp);
+            spriteBatch.DrawString(font, title, new Vector2(frameBounds.X + 8, frameBounds.Y + 4), textColor, 0f, Vector2.Zero, 0.54f, SpriteEffects.None, 0f);
+            Vector2 hpTextSize = font.MeasureString(hpText) * 0.48f;
+            spriteBatch.DrawString(
+                font,
+                hpText,
+                new Vector2(frameBounds.Right - hpTextSize.X - 8, frameBounds.Y + 22),
+                textColor,
+                0f,
+                Vector2.Zero,
+                0.48f,
+                SpriteEffects.None,
+                0f);
+        }
+
+        private void DrawBossTimer(SpriteBatch spriteBatch, SpriteFont font, int renderWidth, int currentTick)
+        {
+            if (_bossTimerState == null)
+            {
+                return;
+            }
+
+            string timerText = _bossTimerState.BuildDisplayText(currentTick);
+            if (string.IsNullOrWhiteSpace(timerText))
+            {
+                return;
+            }
+
+            float alpha = _bossTimerState.ExpiresAtTick.HasValue
+                ? MathHelper.Clamp((_bossTimerState.ExpiresAtTick.Value - currentTick) / (float)BossTimerOverlayDurationMs, 0f, 1f)
+                : 1f;
+            if (alpha <= 0f)
+            {
+                return;
+            }
+
+            Vector2 textSize = font.MeasureString(timerText) * 0.54f;
+            Rectangle frameBounds = new(
+                Math.Max(0, (int)Math.Round((renderWidth - textSize.X - 28f) / 2f)),
+                18,
+                (int)Math.Ceiling(textSize.X) + 28,
+                (int)Math.Ceiling(textSize.Y) + 14);
+            Color frameColor = new Color(14, 18, 28, 220) * alpha;
+            Color borderColor = new Color(227, 205, 110) * alpha;
+            Color textColor = Color.White * alpha;
+
+            spriteBatch.Draw(_pixelTexture, frameBounds, frameColor);
+            DrawBorder(spriteBatch, frameBounds, borderColor);
+            spriteBatch.DrawString(
+                font,
+                timerText,
+                new Vector2(frameBounds.X + 14, frameBounds.Y + 7),
+                textColor,
+                0f,
+                Vector2.Zero,
+                0.54f,
+                SpriteEffects.None,
+                0f);
         }
 
         private void DrawBorder(SpriteBatch spriteBatch, Rectangle bounds, Color color)
@@ -900,5 +1073,24 @@ namespace HaCreator.MapSimulator.Interaction
             byte ColorCode,
             byte Phase,
             int ExpiresAtTick);
+
+        private sealed record BossTimerState(
+            string BossName,
+            byte Mode,
+            int Value,
+            int StartedAtTick,
+            int? ExpiresAtTick)
+        {
+            public string BuildDisplayText(int currentTick)
+            {
+                return Mode switch
+                {
+                    0 when Value > 0 => $"{BossName} timer {Math.Max(0, Value - Math.Max(0, currentTick - StartedAtTick) / 1000)}s",
+                    1 => $"{BossName} warning stage {Value}",
+                    2 => $"{BossName} emergency stage {Value}",
+                    _ => $"{BossName} timer mode {Mode} value {Value}"
+                };
+            }
+        }
     }
 }

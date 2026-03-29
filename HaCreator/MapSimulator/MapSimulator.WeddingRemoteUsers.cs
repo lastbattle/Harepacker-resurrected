@@ -46,7 +46,7 @@ namespace HaCreator.MapSimulator
 
         private static int ResolveWeddingRemoteUserId(WeddingRemoteParticipantSnapshot snapshot)
         {
-            if (snapshot.Role != WeddingParticipantRole.Guest && snapshot.CharacterId > 0)
+            if (snapshot.CharacterId > 0)
             {
                 return snapshot.CharacterId;
             }

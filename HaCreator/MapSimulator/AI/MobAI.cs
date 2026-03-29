@@ -1226,7 +1226,7 @@ namespace HaCreator.MapSimulator.AI
         /// </summary>
         public float GetSpeedMultiplier()
         {
-            if (IsFrozen || IsStunned)
+            if (IsFrozen || IsStunned || HasStatusEffect(MobStatusEffect.Web))
             {
                 return 0f;
             }
@@ -1234,11 +1234,6 @@ namespace HaCreator.MapSimulator.AI
             float baseMultiplier = _state == MobAIState.Chase ? _chaseSpeedMultiplier : 1.0f;
             int speedPercent = GetStatusPercent(MobStatusEffect.Speed);
             int slowPercent = 0;
-
-            if (HasStatusEffect(MobStatusEffect.Web))
-            {
-                slowPercent += GetStatusPercentOrDefault(MobStatusEffect.Web, 50);
-            }
 
             if (HasStatusEffect(MobStatusEffect.Weakness))
             {

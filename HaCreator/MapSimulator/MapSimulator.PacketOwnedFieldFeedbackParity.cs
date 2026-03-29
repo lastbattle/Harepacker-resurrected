@@ -53,7 +53,8 @@ namespace HaCreator.MapSimulator
                 ResolveMobName = ResolvePacketFieldFeedbackMobName,
                 ResolveMapName = mapId => ResolveMapTransferDisplayName(mapId, null),
                 ResolveItemName = ResolvePacketFieldFeedbackItemName,
-                ResolveChannelName = ResolvePacketFieldFeedbackChannelName
+                ResolveChannelName = ResolvePacketFieldFeedbackChannelName,
+                IsBlacklistedName = name => _socialListRuntime.IsBlacklisted(name)
             };
         }
 
@@ -136,6 +137,10 @@ namespace HaCreator.MapSimulator
                 "group" => HandlePacketOwnedFieldFeedbackGroupCommand(args),
                 "whisperin" => HandlePacketOwnedFieldFeedbackWhisperIncomingCommand(args),
                 "whisperresult" => HandlePacketOwnedFieldFeedbackWhisperResultCommand(args),
+                "whisperavailability" => HandlePacketOwnedFieldFeedbackWhisperAvailabilityCommand(args),
+                "whisperfind" => HandlePacketOwnedFieldFeedbackWhisperFindCommand(args),
+                "couplechat" => HandlePacketOwnedFieldFeedbackCoupleChatCommand(args),
+                "couplenotice" => HandlePacketOwnedFieldFeedbackCoupleNoticeCommand(args),
                 "warn" => ApplyPacketOwnedFieldFeedbackHelper(PacketFieldFeedbackPacketKind.WarnMessage, PacketFieldFeedbackRuntime.BuildWarnMessagePayload(string.Join(" ", args.Skip(1)))),
                 "obstacle" => HandlePacketOwnedFieldFeedbackObstacleCommand(args),
                 "obstaclereset" => ApplyPacketOwnedFieldFeedbackHelper(PacketFieldFeedbackPacketKind.FieldObstacleAllReset, Array.Empty<byte>()),
@@ -143,15 +148,17 @@ namespace HaCreator.MapSimulator
                 "tremble" => HandlePacketOwnedFieldFeedbackTrembleCommand(args),
                 "fieldsound" => ApplyPacketOwnedFieldFeedbackHelper(PacketFieldFeedbackPacketKind.FieldEffect, PacketFieldFeedbackRuntime.BuildSoundFieldEffectPayload(string.Join(" ", args.Skip(1)))),
                 "fieldbgm" => ApplyPacketOwnedFieldFeedbackHelper(PacketFieldFeedbackPacketKind.FieldEffect, PacketFieldFeedbackRuntime.BuildBgmFieldEffectPayload(string.Join(" ", args.Skip(1)))),
+                "jukebox" => HandlePacketOwnedFieldFeedbackJukeboxCommand(args),
                 "transferfieldignored" => HandlePacketOwnedFieldFeedbackTransferReasonCommand(args, PacketFieldFeedbackPacketKind.TransferFieldReqIgnored),
                 "transferchannelignored" => HandlePacketOwnedFieldFeedbackTransferReasonCommand(args, PacketFieldFeedbackPacketKind.TransferChannelReqIgnored),
                 "summonunavailable" => HandlePacketOwnedFieldFeedbackSummonUnavailableCommand(args),
+                "destroyclock" => ApplyPacketOwnedFieldFeedbackHelper(PacketFieldFeedbackPacketKind.DestroyClock, Array.Empty<byte>()),
                 "zakumtimer" => HandlePacketOwnedFieldFeedbackBossTimerCommand(args, PacketFieldFeedbackPacketKind.ZakumTimer),
                 "hontailtimer" => HandlePacketOwnedFieldFeedbackBossTimerCommand(args, PacketFieldFeedbackPacketKind.HontailTimer),
                 "chaoszakumtimer" => HandlePacketOwnedFieldFeedbackBossTimerCommand(args, PacketFieldFeedbackPacketKind.ChaosZakumTimer),
                 "hontaletimer" => HandlePacketOwnedFieldFeedbackBossTimerCommand(args, PacketFieldFeedbackPacketKind.HontaleTimer),
                 "fadeoutforce" => HandlePacketOwnedFieldFeedbackFadeOutForceCommand(args),
-                _ => ChatCommandHandler.CommandResult.Error("Usage: /fieldfeedback [status|clear|group <family> <sender> <text>|whisperin <sender> <channel> <text>|whisperresult <target> <ok|fail>|warn <text>|obstacle <tag> <state>|obstaclereset|bosshp <mobId> <currentHp> <maxHp> [color] [phase]|tremble <force> <durationMs>|fieldsound <descriptor>|fieldbgm <descriptor>|transferfieldignored <reason>|transferchannelignored <reason>|summonunavailable [0|1]|zakumtimer <mode> <value>|hontailtimer <mode> <value>|chaoszakumtimer <mode> <value>|hontaletimer <mode> <value>|fadeoutforce [key]|packet <kind> [payloadhex=..|payloadb64=..]|packetraw <kind> <hex>]"),
+                _ => ChatCommandHandler.CommandResult.Error("Usage: /fieldfeedback [status|clear|group <family> <sender> <text>|whisperin <sender> <channel> <text>|whisperresult <target> <ok|fail>|whisperavailability <target> <0|1>|whisperfind <find|findreply> <target> <result> <value>|couplechat <sender> <text>|couplenotice [text]|warn <text>|obstacle <tag> <state>|obstaclereset|bosshp <mobId> <currentHp> <maxHp> [color] [phase]|tremble <force> <durationMs>|fieldsound <descriptor>|fieldbgm <descriptor>|jukebox <itemId> <owner>|transferfieldignored <reason>|transferchannelignored <reason>|summonunavailable [0|1]|destroyclock|zakumtimer <mode> <value>|hontailtimer <mode> <value>|chaoszakumtimer <mode> <value>|hontaletimer <mode> <value>|fadeoutforce [key]|packet <kind> [payloadhex=..|payloadb64=..]|packetraw <kind> <hex>]"),
             };
         }
 
@@ -220,6 +227,55 @@ namespace HaCreator.MapSimulator
                 PacketFieldFeedbackRuntime.BuildWhisperResultPayload(args[1], success));
         }
 
+        private ChatCommandHandler.CommandResult HandlePacketOwnedFieldFeedbackWhisperAvailabilityCommand(string[] args)
+        {
+            if (args.Length < 3)
+            {
+                return ChatCommandHandler.CommandResult.Error("Usage: /fieldfeedback whisperavailability <target> <0|1>");
+            }
+
+            bool available = args[2].Equals("1", StringComparison.OrdinalIgnoreCase)
+                || args[2].Equals("true", StringComparison.OrdinalIgnoreCase)
+                || args[2].Equals("yes", StringComparison.OrdinalIgnoreCase);
+            return ApplyPacketOwnedFieldFeedbackHelper(
+                PacketFieldFeedbackPacketKind.Whisper,
+                PacketFieldFeedbackRuntime.BuildWhisperAvailabilityPayload(args[1], available));
+        }
+
+        private ChatCommandHandler.CommandResult HandlePacketOwnedFieldFeedbackWhisperFindCommand(string[] args)
+        {
+            if (args.Length < 5
+                || !byte.TryParse(args[3], NumberStyles.Integer, CultureInfo.InvariantCulture, out byte result)
+                || !int.TryParse(args[4], NumberStyles.Integer, CultureInfo.InvariantCulture, out int value))
+            {
+                return ChatCommandHandler.CommandResult.Error("Usage: /fieldfeedback whisperfind <find|findreply> <target> <result> <value>");
+            }
+
+            byte subtype = args[1].Equals("findreply", StringComparison.OrdinalIgnoreCase) ? (byte)72 : (byte)9;
+            return ApplyPacketOwnedFieldFeedbackHelper(
+                PacketFieldFeedbackPacketKind.Whisper,
+                PacketFieldFeedbackRuntime.BuildWhisperLocationPayload(subtype, args[2], result, value));
+        }
+
+        private ChatCommandHandler.CommandResult HandlePacketOwnedFieldFeedbackCoupleChatCommand(string[] args)
+        {
+            if (args.Length < 3)
+            {
+                return ChatCommandHandler.CommandResult.Error("Usage: /fieldfeedback couplechat <sender> <text>");
+            }
+
+            return ApplyPacketOwnedFieldFeedbackHelper(
+                PacketFieldFeedbackPacketKind.CoupleMessage,
+                PacketFieldFeedbackRuntime.BuildCoupleChatPayload(args[1], string.Join(" ", args.Skip(2))));
+        }
+
+        private ChatCommandHandler.CommandResult HandlePacketOwnedFieldFeedbackCoupleNoticeCommand(string[] args)
+        {
+            return ApplyPacketOwnedFieldFeedbackHelper(
+                PacketFieldFeedbackPacketKind.CoupleMessage,
+                PacketFieldFeedbackRuntime.BuildCoupleNoticePayload(args.Length >= 2 ? string.Join(" ", args.Skip(1)) : null));
+        }
+
         private ChatCommandHandler.CommandResult HandlePacketOwnedFieldFeedbackObstacleCommand(string[] args)
         {
             if (args.Length < 3 || !int.TryParse(args[2], NumberStyles.Integer, CultureInfo.InvariantCulture, out int state))
@@ -271,6 +327,18 @@ namespace HaCreator.MapSimulator
             return ApplyPacketOwnedFieldFeedbackHelper(
                 PacketFieldFeedbackPacketKind.FieldEffect,
                 PacketFieldFeedbackRuntime.BuildTrembleFieldEffectPayload(force, durationMs));
+        }
+
+        private ChatCommandHandler.CommandResult HandlePacketOwnedFieldFeedbackJukeboxCommand(string[] args)
+        {
+            if (args.Length < 3 || !int.TryParse(args[1], NumberStyles.Integer, CultureInfo.InvariantCulture, out int itemId))
+            {
+                return ChatCommandHandler.CommandResult.Error("Usage: /fieldfeedback jukebox <itemId> <owner>");
+            }
+
+            return ApplyPacketOwnedFieldFeedbackHelper(
+                PacketFieldFeedbackPacketKind.PlayJukeBox,
+                PacketFieldFeedbackRuntime.BuildJukeBoxPayload(itemId, string.Join(" ", args.Skip(2))));
         }
 
         private ChatCommandHandler.CommandResult HandlePacketOwnedFieldFeedbackTransferReasonCommand(string[] args, PacketFieldFeedbackPacketKind kind)

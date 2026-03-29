@@ -26,7 +26,7 @@ namespace HaCreator.MapSimulator.Character
     public class PlayerManager
     {
         private const int AmplifierRobotSkillId = 35121010;
-        private const int AmplifierRobotAvatarEffectSkillId = -35121010;
+        private const int AffectedAreaAvatarEffectIdBase = int.MinValue;
 
         #region Properties
 
@@ -81,6 +81,8 @@ namespace HaCreator.MapSimulator.Character
         private int _pendingRepeatSkillModeEndSkillId;
         private int _pendingRepeatSkillModeEndReturnSkillId;
         private int _pendingRepeatSkillModeEndRequestTime = int.MinValue;
+        private readonly HashSet<int> _activeAffectedAreaAvatarEffectIds = new();
+        private readonly Dictionary<int, SkillData> _affectedAreaAvatarEffectSkillCache = new();
 
         // Sound callbacks
         private Action _onJumpSound;
@@ -894,91 +896,137 @@ namespace HaCreator.MapSimulator.Character
 
         private void UpdateAffectedAreaAvatarEffects(int currentTime)
         {
-            if (Player == null)
+            if (Player == null || !Player.IsAlive || _affectedAreaPool == null)
             {
+                ClearTrackedAffectedAreaAvatarEffects(currentTime);
                 return;
             }
 
-            bool shouldShowAmplifierRobotAura = ShouldShowAmplifierRobotAura(currentTime);
-            bool hasAmplifierRobotAura = Player.HasSkillAvatarEffect(AmplifierRobotAvatarEffectSkillId);
-            if (!shouldShowAmplifierRobotAura)
+            int localPlayerId = Player.Build?.Id ?? 0;
+            HashSet<int> nextActiveEffectIds = new();
+            foreach (ActiveAffectedArea area in _affectedAreaPool.ActiveAreas)
             {
-                if (hasAmplifierRobotAura)
+                if (!TryResolveAffectedAreaAvatarEffect(area, localPlayerId, currentTime, out int avatarEffectId, out SkillData effectSkill))
                 {
-                    Player.ClearSkillAvatarEffect(AmplifierRobotAvatarEffectSkillId, currentTime, playFinish: false);
+                    continue;
                 }
 
-                return;
+                nextActiveEffectIds.Add(avatarEffectId);
+                if (!Player.HasSkillAvatarEffect(avatarEffectId))
+                {
+                    Player.ApplySkillAvatarEffect(avatarEffectId, effectSkill, currentTime);
+                }
             }
 
-            if (hasAmplifierRobotAura)
+            foreach (int activeEffectId in _activeAffectedAreaAvatarEffectIds)
             {
-                return;
+                if (nextActiveEffectIds.Contains(activeEffectId))
+                {
+                    continue;
+                }
+
+                Player.ClearSkillAvatarEffect(activeEffectId, currentTime, playFinish: false);
             }
 
-            SkillData effectSkill = CreateAmplifierRobotAvatarEffectSkill();
-            if (effectSkill != null)
+            _activeAffectedAreaAvatarEffectIds.Clear();
+            foreach (int activeEffectId in nextActiveEffectIds)
             {
-                Player.ApplySkillAvatarEffect(AmplifierRobotAvatarEffectSkillId, effectSkill, currentTime);
+                _activeAffectedAreaAvatarEffectIds.Add(activeEffectId);
             }
         }
 
-        private bool ShouldShowAmplifierRobotAura(int currentTime)
+        private bool TryResolveAffectedAreaAvatarEffect(
+            ActiveAffectedArea area,
+            int localPlayerId,
+            int currentTime,
+            out int avatarEffectId,
+            out SkillData effectSkill)
         {
-            if (Player == null
-                || !Player.IsAlive
-                || _affectedAreaPool == null)
+            avatarEffectId = 0;
+            effectSkill = null;
+
+            if (area?.SourceKind != AffectedAreaSourceKind.PlayerSkill
+                || area.ObjectId <= 0
+                || !area.IsActive(currentTime)
+                || !area.Contains(Player.X, Player.Y))
             {
                 return false;
             }
 
-            int localPlayerId = Player.Build?.Id ?? 0;
-            foreach (ActiveAffectedArea area in _affectedAreaPool.ActiveAreas)
+            SkillData skill = SkillLoader?.LoadSkill(area.SkillId);
+            if (!ShouldPromoteAffectedAreaAvatarEffect(skill))
             {
-                if (area?.SourceKind != AffectedAreaSourceKind.PlayerSkill
-                    || area.SkillId != AmplifierRobotSkillId
-                    || !area.IsActive(currentTime)
-                    || !area.Contains(Player.X, Player.Y))
-                {
-                    continue;
-                }
-
-                SkillData skill = SkillLoader?.LoadSkill(area.SkillId);
-                if (skill?.AffectedEffect?.Frames?.Count <= 0)
-                {
-                    continue;
-                }
-
-                bool ownerIsPartyMember = _affectedAreaOwnerPartyMembershipEvaluator?.Invoke(area.OwnerId) == true;
-                if (!RemoteAffectedAreaSupportResolver.CanAffectLocalPlayer(
-                        skill,
-                        localPlayerId,
-                        area.OwnerId,
-                        ownerIsPartyMember))
-                {
-                    continue;
-                }
-
-                return true;
+                return false;
             }
 
-            return false;
+            bool ownerIsPartyMember = _affectedAreaOwnerPartyMembershipEvaluator?.Invoke(area.OwnerId) == true;
+            if (!RemoteAffectedAreaSupportResolver.CanAffectLocalPlayer(
+                    skill,
+                    localPlayerId,
+                    area.OwnerId,
+                    ownerIsPartyMember))
+            {
+                return false;
+            }
+
+            effectSkill = GetOrCreateAffectedAreaAvatarEffectSkill(skill);
+            if (effectSkill == null)
+            {
+                return false;
+            }
+
+            avatarEffectId = CreateAffectedAreaAvatarEffectId(area.ObjectId);
+            return true;
         }
 
-        private SkillData CreateAmplifierRobotAvatarEffectSkill()
+        private static bool ShouldPromoteAffectedAreaAvatarEffect(SkillData skill)
         {
-            SkillData skill = SkillLoader?.LoadSkill(AmplifierRobotSkillId);
-            SkillAnimation loopingAffectedAnimation = CreateLoopingAvatarEffect(skill?.AffectedEffect);
+            return skill?.AffectedEffect?.Frames?.Count > 0
+                   && (skill.SkillId == AmplifierRobotSkillId
+                       || skill.IsMassSpell
+                       || RemoteAffectedAreaSupportResolver.IsSupportZone(skill));
+        }
+
+        private SkillData GetOrCreateAffectedAreaAvatarEffectSkill(SkillData skill)
+        {
+            if (skill == null)
+            {
+                return null;
+            }
+
+            if (_affectedAreaAvatarEffectSkillCache.TryGetValue(skill.SkillId, out SkillData cachedSkill))
+            {
+                return cachedSkill;
+            }
+
+            SkillAnimation loopingAffectedAnimation = CreateLoopingAvatarEffect(skill.AffectedEffect);
             if (loopingAffectedAnimation == null)
             {
                 return null;
             }
 
-            return new SkillData
+            SkillData effectSkill = new()
             {
-                SkillId = AmplifierRobotAvatarEffectSkillId,
+                SkillId = skill.SkillId,
                 AvatarUnderFaceEffect = loopingAffectedAnimation
             };
+            _affectedAreaAvatarEffectSkillCache[skill.SkillId] = effectSkill;
+            return effectSkill;
+        }
+
+        private void ClearTrackedAffectedAreaAvatarEffects(int currentTime)
+        {
+            foreach (int activeEffectId in _activeAffectedAreaAvatarEffectIds)
+            {
+                Player?.ClearSkillAvatarEffect(activeEffectId, currentTime, playFinish: false);
+            }
+
+            _activeAffectedAreaAvatarEffectIds.Clear();
+        }
+
+        private static int CreateAffectedAreaAvatarEffectId(int objectId)
+        {
+            return unchecked(AffectedAreaAvatarEffectIdBase + objectId);
         }
 
         private static SkillAnimation CreateLoopingAvatarEffect(SkillAnimation animation)

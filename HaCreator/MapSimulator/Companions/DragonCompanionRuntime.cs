@@ -19,6 +19,14 @@ namespace HaCreator.MapSimulator.Companions
 {
     internal sealed class DragonCompanionRuntime
     {
+        [Flags]
+        private enum FollowUpdateFlags
+        {
+            None = 0,
+            SnappedToTarget = 1 << 0,
+            PassiveSettleEffect = 1 << 1
+        }
+
         private sealed class DragonAnimationSet
         {
             public DragonAnimationSet(int jobId, IReadOnlyDictionary<string, SkillAnimation> animations)
@@ -136,8 +144,8 @@ namespace HaCreator.MapSimulator.Companions
 
             float deltaSeconds = GetDeltaSeconds(currentTime);
             UpdateFollowState(owner);
-            bool snappedToTarget = UpdateVisualAnchor(deltaSeconds);
-            if (snappedToTarget)
+            FollowUpdateFlags followUpdate = UpdateVisualAnchor(deltaSeconds);
+            if ((followUpdate & (FollowUpdateFlags.SnappedToTarget | FollowUpdateFlags.PassiveSettleEffect)) != 0)
             {
                 TriggerBlink(currentTime);
             }
@@ -589,13 +597,13 @@ namespace HaCreator.MapSimulator.Companions
             }
         }
 
-        private bool UpdateVisualAnchor(float deltaSeconds)
+        private FollowUpdateFlags UpdateVisualAnchor(float deltaSeconds)
         {
             if (_visualAnchor == Vector2.Zero)
             {
                 _visualAnchor = _worldAnchor;
                 _followVelocity = Vector2.Zero;
-                return false;
+                return FollowUpdateFlags.None;
             }
 
             float distance = Vector2.Distance(_visualAnchor, _worldAnchor);
@@ -603,11 +611,12 @@ namespace HaCreator.MapSimulator.Companions
             {
                 _visualAnchor = _worldAnchor;
                 _followVelocity = Vector2.Zero;
-                return true;
+                return FollowUpdateFlags.SnappedToTarget;
             }
 
             double velocityX = _followVelocity.X;
             double velocityY = _followVelocity.Y;
+            FollowUpdateFlags result = FollowUpdateFlags.None;
 
             if (_isFollowActive)
             {
@@ -633,6 +642,11 @@ namespace HaCreator.MapSimulator.Companions
             }
             else
             {
+                bool hadPassiveTravel = HasPassiveTravel(
+                    _visualAnchor,
+                    _worldAnchor,
+                    _followVelocity);
+
                 UpdatePassiveFollowAxis(
                     ref _visualAnchor.X,
                     _worldAnchor.X,
@@ -654,10 +668,32 @@ namespace HaCreator.MapSimulator.Companions
                     CVecCtrl.AirDragDeceleration * PassiveVerticalForceScale,
                     PassiveVerticalHoldDistance,
                     PassiveArrivalDistance);
+
+                if (hadPassiveTravel
+                    && IsPassiveSettled(_visualAnchor, _worldAnchor, velocityX, velocityY))
+                {
+                    result |= FollowUpdateFlags.PassiveSettleEffect;
+                }
             }
 
             _followVelocity = new Vector2((float)velocityX, (float)velocityY);
-            return false;
+            return result;
+        }
+
+        private static bool HasPassiveTravel(Vector2 visualAnchor, Vector2 worldAnchor, Vector2 velocity)
+        {
+            return Math.Abs(worldAnchor.X - visualAnchor.X) > PassiveHoldDistance
+                   || Math.Abs(worldAnchor.Y - visualAnchor.Y) > PassiveVerticalHoldDistance
+                   || Math.Abs(velocity.X) > FollowMinSpeed
+                   || Math.Abs(velocity.Y) > FollowMinSpeed;
+        }
+
+        private static bool IsPassiveSettled(Vector2 visualAnchor, Vector2 worldAnchor, double velocityX, double velocityY)
+        {
+            return Math.Abs(worldAnchor.X - visualAnchor.X) <= PassiveArrivalDistance
+                   && Math.Abs(worldAnchor.Y - visualAnchor.Y) <= PassiveArrivalDistance
+                   && Math.Abs(velocityX) <= FollowMinSpeed
+                   && Math.Abs(velocityY) <= FollowMinSpeed;
         }
 
         private static void UpdateFollowAxis(

@@ -27,6 +27,7 @@ namespace HaCreator.MapSimulator.Managers
             public int BuyCharacterCount { get; set; }
             public int NextCharacterId { get; set; } = 1;
             public string PicCode { get; set; }
+            public string BirthDate { get; set; }
             public bool IsSecondaryPasswordEnabled { get; set; }
             public string SecondaryPassword { get; set; }
             public List<LoginCharacterAccountEntryState> Entries { get; set; } = new();
@@ -41,6 +42,7 @@ namespace HaCreator.MapSimulator.Managers
             public int BuyCharacterCount { get; init; }
             public int NextCharacterId { get; init; } = 1;
             public string PicCode { get; init; } = string.Empty;
+            public string BirthDate { get; init; } = string.Empty;
             public bool IsSecondaryPasswordEnabled { get; init; }
             public string SecondaryPassword { get; init; } = string.Empty;
             public IReadOnlyList<LoginCharacterAccountEntryState> Entries { get; init; } = Array.Empty<LoginCharacterAccountEntryState>();
@@ -146,6 +148,7 @@ namespace HaCreator.MapSimulator.Managers
                 BuyCharacterCount = Math.Max(0, persisted.BuyCharacterCount),
                 NextCharacterId = nextCharacterId,
                 PicCode = NormalizeSecret(persisted.PicCode),
+                BirthDate = NormalizeBirthDate(persisted.BirthDate),
                 IsSecondaryPasswordEnabled = persisted.IsSecondaryPasswordEnabled,
                 SecondaryPassword = NormalizeSecret(persisted.SecondaryPassword),
                 Entries = entries
@@ -160,6 +163,7 @@ namespace HaCreator.MapSimulator.Managers
             int nextCharacterId,
             IEnumerable<LoginCharacterAccountEntryState> entries,
             string picCode = null,
+            string birthDate = null,
             bool isSecondaryPasswordEnabled = false,
             string secondaryPassword = null,
             int? accountId = null)
@@ -183,6 +187,7 @@ namespace HaCreator.MapSimulator.Managers
                 BuyCharacterCount = Math.Max(0, buyCharacterCount),
                 NextCharacterId = normalizedNextCharacterId,
                 PicCode = NormalizeSecret(picCode),
+                BirthDate = NormalizeBirthDate(birthDate),
                 IsSecondaryPasswordEnabled = isSecondaryPasswordEnabled,
                 SecondaryPassword = NormalizeSecret(secondaryPassword),
                 Entries = normalizedEntries
@@ -313,6 +318,17 @@ namespace HaCreator.MapSimulator.Managers
             return string.IsNullOrWhiteSpace(value) ? string.Empty : value.Trim();
         }
 
+        private static string NormalizeBirthDate(string value)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                return string.Empty;
+            }
+
+            string digits = new(value.Where(char.IsDigit).Take(8).ToArray());
+            return digits.Length == 8 ? digits : string.Empty;
+        }
+
         private static PersistedAccountState ClonePersistedState(PersistedAccountState state)
         {
             return new PersistedAccountState
@@ -324,6 +340,7 @@ namespace HaCreator.MapSimulator.Managers
                 BuyCharacterCount = state?.BuyCharacterCount ?? 0,
                 NextCharacterId = state?.NextCharacterId ?? 1,
                 PicCode = NormalizeSecret(state?.PicCode),
+                BirthDate = NormalizeBirthDate(state?.BirthDate),
                 IsSecondaryPasswordEnabled = state?.IsSecondaryPasswordEnabled ?? false,
                 SecondaryPassword = NormalizeSecret(state?.SecondaryPassword),
                 Entries = state?.Entries?

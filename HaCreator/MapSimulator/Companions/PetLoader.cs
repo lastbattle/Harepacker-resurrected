@@ -395,7 +395,7 @@ namespace HaCreator.MapSimulator.Companions
             foreach (WzSubProperty interactEntry in interactProperty.WzProperties.OfType<WzSubProperty>())
             {
                 string commandKey = (interactEntry["command"] as WzStringProperty)?.Value?.Trim();
-                if (!TryResolveFeedbackVariant(commandKey, out int variant))
+                if (!TryResolveFoodFeedbackTier(commandKey, out int variant))
                 {
                     continue;
                 }
@@ -461,19 +461,20 @@ namespace HaCreator.MapSimulator.Companions
                 .ToArray();
         }
 
-        private static bool TryResolveFeedbackVariant(string commandKey, out int variant)
+        private static bool TryResolveFoodFeedbackTier(string commandKey, out int variant)
         {
             variant = 0;
             if (string.IsNullOrWhiteSpace(commandKey) ||
                 commandKey.Length < 2 ||
-                !char.IsLetter(commandKey[0]) ||
-                !int.TryParse(commandKey.Substring(1), out int commandIndex) ||
-                commandIndex <= 0)
+                !int.TryParse(commandKey.AsSpan(1), out int commandIndex) ||
+                !string.Equals(commandKey.Substring(0, 1), "c", StringComparison.OrdinalIgnoreCase) ||
+                commandIndex < 1 ||
+                commandIndex > 4)
             {
                 return false;
             }
 
-            variant = ((commandIndex - 1) % 4) + 1;
+            variant = commandIndex;
             return true;
         }
 

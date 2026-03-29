@@ -1,5 +1,6 @@
 using HaCreator.MapSimulator.Character;
 using HaCreator.MapSimulator.UI;
+using HaCreator.MapSimulator;
 using HaSharedLibrary.Render;
 using HaSharedLibrary.Render.DX;
 using Microsoft.Xna.Framework;
@@ -51,12 +52,17 @@ namespace HaCreator.MapSimulator.UI
         /// <summary>
         /// Whether the window can be dragged by holding its frame.
         /// </summary>
-        public virtual bool SupportsDragging => true;
+        public virtual bool SupportsDragging { get; protected set; } = true;
 
         /// <summary>
         /// Whether the window currently owns keyboard input and should block chat or window hotkeys.
         /// </summary>
         public virtual bool CapturesKeyboardInput => false;
+
+        /// <summary>
+        /// Optional callback invoked whenever the window is shown through any path.
+        /// </summary>
+        public Action<UIWindowBase> BeforeShow { get; set; }
 
         /// <summary>
         /// Character build for stat windows (AbilityUI, AbilityUIBigBang)
@@ -245,6 +251,7 @@ namespace HaCreator.MapSimulator.UI
         /// </summary>
         public virtual void Show()
         {
+            BeforeShow?.Invoke(this);
             _isVisible = true;
         }
 
@@ -349,11 +356,24 @@ namespace HaCreator.MapSimulator.UI
         {
         }
 
+        public virtual void HandleCompositionState(ImeCompositionState state)
+        {
+            HandleCompositionText(state?.Text ?? string.Empty);
+        }
+
         public virtual void HandleCompositionText(string text)
         {
         }
 
         public virtual void ClearCompositionText()
+        {
+        }
+
+        public virtual void HandleImeCandidateList(ImeCandidateListState state)
+        {
+        }
+
+        public virtual void ClearImeCandidateList()
         {
         }
 

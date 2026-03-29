@@ -32,6 +32,10 @@ namespace HaCreator.MapSimulator.UI
         private const int BalloonTextInsetX = 10;
         private const int BalloonSingleLineTextInsetY = 15;
         private const int BalloonMultiLineTextInsetY = 9;
+        private const int StatusScrollCanvasWidth = 217;
+        private const int StatusScrollCanvasHeight = 161;
+        private const int StatusScrollTextInsetX = 21;
+        private const int StatusScrollTextInsetY = 79;
         private const int StatusTextWrapWidth = 170;
         private const float StatusTextScale = 0.50f;
         private const int BasicBlackFontHeight = 12;
@@ -200,10 +204,23 @@ namespace HaCreator.MapSimulator.UI
         {
             if (ShouldDrawStatusScrollText())
             {
-                Point statusPosition = new(Position.X + ClientStatusScrollPosition.X + 21, Position.Y + ClientStatusScrollPosition.Y + 79);
+                Rectangle statusBounds = new(
+                    Position.X + ClientStatusScrollPosition.X,
+                    Position.Y + ClientStatusScrollPosition.Y,
+                    StatusScrollCanvasWidth,
+                    StatusScrollCanvasHeight);
                 string wrappedMessage = WrapText(_statusMessage, StatusTextWrapWidth, StatusTextScale, 2);
-                if (!DrawWrappedRasterText(sprite, wrappedMessage, statusPosition.X, statusPosition.Y, new Color(92, 63, 44)))
+                if (!DrawCanvasText(
+                    sprite,
+                    wrappedMessage,
+                    statusBounds,
+                    StatusScrollTextInsetX,
+                    StatusScrollTextInsetY,
+                    new Color(92, 63, 44)))
                 {
+                    Point statusPosition = new(
+                        statusBounds.X + StatusScrollTextInsetX,
+                        statusBounds.Y + StatusScrollTextInsetY);
                     DrawShadowedText(sprite, wrappedMessage, statusPosition.ToVector2(), new Color(92, 63, 44), StatusTextScale);
                 }
             }
@@ -251,8 +268,17 @@ namespace HaCreator.MapSimulator.UI
             int textY = bodyBounds.Y + (wrappedMessage.Contains(Environment.NewLine, StringComparison.Ordinal)
                 ? BalloonMultiLineTextInsetY
                 : BalloonSingleLineTextInsetY);
-            // CUIAvatar::OnCreate draws the balloon copy into a 220x40 canvas at (10, 15).
-            DrawWrappedRasterText(sprite, wrappedMessage, bodyBounds.X + BalloonTextInsetX, textY, _instructionBalloonStyle.TextColor);
+            // CUIAvatar::OnCreate draws the balloon copy into a dedicated 220x40 canvas before presenting the layer.
+            if (!DrawCanvasText(
+                sprite,
+                wrappedMessage,
+                bodyBounds,
+                BalloonTextInsetX,
+                textY - bodyBounds.Y,
+                _instructionBalloonStyle.TextColor))
+            {
+                DrawWrappedRasterText(sprite, wrappedMessage, bodyBounds.X + BalloonTextInsetX, textY, _instructionBalloonStyle.TextColor);
+            }
         }
 
         private void DrawBalloonNineSlice(SpriteBatch sprite, Rectangle bodyBounds)
@@ -512,6 +538,23 @@ namespace HaCreator.MapSimulator.UI
             return drewAny;
         }
 
+        private bool DrawCanvasText(SpriteBatch sprite, string text, Rectangle canvasBounds, int insetX, int insetY, Color color)
+        {
+            if (string.IsNullOrEmpty(text))
+            {
+                return false;
+            }
+
+            Texture2D texture = GetOrCreateCanvasTextTexture(text, color, canvasBounds.Width, canvasBounds.Height, insetX, insetY);
+            if (texture == null)
+            {
+                return false;
+            }
+
+            sprite.Draw(texture, new Vector2(canvasBounds.X, canvasBounds.Y), Color.White);
+            return true;
+        }
+
         private Texture2D GetOrCreateTextTexture(string text, Color color)
         {
             if (_basicBlackFont == null || _graphicsDevice == null || string.IsNullOrEmpty(text))
@@ -519,7 +562,7 @@ namespace HaCreator.MapSimulator.UI
                 return null;
             }
 
-            TextRenderCacheKey cacheKey = new(text, color);
+            TextRenderCacheKey cacheKey = new(text, color, 0, 0, 0, 0);
             if (_textTextureCache.TryGetValue(cacheKey, out Texture2D cachedTexture) &&
                 cachedTexture != null &&
                 !cachedTexture.IsDisposed)
@@ -537,6 +580,37 @@ namespace HaCreator.MapSimulator.UI
             graphics.TextRenderingHint = SDText.TextRenderingHint.SingleBitPerPixelGridFit;
             using var brush = new SD.SolidBrush(SD.Color.FromArgb(color.A, color.R, color.G, color.B));
             graphics.DrawString(text, _basicBlackFont, brush, 0f, 0f, SD.StringFormat.GenericTypographic);
+
+            Texture2D texture = bitmap.ToTexture2D(_graphicsDevice);
+            _textTextureCache[cacheKey] = texture;
+            return texture;
+        }
+
+        private Texture2D GetOrCreateCanvasTextTexture(string text, Color color, int canvasWidth, int canvasHeight, int insetX, int insetY)
+        {
+            if (_basicBlackFont == null ||
+                _graphicsDevice == null ||
+                string.IsNullOrEmpty(text) ||
+                canvasWidth <= 0 ||
+                canvasHeight <= 0)
+            {
+                return null;
+            }
+
+            TextRenderCacheKey cacheKey = new(text, color, canvasWidth, canvasHeight, insetX, insetY);
+            if (_textTextureCache.TryGetValue(cacheKey, out Texture2D cachedTexture) &&
+                cachedTexture != null &&
+                !cachedTexture.IsDisposed)
+            {
+                return cachedTexture;
+            }
+
+            using var bitmap = new SD.Bitmap(canvasWidth, canvasHeight);
+            using SD.Graphics graphics = SD.Graphics.FromImage(bitmap);
+            graphics.Clear(SD.Color.Transparent);
+            graphics.TextRenderingHint = SDText.TextRenderingHint.SingleBitPerPixelGridFit;
+            using var brush = new SD.SolidBrush(SD.Color.FromArgb(color.A, color.R, color.G, color.B));
+            graphics.DrawString(text, _basicBlackFont, brush, insetX, insetY, SD.StringFormat.GenericTypographic);
 
             Texture2D texture = bitmap.ToTexture2D(_graphicsDevice);
             _textTextureCache[cacheKey] = texture;
@@ -623,18 +697,31 @@ namespace HaCreator.MapSimulator.UI
 
         private readonly struct TextRenderCacheKey : IEquatable<TextRenderCacheKey>
         {
-            public TextRenderCacheKey(string text, Color color)
+            public TextRenderCacheKey(string text, Color color, int width, int height, int insetX, int insetY)
             {
                 Text = text ?? string.Empty;
                 Color = color.PackedValue;
+                Width = width;
+                Height = height;
+                InsetX = insetX;
+                InsetY = insetY;
             }
 
             public string Text { get; }
             public uint Color { get; }
+            public int Width { get; }
+            public int Height { get; }
+            public int InsetX { get; }
+            public int InsetY { get; }
 
             public bool Equals(TextRenderCacheKey other)
             {
-                return Color == other.Color && string.Equals(Text, other.Text, StringComparison.Ordinal);
+                return Color == other.Color &&
+                    Width == other.Width &&
+                    Height == other.Height &&
+                    InsetX == other.InsetX &&
+                    InsetY == other.InsetY &&
+                    string.Equals(Text, other.Text, StringComparison.Ordinal);
             }
 
             public override bool Equals(object obj)
@@ -644,7 +731,7 @@ namespace HaCreator.MapSimulator.UI
 
             public override int GetHashCode()
             {
-                return HashCode.Combine(Text, Color);
+                return HashCode.Combine(Text, Color, Width, Height, InsetX, InsetY);
             }
         }
     }

@@ -301,7 +301,8 @@ namespace HaCreator.MapSimulator.Character.Skills
                 skill.ZoneType = GetString(infoNode, "zoneType");
                 skill.IsMassSpell = GetInt(infoNode, "massSpell") == 1;
                 skill.DebuffMessageToken = GetString(infoNode, "mes");
-                skill.AffectedSkillId = GetInt(infoNode, "affectedSkill");
+                skill.AffectedSkillIds = ParseLinkedSkillIds(GetString(infoNode, "affectedSkill"));
+                skill.AffectedSkillId = skill.AffectedSkillIds.FirstOrDefault();
                 skill.AffectedSkillEffect = GetString(infoNode, "affectedSkillEffect");
                 skill.DotType = GetString(infoNode, "dotType");
                 skill.IsMagicDamageSkill = GetInt(infoNode, "magicDamage") == 1;
@@ -310,6 +311,8 @@ namespace HaCreator.MapSimulator.Character.Skills
                 skill.CanNotMoveInState = GetInt(infoNode, "canNotMoveInState") == 1;
                 skill.OnlyNormalAttackInState = GetInt(infoNode, "onlyNormalAttack") == 1;
                 skill.SpecialNormalAttackInState = GetInt(infoNode, "specialNormalAttack") == 1;
+                skill.RedirectsDamageToMp = GetInt(infoNode, "switchDamtoMP") == 1;
+                skill.HasInvincibleMetadata = GetInt(infoNode, "invincible") == 1;
                 skill.ReflectsIncomingDamage = GetInt(infoNode, "PADReflect") == 1
                                                || GetInt(infoNode, "MADReflect") == 1;
             }
@@ -563,6 +566,11 @@ namespace HaCreator.MapSimulator.Character.Skills
 
         private static SkillAttackType? ResolveClientAttackType(int skillId, WzImageProperty infoNode)
         {
+            if (ClientShootAttackFamilyResolver.UsesClientShootAttackLane(skillId))
+            {
+                return SkillAttackType.Ranged;
+            }
+
             int infoType = GetInt(infoNode, "type");
             return infoType switch
             {
@@ -1993,12 +2001,17 @@ namespace HaCreator.MapSimulator.Character.Skills
 
         private static int[] ParseDummySkillParents(string dummyOf)
         {
-            if (string.IsNullOrWhiteSpace(dummyOf))
+            return ParseLinkedSkillIds(dummyOf);
+        }
+
+        private static int[] ParseLinkedSkillIds(string value)
+        {
+            if (string.IsNullOrWhiteSpace(value))
             {
                 return Array.Empty<int>();
             }
 
-            return dummyOf
+            return value
                 .Split(new[] { '&' }, StringSplitOptions.RemoveEmptyEntries)
                 .Select(token => token.Trim())
                 .Where(token => int.TryParse(token, out _))
@@ -2618,6 +2631,8 @@ namespace HaCreator.MapSimulator.Character.Skills
 
             levelData.Mastery = GetInt(node, "mastery", 0, level);
             levelData.CriticalRate = GetInt(node, "cr", 0, level);
+            levelData.CriticalDamageMin = GetInt(node, "criticaldamageMin", 0, level);
+            levelData.CriticalDamageMax = GetInt(node, "criticaldamageMax", 0, level);
 
             levelData.RequiredLevel = GetInt(node, "reqLevel", 0, level);
             NormalizePassiveStatAliases(skill, node, level, levelData);
@@ -2673,6 +2688,8 @@ namespace HaCreator.MapSimulator.Character.Skills
             levelData.AllStat = GetInt(node, "indieAllStat", 0, level);
             levelData.AbnormalStatusResistance = PreferPrimaryStat(GetInt(node, "asrR", 0, level), GetInt(node, "indieAsrR", 0, level));
             levelData.ElementalResistance = PreferPrimaryStat(GetInt(node, "terR", 0, level), GetInt(node, "indieTerR", 0, level));
+            levelData.CriticalDamageMin = PreferPrimaryStat(levelData.CriticalDamageMin, GetInt(node, "criticalDamageMin", 0, level));
+            levelData.CriticalDamageMax = PreferPrimaryStat(levelData.CriticalDamageMax, GetInt(node, "criticalDamageMax", 0, level));
         }
 
         private static int PreferPrimaryStat(int currentValue, int aliasValue)

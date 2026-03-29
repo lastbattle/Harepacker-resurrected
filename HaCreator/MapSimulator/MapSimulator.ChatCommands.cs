@@ -723,7 +723,9 @@ namespace HaCreator.MapSimulator
 
                     return TryConfigureSelectWorldPacketPayload(args, out error, out summary);
 
+                case LoginPacketType.SelectCharacterResult:
 
+                    return TryConfigureSelectCharacterResultPacketPayload(args, out error, out summary);
 
                 case LoginPacketType.ViewAllCharResult:
 
@@ -984,6 +986,8 @@ namespace HaCreator.MapSimulator
 
             int inputMaxLength = 0;
 
+            SoftKeyboardKeyboardType softKeyboardType = SoftKeyboardKeyboardType.AlphaNumeric;
+
             int durationMs = 2400;
 
 
@@ -996,7 +1000,7 @@ namespace HaCreator.MapSimulator
 
                 {
 
-                    error = "Usage: /loginpacket <packet> [payloadhex=<hex>|payloadb64=<base64>|clearpayload] [mode=utility|notice] [title=<text>] [body=<text>] [notice=<index>] [variant=notice|noticecog|loading|loadingsinglegauge] [buttons=ok|yesno|accept|nowlater|restartexit|nexon] [primary=<label>] [secondary=<label>] [inputlabel=<text>] [placeholder=<text>] [masked=true|false] [maxlength=<count>] [duration=<ms>]";
+                    error = "Usage: /loginpacket <packet> [payloadhex=<hex>|payloadb64=<base64>|clearpayload] [mode=utility|notice] [title=<text>] [body=<text>] [notice=<index>] [variant=notice|noticecog|loading|loadingsinglegauge] [buttons=ok|yesno|accept|nowlater|restartexit|nexon] [primary=<label>] [secondary=<label>] [inputlabel=<text>] [placeholder=<text>] [masked=true|false] [maxlength=<count>] [keyboardtype=alphanumeric|alphaedges|numeric|numericalt] [duration=<ms>]";
                     return false;
 
                 }
@@ -1188,6 +1192,22 @@ namespace HaCreator.MapSimulator
 
 
 
+                    case "keyboardtype":
+
+                        if (!TryParseSoftKeyboardKeyboardType(value, out softKeyboardType))
+
+                        {
+
+                            error = "keyboardtype must be alphanumeric, alphaedges, numeric, or numericalt.";
+
+                            return false;
+
+                        }
+
+                        break;
+
+
+
                     case "duration":
 
                         if (!int.TryParse(value, out durationMs) || durationMs < 0)
@@ -1244,11 +1264,75 @@ namespace HaCreator.MapSimulator
 
                 InputMaxLength = inputMaxLength,
 
+                SoftKeyboardType = softKeyboardType,
+
                 DurationMs = durationMs,
 
             };
 
             return true;
+
+        }
+
+        private static bool TryParseSoftKeyboardKeyboardType(string value, out SoftKeyboardKeyboardType keyboardType)
+
+        {
+
+            switch ((value ?? string.Empty).Trim().ToLowerInvariant())
+
+            {
+
+                case "alphanumeric":
+
+                case "type0":
+
+                case "0":
+
+                    keyboardType = SoftKeyboardKeyboardType.AlphaNumeric;
+
+                    return true;
+
+                case "alphaedges":
+
+                case "alphaedge":
+
+                case "type1":
+
+                case "1":
+
+                    keyboardType = SoftKeyboardKeyboardType.AlphaNumericWithAlphaEdges;
+
+                    return true;
+
+                case "numeric":
+
+                case "type2":
+
+                case "2":
+
+                    keyboardType = SoftKeyboardKeyboardType.NumericOnly;
+
+                    return true;
+
+                case "numericalt":
+
+                case "numeric-alt":
+
+                case "type3":
+
+                case "3":
+
+                    keyboardType = SoftKeyboardKeyboardType.NumericOnlyAlt;
+
+                    return true;
+
+                default:
+
+                    keyboardType = SoftKeyboardKeyboardType.AlphaNumeric;
+
+                    return false;
+
+            }
 
         }
 
@@ -3095,7 +3179,7 @@ namespace HaCreator.MapSimulator
 
                 "Inspect or drive the Coconut minigame packet and result flow",
 
-                "/coconut [status|clock <seconds>|hit <target|-1> <delay> <state>|score <maple> <story>|raw <type> <hex>|raw packetraw <hex>|inbox [status|start [port]|stop]|session [status|discover <remotePort> [processName|pid]|start <listenPort> <serverHost> <serverPort>|startauto <listenPort> <remotePort> [processName|pid]|stop]|request [peek|clear]]",
+                "/coconut [status|clock <seconds>|hit <target|-1> <delay> <state>|score <maple> <story>|raw <type> <hex>|raw packetraw <hex>|inbox [status|start [port]|stop]|session [status|discover <remotePort> [processName|pid] [localPort]|start <listenPort> <serverHost> <serverPort>|startauto <listenPort> <remotePort> [processName|pid] [localPort]|stop]|request [peek|clear]]",
                 args =>
 
                 {
@@ -3303,15 +3387,25 @@ namespace HaCreator.MapSimulator
 
                                 {
 
-                                    return ChatCommandHandler.CommandResult.Error("Usage: /coconut session discover <remotePort> [processName|pid]");
+                                    return ChatCommandHandler.CommandResult.Error("Usage: /coconut session discover <remotePort> [processName|pid] [localPort]");
 
                                 }
 
                                 string processSelector = args.Length >= 4 ? args[3] : null;
+                                int? localPortFilter = null;
+                                if (args.Length >= 5)
+                                {
+                                    if (!int.TryParse(args[4], out int parsedLocalPort) || parsedLocalPort <= 0)
+                                    {
+                                        return ChatCommandHandler.CommandResult.Error("Usage: /coconut session discover <remotePort> [processName|pid] [localPort]");
+                                    }
+
+                                    localPortFilter = parsedLocalPort;
+                                }
 
                                 return ChatCommandHandler.CommandResult.Info(
 
-                                    _coconutOfficialSessionBridge.DescribeDiscoveredSessions(discoverRemotePort, processSelector));
+                                    _coconutOfficialSessionBridge.DescribeDiscoveredSessions(discoverRemotePort, processSelector, localPortFilter));
 
                             }
 
@@ -3361,13 +3455,23 @@ namespace HaCreator.MapSimulator
 
                                 {
 
-                                    return ChatCommandHandler.CommandResult.Error("Usage: /coconut session startauto <listenPort> <remotePort> [processName|pid]");
+                                    return ChatCommandHandler.CommandResult.Error("Usage: /coconut session startauto <listenPort> <remotePort> [processName|pid] [localPort]");
 
                                 }
 
                                 string processSelector = args.Length >= 5 ? args[4] : null;
+                                int? localPortFilter = null;
+                                if (args.Length >= 6)
+                                {
+                                    if (!int.TryParse(args[5], out int parsedLocalPort) || parsedLocalPort <= 0)
+                                    {
+                                        return ChatCommandHandler.CommandResult.Error("Usage: /coconut session startauto <listenPort> <remotePort> [processName|pid] [localPort]");
+                                    }
 
-                                return _coconutOfficialSessionBridge.TryStartFromDiscovery(autoListenPort, autoRemotePort, processSelector, out string startStatus)
+                                    localPortFilter = parsedLocalPort;
+                                }
+
+                                return _coconutOfficialSessionBridge.TryStartFromDiscovery(autoListenPort, autoRemotePort, processSelector, localPortFilter, out string startStatus)
 
                                     ? ChatCommandHandler.CommandResult.Ok(startStatus)
 
@@ -3389,7 +3493,7 @@ namespace HaCreator.MapSimulator
 
 
 
-                            return ChatCommandHandler.CommandResult.Error("Usage: /coconut session [status|discover <remotePort> [processName|pid]|start <listenPort> <serverHost> <serverPort>|startauto <listenPort> <remotePort> [processName|pid]|stop]");
+                            return ChatCommandHandler.CommandResult.Error("Usage: /coconut session [status|discover <remotePort> [processName|pid] [localPort]|start <listenPort> <serverHost> <serverPort>|startauto <listenPort> <remotePort> [processName|pid] [localPort]|stop]");
 
 
 
@@ -3435,7 +3539,7 @@ namespace HaCreator.MapSimulator
 
 
                         default:
-                            return ChatCommandHandler.CommandResult.Error("Usage: /coconut [status|clock <seconds>|hit <target|-1> <delay> <state>|score <maple> <story>|raw <type> <hex>|raw packetraw <hex>|inbox [status|start [port]|stop]|session [status|discover <remotePort> [processName|pid]|start <listenPort> <serverHost> <serverPort>|startauto <listenPort> <remotePort> [processName|pid]|stop]|request [peek|clear]]");
+                            return ChatCommandHandler.CommandResult.Error("Usage: /coconut [status|clock <seconds>|hit <target|-1> <delay> <state>|score <maple> <story>|raw <type> <hex>|raw packetraw <hex>|inbox [status|start [port]|stop]|session [status|discover <remotePort> [processName|pid] [localPort]|start <listenPort> <serverHost> <serverPort>|startauto <listenPort> <remotePort> [processName|pid] [localPort]|stop]|request [peek|clear]]");
                     }
 
                 });
@@ -8278,7 +8382,7 @@ namespace HaCreator.MapSimulator
 
                 "Inspect or drive packet-authored field chat, field effects, warning dialogs, obstacle toggles, and boss-feedback surfaces",
 
-                "/fieldfeedback [status|clear|group <family> <sender> <text>|whisperin <sender> <channel> <text>|whisperresult <target> <ok|fail>|warn <text>|obstacle <tag> <state>|obstaclereset|bosshp <mobId> <currentHp> <maxHp> [color] [phase]|tremble <force> <durationMs>|fieldsound <descriptor>|fieldbgm <descriptor>|transferfieldignored <reason>|transferchannelignored <reason>|summonunavailable [0|1]|zakumtimer <mode> <value>|hontailtimer <mode> <value>|chaoszakumtimer <mode> <value>|hontaletimer <mode> <value>|fadeoutforce [key]|packet <kind> [payloadhex=..|payloadb64=..]|packetraw <kind> <hex>]",
+                        "/fieldfeedback [status|clear|group <family> <sender> <text>|whisperin <sender> <channel> <text>|whisperresult <target> <ok|fail>|whisperavailability <target> <0|1>|whisperfind <find|findreply> <target> <result> <value>|couplechat <sender> <text>|couplenotice [text]|warn <text>|obstacle <tag> <state>|obstaclereset|bosshp <mobId> <currentHp> <maxHp> [color] [phase]|tremble <force> <durationMs>|fieldsound <descriptor>|fieldbgm <descriptor>|jukebox <itemId> <owner>|transferfieldignored <reason>|transferchannelignored <reason>|summonunavailable [0|1]|destroyclock|zakumtimer <mode> <value>|hontailtimer <mode> <value>|chaoszakumtimer <mode> <value>|hontaletimer <mode> <value>|fadeoutforce [key]|packet <kind> [payloadhex=..|payloadb64=..]|packetraw <kind> <hex>]",
 
                 HandlePacketOwnedFieldFeedbackCommand);
 
@@ -8885,6 +8989,114 @@ namespace HaCreator.MapSimulator
 
                         $"Triggered {eventName} speech for the first eligible active pet.");
 
+                });
+
+
+
+            _chat.CommandHandler.RegisterCommand(
+
+                "petautohp",
+
+                "Inspect or configure per-pet auto-HP settings used by field hazards",
+
+                "/petautohp [status|slot 1-3 [on|off] [itemId [use|cash]|clear]]",
+
+                args =>
+
+                {
+
+                    if (_playerManager?.Pets?.ActivePets == null || _playerManager.Pets.ActivePets.Count == 0)
+
+                    {
+
+                        return ChatCommandHandler.CommandResult.Error("No active pets are available");
+
+                    }
+
+
+
+                    if (args.Length == 0 || string.Equals(args[0], "status", StringComparison.OrdinalIgnoreCase))
+
+                    {
+
+                        return ChatCommandHandler.CommandResult.Info(DescribePetAutoConsumeHpSettings());
+
+                    }
+
+
+
+                    if (!TryResolvePetCommandSlot(args, 0, out int petSlotIndex, out string slotError))
+
+                    {
+
+                        return ChatCommandHandler.CommandResult.Error(slotError);
+
+                    }
+
+
+
+                    PetRuntime pet = _playerManager.Pets.GetPetAt(petSlotIndex);
+
+                    if (pet == null)
+
+                    {
+
+                        return ChatCommandHandler.CommandResult.Error($"No active pet is present in slot {petSlotIndex + 1}");
+
+                    }
+
+
+
+                    bool enabled = pet.AutoConsumeHpEnabled;
+                    int nextArgumentIndex = 1;
+                    if (args.Length >= 2 &&
+                        (string.Equals(args[1], "on", StringComparison.OrdinalIgnoreCase)
+                         || string.Equals(args[1], "off", StringComparison.OrdinalIgnoreCase)))
+                    {
+                        enabled = string.Equals(args[1], "on", StringComparison.OrdinalIgnoreCase);
+                        _playerManager.Pets.TrySetAutoConsumeHpEnabled(petSlotIndex, enabled);
+                        nextArgumentIndex = 2;
+                    }
+
+                    if (nextArgumentIndex >= args.Length)
+                    {
+                        return ChatCommandHandler.CommandResult.Info(DescribePetAutoConsumeHpSetting(petSlotIndex, pet));
+                    }
+
+                    if (string.Equals(args[nextArgumentIndex], "clear", StringComparison.OrdinalIgnoreCase))
+                    {
+                        _playerManager.Pets.TrySetAutoConsumeHpItem(petSlotIndex, 0, InventoryType.NONE);
+                        return ChatCommandHandler.CommandResult.Ok(
+                            $"Cleared auto-HP potion preference for pet {petSlotIndex + 1} ({pet.Name ?? "Unknown"}). {DescribePetAutoConsumeHpSetting(petSlotIndex, pet)}");
+                    }
+
+                    if (!int.TryParse(args[nextArgumentIndex], NumberStyles.Integer, CultureInfo.InvariantCulture, out int itemId)
+                        || itemId <= 0)
+                    {
+                        return ChatCommandHandler.CommandResult.Error("Usage: /petautohp [status|slot 1-3 [on|off] [itemId [use|cash]|clear]]");
+                    }
+
+                    InventoryType inventoryType = InventoryType.NONE;
+                    if (args.Length > nextArgumentIndex + 1
+                        && !TryParsePetAutoConsumeInventoryType(args[nextArgumentIndex + 1], out inventoryType))
+                    {
+                        return ChatCommandHandler.CommandResult.Error("Auto-HP inventory type must be 'use' or 'cash'.");
+                    }
+
+                    if (inventoryType == InventoryType.NONE)
+                    {
+                        inventoryType = InventoryItemMetadataResolver.ResolveInventoryType(itemId);
+                    }
+
+                    if (inventoryType != InventoryType.USE && inventoryType != InventoryType.CASH)
+                    {
+                        return ChatCommandHandler.CommandResult.Error("Auto-HP potions must come from the USE or CASH inventory.");
+                    }
+
+                    _playerManager.Pets.TrySetAutoConsumeHpEnabled(petSlotIndex, enabled: true);
+                    _playerManager.Pets.TrySetAutoConsumeHpItem(petSlotIndex, itemId, inventoryType);
+                    return ChatCommandHandler.CommandResult.Ok(
+                        $"Configured auto-HP potion for pet {petSlotIndex + 1} ({pet.Name ?? "Unknown"}). {DescribePetAutoConsumeHpSetting(petSlotIndex, pet)}");
                 });
 
 
@@ -9706,6 +9918,74 @@ namespace HaCreator.MapSimulator
                                 ? ChatCommandHandler.CommandResult.Ok(menuMessage)
                                 : ChatCommandHandler.CommandResult.Error(menuMessage);
 
+                        case "text":
+
+                            if (args.Length < 6 ||
+                                !int.TryParse(args[1], out int textNpcId) ||
+                                !short.TryParse(args[2], out short textMinLength) ||
+                                !short.TryParse(args[3], out short textMaxLength))
+
+                            {
+
+                                return ChatCommandHandler.CommandResult.Error("Usage: /scriptmsg text <npcId> <minLen> <maxLen> <defaultText> <prompt>");
+
+                            }
+
+
+
+                            return TryApplyPacketOwnedScriptMessagePacket(
+                                BuildScriptMessageTextPacket(textNpcId, string.Join(" ", args.Skip(5)), args[4], textMinLength, textMaxLength),
+                                out string textMessage)
+                                ? ChatCommandHandler.CommandResult.Ok(textMessage)
+                                : ChatCommandHandler.CommandResult.Error(textMessage);
+
+
+
+                        case "number":
+
+                            if (args.Length < 6 ||
+                                !int.TryParse(args[1], out int numberNpcId) ||
+                                !int.TryParse(args[2], out int numberDefaultValue) ||
+                                !int.TryParse(args[3], out int numberMinValue) ||
+                                !int.TryParse(args[4], out int numberMaxValue))
+
+                            {
+
+                                return ChatCommandHandler.CommandResult.Error("Usage: /scriptmsg number <npcId> <default> <min> <max> <prompt>");
+
+                            }
+
+
+
+                            return TryApplyPacketOwnedScriptMessagePacket(
+                                BuildScriptMessageNumberPacket(numberNpcId, string.Join(" ", args.Skip(5)), numberDefaultValue, numberMinValue, numberMaxValue),
+                                out string numberMessage)
+                                ? ChatCommandHandler.CommandResult.Ok(numberMessage)
+                                : ChatCommandHandler.CommandResult.Error(numberMessage);
+
+
+
+                        case "box":
+
+                            if (args.Length < 6 ||
+                                !int.TryParse(args[1], out int boxNpcId) ||
+                                !short.TryParse(args[2], out short boxColumns) ||
+                                !short.TryParse(args[3], out short boxLines))
+
+                            {
+
+                                return ChatCommandHandler.CommandResult.Error("Usage: /scriptmsg box <npcId> <columns> <lines> <defaultText> <prompt>");
+
+                            }
+
+
+
+                            return TryApplyPacketOwnedScriptMessagePacket(
+                                BuildScriptMessageBoxTextPacket(boxNpcId, string.Join(" ", args.Skip(5)), args[4], boxColumns, boxLines),
+                                out string boxMessage)
+                                ? ChatCommandHandler.CommandResult.Ok(boxMessage)
+                                : ChatCommandHandler.CommandResult.Error(boxMessage);
+
 
 
                         case "packet":
@@ -9752,7 +10032,7 @@ namespace HaCreator.MapSimulator
 
                         default:
 
-                            return ChatCommandHandler.CommandResult.Error("Usage: /scriptmsg [status|clear|say <npcId> <text>|yesno <npcId> <text>|menu <npcId> <text>|packet <payloadhex=..|payloadb64=..>|packetraw <hex>]");
+                            return ChatCommandHandler.CommandResult.Error("Usage: /scriptmsg [status|clear|say <npcId> <text>|yesno <npcId> <text>|menu <npcId> <text>|text <npcId> <minLen> <maxLen> <defaultText> <prompt>|number <npcId> <default> <min> <max> <prompt>|box <npcId> <columns> <lines> <defaultText> <prompt>|packet <payloadhex=..|payloadb64=..>|packetraw <hex>]");
 
                     }
 
@@ -10123,11 +10403,113 @@ namespace HaCreator.MapSimulator
             return stream.ToArray();
         }
 
+        private static byte[] BuildScriptMessageTextPacket(int npcId, string prompt, string defaultText, short minLength, short maxLength)
+        {
+            using var stream = new MemoryStream();
+            using var writer = new BinaryWriter(stream, Encoding.Default, leaveOpen: true);
+            writer.Write((byte)4);
+            writer.Write(npcId);
+            writer.Write((byte)3);
+            writer.Write((byte)0);
+            WritePacketOwnedMapleString(writer, prompt);
+            WritePacketOwnedMapleString(writer, defaultText);
+            writer.Write(minLength);
+            writer.Write(maxLength);
+            return stream.ToArray();
+        }
+
+        private static byte[] BuildScriptMessageNumberPacket(int npcId, string prompt, int defaultValue, int minValue, int maxValue)
+        {
+            using var stream = new MemoryStream();
+            using var writer = new BinaryWriter(stream, Encoding.Default, leaveOpen: true);
+            writer.Write((byte)4);
+            writer.Write(npcId);
+            writer.Write((byte)4);
+            writer.Write((byte)0);
+            WritePacketOwnedMapleString(writer, prompt);
+            writer.Write(defaultValue);
+            writer.Write(minValue);
+            writer.Write(maxValue);
+            return stream.ToArray();
+        }
+
+        private static byte[] BuildScriptMessageBoxTextPacket(int npcId, string prompt, string defaultText, short columns, short lines)
+        {
+            using var stream = new MemoryStream();
+            using var writer = new BinaryWriter(stream, Encoding.Default, leaveOpen: true);
+            writer.Write((byte)4);
+            writer.Write(npcId);
+            writer.Write((byte)14);
+            writer.Write((byte)0);
+            WritePacketOwnedMapleString(writer, prompt);
+            WritePacketOwnedMapleString(writer, defaultText);
+            writer.Write(columns);
+            writer.Write(lines);
+            return stream.ToArray();
+        }
+
         private static void WritePacketOwnedMapleString(BinaryWriter writer, string text)
         {
             byte[] bytes = Encoding.Default.GetBytes(text ?? string.Empty);
             writer.Write((ushort)bytes.Length);
             writer.Write(bytes);
+        }
+
+        private string DescribePetAutoConsumeHpSettings()
+        {
+            IReadOnlyList<PetRuntime> activePets = _playerManager?.Pets?.ActivePets;
+            if (activePets == null || activePets.Count == 0)
+            {
+                return "No active pets are available";
+            }
+
+            return string.Join(
+                Environment.NewLine,
+                activePets.Select((pet, index) => DescribePetAutoConsumeHpSetting(index, pet)));
+        }
+
+        private static string DescribePetAutoConsumeHpSetting(int petSlotIndex, PetRuntime pet)
+        {
+            if (pet == null)
+            {
+                return $"Pet {petSlotIndex + 1}: unavailable";
+            }
+
+            string petName = string.IsNullOrWhiteSpace(pet.Name) ? "Unknown" : pet.Name;
+            string enabled = pet.AutoConsumeHpEnabled ? "enabled" : "disabled";
+            if (pet.AutoConsumeHpItemId <= 0 || pet.AutoConsumeHpInventoryType == InventoryType.NONE)
+            {
+                return $"Pet {petSlotIndex + 1} ({petName}): {enabled}, no configured potion, fallback order=hotkeys -> USE/CASH inventory";
+            }
+
+            string itemName = InventoryItemMetadataResolver.TryResolveItemName(pet.AutoConsumeHpItemId, out string resolvedItemName)
+                && !string.IsNullOrWhiteSpace(resolvedItemName)
+                ? resolvedItemName.Trim()
+                : $"Item {pet.AutoConsumeHpItemId}";
+            return $"Pet {petSlotIndex + 1} ({petName}): {enabled}, configured potion={itemName} [{pet.AutoConsumeHpInventoryType}]";
+        }
+
+        private static bool TryParsePetAutoConsumeInventoryType(string value, out InventoryType inventoryType)
+        {
+            inventoryType = InventoryType.NONE;
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                return false;
+            }
+
+            switch (value.Trim().ToLowerInvariant())
+            {
+                case "use":
+                    inventoryType = InventoryType.USE;
+                    return true;
+
+                case "cash":
+                    inventoryType = InventoryType.CASH;
+                    return true;
+
+                default:
+                    return false;
+            }
         }
 
         private static bool TryParseOptionalPositiveInt(string[] args, int index, out int value)

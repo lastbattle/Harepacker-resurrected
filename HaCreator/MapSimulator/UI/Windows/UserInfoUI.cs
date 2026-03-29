@@ -105,6 +105,36 @@ namespace HaCreator.MapSimulator.UI
             public int? PreviousJobRank { get; }
         }
 
+        public sealed class UserInfoInspectionTarget
+        {
+            public CharacterBuild Build { get; init; }
+            public int CharacterId { get; init; }
+            public string Name { get; init; } = string.Empty;
+            public string LocationSummary { get; init; } = string.Empty;
+            public int Channel { get; init; } = 1;
+            public string CollectionStatusOverride { get; init; }
+        }
+
+        public readonly struct UserInfoActionContext
+        {
+            public UserInfoActionContext(bool isRemoteTarget, int characterId, string characterName, CharacterBuild build, string locationSummary, int channel)
+            {
+                IsRemoteTarget = isRemoteTarget;
+                CharacterId = characterId;
+                CharacterName = characterName ?? string.Empty;
+                Build = build;
+                LocationSummary = locationSummary ?? string.Empty;
+                Channel = channel;
+            }
+
+            public bool IsRemoteTarget { get; }
+            public int CharacterId { get; }
+            public string CharacterName { get; }
+            public CharacterBuild Build { get; }
+            public string LocationSummary { get; }
+            public int Channel { get; }
+        }
+
         private enum AuxiliaryPopupKind
         {
             None,
@@ -132,8 +162,14 @@ namespace HaCreator.MapSimulator.UI
         private SpriteFont _font;
         private CharacterBuild _characterBuild;
         private PetController _petController;
+        private UserInfoInspectionTarget _inspectionTarget;
         private UserInfoPage _currentPage = UserInfoPage.Character;
         private string _statusMessage = "Character actions are available from this profile window.";
+        private UIObject _partyButton;
+        private UIObject _tradeButton;
+        private UIObject _itemButton;
+        private UIObject _wishButton;
+        private UIObject _familyButton;
         private UIObject _petExceptionButton;
         private UIObject _collectSortButton;
         private UIObject _collectClaimButton;
@@ -203,9 +239,9 @@ namespace HaCreator.MapSimulator.UI
 
         public override string WindowName => MapSimulatorWindowNames.CharacterInfo;
         public Action MiniRoomRequested { get; set; }
-        public Action PartyRequested { get; set; }
-        public Action TradingRoomRequested { get; set; }
-        public Action FamilyRequested { get; set; }
+        public Func<UserInfoActionContext, string> PartyRequested { get; set; }
+        public Func<UserInfoActionContext, string> TradingRoomRequested { get; set; }
+        public Func<UserInfoActionContext, string> FamilyRequested { get; set; }
         public Action PersonalShopRequested { get; set; }
         public Action EntrustedShopRequested { get; set; }
         public Action BookCollectionRequested { get; set; }
@@ -271,11 +307,17 @@ namespace HaCreator.MapSimulator.UI
 
         public void InitializePrimaryButtons(UIObject partyButton, UIObject tradeButton, UIObject itemButton, UIObject wishButton, UIObject familyButton)
         {
-            BindActionButton(partyButton, "Party list opened from the profile window.", () => PartyRequested?.Invoke(), true);
-            BindActionButton(tradeButton, "Trading-room shell opened.", () => TradingRoomRequested?.Invoke(), true);
+            _partyButton = partyButton;
+            _tradeButton = tradeButton;
+            _itemButton = itemButton;
+            _wishButton = wishButton;
+            _familyButton = familyButton;
+
+            BindActionButton(partyButton, "Party list opened from the profile window.", RequestPartyAction, true);
+            BindActionButton(tradeButton, "Trading-room shell opened.", RequestTradeAction, true);
             BindActionButton(itemButton, "Item list opened.", ToggleItemPopup, true);
             BindActionButton(wishButton, "Wish list opened.", ToggleWishPopup, true);
-            BindActionButton(familyButton, "Family chart opened from the profile window.", () => FamilyRequested?.Invoke(), true);
+            BindActionButton(familyButton, "Family chart opened from the profile window.", RequestFamilyAction, true);
         }
 
         public void InitializePageButtons(UIObject rideButton, UIObject petButton, UIObject collectButton, UIObject personalityButton)
@@ -497,6 +539,30 @@ namespace HaCreator.MapSimulator.UI
             _petController = petController;
         }
 
+        public void SetInspectionTarget(UserInfoInspectionTarget inspectionTarget)
+        {
+            _inspectionTarget = inspectionTarget;
+            _statusMessage = inspectionTarget?.Build == null
+                ? "Character actions are available from this profile window."
+                : $"Inspecting {inspectionTarget.Name}. Remote party, trade, and family requests now route through the simulator seams.";
+            _exceptionPopupOpen = false;
+            _activePopup = AuxiliaryPopupKind.None;
+            if (!IsPageAvailable(_currentPage))
+            {
+                _currentPage = UserInfoPage.Character;
+                ApplyCurrentPageFrame();
+            }
+
+            UpdateButtonStates();
+        }
+
+        public void ClearInspectionTarget()
+        {
+            _inspectionTarget = null;
+            _statusMessage = "Character actions are available from this profile window.";
+            UpdateButtonStates();
+        }
+
         public override void Update(GameTime gameTime)
         {
             ClampSelectedPetTabIndex();
@@ -652,6 +718,12 @@ namespace HaCreator.MapSimulator.UI
 
         private void DrawCharacterPage(SpriteBatch sprite)
         {
+            string inspectionBanner = BuildInspectionBanner();
+            if (!string.IsNullOrWhiteSpace(inspectionBanner))
+            {
+                DrawPlainText(sprite, FitText(inspectionBanner, 150), new Vector2(Position.X + 18, Position.Y + 96), WarningColor, 0.48f);
+            }
+
             string name = _characterBuild?.Name;
             string job = _characterBuild?.JobName;
             string level = _characterBuild != null ? _characterBuild.Level.ToString() : "-";
@@ -1211,6 +1283,7 @@ namespace HaCreator.MapSimulator.UI
             }
 
             bool characterPage = _currentPage == UserInfoPage.Character;
+            bool remoteInspection = IsRemoteInspectionActive();
             foreach (UIObject button in _primaryButtons)
             {
                 if (button == null)
@@ -1220,6 +1293,36 @@ namespace HaCreator.MapSimulator.UI
 
                 button.ButtonVisible = characterPage;
                 button.SetEnabled(characterPage && !_exceptionPopupOpen);
+            }
+
+            if (_itemButton != null)
+            {
+                _itemButton.ButtonVisible = characterPage && !remoteInspection;
+                _itemButton.SetEnabled(characterPage && !remoteInspection && !_exceptionPopupOpen);
+            }
+
+            if (_wishButton != null)
+            {
+                _wishButton.ButtonVisible = characterPage && !remoteInspection;
+                _wishButton.SetEnabled(characterPage && !remoteInspection && !_exceptionPopupOpen);
+            }
+
+            if (_partyButton != null)
+            {
+                _partyButton.ButtonVisible = characterPage;
+                _partyButton.SetEnabled(characterPage && !_exceptionPopupOpen);
+            }
+
+            if (_tradeButton != null)
+            {
+                _tradeButton.ButtonVisible = characterPage;
+                _tradeButton.SetEnabled(characterPage && !_exceptionPopupOpen);
+            }
+
+            if (_familyButton != null)
+            {
+                _familyButton.ButtonVisible = characterPage;
+                _familyButton.SetEnabled(characterPage && !_exceptionPopupOpen);
             }
 
             if (_petExceptionButton != null)
@@ -1370,7 +1473,7 @@ namespace HaCreator.MapSimulator.UI
 
         private bool HasActivePets()
         {
-            return _petController?.ActivePets?.Count > 0;
+            return !IsRemoteInspectionActive() && _petController?.ActivePets?.Count > 0;
         }
 
         private void ClampSelectedPetTabIndex()
@@ -1417,6 +1520,36 @@ namespace HaCreator.MapSimulator.UI
         private void ToggleWishPopup()
         {
             ToggleAuxiliaryPopup(AuxiliaryPopupKind.Wish);
+        }
+
+        private void RequestPartyAction()
+        {
+            UserInfoActionContext context = BuildCurrentActionContext();
+            string message = PartyRequested?.Invoke(context);
+            if (!string.IsNullOrWhiteSpace(message))
+            {
+                _statusMessage = message;
+            }
+        }
+
+        private void RequestTradeAction()
+        {
+            UserInfoActionContext context = BuildCurrentActionContext();
+            string message = TradingRoomRequested?.Invoke(context);
+            if (!string.IsNullOrWhiteSpace(message))
+            {
+                _statusMessage = message;
+            }
+        }
+
+        private void RequestFamilyAction()
+        {
+            UserInfoActionContext context = BuildCurrentActionContext();
+            string message = FamilyRequested?.Invoke(context);
+            if (!string.IsNullOrWhiteSpace(message))
+            {
+                _statusMessage = message;
+            }
         }
 
         private void ToggleAuxiliaryPopup(AuxiliaryPopupKind popupKind)
@@ -1631,6 +1764,11 @@ namespace HaCreator.MapSimulator.UI
 
         private string BuildCollectStatusText(ItemMakerProgressionSnapshot progression, MonsterBookSnapshot snapshot)
         {
+            if (IsRemoteInspectionActive() && !string.IsNullOrWhiteSpace(_inspectionTarget?.CollectionStatusOverride))
+            {
+                return _inspectionTarget.CollectionStatusOverride;
+            }
+
             string bookText = snapshot.TotalCardTypes > 0
                 ? $"Monster Book {snapshot.OwnedCardTypes}/{snapshot.TotalCardTypes}"
                 : "Monster Book local only";
@@ -1644,7 +1782,9 @@ namespace HaCreator.MapSimulator.UI
         {
             string medalName = GetEquippedItemName(EquipSlot.Medal);
             return string.Equals(medalName, "-", StringComparison.Ordinal)
-                ? "Medal: none equipped locally"
+                ? IsRemoteInspectionActive()
+                    ? "Medal: remote medal payload unavailable"
+                    : "Medal: none equipped locally"
                 : $"Medal: {medalName}";
         }
 
@@ -1659,7 +1799,9 @@ namespace HaCreator.MapSimulator.UI
             int charm = Math.Max(0, _characterBuild?.TraitCharm ?? 0);
             return _characterBuild?.IsPocketSlotAvailable == true
                 ? $"Pocket unlocked at Charm {charm}"
-                : $"Pocket locked ({charm}/30 Charm)";
+                : IsRemoteInspectionActive()
+                    ? $"Pocket state ({charm}/30 Charm) from inspected build"
+                    : $"Pocket locked ({charm}/30 Charm)";
         }
 
         private string ResolveNextPetExceptionEntry()
@@ -1931,6 +2073,11 @@ namespace HaCreator.MapSimulator.UI
 
         private ItemMakerProgressionSnapshot GetCollectionSnapshot()
         {
+            if (IsRemoteInspectionActive())
+            {
+                return ItemMakerProgressionSnapshot.Default;
+            }
+
             return _collectionSnapshotProvider?.Invoke() ?? ItemMakerProgressionSnapshot.Default;
         }
 
@@ -1991,6 +2138,36 @@ namespace HaCreator.MapSimulator.UI
         {
             return _personalityTooltipVisual?.CharmCollectionBody != null &&
                    (_characterBuild?.IsPocketSlotAvailable ?? false);
+        }
+
+        private bool IsRemoteInspectionActive()
+        {
+            return _inspectionTarget?.Build != null;
+        }
+
+        private UserInfoActionContext BuildCurrentActionContext()
+        {
+            CharacterBuild build = _inspectionTarget?.Build ?? _characterBuild;
+            return new UserInfoActionContext(
+                IsRemoteInspectionActive(),
+                _inspectionTarget?.CharacterId ?? build?.Id ?? 0,
+                _inspectionTarget?.Name ?? build?.Name ?? string.Empty,
+                build,
+                _inspectionTarget?.LocationSummary ?? string.Empty,
+                Math.Max(1, _inspectionTarget?.Channel ?? 1));
+        }
+
+        private string BuildInspectionBanner()
+        {
+            if (!IsRemoteInspectionActive())
+            {
+                return null;
+            }
+
+            string location = string.IsNullOrWhiteSpace(_inspectionTarget.LocationSummary)
+                ? "Location unknown"
+                : _inspectionTarget.LocationSummary;
+            return $"{_inspectionTarget.Name}  CH {_inspectionTarget.Channel}  {location}";
         }
 
         private static string FormatRankDelta(int currentRank, int? previousRank)

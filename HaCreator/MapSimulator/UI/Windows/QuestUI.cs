@@ -22,6 +22,7 @@ namespace HaCreator.MapSimulator.UI
         private const int MIN_VISIBLE_QUESTS = 4;
         private const int FOOTER_HEIGHT = 42;
         private const int CATEGORY_ROW_HEIGHT = 18;
+        private const int CATEGORY_COLUMN_GAP = 4;
         private const int CATEGORY_PANEL_PADDING = 6;
         private const int TAB_AVAILABLE = 0;
         private const int TAB_IN_PROGRESS = 1;
@@ -849,23 +850,46 @@ namespace HaCreator.MapSimulator.UI
             }
 
             int visibleRows = GetVisibleCategoryRowCount(panelRect);
-            int maxOffset = Math.Max(0, areaFilters.Count - visibleRows);
+            int columnCount = GetCategoryColumnCount(panelRect);
+            int pageSize = Math.Max(1, visibleRows * columnCount);
+            int totalRows = (int)Math.Ceiling(areaFilters.Count / (float)columnCount);
+            int maxOffset = Math.Max(0, totalRows - visibleRows);
             _categoryScrollOffset = Math.Clamp(_categoryScrollOffset, 0, maxOffset);
             HashSet<int> hiddenAreaCodes = GetHiddenAreaCodes((QuestLogTabType)_currentTab);
 
-            for (int i = 0; i < visibleRows && _categoryScrollOffset + i < areaFilters.Count; i++)
+            for (int i = 0; i < pageSize; i++)
             {
-                QuestAreaFilterEntry filter = areaFilters[_categoryScrollOffset + i];
-                Rectangle rowRect = new(
-                    panelRect.X + CATEGORY_PANEL_PADDING,
-                    panelRect.Y + CATEGORY_PANEL_PADDING + (i * CATEGORY_ROW_HEIGHT),
-                    panelRect.Width - (CATEGORY_PANEL_PADDING * 2),
-                    CATEGORY_ROW_HEIGHT - 2);
+                int entryIndex = (_categoryScrollOffset * columnCount) + i;
+                if (entryIndex >= areaFilters.Count)
+                {
+                    break;
+                }
+
+                int rowIndex = i / columnCount;
+                int columnIndex = i % columnCount;
+                QuestAreaFilterEntry filter = areaFilters[entryIndex];
+                Rectangle rowRect = GetCategoryCellRectangle(panelRect, rowIndex, columnIndex, columnCount);
                 bool enabled = !hiddenAreaCodes.Contains(filter.AreaCode);
-                sprite.Draw(_pixel, rowRect, enabled ? new Color(44, 73, 110, 168) : new Color(53, 57, 63, 168));
-                DrawText(sprite, enabled ? "[x]" : "[ ]", new Vector2(rowRect.X + 4, rowRect.Y + 2), enabled ? new Color(151, 236, 136) : new Color(200, 204, 214), SMALL_TEXT_SCALE);
-                DrawText(sprite, Truncate(filter.AreaName, 24), new Vector2(rowRect.X + 28, rowRect.Y + 2), Color.White, SMALL_TEXT_SCALE);
-                DrawText(sprite, filter.Count.ToString(), new Vector2(rowRect.Right - 18, rowRect.Y + 2), new Color(210, 214, 224), 0.42f);
+                Color fill = enabled ? new Color(44, 73, 110, 176) : new Color(53, 57, 63, 176);
+                Color border = enabled ? new Color(112, 162, 215, 220) : new Color(96, 104, 118, 220);
+                sprite.Draw(_pixel, rowRect, fill);
+                sprite.Draw(_pixel, new Rectangle(rowRect.X, rowRect.Y, rowRect.Width, 1), border);
+                sprite.Draw(_pixel, new Rectangle(rowRect.X, rowRect.Bottom - 1, rowRect.Width, 1), border);
+                sprite.Draw(_pixel, new Rectangle(rowRect.X, rowRect.Y, 1, rowRect.Height), border);
+                sprite.Draw(_pixel, new Rectangle(rowRect.Right - 1, rowRect.Y, 1, rowRect.Height), border);
+
+                string stateMarker = enabled ? "ON" : "OFF";
+                DrawText(sprite, stateMarker, new Vector2(rowRect.X + 4, rowRect.Y + 2), enabled ? new Color(151, 236, 136) : new Color(200, 204, 214), 0.42f);
+                DrawText(sprite, Truncate(filter.AreaName, columnCount > 1 ? 14 : 24), new Vector2(rowRect.X + 26, rowRect.Y + 2), Color.White, SMALL_TEXT_SCALE, rowRect.Width - 48);
+
+                string countText = filter.Count.ToString();
+                Vector2 countMeasure = _font.MeasureString(countText) * 0.42f;
+                DrawText(
+                    sprite,
+                    countText,
+                    new Vector2(rowRect.Right - 4 - countMeasure.X, rowRect.Y + 2),
+                    new Color(210, 214, 224),
+                    0.42f);
             }
         }
 
@@ -894,9 +918,25 @@ namespace HaCreator.MapSimulator.UI
                 return true;
             }
 
-            int rowIndex = (mouseY - panelRect.Y - CATEGORY_PANEL_PADDING) / CATEGORY_ROW_HEIGHT;
-            int entryIndex = _categoryScrollOffset + rowIndex;
-            if (rowIndex < 0 || entryIndex < 0 || entryIndex >= areaFilters.Count)
+            int columnCount = GetCategoryColumnCount(panelRect);
+            int visibleRows = GetVisibleCategoryRowCount(panelRect);
+            int pageSize = Math.Max(1, visibleRows * columnCount);
+            int entryIndex = -1;
+            for (int i = 0; i < pageSize; i++)
+            {
+                int rowIndex = i / columnCount;
+                int columnIndex = i % columnCount;
+                Rectangle rowRect = GetCategoryCellRectangle(panelRect, rowIndex, columnIndex, columnCount);
+                if (!rowRect.Contains(mouseX, mouseY))
+                {
+                    continue;
+                }
+
+                entryIndex = (_categoryScrollOffset * columnCount) + i;
+                break;
+            }
+
+            if (entryIndex < 0 || entryIndex >= areaFilters.Count)
             {
                 return true;
             }
@@ -927,7 +967,9 @@ namespace HaCreator.MapSimulator.UI
             }
 
             int visibleRows = GetVisibleCategoryRowCount(panelRect);
-            int maxOffset = Math.Max(0, GetVisibleAreaFilters().Count - visibleRows);
+            int columnCount = GetCategoryColumnCount(panelRect);
+            int totalRows = (int)Math.Ceiling(GetVisibleAreaFilters().Count / (float)columnCount);
+            int maxOffset = Math.Max(0, totalRows - visibleRows);
             _categoryScrollOffset = wheelDelta > 0
                 ? Math.Max(0, _categoryScrollOffset - 1)
                 : Math.Min(maxOffset, _categoryScrollOffset + 1);
@@ -962,7 +1004,8 @@ namespace HaCreator.MapSimulator.UI
                 return new Rectangle(x, y, width, _categoryLegendTexture.Height);
             }
 
-            int rowCount = Math.Max(1, Math.Min(4, GetVisibleAreaFilters().Count));
+            int columnCount = GetCategoryColumnCount(width);
+            int rowCount = Math.Max(1, Math.Min(4, (int)Math.Ceiling(GetVisibleAreaFilters().Count / (float)columnCount)));
             int height = (rowCount * CATEGORY_ROW_HEIGHT) + (CATEGORY_PANEL_PADDING * 2);
             return new Rectangle(x, y, width, height);
         }
@@ -977,6 +1020,18 @@ namespace HaCreator.MapSimulator.UI
 
             if (_categoryLegendSheetTextures.Length == 0)
             {
+                int fallbackRowHeight = 18;
+                int fallbackStartY = innerRect.Y + Math.Max(0, (innerRect.Height - (fallbackRowHeight * 3)) / 2);
+                for (int i = 0; i < 3; i++)
+                {
+                    Rectangle rowRect = new(
+                        innerRect.X,
+                        fallbackStartY + (i * fallbackRowHeight),
+                        innerRect.Width,
+                        fallbackRowHeight);
+                    DrawCategoryLegendRow(sprite, i, rowRect);
+                }
+
                 return;
             }
 
@@ -999,9 +1054,28 @@ namespace HaCreator.MapSimulator.UI
                     sheetTexture.Width,
                     sheetTexture.Height);
                 sprite.Draw(sheetTexture, rowRect, Color.White);
-                DrawCategoryLegendRow(sprite, i, rowRect);
                 startY += sheetTexture.Height + gap;
             }
+        }
+
+        private int GetCategoryColumnCount(Rectangle panelRect)
+        {
+            return GetCategoryColumnCount(panelRect.Width);
+        }
+
+        private int GetCategoryColumnCount(int panelWidth)
+        {
+            int contentWidth = Math.Max(1, panelWidth - (CATEGORY_PANEL_PADDING * 2));
+            return contentWidth >= 180 ? 2 : 1;
+        }
+
+        private Rectangle GetCategoryCellRectangle(Rectangle panelRect, int rowIndex, int columnIndex, int columnCount)
+        {
+            int availableWidth = panelRect.Width - (CATEGORY_PANEL_PADDING * 2) - ((columnCount - 1) * CATEGORY_COLUMN_GAP);
+            int cellWidth = Math.Max(56, availableWidth / columnCount);
+            int x = panelRect.X + CATEGORY_PANEL_PADDING + (columnIndex * (cellWidth + CATEGORY_COLUMN_GAP));
+            int y = panelRect.Y + CATEGORY_PANEL_PADDING + (rowIndex * CATEGORY_ROW_HEIGHT);
+            return new Rectangle(x, y, cellWidth, CATEGORY_ROW_HEIGHT - 2);
         }
 
         private Rectangle ResolveCategoryLegendInnerRectangle(Rectangle panelRect)

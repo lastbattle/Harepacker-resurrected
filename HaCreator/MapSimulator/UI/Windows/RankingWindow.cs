@@ -28,7 +28,6 @@ namespace HaCreator.MapSimulator.UI
         private readonly string _windowName;
         private SpriteFont _font;
         private Func<RankingWindowSnapshot> _snapshotProvider;
-        private int _selectedIndex = -1;
 
         public RankingWindow(IDXObject frame, string windowName, Texture2D highlightTexture)
             : base(frame)
@@ -59,30 +58,7 @@ namespace HaCreator.MapSimulator.UI
 
         public override bool CheckMouseEvent(int shiftCenteredX, int shiftCenteredY, MouseState mouseState, MouseCursorItem mouseCursor, int renderWidth, int renderHeight)
         {
-            if (base.CheckMouseEvent(shiftCenteredX, shiftCenteredY, mouseState, mouseCursor, renderWidth, renderHeight))
-            {
-                return true;
-            }
-
-            if (!IsVisible || mouseState.LeftButton != ButtonState.Pressed || _snapshotProvider == null)
-            {
-                return false;
-            }
-
-            RankingWindowSnapshot snapshot = _snapshotProvider() ?? new RankingWindowSnapshot();
-            for (int i = 0; i < snapshot.Entries.Count; i++)
-            {
-                if (!GetEntryBounds(i).Contains(mouseState.X, mouseState.Y))
-                {
-                    continue;
-                }
-
-                _selectedIndex = i;
-                mouseCursor?.SetMouseCursorMovedToClickableItem();
-                return true;
-            }
-
-            return false;
+            return base.CheckMouseEvent(shiftCenteredX, shiftCenteredY, mouseState, mouseCursor, renderWidth, renderHeight);
         }
 
         protected override void DrawContents(
@@ -130,7 +106,7 @@ namespace HaCreator.MapSimulator.UI
                 for (int i = 0; i < maxVisibleEntries; i++)
                 {
                     Rectangle bounds = GetEntryBounds(i);
-                    Color fillColor = i == _selectedIndex
+                    Color fillColor = i == 0
                         ? new Color(94, 123, 188, 210)
                         : new Color(34, 42, 60, 210);
                     sprite.Draw(_highlightTexture, bounds, fillColor);

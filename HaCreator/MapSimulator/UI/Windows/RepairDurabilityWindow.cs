@@ -18,8 +18,11 @@ namespace HaCreator.MapSimulator.UI
         internal sealed class RepairEntry
         {
             public CharacterPart Part { get; init; }
+            public InventorySlotData InventorySlot { get; init; }
             public EquipSlot Slot { get; init; }
             public bool IsHiddenSlot { get; init; }
+            public bool IsInventorySlot { get; init; }
+            public int EncodedSlotPosition { get; init; }
             public string SlotLabel { get; init; } = string.Empty;
             public string ItemName { get; init; } = string.Empty;
             public int CurrentDurability { get; init; }

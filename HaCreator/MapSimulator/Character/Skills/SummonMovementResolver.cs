@@ -185,6 +185,16 @@ namespace HaCreator.MapSimulator.Character.Skills
 
         public static bool CanAttackWhileOwnerIsOnLadderOrRope(int skillId)
         {
+            return IgnoresOwnerAttackStateRestrictions(skillId);
+        }
+
+        public static bool CanAttackWhileOwnerIsHiddenOrMounted(int skillId)
+        {
+            return IgnoresOwnerAttackStateRestrictions(skillId);
+        }
+
+        private static bool IgnoresOwnerAttackStateRestrictions(int skillId)
+        {
             return StationaryOctopusSkills.Contains(skillId)
                 || skillId == 33111003
                 || SelfDestructSummonSkills.Contains(skillId);

@@ -11,6 +11,7 @@ namespace HaCreator.MapSimulator.Interaction
         private const int FamilyEntitlementCount = 5;
         private const int LocalPlayerId = 120;
         private const int DefaultFamilyHeadId = 100;
+        private const int RemotePreviewMemberId = 900000;
         private const int DirectJuniorSlotLeft = 5;
         private const int DirectJuniorSlotRight = 6;
         private const int GrandchildSlotStart = 7;
@@ -40,6 +41,7 @@ namespace HaCreator.MapSimulator.Interaction
         private FamilyEntitlementType _entitlementType = FamilyEntitlementType.DropAndExpBuff;
         private int _entitlementUsesLeft = 3;
         private string _locationSummary = "Maple Island";
+        private string _remotePreviewRequestSummary;
         private FamilyPrivilegeState _activePrivilege;
 
         private int FamilyHeadId => _familyHeadId;
@@ -72,14 +74,46 @@ namespace HaCreator.MapSimulator.Interaction
             }
         }
 
+        internal string PreviewRemoteFamilyRequest(string targetName, CharacterBuild build, string locationSummary, int channel)
+        {
+            string resolvedName = string.IsNullOrWhiteSpace(targetName) ? "Remote Character" : targetName.Trim();
+            FamilyMemberState previewMember = new(
+                RemotePreviewMemberId,
+                resolvedName,
+                string.IsNullOrWhiteSpace(build?.JobName) ? "Adventurer" : build.JobName.Trim(),
+                Math.Max(1, build?.Level ?? 1),
+                $"{(string.IsNullOrWhiteSpace(locationSummary) ? "Current map" : locationSummary.Trim())}  CH {Math.Max(1, channel)}",
+                null,
+                Math.Max(60, (build?.Level ?? 1) * 12),
+                Math.Max(5, (build?.Level ?? 1) / 2),
+                true,
+                Vector2.Zero);
+            _members[RemotePreviewMemberId] = previewMember;
+            _selectedMemberId = RemotePreviewMemberId;
+            _remotePreviewRequestSummary = $"Viewing a simulated family-chart request target for {resolvedName}. Server-owned roster sync still remains outside this seam.";
+            return _remotePreviewRequestSummary;
+        }
+
+        internal void ClearRemotePreviewRequest()
+        {
+            _members.Remove(RemotePreviewMemberId);
+            _remotePreviewRequestSummary = null;
+            if (_selectedMemberId == RemotePreviewMemberId)
+            {
+                _selectedMemberId = LocalPlayerId;
+            }
+        }
+
         internal FamilyChartSnapshot BuildChartSnapshot()
         {
             FamilyMemberState selectedMember = GetSelectedMember();
+            FamilyMemberState headMember = GetMember(_familyHeadId) ?? selectedMember;
             FamilyPrivilegeState activePrivilege = GetActivePrivilege(Environment.TickCount);
             int entitlementPage = Math.Clamp((int)_entitlementType, 0, FamilyEntitlementCount - 1) + 1;
 
             return new FamilyChartSnapshot
             {
+                TitleText = BuildCompactTitle(headMember),
                 SelectedMemberId = selectedMember?.Id ?? LocalPlayerId,
                 SelectedMemberName = selectedMember?.Name ?? "Player",
                 SelectedRank = GetRankLabel(selectedMember),
@@ -694,7 +728,7 @@ namespace HaCreator.MapSimulator.Interaction
 
             List<string> lines = new()
             {
-                $"{selectedMember.Name} is the {GetRankLabel(selectedMember).ToLowerInvariant()} branch focus.",
+                $"Focus: {selectedMember.Name} ({GetRankLabel(selectedMember)}).",
                 $"{selectedMember.Level} {selectedMember.JobName} at {selectedMember.LocationSummary}.",
                 $"{GetStatisticValue(selectedMember)} direct juniors, {CountDescendants(selectedMember.Id)} total descendants."
             };
@@ -703,6 +737,11 @@ namespace HaCreator.MapSimulator.Interaction
             {
                 TimeSpan remaining = TimeSpan.FromMilliseconds(Math.Max(0, activePrivilege.ExpiresAtTick - Environment.TickCount));
                 lines.Add($"{GetEntitlementLabel(activePrivilege.Type)} active for {Math.Max(0, remaining.Minutes):00}:{Math.Max(0, remaining.Seconds):00}.");
+            }
+
+            if (selectedMember.Id == RemotePreviewMemberId && !string.IsNullOrWhiteSpace(_remotePreviewRequestSummary))
+            {
+                lines.Add(_remotePreviewRequestSummary);
             }
 
             return lines;
@@ -725,7 +764,7 @@ namespace HaCreator.MapSimulator.Interaction
 
         private bool CanAddJunior(FamilyMemberState selectedMember)
         {
-            return selectedMember != null && selectedMember.Children.Count < 2;
+            return selectedMember != null && selectedMember.Id != RemotePreviewMemberId && selectedMember.Children.Count < 2;
         }
 
         private bool CanRemoveSelected(FamilyMemberState selectedMember)
@@ -744,6 +783,7 @@ namespace HaCreator.MapSimulator.Interaction
         {
             return _entitlementUsesLeft > 0
                 && selectedMember != null
+                && selectedMember.Id != RemotePreviewMemberId
                 && (selectedMember.Id == LocalPlayerId || selectedMember.IsOnline);
         }
 
@@ -847,6 +887,13 @@ namespace HaCreator.MapSimulator.Interaction
             return selectedMember == null
                 ? _textResources.NoSelectionTitle
                 : _textResources.FormatTreeTitle(selectedMember.Name);
+        }
+
+        private string BuildCompactTitle(FamilyMemberState headMember)
+        {
+            return headMember == null
+                ? _textResources.NoSelectionTitle
+                : _textResources.FormatCompactTitle(headMember.Name);
         }
 
         private string BuildJuniorCountText(FamilyMemberState selectedMember)
@@ -1015,6 +1062,7 @@ namespace HaCreator.MapSimulator.Interaction
 
     internal sealed class FamilyChartSnapshot
     {
+        public string TitleText { get; init; } = string.Empty;
         public int SelectedMemberId { get; init; }
         public string SelectedMemberName { get; init; } = "Player";
         public string SelectedRank { get; init; } = "Junior";
@@ -1099,6 +1147,13 @@ namespace HaCreator.MapSimulator.Interaction
             return string.IsNullOrWhiteSpace(memberName)
                 ? NoSelectionTitle
                 : $"{memberName.Trim()}'s Family Tree";
+        }
+
+        public string FormatCompactTitle(string memberName)
+        {
+            return string.IsNullOrWhiteSpace(memberName)
+                ? NoSelectionTitle
+                : $"{memberName.Trim()} Family";
         }
 
         public string FormatJuniorCount(int juniorCount, int grandchildCount)

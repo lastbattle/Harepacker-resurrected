@@ -200,6 +200,8 @@ namespace HaCreator.MapSimulator.Character.Skills
         // Mastery
         public int Mastery { get; set; }             // Mastery %
         public int CriticalRate { get; set; }        // Critical rate boost
+        public int CriticalDamageMin { get; set; }   // Minimum critical damage boost
+        public int CriticalDamageMax { get; set; }   // Maximum critical damage boost
         public int EnhancedPAD { get; set; }         // Mechanic-only weapon attack boost
         public int EnhancedMAD { get; set; }         // Alias-backed magic attack boost
         public int EnhancedPDD { get; set; }         // Mechanic-only defense boost
@@ -407,6 +409,8 @@ namespace HaCreator.MapSimulator.Character.Skills
         public int MorphId { get; set; }
         public bool UsesTamingMobMount { get; set; }
         public bool ReflectsIncomingDamage { get; set; }
+        public bool RedirectsDamageToMp { get; set; }
+        public bool HasInvincibleMetadata { get; set; }
 
         // Level data
         public Dictionary<int, SkillLevelData> Levels { get; set; } = new();
@@ -483,6 +487,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         public bool RequireHighestJump { get; set; }
         public bool IsPassiveSkillData { get; set; }
         public int AffectedSkillId { get; set; }
+        public int[] AffectedSkillIds { get; set; } = Array.Empty<int>();
         public string AffectedSkillEffect { get; set; }
         public string DotType { get; set; }
         public bool IsMagicDamageSkill { get; set; }
@@ -524,7 +529,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             || (DummySkillParents?.Length ?? 0) > 0;
 
         public bool UsesAffectedSkillPassiveData =>
-            AffectedSkillId > 0
+            GetAffectedSkillIds().Length > 0
             && !string.IsNullOrWhiteSpace(AffectedSkillEffect);
 
         public bool UsesAffectedSkillBodyAttack =>
@@ -538,6 +543,24 @@ namespace HaCreator.MapSimulator.Character.Skills
             return skillId > 0
                    && DummySkillParents != null
                    && Array.IndexOf(DummySkillParents, skillId) >= 0;
+        }
+
+        public bool LinksAffectedSkill(int skillId)
+        {
+            return skillId > 0
+                   && Array.IndexOf(GetAffectedSkillIds(), skillId) >= 0;
+        }
+
+        public int[] GetAffectedSkillIds()
+        {
+            if (AffectedSkillIds?.Length > 0)
+            {
+                return AffectedSkillIds;
+            }
+
+            return AffectedSkillId > 0
+                ? new[] { AffectedSkillId }
+                : Array.Empty<int>();
         }
 
         public MeleeAfterImageCatalog GetAfterImageCatalogForCharacterLevel(string weaponTypeKey, int characterLevel)

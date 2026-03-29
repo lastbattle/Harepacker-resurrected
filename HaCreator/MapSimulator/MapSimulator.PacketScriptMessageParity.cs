@@ -45,5 +45,24 @@ namespace HaCreator.MapSimulator
 
             _npcInteractionOverlay.Open(request.State);
         }
+
+        private void HandleNpcOverlayInputSubmission(NpcInteractionInputSubmission submission)
+        {
+            if (submission?.PresentationStyle == NpcInteractionPresentationStyle.PacketScriptUtilDialog)
+            {
+                if (_packetScriptMessageRuntime.TrySubmitResponse(submission, out string message))
+                {
+                    ShowUtilityFeedbackMessage(message);
+                }
+                else if (!string.IsNullOrWhiteSpace(message))
+                {
+                    ShowUtilityFeedbackMessage(message);
+                }
+
+                return;
+            }
+
+            ShowUtilityFeedbackMessage($"Submitted {submission?.EntryTitle ?? "NPC"} input: {submission?.Value ?? string.Empty}");
+        }
     }
 }

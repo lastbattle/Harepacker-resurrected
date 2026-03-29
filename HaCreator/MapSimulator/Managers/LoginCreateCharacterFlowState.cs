@@ -180,7 +180,7 @@ namespace HaCreator.MapSimulator.Managers
             }
 
             SelectedFaceIndex = PickRandomIndex(catalog.FaceIds.Count);
-            SelectedHairIndex = PickRandomIndex(catalog.HairIds.Count);
+            SelectedHairIndex = PickRandomIndex(catalog.HairStyleIds.Count);
             SelectedSkinIndex = PickRandomIndex(catalog.Skins.Count);
             SelectedCoatIndex = PickRandomIndex(catalog.CoatIds.Count);
             SelectedPantsIndex = PickRandomIndex(catalog.PantsIds.Count);
@@ -203,7 +203,7 @@ namespace HaCreator.MapSimulator.Managers
                     SelectedFaceIndex = CycleIndex(SelectedFaceIndex, catalog.FaceIds.Count, delta);
                     break;
                 case LoginCreateCharacterAvatarPart.Hair:
-                    SelectedHairIndex = CycleIndex(SelectedHairIndex, catalog.HairIds.Count, delta);
+                    SelectedHairIndex = CycleIndex(SelectedHairIndex, catalog.HairStyleIds.Count, delta);
                     break;
                 case LoginCreateCharacterAvatarPart.Skin:
                     SelectedSkinIndex = CycleIndex(SelectedSkinIndex, catalog.Skins.Count, delta);
@@ -270,7 +270,7 @@ namespace HaCreator.MapSimulator.Managers
                 SelectedGender,
                 GetValue(catalog.Skins, SelectedSkinIndex, SkinColor.Light),
                 GetValue(catalog.FaceIds, SelectedFaceIndex, SelectedGender == CharacterGender.Male ? 20000 : 21000),
-                GetValue(catalog.HairIds, SelectedHairIndex, SelectedGender == CharacterGender.Male ? 30000 : 31000),
+                GetValue(catalog.HairStyleIds, SelectedHairIndex, SelectedGender == CharacterGender.Male ? 30000 : 31000),
                 GetValue(catalog.CoatIds, SelectedCoatIndex, 1042003),
                 GetValue(catalog.PantsIds, SelectedPantsIndex, 1062007),
                 GetValue(catalog.ShoesIds, SelectedShoesIndex, 1072005),

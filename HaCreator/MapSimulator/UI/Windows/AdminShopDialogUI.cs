@@ -133,6 +133,12 @@ namespace HaCreator.MapSimulator.UI
             public bool OnSale { get; init; }
         }
 
+        private sealed class AdminShopBrowseSurfaceState
+        {
+            public int ScrollOffset { get; set; }
+            public string SelectedEntryKey { get; set; } = string.Empty;
+        }
+
         private const int MaxVisibleRows = 5;
         private const int LeftPaneX = 17;
         private const int RightPaneX = 242;
@@ -168,6 +174,7 @@ namespace HaCreator.MapSimulator.UI
         private const float ModalTextMaxWidth = 176f;
         private const int ServiceTabTextY = 4;
         private const int PaneTabTextY = 4;
+        private const int DoubleClickThresholdMilliseconds = 500;
         // `TabShop` canvases do not encode per-tab placement; the client positions this strip via `CAdminShopDlg::OnCreate`.
         private const int CategoryTabStartX = 95;
         private const int CategoryTabStartY = 222;
@@ -222,6 +229,7 @@ namespace HaCreator.MapSimulator.UI
             [AdminShopServiceMode.CashShop] = new Dictionary<string, AdminShopEntrySessionState>(StringComparer.Ordinal),
             [AdminShopServiceMode.Mts] = new Dictionary<string, AdminShopEntrySessionState>(StringComparer.Ordinal)
         };
+        private readonly Dictionary<string, AdminShopBrowseSurfaceState> _browseSurfaceStates = new(StringComparer.Ordinal);
 
         private IInventoryRuntime _inventory;
         private IStorageRuntime _storageRuntime;
@@ -234,12 +242,15 @@ namespace HaCreator.MapSimulator.UI
         private string _modalMessage = string.Empty;
         private AdminShopEntry _pendingWishlistEntry;
         private AdminShopEntry _pendingRequestEntry;
+        private string _lastClickedEntryKey = string.Empty;
         private int _previousScrollWheelValue;
         private MouseState _previousMouseState;
         private KeyboardState _previousKeyboardState;
         private AdminShopPane? _draggingScrollPane;
         private int _scrollThumbDragOffsetY;
         private bool _wishlistModalVisible;
+        private AdminShopPane? _lastClickedPane;
+        private int _lastRowClickTick;
         private int _requestResolveTick;
 
         public AdminShopDialogUI(
@@ -407,6 +418,7 @@ namespace HaCreator.MapSimulator.UI
             ClampPaneState(paneState);
             _pendingWishlistEntry = null;
             _footerMessage = $"Focused packet-owned commodity SN {commoditySerialNumber} on {matchedEntry.Title}.";
+            PersistBrowseSurfaceState(AdminShopPane.Npc);
             UpdateRowButtons();
             UpdateActionButtonStates();
             return true;
@@ -497,6 +509,7 @@ namespace HaCreator.MapSimulator.UI
 
             paneState.ScrollOffset += wheelDelta > 0 ? -1 : 1;
             ClampPaneState(paneState);
+            PersistBrowseSurfaceState(hoveredPane.Value);
             UpdateRowButtons();
             _previousMouseState = mouseState;
             _previousKeyboardState = keyboardState;
@@ -992,12 +1005,28 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
+            bool wasSelected = _activePane == pane && paneState.SelectedIndex == actualIndex;
             _activePane = pane;
             paneState.SelectedIndex = actualIndex;
             _pendingWishlistEntry = null;
-            _footerMessage = BuildSelectionMessage(paneState.Entries[actualIndex], pane);
+            AdminShopEntry selectedEntry = paneState.Entries[actualIndex];
+            string selectedEntryKey = GetEntryKey(selectedEntry);
+            bool isDoubleClick = wasSelected
+                && _lastClickedPane == pane
+                && string.Equals(_lastClickedEntryKey, selectedEntryKey, StringComparison.Ordinal)
+                && unchecked(Environment.TickCount - _lastRowClickTick) <= DoubleClickThresholdMilliseconds;
+            _footerMessage = BuildSelectionMessage(selectedEntry, pane);
             ClampPaneState(paneState);
+            PersistBrowseSurfaceState(pane);
             UpdateActionButtonStates();
+            _lastClickedPane = pane;
+            _lastClickedEntryKey = selectedEntryKey;
+            _lastRowClickTick = Environment.TickCount;
+
+            if (isDoubleClick)
+            {
+                SubmitSelectedEntryRequest();
+            }
         }
 
         private void ResetMode(AdminShopServiceMode mode)
@@ -1045,14 +1074,19 @@ namespace HaCreator.MapSimulator.UI
                     }
                 }
 
-                paneState.ScrollOffset = 0;
-                paneState.SelectedIndex = selectedEntry != null ? paneState.Entries.IndexOf(selectedEntry) : -1;
+                TryRestoreBrowseSurfaceState(pane, paneState);
+                if (paneState.SelectedIndex < 0 && selectedEntry != null)
+                {
+                    paneState.SelectedIndex = paneState.Entries.IndexOf(selectedEntry);
+                }
+
                 if (paneState.SelectedIndex < 0 && paneState.Entries.Count > 0)
                 {
                     paneState.SelectedIndex = 0;
                 }
 
                 ClampPaneState(paneState);
+                PersistBrowseSurfaceState(pane);
             }
 
             if (_paneStates[_activePane].Entries.Count == 0)
@@ -1557,6 +1591,7 @@ namespace HaCreator.MapSimulator.UI
                 {
                     paneState.ScrollOffset--;
                     ClampPaneState(paneState);
+                    PersistBrowseSurfaceState(pane);
                     UpdateRowButtons();
                     return true;
                 }
@@ -1565,6 +1600,7 @@ namespace HaCreator.MapSimulator.UI
                 {
                     paneState.ScrollOffset++;
                     ClampPaneState(paneState);
+                    PersistBrowseSurfaceState(pane);
                     UpdateRowButtons();
                     return true;
                 }
@@ -1582,6 +1618,7 @@ namespace HaCreator.MapSimulator.UI
                 {
                     paneState.ScrollOffset += mouseState.Y < thumbBounds.Y ? -MaxVisibleRows : MaxVisibleRows;
                     ClampPaneState(paneState);
+                    PersistBrowseSurfaceState(pane);
                     UpdateRowButtons();
                     return true;
                 }
@@ -1649,6 +1686,7 @@ namespace HaCreator.MapSimulator.UI
             float ratio = (thumbTop - trackBounds.Y) / (float)travel;
             _paneStates[pane].ScrollOffset = (int)Math.Round(ratio * maxScroll);
             ClampPaneState(_paneStates[pane]);
+            PersistBrowseSurfaceState(pane);
             UpdateRowButtons();
         }
 
@@ -1750,6 +1788,51 @@ namespace HaCreator.MapSimulator.UI
 
             string paneLabel = pane == AdminShopPane.Npc ? "NPC offer" : "user listing";
             return $"Selected {paneLabel}: {entry.Title} ({GetCategoryLabel(entry.Category)}). {BuildEntryStateText(entry)}";
+        }
+
+        private void PersistBrowseSurfaceState(AdminShopPane pane)
+        {
+            AdminShopPaneState paneState = _paneStates[pane];
+            AdminShopEntry selectedEntry = paneState.SelectedIndex >= 0 && paneState.SelectedIndex < paneState.Entries.Count
+                ? paneState.Entries[paneState.SelectedIndex]
+                : null;
+            _browseSurfaceStates[BuildBrowseSurfaceStateKey(pane)] = new AdminShopBrowseSurfaceState
+            {
+                ScrollOffset = paneState.ScrollOffset,
+                SelectedEntryKey = selectedEntry == null ? string.Empty : GetEntryKey(selectedEntry)
+            };
+        }
+
+        private void TryRestoreBrowseSurfaceState(AdminShopPane pane, AdminShopPaneState paneState)
+        {
+            paneState.ScrollOffset = 0;
+            paneState.SelectedIndex = -1;
+            if (!_browseSurfaceStates.TryGetValue(BuildBrowseSurfaceStateKey(pane), out AdminShopBrowseSurfaceState savedState))
+            {
+                return;
+            }
+
+            paneState.ScrollOffset = savedState.ScrollOffset;
+            if (string.IsNullOrWhiteSpace(savedState.SelectedEntryKey))
+            {
+                return;
+            }
+
+            for (int i = 0; i < paneState.Entries.Count; i++)
+            {
+                if (!string.Equals(GetEntryKey(paneState.Entries[i]), savedState.SelectedEntryKey, StringComparison.Ordinal))
+                {
+                    continue;
+                }
+
+                paneState.SelectedIndex = i;
+                return;
+            }
+        }
+
+        private string BuildBrowseSurfaceStateKey(AdminShopPane pane)
+        {
+            return FormattableString.Invariant($"{_currentMode}:{pane}:{_activeBrowseMode}:{_activeCategory}");
         }
 
         private static IEnumerable<AdminShopEntry> CreateNpcEntries(AdminShopServiceMode mode)
@@ -2782,8 +2865,8 @@ namespace HaCreator.MapSimulator.UI
                         };
 
                         bySerial[serialNumber] = commodity;
-                        if (!bestByItemId.TryGetValue(itemId, out AdminShopCommodityData existing)
-                            || IsPreferredCommodity(commodity, existing))
+                        bestByItemId.TryGetValue(itemId, out AdminShopCommodityData existing);
+                        if (existing == null || IsPreferredCommodity(commodity, existing))
                         {
                             bestByItemId[itemId] = commodity;
                         }

@@ -630,13 +630,20 @@ namespace HaCreator.MapSimulator.UI
                     break;
             }
 
+            if (_characterBuild?.Equipment != null &&
+                _characterBuild.Equipment.TryGetValue(selection.Key, out CharacterPart currentPart) &&
+                ReferenceEquals(currentPart, selectedPart))
+            {
+                SyncStateToPart(currentPart, state);
+            }
+
             _lastUpgradeSucceeded = success;
             ClampSelection();
             _preferredModifierItemId = null;
             return new ItemUpgradeAttemptResult(success, _statusMessage, consumable.ItemId, modifier?.ItemId ?? 0);
         }
 
-        private void ApplyUpgradeBonus(EquipSlot slot, UpgradeState state, int successCountGain)
+        private void ApplyUpgradeBonus(EquipSlot slot, CharacterPart selectedPart, UpgradeState state, int successCountGain)
         {
             if (_characterBuild == null || successCountGain <= 0)
             {
@@ -648,14 +655,26 @@ namespace HaCreator.MapSimulator.UI
                 case EquipSlot.Weapon:
                     state.AttackBonus += 2 * successCountGain;
                     _characterBuild.Attack += 2 * successCountGain;
+                    if (selectedPart != null)
+                    {
+                        selectedPart.BonusWeaponAttack += 2 * successCountGain;
+                    }
                     break;
                 case EquipSlot.Glove:
                     state.AttackBonus += successCountGain;
                     _characterBuild.Attack += successCountGain;
+                    if (selectedPart != null)
+                    {
+                        selectedPart.BonusWeaponAttack += successCountGain;
+                    }
                     break;
                 default:
                     state.DefenseBonus += successCountGain;
                     _characterBuild.Defense += successCountGain;
+                    if (selectedPart != null)
+                    {
+                        selectedPart.BonusWeaponDefense += successCountGain;
+                    }
                     break;
             }
         }
@@ -667,7 +686,7 @@ namespace HaCreator.MapSimulator.UI
             {
                 state.RemainingSlots = Math.Max(0, state.RemainingSlots - consumable.SuccessCountGain);
                 state.SuccessCount += consumable.SuccessCountGain;
-                ApplyUpgradeBonus(slot, state, consumable.SuccessCountGain);
+                ApplyUpgradeBonus(slot, selectedPart, state, consumable.SuccessCountGain);
                 _statusMessage = $"{ResolveItemName(selectedPart)} gained {consumable.SuccessCountGain} enhancement" +
                                  (consumable.SuccessCountGain == 1 ? string.Empty : "s") +
                                  $" with {consumable.Name}{modifierSuffix}.";
@@ -946,6 +965,14 @@ namespace HaCreator.MapSimulator.UI
                 ownerPath.IndexOf("MiracleCube_8th", StringComparison.OrdinalIgnoreCase) >= 0)
             {
                 return VisualThemeKind.MapleMiracleCube;
+            }
+
+            if (!string.IsNullOrWhiteSpace(ownerPath) &&
+                (ownerPath.IndexOf("HyperMiracleCube", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                 ownerPath.IndexOf("MiracleCube_Master", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                 ownerPath.IndexOf("MiracleCube_Amazing", StringComparison.OrdinalIgnoreCase) >= 0))
+            {
+                return VisualThemeKind.HyperMiracleCube;
             }
 
             return VisualThemeKind.MiracleCube;
@@ -1252,16 +1279,111 @@ namespace HaCreator.MapSimulator.UI
             if (!_upgradeStates.TryGetValue(slot, out UpgradeState state) ||
                 state.ItemId != part?.ItemId)
             {
+                int defaultSlotCount = ResolveDefaultSlotCount(slot, part);
+                int totalSlots = Math.Max(defaultSlotCount, part?.TotalUpgradeSlotCount ?? 0);
+                int remainingSlots = part?.RemainingUpgradeSlotCount ?? (part?.UpgradeSlots ?? totalSlots);
+                remainingSlots = Math.Clamp(remainingSlots, 0, Math.Max(totalSlots, remainingSlots));
+                int potentialLineCount = CountVisiblePotentialLines(part);
                 state = new UpgradeState
                 {
                     ItemId = part?.ItemId ?? 0,
-                    TotalSlots = ResolveDefaultSlotCount(slot, part),
-                    RemainingSlots = ResolveDefaultSlotCount(slot, part)
+                    TotalSlots = Math.Max(totalSlots, remainingSlots),
+                    RemainingSlots = remainingSlots,
+                    SuccessCount = Math.Max(0, Math.Max(totalSlots, remainingSlots) - remainingSlots),
+                    HasPotential = potentialLineCount > 0 || !string.IsNullOrWhiteSpace(part?.PotentialTierText),
+                    PotentialTier = ParsePotentialTier(part?.PotentialTierText),
+                    PotentialLineCount = potentialLineCount,
+                    PotentialLines = CopyPotentialLines(part?.PotentialLines, potentialLineCount)
                 };
                 _upgradeStates[slot] = state;
             }
 
             return state;
+        }
+
+        private static void SyncStateToPart(CharacterPart part, UpgradeState state)
+        {
+            if (part == null || state == null)
+            {
+                return;
+            }
+
+            part.TotalUpgradeSlotCount = state.TotalSlots;
+            part.RemainingUpgradeSlotCount = state.RemainingSlots;
+            part.UpgradeSlots = state.RemainingSlots;
+
+            if (state.HasPotential)
+            {
+                part.PotentialTierText = $"{state.PotentialTier} Potential";
+                part.PotentialLines = new List<string>(EnumerateVisiblePotentialLines(state));
+            }
+            else
+            {
+                part.PotentialTierText = null;
+                part.PotentialLines = new List<string>();
+            }
+        }
+
+        private static int CountVisiblePotentialLines(CharacterPart part)
+        {
+            if (part?.PotentialLines == null)
+            {
+                return 0;
+            }
+
+            int count = 0;
+            for (int i = 0; i < part.PotentialLines.Count; i++)
+            {
+                if (!string.IsNullOrWhiteSpace(part.PotentialLines[i]))
+                {
+                    count++;
+                }
+            }
+
+            return count;
+        }
+
+        private static string[] CopyPotentialLines(IReadOnlyList<string> lines, int visibleCount)
+        {
+            var copy = new string[UpgradeState.MaxPotentialLines];
+            if (lines == null || visibleCount <= 0)
+            {
+                return copy;
+            }
+
+            int max = Math.Min(Math.Min(lines.Count, visibleCount), copy.Length);
+            for (int i = 0; i < max; i++)
+            {
+                copy[i] = lines[i];
+            }
+
+            return copy;
+        }
+
+        private static PotentialTier ParsePotentialTier(string potentialTierText)
+        {
+            if (string.IsNullOrWhiteSpace(potentialTierText))
+            {
+                return PotentialTier.Rare;
+            }
+
+            string normalized = potentialTierText.Trim();
+            if (normalized.IndexOf("Legendary", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                return PotentialTier.Legendary;
+            }
+
+            if (normalized.IndexOf("Unique", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                return PotentialTier.Unique;
+            }
+
+            if (normalized.IndexOf("Epic", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                return PotentialTier.Epic;
+            }
+
+            return PotentialTier.Rare;
         }
 
         private static int ResolveDefaultSlotCount(EquipSlot slot, CharacterPart part)
@@ -1816,6 +1938,7 @@ namespace HaCreator.MapSimulator.UI
             Potential,
             PotentialStamp,
             MiracleCube,
+            HyperMiracleCube,
             MapleMiracleCube
         }
 

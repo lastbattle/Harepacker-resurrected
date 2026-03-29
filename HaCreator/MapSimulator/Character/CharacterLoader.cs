@@ -92,7 +92,9 @@ namespace HaCreator.MapSimulator.Character
         {
             public IReadOnlyList<SkinColor> Skins { get; init; } = Array.Empty<SkinColor>();
             public IReadOnlyList<int> FaceIds { get; init; } = Array.Empty<int>();
-            public IReadOnlyList<int> HairIds { get; init; } = Array.Empty<int>();
+            public IReadOnlyList<int> HairStyleIds { get; init; } = Array.Empty<int>();
+            public IReadOnlyList<int> HairIds => HairStyleIds;
+            public IReadOnlyList<int> HairColorIndices { get; init; } = Array.Empty<int>();
             public IReadOnlyList<int> CoatIds { get; init; } = Array.Empty<int>();
             public IReadOnlyList<int> PantsIds { get; init; } = Array.Empty<int>();
             public IReadOnlyList<int> ShoesIds { get; init; } = Array.Empty<int>();
@@ -211,7 +213,8 @@ namespace HaCreator.MapSimulator.Character
                 ItemId = morphTemplateId,
                 Name = $"Morph_{morphTemplateId:D4}",
                 Type = CharacterPartType.Morph,
-                Slot = EquipSlot.None
+                Slot = EquipSlot.None,
+                IsSuperManMorph = GetMorphSuperManFlag(morphImage)
             };
 
             PopulateMorphAnimations(morphPart, morphTemplateId, morphImage);
@@ -276,7 +279,8 @@ namespace HaCreator.MapSimulator.Character
                     ItemId = candidateTemplateId,
                     Name = $"Morph_{candidateTemplateId:D4}",
                     Type = CharacterPartType.Morph,
-                    Slot = EquipSlot.None
+                    Slot = EquipSlot.None,
+                    IsSuperManMorph = GetMorphSuperManFlag(candidateImage)
                 };
 
                 LoadPartAnimations(candidatePart, candidateImage, includeAttackActions: false);
@@ -387,6 +391,23 @@ namespace HaCreator.MapSimulator.Character
             return 0;
         }
 
+        private static bool GetMorphSuperManFlag(WzImage morphImage)
+        {
+            if (morphImage == null)
+            {
+                return false;
+            }
+
+            morphImage.ParseImage();
+
+            if (morphImage["info"] is not WzSubProperty infoNode)
+            {
+                return false;
+            }
+
+            return GetIntValue(infoNode["superman"]) is int superManFlag && superManFlag != 0;
+        }
+
         private static void MergeMissingAnimations(CharacterPart targetPart, CharacterPart sourcePart)
         {
             if (targetPart?.Animations == null || sourcePart?.Animations == null)
@@ -450,7 +471,9 @@ namespace HaCreator.MapSimulator.Character
             LoadPortableChairLayers(itemProperty, chair.Layers);
             LoadPortableChairItemEffectLayers(itemId, chair);
 
-            if (chair.Layers.Count == 0 && chair.CoupleMidpointLayers.Count == 0)
+            if (chair.Layers.Count == 0
+                && chair.CoupleSharedLayers.Count == 0
+                && chair.CoupleMidpointLayers.Count == 0)
             {
                 return null;
             }
@@ -520,6 +543,12 @@ namespace HaCreator.MapSimulator.Character
                     continue;
                 }
 
+                if (chair.IsCoupleChair && IsPortableChairCoupleSharedLayer(child.Name))
+                {
+                    chair.CoupleSharedLayers.Add(layer);
+                    continue;
+                }
+
                 chair.Layers.Add(layer);
             }
         }
@@ -527,6 +556,11 @@ namespace HaCreator.MapSimulator.Character
         private static bool IsPortableChairCoupleMidpointLayer(string layerName)
         {
             return string.Equals(layerName, "0", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static bool IsPortableChairCoupleSharedLayer(string layerName)
+        {
+            return string.Equals(layerName, "1", StringComparison.OrdinalIgnoreCase);
         }
 
         private static bool IsPlaceholderPortableChairLayer(PortableChairLayer layer)
@@ -1360,6 +1394,14 @@ namespace HaCreator.MapSimulator.Character
             part.Durability = part.MaxDurability;
             part.SellPrice = GetIntValue(info["price"]) ?? 0;
             part.IsEpic = GetIntValue(info["epic"]) == 1;
+            if (info["dateExpire"] is WzStringProperty expirationProperty)
+            {
+                DateTime? expirationDate = expirationProperty.GetDateTime();
+                if (expirationDate.HasValue)
+                {
+                    part.ExpirationDateUtc = DateTime.SpecifyKind(expirationDate.Value, DateTimeKind.Utc);
+                }
+            }
 
             if (Program.InfoManager?.ItemNameCache != null
                 && Program.InfoManager.ItemNameCache.TryGetValue(part.ItemId, out Tuple<string, string, string> itemInfo))
@@ -2193,12 +2235,39 @@ namespace HaCreator.MapSimulator.Character
             {
                 Skins = ResolveStarterSkinCandidates(gender, race),
                 FaceIds = ResolveStarterFaceCandidates(gender, race),
-                HairIds = ResolveStarterHairCandidates(gender, race),
+                HairStyleIds = ResolveStarterHairStyleCandidates(gender, race),
+                HairColorIndices = ResolveStarterHairColorCandidates(gender, race),
                 CoatIds = ResolveStarterEquipmentCandidates(gender, 4, race),
                 PantsIds = ResolveStarterEquipmentCandidates(gender, 5, race),
                 ShoesIds = ResolveStarterEquipmentCandidates(gender, 6, race),
                 WeaponIds = ResolveStarterEquipmentCandidates(gender, 7, race)
             };
+        }
+
+        public int ResolveLoginStarterHairId(
+            LoginStarterAvatarCatalog catalog,
+            CharacterGender gender,
+            int hairStyleIndex,
+            int hairColorIndex)
+        {
+            int baseHairId = PickCatalogValue(
+                catalog?.HairStyleIds,
+                hairStyleIndex,
+                gender == CharacterGender.Male ? DefaultMaleHairId : DefaultFemaleHairId);
+            int color = PickCatalogValue(catalog?.HairColorIndices, hairColorIndex, 0);
+
+            int exactHairId = NormalizeHairStyleId(baseHairId) + Math.Max(0, color);
+            if (LoadHair(exactHairId) != null)
+            {
+                return exactHairId;
+            }
+
+            if (LoadHair(baseHairId) != null)
+            {
+                return baseHairId;
+            }
+
+            return gender == CharacterGender.Male ? DefaultMaleHairId : DefaultFemaleHairId;
         }
 
         public CharacterBuild LoadLoginStarterBuild(
@@ -2347,6 +2416,47 @@ namespace HaCreator.MapSimulator.Character
                 StarterHairSearchSpan,
                 id => LoadHair(id) != null,
                 defaultHairId);
+        }
+
+        private IReadOnlyList<int> ResolveStarterHairStyleCandidates(CharacterGender gender, LoginCreateCharacterRaceKind race)
+        {
+            IReadOnlyList<int> hairIds = ResolveStarterHairCandidates(gender, race);
+            List<int> styleIds = new();
+            foreach (int hairId in hairIds)
+            {
+                int styleId = NormalizeHairStyleId(hairId);
+                if (!styleIds.Contains(styleId))
+                {
+                    styleIds.Add(styleId);
+                }
+            }
+
+            if (styleIds.Count == 0)
+            {
+                styleIds.Add(gender == CharacterGender.Male ? DefaultMaleHairId : DefaultFemaleHairId);
+            }
+
+            return styleIds;
+        }
+
+        private IReadOnlyList<int> ResolveStarterHairColorCandidates(CharacterGender gender, LoginCreateCharacterRaceKind race)
+        {
+            List<int> makeCharInfoValues = ResolveMakeCharInfoStarterValues(gender, "3", race);
+            List<int> colorIndices = new();
+            foreach (int value in makeCharInfoValues)
+            {
+                if (value >= 0 && value <= 9 && !colorIndices.Contains(value))
+                {
+                    colorIndices.Add(value);
+                }
+            }
+
+            if (colorIndices.Count == 0)
+            {
+                colorIndices.AddRange(new[] { 0, 1, 2, 3 });
+            }
+
+            return colorIndices;
         }
 
         private IReadOnlyList<int> ResolveStarterEquipmentCandidates(CharacterGender gender, string categoryName, int fallbackItemId)
@@ -2504,6 +2614,18 @@ namespace HaCreator.MapSimulator.Character
             }
 
             return candidates;
+        }
+
+        private static int NormalizeHairStyleId(int hairId)
+        {
+            return hairId < 0 ? 0 : (hairId / 10) * 10;
+        }
+
+        private static int PickCatalogValue(IReadOnlyList<int> values, int index, int fallback)
+        {
+            return values != null && index >= 0 && index < values.Count
+                ? values[index]
+                : fallback;
         }
 
         private static T PickRandomCandidate<T>(IReadOnlyList<T> candidates, T fallback)

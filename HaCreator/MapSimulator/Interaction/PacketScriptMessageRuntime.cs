@@ -11,9 +11,11 @@ namespace HaCreator.MapSimulator.Interaction
     internal sealed class PacketScriptMessageRuntime
     {
         private string _statusMessage = "Packet-owned script-message idle.";
+        private PacketScriptPromptContext _activePromptContext;
 
         internal void Clear()
         {
+            _activePromptContext = null;
             _statusMessage = "Packet-owned script-message cleared.";
         }
 
@@ -69,8 +71,17 @@ namespace HaCreator.MapSimulator.Interaction
                     {
                         NpcName = speaker.DisplayName,
                         Entries = new[] { entry },
-                        SelectedEntryId = entry.EntryId
+                        SelectedEntryId = entry.EntryId,
+                        PresentationStyle = NpcInteractionPresentationStyle.PacketScriptUtilDialog
                     },
+                    speaker.NpcId);
+                _activePromptContext = new PacketScriptPromptContext(
+                    speaker.DisplayName,
+                    entry.EntryId,
+                    entry.Title,
+                    messageType,
+                    param,
+                    speaker.TemplateId,
                     speaker.NpcId);
 
                 _statusMessage = $"Opened packet-authored script dialog: {entry.Title} for {speaker.DisplayName}.";
@@ -110,8 +121,8 @@ namespace HaCreator.MapSimulator.Interaction
             string rawText = ReadMapleString(reader);
             List<NpcInteractionChoice> choices = new()
             {
-                CreateResponseChoice("Yes", "Yes"),
-                CreateResponseChoice("No", "No")
+                CreateResponseChoice("Yes", "Yes", 1),
+                CreateResponseChoice("No", "No", 0)
             };
 
             return CreateEntry(
@@ -137,9 +148,15 @@ namespace HaCreator.MapSimulator.Interaction
                 AppendMetadata(
                     NpcDialogueTextFormatter.Format(rawText),
                     $"Default text: {FormatQuotedValue(defaultText)}",
-                    $"Accepted length: {minLength} to {maxLength} character(s).",
-                    "Typed packet replies are not wired yet, so this prompt is read-only."),
-                null);
+                    $"Accepted length: {minLength} to {maxLength} character(s)."),
+                null,
+                new NpcInteractionInputRequest
+                {
+                    Kind = NpcInteractionInputKind.Text,
+                    DefaultValue = defaultText,
+                    MinLength = Math.Max(0, (int)minLength),
+                    MaxLength = Math.Max(Math.Max(0, (int)minLength), (int)maxLength)
+                });
         }
 
         private static NpcInteractionEntry DecodeAskNumber(BinaryReader reader, PacketScriptSpeaker speaker, byte param)
@@ -155,9 +172,15 @@ namespace HaCreator.MapSimulator.Interaction
                 AppendMetadata(
                     NpcDialogueTextFormatter.Format(rawText),
                     $"Default value: {defaultValue}",
-                    $"Accepted range: {minValue} to {maxValue}.",
-                    "Numeric packet replies are not wired yet, so this prompt is read-only."),
-                null);
+                    $"Accepted range: {minValue} to {maxValue}."),
+                null,
+                new NpcInteractionInputRequest
+                {
+                    Kind = NpcInteractionInputKind.Number,
+                    DefaultValue = defaultValue.ToString(),
+                    MinValue = minValue,
+                    MaxValue = maxValue
+                });
         }
 
         private static NpcInteractionEntry DecodeAskMenu(BinaryReader reader, PacketScriptSpeaker speaker, byte param)
@@ -165,7 +188,7 @@ namespace HaCreator.MapSimulator.Interaction
             string rawText = ReadMapleString(reader);
             NpcInlineSelection[] selections = NpcDialogueTextFormatter.ExtractInlineSelections(rawText);
             List<NpcInteractionChoice> choices = selections
-                .Select(selection => CreateResponseChoice(selection.Label, $"{selection.Label} (id={selection.SelectionId})"))
+                .Select(selection => CreateResponseChoice(selection.Label, $"{selection.Label} (id={selection.SelectionId})", selection.SelectionId))
                 .ToList();
 
             return CreateEntry(
@@ -193,9 +216,16 @@ namespace HaCreator.MapSimulator.Interaction
                 AppendMetadata(
                     NpcDialogueTextFormatter.Format(rawText),
                     $"Default text: {FormatQuotedValue(defaultText)}",
-                    $"Input box size: {columnCount} column(s) x {lineCount} line(s).",
-                    "Typed packet replies are not wired yet, so this prompt is read-only."),
-                null);
+                    $"Input box size: {columnCount} column(s) x {lineCount} line(s)."),
+                null,
+                new NpcInteractionInputRequest
+                {
+                    Kind = NpcInteractionInputKind.MultiLineText,
+                    DefaultValue = defaultText,
+                    ColumnCount = Math.Max(1, (int)columnCount),
+                    LineCount = Math.Max(1, (int)lineCount),
+                    MaxLength = Math.Max(1, (int)columnCount) * Math.Max(1, (int)lineCount)
+                });
         }
 
         private static NpcInteractionEntry DecodeUnsupported(BinaryReader reader, PacketScriptSpeaker speaker, int messageType, byte param)
@@ -235,7 +265,8 @@ namespace HaCreator.MapSimulator.Interaction
                     {
                         RawText = page.RawText,
                         Text = AppendMetadata(page.Text, $"Trailing bytes left unread: {trailingBytes}."),
-                        Choices = page.Choices
+                        Choices = page.Choices,
+                        InputRequest = page.InputRequest
                     }
                 },
                 PrimaryActionLabel = entry.PrimaryActionLabel,
@@ -249,7 +280,8 @@ namespace HaCreator.MapSimulator.Interaction
             string subtitle,
             string rawText,
             string text,
-            IReadOnlyList<NpcInteractionChoice> choices)
+            IReadOnlyList<NpcInteractionChoice> choices,
+            NpcInteractionInputRequest inputRequest = null)
         {
             return new NpcInteractionEntry
             {
@@ -263,24 +295,54 @@ namespace HaCreator.MapSimulator.Interaction
                     {
                         RawText = rawText ?? string.Empty,
                         Text = text ?? string.Empty,
-                        Choices = choices ?? Array.Empty<NpcInteractionChoice>()
+                        Choices = choices ?? Array.Empty<NpcInteractionChoice>(),
+                        InputRequest = inputRequest
                     }
-                }
+                },
+                PrimaryActionLabel = inputRequest == null ? string.Empty : "Send",
+                PrimaryActionEnabled = inputRequest != null
             };
         }
 
-        private static NpcInteractionChoice CreateResponseChoice(string label, string responseLabel)
+        internal bool TrySubmitResponse(NpcInteractionInputSubmission submission, out string message)
+        {
+            if (submission == null)
+            {
+                message = "Packet-owned script submission was empty.";
+                return false;
+            }
+
+            _activePromptContext ??= new PacketScriptPromptContext(
+                submission.NpcName,
+                submission.EntryId,
+                submission.EntryTitle,
+                -1,
+                0,
+                0,
+                0);
+
+            string submittedValue = submission.Kind switch
+            {
+                NpcInteractionInputKind.Number when submission.NumericValue.HasValue => submission.NumericValue.Value.ToString(),
+                _ => submission.Value
+            };
+
+            _statusMessage =
+                $"Submitted packet-authored {submission.EntryTitle} response for {_activePromptContext.SpeakerName}: {FormatQuotedValue(submittedValue)} " +
+                $"(msgType={_activePromptContext.MessageType}, template={_activePromptContext.SpeakerTemplateId}, bParam=0x{_activePromptContext.Param:X2}).";
+            message = _statusMessage;
+            return true;
+        }
+
+        private static NpcInteractionChoice CreateResponseChoice(string label, string responseLabel, int responseValue)
         {
             return new NpcInteractionChoice
             {
                 Label = label,
-                Pages = new[]
-                {
-                    new NpcInteractionPage
-                    {
-                        Text = $"{responseLabel} selected.\nPacket response dispatch is not wired yet, so the scripted dialog stops here."
-                    }
-                }
+                SubmitSelection = true,
+                SubmissionKind = NpcInteractionInputKind.None,
+                SubmissionValue = responseLabel,
+                SubmissionNumericValue = responseValue
             };
         }
 
@@ -394,6 +456,14 @@ namespace HaCreator.MapSimulator.Interaction
         }
 
         internal sealed record PacketScriptMessageOpenRequest(NpcInteractionState State, int SpeakerNpcId);
+        private sealed record PacketScriptPromptContext(
+            string SpeakerName,
+            int EntryId,
+            string EntryTitle,
+            int MessageType,
+            byte Param,
+            int SpeakerTemplateId,
+            int SpeakerNpcId);
 
         private sealed record PacketScriptSpeaker(int SpeakerTypeId, int TemplateId, int NpcId, string DisplayName)
         {

@@ -381,6 +381,7 @@ namespace HaCreator.MapSimulator.Character
         public int? TotalUpgradeSlotCount { get; set; }
         public int? RemainingUpgradeSlotCount { get; set; }
         public int EnhancementStarCount { get; set; }
+        public bool IsSuperManMorph { get; set; }
         public int KnockbackRate { get; set; }
         public int TradeAvailable { get; set; }
         public bool IsTimeLimited { get; set; }
@@ -436,6 +437,7 @@ namespace HaCreator.MapSimulator.Character
                 TotalUpgradeSlotCount = TotalUpgradeSlotCount,
                 RemainingUpgradeSlotCount = RemainingUpgradeSlotCount,
                 EnhancementStarCount = EnhancementStarCount,
+                IsSuperManMorph = IsSuperManMorph,
                 KnockbackRate = KnockbackRate,
                 TradeAvailable = TradeAvailable,
                 IsTimeLimited = IsTimeLimited,
@@ -777,6 +779,7 @@ namespace HaCreator.MapSimulator.Character
         public int? CoupleMaxDiff { get; set; }
         public int? CoupleDirection { get; set; }
         public List<PortableChairLayer> Layers { get; set; } = new();
+        public List<PortableChairLayer> CoupleSharedLayers { get; set; } = new();
         public List<PortableChairLayer> CoupleMidpointLayers { get; set; } = new();
     }
 

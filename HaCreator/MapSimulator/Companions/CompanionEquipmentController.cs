@@ -48,6 +48,17 @@ namespace HaCreator.MapSimulator.Companions
         public IReadOnlyList<string> ExcludedPetNames { get; init; } = Array.Empty<string>();
         public IReadOnlyCollection<int> SupportedPetItemIds { get; init; } = Array.Empty<int>();
         public bool IsCash { get; init; }
+        public bool IsUniqueItem { get; init; }
+        public bool IsUniqueEquipItem { get; init; }
+        public bool IsTradeBlocked { get; init; }
+        public bool IsEquipTradeBlocked { get; init; }
+        public bool IsNotForSale { get; init; }
+        public bool AutoPickupMeso { get; init; }
+        public bool AutoPickupItems { get; init; }
+        public bool AutoPickupOthers { get; init; }
+        public bool SweepForDrops { get; init; }
+        public bool HasLongRangePickup { get; init; }
+        public bool ConsumeOwnerHpOnPickup { get; init; }
         public int RequiredLevel { get; init; }
         public int RequiredJobMask { get; init; }
         public int RequiredFame { get; init; }
@@ -178,6 +189,11 @@ namespace HaCreator.MapSimulator.Companions
                 return false;
             }
 
+            if (!CompanionEquipmentController.CanEquipUniqueItem(item, _equippedItems.Values, out rejectReason))
+            {
+                return false;
+            }
+
             if (_equippedItems.TryGetValue(targetSlot, out CompanionEquipItem displacedItem))
             {
                 displacedItems = new ReadOnlyCollection<CompanionEquipItem>(new[] { displacedItem });
@@ -247,6 +263,14 @@ namespace HaCreator.MapSimulator.Companions
                 return false;
             }
 
+            if (!CompanionEquipmentController.CanEquipUniqueItem(
+                    item,
+                    EnumerateEquippedItemsExcept(pet.RuntimeId),
+                    out rejectReason))
+            {
+                return false;
+            }
+
             if (_equippedItems.TryGetValue(pet.RuntimeId, out CompanionEquipItem displacedItem))
             {
                 displacedItems = new ReadOnlyCollection<CompanionEquipItem>(new[] { displacedItem });
@@ -306,6 +330,17 @@ namespace HaCreator.MapSimulator.Companions
             }
 
             return true;
+        }
+
+        private IEnumerable<CompanionEquipItem> EnumerateEquippedItemsExcept(int runtimeId)
+        {
+            foreach ((int equippedRuntimeId, CompanionEquipItem equippedItem) in _equippedItems)
+            {
+                if (equippedRuntimeId != runtimeId && equippedItem != null)
+                {
+                    yield return equippedItem;
+                }
+            }
         }
     }
 
@@ -425,6 +460,15 @@ namespace HaCreator.MapSimulator.Companions
                 return false;
             }
 
+            if (!CompanionEquipmentController.CanEquipUniqueItem(
+                    part.ItemId,
+                    part.Name,
+                    GetEquippedItemsExcluding(targetSlot),
+                    out rejectReason))
+            {
+                return false;
+            }
+
             List<CompanionEquipItem> displaced = new();
             if (_equippedItems.TryGetValue(targetSlot, out CompanionEquipItem displacedItem))
             {
@@ -459,6 +503,17 @@ namespace HaCreator.MapSimulator.Companions
         {
             return _equippedItems.TryGetValue(AndroidEquipSlot.Clothes, out CompanionEquipItem item)
                    && item?.CharacterPart?.Slot == EquipSlot.Longcoat;
+        }
+
+        private IEnumerable<CompanionEquipItem> GetEquippedItemsExcluding(AndroidEquipSlot targetSlot)
+        {
+            foreach ((AndroidEquipSlot slot, CompanionEquipItem equippedItem) in _equippedItems)
+            {
+                if (slot != targetSlot && equippedItem != null)
+                {
+                    yield return equippedItem;
+                }
+            }
         }
 
         private void SetEquippedItem(AndroidEquipSlot slot, CharacterPart part)
@@ -595,6 +650,11 @@ namespace HaCreator.MapSimulator.Companions
                 return false;
             }
 
+            if (!CompanionEquipmentController.CanEquipUniqueItem(item, _equippedItems.Values, out rejectReason))
+            {
+                return false;
+            }
+
             if (_equippedItems.TryGetValue(targetSlot, out CompanionEquipItem displacedItem))
             {
                 displacedItems = new ReadOnlyCollection<CompanionEquipItem>(new[] { displacedItem });
@@ -640,6 +700,63 @@ namespace HaCreator.MapSimulator.Companions
         {
             int category = itemId / 10000;
             return category == 180 || category == 181;
+        }
+
+        internal static bool CanEquipUniqueItem(
+            CompanionEquipItem item,
+            IEnumerable<CompanionEquipItem> otherEquippedItems,
+            out string rejectReason)
+        {
+            if (item == null)
+            {
+                rejectReason = null;
+                return false;
+            }
+
+            return CanEquipUniqueItem(item.ItemId, item.Name, otherEquippedItems, out rejectReason);
+        }
+
+        internal static bool CanEquipUniqueItem(
+            int itemId,
+            string itemName,
+            IEnumerable<CompanionEquipItem> otherEquippedItems,
+            out string rejectReason)
+        {
+            rejectReason = null;
+            if (itemId <= 0 || otherEquippedItems == null)
+            {
+                return true;
+            }
+
+            bool only = false;
+            bool onlyEquip = false;
+            foreach (CompanionEquipItem equippedItem in otherEquippedItems)
+            {
+                if (equippedItem == null || equippedItem.ItemId != itemId)
+                {
+                    continue;
+                }
+
+                only |= equippedItem.IsUniqueItem;
+                onlyEquip |= equippedItem.IsUniqueEquipItem;
+                if (only || onlyEquip)
+                {
+                    break;
+                }
+            }
+
+            if (!only && !onlyEquip)
+            {
+                return true;
+            }
+
+            string resolvedItemName = string.IsNullOrWhiteSpace(itemName)
+                ? $"Item {itemId}"
+                : itemName;
+            rejectReason = onlyEquip
+                ? $"{resolvedItemName} can only be equipped once."
+                : $"{resolvedItemName} is a unique item and is already equipped.";
+            return false;
         }
 
         private static IReadOnlyList<AndroidHeartRequirement> ParseSupportedAndroidHeartRequirements(string description)
@@ -1325,6 +1442,11 @@ namespace HaCreator.MapSimulator.Companions
                 Description = LoadDragonItemDescription(itemId),
                 ItemCategory = LoadCachedItemCategory(itemId, "Dragon Equip"),
                 IsCash = GetIntValue(image?["info"]?["cash"]) == 1,
+                IsUniqueItem = GetIntValue(image?["info"]?["only"]) == 1,
+                IsUniqueEquipItem = GetIntValue(image?["info"]?["onlyEquip"]) == 1,
+                IsTradeBlocked = GetIntValue(image?["info"]?["tradeBlock"]) == 1,
+                IsEquipTradeBlocked = GetIntValue(image?["info"]?["equipTradeBlock"]) == 1,
+                IsNotForSale = GetIntValue(image?["info"]?["notSale"]) == 1,
                 RequiredLevel = GetIntValue(image?["info"]?["reqLevel"]) ?? 0,
                 RequiredJobMask = GetIntValue(image?["info"]?["reqJob"]) ?? 0,
                 RequiredFame = GetIntValue(image?["info"]?["reqPOP"]) ?? 0,
@@ -1386,6 +1508,17 @@ namespace HaCreator.MapSimulator.Companions
                 ExcludedPetNames = CompanionEquipmentController.ParseExcludedPetNames(description),
                 SupportedPetItemIds = CompanionEquipmentController.ParseSupportedPetItemIds(EnumeratePropertyNames(image)),
                 IsCash = GetIntValue(image?["info"]?["cash"]) == 1,
+                IsUniqueItem = GetIntValue(image?["info"]?["only"]) == 1,
+                IsUniqueEquipItem = GetIntValue(image?["info"]?["onlyEquip"]) == 1,
+                IsTradeBlocked = GetIntValue(image?["info"]?["tradeBlock"]) == 1,
+                IsEquipTradeBlocked = GetIntValue(image?["info"]?["equipTradeBlock"]) == 1,
+                IsNotForSale = GetIntValue(image?["info"]?["notSale"]) == 1,
+                AutoPickupMeso = GetIntValue(image?["info"]?["pickupMeso"]) == 1,
+                AutoPickupItems = GetIntValue(image?["info"]?["pickupItem"]) == 1,
+                AutoPickupOthers = GetIntValue(image?["info"]?["pickupOthers"]) == 1,
+                SweepForDrops = GetIntValue(image?["info"]?["sweepForDrop"]) == 1,
+                HasLongRangePickup = GetIntValue(image?["info"]?["longRange"]) == 1,
+                ConsumeOwnerHpOnPickup = GetIntValue(image?["info"]?["consumeHP"]) == 1,
                 RequiredLevel = GetIntValue(image?["info"]?["reqLevel"]) ?? 0,
                 RequiredJobMask = GetIntValue(image?["info"]?["reqJob"]) ?? 0,
                 RequiredFame = GetIntValue(image?["info"]?["reqPOP"]) ?? 0,
@@ -1444,6 +1577,11 @@ namespace HaCreator.MapSimulator.Companions
                 Description = LoadMechanicItemDescription(itemId),
                 ItemCategory = LoadCachedItemCategory(itemId, "Mechanic Equip"),
                 IsCash = GetIntValue(image?["info"]?["cash"]) == 1,
+                IsUniqueItem = GetIntValue(image?["info"]?["only"]) == 1,
+                IsUniqueEquipItem = GetIntValue(image?["info"]?["onlyEquip"]) == 1,
+                IsTradeBlocked = GetIntValue(image?["info"]?["tradeBlock"]) == 1,
+                IsEquipTradeBlocked = GetIntValue(image?["info"]?["equipTradeBlock"]) == 1,
+                IsNotForSale = GetIntValue(image?["info"]?["notSale"]) == 1,
                 RequiredLevel = GetIntValue(image?["info"]?["reqLevel"]) ?? 0,
                 RequiredJobMask = GetIntValue(image?["info"]?["reqJob"]) ?? 0,
                 RequiredFame = GetIntValue(image?["info"]?["reqPOP"]) ?? 0,

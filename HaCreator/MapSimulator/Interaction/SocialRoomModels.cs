@@ -4,6 +4,7 @@ using MapleLib.PacketLib;
 using MapleLib.WzLib;
 using MapleLib.WzLib.WzStructure.Data.ItemStructure;
 using System;
+using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -149,24 +150,30 @@ namespace HaCreator.MapSimulator.Interaction
             int mesoAmount,
             string detail,
             bool isLocked = false,
-            bool isClaimed = false)
+            bool isClaimed = false,
+            int itemId = 0,
+            int? packetSlotIndex = null)
         {
             OwnerName = string.IsNullOrWhiteSpace(ownerName) ? "Unknown" : ownerName;
+            ItemId = itemId > 0 ? itemId : ResolveItemIdByName(itemName);
             ItemName = string.IsNullOrWhiteSpace(itemName) ? "Unknown item" : itemName;
             Quantity = Math.Max(1, quantity);
             MesoAmount = Math.Max(0, mesoAmount);
             Detail = detail ?? string.Empty;
             IsLocked = isLocked;
             IsClaimed = isClaimed;
+            PacketSlotIndex = packetSlotIndex > 0 ? packetSlotIndex : null;
         }
 
         public string OwnerName { get; }
+        public int ItemId { get; private set; }
         public string ItemName { get; }
         public int Quantity { get; private set; }
         public int MesoAmount { get; private set; }
         public string Detail { get; private set; }
         public bool IsLocked { get; private set; }
         public bool IsClaimed { get; private set; }
+        public int? PacketSlotIndex { get; private set; }
 
         public void Update(string detail, int quantity, int mesoAmount, bool isLocked, bool isClaimed)
         {
@@ -175,6 +182,34 @@ namespace HaCreator.MapSimulator.Interaction
             MesoAmount = Math.Max(0, mesoAmount);
             IsLocked = isLocked;
             IsClaimed = isClaimed;
+        }
+
+        public void UpdatePacketIdentity(int itemId, int? packetSlotIndex)
+        {
+            if (itemId > 0)
+            {
+                ItemId = itemId;
+            }
+
+            PacketSlotIndex = packetSlotIndex > 0 ? packetSlotIndex : null;
+        }
+
+        private static int ResolveItemIdByName(string itemName)
+        {
+            if (string.IsNullOrWhiteSpace(itemName) || global::HaCreator.Program.InfoManager?.ItemNameCache == null)
+            {
+                return 0;
+            }
+
+            foreach (KeyValuePair<int, Tuple<string, string, string>> entry in global::HaCreator.Program.InfoManager.ItemNameCache)
+            {
+                if (string.Equals(entry.Value?.Item1, itemName, StringComparison.OrdinalIgnoreCase))
+                {
+                    return entry.Key;
+                }
+            }
+
+            return 0;
         }
     }
 
@@ -273,6 +308,8 @@ namespace HaCreator.MapSimulator.Interaction
             public bool ReturnOnClose { get; }
         }
 
+        private readonly record struct PacketOwnedTradeItem(byte SlotType, int ItemId, int Quantity, InventoryType InventoryType);
+
         private readonly List<SocialRoomOccupant> _occupants;
         private readonly List<SocialRoomItemEntry> _items;
         private readonly List<string> _notes;
@@ -351,7 +388,7 @@ namespace HaCreator.MapSimulator.Interaction
             _pendingVisitorNames = new Queue<string>(new[] { "Rondo", "Rin", "Maya", "Pia", "Targa", "Rowen" });
             _inventoryEscrow = new List<InventoryEscrowEntry>();
             _remoteInventoryEntries = new List<SocialRoomRemoteInventoryEntry>();
-            _defaultItems = items?.Select(item => new SocialRoomItemEntry(item.OwnerName, item.ItemName, item.Quantity, item.MesoAmount, item.Detail, item.IsLocked, item.IsClaimed)).ToList()
+            _defaultItems = items?.Select(item => new SocialRoomItemEntry(item.OwnerName, item.ItemName, item.Quantity, item.MesoAmount, item.Detail, item.IsLocked, item.IsClaimed, item.ItemId, item.PacketSlotIndex)).ToList()
                 ?? new List<SocialRoomItemEntry>();
             _defaultOccupants = occupants?.Select(occupant => new SocialRoomOccupant(occupant.Name, occupant.Role, occupant.Detail, occupant.IsReady, occupant.AvatarBuild)).ToList()
                 ?? new List<SocialRoomOccupant>();
@@ -366,7 +403,12 @@ namespace HaCreator.MapSimulator.Interaction
             _tradeRemoteOfferMeso = kind == SocialRoomKind.TradingRoom ? 75000 : 0;
             _remoteInventoryMeso = kind == SocialRoomKind.TradingRoom ? 325000 : 0;
             _entrustedPermitExpiresAtUtc = kind == SocialRoomKind.EntrustedShop ? DateTime.UtcNow.AddHours(24) : null;
-            _employeeAnchorOffsetX = kind == SocialRoomKind.EntrustedShop ? 72 : 0;
+            _employeeAnchorOffsetX = kind switch
+            {
+                SocialRoomKind.EntrustedShop => 72,
+                SocialRoomKind.PersonalShop => 56,
+                _ => 0
+            };
             _employeeAnchorOffsetY = 0;
             StatusMessage = statusMessage ?? string.Empty;
             RoomState = roomState ?? string.Empty;
@@ -479,11 +521,13 @@ namespace HaCreator.MapSimulator.Interaction
                     {
                         OwnerName = item.OwnerName,
                         ItemName = item.ItemName,
+                        ItemId = item.ItemId,
                         Quantity = item.Quantity,
                         MesoAmount = item.MesoAmount,
                         Detail = item.Detail,
                         IsLocked = item.IsLocked,
-                        IsClaimed = item.IsClaimed
+                        IsClaimed = item.IsClaimed,
+                        PacketSlotIndex = item.PacketSlotIndex
                     })
                     .ToList(),
                 Notes = _notes.ToList(),
@@ -566,7 +610,7 @@ namespace HaCreator.MapSimulator.Interaction
                 _items.Clear();
                 foreach (SocialRoomItemSnapshot item in (source?.Items?.Count > 0 ? source.Items : _defaultSnapshot.Items) ?? Enumerable.Empty<SocialRoomItemSnapshot>())
                 {
-                    _items.Add(new SocialRoomItemEntry(item.OwnerName, item.ItemName, item.Quantity, item.MesoAmount, item.Detail, item.IsLocked, item.IsClaimed));
+                    _items.Add(new SocialRoomItemEntry(item.OwnerName, item.ItemName, item.Quantity, item.MesoAmount, item.Detail, item.IsLocked, item.IsClaimed, item.ItemId, item.PacketSlotIndex));
                 }
 
                 _notes.Clear();
@@ -677,17 +721,13 @@ namespace HaCreator.MapSimulator.Interaction
 
             if (Kind == SocialRoomKind.PersonalShop)
             {
-                if (_employeeTemplateId <= 0)
-                {
-                    return null;
-                }
-
+                bool usesCashEmployee = _employeeTemplateId > 0;
                 return new SocialRoomFieldActorSnapshot(
                     Kind,
-                    SocialRoomFieldActorTemplate.CashEmployee,
+                    usesCashEmployee ? SocialRoomFieldActorTemplate.CashEmployee : SocialRoomFieldActorTemplate.Merchant,
                     string.IsNullOrWhiteSpace(RoomTitle) ? "Hired Merchant" : RoomTitle,
                     $"{OwnerName} | {RoomState}",
-                    $"cash|{_employeeTemplateId}|{ModeName}|{RoomState}",
+                    $"{(usesCashEmployee ? "cash" : "merchant")}|{_employeeTemplateId}|{ModeName}|{RoomState}",
                     templateId: _employeeTemplateId,
                     useOwnerAnchor: _employeeUseOwnerAnchor,
                     anchorOffsetX: _employeeAnchorOffsetX,
@@ -721,13 +761,13 @@ namespace HaCreator.MapSimulator.Interaction
                     flip: _employeeFlip);
             }
 
-            bool usesCashEmployee = _employeeTemplateId > 0;
+            bool usesCashEmployeeForEntrusted = _employeeTemplateId > 0;
             return new SocialRoomFieldActorSnapshot(
                 Kind,
-                usesCashEmployee ? SocialRoomFieldActorTemplate.CashEmployee : SocialRoomFieldActorTemplate.Merchant,
+                usesCashEmployeeForEntrusted ? SocialRoomFieldActorTemplate.CashEmployee : SocialRoomFieldActorTemplate.Merchant,
                 string.IsNullOrWhiteSpace(RoomTitle) ? "Entrusted Shop" : RoomTitle,
                 $"{OwnerName} | {RoomState} | {permitStatus}",
-                $"{(usesCashEmployee ? "cash" : "merchant")}|{_employeeTemplateId}|{ModeName}|{RoomState}|{permitStatus}",
+                $"{(usesCashEmployeeForEntrusted ? "cash" : "merchant")}|{_employeeTemplateId}|{ModeName}|{RoomState}|{permitStatus}",
                 templateId: _employeeTemplateId,
                 useOwnerAnchor: _employeeUseOwnerAnchor,
                 anchorOffsetX: _employeeAnchorOffsetX,
@@ -900,7 +940,7 @@ namespace HaCreator.MapSimulator.Interaction
                     SocialRoomKind.MiniRoom => TryDispatchMiniRoomPacket(reader, packetType, tickCount, out message),
                     SocialRoomKind.PersonalShop => TryDispatchPersonalShopDialogPacket(reader, packetType, tickCount, out message),
                     SocialRoomKind.EntrustedShop => TryDispatchEntrustedShopDialogPacket(reader, packetType, tickCount, out message),
-                    SocialRoomKind.TradingRoom => TryDispatchTradingRoomPacket(reader, packetType, out message),
+                    SocialRoomKind.TradingRoom => TryDispatchTradingRoomPacket(payload, reader, packetType, out message),
                     _ => FailPacket(packetType, out message)
                 };
             }
@@ -1143,7 +1183,7 @@ namespace HaCreator.MapSimulator.Interaction
             }
         }
 
-        private bool TryDispatchTradingRoomPacket(PacketReader reader, byte packetType, out string message)
+        private bool TryDispatchTradingRoomPacket(byte[] payload, PacketReader reader, byte packetType, out string message)
         {
             switch (packetType)
             {
@@ -1156,21 +1196,291 @@ namespace HaCreator.MapSimulator.Interaction
                     return true;
                 }
                 case TradingRoomPutItemPacketType:
-                    message = "Trading-room item packets still require a full GW_ItemSlotBase decoder. Item-session payloads remain partial.";
-                    return false;
+                    return TryApplyTradingRoomItemPacket(payload, out message);
                 case TradingRoomTradePacketType:
-                    StatusMessage = "Received a trading-room trade-state packet. The exact CRC and settlement handshake remains partial.";
-                    PersistState();
+                    ApplyTradingRoomTradePacket();
                     message = StatusMessage;
                     return true;
                 case TradingRoomExceedLimitPacketType:
-                    StatusMessage = "Trading-room packet reported that the offer exceeded the room limit.";
-                    PersistState();
+                    ApplyTradingRoomExceedLimitPacket();
                     message = StatusMessage;
                     return true;
                 default:
                     return FailPacket(packetType, out message);
             }
+        }
+
+        private bool TryApplyTradingRoomItemPacket(byte[] payload, out string message)
+        {
+            message = null;
+            if (payload == null || payload.Length < 5)
+            {
+                message = "Trading-room put-item packet is too short to decode.";
+                return false;
+            }
+
+            int traderIndex = payload[1];
+            int slotIndex = Math.Max(1, (int)payload[2]);
+            if (!TryDecodePacketOwnedTradeItem(payload.AsSpan(3), out PacketOwnedTradeItem item, out string error))
+            {
+                message = error;
+                return false;
+            }
+
+            ApplyTradingRoomItemPacket(traderIndex, slotIndex, item);
+            message = StatusMessage;
+            return true;
+        }
+
+        private void ApplyTradingRoomTradePacket()
+        {
+            bool localAlreadyLocked = _tradeLocalLocked;
+            _tradeRemoteLocked = true;
+            if (localAlreadyLocked)
+            {
+                _tradeLocalAccepted = true;
+                _tradeRemoteAccepted = true;
+                RoomState = "Awaiting settlement";
+                StatusMessage = "Trading-room packet requested CRC settlement for a fully locked trade.";
+            }
+            else
+            {
+                _tradeLocalAccepted = false;
+                _tradeRemoteAccepted = false;
+                RoomState = "Negotiating";
+                StatusMessage = $"{ResolveRemoteTraderName()} locked the trade and requested CRC verification.";
+            }
+
+            RefreshTradeOccupantsAndRows();
+            PersistState();
+        }
+
+        private void ApplyTradingRoomExceedLimitPacket()
+        {
+            _tradeLocalLocked = false;
+            _tradeLocalAccepted = false;
+            _tradeRemoteAccepted = false;
+            PersistState();
+            RoomState = "Negotiating";
+            RefreshTradeOccupantsAndRows();
+            StatusMessage = "Trading-room packet reported a limit failure and unlocked the local trade button state.";
+            PersistState();
+        }
+
+        private void ApplyTradingRoomItemPacket(int traderIndex, int slotIndex, PacketOwnedTradeItem item)
+        {
+            ClearTradeHandshake();
+            string ownerName = ResolveTradeOwnerName(traderIndex);
+            string ownerLabel = traderIndex == 0 ? "Owner" : "Guest";
+            SocialRoomItemEntry entry = FindTradingRoomPacketEntry(ownerName, slotIndex);
+            if (entry == null)
+            {
+                entry = new SocialRoomItemEntry(
+                    ownerName,
+                    ResolveItemLabel(item.ItemId),
+                    item.Quantity,
+                    mesoAmount: 0,
+                    detail: $"{ownerLabel} offer | Packet slot {slotIndex} | {item.InventoryType}",
+                    itemId: item.ItemId,
+                    packetSlotIndex: slotIndex);
+                _items.Add(entry);
+            }
+            else
+            {
+                entry.UpdatePacketIdentity(item.ItemId, slotIndex);
+                entry.Update($"{ownerLabel} offer | Packet slot {slotIndex} | {item.InventoryType}", item.Quantity, 0, false, false);
+            }
+
+            SortTradeRoomItems();
+            RoomState = "Negotiating";
+            RefreshTradeOccupantsAndRows();
+            StatusMessage = $"{ownerName} placed packet-backed {ResolveItemLabel(item.ItemId)} x{item.Quantity} into trade slot {slotIndex}.";
+            PersistState();
+        }
+
+        private SocialRoomItemEntry FindTradingRoomPacketEntry(string ownerName, int slotIndex)
+        {
+            SocialRoomItemEntry exact = _items.FirstOrDefault(item =>
+                string.Equals(item.OwnerName, ownerName, StringComparison.OrdinalIgnoreCase) &&
+                item.PacketSlotIndex == slotIndex);
+            if (exact != null)
+            {
+                return exact;
+            }
+
+            List<SocialRoomItemEntry> ownerEntries = _items
+                .Where(item => string.Equals(item.OwnerName, ownerName, StringComparison.OrdinalIgnoreCase))
+                .OrderBy(item => item.PacketSlotIndex ?? int.MaxValue)
+                .ThenBy(item => item.ItemName, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+            int ordinalIndex = slotIndex - 1;
+            return ordinalIndex >= 0 && ordinalIndex < ownerEntries.Count
+                ? ownerEntries[ordinalIndex]
+                : null;
+        }
+
+        private void SortTradeRoomItems()
+        {
+            _items.Sort((left, right) =>
+            {
+                bool leftLocal = string.Equals(left.OwnerName, OwnerName, StringComparison.OrdinalIgnoreCase);
+                bool rightLocal = string.Equals(right.OwnerName, OwnerName, StringComparison.OrdinalIgnoreCase);
+                int ownerComparison = leftLocal == rightLocal ? 0 : leftLocal ? -1 : 1;
+                if (ownerComparison != 0)
+                {
+                    return ownerComparison;
+                }
+
+                int slotComparison = Nullable.Compare(left.PacketSlotIndex, right.PacketSlotIndex);
+                if (slotComparison != 0)
+                {
+                    return slotComparison;
+                }
+
+                return string.Compare(left.ItemName, right.ItemName, StringComparison.OrdinalIgnoreCase);
+            });
+        }
+
+        private static bool TryDecodePacketOwnedTradeItem(ReadOnlySpan<byte> payload, out PacketOwnedTradeItem item, out string error)
+        {
+            item = default;
+            error = null;
+            if (payload.Length < 5)
+            {
+                error = "Trading-room item payload is too short to contain a GW_ItemSlotBase body.";
+                return false;
+            }
+
+            byte slotType = payload[0];
+            if (slotType is not 1 and not 2 and not 3)
+            {
+                error = $"Trading-room item payload used unsupported GW_ItemSlotBase type {slotType}.";
+                return false;
+            }
+
+            if (!TryFindPacketOwnedItemId(payload.Slice(1), out int itemId, out int itemIdOffset))
+            {
+                error = "Trading-room item payload did not contain a recognizable MapleStory item id.";
+                return false;
+            }
+
+            InventoryType inventoryType = InventoryItemMetadataResolver.ResolveInventoryType(itemId);
+            if (inventoryType == InventoryType.NONE)
+            {
+                error = $"Trading-room item payload resolved unsupported item id {itemId}.";
+                return false;
+            }
+
+            int quantity = slotType == 1
+                ? 1
+                : ResolvePacketOwnedTradeQuantity(payload.Slice(1), itemIdOffset);
+            item = new PacketOwnedTradeItem(slotType, itemId, quantity, inventoryType);
+            return true;
+        }
+
+        private static bool TryFindPacketOwnedItemId(ReadOnlySpan<byte> payload, out int itemId, out int itemIdOffset)
+        {
+            itemId = 0;
+            itemIdOffset = -1;
+
+            foreach (int offset in EnumerateLikelyPacketItemIdOffsets(payload.Length))
+            {
+                if (offset < 0 || offset + sizeof(int) > payload.Length)
+                {
+                    continue;
+                }
+
+                int candidate = BinaryPrimitives.ReadInt32LittleEndian(payload.Slice(offset, sizeof(int)));
+                if (candidate <= 0 || InventoryItemMetadataResolver.ResolveInventoryType(candidate) == InventoryType.NONE)
+                {
+                    continue;
+                }
+
+                itemId = candidate;
+                itemIdOffset = offset;
+                return true;
+            }
+
+            return false;
+        }
+
+        private static IEnumerable<int> EnumerateLikelyPacketItemIdOffsets(int payloadLength)
+        {
+            int[] preferredOffsets = { 8, 0, 4, 12, 16, 20, 24, 28, 32 };
+            foreach (int offset in preferredOffsets)
+            {
+                if (offset + sizeof(int) <= payloadLength)
+                {
+                    yield return offset;
+                }
+            }
+
+            for (int offset = 0; offset + sizeof(int) <= payloadLength && offset <= 40; offset++)
+            {
+                if (!preferredOffsets.Contains(offset))
+                {
+                    yield return offset;
+                }
+            }
+        }
+
+        private static int ResolvePacketOwnedTradeQuantity(ReadOnlySpan<byte> payload, int itemIdOffset)
+        {
+            int[] candidateOffsets =
+            {
+                itemIdOffset + sizeof(int),
+                itemIdOffset + sizeof(int) + sizeof(short),
+                itemIdOffset - sizeof(short),
+                itemIdOffset + 8,
+                0
+            };
+
+            foreach (int offset in candidateOffsets)
+            {
+                if (offset < 0 || offset + sizeof(short) > payload.Length)
+                {
+                    continue;
+                }
+
+                short quantity = BinaryPrimitives.ReadInt16LittleEndian(payload.Slice(offset, sizeof(short)));
+                if (quantity > 0 && quantity <= short.MaxValue)
+                {
+                    return quantity;
+                }
+            }
+
+            for (int offset = 0; offset + sizeof(short) <= payload.Length && offset <= 24; offset++)
+            {
+                short quantity = BinaryPrimitives.ReadInt16LittleEndian(payload.Slice(offset, sizeof(short)));
+                if (quantity > 0 && quantity <= short.MaxValue)
+                {
+                    return quantity;
+                }
+            }
+
+            return 1;
+        }
+
+        private string ResolveTradeOwnerName(int traderIndex)
+        {
+            return traderIndex == 0 ? OwnerName : ResolveRemoteTraderName();
+        }
+
+        private static string ResolveItemLabel(int itemId)
+        {
+            if (itemId <= 0)
+            {
+                return "Unknown item";
+            }
+
+            if (global::HaCreator.Program.InfoManager?.ItemNameCache != null &&
+                global::HaCreator.Program.InfoManager.ItemNameCache.TryGetValue(itemId, out Tuple<string, string, string> itemInfo) &&
+                !string.IsNullOrWhiteSpace(itemInfo?.Item2))
+            {
+                return itemInfo.Item2.Trim();
+            }
+
+            return itemId.ToString();
         }
 
         private static bool FailPacket(byte packetType, out string message)
@@ -2883,7 +3193,7 @@ namespace HaCreator.MapSimulator.Interaction
 
             foreach (SocialRoomItemEntry remoteEntry in remoteEntries)
             {
-                int remoteItemId = ResolveItemIdByName(remoteEntry.ItemName);
+                int remoteItemId = remoteEntry.ItemId > 0 ? remoteEntry.ItemId : ResolveItemIdByName(remoteEntry.ItemName);
                 if (remoteItemId <= 0)
                 {
                     message = $"Could not resolve trade reward '{remoteEntry.ItemName}'.";
@@ -2900,7 +3210,7 @@ namespace HaCreator.MapSimulator.Interaction
 
             foreach (SocialRoomItemEntry remoteEntry in remoteEntries)
             {
-                int remoteItemId = ResolveItemIdByName(remoteEntry.ItemName);
+                int remoteItemId = remoteEntry.ItemId > 0 ? remoteEntry.ItemId : ResolveItemIdByName(remoteEntry.ItemName);
                 InventoryType remoteType = InventoryItemMetadataResolver.ResolveInventoryType(remoteItemId);
                 _inventoryRuntime?.AddItem(remoteType, remoteItemId, _inventoryRuntime.GetItemTexture(remoteType, remoteItemId), remoteEntry.Quantity);
                 remoteEntry.Update($"{remoteEntry.Detail} | Trade settled", remoteEntry.Quantity, remoteEntry.MesoAmount, true, true);
@@ -2990,6 +3300,58 @@ namespace HaCreator.MapSimulator.Interaction
             PersistState();
             message = $"Added {mesoAmount:N0} meso to the remote trade wallet.";
             return true;
+        }
+
+        public string ConfigureTradeInviteTarget(string traderName, CharacterBuild avatarBuild = null)
+        {
+            if (Kind != SocialRoomKind.TradingRoom)
+            {
+                return "Trade invite targeting only applies to the trading-room shell.";
+            }
+
+            string resolvedName = NormalizeName(traderName);
+            if (_occupants.Count == 0)
+            {
+                _occupants.Add(new SocialRoomOccupant(OwnerName, SocialRoomOccupantRole.Trader, BuildTradeOccupantDetail(true, _tradeLocalLocked, _tradeLocalAccepted), false));
+            }
+
+            string previousRemoteName = ResolveRemoteTraderName();
+            if (_occupants.Count == 1)
+            {
+                _occupants.Add(new SocialRoomOccupant(resolvedName, SocialRoomOccupantRole.Trader, BuildTradeOccupantDetail(false, _tradeRemoteLocked, _tradeRemoteAccepted), false, avatarBuild));
+            }
+            else
+            {
+                _occupants[1].Update(resolvedName, SocialRoomOccupantRole.Trader, BuildTradeOccupantDetail(false, _tradeRemoteLocked, _tradeRemoteAccepted), false, avatarBuild);
+            }
+
+            if (!string.IsNullOrWhiteSpace(previousRemoteName) && !string.Equals(previousRemoteName, resolvedName, StringComparison.OrdinalIgnoreCase))
+            {
+                for (int i = 0; i < _items.Count; i++)
+                {
+                    SocialRoomItemEntry item = _items[i];
+                    if (string.Equals(item.OwnerName, previousRemoteName, StringComparison.OrdinalIgnoreCase))
+                    {
+                        _items[i] = new SocialRoomItemEntry(
+                            resolvedName,
+                            item.ItemName,
+                            item.Quantity,
+                            item.MesoAmount,
+                            item.Detail,
+                            item.IsLocked,
+                            item.IsClaimed,
+                            item.ItemId,
+                            item.PacketSlotIndex);
+                    }
+                }
+            }
+
+            RoomState = "Invite pending";
+            ClearTradeHandshake();
+            RefreshTradeOccupantsAndRows();
+            StatusMessage = $"Prepared a simulated trade invite for {resolvedName}. Server accept or reject flow still remains outside this owner.";
+            PersistState();
+            return StatusMessage;
         }
 
         public bool TrySetEmployeeTemplate(int templateId, out string message)

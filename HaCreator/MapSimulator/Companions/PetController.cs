@@ -2,6 +2,7 @@
 using HaCreator.MapSimulator.Character;
 using HaCreator.MapSimulator.Pools;
 using HaSharedLibrary.Render.DX;
+using MapleLib.WzLib.WzStructure.Data.ItemStructure;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using Spine;
@@ -101,6 +102,9 @@ namespace HaCreator.MapSimulator.Companions
         public bool HasActiveSpeech => !string.IsNullOrWhiteSpace(_activeSpeechText);
         public string ActiveSpeechText => _activeSpeechText;
         public int ActiveSpeechExpiresAt => _activeSpeechExpiresAt;
+        public bool AutoConsumeHpEnabled { get; private set; } = true;
+        public int AutoConsumeHpItemId { get; private set; }
+        public InventoryType AutoConsumeHpInventoryType { get; private set; } = InventoryType.NONE;
         internal PetRenderPlane RenderPlane => _hangOnBack
             ? PetRenderPlane.UnderFace
             : PetRenderPlane.InFrontOfOwner;
@@ -274,6 +278,24 @@ namespace HaCreator.MapSimulator.Companions
         public void SetCommandLevel(int level)
         {
             _commandLevel = Math.Clamp(level, 1, 30);
+        }
+
+        public void SetAutoConsumeHpEnabled(bool enabled)
+        {
+            AutoConsumeHpEnabled = enabled;
+        }
+
+        public void SetAutoConsumeHpItem(int itemId, InventoryType inventoryType)
+        {
+            if (itemId <= 0 || inventoryType == InventoryType.NONE)
+            {
+                AutoConsumeHpItemId = 0;
+                AutoConsumeHpInventoryType = InventoryType.NONE;
+                return;
+            }
+
+            AutoConsumeHpItemId = itemId;
+            AutoConsumeHpInventoryType = inventoryType;
         }
 
         public bool TryTriggerSlangFeedback(int currentTime)
@@ -762,6 +784,30 @@ namespace HaCreator.MapSimulator.Companions
             return true;
         }
 
+        public bool TrySetAutoConsumeHpEnabled(int slotIndex, bool enabled)
+        {
+            PetRuntime pet = GetPetAt(slotIndex);
+            if (pet == null)
+            {
+                return false;
+            }
+
+            pet.SetAutoConsumeHpEnabled(enabled);
+            return true;
+        }
+
+        public bool TrySetAutoConsumeHpItem(int slotIndex, int itemId, InventoryType inventoryType)
+        {
+            PetRuntime pet = GetPetAt(slotIndex);
+            if (pet == null)
+            {
+                return false;
+            }
+
+            pet.SetAutoConsumeHpItem(itemId, inventoryType);
+            return true;
+        }
+
         public bool TryTriggerSlangFeedback(int slotIndex, int currentTime)
         {
             PetRuntime pet = GetPetAt(slotIndex);
@@ -938,24 +984,60 @@ namespace HaCreator.MapSimulator.Companions
         private static int ResolveFoodFeedbackVariant(PetRuntime pet)
         {
             IReadOnlyDictionary<int, (int MinLevel, int MaxLevel)> ranges = pet?.Definition?.FoodFeedbackLevelRanges;
+            IReadOnlyDictionary<int, PetDialogFeedbackDefinition> feedback = pet?.Definition?.FoodFeedback;
+            if (feedback == null || feedback.Count == 0)
+            {
+                return pet?.CommandLevel switch
+                {
+                    <= 9 => 1,
+                    <= 19 => 2,
+                    <= 29 => 3,
+                    _ => 4
+                };
+            }
+
             if (ranges != null)
             {
                 foreach (KeyValuePair<int, (int MinLevel, int MaxLevel)> entry in ranges.OrderBy(pair => pair.Key))
                 {
                     if (pet.CommandLevel >= entry.Value.MinLevel && pet.CommandLevel <= entry.Value.MaxLevel)
                     {
-                        return entry.Key;
+                        return feedback.ContainsKey(entry.Key)
+                            ? entry.Key
+                            : ResolveNearestAvailableFoodFeedbackVariant(feedback.Keys, entry.Key);
                     }
                 }
             }
 
-            return pet?.CommandLevel switch
+            int fallbackVariant = pet?.CommandLevel switch
             {
                 <= 9 => 1,
                 <= 19 => 2,
                 <= 29 => 3,
                 _ => 4
             };
+
+            return feedback.ContainsKey(fallbackVariant)
+                ? fallbackVariant
+                : ResolveNearestAvailableFoodFeedbackVariant(feedback.Keys, fallbackVariant);
+        }
+
+        private static int ResolveNearestAvailableFoodFeedbackVariant(IEnumerable<int> availableVariants, int desiredVariant)
+        {
+            int[] orderedVariants = availableVariants?
+                .Where(static variant => variant >= 1 && variant <= 4)
+                .Distinct()
+                .OrderBy(static variant => variant)
+                .ToArray()
+                ?? Array.Empty<int>();
+
+            if (orderedVariants.Length == 0)
+            {
+                return Math.Clamp(desiredVariant, 1, 4);
+            }
+
+            int boundedDesiredVariant = Math.Clamp(desiredVariant, 1, 4);
+            return orderedVariants.FirstOrDefault(variant => variant >= boundedDesiredVariant, orderedVariants[^1]);
         }
 
         public void Update(PlayerCharacter owner, DropPool dropPool, int currentTime, float deltaTime)

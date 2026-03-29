@@ -192,6 +192,7 @@ namespace HaCreator.MapSimulator.Pools
         {
             foreach (PacketOwnedSummonState state in _summonsByObjectId.Values)
             {
+                UnregisterOwnerSummon(state);
                 RemovePuppet(state.Summon);
             }
 
@@ -205,9 +206,7 @@ namespace HaCreator.MapSimulator.Pools
 
         public IReadOnlyList<ActiveSummon> GetSummonsForOwner(int ownerCharacterId)
         {
-            return _summonsByOwnerId.TryGetValue(ownerCharacterId, out List<PacketOwnedSummonState> summons)
-                ? summons.Select(static state => state.Summon).ToArray()
-                : Array.Empty<ActiveSummon>();
+            return GetRegisteredOwnerSummons(ownerCharacterId);
         }
 
         public bool TryConsumeSummonByObjectId(int objectId)
@@ -230,15 +229,13 @@ namespace HaCreator.MapSimulator.Pools
 
             PlayerCharacter localPlayer = _localPlayerAccessor?.Invoke();
             int localOwnerId = localPlayer?.Build?.Id ?? 0;
-            if (localOwnerId <= 0
-                || !_summonsByOwnerId.TryGetValue(localOwnerId, out List<PacketOwnedSummonState> summons)
-                || summons.Count == 0)
+            if (localOwnerId <= 0)
             {
                 return false;
             }
 
             int removedCount = 0;
-            foreach (PacketOwnedSummonState state in summons
+            foreach (PacketOwnedSummonState state in EnumerateOwnerSummonStates(localOwnerId)
                          .OrderByDescending(static candidate => candidate?.Summon?.StartTime ?? int.MinValue)
                          .ThenByDescending(static candidate => candidate?.Summon?.ObjectId ?? int.MinValue)
                          .ToArray())
@@ -390,6 +387,7 @@ namespace HaCreator.MapSimulator.Pools
 
             _summonsByObjectId[summon.ObjectId] = state;
             GetOrCreateOwnerList(packet.OwnerCharacterId).Add(state);
+            RegisterOwnerSummon(state);
             RegisterSummonExpiryTimer(summon);
             SyncPuppet(state, currentTime);
             ApplyCreatedOwnerSideEffects(state, currentTime);
@@ -525,6 +523,7 @@ namespace HaCreator.MapSimulator.Pools
                 ResolveOwnerState(state.OwnerCharacterId, out string ownerName, out bool ownerIsLocal, out bool ownerFacingRight);
                 state.OwnerName = ownerName;
                 state.OwnerIsLocal = ownerIsLocal;
+                SyncOwnerSummonRegistration(state);
                 AdvanceSummonHitPeriod(state.Summon, currentTime);
 
                 if (state.MovementSnapshot != null)
@@ -1168,6 +1167,7 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             CancelSummonExpiryTimer(state.Summon.ObjectId);
+            UnregisterOwnerSummon(state);
             RemovePuppet(state.Summon);
             _summonsByObjectId.Remove(state.Summon.ObjectId);
 
@@ -1200,6 +1200,109 @@ namespace HaCreator.MapSimulator.Pools
             {
                 ownerName = string.IsNullOrWhiteSpace(actor.Name) ? ownerName : actor.Name;
                 ownerFacingRight = actor.FacingRight;
+            }
+        }
+
+        private IReadOnlyList<ActiveSummon> GetRegisteredOwnerSummons(int ownerCharacterId)
+        {
+            if (ownerCharacterId <= 0)
+            {
+                return Array.Empty<ActiveSummon>();
+            }
+
+            PlayerCharacter localPlayer = _localPlayerAccessor?.Invoke();
+            if (localPlayer?.Build?.Id == ownerCharacterId)
+            {
+                return localPlayer.PacketOwnedSummons.Summons;
+            }
+
+            if (_remoteUserPool != null && _remoteUserPool.TryGetActor(ownerCharacterId, out RemoteUserActor actor))
+            {
+                return actor.PacketOwnedSummons.Summons;
+            }
+
+            return _summonsByOwnerId.TryGetValue(ownerCharacterId, out List<PacketOwnedSummonState> summons)
+                ? summons.Select(static state => state.Summon).ToArray()
+                : Array.Empty<ActiveSummon>();
+        }
+
+        private IEnumerable<PacketOwnedSummonState> EnumerateOwnerSummonStates(int ownerCharacterId)
+        {
+            IReadOnlyList<ActiveSummon> registeredSummons = GetRegisteredOwnerSummons(ownerCharacterId);
+            if (registeredSummons.Count > 0)
+            {
+                foreach (ActiveSummon summon in registeredSummons)
+                {
+                    if (summon != null && _summonsByObjectId.TryGetValue(summon.ObjectId, out PacketOwnedSummonState state))
+                    {
+                        yield return state;
+                    }
+                }
+
+                yield break;
+            }
+
+            if (!_summonsByOwnerId.TryGetValue(ownerCharacterId, out List<PacketOwnedSummonState> summons))
+            {
+                yield break;
+            }
+
+            foreach (PacketOwnedSummonState state in summons)
+            {
+                if (state != null)
+                {
+                    yield return state;
+                }
+            }
+        }
+
+        private void SyncOwnerSummonRegistration(PacketOwnedSummonState state)
+        {
+            if (state?.Summon == null || state.Summon.IsPendingRemoval)
+            {
+                return;
+            }
+
+            RegisterOwnerSummon(state);
+        }
+
+        private void RegisterOwnerSummon(PacketOwnedSummonState state)
+        {
+            if (state?.Summon == null)
+            {
+                return;
+            }
+
+            PlayerCharacter localPlayer = _localPlayerAccessor?.Invoke();
+            if (localPlayer?.Build?.Id == state.OwnerCharacterId)
+            {
+                localPlayer.PacketOwnedSummons.AddOrReplace(state.Summon);
+                return;
+            }
+
+            if (_remoteUserPool != null && _remoteUserPool.TryGetActor(state.OwnerCharacterId, out RemoteUserActor actor))
+            {
+                actor.PacketOwnedSummons.AddOrReplace(state.Summon);
+            }
+        }
+
+        private void UnregisterOwnerSummon(PacketOwnedSummonState state)
+        {
+            if (state?.Summon == null)
+            {
+                return;
+            }
+
+            PlayerCharacter localPlayer = _localPlayerAccessor?.Invoke();
+            if (localPlayer?.Build?.Id == state.OwnerCharacterId)
+            {
+                localPlayer.PacketOwnedSummons.Remove(state.Summon.ObjectId);
+                return;
+            }
+
+            if (_remoteUserPool != null && _remoteUserPool.TryGetActor(state.OwnerCharacterId, out RemoteUserActor actor))
+            {
+                actor.PacketOwnedSummons.Remove(state.Summon.ObjectId);
             }
         }
 
@@ -1256,13 +1359,12 @@ namespace HaCreator.MapSimulator.Pools
         private void TryRefreshLocalTeslaCoilDurations(PacketOwnedSummonState createdState, int currentTime)
         {
             if (createdState?.Summon == null
-                || createdState.Summon.SkillId != TeslaCoilSkillId
-                || !_summonsByOwnerId.TryGetValue(createdState.OwnerCharacterId, out List<PacketOwnedSummonState> summons))
+                || createdState.Summon.SkillId != TeslaCoilSkillId)
             {
                 return;
             }
 
-            List<PacketOwnedSummonState> teslaCoils = summons
+            List<PacketOwnedSummonState> teslaCoils = EnumerateOwnerSummonStates(createdState.OwnerCharacterId)
                 .Where(static candidate => candidate?.Summon?.SkillId == TeslaCoilSkillId && !candidate.Summon.IsPendingRemoval)
                 .OrderBy(static candidate => candidate.Summon.StartTime)
                 .ThenBy(static candidate => candidate.Summon.ObjectId)
@@ -1347,20 +1449,15 @@ namespace HaCreator.MapSimulator.Pools
 
         private int ResolveSummonSlotIndex(PacketOwnedSummonState state)
         {
-            if (!_summonsByOwnerId.TryGetValue(state.OwnerCharacterId, out List<PacketOwnedSummonState> summons))
-            {
-                return -1;
-            }
-
             int slotIndex = 0;
-            foreach (PacketOwnedSummonState candidate in summons.OrderBy(static value => value.Summon.StartTime).ThenBy(static value => value.Summon.ObjectId))
+            foreach (ActiveSummon candidate in GetRegisteredOwnerSummons(state.OwnerCharacterId))
             {
-                if (candidate.Summon.IsPendingRemoval)
+                if (candidate == null || candidate.IsPendingRemoval)
                 {
                     continue;
                 }
 
-                if (ReferenceEquals(candidate, state))
+                if (ReferenceEquals(candidate, state.Summon))
                 {
                     return slotIndex;
                 }

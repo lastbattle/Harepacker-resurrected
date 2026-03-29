@@ -20,7 +20,7 @@ namespace HaCreator.MapSimulator
             _chat.CommandHandler.RegisterCommand(
                 "remoteuser",
                 "Create or mutate shared remote user actors",
-                "/remoteuser <status|clear|clone|avatar|move|action|chair|mount|helper|team|prepare|preparedclear|visible|remove|packet|packetraw> ...",
+                "/remoteuser <status|clear|clone|avatar|move|action|chair|mount|helper|team|prepare|preparedclear|visible|inspect|remove|packet|packetraw> ...",
                 args => HandleRemoteUserCommand(args, currTickCount));
         }
 
@@ -28,7 +28,7 @@ namespace HaCreator.MapSimulator
         {
             if (args == null || args.Length == 0)
             {
-                return ChatCommandHandler.CommandResult.Error("Usage: /remoteuser <status|clear|clone|avatar|move|action|chair|mount|helper|team|prepare|preparedclear|visible|remove|packet|packetraw> ...");
+                return ChatCommandHandler.CommandResult.Error("Usage: /remoteuser <status|clear|clone|avatar|move|action|chair|mount|helper|team|prepare|preparedclear|visible|inspect|remove|packet|packetraw> ...");
             }
 
             return args[0].ToLowerInvariant() switch
@@ -46,11 +46,24 @@ namespace HaCreator.MapSimulator
                 "prepare" => HandleRemoteUserPrepareCommand(args, currentTime),
                 "preparedclear" => HandleRemoteUserPreparedClearCommand(args),
                 "visible" => HandleRemoteUserVisibleCommand(args),
+                "inspect" => HandleRemoteUserInspectCommand(args),
                 "remove" => HandleRemoteUserRemoveCommand(args),
                 "packet" => HandleRemoteUserPacketCommand(args, currentTime),
                 "packetraw" => HandleRemoteUserPacketRawCommand(args, currentTime),
-                _ => ChatCommandHandler.CommandResult.Error("Usage: /remoteuser <status|clear|clone|avatar|move|action|chair|mount|helper|team|prepare|preparedclear|visible|remove|packet|packetraw> ...")
+                _ => ChatCommandHandler.CommandResult.Error("Usage: /remoteuser <status|clear|clone|avatar|move|action|chair|mount|helper|team|prepare|preparedclear|visible|inspect|remove|packet|packetraw> ...")
             };
+        }
+
+        private ChatCommandHandler.CommandResult HandleRemoteUserInspectCommand(string[] args)
+        {
+            if (args.Length < 2)
+            {
+                return ChatCommandHandler.CommandResult.Error("Usage: /remoteuser inspect <characterId|name>");
+            }
+
+            return TryShowRemoteCharacterInfoWindow(args[1])
+                ? ChatCommandHandler.CommandResult.Ok($"Opened Character Info for remote target {args[1]}.")
+                : ChatCommandHandler.CommandResult.Error($"Remote user {args[1]} was not found.");
         }
 
         private ChatCommandHandler.CommandResult HandleRemoteUserClearCommand()
@@ -389,6 +402,11 @@ namespace HaCreator.MapSimulator
                         enterPacket.ActionName,
                         "packet",
                         enterPacket.IsVisibleInWorld);
+                    if (created && enterPacket.PortableChairItemId.HasValue)
+                    {
+                        _remoteUserPool.TrySetPortableChair(enterPacket.CharacterId, enterPacket.PortableChairItemId, out _);
+                    }
+
                     result = created
                         ? $"Applied {DescribeRemoteUserPacketType(packetType)} for {enterPacket.Name} ({enterPacket.CharacterId})."
                         : enterMessage;

@@ -3,6 +3,7 @@ using MapleLib.WzLib.WzProperties;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using HaCreator.MapSimulator.Interaction;
 
 namespace HaCreator.MapSimulator.Fields
 {
@@ -54,24 +55,14 @@ namespace HaCreator.MapSimulator.Fields
                 return Array.Empty<string>();
             }
 
-            if (eventQProperty is WzStringProperty stringProperty)
-            {
-                return string.IsNullOrWhiteSpace(stringProperty.Value)
-                    ? Array.Empty<string>()
-                    : new[] { stringProperty.Value.Trim() };
-            }
-
-            if (eventQProperty is not WzSubProperty subProperty)
-            {
-                return Array.Empty<string>();
-            }
-
-            return subProperty.WzProperties
-                .OfType<WzStringProperty>()
-                .Select(property => property.Value?.Trim())
-                .Where(value => !string.IsNullOrWhiteSpace(value))
-                .Distinct(StringComparer.OrdinalIgnoreCase)
-                .ToArray();
+            IReadOnlyList<string> scriptNames = QuestRuntimeManager.ParseScriptNames(eventQProperty);
+            return scriptNames.Count == 0
+                ? Array.Empty<string>()
+                : scriptNames
+                    .Where(value => !string.IsNullOrWhiteSpace(value))
+                    .Select(value => value.Trim())
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .ToArray();
         }
 
         private static int? TryReadInt(WzImageProperty property)

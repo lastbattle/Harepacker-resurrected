@@ -61,16 +61,17 @@ namespace HaCreator.MapSimulator.Loaders
                     WzCanvasProperty gaugeBackgrdCanvas = mainBarProperties?["gaugeBackgrd"] as WzCanvasProperty;
                     WzCanvasProperty gaugeCoverCanvas = mainBarProperties?["gaugeCover"] as WzCanvasProperty;
 
-                    System.Drawing.Bitmap backgrnd = backgrndCanvas?.GetLinkedWzCanvasBitmap();
+                    System.Drawing.Bitmap backgrnd = LoadCanvasBitmap(backgrndCanvas);
 
                     const int UI_PADDING_PX = 2;
+                    Point mainBarFrameOrigin = GetCanvasOrigin(backgrndCanvas);
 
-                    System.Drawing.Bitmap bitmap_lvBacktrnd = lvBacktrndCanvas?.GetLinkedWzCanvasBitmap();
-                    System.Drawing.Bitmap bitmap_lvCover = lvCoverCanvas?.GetLinkedWzCanvasBitmap();
+                    System.Drawing.Bitmap bitmap_lvBacktrnd = LoadCanvasBitmap(lvBacktrndCanvas);
+                    System.Drawing.Bitmap bitmap_lvCover = LoadCanvasBitmap(lvCoverCanvas);
 
                     // Draw HP, MP, EXP area
-                    System.Drawing.Bitmap bitmap_gaugeBackgrd = gaugeBackgrdCanvas?.GetLinkedWzCanvasBitmap();
-                    System.Drawing.Bitmap bitmap_gaugeCover = gaugeCoverCanvas?.GetLinkedWzCanvasBitmap();
+                    System.Drawing.Bitmap bitmap_gaugeBackgrd = LoadCanvasBitmap(gaugeBackgrdCanvas);
+                    System.Drawing.Bitmap bitmap_gaugeCover = LoadCanvasBitmap(gaugeCoverCanvas);
                     System.Drawing.Bitmap composedMainBar = ComposeBigBangStatusBarFrame(
                         mainBarProperties,
                         backgrnd,
@@ -94,7 +95,7 @@ namespace HaCreator.MapSimulator.Loaders
                             WzCanvasProperty hpCanvas = hpGaugeProp["0"] as WzCanvasProperty;
                             if (hpCanvas != null)
                             {
-                                var hpBitmap = hpCanvas.GetLinkedWzCanvasBitmap();
+                                var hpBitmap = LoadCanvasBitmap(hpCanvas);
                                 if (hpBitmap != null)
                                 {
                                     hpGaugeTexture = hpBitmap.ToTexture2DAndDispose(device);
@@ -109,7 +110,7 @@ namespace HaCreator.MapSimulator.Loaders
                             WzCanvasProperty mpCanvas = mpGaugeProp["0"] as WzCanvasProperty;
                             if (mpCanvas != null)
                             {
-                                var mpBitmap = mpCanvas.GetLinkedWzCanvasBitmap();
+                                var mpBitmap = LoadCanvasBitmap(mpCanvas);
                                 if (mpBitmap != null)
                                 {
                                     mpGaugeTexture = mpBitmap.ToTexture2DAndDispose(device);
@@ -124,7 +125,7 @@ namespace HaCreator.MapSimulator.Loaders
                             WzCanvasProperty expCanvas = expGaugeProp["0"] as WzCanvasProperty;
                             if (expCanvas != null)
                             {
-                                var expBitmap = expCanvas.GetLinkedWzCanvasBitmap();
+                                var expBitmap = LoadCanvasBitmap(expCanvas);
                                 if (expBitmap != null)
                                 {
                                     expGaugeTexture = expBitmap.ToTexture2DAndDispose(device);
@@ -140,11 +141,8 @@ namespace HaCreator.MapSimulator.Loaders
                     WzSubProperty subProperty_BtCashShop = (WzSubProperty)mainBarProperties?["BtCashShop"]; // cash shop
                     UIObject obj_Ui_BtCashShop = new UIObject(subProperty_BtCashShop, binaryProp_BtMouseClickSoundProperty, binaryProp_BtMouseOverSoundProperty,
                         false,
-                        new Point(0, 0), device)
-                    {
-                        X = 9 + bitmap_lvBacktrnd.Width + bitmap_gaugeBackgrd.Width + UI_PADDING_PX,
-                    };
-                    obj_Ui_BtCashShop.Y += backgrnd.Height;
+                        new Point(0, 0), device);
+                    PositionStatusBarButton(obj_Ui_BtCashShop, subProperty_BtCashShop, mainBarFrameOrigin);
 
                     WzSubProperty subProperty_BtMTS = (WzSubProperty)mainBarProperties?["BtMTS"]; // MTS
                     if (subProperty_BtMTS == null)
@@ -154,38 +152,26 @@ namespace HaCreator.MapSimulator.Loaders
                     {
                         obj_Ui_BtMTS = new UIObject(subProperty_BtMTS, binaryProp_BtMouseClickSoundProperty, binaryProp_BtMouseOverSoundProperty,
                             false,
-                            new Point(0, 0), device)
-                        {
-                        };
-                        obj_Ui_BtMTS.X += obj_Ui_BtCashShop.X - obj_Ui_BtCashShop.CanvasSnapshotWidth;
-                        obj_Ui_BtMTS.Y += backgrnd.Height;
+                            new Point(0, 0), device);
+                        PositionStatusBarButton(obj_Ui_BtMTS, subProperty_BtMTS, mainBarFrameOrigin);
                     }
                     WzSubProperty subProperty_BtMenu = (WzSubProperty)mainBarProperties?["BtMenu"]; // Menu
                     UIObject obj_Ui_BtMenu = new UIObject(subProperty_BtMenu, binaryProp_BtMouseClickSoundProperty, binaryProp_BtMouseOverSoundProperty,
                         false,
-                        new Point(0, 0), device)
-                    {
-                    };
-                    obj_Ui_BtMenu.X += obj_Ui_BtCashShop.X - obj_Ui_BtCashShop.CanvasSnapshotWidth;
-                    obj_Ui_BtMenu.Y += backgrnd.Height;
+                        new Point(0, 0), device);
+                    PositionStatusBarButton(obj_Ui_BtMenu, subProperty_BtMenu, mainBarFrameOrigin);
 
                     WzSubProperty subProperty_BtSystem = (WzSubProperty)mainBarProperties?["BtSystem"]; // System
                     UIObject obj_Ui_BtSystem = new UIObject(subProperty_BtSystem, binaryProp_BtMouseClickSoundProperty, binaryProp_BtMouseOverSoundProperty,
                         false,
-                        new Point(0, 0), device)
-                    {
-                    };
-                    obj_Ui_BtSystem.X += obj_Ui_BtCashShop.X - obj_Ui_BtCashShop.CanvasSnapshotWidth;
-                    obj_Ui_BtSystem.Y += backgrnd.Height;
+                        new Point(0, 0), device);
+                    PositionStatusBarButton(obj_Ui_BtSystem, subProperty_BtSystem, mainBarFrameOrigin);
 
                     WzSubProperty subProperty_BtChannel = (WzSubProperty)mainBarProperties?["BtChannel"]; // System
                     UIObject obj_Ui_BtChannel = new UIObject(subProperty_BtChannel, binaryProp_BtMouseClickSoundProperty, binaryProp_BtMouseOverSoundProperty,
                         false,
-                        new Point(0, 0), device)
-                    {
-                    };
-                    obj_Ui_BtChannel.X += obj_Ui_BtCashShop.X - obj_Ui_BtCashShop.CanvasSnapshotWidth;
-                    obj_Ui_BtChannel.Y += backgrnd.Height;
+                        new Point(0, 0), device);
+                    PositionStatusBarButton(obj_Ui_BtChannel, subProperty_BtChannel, mainBarFrameOrigin);
 
 
                     // Draw Chat UI
@@ -195,10 +181,10 @@ namespace HaCreator.MapSimulator.Loaders
                     WzCanvasProperty noticeCanvas = mainBarProperties?["notice"] as WzCanvasProperty;
                     WzCanvasProperty chatEnterCanvas = mainBarProperties?["chatEnter"] as WzCanvasProperty;
 
-                    System.Drawing.Bitmap bitmap_chatSpace = chatSpaceCanvas?.GetLinkedWzCanvasBitmap();
-                    System.Drawing.Bitmap bitmap_chatSpace2 = chatSpace2Canvas?.GetLinkedWzCanvasBitmap();
-                    System.Drawing.Bitmap bitmap_chatCover = chatCoverCanvas?.GetLinkedWzCanvasBitmap();
-                    System.Drawing.Bitmap bitmap_notice = noticeCanvas?.GetLinkedWzCanvasBitmap();
+                    System.Drawing.Bitmap bitmap_chatSpace = LoadCanvasBitmap(chatSpaceCanvas);
+                    System.Drawing.Bitmap bitmap_chatSpace2 = LoadCanvasBitmap(chatSpace2Canvas);
+                    System.Drawing.Bitmap bitmap_chatCover = LoadCanvasBitmap(chatCoverCanvas);
+                    System.Drawing.Bitmap bitmap_notice = LoadCanvasBitmap(noticeCanvas);
 
                     Point chatFrameAnchorOrigin = ResolveBigBangChatFrameAnchorOrigin(chatSpace2Canvas, chatSpaceCanvas);
                     System.Drawing.Bitmap composedChatBar = ComposeBigBangStatusBarChatFrame(
@@ -389,7 +375,6 @@ namespace HaCreator.MapSimulator.Loaders
                         new Point(dxObj_backgrnd.X, dxObj_backgrnd.Y),
                         new List<UIObject> { });
                     statusBar.InitializeButtons();
-                    Point mainBarFrameOrigin = GetCanvasOrigin(backgrndCanvas);
                     Point leftBaseOffset = ResolveCanvasPosition(mainBarFrameOrigin, lvBacktrndCanvas);
                     Point gaugeBaseOffset = ResolveCanvasPosition(mainBarFrameOrigin, gaugeBackgrdCanvas);
                     statusBar.SetLayoutMetrics(
@@ -603,7 +588,7 @@ namespace HaCreator.MapSimulator.Loaders
                     HaUIGrid grid = new HaUIGrid(1, 1);
 
                     // Main background - 800x71 in pre-BB
-                    System.Drawing.Bitmap backgrnd = ((WzCanvasProperty)baseProperties?["backgrnd"])?.GetLinkedWzCanvasBitmap();
+                    System.Drawing.Bitmap backgrnd = LoadCanvasBitmap((WzCanvasProperty)baseProperties?["backgrnd"]);
 
                     if (backgrnd != null)
                     {
@@ -627,7 +612,7 @@ namespace HaCreator.MapSimulator.Loaders
                         WzCanvasProperty barCanvas = gaugeProperties["bar"] as WzCanvasProperty;
                         if (barCanvas != null)
                         {
-                            var barBitmap = barCanvas.GetLinkedWzCanvasBitmap();
+                            var barBitmap = LoadCanvasBitmap(barCanvas);
                             if (barBitmap != null)
                             {
                                 // Pre-BB uses the same gauge bar texture for all gauges
@@ -980,6 +965,11 @@ namespace HaCreator.MapSimulator.Loaders
                         continue;
                     }
 
+                    if (!TryGetBitmapDimensions(layer.Bitmap, out _, out _))
+                    {
+                        continue;
+                    }
+
                     Point layerOrigin = GetCanvasOrigin(layer.Canvas);
                     int drawX = frameOrigin.X - layerOrigin.X;
                     int drawY = frameOrigin.Y - layerOrigin.Y;
@@ -1014,8 +1004,13 @@ namespace HaCreator.MapSimulator.Loaders
                     continue;
                 }
 
+                if (!TryGetBitmapDimensions(layer.Bitmap, out int width, out _))
+                {
+                    continue;
+                }
+
                 Point layerOffset = ResolveCanvasPosition(frameOrigin, layer.Canvas);
-                int relativeRight = (layerOffset.X - clusterBaseOffset.X) + layer.Bitmap.Width;
+                int relativeRight = (layerOffset.X - clusterBaseOffset.X) + width;
                 maxWidth = Math.Max(maxWidth, relativeRight);
             }
 
@@ -1053,11 +1048,16 @@ namespace HaCreator.MapSimulator.Loaders
                     continue;
                 }
 
+                if (!TryGetBitmapDimensions(bitmap, out int width, out int height))
+                {
+                    continue;
+                }
+
                 Point drawPosition = ResolveCanvasPosition(anchorOrigin, canvas);
                 minX = Math.Min(minX, drawPosition.X);
                 minY = Math.Min(minY, drawPosition.Y);
-                maxX = Math.Max(maxX, drawPosition.X + bitmap.Width);
-                maxY = Math.Max(maxY, drawPosition.Y + bitmap.Height);
+                maxX = Math.Max(maxX, drawPosition.X + width);
+                maxY = Math.Max(maxY, drawPosition.Y + height);
             }
 
             var composed = new System.Drawing.Bitmap(Math.Max(1, maxX - minX), Math.Max(1, maxY - minY));
@@ -1067,6 +1067,11 @@ namespace HaCreator.MapSimulator.Loaders
                 foreach ((int _, WzCanvasProperty canvas, System.Drawing.Bitmap bitmap) in layers.OrderBy(layer => layer.Z))
                 {
                     if (canvas == null || bitmap == null)
+                    {
+                        continue;
+                    }
+
+                    if (!TryGetBitmapDimensions(bitmap, out _, out _))
                     {
                         continue;
                     }
@@ -1393,8 +1398,63 @@ namespace HaCreator.MapSimulator.Loaders
                 return null;
             }
 
-            var bitmap = canvas.GetLinkedWzCanvasBitmap();
+            var bitmap = LoadCanvasBitmap(canvas);
             return bitmap?.ToTexture2DAndDispose(device);
+        }
+
+        private static System.Drawing.Bitmap LoadCanvasBitmap(WzCanvasProperty canvas)
+        {
+            if (canvas == null)
+            {
+                return null;
+            }
+
+            try
+            {
+                System.Drawing.Bitmap bitmap = canvas.GetLinkedWzCanvasBitmap();
+                if (!TryGetBitmapDimensions(bitmap, out int width, out int height)
+                    || width <= 0
+                    || height <= 0)
+                {
+                    bitmap?.Dispose();
+                    return null;
+                }
+
+                return bitmap;
+            }
+            catch (ArgumentException)
+            {
+                return null;
+            }
+            catch (ObjectDisposedException)
+            {
+                return null;
+            }
+        }
+
+        private static bool TryGetBitmapDimensions(System.Drawing.Bitmap bitmap, out int width, out int height)
+        {
+            width = 0;
+            height = 0;
+            if (bitmap == null)
+            {
+                return false;
+            }
+
+            try
+            {
+                width = bitmap.Width;
+                height = bitmap.Height;
+                return true;
+            }
+            catch (ArgumentException)
+            {
+                return false;
+            }
+            catch (ObjectDisposedException)
+            {
+                return false;
+            }
         }
 
         #endregion

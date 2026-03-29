@@ -103,6 +103,7 @@ namespace HaCreator.MapSimulator.UI
         private readonly List<ItemMakerRecipe> _allRecipes = new();
         private readonly List<ItemMakerPage> _pages = new();
         private readonly HashSet<int> _discoveredRecipeIds = new();
+        private readonly HashSet<int> _unlockedHiddenRecipeIds = new();
         private readonly Random _random = new();
         private readonly Texture2D _pixel;
 
@@ -143,6 +144,7 @@ namespace HaCreator.MapSimulator.UI
 
         public event Action<ItemMakerCraftResult> CraftCompleted;
         public event Action<IReadOnlyCollection<int>> RecipesDiscovered;
+        public event Action<IReadOnlyCollection<int>> HiddenRecipesUnlocked;
 
         private IReadOnlyList<ItemMakerRecipe> CurrentRecipes =>
             _selectedPageIndex >= 0 && _selectedPageIndex < _pages.Count
@@ -172,7 +174,7 @@ namespace HaCreator.MapSimulator.UI
             _makerSkillLevel = Math.Max(0, makerSkillLevel);
             _characterJobId = Math.Max(0, characterJobId);
             _progression = progression ?? ItemMakerProgressionSnapshot.Default;
-            ResetDiscoveredRecipeState(_progression);
+            ResetRecipeState(_progression);
             _hasRequiredEquip = hasRequiredEquip;
             _matchesQuestRequirement = matchesQuestRequirement;
             RebuildVisiblePages();
@@ -187,7 +189,7 @@ namespace HaCreator.MapSimulator.UI
         public void UpdateProgression(ItemMakerProgressionSnapshot progression, string overrideStatusMessage = null)
         {
             _progression = progression ?? ItemMakerProgressionSnapshot.Default;
-            ResetDiscoveredRecipeState(_progression);
+            ResetRecipeState(_progression);
             RebuildVisiblePages();
             if (!string.IsNullOrWhiteSpace(overrideStatusMessage))
             {
@@ -660,10 +662,11 @@ namespace HaCreator.MapSimulator.UI
             return Math.Clamp(_progression?.GetLevel(recipe.Family) ?? 1, 1, ItemMakerProgressionStore.MaxMakerSkillLevel);
         }
 
-        private void ResetDiscoveredRecipeState(ItemMakerProgressionSnapshot progression)
+        private void ResetRecipeState(ItemMakerProgressionSnapshot progression)
         {
             _discoveredRecipeIds.Clear();
-            if (progression?.DiscoveredRecipeIds == null)
+            _unlockedHiddenRecipeIds.Clear();
+            if (progression == null)
             {
                 return;
             }
@@ -673,6 +676,14 @@ namespace HaCreator.MapSimulator.UI
                 if (outputItemId > 0)
                 {
                     _discoveredRecipeIds.Add(outputItemId);
+                }
+            }
+
+            foreach (int outputItemId in progression.UnlockedHiddenRecipeIds)
+            {
+                if (outputItemId > 0)
+                {
+                    _unlockedHiddenRecipeIds.Add(outputItemId);
                 }
             }
         }
@@ -785,6 +796,7 @@ namespace HaCreator.MapSimulator.UI
             CraftCompleted?.Invoke(new ItemMakerCraftResult
             {
                 Family = recipe.Family,
+                IsHiddenRecipe = recipe.IsHidden,
                 OutputItemId = reward.ItemId,
                 OutputQuantity = reward.Quantity
             });
@@ -1801,7 +1813,7 @@ namespace HaCreator.MapSimulator.UI
                     continue;
                 }
 
-                if (_discoveredRecipeIds.Add(recipe.OutputItemId))
+                if (_unlockedHiddenRecipeIds.Add(recipe.OutputItemId))
                 {
                     newlyUnlockedIds ??= new List<int>();
                     newlyUnlockedIds.Add(recipe.OutputItemId);
@@ -1810,7 +1822,7 @@ namespace HaCreator.MapSimulator.UI
 
             if (newlyUnlockedIds?.Count > 0)
             {
-                RecipesDiscovered?.Invoke(newlyUnlockedIds);
+                HiddenRecipesUnlocked?.Invoke(newlyUnlockedIds);
             }
         }
 
@@ -1837,7 +1849,7 @@ namespace HaCreator.MapSimulator.UI
 
         private bool IsHiddenRecipeUnlocked(ItemMakerRecipe recipe)
         {
-            return recipe.IsHidden && _discoveredRecipeIds.Contains(recipe.OutputItemId);
+            return recipe.IsHidden && _unlockedHiddenRecipeIds.Contains(recipe.OutputItemId);
         }
 
         private static bool HasExplicitHiddenUnlockGate(ItemMakerRecipe recipe)

@@ -175,6 +175,19 @@ namespace HaCreator.MapSimulator.UI
             _dragonEquipmentController = dragonEquipmentController;
         }
 
+        public void SetDragonPaneAvailable(bool available)
+        {
+            if (!available && _companionPaneMode == CompanionPaneMode.Dragon)
+            {
+                _companionPaneMode = CompanionPaneMode.Hidden;
+            }
+
+            if (_btnDragonEquip != null)
+            {
+                _btnDragonEquip.ButtonVisible = available;
+            }
+        }
+
         protected override void DrawContents(SpriteBatch sprite, SkeletonMeshRenderer skeletonMeshRenderer, GameTime gameTime, int mapShiftX, int mapShiftY, int centerX, int centerY, ReflectionDrawableBoundary drawReflectionInfo, RenderParameters renderParameters, int TickCount)
         {
             foreach ((EquipSlot uiSlot, Point slotPosition) in slotPositions)

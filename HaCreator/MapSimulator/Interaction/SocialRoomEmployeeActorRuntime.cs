@@ -35,6 +35,7 @@ namespace HaCreator.MapSimulator.Interaction
         private static readonly Color SignBorderColor = new(180, 138, 69, 255);
 
         private readonly Dictionary<string, NpcItem> _actorCache = new(StringComparer.Ordinal);
+        private readonly Dictionary<string, EmployeeTemplateProfile> _cashProfileCache = new(StringComparer.Ordinal);
         private readonly ConcurrentBag<WzObject> _usedProps = new();
         private readonly Random _random = new();
 
@@ -148,7 +149,7 @@ namespace HaCreator.MapSimulator.Interaction
             NpcItem actor = snapshot.Template switch
             {
                 SocialRoomFieldActorTemplate.CashEmployee when snapshot.TemplateId > 0
-                    => CreateCashEmployeeActor(snapshot.TemplateId, mapBoard, texturePool, device, userScreenScaleFactor),
+                    => CreateCashEmployeeActor(actorKey, snapshot.TemplateId, mapBoard, texturePool, device, userScreenScaleFactor),
                 _ => CreateNpcActor(ResolveProfile(snapshot).NpcId, mapBoard, texturePool, device, userScreenScaleFactor)
             };
 
@@ -199,6 +200,7 @@ namespace HaCreator.MapSimulator.Interaction
         }
 
         private NpcItem CreateCashEmployeeActor(
+            string actorKey,
             int templateId,
             Board mapBoard,
             TexturePool texturePool,
@@ -210,6 +212,8 @@ namespace HaCreator.MapSimulator.Interaction
             {
                 return null;
             }
+
+            _cashProfileCache[actorKey] = EmployeeTemplateProfile.CreateCashEmployee(employeeRoot.WzProperties.Select(property => property?.Name));
 
             NpcInfo fallbackNpcInfo = NpcInfo.Get(MerchantNpcId);
             if (fallbackNpcInfo == null)
@@ -435,8 +439,14 @@ namespace HaCreator.MapSimulator.Interaction
             return null;
         }
 
-        private static EmployeeTemplateProfile ResolveProfile(SocialRoomFieldActorSnapshot snapshot)
+        private EmployeeTemplateProfile ResolveProfile(SocialRoomFieldActorSnapshot snapshot)
         {
+            if (snapshot?.Template == SocialRoomFieldActorTemplate.CashEmployee
+                && _cashProfileCache.TryGetValue(BuildActorCacheKey(snapshot), out EmployeeTemplateProfile cachedProfile))
+            {
+                return cachedProfile;
+            }
+
             return snapshot.Template switch
             {
                 SocialRoomFieldActorTemplate.StoreBanker => EmployeeTemplateProfile.StoreBanker,
@@ -513,17 +523,56 @@ namespace HaCreator.MapSimulator.Interaction
                 ledgerActions: new[] { AnimationKeys.Stand },
                 expiredActions: new[] { "say0", AnimationKeys.Stand });
 
-            public static EmployeeTemplateProfile CashEmployee { get; } = new(
-                MerchantNpcId,
-                speakDurationMs: 900,
-                minIdleDurationMs: 1250,
-                maxIdleDurationMs: 2400,
-                speakActions: new[] { "say" },
-                idleActions: new[] { AnimationKeys.Stand, "item", "meso", "exp" },
-                activeActions: new[] { AnimationKeys.Stand, "item" },
-                restockActions: new[] { "item", AnimationKeys.Stand },
-                ledgerActions: new[] { "meso", "exp", AnimationKeys.Stand },
-                expiredActions: new[] { "fail", AnimationKeys.Stand });
+            public static EmployeeTemplateProfile CashEmployee { get; } = CreateCashEmployee(Array.Empty<string>());
+
+            public static EmployeeTemplateProfile CreateCashEmployee(IEnumerable<string> actionNames)
+            {
+                HashSet<string> actions = new(
+                    actionNames?
+                        .Where(name => !string.IsNullOrWhiteSpace(name))
+                        .Select(name => name.Trim().ToLowerInvariant())
+                    ?? Enumerable.Empty<string>(),
+                    StringComparer.Ordinal);
+
+                return new EmployeeTemplateProfile(
+                    MerchantNpcId,
+                    speakDurationMs: 900,
+                    minIdleDurationMs: 1250,
+                    maxIdleDurationMs: 2400,
+                    speakActions: BuildPreferredActions(actions, "say", "say0", AnimationKeys.Stand),
+                    idleActions: BuildPreferredActions(actions, AnimationKeys.Stand, "item", "meso", "exp", "eye", "smile", "wink", "ear", "potion"),
+                    activeActions: BuildPreferredActions(actions, "item", "eye", "smile", "wink", AnimationKeys.Stand, "ear"),
+                    restockActions: BuildPreferredActions(actions, "item", "wink", "smile", "eye", "potion", AnimationKeys.Stand),
+                    ledgerActions: BuildPreferredActions(actions, "meso", "exp", "eye", "smile", "ear", AnimationKeys.Stand),
+                    expiredActions: BuildPreferredActions(actions, "fail", "say0", "smile", AnimationKeys.Stand));
+            }
+
+            private static string[] BuildPreferredActions(HashSet<string> availableActions, params string[] candidates)
+            {
+                List<string> resolved = new();
+                for (int i = 0; i < candidates.Length; i++)
+                {
+                    string candidate = candidates[i];
+                    if (string.IsNullOrWhiteSpace(candidate))
+                    {
+                        continue;
+                    }
+
+                    string normalized = candidate.Trim().ToLowerInvariant();
+                    if ((availableActions.Count == 0 && !resolved.Contains(normalized, StringComparer.Ordinal))
+                        || availableActions.Contains(normalized))
+                    {
+                        resolved.Add(normalized);
+                    }
+                }
+
+                if (resolved.Count == 0)
+                {
+                    resolved.Add(AnimationKeys.Stand);
+                }
+
+                return resolved.ToArray();
+            }
 
             public string NpcId { get; }
             public int SpeakDurationMs { get; }

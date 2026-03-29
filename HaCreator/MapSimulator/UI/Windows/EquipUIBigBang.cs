@@ -507,6 +507,19 @@ namespace HaCreator.MapSimulator.UI
             _dragonEquipmentController = dragonEquipmentController;
         }
 
+        public void SetDragonPaneAvailable(bool available)
+        {
+            if (!available && _currentTab == TAB_DRAGON)
+            {
+                CurrentTab = TAB_CHARACTER;
+            }
+
+            if (_btnDragon != null)
+            {
+                _btnDragon.ButtonVisible = available;
+            }
+        }
+
         public void SetMechanicEquipmentController(MechanicEquipmentController mechanicEquipmentController)
         {
             _mechanicEquipmentController = mechanicEquipmentController;
@@ -1612,9 +1625,17 @@ namespace HaCreator.MapSimulator.UI
             AppendStatSegment(segments, "Speed", part.BonusSpeed);
             AppendStatSegment(segments, "Jump", part.BonusJump);
 
-            if (part.UpgradeSlots > 0)
+            int upgradeSlots = ResolveTooltipUpgradeSlotCount(part);
+            if (upgradeSlots > 0)
             {
-                segments.Add($"Slots +{part.UpgradeSlots}");
+                if (part.TotalUpgradeSlotCount.HasValue && part.TotalUpgradeSlotCount.Value > 0)
+                {
+                    segments.Add($"Slots {upgradeSlots}/{part.TotalUpgradeSlotCount.Value}");
+                }
+                else
+                {
+                    segments.Add($"Slots {upgradeSlots}");
+                }
             }
 
             if (part is WeaponPart weapon && weapon.AttackSpeed > 0)
@@ -1984,6 +2005,57 @@ namespace HaCreator.MapSimulator.UI
             }
         }
 
+        private static int ResolveTooltipUpgradeSlotCount(CharacterPart part)
+        {
+            if (part == null)
+            {
+                return 0;
+            }
+
+            if (part.RemainingUpgradeSlotCount.HasValue)
+            {
+                return Math.Max(0, part.RemainingUpgradeSlotCount.Value);
+            }
+
+            return Math.Max(0, part.UpgradeSlots);
+        }
+
+        private static void AppendPotentialTooltipSections(List<TooltipSection> sections, CharacterPart part)
+        {
+            if (sections == null || part == null)
+            {
+                return;
+            }
+
+            if (!string.IsNullOrWhiteSpace(part.PotentialTierText))
+            {
+                sections.Add(new TooltipSection(part.PotentialTierText, new Color(214, 190, 255)));
+            }
+
+            if (part.PotentialLines == null)
+            {
+                return;
+            }
+
+            for (int i = 0; i < part.PotentialLines.Count; i++)
+            {
+                if (!string.IsNullOrWhiteSpace(part.PotentialLines[i]))
+                {
+                    sections.Add(new TooltipSection(part.PotentialLines[i], new Color(236, 224, 255)));
+                }
+            }
+        }
+
+        private static string BuildExpirationLine(CharacterPart part)
+        {
+            if (!part?.ExpirationDateUtc.HasValue ?? true)
+            {
+                return string.Empty;
+            }
+
+            return $"Expires {part.ExpirationDateUtc.Value.ToLocalTime().ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture)}";
+        }
+
         private static void AppendRequirementSegment(List<string> segments, string label, int value)
         {
             if (value > 0)
@@ -2331,17 +2403,20 @@ namespace HaCreator.MapSimulator.UI
                 sections.Add(new TooltipSection(metadataLine, new Color(255, 214, 156)));
             }
 
+            AppendPotentialTooltipSections(sections, part);
+
+            string expirationLine = BuildExpirationLine(part);
+            if (!string.IsNullOrWhiteSpace(expirationLine))
+            {
+                sections.Add(new TooltipSection(expirationLine, new Color(255, 214, 156)));
+            }
+
             string slotLine = string.IsNullOrWhiteSpace(slotLabel)
                 ? $"Item ID: {part.ItemId}"
                 : $"Item ID: {part.ItemId}  Slot: {slotLabel}";
             if (part.IsCash)
             {
                 slotLine += "  Cash";
-            }
-
-            if (part.ExpirationDateUtc.HasValue)
-            {
-                slotLine += $"  Expires {part.ExpirationDateUtc.Value.ToLocalTime().ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)}";
             }
 
             sections.Add(new TooltipSection(slotLine, Color.White));
@@ -2408,7 +2483,7 @@ namespace HaCreator.MapSimulator.UI
             AppendStatRow(rows, null, ResolvePropertyLabel("12"), part.BonusHands, new Color(176, 255, 176), includePlusPrefix: true);
             AppendStatRow(rows, null, ResolvePropertyLabel("13"), part.BonusSpeed, new Color(176, 255, 176), includePlusPrefix: true);
             AppendStatRow(rows, null, ResolvePropertyLabel("14"), part.BonusJump, new Color(176, 255, 176), includePlusPrefix: true);
-            AppendStatRow(rows, null, ResolvePropertyLabel("16"), part.UpgradeSlots, new Color(255, 232, 176), includePlusPrefix: false);
+            AppendUpgradeSlotRow(rows, part);
             if (part is WeaponPart weapon)
             {
                 AppendAttackSpeedRow(rows, weapon.AttackSpeed);
@@ -2463,6 +2538,25 @@ namespace HaCreator.MapSimulator.UI
                 valueText,
                 color,
                 BuildTooltipValueTextures(valueText, enabled: true, preferGrowthDigits: true)));
+        }
+
+        private void AppendUpgradeSlotRow(List<TooltipLabeledValueRow> rows, CharacterPart part)
+        {
+            int upgradeSlots = ResolveTooltipUpgradeSlotCount(part);
+            if (upgradeSlots <= 0)
+            {
+                return;
+            }
+
+            string valueText = part.TotalUpgradeSlotCount.HasValue && part.TotalUpgradeSlotCount.Value > 0
+                ? $"{upgradeSlots}/{part.TotalUpgradeSlotCount.Value}"
+                : upgradeSlots.ToString(CultureInfo.InvariantCulture);
+            rows.Add(new TooltipLabeledValueRow(
+                ResolvePropertyLabel("16"),
+                "Upgrades Available:",
+                valueText,
+                new Color(255, 232, 176),
+                BuildTooltipValueTextures(valueText, enabled: true, preferGrowthDigits: false)));
         }
 
         private void AppendAttackSpeedRow(List<TooltipLabeledValueRow> rows, int attackSpeed)

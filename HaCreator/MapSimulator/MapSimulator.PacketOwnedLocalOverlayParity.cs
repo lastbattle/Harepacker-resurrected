@@ -22,6 +22,11 @@ namespace HaCreator.MapSimulator
     public partial class MapSimulator
     {
         private readonly record struct FieldHazardHpPotionCandidate(int ItemId, InventoryType InventoryType, string ItemName);
+        private readonly record struct FieldHazardPetAutoConsumeTarget(
+            int PetSlotIndex,
+            string PetName,
+            FieldHazardHpPotionCandidate Candidate,
+            bool UsesConfiguredItem);
 
         private const int PacketOwnedBalloonHorizontalPadding = 10;
         private const int PacketOwnedBalloonVerticalPadding = 10;
@@ -33,6 +38,13 @@ namespace HaCreator.MapSimulator
         private const int PacketOwnedBalloonCornerThreshold = 28;
         private const int PacketOwnedBalloonLongArrowThreshold = 18;
         private const int PacketOwnedBalloonBodyExtraWidth = PacketOwnedBalloonHorizontalPadding * 2;
+        private const int PacketOwnedBalloonClientArrowYOffset = 9;
+        private const float PacketOwnedBalloonClientArrowAnchorRatio = 0.7f;
+        private const float PacketOwnedBalloonEmphasisOffsetX = 1f;
+        private static readonly Color PacketOwnedBalloonMarkupRed = new(255, 0, 0);
+        private static readonly Color PacketOwnedBalloonMarkupGreen = new(0, 255, 0);
+        private static readonly Color PacketOwnedBalloonMarkupBlue = new(0, 0, 255);
+        private static readonly Color PacketOwnedBalloonMarkupPurple = new(255, 0, 255);
 
         private readonly PacketFieldFadeOverlay _packetOwnedFieldFadeOverlay = new();
         private readonly LocalOverlayBalloonState _packetOwnedBalloonState = new();
@@ -236,21 +248,28 @@ namespace HaCreator.MapSimulator
                     => new Vector2(layout.BodyBounds.X - arrow.Origin.X, layout.BodyBounds.Y - arrow.Origin.Y),
                 PacketOwnedBalloonArrowKind.TopRight or PacketOwnedBalloonArrowKind.TopRightLong
                     => new Vector2(layout.BodyBounds.Right - arrow.Origin.X, layout.BodyBounds.Y - arrow.Origin.Y),
+                PacketOwnedBalloonArrowKind.BottomCenter or PacketOwnedBalloonArrowKind.BottomCenterLong
+                    => ResolvePacketOwnedBalloonBottomCenterArrowPosition(layout.BodyBounds, arrowTexture, arrow, topMounted: false),
                 PacketOwnedBalloonArrowKind.TopCenter or PacketOwnedBalloonArrowKind.TopCenterLong
-                    => new Vector2(
-                        Math.Clamp(
-                            layout.Anchor.X - (arrowTexture.Width / 2) + arrow.Origin.X,
-                            layout.BodyBounds.X + 6,
-                            Math.Max(layout.BodyBounds.X + 6, layout.BodyBounds.Right - arrowTexture.Width - 6)),
-                        layout.BodyBounds.Y - arrowTexture.Height + 1),
-                _ => new Vector2(
-                    Math.Clamp(
-                        layout.Anchor.X - (arrowTexture.Width / 2) + arrow.Origin.X,
-                        layout.BodyBounds.X + 6,
-                        Math.Max(layout.BodyBounds.X + 6, layout.BodyBounds.Right - arrowTexture.Width - 6)),
-                    layout.BodyBounds.Bottom - 1)
+                    => ResolvePacketOwnedBalloonBottomCenterArrowPosition(layout.BodyBounds, arrowTexture, arrow, topMounted: true),
+                _ => ResolvePacketOwnedBalloonBottomCenterArrowPosition(layout.BodyBounds, arrowTexture, arrow, topMounted: false)
             };
             _spriteBatch.Draw(arrowTexture, arrowPosition, tint);
+        }
+
+        private Vector2 ResolvePacketOwnedBalloonBottomCenterArrowPosition(
+            Rectangle bodyBounds,
+            Texture2D arrowTexture,
+            LocalOverlayBalloonArrowSprite arrow,
+            bool topMounted)
+        {
+            int anchorOffsetX = (int)Math.Floor((bodyBounds.Width * PacketOwnedBalloonClientArrowAnchorRatio) - arrowTexture.Width);
+            float drawX = bodyBounds.X + Math.Clamp(anchorOffsetX, 0, Math.Max(0, bodyBounds.Width - arrowTexture.Width));
+            float drawY = topMounted
+                ? bodyBounds.Y - (arrowTexture.Height - PacketOwnedBalloonClientArrowYOffset)
+                : bodyBounds.Bottom - PacketOwnedBalloonClientArrowYOffset;
+
+            return new Vector2(drawX - arrow.Origin.X, drawY - arrow.Origin.Y);
         }
 
         private bool TryResolvePacketOwnedBalloonAnchorScreenPoint(LocalOverlayBalloonMessage message, int currentTickCount, int mapCenterX, int mapCenterY, out Point anchor)
@@ -296,91 +315,246 @@ namespace HaCreator.MapSimulator
             return Math.Clamp(requestedWidth, PacketOwnedBalloonMinWidth, PacketOwnedBalloonMaxWidth);
         }
 
-        private string[] WrapPacketOwnedBalloonText(string text, int maxWidth)
+        private PacketOwnedBalloonWrappedLine[] WrapPacketOwnedBalloonText(string text, int maxWidth)
+        {
+            PacketOwnedBalloonGlyph[] glyphs = ParsePacketOwnedBalloonGlyphs(text);
+            if (glyphs.Length == 0)
+            {
+                return Array.Empty<PacketOwnedBalloonWrappedLine>();
+            }
+
+            int constrainedWidth = Math.Max(1, maxWidth);
+            var wrappedLines = new List<PacketOwnedBalloonWrappedLine>();
+            int lineStart = 0;
+            int currentWidth = 0;
+            int lastBreakIndex = -1;
+            int index = 0;
+            while (index < glyphs.Length)
+            {
+                char character = glyphs[index].Character;
+                if (character == '\n')
+                {
+                    wrappedLines.Add(BuildPacketOwnedBalloonWrappedLine(glyphs, lineStart, index));
+                    lineStart = index + 1;
+                    currentWidth = 0;
+                    lastBreakIndex = -1;
+                    index++;
+                    continue;
+                }
+
+                int characterWidth = MeasurePacketOwnedBalloonGlyph(character);
+                bool canBreakAfter = character == ' ' || character == '\t';
+                if (lineStart < index && currentWidth + characterWidth > constrainedWidth)
+                {
+                    if (lastBreakIndex >= lineStart)
+                    {
+                        wrappedLines.Add(BuildPacketOwnedBalloonWrappedLine(glyphs, lineStart, lastBreakIndex));
+                        index = SkipPacketOwnedBalloonLineLeadingSpaces(glyphs, lastBreakIndex);
+                    }
+                    else
+                    {
+                        wrappedLines.Add(BuildPacketOwnedBalloonWrappedLine(glyphs, lineStart, index));
+                    }
+
+                    lineStart = index;
+                    currentWidth = 0;
+                    lastBreakIndex = -1;
+                    continue;
+                }
+
+                currentWidth += characterWidth;
+                if (canBreakAfter)
+                {
+                    lastBreakIndex = index + 1;
+                }
+
+                index++;
+            }
+
+            if (lineStart < glyphs.Length || glyphs.Length > 0 && glyphs[^1].Character == '\n')
+            {
+                wrappedLines.Add(BuildPacketOwnedBalloonWrappedLine(glyphs, lineStart, glyphs.Length));
+            }
+
+            return wrappedLines.Count == 0 ? Array.Empty<PacketOwnedBalloonWrappedLine>() : wrappedLines.ToArray();
+        }
+
+        private PacketOwnedBalloonGlyph[] ParsePacketOwnedBalloonGlyphs(string text)
         {
             if (string.IsNullOrWhiteSpace(text))
             {
-                return Array.Empty<string>();
+                return Array.Empty<PacketOwnedBalloonGlyph>();
             }
 
-            var wrappedLines = new System.Collections.Generic.List<string>();
-            string[] paragraphs = text.Replace("\r", string.Empty).Split('\n');
-            for (int i = 0; i < paragraphs.Length; i++)
+            Color baseColor = _packetOwnedBalloonSkin?.TextColor ?? Color.Black;
+            PacketOwnedBalloonTextStyle style = new(baseColor, false);
+            var glyphs = new List<PacketOwnedBalloonGlyph>(text.Length);
+            string sanitized = text.Replace("\r", string.Empty);
+            for (int i = 0; i < sanitized.Length; i++)
             {
-                string paragraph = paragraphs[i];
-                if (string.IsNullOrWhiteSpace(paragraph))
+                char current = sanitized[i];
+                if (current == '#'
+                    && i + 1 < sanitized.Length
+                    && TryApplyPacketOwnedBalloonInlineCode(sanitized, i + 1, baseColor, ref style, out int consumedCharacters))
                 {
-                    wrappedLines.Add(string.Empty);
+                    i += consumedCharacters;
                     continue;
                 }
 
-                string[] words = paragraph.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
-                var builder = new StringBuilder();
-                for (int j = 0; j < words.Length; j++)
-                {
-                    foreach (string segment in SplitPacketOwnedBalloonToken(words[j], maxWidth))
-                    {
-                        string candidate = builder.Length == 0
-                            ? segment
-                            : $"{builder} {segment}";
-                        if (MeasureChatTextWithFallback(candidate).X <= maxWidth || builder.Length == 0)
-                        {
-                            builder.Clear();
-                            builder.Append(candidate);
-                            continue;
-                        }
-
-                        wrappedLines.Add(builder.ToString());
-                        builder.Clear();
-                        builder.Append(segment);
-                    }
-                }
-
-                if (builder.Length > 0)
-                {
-                    wrappedLines.Add(builder.ToString());
-                }
+                glyphs.Add(new PacketOwnedBalloonGlyph(current, style));
             }
 
-            return wrappedLines.Count == 0 ? Array.Empty<string>() : wrappedLines.ToArray();
+            return glyphs.Count == 0
+                ? Array.Empty<PacketOwnedBalloonGlyph>()
+                : glyphs.ToArray();
         }
 
-        private IEnumerable<string> SplitPacketOwnedBalloonToken(string token, int maxWidth)
+        private static bool TryApplyPacketOwnedBalloonInlineCode(
+            string text,
+            int codeIndex,
+            Color baseColor,
+            ref PacketOwnedBalloonTextStyle style,
+            out int consumedCharacters)
         {
-            if (string.IsNullOrEmpty(token))
+            consumedCharacters = 0;
+            if (codeIndex < 0 || codeIndex >= text.Length)
             {
-                yield break;
+                return false;
             }
 
-            if (MeasureChatTextWithFallback(token).X <= maxWidth)
+            switch (char.ToLowerInvariant(text[codeIndex]))
             {
-                yield return token;
-                yield break;
+                case '#':
+                    return false;
+
+                case 'k':
+                    style = style with { Color = baseColor };
+                    consumedCharacters = 1;
+                    return true;
+
+                case 'r':
+                    style = style with { Color = PacketOwnedBalloonMarkupRed };
+                    consumedCharacters = 1;
+                    return true;
+
+                case 'g':
+                    style = style with { Color = PacketOwnedBalloonMarkupGreen };
+                    consumedCharacters = 1;
+                    return true;
+
+                case 'b':
+                    style = style with { Color = PacketOwnedBalloonMarkupBlue };
+                    consumedCharacters = 1;
+                    return true;
+
+                case 'd':
+                    style = style with { Color = PacketOwnedBalloonMarkupPurple };
+                    consumedCharacters = 1;
+                    return true;
+
+                case 'e':
+                    style = style with { Emphasis = true };
+                    consumedCharacters = 1;
+                    return true;
+
+                case 'n':
+                    style = style with { Emphasis = false };
+                    consumedCharacters = 1;
+                    return true;
+
+                default:
+                    return false;
+            }
+        }
+
+        private int SkipPacketOwnedBalloonLineLeadingSpaces(PacketOwnedBalloonGlyph[] glyphs, int startIndex)
+        {
+            int index = Math.Max(0, startIndex);
+            while (index < glyphs.Length && (glyphs[index].Character == ' ' || glyphs[index].Character == '\t'))
+            {
+                index++;
             }
 
+            return index;
+        }
+
+        private PacketOwnedBalloonWrappedLine BuildPacketOwnedBalloonWrappedLine(PacketOwnedBalloonGlyph[] glyphs, int start, int endExclusive)
+        {
+            if (glyphs == null || start >= endExclusive)
+            {
+                return PacketOwnedBalloonWrappedLine.Empty;
+            }
+
+            while (start < endExclusive && (glyphs[start].Character == ' ' || glyphs[start].Character == '\t'))
+            {
+                start++;
+            }
+
+            while (endExclusive > start && (glyphs[endExclusive - 1].Character == ' ' || glyphs[endExclusive - 1].Character == '\t'))
+            {
+                endExclusive--;
+            }
+
+            if (start >= endExclusive)
+            {
+                return PacketOwnedBalloonWrappedLine.Empty;
+            }
+
+            var runs = new List<PacketOwnedBalloonTextRun>();
             var builder = new StringBuilder();
-            for (int i = 0; i < token.Length; i++)
+            PacketOwnedBalloonTextStyle currentStyle = glyphs[start].Style;
+            int lineWidth = 0;
+
+            for (int i = start; i < endExclusive; i++)
             {
-                builder.Append(token[i]);
-                if (builder.Length == 1)
+                PacketOwnedBalloonGlyph glyph = glyphs[i];
+                if (glyph.Style != currentStyle && builder.Length > 0)
                 {
-                    continue;
+                    runs.Add(new PacketOwnedBalloonTextRun(builder.ToString(), currentStyle));
+                    builder.Clear();
+                    currentStyle = glyph.Style;
+                }
+                else if (builder.Length == 0)
+                {
+                    currentStyle = glyph.Style;
                 }
 
-                if (MeasureChatTextWithFallback(builder.ToString()).X <= maxWidth)
-                {
-                    continue;
-                }
-
-                builder.Length--;
-                yield return builder.ToString();
-                builder.Clear();
-                builder.Append(token[i]);
+                builder.Append(glyph.Character);
+                lineWidth += MeasurePacketOwnedBalloonGlyph(glyph.Character);
             }
 
             if (builder.Length > 0)
             {
-                yield return builder.ToString();
+                runs.Add(new PacketOwnedBalloonTextRun(builder.ToString(), currentStyle));
+            }
+
+            return runs.Count == 0
+                ? PacketOwnedBalloonWrappedLine.Empty
+                : new PacketOwnedBalloonWrappedLine(runs.ToArray(), lineWidth);
+        }
+
+        private int MeasurePacketOwnedBalloonGlyph(char character)
+        {
+            if (character == '\t')
+            {
+                return MeasurePacketOwnedBalloonGlyph(' ') * 4;
+            }
+
+            return (int)Math.Ceiling(MeasureChatTextWithFallback(character.ToString()).X);
+        }
+
+        private float MeasurePacketOwnedBalloonRun(in PacketOwnedBalloonTextRun run)
+        {
+            return MeasureChatTextWithFallback(run.Text).X;
+        }
+
+        private void DrawPacketOwnedBalloonRun(in PacketOwnedBalloonTextRun run, Vector2 position, float alpha)
+        {
+            Color drawColor = run.Style.Color * alpha;
+            DrawChatTextWithFallback(run.Text, position, drawColor);
+            if (run.Style.Emphasis)
+            {
+                DrawChatTextWithFallback(run.Text, new Vector2(position.X + PacketOwnedBalloonEmphasisOffsetX, position.Y), drawColor);
             }
         }
 
@@ -398,7 +572,7 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
-            string[] lines = WrapPacketOwnedBalloonText(message.Text, ResolvePacketOwnedBalloonWrapWidth(message.RequestedWidth));
+            PacketOwnedBalloonWrappedLine[] lines = WrapPacketOwnedBalloonText(message.Text, ResolvePacketOwnedBalloonWrapWidth(message.RequestedWidth));
             if (lines.Length == 0)
             {
                 return false;
@@ -409,7 +583,7 @@ namespace HaCreator.MapSimulator
             int textWidth = 0;
             for (int i = 0; i < lines.Length; i++)
             {
-                textWidth = Math.Max(textWidth, (int)Math.Ceiling(MeasureChatTextWithFallback(lines[i]).X));
+                textWidth = Math.Max(textWidth, lines[i].Width);
             }
 
             int contentWidth = Math.Clamp(message.RequestedWidth, PacketOwnedBalloonMinWidth, PacketOwnedBalloonMaxWidth);
@@ -474,8 +648,6 @@ namespace HaCreator.MapSimulator
             }
 
             Color tint = Color.White * alpha;
-            Color textColor = (_packetOwnedBalloonSkin?.TextColor ?? Color.Black) * alpha;
-
             if (_packetOwnedBalloonSkin?.IsLoaded == true)
             {
                 DrawPacketOwnedBalloonNineSlice(layout.BodyBounds, tint);
@@ -495,9 +667,16 @@ namespace HaCreator.MapSimulator
             float drawY = layout.ContentBounds.Y;
             for (int i = 0; i < layout.Lines.Length; i++)
             {
-                float lineWidth = MeasureChatTextWithFallback(layout.Lines[i]).X;
+                PacketOwnedBalloonWrappedLine line = layout.Lines[i];
+                float lineWidth = line.Width;
                 float drawX = layout.ContentBounds.X + Math.Max(0f, (layout.ContentBounds.Width - lineWidth) / 2f);
-                DrawChatTextWithFallback(layout.Lines[i], new Vector2(drawX, drawY), textColor);
+                for (int runIndex = 0; runIndex < line.Runs.Length; runIndex++)
+                {
+                    PacketOwnedBalloonTextRun run = line.Runs[runIndex];
+                    DrawPacketOwnedBalloonRun(run, new Vector2(drawX, drawY), alpha);
+                    drawX += MeasurePacketOwnedBalloonRun(run);
+                }
+
                 drawY += layout.LineHeight;
             }
         }
@@ -682,19 +861,99 @@ namespace HaCreator.MapSimulator
                 return null;
             }
 
-            if (!TryResolveFieldHazardHpPotionCandidate(predictedRemainingHp, out FieldHazardHpPotionCandidate candidate))
+            if (!TryResolveFieldHazardPetAutoConsumeTarget(
+                predictedRemainingHp,
+                out FieldHazardPetAutoConsumeTarget target,
+                out bool autoConsumeEnabled))
             {
+                if (!autoConsumeEnabled)
+                {
+                    return null;
+                }
+
                 TryTriggerLimitedPetSpeechEvent(PetAutoSpeechEvent.NoHpPotion, ref _petHpPotionFailureSpeechCount, currentTickCount);
                 _chat?.AddMessage(FieldHazardNoHpPotionNoticeText, new Color(255, 206, 145), currentTickCount);
-                return FieldHazardNoHpPotionNoticeText;
+                return $"{DescribeFieldHazardAutoConsumePet(target.PetSlotIndex, target.PetName)} could not find an HP potion to use.";
             }
 
-            if (player.HP < player.MaxHP && TryUseConsumableInventoryItem(candidate.ItemId, candidate.InventoryType, currentTickCount))
+            string petLabel = DescribeFieldHazardAutoConsumePet(target.PetSlotIndex, target.PetName);
+            string requestMode = target.UsesConfiguredItem ? "configured auto-HP" : "auto-HP";
+            if (player.HP < player.MaxHP
+                && TryUseConsumableInventoryItem(target.Candidate.ItemId, target.Candidate.InventoryType, currentTickCount))
             {
-                return $"Pet auto-HP consumed {candidate.ItemName}.";
+                return $"{petLabel} {requestMode} consumed {target.Candidate.ItemName}.";
             }
 
-            return $"Pet auto-HP would request {candidate.ItemName}.";
+            return $"{petLabel} {requestMode} would request {target.Candidate.ItemName}.";
+        }
+
+        private bool TryResolveFieldHazardPetAutoConsumeTarget(
+            int predictedRemainingHp,
+            out FieldHazardPetAutoConsumeTarget target,
+            out bool autoConsumeEnabled)
+        {
+            target = default;
+            autoConsumeEnabled = false;
+
+            IReadOnlyList<PetRuntime> activePets = _playerManager?.Pets?.ActivePets;
+            if (activePets == null || activePets.Count == 0)
+            {
+                return false;
+            }
+
+            for (int i = 0; i < activePets.Count; i++)
+            {
+                PetRuntime pet = activePets[i];
+                if (pet == null || !pet.AutoConsumeHpEnabled)
+                {
+                    continue;
+                }
+
+                autoConsumeEnabled = true;
+                if (pet.AutoConsumeHpItemId > 0
+                    && TryCreateFieldHazardHpPotionCandidate(
+                        pet.AutoConsumeHpItemId,
+                        pet.AutoConsumeHpInventoryType,
+                        predictedRemainingHp,
+                        uiWindowManager?.InventoryWindow as IInventoryRuntime,
+                        _playerManager?.Player,
+                        out FieldHazardHpPotionCandidate configuredCandidate))
+                {
+                    target = new FieldHazardPetAutoConsumeTarget(i, pet.Name, configuredCandidate, UsesConfiguredItem: true);
+                    return true;
+                }
+            }
+
+            if (!autoConsumeEnabled)
+            {
+                return false;
+            }
+
+            if (!TryResolveFieldHazardHpPotionCandidate(predictedRemainingHp, out FieldHazardHpPotionCandidate candidate))
+            {
+                PetRuntime fallbackPet = activePets.FirstOrDefault(pet => pet != null && pet.AutoConsumeHpEnabled);
+                if (fallbackPet != null)
+                {
+                    target = new FieldHazardPetAutoConsumeTarget(fallbackPet.SlotIndex, fallbackPet.Name, default, UsesConfiguredItem: false);
+                }
+
+                return false;
+            }
+
+            PetRuntime selectedPet = activePets.FirstOrDefault(pet => pet != null && pet.AutoConsumeHpEnabled);
+            if (selectedPet == null)
+            {
+                return false;
+            }
+
+            target = new FieldHazardPetAutoConsumeTarget(selectedPet.SlotIndex, selectedPet.Name, candidate, UsesConfiguredItem: false);
+            return true;
+        }
+
+        private static string DescribeFieldHazardAutoConsumePet(int petSlotIndex, string petName)
+        {
+            string resolvedName = string.IsNullOrWhiteSpace(petName) ? "Unknown" : petName.Trim();
+            return $"Pet {petSlotIndex + 1} ({resolvedName})";
         }
 
         private bool TryResolveFieldHazardHpPotionCandidate(int predictedRemainingHp, out FieldHazardHpPotionCandidate candidate)
@@ -802,10 +1061,12 @@ namespace HaCreator.MapSimulator
             string fadeStatus = _packetOwnedFieldFadeOverlay.IsActive
                 ? string.Format(
                     CultureInfo.InvariantCulture,
-                    "Fade active: fadeIn={0}ms hold={1}ms fadeOut={2}ms remaining={3}ms alpha={4} layer={5}.",
+                    "Fade active: phase={0} fadeIn={1}ms hold={2}ms fadeOut={3}ms fadeOutStartIn={4}ms remaining={5}ms alpha={6} layer={7}.",
+                    DescribePacketOwnedFieldFadePhase(currentTickCount),
                     _packetOwnedFieldFadeOverlay.FadeInMs,
                     _packetOwnedFieldFadeOverlay.HoldMs,
                     _packetOwnedFieldFadeOverlay.FadeOutMs,
+                    Math.Max(0, _packetOwnedFieldFadeOverlay.FadeOutStartsAt - currentTickCount),
                     Math.Max(0, _packetOwnedFieldFadeOverlay.ExpiresAt - currentTickCount),
                     DescribePacketOwnedFadeAlpha(_packetOwnedFieldFadeOverlay.StartingAlpha),
                     _packetOwnedFieldFadeOverlay.RequestedLayerZ)
@@ -1366,6 +1627,28 @@ namespace HaCreator.MapSimulator
             return $"{Math.Clamp(alpha, 0, byte.MaxValue)}";
         }
 
+        private string DescribePacketOwnedFieldFadePhase(int currentTickCount)
+        {
+            if (!_packetOwnedFieldFadeOverlay.IsActive)
+            {
+                return "inactive";
+            }
+
+            int startedAt = _packetOwnedFieldFadeOverlay.StartedAt;
+            int fadeOutStartsAt = _packetOwnedFieldFadeOverlay.FadeOutStartsAt;
+            if (_packetOwnedFieldFadeOverlay.FadeInMs > 0 && currentTickCount < startedAt + _packetOwnedFieldFadeOverlay.FadeInMs)
+            {
+                return "fade-in";
+            }
+
+            if (currentTickCount < fadeOutStartsAt)
+            {
+                return _packetOwnedFieldFadeOverlay.HoldMs > 0 ? "hold" : "opaque";
+            }
+
+            return _packetOwnedFieldFadeOverlay.FadeOutMs > 0 ? "fade-out" : "expired";
+        }
+
         private enum PacketOwnedBalloonArrowKind
         {
             BottomCenter,
@@ -1387,9 +1670,20 @@ namespace HaCreator.MapSimulator
             Point Anchor,
             Rectangle BodyBounds,
             Rectangle ContentBounds,
-            string[] Lines,
+            PacketOwnedBalloonWrappedLine[] Lines,
             int LineHeight,
             PacketOwnedBalloonArrowKind ArrowKind,
             LocalOverlayBalloonArrowSprite ArrowSprite);
+
+        private readonly record struct PacketOwnedBalloonTextStyle(Color Color, bool Emphasis);
+
+        private readonly record struct PacketOwnedBalloonGlyph(char Character, PacketOwnedBalloonTextStyle Style);
+
+        private readonly record struct PacketOwnedBalloonTextRun(string Text, PacketOwnedBalloonTextStyle Style);
+
+        private readonly record struct PacketOwnedBalloonWrappedLine(PacketOwnedBalloonTextRun[] Runs, int Width)
+        {
+            public static readonly PacketOwnedBalloonWrappedLine Empty = new(Array.Empty<PacketOwnedBalloonTextRun>(), 0);
+        }
     }
 }

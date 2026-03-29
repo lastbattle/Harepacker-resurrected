@@ -20,7 +20,9 @@ namespace HaCreator.MapSimulator.UI
         private const int FadeDurationMs = 260;
         private const int SlideSpeed = 480;
         private const float SpawnSlideOffset = 18f;
-        private const int TopMargin = 42;
+        // The packet-owned top-center HUD notices use the client's 800x578 anchor at 44px.
+        // Cooldown notices share that same top-center seam more closely than the older 42px guess.
+        private const int TopMargin = 44;
         private const int NoticeSpacing = 6;
         private const int IconSize = 32;
         private const int DefaultIconX = 18;

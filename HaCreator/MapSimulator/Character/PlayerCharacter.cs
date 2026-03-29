@@ -66,8 +66,10 @@ namespace HaCreator.MapSimulator.Character
             public IReadOnlyList<string> JumpActionNames { get; init; }
             public IReadOnlyList<string> ProneActionNames { get; init; }
             public IReadOnlyList<string> AttackActionNames { get; init; }
-            public IReadOnlyList<string> ClimbActionNames { get; init; }
-            public IReadOnlyList<string> FloatActionNames { get; init; }
+            public IReadOnlyList<string> LadderActionNames { get; init; }
+            public IReadOnlyList<string> RopeActionNames { get; init; }
+            public IReadOnlyList<string> FlyActionNames { get; init; }
+            public IReadOnlyList<string> SwimActionNames { get; init; }
             public IReadOnlyList<string> HitActionNames { get; init; }
             public string ExitActionName { get; init; }
             public bool LocksMovement { get; init; }
@@ -143,6 +145,7 @@ namespace HaCreator.MapSimulator.Character
             public int SkillId { get; init; }
             public IReadOnlyDictionary<string, SkillAnimation> ActionAnimations { get; init; }
             public int HorizontalOffsetPx { get; init; }
+            public Point CurrentClientOffsetPx { get; set; }
             public string CurrentActionName { get; set; }
             public int CurrentActionStartTime { get; set; }
             public bool CurrentFacingRight { get; set; }
@@ -202,6 +205,8 @@ namespace HaCreator.MapSimulator.Character
         private const int FACE_BLINK_MAX_INTERVAL_MS = 4500;
         private const int PORTABLE_CHAIR_RECOVERY_INTERVAL_MS = 10000;
         private const int ShadowPartnerAttackDelayMs = 90;
+        private const int ShadowPartnerClientSideOffsetPx = 30;
+        private const int ShadowPartnerClientBackActionOffsetYPx = 50;
 
         // Float idle should ignore the tiny passive sink applied by swim physics.
         private const float FLOAT_ANIMATION_MOVEMENT_THRESHOLD = 20f;
@@ -250,6 +255,8 @@ namespace HaCreator.MapSimulator.Character
             ClearExpiredSkillBlockingStatuses(currentTime);
             return _activeSkillBlockingStatuses.Count > 0;
         }
+
+        public PacketOwnedUserSummonRegistry PacketOwnedSummons { get; } = new();
 
         // Position shortcuts
         public float X => (float)Physics.X;
@@ -1954,6 +1961,7 @@ namespace HaCreator.MapSimulator.Character
                 SkillId = skillId,
                 ActionAnimations = skill.ShadowPartnerActionAnimations,
                 HorizontalOffsetPx = skill.ShadowPartnerHorizontalOffsetPx,
+                CurrentClientOffsetPx = ResolveShadowPartnerClientOffset(CurrentActionName, State, FacingRight),
                 CurrentActionName = useSpawnAction ? spawnActionName : resolvedActionName,
                 CurrentActionStartTime = currentTime,
                 CurrentFacingRight = FacingRight,
@@ -2638,6 +2646,14 @@ namespace HaCreator.MapSimulator.Character
                     currentTime,
                     drawFrontLayers: false);
 
+                DrawPortableChairCoupleSharedLayers(
+                    spriteBatch,
+                    skeletonRenderer,
+                    screenX,
+                    screenY,
+                    currentTime,
+                    drawFrontLayers: false);
+
                 DrawPortableChairPairPreview(
                     spriteBatch,
                     skeletonRenderer,
@@ -2664,6 +2680,14 @@ namespace HaCreator.MapSimulator.Character
                     tint,
                     currentTime,
                     drawUnderFaceOverlay);
+
+                DrawPortableChairCoupleSharedLayers(
+                    spriteBatch,
+                    skeletonRenderer,
+                    screenX,
+                    screenY,
+                    currentTime,
+                    drawFrontLayers: true);
 
                 DrawPortableChairCoupleMidpointEffects(
                     spriteBatch,
@@ -2774,10 +2798,25 @@ namespace HaCreator.MapSimulator.Character
             }
 
             int adjustedY = partnerScreenY - partnerFrame.FeetOffset;
+            DrawPortableChairPairPreviewSharedLayers(
+                spriteBatch,
+                skeletonRenderer,
+                partnerScreenX,
+                partnerScreenY,
+                currentTime,
+                drawFrontLayers: false);
             for (int i = 0; i < partnerFrame.Parts.Count; i++)
             {
                 DrawAssembledPart(spriteBatch, skeletonRenderer, partnerFrame.Parts[i], partnerScreenX, adjustedY, _portableChairPairFacingRight, Color.White);
             }
+
+            DrawPortableChairPairPreviewSharedLayers(
+                spriteBatch,
+                skeletonRenderer,
+                partnerScreenX,
+                partnerScreenY,
+                currentTime,
+                drawFrontLayers: true);
         }
 
         internal bool TryResolvePortableChairExternalPairLayerState(
@@ -2861,6 +2900,55 @@ namespace HaCreator.MapSimulator.Character
                 CharacterFrame frame = GetPortableChairLayerFrameAtTime(layer, animationTime);
                 DrawPortableChairLayerFrame(spriteBatch, skeletonRenderer, frame, midpointScreenX, midpointScreenY, FacingRight);
             }
+        }
+
+        private void DrawPortableChairCoupleSharedLayers(
+            SpriteBatch spriteBatch,
+            SkeletonMeshRenderer skeletonRenderer,
+            int screenX,
+            int screenY,
+            int currentTime,
+            bool drawFrontLayers)
+        {
+            if (!TryResolvePortableChairCoupleSharedLayerState(out PortableChair chair, out _))
+            {
+                return;
+            }
+
+            DrawPortableChairLayers(
+                spriteBatch,
+                skeletonRenderer,
+                chair.CoupleSharedLayers,
+                screenX,
+                screenY,
+                FacingRight,
+                GetRenderAnimationTime(currentTime),
+                drawFrontLayers);
+        }
+
+        private void DrawPortableChairPairPreviewSharedLayers(
+            SpriteBatch spriteBatch,
+            SkeletonMeshRenderer skeletonRenderer,
+            int partnerScreenX,
+            int partnerScreenY,
+            int currentTime,
+            bool drawFrontLayers)
+        {
+            if (!TryResolvePortableChairCoupleSharedLayerState(out PortableChair chair, out bool previewPairActive)
+                || !previewPairActive)
+            {
+                return;
+            }
+
+            DrawPortableChairLayers(
+                spriteBatch,
+                skeletonRenderer,
+                chair.CoupleSharedLayers,
+                partnerScreenX,
+                partnerScreenY,
+                _portableChairPairFacingRight,
+                GetRenderAnimationTime(currentTime),
+                drawFrontLayers);
         }
 
         /// <summary>
@@ -3129,13 +3217,14 @@ namespace HaCreator.MapSimulator.Character
             }
 
             bool flip = facingRight ^ frame.Flip;
+            Point clientOffset = _activeShadowPartner?.CurrentClientOffsetPx ?? Point.Zero;
             int horizontalOffsetPx = ResolveShadowPartnerHorizontalOffsetPx(animation);
-            int drawX = screenX + (facingRight ? -horizontalOffsetPx : horizontalOffsetPx);
+            int drawX = screenX + clientOffset.X + (facingRight ? -horizontalOffsetPx : horizontalOffsetPx);
             drawX = flip
                 ? drawX - (frame.Texture.Width - frame.Origin.X)
                 : drawX - frame.Origin.X;
 
-            int drawY = screenY - frame.Origin.Y;
+            int drawY = screenY + clientOffset.Y - frame.Origin.Y;
             frame.Texture.DrawBackground(spriteBatch, skeletonRenderer, null, drawX, drawY, ShadowPartnerTint, flip, null);
         }
 
@@ -3391,6 +3480,7 @@ namespace HaCreator.MapSimulator.Character
 
             if (string.Equals(_activeShadowPartner.CurrentActionName, actionName, StringComparison.OrdinalIgnoreCase))
             {
+                _activeShadowPartner.CurrentClientOffsetPx = ResolveShadowPartnerCurrentClientOffset(facingRight);
                 if (_activeShadowPartner.CurrentFacingRight == facingRight)
                 {
                     return;
@@ -3406,6 +3496,7 @@ namespace HaCreator.MapSimulator.Character
             _activeShadowPartner.CurrentActionName = actionName;
             _activeShadowPartner.CurrentActionStartTime = currentTime;
             _activeShadowPartner.CurrentFacingRight = facingRight;
+            _activeShadowPartner.CurrentClientOffsetPx = ResolveShadowPartnerCurrentClientOffset(facingRight);
         }
 
         private string GetShadowPartnerObservedPlayerActionName()
@@ -3728,6 +3819,41 @@ namespace HaCreator.MapSimulator.Character
             }
         }
 
+        private Point ResolveShadowPartnerCurrentClientOffset(bool facingRight)
+        {
+            if (_activeShadowPartner == null)
+            {
+                return Point.Zero;
+            }
+
+            return ResolveShadowPartnerClientOffset(_activeShadowPartner.ObservedPlayerActionName, State, facingRight);
+        }
+
+        private static Point ResolveShadowPartnerClientOffset(string observedPlayerActionName, PlayerState state, bool facingRight)
+        {
+            if (IsShadowPartnerBackAction(observedPlayerActionName, state))
+            {
+                return new Point(0, ShadowPartnerClientBackActionOffsetYPx);
+            }
+
+            return new Point(facingRight ? -ShadowPartnerClientSideOffsetPx : ShadowPartnerClientSideOffsetPx, 0);
+        }
+
+        private static bool IsShadowPartnerBackAction(string observedPlayerActionName, PlayerState state)
+        {
+            if (state is PlayerState.Ladder or PlayerState.Rope)
+            {
+                return true;
+            }
+
+            return observedPlayerActionName?.ToLowerInvariant() switch
+            {
+                "ladder" or "ladder2" or "ghostladder" => true,
+                "rope" or "rope2" or "ghostrope" => true,
+                _ => false
+            };
+        }
+
         private string ResolveShadowPartnerFallbackAction()
         {
             return State switch
@@ -3870,6 +3996,45 @@ namespace HaCreator.MapSimulator.Character
             _portableChairPairFacingRight = false;
             _portableChairPairActionName = null;
             ClearPortableChairExternalPair();
+        }
+
+        private bool TryResolvePortableChairCoupleSharedLayerState(out PortableChair chair, out bool previewPairActive)
+        {
+            previewPairActive = false;
+            chair = Build?.ActivePortableChair;
+            if (chair?.IsCoupleChair != true
+                || chair.CoupleSharedLayers == null
+                || chair.CoupleSharedLayers.Count == 0)
+            {
+                chair = null;
+                return false;
+            }
+
+            if (_portableChairExternalPairRequested)
+            {
+                if (!_portableChairHasExternalPair)
+                {
+                    chair = null;
+                    return false;
+                }
+
+                return IsPortableChairActualPairActive(
+                    chair,
+                    FacingRight,
+                    X,
+                    Y,
+                    _portableChairExternalPairFacingRight,
+                    _portableChairExternalPairPosition.X,
+                    _portableChairExternalPairPosition.Y);
+            }
+
+            previewPairActive = _portableChairPairAssembler != null && ShouldDrawPortableChairPairPreview();
+            if (!previewPairActive)
+            {
+                chair = null;
+            }
+
+            return previewPairActive;
         }
 
         internal static Point ResolvePortableChairPairOffset(PortableChair chair, bool facingRight)
@@ -4523,8 +4688,10 @@ namespace HaCreator.MapSimulator.Character
                 PlayerState.Walking => ResolveSkillTransformActionName(activeTransform.WalkActionNames, activeTransform.StandActionNames),
                 PlayerState.Jumping or PlayerState.Falling => ResolveSkillTransformActionName(activeTransform.JumpActionNames, activeTransform.StandActionNames),
                 PlayerState.Prone => ResolveSkillTransformActionName(activeTransform.ProneActionNames, activeTransform.StandActionNames),
-                PlayerState.Ladder or PlayerState.Rope => ResolveSkillTransformActionName(activeTransform.ClimbActionNames, activeTransform.StandActionNames),
-                PlayerState.Swimming or PlayerState.Flying => ResolveSkillTransformActionName(activeTransform.FloatActionNames, activeTransform.StandActionNames),
+                PlayerState.Ladder => ResolveSkillTransformActionName(activeTransform.LadderActionNames, activeTransform.StandActionNames),
+                PlayerState.Rope => ResolveSkillTransformActionName(activeTransform.RopeActionNames, activeTransform.StandActionNames),
+                PlayerState.Swimming => ResolveSkillTransformActionName(activeTransform.SwimActionNames, activeTransform.StandActionNames),
+                PlayerState.Flying => ResolveSkillTransformActionName(activeTransform.FlyActionNames, activeTransform.StandActionNames),
                 PlayerState.Attacking => ResolveSkillTransformActionName(activeTransform.AttackActionNames, activeTransform.StandActionNames),
                 PlayerState.Hit => ResolveSkillTransformActionName(activeTransform.HitActionNames, activeTransform.StandActionNames),
                 PlayerState.Dead => CharacterPart.GetActionString(CharacterAction.Dead),
@@ -4882,6 +5049,7 @@ namespace HaCreator.MapSimulator.Character
         private static SkillAvatarTransformState CreateMorphTransform(int skillId, CharacterPart morphPart, string actionName)
         {
             string normalizedAction = actionName?.Trim();
+            bool isSuperManMorph = morphPart?.IsSuperManMorph == true;
             return new SkillAvatarTransformState
             {
                 SkillId = skillId,
@@ -4892,8 +5060,16 @@ namespace HaCreator.MapSimulator.Character
                 JumpActionNames = CreateMorphActionVariants(morphPart, "jump", "fly", "stand"),
                 ProneActionNames = CreateMorphActionVariants(morphPart, "prone", "stand"),
                 AttackActionNames = CreateMorphActionVariants(morphPart, normalizedAction, "attack", "attack1", "walk", "stand"),
-                ClimbActionNames = CreateMorphActionVariants(morphPart, "ladder", "rope", "stand"),
-                FloatActionNames = CreateMorphActionVariants(morphPart, "fly", "swim", "jump", "stand"),
+                LadderActionNames = isSuperManMorph
+                    ? CreateMorphActionVariants(morphPart, "ladder2", "ladder", "rope2", "rope", "stand")
+                    : CreateMorphActionVariants(morphPart, "ladder", "rope", "stand"),
+                RopeActionNames = isSuperManMorph
+                    ? CreateMorphActionVariants(morphPart, "rope2", "rope", "ladder2", "ladder", "stand")
+                    : CreateMorphActionVariants(morphPart, "rope", "ladder", "stand"),
+                FlyActionNames = isSuperManMorph
+                    ? CreateMorphActionVariants(morphPart, "fly2", "fly", "jump", "stand")
+                    : CreateMorphActionVariants(morphPart, "fly", "swim", "jump", "stand"),
+                SwimActionNames = CreateMorphActionVariants(morphPart, "swim", "fly", "jump", "stand"),
                 HitActionNames = CreateMorphActionVariants(morphPart, "hit", "stand"),
                 ExitActionName = null
             };
@@ -4910,8 +5086,10 @@ namespace HaCreator.MapSimulator.Character
                 JumpActionNames = CreateActionVariants(GetActionFamilyVariant(standActionName, "jump"), standActionName),
                 ProneActionNames = CreateActionVariants(proneActionName, standActionName),
                 AttackActionNames = CreateActionVariants(attackActionName, standActionName),
-                ClimbActionNames = CreateActionVariants(GetActionFamilyVariant(standActionName, "ladder"), GetActionFamilyVariant(standActionName, "rope"), standActionName),
-                FloatActionNames = CreateActionVariants(GetActionFamilyVariant(standActionName, "fly"), GetActionFamilyVariant(standActionName, "swim"), standActionName),
+                LadderActionNames = CreateActionVariants(GetActionFamilyVariant(standActionName, "ladder"), GetActionFamilyVariant(standActionName, "rope"), standActionName),
+                RopeActionNames = CreateActionVariants(GetActionFamilyVariant(standActionName, "rope"), GetActionFamilyVariant(standActionName, "ladder"), standActionName),
+                FlyActionNames = CreateActionVariants(GetActionFamilyVariant(standActionName, "fly"), GetActionFamilyVariant(standActionName, "swim"), standActionName),
+                SwimActionNames = CreateActionVariants(GetActionFamilyVariant(standActionName, "swim"), GetActionFamilyVariant(standActionName, "fly"), standActionName),
                 HitActionNames = CreateActionVariants(GetActionFamilyVariant(standActionName, "hit"), standActionName),
                 ExitActionName = exitActionName,
                 LocksMovement = locksMovement
@@ -4929,8 +5107,10 @@ namespace HaCreator.MapSimulator.Character
                 JumpActionNames = CreateActionVariants(actionName),
                 ProneActionNames = CreateActionVariants(actionName),
                 AttackActionNames = CreateActionVariants(actionName),
-                ClimbActionNames = CreateActionVariants(actionName),
-                FloatActionNames = CreateActionVariants(actionName),
+                LadderActionNames = CreateActionVariants(actionName),
+                RopeActionNames = CreateActionVariants(actionName),
+                FlyActionNames = CreateActionVariants(actionName),
+                SwimActionNames = CreateActionVariants(actionName),
                 HitActionNames = CreateActionVariants(actionName),
                 ExitActionName = exitActionName
             };
@@ -4994,8 +5174,10 @@ namespace HaCreator.MapSimulator.Character
                 JumpActionNames = CreateActionVariants("ghostjump", "ghostfly", "ghoststand", "darksight"),
                 ProneActionNames = CreateActionVariants("ghostproneStab", "ghoststand", "darksight"),
                 AttackActionNames = CreateActionVariants("ghoststand", "darksight"),
-                ClimbActionNames = CreateActionVariants("ghostladder", "ghostrope", "ghoststand", "darksight"),
-                FloatActionNames = CreateActionVariants("ghostfly", "ghostjump", "ghoststand", "darksight"),
+                LadderActionNames = CreateActionVariants("ghostladder", "ghostrope", "ghoststand", "darksight"),
+                RopeActionNames = CreateActionVariants("ghostrope", "ghostladder", "ghoststand", "darksight"),
+                FlyActionNames = CreateActionVariants("ghostfly", "ghostjump", "ghoststand", "darksight"),
+                SwimActionNames = CreateActionVariants("ghostfly", "ghostjump", "ghoststand", "darksight"),
                 HitActionNames = CreateActionVariants("ghoststand", "darksight"),
                 ExitActionName = null
             };
@@ -5018,8 +5200,10 @@ namespace HaCreator.MapSimulator.Character
                 JumpActionNames = transform.JumpActionNames,
                 ProneActionNames = transform.ProneActionNames,
                 AttackActionNames = transform.AttackActionNames,
-                ClimbActionNames = transform.ClimbActionNames,
-                FloatActionNames = transform.FloatActionNames,
+                LadderActionNames = transform.LadderActionNames,
+                RopeActionNames = transform.RopeActionNames,
+                FlyActionNames = transform.FlyActionNames,
+                SwimActionNames = transform.SwimActionNames,
                 HitActionNames = transform.HitActionNames,
                 ExitActionName = transform.ExitActionName,
                 LocksMovement = transform.LocksMovement

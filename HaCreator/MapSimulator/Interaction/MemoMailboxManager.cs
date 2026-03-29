@@ -86,6 +86,8 @@ namespace HaCreator.MapSimulator.Interaction
 
         internal MemoMailboxDraftSnapshot GetDraftSnapshot()
         {
+            bool hasAttachment = _draft.Attachment != null && _draft.Attachment.Kind != MemoAttachmentKind.None;
+            bool isMesoAttachment = _draft.Attachment?.Kind == MemoAttachmentKind.Meso;
             return new MemoMailboxDraftSnapshot
             {
                 Recipient = _draft.Recipient,
@@ -93,7 +95,10 @@ namespace HaCreator.MapSimulator.Interaction
                 Body = _draft.Body,
                 AttachmentSummary = BuildAttachmentSummary(_draft.Attachment),
                 LastActionSummary = _lastActionSummary,
-                CanSend = CanSendDraft()
+                HasAttachment = hasAttachment,
+                IsMesoAttachment = isMesoAttachment,
+                CanSend = CanSendDraft(),
+                CanQuickSend = CanQuickSendDraft()
             };
         }
 
@@ -322,6 +327,40 @@ namespace HaCreator.MapSimulator.Interaction
             return true;
         }
 
+        internal bool TryQuickSendDraft(out string message)
+        {
+            if (!CanQuickSendDraft())
+            {
+                message = "Quick delivery requires recipient and body, and it cannot carry an item attachment.";
+                return false;
+            }
+
+            string recipient = _draft.Recipient;
+            string body = _draft.Body;
+            MemoAttachmentState attachment = CloneAttachment(_draft.Attachment);
+            string quickSubject = string.IsNullOrWhiteSpace(_draft.Subject)
+                ? "Quick delivery"
+                : $"Quick delivery: {_draft.Subject.Trim()}";
+
+            _lastActionSummary = attachment == null
+                ? $"Quick-sent parcel notice to {recipient}."
+                : $"Quick-sent parcel notice to {recipient} with {BuildAttachmentSummary(attachment)}.";
+            message = _lastActionSummary;
+
+            DeliverMemo(
+                "Maple Delivery Service",
+                $"Parcel receipt: {quickSubject}",
+                attachment == null
+                    ? $"Your quick parcel notice to {recipient} was staged through the simulator parcel owner."
+                    : $"Your quick parcel notice to {recipient} was staged through the simulator parcel owner with {BuildAttachmentSummary(attachment)}.",
+                DateTimeOffset.Now,
+                isRead: false,
+                attachmentMeso: attachment?.Kind == MemoAttachmentKind.Meso ? attachment.Meso : 0);
+
+            ResetDraft();
+            return true;
+        }
+
         private MemoState FindMemo(int memoId)
         {
             return _memos.FirstOrDefault(memo => memo.MemoId == memoId);
@@ -366,6 +405,13 @@ namespace HaCreator.MapSimulator.Interaction
             return !string.IsNullOrWhiteSpace(_draft.Recipient)
                 && !string.IsNullOrWhiteSpace(_draft.Subject)
                 && !string.IsNullOrWhiteSpace(_draft.Body);
+        }
+
+        private bool CanQuickSendDraft()
+        {
+            return !string.IsNullOrWhiteSpace(_draft.Recipient)
+                && !string.IsNullOrWhiteSpace(_draft.Body)
+                && _draft.Attachment?.Kind != MemoAttachmentKind.Item;
         }
 
         private void ResetDraft()

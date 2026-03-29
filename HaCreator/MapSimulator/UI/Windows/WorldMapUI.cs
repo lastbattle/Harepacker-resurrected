@@ -48,6 +48,14 @@ namespace HaCreator.MapSimulator.UI
             public string Description { get; init; } = string.Empty;
         }
 
+        public sealed class QuestOverlayEntry
+        {
+            public SearchResultKind Kind { get; init; }
+            public int MapId { get; init; }
+            public string Label { get; init; } = string.Empty;
+            public string Description { get; init; } = string.Empty;
+        }
+
         private sealed class RegionButtonEntry
         {
             public RegionButtonEntry(string regionCode, UIObject button)
@@ -121,6 +129,7 @@ namespace HaCreator.MapSimulator.UI
         private readonly List<UIObject> _rowButtons = new List<UIObject>();
         private readonly List<MapEntry> _allEntries = new List<MapEntry>();
         private readonly List<SearchResultEntry> _searchResults = new List<SearchResultEntry>();
+        private readonly List<QuestOverlayEntry> _questOverlays = new List<QuestOverlayEntry>();
         private SpriteFont _font;
         private bool _showAnotherWorld;
         private bool _searchMode;
@@ -435,6 +444,15 @@ namespace HaCreator.MapSimulator.UI
             UpdateButtonStates();
         }
 
+        public void SetQuestOverlays(IReadOnlyList<QuestOverlayEntry> overlays)
+        {
+            _questOverlays.Clear();
+            if (overlays != null)
+            {
+                _questOverlays.AddRange(overlays.Where(entry => entry != null));
+            }
+        }
+
         public bool FocusSearchResult(SearchResultKind kind, string label, int mapId, bool enterSearchMode = true)
         {
             if (string.IsNullOrWhiteSpace(label))
@@ -557,7 +575,8 @@ namespace HaCreator.MapSimulator.UI
             {
                 MapEntry entry = visibleEntries[row];
                 Color textColor = entry.MapId == _selectedMapId ? Color.White : new Color(228, 228, 228);
-                string label = TrimToWidth($"{entry.MapId} {entry.DisplayName}", ListWidth - 4);
+                string overlayPrefix = GetOverlayCountForMap(entry.MapId) > 0 ? "* " : string.Empty;
+                string label = TrimToWidth($"{overlayPrefix}{entry.MapId} {entry.DisplayName}", ListWidth - 4);
                 SelectorWindowDrawing.DrawShadowedText(
                     sprite,
                     _font,
@@ -854,7 +873,10 @@ namespace HaCreator.MapSimulator.UI
             string regionText = string.IsNullOrWhiteSpace(selectedEntry.RegionCode)
                 ? "Unknown region"
                 : $"Region code {selectedEntry.RegionCode}";
-            return $"Selected: {selectedEntry.DisplayName}\nCategory: {selectedEntry.CategoryName}\n{regionText}\nClick the selected row again to transfer through the world-map flow.";
+            string overlayText = BuildQuestOverlaySummary(selectedEntry.MapId, includeCurrentMapFallback: true);
+            return string.IsNullOrWhiteSpace(overlayText)
+                ? $"Selected: {selectedEntry.DisplayName}\nCategory: {selectedEntry.CategoryName}\n{regionText}\nClick the selected row again to transfer through the world-map flow."
+                : $"Selected: {selectedEntry.DisplayName}\nCategory: {selectedEntry.CategoryName}\n{regionText}\n{overlayText}";
         }
 
         private string BuildSearchSummaryText()
@@ -868,7 +890,66 @@ namespace HaCreator.MapSimulator.UI
             string queryText = string.IsNullOrWhiteSpace(_searchQuery)
                 ? "Type a field, NPC, mob, or map id query."
                 : $"Query: {_searchQuery}";
-            return $"Current field search surface.\nFields: {fieldCount}  NPCs: {npcCount}  Mobs: {mobCount}  Quest items: {itemCount}\n{filterText}\n{queryText}\nClick a result row to focus its map, then click again to queue transfer.";
+            string overlayText = BuildQuestOverlaySummary(_selectedMapId > 0 ? _selectedMapId : _currentMapId, includeCurrentMapFallback: false);
+            return string.IsNullOrWhiteSpace(overlayText)
+                ? $"Current field search surface.\nFields: {fieldCount}  NPCs: {npcCount}  Mobs: {mobCount}  Quest items: {itemCount}\n{filterText}\n{queryText}\nClick a result row to focus its map, then click again to queue transfer."
+                : $"Current field search surface.\nFields: {fieldCount}  NPCs: {npcCount}  Mobs: {mobCount}  Quest items: {itemCount}\n{filterText}\n{queryText}\n{overlayText}";
+        }
+
+        private string BuildQuestOverlaySummary(int mapId, bool includeCurrentMapFallback)
+        {
+            IReadOnlyList<QuestOverlayEntry> overlays = _questOverlays
+                .Where(entry => entry.MapId == mapId)
+                .ToArray();
+            if (overlays.Count == 0 && includeCurrentMapFallback)
+            {
+                overlays = _questOverlays
+                    .Where(entry => entry.MapId == _currentMapId)
+                    .ToArray();
+            }
+
+            if (overlays.Count == 0)
+            {
+                return string.Empty;
+            }
+
+            IEnumerable<string> lines = overlays
+                .Take(3)
+                .Select(entry => $"{ResolveOverlayPrefix(entry.Kind)} {entry.Label}: {entry.Description}");
+            string overflowLine = overlays.Count > 3
+                ? $"\n{overlays.Count - 3} more quest overlay target(s) are attached to this map."
+                : string.Empty;
+            return $"Quest overlays:\n{string.Join("\n", lines)}{overflowLine}";
+        }
+
+        private int GetOverlayCountForMap(int mapId)
+        {
+            if (mapId <= 0)
+            {
+                return 0;
+            }
+
+            int count = 0;
+            for (int i = 0; i < _questOverlays.Count; i++)
+            {
+                if (_questOverlays[i].MapId == mapId)
+                {
+                    count++;
+                }
+            }
+
+            return count;
+        }
+
+        private static string ResolveOverlayPrefix(SearchResultKind kind)
+        {
+            return kind switch
+            {
+                SearchResultKind.Npc => "NPC",
+                SearchResultKind.Mob => "Mob",
+                SearchResultKind.Item => "Item",
+                _ => "Field"
+            };
         }
 
         private int GetMaxPageIndex()

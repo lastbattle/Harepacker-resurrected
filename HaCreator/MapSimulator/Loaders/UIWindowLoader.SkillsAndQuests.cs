@@ -1010,7 +1010,20 @@ namespace HaCreator.MapSimulator.Loaders
                 LoadButton(questProperty, "BtMax", btClickSound, btOverSound, device),
                 LoadButton(questProperty, "BtMin", btClickSound, btOverSound, device),
                 LoadButton(listProperty, "BtIconInfo", btClickSound, btOverSound, device));
-            quest.SetCategoryLegendTexture(LoadCanvasTexture(questProperty?["icon_info"] as WzSubProperty, "backgrnd", device));
+
+            WzSubProperty iconInfoProperty = questProperty?["icon_info"] as WzSubProperty;
+            WzSubProperty iconInfoSheetsProperty = iconInfoProperty?["Sheet"] as WzSubProperty;
+            Texture2D[] iconInfoSheets = iconInfoSheetsProperty?.WzProperties
+                ?.OfType<WzCanvasProperty>()
+                .OrderBy(property => int.TryParse(property.Name, out int index) ? index : int.MaxValue)
+                .Select(property => property.GetLinkedWzCanvasBitmap()?.ToTexture2DAndDispose(device))
+                .Where(texture => texture != null)
+                .ToArray()
+                ?? Array.Empty<Texture2D>();
+            quest.SetCategoryLegendTextures(
+                LoadCanvasTexture(iconInfoProperty, "backgrnd", device),
+                LoadCanvasTexture(iconInfoProperty, "backgrnd2", device),
+                iconInfoSheets);
 
             return quest;
         }
@@ -1542,10 +1555,11 @@ namespace HaCreator.MapSimulator.Loaders
             int screenWidth,
             int screenHeight)
         {
-            WzSubProperty teleport3Property = uiWindow2Image?["Teleport3"] as WzSubProperty;
+            WzSubProperty teleport3Property = uiWindow2Image?["Teleport3"] as WzSubProperty;
+            WzSubProperty teleport2Property = uiWindow2Image?["Teleport2"] as WzSubProperty;
             WzSubProperty teleportProperty =
                 teleport3Property ??
-                uiWindow2Image?["Teleport2"] as WzSubProperty ??
+                teleport2Property ??
                 uiWindow2Image?["Teleport"] as WzSubProperty ??
                 uiWindow1Image?["Teleport"] as WzSubProperty;
             if (teleportProperty == null)
@@ -1562,7 +1576,11 @@ namespace HaCreator.MapSimulator.Loaders
 
             WzBinaryProperty btClickSound = soundUIImage?["BtMouseClick"] as WzBinaryProperty;
             WzBinaryProperty btOverSound = soundUIImage?["BtMouseOver"] as WzBinaryProperty;
-            WzSubProperty fadeYesNoProperty = uiWindow2Image?["FadeYesNo"] as WzSubProperty;
+            WzSubProperty fadeYesNoProperty = uiWindow2Image?["FadeYesNo"] as WzSubProperty;
+            bool continentVariant = teleportProperty == teleport3Property || teleportProperty == teleport2Property;
+            WzSubProperty scrollProperty = basicImage?["VScr9"] as WzSubProperty;
+            WzSubProperty scrollEnabledProperty = scrollProperty?["enabled"] as WzSubProperty;
+            WzSubProperty scrollDisabledProperty = scrollProperty?["disabled"] as WzSubProperty;
             IDXObject frame = new DXObject(0, 0, frameTexture, 0);
             MapTransferUI window = new MapTransferUI(
                 frame,
@@ -1576,8 +1594,18 @@ namespace HaCreator.MapSimulator.Loaders
                 LoadCanvasTexture(fadeYesNoProperty, "backgrnd7", device),
                 LoadButton(fadeYesNoProperty, "BtOK", btClickSound, btOverSound, device),
                 LoadButton(fadeYesNoProperty, "BtCancel", btClickSound, btOverSound, device),
-                teleportProperty == teleport3Property ? 10 : 5,
-                device);
+                continentVariant ? 10 : 5,
+                LoadCanvasTexture(scrollEnabledProperty, "prev0", device),
+                LoadCanvasTexture(scrollEnabledProperty, "prev1", device),
+                LoadCanvasTexture(scrollDisabledProperty, "prev", device),
+                LoadCanvasTexture(scrollEnabledProperty, "next0", device),
+                LoadCanvasTexture(scrollEnabledProperty, "next1", device),
+                LoadCanvasTexture(scrollDisabledProperty, "next", device),
+                LoadCanvasTexture(scrollEnabledProperty, "base", device),
+                LoadCanvasTexture(scrollDisabledProperty, "base", device),
+                LoadCanvasTexture(scrollEnabledProperty, "thumb0", device),
+                LoadCanvasTexture(scrollEnabledProperty, "thumb1", device),
+                device);
 
             window.Position = new Point(
                 Math.Max(24, screenWidth - frameTexture.Width - 44),

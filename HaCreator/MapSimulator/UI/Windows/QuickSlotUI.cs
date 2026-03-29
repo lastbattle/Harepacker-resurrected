@@ -743,9 +743,7 @@ namespace HaCreator.MapSimulator.UI
             string cooldownText;
             if (_skillManager == null || !_skillManager.IsOnCooldown(skillId, currentTime))
             {
-                cooldownText = levelData.Cooldown > 0
-                    ? $"{Math.Max(0, levelData.Cooldown) / 1000f:0.#}s"
-                    : "Ready";
+                cooldownText = "Ready";
             }
             else
             {

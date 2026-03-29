@@ -129,6 +129,7 @@ namespace HaCreator.MapSimulator.Fields
     {
         public int MapId { get; init; }
         public FieldType FieldType { get; init; }
+        public int MapType { get; init; } = -1;
         public int DefaultTimeSeconds { get; init; }
         public int ExpandTimeSeconds { get; init; }
         public int MessageTimeSeconds { get; init; }
@@ -150,6 +151,18 @@ namespace HaCreator.MapSimulator.Fields
         public IReadOnlyList<MonsterCarnivalEntry> SkillEntries { get; init; } = Array.Empty<MonsterCarnivalEntry>();
         public IReadOnlyList<MonsterCarnivalEntry> GuardianEntries { get; init; } = Array.Empty<MonsterCarnivalEntry>();
         public bool IsReviveMode => FieldType == FieldType.FIELDTYPE_MONSTERCARNIVALREVIVE;
+        public bool IsWaitingRoom => FieldType == FieldType.FIELDTYPE_MONSTERCARNIVALWAITINGROOM;
+        public bool IsSeason2Mode => FieldType == FieldType.FIELDTYPE_MONSTERCARNIVAL_S2;
+        public bool IsDeprecatedMode => FieldType == FieldType.FIELDTYPE_MONSTERCARNIVAL_NOT_USE;
+
+        public string VariantLabel => FieldType switch
+        {
+            FieldType.FIELDTYPE_MONSTERCARNIVALWAITINGROOM => "Waiting Room",
+            FieldType.FIELDTYPE_MONSTERCARNIVAL_S2 => "Season 2",
+            FieldType.FIELDTYPE_MONSTERCARNIVALREVIVE => "Revive",
+            FieldType.FIELDTYPE_MONSTERCARNIVAL_NOT_USE => "Legacy",
+            _ => "Standard"
+        };
 
         public IReadOnlyList<MonsterCarnivalEntry> GetEntries(MonsterCarnivalTab tab)
         {
@@ -209,6 +222,7 @@ namespace HaCreator.MapSimulator.Fields
             {
                 MapId = mapInfo?.id ?? 0,
                 FieldType = mapInfo?.fieldType ?? FieldType.FIELDTYPE_DEFAULT,
+                MapType = ReadInt(property["mapType"], -1),
                 DefaultTimeSeconds = ReadInt(property["timeDefault"]),
                 ExpandTimeSeconds = ReadInt(property["timeExpand"]),
                 MessageTimeSeconds = ReadInt(property["timeMessage"]),
@@ -1059,7 +1073,7 @@ namespace HaCreator.MapSimulator.Fields
             int timerY = panelY + 44;
             string headerText = _definition == null
                 ? "No WZ carnival definition loaded."
-                : $"Time {_definition.DefaultTimeSeconds}s +{_definition.ExpandTimeSeconds}s | Death CP {_definition.DeathCp} | {(_definition.IsReviveMode ? "Revive" : "Standard")}";
+                : $"Time {_definition.DefaultTimeSeconds}s +{_definition.ExpandTimeSeconds}s | Death CP {_definition.DeathCp} | {_definition.VariantLabel}{FormatMapTypeSuffix(_definition)}";
             DrawShadowedText(spriteBatch, font, headerText, new Vector2(panelX + 12, timerY), Color.Gainsboro, 0.85f);
 
             DrawCpRow(spriteBatch, pixelTexture, font, panelX + 12, panelY + 76, panelWidth - 24);
@@ -1075,7 +1089,7 @@ namespace HaCreator.MapSimulator.Fields
                 return "Monster Carnival runtime is inactive on this map.";
             }
 
-            return $"Monster Carnival: {(_enteredField ? "entered" : "configured")} | mode={(_definition?.IsReviveMode == true ? "revive" : "standard")} | tab={_activeTab} | personalCP={_personalCp}/{_personalTotalCp} | team0={_team0.CurrentCp}/{_team0.TotalCp} | team1={_team1.CurrentCp}/{_team1.TotalCp} | mobs={GetTotalCount(_mobSpellCounts)}/{Math.Max(0, _definition?.MobGenMax ?? 0)} | guardians={GetTotalCount(_guardianCounts)}/{Math.Max(0, _definition?.GuardianGenMax ?? 0)}";
+            return $"Monster Carnival: {(_enteredField ? "entered" : "configured")} | mode={_definition?.VariantLabel ?? "Unknown"}{FormatMapTypeSuffix(_definition)} | tab={_activeTab} | personalCP={_personalCp}/{_personalTotalCp} | team0={_team0.CurrentCp}/{_team0.TotalCp} | team1={_team1.CurrentCp}/{_team1.TotalCp} | mobs={GetTotalCount(_mobSpellCounts)}/{Math.Max(0, _definition?.MobGenMax ?? 0)} | guardians={GetTotalCount(_guardianCounts)}/{Math.Max(0, _definition?.GuardianGenMax ?? 0)}";
         }
 
         public void Reset()
@@ -1671,6 +1685,16 @@ namespace HaCreator.MapSimulator.Fields
                 .Where(id => id > 0)
                 .Distinct();
             return $"[StringPool {string.Join(", ", ids.Select(id => $"0x{id:X}"))}]";
+        }
+
+        private static string FormatMapTypeSuffix(MonsterCarnivalFieldDefinition definition)
+        {
+            if (definition == null || definition.MapType < 0)
+            {
+                return string.Empty;
+            }
+
+            return $" | mapType {definition.MapType}";
         }
 
         private string BuildMobPlacementSummary()

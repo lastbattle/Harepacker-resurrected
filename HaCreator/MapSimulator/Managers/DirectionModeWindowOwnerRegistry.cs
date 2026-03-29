@@ -17,6 +17,7 @@ namespace HaCreator.MapSimulator.Managers
             MapSimulatorWindowNames.Trunk,
             MapSimulatorWindowNames.ItemMaker,
             MapSimulatorWindowNames.ItemUpgrade,
+            MapSimulatorWindowNames.RepairDurability,
             MapSimulatorWindowNames.VegaSpell,
             MapSimulatorWindowNames.MapleTv,
             MapSimulatorWindowNames.MemoMailbox,

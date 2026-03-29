@@ -925,6 +925,7 @@ namespace HaCreator.MapSimulator
         private readonly List<LoginSelectWorldCharacterEntry> _loginPacketViewAllCharEntries = new();
 
         private LoginCreateNewCharacterResultProfile _loginPacketCreateNewCharacterResultProfile;
+        private LoginSelectCharacterResultProfile _loginPacketSelectCharacterResultProfile;
 
         private LoginExtraCharInfoResultProfile _loginPacketExtraCharInfoResultProfile;
 
@@ -1005,6 +1006,8 @@ namespace HaCreator.MapSimulator
         private bool _loginAccountAcceptedEula;
 
         private string _loginAccountPicCode = string.Empty;
+
+        private string _loginAccountBirthDate = string.Empty;
 
         private bool _loginAccountSpwEnabled;
 
@@ -1131,6 +1134,8 @@ namespace HaCreator.MapSimulator
             worldMapWindow.SetEntries(BuildWorldMapEntries(), _mapBoard?.MapInfo?.id ?? 0, focusedMapId);
 
             worldMapWindow.SetSearchResults(BuildWorldMapSearchResults(focusedMapId));
+
+            worldMapWindow.SetQuestOverlays(BuildWorldMapQuestOverlays(focusedMapId));
 
         }
 
@@ -1360,6 +1365,286 @@ namespace HaCreator.MapSimulator
                 Description = "Field result"
 
             });
+
+        }
+
+        private IReadOnlyList<WorldMapUI.QuestOverlayEntry> BuildWorldMapQuestOverlays(int? focusedMapId)
+
+        {
+
+            List<WorldMapUI.QuestOverlayEntry> overlays = new();
+
+            HashSet<string> seen = new(StringComparer.OrdinalIgnoreCase);
+
+            int currentMapId = _mapBoard?.MapInfo?.id ?? 0;
+
+            int fallbackMapId = focusedMapId.GetValueOrDefault(currentMapId);
+
+
+
+            if (_activeQuestDetailQuestId > 0 &&
+
+                _questRuntime.TryGetQuestWorldMapTarget(_activeQuestDetailQuestId, _playerManager?.Player?.Build, out QuestWorldMapTarget activeTarget) &&
+
+                activeTarget != null)
+
+            {
+
+                switch (activeTarget.Kind)
+
+                {
+
+                    case QuestWorldMapTargetKind.Mob:
+
+                        if (activeTarget.EntityId is int targetMobId &&
+
+                            TryGetPacketQuestGuideMapIds(targetMobId, out IReadOnlyList<int> packetMapIds))
+
+                        {
+
+                            for (int i = 0; i < packetMapIds.Count; i++)
+
+                            {
+
+                                AddWorldMapQuestOverlay(
+
+                                    overlays,
+
+                                    seen,
+
+                                    WorldMapUI.SearchResultKind.Mob,
+
+                                    packetMapIds[i],
+
+                                    activeTarget.Label,
+
+                                    $"Active quest #{_activeQuestDetailQuestId} mob target");
+
+                            }
+
+                        }
+
+                        else
+
+                        {
+
+                            AddWorldMapQuestOverlay(
+
+                                overlays,
+
+                                seen,
+
+                                WorldMapUI.SearchResultKind.Mob,
+
+                                fallbackMapId,
+
+                                activeTarget.Label,
+
+                                $"Active quest #{_activeQuestDetailQuestId} mob target");
+
+                        }
+
+
+
+                        break;
+
+                    case QuestWorldMapTargetKind.Item:
+
+                        AddWorldMapQuestOverlay(
+
+                            overlays,
+
+                            seen,
+
+                            WorldMapUI.SearchResultKind.Item,
+
+                            fallbackMapId,
+
+                            activeTarget.Label,
+
+                            $"Active quest #{_activeQuestDetailQuestId} delivery item");
+
+                        break;
+
+                    default:
+
+                        AddWorldMapQuestOverlay(
+
+                            overlays,
+
+                            seen,
+
+                            WorldMapUI.SearchResultKind.Npc,
+
+                            activeTarget.MapId > 0 ? activeTarget.MapId : fallbackMapId,
+
+                            activeTarget.Label,
+
+                            activeTarget.Description);
+
+                        break;
+
+                }
+
+            }
+
+
+
+            foreach ((int mobId, HashSet<int> mapIds) in _packetQuestGuideTargetsByMobId.OrderBy(entry => entry.Key))
+
+            {
+
+                string mobName = ResolvePacketGuideMobName(mobId);
+
+                foreach (int mapId in mapIds.OrderBy(value => value))
+
+                {
+
+                    AddWorldMapQuestOverlay(
+
+                        overlays,
+
+                        seen,
+
+                        WorldMapUI.SearchResultKind.Mob,
+
+                        mapId,
+
+                        mobName,
+
+                        $"Packet guide quest #{_packetQuestGuideQuestId}");
+
+                }
+
+            }
+
+
+
+            for (int i = 0; i < _lastQuestDemandQueryVisibleItemIds.Count; i++)
+
+            {
+
+                int itemId = _lastQuestDemandQueryVisibleItemIds[i];
+
+                if (itemId <= 0)
+
+                {
+
+                    continue;
+
+                }
+
+
+
+                string itemName = InventoryItemMetadataResolver.TryResolveItemName(itemId, out string resolvedItemName)
+
+                    ? resolvedItemName
+
+                    : $"Item {itemId}";
+
+                AddWorldMapQuestOverlay(
+
+                    overlays,
+
+                    seen,
+
+                    WorldMapUI.SearchResultKind.Item,
+
+                    fallbackMapId,
+
+                    itemName,
+
+                    $"Demand item query for quest #{_lastQuestDemandItemQueryQuestId}");
+
+            }
+
+
+
+            return overlays;
+
+        }
+
+        private static void AddWorldMapQuestOverlay(
+
+            ICollection<WorldMapUI.QuestOverlayEntry> overlays,
+
+            ISet<string> seen,
+
+            WorldMapUI.SearchResultKind kind,
+
+            int mapId,
+
+            string label,
+
+            string description)
+
+        {
+
+            if (overlays == null || seen == null || mapId <= 0 || string.IsNullOrWhiteSpace(label))
+
+            {
+
+                return;
+
+            }
+
+
+
+            string trimmedLabel = label.Trim();
+
+            string key = $"{kind}:{mapId}:{trimmedLabel}:{description}";
+
+            if (!seen.Add(key))
+
+            {
+
+                return;
+
+            }
+
+
+
+            overlays.Add(new WorldMapUI.QuestOverlayEntry
+
+            {
+
+                Kind = kind,
+
+                MapId = mapId,
+
+                Label = trimmedLabel,
+
+                Description = description ?? string.Empty
+
+            });
+
+        }
+
+        private bool TryGetPacketQuestGuideMapIds(int mobId, out IReadOnlyList<int> mapIds)
+
+        {
+
+            if (mobId > 0 &&
+
+                _packetQuestGuideTargetsByMobId.TryGetValue(mobId, out HashSet<int> knownMapIds) &&
+
+                knownMapIds != null &&
+
+                knownMapIds.Count > 0)
+
+            {
+
+                mapIds = knownMapIds.OrderBy(value => value).ToArray();
+
+                return true;
+
+            }
+
+
+
+            mapIds = Array.Empty<int>();
+
+            return false;
 
         }
 
@@ -2706,7 +2991,7 @@ namespace HaCreator.MapSimulator
 
 
 
-        private void ShowCharacterInfoWindow(string initialPage = null)
+        private void ShowCharacterInfoWindow(string initialPage = null, UserInfoUI.UserInfoInspectionTarget inspectionTarget = null)
 
 
 
@@ -2739,6 +3024,18 @@ namespace HaCreator.MapSimulator
 
 
             uiWindowManager.BringToFront(characterInfoWindow);
+
+            if (inspectionTarget?.Build != null)
+            {
+                characterInfoWindow.CharacterBuild = inspectionTarget.Build;
+                characterInfoWindow.SetInspectionTarget(inspectionTarget);
+            }
+            else
+            {
+                characterInfoWindow.CharacterBuild = _playerManager?.Player?.Build;
+                characterInfoWindow.ClearInspectionTarget();
+                _familyChartRuntime.ClearRemotePreviewRequest();
+            }
 
 
 
@@ -3211,6 +3508,62 @@ namespace HaCreator.MapSimulator
                 ShowUtilityFeedbackMessage);
 
             guildSkillWindow.SetFont(_fontChat);
+
+        }
+
+        private void RefreshSkillWindowShortcutState()
+
+        {
+
+            if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.Skills) is not SkillUIBigBang skillWindow)
+
+            {
+
+                return;
+
+            }
+
+
+
+            CharacterBuild build = _playerManager?.Player?.Build;
+
+            bool canOpenRidePage = build?.HasMonsterRiding == true ||
+
+                                   (build?.Equipment?.TryGetValue(EquipSlot.TamingMob, out CharacterPart mountPart) == true &&
+
+                                    mountPart != null);
+
+            skillWindow.ConfigureShortcutButtons(
+
+                canOpenRidePage,
+
+                GuildSkillRuntime.HasGuildMembership(build));
+
+        }
+
+        private void RefreshGuildSkillUiContext()
+
+        {
+
+            PlayerCharacter player = _playerManager?.Player;
+
+            if (player == null)
+
+            {
+
+                return;
+
+            }
+
+
+
+            _guildSkillRuntime.UpdateLocalContext(
+
+                player.Build,
+
+                _socialListRuntime.GetLocalGuildRoleLabel());
+
+            RefreshSkillWindowShortcutState();
 
         }
 
@@ -4001,7 +4354,7 @@ namespace HaCreator.MapSimulator
 
 
 
-            userInfoWindow.PartyRequested = () => ShowWindowWithInheritedDirectionModeOwner(MapSimulatorWindowNames.SocialList);
+            userInfoWindow.PartyRequested = HandleCharacterInfoPartyRequest;
 
 
 
@@ -4015,12 +4368,97 @@ namespace HaCreator.MapSimulator
 
             userInfoWindow.EntrustedShopRequested = () => ShowSocialRoomWindow(SocialRoomKind.EntrustedShop);
 
-            userInfoWindow.TradingRoomRequested = () => ShowSocialRoomWindow(SocialRoomKind.TradingRoom);
+            userInfoWindow.TradingRoomRequested = HandleCharacterInfoTradingRoomRequest;
 
-            userInfoWindow.FamilyRequested = () => ShowWindowWithInheritedDirectionModeOwner(MapSimulatorWindowNames.FamilyChart);
+            userInfoWindow.FamilyRequested = HandleCharacterInfoFamilyRequest;
 
             userInfoWindow.BookCollectionRequested = () => ShowWindowWithInheritedDirectionModeOwner(MapSimulatorWindowNames.BookCollection);
 
+        }
+
+        private string HandleCharacterInfoPartyRequest(UserInfoUI.UserInfoActionContext context)
+        {
+            if (!context.IsRemoteTarget)
+            {
+                _socialListRuntime.SelectTab(SocialListTab.Party);
+                ShowWindowWithInheritedDirectionModeOwner(MapSimulatorWindowNames.SocialList);
+                return "Party list opened from the profile window.";
+            }
+
+            string locationSummary = string.IsNullOrWhiteSpace(context.LocationSummary)
+                ? GetCurrentMapTransferDisplayName()
+                : context.LocationSummary;
+            string message = _socialListRuntime.InviteCharacterToParty(
+                context.CharacterName,
+                context.Build?.JobName,
+                context.Build?.Level ?? 1,
+                locationSummary,
+                context.Channel);
+            ShowWindowWithInheritedDirectionModeOwner(MapSimulatorWindowNames.SocialList);
+            return message;
+        }
+
+        private string HandleCharacterInfoTradingRoomRequest(UserInfoUI.UserInfoActionContext context)
+        {
+            ShowSocialRoomWindow(SocialRoomKind.TradingRoom);
+            if (!context.IsRemoteTarget)
+            {
+                return "Trading-room shell opened.";
+            }
+
+            return TryGetSocialRoomRuntime(SocialRoomKind.TradingRoom, out SocialRoomRuntime runtime)
+                ? runtime.ConfigureTradeInviteTarget(context.CharacterName, context.Build?.Clone())
+                : "Trading-room shell opened, but the simulator trade runtime is unavailable.";
+        }
+
+        private string HandleCharacterInfoFamilyRequest(UserInfoUI.UserInfoActionContext context)
+        {
+            if (!context.IsRemoteTarget)
+            {
+                _familyChartRuntime.ClearRemotePreviewRequest();
+                ShowWindowWithInheritedDirectionModeOwner(MapSimulatorWindowNames.FamilyChart);
+                return "Family chart opened from the profile window.";
+            }
+
+            string locationSummary = string.IsNullOrWhiteSpace(context.LocationSummary)
+                ? GetCurrentMapTransferDisplayName()
+                : context.LocationSummary;
+            string message = _familyChartRuntime.PreviewRemoteFamilyRequest(
+                context.CharacterName,
+                context.Build,
+                locationSummary,
+                context.Channel);
+            ShowWindowWithInheritedDirectionModeOwner(MapSimulatorWindowNames.FamilyChart);
+            return message;
+        }
+
+        private bool TryShowRemoteCharacterInfoWindow(string characterSelector)
+        {
+            if (string.IsNullOrWhiteSpace(characterSelector))
+            {
+                return false;
+            }
+
+            RemoteUserActor actor = null;
+            bool found = int.TryParse(characterSelector, out int characterId)
+                ? _remoteUserPool.TryGetActor(characterId, out actor)
+                : _remoteUserPool.TryGetActorByName(characterSelector, out actor);
+            if (!found || actor?.Build == null)
+            {
+                return false;
+            }
+
+            ShowCharacterInfoWindow(
+                inspectionTarget: new UserInfoUI.UserInfoInspectionTarget
+                {
+                    Build = actor.Build.Clone(),
+                    CharacterId = actor.CharacterId,
+                    Name = actor.Name,
+                    LocationSummary = GetCurrentMapTransferDisplayName(),
+                    Channel = 1,
+                    CollectionStatusOverride = "Remote collection, medal, and charm payloads still need a server-authored snapshot."
+                });
+            return true;
         }
 
         private UserInfoUI.RankDeltaSnapshot ResolveCharacterInfoRankDeltaSnapshot()
@@ -6846,6 +7284,41 @@ namespace HaCreator.MapSimulator
 
             }
 
+            if (applySelectorSideEffects &&
+
+                packetType == LoginPacketType.SelectCharacterResult &&
+
+                TryApplyPacketOwnedSelectCharacterResult(out message, out bool handledRuntimeDispatch))
+
+            {
+
+                if (!handledRuntimeDispatch)
+
+                {
+
+                    SyncLoginTitleWindow();
+
+                    RefreshWorldChannelSelectorWindows();
+
+                    SyncRecommendWorldWindow();
+
+                    if (string.IsNullOrWhiteSpace(_loginCharacterStatusMessage))
+
+                    {
+
+                        _loginCharacterStatusMessage = message;
+
+                    }
+
+
+
+                    SyncLoginEntryDialogs();
+
+                    return;
+
+                }
+            }
+
 
 
             _loginRuntime.TryDispatchPacket(packetType, currTickCount, out message);
@@ -8747,6 +9220,8 @@ namespace HaCreator.MapSimulator
 
                 _loginAccountPicCode = string.Empty;
 
+                _loginAccountBirthDate = string.Empty;
+
                 _loginAccountSpwEnabled = false;
 
                 _loginAccountSecondaryPassword = string.Empty;
@@ -9010,6 +9485,358 @@ namespace HaCreator.MapSimulator
                     break;
 
             }
+
+        }
+
+
+
+        private bool TryApplyPacketOwnedSelectCharacterResult(out string message, out bool handledRuntimeDispatch)
+
+        {
+
+            message = null;
+
+            handledRuntimeDispatch = false;
+
+
+
+            LoginSelectCharacterResultProfile packetProfile = _loginPacketSelectCharacterResultProfile;
+
+            if (!IsLoginRuntimeSceneActive || packetProfile == null)
+
+            {
+
+                return false;
+
+            }
+
+
+
+            if (!packetProfile.IsSuccess)
+
+            {
+
+                if (ShouldReturnSelectCharacterFailureToTitle(packetProfile))
+
+                {
+
+                    _loginRuntime.ForceStep(LoginStep.Title, "Packet-authored SelectCharacterResult returned the login flow to title.");
+
+                }
+
+
+
+                message = BuildSelectCharacterResultFailureMessage(packetProfile);
+
+                _loginCharacterStatusMessage = message;
+
+                ShowSelectCharacterFailureDialog(packetProfile, message);
+
+                return true;
+
+            }
+
+
+
+            if (packetProfile.CharacterId.HasValue && packetProfile.CharacterId.Value > 0)
+
+            {
+
+                SelectLoginCharacterById(packetProfile.CharacterId.Value);
+
+            }
+
+
+
+            LoginCharacterRosterEntry entry = _loginCharacterRoster.SelectedEntry;
+
+            if (entry?.Build == null)
+
+            {
+
+                message = packetProfile.CharacterId.HasValue && packetProfile.CharacterId.Value > 0
+
+                    ? $"SelectCharacterResult succeeded for character {packetProfile.CharacterId.Value}, but that character is not present in the active login roster."
+
+                    : "SelectCharacterResult succeeded, but no login roster entry is currently selected.";
+
+                _loginCharacterStatusMessage = message;
+
+                ShowLoginUtilityDialog(
+
+                    "Login Utility",
+
+                    message,
+
+                    LoginUtilityDialogButtonLayout.Ok,
+
+                    LoginUtilityDialogAction.DismissOnly);
+
+                return true;
+
+            }
+
+
+
+            CharacterBuild selectedBuild = entry.CreateRuntimeBuild(_playerManager?.Loader);
+
+            _playerManager?.CreatePlayerFromBuild(selectedBuild);
+
+            RefreshSkillWindowForJob(selectedBuild.Job);
+
+
+
+            if (_loadMapCallback == null || !QueueMapTransfer(entry.FieldMapId, null))
+
+            {
+
+                message = $"SelectCharacterResult accepted {entry.Build.Name}, but map loading is unavailable.";
+
+                _loginCharacterStatusMessage = message;
+
+                ShowLoginUtilityDialog(
+
+                    "Login Utility",
+
+                    message,
+
+                    LoginUtilityDialogButtonLayout.Ok,
+
+                    LoginUtilityDialogAction.DismissOnly);
+
+                return true;
+
+            }
+
+
+
+            HideLoginUtilityDialog();
+
+            message = BuildSelectCharacterResultSuccessMessage(packetProfile, entry);
+
+            _loginCharacterStatusMessage = message;
+
+            handledRuntimeDispatch = true;
+
+            return true;
+
+        }
+
+
+
+        private static bool ShouldReturnSelectCharacterFailureToTitle(LoginSelectCharacterResultProfile packetProfile)
+
+        {
+
+            if (packetProfile == null)
+
+            {
+
+                return false;
+
+            }
+
+
+
+            return packetProfile.ResultCode switch
+
+            {
+
+                7 => true,
+
+                12 => packetProfile.ResponseCode is 1 or 2 or 3 or 19 or 25 or 27 or 28,
+
+                _ => false,
+
+            };
+
+        }
+
+
+
+        private string BuildSelectCharacterResultSuccessMessage(
+
+            LoginSelectCharacterResultProfile packetProfile,
+
+            LoginCharacterRosterEntry entry)
+
+        {
+
+            string characterName = entry?.Build?.Name ?? $"Character {packetProfile?.CharacterId.GetValueOrDefault() ?? 0}";
+
+            string endpoint = packetProfile?.EndpointText;
+
+            string premiumText = packetProfile?.PremiumArgument.HasValue == true
+
+                ? $" Premium argument {packetProfile.PremiumArgument.Value}."
+
+                : string.Empty;
+
+
+
+            return string.IsNullOrWhiteSpace(endpoint)
+
+                ? $"Packet-authored SelectCharacterResult entered the field with {characterName}.{premiumText}"
+
+                : $"Packet-authored SelectCharacterResult entered the field with {characterName} via {endpoint}.{premiumText}";
+
+        }
+
+
+
+        private static string BuildSelectCharacterResultFailureMessage(LoginSelectCharacterResultProfile packetProfile)
+
+        {
+
+            if (packetProfile == null)
+
+            {
+
+                return "SelectCharacterResult failed.";
+
+            }
+
+
+
+            if (packetProfile.ResultCode == 12)
+
+            {
+
+                return packetProfile.ResponseCode switch
+
+                {
+
+                    1 => "SelectCharacterResult rejected the selected character and returned the login flow to title.",
+
+                    2 => "SelectCharacterResult reported a blocked character and returned the login flow to title.",
+
+                    3 => "SelectCharacterResult reported that the selected character could not enter the field and returned the login flow to title.",
+
+                    19 => "SelectCharacterResult reported a blocked login and returned the login flow to title.",
+
+                    25 => "SelectCharacterResult reported a migration-required account and returned the login flow to title.",
+
+                    27 => "SelectCharacterResult reported an unsupported region response and returned the login flow to title.",
+
+                    28 => "SelectCharacterResult reported a newer client requirement and returned the login flow to title.",
+
+                    _ => $"SelectCharacterResult returned server code {FormatSelectorPacketCode(packetProfile.ResultCode)} with response {packetProfile.ResponseCode}.",
+
+                };
+
+            }
+
+
+
+            return $"SelectCharacterResult returned server code {FormatSelectorPacketCode(packetProfile.ResultCode)}.";
+
+        }
+
+
+
+        private void ShowSelectCharacterFailureDialog(LoginSelectCharacterResultProfile packetProfile, string message)
+
+        {
+
+            if (packetProfile == null)
+
+            {
+
+                return;
+
+            }
+
+
+
+            int? noticeTextIndex = ResolveSelectCharacterFailureNoticeTextIndex(packetProfile);
+
+            ShowLoginUtilityDialog(
+
+                "Login Utility",
+
+                message,
+
+                LoginUtilityDialogButtonLayout.Ok,
+
+                LoginUtilityDialogAction.DismissOnly,
+
+                noticeTextIndex: noticeTextIndex);
+
+        }
+
+
+
+        private static int? ResolveSelectCharacterFailureNoticeTextIndex(LoginSelectCharacterResultProfile packetProfile)
+
+        {
+
+            if (packetProfile == null)
+
+            {
+
+                return null;
+
+            }
+
+
+
+            if (packetProfile.ResultCode == 12)
+
+            {
+
+                return packetProfile.ResponseCode switch
+
+                {
+
+                    1 => 28,
+
+                    2 => 29,
+
+                    3 => 30,
+
+                    19 => 25,
+
+                    25 => 31,
+
+                    27 => 56,
+
+                    28 => 62,
+
+                    _ => 15,
+
+                };
+
+            }
+
+
+
+            return packetProfile.ResultCode switch
+
+            {
+
+                2 or 3 => 16,
+
+                4 => 3,
+
+                5 => 20,
+
+                7 => 17,
+
+                10 => 19,
+
+                11 => 14,
+
+                13 => 21,
+
+                16 or 21 => 33,
+
+                17 => 27,
+
+                25 => 40,
+
+                _ => 15,
+
+            };
 
         }
 
@@ -10002,6 +10829,8 @@ namespace HaCreator.MapSimulator
 
             _loginAccountPicCode = storedState?.PicCode?.Trim() ?? string.Empty;
 
+            _loginAccountBirthDate = storedState?.BirthDate?.Trim() ?? string.Empty;
+
 
 
             _loginAccountSpwEnabled = storedState?.IsSecondaryPasswordEnabled ?? false;
@@ -10121,6 +10950,8 @@ namespace HaCreator.MapSimulator
 
 
                 _loginAccountPicCode,
+
+                _loginAccountBirthDate,
 
 
 
@@ -12349,11 +13180,33 @@ namespace HaCreator.MapSimulator
 
                     _loginAccountMigrationAccepted = true;
 
-                    _loginTitleStatusMessage = "Accepted the simulator account-migration prompt.";
+                    _loginTitleStatusMessage = "Accepted the simulator account-migration prompt and opened the fixed-length birth-date utility owner.";
 
-                    HideLoginUtilityDialog();
+                    ShowLoginUtilityDialog(
 
-                    _loginPacketInbox.EnqueueLocal(LoginPacketType.ConfirmEulaResult, "LoginUtility.SetAccount.Accept");
+                        "Login Utility",
+
+                        string.IsNullOrWhiteSpace(_loginAccountBirthDate)
+                            ? "Enter the simulator account birth date before continuing to the EULA step. This follows the client CLoginUtilDlg path that binds an 8-digit masked edit control to soft-keyboard type 2."
+                            : "Enter the configured simulator account birth date before continuing to the EULA step. This follows the client CLoginUtilDlg path that binds an 8-digit masked edit control to soft-keyboard type 2.",
+
+                        LoginUtilityDialogButtonLayout.YesNo,
+
+                        LoginUtilityDialogAction.VerifyBirthDate,
+
+                        primaryLabel: "Verify",
+
+                        secondaryLabel: "Cancel",
+
+                        inputLabel: "Birth Date",
+
+                        inputPlaceholder: "YYYYMMDD",
+
+                        inputMasked: true,
+
+                        inputMaxLength: 8,
+
+                        softKeyboardType: SoftKeyboardKeyboardType.NumericOnly);
 
                     break;
 
@@ -12380,6 +13233,52 @@ namespace HaCreator.MapSimulator
                         _loginPacketInbox.EnqueueLocal(LoginPacketType.CheckPinCodeResult, "LoginUtility.Eula.Accept");
 
                     }
+
+                    break;
+
+                case LoginUtilityDialogAction.VerifyBirthDate:
+
+                    if (!TryGetLoginUtilityDialogInput(out string birthDateInput) || !IsEightDigitNumericInput(birthDateInput))
+
+                    {
+
+                        _loginCharacterStatusMessage = "Enter the 8-digit birth date before continuing.";
+
+                        _loginTitleStatusMessage = _loginCharacterStatusMessage;
+
+                        break;
+
+                    }
+
+
+
+                    if (!string.IsNullOrWhiteSpace(_loginAccountBirthDate) &&
+
+                        !string.Equals(birthDateInput, _loginAccountBirthDate, StringComparison.Ordinal))
+
+                    {
+
+                        _loginCharacterStatusMessage = "Birth-date verification failed. Enter the configured 8-digit birth date.";
+
+                        _loginTitleStatusMessage = _loginCharacterStatusMessage;
+
+                        _loginUtilityDialogInputValue = string.Empty;
+
+                        break;
+
+                    }
+
+
+
+                    _loginAccountBirthDate = birthDateInput;
+
+                    PersistLoginAccountSecurityState();
+
+                    HideLoginUtilityDialog();
+
+                    _loginTitleStatusMessage = "Birth-date verification succeeded. Queued ConfirmEulaResult.";
+
+                    _loginPacketInbox.EnqueueLocal(LoginPacketType.ConfirmEulaResult, "LoginUtility.SetAccount.BirthDate");
 
                     break;
 
@@ -12668,6 +13567,14 @@ namespace HaCreator.MapSimulator
                     _loginAccountMigrationAccepted = false;
 
                     _loginTitleStatusMessage = "Deferred the simulator account-migration flow.";
+
+                    break;
+
+                case LoginUtilityDialogAction.VerifyBirthDate:
+
+                    _loginAccountMigrationAccepted = false;
+
+                    _loginTitleStatusMessage = "Cancelled the simulator birth-date verification step.";
 
                     break;
 
@@ -13192,9 +14099,27 @@ namespace HaCreator.MapSimulator
 
                 InputMaxLength = overridePrompt.InputMaxLength > 0 ? overridePrompt.InputMaxLength : basePrompt.InputMaxLength,
 
+                SoftKeyboardType = overridePrompt.SoftKeyboardType != SoftKeyboardKeyboardType.AlphaNumeric || basePrompt.SoftKeyboardType == SoftKeyboardKeyboardType.AlphaNumeric
+                    ? overridePrompt.SoftKeyboardType
+                    : basePrompt.SoftKeyboardType,
+
                 DurationMs = overridePrompt.DurationMs > 0 ? overridePrompt.DurationMs : basePrompt.DurationMs,
 
             };
+
+        }
+
+
+
+        private static bool IsEightDigitNumericInput(string value)
+
+        {
+
+            return !string.IsNullOrWhiteSpace(value) &&
+
+                   value.Length == 8 &&
+
+                   value.All(char.IsDigit);
 
         }
 
@@ -14172,6 +15097,8 @@ namespace HaCreator.MapSimulator
 
             _loginPacketViewAllCharEntries.Clear();
 
+            _loginPacketSelectCharacterResultProfile = null;
+
             _loginPacketExtraCharInfoResultProfile = null;
 
             _loginCanHaveExtraCharacter = false;
@@ -14880,6 +15807,8 @@ namespace HaCreator.MapSimulator
             Window.TextInput += Window_TextInput;
 
             _imeCompositionMonitor.CompositionTextChanged += HandleImeCompositionChanged;
+            _imeCompositionMonitor.CompositionStateChanged += HandleImeCompositionStateChanged;
+            _imeCompositionMonitor.CandidateListChanged += HandleImeCandidateListChanged;
 
             _imeCompositionMonitor.Attach(Window.Handle);
 
@@ -15080,6 +16009,12 @@ namespace HaCreator.MapSimulator
             }
 
 
+
+            if (_npcInteractionOverlay?.CapturesKeyboardInput == true)
+            {
+                _npcInteractionOverlay.HandleCommittedText(e.Character.ToString());
+                return;
+            }
 
             uiWindowManager?.ActiveKeyboardWindow?.HandleCommittedText(e.Character.ToString());
 
@@ -15402,6 +16337,7 @@ namespace HaCreator.MapSimulator
 
             _cookieHousePointInbox.Dispose();
             _localUtilityPacketInbox.Dispose();
+            _summonedPacketInbox.Dispose();
 
 
 
@@ -16207,164 +17143,182 @@ namespace HaCreator.MapSimulator
 
             _transportField.Reset();
 
-
-
-            // Look for ShipObject in map's MiscItems
-
-            var shipObject = _mapBoard.BoardItems.MiscItems
-
-                .OfType<ShipObject>()
-
+            ShipObject shipObject = _mapBoard?.BoardItems?.MiscItems
+                ?.OfType<ShipObject>()
                 .FirstOrDefault();
-
-
-
-            if (shipObject == null)
-
+            if (!TryResolveTransportationFieldDefinition(_mapBoard?.MapInfo, shipObject, out TransportationFieldDefinition definition))
             {
-
-                System.Diagnostics.Debug.WriteLine("[TransportField] No ShipObject found in map");
-
+                System.Diagnostics.Debug.WriteLine("[TransportField] No shipObj map property or ShipObject found in map");
                 return;
-
             }
 
-
-
-            System.Diagnostics.Debug.WriteLine($"[TransportField] Detected transport map with ShipObject:");
-
-            System.Diagnostics.Debug.WriteLine($"  - Position: ({shipObject.X}, {shipObject.Y})");
-
-            System.Diagnostics.Debug.WriteLine($"  - X0: {shipObject.X0}");
-
-            System.Diagnostics.Debug.WriteLine($"  - ShipKind: {shipObject.ShipKind}");
-
-            System.Diagnostics.Debug.WriteLine($"  - TimeMove: {shipObject.TimeMove}s");
-
-            System.Diagnostics.Debug.WriteLine($"  - Flip: {shipObject.Flip}");
-
-
-
-            // Load ship textures from the ObjectInfo
-
-            // ObjectInfo path: Map.wz/Obj/{oS}/{l0}/{l1}/{l2}
-
-            // For ships: Map.wz/Obj/contimove.img/ship/0/0 (oS=contimove, l0=ship, l1=0, l2=0)
-
-            // We need to load all frames from l1 level (the animation container)
+            System.Diagnostics.Debug.WriteLine("[TransportField] Detected client-owned transport field:");
+            System.Diagnostics.Debug.WriteLine($"  - Position: ({definition.DockX}, {definition.DockY})");
+            System.Diagnostics.Debug.WriteLine($"  - X0: {definition.AwayX}");
+            System.Diagnostics.Debug.WriteLine($"  - ShipKind: {definition.ShipKind}");
+            System.Diagnostics.Debug.WriteLine($"  - TimeMove: {definition.MoveDurationSeconds}s");
+            System.Diagnostics.Debug.WriteLine($"  - Flip: {definition.Flip}");
+            if (!string.IsNullOrWhiteSpace(definition.ShipObjectPath))
+            {
+                System.Diagnostics.Debug.WriteLine($"  - ShipObj: {definition.ShipObjectPath}");
+            }
 
             ConcurrentBag<WzObject> usedPropsTemp = new ConcurrentBag<WzObject>();
-
-            try
-
+            if (!_transportField.HasShipTextures && !TryLoadTransportShipFrames(definition, shipObject, usedPropsTemp))
             {
-
-                var objInfo = shipObject.BaseInfo as ObjectInfo;
-
-                if (objInfo != null)
-
-                {
-
-                    System.Diagnostics.Debug.WriteLine($"[TransportField] Ship ObjectInfo: {objInfo.oS}/{objInfo.l0}/{objInfo.l1}/{objInfo.l2}");
-
-
-
-                    // Get the object set (e.g., contimove.img)
-
-                    WzImage objectSet = Program.InfoManager?.GetObjectSet(objInfo.oS);
-
-                    if (objectSet != null)
-
-                    {
-
-                        if (!objectSet.Parsed)
-
-                            objectSet.ParseImage();
-
-
-
-                        // Navigate to the animation container (l0/l1 level, e.g., ship/0)
-
-                        var animContainer = objectSet[objInfo.l0]?[objInfo.l1];
-
-                        if (animContainer is WzImageProperty animProp)
-
-                        {
-
-                            var shipFrames = MapSimulatorLoader.LoadFrames(_texturePool, animProp, 0, 0, _DxDeviceManager.GraphicsDevice, usedPropsTemp);
-
-                            if (shipFrames.Count > 0)
-
-                            {
-
-                                System.Diagnostics.Debug.WriteLine($"[TransportField] Loaded {shipFrames.Count} ship frames from {objInfo.oS}/{objInfo.l0}/{objInfo.l1}");
-
-                                _transportField.SetShipFrames(shipFrames);
-
-                            }
-
-                        }
-
-                    }
-
-                }
-
-            }
-
-            catch (Exception ex)
-
-            {
-
-                System.Diagnostics.Debug.WriteLine($"[TransportField] Error loading ship frames: {ex.Message}");
-
-            }
-
-
-
-            // Fallback to mob sprite if no ship frames loaded
-
-            if (!_transportField.HasShipTextures)
-
-            {
-
                 LoadTransportFieldTextures();
-
             }
-
-
-
-            // Initialize transport field with ship configuration
-
-            // Note: X0 is only used for shipKind 0 (regular ships)
-
-            int x0 = shipObject.X0 ?? shipObject.X - 800; // Default to 800 pixels away if not specified
-
-
 
             _transportField.Initialize(
+                shipKind: definition.ShipKind,
+                x: definition.DockX,
+                y: definition.DockY,
+                x0: definition.AwayX,
+                f: definition.Flip,
+                tMove: definition.MoveDurationSeconds,
+                shipPath: definition.ShipObjectPath);
 
-                shipKind: shipObject.ShipKind,
+            System.Diagnostics.Debug.WriteLine("[TransportField] Transport field initialized from client-owned map transport data");
 
-                x: shipObject.X,
+        }
 
-                y: shipObject.Y,
+        private static bool TryResolveTransportationFieldDefinition(
+            MapInfo mapInfo,
+            ShipObject shipObject,
+            out TransportationFieldDefinition definition)
+        {
+            if (TransportationFieldDefinitionLoader.TryCreate(mapInfo, out definition))
+            {
+                return true;
+            }
 
-                x0: x0,
+            if (shipObject == null)
+            {
+                definition = null;
+                return false;
+            }
 
-                f: shipObject.Flip ? 1 : 0,
+            definition = new TransportationFieldDefinition(
+                shipObject.X,
+                shipObject.Y,
+                shipObject.X0 ?? shipObject.X - 800,
+                shipObject.Flip ? 1 : 0,
+                shipObject.TimeMove > 0 ? shipObject.TimeMove : 10,
+                shipObject.ShipKind,
+                string.Empty);
+            return true;
+        }
 
-                tMove: shipObject.TimeMove > 0 ? shipObject.TimeMove : 10
+        private bool TryLoadTransportShipFrames(
+            TransportationFieldDefinition definition,
+            ShipObject shipObject,
+            ConcurrentBag<WzObject> usedProps)
+        {
+            if (TryLoadTransportShipFramesFromMapPath(definition.ShipObjectPath, usedProps))
+            {
+                return true;
+            }
 
-            );
+            return TryLoadTransportShipFramesFromShipObject(shipObject, usedProps);
+        }
 
+        private bool TryLoadTransportShipFramesFromMapPath(string shipObjectPath, ConcurrentBag<WzObject> usedProps)
+        {
+            if (!TransportationFieldDefinitionLoader.TryResolveObjectSetPath(shipObjectPath, out string objectSetName, out string propertyPath))
+            {
+                return false;
+            }
 
+            try
+            {
+                WzImage objectSet = Program.InfoManager?.GetObjectSet(objectSetName);
+                if (objectSet == null)
+                {
+                    return false;
+                }
 
-            // For transport maps, start with ship docked (player boards before departure)
+                if (!objectSet.Parsed)
+                {
+                    objectSet.ParseImage();
+                }
 
-            // The ship will depart when triggered by game event or key press
+                WzObject current = objectSet;
+                string[] pathSegments = propertyPath.Split(new[] { '/' }, StringSplitOptions.RemoveEmptyEntries);
+                for (int i = 0; i < pathSegments.Length && current != null; i++)
+                {
+                    current = current switch
+                    {
+                        WzImage image => image[pathSegments[i]],
+                        WzImageProperty property => property[pathSegments[i]],
+                        _ => null
+                    };
+                }
 
-            System.Diagnostics.Debug.WriteLine("[TransportField] Transport field initialized - ship ready at dock");
+                if (current is not WzImageProperty currentProperty)
+                {
+                    return false;
+                }
 
+                var shipFrames = MapSimulatorLoader.LoadFrames(_texturePool, currentProperty, 0, 0, _DxDeviceManager.GraphicsDevice, usedProps);
+                if (shipFrames.Count == 0)
+                {
+                    return false;
+                }
+
+                System.Diagnostics.Debug.WriteLine($"[TransportField] Loaded {shipFrames.Count} ship frames from {objectSetName}/{propertyPath}");
+                _transportField.SetShipFrames(shipFrames);
+                return true;
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[TransportField] Error loading ship frames from {shipObjectPath}: {ex.Message}");
+                return false;
+            }
+        }
+
+        private bool TryLoadTransportShipFramesFromShipObject(ShipObject shipObject, ConcurrentBag<WzObject> usedProps)
+        {
+            if (shipObject?.BaseInfo is not ObjectInfo objInfo)
+            {
+                return false;
+            }
+
+            try
+            {
+                System.Diagnostics.Debug.WriteLine($"[TransportField] Ship ObjectInfo fallback: {objInfo.oS}/{objInfo.l0}/{objInfo.l1}/{objInfo.l2}");
+
+                WzImage objectSet = Program.InfoManager?.GetObjectSet(objInfo.oS);
+                if (objectSet == null)
+                {
+                    return false;
+                }
+
+                if (!objectSet.Parsed)
+                {
+                    objectSet.ParseImage();
+                }
+
+                WzImageProperty animContainer = objectSet[objInfo.l0]?[objInfo.l1];
+                if (animContainer == null)
+                {
+                    return false;
+                }
+
+                var shipFrames = MapSimulatorLoader.LoadFrames(_texturePool, animContainer, 0, 0, _DxDeviceManager.GraphicsDevice, usedProps);
+                if (shipFrames.Count == 0)
+                {
+                    return false;
+                }
+
+                System.Diagnostics.Debug.WriteLine($"[TransportField] Loaded {shipFrames.Count} ship frames from {objInfo.oS}/{objInfo.l0}/{objInfo.l1}");
+                _transportField.SetShipFrames(shipFrames);
+                return true;
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[TransportField] Error loading ship frames from ShipObject fallback: {ex.Message}");
+                return false;
+            }
         }
 
 #endregion
@@ -19391,6 +20345,28 @@ namespace HaCreator.MapSimulator
 
 
 
+        private void HandleItemMakerHiddenRecipesUnlocked(IReadOnlyCollection<int> outputItemIds)
+
+        {
+
+            if (outputItemIds == null || outputItemIds.Count == 0)
+
+            {
+
+                return;
+
+            }
+
+
+
+            CharacterBuild build = GetActiveItemMakerCharacterBuild();
+
+            _itemMakerProgressionStore.RecordUnlockedHiddenRecipes(build, outputItemIds);
+
+        }
+
+
+
         private bool MatchesItemMakerQuestRequirement(int questId, int requiredStateValue)
 
         {
@@ -21802,21 +22778,21 @@ namespace HaCreator.MapSimulator
 
                 MoveToMapId = Math.Max(0, GetWzIntValue(specProperty["moveTo"])),
 
-                Pad = GetWzIntValue(specProperty["pad"]),
+                Pad = ResolveConsumableIntValue(specProperty, "pad", "indiePad"),
 
-                Mad = GetWzIntValue(specProperty["mad"]),
+                Mad = ResolveConsumableIntValue(specProperty, "mad", "indieMad"),
 
-                Pdd = GetWzIntValue(specProperty["pdd"]),
+                Pdd = ResolveConsumableIntValue(specProperty, "pdd", "indiePdd"),
 
-                Mdd = GetWzIntValue(specProperty["mdd"]),
+                Mdd = ResolveConsumableIntValue(specProperty, "mdd", "indieMdd"),
 
-                Accuracy = GetWzIntValue(specProperty["acc"]),
+                Accuracy = ResolveConsumableIntValue(specProperty, "acc"),
 
-                Avoidability = GetWzIntValue(specProperty["eva"]),
+                Avoidability = ResolveConsumableIntValue(specProperty, "eva"),
 
-                Speed = GetWzIntValue(specProperty["speed"]),
+                Speed = ResolveConsumableIntValue(specProperty, "speed", "indieSpeed"),
 
-                Jump = GetWzIntValue(specProperty["jump"]),
+                Jump = ResolveConsumableIntValue(specProperty, "jump", "indieJump"),
 
                 MaxHpPercent = ResolveConsumablePercentValue(specProperty, "mhpR", "mhpRRate"),
 
@@ -22357,6 +23333,42 @@ namespace HaCreator.MapSimulator
                 int value = Math.Max(0, GetWzIntValue(specProperty[propertyNames[i]]));
 
                 if (value > 0)
+
+                {
+
+                    return value;
+
+                }
+
+            }
+
+
+
+            return 0;
+
+        }
+
+        private static int ResolveConsumableIntValue(WzSubProperty specProperty, params string[] propertyNames)
+
+        {
+
+            if (specProperty == null || propertyNames == null)
+
+            {
+
+                return 0;
+
+            }
+
+
+
+            for (int i = 0; i < propertyNames.Length; i++)
+
+            {
+
+                int value = GetWzIntValue(specProperty[propertyNames[i]]);
+
+                if (value != 0)
 
                 {
 
@@ -23300,6 +24312,8 @@ namespace HaCreator.MapSimulator
             _socialListRuntime.UpdateLocalContext(player.Build, currentLocationSummary, 1);
 
             _familyChartRuntime.UpdateLocalContext(player.Build, currentLocationSummary, 1);
+
+            RefreshGuildSkillUiContext();
 
 
 
@@ -24718,7 +25732,76 @@ namespace HaCreator.MapSimulator
                 }
             }
 
+            if (_npcInteractionOverlay?.CapturesKeyboardInput == true)
+            {
+                _npcInteractionOverlay.HandleCompositionText(compositionText);
+            }
+            else
+            {
+                _npcInteractionOverlay?.ClearCompositionText();
+            }
+
             activeKeyboardWindow?.HandleCompositionText(compositionText);
+
+
+
+            }
+
+        private void HandleImeCompositionStateChanged(ImeCompositionState compositionState)
+
+
+
+        {
+
+
+
+            UIWindowBase activeKeyboardWindow = uiWindowManager?.ActiveKeyboardWindow;
+            IReadOnlyList<UIWindowBase> windows = uiWindowManager?.Windows;
+            if (windows != null)
+            {
+                foreach (UIWindowBase window in windows)
+                {
+                    if (!ReferenceEquals(window, activeKeyboardWindow))
+                    {
+                        window.ClearCompositionText();
+                    }
+                }
+            }
+
+            activeKeyboardWindow?.HandleCompositionState(compositionState ?? ImeCompositionState.Empty);
+
+
+
+            }
+
+        private void HandleImeCandidateListChanged(ImeCandidateListState candidateState)
+
+
+
+        {
+
+
+
+            UIWindowBase activeKeyboardWindow = uiWindowManager?.ActiveKeyboardWindow;
+            IReadOnlyList<UIWindowBase> windows = uiWindowManager?.Windows;
+            if (windows != null)
+            {
+                foreach (UIWindowBase window in windows)
+                {
+                    if (!ReferenceEquals(window, activeKeyboardWindow))
+                    {
+                        window.ClearImeCandidateList();
+                    }
+                }
+            }
+
+            if (candidateState == null || !candidateState.HasCandidates)
+            {
+                activeKeyboardWindow?.ClearImeCandidateList();
+                return;
+            }
+
+            activeKeyboardWindow?.HandleImeCandidateList(candidateState);
 
 
 
@@ -24747,6 +25830,8 @@ namespace HaCreator.MapSimulator
 
 
                 _imeCompositionMonitor.CompositionTextChanged -= HandleImeCompositionChanged;
+                _imeCompositionMonitor.CompositionStateChanged -= HandleImeCompositionStateChanged;
+                _imeCompositionMonitor.CandidateListChanged -= HandleImeCandidateListChanged;
 
 
 
@@ -28117,19 +29202,7 @@ namespace HaCreator.MapSimulator
 
             };
 
-            CharacterBuild build = _playerManager.Player?.Build;
-
-            bool canOpenRidePage = build?.HasMonsterRiding == true ||
-
-                                   (build?.Equipment?.TryGetValue(EquipSlot.TamingMob, out CharacterPart mountPart) == true &&
-
-                                    mountPart != null);
-
-            skillWindow.ConfigureShortcutButtons(
-
-                canOpenRidePage,
-
-                GuildSkillRuntime.HasGuildMembership(build));
+            RefreshSkillWindowShortcutState();
 
 
 
@@ -28932,7 +30005,26 @@ namespace HaCreator.MapSimulator
 
 
 
-            bool focused = worldMapWindow.FocusSearchResult(WorldMapUI.SearchResultKind.Mob, state.TargetMobName, _mapBoard?.MapInfo?.id ?? 0);
+            int targetMapId = _mapBoard?.MapInfo?.id ?? 0;
+            IReadOnlyList<int> packetGuideMapIds = Array.Empty<int>();
+
+            bool hasPacketGuideMaps = state.TargetMobId is int targetMobId
+
+                && TryGetPacketQuestGuideMapIds(targetMobId, out packetGuideMapIds)
+
+                && packetGuideMapIds.Count > 0;
+
+            if (hasPacketGuideMaps)
+
+            {
+
+                targetMapId = packetGuideMapIds[0];
+
+            }
+
+
+
+            bool focused = worldMapWindow.FocusSearchResult(WorldMapUI.SearchResultKind.Mob, state.TargetMobName, targetMapId);
 
             uiWindowManager.ShowWindow(MapSimulatorWindowNames.WorldMap);
 
@@ -28944,8 +30036,8 @@ namespace HaCreator.MapSimulator
             {
                 QuestId = questId,
                 Messages = focused
-                    ? new[] { $"Opened the world map search for {state.TargetMobName}." }
-                    : new[] { $"Opened the world map, but {state.TargetMobName} is not in the current field search results." }
+                    ? new[] { hasPacketGuideMaps ? $"Opened the world map search for {state.TargetMobName} using packet-authored quest-guide maps." : $"Opened the world map search for {state.TargetMobName}." }
+                    : new[] { hasPacketGuideMaps ? $"Opened the world map, but {state.TargetMobName} could not be focused even with packet-authored quest-guide maps." : $"Opened the world map, but {state.TargetMobName} is not in the current field search results." }
             };
         }
 
@@ -31690,6 +32782,138 @@ namespace HaCreator.MapSimulator
                       + profileSummary
 
                       + ".";
+
+            return true;
+
+        }
+
+
+
+        private bool TryConfigureSelectCharacterResultPacketPayload(string[] args, out string error, out string summary)
+
+        {
+
+            error = null;
+
+            summary = null;
+
+
+
+            LoginSelectCharacterResultProfile decodedProfile = null;
+
+            bool clearPayload = false;
+
+
+
+            foreach (string arg in args)
+
+            {
+
+                if (string.IsNullOrWhiteSpace(arg))
+
+                {
+
+                    continue;
+
+                }
+
+
+
+                if (arg.Equals("clearpayload", StringComparison.OrdinalIgnoreCase) ||
+
+                    arg.Equals("clear", StringComparison.OrdinalIgnoreCase))
+
+                {
+
+                    clearPayload = true;
+
+                    continue;
+
+                }
+
+
+
+                if (TryParseBinaryPayloadArgument(arg, out byte[] payloadBytes, out string payloadError))
+
+                {
+
+                    if (!LoginSelectCharacterResultCodec.TryDecode(payloadBytes, out decodedProfile, out string decodeError))
+
+                    {
+
+                        error = decodeError ?? "SelectCharacterResult payload could not be decoded.";
+
+                        return false;
+
+                    }
+
+
+
+                    continue;
+
+                }
+
+
+
+                if (payloadError != null &&
+
+                    (arg.StartsWith("payloadhex=", StringComparison.OrdinalIgnoreCase) ||
+
+                     arg.StartsWith("payloadb64=", StringComparison.OrdinalIgnoreCase)))
+
+                {
+
+                    error = payloadError;
+
+                    return false;
+
+                }
+
+
+
+                error = "Usage: /loginpacket selectchar [payloadhex=<hex>|payloadb64=<base64>|clearpayload]";
+
+                return false;
+
+            }
+
+
+
+            if (args.Length == 0 || clearPayload)
+
+            {
+
+                _loginPacketSelectCharacterResultProfile = null;
+
+                summary = "Using generated SelectCharacterResult behavior.";
+
+                return true;
+
+            }
+
+
+
+            _loginPacketSelectCharacterResultProfile = decodedProfile;
+
+            if (decodedProfile == null)
+
+            {
+
+                error = "Usage: /loginpacket selectchar [payloadhex=<hex>|payloadb64=<base64>|clearpayload]";
+
+                return false;
+
+            }
+
+
+
+            string profileSummary = decodedProfile.IsSuccess
+
+                ? $"success for character {decodedProfile.CharacterId.GetValueOrDefault()} via {decodedProfile.EndpointText ?? "unknown endpoint"}"
+
+                : $"result {FormatSelectorPacketCode(decodedProfile.ResultCode)} / response {decodedProfile.ResponseCode}";
+
+            summary = $"Configured packet-authored SelectCharacterResult ({profileSummary}).";
 
             return true;
 

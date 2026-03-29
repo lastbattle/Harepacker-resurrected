@@ -13,6 +13,7 @@ namespace HaCreator.MapSimulator.Interaction
         public string StatusMessage { get; set; }
         public string RoomState { get; set; }
         public string ModeName { get; set; }
+        public string PacketOwnerSummary { get; set; }
         public int MiniRoomModeIndex { get; set; }
         public int MiniRoomWagerAmount { get; set; }
         public bool MiniRoomOmokInProgress { get; set; }
@@ -61,11 +62,13 @@ namespace HaCreator.MapSimulator.Interaction
     {
         public string OwnerName { get; set; }
         public string ItemName { get; set; }
+        public int ItemId { get; set; }
         public int Quantity { get; set; }
         public int MesoAmount { get; set; }
         public string Detail { get; set; }
         public bool IsLocked { get; set; }
         public bool IsClaimed { get; set; }
+        public int? PacketSlotIndex { get; set; }
     }
 
     public sealed class SocialRoomChatEntrySnapshot

@@ -1086,10 +1086,10 @@ namespace HaCreator.MapSimulator
 
         private string ApplyPacketOwnedChatMessage(string message, string channel = null)
         {
-            return ApplyPacketOwnedChatMessage(message, null, channel);
+            return ApplyPacketOwnedChatMessage(message, null, channel, -1);
         }
 
-        private string ApplyPacketOwnedChatMessage(string message, int? chatLogType, string channel = null)
+        private string ApplyPacketOwnedChatMessage(string message, int? chatLogType, string channel = null, int channelId = -1)
         {
             StampPacketOwnedUtilityRequestState();
             _lastPacketOwnedChatMessage = message?.Trim() ?? string.Empty;
@@ -1100,7 +1100,7 @@ namespace HaCreator.MapSimulator
 
             if (chatLogType.HasValue)
             {
-                _chat?.AddClientChatMessage(_lastPacketOwnedChatMessage, Environment.TickCount, chatLogType.Value);
+                _chat?.AddClientChatMessage(_lastPacketOwnedChatMessage, Environment.TickCount, chatLogType.Value, null, channelId);
                 return $"Queued packet-owned chat line (type {chatLogType.Value}): {_lastPacketOwnedChatMessage}";
             }
 
@@ -1115,7 +1115,12 @@ namespace HaCreator.MapSimulator
             }
 
             PacketOwnedChatRoute route = ResolvePacketOwnedChatRoute(_lastPacketOwnedChatMessage, channel);
-            _chat?.AddClientChatMessage(route.Line, Environment.TickCount, route.ChatLogType, route.WhisperTargetCandidate);
+            _chat?.AddClientChatMessage(
+                route.Line,
+                Environment.TickCount,
+                route.ChatLogType,
+                route.WhisperTargetCandidate,
+                route.ChannelId);
             string line = route.Line;
             return $"Queued packet-owned chat line: {line}";
         }
@@ -1225,7 +1230,8 @@ namespace HaCreator.MapSimulator
         private readonly record struct PacketOwnedChatRoute(
             string Line,
             int ChatLogType,
-            string WhisperTargetCandidate = null);
+            string WhisperTargetCandidate = null,
+            int ChannelId = -1);
 
         private static PacketOwnedChatRoute ResolvePacketOwnedChatRoute(string message, string channel)
         {
@@ -1293,6 +1299,14 @@ namespace HaCreator.MapSimulator
             string[] segments = channel.Split(':');
             string mode = segments[0].Trim().ToLowerInvariant();
             string primaryTarget = segments.Length >= 2 ? segments[1].Trim() : string.Empty;
+            int secondaryChannelId = -1;
+            if ((mode == "channel" || mode == "type19" || mode == "ltype19" || mode == "19")
+                && segments.Length >= 2
+                && int.TryParse(segments[1].Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out int parsedChannelId))
+            {
+                secondaryChannelId = parsedChannelId;
+                primaryTarget = string.Empty;
+            }
 
             switch (mode)
             {
@@ -1371,7 +1385,7 @@ namespace HaCreator.MapSimulator
                 case "type19":
                 case "ltype19":
                 case "19":
-                    route = new PacketOwnedChatRoute(message, 19);
+                    route = new PacketOwnedChatRoute(message, 19, null, secondaryChannelId);
                     return true;
 
                 case "type11":
@@ -1605,6 +1619,23 @@ namespace HaCreator.MapSimulator
                 if (reader.BaseStream.Position == reader.BaseStream.Length && !string.IsNullOrWhiteSpace(chatText))
                 {
                     message = ApplyPacketOwnedChatMessage(chatText, chatLogType);
+                    return true;
+                }
+            }
+            catch
+            {
+            }
+
+            try
+            {
+                using MemoryStream stream = new(payload, writable: false);
+                using BinaryReader reader = new(stream);
+                ushort chatLogType = reader.ReadUInt16();
+                int channelId = reader.ReadInt32();
+                string chatText = ReadPacketOwnedMapleString(reader);
+                if (reader.BaseStream.Position == reader.BaseStream.Length && !string.IsNullOrWhiteSpace(chatText))
+                {
+                    message = ApplyPacketOwnedChatMessage(chatText, chatLogType, channelId: channelId);
                     return true;
                 }
             }

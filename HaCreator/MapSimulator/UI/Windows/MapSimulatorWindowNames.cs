@@ -1,4 +1,4 @@
-﻿namespace HaCreator.MapSimulator.UI
+namespace HaCreator.MapSimulator.UI
 {
     /// <summary>
     /// Centralized window identifiers used by the simulator window manager.
@@ -41,6 +41,7 @@
         public const string OptionMenu = "OptionMenu";
         public const string Ranking = "Ranking";
         public const string Event = "Event";
+        public const string Radio = "Radio";
         public const string FamilyChart = "FamilyChart";
         public const string FamilyTree = "FamilyTree";
         public const string SocialList = "SocialList";

@@ -236,9 +236,15 @@ namespace HaCreator.MapSimulator.Interaction
                     continue;
                 }
 
+                string label = Format(choice.Label, context);
+                if (string.IsNullOrWhiteSpace(label))
+                {
+                    continue;
+                }
+
                 formattedChoices[count++] = new NpcInteractionChoice
                 {
-                    Label = choice.Label,
+                    Label = label,
                     Pages = FormatPages(choice.Pages, context)
                 };
             }

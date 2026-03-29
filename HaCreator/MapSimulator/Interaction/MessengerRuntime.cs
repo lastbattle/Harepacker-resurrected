@@ -1,3 +1,4 @@
+using HaCreator.MapSimulator.Managers;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -166,7 +167,8 @@ namespace HaCreator.MapSimulator.Interaction
                     participant.StatusText,
                     participant.JobName,
                     participant.Level,
-                    participant.IsOnline));
+                    participant.IsOnline,
+                    participant.AvatarLook));
             }
 
             return snapshots;
@@ -887,7 +889,8 @@ namespace HaCreator.MapSimulator.Interaction
                 JobName = contact.JobName,
                 Level = contact.Level,
                 IsLocalPlayer = false,
-                IsOnline = contact.IsOnline
+                IsOnline = contact.IsOnline,
+                AvatarLook = contact.AvatarLook
             };
 
             _participants.Add(participant);
@@ -1204,11 +1207,18 @@ namespace HaCreator.MapSimulator.Interaction
                 packet.JobName,
                 packet.LocationSummary,
                 packet.StatusText);
+            if (_contacts.TryGetValue(resolvedName, out MessengerContactState contact))
+            {
+                contact.AvatarLook = packet.AvatarLook;
+                SyncParticipantFromContact(contact);
+            }
 
             _lastActionSummary = $"Applied decoded Messenger member-info packet for {resolvedName}.";
             AddSystemLog(_lastActionSummary);
             StartBlink(Environment.TickCount);
-            RecordPacketSummary($"Decoded Messenger member-info packet for {resolvedName}, CH {Math.Max(1, packet.Channel)}, Lv. {Math.Max(1, packet.Level)}.");
+            RecordPacketSummary(packet.AvatarLook != null
+                ? $"Decoded Messenger member-info packet for {resolvedName}, CH {Math.Max(1, packet.Channel)}, Lv. {Math.Max(1, packet.Level)}, with AvatarLook."
+                : $"Decoded Messenger member-info packet for {resolvedName}, CH {Math.Max(1, packet.Channel)}, Lv. {Math.Max(1, packet.Level)}.");
             return _lastActionSummary;
         }
 
@@ -1229,7 +1239,8 @@ namespace HaCreator.MapSimulator.Interaction
                 JobName = contact.JobName,
                 Level = contact.Level,
                 IsOnline = contact.IsOnline,
-                DataSourceLabel = contact.DataSourceLabel
+                DataSourceLabel = contact.DataSourceLabel,
+                AvatarLook = contact.AvatarLook
             };
         }
 
@@ -1372,6 +1383,7 @@ namespace HaCreator.MapSimulator.Interaction
             public string JobName { get; set; }
             public int Level { get; set; }
             public string DataSourceLabel { get; set; } = "sim";
+            public LoginAvatarLook AvatarLook { get; set; }
             public bool IsOnline { get; set; }
             public bool AcceptsInvites { get; set; }
             public bool CanInvite => IsOnline && AcceptsInvites;
@@ -1384,6 +1396,7 @@ namespace HaCreator.MapSimulator.Interaction
                 JobName = Definition.JobName;
                 Level = Definition.Level;
                 DataSourceLabel = "sim";
+                AvatarLook = null;
                 IsOnline = true;
                 AcceptsInvites = true;
             }
@@ -1404,6 +1417,7 @@ namespace HaCreator.MapSimulator.Interaction
             public string JobName { get; init; } = string.Empty;
             public int Level { get; init; }
             public string DataSourceLabel { get; init; } = "sim";
+            public LoginAvatarLook AvatarLook { get; init; }
             public bool IsLocalPlayer { get; init; }
             public bool IsOnline { get; init; }
             public string BubbleText { get; init; } = string.Empty;
@@ -1524,7 +1538,8 @@ namespace HaCreator.MapSimulator.Interaction
         string StatusText,
         string JobName,
         int Level,
-        bool IsOnline);
+        bool IsOnline,
+        LoginAvatarLook AvatarLook);
 
     internal sealed record MessengerDeleteResult(string Message, bool ShouldHideWindow);
 

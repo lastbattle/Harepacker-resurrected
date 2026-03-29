@@ -62,6 +62,10 @@ namespace HaCreator.MapSimulator.Interaction
     {
         public string Label { get; init; } = string.Empty;
         public IReadOnlyList<NpcInteractionPage> Pages { get; init; } = Array.Empty<NpcInteractionPage>();
+        public bool SubmitSelection { get; init; }
+        public NpcInteractionInputKind SubmissionKind { get; init; }
+        public string SubmissionValue { get; init; } = string.Empty;
+        public int? SubmissionNumericValue { get; init; }
     }
 
     internal readonly struct NpcInlineSelection

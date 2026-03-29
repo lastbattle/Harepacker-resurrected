@@ -85,6 +85,31 @@ namespace HaCreator.MapSimulator.Interaction
         public bool StateChanged { get; init; }
         public int? QuestId { get; init; }
         public IReadOnlyList<string> Messages { get; init; } = Array.Empty<string>();
+        public QuestRewardChoicePrompt PendingRewardChoicePrompt { get; init; }
+    }
+
+    internal sealed class QuestRewardChoicePrompt
+    {
+        public int QuestId { get; init; }
+        public string QuestName { get; init; } = string.Empty;
+        public bool CompletionPhase { get; init; }
+        public string ActionLabel { get; init; } = string.Empty;
+        public int? NpcId { get; init; }
+        public IReadOnlyList<QuestRewardChoiceGroup> Groups { get; init; } = Array.Empty<QuestRewardChoiceGroup>();
+    }
+
+    internal sealed class QuestRewardChoiceGroup
+    {
+        public int GroupKey { get; init; }
+        public string PromptText { get; init; } = string.Empty;
+        public IReadOnlyList<QuestRewardChoiceOption> Options { get; init; } = Array.Empty<QuestRewardChoiceOption>();
+    }
+
+    internal sealed class QuestRewardChoiceOption
+    {
+        public int ItemId { get; init; }
+        public string Label { get; init; } = string.Empty;
+        public string DetailText { get; init; } = string.Empty;
     }
 
     internal sealed class QuestWorldMapTarget

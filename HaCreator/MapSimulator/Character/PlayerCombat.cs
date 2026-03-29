@@ -471,6 +471,9 @@ namespace HaCreator.MapSimulator.Character
             int playerAvoidability = Math.Max(0, _player.Build?.TotalAvoidability ?? _player.Build?.Avoidability ?? 0);
             hitChance -= Math.Min(0.45f, playerAvoidability / 400f);
 
+            int playerAccuracy = Math.Max(0, _player.Build?.TotalAccuracy ?? _player.Build?.Accuracy ?? 0);
+            hitChance -= Math.Min(0.2f, playerAccuracy / 1000f);
+
             return Math.Clamp(hitChance, 0.05f, 0.99f);
         }
 

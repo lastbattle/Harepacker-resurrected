@@ -53,6 +53,9 @@ namespace HaCreator.MapSimulator.UI
         private readonly UIObject _saveIdButton;
         private readonly UIObject _idLostButton;
         private readonly UIObject _passwordLostButton;
+        private readonly UIObject _softKeyboardButton;
+        private readonly Texture2D _saveIdUncheckedTexture;
+        private readonly Texture2D _saveIdCheckedTexture;
 
         private SpriteFont _font;
         private KeyboardState _previousKeyboardState;
@@ -88,7 +91,10 @@ namespace HaCreator.MapSimulator.UI
             UIObject quitButton,
             UIObject saveIdButton,
             UIObject idLostButton,
-            UIObject passwordLostButton)
+            UIObject passwordLostButton,
+            UIObject softKeyboardButton,
+            Texture2D saveIdUncheckedTexture,
+            Texture2D saveIdCheckedTexture)
             : base(frame)
         {
             _titleLayer = titleLayer;
@@ -109,6 +115,9 @@ namespace HaCreator.MapSimulator.UI
             _saveIdButton = saveIdButton;
             _idLostButton = idLostButton;
             _passwordLostButton = passwordLostButton;
+            _softKeyboardButton = softKeyboardButton;
+            _saveIdUncheckedTexture = saveIdUncheckedTexture;
+            _saveIdCheckedTexture = saveIdCheckedTexture;
 
             if (_loginButton != null)
             {
@@ -157,6 +166,58 @@ namespace HaCreator.MapSimulator.UI
                 _passwordLostButton.ButtonClickReleased += _ => RecoverPasswordRequested?.Invoke();
                 AddButton(_passwordLostButton);
             }
+
+            if (_softKeyboardButton != null)
+            {
+                _softKeyboardButton.ButtonClickReleased += _ => OpenSoftKeyboard();
+                AddButton(_softKeyboardButton);
+            }
+        }
+
+        public LoginTitleWindow(
+            IDXObject frame,
+            IDXObject titleLayer,
+            Point titleOffset,
+            IDXObject dollsLayer,
+            Point dollsOffset,
+            IDXObject signboardLayer,
+            Point signboardOffset,
+            IDXObject idFieldLayer,
+            Point idFieldOffset,
+            IDXObject passwordFieldLayer,
+            Point passwordFieldOffset,
+            UIObject loginButton,
+            UIObject guestLoginButton,
+            UIObject newButton,
+            UIObject homePageButton,
+            UIObject quitButton,
+            UIObject saveIdButton,
+            UIObject idLostButton,
+            UIObject passwordLostButton)
+            : this(
+                frame,
+                titleLayer,
+                titleOffset,
+                dollsLayer,
+                dollsOffset,
+                signboardLayer,
+                signboardOffset,
+                idFieldLayer,
+                idFieldOffset,
+                passwordFieldLayer,
+                passwordFieldOffset,
+                loginButton,
+                guestLoginButton,
+                newButton,
+                homePageButton,
+                quitButton,
+                saveIdButton,
+                idLostButton,
+                passwordLostButton,
+                null,
+                null,
+                null)
+        {
         }
 
         public override string WindowName => MapSimulatorWindowNames.LoginTitle;
@@ -202,6 +263,8 @@ namespace HaCreator.MapSimulator.UI
 
             _loginButton?.SetEnabled(!busy);
             _guestLoginButton?.SetEnabled(!busy);
+            _softKeyboardButton?.SetEnabled(!busy);
+            _saveIdButton?.SetButtonState(_rememberId ? UIObjectState.Pressed : UIObjectState.Normal);
         }
 
         public override void Update(GameTime gameTime)
@@ -462,12 +525,26 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
+            Texture2D indicatorTexture = _rememberId ? _saveIdCheckedTexture : _saveIdUncheckedTexture;
+            Vector2 labelPosition;
+            if (indicatorTexture != null && _saveIdButton != null)
+            {
+                int indicatorY = Position.Y + _saveIdButton.Y + Math.Max(0, (_saveIdButton.CanvasSnapshotHeight - indicatorTexture.Height) / 2);
+                int indicatorX = Position.X + _saveIdButton.X;
+                sprite.Draw(indicatorTexture, new Vector2(indicatorX, indicatorY), Color.White);
+                labelPosition = new Vector2(indicatorX + indicatorTexture.Width + 4, indicatorY - 2);
+            }
+            else
+            {
+                labelPosition = new Vector2(Position.X + 388, Position.Y + 295);
+            }
+
             Color color = _rememberId ? new Color(255, 245, 208) : new Color(226, 226, 226);
             SelectorWindowDrawing.DrawShadowedText(
                 sprite,
                 _font,
                 "Save ID",
-                new Vector2(Position.X + 388, Position.Y + 295),
+                labelPosition,
                 color);
         }
 
@@ -530,6 +607,21 @@ namespace HaCreator.MapSimulator.UI
         {
             _rememberId = !_rememberId;
             _saveIdButton?.SetButtonState(_rememberId ? UIObjectState.Pressed : UIObjectState.Normal);
+        }
+
+        private void OpenSoftKeyboard()
+        {
+            if (_busy)
+            {
+                return;
+            }
+
+            if (_focusedField == LoginFieldFocus.None)
+            {
+                _focusedField = LoginFieldFocus.Account;
+            }
+
+            _softKeyboardActive = true;
         }
 
         private bool Pressed(KeyboardState keyboardState, Keys key)

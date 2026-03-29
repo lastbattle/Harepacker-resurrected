@@ -43,6 +43,7 @@ namespace HaCreator.MapSimulator.Managers
         public const int PlayMinigameSoundPacketType = 1007;
         public const int AskApspEventPacketType = 1008;
         public const int FollowCharacterFailedPacketType = 1009;
+        public const int RadioSchedulePacketType = 1010;
         public const int PlayEventSoundClientPacketType = 246;
         public const int PlayMinigameSoundClientPacketType = 247;
         public const int OpenClassCompetitionPagePacketType = 250;
@@ -53,6 +54,7 @@ namespace HaCreator.MapSimulator.Managers
         public const int ChatMsgClientPacketType = 264;
         public const int BuffzoneEffectClientPacketType = 265;
         public const int GoToCommoditySnClientPacketType = 266;
+        public const int RadioScheduleClientPacketType = 261;
         public const int QuestGuideResultPacketType = 274;
         public const int DeliveryQuestPacketType = 275;
         public const int DamageMeterPacketType = 267;
@@ -273,6 +275,8 @@ namespace HaCreator.MapSimulator.Managers
                     || packetType == AskApspEventClientPacketType
                     || packetType == FollowCharacterFailedPacketType
                     || packetType == FollowCharacterFailedClientPacketType
+                    || packetType == RadioSchedulePacketType
+                    || packetType == RadioScheduleClientPacketType
                     || packetType == NotifyHpDecByFieldPacketType
                     || packetType == OpenClassCompetitionPagePacketType
                     || packetType == DamageMeterPacketType
@@ -347,6 +351,14 @@ namespace HaCreator.MapSimulator.Managers
                 || token.Equals("followcharacterfailed", StringComparison.OrdinalIgnoreCase))
             {
                 packetType = FollowCharacterFailedPacketType;
+                return true;
+            }
+
+            if (token.Equals("radio", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("radioschedule", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("onradioschedule", StringComparison.OrdinalIgnoreCase))
+            {
+                packetType = RadioSchedulePacketType;
                 return true;
             }
 
@@ -493,6 +505,7 @@ namespace HaCreator.MapSimulator.Managers
                 PlayMinigameSoundPacketType => "PlayMinigameSound(1007)",
                 AskApspEventPacketType => "AskAPSPEvent(1008)",
                 FollowCharacterFailedPacketType => "FollowCharacterFailed(1009)",
+                RadioSchedulePacketType => "RadioSchedule(1010)",
                 PlayEventSoundClientPacketType => "PlayEventSound(246)",
                 PlayMinigameSoundClientPacketType => "PlayMinigameSound(247)",
                 NotifyHpDecByFieldPacketType => "NotifyHPDecByField(243)",
@@ -503,6 +516,7 @@ namespace HaCreator.MapSimulator.Managers
                 ChatMsgClientPacketType => "ChatMsg(264)",
                 BuffzoneEffectClientPacketType => "BuffzoneEffect(265)",
                 GoToCommoditySnClientPacketType => "GoToCommoditySN(266)",
+                RadioScheduleClientPacketType => "RadioSchedule(261)",
                 DamageMeterPacketType => "DamageMeter(267)",
                 FollowCharacterFailedClientPacketType => "FollowCharacterFailed(270)",
                 AskApspEventClientPacketType => "AskAPSPEvent(273)",

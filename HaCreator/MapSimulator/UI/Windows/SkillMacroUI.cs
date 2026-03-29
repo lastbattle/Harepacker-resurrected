@@ -1,5 +1,6 @@
 using HaCreator.MapSimulator.Character.Skills;
 using HaCreator.MapSimulator.UI.Controls;
+using HaCreator.MapSimulator;
 using HaSharedLibrary.Render;
 using HaSharedLibrary.Render.DX;
 using Microsoft.Xna.Framework;
@@ -134,6 +135,9 @@ namespace HaCreator.MapSimulator.UI
         private int _caretBlinkTick;
         private string _compositionText = string.Empty;
         private int _compositionInsertionIndex = -1;
+        private IReadOnlyList<int> _compositionClauseOffsets = Array.Empty<int>();
+        private int _compositionCursorPosition = -1;
+        private ImeCandidateListState _candidateListState = ImeCandidateListState.Empty;
         private SkillMacroSoftKeyboardSkin _softKeyboardSkin;
         private bool _softKeyboardVisible;
         private bool _softKeyboardMinimized;
@@ -433,6 +437,7 @@ namespace HaCreator.MapSimulator.UI
             base.DrawOverlay(sprite, skeletonMeshRenderer, gameTime, mapShiftX, mapShiftY, centerX, centerY, drawReflectionInfo, renderParameters, TickCount);
 
             DrawSoftKeyboard(sprite);
+            DrawImeCandidateWindow(sprite);
         }
 
         private void DrawMacroSlot(SpriteBatch sprite, int macroIndex, int windowX, int windowY)
@@ -1693,7 +1698,7 @@ namespace HaCreator.MapSimulator.UI
             }
         }
 
-        public override void HandleCompositionText(string text)
+        public override void HandleCompositionState(ImeCompositionState state)
         {
             if (!CapturesKeyboardInput)
             {
@@ -1701,7 +1706,8 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
-            string sanitized = SanitizeCompositionText(text);
+            ImeCompositionState effectiveState = state ?? ImeCompositionState.Empty;
+            string sanitized = SanitizeCompositionText(effectiveState.Text);
             if (sanitized.Length == 0)
             {
                 ClearCompositionText();
@@ -1728,14 +1734,36 @@ namespace HaCreator.MapSimulator.UI
 
             _compositionInsertionIndex = insertionIndex;
             _compositionText = preview;
+            _compositionClauseOffsets = ClampClauseOffsets(effectiveState.ClauseOffsets, preview.Length);
+            _compositionCursorPosition = Math.Clamp(effectiveState.CursorPosition, -1, preview.Length);
             _validationMessage = string.Empty;
             _caretBlinkTick = Environment.TickCount;
+        }
+
+        public override void HandleCompositionText(string text)
+        {
+            HandleCompositionState(new ImeCompositionState(text ?? string.Empty, Array.Empty<int>(), -1));
         }
 
         public override void ClearCompositionText()
         {
             _compositionText = string.Empty;
             _compositionInsertionIndex = -1;
+            _compositionClauseOffsets = Array.Empty<int>();
+            _compositionCursorPosition = -1;
+            ClearImeCandidateList();
+        }
+
+        public override void HandleImeCandidateList(ImeCandidateListState state)
+        {
+            _candidateListState = CapturesKeyboardInput && state != null && state.HasCandidates
+                ? state
+                : ImeCandidateListState.Empty;
+        }
+
+        public override void ClearImeCandidateList()
+        {
+            _candidateListState = ImeCandidateListState.Empty;
         }
 
         private void HandleKeyboardInput(KeyboardState keyboardState)
@@ -1863,6 +1891,202 @@ namespace HaCreator.MapSimulator.UI
 
             int insertionIndex = Math.Clamp(_compositionInsertionIndex >= 0 ? _compositionInsertionIndex : _editingCursorPosition, 0, committedText.Length);
             return committedText.Insert(insertionIndex, _compositionText);
+        }
+
+        private void DrawImeCandidateWindow(SpriteBatch sprite)
+        {
+            if (_font == null || !_candidateListState.HasCandidates)
+            {
+                return;
+            }
+
+            Rectangle candidateBounds = GetImeCandidateWindowBounds(sprite.GraphicsDevice.Viewport);
+            if (candidateBounds.Width <= 0 || candidateBounds.Height <= 0)
+            {
+                return;
+            }
+
+            sprite.Draw(_textPixelTexture, candidateBounds, new Color(33, 33, 41, 235));
+
+            Color borderColor = new(214, 214, 214, 220);
+            sprite.Draw(_textPixelTexture, new Rectangle(candidateBounds.X, candidateBounds.Y, candidateBounds.Width, 1), borderColor);
+            sprite.Draw(_textPixelTexture, new Rectangle(candidateBounds.X, candidateBounds.Bottom - 1, candidateBounds.Width, 1), borderColor);
+            sprite.Draw(_textPixelTexture, new Rectangle(candidateBounds.X, candidateBounds.Y, 1, candidateBounds.Height), borderColor);
+            sprite.Draw(_textPixelTexture, new Rectangle(candidateBounds.Right - 1, candidateBounds.Y, 1, candidateBounds.Height), borderColor);
+
+            int start = Math.Clamp(_candidateListState.PageStart, 0, _candidateListState.Candidates.Count);
+            int count = Math.Min(GetVisibleCandidateCount(), _candidateListState.Candidates.Count - start);
+            if (count <= 0)
+            {
+                return;
+            }
+
+            int rowHeight = GetCandidateRowHeight();
+            int numberWidth = GetCandidateNumberWidth();
+            for (int i = 0; i < count; i++)
+            {
+                int candidateIndex = start + i;
+                Rectangle rowBounds = new(candidateBounds.X + 2, candidateBounds.Y + 2 + (i * rowHeight), candidateBounds.Width - 4, rowHeight);
+                bool selected = candidateIndex == _candidateListState.Selection;
+                if (selected)
+                {
+                    sprite.Draw(_textPixelTexture, rowBounds, new Color(89, 108, 147, 220));
+                }
+
+                sprite.DrawString(_font, $"{candidateIndex + 1}.", new Vector2(rowBounds.X + 4, rowBounds.Y + 1), selected ? Color.White : new Color(222, 222, 222));
+                sprite.DrawString(
+                    _font,
+                    _candidateListState.Candidates[candidateIndex] ?? string.Empty,
+                    new Vector2(rowBounds.X + 8 + numberWidth, rowBounds.Y + 1),
+                    selected ? Color.White : new Color(240, 235, 200));
+            }
+        }
+
+        private Rectangle GetImeCandidateWindowBounds(Viewport viewport)
+        {
+            int visibleCount = GetVisibleCandidateCount();
+            if (visibleCount <= 0)
+            {
+                return Rectangle.Empty;
+            }
+
+            int rowHeight = GetCandidateRowHeight();
+            int numberWidth = GetCandidateNumberWidth();
+            int textWidth = 0;
+            int start = Math.Clamp(_candidateListState.PageStart, 0, _candidateListState.Candidates.Count);
+            int count = Math.Min(visibleCount, _candidateListState.Candidates.Count - start);
+            for (int i = 0; i < count; i++)
+            {
+                textWidth = Math.Max(textWidth, (int)Math.Ceiling(_font.MeasureString(_candidateListState.Candidates[start + i] ?? string.Empty).X));
+            }
+
+            int width = Math.Max(64, numberWidth + textWidth + 18);
+            int height = Math.Max(4, (count * rowHeight) + 4);
+            Point origin = ResolveCandidateWindowOrigin();
+            int viewportWidth = Math.Max(1, viewport.Width);
+            int viewportHeight = Math.Max(1, viewport.Height);
+
+            int x = Math.Clamp(origin.X, 0, Math.Max(0, viewportWidth - width));
+            int y = origin.Y;
+            if (y + height > viewportHeight)
+            {
+                y = GetNameFieldBounds().Top - height - 1;
+            }
+
+            y = Math.Clamp(y, 0, Math.Max(0, viewportHeight - height));
+            return new Rectangle(x, y, width, height);
+        }
+
+        private Point ResolveCandidateWindowOrigin()
+        {
+            Rectangle bounds = GetNameFieldBounds();
+            int insertionIndex = Math.Clamp(_compositionInsertionIndex >= 0 ? _compositionInsertionIndex : _editingCursorPosition, 0, _editingMacroName.Length);
+            string committedPrefix = insertionIndex > 0 ? _editingMacroName[..insertionIndex] : string.Empty;
+            string compositionPrefix = ResolveCompositionAnchorPrefix();
+
+            float committedWidth = committedPrefix.Length > 0 ? _font.MeasureString(committedPrefix).X : 0f;
+            float compositionWidth = compositionPrefix.Length > 0 ? _font.MeasureString(compositionPrefix).X : 0f;
+            int x = bounds.X + NAME_FIELD_TEXT_INSET_X + (int)Math.Round(committedWidth + compositionWidth);
+            if (_candidateListState.Vertical)
+            {
+                x -= _font.LineSpacing + 4;
+            }
+
+            return new Point(x, bounds.Y + _font.LineSpacing + 1);
+        }
+
+        private string ResolveCompositionAnchorPrefix()
+        {
+            if (string.IsNullOrEmpty(_compositionText))
+            {
+                return string.Empty;
+            }
+
+            int anchorIndex = ResolveCompositionAnchorIndex();
+            return anchorIndex <= 0
+                ? string.Empty
+                : _compositionText[..Math.Min(anchorIndex, _compositionText.Length)];
+        }
+
+        private int ResolveCompositionAnchorIndex()
+        {
+            if (string.IsNullOrEmpty(_compositionText))
+            {
+                return 0;
+            }
+
+            if (_compositionClauseOffsets.Count >= 2)
+            {
+                int cursor = Math.Clamp(_compositionCursorPosition, 0, _compositionText.Length);
+                for (int i = 0; i < _compositionClauseOffsets.Count - 1; i++)
+                {
+                    int start = Math.Clamp(_compositionClauseOffsets[i], 0, _compositionText.Length);
+                    int end = Math.Clamp(_compositionClauseOffsets[i + 1], start, _compositionText.Length);
+                    if (cursor >= start && cursor <= end)
+                    {
+                        return start;
+                    }
+                }
+            }
+
+            return _compositionCursorPosition >= 0
+                ? Math.Clamp(_compositionCursorPosition, 0, _compositionText.Length)
+                : _compositionText.Length;
+        }
+
+        private int GetVisibleCandidateCount()
+        {
+            if (!_candidateListState.HasCandidates)
+            {
+                return 0;
+            }
+
+            int pageStart = Math.Clamp(_candidateListState.PageStart, 0, _candidateListState.Candidates.Count);
+            int pageSize = _candidateListState.PageSize > 0 ? _candidateListState.PageSize : _candidateListState.Candidates.Count;
+            return Math.Max(0, Math.Min(pageSize, _candidateListState.Candidates.Count - pageStart));
+        }
+
+        private int GetCandidateRowHeight()
+        {
+            return Math.Max(_font.LineSpacing + 1, 16);
+        }
+
+        private int GetCandidateNumberWidth()
+        {
+            int widestIndex = Math.Min(
+                _candidateListState.Candidates.Count,
+                Math.Clamp(_candidateListState.PageStart, 0, _candidateListState.Candidates.Count) + Math.Max(1, GetVisibleCandidateCount()));
+            return (int)Math.Ceiling(_font.MeasureString($"{widestIndex}.").X);
+        }
+
+        private static IReadOnlyList<int> ClampClauseOffsets(IReadOnlyList<int> offsets, int maxLength)
+        {
+            if (offsets == null || offsets.Count == 0)
+            {
+                return Array.Empty<int>();
+            }
+
+            List<int> clamped = new(offsets.Count);
+            foreach (int offset in offsets)
+            {
+                int safeOffset = Math.Clamp(offset, 0, maxLength);
+                if (clamped.Count == 0 || safeOffset >= clamped[^1])
+                {
+                    clamped.Add(safeOffset);
+                }
+            }
+
+            if (clamped.Count == 0)
+            {
+                return Array.Empty<int>();
+            }
+
+            if (clamped[^1] != maxLength)
+            {
+                clamped.Add(maxLength);
+            }
+
+            return clamped;
         }
 
         private static IEnumerable<int> EnumerateCaretStops(string text)

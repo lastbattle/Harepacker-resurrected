@@ -516,6 +516,116 @@ namespace HaCreator.MapSimulator.Interaction
             };
         }
 
+        public IReadOnlyList<QuestDeliveryEntrySnapshot> BuildQuestDeliverySnapshot(
+            int preferredQuestId,
+            int itemId,
+            IReadOnlyCollection<int> disallowedQuestIds,
+            CharacterBuild build)
+        {
+            EnsureDefinitionsLoaded();
+
+            var entries = new List<QuestDeliveryEntrySnapshot>();
+            var blockedQuestIds = new HashSet<int>(disallowedQuestIds?.Where(id => id > 0) ?? Array.Empty<int>());
+            var appendedQuestIds = new HashSet<int>();
+            var previousQuestByQuestId = BuildDeliveryPreviousQuestMap();
+            var seriesQuestIds = new HashSet<int>(previousQuestByQuestId.Keys.Concat(previousQuestByQuestId.Values));
+
+            foreach (QuestDefinition definition in _definitions.Values.OrderBy(definition => definition.QuestId))
+            {
+                if (seriesQuestIds.Contains(definition.QuestId))
+                {
+                    continue;
+                }
+
+                QuestDeliveryEntrySnapshot entry = TryBuildQuestDeliveryEntrySnapshot(
+                    definition.QuestId,
+                    definition.QuestId,
+                    itemId,
+                    blockedQuestIds,
+                    isSeriesRepresentative: false,
+                    build);
+                if (entry != null && appendedQuestIds.Add(entry.QuestId))
+                {
+                    entries.Add(entry);
+                }
+            }
+
+            foreach (List<int> series in BuildQuestDeliverySeries(previousQuestByQuestId))
+            {
+                QuestDeliveryEntrySnapshot acceptEntry = null;
+                int lastCompletedQuestId = 0;
+
+                for (int i = 0; i < series.Count; i++)
+                {
+                    int questId = series[i];
+                    if (!_definitions.ContainsKey(questId))
+                    {
+                        continue;
+                    }
+
+                    QuestStateType state = GetQuestState(questId);
+                    if (state == QuestStateType.Completed)
+                    {
+                        lastCompletedQuestId = questId;
+                        continue;
+                    }
+
+                    if (state == QuestStateType.Not_Started)
+                    {
+                        int displayQuestId = lastCompletedQuestId > 0 ? lastCompletedQuestId : questId;
+                        acceptEntry = TryBuildQuestDeliveryEntrySnapshot(
+                            questId,
+                            displayQuestId,
+                            itemId,
+                            blockedQuestIds,
+                            isSeriesRepresentative: displayQuestId != questId,
+                            build,
+                            requiredAction: QuestWindowActionKind.QuestDeliveryAccept);
+                        if (acceptEntry != null)
+                        {
+                            break;
+                        }
+                    }
+                }
+
+                if (acceptEntry != null && appendedQuestIds.Add(acceptEntry.QuestId))
+                {
+                    entries.Add(acceptEntry);
+                }
+
+                QuestDeliveryEntrySnapshot completionEntry = null;
+                for (int i = 0; i < series.Count; i++)
+                {
+                    int questId = series[i];
+                    completionEntry = TryBuildQuestDeliveryEntrySnapshot(
+                        questId,
+                        questId,
+                        itemId,
+                        blockedQuestIds,
+                        isSeriesRepresentative: false,
+                        build,
+                        requiredAction: QuestWindowActionKind.QuestDeliveryComplete);
+                    if (completionEntry != null)
+                    {
+                        break;
+                    }
+                }
+
+                if (completionEntry != null && appendedQuestIds.Add(completionEntry.QuestId))
+                {
+                    entries.Add(completionEntry);
+                }
+            }
+
+            return entries
+                .OrderByDescending(entry => entry.QuestId == preferredQuestId)
+                .ThenByDescending(entry => entry.CanConfirm)
+                .ThenBy(entry => entry.CompletionPhase)
+                .ThenBy(entry => entry.DisplayQuestId)
+                .ThenBy(entry => entry.QuestId)
+                .ToArray();
+        }
+
         public int? GetPreferredQuestLogSelection(QuestLogTabType tab, CharacterBuild build, bool showAllLevels)
         {
             QuestLogSnapshot snapshot = BuildQuestLogSnapshot(tab, build, showAllLevels);
@@ -532,6 +642,126 @@ namespace HaCreator.MapSimulator.Interaction
             };
 
             return preferredEntry?.QuestId;
+        }
+
+        private Dictionary<int, int> BuildDeliveryPreviousQuestMap()
+        {
+            var previousQuestByQuestId = new Dictionary<int, int>();
+            foreach (QuestDefinition definition in _definitions.Values)
+            {
+                int? nextQuestId = definition.EndActions?.NextQuestId;
+                if (!nextQuestId.HasValue ||
+                    nextQuestId.Value <= 0 ||
+                    nextQuestId.Value == definition.QuestId ||
+                    !_definitions.ContainsKey(nextQuestId.Value) ||
+                    previousQuestByQuestId.ContainsKey(nextQuestId.Value))
+                {
+                    continue;
+                }
+
+                previousQuestByQuestId[nextQuestId.Value] = definition.QuestId;
+            }
+
+            return previousQuestByQuestId;
+        }
+
+        private IEnumerable<List<int>> BuildQuestDeliverySeries(IReadOnlyDictionary<int, int> previousQuestByQuestId)
+        {
+            var roots = new SortedSet<int>();
+            var seriesQuestIds = new HashSet<int>(previousQuestByQuestId.Keys.Concat(previousQuestByQuestId.Values));
+
+            foreach (int questId in seriesQuestIds)
+            {
+                if (!previousQuestByQuestId.ContainsKey(questId))
+                {
+                    roots.Add(questId);
+                }
+            }
+
+            foreach (int rootQuestId in roots)
+            {
+                var visited = new HashSet<int>();
+                var series = new List<int>();
+                int currentQuestId = rootQuestId;
+                while (currentQuestId > 0 && visited.Add(currentQuestId) && _definitions.ContainsKey(currentQuestId))
+                {
+                    series.Add(currentQuestId);
+                    int nextQuestId = _definitions[currentQuestId].EndActions?.NextQuestId ?? 0;
+                    if (nextQuestId <= 0)
+                    {
+                        break;
+                    }
+
+                    currentQuestId = nextQuestId;
+                }
+
+                if (series.Count > 0)
+                {
+                    yield return series;
+                }
+            }
+        }
+
+        private QuestDeliveryEntrySnapshot TryBuildQuestDeliveryEntrySnapshot(
+            int questId,
+            int displayQuestId,
+            int itemId,
+            IReadOnlySet<int> blockedQuestIds,
+            bool isSeriesRepresentative,
+            CharacterBuild build,
+            QuestWindowActionKind? requiredAction = null)
+        {
+            if (questId <= 0 || blockedQuestIds?.Contains(questId) == true)
+            {
+                return null;
+            }
+
+            QuestWindowDetailState state = GetQuestWindowDetailState(questId, build);
+            if (state == null ||
+                itemId <= 0 ||
+                state.TargetItemId != itemId ||
+                state.PrimaryAction is not (QuestWindowActionKind.QuestDeliveryAccept or QuestWindowActionKind.QuestDeliveryComplete) ||
+                (requiredAction.HasValue && state.PrimaryAction != requiredAction.Value))
+            {
+                return null;
+            }
+
+            bool completionPhase = state.PrimaryAction == QuestWindowActionKind.QuestDeliveryComplete;
+            string npcName = string.IsNullOrWhiteSpace(state.TargetNpcName) ? "NPC unavailable" : state.TargetNpcName;
+            string detailText = !string.IsNullOrWhiteSpace(state.HintText)
+                ? state.HintText.Replace("\r", " ", StringComparison.Ordinal).Replace("\n", " ", StringComparison.Ordinal)
+                : !string.IsNullOrWhiteSpace(state.RequirementText)
+                    ? state.RequirementText
+                    : completionPhase
+                        ? $"Complete the delivery handoff with {npcName}."
+                        : $"Accept the delivery handoff with {npcName}.";
+            if (isSeriesRepresentative && displayQuestId > 0 && displayQuestId != questId)
+            {
+                detailText = $"Series continues from quest #{displayQuestId}. {detailText}";
+            }
+
+            return new QuestDeliveryEntrySnapshot
+            {
+                QuestId = questId,
+                DisplayQuestId = Math.Max(questId, displayQuestId),
+                TargetNpcId = state.TargetNpcId ?? 0,
+                Title = state.Title,
+                NpcName = npcName,
+                StatusText = state.PrimaryActionEnabled
+                    ? completionPhase
+                        ? $"Complete delivery at {npcName}"
+                        : $"Accept delivery at {npcName}"
+                    : completionPhase
+                        ? $"Complete delivery is not ready at {npcName}"
+                        : $"Accept delivery is not ready at {npcName}",
+                DetailText = detailText,
+                CompletionPhase = completionPhase,
+                CanConfirm = state.PrimaryActionEnabled,
+                IsBlocked = false,
+                IsSeriesRepresentative = isSeriesRepresentative,
+                DeliveryCashItemId = state.DeliveryCashItemId,
+                DeliveryCashItemName = state.DeliveryCashItemName
+            };
         }
 
         public bool TryGetQuestWorldMapTarget(int questId, CharacterBuild build, out QuestWorldMapTarget target)
@@ -1520,22 +1750,30 @@ namespace HaCreator.MapSimulator.Interaction
             ICollection<NpcInteractionPage> pages,
             NpcDialogueFormattingContext formattingContext)
         {
-            if (sourcePages == null)
+            IReadOnlyList<NpcInteractionPage> displayPages = GetDisplayConversationPages(sourcePages, formattingContext);
+            for (int i = 0; i < displayPages.Count; i++)
             {
-                return;
-            }
-
-            IReadOnlyList<NpcInteractionPage> formattedPages = NpcDialogueTextFormatter.FormatPages(
-                sourcePages as IReadOnlyList<NpcInteractionPage> ?? sourcePages.ToList(),
-                formattingContext);
-
-            foreach (NpcInteractionPage page in formattedPages)
-            {
-                if (page != null && !string.IsNullOrWhiteSpace(page.Text))
+                NpcInteractionPage page = displayPages[i];
+                if (page != null &&
+                    (!string.IsNullOrWhiteSpace(page.Text) || (page.Choices?.Count ?? 0) > 0))
                 {
                     pages.Add(page);
                 }
             }
+        }
+
+        internal static IReadOnlyList<NpcInteractionPage> GetDisplayConversationPages(
+            IEnumerable<NpcInteractionPage> sourcePages,
+            NpcDialogueFormattingContext formattingContext)
+        {
+            if (sourcePages == null)
+            {
+                return Array.Empty<NpcInteractionPage>();
+            }
+
+            return NpcDialogueTextFormatter.FormatPages(
+                sourcePages as IReadOnlyList<NpcInteractionPage> ?? sourcePages.ToList(),
+                formattingContext);
         }
 
         private IReadOnlyList<NpcInteractionPage> SelectIssueConversationPages(
@@ -3793,7 +4031,13 @@ namespace HaCreator.MapSimulator.Interaction
 
             for (int i = 0; i < property.WzProperties.Count; i++)
             {
-                string nestedText = ExtractConversationText(property.WzProperties[i]);
+                WzImageProperty child = property.WzProperties[i];
+                if (!ShouldInspectConversationTextChild(child))
+                {
+                    continue;
+                }
+
+                string nestedText = ExtractConversationText(child);
                 if (nestedText != null)
                 {
                     return nestedText;
@@ -3801,6 +4045,17 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             return null;
+        }
+
+        private static bool ShouldInspectConversationTextChild(WzImageProperty child)
+        {
+            if (child == null)
+            {
+                return false;
+            }
+
+            return child is WzStringProperty ||
+                   (int.TryParse(child.Name, out int pageIndex) && pageIndex >= 0 && pageIndex < 200);
         }
 
         private static IEnumerable<WzImageProperty> EnumerateConversationMetadataContainers(WzImageProperty property)

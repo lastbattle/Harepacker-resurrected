@@ -126,8 +126,9 @@ namespace HaCreator.MapSimulator
             {
                 EnsureLocalOverlayPacketInboxState(shouldRun: false);
                 EnsureLocalUtilityPacketInboxState(shouldRun: false);
+                EnsureSummonedPacketInboxState(shouldRun: false);
                 UpdateLoginRuntimeFrame(gameTime, newKeyboardState, newMouseState, isWindowActive);
-                return;
+                return;
             }
 
             // Advance scripted field state before mouse/world interaction handlers so
@@ -160,6 +161,8 @@ namespace HaCreator.MapSimulator
             SyncMessengerRemoteActorsToSharedPool();
             _remoteUserPool.Update(currTickCount);
             _remoteUserPool.SyncPortableChairPairState(_playerManager?.Player);
+            EnsureSummonedPacketInboxState(shouldRun: true);
+            DrainSummonedPacketInbox();
             _summonedPool.Update(currTickCount);
             while (_specialFieldRuntime.Minigames.SnowBall.TryConsumeChatMessage(out string snowBallChatMessage))
             {
@@ -262,7 +265,17 @@ namespace HaCreator.MapSimulator
             }
 
             // Handle chat input (returns true if chat consumed the input)
-            bool uiCapturesKeyboard = uiWindowManager?.CapturesKeyboardInput == true;
+            NpcInteractionOverlayResult npcKeyboardResult = isWindowActive && _npcInteractionOverlay != null
+                ? _npcInteractionOverlay.HandleKeyboard(newKeyboardState, _oldKeyboardState)
+                : default;
+
+            if (npcKeyboardResult.InputSubmission != null)
+            {
+                HandleNpcOverlayInputSubmission(npcKeyboardResult.InputSubmission);
+            }
+
+            bool uiCapturesKeyboard = uiWindowManager?.CapturesKeyboardInput == true
+                || _npcInteractionOverlay?.CapturesKeyboardInput == true;
             bool chatConsumedInput = isWindowActive &&
                                      !uiCapturesKeyboard &&
                                      _chat.HandleInput(newKeyboardState, _oldKeyboardState, currTickCount);

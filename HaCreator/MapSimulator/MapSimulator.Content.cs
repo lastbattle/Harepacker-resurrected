@@ -427,9 +427,13 @@ namespace HaCreator.MapSimulator
             {
                 itemMakerWindow.SetItemIconProvider(LoadInventoryItemIcon);
                 itemMakerWindow.CraftCompleted -= HandleItemMakerCraftCompleted;
-                itemMakerWindow.RecipesDiscovered -= HandleItemMakerRecipesDiscovered;
+                itemMakerWindow.RecipesDiscovered -= HandleItemMakerRecipesDiscovered;
+
+                itemMakerWindow.HiddenRecipesUnlocked -= HandleItemMakerHiddenRecipesUnlocked;
                 itemMakerWindow.CraftCompleted += HandleItemMakerCraftCompleted;
-                itemMakerWindow.RecipesDiscovered += HandleItemMakerRecipesDiscovered;
+                itemMakerWindow.RecipesDiscovered += HandleItemMakerRecipesDiscovered;
+
+                itemMakerWindow.HiddenRecipesUnlocked += HandleItemMakerHiddenRecipesUnlocked;
                 itemMakerWindow.SetCraftingState(
                     _playerManager?.Player?.Level ?? 1,
                     _playerManager?.Player?.Build?.TraitCraft ?? 0,
@@ -614,6 +618,7 @@ namespace HaCreator.MapSimulator
             _npcInteractionOverlay.SetFont(_fontChat);
             RegisterChatCommands();
             RegisterRemoteUserChatCommand();
+            RegisterSummonedPacketChatCommand();
 
             // Initialize pickup notice UI (bottom right corner messages)
             _pickupNoticeUI.Initialize(_fontChat, _debugBoundaryTexture, Width, Height);
@@ -1428,7 +1433,8 @@ namespace HaCreator.MapSimulator
             _cameraController.SetPosition(spawnX, spawnY);
 
             // Auto-detect transport maps (CField_ContiMove) from ShipObject in map
-            DetectAndInitializeTransportField();
+            DetectAndInitializeTransportField();
+            ApplyTransitAndVoyageFieldWrapper(_mapBoard?.MapInfo);
 
             // Create border textures
             int leftRightVRDifference = (int)((_vrFieldBoundary.Right - _vrFieldBoundary.Left) * _renderParams.RenderObjectScaling);

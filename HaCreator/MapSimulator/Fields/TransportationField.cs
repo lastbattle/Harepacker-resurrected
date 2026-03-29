@@ -1,4 +1,5 @@
 using HaSharedLibrary.Render.DX;
+using MapleLib.WzLib.WzStructure.Data;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using Spine;
@@ -210,6 +211,17 @@ namespace HaCreator.MapSimulator.Fields
             _currentAlpha = 0f;
             _deltaX = 0f;
             _deltaY = 0f;
+        }
+
+        public void ApplyClientOwnedDefaultState(FieldType? fieldType)
+        {
+            if (_shipKind == 1 || fieldType == FieldType.FIELDTYPE_BALROG)
+            {
+                SetIdleHiddenState();
+                return;
+            }
+
+            SetIdleDockedState();
         }
 
         /// <summary>

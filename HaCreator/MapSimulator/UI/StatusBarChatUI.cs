@@ -35,6 +35,7 @@ namespace HaCreator.MapSimulator.UI
             public Color Color { get; set; }
             public int Timestamp { get; set; }
             public int ChatLogType { get; set; }
+            public int ChannelId { get; set; }
             public bool IsFirstWrappedLine { get; set; }
             public string WhisperTargetCandidate { get; set; }
             public string WhisperTargetDisplayText { get; set; }
@@ -483,8 +484,8 @@ namespace HaCreator.MapSimulator.UI
                 }
 
                 Color lineColor = ResolveRenderedLineColor(line) * alpha;
-                Color backgroundColor = GetClientChatLineBackgroundColor(line.ChatLogType) * alpha;
-                Color shadowColor = GetClientChatLineShadowColor(line.ChatLogType) * alpha;
+                Color backgroundColor = GetClientChatLineBackgroundColor(line.ChatLogType, line.ChannelId) * alpha;
+                Color shadowColor = GetClientChatLineShadowColor(line.ChatLogType, line.ChannelId) * alpha;
                 Vector2 textSize = _font.MeasureString(line.Text);
                 if (_pixelTexture != null)
                 {
@@ -648,6 +649,7 @@ namespace HaCreator.MapSimulator.UI
                         Color = message.Color,
                         Timestamp = message.Timestamp,
                         ChatLogType = message.ChatLogType,
+                        ChannelId = message.ChannelId,
                         IsFirstWrappedLine = isFirstWrappedLine,
                         WhisperTargetCandidate = whisperTargetCandidate,
                         WhisperTargetDisplayText = whisperTargetDisplayText
@@ -818,7 +820,7 @@ namespace HaCreator.MapSimulator.UI
                 || chatLogType == 20;
         }
 
-        private static Color GetClientChatLineBackgroundColor(int chatLogType)
+        private static Color GetClientChatLineBackgroundColor(int chatLogType, int channelId)
         {
             return chatLogType switch
             {
@@ -828,14 +830,14 @@ namespace HaCreator.MapSimulator.UI
                 15 => new Color(247, 75, 75, 255),
                 16 or 21 => new Color(255, 198, 0, 221),
                 18 => new Color(77, 26, 173, 44),
-                19 => new Color(255, 92, 89, 128),
+                19 => channelId != -1 ? new Color(153, 204, 51, 255) : new Color(255, 92, 89, 128),
                 20 => new Color(255, 92, 89, 128),
                 22 or 23 => new Color(153, 204, 51, 255),
                 _ => new Color(0, 0, 0, 150)
             };
         }
 
-        private static Color GetClientChatLineShadowColor(int chatLogType)
+        private static Color GetClientChatLineShadowColor(int chatLogType, int channelId)
         {
             return chatLogType switch
             {
@@ -845,7 +847,8 @@ namespace HaCreator.MapSimulator.UI
                 15 => new Color(247, 75, 75, 255),
                 16 or 21 => new Color(255, 198, 0, 221),
                 18 => new Color(77, 26, 173, 44),
-                19 or 20 => new Color(255, 92, 89, 128),
+                19 => channelId != -1 ? new Color(153, 204, 51, 255) : new Color(255, 92, 89, 128),
+                20 => new Color(255, 92, 89, 128),
                 22 or 23 => new Color(153, 204, 51, 255),
                 _ => Color.Black
             };

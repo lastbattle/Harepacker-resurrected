@@ -18,11 +18,11 @@ using HaCreator.MapEditor.Info;
 using HaCreator.MapEditor.Instance.Misc;
 using HaCreator.MapSimulator.Character;
 using HaCreator.MapSimulator.Managers;
-using HaCreator.Wz;
+using HaCreator.Wz;
 using HaSharedLibrary.Wz;
 using HaSharedLibrary.Util;
 using MapleLib.Converters;
-using MapleLib.PacketLib;
+using MapleLib.PacketLib;using HaCreator.MapSimulator.Pools;
 
 namespace HaCreator.MapSimulator.Effects
 {
@@ -263,7 +263,7 @@ namespace HaCreator.MapSimulator.Effects
 
                     case PacketTypeUserMove:
 
-                        return TryApplyRemoteMovePacket(payload, out errorMessage);
+                        return TryApplyRemoteMovePacket(payload, currentTimeMs, out errorMessage);
 
                     case PacketTypeSetActivePortableChair:
 
@@ -636,10 +636,10 @@ namespace HaCreator.MapSimulator.Effects
             return true;
         }
 
-        private bool TryApplyRemoteMovePacket(byte[] payload, out string errorMessage)
+        private bool TryApplyRemoteMovePacket(byte[] payload, int currentTimeMs, out string errorMessage)
         {
             errorMessage = null;
-            if (!TryDecodeRemoteMovePacket(payload, out WeddingRemoteMovePacket move, out errorMessage))
+            if (!TryDecodeRemoteMovePacket(payload, currentTimeMs, out WeddingRemoteMovePacket move, out errorMessage))
             {
                 return false;
             }
@@ -765,54 +765,19 @@ namespace HaCreator.MapSimulator.Effects
         {
             packet = default;
             errorMessage = null;
-            if (!TryCreatePacketReader(payload, PacketTypeUserEnterField, out PacketReader reader, out errorMessage))
+            if (!RemoteUserPacketCodec.TryParseEnterField(payload, out RemoteUserEnterFieldPacket spawn, out errorMessage))
             {
                 return false;
             }
 
-            try
-            {
-                int characterId = reader.ReadInt();
-                reader.ReadByte();
-                string name = reader.ReadMapleString();
-                reader.ReadMapleString();
-                reader.Skip(6);
-                if (!TrySkipEmptyRemoteSecondaryStat(reader, out errorMessage))
-                {
-                    return false;
-                }
-
-                reader.ReadShort();
-                if (!LoginAvatarLookCodec.TryDecode(reader, out LoginAvatarLook avatarLook, out string avatarError))
-                {
-                    errorMessage = avatarError ?? "Wedding remote spawn packet could not decode AvatarLook.";
-                    return false;
-                }
-
-                reader.ReadInt();
-                reader.ReadInt();
-                reader.ReadInt();
-                reader.ReadInt();
-                reader.ReadInt();
-                int portableChairItemId = reader.ReadInt();
-                short x = reader.ReadShort();
-                short y = reader.ReadShort();
-                byte moveAction = reader.ReadByte();
-
-                packet = new WeddingRemoteSpawnPacket(
-                    characterId,
-                    string.IsNullOrWhiteSpace(name) ? $"WeddingGuest{characterId}" : name.Trim(),
-                    avatarLook,
-                    new Vector2(x, y),
-                    moveAction,
-                    portableChairItemId);
-                return true;
-            }
-            catch (EndOfStreamException)
-            {
-                errorMessage = "Wedding remote spawn packet ended before decoding completed.";
-                return false;
-            }
+            packet = new WeddingRemoteSpawnPacket(
+                spawn.CharacterId,
+                string.IsNullOrWhiteSpace(spawn.Name) ? $"WeddingGuest{spawn.CharacterId}" : spawn.Name.Trim(),
+                spawn.AvatarLook,
+                new Vector2(spawn.X, spawn.Y),
+                EncodeMoveAction(spawn.FacingRight, spawn.ActionName, spawn.PortableChairItemId ?? 0),
+                spawn.PortableChairItemId ?? 0);
+            return true;
         }
 
         private static bool TryDecodeRemoteCharacterIdPacket(byte[] payload, int packetType, out int characterId, out string errorMessage)
@@ -836,135 +801,33 @@ namespace HaCreator.MapSimulator.Effects
             }
         }
 
-        private static bool TryDecodeRemoteMovePacket(byte[] payload, out WeddingRemoteMovePacket packet, out string errorMessage)
+        private static bool TryDecodeRemoteMovePacket(byte[] payload, int currentTimeMs, out WeddingRemoteMovePacket packet, out string errorMessage)
         {
             packet = default;
             errorMessage = null;
-            if (!TryCreatePacketReader(payload, PacketTypeUserMove, out PacketReader reader, out errorMessage))
+            if (!RemoteUserPacketCodec.TryParseMove(payload, currentTimeMs, out RemoteUserMovePacket move, out errorMessage))
             {
                 return false;
             }
 
-            try
-            {
-                int characterId = reader.ReadInt();
-                short x = reader.ReadShort();
-                short y = reader.ReadShort();
-                reader.ReadShort();
-                reader.ReadShort();
-                int movementCount = reader.ReadByte();
-                byte moveAction = 0;
-                Vector2 position = new Vector2(x, y);
-
-                for (int i = 0; i < movementCount; i++)
-                {
-                    byte movementType = reader.ReadByte();
-                    short nextX = x;
-                    short nextY = y;
-
-                    switch (movementType)
-                    {
-                        case 0:
-                        case 5:
-                        case 12:
-                        case 14:
-                        case 35:
-                        case 36:
-                            nextX = reader.ReadShort();
-                            nextY = reader.ReadShort();
-                            reader.Skip(6);
-                            if (movementType == 12)
-                            {
-                                reader.ReadShort();
-                            }
-
-                            reader.Skip(4);
-                            break;
-                        case 1:
-                        case 2:
-                        case 13:
-                        case 16:
-                        case 18:
-                        case 31:
-                        case 32:
-                        case 33:
-                        case 34:
-                            reader.Skip(4);
-                            break;
-                        case 3:
-                        case 4:
-                        case 6:
-                        case 7:
-                        case 8:
-                        case 10:
-                            nextX = reader.ReadShort();
-                            nextY = reader.ReadShort();
-                            reader.Skip(2);
-                            break;
-                        case 9:
-                            reader.ReadByte();
-                            break;
-                        case 11:
-                            reader.Skip(6);
-                            break;
-                        case 17:
-                            nextX = reader.ReadShort();
-                            nextY = reader.ReadShort();
-                            reader.Skip(4);
-                            break;
-                        case 20:
-                        case 21:
-                        case 22:
-                        case 23:
-                        case 24:
-                        case 25:
-                        case 26:
-                        case 27:
-                        case 28:
-                        case 29:
-                        case 30:
-                            break;
-                        default:
-                            errorMessage = $"Unsupported wedding remote move fragment type: {movementType}";
-                            return false;
-                    }
-
-                    moveAction = reader.ReadByte();
-                    reader.ReadShort();
-                    x = nextX;
-                    y = nextY;
-                    position = new Vector2(nextX, nextY);
-                }
-
-                packet = new WeddingRemoteMovePacket(characterId, position, moveAction);
-                return true;
-            }
-            catch (EndOfStreamException)
-            {
-                errorMessage = "Wedding remote move packet ended before decoding completed.";
-                return false;
-            }
+            packet = new WeddingRemoteMovePacket(
+                move.CharacterId,
+                new Vector2(move.Snapshot.PassivePosition.X, move.Snapshot.PassivePosition.Y),
+                move.MoveAction);
+            return true;
         }
 
         private static bool TryDecodeRemoteChairPacket(byte[] payload, out WeddingRemoteChairPacket packet, out string errorMessage)
         {
             packet = default;
             errorMessage = null;
-            if (!TryCreatePacketReader(payload, PacketTypeSetActivePortableChair, out PacketReader reader, out errorMessage))
+            if (!RemoteUserPacketCodec.TryParsePortableChair(payload, out RemoteUserPortableChairPacket chair, out errorMessage))
             {
                 return false;
             }
 
-            try
-            {
-                packet = new WeddingRemoteChairPacket(reader.ReadInt(), reader.ReadInt());
-                return true;
-            }
-            catch (EndOfStreamException)
-            {
-                errorMessage = "Wedding remote chair packet ended before decoding completed.";
-                return false;
-            }
+            packet = new WeddingRemoteChairPacket(chair.CharacterId, chair.ChairItemId ?? 0);
+            return true;
         }
 
         private static bool TryDecodeRemoteAvatarModifiedPacket(byte[] payload, out WeddingRemoteAvatarModifiedPacket packet, out string errorMessage)
@@ -1047,25 +910,6 @@ namespace HaCreator.MapSimulator.Effects
             return true;
         }
 
-        private static bool TrySkipEmptyRemoteSecondaryStat(PacketReader reader, out string errorMessage)
-        {
-            errorMessage = null;
-            byte[] remoteSecondaryStatMask = reader.ReadBytes(16);
-            if (remoteSecondaryStatMask.Length != 16)
-            {
-                errorMessage = "Wedding remote spawn packet ended before the 16-byte remote secondary-stat mask was fully read.";
-                return false;
-            }
-
-            if (remoteSecondaryStatMask.Any(value => value != 0))
-            {
-                errorMessage = "Wedding remote spawn packets with non-empty remote secondary-stat masks are not decoded yet.";
-                return false;
-            }
-
-            return true;
-        }
-
         private static string ResolveRemoteActionName(byte moveAction, int portableChairItemId)
         {
             if (portableChairItemId > 0)
@@ -1082,6 +926,33 @@ namespace HaCreator.MapSimulator.Effects
                 17 => CharacterPart.GetActionString(CharacterAction.Ladder),
                 18 => CharacterPart.GetActionString(CharacterAction.Rope),
                 _ => CharacterPart.GetActionString(CharacterAction.Stand1)
+            };
+        }
+
+        private static byte EncodeMoveAction(bool facingRight, string actionName, int portableChairItemId)
+        {
+            int actionCode = portableChairItemId > 0
+                ? 6
+                : NormalizeActionCode(actionName);
+            return (byte)((actionCode << 1) | (facingRight ? 0 : 1));
+        }
+
+        private static int NormalizeActionCode(string actionName)
+        {
+            if (string.IsNullOrWhiteSpace(actionName))
+            {
+                return 0;
+            }
+
+            return actionName.Trim().ToLowerInvariant() switch
+            {
+                "walk" or "walk1" => 1,
+                "alert" => 4,
+                "jump" => 5,
+                "sit" => 6,
+                "ladder" => 17,
+                "rope" => 18,
+                _ => 0
             };
         }
 

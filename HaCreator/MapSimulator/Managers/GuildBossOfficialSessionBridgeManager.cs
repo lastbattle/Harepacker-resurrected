@@ -1,8 +1,12 @@
 using System;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Linq;
+using System.Net.NetworkInformation;
 using System.Net;
 using System.Net.Sockets;
+using System.Diagnostics;
+using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 using HaCreator.MapSimulator.Effects;
@@ -19,6 +23,9 @@ namespace HaCreator.MapSimulator.Managers
     public sealed class GuildBossOfficialSessionBridgeManager : IDisposable
     {
         public const int DefaultListenPort = 18488;
+        private const string DefaultProcessName = "MapleStory";
+        private const int AddressFamilyInet = 2;
+        private const int ErrorInsufficientBuffer = 122;
         private const int PacketTypeHealerMove = 344;
         private const int PacketTypePulleyStateChange = 345;
         private const int OutboundPulleyRequestOpcode = 259;
@@ -30,6 +37,12 @@ namespace HaCreator.MapSimulator.Managers
         private CancellationTokenSource _listenerCancellation;
         private Task _listenerTask;
         private BridgePair _activePair;
+
+        public readonly record struct SessionDiscoveryCandidate(
+            int ProcessId,
+            string ProcessName,
+            IPEndPoint LocalEndpoint,
+            IPEndPoint RemoteEndpoint);
 
         private sealed class BridgePair
         {
@@ -81,6 +94,68 @@ namespace HaCreator.MapSimulator.Managers
         public int SentCount { get; private set; }
         public string LastStatus { get; private set; } = "Guild boss official-session bridge inactive.";
 
+        public static IReadOnlyList<SessionDiscoveryCandidate> DiscoverEstablishedSessions(
+            int remotePort,
+            int? owningProcessId = null,
+            string owningProcessName = null)
+        {
+            if (remotePort <= 0)
+            {
+                return Array.Empty<SessionDiscoveryCandidate>();
+            }
+
+            List<SessionDiscoveryCandidate> candidates = new();
+            foreach (TcpRowOwnerPid row in EnumerateTcpRows())
+            {
+                if (row.state != (uint)TcpState.Established)
+                {
+                    continue;
+                }
+
+                int localPort = DecodePort(row.localPort);
+                int resolvedRemotePort = DecodePort(row.remotePort);
+                if (localPort <= 0 || resolvedRemotePort != remotePort)
+                {
+                    continue;
+                }
+
+                if (!TryResolveProcess(row.owningPid, out string processName))
+                {
+                    continue;
+                }
+
+                if (owningProcessId.HasValue && row.owningPid != owningProcessId.Value)
+                {
+                    continue;
+                }
+
+                if (!string.IsNullOrWhiteSpace(owningProcessName)
+                    && !string.Equals(processName, NormalizeProcessSelector(owningProcessName), StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                IPAddress localAddress = DecodeAddress(row.localAddr);
+                IPAddress remoteAddress = DecodeAddress(row.remoteAddr);
+                if (IPAddress.Any.Equals(remoteAddress) || IPAddress.None.Equals(remoteAddress))
+                {
+                    continue;
+                }
+
+                candidates.Add(new SessionDiscoveryCandidate(
+                    row.owningPid,
+                    processName,
+                    new IPEndPoint(localAddress, localPort),
+                    new IPEndPoint(remoteAddress, resolvedRemotePort)));
+            }
+
+            return candidates
+                .OrderBy(candidate => candidate.ProcessName, StringComparer.OrdinalIgnoreCase)
+                .ThenBy(candidate => candidate.ProcessId)
+                .ThenBy(candidate => candidate.LocalEndpoint.Port)
+                .ToArray();
+        }
+
         public void Start(int listenPort, string remoteHost, int remotePort)
         {
             lock (_sync)
@@ -104,6 +179,64 @@ namespace HaCreator.MapSimulator.Managers
                     LastStatus = $"Guild boss official-session bridge failed to start: {ex.Message}";
                 }
             }
+        }
+
+        public bool TryStartFromDiscovery(int listenPort, int remotePort, string processSelector, out string status)
+        {
+            int? owningProcessId = null;
+            string owningProcessName = null;
+            if (!TryResolveProcessSelector(processSelector, out owningProcessId, out owningProcessName, out string selectorError))
+            {
+                status = selectorError;
+                LastStatus = status;
+                return false;
+            }
+
+            IReadOnlyList<SessionDiscoveryCandidate> candidates = DiscoverEstablishedSessions(remotePort, owningProcessId, owningProcessName);
+            if (candidates.Count == 0)
+            {
+                string selectorLabel = DescribeSelector(owningProcessId, owningProcessName);
+                status = $"Guild boss official-session discovery found no established TCP session for {selectorLabel} on remote port {remotePort}.";
+                LastStatus = status;
+                return false;
+            }
+
+            if (candidates.Count > 1)
+            {
+                string selectorLabel = DescribeSelector(owningProcessId, owningProcessName);
+                string matches = string.Join(", ", candidates.Select(candidate =>
+                    $"{candidate.RemoteEndpoint.Address}:{candidate.RemoteEndpoint.Port} via {candidate.LocalEndpoint.Address}:{candidate.LocalEndpoint.Port}"));
+                status = $"Guild boss official-session discovery found multiple candidates for {selectorLabel} on remote port {remotePort}: {matches}. Use /guildboss session discover to inspect them, or start manually.";
+                LastStatus = status;
+                return false;
+            }
+
+            SessionDiscoveryCandidate candidate = candidates[0];
+            Start(listenPort, candidate.RemoteEndpoint.Address.ToString(), candidate.RemoteEndpoint.Port);
+            status = $"Guild boss official-session bridge discovered {candidate.ProcessName} ({candidate.ProcessId}) at {candidate.RemoteEndpoint.Address}:{candidate.RemoteEndpoint.Port} from local {candidate.LocalEndpoint.Address}:{candidate.LocalEndpoint.Port}. {LastStatus}";
+            LastStatus = status;
+            return true;
+        }
+
+        public string DescribeDiscoveredSessions(int remotePort, string processSelector = null)
+        {
+            int? owningProcessId = null;
+            string owningProcessName = null;
+            if (!TryResolveProcessSelector(processSelector, out owningProcessId, out owningProcessName, out string selectorError))
+            {
+                return selectorError;
+            }
+
+            IReadOnlyList<SessionDiscoveryCandidate> candidates = DiscoverEstablishedSessions(remotePort, owningProcessId, owningProcessName);
+            if (candidates.Count == 0)
+            {
+                return $"No established TCP sessions matched {DescribeSelector(owningProcessId, owningProcessName)} on remote port {remotePort}.";
+            }
+
+            return string.Join(
+                Environment.NewLine,
+                candidates.Select(candidate =>
+                    $"{candidate.ProcessName} ({candidate.ProcessId}) local {candidate.LocalEndpoint.Address}:{candidate.LocalEndpoint.Port} -> remote {candidate.RemoteEndpoint.Address}:{candidate.RemoteEndpoint.Port}"));
         }
 
         public void Stop()
@@ -360,6 +493,110 @@ namespace HaCreator.MapSimulator.Managers
             return new MapleCrypto((byte[])iv.Clone(), version);
         }
 
+        private static IEnumerable<TcpRowOwnerPid> EnumerateTcpRows()
+        {
+            int bufferSize = 0;
+            int result = GetExtendedTcpTable(IntPtr.Zero, ref bufferSize, sort: true, AddressFamilyInet, TcpTableClass.TcpTableOwnerPidAll, 0);
+            if (result != ErrorInsufficientBuffer || bufferSize <= 0)
+            {
+                yield break;
+            }
+
+            IntPtr buffer = Marshal.AllocHGlobal(bufferSize);
+            try
+            {
+                result = GetExtendedTcpTable(buffer, ref bufferSize, sort: true, AddressFamilyInet, TcpTableClass.TcpTableOwnerPidAll, 0);
+                if (result != 0)
+                {
+                    yield break;
+                }
+
+                int rowCount = Marshal.ReadInt32(buffer);
+                IntPtr rowPtr = IntPtr.Add(buffer, sizeof(int));
+                int rowSize = Marshal.SizeOf<TcpRowOwnerPid>();
+                for (int i = 0; i < rowCount; i++)
+                {
+                    yield return Marshal.PtrToStructure<TcpRowOwnerPid>(rowPtr);
+                    rowPtr = IntPtr.Add(rowPtr, rowSize);
+                }
+            }
+            finally
+            {
+                Marshal.FreeHGlobal(buffer);
+            }
+        }
+
+        private static IPAddress DecodeAddress(uint address)
+        {
+            return new IPAddress(BitConverter.GetBytes(address));
+        }
+
+        private static int DecodePort(byte[] portBytes)
+        {
+            return portBytes == null || portBytes.Length < 2
+                ? 0
+                : (portBytes[0] << 8) | portBytes[1];
+        }
+
+        private static bool TryResolveProcess(int pid, out string processName)
+        {
+            processName = null;
+            try
+            {
+                processName = Process.GetProcessById(pid).ProcessName;
+                return !string.IsNullOrWhiteSpace(processName);
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        private static bool TryResolveProcessSelector(string selector, out int? owningProcessId, out string owningProcessName, out string error)
+        {
+            owningProcessId = null;
+            owningProcessName = null;
+            error = null;
+            if (string.IsNullOrWhiteSpace(selector))
+            {
+                owningProcessName = DefaultProcessName;
+                return true;
+            }
+
+            if (int.TryParse(selector, out int pid) && pid > 0)
+            {
+                owningProcessId = pid;
+                return true;
+            }
+
+            string normalized = NormalizeProcessSelector(selector);
+            if (normalized.Length == 0)
+            {
+                error = "Guild boss official-session discovery requires a process name or pid when a selector is provided.";
+                return false;
+            }
+
+            owningProcessName = normalized;
+            return true;
+        }
+
+        private static string NormalizeProcessSelector(string selector)
+        {
+            string trimmed = selector?.Trim() ?? string.Empty;
+            return trimmed.EndsWith(".exe", StringComparison.OrdinalIgnoreCase)
+                ? trimmed[..^4]
+                : trimmed;
+        }
+
+        private static string DescribeSelector(int? owningProcessId, string owningProcessName)
+        {
+            return owningProcessId.HasValue
+                ? $"pid {owningProcessId.Value}"
+                : string.IsNullOrWhiteSpace(owningProcessName)
+                    ? "the selected process"
+                    : $"process '{owningProcessName}'";
+        }
+
         private static bool TryDecodeOpcode(byte[] rawPacket, out int opcode, out byte[] payload)
         {
             opcode = 0;
@@ -373,5 +610,32 @@ namespace HaCreator.MapSimulator.Managers
             payload = rawPacket.Skip(sizeof(short)).ToArray();
             return true;
         }
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct TcpRowOwnerPid
+        {
+            public uint state;
+            public uint localAddr;
+            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 4)]
+            public byte[] localPort;
+            public uint remoteAddr;
+            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 4)]
+            public byte[] remotePort;
+            public int owningPid;
+        }
+
+        private enum TcpTableClass
+        {
+            TcpTableOwnerPidAll = 5
+        }
+
+        [DllImport("iphlpapi.dll", SetLastError = true)]
+        private static extern int GetExtendedTcpTable(
+            IntPtr pTcpTable,
+            ref int dwOutBufLen,
+            bool sort,
+            int ipVersion,
+            TcpTableClass tblClass,
+            int reserved);
     }
 }

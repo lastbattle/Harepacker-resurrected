@@ -756,7 +756,7 @@ namespace HaCreator.MapSimulator.UI
                 return string.Empty;
 
             if (_skillManager == null || !_skillManager.IsOnCooldown(skill.SkillId, currentTime))
-                return skill.Cooldown > 0 ? $"Cooldown: {skill.Cooldown / 1000f:0.#} sec" : "Cooldown: Ready";
+                return "Cooldown: Ready";
 
             int remainingMs = Math.Max(0, _skillManager.GetCooldownRemaining(skill.SkillId, currentTime));
             return remainingMs > 0

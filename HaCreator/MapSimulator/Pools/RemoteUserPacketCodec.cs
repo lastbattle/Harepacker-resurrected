@@ -350,6 +350,30 @@ namespace HaCreator.MapSimulator.Pools
             packet = default;
             error = null;
 
+            if (TryParseCompactMeleeAttack(payload, out packet, out error))
+            {
+                return true;
+            }
+
+            string compactError = error;
+            if (TryParseOfficialMeleeAttack(payload, out packet, out error))
+            {
+                return true;
+            }
+
+            if (!string.IsNullOrWhiteSpace(compactError) && !string.IsNullOrWhiteSpace(error))
+            {
+                error = $"{error} Compact parse also failed: {compactError}";
+            }
+
+            return false;
+        }
+
+        private static bool TryParseCompactMeleeAttack(ReadOnlySpan<byte> payload, out RemoteUserMeleeAttackPacket packet, out string error)
+        {
+            packet = default;
+            error = null;
+
             try
             {
                 var reader = new PacketReader(payload);
@@ -393,6 +417,71 @@ namespace HaCreator.MapSimulator.Pools
                 }
 
                 packet = new RemoteUserMeleeAttackPacket(characterId, skillId, masteryPercent, chargeSkillId, facingRight, actionName, actionCode);
+                return true;
+            }
+            catch (InvalidOperationException ex)
+            {
+                error = ex.Message;
+                return false;
+            }
+        }
+
+        private static bool TryParseOfficialMeleeAttack(ReadOnlySpan<byte> payload, out RemoteUserMeleeAttackPacket packet, out string error)
+        {
+            packet = default;
+            error = null;
+
+            try
+            {
+                var reader = new PacketReader(payload);
+                int characterId = reader.ReadInt32();
+                if (characterId <= 0)
+                {
+                    error = $"Remote user official melee packet character ID {characterId} is invalid.";
+                    return false;
+                }
+
+                byte attackCountByte = reader.ReadByte();
+                int hitCount = attackCountByte >> 4;
+                int damagePerMob = attackCountByte & 0x0F;
+
+                reader.ReadByte(); // remote character level
+                int skillLevel = reader.ReadByte();
+                int skillId = 0;
+                if (skillLevel != 0)
+                {
+                    skillId = reader.ReadInt32();
+                }
+
+                if (skillId == 3211006)
+                {
+                    int passiveSkillLevel = reader.ReadByte();
+                    if (passiveSkillLevel != 0)
+                    {
+                        reader.ReadInt32();
+                    }
+                }
+
+                reader.ReadByte(); // serial / reserved flags
+
+                int actionField = (ushort)reader.ReadInt16();
+                bool facingRight = ((actionField >> 15) & 1) == 0;
+                int actionCode = actionField & 0x7FFF;
+                if (actionCode > 0x110)
+                {
+                    error = $"Remote user official melee packet action code {actionCode} is outside the client action table range.";
+                    return false;
+                }
+
+                reader.ReadByte(); // action speed
+                int masteryPercent = reader.ReadByte();
+                reader.ReadInt32(); // bullet item id; melee packets still carry this field
+
+                SkipOfficialAttackInfoPayload(ref reader, skillId, hitCount, damagePerMob);
+                SkipOfficialPostAttackPayload(ref reader, skillId);
+
+                string actionName = ResolveActionNameFromActionCode(actionCode);
+                packet = new RemoteUserMeleeAttackPacket(characterId, skillId, masteryPercent, 0, facingRight, actionName, actionCode);
                 return true;
             }
             catch (InvalidOperationException ex)
@@ -482,11 +571,15 @@ namespace HaCreator.MapSimulator.Pools
         private static int FindOfficialAvatarLookOffset(ReadOnlySpan<byte> payload, int searchStartOffset, out string error)
         {
             error = null;
-            int firstCandidate = searchStartOffset + 16 + sizeof(short);
+            // CUserPool::OnUserEnterField feeds the remainder of the payload through
+            // SecondaryStat::DecodeForRemote before AvatarLook, so the exact stat blob
+            // length depends on the active 128-bit temporary-stat mask. Search for the
+            // AvatarLook boundary instead of assuming the earlier empty-mask subset.
+            int firstCandidate = searchStartOffset;
             int lastCandidate = payload.Length - OfficialEnterFieldSuffixLength;
             if (firstCandidate > lastCandidate)
             {
-                error = "Remote user official enter packet is too short to contain remote secondary stats, AvatarLook, and spawn suffix.";
+                error = "Remote user official enter packet is too short to contain AvatarLook and the spawn suffix.";
                 return -1;
             }
 
@@ -551,6 +644,44 @@ namespace HaCreator.MapSimulator.Pools
             return actionCode.HasValue && CharacterPart.TryGetActionStringFromCode(actionCode.Value, out string actionName)
                 ? actionName
                 : null;
+        }
+
+        private static void SkipOfficialAttackInfoPayload(ref PacketReader reader, int skillId, int hitCount, int damagePerMob)
+        {
+            for (int i = 0; i < hitCount; i++)
+            {
+                int mobId = reader.ReadInt32();
+                if (mobId == 0)
+                {
+                    continue;
+                }
+
+                reader.ReadByte(); // hit action / template index
+                if (skillId == 4211006)
+                {
+                    int damageEntryCount = reader.ReadByte();
+                    for (int damageIndex = 0; damageIndex < damageEntryCount; damageIndex++)
+                    {
+                        reader.ReadInt32();
+                    }
+
+                    continue;
+                }
+
+                for (int damageIndex = 0; damageIndex < damagePerMob; damageIndex++)
+                {
+                    reader.ReadByte(); // hit-flag / critical flag
+                    reader.ReadInt32();
+                }
+            }
+        }
+
+        private static void SkipOfficialPostAttackPayload(ref PacketReader reader, int skillId)
+        {
+            if (skillId is 2121001 or 2221001 or 2321001 or 22121000 or 22151001 or 33101007)
+            {
+                reader.ReadInt32();
+            }
         }
 
         private static bool TryDecodeMoveSnapshot(ref PacketReader reader, int currentTime, out PlayerMovementSyncSnapshot snapshot, out byte moveAction)

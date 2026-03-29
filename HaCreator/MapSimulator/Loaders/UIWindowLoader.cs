@@ -2212,7 +2212,11 @@ namespace HaCreator.MapSimulator.Loaders
 
             {
 
-                characterInfo.PartyRequested = () => manager.ShowWindow(MapSimulatorWindowNames.SocialList);
+                characterInfo.PartyRequested = _ =>
+                {
+                    manager.ShowWindow(MapSimulatorWindowNames.SocialList);
+                    return "Party list opened from the profile window.";
+                };
 
                 characterInfo.MiniRoomRequested = () => manager.ShowWindow(MapSimulatorWindowNames.MiniRoom);
 
@@ -2220,9 +2224,17 @@ namespace HaCreator.MapSimulator.Loaders
 
                 characterInfo.EntrustedShopRequested = () => manager.ShowWindow(MapSimulatorWindowNames.EntrustedShop);
 
-                characterInfo.TradingRoomRequested = () => manager.ShowWindow(MapSimulatorWindowNames.TradingRoom);
+                characterInfo.TradingRoomRequested = _ =>
+                {
+                    manager.ShowWindow(MapSimulatorWindowNames.TradingRoom);
+                    return "Trading-room shell opened.";
+                };
 
-                characterInfo.FamilyRequested = () => manager.ShowWindow(MapSimulatorWindowNames.FamilyChart);
+                characterInfo.FamilyRequested = _ =>
+                {
+                    manager.ShowWindow(MapSimulatorWindowNames.FamilyChart);
+                    return "Family chart opened from the profile window.";
+                };
 
                 characterInfo.BookCollectionRequested = () => manager.ShowWindow(MapSimulatorWindowNames.BookCollection);
 
@@ -2366,6 +2378,10 @@ namespace HaCreator.MapSimulator.Loaders
             RegisterEventWindow(manager, uiWindow2Image, basicImage, soundUIImage, device,
 
                 new Point(x + (cascade * 7), y + cascade));
+
+            RegisterRadioWindow(manager, uiWindow2Image, basicImage, soundUIImage, device,
+
+                new Point(x + (cascade * 6), y + (cascade * 4)));
         }
 
 
@@ -2579,6 +2595,44 @@ namespace HaCreator.MapSimulator.Loaders
 
 
             UIWindowBase window = CreateEventWindow(uiWindow2Image, basicImage, soundUIImage, device, position);
+
+            if (window != null)
+
+            {
+
+                manager.RegisterCustomWindow(window);
+
+            }
+
+        }
+
+        private static void RegisterRadioWindow(
+
+            UIWindowManager manager,
+
+            WzImage uiWindow2Image,
+
+            WzImage basicImage,
+
+            WzImage soundUIImage,
+
+            GraphicsDevice device,
+
+            Point position)
+
+        {
+
+            if (manager == null || manager.GetWindow(MapSimulatorWindowNames.Radio) != null)
+
+            {
+
+                return;
+
+            }
+
+
+
+            UIWindowBase window = CreateRadioWindow(uiWindow2Image, basicImage, soundUIImage, device, position);
 
             if (window != null)
 
@@ -7727,7 +7781,7 @@ namespace HaCreator.MapSimulator.Loaders
 
                 LoadGuildBbsEmoticonSet(basicEmoticonProperty, GetPropertyChildCount(basicEmoticonProperty, 3), device),
 
-                LoadGuildBbsEmoticonSet(cashEmoticonProperty, Math.Min(7, GetPropertyChildCount(cashEmoticonProperty, 7)), device),
+                LoadGuildBbsEmoticonSet(cashEmoticonProperty, GetPropertyChildCount(cashEmoticonProperty, 8), device),
 
                 device)
 
@@ -7905,6 +7959,28 @@ namespace HaCreator.MapSimulator.Loaders
 
             }
 
+            RegisterItemUpgradeTheme(
+                itemUpgrade,
+                ItemUpgradeUI.VisualThemeKind.Enhancement,
+                sourceProperty,
+                device);
+            RegisterItemUpgradeTheme(
+                itemUpgrade,
+                ItemUpgradeUI.VisualThemeKind.MiracleCube,
+                uiWindow2Image?["MiracleCube"] as WzSubProperty
+                    ?? uiWindow1Image?["MiracleCube"] as WzSubProperty,
+                device);
+            RegisterItemUpgradeTheme(
+                itemUpgrade,
+                ItemUpgradeUI.VisualThemeKind.HyperMiracleCube,
+                uiWindow2Image?["HyperMiracleCube"] as WzSubProperty,
+                device);
+            RegisterItemUpgradeTheme(
+                itemUpgrade,
+                ItemUpgradeUI.VisualThemeKind.MapleMiracleCube,
+                uiWindow2Image?["MiracleCube_8th"] as WzSubProperty,
+                device);
+
 
 
             WzBinaryProperty btClickSound = (WzBinaryProperty)soundUIImage?["BtMouseClick"];
@@ -8012,6 +8088,78 @@ namespace HaCreator.MapSimulator.Loaders
 
 
             return itemUpgrade;
+
+        }
+
+        private static void RegisterItemUpgradeTheme(
+
+            ItemUpgradeUI window,
+
+            ItemUpgradeUI.VisualThemeKind themeKind,
+
+            WzSubProperty sourceProperty,
+
+            GraphicsDevice device)
+
+        {
+
+            if (window == null || sourceProperty == null)
+
+            {
+
+                return;
+
+            }
+
+
+
+            WzCanvasProperty backgroundProperty = sourceProperty["backgrnd"] as WzCanvasProperty;
+
+            if (backgroundProperty == null)
+
+            {
+
+                return;
+
+            }
+
+
+
+            Texture2D frameTexture = backgroundProperty.GetLinkedWzCanvasBitmap()?.ToTexture2DAndDispose(device);
+
+            if (frameTexture == null)
+
+            {
+
+                return;
+
+            }
+
+
+
+            WzSubProperty gaugeBarProperty = sourceProperty["GaugeBar"] as WzSubProperty;
+
+            window.RegisterVisualTheme(
+
+                themeKind,
+
+                new ItemUpgradeUI.WindowVisualTheme(
+
+                    new DXObject(0, 0, frameTexture, 0),
+
+                    LoadCanvasTexture(sourceProperty, "backgrnd2", device),
+
+                    ResolveCanvasOffset(sourceProperty["backgrnd2"] as WzCanvasProperty),
+
+                    LoadCanvasTexture(sourceProperty, "backgrnd3", device),
+
+                    ResolveCanvasOffset(sourceProperty["backgrnd3"] as WzCanvasProperty),
+
+                    LoadCanvasTexture(gaugeBarProperty, "bar", device),
+
+                    LoadCanvasTexture(gaugeBarProperty, "gauge", device),
+
+                    ResolveCanvasOffset(gaugeBarProperty?["bar"] as WzCanvasProperty)));
 
         }
 
@@ -8596,6 +8744,56 @@ namespace HaCreator.MapSimulator.Loaders
                 LoadButton(calendarProperty, "BtPre", btClickSound, btOverSound, device),
                 LoadButton(calendarProperty, "BtNext", btClickSound, btOverSound, device),
                 closeButton);
+
+            return window;
+
+        }
+
+        private static UIWindowBase CreateRadioWindow(
+
+            WzImage uiWindow2Image,
+
+            WzImage basicImage,
+
+            WzImage soundUIImage,
+
+            GraphicsDevice device,
+
+            Point position)
+
+        {
+
+            WzSubProperty sourceProperty = uiWindow2Image?["Radio"] as WzSubProperty
+                ?? uiWindow2Image?["MapleRadio"] as WzSubProperty
+                ?? uiWindow2Image?["RadioSchedule"] as WzSubProperty;
+
+            Texture2D frameTexture = LoadCanvasTexture(sourceProperty, "backgrnd", device);
+            if (frameTexture == null)
+            {
+                frameTexture = CreatePlaceholderWindowTexture(device, 292, 148, "Radio");
+            }
+
+            UtilityPanelWindow window = new UtilityPanelWindow(
+                new DXObject(0, 0, frameTexture, 0),
+                MapSimulatorWindowNames.Radio,
+                "Radio")
+            {
+                Position = position
+            };
+
+            if (sourceProperty != null)
+            {
+                IDXObject overlay = LoadWindowCanvasLayerWithOffset(sourceProperty, "backgrnd2", device, out Point overlayOffset);
+                IDXObject content = LoadWindowCanvasLayerWithOffset(sourceProperty, "backgrnd3", device, out Point contentOffset);
+                IDXObject title = LoadWindowCanvasLayerWithOffset(sourceProperty, "title", device, out Point titleOffset);
+                window.AddLayer(overlay, overlayOffset);
+                window.AddLayer(content, contentOffset);
+                window.AddLayer(title, titleOffset);
+            }
+            else
+            {
+                window.SetStaticLines("Packet-authored radio playback is idle.");
+            }
 
             return window;
 

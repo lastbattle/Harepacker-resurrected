@@ -1,9 +1,17 @@
 using HaCreator.MapSimulator.UI;
+using System.Collections.Generic;
 
 namespace HaCreator.MapSimulator.Character.Skills
 {
     internal static class PreparedSkillHudRules
     {
+        private static readonly HashSet<int> ReleaseTriggeredSkillIds = new()
+        {
+            4341002,
+            4341003,
+            WildHunterSwallowSkillId
+        };
+
         private const int SG88SkillId = 35121003;
         private const int WildHunterSwallowSkillId = 33101005;
 
@@ -51,7 +59,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             return PreparedSkillHudTextVariant.Default;
         }
 
-        public static bool UsesReleaseTriggeredExecution(int skillId) => skillId == WildHunterSwallowSkillId;
+        public static bool UsesReleaseTriggeredExecution(int skillId) => ReleaseTriggeredSkillIds.Contains(skillId);
 
         public static bool IsDragonOverlaySkill(int skillId) => skillId is 22121000 or 22151001;
 

@@ -1,3 +1,4 @@
+using HaCreator.MapSimulator.Managers;
 using System;
 
 namespace HaCreator.MapSimulator.Interaction
@@ -24,7 +25,8 @@ namespace HaCreator.MapSimulator.Interaction
         int Level,
         string JobName,
         string LocationSummary,
-        string StatusText);
+        string StatusText,
+        LoginAvatarLook AvatarLook);
 
     internal static class MessengerPacketCodec
     {
@@ -100,6 +102,17 @@ namespace HaCreator.MapSimulator.Interaction
                 string jobName = reader.ReadString8();
                 string locationSummary = reader.ReadString8();
                 string statusText = reader.ReadString8();
+                LoginAvatarLook avatarLook = null;
+                if (reader.TryReadAvatarLook(out LoginAvatarLook decodedAvatarLook, out string avatarError))
+                {
+                    avatarLook = decodedAvatarLook;
+                }
+                else
+                {
+                    error = avatarError;
+                    return false;
+                }
+
                 if (string.IsNullOrWhiteSpace(contactName))
                 {
                     error = "Messenger member-info packet contact name is empty.";
@@ -113,7 +126,8 @@ namespace HaCreator.MapSimulator.Interaction
                     level,
                     string.IsNullOrWhiteSpace(jobName) ? "Adventurer" : jobName.Trim(),
                     string.IsNullOrWhiteSpace(locationSummary) ? "Field" : locationSummary.Trim(),
-                    string.IsNullOrWhiteSpace(statusText) ? (isOnline ? "Online" : "Offline") : statusText.Trim());
+                    string.IsNullOrWhiteSpace(statusText) ? (isOnline ? "Online" : "Offline") : statusText.Trim(),
+                    avatarLook);
                 return true;
             }
             catch (InvalidOperationException ex)
@@ -148,6 +162,17 @@ namespace HaCreator.MapSimulator.Interaction
                 return value;
             }
 
+            public int ReadInt32()
+            {
+                EnsureAvailable(sizeof(int));
+                int value = _payload[_offset]
+                    | (_payload[_offset + 1] << 8)
+                    | (_payload[_offset + 2] << 16)
+                    | (_payload[_offset + 3] << 24);
+                _offset += sizeof(int);
+                return value;
+            }
+
             public string ReadString8()
             {
                 int length = ReadByte();
@@ -158,6 +183,39 @@ namespace HaCreator.MapSimulator.Interaction
             {
                 int length = ReadInt16();
                 return ReadString(length);
+            }
+
+            public bool TryReadAvatarLook(out LoginAvatarLook avatarLook, out string error)
+            {
+                avatarLook = null;
+                error = null;
+                if (_offset >= _payload.Length)
+                {
+                    return true;
+                }
+
+                if (_payload.Length - _offset < sizeof(int))
+                {
+                    error = "Messenger member-info AvatarLook length is truncated.";
+                    return false;
+                }
+
+                int avatarLookLength = ReadInt32();
+                if (avatarLookLength <= 0)
+                {
+                    return true;
+                }
+
+                EnsureAvailable(avatarLookLength);
+                byte[] avatarLookPayload = _payload.Slice(_offset, avatarLookLength).ToArray();
+                _offset += avatarLookLength;
+                if (!LoginAvatarLookCodec.TryDecode(avatarLookPayload, out avatarLook, out error))
+                {
+                    error ??= "Messenger member-info AvatarLook payload could not be decoded.";
+                    return false;
+                }
+
+                return true;
             }
 
             private string ReadString(int length)

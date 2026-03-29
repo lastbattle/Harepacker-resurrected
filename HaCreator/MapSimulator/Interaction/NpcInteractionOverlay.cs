@@ -34,9 +34,12 @@ namespace HaCreator.MapSimulator.Interaction
 
         private SpriteFont _font;
         private string _npcName = "NPC";
+        private NpcInteractionPresentationStyle _presentationStyle;
         private int _selectedEntryIndex;
         private int _currentPage;
         private IReadOnlyList<NpcInteractionPage> _currentPages = Array.Empty<NpcInteractionPage>();
+        private string _inputValue = string.Empty;
+        private string _compositionText = string.Empty;
 
         private readonly struct PageContext
         {
@@ -89,6 +92,7 @@ namespace HaCreator.MapSimulator.Interaction
         }
 
         public bool IsVisible { get; private set; }
+        public bool CapturesKeyboardInput => IsVisible;
 
         public NpcInteractionEntry SelectedEntry =>
             _selectedEntryIndex >= 0 && _selectedEntryIndex < _entries.Count ? _entries[_selectedEntryIndex] : null;
@@ -102,6 +106,7 @@ namespace HaCreator.MapSimulator.Interaction
         {
             ClearTextTextureCache();
             _npcName = string.IsNullOrWhiteSpace(state?.NpcName) ? "NPC" : state.NpcName;
+            _presentationStyle = state?.PresentationStyle ?? NpcInteractionPresentationStyle.Default;
             _entries.Clear();
 
             if (state?.Entries != null)
@@ -152,6 +157,8 @@ namespace HaCreator.MapSimulator.Interaction
         public void Close()
         {
             IsVisible = false;
+            _inputValue = string.Empty;
+            _compositionText = string.Empty;
         }
 
         public bool ContainsPoint(int x, int y, int renderWidth, int renderHeight)
@@ -213,6 +220,12 @@ namespace HaCreator.MapSimulator.Interaction
                 }
 
                 NpcInteractionChoice choice = GetCurrentChoices()[i];
+                if (choice.SubmitSelection)
+                {
+                    Close();
+                    return new NpcInteractionOverlayResult(true, null, BuildChoiceSubmission(choice));
+                }
+
                 if (choice.Pages.Count == 0)
                 {
                     continue;
@@ -257,10 +270,105 @@ namespace HaCreator.MapSimulator.Interaction
             Rectangle primaryRect = GetPrimaryButtonRectangle(windowRect);
             if (!string.IsNullOrEmpty(GetPrimaryButtonText()) && primaryRect.Contains(mousePoint))
             {
+                if (GetCurrentInputRequest() != null)
+                {
+                    if (TryBuildCurrentInputSubmission(out NpcInteractionInputSubmission submission))
+                    {
+                        Close();
+                        return new NpcInteractionOverlayResult(true, null, submission);
+                    }
+
+                    return new NpcInteractionOverlayResult(true, null);
+                }
+
                 return new NpcInteractionOverlayResult(true, SelectedEntry?.PrimaryActionEnabled == true ? SelectedEntry : null);
             }
 
             return new NpcInteractionOverlayResult(true, null);
+        }
+
+        public NpcInteractionOverlayResult HandleKeyboard(KeyboardState keyboardState, KeyboardState previousKeyboardState)
+        {
+            if (!IsVisible)
+            {
+                return default;
+            }
+
+            if (IsKeyReleased(Keys.Escape, keyboardState, previousKeyboardState))
+            {
+                Close();
+                return new NpcInteractionOverlayResult(true, null);
+            }
+
+            NpcInteractionInputRequest inputRequest = GetCurrentInputRequest();
+            if (inputRequest == null)
+            {
+                return default;
+            }
+
+            bool shiftPressed = keyboardState.IsKeyDown(Keys.LeftShift) || keyboardState.IsKeyDown(Keys.RightShift);
+            if (IsKeyReleased(Keys.Back, keyboardState, previousKeyboardState) && _inputValue.Length > 0)
+            {
+                _inputValue = _inputValue[..^1];
+                return new NpcInteractionOverlayResult(true, null);
+            }
+
+            if (inputRequest.Kind == NpcInteractionInputKind.MultiLineText &&
+                shiftPressed &&
+                IsKeyReleased(Keys.Enter, keyboardState, previousKeyboardState) &&
+                CanAppendCharacter(inputRequest, '\n'))
+            {
+                _inputValue += '\n';
+                return new NpcInteractionOverlayResult(true, null);
+            }
+
+            if (IsKeyReleased(Keys.Enter, keyboardState, previousKeyboardState) &&
+                TryBuildCurrentInputSubmission(out NpcInteractionInputSubmission submission))
+            {
+                Close();
+                return new NpcInteractionOverlayResult(true, null, submission);
+            }
+
+            return inputRequest.Kind != NpcInteractionInputKind.None
+                ? new NpcInteractionOverlayResult(true, null)
+                : default;
+        }
+
+        public void HandleCommittedText(string text)
+        {
+            NpcInteractionInputRequest inputRequest = GetCurrentInputRequest();
+            if (inputRequest == null || string.IsNullOrEmpty(text))
+            {
+                return;
+            }
+
+            for (int i = 0; i < text.Length; i++)
+            {
+                char character = text[i];
+                if (char.IsControl(character) || !CanAppendCharacter(inputRequest, character))
+                {
+                    continue;
+                }
+
+                if (inputRequest.Kind == NpcInteractionInputKind.Number &&
+                    !char.IsDigit(character) &&
+                    !(character == '-' && _inputValue.Length == 0 && inputRequest.MinValue < 0))
+                {
+                    continue;
+                }
+
+                _inputValue += character;
+            }
+        }
+
+        public void HandleCompositionText(string text)
+        {
+            _compositionText = GetCurrentInputRequest() == null ? string.Empty : text ?? string.Empty;
+        }
+
+        public void ClearCompositionText()
+        {
+            _compositionText = string.Empty;
         }
 
         public void Draw(SpriteBatch spriteBatch, int renderWidth, int renderHeight)
@@ -271,10 +379,10 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             Rectangle windowRect = GetWindowRectangle(renderWidth, renderHeight);
-            DrawPanel(spriteBatch, windowRect, new Color(18, 25, 39, 235), new Color(235, 218, 170));
+            DrawPanel(spriteBatch, windowRect, ResolveWindowFillColor(), ResolveWindowBorderColor());
 
             Rectangle titleBar = new Rectangle(windowRect.X, windowRect.Y, windowRect.Width, 38);
-            spriteBatch.Draw(_pixel, titleBar, new Color(53, 79, 117, 255));
+            spriteBatch.Draw(_pixel, titleBar, ResolveTitleFillColor());
 
             DrawText(spriteBatch, _npcName, new Vector2(windowRect.X + Padding, windowRect.Y + 10), Color.White);
 
@@ -283,18 +391,27 @@ namespace HaCreator.MapSimulator.Interaction
             DrawCenteredText(spriteBatch, "X", closeRect, Color.White);
 
             Rectangle entryListRect = GetEntryListRectangle(windowRect);
-            DrawPanel(spriteBatch, entryListRect, new Color(27, 35, 49, 220), new Color(112, 126, 153));
-            DrawEntryList(spriteBatch, entryListRect);
+            if (ShouldDrawEntryList())
+            {
+                DrawPanel(spriteBatch, entryListRect, new Color(27, 35, 49, 220), new Color(112, 126, 153));
+                DrawEntryList(spriteBatch, entryListRect);
+            }
 
             Rectangle textRect = new Rectangle(
-                entryListRect.Right + Padding,
+                ShouldDrawEntryList() ? entryListRect.Right + Padding : windowRect.X + Padding,
                 windowRect.Y + 54,
-                windowRect.Width - EntryListWidth - (Padding * 3),
+                ShouldDrawEntryList() ? windowRect.Width - EntryListWidth - (Padding * 3) : windowRect.Width - (Padding * 2),
                 windowRect.Height - 116);
 
             DrawEntryHeader(spriteBatch, textRect);
-            Rectangle bodyRect = new Rectangle(textRect.X, textRect.Y + 38, textRect.Width, textRect.Height - 38);
+            NpcInteractionInputRequest inputRequest = GetCurrentInputRequest();
+            Rectangle bodyRect = new Rectangle(
+                textRect.X,
+                textRect.Y + 38,
+                textRect.Width,
+                textRect.Height - 38 - GetInputPanelHeight(inputRequest));
             DrawWrappedText(spriteBatch, GetCurrentPageText(), bodyRect, new Color(246, 244, 238));
+            DrawInputPanel(spriteBatch, bodyRect, inputRequest);
             DrawPageIndicator(spriteBatch, windowRect);
 
             Rectangle prevRect = GetPrevButtonRectangle(windowRect);
@@ -314,7 +431,7 @@ namespace HaCreator.MapSimulator.Interaction
             string primaryButtonText = GetPrimaryButtonText();
             if (!string.IsNullOrEmpty(primaryButtonText))
             {
-                DrawButton(spriteBatch, primaryRect, primaryButtonText, SelectedEntry?.PrimaryActionEnabled == true);
+                DrawButton(spriteBatch, primaryRect, primaryButtonText, IsPrimaryActionEnabled());
             }
         }
 
@@ -323,6 +440,8 @@ namespace HaCreator.MapSimulator.Interaction
             _pageContextStack.Clear();
             _currentPages = SelectedEntry?.Pages ?? Array.Empty<NpcInteractionPage>();
             _currentPage = 0;
+            _inputValue = GetCurrentInputRequest()?.DefaultValue ?? string.Empty;
+            _compositionText = string.Empty;
         }
 
         private IReadOnlyList<NpcInteractionPage> GetCurrentPages()
@@ -354,7 +473,193 @@ namespace HaCreator.MapSimulator.Interaction
 
         private string GetPrimaryButtonText()
         {
-            return SelectedEntry?.PrimaryActionLabel ?? string.Empty;
+            return GetCurrentInputRequest() == null
+                ? SelectedEntry?.PrimaryActionLabel ?? string.Empty
+                : "Send";
+        }
+
+        private NpcInteractionInputRequest GetCurrentInputRequest()
+        {
+            IReadOnlyList<NpcInteractionPage> pages = GetCurrentPages();
+            if (_currentPage < 0 || _currentPage >= pages.Count)
+            {
+                return null;
+            }
+
+            return pages[_currentPage].InputRequest;
+        }
+
+        private bool IsPrimaryActionEnabled()
+        {
+            return GetCurrentInputRequest() == null
+                ? SelectedEntry?.PrimaryActionEnabled == true
+                : TryValidateCurrentInput(out _);
+        }
+
+        private bool ShouldDrawEntryList()
+        {
+            return !(_presentationStyle == NpcInteractionPresentationStyle.PacketScriptUtilDialog && _entries.Count <= 1);
+        }
+
+        private Color ResolveWindowFillColor()
+        {
+            return _presentationStyle == NpcInteractionPresentationStyle.PacketScriptUtilDialog
+                ? new Color(35, 31, 28, 236)
+                : new Color(18, 25, 39, 235);
+        }
+
+        private Color ResolveWindowBorderColor()
+        {
+            return _presentationStyle == NpcInteractionPresentationStyle.PacketScriptUtilDialog
+                ? new Color(212, 181, 120)
+                : new Color(235, 218, 170);
+        }
+
+        private Color ResolveTitleFillColor()
+        {
+            return _presentationStyle == NpcInteractionPresentationStyle.PacketScriptUtilDialog
+                ? new Color(92, 66, 37, 255)
+                : new Color(53, 79, 117, 255);
+        }
+
+        private static int GetInputPanelHeight(NpcInteractionInputRequest inputRequest)
+        {
+            if (inputRequest == null)
+            {
+                return 0;
+            }
+
+            return inputRequest.Kind == NpcInteractionInputKind.MultiLineText ? 76 : 42;
+        }
+
+        private void DrawInputPanel(SpriteBatch spriteBatch, Rectangle bodyRect, NpcInteractionInputRequest inputRequest)
+        {
+            if (inputRequest == null)
+            {
+                return;
+            }
+
+            int height = GetInputPanelHeight(inputRequest) - 10;
+            Rectangle inputRect = new(bodyRect.X, bodyRect.Bottom + 8, bodyRect.Width, height);
+            DrawPanel(spriteBatch, inputRect, new Color(23, 23, 26, 230), ResolveWindowBorderColor());
+
+            string previewText = string.IsNullOrEmpty(_inputValue) && string.IsNullOrEmpty(_compositionText)
+                ? "(type here)"
+                : $"{_inputValue}{_compositionText}";
+            DrawWrappedText(spriteBatch, previewText, new Rectangle(inputRect.X + 8, inputRect.Y + 6, inputRect.Width - 16, inputRect.Height - 12), new Color(245, 240, 225));
+        }
+
+        private bool CanAppendCharacter(NpcInteractionInputRequest inputRequest, char character)
+        {
+            if (inputRequest == null)
+            {
+                return false;
+            }
+
+            if (_inputValue.Length >= inputRequest.MaxLength)
+            {
+                return false;
+            }
+
+            if (character == '\n' && inputRequest.Kind != NpcInteractionInputKind.MultiLineText)
+            {
+                return false;
+            }
+
+            if (character == '\n')
+            {
+                int lineCount = 1;
+                for (int i = 0; i < _inputValue.Length; i++)
+                {
+                    if (_inputValue[i] == '\n')
+                    {
+                        lineCount++;
+                    }
+                }
+
+                return lineCount < Math.Max(1, inputRequest.LineCount);
+            }
+
+            return true;
+        }
+
+        private bool TryValidateCurrentInput(out NpcInteractionInputSubmission submission)
+        {
+            submission = null;
+            NpcInteractionInputRequest inputRequest = GetCurrentInputRequest();
+            if (inputRequest == null)
+            {
+                return false;
+            }
+
+            string value = _inputValue ?? string.Empty;
+            switch (inputRequest.Kind)
+            {
+                case NpcInteractionInputKind.Text:
+                case NpcInteractionInputKind.MultiLineText:
+                    if (value.Length < inputRequest.MinLength || value.Length > inputRequest.MaxLength)
+                    {
+                        return false;
+                    }
+
+                    submission = new NpcInteractionInputSubmission
+                    {
+                        EntryId = SelectedEntry?.EntryId ?? 0,
+                        EntryTitle = SelectedEntry?.Title ?? string.Empty,
+                        NpcName = _npcName,
+                        PresentationStyle = _presentationStyle,
+                        Kind = inputRequest.Kind,
+                        Value = value
+                    };
+                    return true;
+
+                case NpcInteractionInputKind.Number:
+                    if (!int.TryParse(value, out int numericValue) ||
+                        numericValue < inputRequest.MinValue ||
+                        numericValue > inputRequest.MaxValue)
+                    {
+                        return false;
+                    }
+
+                    submission = new NpcInteractionInputSubmission
+                    {
+                        EntryId = SelectedEntry?.EntryId ?? 0,
+                        EntryTitle = SelectedEntry?.Title ?? string.Empty,
+                        NpcName = _npcName,
+                        PresentationStyle = _presentationStyle,
+                        Kind = NpcInteractionInputKind.Number,
+                        Value = value,
+                        NumericValue = numericValue
+                    };
+                    return true;
+
+                default:
+                    return false;
+            }
+        }
+
+        private bool TryBuildCurrentInputSubmission(out NpcInteractionInputSubmission submission)
+        {
+            return TryValidateCurrentInput(out submission);
+        }
+
+        private NpcInteractionInputSubmission BuildChoiceSubmission(NpcInteractionChoice choice)
+        {
+            return new NpcInteractionInputSubmission
+            {
+                EntryId = SelectedEntry?.EntryId ?? 0,
+                EntryTitle = SelectedEntry?.Title ?? string.Empty,
+                NpcName = _npcName,
+                PresentationStyle = _presentationStyle,
+                Kind = choice?.SubmissionKind ?? NpcInteractionInputKind.None,
+                Value = choice?.SubmissionValue ?? string.Empty,
+                NumericValue = choice?.SubmissionNumericValue
+            };
+        }
+
+        private static bool IsKeyReleased(Keys key, KeyboardState keyboardState, KeyboardState previousKeyboardState)
+        {
+            return keyboardState.IsKeyUp(key) && previousKeyboardState.IsKeyDown(key);
         }
 
         private void DrawPanel(SpriteBatch spriteBatch, Rectangle rect, Color fill, Color border)

@@ -24,6 +24,7 @@ namespace HaCreator.MapSimulator.UI
         public bool IsBoss { get; init; }
         public int OwnedCopies { get; init; }
         public int MaxCopies { get; init; } = 5;
+        public bool IsRegistered { get; init; }
         public string EpisodeText { get; init; } = string.Empty;
         public IReadOnlyList<string> RewardLines { get; init; } = Array.Empty<string>();
         public IReadOnlyList<string> HabitatLines { get; init; } = Array.Empty<string>();

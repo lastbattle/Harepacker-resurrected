@@ -16,6 +16,11 @@ namespace HaCreator.MapSimulator.UI
     {
         private const float ClientContentX = 18f;
         private const float ClientContentWidth = 253f;
+        private const int ClientLogBaseY = 128;
+        private const int ClientSummaryClipY = 252;
+        private const int ClientSummaryClipHeight = 111;
+        private const int ClientScrLogLenWithSummary = 120;
+        private const int ClientScrLogLenWithoutSummary = 238;
         private const float ClientTitleX = 35f;
         private const float ClientTitleY = 42f;
         private const float ClientNpcX = 23f;
@@ -868,27 +873,35 @@ namespace HaCreator.MapSimulator.UI
                 Position.X + (int)ClientContentX,
                 Position.Y + GetLogContentBaseY(),
                 (int)ClientContentWidth,
-                GetLogClipHeight());
+                GetClientLogClipHeight());
         }
 
         private Rectangle GetSummaryClipRectangle()
         {
             return new Rectangle(
                 Position.X + (int)ClientContentX,
-                Position.Y + (int)(ClientSummaryY - 5f),
+                Position.Y + ClientSummaryClipY,
                 (int)ClientContentWidth,
-                ClientSummaryHeight);
+                ClientSummaryClipHeight);
         }
 
         private int GetLogContentBaseY()
         {
-            return (int)ClientLogY + GetDetailTipHeight();
+            return ClientLogBaseY + GetDetailTipHeight();
         }
 
-        private int GetLogClipHeight()
+        private int GetClientScrLogLength()
         {
-            int clipHeight = (HasSummaryPaneContent() ? 120 : 238) - GetDetailTipHeight() - 2;
+            int clipHeight = HasSummaryPaneContent()
+                ? ClientScrLogLenWithSummary
+                : ClientScrLogLenWithoutSummary;
+            clipHeight -= GetDetailTipHeight();
             return Math.Max(32, clipHeight);
+        }
+
+        private int GetClientLogClipHeight()
+        {
+            return Math.Max(32, GetClientScrLogLength() - 2);
         }
 
         private int GetDetailTipHeight()
@@ -903,7 +916,7 @@ namespace HaCreator.MapSimulator.UI
 
         private int GetMaxLogScrollOffset()
         {
-            return Math.Max(0, (int)Math.Ceiling(GetLogContentHeight() - GetLogClipHeight()));
+            return Math.Max(0, (int)Math.Ceiling(GetLogContentHeight() - GetClientLogClipHeight()));
         }
 
         private int GetMaxSummaryScrollOffset()
