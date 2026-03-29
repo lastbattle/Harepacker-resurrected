@@ -587,9 +587,9 @@ namespace HaCreator.MapSimulator.Character
                 return;
             }
 
+            MobSkillRuntimeData runtimeData = _mobSkillRuntimeResolver?.Invoke(skillId, Math.Max(1, skillLevel));
             if (applyRuntimeStatus)
             {
-                MobSkillRuntimeData runtimeData = _mobSkillRuntimeResolver?.Invoke(skillId, Math.Max(1, skillLevel));
                 TryApplyMobSkillStatus(skillId, runtimeData, currentTime, sourceX);
             }
 
@@ -599,7 +599,9 @@ namespace HaCreator.MapSimulator.Character
             }
 
             MobSkillEffectData effectData = _mobSkillEffectLoader?.LoadMobSkillEffect(skillId, Math.Max(1, skillLevel));
-            int durationMs = Math.Max(0, (effectData?.Time ?? 0) * 1000);
+            int durationMs = runtimeData?.DurationMs > 0
+                ? runtimeData.DurationMs
+                : Math.Max(0, (effectData?.Time ?? 0) * 1000);
             if (durationMs > 0)
             {
                 Player.ApplySkillBlockingStatus(status, durationMs, currentTime);
@@ -995,7 +997,8 @@ namespace HaCreator.MapSimulator.Character
 
         private static bool ShouldPromoteAffectedAreaAvatarEffect(SkillData skill)
         {
-            return skill?.AffectedEffect?.Frames?.Count > 0
+            return (skill?.AffectedEffect?.Frames?.Count > 0
+                    || skill?.AffectedSecondaryEffect?.Frames?.Count > 0)
                    && RemoteAffectedAreaSupportResolver.IsFriendlyPlayerAreaSkill(skill);
         }
 
@@ -1012,15 +1015,36 @@ namespace HaCreator.MapSimulator.Character
             }
 
             SkillAnimation loopingAffectedAnimation = CreateLoopingAvatarEffect(skill.AffectedEffect);
-            if (loopingAffectedAnimation == null)
+            SkillAnimation loopingAffectedSecondaryAnimation = CreateLoopingAvatarEffect(skill.AffectedSecondaryEffect);
+            if (loopingAffectedAnimation == null && loopingAffectedSecondaryAnimation == null)
             {
                 return null;
             }
 
+            SkillAnimation overlayAnimation = null;
+            SkillAnimation overlaySecondaryAnimation = null;
+            SkillAnimation underFaceAnimation = null;
+            SkillAnimation underFaceSecondaryAnimation = null;
+            AssignAffectedAreaAvatarEffectPlane(
+                loopingAffectedAnimation,
+                ref overlayAnimation,
+                ref overlaySecondaryAnimation,
+                ref underFaceAnimation,
+                ref underFaceSecondaryAnimation);
+            AssignAffectedAreaAvatarEffectPlane(
+                loopingAffectedSecondaryAnimation,
+                ref overlayAnimation,
+                ref overlaySecondaryAnimation,
+                ref underFaceAnimation,
+                ref underFaceSecondaryAnimation);
+
             SkillData effectSkill = new()
             {
                 SkillId = skill.SkillId,
-                AvatarUnderFaceEffect = loopingAffectedAnimation
+                AvatarOverlayEffect = overlayAnimation,
+                AvatarOverlaySecondaryEffect = overlaySecondaryAnimation,
+                AvatarUnderFaceEffect = underFaceAnimation,
+                AvatarUnderFaceSecondaryEffect = underFaceSecondaryAnimation
             };
             _affectedAreaAvatarEffectSkillCache[skill.SkillId] = effectSkill;
             return effectSkill;
@@ -1056,6 +1080,30 @@ namespace HaCreator.MapSimulator.Character
                 Origin = animation.Origin,
                 ZOrder = animation.ZOrder
             };
+        }
+
+        private static void AssignAffectedAreaAvatarEffectPlane(
+            SkillAnimation animation,
+            ref SkillAnimation overlayAnimation,
+            ref SkillAnimation overlaySecondaryAnimation,
+            ref SkillAnimation underFaceAnimation,
+            ref SkillAnimation underFaceSecondaryAnimation)
+        {
+            if (animation == null)
+            {
+                return;
+            }
+
+            bool prefersUnderFace = animation.ZOrder < 0;
+            if (prefersUnderFace)
+            {
+                underFaceAnimation ??= animation;
+                underFaceSecondaryAnimation ??= ReferenceEquals(animation, underFaceAnimation) ? null : animation;
+                return;
+            }
+
+            overlayAnimation ??= animation;
+            overlaySecondaryAnimation ??= ReferenceEquals(animation, overlayAnimation) ? null : animation;
         }
 
         internal bool TryApplyMobSkillStatus(int skillId, MobSkillRuntimeData runtimeData, int currentTime, float sourceX = 0f)

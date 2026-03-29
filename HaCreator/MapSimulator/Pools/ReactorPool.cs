@@ -531,8 +531,10 @@ namespace HaCreator.MapSimulator.Pools
                     case ReactorActivationType.Skill:
                         if (data.State == ReactorState.Idle)
                         {
-                            ActivateReactor(index, playerId, currentTick, ReactorActivationType.Skill);
-                            triggeredReactors.Add(reactor);
+                            if (ActivateReactor(index, playerId, currentTick, ReactorActivationType.Skill, skillId))
+                            {
+                                triggeredReactors.Add(reactor);
+                            }
                         }
                         break;
                 }
@@ -570,8 +572,10 @@ namespace HaCreator.MapSimulator.Pools
                     case ReactorActivationType.Skill:
                         if (data.State == ReactorState.Idle)
                         {
-                            ActivateReactor(index, playerId, currentTick, ReactorActivationType.Skill);
-                            triggeredReactors.Add(reactor);
+                            if (ActivateReactor(index, playerId, currentTick, ReactorActivationType.Skill, skillId))
+                            {
+                                triggeredReactors.Add(reactor);
+                            }
                         }
                         break;
                 }
@@ -661,8 +665,10 @@ namespace HaCreator.MapSimulator.Pools
 
             foreach (var (reactor, index) in FindItemReactors(itemId))
             {
-                ActivateReactor(index, playerId, currentTick, ReactorActivationType.Item);
-                triggeredReactors.Add(reactor);
+                if (ActivateReactor(index, playerId, currentTick, ReactorActivationType.Item, itemId))
+                {
+                    triggeredReactors.Add(reactor);
+                }
             }
 
             return triggeredReactors;
@@ -679,8 +685,10 @@ namespace HaCreator.MapSimulator.Pools
 
             foreach (var (reactor, index) in FindItemReactorsAroundLocalUser(playerX, playerY, itemId, currentTick: currentTick))
             {
-                ActivateReactor(index, playerId, currentTick, ReactorActivationType.Item);
-                triggeredReactors.Add(reactor);
+                if (ActivateReactor(index, playerId, currentTick, ReactorActivationType.Item, itemId))
+                {
+                    triggeredReactors.Add(reactor);
+                }
             }
 
             return triggeredReactors;
@@ -695,18 +703,29 @@ namespace HaCreator.MapSimulator.Pools
         /// <param name="playerId">Player who activated</param>
         /// <param name="currentTick">Current game tick</param>
         /// <param name="activationType">How it was activated</param>
-        public void ActivateReactor(int index, int playerId, int currentTick, ReactorActivationType activationType = ReactorActivationType.Touch)
+        public bool ActivateReactor(
+            int index,
+            int playerId,
+            int currentTick,
+            ReactorActivationType activationType = ReactorActivationType.Touch,
+            int activationValue = 0)
         {
             var reactor = GetReactor(index);
             var data = GetReactorData(index);
 
             if (reactor == null || data == null)
-                return;
+                return false;
 
             if (data.State != ReactorState.Idle)
-                return;
+                return false;
 
-            if (reactor.TryGetNextState(data.VisualState, activationType, out int nextVisualState))
+            var request = new ReactorTransitionRequest(activationType, data.ReactorType, activationValue);
+            if (!reactor.CanActivateFromState(data.VisualState, request))
+            {
+                return false;
+            }
+
+            if (TryResolveNextVisualState(reactor, data, request, out int nextVisualState))
             {
                 data.VisualState = nextVisualState;
             }
@@ -724,6 +743,7 @@ namespace HaCreator.MapSimulator.Pools
                 _onReactorHit?.Invoke(reactor, playerId);
 
             _onReactorActivated?.Invoke(reactor, playerId);
+            return true;
         }
 
         /// <summary>
@@ -755,7 +775,11 @@ namespace HaCreator.MapSimulator.Pools
                 }
                 else
                 {
-                    if (reactor.TryGetNextState(data.VisualState, ReactorActivationType.Hit, out int nextVisualState))
+                    if (TryResolveNextVisualState(
+                        reactor,
+                        data,
+                        new ReactorTransitionRequest(ReactorActivationType.Hit, data.ReactorType),
+                        out int nextVisualState))
                     {
                         data.VisualState = nextVisualState;
                         data.State = ReactorState.Activated;
@@ -1409,7 +1433,12 @@ namespace HaCreator.MapSimulator.Pools
         {
             if (reactor == null
                 || data == null
-                || !reactor.TryGetTimedStateTransition(data.VisualState, out int nextVisualState))
+                || !TryResolveNextVisualState(
+                    reactor,
+                    data,
+                    new ReactorTransitionRequest(ReactorActivationType.Time, data.ReactorType),
+                    out int nextVisualState,
+                    allowNumericFallback: false))
             {
                 return false;
             }
@@ -1431,7 +1460,11 @@ namespace HaCreator.MapSimulator.Pools
         {
             if (reactor == null
                 || data == null
-                || !reactor.TryGetNextState(data.VisualState, activationType, out int nextVisualState))
+                || !TryResolveNextVisualState(
+                    reactor,
+                    data,
+                    new ReactorTransitionRequest(activationType, data.ReactorType),
+                    out int nextVisualState))
             {
                 return false;
             }
@@ -1440,6 +1473,32 @@ namespace HaCreator.MapSimulator.Pools
             data.State = ReactorState.Activated;
             data.StateStartTime = currentTick;
             data.StateFrame = 0;
+            return true;
+        }
+
+        private static bool TryResolveNextVisualState(
+            ReactorItem reactor,
+            ReactorRuntimeData data,
+            ReactorTransitionRequest request,
+            out int nextVisualState,
+            bool allowNumericFallback = true)
+        {
+            nextVisualState = data?.VisualState ?? 0;
+            if (reactor == null || data == null)
+            {
+                return false;
+            }
+
+            int[] candidates = reactor.GetNextStateCandidates(
+                data.VisualState,
+                request,
+                includeNumericFallback: allowNumericFallback);
+            if (candidates.Length == 0)
+            {
+                return false;
+            }
+
+            nextVisualState = candidates[0];
             return true;
         }
 

@@ -8,7 +8,9 @@ using Microsoft.Xna.Framework.Graphics;
 using Spine;
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
+using System.Runtime.InteropServices;
 using SD = System.Drawing;
 using SDText = System.Drawing.Text;
 using SWF = System.Windows.Forms;
@@ -43,6 +45,8 @@ namespace HaCreator.MapSimulator.UI
         private const int BasicBlackFontHeight = 12;
         private const int TextRasterPadding = 2;
         private const byte KoreanGdiCharset = 129;
+        private const string BasicBlackFontPathEnvironmentVariable = "MAPSIM_FONT_BASIC_BLACK_PATH";
+        private const string BasicBlackFontFaceEnvironmentVariable = "MAPSIM_FONT_BASIC_BLACK_FACE";
         private const SWF.TextFormatFlags BasicBlackTextFormatFlags =
             SWF.TextFormatFlags.NoPadding |
             SWF.TextFormatFlags.NoPrefix |
@@ -341,6 +345,11 @@ namespace HaCreator.MapSimulator.UI
 
         private static SD.Font CreateBasicBlackFont(out string fontFamilyName)
         {
+            if (TryCreateConfiguredBasicBlackFont(out SD.Font configuredFont, out fontFamilyName))
+            {
+                return configuredFont;
+            }
+
             string selectedFamilyName = ResolveInstalledFontFamilyName(BasicBlackFontFamilyCandidates);
 
             fontFamilyName = selectedFamilyName;
@@ -359,6 +368,48 @@ namespace HaCreator.MapSimulator.UI
             catch (ArgumentException)
             {
                 return new SD.Font(selectedFamilyName, BasicBlackFontHeight, SD.FontStyle.Regular, SD.GraphicsUnit.Pixel);
+            }
+        }
+
+        private static bool TryCreateConfiguredBasicBlackFont(out SD.Font font, out string fontFamilyName)
+        {
+            font = null;
+            fontFamilyName = null;
+
+            string configuredFontPath = Environment.GetEnvironmentVariable(BasicBlackFontPathEnvironmentVariable);
+            if (string.IsNullOrWhiteSpace(configuredFontPath))
+            {
+                return false;
+            }
+
+            string resolvedFontPath = Path.GetFullPath(configuredFontPath.Trim());
+            if (!File.Exists(resolvedFontPath))
+            {
+                return false;
+            }
+
+            string configuredFontFace = Environment.GetEnvironmentVariable(BasicBlackFontFaceEnvironmentVariable);
+            if (!BasicBlackPrivateFontRegistry.TryRegister(resolvedFontPath, configuredFontFace, out string resolvedFamilyName))
+            {
+                return false;
+            }
+
+            fontFamilyName = resolvedFamilyName;
+
+            try
+            {
+                font = new SD.Font(
+                    resolvedFamilyName,
+                    BasicBlackFontHeight,
+                    SD.FontStyle.Regular,
+                    SD.GraphicsUnit.Pixel,
+                    KoreanGdiCharset);
+                return true;
+            }
+            catch (ArgumentException)
+            {
+                font = new SD.Font(resolvedFamilyName, BasicBlackFontHeight, SD.FontStyle.Regular, SD.GraphicsUnit.Pixel);
+                return true;
             }
         }
 
@@ -547,6 +598,91 @@ namespace HaCreator.MapSimulator.UI
             public int OffsetX { get; }
             public int OffsetY { get; }
             public Vector2 Measurement { get; }
+        }
+
+        private static class BasicBlackPrivateFontRegistry
+        {
+            private static readonly object Sync = new object();
+            private static readonly Dictionary<string, RegisteredPrivateFont> RegisteredFonts = new(StringComparer.OrdinalIgnoreCase);
+
+            public static bool TryRegister(string fontPath, string preferredFamilyName, out string resolvedFamilyName)
+            {
+                lock (Sync)
+                {
+                    if (RegisteredFonts.TryGetValue(fontPath, out RegisteredPrivateFont cachedFont))
+                    {
+                        resolvedFamilyName = cachedFont.ResolveFamilyName(preferredFamilyName);
+                        return !string.IsNullOrWhiteSpace(resolvedFamilyName);
+                    }
+
+                    try
+                    {
+                        byte[] fontBytes = File.ReadAllBytes(fontPath);
+                        if (fontBytes.Length == 0)
+                        {
+                            resolvedFamilyName = null;
+                            return false;
+                        }
+
+                        IntPtr fontData = Marshal.AllocCoTaskMem(fontBytes.Length);
+                        Marshal.Copy(fontBytes, 0, fontData, fontBytes.Length);
+
+                        var privateFonts = new SDText.PrivateFontCollection();
+                        privateFonts.AddMemoryFont(fontData, fontBytes.Length);
+
+                        uint fontsAdded = 0;
+                        IntPtr gdiHandle = AddFontMemResourceEx(fontData, (uint)fontBytes.Length, IntPtr.Zero, ref fontsAdded);
+                        RegisteredPrivateFont registeredFont = new RegisteredPrivateFont(fontData, privateFonts, gdiHandle);
+                        RegisteredFonts[fontPath] = registeredFont;
+
+                        resolvedFamilyName = registeredFont.ResolveFamilyName(preferredFamilyName);
+                        return !string.IsNullOrWhiteSpace(resolvedFamilyName);
+                    }
+                    catch
+                    {
+                        resolvedFamilyName = null;
+                        return false;
+                    }
+                }
+            }
+
+            [DllImport("gdi32.dll", CharSet = CharSet.Auto)]
+            private static extern IntPtr AddFontMemResourceEx(IntPtr pbFont, uint cbFont, IntPtr pdv, ref uint pcFonts);
+        }
+
+        private sealed class RegisteredPrivateFont
+        {
+            public RegisteredPrivateFont(IntPtr fontData, SDText.PrivateFontCollection collection, IntPtr gdiHandle)
+            {
+                FontData = fontData;
+                Collection = collection;
+                GdiHandle = gdiHandle;
+            }
+
+            public IntPtr FontData { get; }
+            public SDText.PrivateFontCollection Collection { get; }
+            public IntPtr GdiHandle { get; }
+
+            public string ResolveFamilyName(string preferredFamilyName)
+            {
+                SD.FontFamily[] families = Collection?.Families;
+                if (families == null || families.Length == 0)
+                {
+                    return null;
+                }
+
+                if (!string.IsNullOrWhiteSpace(preferredFamilyName))
+                {
+                    SD.FontFamily preferredFamily = families.FirstOrDefault(
+                        family => string.Equals(family.Name, preferredFamilyName, StringComparison.OrdinalIgnoreCase));
+                    if (preferredFamily != null)
+                    {
+                        return preferredFamily.Name;
+                    }
+                }
+
+                return families[0].Name;
+            }
         }
     }
 }

@@ -1,6 +1,7 @@
 using HaCreator.MapSimulator.Character;
 using HaCreator.MapSimulator.Effects;
 using Microsoft.Xna.Framework;
+using System.Collections.Generic;
 
 namespace HaCreator.MapSimulator
 {
@@ -10,15 +11,16 @@ namespace HaCreator.MapSimulator
 
         private void SyncWeddingRemoteActorsToSharedPool(WeddingField field)
         {
-            _remoteUserPool.RemoveBySourceTag(WeddingRemoteUserSourceTag);
-
-            if (field == null)
+            if (field == null || !field.IsActive)
             {
+                ClearWeddingRemoteActorsFromSharedPool();
                 return;
             }
 
             field.UseExternalRemoteActorRenderer = true;
-            foreach (WeddingRemoteParticipantSnapshot snapshot in field.GetRemoteParticipantSnapshots())
+            IReadOnlyList<WeddingRemoteParticipantSnapshot> snapshots = field.GetExternalRendererParticipantSnapshots();
+            HashSet<int> desiredCharacterIds = new();
+            foreach (WeddingRemoteParticipantSnapshot snapshot in snapshots)
             {
                 CharacterBuild build = snapshot.Build?.Clone();
                 if (build == null)
@@ -27,6 +29,7 @@ namespace HaCreator.MapSimulator
                 }
 
                 int characterId = ResolveWeddingRemoteUserId(snapshot);
+                desiredCharacterIds.Add(characterId);
                 _remoteUserPool.TryAddOrUpdate(
                     characterId,
                     build,
@@ -47,6 +50,8 @@ namespace HaCreator.MapSimulator
                         out _);
                 }
             }
+
+            _remoteUserPool.RemoveBySourceTagExcept(WeddingRemoteUserSourceTag, desiredCharacterIds);
         }
 
         private void ClearWeddingRemoteActorsFromSharedPool()

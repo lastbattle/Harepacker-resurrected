@@ -951,14 +951,11 @@ namespace HaCreator.MapSimulator.Combat
                     return targets;
                 }
 
-                Shuffle(slotPositions);
-                int count = Math.Min(attackCount, slotPositions.Count);
-                for (int i = 0; i < count; i++)
+                List<Vector2> selectedSlots = SelectGroundTargetSlots(slotPositions, attackCount, attack.StartOffset, _random);
+                for (int i = 0; i < selectedSlots.Count; i++)
                 {
-                    targets.Add(slotPositions[i]);
+                    targets.Add(selectedSlots[i]);
                 }
-
-                targets.Sort((left, right) => left.X.CompareTo(right.X));
                 return targets;
             }
 
@@ -966,6 +963,56 @@ namespace HaCreator.MapSimulator.Combat
             float fallbackY = playerY ?? GetRangeBottomY(mobItem, attack);
             targets.Add(ResolveGroundPoint(fallbackX, fallbackY));
             return targets;
+        }
+
+        internal static List<Vector2> SelectGroundTargetSlots(
+            IReadOnlyList<Vector2> slotPositions,
+            int attackCount,
+            int startOffset,
+            Random random = null)
+        {
+            var selected = new List<Vector2>();
+            if (slotPositions == null || slotPositions.Count == 0 || attackCount <= 0)
+            {
+                return selected;
+            }
+
+            int clampedCount = Math.Min(attackCount, slotPositions.Count);
+            if (clampedCount == slotPositions.Count)
+            {
+                for (int i = 0; i < slotPositions.Count; i++)
+                {
+                    selected.Add(slotPositions[i]);
+                }
+
+                return selected;
+            }
+
+            if (startOffset != 0)
+            {
+                for (int i = 0; i < clampedCount; i++)
+                {
+                    selected.Add(slotPositions[i]);
+                }
+
+                return selected;
+            }
+
+            var shuffled = new List<Vector2>(slotPositions);
+            Random resolvedRandom = random ?? Random.Shared;
+            for (int i = shuffled.Count - 1; i > 0; i--)
+            {
+                int swapIndex = resolvedRandom.Next(i + 1);
+                (shuffled[i], shuffled[swapIndex]) = (shuffled[swapIndex], shuffled[i]);
+            }
+
+            for (int i = 0; i < clampedCount; i++)
+            {
+                selected.Add(shuffled[i]);
+            }
+
+            selected.Sort((left, right) => left.X.CompareTo(right.X));
+            return selected;
         }
 
         private List<Vector2> BuildEffectNodePositions(
@@ -2193,9 +2240,15 @@ namespace HaCreator.MapSimulator.Combat
                     return false;
                 }
 
+                Rectangle playerHitbox = _playerHitboxAccessor?.Invoke() ?? playerManager.Player.GetHitbox();
+                if (playerHitbox.IsEmpty)
+                {
+                    return false;
+                }
+
                 return playerManager.Combat.TryApplyMobHit(
                     sourceMob,
-                    playerManager.Player.GetHitbox(),
+                    playerHitbox,
                     currentTime,
                     attack);
             }

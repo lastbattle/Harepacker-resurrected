@@ -1853,7 +1853,7 @@ namespace HaCreator.MapSimulator
 
                 "Dispatch or configure a login bootstrap packet into the runtime",
 
-                "/loginpacket <inbox|stream|checkpassword|guestlogin|accountinfo|checkuserlimit|setaccount|eula|checkpin|updatepin|worldinfo|selectworld|selectchar|checkduplicatedid|newcharresult|deletechar|enablespw|vac|recommendworld|latestworld|extracharinfo|checkspw> [...]",
+                "/loginpacket <inbox|session|stream|checkpassword|guestlogin|accountinfo|checkuserlimit|setaccount|eula|checkpin|updatepin|worldinfo|selectworld|selectchar|checkduplicatedid|newcharresult|deletechar|enablespw|vac|recommendworld|latestworld|extracharinfo|checkspw> [...]",
                 args =>
 
                 {
@@ -1918,6 +1918,118 @@ namespace HaCreator.MapSimulator
 
                     }
 
+                    if (args.Length > 0 && string.Equals(args[0], "session", StringComparison.OrdinalIgnoreCase))
+                    {
+                        if (args.Length == 1 || string.Equals(args[1], "status", StringComparison.OrdinalIgnoreCase))
+                        {
+                            return ChatCommandHandler.CommandResult.Info(DescribeLoginPacketTransportStatus());
+                        }
+
+                        if (string.Equals(args[1], "discover", StringComparison.OrdinalIgnoreCase))
+                        {
+                            if (args.Length < 3
+                                || !int.TryParse(args[2], out int discoverRemotePort)
+                                || discoverRemotePort <= 0)
+                            {
+                                return ChatCommandHandler.CommandResult.Error("Usage: /loginpacket session discover <remotePort> [processName|pid] [localPort]");
+                            }
+
+                            string processSelector = args.Length >= 4 ? args[3] : null;
+                            int? localPortFilter = null;
+                            if (args.Length >= 5)
+                            {
+                                if (!int.TryParse(args[4], out int parsedLocalPort) || parsedLocalPort <= 0)
+                                {
+                                    return ChatCommandHandler.CommandResult.Error("Usage: /loginpacket session discover <remotePort> [processName|pid] [localPort]");
+                                }
+
+                                localPortFilter = parsedLocalPort;
+                            }
+
+                            return ChatCommandHandler.CommandResult.Info(
+                                _loginOfficialSessionBridge.DescribeDiscoveredSessions(discoverRemotePort, processSelector, localPortFilter));
+                        }
+
+                        if (string.Equals(args[1], "start", StringComparison.OrdinalIgnoreCase))
+                        {
+                            if (args.Length < 5
+                                || !int.TryParse(args[2], out int listenPort)
+                                || listenPort <= 0
+                                || !int.TryParse(args[4], out int remotePort)
+                                || remotePort <= 0)
+                            {
+                                return ChatCommandHandler.CommandResult.Error("Usage: /loginpacket session start <listenPort> <serverHost> <serverPort>");
+                            }
+
+                            _loginOfficialSessionBridgeEnabled = true;
+                            _loginOfficialSessionBridgeUseDiscovery = false;
+                            _loginOfficialSessionBridgeConfiguredListenPort = listenPort;
+                            _loginOfficialSessionBridgeConfiguredRemoteHost = args[3];
+                            _loginOfficialSessionBridgeConfiguredRemotePort = remotePort;
+                            _loginOfficialSessionBridgeConfiguredProcessSelector = null;
+                            _loginOfficialSessionBridgeConfiguredLocalPort = null;
+                            EnsureLoginPacketInboxState(IsLoginRuntimeSceneActive);
+                            return ChatCommandHandler.CommandResult.Ok(DescribeLoginOfficialSessionBridgeStatus());
+                        }
+
+                        if (string.Equals(args[1], "startauto", StringComparison.OrdinalIgnoreCase))
+                        {
+                            if (args.Length < 4
+                                || !int.TryParse(args[2], out int autoListenPort)
+                                || autoListenPort <= 0
+                                || !int.TryParse(args[3], out int autoRemotePort)
+                                || autoRemotePort <= 0)
+                            {
+                                return ChatCommandHandler.CommandResult.Error("Usage: /loginpacket session startauto <listenPort> <remotePort> [processName|pid] [localPort]");
+                            }
+
+                            string processSelector = args.Length >= 5 ? args[4] : null;
+                            int? localPortFilter = null;
+                            if (args.Length >= 6)
+                            {
+                                if (!int.TryParse(args[5], out int parsedLocalPort) || parsedLocalPort <= 0)
+                                {
+                                    return ChatCommandHandler.CommandResult.Error("Usage: /loginpacket session startauto <listenPort> <remotePort> [processName|pid] [localPort]");
+                                }
+
+                                localPortFilter = parsedLocalPort;
+                            }
+
+                            _loginOfficialSessionBridgeEnabled = true;
+                            _loginOfficialSessionBridgeUseDiscovery = true;
+                            _loginOfficialSessionBridgeConfiguredListenPort = autoListenPort;
+                            _loginOfficialSessionBridgeConfiguredRemotePort = autoRemotePort;
+                            _loginOfficialSessionBridgeConfiguredProcessSelector = processSelector;
+                            _loginOfficialSessionBridgeConfiguredLocalPort = localPortFilter;
+                            EnsureLoginPacketInboxState(IsLoginRuntimeSceneActive);
+
+                            if (!IsLoginRuntimeSceneActive)
+                            {
+                                return ChatCommandHandler.CommandResult.Ok(DescribeLoginOfficialSessionBridgeStatus());
+                            }
+
+                            return _loginOfficialSessionBridge.TryStartFromDiscovery(
+                                autoListenPort,
+                                autoRemotePort,
+                                processSelector,
+                                localPortFilter,
+                                out string startStatus)
+                                ? ChatCommandHandler.CommandResult.Ok(startStatus)
+                                : ChatCommandHandler.CommandResult.Error(startStatus);
+                        }
+
+                        if (string.Equals(args[1], "stop", StringComparison.OrdinalIgnoreCase))
+                        {
+                            _loginOfficialSessionBridgeEnabled = false;
+                            _loginOfficialSessionBridgeConfiguredProcessSelector = null;
+                            _loginOfficialSessionBridgeConfiguredLocalPort = null;
+                            EnsureLoginPacketInboxState(IsLoginRuntimeSceneActive);
+                            return ChatCommandHandler.CommandResult.Ok(DescribeLoginOfficialSessionBridgeStatus());
+                        }
+
+                        return ChatCommandHandler.CommandResult.Error("Usage: /loginpacket session [status|discover <remotePort> [processName|pid] [localPort]|start <listenPort> <serverHost> <serverPort>|startauto <listenPort> <remotePort> [processName|pid] [localPort]|stop]");
+                    }
+
 
 
                     if (!IsLoginRuntimeSceneActive)
@@ -1968,7 +2080,7 @@ namespace HaCreator.MapSimulator
 
                     {
 
-                        return ChatCommandHandler.CommandResult.Error("Usage: /loginpacket <inbox|stream|checkpassword|guestlogin|accountinfo|checkuserlimit|setaccount|eula|checkpin|updatepin|worldinfo|selectworld|selectchar|checkduplicatedid|newcharresult|deletechar|enablespw|vac|recommendworld|latestworld|extracharinfo|checkspw> [...]");
+                        return ChatCommandHandler.CommandResult.Error("Usage: /loginpacket <inbox|session|stream|checkpassword|guestlogin|accountinfo|checkuserlimit|setaccount|eula|checkpin|updatepin|worldinfo|selectworld|selectchar|checkduplicatedid|newcharresult|deletechar|enablespw|vac|recommendworld|latestworld|extracharinfo|checkspw> [...]");
                     }
 
 
@@ -2656,7 +2768,7 @@ namespace HaCreator.MapSimulator
 
                         return ChatCommandHandler.CommandResult.Info(
 
-                            $"{guildBoss.DescribeStatus()}{Environment.NewLine}{_guildBossTransport.LastStatus}");
+                            $"{guildBoss.DescribeStatus()}{Environment.NewLine}{_guildBossTransport.LastStatus}{Environment.NewLine}{_guildBossOfficialSessionBridge.LastStatus}");
 
                     }
 
@@ -2672,7 +2784,7 @@ namespace HaCreator.MapSimulator
 
                             return ChatCommandHandler.CommandResult.Info(
 
-                                $"{guildBoss.DescribeStatus()}{Environment.NewLine}{_guildBossTransport.LastStatus}");
+                                $"{guildBoss.DescribeStatus()}{Environment.NewLine}{_guildBossTransport.LastStatus}{Environment.NewLine}{_guildBossOfficialSessionBridge.LastStatus}");
 
                         }
 
@@ -2715,6 +2827,176 @@ namespace HaCreator.MapSimulator
 
 
                         return ChatCommandHandler.CommandResult.Error("Usage: /guildboss transport [status|start [port]|stop]");
+
+                    }
+
+
+
+                    if (string.Equals(args[0], "session", StringComparison.OrdinalIgnoreCase))
+
+                    {
+
+                        if (args.Length == 1 || string.Equals(args[1], "status", StringComparison.OrdinalIgnoreCase))
+
+                        {
+
+                            return ChatCommandHandler.CommandResult.Info(
+
+                                $"{guildBoss.DescribeStatus()}{Environment.NewLine}{_guildBossOfficialSessionBridge.LastStatus}");
+
+                        }
+
+
+
+                        if (string.Equals(args[1], "discover", StringComparison.OrdinalIgnoreCase))
+
+                        {
+
+                            if (args.Length < 3
+
+                                || !int.TryParse(args[2], out int discoverRemotePort)
+
+                                || discoverRemotePort <= 0)
+
+                            {
+
+                                return ChatCommandHandler.CommandResult.Error("Usage: /guildboss session discover <remotePort> [processName|pid] [localPort]");
+
+                            }
+
+
+
+                            string processSelector = args.Length >= 4 ? args[3] : null;
+
+                            int? localPortFilter = null;
+
+                            if (args.Length >= 5)
+
+                            {
+
+                                if (!int.TryParse(args[4], out int parsedLocalPort) || parsedLocalPort <= 0)
+
+                                {
+
+                                    return ChatCommandHandler.CommandResult.Error("Usage: /guildboss session discover <remotePort> [processName|pid] [localPort]");
+
+                                }
+
+
+
+                                localPortFilter = parsedLocalPort;
+
+                            }
+
+
+
+                            return ChatCommandHandler.CommandResult.Info(
+
+                                _guildBossOfficialSessionBridge.DescribeDiscoveredSessions(discoverRemotePort, processSelector, localPortFilter));
+
+                        }
+
+
+
+                        if (string.Equals(args[1], "start", StringComparison.OrdinalIgnoreCase))
+
+                        {
+
+                            if (args.Length < 5
+
+                                || !int.TryParse(args[2], out int listenPort)
+
+                                || listenPort <= 0
+
+                                || !int.TryParse(args[4], out int remotePort)
+
+                                || remotePort <= 0)
+
+                            {
+
+                                return ChatCommandHandler.CommandResult.Error("Usage: /guildboss session start <listenPort> <serverHost> <serverPort>");
+
+                            }
+
+
+
+                            _guildBossOfficialSessionBridge.Start(listenPort, args[3], remotePort);
+
+                            return ChatCommandHandler.CommandResult.Ok(_guildBossOfficialSessionBridge.LastStatus);
+
+                        }
+
+
+
+                        if (string.Equals(args[1], "startauto", StringComparison.OrdinalIgnoreCase))
+
+                        {
+
+                            if (args.Length < 4
+
+                                || !int.TryParse(args[2], out int autoListenPort)
+
+                                || autoListenPort <= 0
+
+                                || !int.TryParse(args[3], out int autoRemotePort)
+
+                                || autoRemotePort <= 0)
+
+                            {
+
+                                return ChatCommandHandler.CommandResult.Error("Usage: /guildboss session startauto <listenPort> <remotePort> [processName|pid] [localPort]");
+
+                            }
+
+
+
+                            string processSelector = args.Length >= 5 ? args[4] : null;
+
+                            int? localPortFilter = null;
+
+                            if (args.Length >= 6)
+
+                            {
+
+                                if (!int.TryParse(args[5], out int parsedLocalPort) || parsedLocalPort <= 0)
+
+                                {
+
+                                    return ChatCommandHandler.CommandResult.Error("Usage: /guildboss session startauto <listenPort> <remotePort> [processName|pid] [localPort]");
+
+                                }
+
+
+
+                                localPortFilter = parsedLocalPort;
+
+                            }
+
+
+
+                            return _guildBossOfficialSessionBridge.TryStartFromDiscovery(autoListenPort, autoRemotePort, processSelector, localPortFilter, out string startStatus)
+
+                                ? ChatCommandHandler.CommandResult.Ok(startStatus)
+
+                                : ChatCommandHandler.CommandResult.Error(startStatus);
+
+                        }
+
+
+
+                        if (string.Equals(args[1], "stop", StringComparison.OrdinalIgnoreCase))
+
+                        {
+
+                            _guildBossOfficialSessionBridge.Stop();
+
+                            return ChatCommandHandler.CommandResult.Ok(_guildBossOfficialSessionBridge.LastStatus);
+
+                        }
+
+
+
+                        return ChatCommandHandler.CommandResult.Error("Usage: /guildboss session [status|discover <remotePort> [processName|pid] [localPort]|start <listenPort> <serverHost> <serverPort>|startauto <listenPort> <remotePort> [processName|pid] [localPort]|stop]");
 
                     }
 
@@ -2856,7 +3138,7 @@ namespace HaCreator.MapSimulator
 
 
 
-                    return ChatCommandHandler.CommandResult.Error("Usage: /guildboss [status|transport [status|start [port]|stop]|healer <y>|pulley <state>|packet <344|345> <value>|packetraw <hex>]");
+                    return ChatCommandHandler.CommandResult.Error("Usage: /guildboss [status|transport [status|start [port]|stop]|session [status|discover <remotePort> [processName|pid] [localPort]|start <listenPort> <serverHost> <serverPort>|startauto <listenPort> <remotePort> [processName|pid] [localPort]|stop]|healer <y>|pulley <state>|packet <344|345> <value>|packetraw <hex>]");
 
                 });
 
@@ -6451,7 +6733,10 @@ namespace HaCreator.MapSimulator
 
                             field.OpenRoom(playerOneName: playerOne, playerTwoName: playerTwo, rows: rows, columns: columns);
 
-                            ShowMiniRoomWindow();
+                            if (!TryShowMiniRoomWindow(out string restrictionMessage))
+                            {
+                                return ChatCommandHandler.CommandResult.Error(restrictionMessage ?? "Mini-room interactions are blocked in this map.");
+                            }
 
                             return ChatCommandHandler.CommandResult.Ok(field.DescribeStatus());
 
@@ -7123,7 +7408,10 @@ namespace HaCreator.MapSimulator
 
 
 
-                        ShowSocialRoomWindow(kind);
+                        if (!TryShowSocialRoomWindow(kind, out string packetRoomRestriction))
+                        {
+                            return ChatCommandHandler.CommandResult.Error(packetRoomRestriction ?? "This social-room interaction is blocked in this map.");
+                        }
 
                         return ChatCommandHandler.CommandResult.Ok(packetMessage);
 
@@ -7185,7 +7473,10 @@ namespace HaCreator.MapSimulator
 
 
 
-                        ShowSocialRoomWindow(kind);
+                        if (!TryShowSocialRoomWindow(kind, out string recvRoomRestriction))
+                        {
+                            return ChatCommandHandler.CommandResult.Error(recvRoomRestriction ?? "This social-room interaction is blocked in this map.");
+                        }
 
                         return ChatCommandHandler.CommandResult.Ok(recvMessage);
 
@@ -7213,7 +7504,10 @@ namespace HaCreator.MapSimulator
 
                                 case "open":
 
-                                    ShowSocialRoomWindow(kind);
+                                    if (!TryShowSocialRoomWindow(kind, out string miniRoomRestriction))
+                                    {
+                                        return ChatCommandHandler.CommandResult.Error(miniRoomRestriction ?? "Mini-room interactions are blocked in this map.");
+                                    }
 
                                     return ChatCommandHandler.CommandResult.Ok("Mini-room window opened.");
 
@@ -7351,7 +7645,10 @@ namespace HaCreator.MapSimulator
 
                                 case "open":
 
-                                    ShowSocialRoomWindow(kind);
+                                    if (!TryShowSocialRoomWindow(kind, out string personalShopRestriction))
+                                    {
+                                        return ChatCommandHandler.CommandResult.Error(personalShopRestriction ?? "Shop-room interactions are blocked in this map.");
+                                    }
 
                                     return ChatCommandHandler.CommandResult.Ok("Personal-shop window opened.");
 
@@ -7465,7 +7762,10 @@ namespace HaCreator.MapSimulator
 
                                 case "open":
 
-                                    ShowSocialRoomWindow(kind);
+                                    if (!TryShowSocialRoomWindow(kind, out string entrustedShopRestriction))
+                                    {
+                                        return ChatCommandHandler.CommandResult.Error(entrustedShopRestriction ?? "Shop-room interactions are blocked in this map.");
+                                    }
 
                                     return ChatCommandHandler.CommandResult.Ok("Entrusted-shop window opened.");
 
@@ -9597,6 +9897,12 @@ namespace HaCreator.MapSimulator
 
                 {
 
+                    string petRestrictionMessage = GetPetFieldRestrictionMessage();
+                    if (!string.IsNullOrWhiteSpace(petRestrictionMessage))
+                    {
+                        return ChatCommandHandler.CommandResult.Error(petRestrictionMessage);
+                    }
+
                     if (_playerManager?.Pets?.ActivePets == null || _playerManager.Pets.ActivePets.Count == 0)
 
                     {
@@ -9715,6 +10021,12 @@ namespace HaCreator.MapSimulator
 
                 {
 
+                    string petRestrictionMessage = GetPetFieldRestrictionMessage();
+                    if (!string.IsNullOrWhiteSpace(petRestrictionMessage))
+                    {
+                        return ChatCommandHandler.CommandResult.Error(petRestrictionMessage);
+                    }
+
                     if (_playerManager?.Pets?.ActivePets == null || _playerManager.Pets.ActivePets.Count == 0)
 
                     {
@@ -9823,6 +10135,12 @@ namespace HaCreator.MapSimulator
 
                 {
 
+                    string petRestrictionMessage = GetPetFieldRestrictionMessage();
+                    if (!string.IsNullOrWhiteSpace(petRestrictionMessage))
+                    {
+                        return ChatCommandHandler.CommandResult.Error(petRestrictionMessage);
+                    }
+
                     if (_playerManager?.Pets?.ActivePets == null || _playerManager.Pets.ActivePets.Count == 0)
 
                     {
@@ -9916,6 +10234,12 @@ namespace HaCreator.MapSimulator
                 args =>
 
                 {
+
+                    string petRestrictionMessage = GetPetFieldRestrictionMessage();
+                    if (!string.IsNullOrWhiteSpace(petRestrictionMessage))
+                    {
+                        return ChatCommandHandler.CommandResult.Error(petRestrictionMessage);
+                    }
 
                     if (!TryResolvePetCommandSlot(args, 0, out int petSlotIndex, out string slotError))
 
@@ -10308,7 +10632,7 @@ namespace HaCreator.MapSimulator
 
                 "Inspect or drive packet-authored field help, quest timers, field-specific data, and object-state flips",
 
-                "/fieldstate [status|desc <index>|questtime <questId> <seconds>|questclear|objectstate <tag> <on|off|0|1>|fieldspecific <payloadhex=..|payloadb64=..>|wrappervalue <huntingadballoon|escortresult> <key> <value>|packet <149|162|166|167|169|174|178> [payloadhex=..|payloadb64=..]|packetraw <149|162|166|167|169|174|178> [hex]]",
+                "/fieldstate [status|wrapperstatus|desc <index>|questtime <questId> <seconds>|questclear|objectstate <tag> <on|off|0|1>|fieldspecific <payloadhex=..|payloadb64=..>|wrappervalue <huntingadballoon|escortresult> <key> <value>|packet <149|162|166|167|169|174|178> [payloadhex=..|payloadb64=..]|packetraw <149|162|166|167|169|174|178> [hex]]",
 
                 args =>
 
@@ -10320,7 +10644,8 @@ namespace HaCreator.MapSimulator
 
                     {
 
-                        return ChatCommandHandler.CommandResult.Info(_packetFieldStateRuntime.DescribeStatus(currTickCount));
+                        string wrapperStatus = DescribeClientOwnedFieldWrapperStatus();
+                        return ChatCommandHandler.CommandResult.Info($"{_packetFieldStateRuntime.DescribeStatus(currTickCount)}{Environment.NewLine}{wrapperStatus}");
 
                     }
 
@@ -10349,6 +10674,10 @@ namespace HaCreator.MapSimulator
                                 ? ChatCommandHandler.CommandResult.Ok(descMessage)
 
                                 : ChatCommandHandler.CommandResult.Error(descMessage);
+
+                        case "wrapperstatus":
+
+                            return ChatCommandHandler.CommandResult.Info(DescribeClientOwnedFieldWrapperStatus());
 
 
 
@@ -10550,7 +10879,7 @@ namespace HaCreator.MapSimulator
 
                         default:
 
-                            return ChatCommandHandler.CommandResult.Error("Usage: /fieldstate [status|desc <index>|questtime <questId> <seconds>|questclear|objectstate <tag> <on|off|0|1>|fieldspecific <payloadhex=..|payloadb64=..>|wrappervalue <huntingadballoon|escortresult> <key> <value>|packet <149|162|166|167|169|174|178> [payloadhex=..|payloadb64=..]|packetraw <149|162|166|167|169|174|178> [hex]]");
+                            return ChatCommandHandler.CommandResult.Error("Usage: /fieldstate [status|wrapperstatus|desc <index>|questtime <questId> <seconds>|questclear|objectstate <tag> <on|off|0|1>|fieldspecific <payloadhex=..|payloadb64=..>|wrappervalue <huntingadballoon|escortresult> <key> <value>|packet <149|162|166|167|169|174|178> [payloadhex=..|payloadb64=..]|packetraw <149|162|166|167|169|174|178> [hex]]");
 
                     }
 

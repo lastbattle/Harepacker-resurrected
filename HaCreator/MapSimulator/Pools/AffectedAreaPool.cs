@@ -383,7 +383,11 @@ namespace HaCreator.MapSimulator.Pools
             string itemDescription = itemId > 0 && InventoryItemMetadataResolver.TryResolveItemDescription(itemId, out string resolvedDescription)
                 ? resolvedDescription
                 : null;
-            return AreaBuffItemMetadataResolver.ResolveDurationMs(itemProperty, itemDescription, LoadLinkedAreaBuffItemProperty);
+            return AreaBuffItemMetadataResolver.ResolveDurationMs(
+                itemProperty,
+                itemDescription,
+                LoadLinkedAreaBuffItemProperty,
+                LoadLinkedAreaBuffItemDescription);
         }
 
         private static int ResolveStartTime(int currentTime, short startDelayUnits)
@@ -542,6 +546,37 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             return LoadItemProperty(fallbackItemId);
+        }
+
+        private static string LoadLinkedAreaBuffItemDescription(string itemInfoPath)
+        {
+            if (!TryResolveLinkedItemId(itemInfoPath, out int itemId))
+            {
+                return null;
+            }
+
+            return InventoryItemMetadataResolver.TryResolveItemDescription(itemId, out string description)
+                ? description
+                : null;
+        }
+
+        private static bool TryResolveLinkedItemId(string itemInfoPath, out int itemId)
+        {
+            itemId = 0;
+            string normalizedPath = itemInfoPath?.Trim().Replace('\\', '/');
+            if (string.IsNullOrWhiteSpace(normalizedPath))
+            {
+                return false;
+            }
+
+            string[] segments = normalizedPath.Split(new[] { '/' }, StringSplitOptions.RemoveEmptyEntries);
+            string candidate = segments.Length > 0 ? segments[^1] : normalizedPath;
+            if (!TryResolveLinkedItemNodeName(candidate, out string itemNodeName))
+            {
+                return false;
+            }
+
+            return int.TryParse(itemNodeName, out itemId) && itemId > 0;
         }
 
         private static bool TryResolveLinkedItemNodeName(string value, out string itemNodeName)

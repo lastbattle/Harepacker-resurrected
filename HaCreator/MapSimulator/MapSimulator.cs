@@ -632,6 +632,7 @@ namespace HaCreator.MapSimulator
         private readonly Dictionary<int, int> _monsterCarnivalGuardianReactorIndexToSlot = new();
 
         private readonly GuildBossPacketTransportManager _guildBossTransport = new GuildBossPacketTransportManager();
+        private readonly GuildBossOfficialSessionBridgeManager _guildBossOfficialSessionBridge = new GuildBossOfficialSessionBridgeManager();
 
         private readonly MassacrePacketInboxManager _massacrePacketInbox = new MassacrePacketInboxManager();
 
@@ -701,6 +702,7 @@ namespace HaCreator.MapSimulator
         private string _loginOfficialSessionBridgeConfiguredRemoteHost = "127.0.0.1";
         private int _loginOfficialSessionBridgeConfiguredRemotePort;
         private string _loginOfficialSessionBridgeConfiguredProcessSelector;
+        private int? _loginOfficialSessionBridgeConfiguredLocalPort;
 
 
 
@@ -818,6 +820,8 @@ namespace HaCreator.MapSimulator
 
         private const int SKILL_COOLDOWN_BLOCKED_MESSAGE_COOLDOWN_MS = 600;
 
+        private const int REMOTE_PLAYER_PICKUP_INTERVAL_MS = 220;
+
         private const int PICKUP_REMOTE_NOTICE_SUPPRESSION_MS = 900;
 
         private const string SkillCooldownNoticeSoundKey = "SkillCooldownNotice";
@@ -863,6 +867,8 @@ namespace HaCreator.MapSimulator
         private string _lastFieldRestrictionMessage = null;
 
         private readonly Dictionary<int, int> _lastSkillCooldownBlockedMessageTimes = new();
+
+        private readonly Dictionary<int, int> _lastRemotePlayerPickupTimes = new();
 
         private readonly Dictionary<long, int> _recentPickupRemoteNoticeTimes = new();
 
@@ -2046,11 +2052,13 @@ namespace HaCreator.MapSimulator
 
             CharacterBuild activeBuild = GetActiveMapTransferCharacterBuild();
 
+            MapTransferDestinationBook destinationBook = GetCurrentMapTransferDestinationBook();
+
             int savedCapacity = GetMapTransferSavedSlotCapacity();
 
             int selectedSavedSlotIndex = _mapTransferEditDestination?.SavedSlotIndex ?? selectedEntry?.SavedSlotIndex ?? -1;
 
-            int existingSlotIndex = _mapTransferDestinations.FindSlot(activeBuild, targetMapId);
+            int existingSlotIndex = _mapTransferDestinations.FindSlot(activeBuild, targetMapId, destinationBook);
 
 
 
@@ -2092,7 +2100,7 @@ namespace HaCreator.MapSimulator
 
             {
 
-                selectedSavedSlotIndex = _mapTransferDestinations.FindFirstEmptySlot(activeBuild, savedCapacity);
+                selectedSavedSlotIndex = _mapTransferDestinations.FindFirstEmptySlot(activeBuild, savedCapacity, destinationBook);
 
                 if (selectedSavedSlotIndex < 0)
 
@@ -2138,7 +2146,9 @@ namespace HaCreator.MapSimulator
 
                 },
 
-                savedCapacity);
+                savedCapacity,
+
+                destinationBook);
 
 
 
@@ -2182,7 +2192,7 @@ namespace HaCreator.MapSimulator
 
 
 
-            _mapTransferDestinations.ClearSlot(GetActiveMapTransferCharacterBuild(), destination.SavedSlotIndex);
+            _mapTransferDestinations.ClearSlot(GetActiveMapTransferCharacterBuild(), destination.SavedSlotIndex, GetCurrentMapTransferDestinationBook());
 
             if (_mapTransferEditDestination?.SavedSlotIndex == destination.SavedSlotIndex)
 
@@ -2514,7 +2524,23 @@ namespace HaCreator.MapSimulator
 
         {
 
-            return _mapTransferDestinations.GetDestinations(GetActiveMapTransferCharacterBuild());
+            return _mapTransferDestinations.GetDestinations(GetActiveMapTransferCharacterBuild(), GetCurrentMapTransferDestinationBook());
+
+        }
+
+
+
+        private MapTransferDestinationBook GetCurrentMapTransferDestinationBook()
+
+        {
+
+            return uiWindowManager?.GetWindow(MapSimulatorWindowNames.MapTransfer) is MapTransferUI mapTransferWindow &&
+
+                   mapTransferWindow.UsesContinentDestinationBook
+
+                ? MapTransferDestinationBook.Continent
+
+                : MapTransferDestinationBook.Regular;
 
         }
 
@@ -4264,7 +4290,12 @@ namespace HaCreator.MapSimulator
         {
             if (_audio != null)
             {
-                _audio.Volume = _utilityBgmMuted ? 0f : 0.5f;
+                _audio.Volume = (_utilityBgmMuted || IsPacketOwnedRadioPlaying()) ? 0f : 0.5f;
+            }
+
+            if (_packetOwnedRadioAudio != null)
+            {
+                _packetOwnedRadioAudio.Volume = _utilityBgmMuted ? 0f : 0.5f;
             }
 
             if (_soundManager != null)
@@ -4383,6 +4414,8 @@ namespace HaCreator.MapSimulator
             userInfoWindow.TradingRoomRequested = HandleCharacterInfoTradingRoomRequest;
 
             userInfoWindow.FamilyRequested = HandleCharacterInfoFamilyRequest;
+
+            userInfoWindow.PopularityRequested = HandleCharacterInfoPopularityRequest;
 
             userInfoWindow.BookCollectionRequested = () => ShowWindowWithInheritedDirectionModeOwner(MapSimulatorWindowNames.BookCollection);
 
@@ -4664,10 +4697,7 @@ namespace HaCreator.MapSimulator
         private void ShowMiniRoomWindow()
 
         {
-
-            WireMiniRoomWindowData();
-
-            ShowDirectionModeOwnedWindow(MapSimulatorWindowNames.MiniRoom);
+            TryShowMiniRoomWindow(out _);
 
         }
 
@@ -4833,34 +4863,7 @@ namespace HaCreator.MapSimulator
 
         private void ShowSocialRoomWindow(SocialRoomKind kind)
         {
-
-            string windowName = GetSocialRoomWindowName(kind);
-
-            if (string.IsNullOrWhiteSpace(windowName))
-
-            {
-
-                return;
-
-            }
-
-
-
-            if (kind == SocialRoomKind.MiniRoom)
-
-            {
-
-                ShowMiniRoomWindow();
-
-                return;
-
-            }
-
-
-
-            WireSocialRoomWindow(windowName, uiWindowManager?.InventoryWindow as InventoryUI);
-
-            ShowDirectionModeOwnedWindow(windowName);
+            TryShowSocialRoomWindow(kind, out _);
 
         }
 
@@ -4907,6 +4910,7 @@ namespace HaCreator.MapSimulator
                 case EquipUIBigBang equipWindowBigBang:
 
                     equipWindowBigBang.ItemUpgradeRequested = OpenItemUpgradeWindowForEquipment;
+                    equipWindowBigBang.EquipmentChangeRequested = HandleEquipmentChangeRequest;
 
                     equipWindowBigBang.EquipmentEquipGuard = GetBattlefieldEquipRestrictionMessage;
 
@@ -5928,7 +5932,7 @@ namespace HaCreator.MapSimulator
                 : 0;
         }
 
-        private NpcItem CreateRepairDurabilityNpcPreview(int npcTemplateId)
+        private NpcItem CreateNpcPreview(int npcTemplateId, bool includeTooltips = false)
         {
             if (npcTemplateId <= 0 || GraphicsDevice == null)
             {
@@ -5956,9 +5960,14 @@ namespace HaCreator.MapSimulator
                 null,
                 null);
             var usedProps = new ConcurrentBag<WzObject>();
-            NpcItem npcPreview = LifeLoader.CreateNpcFromProperty(_texturePool, npcInstance, UserScreenScaleFactor, GraphicsDevice, usedProps, includeTooltips: false);
+            NpcItem npcPreview = LifeLoader.CreateNpcFromProperty(_texturePool, npcInstance, UserScreenScaleFactor, GraphicsDevice, usedProps, includeTooltips);
             npcPreview?.SetAction(AnimationKeys.Stand);
             return npcPreview;
+        }
+
+        private NpcItem CreateRepairDurabilityNpcPreview(int npcTemplateId)
+        {
+            return CreateNpcPreview(npcTemplateId, includeTooltips: false);
         }
 
         private void ProcessPendingRepairDurabilityRequest()
@@ -16336,6 +16345,8 @@ namespace HaCreator.MapSimulator
 
                 () => _frameActiveMobs);
 
+            _mobAttackSystem.SetPlayerHitboxAccessor(() => _playerManager?.GetPlayerHitbox() ?? Rectangle.Empty);
+
             _mobAttackSystem.SetPlayerGroundedAccessor(() => _playerManager?.IsPlayerOnGround() ?? true);
 
         }
@@ -16665,6 +16676,7 @@ namespace HaCreator.MapSimulator
         protected override void UnloadContent()
 
         {
+            ResetPacketOwnedRadioSchedule();
 
             if (_audio != null)
 
@@ -16688,6 +16700,8 @@ namespace HaCreator.MapSimulator
             _monsterCarnivalOfficialSessionBridge.Dispose();
 
             _monsterCarnivalPacketInbox.Dispose();
+            _guildBossTransport.Dispose();
+            _guildBossOfficialSessionBridge.Dispose();
 
             _dojoPacketInbox.Dispose();
             _transportPacketInbox.Dispose();
@@ -18957,6 +18971,7 @@ namespace HaCreator.MapSimulator
             // Update drop pool for physics and expiration (frame-rate independent)
 
             _dropPool?.Update(tickCount, deltaSecondsLocal);
+            UpdateRemotePlayerDropPickups(tickCount);
 
 
 
@@ -18988,6 +19003,39 @@ namespace HaCreator.MapSimulator
 
             _skillCooldownNoticeUI?.Update(tickCount, deltaSecondsLocal);
 
+        }
+
+        private void UpdateRemotePlayerDropPickups(int currentTime)
+        {
+            if (_dropPool == null || _remoteUserPool.Count == 0)
+            {
+                return;
+            }
+
+            foreach (RemoteUserActor actor in _remoteUserPool.Actors)
+            {
+                if (actor == null || !actor.IsVisibleInWorld || actor.CharacterId <= 0)
+                {
+                    continue;
+                }
+
+                if (_lastRemotePlayerPickupTimes.TryGetValue(actor.CharacterId, out int lastPickupTime)
+                    && currentTime - lastPickupTime < REMOTE_PLAYER_PICKUP_INTERVAL_MS)
+                {
+                    continue;
+                }
+
+                DropItem pickedDrop = _dropPool.TryPickUpDropByRemotePlayer(
+                    actor.CharacterId,
+                    actor.Position.X,
+                    actor.Position.Y,
+                    currentTime,
+                    actor.Name);
+                if (pickedDrop != null)
+                {
+                    _lastRemotePlayerPickupTimes[actor.CharacterId] = currentTime;
+                }
+            }
         }
 
 
@@ -20029,11 +20077,11 @@ namespace HaCreator.MapSimulator
 
 
 
-            WzVectorProperty lt = selectedLevel["lt"] as WzVectorProperty;
+            Point? lt = ResolveMobSkillInheritedVector(levelNode, level, "lt");
 
-            WzVectorProperty rb = selectedLevel["rb"] as WzVectorProperty;
+            Point? rb = ResolveMobSkillInheritedVector(levelNode, level, "rb");
 
-            int durationSeconds = MapleLib.WzLib.WzStructure.InfoTool.GetInt(selectedLevel["time"], 0);
+            int durationSeconds = ResolveMobSkillInheritedInt(levelNode, level, "time");
 
 
 
@@ -20043,31 +20091,31 @@ namespace HaCreator.MapSimulator
 
                 X = ResolveMobSkillInheritedInt(levelNode, level, "x"),
 
-                Y = MapleLib.WzLib.WzStructure.InfoTool.GetInt(selectedLevel["y"], 0),
+                Y = ResolveMobSkillInheritedInt(levelNode, level, "y"),
 
                 Hp = Math.Max(
 
-                    MapleLib.WzLib.WzStructure.InfoTool.GetInt(selectedLevel["hp"], 0),
+                    ResolveMobSkillInheritedInt(levelNode, level, "hp"),
 
-                    MapleLib.WzLib.WzStructure.InfoTool.GetInt(selectedLevel["HP"], 0)),
+                    ResolveMobSkillInheritedInt(levelNode, level, "HP")),
 
                 DurationMs = Math.Max(0, durationSeconds) * 1000,
 
                 IntervalMs = Math.Max(
 
-                    MapleLib.WzLib.WzStructure.InfoTool.GetInt(selectedLevel["interval"], 0),
+                    ResolveMobSkillInheritedInt(levelNode, level, "interval"),
 
-                    MapleLib.WzLib.WzStructure.InfoTool.GetInt(selectedLevel["inteval"], 0)) * 1000,
+                    ResolveMobSkillInheritedInt(levelNode, level, "inteval")) * 1000,
 
-                PropPercent = MapleLib.WzLib.WzStructure.InfoTool.GetInt(selectedLevel["prop"], 0),
+                PropPercent = ResolveMobSkillInheritedInt(levelNode, level, "prop"),
 
-                Count = MapleLib.WzLib.WzStructure.InfoTool.GetInt(selectedLevel["count"], 0),
+                Count = ResolveMobSkillInheritedInt(levelNode, level, "count"),
 
-                TargetMobType = (MobSkillTargetMobType)MapleLib.WzLib.WzStructure.InfoTool.GetInt(selectedLevel["targetMobType"], 0),
+                TargetMobType = (MobSkillTargetMobType)ResolveMobSkillInheritedInt(levelNode, level, "targetMobType"),
 
-                Lt = lt != null ? new Point(lt.X.Value, lt.Y.Value) : null,
+                Lt = lt,
 
-                Rb = rb != null ? new Point(rb.X.Value, rb.Y.Value) : null
+                Rb = rb
 
             };
 
@@ -20175,6 +20223,87 @@ namespace HaCreator.MapSimulator
 
 
             return TryReadMobSkillLevelInt(levelNode, 1, propertyName, out value);
+
+        }
+
+        private static Point? ResolveMobSkillInheritedVector(WzSubProperty levelNode, int level, string propertyName)
+
+        {
+
+            if (TryGetMobSkillLevelVector(levelNode, level, propertyName, out Point point))
+
+            {
+
+                return point;
+
+            }
+
+
+
+            return null;
+
+        }
+
+        private static bool TryGetMobSkillLevelVector(WzSubProperty levelNode, int level, string propertyName, out Point value)
+
+        {
+
+            value = Point.Zero;
+            if (levelNode == null || string.IsNullOrWhiteSpace(propertyName))
+
+            {
+
+                return false;
+
+            }
+
+
+
+            if (TryReadMobSkillLevelVector(levelNode, level, propertyName, out value))
+
+            {
+
+                return true;
+
+            }
+
+
+
+            var fallbackLevels = new List<int>();
+            foreach (WzImageProperty child in levelNode.WzProperties)
+
+            {
+
+                if (int.TryParse(child.Name, out int candidateLevel) && candidateLevel < level)
+
+                {
+
+                    fallbackLevels.Add(candidateLevel);
+
+                }
+
+            }
+
+
+
+            fallbackLevels.Sort((left, right) => right.CompareTo(left));
+            foreach (int candidateLevel in fallbackLevels)
+
+            {
+
+                if (TryReadMobSkillLevelVector(levelNode, candidateLevel, propertyName, out value))
+
+                {
+
+                    return true;
+
+                }
+
+            }
+
+
+
+            return TryReadMobSkillLevelVector(levelNode, 1, propertyName, out value);
 
         }
 
@@ -20627,7 +20756,7 @@ namespace HaCreator.MapSimulator
 
             string statusMessage = updatedLevel > previousLevel
 
-                ? $"Created {ResolvePickupItemName(result.OutputItemId)} x{result.OutputQuantity}. {updated.GetFamilyLabel(result.Family)} mastery advanced to {updatedLevel}."
+                ? $"Created {ResolvePickupItemName(result.CraftedItemId)} x{result.CraftedQuantity}. {updated.GetFamilyLabel(result.Family)} mastery advanced to {updatedLevel}."
 
                 : null;
 
@@ -27015,7 +27144,8 @@ namespace HaCreator.MapSimulator
 
 
 
-            bool allowLocalPreview = !_guildBossTransport.HasConnectedClients;
+            bool allowLocalPreview = !_guildBossOfficialSessionBridge.HasConnectedSession
+                && !_guildBossTransport.HasConnectedClients;
 
             if (!guildBoss.TryHandleLocalPulleyAttack(attackHitbox, currentTime, allowLocalPreview, out string message))
 
@@ -27031,7 +27161,38 @@ namespace HaCreator.MapSimulator
 
             {
 
-                if (_guildBossTransport.TrySendPulleyRequest(request, out string transportStatus))
+                if (_guildBossOfficialSessionBridge.HasConnectedSession)
+
+                {
+
+                    if (_guildBossOfficialSessionBridge.TrySendPulleyRequest(request, out string sessionStatus))
+
+                    {
+
+                        message = $"{message} Waiting for live session reply.";
+
+                    }
+
+                    else if (_guildBossTransport.HasConnectedClients
+                        && _guildBossTransport.TrySendPulleyRequest(request, out string transportStatus))
+
+                    {
+
+                        message = $"{message} Waiting for transport reply.";
+
+                    }
+
+                    else
+
+                    {
+
+                        message = sessionStatus;
+
+                    }
+
+                }
+
+                else if (_guildBossTransport.TrySendPulleyRequest(request, out string transportStatus))
 
                 {
 
@@ -29337,6 +29498,8 @@ namespace HaCreator.MapSimulator
 
             _playerManager.Skills.SetAdditionalStateRestrictionMessageProvider(GetPlayerSkillStateRestrictionMessage);
             _playerManager.Skills.SetCurrentMapInfoProvider(() => _mapBoard?.MapInfo);
+            _playerManager.Skills.SetExternalFriendlySupportSummonsProvider(
+                () => _summonedPool.GetSupportSummonsAffectingLocalPlayer(IsAffectedAreaOwnerPartyMember));
 
             _playerManager.Skills.SetFieldSkillRestrictionEvaluator(
 
@@ -29731,6 +29894,13 @@ namespace HaCreator.MapSimulator
                 classCompetitionWindow.SetFont(_fontChat);
                 classCompetitionWindow.SetContentProvider(BuildClassCompetitionPageLines);
                 classCompetitionWindow.SetFooterProvider(BuildClassCompetitionFooter);
+            }
+
+            if (uiWindowManager.GetWindow(MapSimulatorWindowNames.Radio) is UtilityPanelWindow radioWindow)
+            {
+                radioWindow.SetFont(_fontChat);
+                radioWindow.SetContentProvider(BuildPacketOwnedRadioWindowLines);
+                radioWindow.SetFooterProvider(BuildPacketOwnedRadioWindowFooter);
             }
 
 
@@ -30955,6 +31125,7 @@ namespace HaCreator.MapSimulator
             _fieldRuleRuntime = new FieldRuleRuntime(_mapBoard?.MapInfo, HasInventoryItem, includeFirstUserEnterScript);
 
             ApplyAmbientFieldWeather(currentTime);
+            ApplyFieldRuntimeInteractionRestrictions();
 
 
 
@@ -35370,6 +35541,36 @@ namespace HaCreator.MapSimulator
 
         }
 
+        private static bool TryReadMobSkillLevelVector(WzSubProperty levelNode, int level, string propertyName, out Point value)
+
+        {
+
+            value = Point.Zero;
+            if (levelNode?[level.ToString()] is not WzSubProperty levelProperty)
+
+            {
+
+                return false;
+
+            }
+
+
+
+            if (levelProperty[propertyName] is not WzVectorProperty vectorProperty)
+
+            {
+
+                return false;
+
+            }
+
+
+
+            value = new Point(vectorProperty.X.Value, vectorProperty.Y.Value);
+            return true;
+
+        }
+
 
 
         private void SyncMassacrePacketInboxState()
@@ -35461,6 +35662,7 @@ namespace HaCreator.MapSimulator
             {
 
                 _guildBossTransport.Stop();
+                _guildBossOfficialSessionBridge.Stop();
 
             }
 
@@ -37023,6 +37225,44 @@ namespace HaCreator.MapSimulator
 
             GuildBossField field = _specialFieldRuntime.SpecialEffects.GuildBoss;
 
+            while (_guildBossOfficialSessionBridge.TryDequeue(out GuildBossPacketInboxMessage bridgeMessage))
+
+            {
+
+                if (!field.IsActive)
+
+                {
+
+                    _guildBossOfficialSessionBridge.RecordDispatchResult(
+
+                        bridgeMessage.Source,
+
+                        bridgeMessage.PacketType,
+
+                        success: false,
+
+                        message: "runtime inactive");
+
+                    continue;
+
+                }
+
+
+
+                bool bridgeApplied = field.TryApplyPacket(bridgeMessage.PacketType, bridgeMessage.Payload, currentTickCount, out string bridgeErrorMessage);
+
+                _guildBossOfficialSessionBridge.RecordDispatchResult(
+
+                    bridgeMessage.Source,
+
+                    bridgeMessage.PacketType,
+
+                    bridgeApplied,
+
+                    bridgeApplied ? field.DescribeStatus() : bridgeErrorMessage);
+
+            }
+
             while (_guildBossTransport.TryDequeue(out GuildBossPacketInboxMessage message))
 
             {
@@ -38178,6 +38418,7 @@ namespace HaCreator.MapSimulator
                     _loginOfficialSessionBridgeConfiguredListenPort,
                     _loginOfficialSessionBridgeConfiguredRemotePort,
                     _loginOfficialSessionBridgeConfiguredProcessSelector,
+                    _loginOfficialSessionBridgeConfiguredLocalPort,
                     out _);
                 return;
 
@@ -38244,7 +38485,9 @@ namespace HaCreator.MapSimulator
             string enabledText = _loginOfficialSessionBridgeEnabled ? "enabled" : "disabled";
             string modeText = _loginOfficialSessionBridgeUseDiscovery ? "auto-discovery" : "direct proxy";
             string configuredTarget = _loginOfficialSessionBridgeUseDiscovery
-                ? $"discover remote port {_loginOfficialSessionBridgeConfiguredRemotePort}"
+                ? _loginOfficialSessionBridgeConfiguredLocalPort.HasValue
+                    ? $"discover remote port {_loginOfficialSessionBridgeConfiguredRemotePort} with local port {_loginOfficialSessionBridgeConfiguredLocalPort.Value}"
+                    : $"discover remote port {_loginOfficialSessionBridgeConfiguredRemotePort}"
                 : $"{_loginOfficialSessionBridgeConfiguredRemoteHost}:{_loginOfficialSessionBridgeConfiguredRemotePort}";
             string processText = string.IsNullOrWhiteSpace(_loginOfficialSessionBridgeConfiguredProcessSelector)
                 ? string.Empty

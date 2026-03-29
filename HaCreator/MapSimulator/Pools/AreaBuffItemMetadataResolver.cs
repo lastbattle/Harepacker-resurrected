@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Globalization;
 using System.Text.RegularExpressions;
 using MapleLib.WzLib;
@@ -9,13 +10,29 @@ namespace HaCreator.MapSimulator.Pools
     internal static class AreaBuffItemMetadataResolver
     {
         private static readonly Regex DurationRegex = new(
-            @"(?<value>\d+)\s*(?<unit>hours?|hrs?|hr|minutes?|mins?|min|seconds?|secs?|sec)\b",
+            @"(?<value>\d+)\s*(?<unit>days?|hours?|hrs?|hr|minutes?|mins?|min|seconds?|secs?|sec)\b",
             RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled);
 
         public static int ResolveDurationMs(
             WzSubProperty itemProperty,
             string itemDescription = null,
-            Func<string, WzSubProperty> linkedItemPropertyLoader = null)
+            Func<string, WzSubProperty> linkedItemPropertyLoader = null,
+            Func<string, string> linkedItemDescriptionLoader = null)
+        {
+            return ResolveDurationMsCore(
+                itemProperty,
+                itemDescription,
+                linkedItemPropertyLoader,
+                linkedItemDescriptionLoader,
+                new HashSet<string>(StringComparer.OrdinalIgnoreCase));
+        }
+
+        private static int ResolveDurationMsCore(
+            WzSubProperty itemProperty,
+            string itemDescription,
+            Func<string, WzSubProperty> linkedItemPropertyLoader,
+            Func<string, string> linkedItemDescriptionLoader,
+            HashSet<string> visitedLinkedPaths)
         {
             int durationSeconds = ResolveDurationSeconds(itemProperty);
             if (durationSeconds > 0)
@@ -23,13 +40,20 @@ namespace HaCreator.MapSimulator.Pools
                 return checked(durationSeconds * 1000);
             }
 
-            string linkedPath = GetString(itemProperty?["info"] as WzSubProperty, "path");
-            if (!string.IsNullOrWhiteSpace(linkedPath) && linkedItemPropertyLoader != null)
+            string linkedPath = NormalizeLinkedPath(GetString(itemProperty?["info"] as WzSubProperty, "path"));
+            if (!string.IsNullOrWhiteSpace(linkedPath)
+                && linkedItemPropertyLoader != null
+                && visitedLinkedPaths.Add(linkedPath))
             {
-                durationSeconds = ResolveDurationSeconds(linkedItemPropertyLoader(linkedPath.Trim()));
-                if (durationSeconds > 0)
+                int linkedDurationMs = ResolveDurationMsCore(
+                    linkedItemPropertyLoader(linkedPath),
+                    linkedItemDescriptionLoader?.Invoke(linkedPath),
+                    linkedItemPropertyLoader,
+                    linkedItemDescriptionLoader,
+                    visitedLinkedPaths);
+                if (linkedDurationMs > 0)
                 {
-                    return checked(durationSeconds * 1000);
+                    return linkedDurationMs;
                 }
             }
 
@@ -53,6 +77,11 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             string unit = match.Groups["unit"].Value;
+            if (unit.StartsWith("day", StringComparison.OrdinalIgnoreCase))
+            {
+                return checked(value * 86400);
+            }
+
             if (unit.StartsWith("hour", StringComparison.OrdinalIgnoreCase) || unit.StartsWith("hr", StringComparison.OrdinalIgnoreCase))
             {
                 return checked(value * 3600);
@@ -107,6 +136,13 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             return (property[childName] as WzStringProperty)?.Value;
+        }
+
+        private static string NormalizeLinkedPath(string linkedPath)
+        {
+            return string.IsNullOrWhiteSpace(linkedPath)
+                ? null
+                : linkedPath.Trim().Replace('\\', '/');
         }
     }
 }

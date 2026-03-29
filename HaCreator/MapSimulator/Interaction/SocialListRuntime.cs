@@ -163,6 +163,20 @@ namespace HaCreator.MapSimulator.Interaction
             return entries.Any(entry => string.Equals(entry.Name, entryName, StringComparison.OrdinalIgnoreCase));
         }
 
+        internal bool IsBlockedFriend(string entryName)
+        {
+            if (string.IsNullOrWhiteSpace(entryName)
+                || !_entriesByTab.TryGetValue(SocialListTab.Friend, out List<SocialEntryState> entries)
+                || entries == null)
+            {
+                return false;
+            }
+
+            return entries.Any(entry =>
+                entry.IsBlocked
+                && string.Equals(entry.Name, entryName, StringComparison.OrdinalIgnoreCase));
+        }
+
         internal void SelectTab(SocialListTab tab)
         {
             _currentTab = tab;

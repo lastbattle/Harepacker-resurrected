@@ -238,13 +238,16 @@ namespace HaCreator.MapSimulator.UI
         public Action<CharacterEquipSlot> ItemUpgradeRequested { get; set; }
         public Func<int, string> EquipmentEquipGuard { get; set; }
         public Action<string> EquipmentEquipBlocked { get; set; }
+        public Func<EquipmentChangeRequest, EquipmentChangeResult> EquipmentChangeRequested { get; set; }
         public override CharacterBuild CharacterBuild
         {
             get => _characterBuild;
             set => _characterBuild = value;
         }
         public bool IsDraggingItem => _isDraggingItem;
+        public bool HasDraggedCharacterItem => _isDraggingItem && _draggedPart != null && _draggedCompanionKind == CompanionDragKind.None;
         public bool HasDraggedCompanionItem => _draggedCompanionKind != CompanionDragKind.None && _draggedCompanionSlotData != null;
+        public InventorySlotData DraggedCharacterSlotData => HasDraggedCharacterItem ? CreateInventorySlot(_draggedPart) : null;
         public InventorySlotData DraggedCompanionSlotData => _draggedCompanionSlotData?.Clone();
 
         public int CurrentTab
@@ -685,7 +688,13 @@ namespace HaCreator.MapSimulator.UI
             };
         }
 
-        public bool TryHandleInventoryDrop(int mouseX, int mouseY, InventorySlotData draggedSlotData, out IReadOnlyList<InventorySlotData> displacedSlots)
+        public bool TryHandleInventoryDrop(
+            int mouseX,
+            int mouseY,
+            InventoryType sourceInventoryType,
+            int sourceInventoryIndex,
+            InventorySlotData draggedSlotData,
+            out IReadOnlyList<InventorySlotData> displacedSlots)
         {
             displacedSlots = Array.Empty<InventorySlotData>();
             if (draggedSlotData == null
@@ -780,13 +789,25 @@ namespace HaCreator.MapSimulator.UI
                     return true;
                 }
                 case TAB_CHARACTER:
-                    return TryHandleCharacterInventoryDrop(mouseX, mouseY, draggedSlotData, out displacedSlots);
+                    return TryHandleCharacterInventoryDrop(
+                        mouseX,
+                        mouseY,
+                        sourceInventoryType,
+                        sourceInventoryIndex,
+                        draggedSlotData,
+                        out displacedSlots);
                 default:
                     return false;
             }
         }
 
-        private bool TryHandleCharacterInventoryDrop(int mouseX, int mouseY, InventorySlotData draggedSlotData, out IReadOnlyList<InventorySlotData> displacedSlots)
+        private bool TryHandleCharacterInventoryDrop(
+            int mouseX,
+            int mouseY,
+            InventoryType sourceInventoryType,
+            int sourceInventoryIndex,
+            InventorySlotData draggedSlotData,
+            out IReadOnlyList<InventorySlotData> displacedSlots)
         {
             displacedSlots = Array.Empty<InventorySlotData>();
 
@@ -845,6 +866,24 @@ namespace HaCreator.MapSimulator.UI
             }
 
             CharacterEquipSlot resolvedTargetSlot = ResolveTargetSlot(targetUiSlot.Value, incomingPart);
+            EquipmentChangeResult changeResult = TryRequestInventoryToCharacterChange(
+                sourceInventoryType,
+                sourceInventoryIndex,
+                draggedSlotData,
+                incomingPart,
+                resolvedTargetSlot);
+            if (changeResult != null)
+            {
+                if (!changeResult.Accepted)
+                {
+                    NotifyEquipmentEquipBlocked(changeResult.RejectReason);
+                    return false;
+                }
+
+                displacedSlots = CreateInventorySlots(changeResult.DisplacedParts);
+                return true;
+            }
+
             IReadOnlyList<CharacterPart> displacedParts = _characterBuild?.PlaceEquipment(incomingPart, resolvedTargetSlot)
                 ?? Array.Empty<CharacterPart>();
             displacedSlots = CreateInventorySlots(displacedParts);
@@ -946,6 +985,37 @@ namespace HaCreator.MapSimulator.UI
 
             slotData = _draggedCompanionSlotData.Clone();
             return true;
+        }
+
+        public bool TryCommitDraggedCharacterRemoval(out InventorySlotData slotData)
+        {
+            slotData = null;
+            if (!HasDraggedCharacterItem)
+            {
+                return false;
+            }
+
+            EquipmentChangeResult changeResult = TryRequestCharacterToInventoryChange();
+            if (changeResult != null)
+            {
+                if (!changeResult.Accepted)
+                {
+                    NotifyEquipmentEquipBlocked(changeResult.RejectReason);
+                    return false;
+                }
+
+                slotData = CreateInventorySlot(changeResult.ReturnedPart);
+                return slotData != null;
+            }
+
+            CharacterPart removedPart = _characterBuild?.Unequip(_draggedPart.Slot);
+            if (removedPart == null)
+            {
+                return false;
+            }
+
+            slotData = CreateInventorySlot(removedPart);
+            return slotData != null;
         }
 
         public override bool CheckMouseEvent(int shiftCenteredX, int shiftCenteredY, MouseState mouseState, MouseCursorItem mouseCursor, int renderWidth, int renderHeight)
@@ -3251,6 +3321,18 @@ namespace HaCreator.MapSimulator.UI
             if (_draggedPart.Slot == resolvedTargetSlot || (targetPart != null && ReferenceEquals(targetPart, _draggedPart)))
                 return true;
 
+            EquipmentChangeResult changeResult = TryRequestCharacterToCharacterChange(resolvedTargetSlot);
+            if (changeResult != null)
+            {
+                if (!changeResult.Accepted)
+                {
+                    NotifyEquipmentEquipBlocked(changeResult.RejectReason);
+                    return false;
+                }
+
+                return true;
+            }
+
             CharacterEquipSlot sourceSlot = _draggedPart.Slot;
             CharacterPart movingPart = _characterBuild?.Unequip(sourceSlot);
             if (movingPart == null)
@@ -3267,6 +3349,69 @@ namespace HaCreator.MapSimulator.UI
             }
 
             return true;
+        }
+
+        private EquipmentChangeResult TryRequestInventoryToCharacterChange(
+            InventoryType sourceInventoryType,
+            int sourceInventoryIndex,
+            InventorySlotData draggedSlotData,
+            CharacterPart incomingPart,
+            CharacterEquipSlot resolvedTargetSlot)
+        {
+            if (EquipmentChangeRequested == null || draggedSlotData == null || incomingPart == null)
+            {
+                return null;
+            }
+
+            return EquipmentChangeRequested.Invoke(new EquipmentChangeRequest
+            {
+                Kind = EquipmentChangeRequestKind.InventoryToCharacter,
+                SourceInventoryType = sourceInventoryType,
+                SourceInventoryIndex = sourceInventoryIndex,
+                TargetEquipSlot = resolvedTargetSlot,
+                ItemId = draggedSlotData.ItemId,
+                ItemName = draggedSlotData.ItemName ?? incomingPart.Name ?? string.Empty,
+                Summary = $"Equip {draggedSlotData.ItemId} into {resolvedTargetSlot}.",
+                SourceInventorySlot = draggedSlotData.Clone(),
+                RequestedPart = incomingPart.Clone()
+            });
+        }
+
+        private EquipmentChangeResult TryRequestCharacterToCharacterChange(CharacterEquipSlot resolvedTargetSlot)
+        {
+            if (EquipmentChangeRequested == null || _draggedPart == null)
+            {
+                return null;
+            }
+
+            return EquipmentChangeRequested.Invoke(new EquipmentChangeRequest
+            {
+                Kind = EquipmentChangeRequestKind.CharacterToCharacter,
+                SourceEquipSlot = _draggedPart.Slot,
+                TargetEquipSlot = resolvedTargetSlot,
+                ItemId = _draggedPart.ItemId,
+                ItemName = _draggedPart.Name ?? string.Empty,
+                Summary = $"Move equipped item {_draggedPart.ItemId} from {_draggedPart.Slot} to {resolvedTargetSlot}.",
+                RequestedPart = _draggedPart.Clone()
+            });
+        }
+
+        private EquipmentChangeResult TryRequestCharacterToInventoryChange()
+        {
+            if (EquipmentChangeRequested == null || _draggedPart == null)
+            {
+                return null;
+            }
+
+            return EquipmentChangeRequested.Invoke(new EquipmentChangeRequest
+            {
+                Kind = EquipmentChangeRequestKind.CharacterToInventory,
+                SourceEquipSlot = _draggedPart.Slot,
+                ItemId = _draggedPart.ItemId,
+                ItemName = _draggedPart.Name ?? string.Empty,
+                Summary = $"Unequip {_draggedPart.ItemId} from {_draggedPart.Slot}.",
+                RequestedPart = _draggedPart.Clone()
+            });
         }
 
         private void NotifyEquipmentEquipBlocked(string message)
@@ -3355,7 +3500,7 @@ namespace HaCreator.MapSimulator.UI
             return null;
         }
 
-        private static bool TryGetEquipRequirementRejectReason(CharacterPart part, CharacterBuild build, out string rejectReason)
+        internal static bool TryGetEquipRequirementRejectReason(CharacterPart part, CharacterBuild build, out string rejectReason)
         {
             rejectReason = null;
             if (part == null || build == null)
@@ -3408,7 +3553,7 @@ namespace HaCreator.MapSimulator.UI
             return true;
         }
 
-        private static string BuildSlotMismatchRejectReason(CharacterPart part)
+        internal static string BuildSlotMismatchRejectReason(CharacterPart part)
         {
             string slotLabel = part == null ? null : ResolvePreferredSlotLabel(part.Slot);
             return string.IsNullOrWhiteSpace(slotLabel)
@@ -3416,7 +3561,7 @@ namespace HaCreator.MapSimulator.UI
                 : $"Drop this item on the {slotLabel} slot.";
         }
 
-        private static string BuildSwapRejectReason(CharacterPart part, EquipSlot? sourceUiSlot)
+        internal static string BuildSwapRejectReason(CharacterPart part, EquipSlot? sourceUiSlot)
         {
             string targetName = string.IsNullOrWhiteSpace(part?.Name)
                 ? $"Equip {part?.ItemId ?? 0}"
@@ -3448,7 +3593,7 @@ namespace HaCreator.MapSimulator.UI
             };
         }
 
-        private static CharacterEquipSlot ResolveTargetSlot(EquipSlot uiSlot, CharacterPart part)
+        internal static CharacterEquipSlot ResolveTargetSlot(EquipSlot uiSlot, CharacterPart part)
         {
             CharacterEquipSlot? mappedSlot = MapToCharacterEquipSlot(uiSlot);
             if (!mappedSlot.HasValue)
@@ -3465,7 +3610,7 @@ namespace HaCreator.MapSimulator.UI
             return mappedSlot.Value;
         }
 
-        private static bool CanDisplayPartInSlot(CharacterPart part, EquipSlot uiSlot)
+        internal static bool CanDisplayPartInSlot(CharacterPart part, EquipSlot uiSlot)
         {
             if (part == null)
                 return false;
@@ -3485,12 +3630,50 @@ namespace HaCreator.MapSimulator.UI
             };
         }
 
+        internal static bool CanDisplayPartInSlot(CharacterPart part, CharacterEquipSlot slot)
+        {
+            if (part == null)
+            {
+                return false;
+            }
+
+            return slot switch
+            {
+                CharacterEquipSlot.Ring1 or CharacterEquipSlot.Ring2 or CharacterEquipSlot.Ring3 or CharacterEquipSlot.Ring4
+                    => IsRingSlot(part.Slot),
+                CharacterEquipSlot.Coat or CharacterEquipSlot.Longcoat
+                    => part.Slot == CharacterEquipSlot.Coat || part.Slot == CharacterEquipSlot.Longcoat,
+                CharacterEquipSlot.Pendant or CharacterEquipSlot.Pendant2
+                    => part.Slot == CharacterEquipSlot.Pendant || part.Slot == CharacterEquipSlot.Pendant2,
+                _ => part.Slot == slot
+            };
+        }
+
+        internal static CharacterPart SelectSwapCandidateForSource(IReadOnlyList<CharacterPart> displacedParts, CharacterEquipSlot sourceSlot)
+        {
+            if (displacedParts == null || displacedParts.Count == 0)
+            {
+                return null;
+            }
+
+            for (int i = 0; i < displacedParts.Count; i++)
+            {
+                CharacterPart candidate = displacedParts[i];
+                if (candidate != null && CanDisplayPartInSlot(candidate, sourceSlot))
+                {
+                    return candidate;
+                }
+            }
+
+            return null;
+        }
+
         private static bool IsRingSlot(CharacterEquipSlot slot)
         {
             return slot is CharacterEquipSlot.Ring1 or CharacterEquipSlot.Ring2 or CharacterEquipSlot.Ring3 or CharacterEquipSlot.Ring4;
         }
 
-        private static CharacterEquipSlot? MapToCharacterEquipSlot(EquipSlot uiSlot)
+        internal static CharacterEquipSlot? MapToCharacterEquipSlot(EquipSlot uiSlot)
         {
             return uiSlot switch
             {

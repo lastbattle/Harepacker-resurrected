@@ -57,7 +57,8 @@ namespace HaCreator.MapSimulator.Managers
         private readonly string _storageFilePath;
         private readonly object _catalogLock = new();
         private const int CardsPerPage = 25;
-        private const int CardsPerGrade = 50;
+        private const int ChapterItemStride = 1000;
+        private const int FirstChapterCardItemId = 2380000;
         private const int MaximumGradeCount = 9;
         private List<MonsterBookCardDefinition> _catalog;
         private Dictionary<int, MonsterBookCardDefinition> _catalogByMobId;
@@ -90,7 +91,7 @@ namespace HaCreator.MapSimulator.Managers
                 .Select((definition, index) =>
                 {
                     counts.TryGetValue(definition.MobId, out int ownedCopies);
-                    int gradeIndex = Math.Clamp(index / CardsPerGrade, 0, MaximumGradeCount - 1);
+                    int gradeIndex = Math.Clamp(definition.CardItemId / ChapterItemStride - (FirstChapterCardItemId / ChapterItemStride), 0, MaximumGradeCount - 1);
                     return new MonsterBookCardSnapshot
                     {
                         CardItemId = definition.CardItemId,
@@ -112,11 +113,13 @@ namespace HaCreator.MapSimulator.Managers
                 })
                 .ToList();
 
-            List<MonsterBookGradeSnapshot> grades = cards
-                .Chunk(CardsPerGrade)
-                .Select((chunk, gradeIndex) =>
+            ILookup<int, MonsterBookCardSnapshot> cardsByGrade = cards
+                .ToLookup(card => Math.Clamp(card.GradeIndex, 0, MaximumGradeCount - 1));
+
+            List<MonsterBookGradeSnapshot> grades = Enumerable.Range(0, MaximumGradeCount)
+                .Select(gradeIndex =>
                 {
-                    List<MonsterBookCardSnapshot> gradeCards = chunk.ToList();
+                    List<MonsterBookCardSnapshot> gradeCards = cardsByGrade[gradeIndex].ToList();
                     return new MonsterBookGradeSnapshot
                     {
                         GradeIndex = gradeIndex,
@@ -160,8 +163,8 @@ namespace HaCreator.MapSimulator.Managers
                 Title = "Monster Book",
                 Subtitle = build == null
                     ? "Monster card ownership is unavailable because there is no active character build."
-                    : "Card ownership is persisted per character and built from the WZ-backed monster-card catalog, with client-shaped left-tab chapters, right-tab detail panes, and local registered-card state.",
-                StatusText = "The Monster Book owner now routes the left-tab chapter shell, the four right-tab detail panes, and a local search plus register or release context path through the dedicated Monster Book runtime. Official packet or drop-authored ownership and the deeper client close lifecycle still remain outside this simulator runtime.",
+                    : "Card ownership is persisted per character and built from the WZ-backed monster-card catalog, with chapter tabs derived from the client's 0238xxxx card buckets, client-shaped right-tab detail panes, and local registered-card state.",
+                StatusText = "The Monster Book owner now routes the overview tab, the nine chapter tabs, the four right-tab detail panes, and local search plus register or release context actions through the dedicated Monster Book runtime. Official packet or drop-authored ownership and the deeper client close lifecycle still remain outside this simulator runtime.",
                 TotalCardTypes = cards.Count,
                 OwnedCardTypes = ownedCardTypes,
                 CompletedCardTypes = completedCardTypes,

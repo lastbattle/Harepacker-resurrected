@@ -13,10 +13,12 @@ namespace HaCreator.MapSimulator.UI
     internal sealed class EngagementProposalWindow : UIWindowBase
     {
         private const int FrameWidth = 260;
-        private const int TextTop = 18;
-        private const int TextWidth = 234;
-        private const int TextLeft = 13;
-        private const int LineHeight = 16;
+        private const int TextTop = 20;
+        private const int TextCenterWidth = 234;
+        private const int TextWrapWidth = 200;
+        private const int TextLeft = 15;
+        private const int TextSlotHeight = 16;
+        private const int TextDrawHeight = 14;
         private const int MinimumLineCount = 2;
         private const int HeightPadding = 67;
         private const int ButtonX = 197;
@@ -34,10 +36,10 @@ namespace HaCreator.MapSimulator.UI
         private Func<string> _dismissHandler;
         private Action<string> _feedbackHandler;
         private IReadOnlyList<string> _wrappedLines = Array.Empty<string>();
-        private int _frameHeight = HeightPadding + (MinimumLineCount * LineHeight);
+        private int _frameHeight = HeightPadding + (MinimumLineCount * TextSlotHeight);
 
         internal EngagementProposalWindow(EngagementProposalWindowAssets assets, GraphicsDevice device)
-            : base(new DXObject(0, 0, CreateFilledTexture(device, FrameWidth, HeightPadding + (MinimumLineCount * LineHeight), Color.Transparent), 0))
+            : base(new DXObject(0, 0, CreateFilledTexture(device, FrameWidth, HeightPadding + (MinimumLineCount * TextSlotHeight), Color.Transparent), 0))
         {
             _assets = assets ?? throw new ArgumentNullException(nameof(assets));
             _device = device ?? throw new ArgumentNullException(nameof(device));
@@ -80,6 +82,14 @@ namespace HaCreator.MapSimulator.UI
             RefreshLayout(GetSnapshot());
         }
 
+        internal void CenterOnViewport()
+        {
+            Viewport viewport = _device.Viewport;
+            Position = new Point(
+                Math.Max(0, (viewport.Width - FrameWidth) / 2),
+                Math.Max(0, (viewport.Height - _frameHeight) / 2));
+        }
+
         public override void Update(GameTime gameTime)
         {
             base.Update(gameTime);
@@ -119,38 +129,40 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
-            int drawY = Position.Y + TextTop;
+            int slotLineCount = Math.Max(MinimumLineCount, _wrappedLines.Count);
+            int drawY = Position.Y + TextTop + Math.Max(0, ((slotLineCount * TextSlotHeight) - (_wrappedLines.Count * TextDrawHeight)) / 2);
             for (int i = 0; i < _wrappedLines.Count; i++)
             {
                 string line = _wrappedLines[i];
                 if (string.IsNullOrWhiteSpace(line))
                 {
-                    drawY += LineHeight;
+                    drawY += TextDrawHeight;
                     continue;
                 }
 
                 Vector2 size = _font.MeasureString(line);
-                float drawX = Position.X + TextLeft + Math.Max(0f, (TextWidth - size.X) / 2f);
+                float drawX = Position.X + TextLeft + Math.Max(0f, (TextCenterWidth - size.X) / 2f);
                 DrawOutlinedText(sprite, line, new Vector2(drawX, drawY), new Color(83, 53, 24), new Color(255, 255, 255, 220));
-                drawY += LineHeight;
+                drawY += TextDrawHeight;
             }
         }
 
         private void RefreshLayout(EngagementProposalSnapshot snapshot)
         {
-            int lineCount = Math.Max(MinimumLineCount, CountWrappedLines(snapshot.BodyText));
-            int newHeight = HeightPadding + (lineCount * LineHeight);
+            _wrappedLines = WrapText(snapshot.BodyText, TextWrapWidth);
+
+            int lineCount = Math.Max(MinimumLineCount, _wrappedLines.Count);
+            int newHeight = HeightPadding + (lineCount * TextSlotHeight);
             if (newHeight != _frameHeight)
             {
                 _frameHeight = newHeight;
                 Frame = new DXObject(0, 0, CreateFilledTexture(_device, FrameWidth, _frameHeight, Color.Transparent), 0);
             }
 
-            _wrappedLines = WrapText(snapshot.BodyText, TextWidth);
             if (_acceptButton != null)
             {
                 _acceptButton.X = ButtonX;
-                _acceptButton.Y = Math.Max(TextTop + (MinimumLineCount * LineHeight), _frameHeight - ButtonBottomOffset);
+                _acceptButton.Y = _frameHeight - ButtonBottomOffset;
                 _acceptButton.SetVisible(snapshot.IsOpen);
                 _acceptButton.SetEnabled(snapshot.CanAccept);
                 _acceptButton.ButtonVisible = snapshot.IsOpen;
@@ -262,7 +274,7 @@ namespace HaCreator.MapSimulator.UI
 
         private int CountWrappedLines(string text)
         {
-            return WrapText(text, TextWidth).Count;
+            return WrapText(text, TextWrapWidth).Count;
         }
 
         private EngagementProposalSnapshot GetSnapshot()

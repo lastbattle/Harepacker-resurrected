@@ -73,6 +73,7 @@ namespace HaCreator.MapSimulator.Character
             public IReadOnlyList<string> AirborneAttackActionNames { get; init; }
             public IReadOnlyList<string> SwimActionNames { get; init; }
             public IReadOnlyList<string> HitActionNames { get; init; }
+            public IReadOnlyList<string> DeadActionNames { get; init; }
             public string ExitActionName { get; init; }
             public bool LocksMovement { get; init; }
         }
@@ -359,6 +360,10 @@ namespace HaCreator.MapSimulator.Character
         private bool _portableChairHasExternalPair;
         private Vector2 _portableChairExternalPairPosition;
         private bool _portableChairExternalPairFacingRight;
+        private PortableChair _portableChairExternalOwnerChair;
+        private bool _portableChairHasExternalOwnerPair;
+        private Vector2 _portableChairExternalOwnerPosition;
+        private bool _portableChairExternalOwnerFacingRight;
         private ShadowPartnerState _activeShadowPartner;
 
         // Preserve ladder context across hit knockback so holding UP can immediately re-grab it.
@@ -2858,6 +2863,8 @@ namespace HaCreator.MapSimulator.Character
                 partnerY);
         }
 
+        internal const int PortableChairCoupleMidpointScreenYOffset = -20;
+
         private void DrawPortableChairCoupleMidpointEffects(
             SpriteBatch spriteBatch,
             SkeletonMeshRenderer skeletonRenderer,
@@ -2868,39 +2875,17 @@ namespace HaCreator.MapSimulator.Character
             int currentTime,
             bool drawFrontLayers)
         {
-            PortableChair chair = Build?.ActivePortableChair;
-            if (chair?.IsCoupleChair != true
-                || chair.CoupleMidpointLayers == null
-                || chair.CoupleMidpointLayers.Count == 0)
+            if (!TryResolvePortableChairMidpointLayerState(
+                    out PortableChair chair,
+                    out float partnerX,
+                    out float partnerY,
+                    out bool midpointFacingRight))
             {
                 return;
             }
 
-            float partnerX;
-            float partnerY;
-            if (_portableChairExternalPairRequested)
-            {
-                if (!_portableChairHasExternalPair)
-                {
-                    return;
-                }
-
-                partnerX = _portableChairExternalPairPosition.X;
-                partnerY = _portableChairExternalPairPosition.Y;
-            }
-            else
-            {
-                if (_portableChairPairAssembler == null || !ShouldDrawPortableChairPairPreview())
-                {
-                    return;
-                }
-
-                partnerX = X + _portableChairPairOffset.X;
-                partnerY = Y + _portableChairPairOffset.Y;
-            }
-
             int midpointScreenX = (int)Math.Round((X + partnerX) * 0.5f) - mapShiftX + centerX;
-            int midpointScreenY = (int)Math.Round((Y + partnerY) * 0.5f) - mapShiftY + centerY;
+            int midpointScreenY = (int)Math.Round((Y + partnerY) * 0.5f) - mapShiftY + centerY + PortableChairCoupleMidpointScreenYOffset;
             int animationTime = GetRenderAnimationTime(currentTime);
 
             for (int i = 0; i < chair.CoupleMidpointLayers.Count; i++)
@@ -2912,7 +2897,7 @@ namespace HaCreator.MapSimulator.Character
                 }
 
                 CharacterFrame frame = GetPortableChairLayerFrameAtTime(layer, animationTime);
-                DrawPortableChairLayerFrame(spriteBatch, skeletonRenderer, frame, midpointScreenX, midpointScreenY, FacingRight);
+                DrawPortableChairLayerFrame(spriteBatch, skeletonRenderer, frame, midpointScreenX, midpointScreenY, midpointFacingRight);
             }
         }
 
@@ -2924,7 +2909,7 @@ namespace HaCreator.MapSimulator.Character
             int currentTime,
             bool drawFrontLayers)
         {
-            if (!TryResolvePortableChairCoupleSharedLayerState(out PortableChair chair, out _))
+            if (!TryResolvePortableChairSharedLayerState(out PortableChair chair))
             {
                 return;
             }
@@ -3761,27 +3746,15 @@ namespace HaCreator.MapSimulator.Character
                     }
                 }
 
-                if (string.Equals(playerActionName, "attack1", StringComparison.OrdinalIgnoreCase))
+                foreach (string candidate in EnumerateShadowPartnerWeaponAwareAttackCandidates(playerActionName))
                 {
-                    foreach (string candidate in new[] { "stabO1", "stabO2", "stabOF" })
+                    if (yielded.Add(candidate))
                     {
-                        if (yielded.Add(candidate))
-                        {
-                            yield return candidate;
-                        }
+                        yield return candidate;
                     }
                 }
-                else if (string.Equals(playerActionName, "attack2", StringComparison.OrdinalIgnoreCase))
-                {
-                    foreach (string candidate in new[] { "swingO1", "swingO2", "swingO3", "swingOF" })
-                    {
-                        if (yielded.Add(candidate))
-                        {
-                            yield return candidate;
-                        }
-                    }
-                }
-                else if (string.Equals(playerActionName, "hit", StringComparison.OrdinalIgnoreCase))
+
+                if (string.Equals(playerActionName, "hit", StringComparison.OrdinalIgnoreCase))
                 {
                     foreach (string candidate in new[] { "alert", "stand1" })
                     {
@@ -3810,6 +3783,153 @@ namespace HaCreator.MapSimulator.Character
                 {
                     yield return candidate;
                 }
+            }
+        }
+
+        private IEnumerable<string> EnumerateShadowPartnerWeaponAwareAttackCandidates(string playerActionName)
+        {
+            if (string.IsNullOrWhiteSpace(playerActionName)
+                || !playerActionName.StartsWith("attack", StringComparison.OrdinalIgnoreCase))
+            {
+                yield break;
+            }
+
+            bool floating = State is PlayerState.Jumping or PlayerState.Falling or PlayerState.Swimming or PlayerState.Flying;
+            string normalizedWeaponType = Build?.GetWeapon()?.WeaponType?.ToLowerInvariant();
+            bool useRangedShootFamily = normalizedWeaponType is "bow" or "crossbow" or "claw" or "gun" or "double bowgun" or "cannon";
+            bool usePolearmSwingFamily = normalizedWeaponType is "spear" or "polearm";
+            bool useTwoHandedMeleeFamily = normalizedWeaponType is "2h sword" or "2h axe" or "2h blunt";
+
+            if (useRangedShootFamily)
+            {
+                foreach (string candidate in EnumerateShadowPartnerRangedAttackCandidates(playerActionName, floating))
+                {
+                    yield return candidate;
+                }
+
+                yield break;
+            }
+
+            if (string.Equals(playerActionName, "attack1", StringComparison.OrdinalIgnoreCase))
+            {
+                foreach (string candidate in EnumerateShadowPartnerStabCandidates(useTwoHandedMeleeFamily, floating))
+                {
+                    yield return candidate;
+                }
+
+                yield break;
+            }
+
+            if (usePolearmSwingFamily)
+            {
+                foreach (string candidate in EnumerateShadowPartnerSwingCandidates("swingP", "swingT", floating))
+                {
+                    yield return candidate;
+                }
+
+                yield break;
+            }
+
+            foreach (string candidate in EnumerateShadowPartnerSwingCandidates(
+                         useTwoHandedMeleeFamily ? "swingT" : "swingO",
+                         useTwoHandedMeleeFamily ? "swingO" : "swingT",
+                         floating))
+            {
+                yield return candidate;
+            }
+        }
+
+        private static IEnumerable<string> EnumerateShadowPartnerRangedAttackCandidates(string playerActionName, bool floating)
+        {
+            if (floating)
+            {
+                yield return "shootF";
+            }
+
+            if (string.Equals(playerActionName, "attack2", StringComparison.OrdinalIgnoreCase))
+            {
+                yield return "shoot2";
+                yield return "shoot1";
+            }
+            else
+            {
+                yield return "shoot1";
+                yield return "shoot2";
+            }
+
+            if (!floating)
+            {
+                yield return "shootF";
+            }
+        }
+
+        private static IEnumerable<string> EnumerateShadowPartnerStabCandidates(bool preferTwoHandedFamily, bool floating)
+        {
+            foreach (string candidate in EnumerateShadowPartnerAttackFamilyCandidates(
+                         preferTwoHandedFamily ? "stabT" : "stabO",
+                         preferTwoHandedFamily ? "stabO" : "stabT",
+                         floating,
+                         includeThirdGroundFrame: false))
+            {
+                yield return candidate;
+            }
+        }
+
+        private static IEnumerable<string> EnumerateShadowPartnerSwingCandidates(
+            string primaryPrefix,
+            string secondaryPrefix,
+            bool floating)
+        {
+            foreach (string candidate in EnumerateShadowPartnerAttackFamilyCandidates(
+                         primaryPrefix,
+                         secondaryPrefix,
+                         floating,
+                         includeThirdGroundFrame: true))
+            {
+                yield return candidate;
+            }
+        }
+
+        private static IEnumerable<string> EnumerateShadowPartnerAttackFamilyCandidates(
+            string primaryPrefix,
+            string secondaryPrefix,
+            bool floating,
+            bool includeThirdGroundFrame)
+        {
+            if (floating)
+            {
+                yield return primaryPrefix + "F";
+            }
+
+            yield return primaryPrefix + "1";
+            yield return primaryPrefix + "2";
+
+            if (includeThirdGroundFrame)
+            {
+                yield return primaryPrefix + "3";
+            }
+
+            if (!floating)
+            {
+                yield return primaryPrefix + "F";
+            }
+
+            if (floating)
+            {
+                yield return secondaryPrefix + "F";
+            }
+
+            yield return secondaryPrefix + "1";
+            yield return secondaryPrefix + "2";
+
+            if (includeThirdGroundFrame)
+            {
+                yield return secondaryPrefix + "3";
+            }
+
+            if (!floating)
+            {
+                yield return secondaryPrefix + "F";
             }
         }
 
@@ -3973,8 +4093,7 @@ namespace HaCreator.MapSimulator.Character
             return actionName.StartsWith("swing", StringComparison.OrdinalIgnoreCase)
                    || actionName.StartsWith("stab", StringComparison.OrdinalIgnoreCase)
                    || actionName.StartsWith("shoot", StringComparison.OrdinalIgnoreCase)
-                   || string.Equals(actionName, "attack1", StringComparison.OrdinalIgnoreCase)
-                   || string.Equals(actionName, "attack2", StringComparison.OrdinalIgnoreCase)
+                   || actionName.StartsWith("attack", StringComparison.OrdinalIgnoreCase)
                    || string.Equals(actionName, "proneStab", StringComparison.OrdinalIgnoreCase);
         }
 
@@ -4044,6 +4163,22 @@ namespace HaCreator.MapSimulator.Character
             ClearPortableChairExternalPair();
         }
 
+        public void SetPortableChairExternalOwnerPair(PortableChair chair, Vector2 position, bool facingRight)
+        {
+            _portableChairExternalOwnerChair = chair;
+            _portableChairHasExternalOwnerPair = chair?.IsCoupleChair == true;
+            _portableChairExternalOwnerPosition = position;
+            _portableChairExternalOwnerFacingRight = facingRight;
+        }
+
+        public void ClearPortableChairExternalOwnerPair()
+        {
+            _portableChairExternalOwnerChair = null;
+            _portableChairHasExternalOwnerPair = false;
+            _portableChairExternalOwnerPosition = Vector2.Zero;
+            _portableChairExternalOwnerFacingRight = false;
+        }
+
         private bool TryResolvePortableChairCoupleSharedLayerState(out PortableChair chair, out bool previewPairActive)
         {
             previewPairActive = false;
@@ -4081,6 +4216,71 @@ namespace HaCreator.MapSimulator.Character
             }
 
             return previewPairActive;
+        }
+
+        private bool TryResolvePortableChairSharedLayerState(out PortableChair chair)
+        {
+            if (TryResolvePortableChairCoupleSharedLayerState(out chair, out _))
+            {
+                return true;
+            }
+
+            chair = _portableChairExternalOwnerChair;
+            return _portableChairHasExternalOwnerPair
+                   && chair?.IsCoupleChair == true
+                   && chair.CoupleSharedLayers != null
+                   && chair.CoupleSharedLayers.Count > 0;
+        }
+
+        private bool TryResolvePortableChairMidpointLayerState(
+            out PortableChair chair,
+            out float partnerX,
+            out float partnerY,
+            out bool midpointFacingRight)
+        {
+            chair = Build?.ActivePortableChair;
+            partnerX = 0f;
+            partnerY = 0f;
+            midpointFacingRight = FacingRight;
+            if (chair?.IsCoupleChair == true
+                && chair.CoupleMidpointLayers != null
+                && chair.CoupleMidpointLayers.Count > 0)
+            {
+                if (_portableChairExternalPairRequested)
+                {
+                    if (!_portableChairHasExternalPair)
+                    {
+                        chair = null;
+                        return false;
+                    }
+
+                    partnerX = _portableChairExternalPairPosition.X;
+                    partnerY = _portableChairExternalPairPosition.Y;
+                    return true;
+                }
+
+                if (_portableChairPairAssembler != null && ShouldDrawPortableChairPairPreview())
+                {
+                    partnerX = X + _portableChairPairOffset.X;
+                    partnerY = Y + _portableChairPairOffset.Y;
+                    return true;
+                }
+            }
+
+            chair = _portableChairExternalOwnerChair;
+            if (!_portableChairHasExternalOwnerPair
+                || chair?.IsCoupleChair != true
+                || chair.CoupleMidpointLayers == null
+                || chair.CoupleMidpointLayers.Count == 0)
+            {
+                chair = null;
+                return false;
+            }
+
+            partnerX = _portableChairExternalOwnerPosition.X;
+            partnerY = _portableChairExternalOwnerPosition.Y;
+            midpointFacingRight = _portableChairExternalOwnerFacingRight;
+            return true;
         }
 
         internal static Point ResolvePortableChairPairOffset(PortableChair chair, bool facingRight)
@@ -4752,7 +4952,8 @@ namespace HaCreator.MapSimulator.Character
                 PlayerState.Flying => ResolveSkillTransformActionName(activeTransform.FlyActionNames, activeTransform.StandActionNames),
                 PlayerState.Attacking => ResolveSkillTransformActionName(activeTransform.AttackActionNames, activeTransform.StandActionNames),
                 PlayerState.Hit => ResolveSkillTransformActionName(activeTransform.HitActionNames, activeTransform.StandActionNames),
-                PlayerState.Dead => CharacterPart.GetActionString(CharacterAction.Dead),
+                PlayerState.Dead => ResolveSkillTransformActionName(activeTransform.DeadActionNames, activeTransform.HitActionNames, activeTransform.StandActionNames)
+                                    ?? CharacterPart.GetActionString(CharacterAction.Dead),
                 _ => ResolveSkillTransformActionName(activeTransform.StandActionNames)
             };
         }
@@ -4960,14 +5161,23 @@ namespace HaCreator.MapSimulator.Character
 
             switch (skillId)
             {
+                case 2111002:
+                    transform = CreateSingleActionTransform(skillId, "explosion", "magic6");
+                    return true;
                 case 22121000:
                     transform = CreateSingleActionTransform(skillId, "icebreathe_prepare", "dragonIceBreathe");
                     return true;
                 case 22151001:
                     transform = CreateSingleActionTransform(skillId, "breathe_prepare", "dragonBreathe");
                     return true;
+                case 31101002:
+                    transform = CreateSingleActionTransform(skillId, "demonTrace", "demonTrace");
+                    return true;
                 case 32121003:
                     transform = CreateSingleActionTransform(skillId, "cyclone", "cyclone_after");
+                    return true;
+                case 4211001:
+                    transform = CreateSingleActionTransform(skillId, "alert3", "alert");
                     return true;
                 case 33101005:
                     transform = CreatePreparedSingleActionTransform(skillId, normalizedAction, "swallow_pre", "swallow_loop", "swallow");
@@ -5148,7 +5358,7 @@ namespace HaCreator.MapSimulator.Character
                 WalkActionNames = CreateMorphActionVariants(morphPart, "walk", "move", "walk1", "walk2", "stand"),
                 JumpActionNames = CreateMorphActionVariants(morphPart, "jump", "fly", "stand"),
                 ProneActionNames = CreateMorphActionVariants(morphPart, "prone", "stand"),
-                AttackActionNames = CreateMorphActionVariants(morphPart, normalizedAction, "attack", "attack1", "walk", "stand"),
+                AttackActionNames = CreateMorphAttackActionVariants(morphPart, normalizedAction),
                 LadderActionNames = isSuperManMorph
                     ? CreateMorphActionVariants(morphPart, "ladder2", "ladder", "rope2", "rope", "stand")
                     : CreateMorphActionVariants(morphPart, "ladder", "rope", "stand"),
@@ -5165,7 +5375,8 @@ namespace HaCreator.MapSimulator.Character
                     ? CreateMorphActionVariants(morphPart, "fly2Skill", normalizedAction, "attack", "attack1", "fly2", "fly", "jump", "stand")
                     : null,
                 SwimActionNames = CreateMorphActionVariants(morphPart, "swim", "fly", "jump", "stand"),
-                HitActionNames = CreateMorphActionVariants(morphPart, "hit", "stand"),
+                HitActionNames = CreateMorphHitActionVariants(morphPart),
+                DeadActionNames = CreateMorphDeadActionVariants(morphPart),
                 ExitActionName = null
             };
         }
@@ -5325,8 +5536,11 @@ namespace HaCreator.MapSimulator.Character
                 LadderActionNames = transform.LadderActionNames,
                 RopeActionNames = transform.RopeActionNames,
                 FlyActionNames = transform.FlyActionNames,
+                AirborneMoveActionNames = transform.AirborneMoveActionNames,
+                AirborneAttackActionNames = transform.AirborneAttackActionNames,
                 SwimActionNames = transform.SwimActionNames,
                 HitActionNames = transform.HitActionNames,
+                DeadActionNames = transform.DeadActionNames,
                 ExitActionName = transform.ExitActionName,
                 LocksMovement = transform.LocksMovement
             };
@@ -5409,6 +5623,153 @@ namespace HaCreator.MapSimulator.Character
             }
 
             return actions;
+        }
+
+        private static IReadOnlyList<string> CreateMorphAttackActionVariants(CharacterPart morphPart, params string[] preferredActions)
+        {
+            var actions = new List<string>();
+            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+            void Add(string actionName)
+            {
+                if (string.IsNullOrWhiteSpace(actionName))
+                {
+                    return;
+                }
+
+                foreach (string candidate in CharacterPart.GetActionLookupStrings(actionName))
+                {
+                    if (!string.IsNullOrWhiteSpace(candidate) && seen.Add(candidate))
+                    {
+                        actions.Add(candidate);
+                    }
+                }
+            }
+
+            if (preferredActions != null)
+            {
+                foreach (string actionName in preferredActions)
+                {
+                    Add(actionName);
+                }
+            }
+
+            string[] genericCombatActions =
+            {
+                "attack",
+                "attack1",
+                "attack2",
+                "stabO1",
+                "stabO2",
+                "stabOF",
+                "stabT1",
+                "stabT2",
+                "stabTF",
+                "swingO1",
+                "swingO2",
+                "swingO3",
+                "swingOF",
+                "swingT1",
+                "swingT2",
+                "swingT3",
+                "swingTF",
+                "swingP1",
+                "swingP2",
+                "swingPF",
+                "shoot1",
+                "shoot2",
+                "shootF",
+                "proneStab"
+            };
+
+            foreach (string actionName in genericCombatActions)
+            {
+                Add(actionName);
+            }
+
+            if (morphPart?.Animations != null)
+            {
+                foreach (string actionName in morphPart.Animations.Keys
+                             .Where(IsMorphAttackActionName)
+                             .OrderBy(GetMorphAttackActionPriority, StringComparer.OrdinalIgnoreCase))
+                {
+                    Add(actionName);
+                }
+
+                foreach (string actionName in morphPart.Animations.Keys)
+                {
+                    Add(actionName);
+                }
+            }
+
+            Add("walk");
+            Add("stand");
+            return actions;
+        }
+
+        private static IReadOnlyList<string> CreateMorphHitActionVariants(CharacterPart morphPart)
+        {
+            return CreateMorphActionVariants(morphPart, "hit", "alert", "alert2", "alert3", "alert4", "alert5", "stand");
+        }
+
+        private static IReadOnlyList<string> CreateMorphDeadActionVariants(CharacterPart morphPart)
+        {
+            return CreateMorphActionVariants(morphPart, "dead", "pvpko", "alert", "stand");
+        }
+
+        private static bool IsMorphAttackActionName(string actionName)
+        {
+            if (string.IsNullOrWhiteSpace(actionName))
+            {
+                return false;
+            }
+
+            return actionName.IndexOf("attack", StringComparison.OrdinalIgnoreCase) >= 0
+                   || actionName.IndexOf("stab", StringComparison.OrdinalIgnoreCase) >= 0
+                   || actionName.IndexOf("swing", StringComparison.OrdinalIgnoreCase) >= 0
+                   || actionName.IndexOf("shoot", StringComparison.OrdinalIgnoreCase) >= 0
+                   || actionName.IndexOf("smash", StringComparison.OrdinalIgnoreCase) >= 0
+                   || actionName.IndexOf("panic", StringComparison.OrdinalIgnoreCase) >= 0
+                   || actionName.IndexOf("chop", StringComparison.OrdinalIgnoreCase) >= 0
+                   || actionName.IndexOf("tempest", StringComparison.OrdinalIgnoreCase) >= 0
+                   || actionName.IndexOf("strike", StringComparison.OrdinalIgnoreCase) >= 0
+                   || actionName.IndexOf("burst", StringComparison.OrdinalIgnoreCase) >= 0
+                   || actionName.IndexOf("drain", StringComparison.OrdinalIgnoreCase) >= 0
+                   || actionName.IndexOf("fire", StringComparison.OrdinalIgnoreCase) >= 0
+                   || actionName.IndexOf("orb", StringComparison.OrdinalIgnoreCase) >= 0
+                   || actionName.IndexOf("wave", StringComparison.OrdinalIgnoreCase) >= 0
+                   || actionName.IndexOf("upper", StringComparison.OrdinalIgnoreCase) >= 0
+                   || actionName.IndexOf("spin", StringComparison.OrdinalIgnoreCase) >= 0
+                   || string.Equals(actionName, "fist", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(actionName, "screw", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(actionName, "straight", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(actionName, "somersault", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static string GetMorphAttackActionPriority(string actionName)
+        {
+            if (string.IsNullOrWhiteSpace(actionName))
+            {
+                return "9_";
+            }
+
+            if (string.Equals(actionName, "attack", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(actionName, "attack1", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(actionName, "attack2", StringComparison.OrdinalIgnoreCase)
+                || actionName.IndexOf("attack", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                return "0_" + actionName;
+            }
+
+            if (string.Equals(actionName, "fist", StringComparison.OrdinalIgnoreCase)
+                || actionName.IndexOf("stab", StringComparison.OrdinalIgnoreCase) >= 0
+                || actionName.IndexOf("swing", StringComparison.OrdinalIgnoreCase) >= 0
+                || actionName.IndexOf("shoot", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                return "1_" + actionName;
+            }
+
+            return "2_" + actionName;
         }
 
         private void UpdateAssemblerAvatarOverride()

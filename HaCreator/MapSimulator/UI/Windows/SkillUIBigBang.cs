@@ -78,6 +78,7 @@ namespace HaCreator.MapSimulator.UI
         private const int TOOLTIP_ICON_GAP = 8;
         private const int TOOLTIP_TITLE_GAP = 8;
         private const int TOOLTIP_SECTION_GAP = 6;
+        private const int HOVER_TOOLTIP_CURSOR_GAP = 20;
         private const float COOLDOWN_TEXT_SCALE = 0.55f;
         private static readonly Color TOOLTIP_BACKGROUND_COLOR = new Color(28, 28, 28, 228);
         private static readonly Color TOOLTIP_BORDER_COLOR = new Color(112, 112, 112, 235);
@@ -1145,7 +1146,14 @@ namespace HaCreator.MapSimulator.UI
                 ? SanitizeFontText(skill.GetLevelDescription(nextLevel))
                 : string.Empty;
 
-            int tooltipWidth = ResolveTooltipWidth();
+            int tooltipWidth = ResolveHoveredTooltipWidth(
+                skillName,
+                description,
+                cooldownLine,
+                currentLevelHeader,
+                currentLevelDescription,
+                nextLevelHeader,
+                nextLevelDescription);
             int textLeftOffset = TOOLTIP_PADDING + SKILL_ICON_SIZE + TOOLTIP_ICON_GAP;
             float titleWidth = tooltipWidth - (TOOLTIP_PADDING * 2);
             float sectionWidth = tooltipWidth - textLeftOffset - TOOLTIP_PADDING;
@@ -1179,16 +1187,14 @@ namespace HaCreator.MapSimulator.UI
                 + TOOLTIP_TITLE_GAP
                 + iconBlockHeight);
 
-            Point anchorPoint = new Point(_lastMousePosition.X, _lastMousePosition.Y + 20);
-            Rectangle backgroundRect = ResolveTooltipRect(
+            Point anchorPoint = new Point(_lastMousePosition.X, _lastMousePosition.Y + HOVER_TOOLTIP_CURSOR_GAP);
+            Rectangle backgroundRect = ResolveHoverTooltipRect(
                 anchorPoint,
                 tooltipWidth,
                 tooltipHeight,
                 renderWidth,
-                renderHeight,
-                stackalloc[] { 1, 0, 2 },
-                out int tooltipFrameIndex);
-            DrawTooltipBackground(sprite, backgroundRect, tooltipFrameIndex);
+                renderHeight);
+            DrawHoverTooltipBackground(sprite, backgroundRect);
 
             int titleX = backgroundRect.X + TOOLTIP_PADDING;
             int titleY = backgroundRect.Y + TOOLTIP_PADDING;
@@ -1270,10 +1276,49 @@ namespace HaCreator.MapSimulator.UI
             return height;
         }
 
-        private int ResolveTooltipWidth()
+        private int ResolveHoveredTooltipWidth(params string[] sections)
+        {
+            int minimumWidth = ResolveHintTooltipBaseWidth();
+            float titleWidth = MeasureTooltipTextWidth(sections.ElementAtOrDefault(0));
+            float sectionWidth = 0f;
+            for (int i = 1; i < sections.Length; i++)
+            {
+                sectionWidth = Math.Max(sectionWidth, MeasureTooltipTextWidth(sections[i]));
+            }
+
+            float desiredWidth = Math.Max(
+                (TOOLTIP_PADDING * 2) + titleWidth,
+                (TOOLTIP_PADDING * 2) + SKILL_ICON_SIZE + TOOLTIP_ICON_GAP + sectionWidth);
+
+            return Math.Clamp(
+                (int)Math.Ceiling(desiredWidth),
+                minimumWidth,
+                TOOLTIP_FALLBACK_WIDTH);
+        }
+
+        private int ResolveHintTooltipBaseWidth()
         {
             int textureWidth = _tooltipFrames[1]?.Width ?? 0;
             return textureWidth > 0 ? textureWidth : TOOLTIP_FALLBACK_WIDTH;
+        }
+
+        private float MeasureTooltipTextWidth(string text)
+        {
+            if (_font == null || string.IsNullOrWhiteSpace(text))
+                return 0f;
+
+            float maxWidth = 0f;
+            string[] lines = text.Replace("\r\n", "\n").Split('\n');
+            for (int i = 0; i < lines.Length; i++)
+            {
+                string line = lines[i].Trim();
+                if (line.Length == 0)
+                    continue;
+
+                maxWidth = Math.Max(maxWidth, _font.MeasureString(line).X);
+            }
+
+            return maxWidth;
         }
 
         private Rectangle CreateTooltipRectFromAnchor(Point anchorPoint, int tooltipWidth, int tooltipHeight, int tooltipFrameIndex)
@@ -1334,6 +1379,41 @@ namespace HaCreator.MapSimulator.UI
                 rect.Height);
         }
 
+        private Rectangle ResolveHoverTooltipRect(
+            Point anchorPoint,
+            int tooltipWidth,
+            int tooltipHeight,
+            int renderWidth,
+            int renderHeight)
+        {
+            Rectangle[] candidates =
+            {
+                new Rectangle(anchorPoint.X, anchorPoint.Y, tooltipWidth, tooltipHeight),
+                new Rectangle(anchorPoint.X - tooltipWidth, anchorPoint.Y, tooltipWidth, tooltipHeight),
+                new Rectangle(anchorPoint.X, anchorPoint.Y - tooltipHeight - HOVER_TOOLTIP_CURSOR_GAP, tooltipWidth, tooltipHeight),
+                new Rectangle(anchorPoint.X - tooltipWidth, anchorPoint.Y - tooltipHeight - HOVER_TOOLTIP_CURSOR_GAP, tooltipWidth, tooltipHeight)
+            };
+
+            Rectangle bestRect = candidates[0];
+            int bestOverflow = int.MaxValue;
+
+            for (int i = 0; i < candidates.Length; i++)
+            {
+                Rectangle candidate = candidates[i];
+                int overflow = ComputeTooltipOverflow(candidate, renderWidth, renderHeight);
+                if (overflow == 0)
+                    return candidate;
+
+                if (overflow < bestOverflow)
+                {
+                    bestOverflow = overflow;
+                    bestRect = candidate;
+                }
+            }
+
+            return ClampTooltipRect(bestRect, renderWidth, renderHeight);
+        }
+
         private Rectangle ResolveTooltipRect(
             Point anchorPoint,
             int tooltipWidth,
@@ -1383,6 +1463,12 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
+            sprite.Draw(_debugPlaceholder, rect, TOOLTIP_BACKGROUND_COLOR);
+            DrawTooltipBorder(sprite, rect);
+        }
+
+        private void DrawHoverTooltipBackground(SpriteBatch sprite, Rectangle rect)
+        {
             sprite.Draw(_debugPlaceholder, rect, TOOLTIP_BACKGROUND_COLOR);
             DrawTooltipBorder(sprite, rect);
         }

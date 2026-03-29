@@ -66,6 +66,8 @@ namespace HaCreator.MapSimulator.Fields
             FieldInteractionRestrictionEvaluator.GetJumpRestrictionMessage(_fieldLimit) != null ||
             FieldInteractionRestrictionEvaluator.GetTeleportItemRestrictionMessage(_fieldLimit) != null ||
             FieldInteractionRestrictionEvaluator.GetTransferRestrictionMessage(_fieldLimit) != null ||
+            FieldInteractionRestrictionEvaluator.GetMiniGameRestrictionMessage(_fieldLimit) != null ||
+            FieldInteractionRestrictionEvaluator.GetPetRuntimeRestrictionMessage(_fieldLimit) != null ||
             FieldSkillRestrictionEvaluator.HasFieldEntryNotice(_fieldLimit) ||
             _moveLimit.HasValue ||
             _entryScripts.Count > 0 ||

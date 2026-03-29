@@ -88,7 +88,9 @@ namespace HaCreator.MapSimulator.Effects
         private int _forcedReturnMapId = -1;
         private bool _hasNextFloorPortal;
         private int _nextFloorMapId = -1;
+        private string _nextFloorPortalName = string.Empty;
         private int _pendingTransferMapId = -1;
+        private string _pendingTransferPortalName = string.Empty;
         private int _pendingTransferAtTick = int.MinValue;
         private int _playerHp;
         private int _playerMaxHp = 100;
@@ -161,7 +163,9 @@ namespace HaCreator.MapSimulator.Effects
             _forcedReturnMapId = -1;
             _hasNextFloorPortal = false;
             _nextFloorMapId = -1;
+            _nextFloorPortalName = string.Empty;
             _pendingTransferMapId = -1;
+            _pendingTransferPortalName = string.Empty;
             _pendingTransferAtTick = int.MinValue;
             _playerHp = 0;
             _playerMaxHp = 100;
@@ -188,7 +192,7 @@ namespace HaCreator.MapSimulator.Effects
         public void Configure(MapInfo mapInfo, IEnumerable<PortalInstance> portals, bool hasNextFloorPortal = false)
         {
             Configure(mapInfo, hasNextFloorPortal);
-            _nextFloorMapId = ResolveNextFloorMapIdFromPortals(portals);
+            (_nextFloorMapId, _nextFloorPortalName) = ResolveNextFloorDestinationFromPortals(portals);
             if (_nextFloorMapId > 0)
             {
                 _hasNextFloorPortal = true;
@@ -287,30 +291,50 @@ namespace HaCreator.MapSimulator.Effects
             }
             int pendingTransferMapId = _pendingTransferMapId;
             _pendingTransferMapId = -1;
+            _pendingTransferPortalName = string.Empty;
             return pendingTransferMapId;
         }
+        public bool TryConsumePendingTransfer(out int mapId, out string portalName)
+        {
+            mapId = -1;
+            portalName = null;
+            if (_pendingTransferMapId <= 0 || _pendingTransferAtTick != int.MinValue)
+            {
+                return false;
+            }
+
+            mapId = _pendingTransferMapId;
+            portalName = string.IsNullOrWhiteSpace(_pendingTransferPortalName)
+                ? null
+                : _pendingTransferPortalName;
+            _pendingTransferMapId = -1;
+            _pendingTransferPortalName = string.Empty;
+            return true;
+        }
         public int PendingTransferMapId => _pendingTransferMapId;
+        public string PendingTransferPortalName => _pendingTransferPortalName;
         public void SetStage(int stage, int currentTimeMs)
         {
             _stage = Math.Clamp(stage, 0, 32);
             _resultEffect = DojoResultEffect.None;
             _resultEffectStartTick = int.MinValue;
             _pendingTransferMapId = -1;
+            _pendingTransferPortalName = string.Empty;
             _pendingTransferAtTick = int.MinValue;
             _stageBannerStartTick = currentTimeMs;
         }
-        public void ShowClearResult(int currentTimeMs, int nextMapId = -1)
+        public void ShowClearResult(int currentTimeMs, int nextMapId = -1, string nextPortalName = null)
         {
             _resultEffect = DojoResultEffect.Clear;
             _resultEffectStartTick = currentTimeMs;
             _timeOverTick = int.MinValue;
             _timerDurationSec = 0;
             _lastClockUpdateTick = currentTimeMs;
-            SchedulePresentationTransfer(nextMapId, _clearFrames, currentTimeMs);
+            SchedulePresentationTransfer(nextMapId, nextPortalName, _clearFrames, currentTimeMs);
         }
         public void ShowClearResultForNextFloor(int currentTimeMs)
         {
-            ShowClearResult(currentTimeMs, ResolveNextFloorMapId());
+            ShowClearResult(currentTimeMs, ResolveNextFloorMapId(), ResolveNextFloorPortalName());
         }
         public void ShowTimeOverResult(int currentTimeMs, int exitMapId = -1)
         {
@@ -318,7 +342,7 @@ namespace HaCreator.MapSimulator.Effects
             _resultEffectStartTick = currentTimeMs;
             _timeOverTick = 0;
             _timerDurationSec = 0;
-            SchedulePresentationTransfer(exitMapId > 0 ? exitMapId : ResolveExitMapId(), _timeOverFrames, currentTimeMs);
+            SchedulePresentationTransfer(exitMapId > 0 ? exitMapId : ResolveExitMapId(), null, _timeOverFrames, currentTimeMs);
         }
         public void Update(int currentTimeMs, float deltaSeconds)
         {
@@ -365,13 +389,16 @@ namespace HaCreator.MapSimulator.Effects
                 : "--";
             string timerText = _timeOverTick == int.MinValue ? "stopped" : FormatTimer(RemainingSeconds);
             string transferText = _pendingTransferMapId > 0 ? $", pendingReturn={_pendingTransferMapId}" : string.Empty;
+            string transferPortalText = string.IsNullOrWhiteSpace(_pendingTransferPortalName)
+                ? string.Empty
+                : $", pendingPortal={_pendingTransferPortalName}";
             string clockPacketText = _lastDecodedClockType >= 0
                 ? $", rawClock={_lastDecodedClockType}:{_lastDecodedClockDurationSec}s/{_lastDecodedClockPayloadLength}b"
                 : string.Empty;
             string clockTailText = string.IsNullOrWhiteSpace(_lastDecodedClockTrailingPayloadHex)
                 ? string.Empty
                 : $", rawClockTail={_lastDecodedClockTrailingPayloadHex}";
-            return $"Mu Lung Dojo floor {_stage}, timer={timerText}, boss={bossText}, player={playerText}, energy={_energy}/{EnergyMax}{transferText}{clockPacketText}{clockTailText}, expiryEffect=StringPool::ms_aString[0x09EE]+sound[0x0A24] via CField_Dojang::UpdateTimer";
+            return $"Mu Lung Dojo floor {_stage}, timer={timerText}, boss={bossText}, player={playerText}, energy={_energy}/{EnergyMax}{transferText}{transferPortalText}{clockPacketText}{clockTailText}, expiryEffect=StringPool::ms_aString[0x09EE]+sound[0x0A24] via CField_Dojang::UpdateTimer";
         }
         public void Reset()
         {
@@ -385,7 +412,9 @@ namespace HaCreator.MapSimulator.Effects
             _forcedReturnMapId = -1;
             _hasNextFloorPortal = false;
             _nextFloorMapId = -1;
+            _nextFloorPortalName = string.Empty;
             _pendingTransferMapId = -1;
+            _pendingTransferPortalName = string.Empty;
             _pendingTransferAtTick = int.MinValue;
             _playerHp = 0;
             _playerMaxHp = 100;
@@ -435,11 +464,17 @@ namespace HaCreator.MapSimulator.Effects
 
             return ResolveNextFloorMapIdCore(_mapId, _hasNextFloorPortal, HasMapImage);
         }
-        private static int ResolveNextFloorMapIdFromPortals(IEnumerable<PortalInstance> portals)
+        private string ResolveNextFloorPortalName()
+        {
+            return _nextFloorMapId > 0 && !string.IsNullOrWhiteSpace(_nextFloorPortalName)
+                ? _nextFloorPortalName
+                : null;
+        }
+        private static (int MapId, string PortalName) ResolveNextFloorDestinationFromPortals(IEnumerable<PortalInstance> portals)
         {
             if (portals == null)
             {
-                return -1;
+                return (-1, string.Empty);
             }
 
             foreach (PortalInstance portal in portals)
@@ -453,11 +488,11 @@ namespace HaCreator.MapSimulator.Effects
                 int targetMapId = NormalizeTransferMapId(portal.tm);
                 if (targetMapId > 0)
                 {
-                    return targetMapId;
+                    return (targetMapId, portal.tn ?? string.Empty);
                 }
             }
 
-            return -1;
+            return (-1, string.Empty);
         }
         private static int ResolveNextFloorMapIdCore(int mapId, bool hasNextFloorPortal, Func<int, bool> hasMapImage)
         {
@@ -568,9 +603,12 @@ namespace HaCreator.MapSimulator.Effects
 
             return true;
         }
-        private void SchedulePresentationTransfer(int targetMapId, IReadOnlyList<DojoFrame> frames, int currentTimeMs)
+        private void SchedulePresentationTransfer(int targetMapId, string targetPortalName, IReadOnlyList<DojoFrame> frames, int currentTimeMs)
         {
             _pendingTransferMapId = NormalizeTransferMapId(targetMapId);
+            _pendingTransferPortalName = _pendingTransferMapId > 0 && !string.IsNullOrWhiteSpace(targetPortalName)
+                ? targetPortalName
+                : string.Empty;
             _pendingTransferAtTick = _pendingTransferMapId > 0
                 ? currentTimeMs + GetAnimationDurationMs(frames)
                 : int.MinValue;

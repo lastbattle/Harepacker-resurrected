@@ -3,6 +3,7 @@ using HaCreator.MapSimulator.Character;
 using HaCreator.MapSimulator.Pools;
 using HaSharedLibrary.Render.DX;
 using MapleLib.WzLib.WzStructure.Data.ItemStructure;
+using MapleLib.WzLib.WzStructure.Data.CharacterStructure;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using Spine;
@@ -12,6 +13,35 @@ using System.Linq;
 
 namespace HaCreator.MapSimulator.Companions
 {
+    internal readonly struct PetPersistentState
+    {
+        public PetPersistentState(
+            int skillMask,
+            int commandLevel,
+            int fullness,
+            bool autoLootEnabled,
+            bool autoConsumeHpEnabled,
+            int autoConsumeHpItemId,
+            InventoryType autoConsumeHpInventoryType)
+        {
+            SkillMask = skillMask;
+            CommandLevel = commandLevel;
+            Fullness = fullness;
+            AutoLootEnabled = autoLootEnabled;
+            AutoConsumeHpEnabled = autoConsumeHpEnabled;
+            AutoConsumeHpItemId = autoConsumeHpItemId;
+            AutoConsumeHpInventoryType = autoConsumeHpInventoryType;
+        }
+
+        public int SkillMask { get; }
+        public int CommandLevel { get; }
+        public int Fullness { get; }
+        public bool AutoLootEnabled { get; }
+        public bool AutoConsumeHpEnabled { get; }
+        public int AutoConsumeHpItemId { get; }
+        public InventoryType AutoConsumeHpInventoryType { get; }
+    }
+
     public enum PetRenderPlane
     {
         BehindOwner = 0,
@@ -31,7 +61,7 @@ namespace HaCreator.MapSimulator.Companions
 
     public sealed class PetRuntime
     {
-        internal const int AutoSpeakingSkillMask = 0x100;
+        internal const int AutoSpeakingSkillMask = 1 << (int)PetSkillFlag.Smart;
         private const int MinFullness = 0;
         private const int MaxFullness = 100;
         private const int DefaultFullness = 60;
@@ -185,6 +215,28 @@ namespace HaCreator.MapSimulator.Companions
 
             SkillMask = updatedMask;
             return true;
+        }
+
+        internal PetPersistentState CapturePersistentState()
+        {
+            return new PetPersistentState(
+                SkillMask,
+                _commandLevel,
+                Fullness,
+                AutoLootEnabled,
+                AutoConsumeHpEnabled,
+                AutoConsumeHpItemId,
+                AutoConsumeHpInventoryType);
+        }
+
+        internal void RestorePersistentState(PetPersistentState state)
+        {
+            SkillMask = Math.Max(0, state.SkillMask);
+            _commandLevel = Math.Clamp(state.CommandLevel, 1, 30);
+            Fullness = Math.Clamp(state.Fullness, MinFullness, MaxFullness);
+            AutoLootEnabled = state.AutoLootEnabled;
+            AutoConsumeHpEnabled = state.AutoConsumeHpEnabled;
+            SetAutoConsumeHpItem(state.AutoConsumeHpItemId, state.AutoConsumeHpInventoryType);
         }
 
         internal void Update(PlayerCharacter owner, DropPool dropPool, int ownerId, bool pickupAllowed, int currentTime, float deltaTime, int activePetCount)
@@ -677,8 +729,11 @@ namespace HaCreator.MapSimulator.Companions
 
         private readonly PetLoader _loader;
         private readonly List<PetRuntime> _activePets = new();
+        private readonly Dictionary<int, Queue<PetPersistentState>> _persistedStateByItemId = new();
         private int _nextRuntimeId = 1;
         private Func<int> _currentMapIdProvider;
+        private bool _fieldUsageBlocked;
+        private string _fieldUsageRestrictionMessage;
 
         public PetController(GraphicsDevice device)
         {
@@ -686,6 +741,14 @@ namespace HaCreator.MapSimulator.Companions
         }
 
         public IReadOnlyList<PetRuntime> ActivePets => _activePets;
+        public bool IsFieldUsageBlocked => _fieldUsageBlocked;
+        public string FieldUsageRestrictionMessage => _fieldUsageRestrictionMessage;
+
+        public void SetFieldUsageRestriction(bool blocked, string message = null)
+        {
+            _fieldUsageBlocked = blocked;
+            _fieldUsageRestrictionMessage = blocked ? message : null;
+        }
 
         public void SetCurrentMapIdProvider(Func<int> currentMapIdProvider)
         {
@@ -694,6 +757,11 @@ namespace HaCreator.MapSimulator.Companions
 
         public void EnsureDefaultPetActive(PlayerCharacter owner)
         {
+            if (_fieldUsageBlocked)
+            {
+                return;
+            }
+
             if (_activePets.Count > 0)
             {
                 if (owner != null)
@@ -709,6 +777,11 @@ namespace HaCreator.MapSimulator.Companions
 
         public bool SetActivePet(int slotIndex, int petItemId, PlayerCharacter owner = null)
         {
+            if (_fieldUsageBlocked)
+            {
+                return false;
+            }
+
             if (slotIndex < 0 || slotIndex >= MaxPets)
             {
                 return false;
@@ -721,9 +794,16 @@ namespace HaCreator.MapSimulator.Companions
             }
 
             int insertIndex = Math.Min(slotIndex, _activePets.Count);
-            _activePets.Insert(insertIndex, new PetRuntime(_nextRuntimeId++, insertIndex, definition));
+            var pet = new PetRuntime(_nextRuntimeId++, insertIndex, definition);
+            if (TryRestorePersistedState(petItemId, out PetPersistentState persistedState))
+            {
+                pet.RestorePersistentState(persistedState);
+            }
+
+            _activePets.Insert(insertIndex, pet);
             if (_activePets.Count > MaxPets)
             {
+                PersistPetState(_activePets[^1]);
                 _activePets.RemoveAt(_activePets.Count - 1);
             }
 
@@ -738,12 +818,18 @@ namespace HaCreator.MapSimulator.Companions
                 return;
             }
 
+            PersistPetState(_activePets[slotIndex]);
             _activePets.RemoveAt(slotIndex);
             ReindexPets();
         }
 
         public void SetAutoLootEnabled(int slotIndex, bool enabled)
         {
+            if (_fieldUsageBlocked)
+            {
+                return;
+            }
+
             if (slotIndex < 0 || slotIndex >= _activePets.Count)
             {
                 return;
@@ -754,6 +840,11 @@ namespace HaCreator.MapSimulator.Companions
 
         public bool TryExecuteCommand(string message, int currentTime)
         {
+            if (_fieldUsageBlocked)
+            {
+                return false;
+            }
+
             for (int i = 0; i < _activePets.Count; i++)
             {
                 if (_activePets[i].TryExecuteCommand(message, currentTime))
@@ -774,6 +865,11 @@ namespace HaCreator.MapSimulator.Companions
 
         public bool TrySetCommandLevel(int slotIndex, int level)
         {
+            if (_fieldUsageBlocked)
+            {
+                return false;
+            }
+
             PetRuntime pet = GetPetAt(slotIndex);
             if (pet == null)
             {
@@ -786,6 +882,11 @@ namespace HaCreator.MapSimulator.Companions
 
         public bool TrySetAutoConsumeHpEnabled(int slotIndex, bool enabled)
         {
+            if (_fieldUsageBlocked)
+            {
+                return false;
+            }
+
             PetRuntime pet = GetPetAt(slotIndex);
             if (pet == null)
             {
@@ -798,6 +899,11 @@ namespace HaCreator.MapSimulator.Companions
 
         public bool TrySetAutoConsumeHpItem(int slotIndex, int itemId, InventoryType inventoryType)
         {
+            if (_fieldUsageBlocked)
+            {
+                return false;
+            }
+
             PetRuntime pet = GetPetAt(slotIndex);
             if (pet == null)
             {
@@ -810,12 +916,22 @@ namespace HaCreator.MapSimulator.Companions
 
         public bool TryTriggerSlangFeedback(int slotIndex, int currentTime)
         {
+            if (_fieldUsageBlocked)
+            {
+                return false;
+            }
+
             PetRuntime pet = GetPetAt(slotIndex);
             return pet != null && pet.TryTriggerSlangFeedback(currentTime);
         }
 
         public bool TryTriggerSpeechEvent(PetAutoSpeechEvent eventType, int currentTime, int? slotIndex = null)
         {
+            if (_fieldUsageBlocked)
+            {
+                return false;
+            }
+
             if (slotIndex.HasValue)
             {
                 PetRuntime pet = GetPetAt(slotIndex.Value);
@@ -835,6 +951,11 @@ namespace HaCreator.MapSimulator.Companions
 
         public bool TryTriggerFoodFeedback(int slotIndex, int variant, bool success, int currentTime)
         {
+            if (_fieldUsageBlocked)
+            {
+                return false;
+            }
+
             PetRuntime pet = GetPetAt(slotIndex);
             return pet != null && pet.TryTriggerFoodFeedback(variant, success, currentTime);
         }
@@ -845,6 +966,12 @@ namespace HaCreator.MapSimulator.Companions
             int skillMask,
             out int slotIndex)
         {
+            if (_fieldUsageBlocked)
+            {
+                slotIndex = -1;
+                return false;
+            }
+
             return TryGrantSkillMask(_activePets, supportedPetItemIds, recallLimit, skillMask, out slotIndex);
         }
 
@@ -853,16 +980,33 @@ namespace HaCreator.MapSimulator.Companions
             int fullnessIncrease,
             out PetFoodItemUsePlan plan)
         {
+            if (_fieldUsageBlocked)
+            {
+                plan = default;
+                return false;
+            }
+
             return TryPlanFoodItemUse(_activePets, supportedPetItemIds, fullnessIncrease, out plan);
         }
 
         internal bool TryExecuteFoodItemUse(PetFoodItemUsePlan plan, int currentTime, out int fedSlotIndex)
         {
+            if (_fieldUsageBlocked)
+            {
+                fedSlotIndex = -1;
+                return false;
+            }
+
             return TryExecuteFoodItemUse(_activePets, plan, currentTime, out fedSlotIndex);
         }
 
         public IEnumerable<PetRuntime> GetSpeakingPets(int currentTime)
         {
+            if (_fieldUsageBlocked)
+            {
+                return Enumerable.Empty<PetRuntime>();
+            }
+
             return _activePets.Where(pet => pet.HasActiveSpeech && pet.ActiveSpeechExpiresAt > currentTime);
         }
 
@@ -1042,7 +1186,7 @@ namespace HaCreator.MapSimulator.Companions
 
         public void Update(PlayerCharacter owner, DropPool dropPool, int currentTime, float deltaTime)
         {
-            if (owner == null || !owner.IsAlive || _activePets.Count == 0)
+            if (_fieldUsageBlocked || owner == null || !owner.IsAlive || _activePets.Count == 0)
             {
                 return;
             }
@@ -1059,6 +1203,11 @@ namespace HaCreator.MapSimulator.Companions
         public void Draw(SpriteBatch spriteBatch, SkeletonMeshRenderer skeletonRenderer,
             int mapShiftX, int mapShiftY, int centerX, int centerY, PetRenderPlane plane)
         {
+            if (_fieldUsageBlocked)
+            {
+                return;
+            }
+
             for (int i = 0; i < _activePets.Count; i++)
             {
                 _activePets[i].Draw(spriteBatch, skeletonRenderer, mapShiftX, mapShiftY, centerX, centerY, plane);
@@ -1067,7 +1216,47 @@ namespace HaCreator.MapSimulator.Companions
 
         public void Clear()
         {
+            for (int i = 0; i < _activePets.Count; i++)
+            {
+                PersistPetState(_activePets[i]);
+            }
+
             _activePets.Clear();
+        }
+
+        private void PersistPetState(PetRuntime pet)
+        {
+            if (pet == null || pet.ItemId <= 0)
+            {
+                return;
+            }
+
+            if (!_persistedStateByItemId.TryGetValue(pet.ItemId, out Queue<PetPersistentState> states))
+            {
+                states = new Queue<PetPersistentState>();
+                _persistedStateByItemId[pet.ItemId] = states;
+            }
+
+            states.Enqueue(pet.CapturePersistentState());
+        }
+
+        private bool TryRestorePersistedState(int petItemId, out PetPersistentState state)
+        {
+            state = default;
+            if (petItemId <= 0 ||
+                !_persistedStateByItemId.TryGetValue(petItemId, out Queue<PetPersistentState> states) ||
+                states.Count == 0)
+            {
+                return false;
+            }
+
+            state = states.Dequeue();
+            if (states.Count == 0)
+            {
+                _persistedStateByItemId.Remove(petItemId);
+            }
+
+            return true;
         }
 
         private void ReindexPets(PlayerCharacter owner = null)

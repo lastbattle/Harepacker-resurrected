@@ -384,14 +384,15 @@ namespace HaCreator.MapSimulator.Interaction
 
         internal string OnSendMessageResult(MapleTvSendResultKind result)
         {
-            _statusMessage = result switch
+            MapleTvSendResultDefinition definition = result switch
             {
-                MapleTvSendResultKind.Success => QueueSendResultFeedback(1, "MapleTV send request accepted."),
-                MapleTvSendResultKind.Busy => QueueSendResultFeedback(2, "MapleTV send request rejected because another broadcast is already active."),
-                MapleTvSendResultKind.RecipientOffline => QueueSendResultFeedback(3, "MapleTV send request rejected because the target recipient is unavailable."),
-                _ => QueueSendResultFeedback(null, "MapleTV send request failed.")
+                MapleTvSendResultKind.Success => ResolveSendResultDefinition(1),
+                MapleTvSendResultKind.Busy => ResolveSendResultDefinition(2),
+                MapleTvSendResultKind.RecipientOffline => ResolveSendResultDefinition(3),
+                _ => new MapleTvSendResultDefinition(-1, -1, "failed")
             };
 
+            _statusMessage = QueueSendResultFeedback(definition);
             return _statusMessage;
         }
 
@@ -552,23 +553,15 @@ namespace HaCreator.MapSimulator.Interaction
                 }
 
                 byte resultCode = reader.ReadByte();
-                if (!TryResolveClientSendResultStringPoolId(resultCode, out int stringPoolId))
+                if (!TryTryResolveSendResultDefinition(resultCode, out MapleTvSendResultDefinition definition))
                 {
                     _statusMessage = $"MapleTV send-result packet used unsupported code {resultCode}.";
                     message = _statusMessage;
                     return false;
                 }
 
-                string fallbackText = resultCode switch
-                {
-                    1 => "MapleTV send request accepted.",
-                    2 => "MapleTV send request rejected because another broadcast is already active.",
-                    3 => "MapleTV send request rejected because the target recipient is unavailable.",
-                    _ => "MapleTV send request failed."
-                };
-
-                QueueSendResultFeedback(resultCode, fallbackText);
-                _statusMessage = $"MapleTV send-result packet queued client chat feedback for code {resultCode} (StringPool 0x{stringPoolId:X}).";
+                QueueSendResultFeedback(definition);
+                _statusMessage = $"MapleTV send-result packet queued client chat feedback for code {resultCode} (StringPool 0x{definition.StringPoolId:X}).";
                 message = _statusMessage;
                 return true;
             }
@@ -647,43 +640,43 @@ namespace HaCreator.MapSimulator.Interaction
             }
         }
 
-        private string QueueSendResultFeedback(int? resultCode, string fallbackText)
+        private string QueueSendResultFeedback(MapleTvSendResultDefinition definition)
         {
-            int stringPoolId = -1;
-            if (resultCode.HasValue)
-            {
-                TryResolveClientSendResultStringPoolId((byte)resultCode.Value, out stringPoolId);
-            }
+            _lastClientSendResultCode = definition.ResultCode;
+            _lastClientSendResultStringPoolId = definition.StringPoolId;
 
-            _lastClientSendResultCode = resultCode ?? -1;
-            _lastClientSendResultStringPoolId = stringPoolId;
-
-            string resolvedText = stringPoolId >= 0
-                ? $"{fallbackText} [StringPool 0x{stringPoolId:X}]"
-                : fallbackText;
+            string resolvedText = definition.StringPoolId >= 0
+                ? $"MapleTV send result {definition.StatusLabel}. [StringPool 0x{definition.StringPoolId:X} unresolved]"
+                : "MapleTV send result failed.";
 
             _pendingSendResultFeedback = new MapleTvSendResultFeedback(
                 resolvedText,
                 12,
-                resultCode ?? -1,
-                stringPoolId);
+                definition.ResultCode,
+                definition.StringPoolId);
 
             return resolvedText;
         }
 
-        private static bool TryResolveClientSendResultStringPoolId(byte resultCode, out int stringPoolId)
+        private static MapleTvSendResultDefinition ResolveSendResultDefinition(byte resultCode)
         {
-            stringPoolId = resultCode switch
+            return resultCode switch
             {
-                1 => 0xF9E,
-                2 => 0xFA0,
-                3 => 0xF9F,
-                _ => -1
+                1 => new MapleTvSendResultDefinition(1, 0xF9E, "accepted"),
+                2 => new MapleTvSendResultDefinition(2, 0xFA0, "rejected"),
+                3 => new MapleTvSendResultDefinition(3, 0xF9F, "recipient unavailable"),
+                _ => new MapleTvSendResultDefinition(resultCode, -1, "failed")
             };
+        }
 
-            return stringPoolId >= 0;
+        private static bool TryTryResolveSendResultDefinition(byte resultCode, out MapleTvSendResultDefinition definition)
+        {
+            definition = ResolveSendResultDefinition(resultCode);
+            return definition.StringPoolId >= 0;
         }
     }
+
+    internal sealed record MapleTvSendResultDefinition(int ResultCode, int StringPoolId, string StatusLabel);
 
     internal sealed class MapleTvSnapshot
     {

@@ -85,6 +85,29 @@ namespace HaCreator.MapSimulator.Pools
             }
         }
 
+        public void RemoveBySourceTagExcept(string sourceTag, IReadOnlySet<int> keepCharacterIds)
+        {
+            if (string.IsNullOrWhiteSpace(sourceTag))
+            {
+                return;
+            }
+
+            keepCharacterIds ??= new HashSet<int>();
+            foreach (int characterId in _actorsById.Values
+                .Where(actor => string.Equals(actor.SourceTag, sourceTag.Trim(), StringComparison.OrdinalIgnoreCase)
+                    && !keepCharacterIds.Contains(actor.CharacterId))
+                .Select(actor => actor.CharacterId)
+                .ToArray())
+            {
+                if (_actorsById.TryGetValue(characterId, out RemoteUserActor actor))
+                {
+                    ClearActorFollowLinks(actor);
+                    _actorIdsByName.Remove(actor.Name);
+                    _actorsById.Remove(characterId);
+                }
+            }
+        }
+
         public bool TryGetActor(int characterId, out RemoteUserActor actor)
         {
             return _actorsById.TryGetValue(characterId, out actor);
@@ -365,7 +388,7 @@ namespace HaCreator.MapSimulator.Pools
             int chargeElement = AfterImageChargeSkillResolver.TryGetChargeElement(chargeSkillId, out int resolvedChargeElement)
                 ? resolvedChargeElement
                 : 0;
-            RegisterMeleeAfterImage(actor, skillId, actor.ActionName, currentTime, masteryPercent, chargeElement);
+            RegisterMeleeAfterImage(actor, skillId, actor.ActionName, currentTime, masteryPercent, chargeElement, actionCode);
             return true;
         }
 
@@ -1445,7 +1468,8 @@ namespace HaCreator.MapSimulator.Pools
             string actionName,
             int currentTime,
             int masteryPercent,
-            int chargeElement)
+            int chargeElement,
+            int? rawActionCode = null)
         {
             if (_skillLoader == null
                 || actor?.Build == null
@@ -1466,6 +1490,20 @@ namespace HaCreator.MapSimulator.Pools
                     chargeElement,
                     out MeleeAfterImageAction afterImageAction))
             {
+                afterImageAction = _skillLoader.ApplyClientMeleeRangeOverride(null, rawActionCode, actor.FacingRight);
+                if (afterImageAction != null)
+                {
+                    actor.ApplyMeleeAfterImage(
+                        skillId,
+                        actionName,
+                        afterImageAction,
+                        currentTime,
+                        actor.FacingRight,
+                        GetActionDuration(actor.Assembler, actionName),
+                        GetAfterImageFadeDuration(actor.Assembler, actionName));
+                    return;
+                }
+
                 if (actor.MeleeAfterImage?.FadeStartTime < 0)
                 {
                     actor.ClearMeleeAfterImage();
@@ -1473,6 +1511,8 @@ namespace HaCreator.MapSimulator.Pools
 
                 return;
             }
+
+            afterImageAction = _skillLoader.ApplyClientMeleeRangeOverride(afterImageAction, rawActionCode, actor.FacingRight);
 
             actor.ApplyMeleeAfterImage(
                 skillId,

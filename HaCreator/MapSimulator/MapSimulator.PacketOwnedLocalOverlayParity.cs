@@ -34,6 +34,7 @@ namespace HaCreator.MapSimulator
             bool UsesConfiguredItem,
             bool ForceRequest,
             bool BuffSkillRequest,
+            int InventorySlotIndex,
             int RequestedAt,
             int AckAt);
 
@@ -62,6 +63,8 @@ namespace HaCreator.MapSimulator
         private LocalOverlayBalloonSkin _packetOwnedBalloonSkin;
         private bool _localOverlayPacketInboxEnabled = true;
         private int _localOverlayPacketInboxConfiguredPort = LocalOverlayPacketInboxManager.DefaultPort;
+        private int _fieldHazardSharedPetConsumeItemId;
+        private InventoryType _fieldHazardSharedPetConsumeInventoryType = InventoryType.NONE;
         private int _lastFieldHazardPetAutoConsumeRequestTick = int.MinValue;
 
         private const int FieldHazardPetAutoConsumeRequestThrottleMs = 200;
@@ -404,7 +407,13 @@ namespace HaCreator.MapSimulator
             Color baseColor = _packetOwnedBalloonSkin?.TextColor ?? Color.Black;
             PacketOwnedBalloonTextStyle style = new(baseColor, false);
             var glyphs = new List<PacketOwnedBalloonGlyph>(text.Length);
-            string sanitized = text.Replace("\r", string.Empty);
+            string sanitized = PacketOwnedBalloonTextFormatter.Format(
+                text,
+                new PacketOwnedBalloonTextFormattingContext
+                {
+                    PlayerName = _playerManager?.Player?.Build?.Name,
+                    CurrentMapId = _mapBoard?.MapInfo?.id
+                });
             for (int i = 0; i < sanitized.Length; i++)
             {
                 char current = sanitized[i];
@@ -898,6 +907,19 @@ namespace HaCreator.MapSimulator
 
             string petLabel = DescribeFieldHazardAutoConsumePet(target.PetSlotIndex, target.PetName);
             string requestMode = target.UsesConfiguredItem ? "configured auto-HP" : "auto-HP";
+            if (!TryResolveFieldHazardItemSlotIndex(
+                    uiWindowManager?.InventoryWindow as IInventoryRuntime,
+                    target.Candidate.InventoryType,
+                    target.Candidate.ItemId,
+                    out int inventorySlotIndex))
+            {
+                TryTriggerLimitedPetSpeechEvent(PetAutoSpeechEvent.NoHpPotion, ref _petHpPotionFailureSpeechCount, currentTickCount);
+                _chat?.AddMessage(FieldHazardNoHpPotionNoticeText, new Color(255, 206, 145), currentTickCount);
+                string missingSlotDetail = $"{petLabel} {requestMode} could not queue {target.Candidate.ItemName} because the shared inventory slot could not be resolved.";
+                _localOverlayRuntime.SetFieldHazardFollowUp(missingSlotDetail, FieldHazardFollowUpKind.Failure, currentTickCount);
+                return missingSlotDetail;
+            }
+
             if (_pendingFieldHazardPetAutoConsumeRequest.HasValue)
             {
                 string pendingDetail = $"{petLabel} {requestMode} request for {target.Candidate.ItemName} is already pending.";
@@ -920,12 +942,13 @@ namespace HaCreator.MapSimulator
                 target.UsesConfiguredItem,
                 ForceRequest: false,
                 BuffSkillRequest: false,
+                InventorySlotIndex: inventorySlotIndex,
                 RequestedAt: currentTickCount,
                 AckAt: currentTickCount + FieldHazardPetAutoConsumeSyntheticAckDelayMs);
             _lastFieldHazardPetAutoConsumeRequestTick = currentTickCount;
             _petHpPotionFailureSpeechCount = 0;
 
-            string requestDetail = $"{petLabel} {requestMode} requested {target.Candidate.ItemName}.";
+            string requestDetail = $"{petLabel} {requestMode} queued {target.Candidate.ItemName} from {target.Candidate.InventoryType} slot {inventorySlotIndex}.";
             _localOverlayRuntime.SetFieldHazardFollowUp(requestDetail, FieldHazardFollowUpKind.Pending, currentTickCount);
             return requestDetail;
         }
@@ -955,18 +978,32 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
+            if (!TryResolveFieldHazardItemSlotIndex(
+                    uiWindowManager?.InventoryWindow as IInventoryRuntime,
+                    request.Candidate.InventoryType,
+                    request.Candidate.ItemId,
+                    out int resolvedInventorySlotIndex)
+                || resolvedInventorySlotIndex != request.InventorySlotIndex)
+            {
+                TryTriggerLimitedPetSpeechEvent(PetAutoSpeechEvent.NoHpPotion, ref _petHpPotionFailureSpeechCount, currentTickCount);
+                _chat?.AddMessage(FieldHazardNoHpPotionNoticeText, new Color(255, 206, 145), currentTickCount);
+                string slotExpiredDetail = $"{petLabel} {requestMode} request for {request.Candidate.ItemName} lost {request.Candidate.InventoryType} slot {request.InventorySlotIndex} before the synthetic ack arrived.";
+                _localOverlayRuntime.SetFieldHazardFollowUp(slotExpiredDetail, FieldHazardFollowUpKind.Failure, currentTickCount);
+                return;
+            }
+
             if (player.HP < player.MaxHP
                 && TryUseConsumableInventoryItem(request.Candidate.ItemId, request.Candidate.InventoryType, currentTickCount))
             {
-                string successDetail = $"{petLabel} {requestMode} acknowledged {request.Candidate.ItemName} and consumed it.";
-                _localOverlayRuntime.SetFieldHazardFollowUp(successDetail, FieldHazardFollowUpKind.Success, currentTickCount);
+                string successDetail = $"{petLabel} {requestMode} acknowledged {request.Candidate.ItemName} from {request.Candidate.InventoryType} slot {request.InventorySlotIndex} and consumed it.";
+                _localOverlayRuntime.SetFieldHazardFollowUp(successDetail, FieldHazardFollowUpKind.Consumed, currentTickCount);
                 return;
             }
 
             if (player.HP >= player.MaxHP)
             {
-                string ackDetail = $"{petLabel} {requestMode} request for {request.Candidate.ItemName} was acknowledged without consuming it.";
-                _localOverlayRuntime.SetFieldHazardFollowUp(ackDetail, FieldHazardFollowUpKind.Success, currentTickCount);
+                string ackDetail = $"{petLabel} {requestMode} request for {request.Candidate.ItemName} was acknowledged on {request.Candidate.InventoryType} slot {request.InventorySlotIndex} without consuming it.";
+                _localOverlayRuntime.SetFieldHazardFollowUp(ackDetail, FieldHazardFollowUpKind.Acknowledged, currentTickCount);
                 return;
             }
 
@@ -984,12 +1021,18 @@ namespace HaCreator.MapSimulator
             target = default;
             autoConsumeEnabled = false;
 
+            if (_playerManager?.Pets?.IsFieldUsageBlocked == true)
+            {
+                return false;
+            }
+
             IReadOnlyList<PetRuntime> activePets = _playerManager?.Pets?.ActivePets;
             if (activePets == null || activePets.Count == 0)
             {
                 return false;
             }
 
+            PetRuntime requestPet = null;
             for (int i = 0; i < activePets.Count; i++)
             {
                 PetRuntime pet = activePets[i];
@@ -999,44 +1042,146 @@ namespace HaCreator.MapSimulator
                 }
 
                 autoConsumeEnabled = true;
-                if (pet.AutoConsumeHpItemId > 0
-                    && TryCreateFieldHazardHpPotionCandidate(
+                requestPet ??= pet;
+            }
+
+            if (!autoConsumeEnabled || requestPet == null)
+            {
+                return false;
+            }
+
+            if (!TryResolveFieldHazardSharedHpPotionCandidate(
+                    activePets,
+                    predictedRemainingHp,
+                    out FieldHazardHpPotionCandidate candidate,
+                    out bool usesConfiguredItem))
+            {
+                target = new FieldHazardPetAutoConsumeTarget(
+                    requestPet.SlotIndex,
+                    requestPet.Name,
+                    default,
+                    requestPet.AutoConsumeHpItemId > 0);
+                return false;
+            }
+
+            target = new FieldHazardPetAutoConsumeTarget(
+                requestPet.SlotIndex,
+                requestPet.Name,
+                candidate,
+                usesConfiguredItem);
+            return true;
+        }
+
+        private bool TryResolveFieldHazardSharedHpPotionCandidate(
+            IReadOnlyList<PetRuntime> activePets,
+            int predictedRemainingHp,
+            out FieldHazardHpPotionCandidate candidate,
+            out bool usesConfiguredItem)
+        {
+            candidate = default;
+            usesConfiguredItem = false;
+
+            PlayerCharacter player = _playerManager?.Player;
+            IInventoryRuntime inventoryWindow = uiWindowManager?.InventoryWindow as IInventoryRuntime;
+            if (player == null || inventoryWindow == null)
+            {
+                return false;
+            }
+
+            for (int i = 0; i < activePets.Count; i++)
+            {
+                PetRuntime pet = activePets[i];
+                if (pet == null
+                    || !pet.AutoConsumeHpEnabled
+                    || pet.AutoConsumeHpItemId <= 0
+                    || pet.AutoConsumeHpInventoryType == InventoryType.NONE)
+                {
+                    continue;
+                }
+
+                if (TryCreateFieldHazardHpPotionCandidate(
                         pet.AutoConsumeHpItemId,
                         pet.AutoConsumeHpInventoryType,
                         predictedRemainingHp,
-                        uiWindowManager?.InventoryWindow as IInventoryRuntime,
-                        _playerManager?.Player,
-                        out FieldHazardHpPotionCandidate configuredCandidate))
+                        inventoryWindow,
+                        player,
+                        out candidate))
                 {
-                    target = new FieldHazardPetAutoConsumeTarget(i, pet.Name, configuredCandidate, UsesConfiguredItem: true);
+                    SetFieldHazardSharedPetConsumeItem(candidate.ItemId, candidate.InventoryType);
+                    usesConfiguredItem = true;
                     return true;
                 }
             }
 
-            if (!autoConsumeEnabled)
+            if (_fieldHazardSharedPetConsumeItemId > 0
+                && _fieldHazardSharedPetConsumeInventoryType != InventoryType.NONE
+                && TryCreateFieldHazardHpPotionCandidate(
+                    _fieldHazardSharedPetConsumeItemId,
+                    _fieldHazardSharedPetConsumeInventoryType,
+                    predictedRemainingHp,
+                    inventoryWindow,
+                    player,
+                    out candidate))
+            {
+                return true;
+            }
+
+            if (!TryResolveFieldHazardHpPotionCandidate(predictedRemainingHp, out candidate))
             {
                 return false;
             }
 
-            if (!TryResolveFieldHazardHpPotionCandidate(predictedRemainingHp, out FieldHazardHpPotionCandidate candidate))
+            SetFieldHazardSharedPetConsumeItem(candidate.ItemId, candidate.InventoryType);
+            return true;
+        }
+
+        private void SetFieldHazardSharedPetConsumeItem(int itemId, InventoryType inventoryType)
+        {
+            if (itemId <= 0 || inventoryType == InventoryType.NONE)
             {
-                PetRuntime fallbackPet = activePets.FirstOrDefault(pet => pet != null && pet.AutoConsumeHpEnabled);
-                if (fallbackPet != null)
+                _fieldHazardSharedPetConsumeItemId = 0;
+                _fieldHazardSharedPetConsumeInventoryType = InventoryType.NONE;
+                return;
+            }
+
+            _fieldHazardSharedPetConsumeItemId = itemId;
+            _fieldHazardSharedPetConsumeInventoryType = inventoryType;
+        }
+
+        private static bool TryResolveFieldHazardItemSlotIndex(
+            IInventoryRuntime inventoryWindow,
+            InventoryType inventoryType,
+            int itemId,
+            out int slotIndex)
+        {
+            slotIndex = 0;
+            if (inventoryWindow == null || inventoryType == InventoryType.NONE || itemId <= 0)
+            {
+                return false;
+            }
+
+            IReadOnlyList<InventorySlotData> slots = inventoryWindow.GetSlots(inventoryType);
+            if (slots == null)
+            {
+                return false;
+            }
+
+            for (int i = 0; i < slots.Count; i++)
+            {
+                InventorySlotData slot = slots[i];
+                if (slot == null
+                    || slot.IsDisabled
+                    || slot.ItemId != itemId
+                    || slot.Quantity <= 0)
                 {
-                    target = new FieldHazardPetAutoConsumeTarget(fallbackPet.SlotIndex, fallbackPet.Name, default, UsesConfiguredItem: false);
+                    continue;
                 }
 
-                return false;
+                slotIndex = i + 1;
+                return true;
             }
 
-            PetRuntime selectedPet = activePets.FirstOrDefault(pet => pet != null && pet.AutoConsumeHpEnabled);
-            if (selectedPet == null)
-            {
-                return false;
-            }
-
-            target = new FieldHazardPetAutoConsumeTarget(selectedPet.SlotIndex, selectedPet.Name, candidate, UsesConfiguredItem: false);
-            return true;
+            return false;
         }
 
         private static string DescribeFieldHazardAutoConsumePet(int petSlotIndex, string petName)
@@ -1110,6 +1255,34 @@ namespace HaCreator.MapSimulator
             }
 
             return false;
+        }
+
+        private string DescribeFieldHazardPetAutoConsumeTransportStatus(int currentTickCount)
+        {
+            string sharedItemStatus = _fieldHazardSharedPetConsumeItemId > 0 && _fieldHazardSharedPetConsumeInventoryType != InventoryType.NONE
+                ? string.Format(
+                    CultureInfo.InvariantCulture,
+                    "sharedItem={0} [{1}]",
+                    _fieldHazardSharedPetConsumeItemId,
+                    _fieldHazardSharedPetConsumeInventoryType)
+                : "sharedItem=none";
+            if (!_pendingFieldHazardPetAutoConsumeRequest.HasValue)
+            {
+                return $"Field hazard pet transport: {sharedItemStatus}, pending=none.";
+            }
+
+            FieldHazardPetAutoConsumeRequest request = _pendingFieldHazardPetAutoConsumeRequest.Value;
+            int remainingMs = Math.Max(0, request.AckAt - currentTickCount);
+            return string.Format(
+                CultureInfo.InvariantCulture,
+                "Field hazard pet transport: {0}, pending={1} [{2}] slot={3} ackIn={4}ms force={5} buffSkill={6}.",
+                sharedItemStatus,
+                request.Candidate.ItemId,
+                request.Candidate.InventoryType,
+                request.InventorySlotIndex,
+                remainingMs,
+                request.ForceRequest ? 1 : 0,
+                request.BuffSkillRequest ? 1 : 0);
         }
 
         private bool TryCreateFieldHazardHpPotionCandidate(
@@ -1198,7 +1371,8 @@ namespace HaCreator.MapSimulator
                 fadeStatus,
                 balloonStatus,
                 _localOverlayRuntime.DescribeDamageMeterStatus(currentTickCount),
-                _localOverlayRuntime.DescribeFieldHazardStatus(currentTickCount));
+                _localOverlayRuntime.DescribeFieldHazardStatus(currentTickCount),
+                DescribeFieldHazardPetAutoConsumeTransportStatus(currentTickCount));
         }
 
         private void ClearPacketOwnedLocalOverlayState(string scope)

@@ -966,12 +966,26 @@ namespace HaCreator.MapSimulator.Interaction
                 };
             }
 
+            if (!ApplyActions(
+                    definition.StartActions,
+                    build,
+                    messages,
+                    out string actionFailureMessage,
+                    rewardResolution.GrantedItems,
+                    definition.StartPetRequirements,
+                    definition.StartPetRecallLimit))
+            {
+                return new QuestWindowActionResult
+                {
+                    QuestId = questId,
+                    Messages = new[] { actionFailureMessage ?? $"Unable to accept {definition.Name}." }
+                };
+            }
+
             QuestProgress progress = GetOrCreateProgress(questId);
             progress.State = QuestStateType.Started;
             progress.MobKills.Clear();
             MarkQuestAlarmUpdated(questId);
-
-            ApplyActions(definition.StartActions, build, messages, rewardResolution.GrantedItems, definition.StartPetRequirements, definition.StartPetRecallLimit);
 
             return new QuestWindowActionResult
             {
@@ -1058,15 +1072,6 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             var messages = new List<string>();
-            if (!TryApplyCompletionMesoCost(definition, messages))
-            {
-                return new QuestWindowActionResult
-                {
-                    QuestId = questId,
-                    Messages = messages
-                };
-            }
-
             QuestRewardResolution rewardResolution = ResolveQuestRewardItems(
                 definition.EndActions.RewardItems,
                 build,
@@ -1106,10 +1111,34 @@ namespace HaCreator.MapSimulator.Interaction
                 };
             }
 
+            if (!TryApplyCompletionMesoCost(definition, messages))
+            {
+                return new QuestWindowActionResult
+                {
+                    QuestId = questId,
+                    Messages = messages
+                };
+            }
+
+            if (!ApplyActions(
+                    definition.EndActions,
+                    build,
+                    messages,
+                    out string actionFailureMessage,
+                    rewardResolution.GrantedItems,
+                    definition.EndPetRequirements,
+                    definition.EndPetRecallLimit))
+            {
+                return new QuestWindowActionResult
+                {
+                    QuestId = questId,
+                    Messages = new[] { actionFailureMessage ?? $"Unable to complete {definition.Name}." }
+                };
+            }
+
             QuestProgress progress = GetOrCreateProgress(questId);
             progress.State = QuestStateType.Completed;
             MarkQuestAlarmUpdated(questId);
-            ApplyActions(definition.EndActions, build, messages, rewardResolution.GrantedItems, definition.EndPetRequirements, definition.EndPetRecallLimit);
 
             return new QuestWindowActionResult
             {
@@ -1260,20 +1289,46 @@ namespace HaCreator.MapSimulator.Interaction
             return true;
         }
 
-        private bool TryGrantRewardItem(int itemId, int quantity)
+        private bool TryGrantRewardItem(
+            int itemId,
+            int quantity,
+            out bool storedInQuestProgress,
+            out string failureMessage)
         {
+            storedInQuestProgress = false;
+            failureMessage = null;
+
             if (itemId <= 0 || quantity <= 0)
             {
                 return true;
             }
 
-            if (_canAcceptItemReward?.Invoke(itemId, quantity) == true &&
-                _addInventoryItem?.Invoke(itemId, quantity) == true)
+            bool hasLiveInventoryRuntime = _canAcceptItemReward != null || _addInventoryItem != null;
+            if (!hasLiveInventoryRuntime)
+            {
+                AdjustTrackedItemCount(itemId, quantity);
+                storedInQuestProgress = true;
+                return true;
+            }
+
+            if (_canAcceptItemReward?.Invoke(itemId, quantity) == false)
+            {
+                failureMessage = $"Make room for {GetItemName(itemId)} x{quantity} before claiming this quest reward.";
+                return false;
+            }
+
+            if (_addInventoryItem == null)
+            {
+                failureMessage = $"Unable to add {GetItemName(itemId)} x{quantity} because the live inventory add path is unavailable.";
+                return false;
+            }
+
+            if (_addInventoryItem(itemId, quantity))
             {
                 return true;
             }
 
-            AdjustTrackedItemCount(itemId, quantity);
+            failureMessage = $"Unable to add {GetItemName(itemId)} x{quantity} to the live inventory.";
             return false;
         }
 
@@ -1549,12 +1604,26 @@ namespace HaCreator.MapSimulator.Interaction
                     };
                 }
 
+                if (!ApplyActions(
+                        definition.StartActions,
+                        build,
+                        messages,
+                        out string actionFailureMessage,
+                        rewardResolution.GrantedItems,
+                        definition.StartPetRequirements,
+                        definition.StartPetRecallLimit))
+                {
+                    return new QuestActionResult
+                    {
+                        Messages = new[] { actionFailureMessage ?? $"Unable to accept {definition.Name}." }
+                    };
+                }
+
                 QuestProgress progress = GetOrCreateProgress(questId);
                 progress.State = QuestStateType.Started;
                 progress.MobKills.Clear();
                 MarkQuestAlarmUpdated(questId);
 
-                ApplyActions(definition.StartActions, build, messages, rewardResolution.GrantedItems, definition.StartPetRequirements, definition.StartPetRecallLimit);
                 return new QuestActionResult
                 {
                     StateChanged = true,
@@ -1584,16 +1653,6 @@ namespace HaCreator.MapSimulator.Interaction
                 }
 
                 var messages = new List<string>();
-                if (!TryApplyCompletionMesoCost(definition, messages))
-                {
-                    return new QuestActionResult
-                    {
-                        Messages = messages
-                    };
-                }
-
-                messages.Insert(0,
-                    $"Completed quest: {definition.Name}");
                 QuestRewardResolution rewardResolution = ResolveQuestRewardItems(
                     definition.EndActions.RewardItems,
                     build,
@@ -1629,10 +1688,34 @@ namespace HaCreator.MapSimulator.Interaction
                     };
                 }
 
+                messages.Insert(0,
+                    $"Completed quest: {definition.Name}");
+                if (!TryApplyCompletionMesoCost(definition, messages))
+                {
+                    return new QuestActionResult
+                    {
+                        Messages = messages
+                    };
+                }
+
+                if (!ApplyActions(
+                        definition.EndActions,
+                        build,
+                        messages,
+                        out string actionFailureMessage,
+                        rewardResolution.GrantedItems,
+                        definition.EndPetRequirements,
+                        definition.EndPetRecallLimit))
+                {
+                    return new QuestActionResult
+                    {
+                        Messages = new[] { actionFailureMessage ?? $"Unable to complete {definition.Name}." }
+                    };
+                }
+
                 QuestProgress progress = GetOrCreateProgress(questId);
                 progress.State = QuestStateType.Completed;
                 MarkQuestAlarmUpdated(questId);
-                ApplyActions(definition.EndActions, build, messages, rewardResolution.GrantedItems, definition.EndPetRequirements, definition.EndPetRecallLimit);
                 return new QuestActionResult
                 {
                     StateChanged = true,
@@ -2918,9 +3001,37 @@ namespace HaCreator.MapSimulator.Interaction
                 return "Pet skill reward";
             }
 
-            return skillMask == PetRuntime.AutoSpeakingSkillMask
-                ? "Pet skill: Auto speaking"
-                : $"Pet skill flag 0x{skillMask:X}";
+            string[] names = Enum.GetValues(typeof(PetSkillFlag))
+                .Cast<PetSkillFlag>()
+                .Where(flag => flag != PetSkillFlag.PickupMeso)
+                .Where(flag => flag.Check(skillMask))
+                .Select(FormatPetSkillFlagName)
+                .Distinct(StringComparer.Ordinal)
+                .ToArray();
+
+            if (names.Length == 0)
+            {
+                return $"Pet skill flag 0x{skillMask:X}";
+            }
+
+            return $"Pet skill: {string.Join(", ", names)}";
+        }
+
+        private static string FormatPetSkillFlagName(PetSkillFlag flag)
+        {
+            return flag switch
+            {
+                PetSkillFlag.AutoBuff => "Auto Buff",
+                PetSkillFlag.ConsumeHP => "Consume HP",
+                PetSkillFlag.ConsumeMP => "Consume MP",
+                PetSkillFlag.DropSweep => "Drop Sweep",
+                PetSkillFlag.LongRange => "Long Range",
+                PetSkillFlag.PickupAll => "Pickup All",
+                PetSkillFlag.PickupItem => "Pickup Item",
+                PetSkillFlag.Shop => "Shop",
+                PetSkillFlag.Smart => "Auto Speaking",
+                _ => flag.ToString()
+            };
         }
 
         private static string GetSpRewardText(QuestSpReward reward)
@@ -3052,17 +3163,37 @@ namespace HaCreator.MapSimulator.Interaction
             }
         }
 
-        private void ApplyActions(
+        private bool ApplyActions(
             QuestActionBundle actions,
             CharacterBuild build,
             ICollection<string> messages,
+            out string failureMessage,
             IReadOnlyList<QuestRewardItem> resolvedGrantedItems = null,
             IReadOnlyList<QuestPetRequirement> petRequirements = null,
             int? petRecallLimit = null)
         {
+            failureMessage = null;
             if (actions == null)
             {
-                return;
+                return true;
+            }
+
+            resolvedGrantedItems ??= ResolveGrantedRewardItems(actions.RewardItems, build, messages);
+            for (int i = 0; i < resolvedGrantedItems.Count; i++)
+            {
+                QuestRewardItem item = resolvedGrantedItems[i];
+                bool addedToInventory = TryGrantRewardItem(item.ItemId, item.Count, out bool storedInTrackedState, out string itemFailureMessage);
+                if (!addedToInventory)
+                {
+                    failureMessage = itemFailureMessage;
+                    return false;
+                }
+
+                messages.Add($"Item reward: {GetRewardItemDescription(item, includeSelectionTag: false, includeFilters: false)}");
+                if (storedInTrackedState)
+                {
+                    messages.Add("Reward item was stored in quest progress because the inventory runtime could not accept it directly.");
+                }
             }
 
             if (build != null && actions.ExpReward != 0)
@@ -3105,18 +3236,6 @@ namespace HaCreator.MapSimulator.Interaction
             for (int i = 0; i < actions.TraitRewards.Count; i++)
             {
                 ApplyTraitReward(build, actions.TraitRewards[i], messages);
-            }
-
-            resolvedGrantedItems ??= ResolveGrantedRewardItems(actions.RewardItems, build, messages);
-            for (int i = 0; i < resolvedGrantedItems.Count; i++)
-            {
-                QuestRewardItem item = resolvedGrantedItems[i];
-                bool addedToInventory = TryGrantRewardItem(item.ItemId, item.Count);
-                messages.Add($"Item reward: {GetRewardItemDescription(item, includeSelectionTag: false, includeFilters: false)}");
-                if (!addedToInventory)
-                {
-                    messages.Add("Reward item was stored in quest progress because the inventory runtime could not accept it directly.");
-                }
             }
 
             for (int i = 0; i < actions.RewardItems.Count; i++)
@@ -3169,6 +3288,8 @@ namespace HaCreator.MapSimulator.Interaction
             {
                 messages.Add($"Next quest unlocked: {GetQuestName(actions.NextQuestId.Value)}");
             }
+
+            return true;
         }
 
         private static bool MatchesQuestLogTab(QuestLogTabType tab, QuestStateType state)
@@ -3528,13 +3649,13 @@ namespace HaCreator.MapSimulator.Interaction
                 StartTraitRequirements = ParseTraitRequirements(startCheck),
                 StartItemRequirements = ParseItemRequirements(startCheck?["item"]),
                 StartPetRequirements = ParsePetRequirements(startCheck?["pet"]),
-                StartPetRecallLimit = ParsePositiveInt(startCheck?["petRecallLimit"]),
+                StartPetRecallLimit = ParsePetActiveLimit(startCheck),
                 StartSkillRequirements = ParseSkillRequirements(startCheck?["skill"]),
                 EndQuestRequirements = ParseQuestRequirements(endCheck?["quest"]),
                 EndMobRequirements = ParseMobRequirements(endCheck?["mob"]),
                 EndItemRequirements = ParseItemRequirements(endCheck?["item"]),
                 EndPetRequirements = ParsePetRequirements(endCheck?["pet"]),
-                EndPetRecallLimit = ParsePositiveInt(endCheck?["petRecallLimit"]),
+                EndPetRecallLimit = ParsePetActiveLimit(endCheck),
                 StartSayPages = ParseConversationPages(startSay),
                 EndSayPages = ParseConversationPages(endSay),
                 StartStopPages = ParseConversationStopPages(startSay),
@@ -3612,6 +3733,20 @@ namespace HaCreator.MapSimulator.Interaction
         {
             int? value = ParseInt(property);
             return value.GetValueOrDefault() > 0 ? value : null;
+        }
+
+        private static int? ParsePetActiveLimit(WzImageProperty property)
+        {
+            if (property is not WzSubProperty subProperty)
+            {
+                return null;
+            }
+
+            // Auto-speaking training quests in this data set use petAutoSpeakingLimit
+            // instead of the older petRecallLimit key, but the active-pet constraint is
+            // consumed through the same simulator seam.
+            return ParsePositiveInt(subProperty["petRecallLimit"])
+                ?? ParsePositiveInt(subProperty["petAutoSpeakingLimit"]);
         }
 
         private void IndexShowLayerTags(QuestDefinition definition)
@@ -4303,8 +4438,12 @@ namespace HaCreator.MapSimulator.Interaction
                 return false;
             }
 
-            return child is WzStringProperty ||
-                   (int.TryParse(child.Name, out int pageIndex) && pageIndex >= 0 && pageIndex < 200);
+            return IsConversationTextNodeName(child.Name);
+        }
+
+        private static bool IsConversationTextNodeName(string propertyName)
+        {
+            return int.TryParse(propertyName, out int pageIndex) && pageIndex >= 0 && pageIndex < 200;
         }
 
         private static IEnumerable<WzImageProperty> EnumerateConversationMetadataContainers(WzImageProperty property)

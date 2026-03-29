@@ -138,6 +138,31 @@ namespace HaCreator.MapSimulator.Entities
             return TryGetNextState(currentState, new ReactorTransitionRequest(activationType), out nextState);
         }
 
+        internal int[] GetNextStateCandidates(int currentState, ReactorTransitionRequest request, bool includeNumericFallback = true)
+        {
+            int resolvedState = ResolveState(currentState);
+            int[] authoredCandidates = GetAuthoredCandidates(resolvedState, request);
+            if (authoredCandidates.Length > 0)
+            {
+                return authoredCandidates;
+            }
+
+            if (!includeNumericFallback || _availableStates.Length == 0)
+            {
+                return Array.Empty<int>();
+            }
+
+            for (int i = 0; i < _availableStates.Length; i++)
+            {
+                if (_availableStates[i] > resolvedState)
+                {
+                    return new[] { _availableStates[i] };
+                }
+            }
+
+            return Array.Empty<int>();
+        }
+
         internal bool CanActivateFromState(int currentState, ReactorTransitionRequest request)
         {
             int resolvedState = ResolveState(currentState);
@@ -162,19 +187,10 @@ namespace HaCreator.MapSimulator.Entities
         {
             nextState = currentState;
 
-            if (TryGetAuthoredNextState(currentState, request, out nextState))
-                return true;
-
-            if (_availableStates.Length == 0)
-                return false;
-
-            int resolvedState = ResolveState(currentState);
-            for (int i = 0; i < _availableStates.Length; i++)
+            int[] candidates = GetNextStateCandidates(currentState, request);
+            if (candidates.Length > 0)
             {
-                if (_availableStates[i] <= resolvedState)
-                    continue;
-
-                nextState = _availableStates[i];
+                nextState = candidates[0];
                 return true;
             }
 
@@ -183,7 +199,18 @@ namespace HaCreator.MapSimulator.Entities
 
         public bool TryGetTimedStateTransition(int currentState, out int nextState)
         {
-            return TryGetAuthoredNextState(currentState, new ReactorTransitionRequest(ReactorActivationType.Time), out nextState);
+            nextState = currentState;
+            int[] candidates = GetNextStateCandidates(
+                currentState,
+                new ReactorTransitionRequest(ReactorActivationType.Time),
+                includeNumericFallback: false);
+            if (candidates.Length == 0)
+            {
+                return false;
+            }
+
+            nextState = candidates[0];
+            return true;
         }
 
         public IReadOnlyCollection<int> GetAuthoredEventTypes()
@@ -336,18 +363,15 @@ namespace HaCreator.MapSimulator.Entities
             return _stateFrames.ContainsKey(0) ? 0 : _availableStates[0];
         }
 
-        private bool TryGetAuthoredNextState(int currentState, ReactorTransitionRequest request, out int nextState)
+        private int[] GetAuthoredCandidates(int resolvedState, ReactorTransitionRequest request)
         {
-            nextState = currentState;
-
-            int resolvedState = ResolveState(currentState);
             if (!_stateTransitions.TryGetValue(resolvedState, out AuthoredStateTransition[] transitions)
                 || transitions.Length == 0)
             {
-                return false;
+                return Array.Empty<int>();
             }
 
-            AuthoredStateTransition[] candidateTransitions = FilterTransitionsBySelector(
+            return FilterTransitionsBySelector(
                 transitions.Where(transition => MatchesAuthoredEventType(transition.EventType, request.ActivationType)).ToArray(),
                 request)
                 .Where(transition => _stateFrames.ContainsKey(transition.TargetState))
@@ -355,13 +379,9 @@ namespace HaCreator.MapSimulator.Entities
                 .OrderBy(transition => GetEventTypePriority(transition.EventType, request))
                 .ThenBy(transition => GetSelectorPriority(transition, request))
                 .ThenBy(transition => transition.Order)
+                .Select(transition => transition.TargetState)
+                .Distinct()
                 .ToArray();
-
-            if (candidateTransitions.Length == 0)
-                return false;
-
-            nextState = candidateTransitions[0].TargetState;
-            return true;
         }
 
         private static AuthoredStateTransition[] FilterTransitionsBySelector(

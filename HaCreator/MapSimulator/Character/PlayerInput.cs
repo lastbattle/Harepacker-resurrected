@@ -271,6 +271,11 @@ namespace HaCreator.MapSimulator.Character
             LoadDefaultBindings();
         }
 
+        public static IReadOnlyList<(InputAction action, Keys primary, Keys secondary, Buttons gamepad)> GetDefaultBindings()
+        {
+            return DefaultBindings;
+        }
+
         public void LoadDefaultBindings()
         {
             _bindings.Clear();

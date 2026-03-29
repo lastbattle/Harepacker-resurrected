@@ -32,57 +32,45 @@ namespace HaCreator.MapSimulator
             {
                 entries.Add(new RankingEntrySnapshot
                 {
-                    Label = "Character",
-                    Value = build.Name,
-                    Detail = $"Lv. {build.Level} {build.JobName} in {mapName}."
-                });
-                entries.Add(new RankingEntrySnapshot
-                {
                     Label = "World Rank",
                     Value = build.WorldRank > 0 ? $"#{build.WorldRank}" : "Local",
                     Detail = build.WorldRank > 0
-                        ? "CharacterBuild already carries a world-rank seed."
-                        : "No packet-authored world-rank feed is present, so this owner stays simulator-local."
+                        ? $"World-ranking seed is attached to {build.Name}."
+                        : "No packet-authored world-ranking feed is present, so this owner stays simulator-local."
                 });
                 entries.Add(new RankingEntrySnapshot
                 {
                     Label = "Job Rank",
                     Value = build.JobRank > 0 ? $"#{build.JobRank}" : "Local",
                     Detail = build.JobRank > 0
-                        ? $"Client-facing job seed loaded for {build.JobName}."
-                        : $"No live job-ranking packet feed is present for {build.JobName}."
+                        ? $"{build.JobName} ladder seed is loaded for the active build."
+                        : $"No live {build.JobName} job-ranking packet feed is present."
                 });
                 entries.Add(new RankingEntrySnapshot
                 {
-                    Label = "Progress",
-                    Value = $"{build.ExpPercent}%",
-                    Detail = $"EXP {build.Exp}/{build.ExpToNextLevel}, fame {build.Fame.ToString(CultureInfo.InvariantCulture)}, AP {build.AP.ToString(CultureInfo.InvariantCulture)}."
+                    Label = "Popularity",
+                    Value = build.Fame.ToString(CultureInfo.InvariantCulture),
+                    Detail = $"Lv. {build.Level} {build.JobName}, EXP {build.ExpPercent}% in {mapName}, AP {build.AP.ToString(CultureInfo.InvariantCulture)}."
                 });
                 entries.Add(new RankingEntrySnapshot
                 {
-                    Label = "Combat",
+                    Label = "Combat Seed",
                     Value = $"{build.TotalAttack}/{build.TotalMagicAttack}",
-                    Detail = $"PAD/MAD with ACC {build.TotalAccuracy.ToString(CultureInfo.InvariantCulture)} and EVA {build.TotalAvoidability.ToString(CultureInfo.InvariantCulture)}."
-                });
-                entries.Add(new RankingEntrySnapshot
-                {
-                    Label = "Quest Watch",
-                    Value = $"{questSnapshot.Entries.Count} tracked",
                     Detail = readyQuestCount > 0
-                        ? $"{readyQuestCount} tracked quest{(readyQuestCount == 1 ? string.Empty : "s")} can turn in now."
-                        : "Tracked quest progress is wired in, but no tracked entry is currently ready to complete."
+                        ? $"PAD/MAD with {readyQuestCount} tracked quest turn-in candidate{(readyQuestCount == 1 ? string.Empty : "s")} waiting."
+                        : $"PAD/MAD with ACC {build.TotalAccuracy.ToString(CultureInfo.InvariantCulture)} and EVA {build.TotalAvoidability.ToString(CultureInfo.InvariantCulture)}."
                 });
             }
 
             string subtitle = build == null
                 ? "Ranking owner art is loaded from UIWindow2.img/Ranking."
-                : $"Local ranking board anchored to the active build, map {currentMapId}, and tracked progression state.";
+                : $"Dedicated ranking owner anchored to {build.Name}, Lv. {build.Level} {build.JobName}, map {currentMapId}, and the simulator's local rank seeds.";
 
             return new RankingWindowSnapshot
             {
                 Title = "Ranking",
                 Subtitle = subtitle,
-                StatusText = "BtRank now surfaces live simulator-backed character and progression standings inside the client owner art. Live remote ladders and packet-fed ranking tables are still outside this owner.",
+                StatusText = "BtRank now behaves like a dedicated ranking owner instead of a generic utility shell. The client web view itself, remote ladders, and packet-fed ranking pages are still outside this simulator-local board.",
                 Entries = entries
             };
         }
@@ -195,8 +183,9 @@ namespace HaCreator.MapSimulator
             return new EventWindowSnapshot
             {
                 Title = "Event",
-                Subtitle = "EventList main-row art and filter buttons now surface simulator runtime entries instead of a dead shell.",
+                Subtitle = "EventList main-row art and filter buttons now surface simulator runtime entries through an event owner that auto-dismisses like CUIEventAlarm until the user interacts with it.",
                 StatusText = "BtEvent now exposes packet-owned utility, quest, overlay, and special-field activity through the client event owner. Official attendance, calendar packets, and live network event feeds still remain outside this window.",
+                AutoDismissDelayMs = 8000,
                 Entries = entries
             };
         }

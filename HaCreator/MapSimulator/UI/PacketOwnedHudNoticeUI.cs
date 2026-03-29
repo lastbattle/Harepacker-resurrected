@@ -21,7 +21,8 @@ namespace HaCreator.MapSimulator.UI
         private const float MessageScale = 0.66f;
         private const float FollowUpScale = 0.62f;
         private const float TimerScale = 0.86f;
-        private const int IconSize = 18;
+        private const int FallbackIconWidth = 18;
+        private const int FallbackIconHeight = 18;
 
         private SpriteFont _font;
         private Texture2D _pixelTexture;
@@ -164,7 +165,13 @@ namespace HaCreator.MapSimulator.UI
             int textX = bounds.X + HorizontalPadding;
             if (_noticeIcon != null)
             {
-                Rectangle iconBounds = new(bounds.X + HorizontalPadding, bounds.Y + 16, IconSize, IconSize);
+                int iconWidth = Math.Max(1, _noticeIcon.Width);
+                int iconHeight = Math.Max(1, _noticeIcon.Height);
+                Rectangle iconBounds = new(
+                    bounds.X + HorizontalPadding,
+                    bounds.Y + 15,
+                    iconWidth > 0 ? iconWidth : FallbackIconWidth,
+                    iconHeight > 0 ? iconHeight : FallbackIconHeight);
                 spriteBatch.Draw(_noticeIcon, iconBounds, Color.White * alpha);
                 textX = iconBounds.Right + 8;
             }
@@ -341,7 +348,8 @@ namespace HaCreator.MapSimulator.UI
             return kind switch
             {
                 FieldHazardFollowUpKind.Pending => "REQUEST",
-                FieldHazardFollowUpKind.Success => "ACK",
+                FieldHazardFollowUpKind.Acknowledged => "ACK",
+                FieldHazardFollowUpKind.Consumed => "USED",
                 FieldHazardFollowUpKind.Failure => "FAILED",
                 FieldHazardFollowUpKind.Throttled => "WAIT",
                 _ => string.Empty
@@ -353,7 +361,8 @@ namespace HaCreator.MapSimulator.UI
             return kind switch
             {
                 FieldHazardFollowUpKind.Pending => new Color(176, 224, 255),
-                FieldHazardFollowUpKind.Success => new Color(170, 255, 170),
+                FieldHazardFollowUpKind.Acknowledged => new Color(189, 231, 255),
+                FieldHazardFollowUpKind.Consumed => new Color(170, 255, 170),
                 FieldHazardFollowUpKind.Failure => new Color(255, 181, 145),
                 FieldHazardFollowUpKind.Throttled => new Color(255, 219, 145),
                 _ => Color.White

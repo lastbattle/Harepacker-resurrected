@@ -36,6 +36,7 @@ namespace HaCreator.MapSimulator.UI
         private MouseState _previousMouseState;
         private KeyboardState _previousKeyboardState;
         private int _hoveredIndex = -1;
+        private int _firstVisibleIndex;
 
         private const int ListX = 15;
         private const int ListY = 57;
@@ -113,6 +114,7 @@ namespace HaCreator.MapSimulator.UI
             base.Update(gameTime);
 
             GuildSkillSnapshot snapshot = GetSnapshot();
+            EnsureSelectionVisible(snapshot);
             EnsureRowBounds();
             UpdateButtonLayout(snapshot);
 
@@ -125,11 +127,17 @@ namespace HaCreator.MapSimulator.UI
                 {
                     if (i < snapshot.Entries.Count && _rowBounds[i].Contains(mouseState.Position))
                     {
-                        _entrySelectionHandler?.Invoke(i);
+                        int absoluteIndex = _firstVisibleIndex + i;
+                        if (absoluteIndex < snapshot.Entries.Count)
+                        {
+                            _entrySelectionHandler?.Invoke(absoluteIndex);
+                        }
                         break;
                     }
                 }
             }
+
+            HandleScrollWheel(mouseState, snapshot);
 
             _hoveredIndex = ResolveHoveredIndex(mouseState, snapshot);
             HandleKeyboard(snapshot);
@@ -186,7 +194,8 @@ namespace HaCreator.MapSimulator.UI
 
             bool showUp = snapshot.InGuild &&
                           snapshot.SelectedIndex >= 0 &&
-                          snapshot.SelectedIndex < Math.Min(VisibleRows, snapshot.Entries.Count);
+                          snapshot.SelectedIndex >= _firstVisibleIndex &&
+                          snapshot.SelectedIndex < Math.Min(snapshot.Entries.Count, _firstVisibleIndex + VisibleRows);
             _upButton.ButtonVisible = showUp;
             _upButton.SetEnabled(showUp && snapshot.CanLevelUpSelected);
             if (!showUp)
@@ -194,7 +203,7 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
-            Rectangle rowBounds = GetRowBounds(snapshot.SelectedIndex);
+            Rectangle rowBounds = GetRowBounds(snapshot.SelectedIndex - _firstVisibleIndex);
             _upButton.X = rowBounds.Right - _upButton.CanvasSnapshotWidth - 8 - Position.X;
             _upButton.Y = rowBounds.Y + ((RowHeight - _upButton.CanvasSnapshotHeight) / 2) - Position.Y;
         }
@@ -218,18 +227,19 @@ namespace HaCreator.MapSimulator.UI
                     sprite.Draw(_pixel, rowBounds, new Color(21, 31, 46, i % 2 == 0 ? 150 : 120));
                 }
 
-                bool selected = i == snapshot.SelectedIndex;
+                int absoluteIndex = _firstVisibleIndex + i;
+                bool selected = absoluteIndex == snapshot.SelectedIndex;
                 if (selected)
                 {
                     sprite.Draw(_pixel, rowBounds, new Color(112, 173, 228, 48));
                 }
 
-                if (i >= snapshot.Entries.Count)
+                if (absoluteIndex >= snapshot.Entries.Count)
                 {
                     continue;
                 }
 
-                GuildSkillEntrySnapshot entry = snapshot.Entries[i];
+                GuildSkillEntrySnapshot entry = snapshot.Entries[absoluteIndex];
                 if (entry.IsRecommended && _recommendTexture != null)
                 {
                     sprite.Draw(_recommendTexture, new Vector2(rowBounds.X + 40, rowBounds.Y), Color.White);
@@ -307,15 +317,32 @@ namespace HaCreator.MapSimulator.UI
                 return -1;
             }
 
-            for (int i = 0; i < _rowBounds.Count && i < snapshot.Entries.Count; i++)
+            for (int i = 0; i < _rowBounds.Count && (_firstVisibleIndex + i) < snapshot.Entries.Count; i++)
             {
                 if (_rowBounds[i].Contains(mouseState.Position))
                 {
-                    return i;
+                    return _firstVisibleIndex + i;
                 }
             }
 
             return -1;
+        }
+
+        private void HandleScrollWheel(MouseState mouseState, GuildSkillSnapshot snapshot)
+        {
+            int wheelDelta = mouseState.ScrollWheelValue - _previousMouseState.ScrollWheelValue;
+            if (wheelDelta == 0 || snapshot.Entries.Count <= VisibleRows)
+            {
+                return;
+            }
+
+            Rectangle listBounds = GetListBounds();
+            if (!listBounds.Contains(mouseState.Position))
+            {
+                return;
+            }
+
+            ScrollBy(wheelDelta > 0 ? -1 : 1, snapshot);
         }
 
         private void HandleKeyboard(GuildSkillSnapshot snapshot)
@@ -351,6 +378,40 @@ namespace HaCreator.MapSimulator.UI
             }
         }
 
+        private void EnsureSelectionVisible(GuildSkillSnapshot snapshot)
+        {
+            int entryCount = snapshot.Entries.Count;
+            int maxFirstVisibleIndex = Math.Max(0, entryCount - VisibleRows);
+            if (entryCount <= 0)
+            {
+                _firstVisibleIndex = 0;
+                return;
+            }
+
+            _firstVisibleIndex = Math.Clamp(_firstVisibleIndex, 0, maxFirstVisibleIndex);
+            if (snapshot.SelectedIndex < 0)
+            {
+                return;
+            }
+
+            if (snapshot.SelectedIndex < _firstVisibleIndex)
+            {
+                _firstVisibleIndex = snapshot.SelectedIndex;
+            }
+            else if (snapshot.SelectedIndex >= _firstVisibleIndex + VisibleRows)
+            {
+                _firstVisibleIndex = snapshot.SelectedIndex - VisibleRows + 1;
+            }
+
+            _firstVisibleIndex = Math.Clamp(_firstVisibleIndex, 0, maxFirstVisibleIndex);
+        }
+
+        private void ScrollBy(int delta, GuildSkillSnapshot snapshot)
+        {
+            int maxFirstVisibleIndex = Math.Max(0, snapshot.Entries.Count - VisibleRows);
+            _firstVisibleIndex = Math.Clamp(_firstVisibleIndex + delta, 0, maxFirstVisibleIndex);
+        }
+
         private bool WasKeyPressed(KeyboardState keyboardState, Keys key)
         {
             return keyboardState.IsKeyDown(key) && !_previousKeyboardState.IsKeyDown(key);
@@ -381,7 +442,8 @@ namespace HaCreator.MapSimulator.UI
                 contentHeight += Math.Max(lineSpacing, (int)Math.Ceiling(_font.LineSpacing * scale));
             }
 
-            Rectangle rowBounds = GetRowBounds(Math.Clamp(tooltipIndex, 0, VisibleRows - 1));
+            int visibleIndex = Math.Clamp(tooltipIndex - _firstVisibleIndex, 0, VisibleRows - 1);
+            Rectangle rowBounds = GetRowBounds(visibleIndex);
             int tooltipX = rowBounds.Right + 8;
             int tooltipY = rowBounds.Y;
             Rectangle tooltipBounds = new Rectangle(tooltipX, tooltipY, TooltipWidth, contentHeight + 8);
@@ -517,6 +579,11 @@ namespace HaCreator.MapSimulator.UI
         private static string FormatMeso(int amount)
         {
             return $"{Math.Max(0, amount).ToString("N0", CultureInfo.InvariantCulture)} meso";
+        }
+
+        private Rectangle GetListBounds()
+        {
+            return new Rectangle(Position.X + ListX, Position.Y + ListY, RowWidth, RowHeight * VisibleRows);
         }
 
         private void DrawLayer(

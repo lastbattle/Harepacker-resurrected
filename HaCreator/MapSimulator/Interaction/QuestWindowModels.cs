@@ -154,6 +154,7 @@ namespace HaCreator.MapSimulator.Interaction
         public int QuestId { get; init; }
         public string Title { get; init; } = string.Empty;
         public string StatusText { get; init; } = string.Empty;
+        public long UpdateSequence { get; init; }
         public int CurrentProgress { get; init; }
         public int TotalProgress { get; init; }
         public float ProgressRatio { get; init; }

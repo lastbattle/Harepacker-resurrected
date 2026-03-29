@@ -28,6 +28,10 @@ namespace HaCreator.MapSimulator.Interaction
         private const int CreateFailedStringPoolId = 0x1EA;
         private const string ClientMessageBoxPropertyName = "messageBox";
         private const string ChalkboardSamplePropertyName = "sample";
+        private const string UiPropertyName = "ui";
+        private const string UiTopPropertyName = "t";
+        private const string UiCenterPropertyName = "c";
+        private const string UiBottomPropertyName = "s";
         private const string CreateFailedFallbackText = "The client refused to create the field message-box.";
 
         private readonly Dictionary<int, FieldMessageBoxEntry> _entries = new();
@@ -133,7 +137,7 @@ namespace HaCreator.MapSimulator.Interaction
 
         internal string ApplyCreateFailed()
         {
-            _statusMessage = $"{CreateFailedFallbackText} [StringPool 0x{CreateFailedStringPoolId:X}]";
+            _statusMessage = $"{CreateFailedFallbackText} [client notice StringPool 0x{CreateFailedStringPoolId:X}]";
             return _statusMessage;
         }
 
@@ -460,6 +464,12 @@ namespace HaCreator.MapSimulator.Interaction
                 return true;
             }
 
+            if (TryLoadUiComposedVisual(itemProperty, out visual))
+            {
+                visual = visual with { IconTexture = iconTexture ?? visual.IconTexture };
+                return true;
+            }
+
             foreach (WzImageProperty child in itemProperty.WzProperties)
             {
                 if (child is not WzImageProperty property)
@@ -479,6 +489,112 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             return false;
+        }
+
+        private bool TryLoadUiComposedVisual(WzSubProperty itemProperty, out MessageBoxVisual visual)
+        {
+            visual = null;
+            if (_graphicsDevice == null || itemProperty == null || itemProperty[UiPropertyName] is not WzSubProperty uiProperty)
+            {
+                return false;
+            }
+
+            Texture2D topTexture = LoadCanvasTexture(uiProperty[UiTopPropertyName] as WzCanvasProperty);
+            Texture2D centerTexture = LoadCanvasTexture(uiProperty[UiCenterPropertyName] as WzCanvasProperty);
+            Texture2D bottomTexture = LoadCanvasTexture(uiProperty[UiBottomPropertyName] as WzCanvasProperty);
+            if (topTexture == null || centerTexture == null || bottomTexture == null)
+            {
+                return false;
+            }
+
+            int lineCount = ResolveUiSampleLineCount(itemProperty);
+            Texture2D composedTexture = ComposeUiBoardTexture(topTexture, centerTexture, bottomTexture, lineCount);
+            if (composedTexture == null)
+            {
+                return false;
+            }
+
+            MessageBoxTextLayout textLayout = ResolveTextLayout(UiPropertyName, composedTexture) with
+            {
+                MaxLineCount = lineCount
+            };
+
+            visual = new MessageBoxVisual(
+                new[] { composedTexture },
+                new[] { new Point(composedTexture.Width / 2, composedTexture.Height) },
+                new[] { DefaultFrameDelayMs },
+                null,
+                textLayout);
+            return true;
+        }
+
+        private Texture2D ComposeUiBoardTexture(Texture2D topTexture, Texture2D centerTexture, Texture2D bottomTexture, int lineCount)
+        {
+            if (_graphicsDevice == null || topTexture == null || centerTexture == null || bottomTexture == null)
+            {
+                return null;
+            }
+
+            int safeLineCount = Math.Clamp(lineCount, 1, MaxBodyLineCount);
+            int width = Math.Max(topTexture.Width, Math.Max(centerTexture.Width, bottomTexture.Width));
+            int height = topTexture.Height + (centerTexture.Height * safeLineCount) + bottomTexture.Height;
+            var renderTarget = new RenderTarget2D(_graphicsDevice, width, height);
+
+            RenderTargetBinding[] previousTargets = _graphicsDevice.GetRenderTargets();
+            PresentationParameters presentationParameters = _graphicsDevice.PresentationParameters;
+            Viewport previousViewport = _graphicsDevice.Viewport;
+
+            try
+            {
+                _graphicsDevice.SetRenderTarget(renderTarget);
+                _graphicsDevice.Viewport = new Viewport(0, 0, width, height);
+                _graphicsDevice.Clear(Color.Transparent);
+
+                using SpriteBatch spriteBatch = new(_graphicsDevice);
+                spriteBatch.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.PointClamp, DepthStencilState.None, RasterizerState.CullNone);
+
+                int topX = (width - topTexture.Width) / 2;
+                int centerX = (width - centerTexture.Width) / 2;
+                int bottomX = (width - bottomTexture.Width) / 2;
+                int currentY = 0;
+
+                spriteBatch.Draw(topTexture, new Vector2(topX, currentY), Color.White);
+                currentY += topTexture.Height;
+
+                for (int lineIndex = 0; lineIndex < safeLineCount; lineIndex++)
+                {
+                    spriteBatch.Draw(centerTexture, new Vector2(centerX, currentY), Color.White);
+                    currentY += centerTexture.Height;
+                }
+
+                spriteBatch.Draw(bottomTexture, new Vector2(bottomX, currentY), Color.White);
+                spriteBatch.End();
+            }
+            finally
+            {
+                _graphicsDevice.SetRenderTargets(previousTargets);
+                _graphicsDevice.Viewport = previousViewport;
+            }
+
+            return renderTarget;
+        }
+
+        private static int ResolveUiSampleLineCount(WzSubProperty itemProperty)
+        {
+            if (itemProperty?[ChalkboardSamplePropertyName] is not WzSubProperty sampleProperty)
+            {
+                return 3;
+            }
+
+            foreach (WzImageProperty child in sampleProperty.WzProperties)
+            {
+                if (child is WzSubProperty lineTemplate && lineTemplate.WzProperties.Count > 0)
+                {
+                    return Math.Clamp(lineTemplate.WzProperties.Count, 1, MaxBodyLineCount);
+                }
+            }
+
+            return 3;
         }
 
         private bool TryLoadNamedVisual(WzSubProperty parent, string propertyName, string layoutKey, out MessageBoxVisual visual)
@@ -686,6 +802,23 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             string name = propertyName ?? string.Empty;
+            if (string.Equals(name, UiPropertyName, StringComparison.OrdinalIgnoreCase))
+            {
+                int paddingLeft = Math.Clamp(texture?.Width / 12 ?? 6, 6, 12);
+                int paddingRight = paddingLeft;
+                int paddingTop = texture == null ? 6 : Math.Clamp(texture.Height / 8, 6, 12);
+                int paddingBottom = Math.Clamp(texture?.Height / 8 ?? 6, 6, 12);
+                return new MessageBoxTextLayout(
+                    paddingLeft,
+                    paddingTop,
+                    paddingRight,
+                    paddingBottom,
+                    CenterHorizontally: true,
+                    CenterVertically: true,
+                    MaxLineCount: 3,
+                    TextColor: Color.White);
+            }
+
             if (name.IndexOf("sample", StringComparison.OrdinalIgnoreCase) >= 0 ||
                 name.IndexOf("message", StringComparison.OrdinalIgnoreCase) >= 0 ||
                 name.IndexOf("board", StringComparison.OrdinalIgnoreCase) >= 0 ||

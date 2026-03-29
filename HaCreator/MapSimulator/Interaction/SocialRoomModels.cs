@@ -491,6 +491,7 @@ namespace HaCreator.MapSimulator.Interaction
                 StatusMessage = StatusMessage,
                 RoomState = RoomState,
                 ModeName = ModeName,
+                PacketOwnerSummary = _lastPacketOwnerSummary,
                 MiniRoomModeIndex = _miniRoomModeIndex,
                 MiniRoomWagerAmount = _miniRoomWagerAmount,
                 MiniRoomOmokInProgress = _miniRoomOmokInProgress,
@@ -590,6 +591,7 @@ namespace HaCreator.MapSimulator.Interaction
                 StatusMessage = source?.StatusMessage ?? _defaultSnapshot.StatusMessage;
                 RoomState = source?.RoomState ?? _defaultSnapshot.RoomState;
                 ModeName = source?.ModeName ?? _defaultSnapshot.ModeName;
+                _lastPacketOwnerSummary = source?.PacketOwnerSummary ?? _defaultSnapshot.PacketOwnerSummary ?? BuildDefaultPacketOwnerSummary();
                 _miniRoomModeIndex = source?.MiniRoomModeIndex ?? _defaultSnapshot.MiniRoomModeIndex;
                 _miniRoomWagerAmount = Math.Max(0, source?.MiniRoomWagerAmount ?? _defaultSnapshot.MiniRoomWagerAmount);
                 _miniRoomOmokInProgress = source?.MiniRoomOmokInProgress ?? _defaultSnapshot.MiniRoomOmokInProgress;
@@ -983,6 +985,18 @@ namespace HaCreator.MapSimulator.Interaction
                 message = $"Social-room packet ended unexpectedly: {BitConverter.ToString(payload)}";
                 return false;
             }
+        }
+
+        public bool TryDispatchSyntheticDialogPacket(byte packetType, byte[] payload, int tickCount, out string message)
+        {
+            byte[] packetBytes = new byte[1 + (payload?.Length ?? 0)];
+            packetBytes[0] = packetType;
+            if (payload?.Length > 0)
+            {
+                Buffer.BlockCopy(payload, 0, packetBytes, 1, payload.Length);
+            }
+
+            return TryDispatchPacketBytes(packetBytes, tickCount, out message);
         }
 
         public bool TryApplyEmployeeEnterFieldPacket(byte[] packetBytes, out string message)

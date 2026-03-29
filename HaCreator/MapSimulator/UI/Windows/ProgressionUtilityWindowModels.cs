@@ -103,6 +103,7 @@ namespace HaCreator.MapSimulator.UI
         public string Title { get; init; } = "Event";
         public string Subtitle { get; init; } = string.Empty;
         public string StatusText { get; init; } = string.Empty;
+        public int AutoDismissDelayMs { get; init; }
         public IReadOnlyList<EventEntrySnapshot> Entries { get; init; } = Array.Empty<EventEntrySnapshot>();
     }
 }

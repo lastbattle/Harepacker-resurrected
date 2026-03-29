@@ -159,6 +159,7 @@ namespace HaCreator.MapSimulator
             DrainPartyRaidPacketInbox(currTickCount);
             DrainCookieHousePointInbox();
             _specialFieldRuntime.Update(gameTime, currTickCount);
+            SyncWeddingRemoteActorsToSharedPool(_specialFieldRuntime.SpecialEffects.Wedding);
             SyncMessengerRemoteActorsToSharedPool();
             _remoteUserPool.Update(currTickCount);
             _remoteUserPool.SyncPortableChairPairState(_playerManager?.Player);

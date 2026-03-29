@@ -18,8 +18,12 @@ namespace HaCreator.MapSimulator.UI
         private const int NoticeBodySpacingY = 6;
         private const float BodyWrapWidth = 248f;
         private const float InputWrapWidth = 230f;
-        private const int ButtonBottomMargin = 14;
-        private const int ButtonGap = 12;
+        private const int DialogButtonY = 106;
+        private const int OkButtonX = 100;
+        private const int YesButtonX = 70;
+        private const int YesTightButtonX = 65;
+        private const int NoButtonX = 129;
+        private const int NowButtonX = 59;
 
         private readonly UIObject _okButton;
         private readonly UIObject _yesButton;
@@ -42,6 +46,8 @@ namespace HaCreator.MapSimulator.UI
         private int? _noticeTextIndex;
         private UIObject _activePrimaryButton;
         private UIObject _activeSecondaryButton;
+        private bool _drawPrimaryButtonLabel;
+        private bool _drawSecondaryButtonLabel;
         private LoginUtilityDialogButtonLayout _buttonLayout = LoginUtilityDialogButtonLayout.Ok;
         private KeyboardState _previousKeyboardState;
         private bool _inputMasked;
@@ -112,8 +118,10 @@ namespace HaCreator.MapSimulator.UI
         {
             _title = string.IsNullOrWhiteSpace(title) ? "Login Utility" : title;
             _body = body ?? string.Empty;
-            _primaryLabel = string.IsNullOrWhiteSpace(primaryLabel) ? "OK" : primaryLabel;
-            _secondaryLabel = string.IsNullOrWhiteSpace(secondaryLabel) ? "Cancel" : secondaryLabel;
+            _primaryLabel = primaryLabel ?? string.Empty;
+            _secondaryLabel = secondaryLabel ?? string.Empty;
+            _drawPrimaryButtonLabel = !string.IsNullOrWhiteSpace(primaryLabel);
+            _drawSecondaryButtonLabel = !string.IsNullOrWhiteSpace(secondaryLabel);
             _buttonLayout = buttonLayout;
             _noticeTextIndex = noticeTextIndex;
             _inputLabel = inputLabel ?? string.Empty;
@@ -299,8 +307,15 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
-            DrawButtonLabel(sprite, _activePrimaryButton, _primaryLabel);
-            DrawButtonLabel(sprite, _activeSecondaryButton, _secondaryLabel);
+            if (_drawPrimaryButtonLabel)
+            {
+                DrawButtonLabel(sprite, _activePrimaryButton, _primaryLabel);
+            }
+
+            if (_drawSecondaryButtonLabel)
+            {
+                DrawButtonLabel(sprite, _activeSecondaryButton, _secondaryLabel);
+            }
         }
 
         private void DrawButtonLabel(SpriteBatch sprite, UIObject button, string text)
@@ -382,19 +397,24 @@ namespace HaCreator.MapSimulator.UI
 
             if (_activePrimaryButton != null && _activeSecondaryButton != null)
             {
-                int totalWidth = _activePrimaryButton.CanvasSnapshotWidth + ButtonGap + _activeSecondaryButton.CanvasSnapshotWidth;
-                int startX = Math.Max(0, ((CurrentFrame?.Width ?? 312) - totalWidth) / 2);
-                int buttonY = Math.Max(0, (CurrentFrame?.Height ?? 132) - Math.Max(_activePrimaryButton.CanvasSnapshotHeight, _activeSecondaryButton.CanvasSnapshotHeight) - ButtonBottomMargin);
-
-                PositionButton(_activePrimaryButton, startX, buttonY);
-                PositionButton(_activeSecondaryButton, startX + _activePrimaryButton.CanvasSnapshotWidth + ButtonGap, buttonY);
+                (int primaryX, int secondaryX) = ResolveTwoButtonLayoutPositions();
+                PositionButton(_activePrimaryButton, primaryX, DialogButtonY);
+                PositionButton(_activeSecondaryButton, secondaryX, DialogButtonY);
             }
             else if (_activePrimaryButton != null)
             {
-                int buttonX = Math.Max(0, ((CurrentFrame?.Width ?? 312) - _activePrimaryButton.CanvasSnapshotWidth) / 2);
-                int buttonY = Math.Max(0, (CurrentFrame?.Height ?? 132) - _activePrimaryButton.CanvasSnapshotHeight - ButtonBottomMargin);
-                PositionButton(_activePrimaryButton, buttonX, buttonY);
+                PositionButton(_activePrimaryButton, OkButtonX, DialogButtonY);
             }
+        }
+
+        private (int PrimaryX, int SecondaryX) ResolveTwoButtonLayoutPositions()
+        {
+            return _buttonLayout switch
+            {
+                LoginUtilityDialogButtonLayout.NowLater => (NowButtonX, NoButtonX),
+                LoginUtilityDialogButtonLayout.YesNo when _drawPrimaryButtonLabel || _drawSecondaryButtonLabel => (YesTightButtonX, NoButtonX),
+                _ => (YesButtonX, NoButtonX),
+            };
         }
 
         private static void HideButton(UIObject button)

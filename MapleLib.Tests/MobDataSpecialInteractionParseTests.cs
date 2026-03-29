@@ -47,6 +47,19 @@ public class MobDataSpecialInteractionParseTests
         Assert.Equal(MobHpDisplayType.Friendly, data.HpDisplayType);
     }
 
+    [Fact]
+    public void Parse_ReadsIntegerRemoveAfterVariant()
+    {
+        WzImage image = CreateMobImage(
+            CreateInfoProperty(
+                new WzIntProperty("removeAfter", 9)));
+
+        MobData data = MobData.Parse(image, 9300061);
+
+        Assert.NotNull(data);
+        Assert.Equal(9, data.RemoveAfter);
+    }
+
     private static WzImage CreateMobImage(params WzImageProperty[] properties)
     {
         var image = new WzImage("9400633.img");

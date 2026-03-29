@@ -19,8 +19,9 @@ namespace HaCreator.MapSimulator.Managers
     {
         public ItemMakerRecipeFamily Family { get; init; } = ItemMakerRecipeFamily.Generic;
         public bool IsHiddenRecipe { get; init; }
-        public int OutputItemId { get; init; }
-        public int OutputQuantity { get; init; } = 1;
+        public int RecipeOutputItemId { get; init; }
+        public int CraftedItemId { get; init; }
+        public int CraftedQuantity { get; init; } = 1;
     }
 
     public sealed class ItemMakerProgressionSnapshot
@@ -228,15 +229,16 @@ namespace HaCreator.MapSimulator.Managers
             ProgressionRecord record = GetOrCreateRecord(key);
 
             record.SuccessfulCrafts = Math.Max(0, record.SuccessfulCrafts + 1);
-            if (result?.OutputItemId > 0)
+            int recipeOutputItemId = result?.RecipeOutputItemId ?? 0;
+            if (recipeOutputItemId > 0)
             {
                 if (result.IsHiddenRecipe)
                 {
-                    record.UnlockedHiddenRecipeIds.Add(result.OutputItemId);
+                    record.UnlockedHiddenRecipeIds.Add(recipeOutputItemId);
                 }
                 else
                 {
-                    record.DiscoveredRecipeIds.Add(result.OutputItemId);
+                    record.DiscoveredRecipeIds.Add(recipeOutputItemId);
                 }
             }
 

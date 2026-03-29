@@ -23,6 +23,12 @@ namespace HaCreator.MapSimulator.UI
         private const int TakeoffButtonX = 187;
         private const int ButtonY = 237;
 
+        private readonly IDXObject _windowBackgroundLayer;
+        private readonly Point _windowBackgroundOffset;
+        private readonly IDXObject _windowOverlayLayer;
+        private readonly Point _windowOverlayOffset;
+        private readonly IDXObject _windowContentLayer;
+        private readonly Point _windowContentOffset;
         private readonly Texture2D[] _previewBackgrounds;
         private readonly UIObject _buyAvatarButton;
         private readonly UIObject _defaultAvatarButton;
@@ -30,7 +36,7 @@ namespace HaCreator.MapSimulator.UI
 
         private SpriteFont _font;
         private Func<AdminShopAvatarPreviewSelection> _selectionProvider;
-        private Func<bool> _shopRequestHandler;
+        private Func<string> _shopRequestHandler;
         private CharacterBuild _previewBuild;
         private CharacterAssembler _previewAssembler;
         private CharacterBuild _previewSourceBuild;
@@ -42,12 +48,24 @@ namespace HaCreator.MapSimulator.UI
 
         public CashAvatarPreviewWindow(
             GraphicsDevice device,
+            IDXObject windowBackgroundLayer,
+            Point windowBackgroundOffset,
+            IDXObject windowOverlayLayer,
+            Point windowOverlayOffset,
+            IDXObject windowContentLayer,
+            Point windowContentOffset,
             Texture2D[] previewBackgrounds,
             UIObject buyAvatarButton,
             UIObject defaultAvatarButton,
             UIObject takeoffAvatarButton)
             : base(CreateFrame(device))
         {
+            _windowBackgroundLayer = windowBackgroundLayer;
+            _windowBackgroundOffset = windowBackgroundOffset;
+            _windowOverlayLayer = windowOverlayLayer;
+            _windowOverlayOffset = windowOverlayOffset;
+            _windowContentLayer = windowContentLayer;
+            _windowContentOffset = windowContentOffset;
             _previewBackgrounds = previewBackgrounds ?? Array.Empty<Texture2D>();
             _buyAvatarButton = buyAvatarButton;
             _defaultAvatarButton = defaultAvatarButton;
@@ -102,7 +120,7 @@ namespace HaCreator.MapSimulator.UI
             _selectionSignature = string.Empty;
         }
 
-        public void SetShopRequestHandler(Func<bool> shopRequestHandler)
+        public void SetShopRequestHandler(Func<string> shopRequestHandler)
         {
             _shopRequestHandler = shopRequestHandler;
         }
@@ -134,6 +152,10 @@ namespace HaCreator.MapSimulator.UI
         {
             RefreshSelectionState();
             SyncPreviewBuild();
+
+            DrawLayer(sprite, skeletonMeshRenderer, gameTime, _windowBackgroundLayer, _windowBackgroundOffset, drawReflectionInfo);
+            DrawLayer(sprite, skeletonMeshRenderer, gameTime, _windowOverlayLayer, _windowOverlayOffset, drawReflectionInfo);
+            DrawLayer(sprite, skeletonMeshRenderer, gameTime, _windowContentLayer, _windowContentOffset, drawReflectionInfo);
 
             Texture2D background = ResolveBackgroundTexture();
             if (background != null)
@@ -183,9 +205,10 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
-            if (_shopRequestHandler?.Invoke() == true)
+            string requestMessage = _shopRequestHandler?.Invoke();
+            if (!string.IsNullOrWhiteSpace(requestMessage))
             {
-                _statusMessage = $"CCSWnd_Char::OnWear submitted {_currentSelection.Title} through the Cash Shop request seam.";
+                _statusMessage = requestMessage;
                 return;
             }
 
@@ -376,6 +399,25 @@ namespace HaCreator.MapSimulator.UI
             return previewIndex >= 0 && previewIndex < _previewBackgrounds.Length
                 ? _previewBackgrounds[previewIndex]
                 : null;
+        }
+
+        private void DrawLayer(
+            SpriteBatch sprite,
+            SkeletonMeshRenderer skeletonMeshRenderer,
+            GameTime gameTime,
+            IDXObject layer,
+            Point offset,
+            ReflectionDrawableBoundary drawReflectionInfo)
+        {
+            layer?.DrawBackground(
+                sprite,
+                skeletonMeshRenderer,
+                gameTime,
+                Position.X + offset.X,
+                Position.Y + offset.Y,
+                Color.White,
+                false,
+                drawReflectionInfo);
         }
 
         private int ResolvePreviewIndex()

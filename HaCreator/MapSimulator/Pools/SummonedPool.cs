@@ -120,6 +120,7 @@ namespace HaCreator.MapSimulator.Pools
             public float Y { get; init; }
             public int AttachedSummonObjectId { get; init; }
             public bool FollowSummon { get; init; }
+            public bool FollowSummonFacing { get; init; }
             public List<IDXObject> Frames { get; init; }
             public int CurrentFrame { get; set; }
             public int LastFrameTime { get; set; }
@@ -219,6 +220,30 @@ namespace HaCreator.MapSimulator.Pools
         public IReadOnlyList<ActiveSummon> GetSummonsForOwner(int ownerCharacterId)
         {
             return GetRegisteredOwnerSummons(ownerCharacterId);
+        }
+
+        public IReadOnlyList<ActiveSummon> GetSupportSummonsAffectingLocalPlayer(Func<int, bool> ownerIsPartyMemberEvaluator = null)
+        {
+            PlayerCharacter localPlayer = _localPlayerAccessor?.Invoke();
+            int localPlayerId = localPlayer?.Build?.Id ?? 0;
+            if (localPlayerId <= 0)
+            {
+                return Array.Empty<ActiveSummon>();
+            }
+
+            return _summonsByObjectId.Values
+                .Where(state => state?.Summon?.SkillData != null
+                                && state.Summon.LevelData != null
+                                && !state.Summon.IsPendingRemoval
+                                && state.OwnerCharacterId != localPlayerId
+                                && state.Summon.AssistType == SummonAssistType.Support
+                                && RemoteAffectedAreaSupportResolver.CanAffectLocalPlayer(
+                                    state.Summon.SkillData,
+                                    localPlayerId,
+                                    state.OwnerCharacterId,
+                                    ownerIsPartyMemberEvaluator?.Invoke(state.OwnerCharacterId) == true))
+                .Select(state => state.Summon)
+                .ToArray();
         }
 
         public bool TryConsumeSummonByObjectId(int objectId)
@@ -516,9 +541,9 @@ namespace HaCreator.MapSimulator.Pools
             }
             else
             {
-                state.OneTimeAction = 0;
-                state.OneTimeActionEndTime = int.MinValue;
-                StartSummonHitReaction(state.Summon, packet.Damage, currentTime);
+                state.Summon.HitPeriodRemainingMs = -ResolveSummonHitPeriodDurationMs(state.Summon);
+                state.Summon.LastHitPeriodUpdateTime = currentTime;
+                state.Summon.HitFlashCounter++;
             }
 
             PlayPacketIncDecHpFeedback(state.Summon, packet.Damage, currentTime);
@@ -533,6 +558,7 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             state.Summon.LastAttackAnimationStartTime = currentTime;
+            state.Summon.CurrentAnimationBranchName = ResolvePacketOwnedSkillBranch(state.Summon);
             bool hasPrepareAnimation = state.Summon.SkillData?.SummonAttackPrepareAnimation?.Frames.Count > 0;
             state.Summon.ActorState = hasPrepareAnimation
                 ? SummonActorState.Prepare
@@ -562,6 +588,7 @@ namespace HaCreator.MapSimulator.Pools
                 return;
             }
 
+            state.Summon.CurrentAnimationBranchName = null;
             int prepareDuration = GetSkillAnimationDuration(state.Summon.SkillData?.SummonAttackPrepareAnimation) ?? 0;
             if (state.Summon.LastAttackAnimationStartTime == int.MinValue
                 || prepareDuration <= 0
@@ -1197,11 +1224,14 @@ namespace HaCreator.MapSimulator.Pools
 
                 state.OneTimeAction = 0;
                 state.OneTimeActionEndTime = int.MinValue;
+                state.Summon.OneTimeActionFallbackAnimation = null;
+                state.Summon.OneTimeActionFallbackAnimationTime = int.MinValue;
+                state.Summon.OneTimeActionFallbackEndTime = int.MinValue;
             }
 
             if (IsSummonAnimationActive(state.Summon.SkillData?.SummonHitAnimation, state.Summon.LastHitAnimationStartTime, currentTime)
                 || IsSummonAnimationActive(
-                    state.Summon.SkillData?.SummonAttackAnimation,
+                    ResolveAttackAnimation(state.Summon),
                     state.Summon.LastAttackAnimationStartTime,
                     currentTime,
                     GetSkillAnimationDuration(state.Summon.SkillData?.SummonAttackPrepareAnimation) ?? 0))
@@ -1218,6 +1248,11 @@ namespace HaCreator.MapSimulator.Pools
             {
                 state.Summon.ActorState = idleState;
                 state.Summon.LastStateChangeTime = currentTime;
+            }
+
+            if (idleState == SummonActorState.Idle)
+            {
+                state.Summon.CurrentAnimationBranchName = null;
             }
         }
 
@@ -1281,6 +1316,23 @@ namespace HaCreator.MapSimulator.Pools
             if (state?.Summon == null)
             {
                 return;
+            }
+
+            if (state.Summon.SkillData?.SummonHitAnimation?.Frames.Count > 0)
+            {
+                state.Summon.OneTimeActionFallbackAnimation = null;
+                state.Summon.OneTimeActionFallbackAnimationTime = int.MinValue;
+                state.Summon.OneTimeActionFallbackEndTime = int.MinValue;
+            }
+            else
+            {
+                int elapsed = Math.Max(0, currentTime - state.Summon.StartTime);
+                SkillAnimation fallbackAnimation = ResolveSummonAnimation(state.Summon, currentTime, elapsed, out int fallbackAnimationTime);
+                state.Summon.OneTimeActionFallbackAnimation = fallbackAnimation;
+                state.Summon.OneTimeActionFallbackAnimationTime = fallbackAnimation?.Frames.Count > 0
+                    ? Math.Max(0, fallbackAnimationTime)
+                    : int.MinValue;
+                state.Summon.OneTimeActionFallbackEndTime = currentTime + ResolveSummonHitActionDurationMs(state.Summon);
             }
 
             state.OneTimeAction = 15;
@@ -2042,6 +2094,7 @@ namespace HaCreator.MapSimulator.Pools
                 Y = hitPosition.Y,
                 AttachedSummonObjectId = summon.ObjectId,
                 FollowSummon = attackInfo?.HitAttach == true,
+                FollowSummonFacing = attackInfo?.HitAttach == true,
                 Frames = frames,
                 CurrentFrame = 0,
                 LastFrameTime = currentTime,
@@ -2126,7 +2179,15 @@ namespace HaCreator.MapSimulator.Pools
             Vector2 drawPosition = ResolveHitEffectDrawPosition(hitEffect);
             int screenX = (int)MathF.Round(drawPosition.X) - mapShiftX + centerX;
             int screenY = (int)MathF.Round(drawPosition.Y) - mapShiftY + centerY;
-            frame.DrawBackground(spriteBatch, null, null, screenX, screenY, hitEffect.Tint, hitEffect.Flip, null);
+            frame.DrawBackground(
+                spriteBatch,
+                null,
+                null,
+                screenX,
+                screenY,
+                hitEffect.Tint,
+                ResolveHitEffectFlip(hitEffect, frame),
+                null);
         }
 
         private Vector2 ResolveHitEffectDrawPosition(PacketOwnedMobAttackHitEffectDisplay hitEffect)
@@ -2143,6 +2204,18 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             return new Vector2(hitEffect.X, hitEffect.Y);
+        }
+
+        private bool ResolveHitEffectFlip(PacketOwnedMobAttackHitEffectDisplay hitEffect, IDXObject frame)
+        {
+            if (hitEffect?.FollowSummonFacing == true
+                && _summonsByObjectId.TryGetValue(hitEffect.AttachedSummonObjectId, out PacketOwnedSummonState state)
+                && state?.Summon != null)
+            {
+                return state.Summon.FacingRight;
+            }
+
+            return hitEffect?.Flip ?? false;
         }
 
         private void PlayPacketIncDecHpFeedback(ActiveSummon summon, int delta, int currentTime)
@@ -2333,6 +2406,14 @@ namespace HaCreator.MapSimulator.Pools
                 }
             }
 
+            if (summon?.OneTimeActionFallbackAnimation?.Frames.Count > 0
+                && summon.OneTimeActionFallbackEndTime > currentTime
+                && summon.OneTimeActionFallbackAnimationTime != int.MinValue)
+            {
+                animationTime = summon.OneTimeActionFallbackAnimationTime;
+                return summon.OneTimeActionFallbackAnimation;
+            }
+
             SkillAnimation prepareAnimation = skill.SummonAttackPrepareAnimation;
             if (prepareAnimation?.Frames.Count > 0
                 && summon?.ActorState == SummonActorState.Prepare
@@ -2350,7 +2431,7 @@ namespace HaCreator.MapSimulator.Pools
                 }
             }
 
-            SkillAnimation attackAnimation = skill.SummonAttackAnimation;
+            SkillAnimation attackAnimation = ResolveAttackAnimation(summon);
             if (attackAnimation?.Frames.Count > 0 && summon.LastAttackAnimationStartTime != int.MinValue)
             {
                 int attackElapsed = currentTime - summon.LastAttackAnimationStartTime;
@@ -2371,6 +2452,75 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             return skill.SummonAnimation?.Frames.Count > 0 ? skill.SummonAnimation : skill.Effect;
+        }
+
+        private static SkillAnimation ResolveAttackAnimation(ActiveSummon summon)
+        {
+            SkillData skill = summon?.SkillData;
+            if (skill == null)
+            {
+                return null;
+            }
+
+            if (!string.IsNullOrWhiteSpace(summon.CurrentAnimationBranchName)
+                && skill.SummonNamedAnimations != null
+                && skill.SummonNamedAnimations.TryGetValue(summon.CurrentAnimationBranchName, out SkillAnimation branchAnimation)
+                && branchAnimation?.Frames.Count > 0)
+            {
+                return branchAnimation;
+            }
+
+            return skill.SummonAttackAnimation;
+        }
+
+        private static string ResolvePacketOwnedSkillBranch(ActiveSummon summon)
+        {
+            SkillData skill = summon?.SkillData;
+            if (skill?.SummonNamedAnimations == null || skill.SummonNamedAnimations.Count == 0)
+            {
+                return null;
+            }
+
+            if (summon.SkillId == 1321007)
+            {
+                return null;
+            }
+
+            if (SummonRuntimeRules.HasMinionAbilityToken(skill.MinionAbility, "heal"))
+            {
+                return ResolveNamedSummonBranch(skill, "heal", "support");
+            }
+
+            if (SummonRuntimeRules.HasMinionAbilityToken(skill.MinionAbility, "mes")
+                || SummonRuntimeRules.HasMinionAbilityToken(skill.MinionAbility, "amplifyDamage"))
+            {
+                return ResolveNamedSummonBranch(skill, "support", "heal");
+            }
+
+            if (SummonRuntimeRules.HasMinionAbilityToken(skill.MinionAbility, "summon"))
+            {
+                return ResolveNamedSummonBranch(skill, "subsummon");
+            }
+
+            return null;
+        }
+
+        private static string ResolveNamedSummonBranch(SkillData skill, params string[] preferredBranchNames)
+        {
+            if (skill?.SummonNamedAnimations == null || preferredBranchNames == null)
+            {
+                return null;
+            }
+
+            foreach (string branchName in preferredBranchNames)
+            {
+                if (!string.IsNullOrWhiteSpace(branchName) && skill.SummonNamedAnimations.ContainsKey(branchName))
+                {
+                    return branchName;
+                }
+            }
+
+            return null;
         }
 
         private static int? GetSkillAnimationDuration(SkillAnimation animation)

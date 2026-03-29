@@ -98,16 +98,22 @@ namespace HaCreator.MapSimulator.Fields
                     return;
                 if (State == CoconutState.Falling)
                 {
-                    // Apply gravity
-                    Velocity.Y += gravity;
-                    Position += Velocity;
-                    // Rotate while falling
-                    Rotation += Velocity.X * 2f;
-                    // Hit ground
-                    if (Position.Y >= groundY)
+                    bool onGround = Position.Y >= groundY && Velocity.Y >= 0f;
+                    if (!onGround)
+                    {
+                        Velocity.Y += gravity;
+                        Position += Velocity;
+                        Rotation += Velocity.X * 2f;
+                        if (Position.Y >= groundY)
+                        {
+                            Position.Y = groundY;
+                            Velocity = new Vector2(Velocity.X, 0f);
+                        }
+                    }
+                    else
                     {
                         Position.Y = groundY;
-                        State = CoconutState.Scored;
+                        Velocity = new Vector2(Velocity.X, 0f);
                     }
                 }
                 // Animate

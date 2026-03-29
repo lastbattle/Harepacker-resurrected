@@ -17,6 +17,7 @@ namespace HaCreator.MapSimulator.UI
         public const string WorldMap = "WorldMap";
         public const string MapTransfer = "MapTransfer";
         public const string CashShop = "CashShop";
+        public const string AdminShopWishList = "AdminShopWishList";
         public const string CashAvatarPreview = "CashAvatarPreview";
         public const string Mts = "MTS";
         public const string Menu = "Menu";
@@ -55,6 +56,7 @@ namespace HaCreator.MapSimulator.UI
         public const string Messenger = "Messenger";
         public const string MapleTv = "MapleTv";
         public const string EngagementProposal = "EngagementProposal";
+        public const string WeddingInvitation = "WeddingInvitation";
         public const string MemoMailbox = "MemoMailbox";
         public const string MemoSend = "MemoSend";
         public const string MemoGet = "MemoGet";

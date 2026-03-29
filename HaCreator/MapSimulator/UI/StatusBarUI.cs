@@ -115,6 +115,7 @@ namespace HaCreator.MapSimulator.UI {
         private Func<int, StatusBarPreparedSkillRenderData> _getPreparedSkillStatus;
         private Func<int, StatusBarPreparedSkillRenderData> _getPreparedSkillOverlayStatus;
         private Texture2D _pixelTexture;
+        private ClientTextRasterizer _clientTextRasterizer;
 
         // Gauge textures loaded from UI.wz/StatusBar2.img/mainBar/gauge/hp/0, mp/0, exp/0
         private Texture2D _hpGaugeTexture;
@@ -367,6 +368,11 @@ namespace HaCreator.MapSimulator.UI {
             if (_pixelTexture == null && graphicsDevice != null) {
                 _pixelTexture = new Texture2D(graphicsDevice, 1, 1);
                 _pixelTexture.SetData(new[] { Color.White });
+            }
+
+            if (_clientTextRasterizer == null && graphicsDevice != null)
+            {
+                _clientTextRasterizer = new ClientTextRasterizer(graphicsDevice);
             }
         }
 
@@ -1712,7 +1718,7 @@ namespace HaCreator.MapSimulator.UI {
                 return text ?? string.Empty;
             }
 
-            if (_font.MeasureString(text).X * scale <= maxWidth)
+            if (MeasureStatusBarText(text, scale).X <= maxWidth)
             {
                 return text;
             }
@@ -1721,7 +1727,7 @@ namespace HaCreator.MapSimulator.UI {
             for (int length = text.Length - 1; length > 0; length--)
             {
                 string candidate = text.Substring(0, length).TrimEnd() + ellipsis;
-                if (_font.MeasureString(candidate).X * scale <= maxWidth)
+                if (MeasureStatusBarText(candidate, scale).X <= maxWidth)
                 {
                     return candidate;
                 }
@@ -1906,16 +1912,49 @@ namespace HaCreator.MapSimulator.UI {
                 return;
             }
 
-            sprite.DrawString(_font, text, position, textColor, 0f, Vector2.Zero, scale, SpriteEffects.None, 0f);
+            Vector2 snappedPosition = SnapToPixel(position);
+            if (_clientTextRasterizer != null)
+            {
+                _clientTextRasterizer.DrawString(sprite, text, snappedPosition, textColor, scale);
+                return;
+            }
+
+            sprite.DrawString(_font, text, snappedPosition, textColor, 0f, Vector2.Zero, scale, SpriteEffects.None, 0f);
         }
 
         private void DrawDiagonalShadowText(SpriteBatch sprite, string text, Vector2 position, Color textColor, Color shadowColor, float scale = 1.0f)
         {
-            sprite.DrawString(_font, text, position + new Vector2(-1, -1), shadowColor, 0f, Vector2.Zero, scale, SpriteEffects.None, 0f);
-            sprite.DrawString(_font, text, position + new Vector2(1, -1), shadowColor, 0f, Vector2.Zero, scale, SpriteEffects.None, 0f);
-            sprite.DrawString(_font, text, position + new Vector2(-1, 1), shadowColor, 0f, Vector2.Zero, scale, SpriteEffects.None, 0f);
-            sprite.DrawString(_font, text, position + new Vector2(1, 1), shadowColor, 0f, Vector2.Zero, scale, SpriteEffects.None, 0f);
-            sprite.DrawString(_font, text, position, textColor, 0f, Vector2.Zero, scale, SpriteEffects.None, 0f);
+            Vector2 snappedPosition = SnapToPixel(position);
+            if (_clientTextRasterizer != null)
+            {
+                _clientTextRasterizer.DrawString(sprite, text, snappedPosition + new Vector2(-1, -1), shadowColor, scale);
+                _clientTextRasterizer.DrawString(sprite, text, snappedPosition + new Vector2(1, -1), shadowColor, scale);
+                _clientTextRasterizer.DrawString(sprite, text, snappedPosition + new Vector2(-1, 1), shadowColor, scale);
+                _clientTextRasterizer.DrawString(sprite, text, snappedPosition + new Vector2(1, 1), shadowColor, scale);
+                _clientTextRasterizer.DrawString(sprite, text, snappedPosition, textColor, scale);
+                return;
+            }
+
+            sprite.DrawString(_font, text, snappedPosition + new Vector2(-1, -1), shadowColor, 0f, Vector2.Zero, scale, SpriteEffects.None, 0f);
+            sprite.DrawString(_font, text, snappedPosition + new Vector2(1, -1), shadowColor, 0f, Vector2.Zero, scale, SpriteEffects.None, 0f);
+            sprite.DrawString(_font, text, snappedPosition + new Vector2(-1, 1), shadowColor, 0f, Vector2.Zero, scale, SpriteEffects.None, 0f);
+            sprite.DrawString(_font, text, snappedPosition + new Vector2(1, 1), shadowColor, 0f, Vector2.Zero, scale, SpriteEffects.None, 0f);
+            sprite.DrawString(_font, text, snappedPosition, textColor, 0f, Vector2.Zero, scale, SpriteEffects.None, 0f);
+        }
+
+        private Vector2 MeasureStatusBarText(string text, float scale)
+        {
+            if (string.IsNullOrEmpty(text))
+            {
+                return Vector2.Zero;
+            }
+
+            if (_clientTextRasterizer != null)
+            {
+                return _clientTextRasterizer.MeasureString(text, scale);
+            }
+
+            return _font?.MeasureString(text) * scale ?? Vector2.Zero;
         }
 
         /// <summary>

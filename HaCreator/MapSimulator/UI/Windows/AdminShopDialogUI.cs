@@ -264,6 +264,7 @@ namespace HaCreator.MapSimulator.UI
         private AdminShopPane? _lastClickedPane;
         private int _lastRowClickTick;
         private int _requestResolveTick;
+        public Action<AdminShopDialogUI> WishlistWindowRequested { get; set; }
 
         public AdminShopDialogUI(
             IDXObject frame,
@@ -365,6 +366,117 @@ namespace HaCreator.MapSimulator.UI
         {
             _storageRuntime = storageRuntime;
             UpdateActionButtonStates();
+        }
+
+        public string GetWishlistSuggestedQuery()
+        {
+            AdminShopEntry entry = GetSelectedEntry();
+            return entry?.SupportsWishlist == true ? entry.Title : string.Empty;
+        }
+
+        public int GetWishlistSuggestedCategoryIndex()
+        {
+            for (int i = 0; i < _categoryTabs.Length; i++)
+            {
+                if (GetFullCategory(i) == _activeCategory)
+                {
+                    return i;
+                }
+            }
+
+            return 0;
+        }
+
+        public string GetWishlistServiceName()
+        {
+            return _currentMode == AdminShopServiceMode.CashShop ? "Cash Shop" : "MTS";
+        }
+
+        public bool TrySubmitWishlistSearch(string query, int categoryIndex, out string message)
+        {
+            message = "Enter an item name before searching the wish list.";
+            string trimmedQuery = query?.Trim();
+            if (string.IsNullOrWhiteSpace(trimmedQuery))
+            {
+                _footerMessage = message;
+                UpdateActionButtonStates();
+                return false;
+            }
+
+            AdminShopCategory requestedCategory = categoryIndex >= 0 && categoryIndex < _categoryTabs.Length
+                ? GetFullCategory(categoryIndex)
+                : AdminShopCategory.All;
+            List<AdminShopEntry> candidates = _paneStates[AdminShopPane.Npc]
+                .SourceEntries
+                .Where(entry => entry.SupportsWishlist && MatchesCategory(entry, requestedCategory))
+                .ToList();
+
+            if (candidates.Count == 0 && requestedCategory != AdminShopCategory.All)
+            {
+                candidates = _paneStates[AdminShopPane.Npc]
+                    .SourceEntries
+                    .Where(entry => entry.SupportsWishlist)
+                    .ToList();
+                requestedCategory = AdminShopCategory.All;
+            }
+
+            List<(AdminShopEntry Entry, int Score)> matches = candidates
+                .Select(entry => (Entry: entry, Score: ScoreWishlistEntry(entry, trimmedQuery)))
+                .Where(match => match.Score > 0)
+                .OrderByDescending(match => match.Score)
+                .ThenBy(match => match.Entry.Price)
+                .ThenBy(match => match.Entry.Title, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            if (matches.Count == 0)
+            {
+                message = $"No wish-list match was found for \"{trimmedQuery}\" in {GetWishlistServiceName()}.";
+                _footerMessage = message;
+                UpdateActionButtonStates();
+                return false;
+            }
+
+            AdminShopEntry matchedEntry = matches[0].Entry;
+            string entryKey = GetEntryKey(matchedEntry);
+            bool alreadyWishlisted = matchedEntry.Wishlisted || _wishlistedEntryKeys[_currentMode].Contains(entryKey);
+
+            _activePane = AdminShopPane.Npc;
+            _activeBrowseMode = AdminShopBrowseMode.All;
+            _activeCategory = requestedCategory == AdminShopCategory.All ? matchedEntry.Category : requestedCategory;
+            ApplyFilters();
+
+            AdminShopPaneState paneState = _paneStates[AdminShopPane.Npc];
+            int selectedIndex = paneState.Entries.IndexOf(matchedEntry);
+            if (selectedIndex < 0)
+            {
+                _activeCategory = AdminShopCategory.All;
+                ApplyFilters();
+                paneState = _paneStates[AdminShopPane.Npc];
+                selectedIndex = paneState.Entries.IndexOf(matchedEntry);
+            }
+
+            if (selectedIndex < 0)
+            {
+                message = $"Wish-list search found {matchedEntry.Title}, but the simulator could not focus the matching row.";
+                _footerMessage = message;
+                UpdateActionButtonStates();
+                return false;
+            }
+
+            matchedEntry.Wishlisted = true;
+            _wishlistedEntryKeys[_currentMode].Add(entryKey);
+            PersistEntrySessionState(matchedEntry);
+            paneState.SelectedIndex = selectedIndex;
+            ClampPaneState(paneState);
+            PersistBrowseSurfaceState(AdminShopPane.Npc);
+            UpdateRowButtons();
+            UpdateActionButtonStates();
+
+            message = alreadyWishlisted
+                ? $"Wish-list search focused {matchedEntry.Title}; the entry was already saved."
+                : $"Wish-list search saved {matchedEntry.Title} and focused the matching catalog row.";
+            _footerMessage = message;
+            return true;
         }
 
         public override void Show()
@@ -949,24 +1061,27 @@ namespace HaCreator.MapSimulator.UI
             AdminShopEntry entry = GetSelectedEntry();
             if (entry == null)
             {
-                _footerMessage = "Select an NPC offer before confirming a wish list entry.";
+                _footerMessage = "Select an NPC offer before opening the wish-list owner.";
                 UpdateActionButtonStates();
                 return;
             }
 
             if (!entry.SupportsWishlist)
             {
-                _footerMessage = "Only NPC offers can be added to the wish list preview.";
+                _footerMessage = "Only NPC offers can be searched through the wish-list owner.";
                 UpdateActionButtonStates();
                 return;
             }
 
-            if (!ReferenceEquals(_pendingWishlistEntry, entry))
+            if (WishlistWindowRequested == null)
             {
-                OpenWishlistConfirmation(entry);
+                _footerMessage = "Wish-list owner is unavailable for this simulator session.";
                 UpdateActionButtonStates();
-                return;
             }
+
+            WishlistWindowRequested?.Invoke(this);
+            _footerMessage = $"Opened the dedicated wish-list owner for {entry.Title}.";
+            UpdateActionButtonStates();
         }
 
         private void InitializeRowButtons(GraphicsDevice device)
@@ -1789,6 +1904,51 @@ namespace HaCreator.MapSimulator.UI
             int modalX = windowX + (frameWidth - ModalWidth) / 2;
             int modalY = windowY + (frameHeight - ModalHeight) / 2;
             return new Rectangle(modalX, modalY, ModalWidth, ModalHeight);
+        }
+
+        private static int ScoreWishlistEntry(AdminShopEntry entry, string query)
+        {
+            if (entry == null || string.IsNullOrWhiteSpace(query))
+            {
+                return 0;
+            }
+
+            if (string.Equals(entry.Title, query, StringComparison.OrdinalIgnoreCase))
+            {
+                return 500;
+            }
+
+            if (entry.Title.StartsWith(query, StringComparison.OrdinalIgnoreCase))
+            {
+                return 400;
+            }
+
+            if (entry.Title.IndexOf(query, StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                return 300;
+            }
+
+            if (entry.Detail.StartsWith(query, StringComparison.OrdinalIgnoreCase))
+            {
+                return 220;
+            }
+
+            if (entry.Detail.IndexOf(query, StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                return 180;
+            }
+
+            if (entry.Seller.StartsWith(query, StringComparison.OrdinalIgnoreCase))
+            {
+                return 120;
+            }
+
+            if (entry.Seller.IndexOf(query, StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                return 90;
+            }
+
+            return 0;
         }
 
         private static string BuildSelectionMessage(AdminShopEntry entry, AdminShopPane pane)

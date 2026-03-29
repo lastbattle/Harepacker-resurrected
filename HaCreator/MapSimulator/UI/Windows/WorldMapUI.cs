@@ -84,6 +84,20 @@ namespace HaCreator.MapSimulator.UI
             public Point IconOffset { get; }
         }
 
+        private readonly struct OverlayMarkerFrame
+        {
+            public OverlayMarkerFrame(Texture2D texture, Point origin, int delay)
+            {
+                Texture = texture;
+                Origin = origin;
+                Delay = Math.Max(1, delay);
+            }
+
+            public Texture2D Texture { get; }
+            public Point Origin { get; }
+            public int Delay { get; }
+        }
+
         private enum SearchFilterMode
         {
             All,
@@ -107,6 +121,7 @@ namespace HaCreator.MapSimulator.UI
         private const int MaxSearchQueryLength = 48;
         private const int KeyRepeatInitialDelayMs = 360;
         private const int KeyRepeatIntervalMs = 42;
+        private const int CandidateWindowPadding = 4;
 
         private readonly Texture2D _titleTexture;
         private readonly Texture2D _sidePanelTexture;
@@ -117,6 +132,7 @@ namespace HaCreator.MapSimulator.UI
         private readonly Texture2D _searchInputBackgroundTexture;
         private readonly Texture2D _searchInputOutlineTexture;
         private readonly Texture2D _caretTexture;
+        private readonly OverlayMarkerFrame[] _overlayMarkerFrames;
         private readonly UIObject _allButton;
         private readonly UIObject _anotherButton;
         private readonly UIObject _searchButton;
@@ -162,6 +178,9 @@ namespace HaCreator.MapSimulator.UI
             Texture2D searchNoticeTexture,
             Point searchNoticeOffset,
             Texture2D selectionTexture,
+            Texture2D[] overlayMarkerTextures,
+            Point[] overlayMarkerOrigins,
+            int[] overlayMarkerDelays,
             UIObject allButton,
             UIObject anotherButton,
             UIObject searchButton,
@@ -180,6 +199,7 @@ namespace HaCreator.MapSimulator.UI
             _searchNoticeTexture = searchNoticeTexture;
             _searchNoticeOffset = searchNoticeOffset;
             _selectionTexture = selectionTexture;
+            _overlayMarkerFrames = BuildOverlayMarkerFrames(overlayMarkerTextures, overlayMarkerOrigins, overlayMarkerDelays);
             _searchInputBackgroundTexture = new Texture2D(device, 1, 1);
             _searchInputBackgroundTexture.SetData(new[] { Color.White });
             _searchInputOutlineTexture = new Texture2D(device, 1, 1);
@@ -293,6 +313,51 @@ namespace HaCreator.MapSimulator.UI
             UIObject levelMobButton,
             UIObject prevButton,
             UIObject nextButton,
+            IReadOnlyDictionary<SearchResultKind, SearchResultVisualStyle> resultStyles,
+            IEnumerable<(string regionCode, UIObject button)> regionButtons,
+            GraphicsDevice device)
+            : this(
+                frame,
+                titleTexture,
+                sidePanelTexture,
+                sidePanelOffset,
+                searchNoticeTexture,
+                searchNoticeOffset,
+                selectionTexture,
+                Array.Empty<Texture2D>(),
+                Array.Empty<Point>(),
+                Array.Empty<int>(),
+                allButton,
+                anotherButton,
+                searchButton,
+                allSearchButton,
+                levelMobButton,
+                prevButton,
+                nextButton,
+                resultStyles,
+                regionButtons,
+                device)
+        {
+        }
+
+        public WorldMapUI(
+            IDXObject frame,
+            Texture2D titleTexture,
+            Texture2D sidePanelTexture,
+            Point sidePanelOffset,
+            Texture2D searchNoticeTexture,
+            Point searchNoticeOffset,
+            Texture2D selectionTexture,
+            Texture2D[] overlayMarkerTextures,
+            Point[] overlayMarkerOrigins,
+            int[] overlayMarkerDelays,
+            UIObject allButton,
+            UIObject anotherButton,
+            UIObject searchButton,
+            UIObject allSearchButton,
+            UIObject levelMobButton,
+            UIObject prevButton,
+            UIObject nextButton,
             Texture2D resultFieldHoverTexture,
             Texture2D resultFieldIconTexture,
             Texture2D resultNpcHoverTexture,
@@ -309,6 +374,9 @@ namespace HaCreator.MapSimulator.UI
                 searchNoticeTexture,
                 searchNoticeOffset,
                 selectionTexture,
+                overlayMarkerTextures,
+                overlayMarkerOrigins,
+                overlayMarkerDelays,
                 allButton,
                 anotherButton,
                 searchButton,
@@ -560,7 +628,7 @@ namespace HaCreator.MapSimulator.UI
 
             if (_searchMode)
             {
-                DrawSearchContents(sprite);
+                DrawSearchContents(sprite, TickCount);
                 return;
             }
 
@@ -599,14 +667,16 @@ namespace HaCreator.MapSimulator.UI
             for (int row = 0; row < visibleEntries.Count; row++)
             {
                 MapEntry entry = visibleEntries[row];
+                Rectangle rowBounds = new(Position.X + ListStartX, Position.Y + ListStartY + (row * RowHeight), ListWidth, RowHeight);
                 Color textColor = entry.MapId == _selectedMapId ? Color.White : new Color(228, 228, 228);
-                string overlayPrefix = GetOverlayCountForMap(entry.MapId) > 0 ? "* " : string.Empty;
-                string label = TrimToWidth($"{overlayPrefix}{entry.MapId} {entry.DisplayName}", ListWidth - 4);
+                int overlayCount = GetOverlayCountForMap(entry.MapId);
+                int markerInset = DrawOverlayMarker(sprite, rowBounds, overlayCount, TickCount);
+                string label = TrimToWidth($"{entry.MapId} {entry.DisplayName}", ListWidth - markerInset - 4);
                 SelectorWindowDrawing.DrawShadowedText(
                     sprite,
                     _font,
                     label,
-                    new Vector2(Position.X + ListStartX + 2, Position.Y + ListStartY + 1 + (row * RowHeight)),
+                    new Vector2(rowBounds.X + 2 + markerInset, rowBounds.Y + 1),
                     textColor);
             }
 
@@ -1116,7 +1186,7 @@ namespace HaCreator.MapSimulator.UI
             UpdateButtonStates();
         }
 
-        private void DrawSearchContents(SpriteBatch sprite)
+        private void DrawSearchContents(SpriteBatch sprite, int tickCount)
         {
             if (_searchNoticeTexture != null)
             {
@@ -1160,7 +1230,7 @@ namespace HaCreator.MapSimulator.UI
 
             for (int row = 0; row < visibleResults.Count; row++)
             {
-                DrawSearchRow(sprite, visibleResults[row], row);
+                DrawSearchRow(sprite, visibleResults[row], row, tickCount);
             }
 
             string pageText = $"{_pageIndex + 1}/{Math.Max(1, GetMaxPageIndexForCurrentMode() + 1)}";
@@ -1172,7 +1242,7 @@ namespace HaCreator.MapSimulator.UI
                 new Color(214, 214, 214));
         }
 
-        private void DrawSearchRow(SpriteBatch sprite, SearchResultEntry entry, int row)
+        private void DrawSearchRow(SpriteBatch sprite, SearchResultEntry entry, int row, int tickCount)
         {
             SearchResultVisualStyle? style = GetResultStyle(entry.Kind);
             Texture2D hoverTexture = style?.HoverTexture;
@@ -1197,6 +1267,7 @@ namespace HaCreator.MapSimulator.UI
 
             Texture2D iconTexture = style?.IconTexture;
             int textStartX = rowBounds.X + 2;
+            textStartX += DrawOverlayMarker(sprite, rowBounds, GetOverlayCountForMap(entry.MapId), tickCount);
             if (iconTexture != null)
             {
                 Point iconOffset = style?.IconOffset ?? Point.Zero;
@@ -1235,6 +1306,84 @@ namespace HaCreator.MapSimulator.UI
             return kind == SearchResultKind.Item
                 ? GetIconTexture(SearchResultKind.Npc) ?? GetIconTexture(SearchResultKind.Field)
                 : null;
+        }
+
+        private int DrawOverlayMarker(SpriteBatch sprite, Rectangle rowBounds, int overlayCount, int tickCount)
+        {
+            if (overlayCount <= 0)
+            {
+                return 0;
+            }
+
+            OverlayMarkerFrame? markerFrame = GetActiveOverlayMarkerFrame(tickCount);
+            if (!markerFrame.HasValue)
+            {
+                return 12;
+            }
+
+            OverlayMarkerFrame frame = markerFrame.Value;
+            Rectangle destination = new(rowBounds.X + 1, rowBounds.Y + 1, 12, 14);
+            sprite.Draw(frame.Texture, destination, Color.White);
+            return destination.Width + 2;
+        }
+
+        private OverlayMarkerFrame? GetActiveOverlayMarkerFrame(int tickCount)
+        {
+            if (_overlayMarkerFrames.Length == 0)
+            {
+                return null;
+            }
+
+            int totalDelay = 0;
+            for (int i = 0; i < _overlayMarkerFrames.Length; i++)
+            {
+                totalDelay += _overlayMarkerFrames[i].Delay;
+            }
+
+            if (totalDelay <= 0)
+            {
+                return _overlayMarkerFrames[0];
+            }
+
+            int time = Math.Abs(tickCount % totalDelay);
+            for (int i = 0; i < _overlayMarkerFrames.Length; i++)
+            {
+                if (time < _overlayMarkerFrames[i].Delay)
+                {
+                    return _overlayMarkerFrames[i];
+                }
+
+                time -= _overlayMarkerFrames[i].Delay;
+            }
+
+            return _overlayMarkerFrames[^1];
+        }
+
+        private static OverlayMarkerFrame[] BuildOverlayMarkerFrames(Texture2D[] textures, Point[] origins, int[] delays)
+        {
+            if (textures == null || origins == null || delays == null)
+            {
+                return Array.Empty<OverlayMarkerFrame>();
+            }
+
+            int count = Math.Min(textures.Length, Math.Min(origins.Length, delays.Length));
+            if (count <= 0)
+            {
+                return Array.Empty<OverlayMarkerFrame>();
+            }
+
+            var frames = new List<OverlayMarkerFrame>(count);
+            for (int i = 0; i < count; i++)
+            {
+                if (textures[i] == null)
+                {
+                    continue;
+                }
+
+                frames.Add(new OverlayMarkerFrame(textures[i], origins[i], delays[i]));
+            }
+
+            return frames.ToArray();
         }
 
         private static IReadOnlyDictionary<SearchResultKind, SearchResultVisualStyle> BuildLegacyResultStyles(
@@ -1309,7 +1458,7 @@ namespace HaCreator.MapSimulator.UI
             }
             else
             {
-                width = (2 * GetCandidatePageSize() * (_font.LineSpacing + 4)) + 4;
+                width = GetHorizontalCandidateWindowWidth();
                 height = _font.LineSpacing + 10;
             }
 
@@ -1532,30 +1681,49 @@ namespace HaCreator.MapSimulator.UI
                 && keyboardState.IsKeyDown(_lastHeldSearchKey)
                 && ShouldRepeatHeldKey(tickCount))
             {
+                bool repeatCtrl = keyboardState.IsKeyDown(Keys.LeftControl) || keyboardState.IsKeyDown(Keys.RightControl);
                 if (_lastHeldSearchKey == Keys.Back)
                 {
                     if (_searchCursorPosition > 0)
                     {
-                        _searchQuery = _searchQuery.Remove(_searchCursorPosition - 1, 1);
-                        _searchCursorPosition--;
-                        OnSearchQueryChanged();
+                        if (repeatCtrl)
+                        {
+                            DeletePreviousSearchWord();
+                        }
+                        else
+                        {
+                            _searchQuery = _searchQuery.Remove(_searchCursorPosition - 1, 1);
+                            _searchCursorPosition--;
+                            OnSearchQueryChanged();
+                        }
                     }
                 }
                 else if (_lastHeldSearchKey == Keys.Delete)
                 {
                     if (_searchCursorPosition < _searchQuery.Length)
                     {
-                        _searchQuery = _searchQuery.Remove(_searchCursorPosition, 1);
-                        OnSearchQueryChanged();
+                        if (repeatCtrl)
+                        {
+                            DeleteNextSearchWord();
+                        }
+                        else
+                        {
+                            _searchQuery = _searchQuery.Remove(_searchCursorPosition, 1);
+                            OnSearchQueryChanged();
+                        }
                     }
                 }
                 else if (_lastHeldSearchKey == Keys.Left)
                 {
-                    _searchCursorPosition = Math.Max(0, _searchCursorPosition - 1);
+                    _searchCursorPosition = repeatCtrl
+                        ? FindPreviousSearchWordBoundary()
+                        : Math.Max(0, _searchCursorPosition - 1);
                 }
                 else if (_lastHeldSearchKey == Keys.Right)
                 {
-                    _searchCursorPosition = Math.Min(_searchQuery.Length, _searchCursorPosition + 1);
+                    _searchCursorPosition = repeatCtrl
+                        ? FindNextSearchWordBoundary()
+                        : Math.Min(_searchQuery.Length, _searchCursorPosition + 1);
                 }
                 _lastKeyRepeatTime = tickCount;
             }
@@ -1614,7 +1782,9 @@ namespace HaCreator.MapSimulator.UI
             {
                 if (_previousSearchKeyboardState.IsKeyUp(Keys.Left))
                 {
-                    _searchCursorPosition = Math.Max(0, _searchCursorPosition - 1);
+                    _searchCursorPosition = ctrl
+                        ? FindPreviousSearchWordBoundary()
+                        : Math.Max(0, _searchCursorPosition - 1);
                     BeginHeldKey(Keys.Left, tickCount);
                 }
 
@@ -1625,7 +1795,9 @@ namespace HaCreator.MapSimulator.UI
             {
                 if (_previousSearchKeyboardState.IsKeyUp(Keys.Right))
                 {
-                    _searchCursorPosition = Math.Min(_searchQuery.Length, _searchCursorPosition + 1);
+                    _searchCursorPosition = ctrl
+                        ? FindNextSearchWordBoundary()
+                        : Math.Min(_searchQuery.Length, _searchCursorPosition + 1);
                     BeginHeldKey(Keys.Right, tickCount);
                 }
 
@@ -1702,6 +1874,48 @@ namespace HaCreator.MapSimulator.UI
 
             _searchQuery = _searchQuery.Remove(_searchCursorPosition, removalLength);
             OnSearchQueryChanged();
+        }
+
+        private int FindPreviousSearchWordBoundary()
+        {
+            if (_searchCursorPosition <= 0 || string.IsNullOrEmpty(_searchQuery))
+            {
+                return 0;
+            }
+
+            int cursor = _searchCursorPosition;
+            while (cursor > 0 && char.IsWhiteSpace(_searchQuery[cursor - 1]))
+            {
+                cursor--;
+            }
+
+            while (cursor > 0 && !char.IsWhiteSpace(_searchQuery[cursor - 1]))
+            {
+                cursor--;
+            }
+
+            return cursor;
+        }
+
+        private int FindNextSearchWordBoundary()
+        {
+            if (_searchCursorPosition >= _searchQuery.Length || string.IsNullOrEmpty(_searchQuery))
+            {
+                return _searchQuery.Length;
+            }
+
+            int cursor = _searchCursorPosition;
+            while (cursor < _searchQuery.Length && char.IsWhiteSpace(_searchQuery[cursor]))
+            {
+                cursor++;
+            }
+
+            while (cursor < _searchQuery.Length && !char.IsWhiteSpace(_searchQuery[cursor]))
+            {
+                cursor++;
+            }
+
+            return cursor;
         }
 
         private void OnSearchQueryChanged()
@@ -2166,7 +2380,35 @@ namespace HaCreator.MapSimulator.UI
 
         private int GetHorizontalCandidateCellWidth()
         {
-            return Math.Max(2 * (_font.LineSpacing + 4), 28);
+            if (_font == null || !_candidateListState.HasCandidates)
+            {
+                return 28;
+            }
+
+            int start = Math.Clamp(_candidateListState.PageStart, 0, _candidateListState.Candidates.Count);
+            int count = Math.Min(GetVisibleCandidateCount(), _candidateListState.Candidates.Count - start);
+            int widestCell = 0;
+            for (int i = 0; i < count; i++)
+            {
+                int candidateIndex = start + i;
+                string numberText = $"{candidateIndex + 1}.";
+                string candidateText = _candidateListState.Candidates[candidateIndex] ?? string.Empty;
+                int cellWidth = (int)Math.Ceiling(_font.MeasureString(numberText).X + _font.MeasureString(candidateText).X) + CandidateWindowPadding + 6;
+                widestCell = Math.Max(widestCell, cellWidth);
+            }
+
+            return Math.Max(2 * (_font.LineSpacing + 4), widestCell);
+        }
+
+        private int GetHorizontalCandidateWindowWidth()
+        {
+            int pageSize = GetCandidatePageSize();
+            if (pageSize <= 0)
+            {
+                return 64;
+            }
+
+            return (GetHorizontalCandidateCellWidth() * pageSize) + CandidateWindowPadding;
         }
 
         private int GetCandidateNumberWidth()

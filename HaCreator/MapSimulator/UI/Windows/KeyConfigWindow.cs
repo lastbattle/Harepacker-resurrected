@@ -7,6 +7,7 @@ using Microsoft.Xna.Framework.Input;
 using Spine;
 using System;
 using System.Collections.Generic;
+using System.Linq;
 
 namespace HaCreator.MapSimulator.UI
 {
@@ -51,6 +52,8 @@ namespace HaCreator.MapSimulator.UI
         private readonly Texture2D _highlightTexture;
         private readonly string _windowName;
         private readonly IDXObject _mainFrame;
+        private readonly Dictionary<InputAction, KeyBinding> _stagedBindings = new();
+        private readonly Dictionary<InputAction, KeyBinding> _originalBindings = new();
         private SpriteFont _font;
         private Func<PlayerInput> _bindingSource;
         private IDXObject _quickSlotFrame;
@@ -64,6 +67,7 @@ namespace HaCreator.MapSimulator.UI
         private UIObject _showMainButton;
         private KeyConfigPage _page;
         private InputAction? _selectedAction;
+        private bool _captureArmed;
         private string _statusMessage = "Select a row to inspect or clear a local binding.";
 
         public KeyConfigWindow(IDXObject frame, string windowName, Texture2D highlightTexture)
@@ -129,8 +133,8 @@ namespace HaCreator.MapSimulator.UI
             _deleteButton = deleteButton;
             _showQuickSlotButton = quickSlotButton;
 
-            RegisterActionButton(okButton, Hide);
-            RegisterActionButton(cancelButton, Hide);
+            RegisterActionButton(okButton, CommitAndHide);
+            RegisterActionButton(cancelButton, DiscardAndHide);
             RegisterActionButton(defaultButton, RestoreDefaults);
             RegisterActionButton(deleteButton, ClearSelectedBinding);
             RegisterActionButton(quickSlotButton, () => SetPage(KeyConfigPage.QuickSlot));
@@ -139,8 +143,46 @@ namespace HaCreator.MapSimulator.UI
 
         public override void Show()
         {
+            BeginSession();
             SetPage(KeyConfigPage.Main, resetSelection: true, preserveStatusMessage: true);
             base.Show();
+        }
+
+        public override void Update(GameTime gameTime)
+        {
+            base.Update(gameTime);
+
+            if (!IsVisible || !_captureArmed || _selectedAction == null)
+            {
+                return;
+            }
+
+            PlayerInput input = _bindingSource?.Invoke();
+            if (input == null)
+            {
+                return;
+            }
+
+            if (input.TryGetPressedBindingKey(out Keys key))
+            {
+                KeyBinding currentBinding = GetBinding(_selectedAction.Value);
+                SetBinding(_selectedAction.Value, key, Keys.None, currentBinding?.GamepadButton ?? (Buttons)0);
+                _captureArmed = false;
+                _statusMessage = $"{GetSelectedLabel()} mapped to {FormatKey(key)}. Press another row to continue.";
+                return;
+            }
+
+            if (input.TryGetPressedBindingGamepadButton(out Buttons gamepadButton))
+            {
+                KeyBinding currentBinding = GetBinding(_selectedAction.Value);
+                SetBinding(
+                    _selectedAction.Value,
+                    currentBinding?.PrimaryKey ?? Keys.None,
+                    currentBinding?.SecondaryKey ?? Keys.None,
+                    gamepadButton);
+                _captureArmed = false;
+                _statusMessage = $"{GetSelectedLabel()} mapped to Pad:{FormatGamepadButton(gamepadButton)}. Press another row to continue.";
+            }
         }
 
         public override bool CheckMouseEvent(int shiftCenteredX, int shiftCenteredY, MouseState mouseState, MouseCursorItem mouseCursor, int renderWidth, int renderHeight)
@@ -164,7 +206,8 @@ namespace HaCreator.MapSimulator.UI
                 }
 
                 _selectedAction = row.Action;
-                _statusMessage = $"{row.Label} selected.";
+                _captureArmed = true;
+                _statusMessage = $"{row.Label} selected. Press a keyboard key or gamepad button to stage a new binding.";
                 mouseCursor?.SetMouseCursorMovedToClickableItem();
                 return true;
             }
@@ -233,8 +276,20 @@ namespace HaCreator.MapSimulator.UI
         private void RestoreDefaults()
         {
             PlayerInput input = _bindingSource?.Invoke();
-            input?.LoadDefaultBindings();
-            _statusMessage = "Restored the local MapleStory default hotkeys.";
+            if (input == null)
+            {
+                _statusMessage = "Player input is unavailable for this scene.";
+                return;
+            }
+
+            _stagedBindings.Clear();
+            foreach ((InputAction action, Keys primary, Keys secondary, Buttons gamepad) in PlayerInput.GetDefaultBindings())
+            {
+                _stagedBindings[action] = new KeyBinding(action, primary, secondary, gamepad);
+            }
+
+            _captureArmed = false;
+            _statusMessage = "Restored the staged MapleStory default hotkeys. Press OK to apply them.";
         }
 
         private void ClearSelectedBinding()
@@ -252,8 +307,10 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
-            input.SetBinding(_selectedAction.Value, Keys.None, Keys.None, 0);
-            _statusMessage = $"Cleared {_selectedAction.Value}.";
+            KeyBinding currentBinding = GetBinding(_selectedAction.Value);
+            SetBinding(_selectedAction.Value, Keys.None, Keys.None, currentBinding?.GamepadButton ?? (Buttons)0);
+            _captureArmed = false;
+            _statusMessage = $"Cleared {_selectedAction.Value}. Press OK to apply the staged change.";
         }
 
         private void SetPage(KeyConfigPage page, bool resetSelection = true, bool preserveStatusMessage = false)
@@ -267,6 +324,7 @@ namespace HaCreator.MapSimulator.UI
             if (resetSelection)
             {
                 _selectedAction = null;
+                _captureArmed = false;
             }
 
             if (!preserveStatusMessage)
@@ -324,6 +382,7 @@ namespace HaCreator.MapSimulator.UI
             sprite.Draw(_highlightTexture, bounds, selected ? new Color(92, 120, 190, 200) : new Color(32, 40, 54, 200));
 
             KeyBinding binding = _bindingSource?.Invoke()?.GetBinding(row.Action);
+            binding = GetBinding(row.Action);
             string keyText = FormatBinding(binding);
 
             sprite.DrawString(_font, row.Label, new Vector2(bounds.X + 8, bounds.Y + 6), Color.White);
@@ -425,6 +484,141 @@ namespace HaCreator.MapSimulator.UI
                 Keys.OemCloseBrackets => "]",
                 _ => key.ToString(),
             };
+        }
+
+        private void BeginSession()
+        {
+            PlayerInput input = _bindingSource?.Invoke();
+            if (input == null)
+            {
+                _stagedBindings.Clear();
+                _originalBindings.Clear();
+                _captureArmed = false;
+                return;
+            }
+
+            CaptureBindings(input, _originalBindings);
+            CaptureBindings(input, _stagedBindings);
+            _captureArmed = false;
+            _statusMessage = "Showing the client-owned key palette and binding page.";
+        }
+
+        private void CommitAndHide()
+        {
+            PlayerInput input = _bindingSource?.Invoke();
+            if (input != null)
+            {
+                foreach (KeyValuePair<InputAction, KeyBinding> entry in _stagedBindings)
+                {
+                    KeyBinding binding = entry.Value;
+                    input.SetBinding(
+                        entry.Key,
+                        binding?.PrimaryKey ?? Keys.None,
+                        binding?.SecondaryKey ?? Keys.None,
+                        binding?.GamepadButton ?? (Buttons)0);
+                }
+            }
+
+            _captureArmed = false;
+            Hide();
+        }
+
+        private void DiscardAndHide()
+        {
+            _captureArmed = false;
+            _selectedAction = null;
+            CaptureBindings(_bindingSource?.Invoke(), _stagedBindings);
+            Hide();
+        }
+
+        private KeyBinding GetBinding(InputAction action)
+        {
+            return _stagedBindings.TryGetValue(action, out KeyBinding binding) ? binding : null;
+        }
+
+        private void SetBinding(InputAction action, Keys primary, Keys secondary, Buttons gamepad)
+        {
+            RemoveAssignedKeyFromOtherBindings(action, primary);
+            if (secondary != primary)
+            {
+                RemoveAssignedKeyFromOtherBindings(action, secondary);
+            }
+
+            RemoveAssignedGamepadButtonFromOtherBindings(action, gamepad);
+            _stagedBindings[action] = new KeyBinding(action, primary, secondary == primary ? Keys.None : secondary, gamepad);
+        }
+
+        private void RemoveAssignedKeyFromOtherBindings(InputAction action, Keys key)
+        {
+            if (key == Keys.None)
+            {
+                return;
+            }
+
+            foreach (KeyValuePair<InputAction, KeyBinding> entry in _stagedBindings.Where(entry => entry.Key != action))
+            {
+                KeyBinding binding = entry.Value;
+                if (binding == null)
+                {
+                    continue;
+                }
+
+                if (binding.PrimaryKey == key)
+                {
+                    binding.PrimaryKey = binding.SecondaryKey;
+                    binding.SecondaryKey = Keys.None;
+                }
+                else if (binding.SecondaryKey == key)
+                {
+                    binding.SecondaryKey = Keys.None;
+                }
+            }
+        }
+
+        private void RemoveAssignedGamepadButtonFromOtherBindings(InputAction action, Buttons gamepadButton)
+        {
+            if (gamepadButton == 0)
+            {
+                return;
+            }
+
+            foreach (KeyValuePair<InputAction, KeyBinding> entry in _stagedBindings.Where(entry => entry.Key != action))
+            {
+                if (entry.Value?.GamepadButton == gamepadButton)
+                {
+                    entry.Value.GamepadButton = 0;
+                }
+            }
+        }
+
+        private static void CaptureBindings(PlayerInput input, Dictionary<InputAction, KeyBinding> target)
+        {
+            target.Clear();
+            if (input == null)
+            {
+                return;
+            }
+
+            foreach (InputAction action in Enum.GetValues(typeof(InputAction)))
+            {
+                KeyBinding binding = input.GetBinding(action);
+                target[action] = binding == null
+                    ? new KeyBinding(action, Keys.None, Keys.None, 0)
+                    : new KeyBinding(action, binding.PrimaryKey, binding.SecondaryKey, binding.GamepadButton);
+            }
+        }
+
+        private string GetSelectedLabel()
+        {
+            foreach (BindingRow row in GetActiveRows())
+            {
+                if (row.Action == _selectedAction)
+                {
+                    return row.Label;
+                }
+            }
+
+            return _selectedAction?.ToString() ?? "Binding";
         }
 
         private static string AppendGamepadBinding(string keyboardBinding, Buttons gamepadButton)

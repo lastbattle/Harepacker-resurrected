@@ -1433,7 +1433,7 @@ namespace HaCreator.MapSimulator
             }
             else
             {
-                _playerManager.Skills.ClearServerCooldown(normalizedSkillId);
+                _playerManager.Skills.ClearServerCooldown(normalizedSkillId, currTickCount);
             }
 
             var skill = _playerManager.Skills.GetSkillData(normalizedSkillId) ?? _playerManager.SkillLoader?.LoadSkill(normalizedSkillId);

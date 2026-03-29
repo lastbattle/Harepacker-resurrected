@@ -34,6 +34,13 @@ namespace HaCreator.MapSimulator.Character.Skills
             return HasRideDescriptionText(skill);
         }
 
+        internal static bool IsWzAuthoredClientOwnedVehicleBuff(SkillData skill)
+        {
+            return skill?.IsBuff == true
+                   && (skill.ClientInfoType == 13
+                       || LooksLikeClientOwnedRideDescriptionBuff(skill));
+        }
+
         internal static bool HasRideDescriptionText(SkillData skill)
         {
             if (skill == null)

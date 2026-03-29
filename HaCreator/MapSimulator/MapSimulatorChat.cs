@@ -741,14 +741,11 @@ namespace HaCreator.MapSimulator
 
         public void BeginWhisperTo(string whisperTarget, int tickCount)
         {
-            whisperTarget = whisperTarget?.Trim();
-            if (string.IsNullOrWhiteSpace(whisperTarget))
+            if (!TryArmWhisperTarget(whisperTarget))
             {
                 return;
             }
 
-            _whisperTarget = whisperTarget;
-            _replyTarget = whisperTarget;
             Activate(tickCount);
         }
 
@@ -960,17 +957,18 @@ namespace HaCreator.MapSimulator
                     {
                         AddClientMessage("Usage: /w <name> [message]", tickCount, ClientChatLogType.Error);
                     }
-                    else
-                    {
-                        AddClientMessage($"Whisper target set to {_whisperTarget}.", tickCount, ClientChatLogType.System);
-                    }
 
                     disposition = ChatSubmitDisposition.KeepChatOpen;
                     return true;
                 }
 
-                _whisperTarget = parts[1];
-                _replyTarget = parts[1];
+                if (!TryArmWhisperTarget(parts[1]))
+                {
+                    AddClientMessage("Usage: /w <name> [message]", tickCount, ClientChatLogType.Error);
+                    disposition = ChatSubmitDisposition.KeepChatOpen;
+                    return true;
+                }
+
                 if (parts.Length >= 3)
                 {
                     SendWhisperMessage(_whisperTarget, parts[2], tickCount);
@@ -978,7 +976,6 @@ namespace HaCreator.MapSimulator
                     return true;
                 }
 
-                AddClientMessage($"Whisper target set to {_whisperTarget}.", tickCount, ClientChatLogType.System);
                 disposition = ChatSubmitDisposition.KeepChatOpen;
                 return true;
             }
@@ -991,11 +988,10 @@ namespace HaCreator.MapSimulator
                 return true;
             }
 
-            _whisperTarget = replyTarget;
+            TryArmWhisperTarget(replyTarget);
             string[] replyParts = trimmedMessage.Split(new[] { ' ' }, 2, StringSplitOptions.RemoveEmptyEntries);
             if (replyParts.Length < 2)
             {
-                AddClientMessage($"Reply target set to {_whisperTarget}.", tickCount, ClientChatLogType.System);
                 disposition = ChatSubmitDisposition.KeepChatOpen;
                 return true;
             }
@@ -1013,17 +1009,11 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
-            bool targetChanged = _chatTarget != targetType;
             _chatTarget = targetType;
             _whisperTarget = string.Empty;
 
             if (string.IsNullOrWhiteSpace(payload))
             {
-                if (targetChanged)
-                {
-                    AddClientMessage($"{GetTargetModeDisplayName(targetType)} chat selected.", tickCount, ClientChatLogType.System);
-                }
-
                 disposition = ChatSubmitDisposition.KeepChatOpen;
                 return true;
             }
@@ -1048,20 +1038,31 @@ namespace HaCreator.MapSimulator
 
         private void SendWhisperMessage(string whisperTarget, string message, int tickCount)
         {
-            if (string.IsNullOrWhiteSpace(whisperTarget))
+            if (!TryArmWhisperTarget(whisperTarget))
             {
                 return;
             }
 
-            _whisperTarget = whisperTarget;
-            _replyTarget = whisperTarget;
             AddMessage(
-                $"> {whisperTarget}: {message}",
+                $"> {_whisperTarget}: {message}",
                 WhisperMessageColor,
                 tickCount,
                 (int)ClientChatLogType.OutgoingWhisper,
-                whisperTarget);
+                _whisperTarget);
             MessageSubmitted?.Invoke(message, tickCount);
+        }
+
+        private bool TryArmWhisperTarget(string whisperTarget)
+        {
+            whisperTarget = whisperTarget?.Trim();
+            if (string.IsNullOrWhiteSpace(whisperTarget))
+            {
+                return false;
+            }
+
+            _whisperTarget = whisperTarget;
+            _replyTarget = whisperTarget;
+            return true;
         }
 
         private void AddClientMessage(string text, int tickCount, ClientChatLogType chatLogType, Color? colorOverride = null)
@@ -1406,20 +1407,6 @@ namespace HaCreator.MapSimulator
                 default:
                     return false;
             }
-        }
-
-        private static string GetTargetModeDisplayName(MapSimulatorChatTargetType targetType)
-        {
-            return targetType switch
-            {
-                MapSimulatorChatTargetType.All => "All",
-                MapSimulatorChatTargetType.Friend => "Friend",
-                MapSimulatorChatTargetType.Party => "Party",
-                MapSimulatorChatTargetType.Guild => "Guild",
-                MapSimulatorChatTargetType.Association => "Alliance",
-                MapSimulatorChatTargetType.Expedition => "Expedition",
-                _ => "All"
-            };
         }
 
         private static string GetTargetPrefix(MapSimulatorChatTargetType targetType)

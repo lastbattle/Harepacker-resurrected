@@ -270,6 +270,7 @@ namespace HaCreator.MapSimulator.UI
                 int minimapPosY = _playerMinimapY;
 
                 BaseDXDrawableItem playerMarker = ResolveLocalPlayerMarker();
+                bool suppressLegacyPixelDot = ShouldSuppressLegacyPixelDot(playerMarker);
                 if (playerMarker != null)
                 {
                     playerMarker.Draw(sprite, skeletonMeshRenderer, gameTime,
@@ -279,12 +280,14 @@ namespace HaCreator.MapSimulator.UI
                         TickCount);
                 }
 
-                // Draw the minimap pixel dot
-                _pixelDot.Draw(sprite, skeletonMeshRenderer, gameTime,
-                    -Position.X, -Position.Y, minimapPosX, minimapPosY,
-                    drawReflectionInfo,
-                    renderParameters,
-                    TickCount);
+                if (!suppressLegacyPixelDot)
+                {
+                    _pixelDot.Draw(sprite, skeletonMeshRenderer, gameTime,
+                        -Position.X, -Position.Y, minimapPosX, minimapPosY,
+                        drawReflectionInfo,
+                        renderParameters,
+                        TickCount);
+                }
 
                 DrawPortalMarkers(sprite, skeletonMeshRenderer, gameTime, drawReflectionInfo, renderParameters, TickCount);
                 DrawTrackedUserMarkers(sprite, skeletonMeshRenderer, gameTime, drawReflectionInfo, renderParameters, TickCount);
@@ -653,6 +656,11 @@ namespace HaCreator.MapSimulator.UI
             }
 
             return _userMarker;
+        }
+
+        private bool ShouldSuppressLegacyPixelDot(BaseDXDrawableItem playerMarker)
+        {
+            return playerMarker != null && _localPlayerHelperMarkerType.HasValue;
         }
 
         private void DrawTrackedUserMarkers(

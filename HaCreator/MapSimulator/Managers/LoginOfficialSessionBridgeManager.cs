@@ -1,6 +1,7 @@
 using MapleLib.MapleCryptoLib;
 using MapleLib.PacketLib;
 using System;
+using System.Collections.Generic;
 using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Linq;
@@ -101,7 +102,7 @@ namespace HaCreator.MapSimulator.Managers
             }
         }
 
-        public bool TryStartFromDiscovery(int listenPort, int remotePort, string processSelector, out string status)
+        public bool TryStartFromDiscovery(int listenPort, int remotePort, string processSelector, int? localPort, out string status)
         {
             int? owningProcessId = null;
             string owningProcessName = null;
@@ -113,32 +114,26 @@ namespace HaCreator.MapSimulator.Managers
             }
 
             var candidates = CoconutOfficialSessionBridgeManager.DiscoverEstablishedSessions(remotePort, owningProcessId, owningProcessName);
-            if (candidates.Count == 0)
+            if (!TryResolveDiscoveryCandidate(
+                    candidates,
+                    remotePort,
+                    owningProcessId,
+                    owningProcessName,
+                    localPort,
+                    out CoconutOfficialSessionBridgeManager.SessionDiscoveryCandidate candidate,
+                    out status))
             {
-                string selectorLabel = DescribeSelector(owningProcessId, owningProcessName);
-                status = $"Login official-session discovery found no established TCP session for {selectorLabel} on remote port {remotePort}.";
                 LastStatus = status;
                 return false;
             }
 
-            if (candidates.Count > 1)
-            {
-                string selectorLabel = DescribeSelector(owningProcessId, owningProcessName);
-                string matches = string.Join(", ", candidates.Select(candidate =>
-                    $"{candidate.RemoteEndpoint.Address}:{candidate.RemoteEndpoint.Port} via {candidate.LocalEndpoint.Address}:{candidate.LocalEndpoint.Port}"));
-                status = $"Login official-session discovery found multiple candidates for {selectorLabel} on remote port {remotePort}: {matches}.";
-                LastStatus = status;
-                return false;
-            }
-
-            var candidate = candidates[0];
             Start(listenPort, candidate.RemoteEndpoint.Address.ToString(), candidate.RemoteEndpoint.Port);
             status = $"Login official-session bridge discovered {candidate.ProcessName} ({candidate.ProcessId}) at {candidate.RemoteEndpoint.Address}:{candidate.RemoteEndpoint.Port} from local {candidate.LocalEndpoint.Address}:{candidate.LocalEndpoint.Port}. {LastStatus}";
             LastStatus = status;
             return true;
         }
 
-        public string DescribeDiscoveredSessions(int remotePort, string processSelector = null)
+        public string DescribeDiscoveredSessions(int remotePort, string processSelector = null, int? localPort = null)
         {
             int? owningProcessId = null;
             string owningProcessName = null;
@@ -148,15 +143,7 @@ namespace HaCreator.MapSimulator.Managers
             }
 
             var candidates = CoconutOfficialSessionBridgeManager.DiscoverEstablishedSessions(remotePort, owningProcessId, owningProcessName);
-            if (candidates.Count == 0)
-            {
-                return $"No established TCP sessions matched {DescribeSelector(owningProcessId, owningProcessName)} on remote port {remotePort}.";
-            }
-
-            return string.Join(
-                Environment.NewLine,
-                candidates.Select(candidate =>
-                    $"{candidate.ProcessName} ({candidate.ProcessId}) local {candidate.LocalEndpoint.Address}:{candidate.LocalEndpoint.Port} -> remote {candidate.RemoteEndpoint.Address}:{candidate.RemoteEndpoint.Port}"));
+            return DescribeDiscoveryCandidates(candidates, remotePort, owningProcessId, owningProcessName, localPort);
         }
 
         public void Stop()
@@ -410,6 +397,78 @@ namespace HaCreator.MapSimulator.Managers
             return string.IsNullOrWhiteSpace(owningProcessName)
                 ? "any process"
                 : owningProcessName;
+        }
+
+        internal static bool TryResolveDiscoveryCandidate(
+            IReadOnlyList<CoconutOfficialSessionBridgeManager.SessionDiscoveryCandidate> candidates,
+            int remotePort,
+            int? owningProcessId,
+            string owningProcessName,
+            int? localPort,
+            out CoconutOfficialSessionBridgeManager.SessionDiscoveryCandidate candidate,
+            out string status)
+        {
+            IReadOnlyList<CoconutOfficialSessionBridgeManager.SessionDiscoveryCandidate> filteredCandidates = FilterCandidatesByLocalPort(candidates, localPort);
+            if (filteredCandidates.Count == 0)
+            {
+                status = $"Login official-session discovery found no established TCP session for {DescribeDiscoveryScope(owningProcessId, owningProcessName, remotePort, localPort)}.";
+                candidate = default;
+                return false;
+            }
+
+            if (filteredCandidates.Count > 1)
+            {
+                string matches = string.Join(", ", filteredCandidates.Select(candidate =>
+                    $"{candidate.RemoteEndpoint.Address}:{candidate.RemoteEndpoint.Port} via {candidate.LocalEndpoint.Address}:{candidate.LocalEndpoint.Port}"));
+                status = $"Login official-session discovery found multiple candidates for {DescribeDiscoveryScope(owningProcessId, owningProcessName, remotePort, localPort)}: {matches}. Use /loginpacket session discover to inspect them, or add a localPort filter.";
+                candidate = default;
+                return false;
+            }
+
+            candidate = filteredCandidates[0];
+            status = null;
+            return true;
+        }
+
+        internal static string DescribeDiscoveryCandidates(
+            IReadOnlyList<CoconutOfficialSessionBridgeManager.SessionDiscoveryCandidate> candidates,
+            int remotePort,
+            int? owningProcessId,
+            string owningProcessName,
+            int? localPort)
+        {
+            IReadOnlyList<CoconutOfficialSessionBridgeManager.SessionDiscoveryCandidate> filteredCandidates = FilterCandidatesByLocalPort(candidates, localPort);
+            if (filteredCandidates.Count == 0)
+            {
+                return $"No established TCP sessions matched {DescribeDiscoveryScope(owningProcessId, owningProcessName, remotePort, localPort)}.";
+            }
+
+            return string.Join(
+                Environment.NewLine,
+                filteredCandidates.Select(candidate =>
+                    $"{candidate.ProcessName} ({candidate.ProcessId}) local {candidate.LocalEndpoint.Address}:{candidate.LocalEndpoint.Port} -> remote {candidate.RemoteEndpoint.Address}:{candidate.RemoteEndpoint.Port}"));
+        }
+
+        private static IReadOnlyList<CoconutOfficialSessionBridgeManager.SessionDiscoveryCandidate> FilterCandidatesByLocalPort(
+            IReadOnlyList<CoconutOfficialSessionBridgeManager.SessionDiscoveryCandidate> candidates,
+            int? localPort)
+        {
+            if (!localPort.HasValue)
+            {
+                return candidates ?? Array.Empty<CoconutOfficialSessionBridgeManager.SessionDiscoveryCandidate>();
+            }
+
+            return (candidates ?? Array.Empty<CoconutOfficialSessionBridgeManager.SessionDiscoveryCandidate>())
+                .Where(candidate => candidate.LocalEndpoint.Port == localPort.Value)
+                .ToArray();
+        }
+
+        private static string DescribeDiscoveryScope(int? owningProcessId, string owningProcessName, int remotePort, int? localPort)
+        {
+            string selectorLabel = DescribeSelector(owningProcessId, owningProcessName);
+            return localPort.HasValue
+                ? $"{selectorLabel} on remote port {remotePort} and local port {localPort.Value}"
+                : $"{selectorLabel} on remote port {remotePort}";
         }
     }
 }

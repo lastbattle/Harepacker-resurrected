@@ -702,6 +702,7 @@ namespace HaCreator.MapSimulator
                 bookCollectionWindow.SetFont(_fontDebugValues);
 
                 bookCollectionWindow.SetMonsterBookSnapshotProvider(GetActiveMonsterBookSnapshot);
+                bookCollectionWindow.SetMonsterBookRegistrationHandler((mobId, registered) => _monsterBookManager.SetRegisteredCard(_playerManager?.Player?.Build ?? _loginCharacterRoster.SelectedEntry?.Build, mobId, registered));
 
             }
 
@@ -716,7 +717,8 @@ namespace HaCreator.MapSimulator
                 }
                 if (uiWindowManager.EquipWindow is EquipUIBigBang equipBigBang)
                 {
-                    equipBigBang.SetCharacterLoader(_playerManager.Loader);
+                    equipBigBang.SetCharacterLoader(_playerManager.Loader);
+                    equipBigBang.EquipmentChangeRequested = HandleEquipmentChangeRequest;
                     equipBigBang.SetPetController(_playerManager.Pets);
                     equipBigBang.SetPetEquipmentController(_playerManager.CompanionEquipment?.Pet);
                     equipBigBang.SetDragonEquipmentController(_playerManager.CompanionEquipment?.Dragon);
@@ -1312,7 +1314,8 @@ namespace HaCreator.MapSimulator
                 }
                 if (uiWindowManager.EquipWindow is EquipUIBigBang equipBigBang)
                 {
-                    equipBigBang.SetCharacterLoader(_playerManager.Loader);
+                    equipBigBang.SetCharacterLoader(_playerManager.Loader);
+                    equipBigBang.EquipmentChangeRequested = HandleEquipmentChangeRequest;
                     equipBigBang.SetPetController(_playerManager.Pets);
                     equipBigBang.SetPetEquipmentController(_playerManager.CompanionEquipment?.Pet);
                     equipBigBang.SetDragonEquipmentController(_playerManager.CompanionEquipment?.Dragon);

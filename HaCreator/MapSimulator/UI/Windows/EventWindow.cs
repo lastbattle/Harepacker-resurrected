@@ -31,6 +31,11 @@ namespace HaCreator.MapSimulator.UI
         private readonly Texture2D _slotTexture;
         private readonly Texture2D[] _statusIcons;
         private readonly Texture2D _todayTexture;
+        private readonly Texture2D _calendarBackgroundTexture;
+        private readonly Texture2D _calendarOverlayTexture;
+        private readonly Texture2D _calendarGridTexture;
+        private readonly Texture2D[] _calendarNumberTextures;
+        private readonly Texture2D[] _calendarSelectedNumberTextures;
         private SpriteFont _font;
         private Func<EventWindowSnapshot> _snapshotProvider;
         private EventEntryStatus? _filter;
@@ -38,13 +43,15 @@ namespace HaCreator.MapSimulator.UI
         private int _pageIndex;
         private bool _showCalendar;
         private DateTime _calendarMonth = new(DateTime.Today.Year, DateTime.Today.Month, 1);
+        private DateTime? _selectedCalendarDate;
+        private int _autoDismissTick = int.MinValue;
 
         public EventWindow(
             IDXObject frame,
             string windowName,
             Texture2D normalRowTexture,
             Texture2D selectedRowTexture)
-            : this(frame, windowName, normalRowTexture, selectedRowTexture, null, Array.Empty<Texture2D>(), null)
+            : this(frame, windowName, normalRowTexture, selectedRowTexture, null, Array.Empty<Texture2D>(), null, null, null, null, Array.Empty<Texture2D>(), Array.Empty<Texture2D>())
         {
         }
 
@@ -55,7 +62,12 @@ namespace HaCreator.MapSimulator.UI
             Texture2D selectedRowTexture,
             Texture2D slotTexture,
             Texture2D[] statusIcons,
-            Texture2D todayTexture)
+            Texture2D todayTexture,
+            Texture2D calendarBackgroundTexture,
+            Texture2D calendarOverlayTexture,
+            Texture2D calendarGridTexture,
+            Texture2D[] calendarNumberTextures,
+            Texture2D[] calendarSelectedNumberTextures)
             : base(frame)
         {
             _windowName = windowName ?? throw new ArgumentNullException(nameof(windowName));
@@ -64,9 +76,34 @@ namespace HaCreator.MapSimulator.UI
             _slotTexture = slotTexture;
             _statusIcons = statusIcons ?? Array.Empty<Texture2D>();
             _todayTexture = todayTexture;
+            _calendarBackgroundTexture = calendarBackgroundTexture;
+            _calendarOverlayTexture = calendarOverlayTexture;
+            _calendarGridTexture = calendarGridTexture;
+            _calendarNumberTextures = calendarNumberTextures ?? Array.Empty<Texture2D>();
+            _calendarSelectedNumberTextures = calendarSelectedNumberTextures ?? Array.Empty<Texture2D>();
         }
 
         public override string WindowName => _windowName;
+
+        public override void Show()
+        {
+            EventWindowSnapshot snapshot = _snapshotProvider?.Invoke() ?? new EventWindowSnapshot();
+            _filter = null;
+            _selectedIndex = 0;
+            _pageIndex = 0;
+            _showCalendar = false;
+            SetCalendarMonth(new DateTime(DateTime.Today.Year, DateTime.Today.Month, 1));
+            _autoDismissTick = snapshot.AutoDismissDelayMs > 0
+                ? unchecked(Environment.TickCount + snapshot.AutoDismissDelayMs)
+                : int.MinValue;
+            base.Show();
+        }
+
+        public override void Hide()
+        {
+            _autoDismissTick = int.MinValue;
+            base.Hide();
+        }
 
         public void AddLayer(IDXObject layer, Point offset)
         {
@@ -119,8 +156,22 @@ namespace HaCreator.MapSimulator.UI
                 return true;
             }
 
-            if (!IsVisible || _showCalendar || mouseState.LeftButton != ButtonState.Pressed)
+            if (!IsVisible || mouseState.LeftButton != ButtonState.Pressed)
             {
+                return false;
+            }
+
+            if (_showCalendar)
+            {
+                DateTime? clickedDate = ResolveCalendarDate(mouseState.X, mouseState.Y);
+                if (clickedDate.HasValue)
+                {
+                    _selectedCalendarDate = clickedDate.Value;
+                    DisableAutoDismiss();
+                    mouseCursor?.SetMouseCursorMovedToClickableItem();
+                    return true;
+                }
+
                 return false;
             }
 
@@ -133,6 +184,7 @@ namespace HaCreator.MapSimulator.UI
                 }
 
                 _selectedIndex = (_pageIndex * GetRowsPerPage()) + i;
+                DisableAutoDismiss();
                 mouseCursor?.SetMouseCursorMovedToClickableItem();
                 return true;
             }
@@ -171,6 +223,12 @@ namespace HaCreator.MapSimulator.UI
             }
 
             EventWindowSnapshot snapshot = _snapshotProvider?.Invoke() ?? new EventWindowSnapshot();
+            if (_autoDismissTick != int.MinValue && unchecked(TickCount - _autoDismissTick) >= 0)
+            {
+                Hide();
+                return;
+            }
+
             string subtitle = _showCalendar
                 ? $"Calendar view groups simulator event entries by day for {_calendarMonth:MMMM yyyy}."
                 : snapshot.Subtitle;
@@ -187,11 +245,21 @@ namespace HaCreator.MapSimulator.UI
                 DrawRows(sprite, snapshot);
             }
 
-            if (!string.IsNullOrWhiteSpace(snapshot.StatusText))
+            string statusText = snapshot.StatusText;
+            if (_autoDismissTick != int.MinValue)
+            {
+                int remainingMs = Math.Max(0, _autoDismissTick - TickCount);
+                int remainingSeconds = Math.Max(1, (remainingMs + 999) / 1000);
+                statusText = string.IsNullOrWhiteSpace(statusText)
+                    ? $"Alarm closes in {remainingSeconds}s unless you interact with it."
+                    : $"{statusText} Alarm closes in {remainingSeconds}s unless you interact with it.";
+            }
+
+            if (!string.IsNullOrWhiteSpace(statusText))
             {
                 DrawWrappedText(
                     sprite,
-                    snapshot.StatusText,
+                    statusText,
                     Position.X + 18,
                     Position.Y + Math.Max(0, (CurrentFrame?.Height ?? 458) - (_font.LineSpacing * 3) - 12),
                     Math.Max(240f, (CurrentFrame?.Width ?? 323) - 36f),
@@ -248,15 +316,33 @@ namespace HaCreator.MapSimulator.UI
                 .GroupBy(entry => entry.ScheduledAt.Date)
                 .ToDictionary(group => group.Key, group => group.Count());
 
-            Rectangle calendarBounds = new(Position.X + 18, Position.Y + 98, Math.Max(250, (CurrentFrame?.Width ?? 323) - 36), 222);
-            sprite.DrawString(_font, month.ToString("MMMM yyyy"), new Vector2(calendarBounds.X, calendarBounds.Y - _font.LineSpacing - 4), new Color(255, 228, 151));
+            Rectangle calendarBounds = GetCalendarBounds();
+            Texture2D baseTexture = _calendarBackgroundTexture ?? _normalRowTexture ?? _selectedRowTexture;
+            if (baseTexture != null)
+            {
+                sprite.Draw(baseTexture, new Vector2(calendarBounds.X, calendarBounds.Y), Color.White);
+            }
+
+            if (_calendarOverlayTexture != null)
+            {
+                sprite.Draw(_calendarOverlayTexture, new Vector2(calendarBounds.X + 6, calendarBounds.Y + 23), Color.White);
+            }
+
+            if (_calendarGridTexture != null)
+            {
+                sprite.Draw(_calendarGridTexture, new Vector2(calendarBounds.X + 12, calendarBounds.Y + 68), Color.White);
+            }
+
+            sprite.DrawString(_font, month.ToString("MMMM yyyy"), new Vector2(calendarBounds.X + 12, calendarBounds.Y + 10), new Color(255, 228, 151));
 
             string[] dayHeaders = { "Su", "Mo", "Tu", "We", "Th", "Fr", "Sa" };
-            int cellWidth = calendarBounds.Width / 7;
-            int cellHeight = 30;
+            int cellWidth = 19;
+            int cellHeight = 19;
+            int gridStartX = calendarBounds.X + 16;
+            int gridStartY = calendarBounds.Y + 49;
             for (int i = 0; i < dayHeaders.Length; i++)
             {
-                sprite.DrawString(_font, dayHeaders[i], new Vector2(calendarBounds.X + (i * cellWidth) + 6, calendarBounds.Y), new Color(220, 220, 220));
+                sprite.DrawString(_font, dayHeaders[i], new Vector2(gridStartX + (i * cellWidth), calendarBounds.Y + 31), new Color(220, 220, 220));
             }
 
             DateTime firstDay = new(month.Year, month.Month, 1);
@@ -267,37 +353,35 @@ namespace HaCreator.MapSimulator.UI
                 int slot = (day - 1) + startColumn;
                 int row = (slot / 7) + 1;
                 int column = slot % 7;
-                Rectangle cellBounds = new(calendarBounds.X + (column * cellWidth), calendarBounds.Y + (row * cellHeight), cellWidth - 2, cellHeight - 2);
-                bool isToday = month.Month == DateTime.Today.Month && day == DateTime.Today.Day;
-                Texture2D cellTexture = _normalRowTexture ?? _selectedRowTexture;
-                if (cellTexture != null)
-                {
-                    sprite.Draw(cellTexture, cellBounds, isToday ? new Color(92, 120, 190, 210) : new Color(28, 34, 50, 210));
-                }
-
                 DateTime date = new(month.Year, month.Month, day);
+                Rectangle cellBounds = new(gridStartX + (column * cellWidth), gridStartY + ((row - 1) * cellHeight), cellWidth, cellHeight);
+                bool isToday = date.Date == DateTime.Today.Date;
+                bool isSelected = _selectedCalendarDate.HasValue && _selectedCalendarDate.Value.Date == date.Date;
                 if (isToday && _todayTexture != null)
                 {
                     sprite.Draw(_todayTexture, new Vector2(cellBounds.X, cellBounds.Y), Color.White);
                 }
 
-                sprite.DrawString(_font, day.ToString(), new Vector2(cellBounds.X + 6, cellBounds.Y + 4), Color.White);
+                DrawCalendarDayNumber(sprite, day, cellBounds.Location, isSelected || isToday);
                 if (entryCountsByDay.TryGetValue(date, out int entryCount) && entryCount > 0)
                 {
-                    sprite.DrawString(_font, entryCount.ToString(), new Vector2(cellBounds.Right - 14, cellBounds.Y + 4), new Color(255, 228, 151));
+                    sprite.DrawString(_font, entryCount.ToString(), new Vector2(cellBounds.Right - 6, cellBounds.Y - 2), new Color(255, 228, 151));
                 }
             }
+
+            DrawCalendarSelectionSummary(sprite, entries, calendarBounds);
         }
 
         private void SetFilter(EventEntryStatus? filter, bool showCalendar)
         {
+            DisableAutoDismiss();
             _filter = filter;
             _pageIndex = 0;
             _selectedIndex = 0;
             _showCalendar = showCalendar;
             if (_showCalendar)
             {
-                _calendarMonth = new DateTime(DateTime.Today.Year, DateTime.Today.Month, 1);
+                SetCalendarMonth(new DateTime(DateTime.Today.Year, DateTime.Today.Month, 1));
             }
         }
 
@@ -329,9 +413,10 @@ namespace HaCreator.MapSimulator.UI
 
         private void MovePreviousPage()
         {
+            DisableAutoDismiss();
             if (_showCalendar)
             {
-                _calendarMonth = _calendarMonth.AddMonths(-1);
+                SetCalendarMonth(_calendarMonth.AddMonths(-1));
                 return;
             }
 
@@ -340,9 +425,10 @@ namespace HaCreator.MapSimulator.UI
 
         private void MoveNextPage()
         {
+            DisableAutoDismiss();
             if (_showCalendar)
             {
-                _calendarMonth = _calendarMonth.AddMonths(1);
+                SetCalendarMonth(_calendarMonth.AddMonths(1));
                 return;
             }
 
@@ -351,11 +437,22 @@ namespace HaCreator.MapSimulator.UI
 
         private void ToggleCalendarView()
         {
+            DisableAutoDismiss();
             _showCalendar = !_showCalendar;
             if (_showCalendar)
             {
-                _calendarMonth = new DateTime(DateTime.Today.Year, DateTime.Today.Month, 1);
+                SetCalendarMonth(new DateTime(DateTime.Today.Year, DateTime.Today.Month, 1));
             }
+        }
+
+        private Rectangle GetCalendarBounds()
+        {
+            int frameWidth = CurrentFrame?.Width ?? 323;
+            int width = _calendarBackgroundTexture?.Width ?? 157;
+            int height = _calendarBackgroundTexture?.Height ?? 205;
+            int x = Position.X + Math.Max(16, (frameWidth - width) / 2);
+            int y = Position.Y + 116;
+            return new Rectangle(x, y, width, height);
         }
 
         private Rectangle GetRowBounds(int visibleIndex)
@@ -376,7 +473,11 @@ namespace HaCreator.MapSimulator.UI
             }
 
             AddButton(button);
-            button.ButtonClickReleased += _ => action?.Invoke();
+            button.ButtonClickReleased += _ =>
+            {
+                DisableAutoDismiss();
+                action?.Invoke();
+            };
         }
 
         private Texture2D ResolveStatusIcon(EventEntryStatus status)
@@ -394,6 +495,90 @@ namespace HaCreator.MapSimulator.UI
                 EventEntryStatus.Upcoming => _statusIcons.ElementAtOrDefault(0),
                 _ => null,
             };
+        }
+
+        private void SetCalendarMonth(DateTime month)
+        {
+            _calendarMonth = new DateTime(month.Year, month.Month, 1);
+            DateTime selected = _selectedCalendarDate?.Date ?? DateTime.Today.Date;
+            if (selected.Year != _calendarMonth.Year || selected.Month != _calendarMonth.Month)
+            {
+                _selectedCalendarDate = _calendarMonth;
+            }
+        }
+
+        private void DisableAutoDismiss()
+        {
+            _autoDismissTick = int.MinValue;
+        }
+
+        private DateTime? ResolveCalendarDate(int mouseX, int mouseY)
+        {
+            Rectangle calendarBounds = GetCalendarBounds();
+            Rectangle gridBounds = new(calendarBounds.X + 16, calendarBounds.Y + 49, 19 * 7, 19 * 6);
+            if (!gridBounds.Contains(mouseX, mouseY))
+            {
+                return null;
+            }
+
+            int column = (mouseX - gridBounds.X) / 19;
+            int row = (mouseY - gridBounds.Y) / 19;
+            DateTime firstDay = new(_calendarMonth.Year, _calendarMonth.Month, 1);
+            int dayIndex = (row * 7) + column - (int)firstDay.DayOfWeek + 1;
+            if (dayIndex < 1 || dayIndex > DateTime.DaysInMonth(_calendarMonth.Year, _calendarMonth.Month))
+            {
+                return null;
+            }
+
+            return new DateTime(_calendarMonth.Year, _calendarMonth.Month, dayIndex);
+        }
+
+        private void DrawCalendarDayNumber(SpriteBatch sprite, int day, Point location, bool selected)
+        {
+            string dayText = day.ToString();
+            Texture2D[] digitFamily = selected && _calendarSelectedNumberTextures.Length > 0
+                ? _calendarSelectedNumberTextures
+                : _calendarNumberTextures;
+            if (digitFamily.Length == 0)
+            {
+                sprite.DrawString(_font, dayText, new Vector2(location.X + 4, location.Y + 2), Color.White);
+                return;
+            }
+
+            int drawX = location.X + (dayText.Length == 1 ? 5 : 1);
+            for (int i = 0; i < dayText.Length; i++)
+            {
+                int digit = dayText[i] - '0';
+                Texture2D texture = digit >= 0 && digit < digitFamily.Length ? digitFamily[digit] : null;
+                if (texture == null)
+                {
+                    continue;
+                }
+
+                sprite.Draw(texture, new Vector2(drawX, location.Y + 1), Color.White);
+                drawX += texture.Width - 1;
+            }
+        }
+
+        private void DrawCalendarSelectionSummary(SpriteBatch sprite, IReadOnlyList<EventEntrySnapshot> entries, Rectangle calendarBounds)
+        {
+            DateTime selectedDate = _selectedCalendarDate?.Date ?? _calendarMonth;
+            IReadOnlyList<EventEntrySnapshot> selectedEntries = entries
+                .Where(entry => entry.ScheduledAt.Date == selectedDate)
+                .Take(2)
+                .ToArray();
+
+            string summary = selectedEntries.Count == 0
+                ? $"{selectedDate:MMM d}: no simulator event entries are scheduled for this day."
+                : $"{selectedDate:MMM d}: {string.Join(" / ", selectedEntries.Select(entry => entry.Title))}";
+
+            DrawWrappedText(
+                sprite,
+                summary,
+                calendarBounds.X + 12,
+                calendarBounds.Bottom + 8,
+                Math.Max(180f, (CurrentFrame?.Width ?? 323) - 36f),
+                new Color(224, 224, 224));
         }
 
         private void DrawWrappedText(SpriteBatch sprite, string text, int x, int y, float maxWidth, Color color)

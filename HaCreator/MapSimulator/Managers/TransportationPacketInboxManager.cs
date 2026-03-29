@@ -140,16 +140,20 @@ namespace HaCreator.MapSimulator.Managers
             switch (action)
             {
                 case "start":
+                case "onstartshipmovefield":
                     return TryBuildContiMoveAlias(parts, ContiMoveStartShip, out packetType, out payload, out error);
 
                 case "move":
+                case "onmovefield":
                     return TryBuildContiMoveAlias(parts, ContiMoveMoveField, out packetType, out payload, out error);
 
                 case "end":
+                case "onendshipmovefield":
                     return TryBuildContiMoveAlias(parts, ContiMoveEndShip, out packetType, out payload, out error);
 
                 case "state":
                 case "contistate":
+                case "oncontistate":
                     if (parts.Length < 3
                         || !byte.TryParse(parts[1], out byte state)
                         || !byte.TryParse(parts[2], out byte stateValue))
@@ -160,6 +164,20 @@ namespace HaCreator.MapSimulator.Managers
 
                     packetType = PacketTypeContiState;
                     payload = new[] { state, stateValue };
+                    return true;
+
+                case "contimove":
+                case "oncontimove":
+                    if (parts.Length < 3
+                        || !byte.TryParse(parts[1], out byte moveType)
+                        || !byte.TryParse(parts[2], out byte moveValue))
+                    {
+                        error = "Transport conti-move lines must be 'OnContiMove <subtype> <value>'.";
+                        return false;
+                    }
+
+                    packetType = PacketTypeContiMove;
+                    payload = new[] { moveType, moveValue };
                     return true;
 
                 default:

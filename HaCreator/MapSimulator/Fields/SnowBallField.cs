@@ -432,6 +432,7 @@ namespace HaCreator.MapSimulator.Fields
         private readonly Queue<TouchPacketRequest> _pendingTouchPacketRequests = new();
         private int _touchPacketSequence;
         private readonly Random _random = new();
+        private int? _lastPacketType;
         #endregion
         #region Properties
         public GameState State => _state;
@@ -690,6 +691,94 @@ namespace HaCreator.MapSimulator.Fields
         {
             _localPlayerPosition = localWorldPosition;
         }
+
+        public bool TryPeekTouchPacketRequest(out TouchPacketRequest request)
+        {
+            if (_pendingTouchPacketRequests.Count > 0)
+            {
+                request = _pendingTouchPacketRequests.Peek();
+                return true;
+            }
+
+            request = default;
+            return false;
+        }
+
+        public void ClearPendingTouchPacketRequests()
+        {
+            _pendingTouchPacketRequests.Clear();
+        }
+
+        public bool TryApplyPacket(int packetType, byte[] payload, int currentTickCount, out string errorMessage)
+        {
+            errorMessage = null;
+            _lastPacketType = packetType;
+
+            try
+            {
+                PacketReader reader = new(payload ?? Array.Empty<byte>());
+                switch (packetType)
+                {
+                    case PacketTypeState:
+                        int newState = reader.ReadByte();
+                        int team0SnowManHp = reader.ReadInt();
+                        int team1SnowManHp = reader.ReadInt();
+                        int team0Pos = reader.ReadShort();
+                        int team0SpeedDegree = reader.ReadByte();
+                        int team1Pos = reader.ReadShort();
+                        int team1SpeedDegree = reader.ReadByte();
+                        int? damageSnowBall = null;
+                        int? damageSnowMan0 = null;
+                        int? damageSnowMan1 = null;
+                        if (!_hasReceivedStateSnapshot)
+                        {
+                            damageSnowBall = reader.ReadShort();
+                            damageSnowMan0 = reader.ReadShort();
+                            damageSnowMan1 = reader.ReadShort();
+                        }
+
+                        OnSnowBallState(
+                            newState,
+                            team0SnowManHp,
+                            team1SnowManHp,
+                            team0Pos,
+                            team0SpeedDegree,
+                            team1Pos,
+                            team1SpeedDegree,
+                            damageSnowBall,
+                            damageSnowMan0,
+                            damageSnowMan1);
+                        return true;
+
+                    case PacketTypeHit:
+                        OnSnowBallHit(reader.ReadByte(), reader.ReadShort(), reader.ReadShort(), currentTickCount);
+                        return true;
+
+                    case PacketTypeMessage:
+                        OnSnowBallMsg(reader.ReadByte(), reader.ReadByte());
+                        return true;
+
+                    case PacketTypeTouch:
+                        OnSnowBallTouch(GetTouchedSnowBallTeam(_localPlayerPosition ?? Vector2.Zero));
+                        return true;
+
+                    default:
+                        errorMessage = $"Unsupported SnowBall packet type: {packetType}";
+                        return false;
+                }
+            }
+            catch (Exception ex) when (ex is EndOfStreamException || ex is IOException)
+            {
+                errorMessage = ex.Message;
+                return false;
+            }
+        }
+
+        public string DescribeStatus()
+        {
+            string lastPacket = _lastPacketType?.ToString(CultureInfo.InvariantCulture) ?? "None";
+            return $"SnowBall runtime state={_state}, score={_team0Score}-{_team1Score}, hp={_snowMen[0]?.HP ?? 0}/{_snowMen[1]?.HP ?? 0}, pos={_snowBalls[0]?.PositionX ?? 0}/{_snowBalls[1]?.PositionX ?? 0}, pendingTouches={_pendingTouchPacketRequests.Count}, lastPacket={lastPacket}";
+        }
         #endregion
         #region Packet Handling (matching client)
         /// <summary>
@@ -800,11 +889,16 @@ namespace HaCreator.MapSimulator.Fields
         /// </summary>
         public void OnSnowBallHit(int target, int damage, int delay)
         {
+            OnSnowBallHit(target, damage, delay, Environment.TickCount);
+        }
+
+        private void OnSnowBallHit(int target, int damage, int delay, int currentTickCount)
+        {
             _damageQueue.Add(new DamageInfo
             {
                 Target = target,
                 Damage = damage,
-                StartTime = Environment.TickCount + delay
+                StartTime = currentTickCount + delay
             });
         }
         /// <summary>
@@ -1200,6 +1294,7 @@ namespace HaCreator.MapSimulator.Fields
             _localPlayerPosition = null;
             _pendingTouchPacketRequests.Clear();
             _touchPacketSequence = 0;
+            _lastPacketType = null;
             for (int i = 0; i < 2; i++)
             {
                 if (_snowBalls[i] != null)

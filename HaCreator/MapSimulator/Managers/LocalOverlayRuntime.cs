@@ -7,9 +7,10 @@ namespace HaCreator.MapSimulator.Managers
     {
         None = 0,
         Pending = 1,
-        Success = 2,
-        Failure = 3,
-        Throttled = 4
+        Acknowledged = 2,
+        Consumed = 3,
+        Failure = 4,
+        Throttled = 5
     }
 
     /// <summary>

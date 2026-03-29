@@ -40,6 +40,20 @@ namespace HaCreator.MapSimulator.Fields
                 : null;
         }
 
+        public static string GetMiniGameRestrictionMessage(long fieldLimit)
+        {
+            return FieldLimitType.Unable_To_Open_Mini_Game.Check(fieldLimit)
+                ? "Mini-game and shop rooms cannot be opened in this map."
+                : null;
+        }
+
+        public static string GetPetRuntimeRestrictionMessage(long fieldLimit)
+        {
+            return FieldLimitType.Unable_To_Use_Pet.Check(fieldLimit)
+                ? "Pet runtime interactions are disabled in this map."
+                : null;
+        }
+
         public static string GetMapTransferRestrictionMessage(long fieldLimit)
         {
             return GetTeleportItemRestrictionMessage(fieldLimit) ?? GetTransferRestrictionMessage(fieldLimit);
@@ -157,6 +171,12 @@ namespace HaCreator.MapSimulator.Fields
                 messages.Add("Pet item interactions are disabled in this map.");
             }
 
+            string petRuntimeMessage = GetPetRuntimeRestrictionMessage(fieldLimit);
+            if (!string.IsNullOrWhiteSpace(petRuntimeMessage))
+            {
+                messages.Add(petRuntimeMessage);
+            }
+
             if (FieldLimitType.Unable_To_Use_AntiMacro_Item.Check(fieldLimit))
             {
                 messages.Add("Anti-macro items are disabled in this map.");
@@ -165,6 +185,12 @@ namespace HaCreator.MapSimulator.Fields
             if (FieldLimitType.Unable_To_Summon_NPC.Check(fieldLimit))
             {
                 messages.Add("NPC-summon items are disabled in this map.");
+            }
+
+            string miniGameMessage = GetMiniGameRestrictionMessage(fieldLimit);
+            if (!string.IsNullOrWhiteSpace(miniGameMessage))
+            {
+                messages.Add(miniGameMessage);
             }
 
             return messages;

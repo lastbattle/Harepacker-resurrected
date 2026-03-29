@@ -13,7 +13,11 @@ namespace HaCreator.MapSimulator.Interaction
         Whisper = 5,
         MemberInfo = 6,
         Blocked = 7,
-        Avatar = 8
+        Avatar = 8,
+        Enter = 9,
+        InviteResult = 10,
+        Migrated = 11,
+        SelfEnterResult = 12
     }
 
     internal readonly record struct MessengerInvitePacket(string ContactName);
@@ -33,6 +37,28 @@ namespace HaCreator.MapSimulator.Interaction
     internal readonly record struct MessengerBlockedPacket(string ContactName, bool Blocked);
 
     internal readonly record struct MessengerAvatarPacket(int SlotIndex, LoginAvatarLook AvatarLook);
+
+    internal readonly record struct MessengerEnterPacket(
+        int SlotIndex,
+        string ContactName,
+        bool IsOnline,
+        int Channel,
+        LoginAvatarLook AvatarLook);
+
+    internal readonly record struct MessengerInviteResultPacket(string ContactName, bool Accepted);
+
+    internal readonly record struct MessengerSelfEnterResultPacket(bool Succeeded);
+
+    internal readonly record struct MessengerMigratedParticipantPacket(
+        int SlotIndex,
+        bool Present,
+        string ContactName,
+        bool IsOnline,
+        int Channel,
+        LoginAvatarLook AvatarLook);
+
+    internal readonly record struct MessengerMigratedPacket(
+        MessengerMigratedParticipantPacket[] Participants);
 
     internal static class MessengerPacketCodec
     {
@@ -192,6 +218,144 @@ namespace HaCreator.MapSimulator.Interaction
                 }
 
                 packet = new MessengerAvatarPacket(slotIndex, avatarLook);
+                return true;
+            }
+            catch (InvalidOperationException ex)
+            {
+                error = ex.Message;
+                return false;
+            }
+        }
+
+        public static bool TryParseEnter(ReadOnlySpan<byte> payload, out MessengerEnterPacket packet, out string error)
+        {
+            packet = default;
+            error = null;
+
+            try
+            {
+                PacketReader reader = new(payload);
+                int slotIndex = reader.ReadByte();
+                bool isOnline = reader.ReadByte() != 0;
+                int channel = Math.Max(1, (int)reader.ReadByte());
+                string contactName = reader.ReadString8();
+                if (string.IsNullOrWhiteSpace(contactName))
+                {
+                    error = "Messenger enter packet contact name is empty.";
+                    return false;
+                }
+
+                if (!reader.TryReadAvatarLook(out LoginAvatarLook avatarLook, out error))
+                {
+                    error ??= "Messenger enter packet AvatarLook payload could not be decoded.";
+                    return false;
+                }
+
+                packet = new MessengerEnterPacket(slotIndex, contactName.Trim(), isOnline, channel, avatarLook);
+                return true;
+            }
+            catch (InvalidOperationException ex)
+            {
+                error = ex.Message;
+                return false;
+            }
+        }
+
+        public static bool TryParseInviteResult(ReadOnlySpan<byte> payload, out MessengerInviteResultPacket packet, out string error)
+        {
+            packet = default;
+            error = null;
+
+            try
+            {
+                PacketReader reader = new(payload);
+                string contactName = reader.ReadString8();
+                bool accepted = reader.ReadByte() != 0;
+                if (string.IsNullOrWhiteSpace(contactName))
+                {
+                    error = "Messenger invite-result packet contact name is empty.";
+                    return false;
+                }
+
+                packet = new MessengerInviteResultPacket(contactName.Trim(), accepted);
+                return true;
+            }
+            catch (InvalidOperationException ex)
+            {
+                error = ex.Message;
+                return false;
+            }
+        }
+
+        public static bool TryParseSelfEnterResult(ReadOnlySpan<byte> payload, out MessengerSelfEnterResultPacket packet, out string error)
+        {
+            packet = default;
+            error = null;
+
+            try
+            {
+                PacketReader reader = new(payload);
+                packet = new MessengerSelfEnterResultPacket(reader.ReadByte() != 0);
+                return true;
+            }
+            catch (InvalidOperationException ex)
+            {
+                error = ex.Message;
+                return false;
+            }
+        }
+
+        public static bool TryParseMigrated(ReadOnlySpan<byte> payload, out MessengerMigratedPacket packet, out string error)
+        {
+            packet = default;
+            error = null;
+
+            try
+            {
+                PacketReader reader = new(payload);
+                int count = reader.ReadByte();
+                if (count < 0 || count > 3)
+                {
+                    error = $"Messenger migrated packet participant count {count} is invalid.";
+                    return false;
+                }
+
+                MessengerMigratedParticipantPacket[] participants = new MessengerMigratedParticipantPacket[count];
+                for (int i = 0; i < count; i++)
+                {
+                    int slotIndex = reader.ReadByte();
+                    bool present = reader.ReadByte() != 0;
+                    if (!present)
+                    {
+                        participants[i] = new MessengerMigratedParticipantPacket(slotIndex, false, string.Empty, false, 1, null);
+                        continue;
+                    }
+
+                    bool isOnline = reader.ReadByte() != 0;
+                    int channel = Math.Max(1, (int)reader.ReadByte());
+                    string contactName = reader.ReadString8();
+                    if (string.IsNullOrWhiteSpace(contactName))
+                    {
+                        error = "Messenger migrated packet contact name is empty.";
+                        return false;
+                    }
+
+                    if (!reader.TryReadAvatarLook(out LoginAvatarLook avatarLook, out error))
+                    {
+                        error ??= "Messenger migrated packet AvatarLook payload could not be decoded.";
+                        return false;
+                    }
+
+                    participants[i] = new MessengerMigratedParticipantPacket(
+                        slotIndex,
+                        true,
+                        contactName.Trim(),
+                        isOnline,
+                        channel,
+                        avatarLook);
+                }
+
+                packet = new MessengerMigratedPacket(participants);
                 return true;
             }
             catch (InvalidOperationException ex)

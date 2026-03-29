@@ -797,8 +797,9 @@ namespace HaCreator.MapSimulator.UI
             {
                 Family = recipe.Family,
                 IsHiddenRecipe = recipe.IsHidden,
-                OutputItemId = reward.ItemId,
-                OutputQuantity = reward.Quantity
+                RecipeOutputItemId = recipe.OutputItemId,
+                CraftedItemId = reward.ItemId,
+                CraftedQuantity = reward.Quantity
             });
         }
 

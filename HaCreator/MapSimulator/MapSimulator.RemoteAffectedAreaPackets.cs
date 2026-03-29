@@ -155,6 +155,11 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
+            if (RemoteAffectedAreaSupportResolver.ResolveDisposition(skill, levelData) != RemotePlayerAffectedAreaDisposition.Hostile)
+            {
+                return;
+            }
+
             if (_mobPool?.ActiveMobs == null || _mobPool.ActiveMobs.Count == 0)
             {
                 return;
@@ -189,13 +194,15 @@ namespace HaCreator.MapSimulator
             SkillLevelData levelData,
             int currentTime)
         {
-            PlayerCharacter player = _playerManager?.Player;
-            if (player == null
-                || !player.IsAlive
-                || !RemoteAffectedAreaSupportResolver.IsSupportZone(skill)
-                || !area.Contains(player.X, player.Y))
+            if (RemoteAffectedAreaSupportResolver.ResolveDisposition(skill, levelData) != RemotePlayerAffectedAreaDisposition.FriendlySupport)
             {
                 return false;
+            }
+
+            PlayerCharacter player = _playerManager?.Player;
+            if (player == null || !player.IsAlive || !area.Contains(player.X, player.Y))
+            {
+                return true;
             }
 
             int localPlayerId = player.Build?.Id ?? 0;
@@ -205,7 +212,7 @@ namespace HaCreator.MapSimulator
                     area.OwnerId,
                     IsAffectedAreaOwnerPartyMember(area.OwnerId)))
             {
-                return false;
+                return true;
             }
 
             if (RemoteAffectedAreaSupportResolver.IsInvincibleZone(skill))
@@ -213,9 +220,9 @@ namespace HaCreator.MapSimulator
                 return true;
             }
 
-            if (!RemoteAffectedAreaSupportResolver.IsRecoveryZone(skill) || levelData == null)
+            if (!RemoteAffectedAreaSupportResolver.IsRecoveryZone(skill, levelData))
             {
-                return false;
+                return true;
             }
 
             if (!_affectedAreaPool.TryBeginGameplayTick(area, currentTime, RemoteAffectedAreaFallbackTickMs))

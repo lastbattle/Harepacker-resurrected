@@ -1,9 +1,11 @@
 using HaCreator.MapSimulator.Interaction;
+using HaCreator.MapSimulator.Fields;
 using HaCreator.MapSimulator.UI;
 using HaSharedLibrary.Render.DX;
 using HaSharedLibrary.Util;
 using MapleLib.WzLib;
 using MapleLib.WzLib.WzProperties;
+using MapleLib.WzLib.WzStructure.Data;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using System;
@@ -82,7 +84,9 @@ namespace HaCreator.MapSimulator
                 ResolveMapName = mapId => ResolveMapTransferDisplayName(mapId, null),
                 ResolveItemName = ResolvePacketFieldFeedbackItemName,
                 ResolveChannelName = ResolvePacketFieldFeedbackChannelName,
-                IsBlacklistedName = name => _socialListRuntime.IsBlacklisted(name)
+                IsBlacklistedName = name => _socialListRuntime.IsBlacklisted(name),
+                IsBlockedFriendName = name => _socialListRuntime.IsBlockedFriend(name),
+                QueueMapTransfer = TryQueuePacketOwnedWhisperFindTransfer
             };
         }
 
@@ -192,6 +196,36 @@ namespace HaCreator.MapSimulator
             string itemName = ResolvePacketFieldFeedbackItemName(rewardId);
             ShowUtilityFeedbackMessage($"Packet-owned reward roulette: {itemName} ({Math.Max(0, step) + 1}/{Math.Max(1, total)}).");
             return true;
+        }
+
+        private bool TryQueuePacketOwnedWhisperFindTransfer(int mapId, int x, int y)
+        {
+            if (mapId <= 0 || mapId == MapConstants.MaxMap)
+            {
+                return false;
+            }
+
+            string restrictionMessage = FieldInteractionRestrictionEvaluator.GetMapTransferRestrictionMessage(_mapBoard?.MapInfo?.fieldLimit ?? 0);
+            if (!string.IsNullOrWhiteSpace(restrictionMessage))
+            {
+                ShowUtilityFeedbackMessage(restrictionMessage);
+                return false;
+            }
+
+            if (_loadMapCallback == null)
+            {
+                ShowUtilityFeedbackMessage("Whisper follow transfer is unavailable without a map loader.");
+                return false;
+            }
+
+            bool queued = QueueMapTransfer(mapId, null);
+            if (queued)
+            {
+                ShowUtilityFeedbackMessage(
+                    $"Queued packet-owned whisper follow transfer to {ResolveMapTransferDisplayName(mapId, null)} ({x}, {y}).");
+            }
+
+            return queued;
         }
 
         private void UpdatePacketOwnedFieldFeedbackUiAnimations(int currentTickCount)
@@ -427,7 +461,7 @@ namespace HaCreator.MapSimulator
                 "chaoszakumtimer" => HandlePacketOwnedFieldFeedbackBossTimerCommand(args, PacketFieldFeedbackPacketKind.ChaosZakumTimer),
                 "hontaletimer" => HandlePacketOwnedFieldFeedbackBossTimerCommand(args, PacketFieldFeedbackPacketKind.HontaleTimer),
                 "fadeoutforce" => HandlePacketOwnedFieldFeedbackFadeOutForceCommand(args),
-                _ => ChatCommandHandler.CommandResult.Error("Usage: /fieldfeedback [status|clear|group <family> <sender> <text>|whisperin <sender> <channel> <text>|whisperresult <target> <ok|fail>|whisperavailability <target> <0|1>|whisperfind <find|findreply> <target> <result> <value>|couplechat <sender> <text>|couplenotice [text]|warn <text>|obstacle <tag> <state>|obstaclereset|bosshp <mobId> <currentHp> <maxHp> [color] [phase]|tremble <force> <durationMs>|fieldsound <descriptor>|fieldbgm <descriptor>|jukebox <itemId> <owner>|transferfieldignored <reason>|transferchannelignored <reason>|summonunavailable [0|1]|destroyclock|zakumtimer <mode> <value>|hontailtimer <mode> <value>|chaoszakumtimer <mode> <value>|hontaletimer <mode> <value>|fadeoutforce [key]|packet <kind> [payloadhex=..|payloadb64=..]|packetraw <kind> <hex>]"),
+                _ => ChatCommandHandler.CommandResult.Error("Usage: /fieldfeedback [status|clear|group <family> <sender> <text>|whisperin <sender> <channel> <text>|whisperresult <target> <ok|fail>|whisperavailability <target> <0|1>|whisperfind <find|findreply> <target> <result> <value> [x y]|couplechat <sender> <text>|couplenotice [text]|warn <text>|obstacle <tag> <state>|obstaclereset|bosshp <mobId> <currentHp> <maxHp> [color] [phase]|tremble <force> <durationMs>|fieldsound <descriptor>|fieldbgm <descriptor>|jukebox <itemId> <owner>|transferfieldignored <reason>|transferchannelignored <reason>|summonunavailable [0|1]|destroyclock|zakumtimer <mode> <value>|hontailtimer <mode> <value>|chaoszakumtimer <mode> <value>|hontaletimer <mode> <value>|fadeoutforce [key]|packet <kind> [payloadhex=..|payloadb64=..]|packetraw <kind> <hex>]"),
             };
         }
 
@@ -517,13 +551,23 @@ namespace HaCreator.MapSimulator
                 || !byte.TryParse(args[3], NumberStyles.Integer, CultureInfo.InvariantCulture, out byte result)
                 || !int.TryParse(args[4], NumberStyles.Integer, CultureInfo.InvariantCulture, out int value))
             {
-                return ChatCommandHandler.CommandResult.Error("Usage: /fieldfeedback whisperfind <find|findreply> <target> <result> <value>");
+                return ChatCommandHandler.CommandResult.Error("Usage: /fieldfeedback whisperfind <find|findreply> <target> <result> <value> [x y]");
             }
 
             byte subtype = args[1].Equals("findreply", StringComparison.OrdinalIgnoreCase) ? (byte)72 : (byte)9;
+            byte[] payload = PacketFieldFeedbackRuntime.BuildWhisperLocationPayload(subtype, args[2], result, value);
+            if (subtype == 9
+                && result == 1
+                && args.Length >= 7
+                && int.TryParse(args[5], NumberStyles.Integer, CultureInfo.InvariantCulture, out int transferX)
+                && int.TryParse(args[6], NumberStyles.Integer, CultureInfo.InvariantCulture, out int transferY))
+            {
+                payload = payload.Concat(BitConverter.GetBytes(transferX)).Concat(BitConverter.GetBytes(transferY)).ToArray();
+            }
+
             return ApplyPacketOwnedFieldFeedbackHelper(
                 PacketFieldFeedbackPacketKind.Whisper,
-                PacketFieldFeedbackRuntime.BuildWhisperLocationPayload(subtype, args[2], result, value));
+                payload);
         }
 
         private ChatCommandHandler.CommandResult HandlePacketOwnedFieldFeedbackCoupleChatCommand(string[] args)

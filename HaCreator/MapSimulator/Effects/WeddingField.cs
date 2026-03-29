@@ -71,6 +71,8 @@ namespace HaCreator.MapSimulator.Effects
         private const int PacketTypeUserMove = 210;
         private const int PacketTypeSetActivePortableChair = 222;
         private const int PacketTypeAvatarModified = 223;
+        private const int RemoteDelayedLoadWindowMs = 100;
+        private const int RemoteDelayedLoadCooltimeMs = 1000;
 
         private static readonly Dictionary<int, Dictionary<int, string>> WeddingDialogFallbacks = new()
         {
@@ -102,6 +104,12 @@ namespace HaCreator.MapSimulator.Effects
         private readonly Dictionary<int, WeddingRemoteParticipant> _participantActors = new();
         private readonly Dictionary<string, WeddingRemoteParticipant> _audienceActors = new(StringComparer.OrdinalIgnoreCase);
         private readonly Dictionary<int, string> _audienceActorNamesById = new();
+        private readonly Queue<int> _pendingExternalRemoteActorLoads = new();
+        private readonly HashSet<int> _pendingExternalRemoteActorLoadIds = new();
+        private readonly HashSet<int> _loadedExternalRemoteActorIds = new();
+        private readonly HashSet<int> _officialRemoteLifecycleActorIds = new();
+        private int _externalRemoteActorLoadWindowEndTimeMs;
+        private int _externalRemoteActorLoadCooltimeEndTimeMs;
 
         // Wedding step (from OnWeddingProgress)
         private int _currentStep = 0;
@@ -199,9 +207,15 @@ namespace HaCreator.MapSimulator.Effects
             _participantActors.Clear();
             _audienceActors.Clear();
             _audienceActorNamesById.Clear();
+            _pendingExternalRemoteActorLoads.Clear();
+            _pendingExternalRemoteActorLoadIds.Clear();
+            _loadedExternalRemoteActorIds.Clear();
+            _officialRemoteLifecycleActorIds.Clear();
+            _externalRemoteActorLoadWindowEndTimeMs = 0;
+            _externalRemoteActorLoadCooltimeEndTimeMs = 0;
             _lastPacketResponse = null;
             _lastPacketType = null;
-            _ceremonyTextOverlayActive = false;
+            _ceremonyTextOverlayActive = false;
             _ceremonyTextOverlayAlpha = 0f;
             _ceremonyCardOverlayActive = false;
             _ceremonyCardOverlayAlpha = 0f;
@@ -345,6 +359,160 @@ namespace HaCreator.MapSimulator.Effects
             return snapshots;
         }
 
+        public IReadOnlyList<WeddingRemoteParticipantSnapshot> GetExternalRendererParticipantSnapshots()
+        {
+            List<WeddingRemoteParticipantSnapshot> snapshots = new(_participantActors.Count + _audienceActors.Count);
+            foreach (WeddingRemoteParticipant participant in _participantActors.Values.Concat(_audienceActors.Values))
+            {
+                if (!ShouldMirrorParticipantToExternalRenderer(participant))
+                {
+                    continue;
+                }
+
+                snapshots.Add(new WeddingRemoteParticipantSnapshot(
+                    participant.CharacterId,
+                    participant.Name,
+                    participant.Role,
+                    participant.Position,
+                    participant.FacingRight,
+                    participant.ActionName,
+                    participant.Build?.Clone(),
+                    participant.MovementSnapshot));
+            }
+
+            return snapshots;
+        }
+
+        public int PendingExternalRemoteActorLoadCount => _pendingExternalRemoteActorLoadIds.Count;
+
+        public int LoadedExternalRemoteActorCount => _loadedExternalRemoteActorIds.Count;
+
+        private bool UsesOfficialRemoteLifecycle(WeddingRemoteParticipant participant)
+        {
+            return participant != null
+                && participant.CharacterId > 0
+                && _officialRemoteLifecycleActorIds.Contains(participant.CharacterId);
+        }
+
+        private bool ShouldMirrorParticipantToExternalRenderer(WeddingRemoteParticipant participant)
+        {
+            if (participant == null)
+            {
+                return false;
+            }
+
+            return !UsesOfficialRemoteLifecycle(participant)
+                || _loadedExternalRemoteActorIds.Contains(participant.CharacterId);
+        }
+
+        private bool ShouldDrawParticipantInternally(WeddingRemoteParticipant participant)
+        {
+            if (!UseExternalRemoteActorRenderer)
+            {
+                return true;
+            }
+
+            return !ShouldMirrorParticipantToExternalRenderer(participant);
+        }
+
+        private void QueueExternalRemoteActorLoad(int characterId)
+        {
+            if (characterId <= 0
+                || !_officialRemoteLifecycleActorIds.Contains(characterId)
+                || _loadedExternalRemoteActorIds.Contains(characterId))
+            {
+                return;
+            }
+
+            if (_pendingExternalRemoteActorLoadIds.Add(characterId))
+            {
+                _pendingExternalRemoteActorLoads.Enqueue(characterId);
+            }
+        }
+
+        private void RemoveExternalRemoteActorTracking(int characterId)
+        {
+            if (characterId <= 0)
+            {
+                return;
+            }
+
+            _pendingExternalRemoteActorLoadIds.Remove(characterId);
+            _loadedExternalRemoteActorIds.Remove(characterId);
+            _officialRemoteLifecycleActorIds.Remove(characterId);
+            if (_pendingExternalRemoteActorLoadIds.Count == 0)
+            {
+                _externalRemoteActorLoadWindowEndTimeMs = 0;
+                _externalRemoteActorLoadCooltimeEndTimeMs = 0;
+            }
+        }
+
+        private void AdvanceExternalRemoteActorLoadLifecycle(int currentTimeMs)
+        {
+            if (_pendingExternalRemoteActorLoadIds.Count == 0)
+            {
+                _externalRemoteActorLoadWindowEndTimeMs = 0;
+                _externalRemoteActorLoadCooltimeEndTimeMs = 0;
+                return;
+            }
+
+            if (_externalRemoteActorLoadCooltimeEndTimeMs != 0)
+            {
+                if (currentTimeMs < _externalRemoteActorLoadCooltimeEndTimeMs)
+                {
+                    return;
+                }
+
+                _externalRemoteActorLoadCooltimeEndTimeMs = 0;
+            }
+
+            if (_externalRemoteActorLoadWindowEndTimeMs == 0)
+            {
+                _externalRemoteActorLoadWindowEndTimeMs = currentTimeMs + RemoteDelayedLoadWindowMs;
+                if (_externalRemoteActorLoadWindowEndTimeMs == 0)
+                {
+                    _externalRemoteActorLoadWindowEndTimeMs = 1;
+                }
+            }
+
+            if (currentTimeMs >= _externalRemoteActorLoadWindowEndTimeMs)
+            {
+                _externalRemoteActorLoadWindowEndTimeMs = 0;
+                if (_pendingExternalRemoteActorLoadIds.Count > 0)
+                {
+                    _externalRemoteActorLoadCooltimeEndTimeMs = currentTimeMs + RemoteDelayedLoadCooltimeMs;
+                    if (_externalRemoteActorLoadCooltimeEndTimeMs == 0)
+                    {
+                        _externalRemoteActorLoadCooltimeEndTimeMs = 1;
+                    }
+                }
+
+                return;
+            }
+
+            while (_pendingExternalRemoteActorLoads.Count > 0)
+            {
+                int characterId = _pendingExternalRemoteActorLoads.Dequeue();
+                if (!_pendingExternalRemoteActorLoadIds.Remove(characterId))
+                {
+                    continue;
+                }
+
+                if (_participantActors.ContainsKey(characterId) || TryGetAudienceActorById(characterId, out _))
+                {
+                    _loadedExternalRemoteActorIds.Add(characterId);
+                }
+
+                break;
+            }
+
+            if (_pendingExternalRemoteActorLoadIds.Count == 0)
+            {
+                _externalRemoteActorLoadWindowEndTimeMs = 0;
+                _externalRemoteActorLoadCooltimeEndTimeMs = 0;
+            }
+        }
+
         public bool TryConfigureParticipantActor(
             int characterId,
             Vector2? worldPosition,
@@ -472,6 +640,7 @@ namespace HaCreator.MapSimulator.Effects
             if (participant.CharacterId > 0)
             {
                 _audienceActorNamesById.Remove(participant.CharacterId);
+                RemoveExternalRemoteActorTracking(participant.CharacterId);
             }
 
             return _audienceActors.Remove(normalized);
@@ -479,6 +648,11 @@ namespace HaCreator.MapSimulator.Effects
 
         public void ClearAudienceParticipants()
         {
+            foreach (int characterId in _audienceActorNamesById.Keys.ToArray())
+            {
+                RemoveExternalRemoteActorTracking(characterId);
+            }
+
             _audienceActors.Clear();
             _audienceActorNamesById.Clear();
         }
@@ -649,12 +823,20 @@ namespace HaCreator.MapSimulator.Effects
 
             string actionName = ResolveRemoteActionName(spawn.MoveAction, spawn.PortableChairItemId);
             bool facingRight = (spawn.MoveAction & 1) == 0;
+            _officialRemoteLifecycleActorIds.Add(spawn.CharacterId);
             if (spawn.CharacterId == _groomId || spawn.CharacterId == _brideId)
             {
-                return TryConfigureParticipantActor(spawn.CharacterId, spawn.Position, build, facingRight, actionName, out errorMessage);
+                bool configured = TryConfigureParticipantActor(spawn.CharacterId, spawn.Position, build, facingRight, actionName, out errorMessage);
+                if (configured)
+                {
+                    QueueExternalRemoteActorLoad(spawn.CharacterId);
+                }
+
+                return configured;
             }
 
             UpsertAudienceParticipant(build, spawn.Position, facingRight, actionName, spawn.CharacterId);
+            QueueExternalRemoteActorLoad(spawn.CharacterId);
             return true;
         }
 
@@ -695,6 +877,7 @@ namespace HaCreator.MapSimulator.Effects
                 return false;
             }
 
+            RemoveExternalRemoteActorTracking(characterId);
             UpdateParticipantState();
             return true;
         }
@@ -1512,8 +1695,8 @@ namespace HaCreator.MapSimulator.Effects
                 : _ceremonyCelebrationActive
                     ? "celebration particles active"
                     : "no scene overlay";
-            return $"Wedding map {_mapId}: step {_currentStep}, role {role}, dialog {dialog}, scene {scene}, coupleActors={_participantActors.Count}, audienceActors={_audienceActors.Count}, groom {groomPosition}, bride {bridePosition}, last packet {lastPacket}, last remote packet {lastRemotePacket}.";
-        }
+            return $"Wedding map {_mapId}: step {_currentStep}, role {role}, dialog {dialog}, scene {scene}, coupleActors={_participantActors.Count}, audienceActors={_audienceActors.Count}, remoteLoaded={_loadedExternalRemoteActorIds.Count}, remotePending={_pendingExternalRemoteActorLoadIds.Count}, groom {groomPosition}, bride {bridePosition}, last packet {lastPacket}, last remote packet {lastRemotePacket}.";
+        }
 
         private Vector2? TryGetBlessEffectWorldCenter()
         {
@@ -1559,6 +1742,7 @@ namespace HaCreator.MapSimulator.Effects
         {
             if (!_isActive) return;
             UpdateRemoteParticipantMovementSnapshots(currentTimeMs);
+            AdvanceExternalRemoteActorLoadLifecycle(currentTimeMs);
 
             float overlayTargetAlpha = _ceremonyTextOverlayActive ? 1f : 0f;
             _ceremonyTextOverlayAlpha = MathHelper.Clamp(
@@ -2008,7 +2192,15 @@ namespace HaCreator.MapSimulator.Effects
                     continue;
                 }
 
-                int screenX = (int)MathF.Round(participant.Position.X) - mapShiftX + centerX;
+                if (!ShouldDrawParticipantInternally(participant))
+
+                {
+
+                    continue;
+
+                }
+
+                int screenX = (int)MathF.Round(participant.Position.X) - mapShiftX + centerX;
                 int screenY = (int)MathF.Round(participant.Position.Y) - mapShiftY + centerY;
                 frame.Draw(spriteBatch, skeletonMeshRenderer, screenX, screenY, participant.FacingRight, Color.White);
 
@@ -2188,9 +2380,15 @@ namespace HaCreator.MapSimulator.Effects
             _participantActors.Clear();
             _audienceActors.Clear();
             _audienceActorNamesById.Clear();
+            _pendingExternalRemoteActorLoads.Clear();
+            _pendingExternalRemoteActorLoadIds.Clear();
+            _loadedExternalRemoteActorIds.Clear();
+            _officialRemoteLifecycleActorIds.Clear();
+            _externalRemoteActorLoadWindowEndTimeMs = 0;
+            _externalRemoteActorLoadCooltimeEndTimeMs = 0;
             _lastPacketResponse = null;
             _lastPacketType = null;
-            _localCharacterId = null;
+            _localCharacterId = null;
             _localPlayerPosition = null;
             _localPlayerBuild = null;
             LocalParticipantRole = WeddingParticipantRole.Guest;

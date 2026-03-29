@@ -808,7 +808,13 @@ namespace HaCreator.MapSimulator.Pools
                 PuppetInfo preferredPuppet = ResolvePreferredPuppetForMob(mob, _lastUpdateTick, puppetId, puppetX, puppetY, aggroRange);
                 if (preferredPuppet != null && preferredPuppet.ObjectId == puppetId)
                 {
-                    mob.AI.ForceAggro(preferredPuppet.X, preferredPuppet.Y, _lastUpdateTick, preferredPuppet.ObjectId, MobTargetType.Summoned);
+                    mob.AI.ForceAggro(
+                        preferredPuppet.X,
+                        preferredPuppet.Y,
+                        _lastUpdateTick,
+                        preferredPuppet.ObjectId,
+                        MobTargetType.Summoned,
+                        MobExternalTargetSource.Summoned);
                     mob.AI.SetAggroRange((int)MathF.Round(Math.Max(1f, preferredPuppet.AggroRange)));
                     count++;
                 }
@@ -842,7 +848,7 @@ namespace HaCreator.MapSimulator.Pools
                 PuppetInfo preferredPuppet = ResolvePreferredPuppetForMob(mob, currentTick);
                 if (preferredPuppet == null)
                 {
-                    mob.AI.ClearExternalTarget(currentTick);
+                    mob.AI.ClearExternalTarget(currentTick, MobExternalTargetSource.Summoned);
                     continue;
                 }
 
@@ -853,7 +859,8 @@ namespace HaCreator.MapSimulator.Pools
                         preferredPuppet.Y,
                         currentTick,
                         preferredPuppet.ObjectId,
-                        MobTargetType.Summoned);
+                        MobTargetType.Summoned,
+                        MobExternalTargetSource.Summoned);
                     mob.AI.SetAggroRange((int)MathF.Round(Math.Max(1f, preferredPuppet.AggroRange)));
                     continue;
                 }
@@ -863,7 +870,8 @@ namespace HaCreator.MapSimulator.Pools
                     MobTargetType.Summoned,
                     preferredPuppet.X,
                     preferredPuppet.Y,
-                    currentTick);
+                    currentTick,
+                    MobExternalTargetSource.Summoned);
             }
         }
 
@@ -1018,28 +1026,55 @@ namespace HaCreator.MapSimulator.Pools
         {
             if (_activeMobs.Count < 2)
             {
+                foreach (MobItem mob in _activeMobs)
+                {
+                    mob?.AI?.ClearExternalTarget(currentTick, MobExternalTargetSource.Hypnotize);
+                }
+
                 return;
             }
 
             foreach (MobItem mob in _activeMobs)
             {
-                if (mob?.AI == null || !mob.AI.IsHypnotized || mob.AI.IsDead)
+                if (mob?.AI == null || mob.AI.IsDead)
                 {
+                    continue;
+                }
+
+                if (!mob.AI.IsHypnotized)
+                {
+                    mob.AI.ClearExternalTarget(currentTick, MobExternalTargetSource.Hypnotize);
                     continue;
                 }
 
                 MobItem target = FindNearestMobTarget(mob);
                 if (target == null)
                 {
+                    mob.AI.ClearExternalTarget(currentTick, MobExternalTargetSource.Hypnotize);
                     continue;
                 }
 
-                mob.AI.UpdateExternalTargetPosition(
-                    target.PoolId,
-                    MobTargetType.Mob,
+                if (mob.AI.IsTargetingMob &&
+                    mob.AI.ExternalTargetSource == MobExternalTargetSource.Hypnotize &&
+                    mob.AI.Target.TargetId == target.PoolId)
+                {
+                    mob.AI.UpdateExternalTargetPosition(
+                        target.PoolId,
+                        MobTargetType.Mob,
+                        target.CurrentX,
+                        target.CurrentY,
+                        currentTick,
+                        MobExternalTargetSource.Hypnotize);
+                    continue;
+                }
+
+                mob.AI.ForceAggro(
                     target.CurrentX,
                     target.CurrentY,
-                    currentTick);
+                    currentTick,
+                    target.PoolId,
+                    MobTargetType.Mob,
+                    MobExternalTargetSource.Hypnotize);
             }
         }
 
@@ -1069,7 +1104,7 @@ namespace HaCreator.MapSimulator.Pools
                 {
                     if (mob.AI.IsTargetingMob)
                     {
-                        mob.AI.ClearExternalTarget(currentTick);
+                        mob.AI.ClearExternalTarget(currentTick, MobExternalTargetSource.Encounter);
                     }
 
                     continue;
@@ -1082,7 +1117,8 @@ namespace HaCreator.MapSimulator.Pools
                         MobTargetType.Mob,
                         target.CurrentX,
                         target.CurrentY,
-                        currentTick);
+                        currentTick,
+                        MobExternalTargetSource.Encounter);
                     continue;
                 }
 
@@ -1091,7 +1127,8 @@ namespace HaCreator.MapSimulator.Pools
                     target.CurrentY,
                     currentTick,
                     target.PoolId,
-                    MobTargetType.Mob);
+                    MobTargetType.Mob,
+                    MobExternalTargetSource.Encounter);
             }
         }
 
@@ -1167,7 +1204,7 @@ namespace HaCreator.MapSimulator.Pools
             {
                 if (mob?.AI?.IsTargetingMob == true)
                 {
-                    mob.AI.ClearExternalTarget(currentTick);
+                    mob.AI.ClearExternalTarget(currentTick, MobExternalTargetSource.Encounter);
                 }
             }
         }

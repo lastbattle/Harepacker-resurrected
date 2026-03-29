@@ -183,6 +183,7 @@ namespace HaCreator.MapSimulator.UI
         public override string WindowName => MapSimulatorWindowNames.MapTransfer;
         public override bool CapturesKeyboardInput => IsVisible && _editTargetFocused;
         public int MaxSavedDestinations => _maxSavedDestinations;
+        public bool UsesContinentDestinationBook => _maxSavedDestinations > MaxVisibleRows;
         public int SavedDestinationCount => _destinations.FindAll(entry => entry.IsSavedSlot && entry.MapId > 0).Count;
         bool ISoftKeyboardHost.WantsSoftKeyboard => IsVisible && _editTargetFocused;
         SoftKeyboardKeyboardType ISoftKeyboardHost.SoftKeyboardKeyboardType => SoftKeyboardKeyboardType.NumericOnly;

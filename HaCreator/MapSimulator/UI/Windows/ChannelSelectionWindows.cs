@@ -110,18 +110,35 @@ namespace HaCreator.MapSimulator.UI
 
         private readonly List<WorldButtonEntry> _worldButtons = new List<WorldButtonEntry>();
         private readonly Dictionary<int, WorldSelectionState> _worldStates = new Dictionary<int, WorldSelectionState>();
+        private readonly List<int> _orderedWorldIds = new List<int>();
+        private readonly Texture2D _frameOverlayTexture;
+        private readonly Point _frameOverlayOffset;
         private readonly Texture2D _highlightTexture;
+        private readonly UIObject _viewChoiceButton;
+        private readonly UIObject _viewAllButton;
         private SpriteFont _font;
         private int _currentWorldId;
         private int _selectedWorldId;
         private bool _hasAdultAccess;
         private bool _requestAllowed = true;
         private string _statusMessage;
+        private bool _viewAllEnabled;
 
-        public WorldSelectWindow(IDXObject frame, Texture2D highlightTexture, IEnumerable<(int worldId, UIObject button, Texture2D icon)> worldButtons)
+        public WorldSelectWindow(
+            IDXObject frame,
+            Texture2D frameOverlayTexture,
+            Point frameOverlayOffset,
+            Texture2D highlightTexture,
+            IEnumerable<(int worldId, UIObject button, Texture2D icon)> worldButtons,
+            UIObject viewChoiceButton = null,
+            UIObject viewAllButton = null)
             : base(frame)
         {
+            _frameOverlayTexture = frameOverlayTexture;
+            _frameOverlayOffset = frameOverlayOffset;
             _highlightTexture = highlightTexture ?? throw new ArgumentNullException(nameof(highlightTexture));
+            _viewChoiceButton = viewChoiceButton;
+            _viewAllButton = viewAllButton;
 
             foreach ((int worldId, UIObject button, Texture2D icon) in worldButtons ?? Enumerable.Empty<(int, UIObject, Texture2D)>())
             {
@@ -142,11 +159,29 @@ namespace HaCreator.MapSimulator.UI
                 _selectedWorldId = _currentWorldId;
                 UpdateButtonStates();
             }
+
+            if (_viewChoiceButton != null)
+            {
+                AddButton(_viewChoiceButton);
+            }
+
+            if (_viewAllButton != null)
+            {
+                _viewAllButton.ButtonClickReleased += _ =>
+                {
+                    if (_requestAllowed && _viewAllEnabled)
+                    {
+                        ViewAllRequested?.Invoke();
+                    }
+                };
+                AddButton(_viewAllButton);
+            }
         }
 
         public override string WindowName => MapSimulatorWindowNames.WorldSelect;
 
         public event Action<int> WorldSelected;
+        public event Action ViewAllRequested;
 
         public IReadOnlyList<int> WorldIds => _worldButtons.Select(entry => entry.WorldId).ToArray();
 
@@ -161,7 +196,9 @@ namespace HaCreator.MapSimulator.UI
             int selectedWorldId,
             bool hasAdultAccess,
             bool requestAllowed = true,
-            string statusMessage = null)
+            string statusMessage = null,
+            IReadOnlyList<int> orderedWorldIds = null,
+            bool viewAllEnabled = false)
         {
             _worldStates.Clear();
             if (worldStates != null)
@@ -180,6 +217,28 @@ namespace HaCreator.MapSimulator.UI
             _hasAdultAccess = hasAdultAccess;
             _requestAllowed = requestAllowed;
             _statusMessage = statusMessage;
+            _viewAllEnabled = viewAllEnabled;
+            _orderedWorldIds.Clear();
+            if (orderedWorldIds != null)
+            {
+                foreach (int worldId in orderedWorldIds)
+                {
+                    if (_worldButtons.Any(entry => entry.WorldId == worldId) && !_orderedWorldIds.Contains(worldId))
+                    {
+                        _orderedWorldIds.Add(worldId);
+                    }
+                }
+            }
+
+            foreach (WorldButtonEntry entry in _worldButtons)
+            {
+                if (!_orderedWorldIds.Contains(entry.WorldId))
+                {
+                    _orderedWorldIds.Add(entry.WorldId);
+                }
+            }
+
+            UpdateWorldButtonLayout();
             UpdateButtonStates();
         }
 
@@ -195,8 +254,18 @@ namespace HaCreator.MapSimulator.UI
             RenderParameters renderParameters,
             int TickCount)
         {
+            if (_frameOverlayTexture != null)
+            {
+                sprite.Draw(_frameOverlayTexture, new Vector2(Position.X + _frameOverlayOffset.X, Position.Y + _frameOverlayOffset.Y), Color.White);
+            }
+
             foreach (WorldButtonEntry entry in _worldButtons)
             {
+                if (!entry.Button.ButtonVisible)
+                {
+                    continue;
+                }
+
                 Rectangle rect = new Rectangle(
                     Position.X + entry.Button.X - 6,
                     Position.Y + entry.Button.Y - 4,
@@ -216,7 +285,7 @@ namespace HaCreator.MapSimulator.UI
                 sprite,
                 _font,
                 "Select World",
-                new Vector2(Position.X + 18, Position.Y + 14),
+                new Vector2(Position.X + 24, Position.Y + 208),
                 Color.White);
 
             if (_worldStates.TryGetValue(_selectedWorldId, out WorldSelectionState selectedState))
@@ -227,7 +296,7 @@ namespace HaCreator.MapSimulator.UI
                         sprite,
                         _font,
                         _statusMessage,
-                        new Vector2(Position.X + 18, Position.Y + 110),
+                        new Vector2(Position.X + 24, Position.Y + 224),
                         _requestAllowed ? new Color(198, 198, 198) : new Color(255, 204, 107));
                 }
 
@@ -235,43 +304,28 @@ namespace HaCreator.MapSimulator.UI
                     sprite,
                     _font,
                     $"Available channels: {selectedState.ActiveChannels}/{selectedState.TotalChannels}",
-                    new Vector2(Position.X + 18, Position.Y + 142),
+                    new Vector2(Position.X + 24, Position.Y + 240),
                     new Color(220, 220, 220));
                 SelectorWindowDrawing.DrawShadowedText(
                     sprite,
                     _font,
                     $"Load: {selectedState.OccupancyPercent}% ({selectedState.Availability})",
-                    new Vector2(Position.X + 18, Position.Y + 158),
+                    new Vector2(Position.X + 188, Position.Y + 240),
                     SelectorWindowDrawing.GetAvailabilityColor(selectedState.Availability));
-
-                string markerLabel = SelectorWindowDrawing.BuildWorldMarkerLabel(selectedState);
-                if (!string.IsNullOrWhiteSpace(markerLabel))
-                {
-                    SelectorWindowDrawing.DrawShadowedText(
-                        sprite,
-                        _font,
-                        markerLabel,
-                        new Vector2(Position.X + 18, Position.Y + 174),
-                        new Color(163, 226, 255));
-                }
-
-                if (selectedState.HasAdultChannels)
-                {
-                    SelectorWindowDrawing.DrawShadowedText(
-                        sprite,
-                        _font,
-                        _hasAdultAccess ? "Adult channel access enabled" : "Adult channels require enabled access",
-                        new Vector2(Position.X + 18, Position.Y + 190),
-                        _hasAdultAccess ? new Color(186, 236, 186) : new Color(255, 204, 107));
-                }
             }
 
-            SelectorWindowDrawing.DrawShadowedText(
-                sprite,
-                _font,
-                $"Current world: {_currentWorldId}",
-                new Vector2(Position.X + 18, Position.Y + 126),
-                new Color(220, 220, 220));
+            string markerLabel = _worldStates.TryGetValue(_selectedWorldId, out WorldSelectionState markerState)
+                ? SelectorWindowDrawing.BuildWorldMarkerLabel(markerState)
+                : null;
+            if (!string.IsNullOrWhiteSpace(markerLabel))
+            {
+                SelectorWindowDrawing.DrawShadowedText(
+                    sprite,
+                    _font,
+                    markerLabel,
+                    new Vector2(Position.X + 24, Position.Y + 256),
+                    new Color(163, 226, 255));
+            }
         }
 
         private void SelectWorld(int worldId)
@@ -330,10 +384,75 @@ namespace HaCreator.MapSimulator.UI
             {
                 bool isSelectable = _requestAllowed &&
                                     (!_worldStates.TryGetValue(entry.WorldId, out WorldSelectionState state) || state.IsSelectable);
+                entry.Button.SetVisible(_orderedWorldIds.Contains(entry.WorldId));
                 entry.Button.SetEnabled(isSelectable);
                 entry.Button.SetButtonState(entry.WorldId == _selectedWorldId
                     ? UIObjectState.Pressed
                     : UIObjectState.Normal);
+            }
+
+            if (_viewChoiceButton != null)
+            {
+                _viewChoiceButton.SetVisible(true);
+                _viewChoiceButton.SetEnabled(false);
+                _viewChoiceButton.SetButtonState(UIObjectState.Pressed);
+            }
+
+            if (_viewAllButton != null)
+            {
+                _viewAllButton.SetVisible(true);
+                _viewAllButton.SetEnabled(_requestAllowed && _viewAllEnabled);
+                _viewAllButton.SetButtonState(UIObjectState.Normal);
+            }
+        }
+
+        private void UpdateWorldButtonLayout()
+        {
+            const int columnCount = 3;
+            const int rowCount = 8;
+            const int startX = 18;
+            const int startY = 20;
+            const int columnSpacing = 112;
+            const int rowSpacing = 22;
+            const int viewButtonY = 238;
+            const int viewChoiceX = 78;
+            const int viewAllX = 192;
+
+            Dictionary<int, int> orderLookup = _orderedWorldIds
+                .Select((worldId, index) => new { worldId, index })
+                .ToDictionary(pair => pair.worldId, pair => pair.index);
+
+            foreach (WorldButtonEntry entry in _worldButtons)
+            {
+                if (!orderLookup.TryGetValue(entry.WorldId, out int index))
+                {
+                    entry.Button.SetVisible(false);
+                    continue;
+                }
+
+                int column = index / rowCount;
+                int row = index % rowCount;
+                if (column >= columnCount)
+                {
+                    entry.Button.SetVisible(false);
+                    continue;
+                }
+
+                entry.Button.X = startX + (column * columnSpacing);
+                entry.Button.Y = startY + (row * rowSpacing);
+                entry.Button.SetVisible(true);
+            }
+
+            if (_viewChoiceButton != null)
+            {
+                _viewChoiceButton.X = viewChoiceX;
+                _viewChoiceButton.Y = viewButtonY;
+            }
+
+            if (_viewAllButton != null)
+            {
+                _viewAllButton.X = viewAllX;
+                _viewAllButton.Y = viewButtonY;
             }
         }
     }

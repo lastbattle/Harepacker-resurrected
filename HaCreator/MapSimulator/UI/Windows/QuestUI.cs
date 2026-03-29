@@ -921,14 +921,10 @@ namespace HaCreator.MapSimulator.UI
             for (int i = 0; i < slotCount; i++)
             {
                 Rectangle cellRect = GetCategoryCellRectangle(panelRect, i / columnCount, i % columnCount, columnCount);
-                UIObject button = UiButtonFactory.CreateSolidButton(
+                UIObject button = UiButtonFactory.CreateQuestCategoryButton(
                     _graphicsDevice,
                     Math.Max(56, cellRect.Width),
-                    Math.Max(14, cellRect.Height),
-                    new Color(244, 228, 189, 228),
-                    new Color(215, 196, 156, 236),
-                    new Color(252, 238, 204, 240),
-                    new Color(177, 168, 150, 190));
+                    Math.Max(14, cellRect.Height));
                 button.SetVisible(false);
 
                 int slotIndex = i;
@@ -1031,9 +1027,10 @@ namespace HaCreator.MapSimulator.UI
                 return Rectangle.Empty;
             }
 
-            int width = Math.Max(80, tabRect.Width - 6);
-            int x = tabRect.X;
-            int y = (_currentTab == TAB_AVAILABLE && HasClientLevelButtons()) ? tabRect.Bottom + 24 : tabRect.Bottom + 4;
+            int frameWidth = CurrentFrame?.Width ?? 240;
+            int width = Math.Max(80, frameWidth - 12);
+            int x = Position.X + 6;
+            int y = GetCategoryPanelTop(tabRect);
             if (_categoryLegendVisible && _categoryLegendTexture != null)
             {
                 width = _categoryLegendTexture.Width;
@@ -1050,9 +1047,28 @@ namespace HaCreator.MapSimulator.UI
         private Rectangle GetPrototypeCategoryPanelRectangle()
         {
             int windowWidth = CurrentFrame?.Width ?? 240;
-            int width = Math.Max(80, windowWidth - 22);
+            int width = Math.Max(80, windowWidth - 12);
             int height = (4 * CATEGORY_ROW_HEIGHT) + (CATEGORY_PANEL_PADDING * 2);
             return new Rectangle(0, 0, width, height);
+        }
+
+        private int GetCategoryPanelTop(Rectangle tabRect)
+        {
+            int y = (_currentTab == TAB_AVAILABLE && HasClientLevelButtons()) ? tabRect.Bottom + 24 : tabRect.Bottom + 4;
+            y = Math.Max(y, GetButtonBottom(_showCategoryButton) + 4);
+            y = Math.Max(y, GetButtonBottom(_hideCategoryButton) + 4);
+            return y;
+        }
+
+        private int GetButtonBottom(UIObject button)
+        {
+            if (button == null)
+            {
+                return 0;
+            }
+
+            int height = Math.Max(0, button.CanvasSnapshotHeight);
+            return Position.Y + button.Y + height;
         }
 
         private void DrawCategoryButtonLabels(SpriteBatch sprite)

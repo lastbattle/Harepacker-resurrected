@@ -101,6 +101,14 @@ namespace HaCreator.MapSimulator.AI
         Mob = 3
     }
 
+    public enum MobExternalTargetSource
+    {
+        None = 0,
+        Summoned = 1,
+        Encounter = 2,
+        Hypnotize = 3
+    }
+
     /// <summary>
     /// Mob death type - from CMobPool::Update switch statement
     /// </summary>
@@ -364,6 +372,7 @@ namespace HaCreator.MapSimulator.AI
         // Controller
         private MobControllerType _controllerType = MobControllerType.Local;
         private int _controllerId = 0;
+        private MobExternalTargetSource _externalTargetSource = MobExternalTargetSource.None;
 
         // Guided arrow targeting (for skills like Guided Arrow)
         private int _guidedTargetId = 0;
@@ -392,6 +401,7 @@ namespace HaCreator.MapSimulator.AI
         public bool CanTargetPlayer => CanTargetPlayerNow;
         public bool IsTargetingSummoned => _target.IsValid && _target.TargetType == MobTargetType.Summoned;
         public bool IsTargetingMob => _target.IsValid && _target.TargetType == MobTargetType.Mob;
+        public MobExternalTargetSource ExternalTargetSource => _externalTargetSource;
         public bool HasAngerGauge => _hasAngerGauge && _angerChargeTarget > 0;
         public int AngerChargeTarget => _angerChargeTarget;
         public int AngerChargeCount => _angerChargeCount;
@@ -671,11 +681,19 @@ namespace HaCreator.MapSimulator.AI
         {
             if (_target.IsValid && _target.TargetType != MobTargetType.Player)
             {
-                float externalDx = _target.TargetX - mobX;
-                float externalDy = _target.TargetY - mobY;
-                _target.Distance = MathF.Sqrt(externalDx * externalDx + externalDy * externalDy);
-                _target.LastSeenTime = currentTick;
-                return;
+                if (_externalTargetSource == MobExternalTargetSource.Hypnotize && !IsHypnotized)
+                {
+                    _target = new MobTargetInfo();
+                    _externalTargetSource = MobExternalTargetSource.None;
+                }
+                else
+                {
+                    float externalDx = _target.TargetX - mobX;
+                    float externalDy = _target.TargetY - mobY;
+                    _target.Distance = MathF.Sqrt(externalDx * externalDx + externalDy * externalDy);
+                    _target.LastSeenTime = currentTick;
+                    return;
+                }
             }
 
             if (!CanTargetPlayerNow)
@@ -939,6 +957,7 @@ namespace HaCreator.MapSimulator.AI
                 _target.TargetId = 0;
                 _target.TargetType = MobTargetType.Player;
                 _target.LastSeenTime = currentTick;
+                _externalTargetSource = MobExternalTargetSource.None;
 
                 // Force aggro state - mob will chase after hit stun ends
                 _isAggroed = true;
@@ -985,7 +1004,8 @@ namespace HaCreator.MapSimulator.AI
             float targetY,
             int currentTick,
             int targetId = 0,
-            MobTargetType targetType = MobTargetType.Player)
+            MobTargetType targetType = MobTargetType.Player,
+            MobExternalTargetSource externalTargetSource = MobExternalTargetSource.None)
         {
             if (IsDead)
                 return;
@@ -1004,6 +1024,7 @@ namespace HaCreator.MapSimulator.AI
             _target.TargetType = targetType;
             _target.LastSeenTime = currentTick;
             _isAggroed = true;
+            _externalTargetSource = targetType == MobTargetType.Player ? MobExternalTargetSource.None : externalTargetSource;
 
             // Track boss aggro start time
             if (_isBoss && _bossAggroStartTime == 0)
@@ -1286,6 +1307,7 @@ namespace HaCreator.MapSimulator.AI
             _angerChargeCount = 0;
             _skillUseCounts.Clear();
             _skillForbidUntil = 0;
+            _externalTargetSource = MobExternalTargetSource.None;
 
             // Reset boss aggro timeout state
             _bossAggroStartTime = 0;
@@ -1309,6 +1331,7 @@ namespace HaCreator.MapSimulator.AI
         {
             _isAggroed = false;
             _target.IsValid = false;
+            _externalTargetSource = MobExternalTargetSource.None;
         }
 
         /// <summary>
@@ -1386,7 +1409,13 @@ namespace HaCreator.MapSimulator.AI
             }
         }
 
-        public void UpdateExternalTargetPosition(int targetId, MobTargetType targetType, float targetX, float targetY, int currentTick)
+        public void UpdateExternalTargetPosition(
+            int targetId,
+            MobTargetType targetType,
+            float targetX,
+            float targetY,
+            int currentTick,
+            MobExternalTargetSource externalTargetSource = MobExternalTargetSource.None)
         {
             if (IsDead || targetType == MobTargetType.Player)
             {
@@ -1399,17 +1428,24 @@ namespace HaCreator.MapSimulator.AI
             _target.TargetY = targetY;
             _target.IsValid = true;
             _target.LastSeenTime = currentTick;
+            _externalTargetSource = externalTargetSource;
         }
 
-        public void ClearExternalTarget(int currentTick)
+        public void ClearExternalTarget(int currentTick, MobExternalTargetSource onlyIfSource = MobExternalTargetSource.None)
         {
             if (_target.TargetType == MobTargetType.Player)
             {
                 return;
             }
 
+            if (onlyIfSource != MobExternalTargetSource.None && _externalTargetSource != onlyIfSource)
+            {
+                return;
+            }
+
             _target = new MobTargetInfo();
             _isAggroed = false;
+            _externalTargetSource = MobExternalTargetSource.None;
 
             if (_state == MobAIState.Alert ||
                 _state == MobAIState.Chase ||

@@ -741,6 +741,8 @@ namespace HaCreator.MapSimulator.Character.Skills
                 skill.AffectedEffect = LoadSkillAnimation(affectedNode, "affected");
             }
 
+            skill.AffectedSecondaryEffect = LoadOptionalSkillAnimation(skillNode, "affected0", loop: false);
+
             LoadPersistentAvatarEffects(skill, skillNode);
             LoadShadowPartnerActionAnimations(skill, skillNode);
             LoadAfterImages(skill, skillNode);
@@ -812,6 +814,14 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
 
             return false;
+        }
+
+        public MeleeAfterImageAction ApplyClientMeleeRangeOverride(
+            MeleeAfterImageAction action,
+            int? rawActionCode,
+            bool facingRight)
+        {
+            return ClientMeleeAfterimageRangeResolver.ApplyRangeOverride(action, rawActionCode, facingRight);
         }
 
         private static bool TryResolveMeleeAfterImageCatalogAction(

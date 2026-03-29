@@ -718,6 +718,65 @@ namespace HaCreator.MapSimulator.Pools
             return false;
         }
 
+        public DropItem TryPickUpDropByRemotePlayer(
+            int playerId,
+            float playerX,
+            float playerY,
+            int currentTime,
+            string playerName = null,
+            float pickupRange = 40f)
+        {
+            if (playerId <= 0)
+            {
+                return null;
+            }
+
+            float rangeSq = pickupRange * pickupRange;
+            DropItem closestDrop = null;
+            float closestDistSq = float.MaxValue;
+
+            foreach (var drop in _activeDrops)
+            {
+                if (drop.State != DropState.Idle || !drop.CanPickup)
+                {
+                    continue;
+                }
+
+                if (drop.OwnerId > 0 && drop.OwnerId != playerId && currentTime < drop.OwnerExpireTime)
+                {
+                    continue;
+                }
+
+                float dx = drop.X - playerX;
+                float dy = drop.Y - playerY;
+                float distSq = dx * dx + dy * dy;
+                if (distSq > rangeSq)
+                {
+                    continue;
+                }
+
+                if (distSq < closestDistSq)
+                {
+                    closestDistSq = distSq;
+                    closestDrop = drop;
+                }
+            }
+
+            if (closestDrop == null)
+            {
+                return null;
+            }
+
+            return ResolveRemotePickup(
+                closestDrop,
+                playerId,
+                currentTime,
+                DropPickupActorKind.Player,
+                playerName)
+                ? closestDrop
+                : null;
+        }
+
         /// <summary>
         /// Pick up closest drop in range
         /// </summary>

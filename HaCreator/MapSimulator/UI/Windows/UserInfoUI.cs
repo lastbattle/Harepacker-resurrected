@@ -560,7 +560,7 @@ namespace HaCreator.MapSimulator.UI
             _inspectionTarget = inspectionTarget;
             _statusMessage = inspectionTarget?.Build == null
                 ? "Character actions are available from this profile window."
-                : $"Inspecting {inspectionTarget.Name}. Remote party, trade, and family requests now route through the simulator seams.";
+                : $"Inspecting {inspectionTarget.Name}. Remote party, trade, family, and popularity requests now route through the simulator seams.";
             _exceptionPopupOpen = false;
             _activePopup = AuxiliaryPopupKind.None;
             if (!IsPageAvailable(_currentPage))

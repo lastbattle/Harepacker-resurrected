@@ -9,6 +9,8 @@ using System;
 using System.Buffers.Binary;
 using System.Linq;
 using System.Collections.Generic;
+using MapleLib.WzLib;
+using MapleLib.WzLib.WzProperties;
 
 namespace HaCreator.MapSimulator
 {
@@ -18,7 +20,9 @@ namespace HaCreator.MapSimulator
         private const int TutorialForcedLongcoatItemId = 1052081;
         private const int ShowaBathMaleLongcoatItemId = 1050100;
         private const int ShowaBathFemaleLongcoatItemId = 1051098;
-        private const float ClientOwnedLimitedViewRadius = 158f;
+        private const string ClientOwnedLimitedViewWzPath = "Viewrange/0";
+        private const float ClientOwnedLimitedViewFallbackRadius = 158f;
+        private const float ClientOwnedLimitedViewFallbackOriginY = 179f;
         private const int EscortFailOverlayDurationMs = 2500;
         private bool _tutorialAppearanceOverrideApplied;
         private CharacterBuild _tutorialAppearanceOverrideBuild;
@@ -30,6 +34,9 @@ namespace HaCreator.MapSimulator
         private Dictionary<EquipSlot, CharacterPart> _showaBathHiddenEquipmentSnapshot;
         private int? _killCountWrapperValue;
         private int _escortFailOverlayUntilTick = int.MinValue;
+        private bool _clientOwnedLimitedViewMetadataLoaded;
+        private float _clientOwnedLimitedViewRadius = ClientOwnedLimitedViewFallbackRadius;
+        private float _clientOwnedLimitedViewOriginY = ClientOwnedLimitedViewFallbackOriginY;
 
         private void ApplyClientOwnedFieldWrappers()
         {
@@ -309,10 +316,11 @@ namespace HaCreator.MapSimulator
             }
 
             EnsureLimitedViewFieldInitialized();
+            EnsureClientOwnedLimitedViewMetadataLoaded();
             _limitedViewField.SetPulse(false);
             _limitedViewField.SetEdgeSoftness(0f);
             _limitedViewField.SetFogColor(Color.Black);
-            _limitedViewField.EnableCircle(ClientOwnedLimitedViewRadius);
+            _limitedViewField.EnableCircle(_clientOwnedLimitedViewRadius);
         }
 
         private void ApplyTutorialFieldAppearance(MapInfo mapInfo)
@@ -402,7 +410,7 @@ namespace HaCreator.MapSimulator
 
         private void ConfigureNoDragonPresentation(MapInfo mapInfo)
         {
-            bool allowDragonPresentation = !IsNoDragonWrapperMap(mapInfo);
+            bool allowDragonPresentation = !SuppressesDragonPresentation(mapInfo);
 
             if (uiWindowManager?.EquipWindow is EquipUI equipWindow)
             {
@@ -413,6 +421,109 @@ namespace HaCreator.MapSimulator
             {
                 equipBigBang.SetDragonPaneAvailable(allowDragonPresentation);
             }
+        }
+
+        private void EnsureClientOwnedLimitedViewMetadataLoaded()
+        {
+            if (_clientOwnedLimitedViewMetadataLoaded)
+            {
+                return;
+            }
+
+            _clientOwnedLimitedViewMetadataLoaded = true;
+
+            WzImage mapEffectImage = Program.FindImage("Effect", "MapEff.img");
+            if (mapEffectImage == null)
+            {
+                return;
+            }
+
+            if (!mapEffectImage.Parsed)
+            {
+                mapEffectImage.ParseImage();
+            }
+
+            if (ResolveProperty(mapEffectImage, ClientOwnedLimitedViewWzPath) is not WzCanvasProperty canvas)
+            {
+                return;
+            }
+
+            if (canvas["origin"] is WzVectorProperty origin)
+            {
+                _clientOwnedLimitedViewRadius = Math.Max(1f, origin.X?.Value ?? 0);
+                _clientOwnedLimitedViewOriginY = Math.Max(1f, origin.Y?.Value ?? 0);
+                return;
+            }
+
+            _clientOwnedLimitedViewRadius = Math.Max(1f, canvas.PngProperty?.Width * 0.5f ?? 0f);
+            _clientOwnedLimitedViewOriginY = Math.Max(1f, canvas.PngProperty?.Height * 0.5f ?? 0f);
+        }
+
+        private string DescribeClientOwnedFieldWrapperStatus()
+        {
+            MapInfo mapInfo = _mapBoard?.MapInfo;
+            if (mapInfo == null)
+            {
+                return "Client-owned wrappers: no active map.";
+            }
+
+            List<string> activeWrappers = new();
+
+            if (IsTutorialWrapperMap(mapInfo))
+            {
+                activeWrappers.Add(
+                    $"tutorial wrapper active (fieldType {(int)FieldType.FIELDTYPE_TUTORIAL}): forcing hat {TutorialForcedCapItemId} and longcoat {TutorialForcedLongcoatItemId}.");
+            }
+
+            if (IsLimitedViewWrapperMap(mapInfo))
+            {
+                EnsureClientOwnedLimitedViewMetadataLoaded();
+                activeWrappers.Add(
+                    $"limited-view wrapper active (fieldType {(int)FieldType.FIELDTYPE_LIMITEDVIEW}): radius {_clientOwnedLimitedViewRadius:F0}, originY {_clientOwnedLimitedViewOriginY:F0}, source Effect/MapEff.img/{ClientOwnedLimitedViewWzPath}.");
+            }
+
+            if (SuppressesDragonPresentation(mapInfo))
+            {
+                string source = mapInfo.fieldType == FieldType.FIELDTYPE_NODRAGON
+                    ? $"fieldType {(int)FieldType.FIELDTYPE_NODRAGON}"
+                    : "info/vanishDragon";
+                activeWrappers.Add($"no-dragon presentation active ({source}): dragon actor and equipment pane stay suppressed.");
+            }
+
+            if (IsWeddingPhotoWrapperMap(mapInfo))
+            {
+                string safeArea = mapInfo.LBSide.HasValue || mapInfo.LBTop.HasValue || mapInfo.LBBottom.HasValue
+                    ? $" safeArea(side={mapInfo.LBSide ?? 0}, top={mapInfo.LBTop ?? 0}, bottom={mapInfo.LBBottom ?? 0})."
+                    : string.Empty;
+                activeWrappers.Add(
+                    $"wedding-photo wrapper active (fieldType {(int)FieldType.FIELDTYPE_WEDDINGPHOTO}) on map {mapInfo.id}.{safeArea}");
+            }
+
+            return activeWrappers.Count == 0
+                ? "Client-owned wrappers: none of tutorial, limited-view, no-dragon, or wedding-photo are active on this map."
+                : "Client-owned wrappers: " + string.Join(" ", activeWrappers);
+        }
+
+        private static WzImageProperty ResolveProperty(WzObject root, string propertyPath)
+        {
+            if (root == null || string.IsNullOrWhiteSpace(propertyPath))
+            {
+                return root as WzImageProperty;
+            }
+
+            WzObject current = root;
+            string[] pathSegments = propertyPath.Split(new[] { '/', '\\' }, StringSplitOptions.RemoveEmptyEntries);
+            for (int i = 0; i < pathSegments.Length && current != null; i++)
+            {
+                current = current switch
+                {
+                    WzImage image => image[pathSegments[i]],
+                    WzImageProperty property => property[pathSegments[i]],
+                    _ => null
+                };
+            }
+
+            return current as WzImageProperty;
         }
 
         private static bool IsLimitedViewWrapperMap(MapInfo mapInfo)
@@ -428,6 +539,16 @@ namespace HaCreator.MapSimulator
         private static bool IsNoDragonWrapperMap(MapInfo mapInfo)
         {
             return mapInfo?.fieldType == FieldType.FIELDTYPE_NODRAGON;
+        }
+
+        private static bool SuppressesDragonPresentation(MapInfo mapInfo)
+        {
+            return mapInfo?.vanishDragon == true || IsNoDragonWrapperMap(mapInfo);
+        }
+
+        private static bool IsWeddingPhotoWrapperMap(MapInfo mapInfo)
+        {
+            return mapInfo?.fieldType == FieldType.FIELDTYPE_WEDDINGPHOTO;
         }
 
         private static bool IsTransitVoyageWrapperMap(MapInfo mapInfo)

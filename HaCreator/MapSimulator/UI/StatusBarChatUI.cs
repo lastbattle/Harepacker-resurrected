@@ -63,6 +63,7 @@ namespace HaCreator.MapSimulator.UI
         private Func<StatusBarPointNotificationState> _pointNotificationStateProvider;
         private SpriteFont _font;
         private Texture2D _pixelTexture;
+        private ClientTextRasterizer _clientTextRasterizer;
         private Texture2D _chatEnterTexture;
         private StatusBarPointNotificationAnimation _abilityPointNotificationAnimation = new StatusBarPointNotificationAnimation();
         private StatusBarPointNotificationAnimation _skillPointNotificationAnimation = new StatusBarPointNotificationAnimation();
@@ -134,6 +135,11 @@ namespace HaCreator.MapSimulator.UI
             {
                 _pixelTexture = new Texture2D(graphicsDevice, 1, 1);
                 _pixelTexture.SetData(new[] { Color.White });
+            }
+
+            if (_clientTextRasterizer == null && graphicsDevice != null)
+            {
+                _clientTextRasterizer = new ClientTextRasterizer(graphicsDevice);
             }
         }
 
@@ -488,7 +494,7 @@ namespace HaCreator.MapSimulator.UI
                 Color lineColor = ResolveRenderedLineColor(line) * alpha;
                 Color backgroundColor = GetClientChatLineBackgroundColor(line.ChatLogType, line.ChannelId) * alpha;
                 Color shadowColor = GetClientChatLineShadowColor(line.ChatLogType, line.ChannelId) * alpha;
-                Vector2 textSize = _font.MeasureString(line.Text);
+                Vector2 textSize = MeasureChatText(line.Text);
                 if (_pixelTexture != null)
                 {
                     sprite.Draw(
@@ -577,7 +583,7 @@ namespace HaCreator.MapSimulator.UI
             string textBeforeCursor = visibleCursorOffset <= 0
                 ? string.Empty
                 : visibleText.Substring(0, Math.Clamp(visibleCursorOffset, 0, visibleText.Length));
-            float cursorX = (float)Math.Round(inputPos.X + _font.MeasureString(textBeforeCursor).X);
+            float cursorX = (float)Math.Round(inputPos.X + MeasureChatText(textBeforeCursor).X);
             sprite.Draw(_pixelTexture,
                 new Rectangle(
                     (int)cursorX,
@@ -590,7 +596,7 @@ namespace HaCreator.MapSimulator.UI
         private void RefreshTextMetrics()
         {
             float measuredHeight = ResolveMeasuredTextHeight();
-            int fontLineSpacing = _font?.LineSpacing ?? DefaultChatCursorHeight + 1;
+            int fontLineSpacing = ResolveFontLineSpacing();
             _chatLogLineHeight = Math.Max(DefaultChatLogLineHeight, fontLineSpacing + 1);
             _chatCursorHeight = Math.Clamp(
                 fontLineSpacing - 1,
@@ -615,7 +621,7 @@ namespace HaCreator.MapSimulator.UI
                 return DefaultChatCursorHeight;
             }
 
-            return Math.Max(1f, _font.MeasureString("Ag").Y);
+            return Math.Max(1f, MeasureChatText("Ag").Y);
         }
 
         private float ResolveInputTextYOffset(float measuredTextHeight)
@@ -646,7 +652,7 @@ namespace HaCreator.MapSimulator.UI
             }
 
             float maxWidth = Math.Max(1, _chatInputWidth);
-            if (_font.MeasureString(inputText).X <= maxWidth)
+            if (MeasureChatText(inputText).X <= maxWidth)
             {
                 visibleCursorOffset = cursorPosition;
                 return inputText;
@@ -656,7 +662,7 @@ namespace HaCreator.MapSimulator.UI
             while (startIndex > 0)
             {
                 string candidate = inputText.Substring(startIndex - 1, cursorPosition - startIndex + 1);
-                if (_font.MeasureString(candidate).X > maxWidth)
+                if (MeasureChatText(candidate).X > maxWidth)
                 {
                     break;
                 }
@@ -668,7 +674,7 @@ namespace HaCreator.MapSimulator.UI
             while (endIndex < inputText.Length)
             {
                 string candidate = inputText.Substring(startIndex, endIndex - startIndex + 1);
-                if (_font.MeasureString(candidate).X > maxWidth)
+                if (MeasureChatText(candidate).X > maxWidth)
                 {
                     break;
                 }
@@ -737,7 +743,7 @@ namespace HaCreator.MapSimulator.UI
             {
                 float currentMaxWidth = ResolveLineMaxWidth(maxWidth, chatLogType, isFirstLine);
                 string candidate = currentLine.Length == 0 ? word : $"{currentLine} {word}";
-                if (_font.MeasureString(candidate).X <= currentMaxWidth)
+                if (MeasureChatText(candidate).X <= currentMaxWidth)
                 {
                     currentLine.Clear();
                     currentLine.Append(candidate);
@@ -752,7 +758,7 @@ namespace HaCreator.MapSimulator.UI
                 }
 
                 currentMaxWidth = ResolveLineMaxWidth(maxWidth, chatLogType, isFirstLine);
-                if (_font.MeasureString(word).X <= currentMaxWidth)
+                if (MeasureChatText(word).X <= currentMaxWidth)
                 {
                     if (!isFirstLine)
                     {
@@ -767,7 +773,7 @@ namespace HaCreator.MapSimulator.UI
                 {
                     currentMaxWidth = ResolveLineMaxWidth(maxWidth, chatLogType, isFirstLine);
                     string fragmentCandidate = fragment + c.ToString();
-                    if (_font.MeasureString(fragmentCandidate).X > currentMaxWidth && fragment.Length > 0)
+                    if (MeasureChatText(fragmentCandidate).X > currentMaxWidth && fragment.Length > 0)
                     {
                         yield return fragment.ToString();
                         fragment.Clear();
@@ -796,6 +802,13 @@ namespace HaCreator.MapSimulator.UI
         private void DrawTextWithShadow(SpriteBatch sprite, string text, Vector2 position, Color color, Color shadowColor)
         {
             Vector2 snappedPosition = SnapToPixel(position);
+            if (_clientTextRasterizer != null)
+            {
+                _clientTextRasterizer.DrawString(sprite, text, snappedPosition + new Vector2(1, 1), shadowColor);
+                _clientTextRasterizer.DrawString(sprite, text, snappedPosition, color);
+                return;
+            }
+
             sprite.DrawString(_font, text, snappedPosition + new Vector2(1, 1), shadowColor);
             sprite.DrawString(_font, text, snappedPosition, color);
         }
@@ -811,7 +824,7 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
-            float textWidth = _font.MeasureString(line.WhisperTargetDisplayText).X;
+            float textWidth = MeasureChatText(line.WhisperTargetDisplayText).X;
             if (textWidth <= 0f)
             {
                 return;
@@ -823,9 +836,34 @@ namespace HaCreator.MapSimulator.UI
                     (int)Math.Round(this.Position.X + _chatLogTextPos.X),
                     (int)Math.Round(lineY) - 1,
                     (int)Math.Ceiling(textWidth) + 2,
-                    Math.Max(1, _font.LineSpacing)),
+                    Math.Max(1, ResolveFontLineSpacing())),
                 WhisperTarget = line.WhisperTargetCandidate
             });
+        }
+
+        private Vector2 MeasureChatText(string text)
+        {
+            if (string.IsNullOrEmpty(text))
+            {
+                return Vector2.Zero;
+            }
+
+            if (_clientTextRasterizer != null)
+            {
+                return _clientTextRasterizer.MeasureString(text);
+            }
+
+            return _font?.MeasureString(text) ?? Vector2.Zero;
+        }
+
+        private int ResolveFontLineSpacing()
+        {
+            if (_clientTextRasterizer != null)
+            {
+                return Math.Max(1, (int)Math.Ceiling(_clientTextRasterizer.MeasureString("Ag").Y));
+            }
+
+            return _font?.LineSpacing ?? DefaultChatCursorHeight + 1;
         }
 
         private static Vector2 SnapToPixel(Vector2 position)

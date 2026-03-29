@@ -719,7 +719,13 @@ namespace HaCreator.MapSimulator.UI
 
             if (EquipWindow is not EquipUIBigBang equipWindow
                 || !equipWindow.IsVisible
-                || !equipWindow.TryHandleInventoryDrop(mouseX, mouseY, inventoryWindow.DraggedSlotData, out IReadOnlyList<InventorySlotData> displacedSlots))
+                || !equipWindow.TryHandleInventoryDrop(
+                    mouseX,
+                    mouseY,
+                    inventoryWindow.DraggedInventoryType,
+                    inventoryWindow.DraggedSlotIndex,
+                    inventoryWindow.DraggedSlotData,
+                    out IReadOnlyList<InventorySlotData> displacedSlots))
             {
                 return false;
             }
@@ -830,7 +836,6 @@ namespace HaCreator.MapSimulator.UI
         private bool TryHandleEquipmentDropToInventory(EquipUIBigBang equipWindow, int mouseX, int mouseY)
         {
             if (equipWindow == null
-                || !equipWindow.HasDraggedCompanionItem
                 || InventoryWindow is not InventoryUI inventoryWindow
                 || !inventoryWindow.IsVisible
                 || !inventoryWindow.ContainsPoint(mouseX, mouseY))
@@ -838,7 +843,11 @@ namespace HaCreator.MapSimulator.UI
                 return false;
             }
 
-            InventorySlotData previewSlot = equipWindow.DraggedCompanionSlotData;
+            InventorySlotData previewSlot = equipWindow.HasDraggedCompanionItem
+                ? equipWindow.DraggedCompanionSlotData
+                : equipWindow.HasDraggedCharacterItem
+                    ? equipWindow.DraggedCharacterSlotData
+                    : null;
             if (previewSlot == null)
             {
                 return false;
@@ -850,13 +859,29 @@ namespace HaCreator.MapSimulator.UI
                 return false;
             }
 
-            if (!equipWindow.TryCommitDraggedCompanionRemoval(out InventorySlotData slotData) || slotData == null)
+            if (equipWindow.HasDraggedCompanionItem)
             {
-                return false;
+                if (!equipWindow.TryCommitDraggedCompanionRemoval(out InventorySlotData slotData) || slotData == null)
+                {
+                    return false;
+                }
+
+                inventoryWindow.AddItem(inventoryType, slotData);
+                return true;
             }
 
-            inventoryWindow.AddItem(inventoryType, slotData);
-            return true;
+            if (equipWindow.HasDraggedCharacterItem)
+            {
+                if (!equipWindow.TryCommitDraggedCharacterRemoval(out InventorySlotData slotData) || slotData == null)
+                {
+                    return false;
+                }
+
+                inventoryWindow.AddItem(inventoryType, slotData);
+                return true;
+            }
+
+            return false;
         }
 
         private bool IsDraggingEquipment()

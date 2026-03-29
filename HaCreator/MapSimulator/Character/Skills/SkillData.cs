@@ -433,6 +433,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         public SkillAnimation KeydownEndSecondaryEffect { get; set; } // Secondary exit branch (e.g. keydownend0)
         public SkillAnimation HitEffect { get; set; }        // Effect on target
         public SkillAnimation AffectedEffect { get; set; }   // Effect while buff active
+        public SkillAnimation AffectedSecondaryEffect { get; set; } // Secondary buff/affected branch (e.g. affected0)
         public SkillAnimation SummonSpawnAnimation { get; set; } // Initial summon spawn sequence
         public SkillAnimation SummonAnimation { get; set; }  // Summon body/effect
         public SkillAnimation SummonAttackPrepareAnimation { get; set; } // Optional summon windup before the main attack branch
@@ -1248,6 +1249,9 @@ namespace HaCreator.MapSimulator.Character.Skills
         public int LastStateChangeTime { get; set; }
         public SummonActorState ActorState { get; set; } = SummonActorState.Spawn;
         public string CurrentAnimationBranchName { get; set; }
+        public SkillAnimation OneTimeActionFallbackAnimation { get; set; }
+        public int OneTimeActionFallbackAnimationTime { get; set; } = int.MinValue;
+        public int OneTimeActionFallbackEndTime { get; set; } = int.MinValue;
         public bool ExpiryActionTriggered { get; set; }
         public int MaxHealth { get; set; } = 1;
         public int CurrentHealth { get; set; } = 1;

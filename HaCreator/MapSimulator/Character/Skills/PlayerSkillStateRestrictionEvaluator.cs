@@ -272,17 +272,9 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return true;
             }
 
-            if (skill.ClientInfoType == 13)
+            if (ClientOwnedVehicleSkillClassifier.IsWzAuthoredClientOwnedVehicleBuff(skill))
             {
-                if (skill.SkillId == CorsairBattleshipSkillId || skill.SkillId == JaguarRiderSkillId)
-                {
-                    return true;
-                }
-
-                if (LooksLikeRideDescriptionBuff(skill))
-                {
-                    return true;
-                }
+                return true;
             }
 
             return LooksLikeRideDescriptionBuff(skill);

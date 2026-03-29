@@ -50,6 +50,8 @@ namespace HaCreator.MapSimulator.Interaction
         internal Func<int, string> ResolveItemName { get; init; }
         internal Func<int, string> ResolveChannelName { get; init; }
         internal Func<string, bool> IsBlacklistedName { get; init; }
+        internal Func<string, bool> IsBlockedFriendName { get; init; }
+        internal Func<int, int, int, bool> QueueMapTransfer { get; init; }
     }
 
     internal sealed class PacketFieldFeedbackRuntime
@@ -474,9 +476,9 @@ namespace HaCreator.MapSimulator.Interaction
                         byte channelId = reader.ReadByte();
                         bool fromAdmin = reader.ReadByte() != 0;
                         string body = ReadMapleString(reader);
-                        if (!fromAdmin && callbacks?.IsBlacklistedName?.Invoke(sender) == true)
+                        if (!fromAdmin && ShouldSuppressIncomingWhisper(sender, callbacks))
                         {
-                            _statusMessage = $"Suppressed packet-owned whisper from blacklisted sender {sender}.";
+                            _statusMessage = $"Suppressed packet-owned whisper from blocked sender {sender}.";
                             message = _statusMessage;
                             return true;
                         }
@@ -500,19 +502,18 @@ namespace HaCreator.MapSimulator.Interaction
                     {
                         string target = ReadMapleString(reader);
                         bool success = reader.ReadByte() != 0;
-                        string text = success
-                            ? $"[System] Whisper target set to {target}."
-                            : $"[System] {target} is unavailable for whisper.";
-                        callbacks?.AddClientChatMessage?.Invoke(text, 12, success ? target : null);
                         if (success)
                         {
                             callbacks?.RememberWhisperTarget?.Invoke(target);
                             _lastWhisperTarget = target;
+                            _statusMessage = $"Applied packet-owned whisper target update for {target}.";
+                        }
+                        else
+                        {
+                            callbacks?.AddClientChatMessage?.Invoke($"[System] {target} is unavailable for whisper.", 12, null);
+                            _statusMessage = $"Applied packet-owned whisper failure for {target}.";
                         }
 
-                        _statusMessage = success
-                            ? $"Applied packet-owned whisper result for {target}."
-                            : $"Applied packet-owned whisper failure for {target}.";
                         message = _statusMessage;
                         return true;
                     }
@@ -530,8 +531,18 @@ namespace HaCreator.MapSimulator.Interaction
                             4 => $"{target} cannot be followed right now.",
                             _ => $"{target} returned whisper result {result}."
                         };
-                        callbacks?.AddClientChatMessage?.Invoke($"[System] {resolved}", 12, null);
-                        _statusMessage = $"Applied packet-owned whisper location response for {target}.";
+                        bool queuedTransfer = false;
+                        if (subtype == 9
+                            && result == 1
+                            && TryReadWhisperFindTransferPosition(reader, stream, out int transferX, out int transferY))
+                        {
+                            queuedTransfer = callbacks?.QueueMapTransfer?.Invoke(value, transferX, transferY) == true;
+                        }
+
+                        callbacks?.AddClientChatMessage?.Invoke($"[System] {resolved}", queuedTransfer ? 7 : 12, null);
+                        _statusMessage = queuedTransfer
+                            ? $"Applied packet-owned whisper chase response for {target} and queued map transfer."
+                            : $"Applied packet-owned whisper location response for {target}.";
                         message = _statusMessage;
                         return true;
                     }
@@ -936,6 +947,31 @@ namespace HaCreator.MapSimulator.Interaction
                 0 or 2 or 3 or 6 => callbacks.IsBlacklistedName(sender),
                 _ => false
             };
+        }
+
+        private static bool ShouldSuppressIncomingWhisper(string sender, PacketFieldFeedbackCallbacks callbacks)
+        {
+            if (string.IsNullOrWhiteSpace(sender))
+            {
+                return false;
+            }
+
+            return callbacks?.IsBlacklistedName?.Invoke(sender) == true
+                || callbacks?.IsBlockedFriendName?.Invoke(sender) == true;
+        }
+
+        private static bool TryReadWhisperFindTransferPosition(BinaryReader reader, Stream stream, out int x, out int y)
+        {
+            x = 0;
+            y = 0;
+            if (stream == null || stream.Length - stream.Position < (sizeof(int) * 2))
+            {
+                return false;
+            }
+
+            x = reader.ReadInt32();
+            y = reader.ReadInt32();
+            return true;
         }
 
         private void DrawBossHp(SpriteBatch spriteBatch, SpriteFont font, int renderWidth, int currentTick)
