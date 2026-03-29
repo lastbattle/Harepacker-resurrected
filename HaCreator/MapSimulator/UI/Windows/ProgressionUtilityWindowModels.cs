@@ -28,6 +28,7 @@ namespace HaCreator.MapSimulator.UI
         public string EpisodeText { get; init; } = string.Empty;
         public IReadOnlyList<string> RewardLines { get; init; } = Array.Empty<string>();
         public IReadOnlyList<string> HabitatLines { get; init; } = Array.Empty<string>();
+        public string SearchText { get; init; } = string.Empty;
         public bool IsDiscovered => OwnedCopies > 0;
         public bool IsCompleted => OwnedCopies >= MaxCopies;
     }

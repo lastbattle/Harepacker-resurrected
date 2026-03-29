@@ -2,7 +2,9 @@ using HaCreator.MapSimulator.Character;
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.IO;
 using System.Linq;
+using System.Text;
 
 namespace HaCreator.MapSimulator.Managers
 {
@@ -38,28 +40,42 @@ namespace HaCreator.MapSimulator.Managers
         public int PendingCommoditySerialNumber { get; private set; }
         public int EnterTick { get; private set; } = int.MinValue;
         public string LastStatus { get; private set; } = "Cash service stage inactive.";
+        public int ChargeParam { get; private set; }
+        public long NexonCash { get; private set; }
+        public long MaplePoint { get; private set; }
+        public long PrepaidCash { get; private set; }
+        public bool OneADayPending { get; private set; }
+        public string PreviewResourcePath { get; private set; } = string.Empty;
+        public string LastFreeItemNotice { get; private set; } = string.Empty;
 
         public void EnterCashShop(CharacterBuild build, int pendingCommoditySerialNumber, long mesoBalance)
         {
             ActiveStage = CashServiceStageKind.CashShop;
             EnterTick = Environment.TickCount;
             PendingCommoditySerialNumber = Math.Max(0, pendingCommoditySerialNumber);
+            ChargeParam = 0;
+            NexonCash = 0;
+            MaplePoint = 0;
+            PrepaidCash = 0;
+            OneADayPending = false;
+            LastFreeItemNotice = string.Empty;
             _childOwners.Clear();
-            _childOwners.Add("CCSWnd_Char");
-            _childOwners.Add("CCSWnd_Locker");
-            _childOwners.Add("CCSWnd_Inventory");
-            _childOwners.Add("CCSWnd_Tab");
-            _childOwners.Add("CCSWnd_List");
-            _childOwners.Add("CCSWnd_Best");
-            _childOwners.Add("CCSWnd_Status");
-            _childOwners.Add("CCSWnd_ItemSearch");
+            _childOwners.Add("CCSWnd_Char (0,0 256x316)");
+            _childOwners.Add("CCSWnd_Locker (-1,318 256x104)");
+            _childOwners.Add("CCSWnd_Inventory (0,426 246x163)");
+            _childOwners.Add("CCSWnd_Tab (272,17 508x78)");
+            _childOwners.Add("CCSWnd_List (275,95 412x430)");
+            _childOwners.Add("CCSWnd_Best (690,157 90x358)");
+            _childOwners.Add("CCSWnd_Status (254,530 545x56)");
+            _childOwners.Add("CCSWnd_ItemSearch (690,97 89x22)");
             _recentPackets.Clear();
 
             string previewFamily = ResolveCashShopPreviewFamily(build);
+            PreviewResourcePath = $"ui/CashShopPreview.img ({previewFamily})";
             string commodityText = PendingCommoditySerialNumber > 0
                 ? $"Pending commodity SN {PendingCommoditySerialNumber} is queued for GoToCommoditySN."
                 : "No pending commodity serial is queued.";
-            LastStatus = $"CCashShop::Init parity active: cleared field UI, reset wish list/cash mirrors, selected {previewFamily} preview art, and created {_childOwners.Count.ToString(CultureInfo.InvariantCulture)} child owners. {commodityText}";
+            LastStatus = $"CCashShop::Init parity active: cleared field UI, reset wish list/cash mirrors, selected {PreviewResourcePath}, and created {_childOwners.Count.ToString(CultureInfo.InvariantCulture)} child owners. {commodityText}";
             RecordPacket(0, $"Entered Cash Shop stage with {mesoBalance.ToString("N0", CultureInfo.InvariantCulture)} mesos visible on the simulator side.");
         }
 
@@ -68,15 +84,22 @@ namespace HaCreator.MapSimulator.Managers
             ActiveStage = CashServiceStageKind.Itc;
             EnterTick = Environment.TickCount;
             PendingCommoditySerialNumber = 0;
+            ChargeParam = 0;
+            NexonCash = 0;
+            MaplePoint = 0;
+            PrepaidCash = 0;
+            OneADayPending = false;
+            LastFreeItemNotice = string.Empty;
+            PreviewResourcePath = "ui/ITCPreview.img";
             _childOwners.Clear();
-            _childOwners.Add("CITCWnd_Char");
-            _childOwners.Add("CITCWnd_Sale");
-            _childOwners.Add("CITCWnd_Purchase");
-            _childOwners.Add("CITCWnd_Inventory");
-            _childOwners.Add("CITCWnd_Tab");
-            _childOwners.Add("CITCWnd_SubTab");
-            _childOwners.Add("CITCWnd_List");
-            _childOwners.Add("CITCWnd_Status");
+            _childOwners.Add("CITCWnd_Char (0,0 256x200)");
+            _childOwners.Add("CITCWnd_Sale (0,200 256x110)");
+            _childOwners.Add("CITCWnd_Purchase (0,310 256x108)");
+            _childOwners.Add("CITCWnd_Inventory (0,418 256x180)");
+            _childOwners.Add("CITCWnd_Tab (272,17 509x78)");
+            _childOwners.Add("CITCWnd_SubTab (273,98 509x48)");
+            _childOwners.Add("CITCWnd_List (273,145 509x365)");
+            _childOwners.Add("CITCWnd_Status (255,531 545x56)");
             _recentPackets.Clear();
 
             string actorName = build?.Name;
@@ -85,8 +108,43 @@ namespace HaCreator.MapSimulator.Managers
                 actorName = "active character";
             }
 
-            LastStatus = $"CITC::Init parity active: cleared field UI, reset category/search/sort state, loaded NPT exception items, and created {_childOwners.Count.ToString(CultureInfo.InvariantCulture)} child owners for {actorName}.";
+            LastStatus = $"CITC::Init parity active: cleared field UI, reset category/search/sort state, loaded NPT exception items, selected {PreviewResourcePath}, and created {_childOwners.Count.ToString(CultureInfo.InvariantCulture)} child owners for {actorName}.";
             RecordPacket(0, $"Entered ITC stage with {mesoBalance.ToString("N0", CultureInfo.InvariantCulture)} mesos visible on the simulator side.");
+        }
+
+        public void Reset()
+        {
+            ActiveStage = CashServiceStageKind.None;
+            PendingCommoditySerialNumber = 0;
+            EnterTick = int.MinValue;
+            ChargeParam = 0;
+            NexonCash = 0;
+            MaplePoint = 0;
+            PrepaidCash = 0;
+            OneADayPending = false;
+            PreviewResourcePath = string.Empty;
+            LastFreeItemNotice = string.Empty;
+            _childOwners.Clear();
+            _recentPackets.Clear();
+            LastStatus = "Cash service stage inactive.";
+        }
+
+        public string ApplyPacket(int packetType, byte[] payload)
+        {
+            byte[] packetPayload = payload ?? Array.Empty<byte>();
+            string detail = packetType switch
+            {
+                382 or 410 => ApplyChargeParamPacket(packetType, packetPayload),
+                383 or 411 => ApplyQueryCashPacket(packetType, packetPayload),
+                384 or 412 => ApplyResultPacket(packetType, packetPayload),
+                385 => ApplyPurchaseExpPacket(packetPayload),
+                395 => ApplyOneADayPacket(packetPayload),
+                396 => ApplyFreeItemNoticePacket(packetPayload),
+                _ => BuildGenericPacketSummary(packetType, packetPayload)
+            };
+
+            RecordPacket(packetType, detail);
+            return detail;
         }
 
         public string RecordPacket(int packetType, string payloadSummary = null)
@@ -114,19 +172,22 @@ namespace HaCreator.MapSimulator.Managers
         {
             if (ActiveStage == CashServiceStageKind.CashShop)
             {
-                string balanceLabel = PendingCommoditySerialNumber > 0
-                    ? $"Pending SN {PendingCommoditySerialNumber} via GoToCommoditySN."
-                    : "No pending commodity migration.";
+                string balanceLabel = $"NX {NexonCash.ToString("N0", CultureInfo.InvariantCulture)} / MP {MaplePoint.ToString("N0", CultureInfo.InvariantCulture)} / Prepaid {PrepaidCash.ToString("N0", CultureInfo.InvariantCulture)}";
+                if (PendingCommoditySerialNumber > 0)
+                {
+                    balanceLabel += $" | Pending SN {PendingCommoditySerialNumber}";
+                }
+
                 return new CashServiceStageSnapshot
                 {
                     StageKind = ActiveStage,
                     StageTitle = "CCashShop stage",
-                    HeaderInstruction = "CCashShop owns Cash Shop entry, packet routing, and preview-stage child owners instead of the local utility bridge.",
+                    HeaderInstruction = $"CCashShop owns Cash Shop entry, packet routing, preview art ({PreviewResourcePath}), and child owners instead of the local utility bridge.",
                     StatusLine = LastStatus,
                     LeftPaneLabel = "Char + Locker owners",
                     RightPaneLabel = "Inventory + Catalog owners",
                     BalanceLabel = balanceLabel,
-                    FooterMessage = "Status + search owners remain stage-owned while the simulator reuses the existing AdminShop shell for rendering.",
+                    FooterMessage = BuildFooterMessage(),
                     PendingCommoditySerialNumber = PendingCommoditySerialNumber,
                     ChildOwners = _childOwners.ToArray(),
                     RecentPackets = _recentPackets.ToArray()
@@ -139,12 +200,12 @@ namespace HaCreator.MapSimulator.Managers
                 {
                     StageKind = ActiveStage,
                     StageTitle = "CITC stage",
-                    HeaderInstruction = "CITC owns Item Trading Center entry, category/search/sort reset, and its own result routing instead of the field-side admin-shop flow.",
+                    HeaderInstruction = $"CITC owns Item Trading Center entry, category/search/sort reset, preview art ({PreviewResourcePath}), and result routing instead of the field-side admin-shop flow.",
                     StatusLine = LastStatus,
                     LeftPaneLabel = "Char + Sale/Purchase owners",
                     RightPaneLabel = "Inventory + List owners",
-                    BalanceLabel = "ITC tab, subtab, list, and status panes are stage-owned.",
-                    FooterMessage = "NPT exception loading and ITC-only packet ownership are tracked at the stage layer even though the simulator still renders through the shared shell.",
+                    BalanceLabel = $"NX {NexonCash.ToString("N0", CultureInfo.InvariantCulture)} / MP {MaplePoint.ToString("N0", CultureInfo.InvariantCulture)}",
+                    FooterMessage = BuildFooterMessage(),
                     PendingCommoditySerialNumber = 0,
                     ChildOwners = _childOwners.ToArray(),
                     RecentPackets = _recentPackets.ToArray()
@@ -164,6 +225,21 @@ namespace HaCreator.MapSimulator.Managers
                 ChildOwners = Array.Empty<string>(),
                 RecentPackets = Array.Empty<string>()
             };
+        }
+
+        public static CashServiceStageKind GetStageKindForPacket(int packetType)
+        {
+            if (IsCashShopPacket(packetType))
+            {
+                return CashServiceStageKind.CashShop;
+            }
+
+            if (IsItcPacket(packetType))
+            {
+                return CashServiceStageKind.Itc;
+            }
+
+            return CashServiceStageKind.None;
         }
 
         public static bool IsCashShopPacket(int packetType)
@@ -248,6 +324,141 @@ namespace HaCreator.MapSimulator.Managers
             }
 
             return "Adventurer";
+        }
+
+        private string ApplyChargeParamPacket(int packetType, byte[] payload)
+        {
+            if (payload.Length >= sizeof(int))
+            {
+                ChargeParam = BitConverter.ToInt32(payload, 0);
+                return $"Charge parameter updated to {ChargeParam.ToString(CultureInfo.InvariantCulture)}.";
+            }
+
+            return BuildGenericPacketSummary(packetType, payload);
+        }
+
+        private string ApplyQueryCashPacket(int packetType, byte[] payload)
+        {
+            if (payload.Length >= sizeof(int) * 2)
+            {
+                NexonCash = BitConverter.ToInt32(payload, 0);
+                MaplePoint = BitConverter.ToInt32(payload, sizeof(int));
+                if (payload.Length >= sizeof(int) * 3)
+                {
+                    PrepaidCash = BitConverter.ToInt32(payload, sizeof(int) * 2);
+                }
+
+                return ActiveStage == CashServiceStageKind.CashShop
+                    ? $"Cash balances updated: NX {NexonCash.ToString("N0", CultureInfo.InvariantCulture)}, MP {MaplePoint.ToString("N0", CultureInfo.InvariantCulture)}, prepaid {PrepaidCash.ToString("N0", CultureInfo.InvariantCulture)}."
+                    : $"ITC cash balances updated: NX {NexonCash.ToString("N0", CultureInfo.InvariantCulture)}, MP {MaplePoint.ToString("N0", CultureInfo.InvariantCulture)}.";
+            }
+
+            return BuildGenericPacketSummary(packetType, payload);
+        }
+
+        private string ApplyResultPacket(int packetType, byte[] payload)
+        {
+            if (payload.Length > 0)
+            {
+                int subtype = payload[0];
+                return $"{DescribePacketType(ActiveStage, packetType)} subtype {subtype.ToString(CultureInfo.InvariantCulture)} ({payload.Length.ToString(CultureInfo.InvariantCulture)} byte(s)).";
+            }
+
+            return BuildGenericPacketSummary(packetType, payload);
+        }
+
+        private string ApplyPurchaseExpPacket(byte[] payload)
+        {
+            if (payload.Length >= sizeof(int))
+            {
+                int purchaseExp = BitConverter.ToInt32(payload, 0);
+                return $"Cash purchase EXP updated to {purchaseExp.ToString(CultureInfo.InvariantCulture)}.";
+            }
+
+            return BuildGenericPacketSummary(385, payload);
+        }
+
+        private string ApplyOneADayPacket(byte[] payload)
+        {
+            OneADayPending = payload.Length == 0 || payload[0] != 0;
+            return OneADayPending
+                ? "One-a-Day state is pending on the cash-service stage."
+                : "One-a-Day state was cleared on the cash-service stage.";
+        }
+
+        private string ApplyFreeItemNoticePacket(byte[] payload)
+        {
+            if (TryReadMapleString(payload, out string notice))
+            {
+                LastFreeItemNotice = notice;
+                return $"Free cash item notice: {notice}";
+            }
+
+            return BuildGenericPacketSummary(396, payload);
+        }
+
+        private string BuildFooterMessage()
+        {
+            List<string> footerParts = new();
+            if (ChargeParam > 0)
+            {
+                footerParts.Add($"Charge param {ChargeParam.ToString(CultureInfo.InvariantCulture)}.");
+            }
+
+            if (OneADayPending)
+            {
+                footerParts.Add("One-a-Day panel is pending.");
+            }
+
+            if (!string.IsNullOrWhiteSpace(LastFreeItemNotice))
+            {
+                footerParts.Add($"Notice: {LastFreeItemNotice}");
+            }
+
+            if (_recentPackets.Count > 0)
+            {
+                footerParts.Add(_recentPackets[^1]);
+            }
+
+            if (footerParts.Count == 0)
+            {
+                footerParts.Add("Stage-owned service packets are tracked here while the simulator still renders through the shared shell.");
+            }
+
+            return string.Join(" ", footerParts);
+        }
+
+        private static string BuildGenericPacketSummary(int packetType, byte[] payload)
+        {
+            int payloadLength = payload?.Length ?? 0;
+            return $"{packetType.ToString(CultureInfo.InvariantCulture)} carried {payloadLength.ToString(CultureInfo.InvariantCulture)} byte(s) of stage-owned payload.";
+        }
+
+        private static bool TryReadMapleString(byte[] payload, out string value)
+        {
+            value = string.Empty;
+            if (payload == null || payload.Length < sizeof(ushort))
+            {
+                return false;
+            }
+
+            try
+            {
+                using MemoryStream stream = new(payload, writable: false);
+                using BinaryReader reader = new(stream, Encoding.Default, leaveOpen: false);
+                ushort length = reader.ReadUInt16();
+                if (length == 0 || stream.Length - stream.Position < length)
+                {
+                    return false;
+                }
+
+                value = Encoding.Default.GetString(reader.ReadBytes(length)).Trim();
+                return value.Length > 0;
+            }
+            catch (IOException)
+            {
+                return false;
+            }
         }
     }
 }

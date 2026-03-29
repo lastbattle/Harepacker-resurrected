@@ -1921,24 +1921,51 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
-            int rowHeight = GetCandidateRowHeight();
-            int numberWidth = GetCandidateNumberWidth();
-            for (int i = 0; i < count; i++)
+            if (_candidateListState.Vertical)
             {
-                int candidateIndex = start + i;
-                Rectangle rowBounds = new(candidateBounds.X + 2, candidateBounds.Y + 2 + (i * rowHeight), candidateBounds.Width - 4, rowHeight);
-                bool selected = candidateIndex == _candidateListState.Selection;
-                if (selected)
+                int rowHeight = GetCandidateRowHeight();
+                int numberWidth = GetCandidateNumberWidth();
+                for (int i = 0; i < count; i++)
                 {
-                    sprite.Draw(_textPixelTexture, rowBounds, new Color(89, 108, 147, 220));
-                }
+                    int candidateIndex = start + i;
+                    Rectangle rowBounds = new(candidateBounds.X + 2, candidateBounds.Y + 2 + (i * rowHeight), candidateBounds.Width - 4, rowHeight);
+                    bool selected = candidateIndex == _candidateListState.Selection;
+                    if (selected)
+                    {
+                        sprite.Draw(_textPixelTexture, rowBounds, new Color(89, 108, 147, 220));
+                    }
 
-                sprite.DrawString(_font, $"{candidateIndex + 1}.", new Vector2(rowBounds.X + 4, rowBounds.Y + 1), selected ? Color.White : new Color(222, 222, 222));
-                sprite.DrawString(
-                    _font,
-                    _candidateListState.Candidates[candidateIndex] ?? string.Empty,
-                    new Vector2(rowBounds.X + 8 + numberWidth, rowBounds.Y + 1),
-                    selected ? Color.White : new Color(240, 235, 200));
+                    sprite.DrawString(_font, $"{candidateIndex + 1}.", new Vector2(rowBounds.X + 4, rowBounds.Y), selected ? Color.White : new Color(222, 222, 222));
+                    sprite.DrawString(
+                        _font,
+                        _candidateListState.Candidates[candidateIndex] ?? string.Empty,
+                        new Vector2(rowBounds.X + 8 + numberWidth, rowBounds.Y),
+                        selected ? Color.White : new Color(240, 235, 200));
+                }
+            }
+            else
+            {
+                int cellWidth = GetHorizontalCandidateCellWidth();
+                int textY = candidateBounds.Y + 3;
+                for (int i = 0; i < count; i++)
+                {
+                    int candidateIndex = start + i;
+                    int cellX = candidateBounds.X + 3 + (i * cellWidth);
+                    int numberWidth = (int)Math.Ceiling(_font.MeasureString($"{candidateIndex + 1}.").X);
+                    Rectangle cellBounds = new(cellX - 1, candidateBounds.Y + 1, cellWidth, Math.Max(1, candidateBounds.Height - 2));
+                    bool selected = candidateIndex == _candidateListState.Selection;
+                    if (selected)
+                    {
+                        sprite.Draw(_textPixelTexture, cellBounds, new Color(89, 108, 147, 220));
+                    }
+
+                    sprite.DrawString(_font, $"{candidateIndex + 1}.", new Vector2(cellX, textY), selected ? Color.White : new Color(222, 222, 222));
+                    sprite.DrawString(
+                        _font,
+                        _candidateListState.Candidates[candidateIndex] ?? string.Empty,
+                        new Vector2(cellX + numberWidth + 3, textY),
+                        selected ? Color.White : new Color(240, 235, 200));
+                }
             }
         }
 
@@ -1950,27 +1977,47 @@ namespace HaCreator.MapSimulator.UI
                 return Rectangle.Empty;
             }
 
-            int rowHeight = GetCandidateRowHeight();
-            int numberWidth = GetCandidateNumberWidth();
-            int textWidth = 0;
             int start = Math.Clamp(_candidateListState.PageStart, 0, _candidateListState.Candidates.Count);
             int count = Math.Min(visibleCount, _candidateListState.Candidates.Count - start);
-            for (int i = 0; i < count; i++)
-            {
-                textWidth = Math.Max(textWidth, (int)Math.Ceiling(_font.MeasureString(_candidateListState.Candidates[start + i] ?? string.Empty).X));
-            }
-
-            int width = Math.Max(64, numberWidth + textWidth + 18);
-            int height = Math.Max(4, (count * rowHeight) + 4);
-            Point origin = ResolveCandidateWindowOrigin();
             int viewportWidth = Math.Max(1, viewport.Width);
             int viewportHeight = Math.Max(1, viewport.Height);
+            int width;
+            int height;
+            if (_candidateListState.Vertical)
+            {
+                int widestEntryWidth = 0;
+                for (int i = 0; i < _candidateListState.Candidates.Count; i++)
+                {
+                    string numberText = $"{i + 1}.";
+                    string candidateText = _candidateListState.Candidates[i] ?? string.Empty;
+                    int entryWidth = (int)Math.Ceiling(_font.MeasureString(numberText).X + _font.MeasureString(candidateText).X) + 2;
+                    widestEntryWidth = Math.Max(widestEntryWidth, entryWidth);
+                }
+
+                width = widestEntryWidth + _font.LineSpacing + 7;
+                if (widestEntryWidth > 266)
+                {
+                    width = viewportWidth;
+                }
+
+                int rowHeight = GetCandidateRowHeight();
+                height = (GetCandidatePageSize() * rowHeight) + 3;
+            }
+            else
+            {
+                width = (2 * GetCandidatePageSize() * (_font.LineSpacing + 4)) + 4;
+                height = _font.LineSpacing + 10;
+            }
+
+            width = Math.Max(64, Math.Min(viewportWidth, width));
+            height = Math.Max(4, Math.Min(viewportHeight, height));
+            Point origin = ResolveCandidateWindowOrigin();
 
             int x = Math.Clamp(origin.X, 0, Math.Max(0, viewportWidth - width));
             int y = origin.Y;
             if (y + height > viewportHeight)
             {
-                y = GetNameFieldBounds().Top - height - 1;
+                y = origin.Y - height - (_font.LineSpacing + 2);
             }
 
             y = Math.Clamp(y, 0, Math.Max(0, viewportHeight - height));
@@ -2046,9 +2093,24 @@ namespace HaCreator.MapSimulator.UI
             return Math.Max(0, Math.Min(pageSize, _candidateListState.Candidates.Count - pageStart));
         }
 
+        private int GetCandidatePageSize()
+        {
+            if (!_candidateListState.HasCandidates)
+            {
+                return 0;
+            }
+
+            return Math.Max(1, _candidateListState.PageSize > 0 ? _candidateListState.PageSize : GetVisibleCandidateCount());
+        }
+
         private int GetCandidateRowHeight()
         {
             return Math.Max(_font.LineSpacing + 1, 16);
+        }
+
+        private int GetHorizontalCandidateCellWidth()
+        {
+            return Math.Max(2 * (_font.LineSpacing + 4), 28);
         }
 
         private int GetCandidateNumberWidth()

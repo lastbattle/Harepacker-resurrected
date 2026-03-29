@@ -24,6 +24,8 @@ namespace HaCreator.MapSimulator.Fields
         private const int OpenGateDefaultDurationMs = 30_000;
         private const int OpenGateTeleportDelayMs = 120;
         private const int CrossMapPortalTeleportDelayMs = 0;
+        private const int OpenGateOpeningDurationMs = 1960;
+        private const int OpenGateRemovalDurationMs = 1800;
         private const int TownPortalOpeningDurationMs = 1700;
         private const int TownPortalRemovalFadeDurationMs = 1000;
         private const float PortalInteractRangeX = 40f;
@@ -37,7 +39,11 @@ namespace HaCreator.MapSimulator.Fields
         private readonly Dictionary<RemoteOpenGateKey, RemoteOpenGateState> _remoteOpenGates = new();
         private readonly Dictionary<uint, RemoteTownPortalFieldMetadata> _remoteTownPortalFieldMetadata = new();
         private readonly Dictionary<uint, RemoteTownPortalRuntimePair> _remoteTownPortalRuntimes = new();
-        private PortalVisualSet _openGateVisuals;
+        private readonly Dictionary<RemoteOpenGateKey, RemoteOpenGateRuntime> _remoteOpenGateRuntimes = new();
+        private PortalVisualSet _openGateOpeningVisuals;
+        private PortalVisualSet _openGateSoloVisuals;
+        private PortalVisualSet _openGateLinkedVisuals;
+        private PortalVisualSet _openGateRemovalVisuals;
         private PortalVisualSet _mysticDoorCurrentMapVisuals;
         private PortalVisualSet _mysticDoorTownVisuals;
         private PortalVisualSet _mysticDoorFrameVisuals;
@@ -52,12 +58,18 @@ namespace HaCreator.MapSimulator.Fields
         public void Update(int currentTime)
         {
             bool remoteTownPortalsChanged = AdvanceRemoteTownPortalPhases(currentTime);
+            bool remoteOpenGatesChanged = AdvanceRemoteOpenGatePhases(currentTime);
 
             if (_portals.Count == 0)
             {
                 if (remoteTownPortalsChanged)
                 {
                     SyncRemoteTownPortalVisuals();
+                }
+
+                if (remoteOpenGatesChanged)
+                {
+                    SyncRemoteOpenGateVisuals();
                 }
 
                 return;
@@ -83,6 +95,11 @@ namespace HaCreator.MapSimulator.Fields
             if (remoteTownPortalsChanged)
             {
                 SyncRemoteTownPortalVisuals();
+            }
+
+            if (remoteOpenGatesChanged)
+            {
+                SyncRemoteOpenGateVisuals();
             }
         }
 
@@ -206,6 +223,7 @@ namespace HaCreator.MapSimulator.Fields
             _remoteTownPortals.Clear();
             _remoteOpenGates.Clear();
             _remoteTownPortalRuntimes.Clear();
+            _remoteOpenGateRuntimes.Clear();
             RemovePortalsBySource(TemporaryPortalSource.RemoteTownPortalPool);
             RemovePortalsBySource(TemporaryPortalSource.RemoteOpenGatePool);
         }
@@ -261,7 +279,7 @@ namespace HaCreator.MapSimulator.Fields
                         return false;
                     }
 
-                    ApplyRemoteOpenGateCreate(openGateCreate, currentMapId);
+                    ApplyRemoteOpenGateCreate(openGateCreate, currentMapId, currentTime);
                     result = $"Applied {RemotePortalPacketCodec.DescribePacketType(packetType)} for owner {openGateCreate.OwnerCharacterId} slot {(openGateCreate.IsFirstSlot ? 1 : 2)}.";
                     return true;
 
@@ -272,7 +290,7 @@ namespace HaCreator.MapSimulator.Fields
                         return false;
                     }
 
-                    bool removedOpenGate = _remoteOpenGates.Remove(new RemoteOpenGateKey(openGateRemove.OwnerCharacterId, openGateRemove.IsFirstSlot));
+                    bool removedOpenGate = ApplyRemoteOpenGateRemove(openGateRemove, currentTime);
                     SyncRemoteOpenGateVisuals();
                     result = removedOpenGate
                         ? $"Applied {RemotePortalPacketCodec.DescribePacketType(packetType)} for owner {openGateRemove.OwnerCharacterId} slot {(openGateRemove.IsFirstSlot ? 1 : 2)}."
@@ -290,8 +308,7 @@ namespace HaCreator.MapSimulator.Fields
             if (castInfo == null || castInfo.SkillId != OpenGateSkillId)
                 return false;
 
-            PortalVisualSet visuals = EnsureOpenGateVisuals();
-            if (visuals == null)
+            if (!EnsureOpenGateVisuals(out _, out _, out PortalVisualSet visuals, out _))
                 return false;
 
             int expireTime = castInfo.CastTime + GetPortalDurationMs(castInfo);
@@ -456,17 +473,50 @@ namespace HaCreator.MapSimulator.Fields
             return true;
         }
 
-        private void ApplyRemoteOpenGateCreate(RemoteOpenGateCreatedPacket packet, int currentMapId)
+        private void ApplyRemoteOpenGateCreate(RemoteOpenGateCreatedPacket packet, int currentMapId, int currentTime)
         {
-            _remoteOpenGates[new RemoteOpenGateKey(packet.OwnerCharacterId, packet.IsFirstSlot)] = new RemoteOpenGateState(
+            RemoteOpenGateKey key = new(packet.OwnerCharacterId, packet.IsFirstSlot);
+            bool hasExisting = _remoteOpenGates.TryGetValue(key, out RemoteOpenGateState existingState);
+            RemoteOpenGateVisualPhase phase = packet.State == 0 ? RemoteOpenGateVisualPhase.Opening : RemoteOpenGateVisualPhase.Stable;
+            int phaseStartedAt = hasExisting && existingState.Phase == phase
+                ? existingState.PhaseStartedAt
+                : currentTime;
+
+            _remoteOpenGates[key] = new RemoteOpenGateState(
                 packet.OwnerCharacterId,
                 packet.State,
                 currentMapId,
                 packet.X,
                 packet.Y,
                 packet.IsFirstSlot,
-                packet.PartyId);
+                packet.PartyId,
+                phase,
+                phaseStartedAt);
             SyncRemoteOpenGateVisuals();
+        }
+
+        private bool ApplyRemoteOpenGateRemove(RemoteOpenGateRemovedPacket packet, int currentTime)
+        {
+            RemoteOpenGateKey key = new(packet.OwnerCharacterId, packet.IsFirstSlot);
+            if (!_remoteOpenGates.TryGetValue(key, out RemoteOpenGateState state))
+            {
+                return false;
+            }
+
+            if (packet.State == 0)
+            {
+                _remoteOpenGates[key] = state with
+                {
+                    Phase = RemoteOpenGateVisualPhase.Removing,
+                    PhaseStartedAt = currentTime
+                };
+            }
+            else
+            {
+                _remoteOpenGates.Remove(key);
+            }
+
+            return true;
         }
 
         private void SyncRemoteTownPortalVisuals()
@@ -481,8 +531,8 @@ namespace HaCreator.MapSimulator.Fields
                 activeOwners.Add(state.OwnerCharacterId);
                 _remoteTownPortalRuntimes.TryGetValue(state.OwnerCharacterId, out RemoteTownPortalRuntimePair runtime);
 
-                TemporaryPortal fieldPortal = UpsertRemoteTownPortalRuntime(
-                    runtime?.FieldPortal,
+                RemoteTownPortalRuntime fieldRuntime = UpsertRemoteTownPortalRuntime(
+                    runtime?.FieldRuntime,
                     state,
                     state.MapId,
                     state.X,
@@ -491,18 +541,19 @@ namespace HaCreator.MapSimulator.Fields
                     currentMapVisuals,
                     townVisuals,
                     frameVisuals);
+                TemporaryPortal fieldPortal = fieldRuntime.Portal;
 
                 if (!state.Destination.HasValue)
                 {
                     fieldPortal.LinkedPortalId = null;
-                    RemoveRemoteTownPortalRuntime(runtime?.TownPortal);
-                    _remoteTownPortalRuntimes[state.OwnerCharacterId] = new RemoteTownPortalRuntimePair(fieldPortal, null);
+                    RemoveRemoteTownPortalRuntime(runtime?.TownRuntime);
+                    _remoteTownPortalRuntimes[state.OwnerCharacterId] = new RemoteTownPortalRuntimePair(fieldRuntime, null);
                     continue;
                 }
 
                 RemoteTownPortalResolvedDestination destination = state.Destination.Value;
-                TemporaryPortal townPortal = UpsertRemoteTownPortalRuntime(
-                    runtime?.TownPortal,
+                RemoteTownPortalRuntime townRuntime = UpsertRemoteTownPortalRuntime(
+                    runtime?.TownRuntime,
                     state,
                     destination.MapId,
                     destination.X,
@@ -511,26 +562,27 @@ namespace HaCreator.MapSimulator.Fields
                     currentMapVisuals,
                     townVisuals,
                     frameVisuals);
+                TemporaryPortal townPortal = townRuntime.Portal;
 
                 fieldPortal.LinkedPortalId = townPortal.Id;
                 townPortal.LinkedPortalId = fieldPortal.Id;
-                _remoteTownPortalRuntimes[state.OwnerCharacterId] = new RemoteTownPortalRuntimePair(fieldPortal, townPortal);
+                _remoteTownPortalRuntimes[state.OwnerCharacterId] = new RemoteTownPortalRuntimePair(fieldRuntime, townRuntime);
             }
 
             foreach (uint ownerId in _remoteTownPortalRuntimes.Keys.Except(activeOwners).ToArray())
             {
                 if (_remoteTownPortalRuntimes.TryGetValue(ownerId, out RemoteTownPortalRuntimePair runtime))
                 {
-                    RemoveRemoteTownPortalRuntime(runtime.FieldPortal);
-                    RemoveRemoteTownPortalRuntime(runtime.TownPortal);
+                    RemoveRemoteTownPortalRuntime(runtime.FieldRuntime);
+                    RemoveRemoteTownPortalRuntime(runtime.TownRuntime);
                 }
 
                 _remoteTownPortalRuntimes.Remove(ownerId);
             }
         }
 
-        private TemporaryPortal UpsertRemoteTownPortalRuntime(
-            TemporaryPortal portal,
+        private RemoteTownPortalRuntime UpsertRemoteTownPortalRuntime(
+            RemoteTownPortalRuntime runtime,
             RemoteTownPortalState state,
             int mapId,
             float x,
@@ -540,18 +592,18 @@ namespace HaCreator.MapSimulator.Fields
             PortalVisualSet townVisuals,
             PortalVisualSet frameVisuals)
         {
-            BaseDXDrawableItem[] drawables = CreateRemoteTownPortalDrawables(
-                state,
-                x,
-                y,
-                useTownVisuals,
-                currentMapVisuals,
-                townVisuals,
-                frameVisuals);
-
-            if (portal == null)
+            if (runtime == null)
             {
-                portal = new TemporaryPortal(
+                BaseDXDrawableItem mainDrawable = CreateRemoteTownPortalMainDrawable(state, x, y, useTownVisuals, currentMapVisuals, townVisuals);
+                BaseDXDrawableItem frameDrawable = CreateRemoteTownPortalFrameDrawable(state, x, y, useTownVisuals, frameVisuals);
+                var mainSlot = new PortalDrawableSlot(mainDrawable, x, y);
+                PortalDrawableSlot frameSlot = null;
+                if (!useTownVisuals)
+                {
+                    frameSlot = new PortalDrawableSlot(frameDrawable ?? mainDrawable, x, y);
+                    frameSlot.SetDrawable(frameDrawable);
+                }
+                var createdPortal = new TemporaryPortal(
                     _nextPortalId++,
                     TemporaryPortalKind.MysticDoor,
                     TemporaryPortalSource.RemoteTownPortalPool,
@@ -560,68 +612,75 @@ namespace HaCreator.MapSimulator.Fields
                     y,
                     int.MaxValue,
                     CrossMapPortalTeleportDelayMs,
-                    drawables)
+                    frameSlot == null
+                        ? new BaseDXDrawableItem[] { mainSlot }
+                        : new BaseDXDrawableItem[] { mainSlot, frameSlot })
                 {
                     OwnerCharacterId = state.OwnerCharacterId
                 };
-                _portals.Add(portal);
-                return portal;
+                _portals.Add(createdPortal);
+                return new RemoteTownPortalRuntime(createdPortal, mainSlot, frameSlot);
             }
 
+            TemporaryPortal portal = runtime.Portal;
             portal.MapId = mapId;
             portal.X = x;
             portal.Y = y;
-            portal.Drawables = drawables;
             portal.OwnerCharacterId = state.OwnerCharacterId;
-            return portal;
+            runtime.MainSlot.SetPosition(x, y);
+            runtime.MainSlot.SetDrawable(CreateRemoteTownPortalMainDrawable(state, x, y, useTownVisuals, currentMapVisuals, townVisuals));
+            if (runtime.FrameSlot != null)
+            {
+                runtime.FrameSlot.SetPosition(x, y);
+                runtime.FrameSlot.SetDrawable(CreateRemoteTownPortalFrameDrawable(state, x, y, useTownVisuals, frameVisuals));
+            }
+
+            return runtime;
         }
 
-        private void RemoveRemoteTownPortalRuntime(TemporaryPortal portal)
+        private void RemoveRemoteTownPortalRuntime(RemoteTownPortalRuntime runtime)
         {
-            if (portal == null)
+            if (runtime?.Portal == null)
                 return;
 
-            RemovePortal(portal);
+            RemovePortal(runtime.Portal);
         }
 
         private void SyncRemoteOpenGateVisuals()
         {
-            RemovePortalsBySource(TemporaryPortalSource.RemoteOpenGatePool);
-
-            PortalVisualSet visuals = EnsureOpenGateVisuals();
-            if (visuals == null)
+            if (!EnsureOpenGateVisuals(out PortalVisualSet openingVisuals, out PortalVisualSet soloVisuals, out PortalVisualSet linkedVisuals, out PortalVisualSet removalVisuals))
                 return;
 
-            var runtimePortals = new Dictionary<RemoteOpenGateKey, TemporaryPortal>();
+            HashSet<RemoteOpenGateKey> activeKeys = new();
 
             foreach (RemoteOpenGateState state in _remoteOpenGates.Values.OrderBy(portal => portal.OwnerCharacterId).ThenBy(portal => portal.IsFirstSlot ? 0 : 1))
             {
-                var portal = new TemporaryPortal(
-                    _nextPortalId++,
-                    TemporaryPortalKind.OpenGate,
-                    TemporaryPortalSource.RemoteOpenGatePool,
-                    state.MapId,
-                    state.X,
-                    state.Y,
-                    int.MaxValue,
-                    OpenGateTeleportDelayMs,
-                    visuals.CreateDrawable(state.X, state.Y))
-                {
-                    OwnerCharacterId = state.OwnerCharacterId,
-                    PartyId = state.PartyId,
-                    IsPrimarySlot = state.IsFirstSlot
-                };
-
-                _portals.Add(portal);
-                runtimePortals[new RemoteOpenGateKey(state.OwnerCharacterId, state.IsFirstSlot)] = portal;
+                RemoteOpenGateKey key = new(state.OwnerCharacterId, state.IsFirstSlot);
+                activeKeys.Add(key);
+                _remoteOpenGateRuntimes.TryGetValue(key, out RemoteOpenGateRuntime runtime);
+                bool hasPartner = _remoteOpenGates.TryGetValue(new RemoteOpenGateKey(state.OwnerCharacterId, !state.IsFirstSlot), out RemoteOpenGateState partner)
+                                  && partner.Phase != RemoteOpenGateVisualPhase.Removing;
+                _remoteOpenGateRuntimes[key] = UpsertRemoteOpenGateRuntime(
+                    runtime,
+                    state,
+                    hasPartner,
+                    openingVisuals,
+                    soloVisuals,
+                    linkedVisuals,
+                    removalVisuals);
             }
 
-            foreach ((RemoteOpenGateKey key, TemporaryPortal portal) in runtimePortals)
+            foreach (RemoteOpenGateKey staleKey in _remoteOpenGateRuntimes.Keys.Except(activeKeys).ToArray())
             {
-                if (!runtimePortals.TryGetValue(new RemoteOpenGateKey(key.OwnerCharacterId, !key.IsFirstSlot), out TemporaryPortal target))
-                    continue;
+                RemovePortal(_remoteOpenGateRuntimes[staleKey].Portal);
+                _remoteOpenGateRuntimes.Remove(staleKey);
+            }
 
-                portal.LinkedPortalId = target.Id;
+            foreach ((RemoteOpenGateKey key, RemoteOpenGateRuntime runtime) in _remoteOpenGateRuntimes)
+            {
+                runtime.Portal.LinkedPortalId = _remoteOpenGateRuntimes.TryGetValue(new RemoteOpenGateKey(key.OwnerCharacterId, !key.IsFirstSlot), out RemoteOpenGateRuntime target)
+                    ? target.Portal.Id
+                    : null;
             }
         }
 
@@ -739,6 +798,49 @@ namespace HaCreator.MapSimulator.Fields
             return drawables.ToArray();
         }
 
+        private BaseDXDrawableItem CreateRemoteTownPortalMainDrawable(
+            RemoteTownPortalState state,
+            float x,
+            float y,
+            bool useTownVisuals,
+            PortalVisualSet currentMapVisuals,
+            PortalVisualSet townVisuals)
+        {
+            PortalVisualSet mainVisuals = useTownVisuals ? townVisuals : currentMapVisuals;
+            RemoteTownPortalRemovalSnapshot removalSnapshot = state.RemovalSnapshot;
+
+            return state.Phase switch
+            {
+                RemoteTownPortalVisualPhase.Opening when !useTownVisuals => mainVisuals.CreateOpeningDrawable(x, y, state.PhaseStartedAt),
+                RemoteTownPortalVisualPhase.Removing => (useTownVisuals ? removalSnapshot?.TownMainFrame : removalSnapshot?.FieldMainFrame) is IDXObject removalMainFrame
+                    ? mainVisuals.CreateSnapshotFadeDrawable(x, y, removalMainFrame, state.PhaseStartedAt, TownPortalRemovalFadeDurationMs)
+                    : mainVisuals.CreateFadeDrawable(x, y, state.PhaseStartedAt, TownPortalRemovalFadeDurationMs),
+                _ => mainVisuals.CreateLoopDrawable(x, y, state.PhaseStartedAt)
+            };
+        }
+
+        private BaseDXDrawableItem CreateRemoteTownPortalFrameDrawable(
+            RemoteTownPortalState state,
+            float x,
+            float y,
+            bool useTownVisuals,
+            PortalVisualSet frameVisuals)
+        {
+            if (!ShouldDrawRemoteTownPortalFrame(state, useTownVisuals))
+            {
+                return null;
+            }
+
+            if (state.Phase == RemoteTownPortalVisualPhase.Removing)
+            {
+                return state.RemovalSnapshot?.FieldFrameFrame is IDXObject removalFrame
+                    ? frameVisuals.CreateSnapshotFadeDrawable(x, y, removalFrame, state.PhaseStartedAt, TownPortalRemovalFadeDurationMs)
+                    : frameVisuals.CreateFadeDrawable(x, y, state.PhaseStartedAt, TownPortalRemovalFadeDurationMs);
+            }
+
+            return frameVisuals.CreateLoopDrawable(x, y, state.PhaseStartedAt);
+        }
+
         private static bool ShouldDrawRemoteTownPortalFrame(RemoteTownPortalState state, bool useTownVisuals)
         {
             return !useTownVisuals
@@ -800,6 +902,60 @@ namespace HaCreator.MapSimulator.Fields
             return changed;
         }
 
+        private bool AdvanceRemoteOpenGatePhases(int currentTime)
+        {
+            if (_remoteOpenGates.Count == 0)
+            {
+                return false;
+            }
+
+            bool changed = false;
+            List<RemoteOpenGateKey> keysToRemove = null;
+            List<RemoteOpenGateKey> keys = _remoteOpenGates.Keys.ToList();
+
+            foreach (RemoteOpenGateKey key in keys)
+            {
+                if (!_remoteOpenGates.TryGetValue(key, out RemoteOpenGateState state))
+                {
+                    continue;
+                }
+
+                switch (state.Phase)
+                {
+                    case RemoteOpenGateVisualPhase.Opening:
+                        if (unchecked(currentTime - state.PhaseStartedAt) >= OpenGateOpeningDurationMs)
+                        {
+                            _remoteOpenGates[key] = state with
+                            {
+                                Phase = RemoteOpenGateVisualPhase.Stable,
+                                PhaseStartedAt = currentTime
+                            };
+                            changed = true;
+                        }
+                        break;
+
+                    case RemoteOpenGateVisualPhase.Removing:
+                        if (unchecked(currentTime - state.PhaseStartedAt) >= OpenGateRemovalDurationMs)
+                        {
+                            keysToRemove ??= new List<RemoteOpenGateKey>();
+                            keysToRemove.Add(key);
+                            changed = true;
+                        }
+                        break;
+                }
+            }
+
+            if (keysToRemove != null)
+            {
+                foreach (RemoteOpenGateKey key in keysToRemove)
+                {
+                    _remoteOpenGates.Remove(key);
+                }
+            }
+
+            return changed;
+        }
+
         private void RememberRemoteTownPortalFieldMetadata(
             uint ownerCharacterId,
             int sourceMapId,
@@ -843,17 +999,119 @@ namespace HaCreator.MapSimulator.Fields
             return null;
         }
 
-        private PortalVisualSet EnsureOpenGateVisuals()
+        private RemoteOpenGateRuntime UpsertRemoteOpenGateRuntime(
+            RemoteOpenGateRuntime runtime,
+            RemoteOpenGateState state,
+            bool hasPartner,
+            PortalVisualSet openingVisuals,
+            PortalVisualSet soloVisuals,
+            PortalVisualSet linkedVisuals,
+            PortalVisualSet removalVisuals)
         {
-            if (_openGateVisuals != null)
-                return _openGateVisuals;
+            BaseDXDrawableItem drawable = CreateRemoteOpenGateDrawable(
+                state,
+                hasPartner,
+                openingVisuals,
+                soloVisuals,
+                linkedVisuals,
+                removalVisuals);
+
+            if (runtime == null)
+            {
+                var mainSlot = new PortalDrawableSlot(drawable, state.X, state.Y);
+                var portal = new TemporaryPortal(
+                    _nextPortalId++,
+                    TemporaryPortalKind.OpenGate,
+                    TemporaryPortalSource.RemoteOpenGatePool,
+                    state.MapId,
+                    state.X,
+                    state.Y,
+                    int.MaxValue,
+                    OpenGateTeleportDelayMs,
+                    mainSlot)
+                {
+                    OwnerCharacterId = state.OwnerCharacterId,
+                    PartyId = state.PartyId,
+                    IsPrimarySlot = state.IsFirstSlot
+                };
+                _portals.Add(portal);
+                return new RemoteOpenGateRuntime(portal, mainSlot);
+            }
+
+            runtime.Portal.MapId = state.MapId;
+            runtime.Portal.X = state.X;
+            runtime.Portal.Y = state.Y;
+            runtime.Portal.OwnerCharacterId = state.OwnerCharacterId;
+            runtime.Portal.PartyId = state.PartyId;
+            runtime.Portal.IsPrimarySlot = state.IsFirstSlot;
+            runtime.MainSlot.SetPosition(state.X, state.Y);
+            runtime.MainSlot.SetDrawable(drawable);
+            return runtime;
+        }
+
+        private static RemoteOpenGateVisualMode ResolveRemoteOpenGateVisualMode(RemoteOpenGateState state, bool hasPartner)
+        {
+            return state.Phase switch
+            {
+                RemoteOpenGateVisualPhase.Opening => RemoteOpenGateVisualMode.Opening,
+                RemoteOpenGateVisualPhase.Removing => RemoteOpenGateVisualMode.Removing,
+                _ when hasPartner => RemoteOpenGateVisualMode.Linked,
+                _ => RemoteOpenGateVisualMode.Solo
+            };
+        }
+
+        private static BaseDXDrawableItem CreateRemoteOpenGateDrawable(
+            RemoteOpenGateState state,
+            bool hasPartner,
+            PortalVisualSet openingVisuals,
+            PortalVisualSet soloVisuals,
+            PortalVisualSet linkedVisuals,
+            PortalVisualSet removalVisuals)
+        {
+            return ResolveRemoteOpenGateVisualMode(state, hasPartner) switch
+            {
+                RemoteOpenGateVisualMode.Opening => openingVisuals.CreateOpeningDrawable(state.X, state.Y, state.PhaseStartedAt),
+                RemoteOpenGateVisualMode.Linked => linkedVisuals.CreateLoopDrawable(state.X, state.Y, state.PhaseStartedAt),
+                RemoteOpenGateVisualMode.Removing => removalVisuals.CreateOpeningDrawable(state.X, state.Y, state.PhaseStartedAt),
+                _ => soloVisuals.CreateLoopDrawable(state.X, state.Y, state.PhaseStartedAt)
+            };
+        }
+
+        private bool EnsureOpenGateVisuals(
+            out PortalVisualSet openingVisuals,
+            out PortalVisualSet soloVisuals,
+            out PortalVisualSet linkedVisuals,
+            out PortalVisualSet removalVisuals)
+        {
+            openingVisuals = _openGateOpeningVisuals;
+            soloVisuals = _openGateSoloVisuals;
+            linkedVisuals = _openGateLinkedVisuals;
+            removalVisuals = _openGateRemovalVisuals;
+            if (openingVisuals != null && soloVisuals != null && linkedVisuals != null && removalVisuals != null)
+            {
+                return true;
+            }
 
             WzImage skillImage = Program.FindImage("Skill", "3510.img");
             if (skillImage?["skill"]?["35101005"] is not WzSubProperty skillProperty)
-                return null;
+            {
+                return false;
+            }
 
-            _openGateVisuals = LoadPortalVisualSet(skillProperty["mDoor"], TemporaryPortalKind.OpenGate);
-            return _openGateVisuals;
+            openingVisuals = LoadPortalVisualSet(skillProperty["cDoor"], TemporaryPortalKind.OpenGate);
+            soloVisuals = LoadPortalVisualSet(skillProperty["sDoor"], TemporaryPortalKind.OpenGate);
+            linkedVisuals = LoadPortalVisualSet(skillProperty["mDoor"], TemporaryPortalKind.OpenGate);
+            removalVisuals = LoadPortalVisualSet(skillProperty["eDoor"], TemporaryPortalKind.OpenGate);
+            if (openingVisuals == null || soloVisuals == null || linkedVisuals == null || removalVisuals == null)
+            {
+                return false;
+            }
+
+            _openGateOpeningVisuals = openingVisuals;
+            _openGateSoloVisuals = soloVisuals;
+            _openGateLinkedVisuals = linkedVisuals;
+            _openGateRemovalVisuals = removalVisuals;
+            return true;
         }
 
         private PortalVisualSet LoadPortalVisualSet(WzImageProperty framesProperty, TemporaryPortalKind kind)
@@ -1068,8 +1326,13 @@ namespace HaCreator.MapSimulator.Fields
             int TownMapId);
 
         private sealed record RemoteTownPortalRuntimePair(
-            TemporaryPortal FieldPortal,
-            TemporaryPortal TownPortal);
+            RemoteTownPortalRuntime FieldRuntime,
+            RemoteTownPortalRuntime TownRuntime);
+
+        private sealed record RemoteTownPortalRuntime(
+            TemporaryPortal Portal,
+            PortalDrawableSlot MainSlot,
+            PortalDrawableSlot FrameSlot);
 
         private readonly record struct RemoteOpenGateState(
             uint OwnerCharacterId,
@@ -1078,12 +1341,33 @@ namespace HaCreator.MapSimulator.Fields
             short X,
             short Y,
             bool IsFirstSlot,
-            uint PartyId);
+            uint PartyId,
+            RemoteOpenGateVisualPhase Phase,
+            int PhaseStartedAt);
+
+        private sealed record RemoteOpenGateRuntime(
+            TemporaryPortal Portal,
+            PortalDrawableSlot MainSlot);
 
         internal enum RemoteTownPortalVisualPhase
         {
             Opening,
             Stable,
+            Removing
+        }
+
+        internal enum RemoteOpenGateVisualPhase
+        {
+            Opening,
+            Stable,
+            Removing
+        }
+
+        internal enum RemoteOpenGateVisualMode
+        {
+            Opening,
+            Solo,
+            Linked,
             Removing
         }
 
@@ -1286,6 +1570,59 @@ namespace HaCreator.MapSimulator.Fields
             }
         }
 
+        private sealed class PortalDrawableSlot : BaseDXDrawableItem
+        {
+            private BaseDXDrawableItem _drawable;
+
+            public PortalDrawableSlot(BaseDXDrawableItem drawable, float x, float y)
+                : base((drawable ?? throw new ArgumentNullException(nameof(drawable))).Frame0, false)
+            {
+                Position = new Point(-(int)MathF.Round(x), -(int)MathF.Round(y));
+                _drawable = drawable;
+            }
+
+            public void SetPosition(float x, float y)
+            {
+                Position = new Point(-(int)MathF.Round(x), -(int)MathF.Round(y));
+            }
+
+            public void SetDrawable(BaseDXDrawableItem drawable)
+            {
+                _drawable = drawable;
+            }
+
+            public override void Draw(
+                SpriteBatch sprite,
+                SkeletonMeshRenderer skeletonMeshRenderer,
+                GameTime gameTime,
+                int mapShiftX,
+                int mapShiftY,
+                int centerX,
+                int centerY,
+                ReflectionDrawableBoundary drawReflectionInfo,
+                RenderParameters renderParameters,
+                int TickCount)
+            {
+                if (_drawable == null)
+                {
+                    return;
+                }
+
+                _drawable.Position = Position;
+                _drawable.Draw(
+                    sprite,
+                    skeletonMeshRenderer,
+                    gameTime,
+                    mapShiftX,
+                    mapShiftY,
+                    centerX,
+                    centerY,
+                    drawReflectionInfo,
+                    renderParameters,
+                    TickCount);
+            }
+        }
+
         private static bool IsMysticDoorSkill(SkillCastInfo castInfo)
         {
             return castInfo?.SkillData != null
@@ -1323,6 +1660,29 @@ namespace HaCreator.MapSimulator.Fields
             }
 
             return incomingDestination;
+        }
+
+        internal static RemoteOpenGateVisualPhase AdvanceRemoteOpenGatePhaseForTesting(RemoteOpenGateVisualPhase phase, int phaseStartedAt, int currentTime)
+        {
+            if (phase == RemoteOpenGateVisualPhase.Opening
+                && unchecked(currentTime - phaseStartedAt) >= OpenGateOpeningDurationMs)
+            {
+                return RemoteOpenGateVisualPhase.Stable;
+            }
+
+            if (phase == RemoteOpenGateVisualPhase.Removing
+                && unchecked(currentTime - phaseStartedAt) >= OpenGateRemovalDurationMs)
+            {
+                return RemoteOpenGateVisualPhase.Removing;
+            }
+
+            return phase;
+        }
+
+        internal static RemoteOpenGateVisualMode ResolveRemoteOpenGateVisualModeForTesting(RemoteOpenGateVisualPhase phase, bool hasPartner)
+        {
+            RemoteOpenGateState state = new(0, 0, 0, 0, 0, false, 0, phase, 0);
+            return ResolveRemoteOpenGateVisualMode(state, hasPartner);
         }
     }
 }

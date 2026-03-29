@@ -36,6 +36,16 @@ namespace HaCreator.MapSimulator
                     snapshot.ActionName,
                     WeddingRemoteUserSourceTag,
                     isVisibleInWorld: true);
+
+                if (snapshot.MovementSnapshot != null)
+                {
+                    _remoteUserPool.TryApplyMoveSnapshot(
+                        characterId,
+                        snapshot.MovementSnapshot,
+                        ResolveWeddingMoveAction(snapshot),
+                        System.Environment.TickCount,
+                        out _);
+                }
             }
         }
 
@@ -52,6 +62,25 @@ namespace HaCreator.MapSimulator
             }
 
             return ResolveSyntheticRemoteUserId("wedding", snapshot.Name);
+        }
+
+        private static byte ResolveWeddingMoveAction(WeddingRemoteParticipantSnapshot snapshot)
+        {
+            int actionCode = snapshot.MovementSnapshot?.PassivePosition.Action switch
+            {
+                Physics.MoveAction.Walk => 1,
+                Physics.MoveAction.Jump => 2,
+                Physics.MoveAction.Fall => 3,
+                Physics.MoveAction.Ladder => 4,
+                Physics.MoveAction.Rope => 5,
+                Physics.MoveAction.Swim => 6,
+                Physics.MoveAction.Fly => 7,
+                Physics.MoveAction.Attack => 8,
+                Physics.MoveAction.Hit => 9,
+                Physics.MoveAction.Die => 10,
+                _ => 0
+            };
+            return (byte)((actionCode << 1) | (snapshot.FacingRight ? 0 : 1));
         }
     }
 }

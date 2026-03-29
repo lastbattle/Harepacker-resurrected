@@ -600,6 +600,7 @@ namespace HaCreator.MapSimulator
         private readonly TransportationField _transportField = new TransportationField();
 
         private readonly PassengerSyncController _passengerSync = new PassengerSyncController();
+        private readonly TransportationPacketInboxManager _transportPacketInbox = new TransportationPacketInboxManager();
 
         private readonly EscortFollowController _escortFollow = new EscortFollowController();
 
@@ -621,10 +622,12 @@ namespace HaCreator.MapSimulator
         private readonly CoconutOfficialSessionBridgeManager _coconutOfficialSessionBridge = new CoconutOfficialSessionBridgeManager();
 
         private readonly MemoryGamePacketInboxManager _memoryGamePacketInbox = new MemoryGamePacketInboxManager();
+        private readonly MemoryGameOfficialSessionBridgeManager _memoryGameOfficialSessionBridge = new MemoryGameOfficialSessionBridgeManager();
         private readonly SocialRoomEmployeeActorRuntime _socialRoomEmployeeActor = new SocialRoomEmployeeActorRuntime();
         private readonly AriantArenaPacketInboxManager _ariantArenaPacketInbox = new AriantArenaPacketInboxManager();
 
         private readonly MonsterCarnivalPacketInboxManager _monsterCarnivalPacketInbox = new MonsterCarnivalPacketInboxManager();
+        private readonly MonsterCarnivalOfficialSessionBridgeManager _monsterCarnivalOfficialSessionBridge = new MonsterCarnivalOfficialSessionBridgeManager();
         private readonly Dictionary<int, int> _monsterCarnivalGuardianSlotToReactorIndex = new();
         private readonly Dictionary<int, int> _monsterCarnivalGuardianReactorIndexToSlot = new();
 
@@ -687,10 +690,17 @@ namespace HaCreator.MapSimulator
         private readonly LoginRuntimeManager _loginRuntime = new LoginRuntimeManager();
 
         private readonly LoginPacketInboxManager _loginPacketInbox = new LoginPacketInboxManager();
+        private readonly LoginOfficialSessionBridgeManager _loginOfficialSessionBridge = new LoginOfficialSessionBridgeManager();
 
         private bool _loginPacketInboxEnabled = true;
 
         private int _loginPacketInboxConfiguredPort = LoginPacketInboxManager.DefaultPort;
+        private bool _loginOfficialSessionBridgeEnabled;
+        private bool _loginOfficialSessionBridgeUseDiscovery;
+        private int _loginOfficialSessionBridgeConfiguredListenPort = LoginOfficialSessionBridgeManager.DefaultListenPort;
+        private string _loginOfficialSessionBridgeConfiguredRemoteHost = "127.0.0.1";
+        private int _loginOfficialSessionBridgeConfiguredRemotePort;
+        private string _loginOfficialSessionBridgeConfiguredProcessSelector;
 
 
 
@@ -926,6 +936,8 @@ namespace HaCreator.MapSimulator
 
         private LoginCreateNewCharacterResultProfile _loginPacketCreateNewCharacterResultProfile;
         private LoginSelectCharacterResultProfile _loginPacketSelectCharacterResultProfile;
+        private LoginCheckPasswordResultProfile _loginPacketCheckPasswordResultProfile;
+        private LoginGuestIdLoginResultProfile _loginPacketGuestIdLoginResultProfile;
 
         private LoginExtraCharInfoResultProfile _loginPacketExtraCharInfoResultProfile;
 
@@ -7319,6 +7331,28 @@ namespace HaCreator.MapSimulator
                 }
             }
 
+            if (packetType == LoginPacketType.CheckPasswordResult &&
+                TryHandlePacketOwnedCheckPasswordResult(out string checkPasswordSummary, out bool continueRuntimeDispatch))
+            {
+                message = checkPasswordSummary;
+                if (!continueRuntimeDispatch)
+                {
+                    SyncLoginTitleWindow();
+                    RefreshWorldChannelSelectorWindows();
+                    SyncRecommendWorldWindow();
+                    SyncLoginEntryDialogs();
+                    return;
+                }
+
+                summaryOverride = checkPasswordSummary;
+            }
+
+            if (packetType == LoginPacketType.GuestIdLoginResult &&
+                TryHandlePacketOwnedGuestIdLoginResult(out string guestSummary))
+            {
+                summaryOverride = guestSummary;
+            }
+
 
 
             _loginRuntime.TryDispatchPacket(packetType, currTickCount, out message);
@@ -9622,6 +9656,324 @@ namespace HaCreator.MapSimulator
 
         }
 
+        private bool TryHandlePacketOwnedCheckPasswordResult(out string summary, out bool continueRuntimeDispatch)
+        {
+            summary = null;
+            continueRuntimeDispatch = true;
+
+            LoginCheckPasswordResultProfile packetProfile = _loginPacketCheckPasswordResultProfile;
+            if (!IsLoginRuntimeSceneActive || packetProfile == null)
+            {
+                return false;
+            }
+
+            if (!packetProfile.IsSuccess && !packetProfile.IsLicenseResult)
+            {
+                summary = BuildCheckPasswordResultFailureMessage(packetProfile);
+                _loginTitleStatusMessage = summary;
+                _loginCharacterStatusMessage = summary;
+                ShowCheckPasswordResultFailureDialog(packetProfile, summary);
+                continueRuntimeDispatch = false;
+                return true;
+            }
+
+            if (packetProfile.RequiresAccountRegistration)
+            {
+                summary = BuildCheckPasswordRegistrationSummary(packetProfile);
+                _loginTitleStatusMessage = summary;
+                _loginCharacterStatusMessage = summary;
+                ShowLoginUtilityDialog(
+                    "Login Utility",
+                    summary,
+                    LoginUtilityDialogButtonLayout.YesNo,
+                    LoginUtilityDialogAction.WebsiteHandoffDecision,
+                    noticeTextIndex: 31);
+                continueRuntimeDispatch = false;
+                return true;
+            }
+
+            if (packetProfile.IsLicenseResult)
+            {
+                summary = BuildCheckPasswordLicenseSummary(packetProfile);
+                _loginTitleStatusMessage = summary;
+                _loginCharacterStatusMessage = summary;
+                ShowLoginUtilityDialog(
+                    "Login Utility",
+                    summary,
+                    LoginUtilityDialogButtonLayout.Ok,
+                    LoginUtilityDialogAction.DismissOnly);
+                continueRuntimeDispatch = false;
+                return true;
+            }
+
+            ApplyPacketOwnedAccountInfo(packetProfile);
+            _loginAccountMigrationAccepted = true;
+            _loginAccountAcceptedEula = true;
+            summary = BuildCheckPasswordSuccessSummary(packetProfile);
+            _loginTitleStatusMessage = summary;
+            _loginCharacterStatusMessage = summary;
+            HideLoginUtilityDialog();
+            return true;
+        }
+
+        private bool TryHandlePacketOwnedGuestIdLoginResult(out string summary)
+        {
+            summary = null;
+
+            LoginGuestIdLoginResultProfile packetProfile = _loginPacketGuestIdLoginResultProfile;
+            if (!IsLoginRuntimeSceneActive || packetProfile == null)
+            {
+                return false;
+            }
+
+            if (!LoginGuestIdLoginResultCodec.IsSuccessCode(packetProfile.ResultCode))
+            {
+                summary = BuildGuestIdLoginFailureMessage(packetProfile);
+                _loginTitleStatusMessage = summary;
+                _loginCharacterStatusMessage = summary;
+                ShowGuestIdLoginFailureDialog(packetProfile, summary);
+                return true;
+            }
+
+            if (packetProfile.RegistrationStatusId is 2 or 3)
+            {
+                summary = BuildGuestIdLoginRegistrationSummary(packetProfile);
+                _loginTitleStatusMessage = summary;
+                _loginCharacterStatusMessage = summary;
+                ShowLoginUtilityDialog(
+                    "Login Utility",
+                    summary,
+                    LoginUtilityDialogButtonLayout.YesNo,
+                    LoginUtilityDialogAction.WebsiteHandoffDecision,
+                    noticeTextIndex: 31);
+                return true;
+            }
+
+            ApplyPacketOwnedAccountInfo(packetProfile);
+            _loginAccountMigrationAccepted = true;
+            _loginAccountAcceptedEula = true;
+            summary = BuildGuestIdLoginSuccessSummary(packetProfile);
+            _loginTitleStatusMessage = summary;
+            _loginCharacterStatusMessage = summary;
+            ShowLoginUtilityDialog(
+                "Login Utility",
+                summary,
+                LoginUtilityDialogButtonLayout.Ok,
+                LoginUtilityDialogAction.DismissOnly);
+            return true;
+        }
+
+        private void ApplyPacketOwnedAccountInfo(LoginCheckPasswordResultProfile packetProfile)
+        {
+            if (packetProfile == null)
+            {
+                return;
+            }
+
+            _loginPacketAccountDialogProfiles[LoginPacketType.AccountInfoResult] = new LoginAccountDialogPacketProfile
+            {
+                PacketType = LoginPacketType.AccountInfoResult,
+                Payload = packetProfile.Payload,
+                ResultCode = packetProfile.ResultCode,
+                AccountId = packetProfile.AccountId,
+                Gender = packetProfile.Gender,
+                GradeCode = packetProfile.GradeCode,
+                AccountFlags = packetProfile.AccountFlags,
+                CountryId = packetProfile.CountryId,
+                ClubId = packetProfile.ClubId,
+                PurchaseExperience = packetProfile.PurchaseExperience,
+                ChatBlockReason = packetProfile.ChatBlockReason,
+                ChatUnblockFileTime = packetProfile.ChatUnblockFileTime,
+                RegisterDateFileTime = packetProfile.RegisterDateFileTime,
+                CharacterCount = packetProfile.CharacterCount,
+                ClientKey = packetProfile.ClientKey,
+            };
+        }
+
+        private void ApplyPacketOwnedAccountInfo(LoginGuestIdLoginResultProfile packetProfile)
+        {
+            if (packetProfile == null)
+            {
+                return;
+            }
+
+            _loginPacketAccountDialogProfiles[LoginPacketType.AccountInfoResult] = new LoginAccountDialogPacketProfile
+            {
+                PacketType = LoginPacketType.AccountInfoResult,
+                Payload = packetProfile.Payload,
+                ResultCode = packetProfile.ResultCode,
+                AccountId = packetProfile.AccountId,
+                Gender = packetProfile.Gender,
+                GradeCode = packetProfile.GradeCode,
+                CountryId = packetProfile.CountryId,
+                ClubId = packetProfile.ClubId,
+                PurchaseExperience = packetProfile.PurchaseExperience,
+                ChatBlockReason = packetProfile.ChatBlockReason,
+                ChatUnblockFileTime = packetProfile.ChatUnblockFileTime,
+                RegisterDateFileTime = packetProfile.RegisterDateFileTime,
+                CharacterCount = packetProfile.CharacterCount,
+            };
+        }
+
+        private static string BuildCheckPasswordSuccessSummary(LoginCheckPasswordResultProfile packetProfile)
+        {
+            string accountText = packetProfile?.AccountId.HasValue == true
+                ? $" for account {packetProfile.AccountId.Value}"
+                : string.Empty;
+            string characterText = packetProfile?.CharacterCount.HasValue == true
+                ? $" Character count {packetProfile.CharacterCount.Value}."
+                : string.Empty;
+            string keyText = packetProfile?.ClientKey?.Length == 8
+                ? $" Client key {Convert.ToHexString(packetProfile.ClientKey)}."
+                : string.Empty;
+            return $"Packet-authored CheckPasswordResult accepted the login bootstrap{accountText} and preserved the client-owned account-info payload.{characterText}{keyText}".Trim();
+        }
+
+        private static string BuildCheckPasswordLicenseSummary(LoginCheckPasswordResultProfile packetProfile)
+        {
+            return $"Packet-authored CheckPasswordResult returned the client license-dialog path (result {packetProfile?.ResultCode}, mode {packetProfile?.AccountBootstrapMode}). The simulator surfaces the login-owner handoff but does not consume the live license dialog response.";
+        }
+
+        private static string BuildCheckPasswordRegistrationSummary(LoginCheckPasswordResultProfile packetProfile)
+        {
+            return $"Packet-authored CheckPasswordResult requested the client website handoff for account bootstrap mode {packetProfile?.AccountBootstrapMode}.";
+        }
+
+        private static string BuildCheckPasswordResultFailureMessage(LoginCheckPasswordResultProfile packetProfile)
+        {
+            string baseMessage = packetProfile?.ResultCode switch
+            {
+                4 => "Packet-authored CheckPasswordResult rejected the account password.",
+                5 => "Packet-authored CheckPasswordResult rejected the account ID.",
+                7 => "Packet-authored CheckPasswordResult returned the login flow to title.",
+                10 => "Packet-authored CheckPasswordResult blocked the login request.",
+                11 => "Packet-authored CheckPasswordResult reported that the service is unavailable.",
+                25 => "Packet-authored CheckPasswordResult reported the client warning path 40.",
+                _ => $"Packet-authored CheckPasswordResult failed with result {packetProfile?.ResultCode}.",
+            };
+
+            if (packetProfile?.Payload?.Length > 0)
+            {
+                baseMessage += $" Bootstrap mode {packetProfile.AccountBootstrapMode}.";
+            }
+
+            return baseMessage;
+        }
+
+        private void ShowCheckPasswordResultFailureDialog(LoginCheckPasswordResultProfile packetProfile, string message)
+        {
+            int? noticeTextIndex = packetProfile?.ResultCode switch
+            {
+                255 or 6 or 8 or 9 => 15,
+                2 or 3 => 16,
+                4 => 3,
+                5 => 20,
+                7 => 17,
+                10 => 19,
+                11 => 14,
+                13 => 21,
+                14 => 27,
+                15 => 26,
+                16 or 21 => 33,
+                17 => 27,
+                25 => 40,
+                _ => null,
+            };
+
+            if (packetProfile?.ResultCode == 7)
+            {
+                _loginRuntime.ForceStep(LoginStep.Title, "Packet-authored CheckPasswordResult returned the login flow to title.");
+            }
+
+            if (packetProfile?.ResultCode is 14 or 15)
+            {
+                ShowLoginUtilityDialog(
+                    "Login Utility",
+                    message,
+                    LoginUtilityDialogButtonLayout.YesNo,
+                    LoginUtilityDialogAction.WebsiteHandoffDecision,
+                    noticeTextIndex: noticeTextIndex);
+                return;
+            }
+
+            ShowLoginUtilityDialog(
+                "Login Utility",
+                message,
+                LoginUtilityDialogButtonLayout.Ok,
+                LoginUtilityDialogAction.DismissOnly,
+                noticeTextIndex: noticeTextIndex);
+        }
+
+        private static string BuildGuestIdLoginSuccessSummary(LoginGuestIdLoginResultProfile packetProfile)
+        {
+            string accountText = packetProfile?.AccountId.HasValue == true
+                ? $" for account {packetProfile.AccountId.Value}"
+                : string.Empty;
+            string urlText = string.IsNullOrWhiteSpace(packetProfile?.GuestRegistrationUrl)
+                ? string.Empty
+                : " Guest registration URL preserved.";
+            return $"Packet-authored GuestIdLoginResult accepted the guest bootstrap{accountText} and surfaced the client-owned license path.{urlText}".Trim();
+        }
+
+        private static string BuildGuestIdLoginRegistrationSummary(LoginGuestIdLoginResultProfile packetProfile)
+        {
+            return $"Packet-authored GuestIdLoginResult requested the client guest-registration website handoff for status {packetProfile?.RegistrationStatusId}.";
+        }
+
+        private static string BuildGuestIdLoginFailureMessage(LoginGuestIdLoginResultProfile packetProfile)
+        {
+            return packetProfile?.ResultCode switch
+            {
+                4 => "Packet-authored GuestIdLoginResult rejected the guest login request.",
+                7 => "Packet-authored GuestIdLoginResult returned the login flow to title.",
+                _ => $"Packet-authored GuestIdLoginResult failed with result {packetProfile?.ResultCode}.",
+            };
+        }
+
+        private void ShowGuestIdLoginFailureDialog(LoginGuestIdLoginResultProfile packetProfile, string message)
+        {
+            int? noticeTextIndex = packetProfile?.ResultCode switch
+            {
+                255 or 6 or 8 or 9 => 15,
+                2 or 3 => 16,
+                4 => 3,
+                5 => 20,
+                7 => 17,
+                10 => 19,
+                11 => 14,
+                13 => 21,
+                14 => 27,
+                15 => 26,
+                16 or 21 => 33,
+                17 => 27,
+                25 => 40,
+                _ => null,
+            };
+
+            if (packetProfile?.ResultCode == 7)
+            {
+                _loginRuntime.ForceStep(LoginStep.Title, "Packet-authored GuestIdLoginResult returned the login flow to title.");
+            }
+
+            if (packetProfile?.ResultCode is 14 or 15)
+            {
+                ShowLoginUtilityDialog(
+                    "Login Utility",
+                    message,
+                    LoginUtilityDialogButtonLayout.YesNo,
+                    LoginUtilityDialogAction.WebsiteHandoffDecision,
+                    noticeTextIndex: noticeTextIndex);
+                return;
+            }
+
+            ShowLoginUtilityDialog(
+                "Login Utility",
+                message,
+                LoginUtilityDialogButtonLayout.Ok,
+                LoginUtilityDialogAction.DismissOnly,
+                noticeTextIndex: noticeTextIndex);
+        }
+
 
 
         private static bool ShouldReturnSelectCharacterFailureToTitle(LoginSelectCharacterResultProfile packetProfile)
@@ -10948,6 +11300,8 @@ namespace HaCreator.MapSimulator
                 storedEntries,
 
 
+
+                10000L,
 
                 _loginAccountPicCode,
 
@@ -15098,6 +15452,8 @@ namespace HaCreator.MapSimulator
             _loginPacketViewAllCharEntries.Clear();
 
             _loginPacketSelectCharacterResultProfile = null;
+            _loginPacketCheckPasswordResultProfile = null;
+            _loginPacketGuestIdLoginResultProfile = null;
 
             _loginPacketExtraCharInfoResultProfile = null;
 
@@ -16328,10 +16684,13 @@ namespace HaCreator.MapSimulator
             _coconutOfficialSessionBridge.Dispose();
 
             _ariantArenaPacketInbox.Dispose();
+            _monsterCarnivalPacketInbox.Dispose();
+            _monsterCarnivalOfficialSessionBridge.Dispose();
 
             _monsterCarnivalPacketInbox.Dispose();
 
             _dojoPacketInbox.Dispose();
+            _transportPacketInbox.Dispose();
 
             _partyRaidPacketInbox.Dispose();
 
@@ -20168,50 +20527,7 @@ namespace HaCreator.MapSimulator
 
 
             QuestActionResult result = _questRuntime.TryPerformPrimaryAction(questId, _activeNpcInteractionNpcId, _playerManager?.Player?.Build);
-
-            if (result?.Messages != null)
-
-            {
-
-                for (int i = 0; i < result.Messages.Count; i++)
-
-                {
-
-                    if (!string.IsNullOrWhiteSpace(result.Messages[i]))
-
-                    {
-
-                        _chat.AddMessage(result.Messages[i], new Color(255, 228, 151), currTickCount);
-
-                    }
-
-                }
-
-            }
-
-
-
-            if (result?.StateChanged == true)
-
-            {
-                RefreshQuestUiState();
-                SelectQuestInActiveWindow(result.PreferredQuestId ?? questId);
-                UpdateQuestDetailWindow();
-
-                PublishDynamicObjectTagStatesForScriptNames(result.PublishedScriptNames, currTickCount);
-
-                ShowNpcQuestFeedback(result, currTickCount);
-
-                if (_activeNpcInteractionNpc != null)
-                {
-                    OpenNpcInteraction(_activeNpcInteractionNpc, result.PreferredQuestId ?? questId);
-                }
-                else
-                {
-                    _npcInteractionOverlay?.Close();
-                }
-
-            }
+            HandleNpcOverlayQuestActionResult(result, questId);
 
         }
 
@@ -28392,6 +28708,7 @@ namespace HaCreator.MapSimulator
 
             // Initialize with Character.wz and Skill.wz (or null for placeholder)
             _playerManager.Initialize(characterWz, skillWz);
+            _playerManager.SetMobSkillRuntimeResolver(ResolveMobSkillRuntimeData);
             _remoteUserPool.Initialize(_playerManager.Loader, _playerManager.SkillLoader);
             _summonedPool.Initialize(
                 _playerManager.SkillLoader,
@@ -29019,6 +29336,7 @@ namespace HaCreator.MapSimulator
             long fieldLimit = _mapBoard?.MapInfo?.fieldLimit ?? 0;
 
             _playerManager.Skills.SetAdditionalStateRestrictionMessageProvider(GetPlayerSkillStateRestrictionMessage);
+            _playerManager.Skills.SetCurrentMapInfoProvider(() => _mapBoard?.MapInfo);
 
             _playerManager.Skills.SetFieldSkillRestrictionEvaluator(
 
@@ -29746,42 +30064,74 @@ namespace HaCreator.MapSimulator
                 QuestWindowActionKind.QuestDeliveryComplete => HandleQuestDetailDeliveryAction(_activeQuestDetailQuestId, true),
                 _ => null
             };
+            HandleQuestWindowActionResult(result);
 
+        }
+
+        private void HandleQuestWindowActionResult(QuestWindowActionResult result)
+        {
+            if (result?.PendingRewardChoicePrompt != null)
+            {
+                OpenQuestRewardChoicePrompt(result.PendingRewardChoicePrompt, PendingQuestRewardChoiceSource.QuestWindow);
+                return;
+            }
 
             if (result?.Messages != null)
-
             {
-
                 for (int i = 0; i < result.Messages.Count; i++)
-
                 {
-
                     if (!string.IsNullOrWhiteSpace(result.Messages[i]))
-
                     {
-
                         _chat.AddMessage(result.Messages[i], new Color(255, 228, 151), currTickCount);
-
                     }
-
                 }
-
             }
-
-
 
             if (result?.StateChanged == true)
-
             {
-
                 RefreshQuestUiState();
-
                 SelectQuestInActiveWindow(_activeQuestDetailQuestId);
-
                 UpdateQuestDetailWindow();
+            }
+        }
 
+        private void HandleNpcOverlayQuestActionResult(QuestActionResult result, int questId)
+        {
+            if (result?.PendingRewardChoicePrompt != null)
+            {
+                OpenQuestRewardChoicePrompt(result.PendingRewardChoicePrompt, PendingQuestRewardChoiceSource.NpcOverlay);
+                return;
             }
 
+            if (result?.Messages != null)
+            {
+                for (int i = 0; i < result.Messages.Count; i++)
+                {
+                    if (!string.IsNullOrWhiteSpace(result.Messages[i]))
+                    {
+                        _chat.AddMessage(result.Messages[i], new Color(255, 228, 151), currTickCount);
+                    }
+                }
+            }
+
+            if (result?.StateChanged == true)
+            {
+                RefreshQuestUiState();
+                SelectQuestInActiveWindow(result.PreferredQuestId ?? questId);
+                UpdateQuestDetailWindow();
+
+                PublishDynamicObjectTagStatesForScriptNames(result.PublishedScriptNames, currTickCount);
+                ShowNpcQuestFeedback(result, currTickCount);
+
+                if (_activeNpcInteractionNpc != null)
+                {
+                    OpenNpcInteraction(_activeNpcInteractionNpc, result.PreferredQuestId ?? questId);
+                }
+                else
+                {
+                    _npcInteractionOverlay?.Close();
+                }
+            }
         }
 
 
@@ -34959,6 +35309,7 @@ namespace HaCreator.MapSimulator
             {
 
                 _memoryGamePacketInbox.Stop();
+                _memoryGameOfficialSessionBridge.Stop();
 
                 return;
 
@@ -35013,6 +35364,7 @@ namespace HaCreator.MapSimulator
             {
 
                 _monsterCarnivalPacketInbox.Stop();
+                _monsterCarnivalOfficialSessionBridge.Stop();
 
             }
 
@@ -35307,6 +35659,64 @@ namespace HaCreator.MapSimulator
                     ShowMiniRoomWindow();
 
                 }
+
+            }
+
+            while (_memoryGameOfficialSessionBridge.TryDequeue(out MemoryGamePacketInboxMessage bridgeMessage))
+
+            {
+
+                if (bridgeMessage == null)
+
+                {
+
+                    continue;
+
+                }
+
+
+
+                bool applied = field.TryDispatchMiniRoomPacket(bridgeMessage.Payload, currentTickCount, out string bridgeResultMessage);
+
+                _memoryGameOfficialSessionBridge.RecordDispatchResult(
+
+                    bridgeMessage.Source,
+
+                    applied,
+
+                    applied ? field.DescribeStatus() : bridgeResultMessage);
+
+
+
+                if (applied)
+
+                {
+
+                    ShowMiniRoomWindow();
+
+                }
+
+            }
+
+        }
+
+        private void SyncTransportPacketInboxState()
+
+        {
+
+            if (IsTransitVoyageWrapperMap(_mapBoard?.MapInfo) && _transportField.HasRouteConfiguration)
+
+            {
+
+                _transportPacketInbox.Start();
+
+            }
+
+            else
+
+            {
+
+                _transportPacketInbox.Stop();
 
             }
 
@@ -36049,6 +36459,44 @@ namespace HaCreator.MapSimulator
 
             }
 
+            while (_monsterCarnivalOfficialSessionBridge.TryDequeue(out MonsterCarnivalPacketInboxMessage bridgeMessage))
+
+            {
+
+                if (!field.IsVisible)
+
+                {
+
+                    _monsterCarnivalOfficialSessionBridge.RecordDispatchResult(
+
+                        bridgeMessage.Source,
+
+                        bridgeMessage.PacketType,
+
+                        success: false,
+
+                        message: "runtime inactive");
+
+                    continue;
+
+                }
+
+
+
+                bool applied = field.TryApplyRawPacket(bridgeMessage.PacketType, bridgeMessage.Payload, currentTickCount, out string bridgeErrorMessage);
+
+                _monsterCarnivalOfficialSessionBridge.RecordDispatchResult(
+
+                    bridgeMessage.Source,
+
+                    bridgeMessage.PacketType,
+
+                    applied,
+
+                    applied ? field.DescribeStatus() : bridgeErrorMessage);
+
+            }
+
         }
 
 
@@ -36218,6 +36666,130 @@ namespace HaCreator.MapSimulator
                     applied ? field.DescribeStatus() : resultMessage);
 
             }
+
+        }
+
+        private void DrainTransportPacketInbox()
+
+        {
+
+            while (_transportPacketInbox.TryDequeue(out TransportationPacketInboxMessage message))
+
+            {
+
+                if (!IsTransitVoyageWrapperMap(_mapBoard?.MapInfo) || !_transportField.HasRouteConfiguration)
+
+                {
+
+                    _transportPacketInbox.RecordDispatchResult(message.Source, message, success: false, result: "runtime inactive");
+
+                    continue;
+
+                }
+
+
+
+                bool applied = TryApplyTransportInboxMessage(message, out string resultMessage);
+                _transportPacketInbox.RecordDispatchResult(
+
+                    message.Source,
+
+                    message,
+
+                    applied,
+
+                    applied ? _transportField.DescribeStatus() : resultMessage);
+
+            }
+
+        }
+
+        private bool TryApplyTransportInboxMessage(TransportationPacketInboxMessage message, out string resultMessage)
+
+        {
+
+            resultMessage = _transportField.DescribeStatus();
+
+            if (message == null)
+
+            {
+
+                resultMessage = "Transport inbox message is missing.";
+
+                return false;
+
+            }
+
+
+
+            byte[] payload = message.Payload ?? Array.Empty<byte>();
+            switch (message.PacketType)
+
+            {
+
+                case TransportationPacketInboxManager.PacketTypeContiMove:
+
+                    if (payload.Length < 2)
+
+                    {
+
+                        resultMessage = "Transport OnContiMove payload must contain subtype and value bytes.";
+
+                        return false;
+
+                    }
+
+
+
+                    return payload[0] switch
+
+                    {
+
+                        TransportationPacketInboxManager.ContiMoveStartShip => _transportField.TryApplyStartShipMovePacket(payload[1], out resultMessage),
+
+                        TransportationPacketInboxManager.ContiMoveMoveField => _transportField.TryApplyMoveFieldPacket(payload[1], out resultMessage),
+
+                        TransportationPacketInboxManager.ContiMoveEndShip => _transportField.TryApplyEndShipMovePacket(payload[1], out resultMessage),
+
+                        _ => FailTransportMessage(
+                            $"Ignored OnContiMove subtype {payload[0]}; client only handles 8, 10, and 12.",
+                            out resultMessage)
+
+                    };
+
+                case TransportationPacketInboxManager.PacketTypeContiState:
+
+                    if (payload.Length < 2)
+
+                    {
+
+                        resultMessage = "Transport OnContiState payload must contain state and value bytes.";
+
+                        return false;
+
+                    }
+
+
+
+                    return _transportField.TryApplyContiState(payload[0], payload[1], out resultMessage);
+
+                default:
+
+                    resultMessage = $"Unsupported transport packet opcode: {message.PacketType}";
+
+                    return false;
+
+            }
+
+        }
+
+        private static bool FailTransportMessage(string message, out string resultMessage)
+
+        {
+
+            resultMessage = message;
+
+            return false;
 
         }
 
@@ -37487,6 +38059,8 @@ namespace HaCreator.MapSimulator
 
             }
 
+            EnsureLoginOfficialSessionBridgeState(shouldRun);
+
         }
 
 
@@ -37504,6 +38078,190 @@ namespace HaCreator.MapSimulator
                 : $"configured for 127.0.0.1:{_loginPacketInboxConfiguredPort}";
 
             return $"Login packet inbox {enabledText}, {listeningText}, received {_loginPacketInbox.ReceivedCount} packet(s). Formats: <packet> <args>, <packet>:<args>, <packet>=<args>, /loginpacket <packet> <args>, or a scripted stream via /loginpacket stream <line1 | line2 | ...>.";
+
+        }
+
+        private void EnsureLoginOfficialSessionBridgeState(bool shouldRun)
+
+        {
+
+            if (!shouldRun || !_loginOfficialSessionBridgeEnabled)
+
+            {
+
+                if (_loginOfficialSessionBridge.IsRunning)
+
+                {
+
+                    _loginOfficialSessionBridge.Stop();
+
+                }
+
+
+
+                return;
+
+            }
+
+
+
+            if (_loginOfficialSessionBridgeConfiguredListenPort <= 0 ||
+                _loginOfficialSessionBridgeConfiguredListenPort > ushort.MaxValue)
+
+            {
+
+                if (_loginOfficialSessionBridge.IsRunning)
+
+                {
+
+                    _loginOfficialSessionBridge.Stop();
+
+                }
+
+
+
+                _loginOfficialSessionBridgeEnabled = false;
+                _loginOfficialSessionBridgeConfiguredListenPort = LoginOfficialSessionBridgeManager.DefaultListenPort;
+                return;
+
+            }
+
+
+
+            if (_loginOfficialSessionBridgeUseDiscovery)
+
+            {
+
+                if (_loginOfficialSessionBridgeConfiguredRemotePort <= 0 ||
+                    _loginOfficialSessionBridgeConfiguredRemotePort > ushort.MaxValue)
+
+                {
+
+                    if (_loginOfficialSessionBridge.IsRunning)
+
+                    {
+
+                        _loginOfficialSessionBridge.Stop();
+
+                    }
+
+
+
+                    return;
+
+                }
+
+
+
+                if (_loginOfficialSessionBridge.IsRunning &&
+                    _loginOfficialSessionBridge.ListenPort == _loginOfficialSessionBridgeConfiguredListenPort)
+
+                {
+
+                    return;
+
+                }
+
+
+
+                if (_loginOfficialSessionBridge.IsRunning)
+
+                {
+
+                    _loginOfficialSessionBridge.Stop();
+
+                }
+
+
+
+                _loginOfficialSessionBridge.TryStartFromDiscovery(
+                    _loginOfficialSessionBridgeConfiguredListenPort,
+                    _loginOfficialSessionBridgeConfiguredRemotePort,
+                    _loginOfficialSessionBridgeConfiguredProcessSelector,
+                    out _);
+                return;
+
+            }
+
+
+
+            if (_loginOfficialSessionBridgeConfiguredRemotePort <= 0 ||
+                _loginOfficialSessionBridgeConfiguredRemotePort > ushort.MaxValue ||
+                string.IsNullOrWhiteSpace(_loginOfficialSessionBridgeConfiguredRemoteHost))
+
+            {
+
+                if (_loginOfficialSessionBridge.IsRunning)
+
+                {
+
+                    _loginOfficialSessionBridge.Stop();
+
+                }
+
+
+
+                return;
+
+            }
+
+
+
+            if (_loginOfficialSessionBridge.IsRunning &&
+                _loginOfficialSessionBridge.ListenPort == _loginOfficialSessionBridgeConfiguredListenPort &&
+                string.Equals(_loginOfficialSessionBridge.RemoteHost, _loginOfficialSessionBridgeConfiguredRemoteHost, StringComparison.OrdinalIgnoreCase) &&
+                _loginOfficialSessionBridge.RemotePort == _loginOfficialSessionBridgeConfiguredRemotePort)
+
+            {
+
+                return;
+
+            }
+
+
+
+            if (_loginOfficialSessionBridge.IsRunning)
+
+            {
+
+                _loginOfficialSessionBridge.Stop();
+
+            }
+
+
+
+            _loginOfficialSessionBridge.Start(
+                _loginOfficialSessionBridgeConfiguredListenPort,
+                _loginOfficialSessionBridgeConfiguredRemoteHost,
+                _loginOfficialSessionBridgeConfiguredRemotePort);
+
+        }
+
+        private string DescribeLoginOfficialSessionBridgeStatus()
+
+        {
+
+            string enabledText = _loginOfficialSessionBridgeEnabled ? "enabled" : "disabled";
+            string modeText = _loginOfficialSessionBridgeUseDiscovery ? "auto-discovery" : "direct proxy";
+            string configuredTarget = _loginOfficialSessionBridgeUseDiscovery
+                ? $"discover remote port {_loginOfficialSessionBridgeConfiguredRemotePort}"
+                : $"{_loginOfficialSessionBridgeConfiguredRemoteHost}:{_loginOfficialSessionBridgeConfiguredRemotePort}";
+            string processText = string.IsNullOrWhiteSpace(_loginOfficialSessionBridgeConfiguredProcessSelector)
+                ? string.Empty
+                : $" for {_loginOfficialSessionBridgeConfiguredProcessSelector}";
+            string listeningText = _loginOfficialSessionBridge.IsRunning
+                ? $"listening on 127.0.0.1:{_loginOfficialSessionBridge.ListenPort}"
+                : $"configured for 127.0.0.1:{_loginOfficialSessionBridgeConfiguredListenPort}";
+
+            return $"Login packet session bridge {enabledText}, {modeText}, {listeningText}, target {configuredTarget}{processText}, received {_loginOfficialSessionBridge.ReceivedCount} packet(s). {_loginOfficialSessionBridge.LastStatus}";
+
+        }
+
+        private string DescribeLoginPacketTransportStatus()
+
+        {
+
+            return $"{DescribeLoginPacketInboxStatus()}{Environment.NewLine}{DescribeLoginOfficialSessionBridgeStatus()}";
 
         }
 
@@ -37556,6 +38314,40 @@ namespace HaCreator.MapSimulator
 
 
                 DispatchLoginRuntimePacket(message.PacketType, out _);
+
+            }
+
+            while (_loginOfficialSessionBridge.TryDequeue(out LoginPacketInboxMessage bridgedMessage))
+
+            {
+
+                if (bridgedMessage == null)
+
+                {
+
+                    continue;
+
+                }
+
+
+
+                string[] args = bridgedMessage.Arguments?.Length > 0
+
+                    ? bridgedMessage.Arguments
+
+                    : ParseLoginPacketInboxArguments(bridgedMessage.RawText);
+
+                if (!TryConfigureLoginPacketPayload(bridgedMessage.PacketType, args, out _, out _))
+
+                {
+
+                    continue;
+
+                }
+
+
+
+                DispatchLoginRuntimePacket(bridgedMessage.PacketType, out _);
 
             }
 

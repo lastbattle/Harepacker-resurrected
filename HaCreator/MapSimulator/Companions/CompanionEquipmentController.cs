@@ -1146,7 +1146,8 @@ namespace HaCreator.MapSimulator.Companions
         internal static bool HasMechanicOwnerState(CharacterBuild build)
         {
             int jobBook = Math.Abs(build?.Job ?? 0) / 10;
-            return jobBook is >= 350 and <= 351;
+            return jobBook is >= 350 and <= 351
+                   && (build?.Level ?? 0) >= 50;
         }
 
         internal static bool HasAndroidOwnerState(CharacterBuild build)

@@ -10,6 +10,7 @@ namespace HaCreator.MapSimulator.Pools
 {
     public enum RemoteUserPacketType
     {
+        UserFollowCharacter = -1001,
         UserEnterField = 179,
         UserLeaveField = 180,
         UserMove = 181,
@@ -36,11 +37,18 @@ namespace HaCreator.MapSimulator.Pools
 
     public readonly record struct RemoteUserLeaveFieldPacket(int CharacterId);
 
+    public readonly record struct RemoteUserFollowCharacterPacket(
+        int CharacterId,
+        int DriverId,
+        bool TransferField,
+        int? TransferX,
+        int? TransferY);
+
     public readonly record struct RemoteUserMovePacket(int CharacterId, PlayerMovementSyncSnapshot Snapshot, byte MoveAction);
 
     public readonly record struct RemoteUserMoveActionPacket(int CharacterId, byte MoveAction);
 
-    public readonly record struct RemoteUserPortableChairPacket(int CharacterId, int? ChairItemId);
+    public readonly record struct RemoteUserPortableChairPacket(int CharacterId, int? ChairItemId, int? PairCharacterId);
 
     public readonly record struct RemoteUserMountPacket(int CharacterId, int? TamingMobItemId);
 
@@ -95,6 +103,40 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             return false;
+        }
+
+        public static bool TryParseFollowCharacter(ReadOnlySpan<byte> payload, out RemoteUserFollowCharacterPacket packet, out string error)
+        {
+            packet = default;
+            error = null;
+
+            try
+            {
+                var reader = new PacketReader(payload);
+                int characterId = reader.ReadInt32();
+                int driverId = reader.ReadInt32();
+                bool transferField = false;
+                int? transferX = null;
+                int? transferY = null;
+
+                if (driverId == 0)
+                {
+                    transferField = reader.ReadByte() != 0;
+                    if (transferField)
+                    {
+                        transferX = reader.ReadInt32();
+                        transferY = reader.ReadInt32();
+                    }
+                }
+
+                packet = new RemoteUserFollowCharacterPacket(characterId, driverId, transferField, transferX, transferY);
+                return true;
+            }
+            catch (InvalidOperationException ex)
+            {
+                error = ex.Message;
+                return false;
+            }
         }
 
         private static bool TryParseCompactEnterField(ReadOnlySpan<byte> payload, out RemoteUserEnterFieldPacket packet, out string error)
@@ -274,12 +316,12 @@ namespace HaCreator.MapSimulator.Pools
         {
             packet = default;
             error = null;
-            if (!TryParseOptionalItemPacket(payload, "portable-chair", out int characterId, out int? itemId, out error))
+            if (!TryParseOptionalItemPacket(payload, "portable-chair", out int characterId, out int? itemId, out error, out int? pairCharacterId))
             {
                 return false;
             }
 
-            packet = new RemoteUserPortableChairPacket(characterId, itemId);
+            packet = new RemoteUserPortableChairPacket(characterId, itemId, pairCharacterId);
             return true;
         }
 
@@ -287,7 +329,7 @@ namespace HaCreator.MapSimulator.Pools
         {
             packet = default;
             error = null;
-            if (!TryParseOptionalItemPacket(payload, "mount", out int characterId, out int? itemId, out error))
+            if (!TryParseOptionalItemPacket(payload, "mount", out int characterId, out int? itemId, out error, out int? _))
             {
                 return false;
             }
@@ -543,14 +585,22 @@ namespace HaCreator.MapSimulator.Pools
             return true;
         }
 
-        private static bool TryParseOptionalItemPacket(ReadOnlySpan<byte> payload, string packetName, out int characterId, out int? itemId, out string error)
+        private static bool TryParseOptionalItemPacket(
+            ReadOnlySpan<byte> payload,
+            string packetName,
+            out int characterId,
+            out int? itemId,
+            out string error,
+            out int? pairCharacterId)
         {
             error = null;
             characterId = 0;
             itemId = null;
-            if (payload.Length != sizeof(int) * 2)
+            pairCharacterId = null;
+            if (payload.Length != sizeof(int) * 2
+                && payload.Length != sizeof(int) * 3)
             {
-                error = $"Remote user {packetName} packet expects 8 bytes but received {payload.Length}.";
+                error = $"Remote user {packetName} packet expects 8 or 12 bytes but received {payload.Length}.";
                 return false;
             }
 
@@ -563,6 +613,15 @@ namespace HaCreator.MapSimulator.Pools
                 | (payload[6] << 16)
                 | (payload[7] << 24);
             itemId = rawItemId <= 0 ? null : rawItemId;
+            if (payload.Length >= sizeof(int) * 3)
+            {
+                int rawPairCharacterId = payload[8]
+                    | (payload[9] << 8)
+                    | (payload[10] << 16)
+                    | (payload[11] << 24);
+                pairCharacterId = rawPairCharacterId <= 0 ? null : rawPairCharacterId;
+            }
+
             return true;
         }
 

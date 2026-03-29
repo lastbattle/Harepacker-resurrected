@@ -431,6 +431,9 @@ namespace HaCreator.MapSimulator.Managers
                         SuccessfulCrafts = Math.Max(0, entry.Value.SuccessfulCrafts),
                         DiscoveredRecipeIds = entry.Value.DiscoveredRecipeIds != null
                             ? new HashSet<int>(entry.Value.DiscoveredRecipeIds.Where(static id => id > 0))
+                            : new HashSet<int>(),
+                        UnlockedHiddenRecipeIds = entry.Value.UnlockedHiddenRecipeIds != null
+                            ? new HashSet<int>(entry.Value.UnlockedHiddenRecipeIds.Where(static id => id > 0))
                             : new HashSet<int>()
                     };
                 }

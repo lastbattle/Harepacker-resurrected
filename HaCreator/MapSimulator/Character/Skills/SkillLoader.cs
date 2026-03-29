@@ -45,6 +45,19 @@ namespace HaCreator.MapSimulator.Character.Skills
             "attack0"
         };
 
+        private static readonly string[] SupplementalSummonAnimationBranches =
+        {
+            "heal",
+            "support",
+            "subsummon",
+            "skill1",
+            "skill2",
+            "skill3",
+            "skill4",
+            "skill5",
+            "skill6"
+        };
+
         private static readonly string[] PersistentAvatarEffectBranches =
         {
             "special",
@@ -1754,8 +1767,33 @@ namespace HaCreator.MapSimulator.Character.Skills
                   skill.SummonHitAnimation = hitAnimation;
               }
 
+              LoadSupplementalSummonAnimations(skill, summonNode, branchNames);
               PopulateSummonHitTimingMetadata(skill, attackBranchName, hitNode);
           }
+
+        private void LoadSupplementalSummonAnimations(SkillData skill, WzImageProperty summonNode, IEnumerable<string> branchNames)
+        {
+            if (skill == null || summonNode == null || branchNames == null)
+            {
+                return;
+            }
+
+            foreach (string branchName in branchNames)
+            {
+                if (string.IsNullOrWhiteSpace(branchName)
+                    || Array.IndexOf(SupplementalSummonAnimationBranches, branchName) < 0
+                    || skill.SummonNamedAnimations.ContainsKey(branchName))
+                {
+                    continue;
+                }
+
+                SkillAnimation animation = LoadSkillAnimation(summonNode[branchName], branchName);
+                if (animation.Frames.Count > 0)
+                {
+                    skill.SummonNamedAnimations[branchName] = animation;
+                }
+            }
+        }
 
         private static void PopulateSummonAttackMetadata(SkillData skill, WzImageProperty attackBranch)
         {
@@ -2137,6 +2175,10 @@ namespace HaCreator.MapSimulator.Character.Skills
 
             // Get flip
             frame.Flip = GetInt(frameNode, "flip") == 1;
+
+            // Shadow-partner and companion layers can carry authored alpha ramps per frame.
+            frame.AlphaStart = Math.Clamp(GetInt(frameNode, "a0", 255), 0, 255);
+            frame.AlphaEnd = Math.Clamp(GetInt(frameNode, "a1", 255), 0, 255);
 
             return frame;
         }
@@ -2633,6 +2675,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             levelData.CriticalRate = GetInt(node, "cr", 0, level);
             levelData.CriticalDamageMin = GetInt(node, "criticaldamageMin", 0, level);
             levelData.CriticalDamageMax = GetInt(node, "criticaldamageMax", 0, level);
+            levelData.DamageReductionRate = GetInt(node, "damR", 0, level);
 
             levelData.RequiredLevel = GetInt(node, "reqLevel", 0, level);
             NormalizePassiveStatAliases(skill, node, level, levelData);
@@ -2690,6 +2733,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             levelData.ElementalResistance = PreferPrimaryStat(GetInt(node, "terR", 0, level), GetInt(node, "indieTerR", 0, level));
             levelData.CriticalDamageMin = PreferPrimaryStat(levelData.CriticalDamageMin, GetInt(node, "criticalDamageMin", 0, level));
             levelData.CriticalDamageMax = PreferPrimaryStat(levelData.CriticalDamageMax, GetInt(node, "criticalDamageMax", 0, level));
+            levelData.DamageReductionRate = PreferPrimaryStat(levelData.DamageReductionRate, GetInt(node, "indieDamR", 0, level));
         }
 
         private static int PreferPrimaryStat(int currentValue, int aliasValue)

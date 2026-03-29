@@ -1,10 +1,15 @@
 using HaCreator.MapSimulator.Interaction;
 using HaCreator.MapSimulator.UI;
+using HaSharedLibrary.Render.DX;
+using HaSharedLibrary.Util;
+using MapleLib.WzLib;
 using MapleLib.WzLib.WzProperties;
 using Microsoft.Xna.Framework;
+using Microsoft.Xna.Framework.Graphics;
 using System;
 using System.Globalization;
 using System.IO;
+using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 
@@ -13,16 +18,36 @@ namespace HaCreator.MapSimulator
     public partial class MapSimulator
     {
         private readonly PacketFieldFeedbackRuntime _packetFieldFeedbackRuntime = new();
+        private readonly Dictionary<string, List<IDXObject>> _packetFieldFeedbackAnimationCache = new(StringComparer.OrdinalIgnoreCase);
+        private readonly List<PacketOwnedUiAnimation> _packetFieldFeedbackUiAnimations = new();
+        private static readonly string[] PacketOwnedScreenEffectImageNames =
+        {
+            "BasicEff.img",
+            "MapEff.img",
+            "CharacterEff.img",
+            "Direction.img",
+            "Direction1.img",
+            "Direction2.img",
+            "Direction3.img",
+            "Direction4.img",
+            "Direction5.img",
+            "Direction6.img",
+            "Direction7.img",
+            "OnUserEff.img",
+            "Summon.img"
+        };
 
         private void UpdatePacketOwnedFieldFeedbackState(int currentTickCount)
         {
             _packetFieldFeedbackRuntime.Initialize(GraphicsDevice);
             _packetFieldFeedbackRuntime.Update(currentTickCount);
+            UpdatePacketOwnedFieldFeedbackUiAnimations(currentTickCount);
         }
 
         private void DrawPacketOwnedFieldFeedbackState(int currentTickCount)
         {
             _packetFieldFeedbackRuntime.Draw(_spriteBatch, _fontChat, _renderParams.RenderWidth, currentTickCount);
+            DrawPacketOwnedFieldFeedbackUiAnimations(currentTickCount);
         }
 
         private bool TryApplyPacketOwnedFieldFeedbackPacket(PacketFieldFeedbackPacketKind kind, byte[] payload, out string message)
@@ -44,12 +69,15 @@ namespace HaCreator.MapSimulator
                     _chat?.AddClientChatMessage(text, currTickCount, chatLogType, whisperTargetCandidate),
                 ShowUtilityFeedback = ShowUtilityFeedbackMessage,
                 ShowModalWarning = ShowPacketOwnedFieldWarning,
-                RememberWhisperTarget = target => _chat?.AddClientChatMessage($"[System] Reply target set to {target}.", currTickCount, 12, target),
+                RememberWhisperTarget = target => _chat?.RememberWhisperTarget(target),
                 TriggerTremble = (force, durationMs) => _screenEffects.TriggerTremble(Math.Max(1, force), false, 0, Math.Max(0, durationMs), true, currTickCount),
                 ClearFieldFade = () => ClearPacketOwnedLocalOverlayState("fade"),
                 RequestBgm = RequestSpecialFieldBgmOverride,
                 PlayFieldSound = descriptor => TryPlayPacketOwnedFieldFeedbackSound(descriptor),
                 SetObjectTagState = (tag, state, transition, currentTime) => SetDynamicObjectTagState(tag, state, transition, currentTime),
+                ShowSummonEffectVisual = TryShowPacketOwnedSummonEffect,
+                ShowScreenEffectVisual = TryShowPacketOwnedScreenEffect,
+                ShowRewardRouletteVisual = TryShowPacketOwnedRewardRouletteEffect,
                 ResolveMobName = ResolvePacketFieldFeedbackMobName,
                 ResolveMapName = mapId => ResolveMapTransferDisplayName(mapId, null),
                 ResolveItemName = ResolvePacketFieldFeedbackItemName,
@@ -111,6 +139,246 @@ namespace HaCreator.MapSimulator
                 : string.Empty;
         }
 
+        private bool TryShowPacketOwnedSummonEffect(byte effectId, int x, int y)
+        {
+            string cacheKey = $"summon:{effectId}";
+            if (!TryGetOrCreatePacketOwnedAnimationFrames(cacheKey, () => ResolvePacketOwnedSummonEffectFrames(effectId), out List<IDXObject> frames))
+            {
+                return false;
+            }
+
+            _animationEffects?.AddOneTime(frames, x, y, flip: false, currTickCount, zOrder: 1);
+            return true;
+        }
+
+        private bool TryShowPacketOwnedScreenEffect(string descriptor)
+        {
+            if (string.IsNullOrWhiteSpace(descriptor))
+            {
+                return false;
+            }
+
+            string cacheKey = $"screen:{descriptor.Trim()}";
+            if (!TryGetOrCreatePacketOwnedAnimationFrames(cacheKey, () => ResolvePacketOwnedScreenEffectFrames(descriptor), out List<IDXObject> frames))
+            {
+                return false;
+            }
+
+            EnqueuePacketOwnedUiAnimation(
+                frames,
+                _renderParams.RenderWidth / 2,
+                Math.Max(0, Height / 2 - 40),
+                currTickCount);
+            return true;
+        }
+
+        private bool TryShowPacketOwnedRewardRouletteEffect(int rewardId, int step, int total)
+        {
+            const string cacheKey = "reward-roulette:BasicEff.img/MainNotice/userReward/Appear";
+            if (!TryGetOrCreatePacketOwnedAnimationFrames(
+                cacheKey,
+                () => LoadPacketOwnedAnimationFrames(ResolvePacketOwnedPropertyPath(Program.FindImage("Effect", "BasicEff.img"), "MainNotice/userReward/Appear")),
+                out List<IDXObject> frames))
+            {
+                return false;
+            }
+
+            EnqueuePacketOwnedUiAnimation(
+                frames,
+                _renderParams.RenderWidth / 2,
+                Math.Max(0, Height / 2 - 24),
+                currTickCount);
+
+            string itemName = ResolvePacketFieldFeedbackItemName(rewardId);
+            ShowUtilityFeedbackMessage($"Packet-owned reward roulette: {itemName} ({Math.Max(0, step) + 1}/{Math.Max(1, total)}).");
+            return true;
+        }
+
+        private void UpdatePacketOwnedFieldFeedbackUiAnimations(int currentTickCount)
+        {
+            for (int i = _packetFieldFeedbackUiAnimations.Count - 1; i >= 0; i--)
+            {
+                if (_packetFieldFeedbackUiAnimations[i].IsComplete(currentTickCount))
+                {
+                    _packetFieldFeedbackUiAnimations.RemoveAt(i);
+                }
+            }
+        }
+
+        private void DrawPacketOwnedFieldFeedbackUiAnimations(int currentTickCount)
+        {
+            if (_spriteBatch == null)
+            {
+                return;
+            }
+
+            foreach (PacketOwnedUiAnimation animation in _packetFieldFeedbackUiAnimations)
+            {
+                IDXObject frame = animation.ResolveFrame(currentTickCount);
+                if (frame?.Texture == null)
+                {
+                    continue;
+                }
+
+                Vector2 position = new(animation.AnchorX - frame.X, animation.AnchorY - frame.Y);
+                _spriteBatch.Draw(frame.Texture, position, Color.White);
+            }
+        }
+
+        private void EnqueuePacketOwnedUiAnimation(List<IDXObject> frames, int anchorX, int anchorY, int currentTickCount)
+        {
+            if (frames == null || frames.Count == 0)
+            {
+                return;
+            }
+
+            _packetFieldFeedbackUiAnimations.Add(new PacketOwnedUiAnimation(frames, anchorX, anchorY, currentTickCount));
+        }
+
+        private bool TryGetOrCreatePacketOwnedAnimationFrames(string cacheKey, Func<List<IDXObject>> loader, out List<IDXObject> frames)
+        {
+            if (_packetFieldFeedbackAnimationCache.TryGetValue(cacheKey, out frames) && frames?.Count > 0)
+            {
+                return true;
+            }
+
+            frames = loader?.Invoke();
+            if (frames == null || frames.Count == 0)
+            {
+                frames = null;
+                return false;
+            }
+
+            _packetFieldFeedbackAnimationCache[cacheKey] = frames;
+            return true;
+        }
+
+        private List<IDXObject> ResolvePacketOwnedSummonEffectFrames(byte effectId)
+        {
+            WzImage summonImage = Program.FindImage("Effect", "Summon.img");
+            List<IDXObject> frames = LoadPacketOwnedAnimationFrames(ResolvePacketOwnedPropertyPath(summonImage, effectId.ToString(CultureInfo.InvariantCulture)));
+            if (frames?.Count > 0)
+            {
+                return frames;
+            }
+
+            WzImage mapEffectImage = Program.FindImage("Effect", "MapEff.img");
+            return LoadPacketOwnedAnimationFrames(ResolvePacketOwnedPropertyPath(mapEffectImage, "NpcSummon"));
+        }
+
+        private List<IDXObject> ResolvePacketOwnedScreenEffectFrames(string descriptor)
+        {
+            foreach ((string imageName, string propertyPath) in EnumeratePacketOwnedScreenEffectCandidates(descriptor))
+            {
+                WzImage image = Program.FindImage("Effect", imageName);
+                List<IDXObject> frames = LoadPacketOwnedAnimationFrames(ResolvePacketOwnedPropertyPath(image, propertyPath));
+                if (frames?.Count > 0)
+                {
+                    return frames;
+                }
+            }
+
+            return null;
+        }
+
+        private static IEnumerable<(string ImageName, string PropertyPath)> EnumeratePacketOwnedScreenEffectCandidates(string descriptor)
+        {
+            if (string.IsNullOrWhiteSpace(descriptor))
+            {
+                yield break;
+            }
+
+            string normalized = descriptor.Replace('\\', '/').Trim().Trim('/');
+            if (string.IsNullOrWhiteSpace(normalized))
+            {
+                yield break;
+            }
+
+            if (normalized.StartsWith("effect/", StringComparison.OrdinalIgnoreCase))
+            {
+                normalized = normalized["effect/".Length..];
+            }
+
+            int imageSeparator = normalized.IndexOf(".img/", StringComparison.OrdinalIgnoreCase);
+            if (imageSeparator >= 0)
+            {
+                string imageName = normalized[..(imageSeparator + 4)];
+                string propertyPath = normalized[(imageSeparator + 5)..];
+                yield return (imageName, propertyPath);
+                yield break;
+            }
+
+            string[] variants =
+            {
+                normalized,
+                normalized.Contains('/') ? normalized[(normalized.IndexOf('/') + 1)..] : normalized
+            };
+
+            foreach (string imageName in PacketOwnedScreenEffectImageNames)
+            {
+                foreach (string variant in variants.Where(static entry => !string.IsNullOrWhiteSpace(entry)).Distinct(StringComparer.OrdinalIgnoreCase))
+                {
+                    yield return (imageName, variant);
+                }
+            }
+        }
+
+        private List<IDXObject> LoadPacketOwnedAnimationFrames(WzImageProperty sourceProperty, int fallbackDelay = 90)
+        {
+            if (sourceProperty == null || GraphicsDevice == null)
+            {
+                return null;
+            }
+
+            List<IDXObject> frames = new();
+            int sharedDelay = sourceProperty["delay"]?.GetInt() ?? fallbackDelay;
+
+            for (int i = 0; ; i++)
+            {
+                if (sourceProperty[i.ToString(CultureInfo.InvariantCulture)] is not WzCanvasProperty frameCanvas)
+                {
+                    break;
+                }
+
+                System.Drawing.Bitmap frameBitmap = frameCanvas.GetLinkedWzCanvasBitmap();
+                if (frameBitmap == null)
+                {
+                    continue;
+                }
+
+                int delay = frameCanvas[WzCanvasProperty.AnimationDelayPropertyName]?.GetInt()
+                    ?? frameCanvas["delay"]?.GetInt()
+                    ?? sharedDelay;
+                using (frameBitmap)
+                {
+                    Texture2D texture = frameBitmap.ToTexture2D(GraphicsDevice);
+                    frames.Add(new DXObject(frameCanvas.GetCanvasOriginPosition(), texture, delay));
+                }
+            }
+
+            return frames.Count > 0 ? frames : null;
+        }
+
+        private static WzImageProperty ResolvePacketOwnedPropertyPath(WzObject root, string propertyPath)
+        {
+            if (root == null || string.IsNullOrWhiteSpace(propertyPath))
+            {
+                return root as WzImageProperty;
+            }
+
+            WzObject current = root;
+            foreach (string segment in propertyPath.Split(new[] { '/' }, StringSplitOptions.RemoveEmptyEntries))
+            {
+                current = current?[segment];
+                if (current == null)
+                {
+                    break;
+                }
+            }
+
+            return current as WzImageProperty;
+        }
+
         private ChatCommandHandler.CommandResult HandlePacketOwnedFieldFeedbackCommand(string[] args)
         {
             if (args.Length == 0 || string.Equals(args[0], "status", StringComparison.OrdinalIgnoreCase))
@@ -121,6 +389,7 @@ namespace HaCreator.MapSimulator
             if (string.Equals(args[0], "clear", StringComparison.OrdinalIgnoreCase))
             {
                 _packetFieldFeedbackRuntime.Clear();
+                _packetFieldFeedbackUiAnimations.Clear();
                 return ChatCommandHandler.CommandResult.Ok(_packetFieldFeedbackRuntime.DescribeStatus(currTickCount));
             }
 
@@ -327,6 +596,51 @@ namespace HaCreator.MapSimulator
             return ApplyPacketOwnedFieldFeedbackHelper(
                 PacketFieldFeedbackPacketKind.FieldEffect,
                 PacketFieldFeedbackRuntime.BuildTrembleFieldEffectPayload(force, durationMs));
+        }
+
+        private sealed class PacketOwnedUiAnimation
+        {
+            private readonly IReadOnlyList<IDXObject> _frames;
+            private readonly int _durationMs;
+
+            public PacketOwnedUiAnimation(IReadOnlyList<IDXObject> frames, int anchorX, int anchorY, int startedAtTick)
+            {
+                _frames = frames ?? Array.Empty<IDXObject>();
+                AnchorX = anchorX;
+                AnchorY = anchorY;
+                StartedAtTick = startedAtTick;
+                _durationMs = _frames.Sum(static frame => Math.Max(1, frame?.Delay ?? 1));
+            }
+
+            public int AnchorX { get; }
+            public int AnchorY { get; }
+            public int StartedAtTick { get; }
+
+            public bool IsComplete(int currentTickCount)
+            {
+                return _frames.Count == 0 || currentTickCount - StartedAtTick >= _durationMs;
+            }
+
+            public IDXObject ResolveFrame(int currentTickCount)
+            {
+                if (_frames.Count == 0)
+                {
+                    return null;
+                }
+
+                int elapsed = Math.Max(0, currentTickCount - StartedAtTick);
+                int cursor = 0;
+                foreach (IDXObject frame in _frames)
+                {
+                    cursor += Math.Max(1, frame?.Delay ?? 1);
+                    if (elapsed < cursor)
+                    {
+                        return frame;
+                    }
+                }
+
+                return _frames[^1];
+            }
         }
 
         private ChatCommandHandler.CommandResult HandlePacketOwnedFieldFeedbackJukeboxCommand(string[] args)

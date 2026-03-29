@@ -1,3 +1,4 @@
+using MapleLib;
 using HaCreator.MapSimulator.Character;
 using HaSharedLibrary.Render;
 using HaSharedLibrary.Render.DX;
@@ -71,11 +72,21 @@ namespace HaCreator.MapSimulator.UI
         private const int UretesTimeLabId = 5534000;
         private const int VegasSpellTenPercentId = 5610000;
         private const int VegasSpellSixtyPercentId = 5610001;
+        private const int ViciousHammerId = 5570000;
+        private static readonly int[] CleanSlateScrollIds =
+        {
+            2049000, 2049001, 2049002, 2049003, 2049004, 2049005, 2049006,
+            2049007, 2049008, 2049009, 2049010, 2049011
+        };
+        private static readonly int[] InnocenceScrollIds = { 2049600, 2049601, 2049604 };
+        private static readonly int[] GoldenHammerIds = { 2470000, 2470001, 2470002 };
+        private static readonly int[] HorntailNecklaceIds = { 1122000, 1122001, 1122002, 1122003 };
 
         private readonly Random _random = new Random();
         private readonly Dictionary<EquipSlot, UpgradeState> _upgradeStates = new Dictionary<EquipSlot, UpgradeState>();
         private static readonly Dictionary<int, IReadOnlyCollection<int>> ConsumableRequirementCache = new Dictionary<int, IReadOnlyCollection<int>>();
         private static readonly Dictionary<int, string> ConsumableOwnerPathCache = new Dictionary<int, string>();
+        private static readonly Dictionary<int, EnhancementConsumableDefinition> DynamicConsumableDefinitionCache = new Dictionary<int, EnhancementConsumableDefinition>();
         private static readonly IReadOnlyDictionary<int, EnhancementConsumableDefinition> ConsumableDefinitions =
             new Dictionary<int, EnhancementConsumableDefinition>
             {
@@ -111,7 +122,9 @@ namespace HaCreator.MapSimulator.UI
                 // WZ Item/Cash/0506.img/05062100 carries a req list and a dedicated MiracleCube_8th UI path.
                 [MapleMiracleCubeId] = new(MapleMiracleCubeId, "Maple Miracle Cube", 0, false, false, 1.0f, InventoryType.CASH, ConsumableEffectType.Cube, PotentialTier.Rare, 0f, CubeBehavior.Maple),
                 [VegasSpellTenPercentId] = new(VegasSpellTenPercentId, "Vega's Spell(10%)", 0, false, false, 1.0f, InventoryType.CASH, ConsumableEffectType.Modifier, PotentialTier.Rare, 0f, CubeBehavior.Miracle, ModifierBehavior.VegaTenPercent, 0.3f),
-                [VegasSpellSixtyPercentId] = new(VegasSpellSixtyPercentId, "Vega's Spell(60%)", 0, false, false, 1.0f, InventoryType.CASH, ConsumableEffectType.Modifier, PotentialTier.Rare, 0f, CubeBehavior.Miracle, ModifierBehavior.VegaSixtyPercent, 0.9f)
+                [VegasSpellSixtyPercentId] = new(VegasSpellSixtyPercentId, "Vega's Spell(60%)", 0, false, false, 1.0f, InventoryType.CASH, ConsumableEffectType.Modifier, PotentialTier.Rare, 0f, CubeBehavior.Miracle, ModifierBehavior.VegaSixtyPercent, 0.9f),
+                // Item/Cash/0557.img/05570000 is the Vicious' Hammer cash variant described by String/Cash.img/5570000.
+                [ViciousHammerId] = new(ViciousHammerId, "Vicious' Hammer", 0, false, false, 1.0f, InventoryType.CASH, ConsumableEffectType.Hammer, PotentialTier.Rare, 0f, CubeBehavior.Miracle, ModifierBehavior.None, 0f, 0, HammerBehavior.Vicious)
             };
 
         private Texture2D _backgroundOverlay;
@@ -1794,7 +1807,8 @@ namespace HaCreator.MapSimulator.UI
             PotentialScroll,
             PotentialStamp,
             Cube,
-            Modifier
+            Modifier,
+            Hammer
         }
 
         private enum PotentialTier
@@ -1823,6 +1837,12 @@ namespace HaCreator.MapSimulator.UI
             VegaSixtyPercent
         }
 
+        private enum HammerBehavior
+        {
+            None,
+            Vicious
+        }
+
         private readonly struct EnhancementConsumableDefinition
         {
             public EnhancementConsumableDefinition(
@@ -1839,7 +1859,8 @@ namespace HaCreator.MapSimulator.UI
                 CubeBehavior cubeBehavior = CubeBehavior.Miracle,
                 ModifierBehavior modifierBehavior = ModifierBehavior.None,
                 float modifiedSuccessRate = 0f,
-                int rewardItemId = 0)
+                int rewardItemId = 0,
+                HammerBehavior hammerBehavior = HammerBehavior.None)
             {
                 ItemId = itemId;
                 Name = name;
@@ -1855,6 +1876,7 @@ namespace HaCreator.MapSimulator.UI
                 ModifierBehavior = modifierBehavior;
                 ModifiedSuccessRate = modifiedSuccessRate;
                 RewardItemId = rewardItemId;
+                HammerBehavior = hammerBehavior;
             }
 
             public int ItemId { get; }
@@ -1871,6 +1893,7 @@ namespace HaCreator.MapSimulator.UI
             public ModifierBehavior ModifierBehavior { get; }
             public float ModifiedSuccessRate { get; }
             public int RewardItemId { get; }
+            public HammerBehavior HammerBehavior { get; }
         }
 
         private sealed class EnhancementConsumable

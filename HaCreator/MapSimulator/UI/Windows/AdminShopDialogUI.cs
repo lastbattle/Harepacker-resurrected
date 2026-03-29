@@ -11,6 +11,7 @@ using Spine;
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.Linq;
 
 namespace HaCreator.MapSimulator.UI
 {
@@ -74,12 +75,12 @@ namespace HaCreator.MapSimulator.UI
 
         private sealed class AdminShopEntry
         {
-            public string Title { get; init; } = string.Empty;
-            public string Detail { get; init; } = string.Empty;
+            public string Title { get; set; } = string.Empty;
+            public string Detail { get; set; } = string.Empty;
             public string Seller { get; init; } = string.Empty;
             public string PriceLabel { get; set; } = string.Empty;
             public long Price { get; set; }
-            public AdminShopCategory Category { get; init; }
+            public AdminShopCategory Category { get; set; }
             public Texture2D IconTexture { get; set; }
             public bool SupportsWishlist { get; init; }
             public bool Wishlisted { get; set; }
@@ -162,6 +163,8 @@ namespace HaCreator.MapSimulator.UI
         private const int MoneyIconY = 299;
         private const int MoneyTextX = 353;
         private const int MoneyTextY = 296;
+        private const int FooterWishStateY = 70;
+        private const int FooterMessageY = 86;
         private const int ScrollBarY = 131;
         private const int ScrollBarHeight = 194;
         private const int ScrollBarWidth = 12;
@@ -181,6 +184,15 @@ namespace HaCreator.MapSimulator.UI
         private const int CategoryTabColumns = 5;
         private const int CategoryTabStrideX = 42;
         private const int CategoryTabStrideY = 19;
+        private static readonly int[] DefaultCommoditySeedItemIds =
+        {
+            5050000,
+            5150040,
+            2120000,
+            5040004,
+            5222000,
+            5152057
+        };
         private static readonly object CommodityCacheLock = new();
         private static Dictionary<int, AdminShopCommodityData> _bestCommodityByItemId;
         private static Dictionary<int, AdminShopCommodityData> _commodityBySerialNumber;

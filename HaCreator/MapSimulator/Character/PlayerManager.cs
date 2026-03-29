@@ -25,7 +25,6 @@ namespace HaCreator.MapSimulator.Character
     /// </summary>
     public class PlayerManager
     {
-        private const int AmplifierRobotSkillId = 35121010;
         private const int AffectedAreaAvatarEffectIdBase = int.MinValue;
 
         #region Properties
@@ -72,6 +71,7 @@ namespace HaCreator.MapSimulator.Character
         private AffectedAreaPool _affectedAreaPool;
         private Func<int, bool> _remoteAffectedAreaDamageBlockEvaluator;
         private Func<int, bool> _affectedAreaOwnerPartyMembershipEvaluator;
+        private Func<int, int, MobSkillRuntimeData> _mobSkillRuntimeResolver;
         private SoundManager _soundManager;
         private Action<Rectangle, int, int, int> _reactorAttackAreaHandler;
         private PlayerMobStatusController _mobStatusController;
@@ -174,6 +174,11 @@ namespace HaCreator.MapSimulator.Character
             {
                 Player.SetSwimAreaCheck(checkSwimArea);
             }
+        }
+
+        internal void SetMobSkillRuntimeResolver(Func<int, int, MobSkillRuntimeData> resolver)
+        {
+            _mobSkillRuntimeResolver = resolver;
         }
 
         /// <summary>
@@ -495,9 +500,9 @@ namespace HaCreator.MapSimulator.Character
                     duration);
             };
 
-            Combat.OnMobSkillStatusApplied = (skillId, skillLevel, currentTime) =>
+            Combat.OnMobSkillStatusApplied = (skillId, skillLevel, currentTime, sourceX, applyRuntimeStatus) =>
             {
-                ApplyPlayerSkillBlockingStatus(skillId, skillLevel, currentTime);
+                ApplyPlayerMobSkillStatus(skillId, skillLevel, currentTime, sourceX, applyRuntimeStatus);
             };
 
             Combat.OnMobAttackMissPlayer = (x, y, currentTime) =>
@@ -575,21 +580,30 @@ namespace HaCreator.MapSimulator.Character
             };
         }
 
-        private void ApplyPlayerSkillBlockingStatus(int skillId, int skillLevel, int currentTime)
+        private void ApplyPlayerMobSkillStatus(int skillId, int skillLevel, int currentTime, float sourceX, bool applyRuntimeStatus)
         {
-            if (Player == null || !PlayerSkillBlockingStatusMapper.TryMapMobSkill(skillId, out PlayerSkillBlockingStatus status))
+            if (Player == null)
+            {
+                return;
+            }
+
+            if (applyRuntimeStatus)
+            {
+                MobSkillRuntimeData runtimeData = _mobSkillRuntimeResolver?.Invoke(skillId, Math.Max(1, skillLevel));
+                TryApplyMobSkillStatus(skillId, runtimeData, currentTime, sourceX);
+            }
+
+            if (!PlayerSkillBlockingStatusMapper.TryMapMobSkill(skillId, out PlayerSkillBlockingStatus status))
             {
                 return;
             }
 
             MobSkillEffectData effectData = _mobSkillEffectLoader?.LoadMobSkillEffect(skillId, Math.Max(1, skillLevel));
             int durationMs = Math.Max(0, (effectData?.Time ?? 0) * 1000);
-            if (durationMs <= 0)
+            if (durationMs > 0)
             {
-                return;
+                Player.ApplySkillBlockingStatus(status, durationMs, currentTime);
             }
-
-            Player.ApplySkillBlockingStatus(status, durationMs, currentTime);
         }
 
         /// <summary>
@@ -982,9 +996,7 @@ namespace HaCreator.MapSimulator.Character
         private static bool ShouldPromoteAffectedAreaAvatarEffect(SkillData skill)
         {
             return skill?.AffectedEffect?.Frames?.Count > 0
-                   && (skill.SkillId == AmplifierRobotSkillId
-                       || skill.IsMassSpell
-                       || RemoteAffectedAreaSupportResolver.IsSupportZone(skill));
+                   && RemoteAffectedAreaSupportResolver.IsFriendlyPlayerAreaSkill(skill);
         }
 
         private SkillData GetOrCreateAffectedAreaAvatarEffectSkill(SkillData skill)

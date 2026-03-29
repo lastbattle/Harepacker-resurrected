@@ -131,5 +131,6 @@ namespace HaCreator.MapSimulator.Interaction
         public int? PreferredQuestId { get; init; }
         public IReadOnlyList<string> Messages { get; init; } = Array.Empty<string>();
         public IReadOnlyList<string> PublishedScriptNames { get; init; } = Array.Empty<string>();
+        public QuestRewardChoicePrompt PendingRewardChoicePrompt { get; init; }
     }
 }

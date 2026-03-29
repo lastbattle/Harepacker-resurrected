@@ -27,6 +27,15 @@ namespace HaCreator.MapSimulator
             string PetName,
             FieldHazardHpPotionCandidate Candidate,
             bool UsesConfiguredItem);
+        private readonly record struct FieldHazardPetAutoConsumeRequest(
+            int PetSlotIndex,
+            string PetName,
+            FieldHazardHpPotionCandidate Candidate,
+            bool UsesConfiguredItem,
+            bool ForceRequest,
+            bool BuffSkillRequest,
+            int RequestedAt,
+            int AckAt);
 
         private const int PacketOwnedBalloonHorizontalPadding = 10;
         private const int PacketOwnedBalloonVerticalPadding = 10;
@@ -49,9 +58,14 @@ namespace HaCreator.MapSimulator
         private readonly PacketFieldFadeOverlay _packetOwnedFieldFadeOverlay = new();
         private readonly LocalOverlayBalloonState _packetOwnedBalloonState = new();
         private readonly LocalOverlayPacketInboxManager _localOverlayPacketInbox = new();
+        private FieldHazardPetAutoConsumeRequest? _pendingFieldHazardPetAutoConsumeRequest;
         private LocalOverlayBalloonSkin _packetOwnedBalloonSkin;
         private bool _localOverlayPacketInboxEnabled = true;
         private int _localOverlayPacketInboxConfiguredPort = LocalOverlayPacketInboxManager.DefaultPort;
+        private int _lastFieldHazardPetAutoConsumeRequestTick = int.MinValue;
+
+        private const int FieldHazardPetAutoConsumeRequestThrottleMs = 200;
+        private const int FieldHazardPetAutoConsumeSyntheticAckDelayMs = 120;
 
         private void LoadPacketOwnedLocalOverlayAssets()
         {
@@ -150,6 +164,7 @@ namespace HaCreator.MapSimulator
         {
             _packetOwnedFieldFadeOverlay.Update(currentTickCount);
             _packetOwnedBalloonState.Update(currentTickCount);
+            UpdateFieldHazardPetAutoConsumeRequestState(currentTickCount);
         }
 
         private void DrawPacketOwnedLocalOverlayState(int currentTickCount, int mapCenterX, int mapCenterY)
@@ -395,6 +410,15 @@ namespace HaCreator.MapSimulator
                 char current = sanitized[i];
                 if (current == '#'
                     && i + 1 < sanitized.Length
+                    && sanitized[i + 1] == '#')
+                {
+                    glyphs.Add(new PacketOwnedBalloonGlyph('#', style));
+                    i++;
+                    continue;
+                }
+
+                if (current == '#'
+                    && i + 1 < sanitized.Length
                     && TryApplyPacketOwnedBalloonInlineCode(sanitized, i + 1, baseColor, ref style, out int consumedCharacters))
                 {
                     i += consumedCharacters;
@@ -458,7 +482,7 @@ namespace HaCreator.MapSimulator
                     return true;
 
                 case 'n':
-                    style = style with { Emphasis = false };
+                    style = new PacketOwnedBalloonTextStyle(baseColor, false);
                     consumedCharacters = 1;
                     return true;
 
@@ -580,14 +604,8 @@ namespace HaCreator.MapSimulator
 
             Vector2 lineMeasure = MeasureChatTextWithFallback("Ay");
             int lineHeight = Math.Max(14, (int)Math.Ceiling(lineMeasure.Y));
-            int textWidth = 0;
-            for (int i = 0; i < lines.Length; i++)
-            {
-                textWidth = Math.Max(textWidth, lines[i].Width);
-            }
-
             int contentWidth = Math.Clamp(message.RequestedWidth, PacketOwnedBalloonMinWidth, PacketOwnedBalloonMaxWidth);
-            int bodyWidth = Math.Max(contentWidth + PacketOwnedBalloonBodyExtraWidth, textWidth + (PacketOwnedBalloonHorizontalPadding * 2));
+            int bodyWidth = contentWidth + PacketOwnedBalloonBodyExtraWidth;
             int contentAreaWidth = Math.Max(0, bodyWidth - PacketOwnedBalloonBodyExtraWidth);
             int bodyHeight = Math.Max(26, (lines.Length * lineHeight) + (PacketOwnedBalloonVerticalPadding * 2));
             int bodyX = Math.Clamp(
@@ -816,7 +834,6 @@ namespace HaCreator.MapSimulator
                 durationMs ?? Managers.LocalOverlayRuntime.DefaultFieldHazardNoticeDurationMs);
 
             string followUpDetail = TryApplyFieldHazardPetAutoConsume(damage, currentTickCount);
-            _localOverlayRuntime.SetFieldHazardFollowUp(followUpDetail, currentTickCount);
             return string.IsNullOrWhiteSpace(followUpDetail)
                 ? $"Applied packet-authored field hazard notice for {Math.Max(0, damage)} HP."
                 : $"Applied packet-authored field hazard notice for {Math.Max(0, damage)} HP. {followUpDetail}";
@@ -824,6 +841,7 @@ namespace HaCreator.MapSimulator
 
         private string ClearFieldHazardNotice()
         {
+            _pendingFieldHazardPetAutoConsumeRequest = null;
             _localOverlayRuntime.ClearFieldHazardNotice();
             return "Cleared the packet-authored field hazard notice.";
         }
@@ -873,18 +891,89 @@ namespace HaCreator.MapSimulator
 
                 TryTriggerLimitedPetSpeechEvent(PetAutoSpeechEvent.NoHpPotion, ref _petHpPotionFailureSpeechCount, currentTickCount);
                 _chat?.AddMessage(FieldHazardNoHpPotionNoticeText, new Color(255, 206, 145), currentTickCount);
-                return $"{DescribeFieldHazardAutoConsumePet(target.PetSlotIndex, target.PetName)} could not find an HP potion to use.";
+                string failureDetail = $"{DescribeFieldHazardAutoConsumePet(target.PetSlotIndex, target.PetName)} could not find an HP potion to use.";
+                _localOverlayRuntime.SetFieldHazardFollowUp(failureDetail, FieldHazardFollowUpKind.Failure, currentTickCount);
+                return failureDetail;
             }
 
             string petLabel = DescribeFieldHazardAutoConsumePet(target.PetSlotIndex, target.PetName);
             string requestMode = target.UsesConfiguredItem ? "configured auto-HP" : "auto-HP";
-            if (player.HP < player.MaxHP
-                && TryUseConsumableInventoryItem(target.Candidate.ItemId, target.Candidate.InventoryType, currentTickCount))
+            if (_pendingFieldHazardPetAutoConsumeRequest.HasValue)
             {
-                return $"{petLabel} {requestMode} consumed {target.Candidate.ItemName}.";
+                string pendingDetail = $"{petLabel} {requestMode} request for {target.Candidate.ItemName} is already pending.";
+                _localOverlayRuntime.SetFieldHazardFollowUp(pendingDetail, FieldHazardFollowUpKind.Pending, currentTickCount);
+                return pendingDetail;
             }
 
-            return $"{petLabel} {requestMode} would request {target.Candidate.ItemName}.";
+            if (_lastFieldHazardPetAutoConsumeRequestTick != int.MinValue
+                && unchecked(currentTickCount - _lastFieldHazardPetAutoConsumeRequestTick) < FieldHazardPetAutoConsumeRequestThrottleMs)
+            {
+                string throttledDetail = $"{petLabel} {requestMode} request for {target.Candidate.ItemName} is waiting on the client request cooldown.";
+                _localOverlayRuntime.SetFieldHazardFollowUp(throttledDetail, FieldHazardFollowUpKind.Throttled, currentTickCount);
+                return throttledDetail;
+            }
+
+            _pendingFieldHazardPetAutoConsumeRequest = new FieldHazardPetAutoConsumeRequest(
+                target.PetSlotIndex,
+                target.PetName,
+                target.Candidate,
+                target.UsesConfiguredItem,
+                ForceRequest: false,
+                BuffSkillRequest: false,
+                RequestedAt: currentTickCount,
+                AckAt: currentTickCount + FieldHazardPetAutoConsumeSyntheticAckDelayMs);
+            _lastFieldHazardPetAutoConsumeRequestTick = currentTickCount;
+            _petHpPotionFailureSpeechCount = 0;
+
+            string requestDetail = $"{petLabel} {requestMode} requested {target.Candidate.ItemName}.";
+            _localOverlayRuntime.SetFieldHazardFollowUp(requestDetail, FieldHazardFollowUpKind.Pending, currentTickCount);
+            return requestDetail;
+        }
+
+        private void UpdateFieldHazardPetAutoConsumeRequestState(int currentTickCount)
+        {
+            if (!_pendingFieldHazardPetAutoConsumeRequest.HasValue)
+            {
+                return;
+            }
+
+            FieldHazardPetAutoConsumeRequest request = _pendingFieldHazardPetAutoConsumeRequest.Value;
+            if (unchecked(currentTickCount - request.AckAt) < 0)
+            {
+                return;
+            }
+
+            _pendingFieldHazardPetAutoConsumeRequest = null;
+
+            string petLabel = DescribeFieldHazardAutoConsumePet(request.PetSlotIndex, request.PetName);
+            string requestMode = request.UsesConfiguredItem ? "configured auto-HP" : "auto-HP";
+            PlayerCharacter player = _playerManager?.Player;
+            if (player?.Build == null || !player.IsAlive)
+            {
+                string cancelledDetail = $"{petLabel} {requestMode} request for {request.Candidate.ItemName} expired before the client could acknowledge it.";
+                _localOverlayRuntime.SetFieldHazardFollowUp(cancelledDetail, FieldHazardFollowUpKind.Failure, currentTickCount);
+                return;
+            }
+
+            if (player.HP < player.MaxHP
+                && TryUseConsumableInventoryItem(request.Candidate.ItemId, request.Candidate.InventoryType, currentTickCount))
+            {
+                string successDetail = $"{petLabel} {requestMode} acknowledged {request.Candidate.ItemName} and consumed it.";
+                _localOverlayRuntime.SetFieldHazardFollowUp(successDetail, FieldHazardFollowUpKind.Success, currentTickCount);
+                return;
+            }
+
+            if (player.HP >= player.MaxHP)
+            {
+                string ackDetail = $"{petLabel} {requestMode} request for {request.Candidate.ItemName} was acknowledged without consuming it.";
+                _localOverlayRuntime.SetFieldHazardFollowUp(ackDetail, FieldHazardFollowUpKind.Success, currentTickCount);
+                return;
+            }
+
+            TryTriggerLimitedPetSpeechEvent(PetAutoSpeechEvent.NoHpPotion, ref _petHpPotionFailureSpeechCount, currentTickCount);
+            _chat?.AddMessage(FieldHazardNoHpPotionNoticeText, new Color(255, 206, 145), currentTickCount);
+            string failureDetail = $"{petLabel} {requestMode} request for {request.Candidate.ItemName} failed before the client could consume it.";
+            _localOverlayRuntime.SetFieldHazardFollowUp(failureDetail, FieldHazardFollowUpKind.Failure, currentTickCount);
         }
 
         private bool TryResolveFieldHazardPetAutoConsumeTarget(
@@ -1118,6 +1207,7 @@ namespace HaCreator.MapSimulator
             {
                 _packetOwnedFieldFadeOverlay.Clear();
                 _packetOwnedBalloonState.Clear();
+                _pendingFieldHazardPetAutoConsumeRequest = null;
                 _localOverlayRuntime.ClearDamageMeter(currTickCount, updateSharedTiming: false);
                 _localOverlayRuntime.ClearFieldHazardNotice();
                 return;
@@ -1145,6 +1235,7 @@ namespace HaCreator.MapSimulator
             if (string.Equals(scope, "hazard", StringComparison.OrdinalIgnoreCase)
                 || string.Equals(scope, "hpdec", StringComparison.OrdinalIgnoreCase))
             {
+                _pendingFieldHazardPetAutoConsumeRequest = null;
                 _localOverlayRuntime.ClearFieldHazardNotice();
             }
         }

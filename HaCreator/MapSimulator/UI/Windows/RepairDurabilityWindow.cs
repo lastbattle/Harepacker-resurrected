@@ -63,8 +63,8 @@ namespace HaCreator.MapSimulator.UI
         private const int RepairFeeValueY = 83;
         private const int NpcNameX = 72;
         private const int NpcNameY = 53;
-        private const int NpcPreviewX = 41;
-        private const int NpcPreviewY = 104;
+        private const int NpcPreviewX = 57;
+        private const int NpcPreviewY = 92;
         private const int StatusTextX = 14;
         private const int StatusTextY = 303;
         private const int ScrollBarX = 212;

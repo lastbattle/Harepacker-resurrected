@@ -980,15 +980,12 @@ namespace HaCreator.MapSimulator.Combat
                 int spawnCount = effectNode.Count > 0
                     ? effectNode.Count
                     : sequenceCount;
-                float left = GetRelativeLeft(mobItem, effectNode.HasRangeBounds, effectNode.RangeBounds.Left, effectNode.RangeBounds.Right);
-                float right = GetRelativeRight(mobItem, effectNode.HasRangeBounds, effectNode.RangeBounds.Left, effectNode.RangeBounds.Right);
                 if (!effectNode.HasRangeBounds)
                 {
-                    left = impactPosition.X;
-                    right = impactPosition.X;
+                    return new List<Vector2> { ResolveGroundPoint(impactPosition.X, impactPosition.Y) };
                 }
 
-                float width = Math.Abs(right - left);
+                float width = Math.Abs(effectNode.RangeBounds.Right - effectNode.RangeBounds.Left);
                 int effectDistanceSpawnCount = 0;
                 if (effectNode.EffectDistance > 0 && width > 0f)
                 {
@@ -1001,10 +998,22 @@ namespace HaCreator.MapSimulator.Combat
                     effectDistanceSpawnCount > 1 &&
                     spawnCount == effectDistanceSpawnCount)
                 {
-                    return BuildRangePositionsWithSpacing(left, right, spawnCount, effectNode.EffectDistance, baseY);
+                    return BuildRelativeRangePositionsWithSpacing(
+                        mobItem,
+                        effectNode.RangeBounds.Left,
+                        effectNode.RangeBounds.Right,
+                        spawnCount,
+                        effectNode.EffectDistance,
+                        baseY);
                 }
 
-                return BuildRangePositions(left, right, spawnCount, effectNode.RandomPos, baseY);
+                return BuildRelativeRangePositions(
+                    mobItem,
+                    effectNode.RangeBounds.Left,
+                    effectNode.RangeBounds.Right,
+                    spawnCount,
+                    effectNode.RandomPos,
+                    baseY);
             }
 
             return new List<Vector2> { ResolveGroundPoint(impactPosition.X, impactPosition.Y) };
@@ -1017,17 +1026,19 @@ namespace HaCreator.MapSimulator.Combat
             Vector2 impactPosition,
             int spawnCount)
         {
-            float left = GetRelativeLeft(mobItem, effectNode.HasRangeBounds, effectNode.RangeBounds.Left, effectNode.RangeBounds.Right);
-            float right = GetRelativeRight(mobItem, effectNode.HasRangeBounds, effectNode.RangeBounds.Left, effectNode.RangeBounds.Right);
-            float baseY = GetRelativeBottom(mobItem, effectNode.HasRangeBounds, effectNode.RangeBounds.Bottom, impactPosition.Y);
-
             if (!effectNode.HasRangeBounds)
             {
-                left = impactPosition.X;
-                right = impactPosition.X;
+                return new List<Vector2> { ResolveGroundPoint(impactPosition.X, impactPosition.Y) };
             }
 
-            return BuildRangePositions(left, right, spawnCount, effectNode.RandomPos, baseY);
+            float baseY = GetRelativeBottom(mobItem, true, effectNode.RangeBounds.Bottom, impactPosition.Y);
+            return BuildRelativeRangePositions(
+                mobItem,
+                effectNode.RangeBounds.Left,
+                effectNode.RangeBounds.Right,
+                spawnCount,
+                effectNode.RandomPos,
+                baseY);
         }
 
         private List<Vector2> BuildGroupedRangeEffectPositions(
@@ -1040,18 +1051,26 @@ namespace HaCreator.MapSimulator.Combat
             groupCount = Math.Max(1, groupCount);
             if (effectNode?.HasRangeBounds == true)
             {
-                float nodeLeft = GetRelativeLeft(mobItem, true, effectNode.RangeBounds.Left, effectNode.RangeBounds.Right);
-                float nodeRight = GetRelativeRight(mobItem, true, effectNode.RangeBounds.Left, effectNode.RangeBounds.Right);
                 float nodeBottom = GetRelativeBottom(mobItem, true, effectNode.RangeBounds.Bottom, impactPosition.Y);
-                return BuildRangePositions(nodeLeft, nodeRight, groupCount, false, nodeBottom);
+                return BuildRelativeRangePositions(
+                    mobItem,
+                    effectNode.RangeBounds.Left,
+                    effectNode.RangeBounds.Right,
+                    groupCount,
+                    randomPos: false,
+                    nodeBottom);
             }
 
             if (attack?.HasRangeBounds == true)
             {
-                float attackLeft = GetRelativeLeft(mobItem, true, attack.RangeLeft, attack.RangeRight);
-                float attackRight = GetRelativeRight(mobItem, true, attack.RangeLeft, attack.RangeRight);
                 float attackBottom = GetRangeBottomY(mobItem, attack);
-                return BuildRangePositions(attackLeft, attackRight, groupCount, false, attackBottom);
+                return BuildRelativeRangePositions(
+                    mobItem,
+                    attack.RangeLeft,
+                    attack.RangeRight,
+                    groupCount,
+                    randomPos: false,
+                    attackBottom);
             }
 
             float span = Math.Max(attack?.AreaWidth ?? 0, attack?.Range ?? 0);
@@ -1274,6 +1293,53 @@ namespace HaCreator.MapSimulator.Combat
             }
 
             return positions;
+        }
+
+        private List<Vector2> BuildRelativeRangePositions(
+            MobItem mobItem,
+            float startRelativeX,
+            float endRelativeX,
+            int count,
+            bool randomPos,
+            float baseY)
+        {
+            List<float> localXs = BuildRangePositionXs(startRelativeX, endRelativeX, count, randomPos, _random);
+            var positions = new List<Vector2>(localXs.Count);
+            for (int i = 0; i < localXs.Count; i++)
+            {
+                positions.Add(ResolveGroundPoint(ResolveRelativeX(mobItem, localXs[i]), baseY));
+            }
+
+            return positions;
+        }
+
+        private List<Vector2> BuildRelativeRangePositionsWithSpacing(
+            MobItem mobItem,
+            float startRelativeX,
+            float endRelativeX,
+            int count,
+            float spacing,
+            float baseY)
+        {
+            List<float> localXs = BuildRangePositionXsWithSpacing(startRelativeX, endRelativeX, count, spacing);
+            var positions = new List<Vector2>(localXs.Count);
+            for (int i = 0; i < localXs.Count; i++)
+            {
+                positions.Add(ResolveGroundPoint(ResolveRelativeX(mobItem, localXs[i]), baseY));
+            }
+
+            return positions;
+        }
+
+        internal static float ResolveRelativeX(MobItem mobItem, float relativeX)
+        {
+            if (mobItem == null)
+            {
+                return relativeX;
+            }
+
+            bool flipX = mobItem.MovementInfo?.FlipX ?? false;
+            return mobItem.CurrentX + (flipX ? -relativeX : relativeX);
         }
 
         private static bool IsFallingEffectNode(MobAnimationSet.AttackEffectNode effectNode)

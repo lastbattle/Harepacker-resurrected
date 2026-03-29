@@ -2,6 +2,7 @@ using HaCreator.MapSimulator.Character;
 using HaCreator.MapSimulator.UI;
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 
 namespace HaCreator.MapSimulator.Interaction
@@ -131,6 +132,11 @@ namespace HaCreator.MapSimulator.Interaction
                     CurrentLevel = skill.CurrentLevel,
                     MaxLevel = skill.MaxLevel,
                     RequiredGuildLevel = GetRequiredGuildLevel(skill, skill.CurrentLevel + 1),
+                    CurrentEffectDescription = GetCurrentEffectDescription(skill),
+                    NextEffectDescription = GetNextEffectDescription(skill),
+                    ActivationCost = skill.GetGuildActivationCost(Math.Max(1, skill.CurrentLevel + 1)),
+                    RenewalCost = skill.GetGuildRenewalCost(Math.Max(1, skill.CurrentLevel)),
+                    DurationMinutes = skill.GetGuildDurationMinutes(Math.Max(1, skill.CurrentLevel)),
                     IconTexture = skill.IconTexture,
                     DisabledIconTexture = skill.IconDisabledTexture,
                     IsRecommended = _isInGuild && skill.SkillId == _recommendedSkillId,
@@ -318,11 +324,72 @@ namespace HaCreator.MapSimulator.Interaction
             return new[]
             {
                 _guildName,
-                $"Guild Lv. {_guildLevel}  |  {_guildRoleLabel}",
-                selectedRequiredGuildLevel > _guildLevel && selectedSkill.CurrentLevel < selectedSkill.MaxLevel
-                    ? $"Next rank requires Guild Lv. {selectedRequiredGuildLevel}."
-                    : $"SP: {_availablePoints}  |  {selectedSkill.Description}"
+                $"Guild Lv. {_guildLevel}  |  SP: {_availablePoints}",
+                BuildSelectedSkillSummary(selectedSkill, selectedRequiredGuildLevel)
             };
+        }
+
+        private static string GetCurrentEffectDescription(SkillDisplayData skill)
+        {
+            if (skill == null)
+                return string.Empty;
+
+            if (skill.CurrentLevel > 0)
+                return skill.GetLevelDescription(skill.CurrentLevel);
+
+            return skill.GetLevelDescription(1);
+        }
+
+        private static string GetNextEffectDescription(SkillDisplayData skill)
+        {
+            if (skill == null || skill.CurrentLevel >= skill.MaxLevel)
+                return string.Empty;
+
+            return skill.GetLevelDescription(skill.CurrentLevel + 1);
+        }
+
+        private string BuildSelectedSkillSummary(SkillDisplayData selectedSkill, int selectedRequiredGuildLevel)
+        {
+            if (selectedSkill == null)
+                return $"SP: {_availablePoints}";
+
+            if (selectedRequiredGuildLevel > _guildLevel && selectedSkill.CurrentLevel < selectedSkill.MaxLevel)
+                return $"Next rank requires Guild Lv. {selectedRequiredGuildLevel}.";
+
+            string effectText = GetCurrentEffectDescription(selectedSkill);
+            if (!string.IsNullOrWhiteSpace(effectText))
+                return effectText;
+
+            int previewLevel = Math.Max(1, selectedSkill.CurrentLevel + 1);
+            int activationCost = selectedSkill.GetGuildActivationCost(previewLevel);
+            int renewalCost = selectedSkill.GetGuildRenewalCost(Math.Max(1, selectedSkill.CurrentLevel));
+            int durationMinutes = selectedSkill.GetGuildDurationMinutes(Math.Max(1, selectedSkill.CurrentLevel));
+
+            List<string> parts = new();
+            if (durationMinutes > 0)
+                parts.Add(FormatDuration(durationMinutes));
+            if (activationCost > 0)
+                parts.Add($"Learn {activationCost.ToString("N0", CultureInfo.InvariantCulture)}");
+            if (renewalCost > 0)
+                parts.Add($"Renew {renewalCost.ToString("N0", CultureInfo.InvariantCulture)}");
+
+            return parts.Count > 0
+                ? string.Join("  |  ", parts)
+                : selectedSkill.Description;
+        }
+
+        private static string FormatDuration(int durationMinutes)
+        {
+            if (durationMinutes <= 0)
+                return string.Empty;
+
+            if (durationMinutes % (60 * 24) == 0)
+                return $"{durationMinutes / (60 * 24)}d";
+
+            if (durationMinutes % 60 == 0)
+                return $"{durationMinutes / 60}h";
+
+            return $"{durationMinutes}m";
         }
 
         private void ApplyNoGuildState()
@@ -426,6 +493,11 @@ namespace HaCreator.MapSimulator.Interaction
         public int CurrentLevel { get; init; }
         public int MaxLevel { get; init; }
         public int RequiredGuildLevel { get; init; }
+        public string CurrentEffectDescription { get; init; } = string.Empty;
+        public string NextEffectDescription { get; init; } = string.Empty;
+        public int ActivationCost { get; init; }
+        public int RenewalCost { get; init; }
+        public int DurationMinutes { get; init; }
         public Microsoft.Xna.Framework.Graphics.Texture2D IconTexture { get; init; }
         public Microsoft.Xna.Framework.Graphics.Texture2D DisabledIconTexture { get; init; }
         public bool IsRecommended { get; init; }

@@ -606,6 +606,7 @@ namespace HaCreator.MapSimulator.UI
                 existing.ItemName = string.IsNullOrWhiteSpace(existing.ItemName) ? incoming.ItemName : existing.ItemName;
                 existing.ItemTypeName = string.IsNullOrWhiteSpace(existing.ItemTypeName) ? incoming.ItemTypeName : existing.ItemTypeName;
                 existing.Description = string.IsNullOrWhiteSpace(existing.Description) ? incoming.Description : existing.Description;
+                existing.TooltipPart ??= incoming.TooltipPart?.Clone();
                 existing.GradeFrameIndex = incoming.GradeFrameIndex ?? existing.GradeFrameIndex;
                 existing.IsActiveBullet = incoming.IsActiveBullet || existing.IsActiveBullet;
                 remainingQuantity -= quantityToMerge;

@@ -40,6 +40,16 @@ namespace HaCreator.MapSimulator.Interaction
         public int EmployeeWorldY { get; set; }
         public bool EmployeeHasWorldPosition { get; set; }
         public bool? EmployeeFlip { get; set; }
+        public bool EmployeeHasPacketData { get; set; }
+        public int EmployeePacketEmployerId { get; set; }
+        public int EmployeePacketFootholdId { get; set; }
+        public string EmployeePacketNameTag { get; set; }
+        public byte EmployeePacketMiniRoomType { get; set; }
+        public int EmployeePacketMiniRoomSerial { get; set; }
+        public string EmployeePacketBalloonTitle { get; set; }
+        public byte EmployeePacketBalloonByte0 { get; set; }
+        public byte EmployeePacketBalloonByte1 { get; set; }
+        public byte EmployeePacketBalloonByte2 { get; set; }
         public List<SocialRoomOccupantSnapshot> Occupants { get; set; } = new();
         public List<SocialRoomItemSnapshot> Items { get; set; } = new();
         public List<string> Notes { get; set; } = new();

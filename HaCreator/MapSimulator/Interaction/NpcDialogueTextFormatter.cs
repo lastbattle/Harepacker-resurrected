@@ -156,7 +156,9 @@ namespace HaCreator.MapSimulator.Interaction
                     continue;
                 }
 
-                string label = Format(match.Groups["text"].Value);
+                string label = NormalizeLineBreaks(match.Groups["text"].Value)
+                    .Replace("\r", string.Empty)
+                    .Trim();
                 if (string.IsNullOrWhiteSpace(label))
                 {
                     continue;

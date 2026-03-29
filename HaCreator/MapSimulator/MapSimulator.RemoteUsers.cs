@@ -20,7 +20,7 @@ namespace HaCreator.MapSimulator
             _chat.CommandHandler.RegisterCommand(
                 "remoteuser",
                 "Create or mutate shared remote user actors",
-                "/remoteuser <status|clear|clone|avatar|move|action|chair|mount|helper|team|prepare|preparedclear|visible|inspect|remove|packet|packetraw> ...",
+                "/remoteuser <status|clear|clone|avatar|move|action|chair|mount|helper|team|follow|prepare|preparedclear|visible|inspect|remove|packet|packetraw> ...",
                 args => HandleRemoteUserCommand(args, currTickCount));
         }
 
@@ -28,7 +28,7 @@ namespace HaCreator.MapSimulator
         {
             if (args == null || args.Length == 0)
             {
-                return ChatCommandHandler.CommandResult.Error("Usage: /remoteuser <status|clear|clone|avatar|move|action|chair|mount|helper|team|prepare|preparedclear|visible|inspect|remove|packet|packetraw> ...");
+                return ChatCommandHandler.CommandResult.Error("Usage: /remoteuser <status|clear|clone|avatar|move|action|chair|mount|helper|team|follow|prepare|preparedclear|visible|inspect|remove|packet|packetraw> ...");
             }
 
             return args[0].ToLowerInvariant() switch
@@ -43,6 +43,7 @@ namespace HaCreator.MapSimulator
                 "mount" => HandleRemoteUserMountCommand(args),
                 "helper" => HandleRemoteUserHelperCommand(args),
                 "team" => HandleRemoteUserTeamCommand(args, currentTime),
+                "follow" => HandleRemoteUserFollowCommand(args),
                 "prepare" => HandleRemoteUserPrepareCommand(args, currentTime),
                 "preparedclear" => HandleRemoteUserPreparedClearCommand(args),
                 "visible" => HandleRemoteUserVisibleCommand(args),
@@ -50,7 +51,7 @@ namespace HaCreator.MapSimulator
                 "remove" => HandleRemoteUserRemoveCommand(args),
                 "packet" => HandleRemoteUserPacketCommand(args, currentTime),
                 "packetraw" => HandleRemoteUserPacketRawCommand(args, currentTime),
-                _ => ChatCommandHandler.CommandResult.Error("Usage: /remoteuser <status|clear|clone|avatar|move|action|chair|mount|helper|team|prepare|preparedclear|visible|inspect|remove|packet|packetraw> ...")
+                _ => ChatCommandHandler.CommandResult.Error("Usage: /remoteuser <status|clear|clone|avatar|move|action|chair|mount|helper|team|follow|prepare|preparedclear|visible|inspect|remove|packet|packetraw> ...")
             };
         }
 
@@ -68,6 +69,11 @@ namespace HaCreator.MapSimulator
 
         private ChatCommandHandler.CommandResult HandleRemoteUserClearCommand()
         {
+            foreach (RemoteUserActor actor in _remoteUserPool.Actors.ToArray())
+            {
+                _summonedPool.RemoveOwnerSummons(actor.CharacterId, currTickCount);
+            }
+
             _remoteUserPool.Clear();
             return ChatCommandHandler.CommandResult.Ok("Remote user pool cleared.");
         }
@@ -339,11 +345,55 @@ namespace HaCreator.MapSimulator
                 : ChatCommandHandler.CommandResult.Error(message);
         }
 
+        private ChatCommandHandler.CommandResult HandleRemoteUserFollowCommand(string[] args)
+        {
+            if (args.Length < 3
+                || !int.TryParse(args[1], out int characterId)
+                || !int.TryParse(args[2], out int driverId))
+            {
+                return ChatCommandHandler.CommandResult.Error("Usage: /remoteuser follow <characterId> <driverId|0> [transferX transferY]");
+            }
+
+            bool transferField = false;
+            Vector2? transferPosition = null;
+            if (driverId == 0 && args.Length >= 5)
+            {
+                if (!float.TryParse(args[3], NumberStyles.Float, CultureInfo.InvariantCulture, out float transferX)
+                    || !float.TryParse(args[4], NumberStyles.Float, CultureInfo.InvariantCulture, out float transferY))
+                {
+                    return ChatCommandHandler.CommandResult.Error("Usage: /remoteuser follow <characterId> <driverId|0> [transferX transferY]");
+                }
+
+                transferField = true;
+                transferPosition = new Vector2(transferX, transferY);
+            }
+
+            bool applied = _remoteUserPool.TryApplyFollowCharacter(
+                characterId,
+                driverId,
+                transferField,
+                transferPosition,
+                _playerManager?.Player?.Build?.Id ?? 0,
+                _playerManager?.Player?.Position ?? Vector2.Zero,
+                out string message);
+            if (!applied)
+            {
+                return ChatCommandHandler.CommandResult.Error(message);
+            }
+
+            return ChatCommandHandler.CommandResult.Ok(
+                driverId > 0
+                    ? $"Remote user {characterId} is now attached to follow driver {driverId}."
+                    : transferField
+                        ? $"Remote user {characterId} detached with transfer-field position ({transferPosition.Value.X:0},{transferPosition.Value.Y:0})."
+                        : $"Remote user {characterId} detached from its follow driver.");
+        }
+
         private ChatCommandHandler.CommandResult HandleRemoteUserPacketCommand(string[] args, int currentTime)
         {
             if (args.Length < 3 || !TryParseRemoteUserPacketType(args[1], out int packetType))
             {
-                return ChatCommandHandler.CommandResult.Error("Usage: /remoteuser packet <179|180|181|182|183|184|210|211|212|213|214|enter|leave|move|state|helper|team|chair|mount|prepare|preparedclear|melee> <payloadhex=..|payloadb64=..>");
+                return ChatCommandHandler.CommandResult.Error("Usage: /remoteuser packet <179|180|181|182|183|184|210|211|212|213|214|enter|leave|move|state|helper|team|follow|chair|mount|prepare|preparedclear|melee> <payloadhex=..|payloadb64=..>");
             }
 
             if (!TryParseBinaryPayloadArgument(args[2], out byte[] payload, out string payloadError))
@@ -360,7 +410,7 @@ namespace HaCreator.MapSimulator
         {
             if (args.Length < 3 || !TryParseRemoteUserPacketType(args[1], out int packetType))
             {
-                return ChatCommandHandler.CommandResult.Error("Usage: /remoteuser packetraw <179|180|181|182|183|184|210|211|212|213|214|enter|leave|move|state|helper|team|chair|mount|prepare|preparedclear|melee> <hex>");
+                return ChatCommandHandler.CommandResult.Error("Usage: /remoteuser packetraw <179|180|181|182|183|184|210|211|212|213|214|enter|leave|move|state|helper|team|follow|chair|mount|prepare|preparedclear|melee> <hex>");
             }
 
             byte[] payload;
@@ -420,6 +470,11 @@ namespace HaCreator.MapSimulator
                     }
 
                     bool removed = _remoteUserPool.TryRemove(leavePacket.CharacterId, out string leaveMessage);
+                    if (removed)
+                    {
+                        _summonedPool.RemoveOwnerSummons(leavePacket.CharacterId, currentTime);
+                    }
+
                     result = removed
                         ? $"Applied {DescribeRemoteUserPacketType(packetType)} for {leavePacket.CharacterId}."
                         : leaveMessage;
@@ -482,6 +537,28 @@ namespace HaCreator.MapSimulator
                         ? $"Applied {DescribeRemoteUserPacketType(packetType)} for {teamPacket.CharacterId}."
                         : teamMessage;
                     return teamApplied;
+
+                case RemoteUserPacketType.UserFollowCharacter:
+                    if (!RemoteUserPacketCodec.TryParseFollowCharacter(payload, out RemoteUserFollowCharacterPacket followPacket, out string followError))
+                    {
+                        result = followError;
+                        return false;
+                    }
+
+                    bool followApplied = _remoteUserPool.TryApplyFollowCharacter(
+                        followPacket.CharacterId,
+                        followPacket.DriverId,
+                        followPacket.TransferField,
+                        followPacket.TransferX.HasValue && followPacket.TransferY.HasValue
+                            ? new Vector2(followPacket.TransferX.Value, followPacket.TransferY.Value)
+                            : null,
+                        _playerManager?.Player?.Build?.Id ?? 0,
+                        _playerManager?.Player?.Position ?? Vector2.Zero,
+                        out string followMessage);
+                    result = followApplied
+                        ? $"Applied {DescribeRemoteUserPacketType(packetType)} for {followPacket.CharacterId}."
+                        : followMessage;
+                    return followApplied;
 
                 case RemoteUserPacketType.UserPortableChair:
                     if (!RemoteUserPacketCodec.TryParsePortableChair(payload, out RemoteUserPortableChairPacket chairPacket, out string chairError))
@@ -631,6 +708,7 @@ namespace HaCreator.MapSimulator
                 "state" => (int)RemoteUserPacketType.UserMoveAction,
                 "helper" => (int)RemoteUserPacketType.UserHelper,
                 "team" => (int)RemoteUserPacketType.UserBattlefieldTeam,
+                "follow" => (int)RemoteUserPacketType.UserFollowCharacter,
                 "chair" => (int)RemoteUserPacketType.UserPortableChair,
                 "mount" => (int)RemoteUserPacketType.UserMount,
                 "prepare" => (int)RemoteUserPacketType.UserPreparedSkill,
@@ -652,6 +730,7 @@ namespace HaCreator.MapSimulator
                 (int)RemoteUserPacketType.UserMoveAction => "remote user common state packet",
                 (int)RemoteUserPacketType.UserHelper => "remote user common helper packet",
                 (int)RemoteUserPacketType.UserBattlefieldTeam => "remote user common Battlefield team packet",
+                (int)RemoteUserPacketType.UserFollowCharacter => "remote user follow-character lifecycle packet",
                 (int)RemoteUserPacketType.UserPortableChair => "remote user remote chair packet",
                 (int)RemoteUserPacketType.UserMount => "remote user remote mount packet",
                 (int)RemoteUserPacketType.UserPreparedSkill => "remote user remote prepared-skill packet",

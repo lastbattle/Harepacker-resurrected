@@ -3,6 +3,15 @@ using System.Globalization;
 
 namespace HaCreator.MapSimulator.Managers
 {
+    public enum FieldHazardFollowUpKind
+    {
+        None = 0,
+        Pending = 1,
+        Success = 2,
+        Failure = 3,
+        Throttled = 4
+    }
+
     /// <summary>
     /// Tracks the packet-authored local overlay surfaces owned by CUserLocal.
     /// This keeps the damage-meter timer and field-hazard notice separate from
@@ -22,6 +31,7 @@ namespace HaCreator.MapSimulator.Managers
         public int LastFieldHazardDamage { get; private set; }
         public string LastFieldHazardMessage { get; private set; } = string.Empty;
         public string LastFieldHazardFollowUpDetail { get; private set; } = string.Empty;
+        public FieldHazardFollowUpKind LastFieldHazardFollowUpKind { get; private set; }
         public int LastFieldHazardFollowUpUpdatedAt { get; private set; } = int.MinValue;
         public int LastFieldHazardNoticeStartedAt { get; private set; } = int.MinValue;
         public int LastFieldHazardNoticeExpiresAt { get; private set; } = int.MinValue;
@@ -119,23 +129,32 @@ namespace HaCreator.MapSimulator.Managers
             LastFieldHazardDamage = Math.Max(0, damage);
             LastFieldHazardMessage = message ?? string.Empty;
             LastFieldHazardFollowUpDetail = string.Empty;
+            LastFieldHazardFollowUpKind = FieldHazardFollowUpKind.None;
             LastFieldHazardFollowUpUpdatedAt = int.MinValue;
             LastFieldHazardNoticeStartedAt = currentTickCount;
             LastFieldHazardNoticeExpiresAt = currentTickCount + Math.Max(400, durationMs);
         }
 
-        public void SetFieldHazardFollowUp(string detail, int currentTickCount)
+        public void SetFieldHazardFollowUp(string detail, FieldHazardFollowUpKind kind, int currentTickCount)
         {
             LastFieldHazardFollowUpDetail = detail ?? string.Empty;
+            LastFieldHazardFollowUpKind = string.IsNullOrWhiteSpace(LastFieldHazardFollowUpDetail)
+                ? FieldHazardFollowUpKind.None
+                : kind;
             LastFieldHazardFollowUpUpdatedAt = string.IsNullOrWhiteSpace(LastFieldHazardFollowUpDetail)
                 ? int.MinValue
                 : currentTickCount;
+            if (LastFieldHazardFollowUpUpdatedAt != int.MinValue)
+            {
+                LastFieldHazardNoticeExpiresAt = Math.Max(LastFieldHazardNoticeExpiresAt, currentTickCount + 1400);
+            }
         }
 
         public void ClearFieldHazardNotice()
         {
             LastFieldHazardMessage = string.Empty;
             LastFieldHazardFollowUpDetail = string.Empty;
+            LastFieldHazardFollowUpKind = FieldHazardFollowUpKind.None;
             LastFieldHazardFollowUpUpdatedAt = int.MinValue;
             LastFieldHazardNoticeStartedAt = int.MinValue;
             LastFieldHazardNoticeExpiresAt = int.MinValue;
@@ -199,7 +218,7 @@ namespace HaCreator.MapSimulator.Managers
                 LastFieldHazardMessage,
                 string.IsNullOrWhiteSpace(LastFieldHazardFollowUpDetail)
                     ? string.Empty
-                    : $" followUp=\"{LastFieldHazardFollowUpDetail}\"");
+                    : $" followUp[{LastFieldHazardFollowUpKind}]=\"{LastFieldHazardFollowUpDetail}\"");
         }
     }
 }

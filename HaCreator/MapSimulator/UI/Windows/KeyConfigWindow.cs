@@ -12,6 +12,12 @@ namespace HaCreator.MapSimulator.UI
 {
     public sealed class KeyConfigWindow : UIWindowBase
     {
+        private enum KeyConfigPage
+        {
+            Main = 0,
+            QuickSlot = 1,
+        }
+
         private readonly struct PageLayer
         {
             public PageLayer(IDXObject layer, Point offset)
@@ -38,20 +44,32 @@ namespace HaCreator.MapSimulator.UI
             public Rectangle Bounds { get; }
         }
 
-        private readonly List<PageLayer> _layers = new();
+        private readonly List<PageLayer> _mainLayers = new();
+        private readonly List<PageLayer> _quickSlotLayers = new();
         private readonly List<BindingRow> _bindingRows = new();
         private readonly List<BindingRow> _quickSlotRows = new();
         private readonly Texture2D _highlightTexture;
         private readonly string _windowName;
+        private readonly IDXObject _mainFrame;
         private SpriteFont _font;
         private Func<PlayerInput> _bindingSource;
-        private bool _showQuickSlotConfig;
+        private IDXObject _quickSlotFrame;
+        private UIObject _mainOkButton;
+        private UIObject _mainCancelButton;
+        private UIObject _defaultButton;
+        private UIObject _deleteButton;
+        private UIObject _showQuickSlotButton;
+        private UIObject _quickSlotOkButton;
+        private UIObject _quickSlotCancelButton;
+        private UIObject _showMainButton;
+        private KeyConfigPage _page;
         private InputAction? _selectedAction;
         private string _statusMessage = "Select a row to inspect or clear a local binding.";
 
         public KeyConfigWindow(IDXObject frame, string windowName, Texture2D highlightTexture)
             : base(frame)
         {
+            _mainFrame = frame;
             _windowName = windowName ?? throw new ArgumentNullException(nameof(windowName));
             _highlightTexture = highlightTexture;
             BuildRows();
@@ -59,11 +77,37 @@ namespace HaCreator.MapSimulator.UI
 
         public override string WindowName => _windowName;
 
-        public void AddLayer(IDXObject layer, Point offset)
+        public void AddMainLayer(IDXObject layer, Point offset)
         {
             if (layer != null)
             {
-                _layers.Add(new PageLayer(layer, offset));
+                _mainLayers.Add(new PageLayer(layer, offset));
+            }
+        }
+
+        public void AddLayer(IDXObject layer, Point offset)
+        {
+            AddMainLayer(layer, offset);
+        }
+
+        public void ConfigureQuickSlotPage(IDXObject frame, UIObject showMainButton, UIObject okButton, UIObject cancelButton)
+        {
+            _quickSlotFrame = frame;
+            _showMainButton = showMainButton;
+            _quickSlotOkButton = okButton;
+            _quickSlotCancelButton = cancelButton;
+
+            RegisterActionButton(showMainButton, () => SetPage(KeyConfigPage.Main));
+            RegisterActionButton(okButton, Hide);
+            RegisterActionButton(cancelButton, Hide);
+            UpdateButtonVisibility();
+        }
+
+        public void AddQuickSlotLayer(IDXObject layer, Point offset)
+        {
+            if (layer != null)
+            {
+                _quickSlotLayers.Add(new PageLayer(layer, offset));
             }
         }
 
@@ -79,11 +123,24 @@ namespace HaCreator.MapSimulator.UI
 
         public void InitializeButtons(UIObject okButton, UIObject cancelButton, UIObject defaultButton, UIObject deleteButton, UIObject quickSlotButton)
         {
+            _mainOkButton = okButton;
+            _mainCancelButton = cancelButton;
+            _defaultButton = defaultButton;
+            _deleteButton = deleteButton;
+            _showQuickSlotButton = quickSlotButton;
+
             RegisterActionButton(okButton, Hide);
             RegisterActionButton(cancelButton, Hide);
             RegisterActionButton(defaultButton, RestoreDefaults);
             RegisterActionButton(deleteButton, ClearSelectedBinding);
-            RegisterActionButton(quickSlotButton, ToggleQuickSlotConfig);
+            RegisterActionButton(quickSlotButton, () => SetPage(KeyConfigPage.QuickSlot));
+            UpdateButtonVisibility();
+        }
+
+        public override void Show()
+        {
+            SetPage(KeyConfigPage.Main, resetSelection: true, preserveStatusMessage: true);
+            base.Show();
         }
 
         public override bool CheckMouseEvent(int shiftCenteredX, int shiftCenteredY, MouseState mouseState, MouseCursorItem mouseCursor, int renderWidth, int renderHeight)
@@ -98,7 +155,7 @@ namespace HaCreator.MapSimulator.UI
                 return false;
             }
 
-            foreach (BindingRow row in _showQuickSlotConfig ? _quickSlotRows : _bindingRows)
+            foreach (BindingRow row in GetActiveRows())
             {
                 Rectangle rowBounds = TranslateBounds(row.Bounds);
                 if (!rowBounds.Contains(mouseState.X, mouseState.Y))
@@ -127,7 +184,7 @@ namespace HaCreator.MapSimulator.UI
             RenderParameters renderParameters,
             int TickCount)
         {
-            foreach (PageLayer layer in _layers)
+            foreach (PageLayer layer in GetActiveLayers())
             {
                 layer.Layer.DrawBackground(
                     sprite,
@@ -145,12 +202,12 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
-            sprite.DrawString(_font, _showQuickSlotConfig ? "Quick Slot Config" : "Key Config", new Vector2(Position.X + 18, Position.Y + 16), Color.White);
-            sprite.DrawString(_font, _showQuickSlotConfig
-                ? "Client quick-slot sheet loaded from KeyConfig/quickslotConfig."
-                : "Client key-config sheet loaded from UIWindow2.img/KeyConfig.", new Vector2(Position.X + 18, Position.Y + 38), new Color(220, 220, 220));
+            sprite.DrawString(_font, _page == KeyConfigPage.QuickSlot ? "Quick Slot Config" : "Key Config", new Vector2(Position.X + 18, Position.Y + 16), Color.White);
+            sprite.DrawString(_font, _page == KeyConfigPage.QuickSlot
+                ? "Client quick-slot owner page from KeyConfig/quickslotConfig."
+                : "Client key-config owner page from UIWindow2.img/KeyConfig.", new Vector2(Position.X + 18, Position.Y + 38), new Color(220, 220, 220));
 
-            foreach (BindingRow row in _showQuickSlotConfig ? _quickSlotRows : _bindingRows)
+            foreach (BindingRow row in GetActiveRows())
             {
                 DrawBindingRow(sprite, row);
             }
@@ -199,13 +256,65 @@ namespace HaCreator.MapSimulator.UI
             _statusMessage = $"Cleared {_selectedAction.Value}.";
         }
 
-        private void ToggleQuickSlotConfig()
+        private void SetPage(KeyConfigPage page, bool resetSelection = true, bool preserveStatusMessage = false)
         {
-            _showQuickSlotConfig = !_showQuickSlotConfig;
-            _selectedAction = null;
-            _statusMessage = _showQuickSlotConfig
-                ? "Showing the quick-slot layout group."
-                : "Showing the main key-config bindings.";
+            KeyConfigPage resolvedPage = page == KeyConfigPage.QuickSlot && _quickSlotFrame != null
+                ? KeyConfigPage.QuickSlot
+                : KeyConfigPage.Main;
+
+            _page = resolvedPage;
+            Frame = resolvedPage == KeyConfigPage.QuickSlot && _quickSlotFrame != null ? _quickSlotFrame : _mainFrame;
+            if (resetSelection)
+            {
+                _selectedAction = null;
+            }
+
+            if (!preserveStatusMessage)
+            {
+                _statusMessage = resolvedPage == KeyConfigPage.QuickSlot
+                    ? "Showing the client-owned quick-slot settings page."
+                    : "Showing the client-owned key palette and binding page.";
+            }
+
+            UpdateButtonVisibility();
+        }
+
+        private void UpdateButtonVisibility()
+        {
+            bool isQuickSlotPage = _page == KeyConfigPage.QuickSlot && _quickSlotFrame != null;
+            SetButtonState(_mainOkButton, !isQuickSlotPage);
+            SetButtonState(_mainCancelButton, !isQuickSlotPage);
+            SetButtonState(_defaultButton, !isQuickSlotPage);
+            SetButtonState(_deleteButton, !isQuickSlotPage);
+            SetButtonState(_showQuickSlotButton, !isQuickSlotPage);
+            SetButtonState(_quickSlotOkButton, isQuickSlotPage);
+            SetButtonState(_quickSlotCancelButton, isQuickSlotPage);
+            SetButtonState(_showMainButton, isQuickSlotPage);
+        }
+
+        private static void SetButtonState(UIObject button, bool visible)
+        {
+            if (button == null)
+            {
+                return;
+            }
+
+            button.SetVisible(visible);
+            button.SetEnabled(visible);
+        }
+
+        private IReadOnlyList<PageLayer> GetActiveLayers()
+        {
+            return _page == KeyConfigPage.QuickSlot && _quickSlotLayers.Count > 0
+                ? _quickSlotLayers
+                : _mainLayers;
+        }
+
+        private IReadOnlyList<BindingRow> GetActiveRows()
+        {
+            return _page == KeyConfigPage.QuickSlot
+                ? _quickSlotRows
+                : _bindingRows;
         }
 
         private void DrawBindingRow(SpriteBatch sprite, BindingRow row)

@@ -5,6 +5,31 @@ namespace HaCreator.MapSimulator.Pools
 {
     public static class RemoteAffectedAreaSupportResolver
     {
+        private static readonly string[] FriendlyAreaDescriptionTokens =
+        {
+            "party member",
+            "party members",
+            "team member",
+            "team members",
+            "nearby party",
+            "nearby team",
+            "all party",
+            "all team"
+        };
+
+        private static readonly string[] FriendlyAreaSupportTokens =
+        {
+            "heal",
+            "recovery",
+            "regeneration",
+            "damage",
+            "attack",
+            "defense",
+            "haste",
+            "speed",
+            "aura"
+        };
+
         public static bool IsAreaBuffItemType(int areaType)
         {
             return areaType == 3;
@@ -32,6 +57,21 @@ namespace HaCreator.MapSimulator.Pools
             return IsInvincibleZone(skill) || IsRecoveryZone(skill);
         }
 
+        public static bool IsFriendlyPlayerAreaSkill(SkillData skill)
+        {
+            if (skill == null)
+            {
+                return false;
+            }
+
+            if (skill.IsMassSpell || IsSupportZone(skill))
+            {
+                return true;
+            }
+
+            return IsFriendlySupportSummonArea(skill);
+        }
+
         public static bool IsInvincibleZone(SkillData skill)
         {
             return string.Equals(skill?.ZoneType, "invincible", StringComparison.OrdinalIgnoreCase);
@@ -49,7 +89,23 @@ namespace HaCreator.MapSimulator.Pools
                 return true;
             }
 
-            return skill.IsMassSpell && ownerIsPartyMember;
+            return ownerIsPartyMember && IsFriendlyPlayerAreaSkill(skill);
+        }
+
+        private static bool IsFriendlySupportSummonArea(SkillData skill)
+        {
+            if (skill?.ClientInfoType != 33)
+            {
+                return false;
+            }
+
+            if (ContainsToken(skill.MinionAbility, "heal", "amplifyDamage", "mes"))
+            {
+                return true;
+            }
+
+            return ContainsToken(skill.Description, FriendlyAreaDescriptionTokens)
+                   && ContainsToken(skill.Description, FriendlyAreaSupportTokens);
         }
 
         private static bool ContainsToken(string value, params string[] tokens)

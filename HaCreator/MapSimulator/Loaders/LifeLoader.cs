@@ -469,10 +469,23 @@ namespace HaCreator.MapSimulator.Loaders
                 return null;
             }
 
+            WzSubProperty hitNode = infoNode["hit"] as WzSubProperty;
+            int nestedHitAttach = InfoTool.GetInt(hitNode?["bHitAttach"], InfoTool.GetInt(hitNode?["hitAttach"], int.MinValue));
+            int nestedFacingAttach = InfoTool.GetInt(
+                hitNode?["bFacingAttach"],
+                InfoTool.GetInt(hitNode?["bFacingAttatch"], InfoTool.GetInt(hitNode?["facingAttach"], int.MinValue)));
+
             var metadata = new MobAnimationSet.AttackInfoMetadata
             {
                 AttackType = InfoTool.GetInt(infoNode["type"], -1),
-                HitAttach = InfoTool.GetInt(infoNode["bHitAttach"], InfoTool.GetInt(infoNode["hitAttach"], 0)) > 0,
+                HitAttach = nestedHitAttach != int.MinValue
+                    ? nestedHitAttach > 0
+                    : InfoTool.GetInt(infoNode["bHitAttach"], InfoTool.GetInt(infoNode["hitAttach"], 0)) > 0,
+                FacingAttach = nestedFacingAttach != int.MinValue
+                    ? nestedFacingAttach > 0
+                    : InfoTool.GetInt(
+                        infoNode["bFacingAttach"],
+                        InfoTool.GetInt(infoNode["bFacingAttatch"], InfoTool.GetInt(infoNode["facingAttach"], 0))) > 0,
                 EffectAfter = InfoTool.GetInt(infoNode["effectAfter"], 0),
                 AttackAfter = InfoTool.GetInt(infoNode["attackAfter"], 0),
                 HasPrimaryEffect = infoNode["effect"] != null,

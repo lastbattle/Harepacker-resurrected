@@ -1,3 +1,4 @@
+using HaCreator.MapSimulator.Character;
 using HaCreator.MapSimulator.UI;
 using MapleLib.WzLib.WzStructure.Data.ItemStructure;
 using System;
@@ -39,6 +40,52 @@ namespace HaCreator.MapSimulator.Managers
             public string ItemName { get; set; }
             public string ItemTypeName { get; set; }
             public string Description { get; set; }
+            public PersistedTooltipPartRecord TooltipPart { get; set; }
+        }
+
+        private sealed class PersistedTooltipPartRecord
+        {
+            public bool IsWeapon { get; set; }
+            public string Name { get; set; }
+            public string Description { get; set; }
+            public string ItemCategory { get; set; }
+            public bool IsCash { get; set; }
+            public DateTime? ExpirationDateUtc { get; set; }
+            public int? Durability { get; set; }
+            public int? MaxDurability { get; set; }
+            public int RequiredJobMask { get; set; }
+            public int RequiredFame { get; set; }
+            public int RequiredLevel { get; set; }
+            public int RequiredSTR { get; set; }
+            public int RequiredDEX { get; set; }
+            public int RequiredINT { get; set; }
+            public int RequiredLUK { get; set; }
+            public int BonusSTR { get; set; }
+            public int BonusDEX { get; set; }
+            public int BonusINT { get; set; }
+            public int BonusLUK { get; set; }
+            public int BonusHP { get; set; }
+            public int BonusMP { get; set; }
+            public int BonusWeaponAttack { get; set; }
+            public int BonusMagicAttack { get; set; }
+            public int BonusWeaponDefense { get; set; }
+            public int BonusMagicDefense { get; set; }
+            public int BonusAccuracy { get; set; }
+            public int BonusAvoidability { get; set; }
+            public int BonusHands { get; set; }
+            public int BonusSpeed { get; set; }
+            public int BonusJump { get; set; }
+            public int UpgradeSlots { get; set; }
+            public int? TotalUpgradeSlotCount { get; set; }
+            public int? RemainingUpgradeSlotCount { get; set; }
+            public int EnhancementStarCount { get; set; }
+            public int KnockbackRate { get; set; }
+            public int TradeAvailable { get; set; }
+            public bool IsTimeLimited { get; set; }
+            public string PotentialTierText { get; set; }
+            public List<string> PotentialLines { get; set; } = new();
+            public int AttackSpeed { get; set; } = 6;
+            public string WeaponType { get; set; }
         }
 
         public sealed class StorageAccountState
@@ -129,7 +176,8 @@ namespace HaCreator.MapSimulator.Managers
                         GradeFrameIndex = record.GradeFrameIndex,
                         ItemName = record.ItemName,
                         ItemTypeName = record.ItemTypeName,
-                        Description = record.Description
+                        Description = record.Description,
+                        TooltipPart = RestoreTooltipPart(record.ItemId, record.TooltipPart)
                     });
                 }
 
@@ -300,7 +348,8 @@ namespace HaCreator.MapSimulator.Managers
                         GradeFrameIndex = slot.GradeFrameIndex,
                         ItemName = slot.ItemName,
                         ItemTypeName = slot.ItemTypeName,
-                        Description = slot.Description
+                        Description = slot.Description,
+                        TooltipPart = CaptureTooltipPart(slot.TooltipPart)
                     });
                 }
 
@@ -308,6 +357,116 @@ namespace HaCreator.MapSimulator.Managers
             }
 
             return persistedItems;
+        }
+
+        private static PersistedTooltipPartRecord CaptureTooltipPart(CharacterPart tooltipPart)
+        {
+            if (tooltipPart == null)
+            {
+                return null;
+            }
+
+            return new PersistedTooltipPartRecord
+            {
+                IsWeapon = tooltipPart is WeaponPart,
+                Name = tooltipPart.Name,
+                Description = tooltipPart.Description,
+                ItemCategory = tooltipPart.ItemCategory,
+                IsCash = tooltipPart.IsCash,
+                ExpirationDateUtc = tooltipPart.ExpirationDateUtc,
+                Durability = tooltipPart.Durability,
+                MaxDurability = tooltipPart.MaxDurability,
+                RequiredJobMask = tooltipPart.RequiredJobMask,
+                RequiredFame = tooltipPart.RequiredFame,
+                RequiredLevel = tooltipPart.RequiredLevel,
+                RequiredSTR = tooltipPart.RequiredSTR,
+                RequiredDEX = tooltipPart.RequiredDEX,
+                RequiredINT = tooltipPart.RequiredINT,
+                RequiredLUK = tooltipPart.RequiredLUK,
+                BonusSTR = tooltipPart.BonusSTR,
+                BonusDEX = tooltipPart.BonusDEX,
+                BonusINT = tooltipPart.BonusINT,
+                BonusLUK = tooltipPart.BonusLUK,
+                BonusHP = tooltipPart.BonusHP,
+                BonusMP = tooltipPart.BonusMP,
+                BonusWeaponAttack = tooltipPart.BonusWeaponAttack,
+                BonusMagicAttack = tooltipPart.BonusMagicAttack,
+                BonusWeaponDefense = tooltipPart.BonusWeaponDefense,
+                BonusMagicDefense = tooltipPart.BonusMagicDefense,
+                BonusAccuracy = tooltipPart.BonusAccuracy,
+                BonusAvoidability = tooltipPart.BonusAvoidability,
+                BonusHands = tooltipPart.BonusHands,
+                BonusSpeed = tooltipPart.BonusSpeed,
+                BonusJump = tooltipPart.BonusJump,
+                UpgradeSlots = tooltipPart.UpgradeSlots,
+                TotalUpgradeSlotCount = tooltipPart.TotalUpgradeSlotCount,
+                RemainingUpgradeSlotCount = tooltipPart.RemainingUpgradeSlotCount,
+                EnhancementStarCount = tooltipPart.EnhancementStarCount,
+                KnockbackRate = tooltipPart.KnockbackRate,
+                TradeAvailable = tooltipPart.TradeAvailable,
+                IsTimeLimited = tooltipPart.IsTimeLimited,
+                PotentialTierText = tooltipPart.PotentialTierText,
+                PotentialLines = tooltipPart.PotentialLines != null ? new List<string>(tooltipPart.PotentialLines) : new List<string>(),
+                AttackSpeed = tooltipPart is WeaponPart weapon ? weapon.AttackSpeed : 6,
+                WeaponType = tooltipPart is WeaponPart weaponPart ? weaponPart.WeaponType : null
+            };
+        }
+
+        private static CharacterPart RestoreTooltipPart(int itemId, PersistedTooltipPartRecord persisted)
+        {
+            if (persisted == null)
+            {
+                return null;
+            }
+
+            CharacterPart tooltipPart = persisted.IsWeapon ? new WeaponPart() : new CharacterPart();
+            tooltipPart.ItemId = itemId;
+            tooltipPart.Name = persisted.Name;
+            tooltipPart.Description = persisted.Description;
+            tooltipPart.ItemCategory = persisted.ItemCategory;
+            tooltipPart.IsCash = persisted.IsCash;
+            tooltipPart.ExpirationDateUtc = persisted.ExpirationDateUtc;
+            tooltipPart.Durability = persisted.Durability;
+            tooltipPart.MaxDurability = persisted.MaxDurability;
+            tooltipPart.RequiredJobMask = persisted.RequiredJobMask;
+            tooltipPart.RequiredFame = persisted.RequiredFame;
+            tooltipPart.RequiredLevel = persisted.RequiredLevel;
+            tooltipPart.RequiredSTR = persisted.RequiredSTR;
+            tooltipPart.RequiredDEX = persisted.RequiredDEX;
+            tooltipPart.RequiredINT = persisted.RequiredINT;
+            tooltipPart.RequiredLUK = persisted.RequiredLUK;
+            tooltipPart.BonusSTR = persisted.BonusSTR;
+            tooltipPart.BonusDEX = persisted.BonusDEX;
+            tooltipPart.BonusINT = persisted.BonusINT;
+            tooltipPart.BonusLUK = persisted.BonusLUK;
+            tooltipPart.BonusHP = persisted.BonusHP;
+            tooltipPart.BonusMP = persisted.BonusMP;
+            tooltipPart.BonusWeaponAttack = persisted.BonusWeaponAttack;
+            tooltipPart.BonusMagicAttack = persisted.BonusMagicAttack;
+            tooltipPart.BonusWeaponDefense = persisted.BonusWeaponDefense;
+            tooltipPart.BonusMagicDefense = persisted.BonusMagicDefense;
+            tooltipPart.BonusAccuracy = persisted.BonusAccuracy;
+            tooltipPart.BonusAvoidability = persisted.BonusAvoidability;
+            tooltipPart.BonusHands = persisted.BonusHands;
+            tooltipPart.BonusSpeed = persisted.BonusSpeed;
+            tooltipPart.BonusJump = persisted.BonusJump;
+            tooltipPart.UpgradeSlots = persisted.UpgradeSlots;
+            tooltipPart.TotalUpgradeSlotCount = persisted.TotalUpgradeSlotCount;
+            tooltipPart.RemainingUpgradeSlotCount = persisted.RemainingUpgradeSlotCount;
+            tooltipPart.EnhancementStarCount = persisted.EnhancementStarCount;
+            tooltipPart.KnockbackRate = persisted.KnockbackRate;
+            tooltipPart.TradeAvailable = persisted.TradeAvailable;
+            tooltipPart.IsTimeLimited = persisted.IsTimeLimited;
+            tooltipPart.PotentialTierText = persisted.PotentialTierText;
+            tooltipPart.PotentialLines = persisted.PotentialLines != null ? new List<string>(persisted.PotentialLines) : new List<string>();
+
+            if (tooltipPart is WeaponPart weaponPart)
+            {
+                weaponPart.AttackSpeed = persisted.AttackSpeed;
+                weaponPart.WeaponType = persisted.WeaponType;
+            }
+
+            return tooltipPart;
         }
     }
 }

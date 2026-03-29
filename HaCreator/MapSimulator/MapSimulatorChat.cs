@@ -686,6 +686,8 @@ namespace HaCreator.MapSimulator
                 }
             }
 
+            RememberIncomingWhisperTarget(chatLogType, whisperTargetCandidate, text);
+
             _messages.Add(new ChatMessage(text, color, tickCount, chatLogType, whisperTargetCandidate, channelId));
 
             // Remove old messages if exceeding limit
@@ -748,6 +750,17 @@ namespace HaCreator.MapSimulator
             _whisperTarget = whisperTarget;
             _replyTarget = whisperTarget;
             Activate(tickCount);
+        }
+
+        public void RememberWhisperTarget(string whisperTarget)
+        {
+            whisperTarget = whisperTarget?.Trim();
+            if (string.IsNullOrWhiteSpace(whisperTarget))
+            {
+                return;
+            }
+
+            _replyTarget = whisperTarget;
         }
 
         public void AddIncomingTargetedMessage(
@@ -1245,6 +1258,58 @@ namespace HaCreator.MapSimulator
             }
 
             return (int)ClientChatLogType.IncomingWhisper;
+        }
+
+        private void RememberIncomingWhisperTarget(int chatLogType, string whisperTargetCandidate, string text)
+        {
+            if (chatLogType != (int)ClientChatLogType.IncomingWhisper)
+            {
+                return;
+            }
+
+            string resolvedTarget = whisperTargetCandidate;
+            if (string.IsNullOrWhiteSpace(resolvedTarget))
+            {
+                resolvedTarget = ExtractIncomingWhisperTarget(text);
+            }
+
+            RememberWhisperTarget(resolvedTarget);
+        }
+
+        private static string ExtractIncomingWhisperTarget(string text)
+        {
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                return string.Empty;
+            }
+
+            int separatorIndex = text.IndexOf(':');
+            if (separatorIndex < 0)
+            {
+                return string.Empty;
+            }
+
+            string prefix = text[..separatorIndex].Trim();
+            if (prefix.StartsWith("[Whisper]", StringComparison.OrdinalIgnoreCase))
+            {
+                prefix = prefix["[Whisper]".Length..].TrimStart();
+            }
+            else if (prefix.StartsWith("[GM Whisper]", StringComparison.OrdinalIgnoreCase))
+            {
+                prefix = prefix["[GM Whisper]".Length..].TrimStart();
+            }
+            else
+            {
+                return string.Empty;
+            }
+
+            int channelSuffixIndex = prefix.LastIndexOf(" (", StringComparison.Ordinal);
+            if (channelSuffixIndex > 0 && prefix.EndsWith(")", StringComparison.Ordinal))
+            {
+                prefix = prefix[..channelSuffixIndex].TrimEnd();
+            }
+
+            return prefix.Trim();
         }
 
         private static bool ColorsMatch(Color left, Color right)

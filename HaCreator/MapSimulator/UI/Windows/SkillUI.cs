@@ -667,9 +667,16 @@ namespace HaCreator.MapSimulator.UI
             int tooltipHeight = (int)Math.Ceiling((TOOLTIP_PADDING * 2) + titleHeight + TOOLTIP_TITLE_GAP + iconBlockHeight);
             int visibleRowIndex = _hoveredSkillIndex - _scrollOffset;
             Point iconPosition = GetSkillIconPosition(Math.Max(0, visibleRowIndex));
-            Rectangle anchorRect = new Rectangle(iconPosition.X, iconPosition.Y, SKILL_ICON_SIZE, SKILL_ICON_SIZE);
-            Rectangle backgroundRect = ResolveHoverTooltipRect(anchorRect, tooltipWidth, tooltipHeight, renderWidth, renderHeight);
-            DrawHoverTooltipBackground(sprite, backgroundRect);
+            Point anchorPoint = new Point(iconPosition.X + SKILL_ICON_SIZE, iconPosition.Y + SKILL_ICON_SIZE);
+            Rectangle backgroundRect = ResolveTooltipRect(
+                anchorPoint,
+                tooltipWidth,
+                tooltipHeight,
+                renderWidth,
+                renderHeight,
+                stackalloc[] { 1, 0, 2 },
+                out int tooltipFrameIndex);
+            DrawTooltipBackground(sprite, backgroundRect, tooltipFrameIndex);
 
             int titleX = backgroundRect.X + TOOLTIP_PADDING;
             int titleY = backgroundRect.Y + TOOLTIP_PADDING;
@@ -803,7 +810,52 @@ namespace HaCreator.MapSimulator.UI
 
         private int ResolveTooltipWidth()
         {
-            return TOOLTIP_FALLBACK_WIDTH;
+            int textureWidth = _tooltipFrames[1]?.Width ?? 0;
+            return textureWidth > 0 ? textureWidth : TOOLTIP_FALLBACK_WIDTH;
+        }
+
+        private Rectangle CreateTooltipRectFromAnchor(Point anchorPoint, int tooltipWidth, int tooltipHeight, int tooltipFrameIndex)
+        {
+            Texture2D tooltipFrame = tooltipFrameIndex >= 0 && tooltipFrameIndex < _tooltipFrames.Length
+                ? _tooltipFrames[tooltipFrameIndex]
+                : null;
+            Point origin = tooltipFrameIndex >= 0 && tooltipFrameIndex < _tooltipFrameOrigins.Length
+                ? _tooltipFrameOrigins[tooltipFrameIndex]
+                : Point.Zero;
+
+            if (tooltipFrame != null && origin != Point.Zero)
+            {
+                float scaleX = tooltipFrame.Width > 0 ? tooltipWidth / (float)tooltipFrame.Width : 1f;
+                float scaleY = tooltipFrame.Height > 0 ? tooltipHeight / (float)tooltipFrame.Height : 1f;
+                return new Rectangle(
+                    anchorPoint.X - (int)Math.Round(origin.X * scaleX),
+                    anchorPoint.Y - (int)Math.Round(origin.Y * scaleY),
+                    tooltipWidth,
+                    tooltipHeight);
+            }
+
+            return tooltipFrameIndex switch
+            {
+                0 => new Rectangle(anchorPoint.X - tooltipWidth + 1, anchorPoint.Y - tooltipHeight + 1, tooltipWidth, tooltipHeight),
+                2 => new Rectangle(anchorPoint.X - tooltipWidth + 1, anchorPoint.Y, tooltipWidth, tooltipHeight),
+                _ => new Rectangle(anchorPoint.X, anchorPoint.Y - tooltipHeight + 1, tooltipWidth, tooltipHeight)
+            };
+        }
+
+        private static int ComputeTooltipOverflow(Rectangle rect, int renderWidth, int renderHeight)
+        {
+            int overflow = 0;
+
+            if (rect.Left < TOOLTIP_PADDING)
+                overflow += TOOLTIP_PADDING - rect.Left;
+            if (rect.Top < TOOLTIP_PADDING)
+                overflow += TOOLTIP_PADDING - rect.Top;
+            if (rect.Right > renderWidth - TOOLTIP_PADDING)
+                overflow += rect.Right - (renderWidth - TOOLTIP_PADDING);
+            if (rect.Bottom > renderHeight - TOOLTIP_PADDING)
+                overflow += rect.Bottom - (renderHeight - TOOLTIP_PADDING);
+
+            return overflow;
         }
 
         private static Rectangle ClampTooltipRect(Rectangle rect, int renderWidth, int renderHeight)
@@ -820,33 +872,55 @@ namespace HaCreator.MapSimulator.UI
                 rect.Height);
         }
 
-        private Rectangle ResolveHoverTooltipRect(Rectangle anchorRect, int tooltipWidth, int tooltipHeight, int renderWidth, int renderHeight)
+        private Rectangle ResolveTooltipRect(
+            Point anchorPoint,
+            int tooltipWidth,
+            int tooltipHeight,
+            int renderWidth,
+            int renderHeight,
+            ReadOnlySpan<int> framePreference,
+            out int tooltipFrameIndex)
         {
-            Rectangle rightRect = new Rectangle(
-                anchorRect.Right + TOOLTIP_ANCHOR_GAP,
-                anchorRect.Top - TOOLTIP_PADDING,
-                tooltipWidth,
-                tooltipHeight);
-            Rectangle leftRect = new Rectangle(
-                anchorRect.Left - TOOLTIP_ANCHOR_GAP - tooltipWidth,
-                anchorRect.Top - TOOLTIP_PADDING,
-                tooltipWidth,
-                tooltipHeight);
+            Rectangle bestRect = Rectangle.Empty;
+            int bestFrame = framePreference.Length > 0 ? framePreference[0] : 1;
+            int bestOverflow = int.MaxValue;
 
-            Rectangle preferredRect = rightRect.Right <= renderWidth - TOOLTIP_PADDING || leftRect.Left < TOOLTIP_PADDING
-                ? rightRect
-                : leftRect;
-
-            if (preferredRect.Bottom > renderHeight - TOOLTIP_PADDING)
+            for (int i = 0; i < framePreference.Length; i++)
             {
-                preferredRect.Y = Math.Max(TOOLTIP_PADDING, anchorRect.Bottom - tooltipHeight);
+                int frameIndex = framePreference[i];
+                Rectangle candidate = CreateTooltipRectFromAnchor(anchorPoint, tooltipWidth, tooltipHeight, frameIndex);
+                int overflow = ComputeTooltipOverflow(candidate, renderWidth, renderHeight);
+
+                if (overflow == 0)
+                {
+                    tooltipFrameIndex = frameIndex;
+                    return candidate;
+                }
+
+                if (overflow < bestOverflow)
+                {
+                    bestOverflow = overflow;
+                    bestFrame = frameIndex;
+                    bestRect = candidate;
+                }
             }
 
-            return ClampTooltipRect(preferredRect, renderWidth, renderHeight);
+            tooltipFrameIndex = bestFrame;
+            return ClampTooltipRect(bestRect, renderWidth, renderHeight);
         }
 
-        private void DrawHoverTooltipBackground(SpriteBatch sprite, Rectangle rect)
+        private void DrawTooltipBackground(SpriteBatch sprite, Rectangle rect, int tooltipFrameIndex)
         {
+            Texture2D tooltipFrame = tooltipFrameIndex >= 0 && tooltipFrameIndex < _tooltipFrames.Length
+                ? _tooltipFrames[tooltipFrameIndex]
+                : null;
+
+            if (tooltipFrame != null)
+            {
+                sprite.Draw(tooltipFrame, rect, Color.White);
+                return;
+            }
+
             sprite.Draw(_debugPlaceholder, rect, TOOLTIP_BACKGROUND_COLOR);
             DrawTooltipBorder(sprite, rect);
         }
@@ -1419,6 +1493,10 @@ namespace HaCreator.MapSimulator.UI
         public int RequiredSkillLevel { get; set; }
         public Dictionary<int, string> LevelDescriptions { get; } = new Dictionary<int, string>();
         public Dictionary<int, int> RequiredGuildLevels { get; } = new Dictionary<int, int>();
+        public Dictionary<int, int> GuildActivationCosts { get; } = new Dictionary<int, int>();
+        public Dictionary<int, int> GuildRenewalCosts { get; } = new Dictionary<int, int>();
+        public Dictionary<int, int> GuildDurationsMinutes { get; } = new Dictionary<int, int>();
+        public int GuildPriceUnit { get; set; } = 1;
 
         // Skill properties for tooltip
         public int Damage { get; set; }
@@ -1455,6 +1533,39 @@ namespace HaCreator.MapSimulator.UI
                 return entry.Value ?? string.Empty;
 
             return string.Empty;
+        }
+
+        public int GetGuildActivationCost(int level)
+        {
+            return GetGuildLevelValue(GuildActivationCosts, level);
+        }
+
+        public int GetGuildRenewalCost(int level)
+        {
+            return GetGuildLevelValue(GuildRenewalCosts, level);
+        }
+
+        public int GetGuildDurationMinutes(int level)
+        {
+            return GetGuildLevelValue(GuildDurationsMinutes, level);
+        }
+
+        private int GetGuildLevelValue(Dictionary<int, int> valuesByLevel, int level)
+        {
+            if (valuesByLevel == null || valuesByLevel.Count == 0)
+                return 0;
+
+            int resolvedLevel = Math.Clamp(level, 1, Math.Max(1, MaxLevel));
+            if (valuesByLevel.TryGetValue(resolvedLevel, out int value))
+                return Math.Max(0, value);
+
+            if (valuesByLevel.TryGetValue(1, out value))
+                return Math.Max(0, value);
+
+            foreach (KeyValuePair<int, int> pair in valuesByLevel)
+                return Math.Max(0, pair.Value);
+
+            return 0;
         }
     }
 }

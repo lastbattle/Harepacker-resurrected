@@ -41,14 +41,28 @@ namespace HaCreator.MapSimulator.UI
         private static readonly XnaColor ValueColor = XnaColor.Black;
         private static readonly XnaColor StatusColor = new XnaColor(64, 64, 64);
         private const int BasicBlackFontHeight = 12;
-        private const string PreferredBasicBlackFontFamily = "Arial";
         private const int TextRasterPadding = 2;
+        private const byte KoreanGdiCharset = 129;
         private const SWF.TextFormatFlags BasicBlackTextFormatFlags =
             SWF.TextFormatFlags.NoPadding |
             SWF.TextFormatFlags.NoPrefix |
             SWF.TextFormatFlags.PreserveGraphicsClipping |
             SWF.TextFormatFlags.PreserveGraphicsTranslateTransform |
             SWF.TextFormatFlags.SingleLine;
+        private static readonly string[] BasicBlackFontFamilyCandidates =
+        {
+            "DotumChe",
+            "Dotum",
+            "돋움체",
+            "돋움",
+            "GulimChe",
+            "Gulim",
+            "굴림체",
+            "굴림",
+            "Tahoma",
+            SD.SystemFonts.MessageBoxFont?.FontFamily?.Name,
+            SD.FontFamily.GenericSansSerif.Name
+        };
 
         private readonly Texture2D _panelTexture;
         private readonly Texture2D _panelTextureWithRank;
@@ -327,14 +341,25 @@ namespace HaCreator.MapSimulator.UI
 
         private static SD.Font CreateBasicBlackFont(out string fontFamilyName)
         {
-            string selectedFamilyName = ResolveInstalledFontFamilyName(
-                PreferredBasicBlackFontFamily,
-                "Tahoma",
-                SD.SystemFonts.MessageBoxFont?.FontFamily?.Name,
-                SD.FontFamily.GenericSansSerif.Name);
+            string selectedFamilyName = ResolveInstalledFontFamilyName(BasicBlackFontFamilyCandidates);
 
             fontFamilyName = selectedFamilyName;
-            return new SD.Font(selectedFamilyName, BasicBlackFontHeight, SD.FontStyle.Regular, SD.GraphicsUnit.Pixel);
+
+            try
+            {
+                // Client inspection shows FONT_BASIC_BLACK is created from the same
+                // underlying face resource used by the DODOOMCHE/basic-black variants.
+                return new SD.Font(
+                    selectedFamilyName,
+                    BasicBlackFontHeight,
+                    SD.FontStyle.Regular,
+                    SD.GraphicsUnit.Pixel,
+                    KoreanGdiCharset);
+            }
+            catch (ArgumentException)
+            {
+                return new SD.Font(selectedFamilyName, BasicBlackFontHeight, SD.FontStyle.Regular, SD.GraphicsUnit.Pixel);
+            }
         }
 
         private static string ResolveInstalledFontFamilyName(params string[] candidates)

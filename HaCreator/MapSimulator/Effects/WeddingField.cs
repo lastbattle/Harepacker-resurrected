@@ -317,7 +317,8 @@ namespace HaCreator.MapSimulator.Effects
                     participant.Position,
                     participant.FacingRight,
                     participant.ActionName,
-                    participant.Build?.Clone());
+                    participant.Build?.Clone(),
+                    participant.MovementSnapshot);
                 return true;
             }
 
@@ -337,7 +338,8 @@ namespace HaCreator.MapSimulator.Effects
                     participant.Position,
                     participant.FacingRight,
                     participant.ActionName,
-                    participant.Build?.Clone()));
+                    participant.Build?.Clone(),
+                    participant.MovementSnapshot));
             }
 
             return snapshots;
@@ -382,6 +384,9 @@ namespace HaCreator.MapSimulator.Effects
                 participant.Position = worldPosition.Value;
             }
 
+            participant.MovementSnapshot = null;
+            participant.MovementDrivenActionSelection = false;
+
             return true;
         }
 
@@ -421,6 +426,8 @@ namespace HaCreator.MapSimulator.Effects
             participant.CharacterId = characterId ?? participant.CharacterId;
             ApplyParticipantPresentation(participant, build, facingRight, actionName);
             participant.Position = worldPosition;
+            participant.MovementSnapshot = null;
+            participant.MovementDrivenActionSelection = false;
             if (participant.CharacterId > 0)
             {
                 _audienceActorNamesById[participant.CharacterId] = actorName;
@@ -444,6 +451,8 @@ namespace HaCreator.MapSimulator.Effects
 
             participant.Position = worldPosition;
             ApplyParticipantPresentation(participant, build: null, facingRight, actionName);
+            participant.MovementSnapshot = null;
+            participant.MovementDrivenActionSelection = false;
             return true;
         }
 
@@ -508,8 +517,16 @@ namespace HaCreator.MapSimulator.Effects
                 participant.Position,
                 participant.FacingRight,
                 participant.ActionName,
-                participant.Build?.Clone());
+                participant.Build?.Clone(),
+                participant.MovementSnapshot);
             return true;
+        }
+
+        private bool TryGetAudienceActorById(int characterId, out WeddingRemoteParticipant participant)
+        {
+            participant = null;
+            return _audienceActorNamesById.TryGetValue(characterId, out string actorName)
+                && _audienceActors.TryGetValue(actorName, out participant);
         }
 
         private static void ApplyParticipantPresentation(
@@ -547,6 +564,52 @@ namespace HaCreator.MapSimulator.Effects
             {
                 participant.ActionName = actionName.Trim();
                 participant.HasExplicitAction = true;
+            }
+        }
+
+        private static void ApplyParticipantMovementSnapshot(
+            WeddingRemoteParticipant participant,
+            PlayerMovementSyncSnapshot movementSnapshot,
+            int currentTimeMs)
+        {
+            if (participant == null || movementSnapshot == null)
+            {
+                return;
+            }
+
+            participant.MovementSnapshot = movementSnapshot;
+            participant.MovementDrivenActionSelection = true;
+            UpdateParticipantMovementSnapshot(participant, currentTimeMs);
+        }
+
+        private static void UpdateParticipantMovementSnapshot(
+            WeddingRemoteParticipant participant,
+            int currentTimeMs)
+        {
+            if (participant?.MovementSnapshot == null)
+            {
+                return;
+            }
+
+            Physics.PassivePositionSnapshot sampled = participant.MovementSnapshot.SampleAtTime(currentTimeMs);
+            participant.Position = new Vector2(sampled.X, sampled.Y);
+            participant.FacingRight = sampled.FacingRight;
+            if (participant.MovementDrivenActionSelection)
+            {
+                participant.ActionName = ResolveRemoteActionName(sampled.Action, participant.Build?.ActivePortableChair?.ItemId ?? 0);
+            }
+        }
+
+        private void UpdateRemoteParticipantMovementSnapshots(int currentTimeMs)
+        {
+            foreach (WeddingRemoteParticipant participant in _participantActors.Values.Concat(_audienceActors.Values))
+            {
+                if (participant.MovementSnapshot == null)
+                {
+                    continue;
+                }
+
+                UpdateParticipantMovementSnapshot(participant, currentTimeMs);
             }
         }
 
@@ -648,10 +711,30 @@ namespace HaCreator.MapSimulator.Effects
             bool facingRight = (move.MoveAction & 1) == 0;
             if (move.CharacterId == _groomId || move.CharacterId == _brideId)
             {
-                return TryConfigureParticipantActor(move.CharacterId, move.Position, build: null, facingRight, actionName, out errorMessage);
+                if (!TryConfigureParticipantActor(move.CharacterId, move.Position, build: null, facingRight, actionName, out errorMessage))
+                {
+                    return false;
+                }
+
+                if (_participantActors.TryGetValue(move.CharacterId, out WeddingRemoteParticipant participant))
+                {
+                    ApplyParticipantMovementSnapshot(participant, move.MovementSnapshot, currentTimeMs);
+                }
+
+                return true;
             }
 
-            return TryMoveAudienceParticipantById(move.CharacterId, move.Position, facingRight, actionName, out errorMessage);
+            if (!TryMoveAudienceParticipantById(move.CharacterId, move.Position, facingRight, actionName, out errorMessage))
+            {
+                return false;
+            }
+
+            if (TryGetAudienceActorById(move.CharacterId, out WeddingRemoteParticipant audienceParticipant))
+            {
+                ApplyParticipantMovementSnapshot(audienceParticipant, move.MovementSnapshot, currentTimeMs);
+            }
+
+            return true;
         }
 
         private bool TryApplyRemoteChairPacket(byte[] payload, out string errorMessage)
@@ -813,7 +896,8 @@ namespace HaCreator.MapSimulator.Effects
             packet = new WeddingRemoteMovePacket(
                 move.CharacterId,
                 new Vector2(move.Snapshot.PassivePosition.X, move.Snapshot.PassivePosition.Y),
-                move.MoveAction);
+                move.MoveAction,
+                move.Snapshot);
             return true;
         }
 
@@ -925,6 +1009,26 @@ namespace HaCreator.MapSimulator.Effects
                 6 => CharacterPart.GetActionString(CharacterAction.Sit),
                 17 => CharacterPart.GetActionString(CharacterAction.Ladder),
                 18 => CharacterPart.GetActionString(CharacterAction.Rope),
+                _ => CharacterPart.GetActionString(CharacterAction.Stand1)
+            };
+        }
+
+        private static string ResolveRemoteActionName(Physics.MoveAction moveAction, int portableChairItemId)
+        {
+            if (portableChairItemId > 0)
+            {
+                return CharacterPart.GetActionString(CharacterAction.Sit);
+            }
+
+            return moveAction switch
+            {
+                Physics.MoveAction.Walk => CharacterPart.GetActionString(CharacterAction.Walk1),
+                Physics.MoveAction.Jump or Physics.MoveAction.Fall => CharacterPart.GetActionString(CharacterAction.Jump),
+                Physics.MoveAction.Hit => CharacterPart.GetActionString(CharacterAction.Alert),
+                Physics.MoveAction.Ladder => CharacterPart.GetActionString(CharacterAction.Ladder),
+                Physics.MoveAction.Rope => CharacterPart.GetActionString(CharacterAction.Rope),
+                Physics.MoveAction.Swim => CharacterPart.GetActionString(CharacterAction.Swim),
+                Physics.MoveAction.Fly => CharacterPart.GetActionString(CharacterAction.Fly),
                 _ => CharacterPart.GetActionString(CharacterAction.Stand1)
             };
         }
@@ -1453,7 +1557,8 @@ namespace HaCreator.MapSimulator.Effects
         #region Update
         public void Update(int currentTimeMs, float deltaSeconds)
         {
-            if (!_isActive) return;
+            if (!_isActive) return;
+            UpdateRemoteParticipantMovementSnapshots(currentTimeMs);
 
             float overlayTargetAlpha = _ceremonyTextOverlayActive ? 1f : 0f;
             _ceremonyTextOverlayAlpha = MathHelper.Clamp(
@@ -2132,7 +2237,8 @@ namespace HaCreator.MapSimulator.Effects
         Vector2 Position,
         bool FacingRight,
         string ActionName,
-        CharacterBuild Build);
+        CharacterBuild Build,
+        PlayerMovementSyncSnapshot MovementSnapshot);
 
     internal readonly record struct WeddingRemoteSpawnPacket(
         int CharacterId,
@@ -2142,7 +2248,11 @@ namespace HaCreator.MapSimulator.Effects
         byte MoveAction,
         int PortableChairItemId);
 
-    internal readonly record struct WeddingRemoteMovePacket(int CharacterId, Vector2 Position, byte MoveAction);
+    internal readonly record struct WeddingRemoteMovePacket(
+        int CharacterId,
+        Vector2 Position,
+        byte MoveAction,
+        PlayerMovementSyncSnapshot MovementSnapshot);
 
     internal readonly record struct WeddingRemoteChairPacket(int CharacterId, int PortableChairItemId);
 
@@ -2168,6 +2278,10 @@ namespace HaCreator.MapSimulator.Effects
         public Vector2 Position { get; set; }
         public bool FacingRight { get; set; } = true;
         public string ActionName { get; set; }
+
+        public PlayerMovementSyncSnapshot MovementSnapshot { get; set; }
+
+        public bool MovementDrivenActionSelection { get; set; }
 
         public bool HasExplicitFacing { get; set; }
 

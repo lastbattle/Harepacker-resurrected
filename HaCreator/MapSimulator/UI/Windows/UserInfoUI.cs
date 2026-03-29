@@ -135,6 +135,12 @@ namespace HaCreator.MapSimulator.UI
             public int Channel { get; }
         }
 
+        public enum PopularityChangeDirection
+        {
+            Up,
+            Down
+        }
+
         private enum AuxiliaryPopupKind
         {
             None,
@@ -242,6 +248,7 @@ namespace HaCreator.MapSimulator.UI
         public Func<UserInfoActionContext, string> PartyRequested { get; set; }
         public Func<UserInfoActionContext, string> TradingRoomRequested { get; set; }
         public Func<UserInfoActionContext, string> FamilyRequested { get; set; }
+        public Func<UserInfoActionContext, PopularityChangeDirection, string> PopularityRequested { get; set; }
         public Action PersonalShopRequested { get; set; }
         public Action EntrustedShopRequested { get; set; }
         public Action BookCollectionRequested { get; set; }
@@ -318,6 +325,15 @@ namespace HaCreator.MapSimulator.UI
             BindActionButton(itemButton, "Item list opened.", ToggleItemPopup, true);
             BindActionButton(wishButton, "Wish list opened.", ToggleWishPopup, true);
             BindActionButton(familyButton, "Family chart opened from the profile window.", RequestFamilyAction, true);
+        }
+
+        public void InitializePopupScrollButtons(UIObject popupUpButton, UIObject popupDownButton)
+        {
+            _popupUpButton = popupUpButton;
+            _popupDownButton = popupDownButton;
+            RegisterPrimaryButton(_popupUpButton, ScrollPopupSelectionUp);
+            RegisterPrimaryButton(_popupDownButton, ScrollPopupSelectionDown);
+            UpdateButtonStates();
         }
 
         public void InitializePageButtons(UIObject rideButton, UIObject petButton, UIObject collectButton, UIObject personalityButton)
@@ -451,13 +467,13 @@ namespace HaCreator.MapSimulator.UI
             UpdateButtonStates();
         }
 
-        public void InitializePopupScrollButtons(UIObject popupUpButton, UIObject popupDownButton)
+        public void InitializePopularityButtons(UIObject popupUpButton, UIObject popupDownButton)
         {
             _popupUpButton = popupUpButton;
             _popupDownButton = popupDownButton;
 
-            BindActionButton(_popupUpButton, "Moved to the previous entry.", MovePopupSelectionUp);
-            BindActionButton(_popupDownButton, "Moved to the next entry.", MovePopupSelectionDown);
+            BindActionButton(_popupUpButton, "Popularity up request prepared.", () => RequestPopularityChange(PopularityChangeDirection.Up));
+            BindActionButton(_popupDownButton, "Popularity down request prepared.", () => RequestPopularityChange(PopularityChangeDirection.Down));
             UpdateButtonStates();
         }
 
@@ -1222,6 +1238,18 @@ namespace HaCreator.MapSimulator.UI
             };
         }
 
+        private void RegisterPrimaryButton(UIObject button, Action action)
+        {
+            if (button == null)
+            {
+                return;
+            }
+
+            _primaryButtons.Add(button);
+            AddButton(button);
+            button.ButtonClickReleased += _ => action?.Invoke();
+        }
+
         private void BindPageButton(UserInfoPage page, UIObject button, string message)
         {
             if (button == null)
@@ -1390,15 +1418,45 @@ namespace HaCreator.MapSimulator.UI
             bool popupScrollVisible = _activePopup != AuxiliaryPopupKind.None;
             if (_popupUpButton != null)
             {
-                _popupUpButton.ButtonVisible = popupScrollVisible;
-                _popupUpButton.SetEnabled(popupScrollVisible && CanMovePopupSelection(-1));
+                _popupUpButton.ButtonVisible = characterPage;
+                _popupUpButton.SetEnabled(characterPage && CanRequestPopularity(PopularityChangeDirection.Up) && !_exceptionPopupOpen);
             }
 
             if (_popupDownButton != null)
             {
-                _popupDownButton.ButtonVisible = popupScrollVisible;
-                _popupDownButton.SetEnabled(popupScrollVisible && CanMovePopupSelection(1));
+                _popupDownButton.ButtonVisible = characterPage;
+                _popupDownButton.SetEnabled(characterPage && CanRequestPopularity(PopularityChangeDirection.Down) && !_exceptionPopupOpen);
             }
+        }
+
+        private void ScrollPopupSelectionUp()
+        {
+            switch (_activePopup)
+            {
+                case AuxiliaryPopupKind.Item:
+                    _selectedItemPopupIndex = Math.Max(0, _selectedItemPopupIndex - 1);
+                    break;
+                case AuxiliaryPopupKind.Wish:
+                    _selectedWishIndex = Math.Max(0, _selectedWishIndex - 1);
+                    break;
+            }
+
+            UpdateButtonStates();
+        }
+
+        private void ScrollPopupSelectionDown()
+        {
+            switch (_activePopup)
+            {
+                case AuxiliaryPopupKind.Item:
+                    _selectedItemPopupIndex = Math.Min(_itemPopupEntries.Length - 1, _selectedItemPopupIndex + 1);
+                    break;
+                case AuxiliaryPopupKind.Wish:
+                    _selectedWishIndex = Math.Min(_wishEntries.Count - 1, _selectedWishIndex + 1);
+                    break;
+            }
+
+            UpdateButtonStates();
         }
 
         private PageVisual GetOrCreateVisual(UserInfoPage page)
@@ -1552,6 +1610,16 @@ namespace HaCreator.MapSimulator.UI
             }
         }
 
+        private void RequestPopularityChange(PopularityChangeDirection direction)
+        {
+            UserInfoActionContext context = BuildCurrentActionContext();
+            string message = PopularityRequested?.Invoke(context, direction);
+            if (!string.IsNullOrWhiteSpace(message))
+            {
+                _statusMessage = message;
+            }
+        }
+
         private void ToggleAuxiliaryPopup(AuxiliaryPopupKind popupKind)
         {
             _exceptionPopupOpen = false;
@@ -1564,43 +1632,6 @@ namespace HaCreator.MapSimulator.UI
             if (_activePopup == AuxiliaryPopupKind.Wish && _selectedWishIndex < 0 && _wishEntries.Count > 0)
             {
                 _selectedWishIndex = 0;
-            }
-
-            UpdateButtonStates();
-        }
-
-        private void MovePopupSelectionUp()
-        {
-            MovePopupSelection(-1);
-        }
-
-        private void MovePopupSelectionDown()
-        {
-            MovePopupSelection(1);
-        }
-
-        private void MovePopupSelection(int delta)
-        {
-            if (_activePopup == AuxiliaryPopupKind.None)
-            {
-                return;
-            }
-
-            if (!CanMovePopupSelection(delta))
-            {
-                return;
-            }
-
-            switch (_activePopup)
-            {
-                case AuxiliaryPopupKind.Item:
-                    _selectedItemPopupIndex = Math.Clamp(_selectedItemPopupIndex + delta, 0, _itemPopupEntries.Length - 1);
-                    _statusMessage = $"Selected {_itemPopupEntries[_selectedItemPopupIndex]} preview.";
-                    break;
-                case AuxiliaryPopupKind.Wish:
-                    _selectedWishIndex = Math.Clamp(_selectedWishIndex + delta, 0, _wishEntries.Count - 1);
-                    _statusMessage = $"Selected {_wishEntries[_selectedWishIndex]} from the wish list.";
-                    break;
             }
 
             UpdateButtonStates();
@@ -2086,18 +2117,14 @@ namespace HaCreator.MapSimulator.UI
             return _rankDeltaProvider?.Invoke() ?? default;
         }
 
-        private bool CanMovePopupSelection(int delta)
+        private bool CanRequestPopularity(PopularityChangeDirection direction)
         {
-            return _activePopup switch
+            if (!IsRemoteInspectionActive())
             {
-                AuxiliaryPopupKind.Item => _itemPopupEntries.Length > 0 &&
-                    (_selectedItemPopupIndex + delta) >= 0 &&
-                    (_selectedItemPopupIndex + delta) < _itemPopupEntries.Length,
-                AuxiliaryPopupKind.Wish => _wishEntries.Count > 0 &&
-                    (_selectedWishIndex + delta) >= 0 &&
-                    (_selectedWishIndex + delta) < _wishEntries.Count,
-                _ => false
-            };
+                return false;
+            }
+
+            return direction != PopularityChangeDirection.Down || (_characterBuild?.Fame ?? 0) > 0;
         }
 
         private string ResolveHoveredPersonalityTrait()

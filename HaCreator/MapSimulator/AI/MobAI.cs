@@ -1459,7 +1459,7 @@ namespace HaCreator.MapSimulator.AI
             int cleared = 0;
             foreach (MobStatusEffect effect in new List<MobStatusEffect>(_statusEntries.Keys))
             {
-                if (!IsNegativeStatusEffect(effect))
+                if (!IsNegativeStatusEffect(effect, _statusEntries[effect]))
                 {
                     continue;
                 }
@@ -2021,8 +2021,20 @@ namespace HaCreator.MapSimulator.AI
             return IsDotEffect(effect) ? Math.Max(0, value) : value;
         }
 
-        private static bool IsNegativeStatusEffect(MobStatusEffect effect)
+        private static bool IsNegativeStatusEffect(MobStatusEffect effect, MobStatusEntry entry)
         {
+            switch (effect)
+            {
+                case MobStatusEffect.PADamage:
+                case MobStatusEffect.PDamage:
+                case MobStatusEffect.MADamage:
+                case MobStatusEffect.MDamage:
+                case MobStatusEffect.ACC:
+                case MobStatusEffect.EVA:
+                case MobStatusEffect.Speed:
+                    return entry?.Value < 0;
+            }
+
             return effect == MobStatusEffect.Stun ||
                    effect == MobStatusEffect.Freeze ||
                    effect == MobStatusEffect.Poison ||

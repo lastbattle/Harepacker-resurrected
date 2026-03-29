@@ -302,6 +302,24 @@ namespace HaCreator.MapSimulator.Character
     /// </summary>
     public class CharacterPart
     {
+        // Client raw action codes do not match the local enum order.
+        // These mappings are taken from CAvatar::MoveAction2RawAction.
+        private static readonly IReadOnlyDictionary<int, string> ClientRawActionCodeMap =
+            new Dictionary<int, string>
+            {
+                [0] = "walk1",
+                [1] = "walk2",
+                [2] = "stand1",
+                [3] = "stand2",
+                [4] = "alert",
+                [42] = "jump",
+                [43] = "sit",
+                [44] = "prone",
+                [47] = "proneStab",
+                [270] = "ladder",
+                [271] = "rope",
+            };
+
         private static readonly IReadOnlyDictionary<string, string[]> ActionFallbackMap =
             new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase)
             {
@@ -314,6 +332,11 @@ namespace HaCreator.MapSimulator.Character
                 ["move"] = new[] { "walk1", "walk2", "walk" },
                 ["rope"] = new[] { "ladder" },
                 ["ladder"] = new[] { "rope" },
+                ["rope2"] = new[] { "rope", "ladder2", "ladder" },
+                ["ladder2"] = new[] { "ladder", "rope2", "rope" },
+                ["fly2"] = new[] { "fly", "swim" },
+                ["fly2Move"] = new[] { "fly2", "fly", "jump" },
+                ["fly2Skill"] = new[] { "fly2", "fly", "jump" },
                 ["hit"] = new[] { "stand", "stand1" },
                 ["heal"] = new[] { "stand1" },
                 ["alert"] = new[] { "stand1" },
@@ -524,12 +547,12 @@ namespace HaCreator.MapSimulator.Character
 
         public static bool TryGetActionStringFromCode(int actionCode, out string actionName)
         {
-            actionName = actionCode switch
+            if (ClientRawActionCodeMap.TryGetValue(actionCode, out actionName))
             {
-                >= 0 and <= (int)CharacterAction.Ghost => GetActionString((CharacterAction)actionCode),
-                _ => null
-            };
+                return true;
+            }
 
+            actionName = null;
             return !string.IsNullOrWhiteSpace(actionName);
         }
 

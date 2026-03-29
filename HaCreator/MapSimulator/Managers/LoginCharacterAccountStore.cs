@@ -20,12 +20,15 @@ namespace HaCreator.MapSimulator.Managers
 
         private sealed class PersistedAccountState
         {
+            public const long DefaultCashShopNxCredit = 10000;
+
             public string AccountName { get; set; }
             public int? AccountId { get; set; }
             public int WorldId { get; set; }
             public int SlotCount { get; set; } = 3;
             public int BuyCharacterCount { get; set; }
             public int NextCharacterId { get; set; } = 1;
+            public long? CashShopNxCredit { get; set; }
             public string PicCode { get; set; }
             public string BirthDate { get; set; }
             public bool IsSecondaryPasswordEnabled { get; set; }
@@ -41,6 +44,7 @@ namespace HaCreator.MapSimulator.Managers
             public int SlotCount { get; init; } = 3;
             public int BuyCharacterCount { get; init; }
             public int NextCharacterId { get; init; } = 1;
+            public long CashShopNxCredit { get; init; } = PersistedAccountState.DefaultCashShopNxCredit;
             public string PicCode { get; init; } = string.Empty;
             public string BirthDate { get; init; } = string.Empty;
             public bool IsSecondaryPasswordEnabled { get; init; }
@@ -147,6 +151,7 @@ namespace HaCreator.MapSimulator.Managers
                 SlotCount = Math.Max(0, persisted.SlotCount),
                 BuyCharacterCount = Math.Max(0, persisted.BuyCharacterCount),
                 NextCharacterId = nextCharacterId,
+                CashShopNxCredit = NormalizeCashShopNxCredit(persisted.CashShopNxCredit),
                 PicCode = NormalizeSecret(persisted.PicCode),
                 BirthDate = NormalizeBirthDate(persisted.BirthDate),
                 IsSecondaryPasswordEnabled = persisted.IsSecondaryPasswordEnabled,
@@ -162,6 +167,7 @@ namespace HaCreator.MapSimulator.Managers
             int buyCharacterCount,
             int nextCharacterId,
             IEnumerable<LoginCharacterAccountEntryState> entries,
+            long cashShopNxCredit = PersistedAccountState.DefaultCashShopNxCredit,
             string picCode = null,
             string birthDate = null,
             bool isSecondaryPasswordEnabled = false,
@@ -186,6 +192,7 @@ namespace HaCreator.MapSimulator.Managers
                 SlotCount = Math.Max(0, slotCount),
                 BuyCharacterCount = Math.Max(0, buyCharacterCount),
                 NextCharacterId = normalizedNextCharacterId,
+                CashShopNxCredit = NormalizeCashShopNxCredit(cashShopNxCredit),
                 PicCode = NormalizeSecret(picCode),
                 BirthDate = NormalizeBirthDate(birthDate),
                 IsSecondaryPasswordEnabled = isSecondaryPasswordEnabled,
@@ -329,6 +336,12 @@ namespace HaCreator.MapSimulator.Managers
             return digits.Length == 8 ? digits : string.Empty;
         }
 
+        private static long NormalizeCashShopNxCredit(long? value)
+        {
+            long normalized = value ?? PersistedAccountState.DefaultCashShopNxCredit;
+            return Math.Max(0, normalized);
+        }
+
         private static PersistedAccountState ClonePersistedState(PersistedAccountState state)
         {
             return new PersistedAccountState
@@ -339,6 +352,7 @@ namespace HaCreator.MapSimulator.Managers
                 SlotCount = state?.SlotCount ?? 3,
                 BuyCharacterCount = state?.BuyCharacterCount ?? 0,
                 NextCharacterId = state?.NextCharacterId ?? 1,
+                CashShopNxCredit = NormalizeCashShopNxCredit(state?.CashShopNxCredit),
                 PicCode = NormalizeSecret(state?.PicCode),
                 BirthDate = NormalizeBirthDate(state?.BirthDate),
                 IsSecondaryPasswordEnabled = state?.IsSecondaryPasswordEnabled ?? false,

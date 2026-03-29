@@ -9,16 +9,17 @@ namespace HaCreator.MapSimulator.UI
     {
         private const int ReferenceClientHeight = 578;
         private const int TopMargin = 44;
-        private const int DamageMeterPanelWidth = 266;
-        private const int DamageMeterMinimumHeight = 78;
-        private const int HazardPanelWidth = 266;
-        private const int HazardPanelHeight = 72;
+        private const int DefaultDamageMeterPanelWidth = 266;
+        private const int DefaultDamageMeterMinimumHeight = 96;
+        private const int DefaultHazardPanelWidth = 258;
+        private const int DefaultHazardPanelHeight = 107;
         private const int PanelSpacing = 8;
         private const int HorizontalPadding = 18;
         private const int ProgressBarHeight = 9;
         private const int ProgressBarBottomPadding = 16;
         private const float TitleScale = 0.72f;
         private const float MessageScale = 0.66f;
+        private const float FollowUpScale = 0.62f;
         private const float TimerScale = 0.86f;
         private const int IconSize = 18;
 
@@ -79,22 +80,26 @@ namespace HaCreator.MapSimulator.UI
             int panelY = GetTopMargin();
             if (runtime.HasDamageMeterTimer(currentTickCount))
             {
+                int damageMeterWidth = GetFrameWidth(_damageMeterTop, _damageMeterCenter, _damageMeterBottom, DefaultDamageMeterPanelWidth);
+                int damageMeterHeight = GetMinimumFrameHeight(_damageMeterTop, _damageMeterCenter, _damageMeterBottom, DefaultDamageMeterMinimumHeight);
                 Rectangle damageMeterBounds = new(
-                    Math.Max(0, (_screenWidth - DamageMeterPanelWidth) / 2),
+                    Math.Max(0, (_screenWidth - damageMeterWidth) / 2),
                     panelY,
-                    DamageMeterPanelWidth,
-                    DamageMeterMinimumHeight);
+                    damageMeterWidth,
+                    damageMeterHeight);
                 DrawDamageMeter(spriteBatch, runtime, damageMeterBounds, currentTickCount);
                 panelY += damageMeterBounds.Height + PanelSpacing;
             }
 
             if (runtime.HasActiveFieldHazardNotice(currentTickCount))
             {
+                int hazardWidth = GetFrameWidth(_fieldHazardTop, _fieldHazardCenter, _fieldHazardBottom, DefaultHazardPanelWidth);
+                int hazardHeight = GetMinimumFrameHeight(_fieldHazardTop, _fieldHazardCenter, _fieldHazardBottom, DefaultHazardPanelHeight);
                 Rectangle hazardBounds = new(
-                    Math.Max(0, (_screenWidth - HazardPanelWidth) / 2),
+                    Math.Max(0, (_screenWidth - hazardWidth) / 2),
                     panelY,
-                    HazardPanelWidth,
-                    HazardPanelHeight);
+                    hazardWidth,
+                    hazardHeight);
                 DrawFieldHazardNotice(spriteBatch, runtime, hazardBounds, currentTickCount);
             }
         }
@@ -172,6 +177,19 @@ namespace HaCreator.MapSimulator.UI
                 Color.Black * alpha,
                 TitleScale);
 
+            string stateText = GetFollowUpStateText(runtime.LastFieldHazardFollowUpKind);
+            if (!string.IsNullOrWhiteSpace(stateText))
+            {
+                float stateTextWidth = MeasureTextWidth(stateText, FollowUpScale);
+                DrawTextWithShadow(
+                    spriteBatch,
+                    stateText,
+                    new Vector2(bounds.Right - HorizontalPadding - stateTextWidth, bounds.Y + 15),
+                    GetFollowUpColor(runtime.LastFieldHazardFollowUpKind) * alpha,
+                    Color.Black * alpha,
+                    FollowUpScale);
+            }
+
             string damageText = runtime.LastFieldHazardDamage > 0
                 ? $"HP -{runtime.LastFieldHazardDamage}"
                 : "HP loss";
@@ -191,6 +209,18 @@ namespace HaCreator.MapSimulator.UI
                 Color.White * alpha,
                 Color.Black * alpha,
                 MessageScale);
+
+            if (!string.IsNullOrWhiteSpace(runtime.LastFieldHazardFollowUpDetail))
+            {
+                string followUp = TrimText(runtime.LastFieldHazardFollowUpDetail, FollowUpScale, bounds.Width - (textX - bounds.X) - HorizontalPadding);
+                DrawTextWithShadow(
+                    spriteBatch,
+                    followUp,
+                    new Vector2(textX, bounds.Y + 66),
+                    GetFollowUpColor(runtime.LastFieldHazardFollowUpKind) * alpha,
+                    Color.Black * alpha,
+                    FollowUpScale);
+            }
         }
 
         private void DrawNoticeFrame(
@@ -266,6 +296,19 @@ namespace HaCreator.MapSimulator.UI
                 : _font.MeasureString(text).X * scale;
         }
 
+        private static int GetFrameWidth(Texture2D top, Texture2D center, Texture2D bottom, int fallbackWidth)
+        {
+            return Math.Max(
+                fallbackWidth,
+                Math.Max(top?.Width ?? 0, Math.Max(center?.Width ?? 0, bottom?.Width ?? 0)));
+        }
+
+        private static int GetMinimumFrameHeight(Texture2D top, Texture2D center, Texture2D bottom, int fallbackHeight)
+        {
+            int frameHeight = (top?.Height ?? 0) + (center?.Height ?? 0) + (bottom?.Height ?? 0);
+            return Math.Max(fallbackHeight, frameHeight);
+        }
+
         private string TrimText(string value, float scale, int maxWidth)
         {
             if (string.IsNullOrWhiteSpace(value) || _font == null || maxWidth <= 0)
@@ -291,6 +334,30 @@ namespace HaCreator.MapSimulator.UI
             }
 
             return ellipsis;
+        }
+
+        private static string GetFollowUpStateText(FieldHazardFollowUpKind kind)
+        {
+            return kind switch
+            {
+                FieldHazardFollowUpKind.Pending => "REQUEST",
+                FieldHazardFollowUpKind.Success => "ACK",
+                FieldHazardFollowUpKind.Failure => "FAILED",
+                FieldHazardFollowUpKind.Throttled => "WAIT",
+                _ => string.Empty
+            };
+        }
+
+        private static Color GetFollowUpColor(FieldHazardFollowUpKind kind)
+        {
+            return kind switch
+            {
+                FieldHazardFollowUpKind.Pending => new Color(176, 224, 255),
+                FieldHazardFollowUpKind.Success => new Color(170, 255, 170),
+                FieldHazardFollowUpKind.Failure => new Color(255, 181, 145),
+                FieldHazardFollowUpKind.Throttled => new Color(255, 219, 145),
+                _ => Color.White
+            };
         }
 
         private void DrawTextWithShadow(

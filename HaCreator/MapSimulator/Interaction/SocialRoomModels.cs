@@ -350,6 +350,16 @@ namespace HaCreator.MapSimulator.Interaction
         private int _employeeWorldY;
         private bool _employeeHasWorldPosition;
         private bool? _employeeFlip;
+        private bool _employeeHasPacketData;
+        private int _employeePacketEmployerId;
+        private int _employeePacketFootholdId;
+        private string _employeePacketNameTag = string.Empty;
+        private byte _employeePacketMiniRoomType;
+        private int _employeePacketMiniRoomSerial;
+        private string _employeePacketBalloonTitle = string.Empty;
+        private byte _employeePacketBalloonByte0;
+        private byte _employeePacketBalloonByte1;
+        private byte _employeePacketBalloonByte2;
         private bool _inventoryBackedRows;
         private bool _suspendPersistence;
         private string _persistenceKey;
@@ -507,6 +517,16 @@ namespace HaCreator.MapSimulator.Interaction
                 EmployeeWorldY = _employeeWorldY,
                 EmployeeHasWorldPosition = _employeeHasWorldPosition,
                 EmployeeFlip = _employeeFlip,
+                EmployeeHasPacketData = _employeeHasPacketData,
+                EmployeePacketEmployerId = _employeePacketEmployerId,
+                EmployeePacketFootholdId = _employeePacketFootholdId,
+                EmployeePacketNameTag = _employeePacketNameTag,
+                EmployeePacketMiniRoomType = _employeePacketMiniRoomType,
+                EmployeePacketMiniRoomSerial = _employeePacketMiniRoomSerial,
+                EmployeePacketBalloonTitle = _employeePacketBalloonTitle,
+                EmployeePacketBalloonByte0 = _employeePacketBalloonByte0,
+                EmployeePacketBalloonByte1 = _employeePacketBalloonByte1,
+                EmployeePacketBalloonByte2 = _employeePacketBalloonByte2,
                 Occupants = _occupants
                     .Select(occupant => new SocialRoomOccupantSnapshot
                     {
@@ -599,6 +619,16 @@ namespace HaCreator.MapSimulator.Interaction
                 _employeeWorldY = source?.EmployeeWorldY ?? _defaultSnapshot.EmployeeWorldY;
                 _employeeHasWorldPosition = source?.EmployeeHasWorldPosition ?? _defaultSnapshot.EmployeeHasWorldPosition;
                 _employeeFlip = source?.EmployeeFlip ?? _defaultSnapshot.EmployeeFlip;
+                _employeeHasPacketData = source?.EmployeeHasPacketData ?? _defaultSnapshot.EmployeeHasPacketData;
+                _employeePacketEmployerId = source?.EmployeePacketEmployerId ?? _defaultSnapshot.EmployeePacketEmployerId;
+                _employeePacketFootholdId = source?.EmployeePacketFootholdId ?? _defaultSnapshot.EmployeePacketFootholdId;
+                _employeePacketNameTag = source?.EmployeePacketNameTag ?? _defaultSnapshot.EmployeePacketNameTag ?? string.Empty;
+                _employeePacketMiniRoomType = source?.EmployeePacketMiniRoomType ?? _defaultSnapshot.EmployeePacketMiniRoomType;
+                _employeePacketMiniRoomSerial = source?.EmployeePacketMiniRoomSerial ?? _defaultSnapshot.EmployeePacketMiniRoomSerial;
+                _employeePacketBalloonTitle = source?.EmployeePacketBalloonTitle ?? _defaultSnapshot.EmployeePacketBalloonTitle ?? string.Empty;
+                _employeePacketBalloonByte0 = source?.EmployeePacketBalloonByte0 ?? _defaultSnapshot.EmployeePacketBalloonByte0;
+                _employeePacketBalloonByte1 = source?.EmployeePacketBalloonByte1 ?? _defaultSnapshot.EmployeePacketBalloonByte1;
+                _employeePacketBalloonByte2 = source?.EmployeePacketBalloonByte2 ?? _defaultSnapshot.EmployeePacketBalloonByte2;
                 _remoteInventoryMeso = Math.Max(0, source?.RemoteInventoryMeso ?? _defaultSnapshot.RemoteInventoryMeso);
 
                 _occupants.Clear();
@@ -722,12 +752,14 @@ namespace HaCreator.MapSimulator.Interaction
             if (Kind == SocialRoomKind.PersonalShop)
             {
                 bool usesCashEmployee = _employeeTemplateId > 0;
+                string headline = ResolveEmployeeDisplayHeadline("Hired Merchant");
+                string detail = $"{ResolveEmployeeDisplayOwnerName()} | {RoomState}";
                 return new SocialRoomFieldActorSnapshot(
                     Kind,
                     usesCashEmployee ? SocialRoomFieldActorTemplate.CashEmployee : SocialRoomFieldActorTemplate.Merchant,
-                    string.IsNullOrWhiteSpace(RoomTitle) ? "Hired Merchant" : RoomTitle,
-                    $"{OwnerName} | {RoomState}",
-                    $"{(usesCashEmployee ? "cash" : "merchant")}|{_employeeTemplateId}|{ModeName}|{RoomState}",
+                    headline,
+                    detail,
+                    $"{(usesCashEmployee ? "cash" : "merchant")}|{_employeeTemplateId}|{ModeName}|{RoomState}{BuildEmployeePacketStateKeySuffix()}",
                     templateId: _employeeTemplateId,
                     useOwnerAnchor: _employeeUseOwnerAnchor,
                     anchorOffsetX: _employeeAnchorOffsetX,
@@ -762,12 +794,14 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             bool usesCashEmployeeForEntrusted = _employeeTemplateId > 0;
+            string entrustedHeadline = ResolveEmployeeDisplayHeadline("Entrusted Shop");
+            string entrustedDetail = $"{ResolveEmployeeDisplayOwnerName()} | {RoomState} | {permitStatus}";
             return new SocialRoomFieldActorSnapshot(
                 Kind,
                 usesCashEmployeeForEntrusted ? SocialRoomFieldActorTemplate.CashEmployee : SocialRoomFieldActorTemplate.Merchant,
-                string.IsNullOrWhiteSpace(RoomTitle) ? "Entrusted Shop" : RoomTitle,
-                $"{OwnerName} | {RoomState} | {permitStatus}",
-                $"{(usesCashEmployeeForEntrusted ? "cash" : "merchant")}|{_employeeTemplateId}|{ModeName}|{RoomState}|{permitStatus}",
+                entrustedHeadline,
+                entrustedDetail,
+                $"{(usesCashEmployeeForEntrusted ? "cash" : "merchant")}|{_employeeTemplateId}|{ModeName}|{RoomState}|{permitStatus}{BuildEmployeePacketStateKeySuffix()}",
                 templateId: _employeeTemplateId,
                 useOwnerAnchor: _employeeUseOwnerAnchor,
                 anchorOffsetX: _employeeAnchorOffsetX,
@@ -947,6 +981,70 @@ namespace HaCreator.MapSimulator.Interaction
             catch (EndOfStreamException)
             {
                 message = $"Social-room packet ended unexpectedly: {BitConverter.ToString(payload)}";
+                return false;
+            }
+        }
+
+        public bool TryApplyEmployeeEnterFieldPacket(byte[] packetBytes, out string message)
+        {
+            message = null;
+            if (Kind != SocialRoomKind.PersonalShop && Kind != SocialRoomKind.EntrustedShop)
+            {
+                message = "Employee field packets only apply to personal-shop and entrusted-shop rooms.";
+                return false;
+            }
+
+            if (packetBytes == null || packetBytes.Length == 0)
+            {
+                message = "Employee field packet payload is empty.";
+                return false;
+            }
+
+            try
+            {
+                PacketReader reader = new(packetBytes);
+
+                _employeePacketEmployerId = reader.ReadInt();
+                int packetTemplateId = reader.ReadInt();
+                short worldX = reader.ReadShort();
+                short worldY = reader.ReadShort();
+                _employeePacketFootholdId = reader.ReadShort();
+                _employeePacketNameTag = NormalizePacketText(reader.ReadMapleString());
+                _employeePacketMiniRoomType = reader.ReadByte();
+                _employeePacketMiniRoomSerial = 0;
+                _employeePacketBalloonTitle = string.Empty;
+                _employeePacketBalloonByte0 = 0;
+                _employeePacketBalloonByte1 = 0;
+                _employeePacketBalloonByte2 = 0;
+
+                if (_employeePacketMiniRoomType != 0)
+                {
+                    _employeePacketMiniRoomSerial = reader.ReadInt();
+                    _employeePacketBalloonTitle = NormalizePacketText(reader.ReadMapleString());
+                    _employeePacketBalloonByte0 = reader.ReadByte();
+                    _employeePacketBalloonByte1 = reader.ReadByte();
+                    _employeePacketBalloonByte2 = reader.ReadByte();
+                }
+
+                _employeeHasPacketData = true;
+                _employeeTemplateId = Math.Max(0, packetTemplateId);
+                _employeeUseOwnerAnchor = false;
+                _employeeHasWorldPosition = true;
+                _employeeWorldX = worldX;
+                _employeeWorldY = worldY;
+
+                string displayTemplate = _employeeTemplateId > 0 ? _employeeTemplateId.ToString() : "legacy";
+                string displayName = string.IsNullOrWhiteSpace(_employeePacketNameTag) ? OwnerName : _employeePacketNameTag;
+                string displayBalloon = string.IsNullOrWhiteSpace(_employeePacketBalloonTitle) ? "no balloon" : _employeePacketBalloonTitle;
+                StatusMessage =
+                    $"Applied employee enter-field packet: employer={_employeePacketEmployerId}, template={displayTemplate}, world=({_employeeWorldX}, {_employeeWorldY}), owner={displayName}, balloon={displayBalloon}.";
+                PersistState();
+                message = StatusMessage;
+                return true;
+            }
+            catch (EndOfStreamException)
+            {
+                message = $"Employee field packet ended unexpectedly: {BitConverter.ToString(packetBytes)}";
                 return false;
             }
         }
@@ -3745,12 +3843,47 @@ namespace HaCreator.MapSimulator.Interaction
         private string DescribeEmployeeState()
         {
             string templateText = _employeeTemplateId > 0 ? _employeeTemplateId.ToString() : "legacy";
-            if (_employeeHasWorldPosition && !_employeeUseOwnerAnchor)
+            string placement = _employeeHasWorldPosition && !_employeeUseOwnerAnchor
+                ? $"world({_employeeWorldX},{_employeeWorldY})"
+                : $"owner({_employeeAnchorOffsetX},{_employeeAnchorOffsetY})";
+            if (!_employeeHasPacketData)
             {
-                return $"{templateText}@world({_employeeWorldX},{_employeeWorldY})";
+                return $"{templateText}@{placement}";
             }
 
-            return $"{templateText}@owner({_employeeAnchorOffsetX},{_employeeAnchorOffsetY})";
+            string ownerText = string.IsNullOrWhiteSpace(_employeePacketNameTag) ? OwnerName : _employeePacketNameTag;
+            string balloonText = string.IsNullOrWhiteSpace(_employeePacketBalloonTitle)
+                ? $"type={_employeePacketMiniRoomType}"
+                : _employeePacketBalloonTitle;
+            return $"{templateText}@{placement}, pkt(owner={ownerText}, employer={_employeePacketEmployerId}, fh={_employeePacketFootholdId}, balloon={balloonText})";
+        }
+
+        private string ResolveEmployeeDisplayHeadline(string fallbackHeadline)
+        {
+            string headline = _employeeHasPacketData && !string.IsNullOrWhiteSpace(_employeePacketBalloonTitle)
+                ? _employeePacketBalloonTitle
+                : RoomTitle;
+            return string.IsNullOrWhiteSpace(headline) ? fallbackHeadline : headline;
+        }
+
+        private string ResolveEmployeeDisplayOwnerName()
+        {
+            if (_employeeHasPacketData && !string.IsNullOrWhiteSpace(_employeePacketNameTag))
+            {
+                return _employeePacketNameTag;
+            }
+
+            return string.IsNullOrWhiteSpace(OwnerName) ? "Owner" : OwnerName;
+        }
+
+        private string BuildEmployeePacketStateKeySuffix()
+        {
+            if (!_employeeHasPacketData)
+            {
+                return string.Empty;
+            }
+
+            return $"|pkt|{_employeePacketEmployerId}|{_employeePacketFootholdId}|{_employeePacketMiniRoomType}|{_employeePacketMiniRoomSerial}|{_employeePacketBalloonTitle}|{_employeePacketBalloonByte0}|{_employeePacketBalloonByte1}|{_employeePacketBalloonByte2}";
         }
 
         private static bool HasEmployeeTemplate(int templateId)
@@ -3768,6 +3901,11 @@ namespace HaCreator.MapSimulator.Interaction
 
             WzImage itemImage = global::HaCreator.Program.FindImage("Item", $"{folderName}/{templateId / 10000:D4}.img");
             return itemImage?[templateId.ToString("D8")]?["employee"] != null;
+        }
+
+        private static string NormalizePacketText(string value)
+        {
+            return string.IsNullOrWhiteSpace(value) ? string.Empty : value.Trim();
         }
 
         private static string ResolveEmployeeItemFolder(int templateId)

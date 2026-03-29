@@ -167,6 +167,28 @@ namespace HaCreator.MapSimulator.Entities
             return _animationSet != null && _animationSet.HasAnimation(action);
         }
 
+        public int GetActionTotalDurationMs(string action)
+        {
+            if (_animationSet == null)
+            {
+                return 0;
+            }
+
+            List<IDXObject> frames = _animationSet.GetFrames(action);
+            if (frames == null || frames.Count == 0)
+            {
+                return 0;
+            }
+
+            int totalDelay = 0;
+            for (int i = 0; i < frames.Count; i++)
+            {
+                totalDelay += Math.Max(frames[i]?.Delay ?? 100, 10);
+            }
+
+            return totalDelay;
+        }
+
         public void SetRenderPositionOverride(int x, int y)
         {
             _hasRenderPositionOverride = true;

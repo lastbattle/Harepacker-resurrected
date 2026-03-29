@@ -7,8 +7,12 @@ namespace HaCreator.MapSimulator.Character.Skills
     {
         private static readonly HashSet<int> ReleaseTriggeredSkillIds = new()
         {
+            2121001,
+            2221001,
+            2321001,
             4341002,
             4341003,
+            5311002,
             WildHunterSwallowSkillId
         };
 
@@ -51,6 +55,10 @@ namespace HaCreator.MapSimulator.Character.Skills
 
             if (skillId == 4341002
                 || skillId == 4341003
+                || skillId == 5311002
+                || skillId == 2121001
+                || skillId == 2221001
+                || skillId == 2321001
                 || skillId == WildHunterSwallowSkillId)
             {
                 return PreparedSkillHudTextVariant.ReleaseArmed;

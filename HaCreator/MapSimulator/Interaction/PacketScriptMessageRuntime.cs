@@ -188,7 +188,11 @@ namespace HaCreator.MapSimulator.Interaction
             string rawText = ReadMapleString(reader);
             NpcInlineSelection[] selections = NpcDialogueTextFormatter.ExtractInlineSelections(rawText);
             List<NpcInteractionChoice> choices = selections
-                .Select(selection => CreateResponseChoice(selection.Label, $"{selection.Label} (id={selection.SelectionId})", selection.SelectionId))
+                .Select(selection =>
+                {
+                    string label = NpcDialogueTextFormatter.Format(selection.Label);
+                    return CreateResponseChoice(label, $"{label} (id={selection.SelectionId})", selection.SelectionId);
+                })
                 .ToList();
 
             return CreateEntry(

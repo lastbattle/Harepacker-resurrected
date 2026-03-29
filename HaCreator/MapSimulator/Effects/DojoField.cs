@@ -98,6 +98,8 @@ namespace HaCreator.MapSimulator.Effects
         private int _energy;
         private int _lastDecodedClockType = -1;
         private int _lastDecodedClockDurationSec = -1;
+        private int _lastDecodedClockPayloadLength;
+        private string _lastDecodedClockTrailingPayloadHex = string.Empty;
         private int _stageBannerStartTick = int.MinValue;
         private int _resultEffectStartTick = int.MinValue;
         private GraphicsDevice _device;
@@ -124,6 +126,8 @@ namespace HaCreator.MapSimulator.Effects
         public bool HasMonsterGauge => _bossHpPercent.HasValue;
         public int LastDecodedClockType => _lastDecodedClockType;
         public int LastDecodedClockDurationSec => _lastDecodedClockDurationSec;
+        public int LastDecodedClockPayloadLength => _lastDecodedClockPayloadLength;
+        public string LastDecodedClockTrailingPayloadHex => _lastDecodedClockTrailingPayloadHex;
         public int RemainingSeconds
         {
             get
@@ -167,6 +171,8 @@ namespace HaCreator.MapSimulator.Effects
             _energy = 0;
             _lastDecodedClockType = -1;
             _lastDecodedClockDurationSec = -1;
+            _lastDecodedClockPayloadLength = 0;
+            _lastDecodedClockTrailingPayloadHex = string.Empty;
             EnsureAssetsLoaded();
             _stageBannerStartTick = Environment.TickCount;
             _resultEffectStartTick = int.MinValue;
@@ -244,13 +250,15 @@ namespace HaCreator.MapSimulator.Effects
             switch (packetType)
             {
                 case PacketTypeClock:
-                    if (!TryParseClockPacketPayload(payload, out int clockType, out int durationSec, out errorMessage))
+                    if (!TryParseClockPacketPayload(payload, out int clockType, out int durationSec, out int decodedPayloadLength, out string trailingPayloadHex, out errorMessage))
                     {
                         return false;
                     }
 
                     _lastDecodedClockType = clockType;
                     _lastDecodedClockDurationSec = Math.Max(0, durationSec);
+                    _lastDecodedClockPayloadLength = decodedPayloadLength;
+                    _lastDecodedClockTrailingPayloadHex = trailingPayloadHex;
 
                     if (clockType == 1)
                     {
@@ -358,9 +366,12 @@ namespace HaCreator.MapSimulator.Effects
             string timerText = _timeOverTick == int.MinValue ? "stopped" : FormatTimer(RemainingSeconds);
             string transferText = _pendingTransferMapId > 0 ? $", pendingReturn={_pendingTransferMapId}" : string.Empty;
             string clockPacketText = _lastDecodedClockType >= 0
-                ? $", rawClock={_lastDecodedClockType}:{_lastDecodedClockDurationSec}s"
+                ? $", rawClock={_lastDecodedClockType}:{_lastDecodedClockDurationSec}s/{_lastDecodedClockPayloadLength}b"
                 : string.Empty;
-            return $"Mu Lung Dojo floor {_stage}, timer={timerText}, boss={bossText}, player={playerText}, energy={_energy}/{EnergyMax}{transferText}{clockPacketText}";
+            string clockTailText = string.IsNullOrWhiteSpace(_lastDecodedClockTrailingPayloadHex)
+                ? string.Empty
+                : $", rawClockTail={_lastDecodedClockTrailingPayloadHex}";
+            return $"Mu Lung Dojo floor {_stage}, timer={timerText}, boss={bossText}, player={playerText}, energy={_energy}/{EnergyMax}{transferText}{clockPacketText}{clockTailText}, expiryEffect=StringPool::ms_aString[0x09EE]+sound[0x0A24] via CField_Dojang::UpdateTimer";
         }
         public void Reset()
         {
@@ -384,6 +395,8 @@ namespace HaCreator.MapSimulator.Effects
             _energy = 0;
             _lastDecodedClockType = -1;
             _lastDecodedClockDurationSec = -1;
+            _lastDecodedClockPayloadLength = 0;
+            _lastDecodedClockTrailingPayloadHex = string.Empty;
             _stageBannerStartTick = int.MinValue;
             _resultEffectStartTick = int.MinValue;
             _resultEffect = DojoResultEffect.None;
@@ -518,10 +531,18 @@ namespace HaCreator.MapSimulator.Effects
             }
             return WzInfoTools.FindMapImage(linkedMapId, global::HaCreator.Program.WzManager) ?? mapImage;
         }
-        private static bool TryParseClockPacketPayload(byte[] payload, out int clockType, out int durationSec, out string errorMessage)
+        private static bool TryParseClockPacketPayload(
+            byte[] payload,
+            out int clockType,
+            out int durationSec,
+            out int decodedPayloadLength,
+            out string trailingPayloadHex,
+            out string errorMessage)
         {
             clockType = 0;
             durationSec = 0;
+            decodedPayloadLength = 0;
+            trailingPayloadHex = string.Empty;
             errorMessage = null;
             if (payload == null || payload.Length < 1)
             {
@@ -530,9 +551,14 @@ namespace HaCreator.MapSimulator.Effects
             }
 
             clockType = payload[0];
+            decodedPayloadLength = payload.Length;
             if (payload.Length >= 5)
             {
                 durationSec = BinaryPrimitives.ReadInt32LittleEndian(payload.AsSpan(1, 4));
+                if (payload.Length > 5)
+                {
+                    trailingPayloadHex = string.Join(" ", payload.Skip(5).Select(static b => b.ToString("X2", CultureInfo.InvariantCulture)));
+                }
             }
             else if (clockType == 2)
             {

@@ -290,19 +290,7 @@ namespace HaCreator.MapSimulator.Character.Skills
 
         private static bool LooksLikeRideDescriptionBuff(SkillData skill)
         {
-            if (skill?.IsBuff != true)
-            {
-                return false;
-            }
-
-            string combinedText = $"{skill.Name} {skill.Description}";
-            return combinedText.IndexOf("mount/unmount", StringComparison.OrdinalIgnoreCase) >= 0
-                   || combinedText.IndexOf("summon and mount", StringComparison.OrdinalIgnoreCase) >= 0
-                   || combinedText.IndexOf("monster rider", StringComparison.OrdinalIgnoreCase) >= 0
-                   || combinedText.IndexOf("jaguar rider", StringComparison.OrdinalIgnoreCase) >= 0
-                   || combinedText.IndexOf("allows you to ride", StringComparison.OrdinalIgnoreCase) >= 0
-                   || combinedText.IndexOf("enables one to ride", StringComparison.OrdinalIgnoreCase) >= 0
-                   || combinedText.IndexOf("method of transportation", StringComparison.OrdinalIgnoreCase) >= 0;
+            return ClientOwnedVehicleSkillClassifier.LooksLikeClientOwnedRideDescriptionBuff(skill);
         }
 
         private static bool UsesBoundJumpStateGate(SkillData skill)

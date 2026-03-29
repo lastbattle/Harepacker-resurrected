@@ -42,6 +42,9 @@ namespace HaCreator.MapSimulator.Interaction
         internal Action<string> RequestBgm { get; init; }
         internal Func<string, bool> PlayFieldSound { get; init; }
         internal Func<string, bool?, int, int?, bool> SetObjectTagState { get; init; }
+        internal Func<byte, int, int, bool> ShowSummonEffectVisual { get; init; }
+        internal Func<string, bool> ShowScreenEffectVisual { get; init; }
+        internal Func<int, int, int, bool> ShowRewardRouletteVisual { get; init; }
         internal Func<int, string> ResolveMobName { get; init; }
         internal Func<int, string> ResolveMapName { get; init; }
         internal Func<int, string> ResolveItemName { get; init; }
@@ -55,7 +58,6 @@ namespace HaCreator.MapSimulator.Interaction
         private const int BossHpBarWidth = 288;
         private const int BossHpBarHeight = 16;
         private const int BossHpFramePadding = 4;
-        private const int BossTimerOverlayDurationMs = 5000;
 
         private readonly Dictionary<string, bool> _obstacleStates = new(StringComparer.OrdinalIgnoreCase);
         private Texture2D _pixelTexture;
@@ -69,7 +71,6 @@ namespace HaCreator.MapSimulator.Interaction
         private string _lastJukeboxSummary = string.Empty;
         private string _lastBossTimerSummary = string.Empty;
         private BossHpState _bossHpState;
-        private BossTimerState _bossTimerState;
 
         internal void Initialize(GraphicsDevice graphicsDevice)
         {
@@ -93,7 +94,6 @@ namespace HaCreator.MapSimulator.Interaction
             _lastWhisperTarget = string.Empty;
             _lastJukeboxSummary = string.Empty;
             _lastBossTimerSummary = string.Empty;
-            _bossTimerState = null;
         }
 
         internal void Update(int currentTick)
@@ -101,13 +101,6 @@ namespace HaCreator.MapSimulator.Interaction
             if (_bossHpState != null && currentTick >= _bossHpState.ExpiresAtTick)
             {
                 _bossHpState = null;
-            }
-
-            if (_bossTimerState != null
-                && _bossTimerState.ExpiresAtTick.HasValue
-                && currentTick >= _bossTimerState.ExpiresAtTick.Value)
-            {
-                _bossTimerState = null;
             }
         }
 
@@ -125,9 +118,9 @@ namespace HaCreator.MapSimulator.Interaction
             string obstacleStatus = _obstacleStates.Count == 0
                 ? "obstacles=none"
                 : $"obstacles={string.Join(", ", _obstacleStates.OrderBy(static pair => pair.Key).Take(4).Select(static pair => $"{pair.Key}:{(pair.Value ? "on" : "off")}"))}";
-            string bossTimerStatus = _bossTimerState == null
-                ? string.IsNullOrWhiteSpace(_lastBossTimerSummary) ? "bosstimer=none" : $"bosstimer=\"{TrimForStatus(_lastBossTimerSummary)}\""
-                : $"bosstimer=\"{TrimForStatus(_bossTimerState.BuildDisplayText(currentTick))}\"";
+            string bossTimerStatus = string.IsNullOrWhiteSpace(_lastBossTimerSummary)
+                ? "bosstimer=none"
+                : $"bosstimer=\"{TrimForStatus(_lastBossTimerSummary)}\"";
 
             return string.Join(
                 "; ",
@@ -151,7 +144,6 @@ namespace HaCreator.MapSimulator.Interaction
                 return;
             }
 
-            DrawBossTimer(spriteBatch, font, renderWidth, currentTick);
             DrawBossHp(spriteBatch, font, renderWidth, currentTick);
         }
 
@@ -347,6 +339,40 @@ namespace HaCreator.MapSimulator.Interaction
             writer.Write(maxHp);
             writer.Write(colorCode);
             writer.Write(phase);
+            writer.Flush();
+            return stream.ToArray();
+        }
+
+        internal static byte[] BuildSummonFieldEffectPayload(byte effectId, int x, int y)
+        {
+            using MemoryStream stream = new();
+            using BinaryWriter writer = new(stream, Encoding.Default, leaveOpen: true);
+            writer.Write((byte)0);
+            writer.Write(effectId);
+            writer.Write(x);
+            writer.Write(y);
+            writer.Flush();
+            return stream.ToArray();
+        }
+
+        internal static byte[] BuildScreenFieldEffectPayload(string descriptor)
+        {
+            using MemoryStream stream = new();
+            using BinaryWriter writer = new(stream, Encoding.Default, leaveOpen: true);
+            writer.Write((byte)3);
+            WriteMapleString(writer, descriptor);
+            writer.Flush();
+            return stream.ToArray();
+        }
+
+        internal static byte[] BuildRewardRouletteFieldEffectPayload(int rewardId, int step, int total)
+        {
+            using MemoryStream stream = new();
+            using BinaryWriter writer = new(stream, Encoding.Default, leaveOpen: true);
+            writer.Write((byte)7);
+            writer.Write(rewardId);
+            writer.Write(step);
+            writer.Write(total);
             writer.Flush();
             return stream.ToArray();
         }
@@ -579,8 +605,11 @@ namespace HaCreator.MapSimulator.Interaction
                         byte effectId = reader.ReadByte();
                         int x = reader.ReadInt32();
                         int y = reader.ReadInt32();
+                        bool shown = callbacks?.ShowSummonEffectVisual?.Invoke(effectId, x, y) == true;
                         _lastFieldEffectSummary = $"summon effect #{effectId} at ({x}, {y})";
-                        _statusMessage = $"Applied packet-owned summon effect #{effectId}.";
+                        _statusMessage = shown
+                            ? $"Applied packet-owned summon effect #{effectId}."
+                            : $"Applied packet-owned summon effect #{effectId} without a resolved visual.";
                         message = _statusMessage;
                         return true;
                     }
@@ -606,9 +635,16 @@ namespace HaCreator.MapSimulator.Interaction
                 case 3:
                     {
                         string descriptor = ReadMapleString(reader);
+                        bool shown = callbacks?.ShowScreenEffectVisual?.Invoke(descriptor) == true;
                         _lastFieldEffectSummary = $"screen effect '{descriptor}'";
-                        callbacks?.ShowUtilityFeedback?.Invoke($"Packet-owned screen effect: {descriptor}");
-                        _statusMessage = "Applied packet-owned screen effect.";
+                        if (!shown)
+                        {
+                            callbacks?.ShowUtilityFeedback?.Invoke($"Packet-owned screen effect: {descriptor}");
+                        }
+
+                        _statusMessage = shown
+                            ? "Applied packet-owned screen effect."
+                            : "Applied packet-owned screen effect without a resolved visual.";
                         message = _statusMessage;
                         return true;
                     }
@@ -659,8 +695,11 @@ namespace HaCreator.MapSimulator.Interaction
                         int rewardId = reader.ReadInt32();
                         int step = reader.ReadInt32();
                         int total = reader.ReadInt32();
+                        bool shown = callbacks?.ShowRewardRouletteVisual?.Invoke(rewardId, step, total) == true;
                         _lastFieldEffectSummary = $"reward roulette reward={rewardId} step={step} total={total}";
-                        _statusMessage = "Applied packet-owned reward roulette state.";
+                        _statusMessage = shown
+                            ? "Applied packet-owned reward roulette state."
+                            : "Applied packet-owned reward roulette state without a resolved visual.";
                         message = _statusMessage;
                         return true;
                     }
@@ -814,9 +853,8 @@ namespace HaCreator.MapSimulator.Interaction
 
         private bool ApplyDestroyClock(out string message)
         {
-            _bossTimerState = null;
             _lastBossTimerSummary = "destroyed";
-            _statusMessage = "Cleared packet-owned boss-timer state.";
+            _statusMessage = "Applied packet-owned destroy-clock teardown.";
             message = _statusMessage;
             return true;
         }
@@ -827,7 +865,6 @@ namespace HaCreator.MapSimulator.Interaction
             using BinaryReader reader = new(stream, Encoding.Default, leaveOpen: false);
             byte mode = reader.ReadByte();
             int value = reader.ReadInt32();
-            _bossTimerState = BuildBossTimerState(bossName, mode, value, currentTick);
             string text = mode switch
             {
                 0 when value > 0 => $"{bossName} timer update: {value} remaining.",
@@ -901,16 +938,6 @@ namespace HaCreator.MapSimulator.Interaction
             };
         }
 
-        private static BossTimerState BuildBossTimerState(string bossName, byte mode, int value, int currentTick)
-        {
-            return mode switch
-            {
-                0 when value > 0 => new BossTimerState(bossName, mode, value, currentTick, currentTick + (Math.Max(0, value) * 1000)),
-                0 => null,
-                _ => new BossTimerState(bossName, mode, value, currentTick, currentTick + BossTimerOverlayDurationMs)
-            };
-        }
-
         private void DrawBossHp(SpriteBatch spriteBatch, SpriteFont font, int renderWidth, int currentTick)
         {
             if (_bossHpState == null)
@@ -966,51 +993,6 @@ namespace HaCreator.MapSimulator.Interaction
                 0f,
                 Vector2.Zero,
                 0.48f,
-                SpriteEffects.None,
-                0f);
-        }
-
-        private void DrawBossTimer(SpriteBatch spriteBatch, SpriteFont font, int renderWidth, int currentTick)
-        {
-            if (_bossTimerState == null)
-            {
-                return;
-            }
-
-            string timerText = _bossTimerState.BuildDisplayText(currentTick);
-            if (string.IsNullOrWhiteSpace(timerText))
-            {
-                return;
-            }
-
-            float alpha = _bossTimerState.ExpiresAtTick.HasValue
-                ? MathHelper.Clamp((_bossTimerState.ExpiresAtTick.Value - currentTick) / (float)BossTimerOverlayDurationMs, 0f, 1f)
-                : 1f;
-            if (alpha <= 0f)
-            {
-                return;
-            }
-
-            Vector2 textSize = font.MeasureString(timerText) * 0.54f;
-            Rectangle frameBounds = new(
-                Math.Max(0, (int)Math.Round((renderWidth - textSize.X - 28f) / 2f)),
-                18,
-                (int)Math.Ceiling(textSize.X) + 28,
-                (int)Math.Ceiling(textSize.Y) + 14);
-            Color frameColor = new Color(14, 18, 28, 220) * alpha;
-            Color borderColor = new Color(227, 205, 110) * alpha;
-            Color textColor = Color.White * alpha;
-
-            spriteBatch.Draw(_pixelTexture, frameBounds, frameColor);
-            DrawBorder(spriteBatch, frameBounds, borderColor);
-            spriteBatch.DrawString(
-                font,
-                timerText,
-                new Vector2(frameBounds.X + 14, frameBounds.Y + 7),
-                textColor,
-                0f,
-                Vector2.Zero,
-                0.54f,
                 SpriteEffects.None,
                 0f);
         }
@@ -1073,24 +1055,5 @@ namespace HaCreator.MapSimulator.Interaction
             byte ColorCode,
             byte Phase,
             int ExpiresAtTick);
-
-        private sealed record BossTimerState(
-            string BossName,
-            byte Mode,
-            int Value,
-            int StartedAtTick,
-            int? ExpiresAtTick)
-        {
-            public string BuildDisplayText(int currentTick)
-            {
-                return Mode switch
-                {
-                    0 when Value > 0 => $"{BossName} timer {Math.Max(0, Value - Math.Max(0, currentTick - StartedAtTick) / 1000)}s",
-                    1 => $"{BossName} warning stage {Value}",
-                    2 => $"{BossName} emergency stage {Value}",
-                    _ => $"{BossName} timer mode {Mode} value {Value}"
-                };
-            }
-        }
     }
 }

@@ -37,6 +37,14 @@ namespace HaCreator.MapSimulator.Managers
             public string EpisodeText { get; init; } = string.Empty;
             public IReadOnlyList<string> RewardLines { get; init; } = Array.Empty<string>();
             public IReadOnlyList<string> HabitatLines { get; init; } = Array.Empty<string>();
+            public string SearchText { get; init; } = string.Empty;
+        }
+
+        private sealed class MonsterBookStringEntry
+        {
+            public string EpisodeText { get; init; } = string.Empty;
+            public IReadOnlyList<int> RewardItemIds { get; init; } = Array.Empty<int>();
+            public IReadOnlyList<int> MapIds { get; init; } = Array.Empty<int>();
         }
 
         private static readonly JsonSerializerOptions JsonOptions = new()
@@ -98,7 +106,8 @@ namespace HaCreator.MapSimulator.Managers
                         IsRegistered = registeredMobIds.Contains(definition.MobId),
                         EpisodeText = definition.EpisodeText,
                         RewardLines = definition.RewardLines,
-                        HabitatLines = definition.HabitatLines
+                        HabitatLines = definition.HabitatLines,
+                        SearchText = definition.SearchText
                     };
                 })
                 .ToList();
@@ -151,8 +160,8 @@ namespace HaCreator.MapSimulator.Managers
                 Title = "Monster Book",
                 Subtitle = build == null
                     ? "Monster card ownership is unavailable because there is no active character build."
-                    : "Card ownership is persisted per character and built from the WZ-backed monster-card catalog, with local chapter tabs and registered-card state.",
-                StatusText = "The Monster Book owner now follows the WZ-backed left and right tab shell, carries local registered-card state, and exposes a local search path on top of the dedicated card catalog. Official packet or drop-authored ownership and the deeper client close lifecycle still remain outside this simulator runtime.",
+                    : "Card ownership is persisted per character and built from the WZ-backed monster-card catalog, with client-shaped left-tab chapters, right-tab detail panes, and local registered-card state.",
+                StatusText = "The Monster Book owner now routes the left-tab chapter shell, the four right-tab detail panes, and a local search plus register or release context path through the dedicated Monster Book runtime. Official packet or drop-authored ownership and the deeper client close lifecycle still remain outside this simulator runtime.",
                 TotalCardTypes = cards.Count,
                 OwnedCardTypes = ownedCardTypes,
                 CompletedCardTypes = completedCardTypes,
@@ -333,7 +342,8 @@ namespace HaCreator.MapSimulator.Managers
                         IsBoss = isBoss,
                         EpisodeText = episodeText,
                         RewardLines = rewardLines,
-                        HabitatLines = habitatLines
+                        HabitatLines = habitatLines,
+                        SearchText = BuildSearchText(mobName, mobId, rewardLines, habitatLines, episodeText)
                     });
                 }
             }
@@ -367,18 +377,19 @@ namespace HaCreator.MapSimulator.Managers
             string elementAttribute = string.Empty;
             int category = 0;
             bool firstAttack = false;
-            episodeText = BuildEpisodeText(mobName, mobId, level, isBoss);
-            rewardLines = BuildRewardLines(isBoss, mobId);
-            habitatLines = BuildHabitatLines(category, mobType, firstAttack, elementAttribute);
+            MonsterBookStringEntry stringEntry = ResolveMonsterBookStringEntry(mobId);
+            episodeText = BuildEpisodeText(mobName, mobId, level, isBoss, stringEntry);
+            rewardLines = BuildRewardLines(isBoss, mobId, stringEntry);
+            habitatLines = BuildHabitatLines(category, mobType, firstAttack, elementAttribute, stringEntry);
 
             try
             {
                 WzImage mobImage = global::HaCreator.Program.FindImage("Mob", mobId.ToString("D7", CultureInfo.InvariantCulture) + ".img");
                 if (mobImage == null)
                 {
-                    episodeText = BuildEpisodeText(mobName, mobId, level, isBoss);
-                    rewardLines = BuildRewardLines(isBoss, mobId);
-                    habitatLines = BuildHabitatLines(category, mobType, firstAttack, elementAttribute);
+                    episodeText = BuildEpisodeText(mobName, mobId, level, isBoss, stringEntry);
+                    rewardLines = BuildRewardLines(isBoss, mobId, stringEntry);
+                    habitatLines = BuildHabitatLines(category, mobType, firstAttack, elementAttribute, stringEntry);
                     return;
                 }
 
@@ -390,9 +401,9 @@ namespace HaCreator.MapSimulator.Managers
                 MobData mobData = MobData.Parse(mobImage, mobId);
                 if (mobData == null)
                 {
-                    episodeText = BuildEpisodeText(mobName, mobId, level, isBoss);
-                    rewardLines = BuildRewardLines(isBoss, mobId);
-                    habitatLines = BuildHabitatLines(category, mobType, firstAttack, elementAttribute);
+                    episodeText = BuildEpisodeText(mobName, mobId, level, isBoss, stringEntry);
+                    rewardLines = BuildRewardLines(isBoss, mobId, stringEntry);
+                    habitatLines = BuildHabitatLines(category, mobType, firstAttack, elementAttribute, stringEntry);
                     return;
                 }
 
@@ -415,9 +426,9 @@ namespace HaCreator.MapSimulator.Managers
                 isBoss = false;
             }
 
-            episodeText = BuildEpisodeText(mobName, mobId, level, isBoss);
-            rewardLines = BuildRewardLines(isBoss, mobId);
-            habitatLines = BuildHabitatLines(category, mobType, firstAttack, elementAttribute);
+            episodeText = BuildEpisodeText(mobName, mobId, level, isBoss, stringEntry);
+            rewardLines = BuildRewardLines(isBoss, mobId, stringEntry);
+            habitatLines = BuildHabitatLines(category, mobType, firstAttack, elementAttribute, stringEntry);
         }
 
         private static string ResolveMobName(int mobId)
@@ -554,15 +565,82 @@ namespace HaCreator.MapSimulator.Managers
             };
         }
 
-        private static string BuildEpisodeText(string mobName, int mobId, int level, bool isBoss)
+        private static MonsterBookStringEntry ResolveMonsterBookStringEntry(int mobId)
         {
+            if (mobId <= 0)
+            {
+                return null;
+            }
+
+            try
+            {
+                WzImage stringImage = global::HaCreator.Program.FindImage("String", "MonsterBook.img");
+                if (stringImage == null)
+                {
+                    return null;
+                }
+
+                if (!stringImage.Parsed)
+                {
+                    stringImage.ParseImage();
+                }
+
+                WzSubProperty entryProperty = stringImage[mobId.ToString(CultureInfo.InvariantCulture)] as WzSubProperty;
+                if (entryProperty == null)
+                {
+                    return null;
+                }
+
+                return new MonsterBookStringEntry
+                {
+                    EpisodeText = (entryProperty["episode"] as WzStringProperty)?.Value ?? string.Empty,
+                    RewardItemIds = ReadOrderedInts(entryProperty["reward"] as WzSubProperty),
+                    MapIds = ReadOrderedInts(entryProperty["map"] as WzSubProperty)
+                };
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        private static IReadOnlyList<int> ReadOrderedInts(WzSubProperty property)
+        {
+            if (property == null)
+            {
+                return Array.Empty<int>();
+            }
+
+            return property.WzProperties
+                .OrderBy(entry => ParseInt(entry.Name))
+                .Select(ReadInt)
+                .Where(value => value > 0)
+                .ToArray();
+        }
+
+        private static string BuildEpisodeText(string mobName, int mobId, int level, bool isBoss, MonsterBookStringEntry stringEntry)
+        {
+            if (!string.IsNullOrWhiteSpace(stringEntry?.EpisodeText))
+            {
+                return stringEntry.EpisodeText.Trim();
+            }
+
             string safeName = string.IsNullOrWhiteSpace(mobName) ? $"Mob #{mobId}" : mobName;
             string bossText = isBoss ? "Boss monster card entry." : "Standard monster card entry.";
             return $"{safeName} is recorded in the WZ-backed Monster Book catalog as mob #{mobId} at level {Math.Max(0, level)}. {bossText}";
         }
 
-        private static IReadOnlyList<string> BuildRewardLines(bool isBoss, int mobId)
+        private static IReadOnlyList<string> BuildRewardLines(bool isBoss, int mobId, MonsterBookStringEntry stringEntry)
         {
+            if (stringEntry?.RewardItemIds?.Count > 0)
+            {
+                return stringEntry.RewardItemIds
+                    .Take(4)
+                    .Select(itemId => $"Reward item #{itemId}")
+                    .Append($"Card target mob: {mobId}")
+                    .ToArray();
+            }
+
             return new[]
             {
                 isBoss ? "Boss card classification" : "Normal card classification",
@@ -571,13 +649,35 @@ namespace HaCreator.MapSimulator.Managers
             };
         }
 
-        private static IReadOnlyList<string> BuildHabitatLines(int category, string mobType, bool firstAttack, string elementAttribute)
+        private static IReadOnlyList<string> BuildHabitatLines(int category, string mobType, bool firstAttack, string elementAttribute, MonsterBookStringEntry stringEntry)
         {
+            if (stringEntry?.MapIds?.Count > 0)
+            {
+                return stringEntry.MapIds
+                    .Take(4)
+                    .Select(mapId => $"Map #{mapId}")
+                    .ToArray();
+            }
+
             string categoryText = category > 0 ? $"Mob category {category}" : "Mob category unavailable";
             string typeText = string.IsNullOrWhiteSpace(mobType) ? "Mob type unavailable" : $"Mob type {mobType}";
             string attackText = firstAttack ? "Aggressive first-attack behavior" : "Passive first-attack behavior";
             string elementText = string.IsNullOrWhiteSpace(elementAttribute) ? "Elemental attribute unavailable" : $"Element attribute {elementAttribute}";
             return new[] { categoryText, typeText, attackText, elementText };
+        }
+
+        private static string BuildSearchText(string mobName, int mobId, IReadOnlyList<string> rewardLines, IReadOnlyList<string> habitatLines, string episodeText)
+        {
+            IEnumerable<string> parts = new[]
+            {
+                mobName,
+                mobId.ToString(CultureInfo.InvariantCulture),
+                episodeText
+            }
+            .Concat(rewardLines ?? Array.Empty<string>())
+            .Concat(habitatLines ?? Array.Empty<string>());
+
+            return string.Join(" ", parts.Where(part => !string.IsNullOrWhiteSpace(part)));
         }
     }
 }

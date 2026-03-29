@@ -106,6 +106,18 @@ namespace HaCreator.MapSimulator.Fields
             return null;
         }
 
+        public static bool IsStatChangeConsumable(
+            bool hasRecoveryEffect,
+            bool hasTemporaryBuffEffect,
+            bool hasMorphEffect,
+            bool hasCureEffect)
+        {
+            return hasRecoveryEffect
+                || hasTemporaryBuffEffect
+                || hasMorphEffect
+                || hasCureEffect;
+        }
+
         public static IReadOnlyList<string> GetFieldEntryItemRestrictionMessages(long fieldLimit)
         {
             List<string> messages = new();

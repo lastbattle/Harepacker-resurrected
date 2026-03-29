@@ -380,18 +380,10 @@ namespace HaCreator.MapSimulator.Pools
 
         internal static int ResolveAreaBuffItemDurationMs(WzSubProperty itemProperty, int itemId)
         {
-            if (itemProperty == null || itemId <= 0)
-            {
-                return 0;
-            }
-
-            WzSubProperty infoProperty = itemProperty["info"] as WzSubProperty;
-            int durationSeconds = Math.Max(
-                0,
-                GetInt(infoProperty, "time",
-                    GetInt(itemProperty["spec"] as WzSubProperty, "time",
-                        GetInt(itemProperty, "time"))));
-            return durationSeconds > 0 ? durationSeconds * 1000 : 0;
+            string itemDescription = itemId > 0 && InventoryItemMetadataResolver.TryResolveItemDescription(itemId, out string resolvedDescription)
+                ? resolvedDescription
+                : null;
+            return AreaBuffItemMetadataResolver.ResolveDurationMs(itemProperty, itemDescription, LoadLinkedAreaBuffItemProperty);
         }
 
         private static int ResolveStartTime(int currentTime, short startDelayUnits)
@@ -511,6 +503,68 @@ namespace HaCreator.MapSimulator.Pools
             itemImage.ParseImage();
             string itemNodeName = category == "Character" ? itemId.ToString("D8") : itemId.ToString("D7");
             return itemImage[itemNodeName] as WzSubProperty;
+        }
+
+        private static WzSubProperty LoadLinkedAreaBuffItemProperty(string itemInfoPath)
+        {
+            if (string.IsNullOrWhiteSpace(itemInfoPath))
+            {
+                return null;
+            }
+
+            string normalizedPath = itemInfoPath.Trim().Replace('\\', '/');
+            if (normalizedPath.StartsWith("Item/", StringComparison.OrdinalIgnoreCase))
+            {
+                normalizedPath = normalizedPath.Substring("Item/".Length);
+            }
+
+            string[] segments = normalizedPath.Split(new[] { '/' }, StringSplitOptions.RemoveEmptyEntries);
+            if (segments.Length >= 3
+                && TryResolveLinkedItemNodeName(segments[^1], out string itemNodeName))
+            {
+                string imagePath = segments[1].EndsWith(".img", StringComparison.OrdinalIgnoreCase)
+                    ? $"{segments[0]}/{segments[1]}"
+                    : $"{segments[0]}/{segments[1]}.img";
+                WzImage linkedImage = global::HaCreator.Program.FindImage("Item", imagePath);
+                if (linkedImage == null)
+                {
+                    return null;
+                }
+
+                linkedImage.ParseImage();
+                return linkedImage[itemNodeName] as WzSubProperty;
+            }
+
+            if (!TryResolveLinkedItemNodeName(segments.Length > 0 ? segments[^1] : normalizedPath, out string fallbackNodeName)
+                || !int.TryParse(fallbackNodeName, out int fallbackItemId))
+            {
+                return null;
+            }
+
+            return LoadItemProperty(fallbackItemId);
+        }
+
+        private static bool TryResolveLinkedItemNodeName(string value, out string itemNodeName)
+        {
+            itemNodeName = null;
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                return false;
+            }
+
+            string trimmedValue = value.Trim();
+            if (trimmedValue.EndsWith(".img", StringComparison.OrdinalIgnoreCase))
+            {
+                trimmedValue = trimmedValue.Substring(0, trimmedValue.Length - 4);
+            }
+
+            if (!int.TryParse(trimmedValue, out int itemId) || itemId <= 0)
+            {
+                return false;
+            }
+
+            itemNodeName = itemId >= 10000000 ? itemId.ToString("D8") : itemId.ToString("D7");
+            return true;
         }
 
         private SkillAnimation LoadCanvasAnimation(WzImageProperty node)

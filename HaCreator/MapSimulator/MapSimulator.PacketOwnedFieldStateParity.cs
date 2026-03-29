@@ -9,6 +9,11 @@ namespace HaCreator.MapSimulator
     {
         private bool TryApplyPacketOwnedFieldStatePacket(int packetType, byte[] payload, out string message)
         {
+            if (TryApplyClientOwnedWrapperPacket(packetType, payload, currTickCount, out message))
+            {
+                return true;
+            }
+
             _packetFieldStateRuntime.Initialize(GraphicsDevice, _mapBoard?.MapInfo);
             return _packetFieldStateRuntime.TryApplyPacket(
                 packetType,
@@ -21,6 +26,12 @@ namespace HaCreator.MapSimulator
 
         private string HandleFieldSpecificDataPacketHandoff(byte[] payload, int currentTick)
         {
+            string wrapperMessage = HandleClientOwnedFieldSpecificDataPacket(payload, currentTick);
+            if (!string.IsNullOrWhiteSpace(wrapperMessage))
+            {
+                return wrapperMessage;
+            }
+
             string areaName = _specialFieldRuntime.ActiveArea?.ToString() ?? "no active special-field owner";
             return $"handoff target={areaName}";
         }

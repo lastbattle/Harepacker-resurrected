@@ -395,14 +395,13 @@ namespace HaCreator.MapSimulator.Loaders
             string requiredGuildLevelFormula = GetStringValue(skillEntry["common"], "reqGuildLevel");
             if (!string.IsNullOrWhiteSpace(requiredGuildLevelFormula))
             {
-                for (int level = 1; level <= displayData.MaxLevel; level++)
-                {
-                    if (TryEvaluateFormula(requiredGuildLevelFormula, level, out int requiredGuildLevel))
-                    {
-                        displayData.RequiredGuildLevels[level] = Math.Max(0, requiredGuildLevel);
-                    }
-                }
+                PopulateEvaluatedGuildValues(displayData.RequiredGuildLevels, requiredGuildLevelFormula, displayData.MaxLevel);
             }
+
+            displayData.GuildPriceUnit = ResolveGuildPriceUnit(skillEntry["common"]);
+            PopulateEvaluatedGuildValues(displayData.GuildActivationCosts, GetStringValue(skillEntry["common"], "price"), displayData.MaxLevel, displayData.GuildPriceUnit);
+            PopulateEvaluatedGuildValues(displayData.GuildRenewalCosts, GetStringValue(skillEntry["common"], "extendPrice"), displayData.MaxLevel, displayData.GuildPriceUnit);
+            PopulateEvaluatedGuildValues(displayData.GuildDurationsMinutes, GetStringValue(skillEntry["common"], "period"), displayData.MaxLevel);
 
             if (levelDescriptions != null)
             {
@@ -411,6 +410,39 @@ namespace HaCreator.MapSimulator.Loaders
             }
 
             return displayData;
+        }
+
+        private static int ResolveGuildPriceUnit(WzImageProperty commonNode)
+        {
+            if (TryGetNumericPropertyValue(commonNode, "priceUnit", 1, out int priceUnit))
+                return Math.Max(1, priceUnit);
+
+            string unitString = GetStringValue(commonNode, "priceUnit");
+            return int.TryParse(unitString, NumberStyles.Integer, CultureInfo.InvariantCulture, out priceUnit)
+                ? Math.Max(1, priceUnit)
+                : 1;
+        }
+
+        private static void PopulateEvaluatedGuildValues(
+            IDictionary<int, int> target,
+            string formula,
+            int maxLevel,
+            int multiplier = 1)
+        {
+            if (target == null || string.IsNullOrWhiteSpace(formula) || maxLevel <= 0)
+                return;
+
+            int resolvedMultiplier = Math.Max(1, multiplier);
+            for (int level = 1; level <= maxLevel; level++)
+            {
+                if (!TryEvaluateFormula(formula, level, out int value))
+                    continue;
+
+                long scaled = (long)value * resolvedMultiplier;
+                target[level] = scaled > int.MaxValue
+                    ? int.MaxValue
+                    : Math.Max(0, (int)scaled);
+            }
         }
 
         private static int ResolveRequiredCharacterLevel(WzSubProperty skillEntry)

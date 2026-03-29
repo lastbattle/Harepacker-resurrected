@@ -8,27 +8,39 @@ using System.Threading.Tasks;
 
 namespace HaCreator.MapSimulator.Managers
 {
+    public enum CookieHousePointInboxPayloadKind
+    {
+        TextPoint,
+        RawContextPoint
+    }
+
     public sealed class CookieHousePointInboxMessage
     {
-        public CookieHousePointInboxMessage(int point, string source, string rawText)
+        public CookieHousePointInboxMessage(int point, string source, string rawText, CookieHousePointInboxPayloadKind payloadKind)
         {
             Point = Math.Max(0, point);
             Source = string.IsNullOrWhiteSpace(source) ? "cookiehouse-inbox" : source;
             RawText = rawText ?? string.Empty;
+            PayloadKind = payloadKind;
         }
 
         public int Point { get; }
         public string Source { get; }
         public string RawText { get; }
+        public CookieHousePointInboxPayloadKind PayloadKind { get; }
     }
 
     /// <summary>
     /// Optional loopback inbox for externally authored Cookie House point updates.
-    /// Each line is encoded as either "<point>" or "point <point>".
+    /// Each line is encoded as either "<point>", "point <point>", or
+    /// "raw <hex>" where <hex> is the client-shaped little-endian
+    /// CWvsContext Cookie House point dword recovered from v95.
     /// </summary>
     public sealed class CookieHousePointInboxManager : IDisposable
     {
         public const int DefaultPort = 18486;
+        public const int ClientContextPointByteLength = 4;
+        public const int ClientContextPointOffset = 0x4148;
 
         private readonly ConcurrentQueue<CookieHousePointInboxMessage> _pendingMessages = new();
         private readonly object _listenerLock = new();
@@ -101,9 +113,14 @@ namespace HaCreator.MapSimulator.Managers
             }
         }
 
-        public static bool TryParsePointLine(string text, out int point, out string error)
+        public static bool TryParsePointLine(
+            string text,
+            out int point,
+            out CookieHousePointInboxPayloadKind payloadKind,
+            out string error)
         {
             point = 0;
+            payloadKind = CookieHousePointInboxPayloadKind.TextPoint;
             error = null;
 
             if (string.IsNullOrWhiteSpace(text))
@@ -114,6 +131,11 @@ namespace HaCreator.MapSimulator.Managers
 
             string trimmed = text.Trim();
             string[] parts = trimmed.Split(new[] { ' ', '\t' }, StringSplitOptions.RemoveEmptyEntries);
+            if (parts.Length >= 2 && string.Equals(parts[0], "raw", StringComparison.OrdinalIgnoreCase))
+            {
+                return TryParseRawContextPoint(parts[1], out point, out payloadKind, out error);
+            }
+
             string valueToken = parts.Length switch
             {
                 1 => parts[0],
@@ -128,6 +150,45 @@ namespace HaCreator.MapSimulator.Managers
             }
 
             point = Math.Max(0, point);
+            return true;
+        }
+
+        private static bool TryParseRawContextPoint(
+            string hexPayload,
+            out int point,
+            out CookieHousePointInboxPayloadKind payloadKind,
+            out string error)
+        {
+            point = 0;
+            payloadKind = CookieHousePointInboxPayloadKind.RawContextPoint;
+            error = null;
+
+            if (string.IsNullOrWhiteSpace(hexPayload))
+            {
+                error = "Cookie House raw payload is empty.";
+                return false;
+            }
+
+            string normalized = hexPayload.Replace("0x", string.Empty, StringComparison.OrdinalIgnoreCase);
+            normalized = normalized.Replace("-", string.Empty, StringComparison.OrdinalIgnoreCase);
+            normalized = normalized.Replace(" ", string.Empty, StringComparison.OrdinalIgnoreCase);
+            if (normalized.Length != ClientContextPointByteLength * 2)
+            {
+                error = $"Cookie House raw payload must be exactly {ClientContextPointByteLength} bytes for CWvsContext+0x{ClientContextPointOffset:X}.";
+                return false;
+            }
+
+            byte[] bytes = new byte[ClientContextPointByteLength];
+            for (int i = 0; i < bytes.Length; i++)
+            {
+                if (!byte.TryParse(normalized.Substring(i * 2, 2), System.Globalization.NumberStyles.HexNumber, null, out bytes[i]))
+                {
+                    error = $"Invalid Cookie House raw payload: {hexPayload}";
+                    return false;
+                }
+            }
+
+            point = Math.Max(0, BitConverter.ToInt32(bytes, 0));
             return true;
         }
 
@@ -170,15 +231,18 @@ namespace HaCreator.MapSimulator.Managers
                             break;
                         }
 
-                        if (!TryParsePointLine(line, out int point, out string error))
+                        if (!TryParsePointLine(line, out int point, out CookieHousePointInboxPayloadKind payloadKind, out string error))
                         {
                             LastStatus = $"Ignored Cookie House inbox line from {remoteEndpoint}: {error}";
                             continue;
                         }
 
-                        _pendingMessages.Enqueue(new CookieHousePointInboxMessage(point, remoteEndpoint, line));
+                        _pendingMessages.Enqueue(new CookieHousePointInboxMessage(point, remoteEndpoint, line, payloadKind));
                         ReceivedCount++;
-                        LastStatus = $"Queued Cookie House point {point} from {remoteEndpoint}.";
+                        string payloadLabel = payloadKind == CookieHousePointInboxPayloadKind.RawContextPoint
+                            ? "raw context point"
+                            : "point";
+                        LastStatus = $"Queued Cookie House {payloadLabel} {point} from {remoteEndpoint}.";
                     }
                 }
             }

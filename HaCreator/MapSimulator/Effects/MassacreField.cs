@@ -50,6 +50,7 @@ namespace HaCreator.MapSimulator.Effects
     public class MassacreField
     {
         public const int PacketTypeIncGauge = 173;
+        public const int PacketTypeResult = 174;
         private static readonly string[] UiImageNames = { "UIWindow2.img", "UIWindow.img" };
         private const int TimerboardSourceStringPoolId = 0x14EE;
         private const int ClearScreenEffectStringPoolId = 0x14EC;
@@ -200,18 +201,32 @@ namespace HaCreator.MapSimulator.Effects
                 errorMessage = "Massacre HUD inactive.";
                 return false;
             }
-            if (packetType != PacketTypeIncGauge)
+            return packetType switch
             {
-                errorMessage = $"Unsupported Massacre packet type: {packetType}";
+                PacketTypeIncGauge => TryApplyIncGaugePayload(payload, currentTimeMs, out errorMessage),
+                PacketTypeResult => TryApplyMassacreResultPayload(payload, currentTimeMs, out errorMessage),
+                _ => FailUnsupportedPacket(packetType, out errorMessage)
+            };
+        }
+
+        public bool TryApplyMassacreResultPayload(byte[] payload, int currentTimeMs, out string errorMessage)
+        {
+            errorMessage = null;
+            if (!_isActive)
+            {
+                errorMessage = "Massacre HUD inactive.";
                 return false;
             }
-            if (payload == null || payload.Length < sizeof(int))
+
+            if (payload == null || payload.Length < sizeof(byte) + sizeof(int))
             {
-                errorMessage = "Massacre inc-gauge packet requires a 4-byte payload.";
+                errorMessage = "Massacre result packet requires a 5-byte payload.";
                 return false;
             }
-            int newIncGauge = BinaryPrimitives.ReadInt32LittleEndian(payload.AsSpan(0, sizeof(int)));
-            OnMassacreIncGauge(newIncGauge, currentTimeMs);
+
+            byte rankCode = payload[0];
+            int score = BinaryPrimitives.ReadInt32LittleEndian(payload.AsSpan(sizeof(byte), sizeof(int)));
+            ShowResultPresentation(true, currentTimeMs, score, MapClientResultRank(rankCode));
             return true;
         }
         public float GaugeProgress => Math.Clamp(_maxGauge <= 0 ? 0f : _displayGauge / _maxGauge, 0f, 1f);
@@ -865,6 +880,39 @@ namespace HaCreator.MapSimulator.Effects
         public void ShowBonusPresentation(int currentTimeMs)
         {
             _bonusPresentationStartTick = currentTimeMs;
+        }
+
+        private bool TryApplyIncGaugePayload(byte[] payload, int currentTimeMs, out string errorMessage)
+        {
+            errorMessage = null;
+            if (payload == null || payload.Length < sizeof(int))
+            {
+                errorMessage = "Massacre inc-gauge packet requires a 4-byte payload.";
+                return false;
+            }
+
+            int newIncGauge = BinaryPrimitives.ReadInt32LittleEndian(payload.AsSpan(0, sizeof(int)));
+            OnMassacreIncGauge(newIncGauge, currentTimeMs);
+            return true;
+        }
+
+        private static bool FailUnsupportedPacket(int packetType, out string errorMessage)
+        {
+            errorMessage = $"Unsupported Massacre packet type: {packetType}";
+            return false;
+        }
+
+        private static char MapClientResultRank(byte rankCode)
+        {
+            return rankCode switch
+            {
+                0 => 'S',
+                1 => 'A',
+                2 => 'B',
+                3 => 'C',
+                4 => 'D',
+                _ => 'D'
+            };
         }
         private void EnsureAssetsLoaded()
         {

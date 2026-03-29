@@ -170,6 +170,13 @@ namespace HaCreator.MapSimulator.Interaction
             public List<string> Messages { get; } = new();
         }
 
+        private sealed class QuestRewardResolution
+        {
+            public IReadOnlyList<QuestRewardItem> GrantedItems { get; init; } = Array.Empty<QuestRewardItem>();
+            public QuestRewardChoicePrompt PendingPrompt { get; init; }
+            public IReadOnlyList<string> Issues { get; init; } = Array.Empty<string>();
+        }
+
         private sealed class QuestDefinition
         {
             public int QuestId { get; init; }
@@ -880,6 +887,14 @@ namespace HaCreator.MapSimulator.Interaction
 
         public QuestWindowActionResult TryAcceptFromQuestWindow(int questId, CharacterBuild build)
         {
+            return TryAcceptFromQuestWindow(questId, build, null);
+        }
+
+        public QuestWindowActionResult TryAcceptFromQuestWindow(
+            int questId,
+            CharacterBuild build,
+            IReadOnlyDictionary<int, int> selectedChoiceRewards)
+        {
             EnsureDefinitionsLoaded();
             if (!_definitions.TryGetValue(questId, out QuestDefinition definition))
             {
@@ -913,8 +928,35 @@ namespace HaCreator.MapSimulator.Interaction
             {
                 $"Accepted quest: {definition.Name}"
             };
-            IReadOnlyList<QuestRewardItem> resolvedStartRewards = ResolveGrantedRewardItems(definition.StartActions.RewardItems, build, messages: null);
-            List<string> inventoryIssues = EvaluateRewardInventoryIssues(resolvedStartRewards);
+            QuestRewardResolution rewardResolution = ResolveQuestRewardItems(
+                definition.StartActions.RewardItems,
+                build,
+                definition.QuestId,
+                definition.Name,
+                completionPhase: false,
+                actionLabel: "Accept",
+                npcId: null,
+                selectedChoiceRewards);
+            if (rewardResolution.PendingPrompt != null)
+            {
+                return new QuestWindowActionResult
+                {
+                    QuestId = questId,
+                    Messages = new[] { $"Choose a reward for {definition.Name} before accepting the quest." },
+                    PendingRewardChoicePrompt = rewardResolution.PendingPrompt
+                };
+            }
+
+            if (rewardResolution.Issues.Count > 0)
+            {
+                return new QuestWindowActionResult
+                {
+                    QuestId = questId,
+                    Messages = rewardResolution.Issues
+                };
+            }
+
+            List<string> inventoryIssues = EvaluateRewardInventoryIssues(rewardResolution.GrantedItems);
             if (inventoryIssues.Count > 0)
             {
                 return new QuestWindowActionResult
@@ -929,7 +971,7 @@ namespace HaCreator.MapSimulator.Interaction
             progress.MobKills.Clear();
             MarkQuestAlarmUpdated(questId);
 
-            ApplyActions(definition.StartActions, build, messages, resolvedStartRewards, definition.StartPetRequirements, definition.StartPetRecallLimit);
+            ApplyActions(definition.StartActions, build, messages, rewardResolution.GrantedItems, definition.StartPetRequirements, definition.StartPetRecallLimit);
 
             return new QuestWindowActionResult
             {
@@ -978,6 +1020,14 @@ namespace HaCreator.MapSimulator.Interaction
 
         public QuestWindowActionResult TryCompleteFromQuestWindow(int questId, CharacterBuild build)
         {
+            return TryCompleteFromQuestWindow(questId, build, null);
+        }
+
+        public QuestWindowActionResult TryCompleteFromQuestWindow(
+            int questId,
+            CharacterBuild build,
+            IReadOnlyDictionary<int, int> selectedChoiceRewards)
+        {
             EnsureDefinitionsLoaded();
             if (!_definitions.TryGetValue(questId, out QuestDefinition definition))
             {
@@ -1017,9 +1067,36 @@ namespace HaCreator.MapSimulator.Interaction
                 };
             }
 
+            QuestRewardResolution rewardResolution = ResolveQuestRewardItems(
+                definition.EndActions.RewardItems,
+                build,
+                definition.QuestId,
+                definition.Name,
+                completionPhase: true,
+                actionLabel: "Complete",
+                npcId: null,
+                selectedChoiceRewards);
+            if (rewardResolution.PendingPrompt != null)
+            {
+                return new QuestWindowActionResult
+                {
+                    QuestId = questId,
+                    Messages = new[] { $"Choose a reward for {definition.Name} before completing the quest." },
+                    PendingRewardChoicePrompt = rewardResolution.PendingPrompt
+                };
+            }
+
+            if (rewardResolution.Issues.Count > 0)
+            {
+                return new QuestWindowActionResult
+                {
+                    QuestId = questId,
+                    Messages = rewardResolution.Issues
+                };
+            }
+
             messages.Insert(0, $"Completed quest: {definition.Name}");
-            IReadOnlyList<QuestRewardItem> resolvedCompletionRewards = ResolveGrantedRewardItems(definition.EndActions.RewardItems, build, messages: null);
-            List<string> inventoryIssues = EvaluateRewardInventoryIssues(resolvedCompletionRewards);
+            List<string> inventoryIssues = EvaluateRewardInventoryIssues(rewardResolution.GrantedItems);
             if (inventoryIssues.Count > 0)
             {
                 return new QuestWindowActionResult
@@ -1032,7 +1109,7 @@ namespace HaCreator.MapSimulator.Interaction
             QuestProgress progress = GetOrCreateProgress(questId);
             progress.State = QuestStateType.Completed;
             MarkQuestAlarmUpdated(questId);
-            ApplyActions(definition.EndActions, build, messages, resolvedCompletionRewards, definition.EndPetRequirements, definition.EndPetRecallLimit);
+            ApplyActions(definition.EndActions, build, messages, rewardResolution.GrantedItems, definition.EndPetRequirements, definition.EndPetRecallLimit);
 
             return new QuestWindowActionResult
             {
@@ -1394,6 +1471,15 @@ namespace HaCreator.MapSimulator.Interaction
 
         public QuestActionResult TryPerformPrimaryAction(int questId, int npcId, CharacterBuild build)
         {
+            return TryPerformPrimaryAction(questId, npcId, build, null);
+        }
+
+        public QuestActionResult TryPerformPrimaryAction(
+            int questId,
+            int npcId,
+            CharacterBuild build,
+            IReadOnlyDictionary<int, int> selectedChoiceRewards)
+        {
             EnsureDefinitionsLoaded();
 
             if (!_definitions.TryGetValue(questId, out QuestDefinition definition))
@@ -1428,8 +1514,33 @@ namespace HaCreator.MapSimulator.Interaction
                 {
                     $"Accepted quest: {definition.Name}"
                 };
-                IReadOnlyList<QuestRewardItem> resolvedStartRewards = ResolveGrantedRewardItems(definition.StartActions.RewardItems, build, messages: null);
-                List<string> inventoryIssues = EvaluateRewardInventoryIssues(resolvedStartRewards);
+                QuestRewardResolution rewardResolution = ResolveQuestRewardItems(
+                    definition.StartActions.RewardItems,
+                    build,
+                    definition.QuestId,
+                    definition.Name,
+                    completionPhase: false,
+                    actionLabel: "Accept",
+                    npcId,
+                    selectedChoiceRewards);
+                if (rewardResolution.PendingPrompt != null)
+                {
+                    return new QuestActionResult
+                    {
+                        Messages = new[] { $"Choose a reward for {definition.Name} before accepting the quest." },
+                        PendingRewardChoicePrompt = rewardResolution.PendingPrompt
+                    };
+                }
+
+                if (rewardResolution.Issues.Count > 0)
+                {
+                    return new QuestActionResult
+                    {
+                        Messages = rewardResolution.Issues
+                    };
+                }
+
+                List<string> inventoryIssues = EvaluateRewardInventoryIssues(rewardResolution.GrantedItems);
                 if (inventoryIssues.Count > 0)
                 {
                     return new QuestActionResult
@@ -1443,7 +1554,7 @@ namespace HaCreator.MapSimulator.Interaction
                 progress.MobKills.Clear();
                 MarkQuestAlarmUpdated(questId);
 
-                ApplyActions(definition.StartActions, build, messages, resolvedStartRewards, definition.StartPetRequirements, definition.StartPetRecallLimit);
+                ApplyActions(definition.StartActions, build, messages, rewardResolution.GrantedItems, definition.StartPetRequirements, definition.StartPetRecallLimit);
                 return new QuestActionResult
                 {
                     StateChanged = true,
@@ -1483,8 +1594,33 @@ namespace HaCreator.MapSimulator.Interaction
 
                 messages.Insert(0,
                     $"Completed quest: {definition.Name}");
-                IReadOnlyList<QuestRewardItem> resolvedCompletionRewards = ResolveGrantedRewardItems(definition.EndActions.RewardItems, build, messages: null);
-                List<string> inventoryIssues = EvaluateRewardInventoryIssues(resolvedCompletionRewards);
+                QuestRewardResolution rewardResolution = ResolveQuestRewardItems(
+                    definition.EndActions.RewardItems,
+                    build,
+                    definition.QuestId,
+                    definition.Name,
+                    completionPhase: true,
+                    actionLabel: "Complete",
+                    npcId,
+                    selectedChoiceRewards);
+                if (rewardResolution.PendingPrompt != null)
+                {
+                    return new QuestActionResult
+                    {
+                        Messages = new[] { $"Choose a reward for {definition.Name} before completing the quest." },
+                        PendingRewardChoicePrompt = rewardResolution.PendingPrompt
+                    };
+                }
+
+                if (rewardResolution.Issues.Count > 0)
+                {
+                    return new QuestActionResult
+                    {
+                        Messages = rewardResolution.Issues
+                    };
+                }
+
+                List<string> inventoryIssues = EvaluateRewardInventoryIssues(rewardResolution.GrantedItems);
                 if (inventoryIssues.Count > 0)
                 {
                     return new QuestActionResult
@@ -1496,7 +1632,7 @@ namespace HaCreator.MapSimulator.Interaction
                 QuestProgress progress = GetOrCreateProgress(questId);
                 progress.State = QuestStateType.Completed;
                 MarkQuestAlarmUpdated(questId);
-                ApplyActions(definition.EndActions, build, messages, resolvedCompletionRewards, definition.EndPetRequirements, definition.EndPetRecallLimit);
+                ApplyActions(definition.EndActions, build, messages, rewardResolution.GrantedItems, definition.EndPetRequirements, definition.EndPetRecallLimit);
                 return new QuestActionResult
                 {
                     StateChanged = true,
@@ -2270,7 +2406,6 @@ namespace HaCreator.MapSimulator.Interaction
               AppendPetIssues(definition.StartPetRequirements, definition.StartPetRecallLimit, issues);
               AppendSkillIssues(definition.StartSkillRequirements, issues);
               AppendMesoIssues(definition.StartActions.MesoReward, issues, "start");
-            AppendChoiceRewardIssues(definition.StartActions.RewardItems, build, issues);
             issues.AddRange(EvaluateRewardInventoryIssues(ResolveGrantedRewardItems(definition.StartActions.RewardItems, build, messages: null)));
             return issues;
         }
@@ -2304,7 +2439,6 @@ namespace HaCreator.MapSimulator.Interaction
 
               AppendPetIssues(definition.EndPetRequirements, definition.EndPetRecallLimit, issues);
               AppendMesoIssues(-definition.EndMesoRequirement, issues, "complete");
-            AppendChoiceRewardIssues(definition.EndActions.RewardItems, build, issues);
             issues.AddRange(EvaluateRewardInventoryIssues(ResolveGrantedRewardItems(definition.EndActions.RewardItems, build, messages: null)));
 
             if (build != null && definition.MaxLevel.HasValue && build.Level > definition.MaxLevel.Value)
@@ -2315,23 +2449,138 @@ namespace HaCreator.MapSimulator.Interaction
             return issues;
         }
 
-        private void AppendChoiceRewardIssues(
+        private QuestRewardResolution ResolveQuestRewardItems(
             IReadOnlyList<QuestRewardItem> rewards,
             CharacterBuild build,
-            ICollection<string> issues)
+            int questId,
+            string questName,
+            bool completionPhase,
+            string actionLabel,
+            int? npcId,
+            IReadOnlyDictionary<int, int> selectedChoiceRewards)
         {
+            if (rewards == null || rewards.Count == 0)
+            {
+                return new QuestRewardResolution();
+            }
+
+            var granted = new List<QuestRewardItem>();
+            var weightedGroups = new Dictionary<int, List<QuestRewardItem>>();
+            var pendingGroups = new List<QuestRewardChoiceGroup>();
+            var issues = new List<string>();
+
             foreach ((int groupKey, List<QuestRewardItem> groupRewards) in GetFilteredChoiceRewardGroups(rewards, build))
             {
                 if (groupRewards.Count <= 1)
                 {
+                    if (groupRewards.Count == 1)
+                    {
+                        granted.Add(groupRewards[0]);
+                    }
+
                     continue;
                 }
 
-                string rewardSummary = string.Join(
-                    ", ",
-                    groupRewards.Select(static reward => GetRewardItemDescription(reward, includeSelectionTag: false, includeFilters: true)));
-                issues.Add($"Choose 1 quest reward before continuing: {rewardSummary}.");
+                if (selectedChoiceRewards != null &&
+                    selectedChoiceRewards.TryGetValue(groupKey, out int selectedItemId))
+                {
+                    QuestRewardItem selectedReward = groupRewards.FirstOrDefault(reward => reward.ItemId == selectedItemId);
+                    if (selectedReward != null)
+                    {
+                        granted.Add(selectedReward);
+                        continue;
+                    }
+
+                    issues.Add($"The selected reward for {questName} is no longer eligible.");
+                    continue;
+                }
+
+                pendingGroups.Add(new QuestRewardChoiceGroup
+                {
+                    GroupKey = groupKey,
+                    PromptText = groupKey > 0 ? $"Choose 1 reward from group {groupKey}." : "Choose 1 reward.",
+                    Options = groupRewards
+                        .Select(static reward => new QuestRewardChoiceOption
+                        {
+                            ItemId = reward.ItemId,
+                            Label = GetItemName(reward.ItemId),
+                            DetailText = GetRewardItemDescription(reward)
+                        })
+                        .ToArray()
+                });
             }
+
+            if (issues.Count > 0)
+            {
+                return new QuestRewardResolution
+                {
+                    GrantedItems = granted,
+                    Issues = issues
+                };
+            }
+
+            if (pendingGroups.Count > 0)
+            {
+                return new QuestRewardResolution
+                {
+                    GrantedItems = granted,
+                    PendingPrompt = new QuestRewardChoicePrompt
+                    {
+                        QuestId = questId,
+                        QuestName = questName ?? string.Empty,
+                        CompletionPhase = completionPhase,
+                        ActionLabel = actionLabel ?? string.Empty,
+                        NpcId = npcId,
+                        Groups = pendingGroups
+                    }
+                };
+            }
+
+            for (int i = 0; i < rewards.Count; i++)
+            {
+                QuestRewardItem reward = rewards[i];
+                if (reward == null || reward.Count <= 0 || !MatchesRewardItemFilter(reward, build))
+                {
+                    continue;
+                }
+
+                switch (reward.SelectionType)
+                {
+                    case QuestRewardSelectionType.WeightedRandom:
+                        AddRewardSelectionGroup(weightedGroups, reward.SelectionGroup, reward);
+                        break;
+                    case QuestRewardSelectionType.PlayerSelection:
+                        break;
+                    default:
+                        if (!granted.Contains(reward))
+                        {
+                            granted.Add(reward);
+                        }
+                        break;
+                }
+            }
+
+            foreach ((int groupKey, List<QuestRewardItem> groupRewards) in weightedGroups.OrderBy(pair => pair.Key))
+            {
+                if (groupRewards.Count == 0)
+                {
+                    continue;
+                }
+
+                int totalWeight = groupRewards.Sum(reward => Math.Max(1, reward.SelectionWeight));
+                int selectedIndex = SelectWeightedRewardIndexCore(
+                    groupRewards.Select(reward => reward.SelectionWeight).ToArray(),
+                    Random.Shared.Next(Math.Max(1, totalWeight)));
+                if (selectedIndex >= 0 && selectedIndex < groupRewards.Count)
+                {
+                    granted.Add(groupRewards[selectedIndex]);
+                }
+            }
+
+            return new QuestRewardResolution
+            {
+                GrantedItems = granted
+            };
         }
 
         private void AppendQuestStateIssues(IReadOnlyList<QuestStateRequirement> requirements, ICollection<string> issues)
@@ -4125,7 +4374,7 @@ namespace HaCreator.MapSimulator.Interaction
             for (int i = 0; i < inlineSelections.Length; i++)
             {
                 NpcInlineSelection selection = inlineSelections[i];
-                IReadOnlyList<NpcInteractionPage> selectionPages = ParseStopSelectionPages(pageStopProperty, selection.SelectionId);
+                IReadOnlyList<NpcInteractionPage> selectionPages = ParseStopSelectionPages(pageStopProperty, selection.SelectionId, i);
                 if (selectionPages.Count == 0 &&
                     nextPages.Count > 0 &&
                     ShouldContinueToNextPages(pageStopProperty, selection.SelectionId, i, inlineSelections.Length))
@@ -4172,7 +4421,10 @@ namespace HaCreator.MapSimulator.Interaction
             return answerValue == selectionId;
         }
 
-        private static IReadOnlyList<NpcInteractionPage> ParseStopSelectionPages(WzImageProperty stopProperty, int selectionId)
+        private static IReadOnlyList<NpcInteractionPage> ParseStopSelectionPages(
+            WzImageProperty stopProperty,
+            int selectionId,
+            int selectionIndex)
         {
             if (stopProperty == null)
             {
@@ -4180,6 +4432,19 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             WzImageProperty selectionProperty = stopProperty[selectionId.ToString()];
+            if (selectionProperty != null)
+            {
+                return ParseBranchPages(selectionProperty);
+            }
+
+            int oneBasedIndex = selectionIndex + 1;
+            selectionProperty = stopProperty[oneBasedIndex.ToString()];
+            if (selectionProperty != null)
+            {
+                return ParseBranchPages(selectionProperty);
+            }
+
+            selectionProperty = stopProperty[selectionIndex.ToString()];
             return selectionProperty != null ? ParseBranchPages(selectionProperty) : Array.Empty<NpcInteractionPage>();
         }
 

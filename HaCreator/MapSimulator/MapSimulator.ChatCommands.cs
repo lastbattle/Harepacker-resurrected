@@ -128,8 +128,8 @@ namespace HaCreator.MapSimulator
             }
 
             string employeeUsage = kind == SocialRoomKind.EntrustedShop
-                ? "Usage: /socialroom entrustedshop [packet] employee <status|template <itemId|clear>|offset <x> <y>|world <x> <y>|facing <left|right|random>|reset>"
-                : "Usage: /socialroom personalshop [packet] employee <status|template <itemId|clear>|offset <x> <y>|world <x> <y>|facing <left|right|random>|reset>";
+                ? "Usage: /socialroom entrustedshop [packet] employee <status|template <itemId|clear>|offset <x> <y>|world <x> <y>|facing <left|right|random>|packetraw <hex bytes>|reset>"
+                : "Usage: /socialroom personalshop [packet] employee <status|template <itemId|clear>|offset <x> <y>|world <x> <y>|facing <left|right|random>|packetraw <hex bytes>|reset>";
             string employeeAction = args.Length > actionIndex + 1 ? args[actionIndex + 1] : "status";
 
             switch (employeeAction.ToLowerInvariant())
@@ -209,6 +209,21 @@ namespace HaCreator.MapSimulator
                     return runtime.TrySetEmployeeFlip(flip, out string facingMessage)
                         ? ChatCommandHandler.CommandResult.Ok(facingMessage)
                         : ChatCommandHandler.CommandResult.Error(facingMessage);
+
+                case "packetraw":
+                    if (args.Length <= actionIndex + 2)
+                    {
+                        return ChatCommandHandler.CommandResult.Error(employeeUsage);
+                    }
+
+                    if (!MemoryGameField.TryParseMiniRoomPacketHex(string.Join(' ', args, actionIndex + 2, args.Length - actionIndex - 2), out byte[] packetBytes, out string packetParseError))
+                    {
+                        return ChatCommandHandler.CommandResult.Error(packetParseError);
+                    }
+
+                    return runtime.TryApplyEmployeeEnterFieldPacket(packetBytes, out string packetMessage)
+                        ? ChatCommandHandler.CommandResult.Ok(packetMessage)
+                        : ChatCommandHandler.CommandResult.Error(packetMessage);
 
                 case "reset":
                     runtime.ResetEmployeePlacement();
@@ -691,7 +706,13 @@ namespace HaCreator.MapSimulator
 
                     return true;
 
+                case LoginPacketType.CheckPasswordResult:
 
+                    return TryConfigureCheckPasswordPacketPayload(args, out error, out summary);
+
+                case LoginPacketType.GuestIdLoginResult:
+
+                    return TryConfigureGuestIdLoginPacketPayload(args, out error, out summary);
 
                 case LoginPacketType.AccountInfoResult:
 
@@ -748,6 +769,342 @@ namespace HaCreator.MapSimulator
         }
 
 
+
+
+
+        private bool TryConfigureCheckPasswordPacketPayload(
+
+            string[] args,
+
+            out string error,
+
+            out string summary)
+
+        {
+
+            error = null;
+
+            summary = null;
+
+            bool clearPayload = false;
+
+            LoginCheckPasswordResultProfile decodedProfile = null;
+
+            foreach (string arg in args)
+
+            {
+
+                if (arg.Equals("clearpayload", StringComparison.OrdinalIgnoreCase))
+
+                {
+
+                    clearPayload = true;
+
+                    continue;
+
+                }
+
+
+
+                if (TryParseBinaryPayloadArgument(arg, out byte[] payloadBytes, out string payloadError))
+
+                {
+
+                    if (!LoginCheckPasswordResultCodec.TryDecode(payloadBytes, out decodedProfile, out string decodeError))
+
+                    {
+
+                        error = decodeError ?? "CheckPasswordResult payload could not be decoded.";
+
+                        return false;
+
+                    }
+
+
+
+                    continue;
+
+                }
+
+
+
+                if (payloadError != null &&
+
+                    (arg.StartsWith("payloadhex=", StringComparison.OrdinalIgnoreCase) ||
+
+                     arg.StartsWith("payloadb64=", StringComparison.OrdinalIgnoreCase)))
+
+                {
+
+                    error = payloadError;
+
+                    return false;
+
+                }
+
+
+
+                error = "Usage: /loginpacket checkpassword [payloadhex=<hex> | payloadb64=<base64> | clearpayload]";
+
+                return false;
+
+            }
+
+
+
+            if (clearPayload)
+
+            {
+
+                _loginPacketCheckPasswordResultProfile = null;
+
+                summary = "Using generated CheckPasswordResult behavior.";
+
+            }
+
+
+
+            if (decodedProfile != null)
+
+            {
+
+                _loginPacketCheckPasswordResultProfile = decodedProfile;
+
+                summary = BuildConfiguredCheckPasswordPayloadSummary(decodedProfile);
+
+            }
+
+
+
+            if (decodedProfile != null || clearPayload)
+
+            {
+
+                return true;
+
+            }
+
+
+
+            summary = "Using generated CheckPasswordResult behavior.";
+
+            return true;
+
+        }
+
+
+
+        private bool TryConfigureGuestIdLoginPacketPayload(
+
+            string[] args,
+
+            out string error,
+
+            out string summary)
+
+        {
+
+            error = null;
+
+            summary = null;
+
+            bool clearPayload = false;
+
+            LoginGuestIdLoginResultProfile decodedProfile = null;
+
+            foreach (string arg in args)
+
+            {
+
+                if (arg.Equals("clearpayload", StringComparison.OrdinalIgnoreCase))
+
+                {
+
+                    clearPayload = true;
+
+                    continue;
+
+                }
+
+
+
+                if (TryParseBinaryPayloadArgument(arg, out byte[] payloadBytes, out string payloadError))
+
+                {
+
+                    if (!LoginGuestIdLoginResultCodec.TryDecode(payloadBytes, out decodedProfile, out string decodeError))
+
+                    {
+
+                        error = decodeError ?? "GuestIdLoginResult payload could not be decoded.";
+
+                        return false;
+
+                    }
+
+
+
+                    continue;
+
+                }
+
+
+
+                if (payloadError != null &&
+
+                    (arg.StartsWith("payloadhex=", StringComparison.OrdinalIgnoreCase) ||
+
+                     arg.StartsWith("payloadb64=", StringComparison.OrdinalIgnoreCase)))
+
+                {
+
+                    error = payloadError;
+
+                    return false;
+
+                }
+
+
+
+                error = "Usage: /loginpacket guestlogin [payloadhex=<hex> | payloadb64=<base64> | clearpayload]";
+
+                return false;
+
+            }
+
+
+
+            if (clearPayload)
+
+            {
+
+                _loginPacketGuestIdLoginResultProfile = null;
+
+                summary = "Using generated GuestIdLoginResult behavior.";
+
+            }
+
+
+
+            if (decodedProfile != null)
+
+            {
+
+                _loginPacketGuestIdLoginResultProfile = decodedProfile;
+
+                summary = BuildConfiguredGuestIdLoginPayloadSummary(decodedProfile);
+
+            }
+
+
+
+            if (decodedProfile != null || clearPayload)
+
+            {
+
+                return true;
+
+            }
+
+
+
+            summary = "Using generated GuestIdLoginResult behavior.";
+
+            return true;
+
+        }
+
+
+
+        private static string BuildConfiguredCheckPasswordPayloadSummary(LoginCheckPasswordResultProfile profile)
+
+        {
+
+            if (profile == null)
+
+            {
+
+                return "Configured packet-authored CheckPasswordResult payload.";
+
+            }
+
+
+
+            string detail = string.Join(
+
+                " | ",
+
+                new[]
+
+                {
+
+                    $"Result code: {profile.ResultCode}",
+
+                    $"Bootstrap mode: {profile.AccountBootstrapMode}",
+
+                    profile.AccountId.HasValue ? $"Account id: {profile.AccountId.Value}" : null,
+
+                    profile.CharacterCount.HasValue ? $"Character count: {profile.CharacterCount.Value}" : null,
+
+                    profile.ClientKey.Length > 0 ? $"Client key: {Convert.ToHexString(profile.ClientKey)}" : null,
+
+                }.Where(text => !string.IsNullOrWhiteSpace(text)));
+
+
+
+            return string.IsNullOrWhiteSpace(detail)
+
+                ? "Configured packet-authored CheckPasswordResult payload."
+
+                : $"Configured packet-authored CheckPasswordResult payload ({detail}).";
+
+        }
+
+
+
+        private static string BuildConfiguredGuestIdLoginPayloadSummary(LoginGuestIdLoginResultProfile profile)
+
+        {
+
+            if (profile == null)
+
+            {
+
+                return "Configured packet-authored GuestIdLoginResult payload.";
+
+            }
+
+
+
+            string detail = string.Join(
+
+                " | ",
+
+                new[]
+
+                {
+
+                    $"Result code: {profile.ResultCode}",
+
+                    $"Registration status: {profile.RegistrationStatusId}",
+
+                    profile.AccountId.HasValue ? $"Account id: {profile.AccountId.Value}" : null,
+
+                    profile.CharacterCount.HasValue ? $"Character count: {profile.CharacterCount.Value}" : null,
+
+                    string.IsNullOrWhiteSpace(profile.GuestRegistrationUrl) ? null : "Guest registration URL present",
+
+                }.Where(text => !string.IsNullOrWhiteSpace(text)));
+
+
+
+            return string.IsNullOrWhiteSpace(detail)
+
+                ? "Configured packet-authored GuestIdLoginResult payload."
+
+                : $"Configured packet-authored GuestIdLoginResult payload ({detail}).";
+
+        }
 
 
 
@@ -2500,6 +2857,231 @@ namespace HaCreator.MapSimulator
 
 
                     return ChatCommandHandler.CommandResult.Error("Usage: /guildboss [status|transport [status|start [port]|stop]|healer <y>|pulley <state>|packet <344|345> <value>|packetraw <hex>]");
+
+                });
+
+
+
+            _chat.CommandHandler.RegisterCommand(
+
+                "transport",
+
+                "Inspect or drive the transit/voyage transport packet inbox",
+
+                "/transport [status|packet [start <value>|move <value>|end <value>|state <state> <value>]|packetraw <hex>|raw <164|165> <hex>|inbox [status|start [port]|stop]]",
+
+                args =>
+
+                {
+
+                    bool transportActive = IsTransitVoyageWrapperMap(_mapBoard?.MapInfo) && _transportField.HasRouteConfiguration;
+                    if (args.Length == 0 || string.Equals(args[0], "status", StringComparison.OrdinalIgnoreCase))
+
+                    {
+
+                        return ChatCommandHandler.CommandResult.Info(
+
+                            $"{_transportField.DescribeStatus()}{Environment.NewLine}{_transportPacketInbox.LastStatus}");
+
+                    }
+
+
+
+                    if (!transportActive)
+
+                    {
+
+                        return ChatCommandHandler.CommandResult.Error("Transport packet controls are only active on transit or voyage wrapper maps.");
+
+                    }
+
+
+
+                    if (string.Equals(args[0], "packet", StringComparison.OrdinalIgnoreCase))
+
+                    {
+
+                        if (args.Length < 3)
+
+                        {
+
+                            return ChatCommandHandler.CommandResult.Error("Usage: /transport packet [start <value>|move <value>|end <value>|state <state> <value>]");
+
+                        }
+
+
+
+                        string packetLine = args[1].ToLowerInvariant() switch
+
+                        {
+
+                            "start" when args.Length >= 3 => $"start {args[2]}",
+
+                            "move" when args.Length >= 3 => $"move {args[2]}",
+
+                            "end" when args.Length >= 3 => $"end {args[2]}",
+
+                            "state" when args.Length >= 4 => $"state {args[2]} {args[3]}",
+
+                            _ => null
+
+                        };
+
+                        string parseError = null;
+                        if (packetLine == null
+                            || !TransportationPacketInboxManager.TryParsePacketLine(packetLine, out int packetType, out byte[] payload, out parseError))
+
+                        {
+
+                            return ChatCommandHandler.CommandResult.Error(parseError ?? "Usage: /transport packet [start <value>|move <value>|end <value>|state <state> <value>]");
+
+                        }
+
+
+
+                        if (!TryApplyTransportInboxMessage(new TransportationPacketInboxMessage(packetType, payload, "transport-command", packetLine), out string packetResult))
+
+                        {
+
+                            return ChatCommandHandler.CommandResult.Error(packetResult);
+
+                        }
+
+
+
+                        return ChatCommandHandler.CommandResult.Ok(_transportField.DescribeStatus());
+
+                    }
+
+
+
+                    if (string.Equals(args[0], "packetraw", StringComparison.OrdinalIgnoreCase))
+
+                    {
+
+                        string rawError = null;
+                        if (!TransportationPacketInboxManager.TryParsePacketLine(
+                                string.Join(' ', args),
+                                out int rawPacketType,
+                                out byte[] rawPayload,
+                                out rawError))
+
+                        {
+
+                            return ChatCommandHandler.CommandResult.Error(rawError ?? "Unable to parse transport raw packet.");
+
+                        }
+
+
+
+                        if (!TryApplyTransportInboxMessage(new TransportationPacketInboxMessage(rawPacketType, rawPayload, "transport-command", string.Join(' ', args)), out string packetResult))
+
+                        {
+
+                            return ChatCommandHandler.CommandResult.Error(packetResult);
+
+                        }
+
+
+
+                        return ChatCommandHandler.CommandResult.Ok(_transportField.DescribeStatus());
+
+                    }
+
+
+
+                    if (string.Equals(args[0], "raw", StringComparison.OrdinalIgnoreCase))
+
+                    {
+                        string rawError = null;
+
+                        if (args.Length < 3
+                            || !TransportationPacketInboxManager.TryParsePacketLine(
+                                string.Join(' ', args.Skip(1)),
+                                out int rawPacketType,
+                                out byte[] rawPayload,
+                                out rawError))
+
+                        {
+
+                            return ChatCommandHandler.CommandResult.Error(rawError ?? "Usage: /transport raw <164|165> <hex>");
+
+                        }
+
+
+
+                        if (!TryApplyTransportInboxMessage(new TransportationPacketInboxMessage(rawPacketType, rawPayload, "transport-command", string.Join(' ', args)), out string packetResult))
+
+                        {
+
+                            return ChatCommandHandler.CommandResult.Error(packetResult);
+
+                        }
+
+
+
+                        return ChatCommandHandler.CommandResult.Ok(_transportField.DescribeStatus());
+
+                    }
+
+
+
+                    if (string.Equals(args[0], "inbox", StringComparison.OrdinalIgnoreCase))
+
+                    {
+
+                        if (args.Length == 1 || string.Equals(args[1], "status", StringComparison.OrdinalIgnoreCase))
+
+                        {
+
+                            return ChatCommandHandler.CommandResult.Info(
+
+                                $"{_transportField.DescribeStatus()}{Environment.NewLine}{_transportPacketInbox.LastStatus}");
+
+                        }
+
+
+
+                        if (string.Equals(args[1], "start", StringComparison.OrdinalIgnoreCase))
+
+                        {
+
+                            int port = TransportationPacketInboxManager.DefaultPort;
+                            if (args.Length >= 3 && (!int.TryParse(args[2], out port) || port <= 0))
+
+                            {
+
+                                return ChatCommandHandler.CommandResult.Error("Usage: /transport inbox start [port]");
+
+                            }
+
+
+
+                            _transportPacketInbox.Start(port);
+                            return ChatCommandHandler.CommandResult.Ok(_transportPacketInbox.LastStatus);
+
+                        }
+
+
+
+                        if (string.Equals(args[1], "stop", StringComparison.OrdinalIgnoreCase))
+
+                        {
+
+                            _transportPacketInbox.Stop();
+                            return ChatCommandHandler.CommandResult.Ok(_transportPacketInbox.LastStatus);
+
+                        }
+
+
+
+                        return ChatCommandHandler.CommandResult.Error("Usage: /transport inbox [status|start [port]|stop]");
+
+                    }
+
+
+
+                    return ChatCommandHandler.CommandResult.Error("Usage: /transport [status|packet [start <value>|move <value>|end <value>|state <state> <value>]|packetraw <hex>|raw <164|165> <hex>|inbox [status|start [port]|stop]]");
 
                 });
 
@@ -5831,7 +6413,7 @@ namespace HaCreator.MapSimulator
 
                 "Drive the MiniRoom Match Cards runtime",
 
-                "/memorygame <open|ready|start|flip|tie|giveup|end|status|packet|packetraw|packetrecv|remote|inbox> [...]",
+                "/memorygame <open|ready|start|flip|tie|giveup|end|status|packet|packetraw|packetrecv|remote|inbox|session> [...]",
 
                 args =>
 
@@ -5841,7 +6423,7 @@ namespace HaCreator.MapSimulator
 
                     {
 
-                        return ChatCommandHandler.CommandResult.Error("Usage: /memorygame <open|ready|start|flip|tie|giveup|end|status|packet|packetraw|packetrecv|remote|inbox> [...]");
+                        return ChatCommandHandler.CommandResult.Error("Usage: /memorygame <open|ready|start|flip|tie|giveup|end|status|packet|packetraw|packetrecv|remote|inbox|session> [...]");
 
                     }
 
@@ -6001,7 +6583,7 @@ namespace HaCreator.MapSimulator
 
                         case "status":
 
-                            return ChatCommandHandler.CommandResult.Info($"{field.DescribeStatus()} | inbox={_memoryGamePacketInbox.LastStatus}");
+                            return ChatCommandHandler.CommandResult.Info($"{field.DescribeStatus()} | inbox={_memoryGamePacketInbox.LastStatus} | session={_memoryGameOfficialSessionBridge.LastStatus}");
 
                         case "packet":
 
@@ -6263,6 +6845,134 @@ namespace HaCreator.MapSimulator
 
                         }
 
+                        case "session":
+
+                            if (args.Length == 1 || string.Equals(args[1], "status", StringComparison.OrdinalIgnoreCase))
+
+                            {
+
+                                return ChatCommandHandler.CommandResult.Info(
+
+                                    $"{field.DescribeStatus()}{Environment.NewLine}{_memoryGameOfficialSessionBridge.LastStatus}");
+
+                            }
+
+                            if (string.Equals(args[1], "discover", StringComparison.OrdinalIgnoreCase))
+
+                            {
+
+                                if (args.Length < 3
+
+                                    || !int.TryParse(args[2], out int discoverRemotePort)
+
+                                    || discoverRemotePort <= 0)
+
+                                {
+
+                                    return ChatCommandHandler.CommandResult.Error("Usage: /memorygame session discover <remotePort> [processName|pid] [localPort]");
+
+                                }
+
+                                string processSelector = args.Length >= 4 ? args[3] : null;
+                                int? localPortFilter = null;
+                                if (args.Length >= 5)
+                                {
+                                    if (!int.TryParse(args[4], out int parsedLocalPort) || parsedLocalPort <= 0)
+                                    {
+                                        return ChatCommandHandler.CommandResult.Error("Usage: /memorygame session discover <remotePort> [processName|pid] [localPort]");
+                                    }
+
+                                    localPortFilter = parsedLocalPort;
+                                }
+
+                                return ChatCommandHandler.CommandResult.Info(
+
+                                    _memoryGameOfficialSessionBridge.DescribeDiscoveredSessions(discoverRemotePort, processSelector, localPortFilter));
+
+                            }
+
+                            if (string.Equals(args[1], "start", StringComparison.OrdinalIgnoreCase))
+
+                            {
+
+                                if (args.Length < 5
+
+                                    || !int.TryParse(args[2], out int listenPort)
+
+                                    || listenPort <= 0
+
+                                    || !int.TryParse(args[4], out int remotePort)
+
+                                    || remotePort <= 0)
+
+                                {
+
+                                    return ChatCommandHandler.CommandResult.Error("Usage: /memorygame session start <listenPort> <serverHost> <serverPort>");
+
+                                }
+
+
+
+                                _memoryGameOfficialSessionBridge.Start(listenPort, args[3], remotePort);
+
+                                return ChatCommandHandler.CommandResult.Ok(_memoryGameOfficialSessionBridge.LastStatus);
+
+                            }
+
+                            if (string.Equals(args[1], "startauto", StringComparison.OrdinalIgnoreCase))
+
+                            {
+
+                                if (args.Length < 4
+
+                                    || !int.TryParse(args[2], out int autoListenPort)
+
+                                    || autoListenPort <= 0
+
+                                    || !int.TryParse(args[3], out int autoRemotePort)
+
+                                    || autoRemotePort <= 0)
+
+                                {
+
+                                    return ChatCommandHandler.CommandResult.Error("Usage: /memorygame session startauto <listenPort> <remotePort> [processName|pid] [localPort]");
+
+                                }
+
+                                string processSelector = args.Length >= 5 ? args[4] : null;
+                                int? localPortFilter = null;
+                                if (args.Length >= 6)
+                                {
+                                    if (!int.TryParse(args[5], out int parsedLocalPort) || parsedLocalPort <= 0)
+                                    {
+                                        return ChatCommandHandler.CommandResult.Error("Usage: /memorygame session startauto <listenPort> <remotePort> [processName|pid] [localPort]");
+                                    }
+
+                                    localPortFilter = parsedLocalPort;
+                                }
+
+                                return _memoryGameOfficialSessionBridge.TryStartFromDiscovery(autoListenPort, autoRemotePort, processSelector, localPortFilter, out string startStatus)
+
+                                    ? ChatCommandHandler.CommandResult.Ok(startStatus)
+
+                                    : ChatCommandHandler.CommandResult.Error(startStatus);
+
+                            }
+
+                            if (string.Equals(args[1], "stop", StringComparison.OrdinalIgnoreCase))
+
+                            {
+
+                                _memoryGameOfficialSessionBridge.Stop();
+
+                                return ChatCommandHandler.CommandResult.Ok(_memoryGameOfficialSessionBridge.LastStatus);
+
+                            }
+
+
+
+                            return ChatCommandHandler.CommandResult.Error("Usage: /memorygame session [status|discover <remotePort> [processName|pid] [localPort]|start <listenPort> <serverHost> <serverPort>|startauto <listenPort> <remotePort> [processName|pid] [localPort]|stop]");
+
                         case "remote":
 
                         {
@@ -6299,7 +7009,7 @@ namespace HaCreator.MapSimulator
 
                         default:
 
-                            return ChatCommandHandler.CommandResult.Error("Usage: /memorygame <open|ready|start|flip|tie|giveup|end|status|packet|packetraw|packetrecv|remote|inbox> [...]");
+                            return ChatCommandHandler.CommandResult.Error("Usage: /memorygame <open|ready|start|flip|tie|giveup|end|status|packet|packetraw|packetrecv|remote|inbox|session> [...]");
 
                     }
 
@@ -6741,7 +7451,7 @@ namespace HaCreator.MapSimulator
 
                                 default:
 
-                                    return ChatCommandHandler.CommandResult.Error("Usage: /socialroom personalshop [packet] <open|status|visit [name]|blacklist [name]|list <itemId> [qty] [price]|autolist|buy [index] [buyer]|arrange|claim|close|employee <status|template <itemId|clear>|offset <x> <y>|world <x> <y>|facing <left|right|random>|reset>|packetraw <hex>|packetrecv <opcode> <hex>>");
+                                    return ChatCommandHandler.CommandResult.Error("Usage: /socialroom personalshop [packet] <open|status|visit [name]|blacklist [name]|list <itemId> [qty] [price]|autolist|buy [index] [buyer]|arrange|claim|close|employee <status|template <itemId|clear>|offset <x> <y>|world <x> <y>|facing <left|right|random>|packetraw <hex>|reset>|packetraw <hex>|packetrecv <opcode> <hex>>");
 
                             }
 
@@ -6851,7 +7561,7 @@ namespace HaCreator.MapSimulator
 
                                 default:
 
-                                    return ChatCommandHandler.CommandResult.Error("Usage: /socialroom entrustedshop [packet] <open|status|mode|list <itemId> [qty] [price]|autolist|arrange|claim|permit [minutes|expire]|employee <status|template <itemId|clear>|offset <x> <y>|world <x> <y>|facing <left|right|random>|reset>|packetraw <hex>|packetrecv <opcode> <hex>>");
+                                    return ChatCommandHandler.CommandResult.Error("Usage: /socialroom entrustedshop [packet] <open|status|mode|list <itemId> [qty] [price]|autolist|arrange|claim|permit [minutes|expire]|employee <status|template <itemId|clear>|offset <x> <y>|world <x> <y>|facing <left|right|random>|packetraw <hex>|reset>|packetraw <hex>|packetrecv <opcode> <hex>>");
 
                             }
 
@@ -9598,7 +10308,7 @@ namespace HaCreator.MapSimulator
 
                 "Inspect or drive packet-authored field help, quest timers, field-specific data, and object-state flips",
 
-                "/fieldstate [status|desc <index>|questtime <questId> <seconds>|questclear|objectstate <tag> <on|off|0|1>|fieldspecific <payloadhex=..|payloadb64=..>|packet <149|162|166|167|169> [payloadhex=..|payloadb64=..]|packetraw <149|162|166|167|169> [hex]]",
+                "/fieldstate [status|desc <index>|questtime <questId> <seconds>|questclear|objectstate <tag> <on|off|0|1>|fieldspecific <payloadhex=..|payloadb64=..>|wrappervalue <huntingadballoon|escortresult> <key> <value>|packet <149|162|166|167|169|174|178> [payloadhex=..|payloadb64=..]|packetraw <149|162|166|167|169|174|178> [hex]]",
 
                 args =>
 
@@ -9750,15 +10460,36 @@ namespace HaCreator.MapSimulator
 
 
 
+                        case "wrappervalue":
+
+                            if (args.Length < 4)
+
+                            {
+
+                                return ChatCommandHandler.CommandResult.Error("Usage: /fieldstate wrappervalue <huntingadballoon|escortresult> <key> <value>");
+
+                            }
+
+
+
+                            string wrapperValue = string.Join(" ", args.Skip(3));
+                            return TryApplyClientOwnedWrapperFieldValue(args[1], args[2], wrapperValue, currTickCount, out string wrapperValueMessage)
+
+                                ? ChatCommandHandler.CommandResult.Ok(wrapperValueMessage)
+
+                                : ChatCommandHandler.CommandResult.Error(wrapperValueMessage ?? $"wrapper key not accepted ({args[1]} {args[2]}={wrapperValue})");
+
+
+
                         case "packet":
 
                             if (args.Length < 2 ||
                                 !int.TryParse(args[1], out int fieldPacketType) ||
-                                (fieldPacketType != 149 && fieldPacketType != 162 && fieldPacketType != 166 && fieldPacketType != 167 && fieldPacketType != 169))
+                                (fieldPacketType != 149 && fieldPacketType != 162 && fieldPacketType != 166 && fieldPacketType != 167 && fieldPacketType != 169 && fieldPacketType != 174 && fieldPacketType != 178))
 
                             {
 
-                                return ChatCommandHandler.CommandResult.Error("Usage: /fieldstate packet <149|162|166|167|169> [payloadhex=..|payloadb64=..]");
+                                return ChatCommandHandler.CommandResult.Error("Usage: /fieldstate packet <149|162|166|167|169|174|178> [payloadhex=..|payloadb64=..]");
 
                             }
 
@@ -9770,7 +10501,7 @@ namespace HaCreator.MapSimulator
                             {
                                 if (args.Length < 3 || !TryParseBinaryPayloadArgument(args[2], out fieldPacketPayload, out fieldPacketPayloadError))
                                 {
-                                    return ChatCommandHandler.CommandResult.Error(fieldPacketPayloadError ?? "Usage: /fieldstate packet <149|162|166|167|169> [payloadhex=..|payloadb64=..]");
+                                    return ChatCommandHandler.CommandResult.Error(fieldPacketPayloadError ?? "Usage: /fieldstate packet <149|162|166|167|169|174|178> [payloadhex=..|payloadb64=..]");
                                 }
                             }
 
@@ -9788,11 +10519,11 @@ namespace HaCreator.MapSimulator
 
                             if (args.Length < 2 ||
                                 !int.TryParse(args[1], out int rawFieldPacketType) ||
-                                (rawFieldPacketType != 149 && rawFieldPacketType != 162 && rawFieldPacketType != 166 && rawFieldPacketType != 167 && rawFieldPacketType != 169))
+                                (rawFieldPacketType != 149 && rawFieldPacketType != 162 && rawFieldPacketType != 166 && rawFieldPacketType != 167 && rawFieldPacketType != 169 && rawFieldPacketType != 174 && rawFieldPacketType != 178))
 
                             {
 
-                                return ChatCommandHandler.CommandResult.Error("Usage: /fieldstate packetraw <149|162|166|167|169> [hex]");
+                                return ChatCommandHandler.CommandResult.Error("Usage: /fieldstate packetraw <149|162|166|167|169|174|178> [hex]");
 
                             }
 
@@ -9803,7 +10534,7 @@ namespace HaCreator.MapSimulator
                             {
                                 if (args.Length < 3 || !TryDecodeHexBytes(string.Join(string.Empty, args.Skip(2)), out rawFieldPayload))
                                 {
-                                    return ChatCommandHandler.CommandResult.Error("Usage: /fieldstate packetraw <149|162|166|167|169> [hex]");
+                                    return ChatCommandHandler.CommandResult.Error("Usage: /fieldstate packetraw <149|162|166|167|169|174|178> [hex]");
                                 }
                             }
 
@@ -9819,7 +10550,7 @@ namespace HaCreator.MapSimulator
 
                         default:
 
-                            return ChatCommandHandler.CommandResult.Error("Usage: /fieldstate [status|desc <index>|questtime <questId> <seconds>|questclear|objectstate <tag> <on|off|0|1>|fieldspecific <payloadhex=..|payloadb64=..>|packet <149|162|166|167|169> [payloadhex=..|payloadb64=..]|packetraw <149|162|166|167|169> [hex]]");
+                            return ChatCommandHandler.CommandResult.Error("Usage: /fieldstate [status|desc <index>|questtime <questId> <seconds>|questclear|objectstate <tag> <on|off|0|1>|fieldspecific <payloadhex=..|payloadb64=..>|wrappervalue <huntingadballoon|escortresult> <key> <value>|packet <149|162|166|167|169|174|178> [payloadhex=..|payloadb64=..]|packetraw <149|162|166|167|169|174|178> [hex]]");
 
                     }
 

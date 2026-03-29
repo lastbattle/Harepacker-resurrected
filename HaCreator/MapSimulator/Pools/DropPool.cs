@@ -1053,7 +1053,10 @@ namespace HaCreator.MapSimulator.Pools
             {
                 Drop = null,
                 ContextDrop = drop,
-                FailureReason = reason
+                FailureReason = reason,
+                RecentPickup = reason == DropPickupFailureReason.Unavailable && drop != null
+                    ? FindRecentPickup(drop.PoolId, currentTime)
+                    : null
             }, pickerId, pickedByPet);
         }
 

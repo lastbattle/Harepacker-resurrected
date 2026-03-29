@@ -513,6 +513,7 @@ namespace HaCreator.MapSimulator
             SetCookieHouseContextPoint(0);
             BindRemoteAffectedAreaPacketField();
             _specialFieldRuntime.BindMap(_mapBoard);
+            ApplyClientOwnedFieldWrappers();
             _packetFieldStateRuntime.Initialize(GraphicsDevice, _mapBoard?.MapInfo);
             SyncWeddingPacketInboxState();
             SyncCoconutPacketInboxState();
@@ -522,7 +523,8 @@ namespace HaCreator.MapSimulator
             SyncMassacrePacketInboxState();
 
             SyncDojoPacketInboxState();
-            SyncGuildBossTransportState();
+            SyncTransportPacketInboxState();
+            SyncGuildBossTransportState();
             SyncPartyRaidPacketInboxState();
             SyncCookieHousePointInboxState();
             SyncBattlefieldLocalAppearance();
@@ -718,7 +720,9 @@ namespace HaCreator.MapSimulator
                     equipBigBang.SetPetController(_playerManager.Pets);
                     equipBigBang.SetPetEquipmentController(_playerManager.CompanionEquipment?.Pet);
                     equipBigBang.SetDragonEquipmentController(_playerManager.CompanionEquipment?.Dragon);
-                    equipBigBang.SetMechanicEquipmentController(_playerManager.CompanionEquipment?.Mechanic);
+                    equipBigBang.SetMechanicEquipmentController(_playerManager.CompanionEquipment?.Mechanic);
+                    equipBigBang.SetMechanicPaneAvailable(
+                        CompanionEquipmentController.HasMechanicOwnerState(_playerManager?.Player?.Build));
                     equipBigBang.SetAndroidEquipmentController(_playerManager.CompanionEquipment?.Android);
                 }
             }
@@ -1312,7 +1316,9 @@ namespace HaCreator.MapSimulator
                     equipBigBang.SetPetController(_playerManager.Pets);
                     equipBigBang.SetPetEquipmentController(_playerManager.CompanionEquipment?.Pet);
                     equipBigBang.SetDragonEquipmentController(_playerManager.CompanionEquipment?.Dragon);
-                    equipBigBang.SetMechanicEquipmentController(_playerManager.CompanionEquipment?.Mechanic);
+                    equipBigBang.SetMechanicEquipmentController(_playerManager.CompanionEquipment?.Mechanic);
+                    equipBigBang.SetMechanicPaneAvailable(
+                        CompanionEquipmentController.HasMechanicOwnerState(_playerManager?.Player?.Build));
                     equipBigBang.SetAndroidEquipmentController(_playerManager.CompanionEquipment?.Android);
                 }
             }
@@ -1408,6 +1414,7 @@ namespace HaCreator.MapSimulator
             SetCookieHouseContextPoint(0);
             BindRemoteAffectedAreaPacketField();
             _specialFieldRuntime.BindMap(_mapBoard);
+            ApplyClientOwnedFieldWrappers();
             _packetFieldStateRuntime.Initialize(GraphicsDevice, _mapBoard?.MapInfo);
             SyncCoconutPacketInboxState();
             SyncMemoryGamePacketInboxState();
@@ -1416,7 +1423,8 @@ namespace HaCreator.MapSimulator
             SyncMassacrePacketInboxState();
 
             SyncDojoPacketInboxState();
-            SyncGuildBossTransportState();
+            SyncTransportPacketInboxState();
+            SyncGuildBossTransportState();
             SyncPartyRaidPacketInboxState();
             SyncCookieHousePointInboxState();
             SyncBattlefieldLocalAppearance();

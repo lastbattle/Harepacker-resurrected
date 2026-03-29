@@ -202,6 +202,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         public int CriticalRate { get; set; }        // Critical rate boost
         public int CriticalDamageMin { get; set; }   // Minimum critical damage boost
         public int CriticalDamageMax { get; set; }   // Maximum critical damage boost
+        public int DamageReductionRate { get; set; } // damR / indieDamR incoming damage reduction
         public int EnhancedPAD { get; set; }         // Mechanic-only weapon attack boost
         public int EnhancedMAD { get; set; }         // Alias-backed magic attack boost
         public int EnhancedPDD { get; set; }         // Mechanic-only defense boost
@@ -440,6 +441,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         public SkillAnimation SummonRemovalAnimation { get; set; } // Optional self-destruct / removal branch
         public List<SkillAnimation> SummonProjectileAnimations { get; set; } = new();
         public List<SkillAnimation> SummonTargetHitAnimations { get; set; } = new();
+        public Dictionary<string, SkillAnimation> SummonNamedAnimations { get; set; } = new(StringComparer.OrdinalIgnoreCase);
         public string SummonAttackBranchName { get; set; }
         public SkillAnimation AvatarOverlayEffect { get; set; } // Avatar-bound looping overlay
         public SkillAnimation AvatarOverlaySecondaryEffect { get; set; } // Optional second overlay on the same avatar-owned plane
@@ -1234,6 +1236,8 @@ namespace HaCreator.MapSimulator.Character.Skills
         public SummonAssistType AssistType { get; set; } = SummonAssistType.PeriodicAttack;
         public bool ManualAssistEnabled { get; set; } = true;
         public int NextSupportTime { get; set; }
+        public int NextHealTime { get; set; } = int.MinValue;
+        public int NextBuffTime { get; set; } = int.MinValue;
         public int PendingRemovalTime { get; set; } = int.MaxValue;
         public int LastBodyContactTime { get; set; } = int.MinValue;
         public int LastHitAnimationStartTime { get; set; } = int.MinValue;
@@ -1243,6 +1247,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         public int LastPassiveEffectTime { get; set; } = int.MinValue;
         public int LastStateChangeTime { get; set; }
         public SummonActorState ActorState { get; set; } = SummonActorState.Spawn;
+        public string CurrentAnimationBranchName { get; set; }
         public bool ExpiryActionTriggered { get; set; }
         public int MaxHealth { get; set; } = 1;
         public int CurrentHealth { get; set; } = 1;

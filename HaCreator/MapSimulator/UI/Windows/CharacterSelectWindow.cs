@@ -57,8 +57,8 @@ namespace HaCreator.MapSimulator.UI
         private readonly SD.Graphics _measureGraphics;
         private readonly SD.Font _basicBlackFont;
         private readonly GraphicsDevice _graphicsDevice;
-
         private SpriteFont _font;
+
         private string _statusMessage = "Select a character.";
         private bool _canEnter;
         private int _showTick = -1;
@@ -210,19 +210,13 @@ namespace HaCreator.MapSimulator.UI
                     StatusScrollCanvasWidth,
                     StatusScrollCanvasHeight);
                 string wrappedMessage = WrapText(_statusMessage, StatusTextWrapWidth, StatusTextScale, 2);
-                if (!DrawCanvasText(
+                DrawCanvasText(
                     sprite,
                     wrappedMessage,
                     statusBounds,
                     StatusScrollTextInsetX,
                     StatusScrollTextInsetY,
-                    new Color(92, 63, 44)))
-                {
-                    Point statusPosition = new(
-                        statusBounds.X + StatusScrollTextInsetX,
-                        statusBounds.Y + StatusScrollTextInsetY);
-                    DrawShadowedText(sprite, wrappedMessage, statusPosition.ToVector2(), new Color(92, 63, 44), StatusTextScale);
-                }
+                    new Color(92, 63, 44));
             }
         }
 
@@ -269,16 +263,13 @@ namespace HaCreator.MapSimulator.UI
                 ? BalloonMultiLineTextInsetY
                 : BalloonSingleLineTextInsetY);
             // CUIAvatar::OnCreate draws the balloon copy into a dedicated 220x40 canvas before presenting the layer.
-            if (!DrawCanvasText(
+            DrawCanvasText(
                 sprite,
                 wrappedMessage,
                 bodyBounds,
                 BalloonTextInsetX,
                 textY - bodyBounds.Y,
-                _instructionBalloonStyle.TextColor))
-            {
-                DrawWrappedRasterText(sprite, wrappedMessage, bodyBounds.X + BalloonTextInsetX, textY, _instructionBalloonStyle.TextColor);
-            }
+                _instructionBalloonStyle.TextColor);
         }
 
         private void DrawBalloonNineSlice(SpriteBatch sprite, Rectangle bodyBounds)
@@ -497,45 +488,7 @@ namespace HaCreator.MapSimulator.UI
                 }
             }
 
-            return _font == null ? Vector2.Zero : _font.MeasureString(text) * fallbackScale;
-        }
-
-        private bool DrawRasterText(SpriteBatch sprite, string text, int x, int y, Color color)
-        {
-            if (string.IsNullOrEmpty(text))
-            {
-                return false;
-            }
-
-            Texture2D texture = GetOrCreateTextTexture(text, color);
-            if (texture == null)
-            {
-                return false;
-            }
-
-            sprite.Draw(texture, new Vector2(x, y), Color.White);
-            return true;
-        }
-
-        private bool DrawWrappedRasterText(SpriteBatch sprite, string text, int x, int y, Color color)
-        {
-            if (string.IsNullOrEmpty(text))
-            {
-                return false;
-            }
-
-            string[] lines = text.Split(new[] { Environment.NewLine }, StringSplitOptions.None);
-            int lineHeight = Math.Max(1, (int)Math.Ceiling(MeasureText("Ay", StatusTextScale).Y));
-            bool drewAny = false;
-            for (int i = 0; i < lines.Length; i++)
-            {
-                if (DrawRasterText(sprite, lines[i], x, y + (i * lineHeight), color))
-                {
-                    drewAny = true;
-                }
-            }
-
-            return drewAny;
+            return new Vector2(0f, Math.Max(1f, BasicBlackFontHeight * fallbackScale));
         }
 
         private bool DrawCanvasText(SpriteBatch sprite, string text, Rectangle canvasBounds, int insetX, int insetY, Color color)
@@ -555,35 +508,9 @@ namespace HaCreator.MapSimulator.UI
             return true;
         }
 
-        private Texture2D GetOrCreateTextTexture(string text, Color color)
+        private bool DrawRasterText(SpriteBatch sprite, string text, int x, int y, Color color)
         {
-            if (_basicBlackFont == null || _graphicsDevice == null || string.IsNullOrEmpty(text))
-            {
-                return null;
-            }
-
-            TextRenderCacheKey cacheKey = new(text, color, 0, 0, 0, 0);
-            if (_textTextureCache.TryGetValue(cacheKey, out Texture2D cachedTexture) &&
-                cachedTexture != null &&
-                !cachedTexture.IsDisposed)
-            {
-                return cachedTexture;
-            }
-
-            Vector2 size = MeasureText(text, StatusTextScale);
-            int width = Math.Max(1, (int)size.X);
-            int height = Math.Max(1, (int)size.Y);
-
-            using var bitmap = new SD.Bitmap(width, height);
-            using SD.Graphics graphics = SD.Graphics.FromImage(bitmap);
-            graphics.Clear(SD.Color.Transparent);
-            graphics.TextRenderingHint = SDText.TextRenderingHint.SingleBitPerPixelGridFit;
-            using var brush = new SD.SolidBrush(SD.Color.FromArgb(color.A, color.R, color.G, color.B));
-            graphics.DrawString(text, _basicBlackFont, brush, 0f, 0f, SD.StringFormat.GenericTypographic);
-
-            Texture2D texture = bitmap.ToTexture2D(_graphicsDevice);
-            _textTextureCache[cacheKey] = texture;
-            return texture;
+            return false;
         }
 
         private Texture2D GetOrCreateCanvasTextTexture(string text, Color color, int canvasWidth, int canvasHeight, int insetX, int insetY)

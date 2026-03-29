@@ -49,10 +49,11 @@ namespace HaCreator.MapSimulator.Fields
         private const int DefaultGaugeCapacity = 100000;
         private const int FieldBoardOffsetX = -119;
         private const int FieldBoardY = 70;
-        private const int StateMineOffsetX = -39;
         private const int StateMineY = 88;
-        private const int StateOtherOffsetX = -39;
         private const int StateOtherY = 110;
+        private const int StateMineStageBaseX = -48;
+        private const int StateOtherStageBaseX = -44;
+        private const int StateStageStepX = 23;
         private const int FieldStageDrawX = 99;
         private const int FieldStageDrawY = 20;
         private const int FieldPointDrawX = 99;
@@ -104,6 +105,7 @@ namespace HaCreator.MapSimulator.Fields
         private const int BossChargeSegmentWidth = 8;
         private const int BossChargeSegmentHeight = 5;
         private const int BossChargeSegmentSpacing = 2;
+        private const int PartyRaidBossMobId = 9700037;
 
         private bool _isActive;
         private bool _assetsLoaded;
@@ -132,6 +134,7 @@ namespace HaCreator.MapSimulator.Fields
         private int _resultTopBorder;
         private int _resultBottomBorder;
         private PartyRaidResultOutcome _resultOutcome;
+        private string _clientOwnedBossOverlayLabel;
         private GraphicsDevice _graphicsDevice;
         private CanvasSprite _fieldBoard;
         private CanvasSprite _redStateBackground;
@@ -239,6 +242,31 @@ namespace HaCreator.MapSimulator.Fields
             _resultOutcome = InferOutcomeFromMap(mapInfo);
 
             if (_mode == PartyRaidFieldMode.Boss && TryResolveBossGaugeCapacity(_mapId, out int gaugeCapacity))
+            {
+                _gaugeCapacity = gaugeCapacity;
+            }
+        }
+
+        public void BindClientOwnedBossOverlay(MapInfo mapInfo, string runtimeLabel)
+        {
+            ResetState();
+            if (mapInfo == null)
+            {
+                return;
+            }
+
+            _isActive = true;
+            _mapId = mapInfo.id;
+            _mode = PartyRaidFieldMode.Boss;
+            _mineStage = 1;
+            _otherStage = 1;
+            _batteryCharge = 0;
+            _batteryCapacity = DefaultBatteryCapacity;
+            _gaugeCapacity = DefaultGaugeCapacity;
+            _teamColor = InferTeamColor(mapInfo);
+            _clientOwnedBossOverlayLabel = string.IsNullOrWhiteSpace(runtimeLabel) ? null : runtimeLabel;
+
+            if (TryResolveBossGaugeCapacity(_mapId, out int gaugeCapacity))
             {
                 _gaugeCapacity = gaugeCapacity;
             }
@@ -559,7 +587,7 @@ namespace HaCreator.MapSimulator.Fields
             return _mode switch
             {
                 PartyRaidFieldMode.Field => $"Party Raid field map {_mapId}: team {GetTeamLabel(_teamColor)}, stage {_mineStage}{DescribeOtherStageStatus()}, point {_point}{DescribeBatteryStatus()}{timerText}.",
-                PartyRaidFieldMode.Boss => $"Party Raid boss map {_mapId}: point {_point}, red damage {_redDamage}, blue damage {_blueDamage}, charge {_redCharge}/{_blueCharge}, gauge cap {_gaugeCapacity}, ids=0x{PartyRaidBossRedDamageStringId:X}/0x{PartyRaidBossBlueDamageStringId:X}/0x{HuntingAdballoonRedChargeStringId:X}/0x{HuntingAdballoonBlueChargeStringId:X}{timerText}.",
+                PartyRaidFieldMode.Boss => $"{_clientOwnedBossOverlayLabel ?? "Party Raid boss"} map {_mapId}: point {_point}, red damage {_redDamage}, blue damage {_blueDamage}, charge {_redCharge}/{_blueCharge}, gauge cap {_gaugeCapacity}, ids=0x{PartyRaidBossRedDamageStringId:X}/0x{PartyRaidBossBlueDamageStringId:X}/0x{HuntingAdballoonRedChargeStringId:X}/0x{HuntingAdballoonBlueChargeStringId:X}{timerText}.",
                 PartyRaidFieldMode.Result => $"Party Raid result map {_mapId}: point {_resultPoint}, bonus {_resultBonus}, total {_resultTotal}, outcome {GetOutcomeLabel(_resultOutcome)}{timerText}.",
                 _ => "Party Raid runtime inactive."
             };
@@ -621,6 +649,7 @@ namespace HaCreator.MapSimulator.Fields
             _resultTopBorder = 0;
             _resultBottomBorder = 0;
             _resultOutcome = PartyRaidResultOutcome.Unknown;
+            _clientOwnedBossOverlayLabel = null;
             _lastUpdateTick = 0;
             _timerDurationSec = 0;
             _timeOverTick = int.MinValue;
@@ -782,8 +811,8 @@ namespace HaCreator.MapSimulator.Fields
                 DrawSprite(spriteBatch, stateBackground, centerX + FieldBoardOffsetX, FieldBoardY);
             }
 
-            DrawAnimationFrame(spriteBatch, GetMineFrames(), _mineAnimation, centerX + StateMineOffsetX, GetMineStateY());
-            DrawAnimationFrame(spriteBatch, GetOtherFrames(), _otherAnimation, centerX + StateOtherOffsetX, GetOtherStateY());
+            DrawAnimationFrame(spriteBatch, GetMineFrames(), _mineAnimation, centerX + GetMineStateX(), GetMineStateY());
+            DrawAnimationFrame(spriteBatch, GetOtherFrames(), _otherAnimation, centerX + GetOtherStateX(), GetOtherStateY());
             DrawBatteryHud(spriteBatch, centerX);
 
             if (_fieldBoard.IsLoaded)
@@ -1275,8 +1304,10 @@ namespace HaCreator.MapSimulator.Fields
         private string DescribeOtherStageStatus() => _otherStage != _mineStage ? $" (other {_otherStage})" : string.Empty;
         private string DescribeBatteryStatus() => _batteryCharge > 0 ? $", battery {_batteryCharge}/{Math.Max(1, _batteryCapacity)}" : string.Empty;
         private static string FormatTimer(int remainingSeconds) { int clamped = Math.Max(0, remainingSeconds); return string.Format(CultureInfo.InvariantCulture, "{0:D2}:{1:D2}", clamped / 60, clamped % 60); }
-        private int GetMineStateY() => StateMineY + ((_mineStage - 1) * 23);
-        private int GetOtherStateY() => StateOtherY + ((_otherStage - 1) * 23);
+        internal int GetMineStateX() => StateMineStageBaseX + ((ClampStage(_mineStage) - 1) * StateStageStepX);
+        internal int GetOtherStateX() => StateOtherStageBaseX + ((ClampStage(_otherStage) - 1) * StateStageStepX);
+        internal int GetMineStateY() => StateMineY;
+        internal int GetOtherStateY() => StateOtherY;
         private static int ClampStage(int stage) => Math.Clamp(stage, 1, 5);
 
         private static bool TryInferModeFromScripts(string onUserEnter, string onFirstUserEnter, out PartyRaidFieldMode mode)
@@ -1353,6 +1384,11 @@ namespace HaCreator.MapSimulator.Fields
         private static bool TryResolveBossGaugeCapacity(int mapId, out int gaugeCapacity)
         {
             gaugeCapacity = DefaultGaugeCapacity;
+            if (TryResolveMobMaxHp(PartyRaidBossMobId.ToString(CultureInfo.InvariantCulture), out gaugeCapacity))
+            {
+                return true;
+            }
+
             WzImage mapImage = FindResolvedMapImage(mapId);
             if (mapImage?["life"] is not WzSubProperty lifeProperty)
             {

@@ -18,6 +18,9 @@ namespace HaCreator.MapSimulator
 {
     public partial class MapSimulator
     {
+        private const int PacketOwnedBattleshipCooldownSentinel = 0x004FAE6F;
+        private const int PacketOwnedBattleshipSkillId = 5221006;
+
         private readonly Dictionary<int, HashSet<int>> _packetQuestGuideTargetsByMobId = new();
         private readonly LocalUtilityPacketInboxManager _localUtilityPacketInbox = new();
         private int _packetQuestGuideQuestId;
@@ -44,6 +47,14 @@ namespace HaCreator.MapSimulator
         private bool _lastPacketOwnedFollowFailureClearedPending;
         private string _lastPacketOwnedEventSoundDescriptor;
         private string _lastPacketOwnedMinigameSoundDescriptor;
+        private MonoGameBgmPlayer _packetOwnedRadioAudio;
+        private string _lastPacketOwnedRadioTrackDescriptor;
+        private string _lastPacketOwnedRadioResolvedDescriptor;
+        private string _lastPacketOwnedRadioDisplayName;
+        private string _lastPacketOwnedRadioStatusMessage = "Packet-owned radio idle.";
+        private int _lastPacketOwnedRadioTimeValue;
+        private int _lastPacketOwnedRadioStartTick = int.MinValue;
+        private int _lastPacketOwnedRadioLastPollTick = int.MinValue;
         private bool _localUtilityPacketInboxEnabled = true;
         private int _localUtilityPacketInboxConfiguredPort = LocalUtilityPacketInboxManager.DefaultPort;
 
@@ -726,6 +737,10 @@ namespace HaCreator.MapSimulator
                 case LocalUtilityPacketInboxManager.PlayMinigameSoundClientPacketType:
                     return TryApplyPacketOwnedStringPayload(payload, descriptor => ApplyPacketOwnedEventSound(descriptor, minigame: true), "Minigame-sound payload is missing.", out message);
 
+                case LocalUtilityPacketInboxManager.RadioSchedulePacketType:
+                case LocalUtilityPacketInboxManager.RadioScheduleClientPacketType:
+                    return TryApplyPacketOwnedRadioSchedulePayload(payload, out message);
+
                 case LocalUtilityPacketInboxManager.AskApspEventPacketType:
                 case LocalUtilityPacketInboxManager.AskApspEventClientPacketType:
                     return TryApplyPacketOwnedStringPayload(payload, ApplyPacketOwnedAskApspEvent, "AP/SP payload is missing.", out message);
@@ -842,6 +857,9 @@ namespace HaCreator.MapSimulator
             string soundStatus = string.IsNullOrWhiteSpace(_lastPacketOwnedEventSoundDescriptor) && string.IsNullOrWhiteSpace(_lastPacketOwnedMinigameSoundDescriptor)
                 ? "Sound cues: none."
                 : $"Sound cues: event={(_lastPacketOwnedEventSoundDescriptor ?? "none")}, minigame={(_lastPacketOwnedMinigameSoundDescriptor ?? "none")}.";
+            string radioStatus = IsPacketOwnedRadioPlaying()
+                ? $"Radio: \"{TruncatePacketOwnedUtilityText(_lastPacketOwnedRadioDisplayName ?? _lastPacketOwnedRadioTrackDescriptor)}\", authoredTime={_lastPacketOwnedRadioTimeValue}, age={Math.Max(0, unchecked(currentTickCount - _lastPacketOwnedRadioStartTick))} ms."
+                : $"Radio: {TruncatePacketOwnedUtilityText(_lastPacketOwnedRadioStatusMessage)}";
 
             return string.Join(" ", new[]
             {
@@ -857,7 +875,8 @@ namespace HaCreator.MapSimulator
                 buffzoneStatus,
                 apspStatus,
                 followStatus,
-                soundStatus
+                soundStatus,
+                radioStatus
             });
         }
 
@@ -1067,16 +1086,280 @@ namespace HaCreator.MapSimulator
             return message;
         }
 
+        private bool TryApplyPacketOwnedRadioSchedulePayload(byte[] payload, out string message)
+        {
+            message = "Radio-schedule payload is missing.";
+            if (payload == null || payload.Length == 0)
+            {
+                return false;
+            }
+
+            try
+            {
+                using MemoryStream stream = new(payload, writable: false);
+                using BinaryReader reader = new(stream, Encoding.Default, leaveOpen: false);
+                string trackDescriptor = ReadPacketOwnedMapleString(reader);
+                int timeValue = reader.BaseStream.Position <= reader.BaseStream.Length - sizeof(int)
+                    ? reader.ReadInt32()
+                    : 0;
+                message = ApplyPacketOwnedRadioSchedule(trackDescriptor, timeValue);
+                return true;
+            }
+            catch (EndOfStreamException)
+            {
+            }
+            catch (IOException)
+            {
+            }
+
+            if (TryDecodePacketOwnedStringPayload(payload, out string descriptor))
+            {
+                message = ApplyPacketOwnedRadioSchedule(descriptor, 0);
+                return true;
+            }
+
+            message = "Radio-schedule payload could not be decoded.";
+            return false;
+        }
+
+        private string ApplyPacketOwnedRadioSchedule(string trackDescriptor, int timeValue)
+        {
+            StampPacketOwnedUtilityRequestState();
+
+            string normalizedTrackDescriptor = trackDescriptor?.Trim();
+            if (string.IsNullOrWhiteSpace(normalizedTrackDescriptor))
+            {
+                const string emptyMessage = "Packet-owned radio schedule did not include a track descriptor.";
+                _lastPacketOwnedRadioStatusMessage = emptyMessage;
+                ShowUtilityFeedbackMessage(emptyMessage);
+                return emptyMessage;
+            }
+
+            if (IsPacketOwnedRadioPlaying())
+            {
+                string ignoreMessage = $"Ignored packet-owned radio schedule for {normalizedTrackDescriptor} because a radio session is already active.";
+                _lastPacketOwnedRadioStatusMessage = ignoreMessage;
+                ShowUtilityFeedbackMessage(ignoreMessage);
+                return ignoreMessage;
+            }
+
+            if (!TryResolvePacketOwnedRadioTrack(
+                normalizedTrackDescriptor,
+                out WzBinaryProperty radioTrackProperty,
+                out string resolvedDescriptor,
+                out string displayName))
+            {
+                string missingMessage = $"Packet-owned radio track '{normalizedTrackDescriptor}' could not be resolved in the loaded Sound/*.img data.";
+                _lastPacketOwnedRadioStatusMessage = missingMessage;
+                ShowUtilityFeedbackMessage(missingMessage);
+                return missingMessage;
+            }
+
+            try
+            {
+                _packetOwnedRadioAudio?.Dispose();
+                _packetOwnedRadioAudio = new MonoGameBgmPlayer(radioTrackProperty, looped: false);
+                _lastPacketOwnedRadioTrackDescriptor = normalizedTrackDescriptor;
+                _lastPacketOwnedRadioResolvedDescriptor = resolvedDescriptor;
+                _lastPacketOwnedRadioDisplayName = displayName;
+                _lastPacketOwnedRadioTimeValue = Math.Max(0, timeValue);
+                _lastPacketOwnedRadioStartTick = Environment.TickCount;
+                _lastPacketOwnedRadioLastPollTick = int.MinValue;
+                _lastPacketOwnedRadioStatusMessage = $"Playing {displayName} through packet-owned radio ownership.";
+
+                _packetOwnedRadioAudio.Play();
+                ApplyUtilityAudioSettings();
+                ShowPacketOwnedRadioWindow();
+                _chat?.AddClientChatMessage($"[Radio] Now playing {displayName}.", Environment.TickCount, 12);
+
+                string message = $"Started packet-owned radio playback for {displayName} ({resolvedDescriptor}).";
+                ShowUtilityFeedbackMessage(message);
+                return message;
+            }
+            catch (Exception ex)
+            {
+                _packetOwnedRadioAudio?.Dispose();
+                _packetOwnedRadioAudio = null;
+                string failedMessage = $"Packet-owned radio track '{normalizedTrackDescriptor}' could not start: {ex.Message}";
+                _lastPacketOwnedRadioStatusMessage = failedMessage;
+                ShowUtilityFeedbackMessage(failedMessage);
+                return failedMessage;
+            }
+        }
+
+        private void UpdatePacketOwnedRadioSchedule(int currentTickCount)
+        {
+            if (!IsPacketOwnedRadioPlaying())
+            {
+                return;
+            }
+
+            if (_lastPacketOwnedRadioLastPollTick != int.MinValue
+                && unchecked(currentTickCount - _lastPacketOwnedRadioLastPollTick) < 2000)
+            {
+                return;
+            }
+
+            _lastPacketOwnedRadioLastPollTick = currentTickCount;
+            if (_packetOwnedRadioAudio?.State == Microsoft.Xna.Framework.Audio.SoundState.Stopped)
+            {
+                StopPacketOwnedRadioSchedule(completed: true, emitChatNotice: true);
+            }
+        }
+
+        private bool IsPacketOwnedRadioPlaying()
+        {
+            return _packetOwnedRadioAudio != null && _lastPacketOwnedRadioStartTick != int.MinValue;
+        }
+
+        private string StopPacketOwnedRadioSchedule(bool completed, bool emitChatNotice)
+        {
+            string displayName = _lastPacketOwnedRadioDisplayName ?? _lastPacketOwnedRadioTrackDescriptor ?? "radio track";
+            _packetOwnedRadioAudio?.Stop();
+            _packetOwnedRadioAudio?.Dispose();
+            _packetOwnedRadioAudio = null;
+            _lastPacketOwnedRadioStartTick = int.MinValue;
+            _lastPacketOwnedRadioLastPollTick = int.MinValue;
+            ApplyUtilityAudioSettings();
+
+            if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.Radio) is UIWindowBase radioWindow && radioWindow.IsVisible)
+            {
+                uiWindowManager.HideWindow(MapSimulatorWindowNames.Radio);
+            }
+
+            _lastPacketOwnedRadioStatusMessage = completed
+                ? $"Completed packet-owned radio playback for {displayName}."
+                : $"Stopped packet-owned radio playback for {displayName}.";
+
+            if (emitChatNotice)
+            {
+                string chatText = completed
+                    ? $"[Radio] Finished playing {displayName}."
+                    : $"[Radio] Stopped playing {displayName}.";
+                _chat?.AddClientChatMessage(chatText, Environment.TickCount, 12);
+            }
+
+            return _lastPacketOwnedRadioStatusMessage;
+        }
+
+        private void ResetPacketOwnedRadioSchedule(bool emitChatNotice = false)
+        {
+            if (!IsPacketOwnedRadioPlaying())
+            {
+                return;
+            }
+
+            StopPacketOwnedRadioSchedule(completed: false, emitChatNotice: emitChatNotice);
+        }
+
+        private void ShowPacketOwnedRadioWindow()
+        {
+            if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.Radio) is not UIWindowBase radioWindow)
+            {
+                return;
+            }
+
+            ShowWindow(MapSimulatorWindowNames.Radio, radioWindow, trackDirectionModeOwner: ShouldTrackInheritedDirectionModeOwner());
+        }
+
+        private IReadOnlyList<string> BuildPacketOwnedRadioWindowLines()
+        {
+            List<string> lines = new();
+            if (!IsPacketOwnedRadioPlaying())
+            {
+                lines.Add("Packet-authored radio playback is idle.");
+                lines.Add(string.IsNullOrWhiteSpace(_lastPacketOwnedRadioStatusMessage)
+                    ? "No packet-owned radio schedule has been applied yet."
+                    : _lastPacketOwnedRadioStatusMessage);
+                return lines;
+            }
+
+            int elapsedMs = Math.Max(0, unchecked(Environment.TickCount - _lastPacketOwnedRadioStartTick));
+            lines.Add($"Track: {_lastPacketOwnedRadioDisplayName ?? _lastPacketOwnedRadioTrackDescriptor}");
+            lines.Add($"Authored descriptor: {_lastPacketOwnedRadioTrackDescriptor}");
+            lines.Add($"Resolved source: {_lastPacketOwnedRadioResolvedDescriptor}");
+            lines.Add($"Elapsed: {elapsedMs / 1000f:0.0}s");
+            lines.Add(_lastPacketOwnedRadioTimeValue > 0
+                ? $"Authored time value: {_lastPacketOwnedRadioTimeValue}"
+                : "Authored time value: 0");
+            lines.Add("Field BGM is temporarily muted while the radio session owns playback.");
+            return lines;
+        }
+
+        private string BuildPacketOwnedRadioWindowFooter()
+        {
+            return IsPacketOwnedRadioPlaying()
+                ? "Client parity: packet-owned radio session active."
+                : "Client parity: waiting for OnRadioSchedule.";
+        }
+
+        private static bool TryResolvePacketOwnedRadioTrack(
+            string descriptor,
+            out WzBinaryProperty soundProperty,
+            out string resolvedDescriptor,
+            out string displayName)
+        {
+            soundProperty = null;
+            resolvedDescriptor = null;
+            displayName = null;
+
+            if (string.IsNullOrWhiteSpace(descriptor))
+            {
+                return false;
+            }
+
+            string normalizedDescriptor = descriptor.Trim().Replace('\\', '/');
+            soundProperty = Program.InfoManager.GetBgm(normalizedDescriptor);
+            if (soundProperty != null)
+            {
+                resolvedDescriptor = normalizedDescriptor;
+                displayName = normalizedDescriptor.Split('/').LastOrDefault() ?? normalizedDescriptor;
+                return true;
+            }
+
+            if (TryResolvePacketOwnedWzSound(normalizedDescriptor, "Radio.img", out soundProperty, out resolvedDescriptor))
+            {
+                displayName = resolvedDescriptor.Split('/').LastOrDefault() ?? normalizedDescriptor;
+                return true;
+            }
+
+            if (!normalizedDescriptor.Contains("/", StringComparison.Ordinal))
+            {
+                string[] bgmPrefixes =
+                {
+                    "BgmUI",
+                    "BgmEvent",
+                    "BgmEvent2",
+                };
+
+                for (int i = 0; i < bgmPrefixes.Length; i++)
+                {
+                    string bgmCandidate = $"{bgmPrefixes[i]}/{normalizedDescriptor}";
+                    soundProperty = Program.InfoManager.GetBgm(bgmCandidate);
+                    if (soundProperty != null)
+                    {
+                        resolvedDescriptor = bgmCandidate;
+                        displayName = normalizedDescriptor;
+                        return true;
+                    }
+                }
+            }
+
+            return false;
+        }
+
         private string ApplyPacketOwnedNoticeMessage(string message)
         {
             StampPacketOwnedUtilityRequestState();
             _lastPacketOwnedNoticeMessage = message?.Trim() ?? string.Empty;
             if (!string.IsNullOrWhiteSpace(_lastPacketOwnedNoticeMessage))
             {
+                TryPlayPacketOwnedNoticeSound();
                 _chat?.AddClientChatMessage(
                     $"[Notice] {_lastPacketOwnedNoticeMessage}",
                     Environment.TickCount,
                     13);
+                ShowUtilityFeedbackMessage(_lastPacketOwnedNoticeMessage);
             }
 
             return string.IsNullOrWhiteSpace(_lastPacketOwnedNoticeMessage)
@@ -1128,7 +1411,8 @@ namespace HaCreator.MapSimulator
         private string ApplyPacketOwnedSkillCooltime(int skillId, int remainingSeconds)
         {
             StampPacketOwnedUtilityRequestState();
-            if (skillId <= 0)
+            int normalizedSkillId = NormalizePacketOwnedCooldownSkillId(skillId, out bool isVehicleSentinel);
+            if (normalizedSkillId <= 0)
             {
                 const string invalidSkill = "Packet-owned skill cooldown payload did not contain a valid skill id.";
                 ShowUtilityFeedbackMessage(invalidSkill);
@@ -1145,18 +1429,19 @@ namespace HaCreator.MapSimulator
             int remainingMs = Math.Max(0, remainingSeconds) * 1000;
             if (remainingMs > 0)
             {
-                _playerManager.Skills.SetServerCooldownRemaining(skillId, remainingMs, currTickCount);
+                _playerManager.Skills.SetServerCooldownRemaining(normalizedSkillId, remainingMs, currTickCount);
             }
             else
             {
-                _playerManager.Skills.ClearServerCooldown(skillId);
+                _playerManager.Skills.ClearServerCooldown(normalizedSkillId);
             }
 
-            var skill = _playerManager.Skills.GetSkillData(skillId) ?? _playerManager.SkillLoader?.LoadSkill(skillId);
-            string skillName = skill?.Name ?? $"Skill {skillId}";
+            var skill = _playerManager.Skills.GetSkillData(normalizedSkillId) ?? _playerManager.SkillLoader?.LoadSkill(normalizedSkillId);
+            string skillName = skill?.Name
+                ?? (isVehicleSentinel ? "Battleship" : $"Skill {normalizedSkillId}");
             string message = remainingMs > 0
-                ? $"Applied packet-owned skill cooldown for {skillName}: {FormatCooldownNotificationSeconds(remainingMs)} remaining."
-                : $"Cleared packet-owned skill cooldown for {skillName}.";
+                ? $"Applied packet-owned {(isVehicleSentinel ? "vehicle " : string.Empty)}skill cooldown for {skillName}: {FormatCooldownNotificationSeconds(remainingMs)} remaining."
+                : $"Cleared packet-owned {(isVehicleSentinel ? "vehicle " : string.Empty)}skill cooldown for {skillName}.";
             ShowUtilityFeedbackMessage(message);
             return message;
         }
@@ -1454,7 +1739,7 @@ namespace HaCreator.MapSimulator
         private string ApplyPacketOwnedEventSound(string descriptor, bool minigame)
         {
             StampPacketOwnedUtilityRequestState();
-            if (!TryPlayPacketOwnedWzSound(descriptor, minigame ? "MiniGame.img" : null, out string resolvedDescriptor, out string error))
+            if (!TryPlayPacketOwnedWzSound(descriptor, minigame ? "MiniGame.img" : "Field.img", out string resolvedDescriptor, out string error))
             {
                 ShowUtilityFeedbackMessage(error);
                 return error;
@@ -1530,6 +1815,7 @@ namespace HaCreator.MapSimulator
                     imageCandidates.Add(NormalizePacketOwnedSoundImageName(defaultImageName));
                 }
 
+                imageCandidates.Add("Field.img");
                 imageCandidates.Add("UI.img");
                 imageCandidates.Add("Game.img");
                 imageCandidates.Add("MiniGame.img");
@@ -1581,6 +1867,17 @@ namespace HaCreator.MapSimulator
             return value.EndsWith(".img", StringComparison.OrdinalIgnoreCase)
                 ? value
                 : $"{value}.img";
+        }
+
+        private static int NormalizePacketOwnedCooldownSkillId(int skillId, out bool isVehicleSentinel)
+        {
+            isVehicleSentinel = skillId == PacketOwnedBattleshipCooldownSentinel;
+            return isVehicleSentinel ? PacketOwnedBattleshipSkillId : skillId;
+        }
+
+        private void TryPlayPacketOwnedNoticeSound()
+        {
+            TryPlayPacketOwnedWzSound("UI/DlgNotice", "UI.img", out _, out _);
         }
 
         private bool TryApplyPacketOwnedOpenUiPayload(byte[] payload, out string message)
@@ -2147,10 +2444,10 @@ namespace HaCreator.MapSimulator
                     applied = TryApplyPacketOwnedFieldHazardPayload(payload, out message);
                     break;
                 case "notice":
-                    applied = TryApplyPacketOwnedStringPayload(payload, ApplyPacketOwnedNoticeMessage, "Notice payload is missing.", out message);
+                    applied = TryApplyPacketOwnedNoticePayload(payload, out message);
                     break;
                 case "chat":
-                    applied = TryApplyPacketOwnedStringPayload(payload, value => ApplyPacketOwnedChatMessage(value), "Chat payload is missing.", out message);
+                    applied = TryApplyPacketOwnedChatPayload(payload, out message);
                     break;
                 case "buffzone":
                     applied = TryApplyPacketOwnedStringPayload(payload, ApplyPacketOwnedBuffzoneEffect, "Buff-zone payload is missing.", out message);

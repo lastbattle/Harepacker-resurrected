@@ -36,7 +36,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             return ResolveCancelRequestSkillIds(skillId, getSkillData, skillCatalog).FirstOrDefault();
         }
 
-        private static IReadOnlyList<int> ResolveCancelRequestSkillIds(
+        public static IReadOnlyList<int> ResolveCancelRequestSkillIds(
             int skillId,
             Func<int, SkillData> getSkillData,
             IReadOnlyCollection<SkillData> skillCatalog)

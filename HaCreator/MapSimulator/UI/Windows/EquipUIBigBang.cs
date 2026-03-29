@@ -525,6 +525,19 @@ namespace HaCreator.MapSimulator.UI
             _mechanicEquipmentController = mechanicEquipmentController;
         }
 
+        public void SetMechanicPaneAvailable(bool available)
+        {
+            if (!available && _currentTab == TAB_MECHANIC)
+            {
+                CurrentTab = TAB_CHARACTER;
+            }
+
+            if (_btnMechanic != null)
+            {
+                _btnMechanic.ButtonVisible = available;
+            }
+        }
+
         public void SetAndroidEquipmentController(AndroidEquipmentController androidEquipmentController)
         {
             _androidEquipmentController = androidEquipmentController;
@@ -796,7 +809,7 @@ namespace HaCreator.MapSimulator.UI
                 return false;
             }
 
-            CharacterPart incomingPart = _characterLoader?.LoadEquipment(draggedSlotData.ItemId) ?? CreateInventoryEquipmentPart(draggedSlotData);
+            CharacterPart incomingPart = ResolveInventoryTooltipPart(draggedSlotData);
             if (incomingPart == null)
             {
                 string itemName = string.IsNullOrWhiteSpace(draggedSlotData.ItemName)
@@ -1938,6 +1951,16 @@ namespace HaCreator.MapSimulator.UI
                 IconRaw = item.IconRaw
             };
             return true;
+        }
+
+        private CharacterPart ResolveInventoryTooltipPart(InventorySlotData slotData)
+        {
+            if (slotData?.TooltipPart != null)
+            {
+                return slotData.TooltipPart.Clone();
+            }
+
+            return _characterLoader?.LoadEquipment(slotData?.ItemId ?? 0) ?? CreateInventoryEquipmentPart(slotData);
         }
 
         private static IReadOnlyList<TooltipSection> BuildPetTooltipSections(CompanionEquipItem item, string petContextLine)
@@ -3597,7 +3620,8 @@ namespace HaCreator.MapSimulator.UI
                 GradeFrameIndex = 0,
                 ItemName = string.IsNullOrWhiteSpace(part.Name) ? $"Equip {part.ItemId}" : part.Name,
                 ItemTypeName = string.IsNullOrWhiteSpace(part.ItemCategory) ? "Equip" : part.ItemCategory,
-                Description = BuildEquipmentDescription(part)
+                Description = BuildEquipmentDescription(part),
+                TooltipPart = part.Clone()
             };
         }
 
@@ -3693,6 +3717,7 @@ namespace HaCreator.MapSimulator.UI
                     continue;
                 }
 
+                TryCreateTooltipPart(item, out CharacterPart tooltipPart);
                 slots.Add(new InventorySlotData
                 {
                     ItemId = item.ItemId,
@@ -3702,7 +3727,8 @@ namespace HaCreator.MapSimulator.UI
                     GradeFrameIndex = 0,
                     ItemName = item.Name,
                     ItemTypeName = string.IsNullOrWhiteSpace(item.ItemCategory) ? "Equip" : item.ItemCategory,
-                    Description = BuildCompanionEquipmentDescription(item)
+                    Description = BuildCompanionEquipmentDescription(item),
+                    TooltipPart = tooltipPart?.Clone()
                 });
             }
 
@@ -3727,7 +3753,8 @@ namespace HaCreator.MapSimulator.UI
                 GradeFrameIndex = 0,
                 ItemName = item.Name,
                 ItemTypeName = string.IsNullOrWhiteSpace(item.ItemCategory) ? "Equip" : item.ItemCategory,
-                Description = BuildCompanionEquipmentDescription(item)
+                Description = BuildCompanionEquipmentDescription(item),
+                TooltipPart = TryCreateTooltipPart(item, out CharacterPart tooltipPart) ? tooltipPart.Clone() : null
             };
         }
 

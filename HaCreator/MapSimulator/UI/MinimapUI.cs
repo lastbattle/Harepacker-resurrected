@@ -7,6 +7,7 @@ using Microsoft.Xna.Framework.Input;
 using Spine;
 using System;
 using System.Collections.Generic;
+using System.Linq;
 
 namespace HaCreator.MapSimulator.UI
 {
@@ -66,15 +67,24 @@ namespace HaCreator.MapSimulator.UI
         private UIObject _btnNpc;
 
         private bool _bIsCollapsedState = false; // minimised minimap state
+        private int _currentOption = 1;
+        private int _previousExpandedOption = 1;
         private readonly int _minimapImageWidth;
         private readonly int _minimapImageHeight;
         private IReadOnlyList<NpcItem> _npcMarkers = Array.Empty<NpcItem>();
         private IReadOnlyList<PortalItem> _portalMarkers = Array.Empty<PortalItem>();
         private IReadOnlyList<TrackedUserMarker> _trackedUserMarkers = Array.Empty<TrackedUserMarker>();
         private bool _showNpcMarkers;
+        private SpriteFont _tooltipFont;
+        private Texture2D _tooltipPixelTexture;
+        private Rectangle _hoverTooltipAnchor = Rectangle.Empty;
+        private string _hoverTooltipText;
 
         private int _lastMinimapToggleTime = 0;
         private const int MINIMAP_TOGGLE_COOLDOWN_MS = 200; // Cooldown in milliseconds
+        private const int TOOLTIP_PADDING = 8;
+        private const int TOOLTIP_MARGIN = 10;
+        private const int TOOLTIP_LINE_GAP = 2;
 
         // Player position on minimap (in minimap coordinates, not world coordinates)
         private int _playerMinimapX = 0;
@@ -86,6 +96,8 @@ namespace HaCreator.MapSimulator.UI
         public Action FullMapRequested { get; set; }
         public Action MapTransferRequested { get; set; }
         public Func<NpcItem, NpcMarkerType> ResolveNpcMarkerType { get; set; }
+        public Func<NpcItem, string> ResolveNpcTooltipText { get; set; }
+        public Func<PortalItem, string> ResolvePortalTooltipText { get; set; }
 
         public sealed class TrackedUserMarker
         {
@@ -93,6 +105,7 @@ namespace HaCreator.MapSimulator.UI
             public float WorldY { get; init; }
             public HelperMarkerType MarkerType { get; init; }
             public bool ShowDirectionOverlay { get; init; } = true;
+            public string TooltipText { get; init; }
         }
 
         /// <summary>
@@ -213,6 +226,18 @@ namespace HaCreator.MapSimulator.UI
             _localPlayerHelperMarkerType = helperMarkerType;
         }
 
+        public void SetTooltipResources(SpriteFont tooltipFont, Texture2D tooltipPixelTexture)
+        {
+            _tooltipFont = tooltipFont;
+            _tooltipPixelTexture = tooltipPixelTexture;
+        }
+
+        public void ResetTransientHoverState()
+        {
+            _hoverTooltipAnchor = Rectangle.Empty;
+            _hoverTooltipText = null;
+        }
+
         public override void Draw(SpriteBatch sprite, SkeletonMeshRenderer skeletonMeshRenderer, GameTime gameTime,
             int mapShiftX, int mapShiftY, int centerX, int centerY,
             ReflectionDrawableBoundary drawReflectionInfo,
@@ -265,6 +290,7 @@ namespace HaCreator.MapSimulator.UI
                 DrawTrackedUserMarkers(sprite, skeletonMeshRenderer, gameTime, drawReflectionInfo, renderParameters, TickCount);
                 DrawNpcMarkers(sprite, skeletonMeshRenderer, gameTime, drawReflectionInfo, renderParameters, TickCount);
                 DrawNpcListPanel(sprite, skeletonMeshRenderer, gameTime, centerX, centerY, renderParameters, TickCount);
+                DrawHoveredTooltip(sprite, renderParameters.RenderWidth, renderParameters.RenderHeight);
             }
 
             // draw minimap buttons
@@ -352,6 +378,8 @@ namespace HaCreator.MapSimulator.UI
 
         public bool CheckMouseEvent(int shiftCenteredX, int shiftCenteredY, MouseState mouseState, MouseCursorItem mouseCursor, int renderWidth, int renderHeight)
         {
+            ResetTransientHoverState();
+
             foreach (UIObject uiBtn in uiButtons)
             {
                 if (uiBtn == null || !uiBtn.ButtonVisible)
@@ -363,6 +391,11 @@ namespace HaCreator.MapSimulator.UI
                     mouseCursor.SetMouseCursorMovedToClickableItem();
                     return true;
                 }
+            }
+
+            if (TrySetHoveredMarkerTooltip(mouseState))
+            {
+                mouseCursor.SetMouseCursorMovedToClickableItem();
             }
 
             // handle UI movement
@@ -416,6 +449,11 @@ namespace HaCreator.MapSimulator.UI
         /// </summary>
         private void ObjUIBtMin_ButtonClickReleased(UIObject sender)
         {
+            if (_currentOption > 0)
+            {
+                _previousExpandedOption = _currentOption;
+            }
+
             _btnMin.SetButtonState(UIObjectState.Disabled);
             _btnMax.SetButtonState(UIObjectState.Normal);
 
@@ -443,6 +481,7 @@ namespace HaCreator.MapSimulator.UI
             BaseDXDrawableItem baseItem = (BaseDXDrawableItem)this;
             _collapsedFrame.CopyObjectPosition(baseItem);
 
+            _currentOption = 0;
             this._bIsCollapsedState = true;
         }
 
@@ -478,6 +517,7 @@ namespace HaCreator.MapSimulator.UI
             }
             this.CopyObjectPosition(_collapsedFrame);
 
+            _currentOption = _previousExpandedOption > 0 ? _previousExpandedOption : 1;
             this._bIsCollapsedState = false;
         }
 
@@ -741,6 +781,250 @@ namespace HaCreator.MapSimulator.UI
             int x = Math.Clamp(minimapPoint.X, padding, Math.Max(padding, _minimapImageWidth - padding));
             int y = Math.Clamp(minimapPoint.Y, padding, Math.Max(padding, _minimapImageHeight - padding));
             return new Point(x, y);
+        }
+
+        private bool TrySetHoveredMarkerTooltip(MouseState mouseState)
+        {
+            if (_bIsCollapsedState || !ContainsPoint(mouseState.X, mouseState.Y))
+            {
+                return false;
+            }
+
+            if (TrySetHoveredTrackedUserTooltip(mouseState))
+            {
+                return true;
+            }
+
+            if (TrySetHoveredNpcTooltip(mouseState))
+            {
+                return true;
+            }
+
+            return TrySetHoveredPortalTooltip(mouseState);
+        }
+
+        private bool TrySetHoveredTrackedUserTooltip(MouseState mouseState)
+        {
+            foreach (TrackedUserMarker trackedUser in _trackedUserMarkers)
+            {
+                if (trackedUser == null || string.IsNullOrWhiteSpace(trackedUser.TooltipText))
+                {
+                    continue;
+                }
+
+                Point minimapPoint = WorldToMinimap((int)trackedUser.WorldX, (int)trackedUser.WorldY);
+                if (!_helperMarkers.TryGetValue(trackedUser.MarkerType, out BaseDXDrawableItem marker) || marker == null)
+                {
+                    continue;
+                }
+
+                Rectangle hoverRect = Rectangle.Empty;
+                if (IsWithinMinimapImage(minimapPoint))
+                {
+                    hoverRect = GetMarkerScreenBounds(marker, minimapPoint, mouseState);
+                }
+                else if (trackedUser.ShowDirectionOverlay)
+                {
+                    DirectionArrow direction = ResolveDirectionArrow(minimapPoint);
+                    if (_directionMarkers.TryGetValue(direction, out BaseDXDrawableItem arrow) && arrow != null)
+                    {
+                        hoverRect = GetMarkerScreenBounds(arrow, ClampDirectionArrowPoint(minimapPoint), mouseState);
+                    }
+                }
+
+                if (!hoverRect.IsEmpty)
+                {
+                    SetHoveredTooltip(trackedUser.TooltipText, hoverRect);
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private bool TrySetHoveredNpcTooltip(MouseState mouseState)
+        {
+            if (!_showNpcMarkers || ResolveAnyNpcMarker() == null || _npcMarkers.Count == 0)
+            {
+                return false;
+            }
+
+            foreach (NpcItem npc in _npcMarkers)
+            {
+                if (npc?.NpcInstance == null || !npc.IsVisible)
+                {
+                    continue;
+                }
+
+                string tooltipText = ResolveNpcTooltipText?.Invoke(npc);
+                if (string.IsNullOrWhiteSpace(tooltipText))
+                {
+                    continue;
+                }
+
+                Point minimapPoint = WorldToMinimap(npc.CurrentX, npc.CurrentY);
+                BaseDXDrawableItem marker = ResolveNpcMarker(npc);
+                Rectangle hoverRect = GetMarkerScreenBounds(marker, minimapPoint, mouseState);
+                if (hoverRect.IsEmpty)
+                {
+                    continue;
+                }
+
+                SetHoveredTooltip(tooltipText, hoverRect);
+                return true;
+            }
+
+            return false;
+        }
+
+        private bool TrySetHoveredPortalTooltip(MouseState mouseState)
+        {
+            if (_portalMarker == null || _portalMarkers.Count == 0)
+            {
+                return false;
+            }
+
+            foreach (PortalItem portal in _portalMarkers)
+            {
+                if (portal?.PortalInstance == null || !portal.IsVisible)
+                {
+                    continue;
+                }
+
+                string tooltipText = ResolvePortalTooltipText?.Invoke(portal);
+                if (string.IsNullOrWhiteSpace(tooltipText))
+                {
+                    continue;
+                }
+
+                Point minimapPoint = WorldToMinimap(portal.PortalInstance.X, portal.PortalInstance.Y);
+                Rectangle hoverRect = GetMarkerScreenBounds(_portalMarker, minimapPoint, mouseState);
+                if (hoverRect.IsEmpty)
+                {
+                    continue;
+                }
+
+                SetHoveredTooltip(tooltipText, hoverRect);
+                return true;
+            }
+
+            return false;
+        }
+
+        private Rectangle GetMarkerScreenBounds(BaseDXDrawableItem marker, Point minimapPoint, MouseState mouseState)
+        {
+            if (marker == null)
+            {
+                return Rectangle.Empty;
+            }
+
+            bool withinMinimap = IsWithinMinimapImage(minimapPoint);
+            if (!withinMinimap && !_directionMarkers.Values.Contains(marker))
+            {
+                return Rectangle.Empty;
+            }
+
+            Point drawPoint = withinMinimap ? minimapPoint : ClampDirectionArrowPoint(minimapPoint);
+            IDXObject frame = marker.LastFrameDrawn ?? marker.Frame0;
+            if (frame == null)
+            {
+                return Rectangle.Empty;
+            }
+
+            Rectangle rect = new Rectangle(
+                Position.X + marker.Position.X + drawPoint.X + frame.X,
+                Position.Y + marker.Position.Y + drawPoint.Y + frame.Y,
+                frame.Width,
+                frame.Height);
+
+            return rect.Contains(mouseState.X, mouseState.Y) ? rect : Rectangle.Empty;
+        }
+
+        private void SetHoveredTooltip(string tooltipText, Rectangle anchor)
+        {
+            if (string.IsNullOrWhiteSpace(tooltipText))
+            {
+                return;
+            }
+
+            _hoverTooltipText = tooltipText.Trim();
+            _hoverTooltipAnchor = anchor;
+        }
+
+        private void DrawHoveredTooltip(SpriteBatch sprite, int renderWidth, int renderHeight)
+        {
+            if (_tooltipFont == null || _tooltipPixelTexture == null || string.IsNullOrWhiteSpace(_hoverTooltipText) || _hoverTooltipAnchor.IsEmpty)
+            {
+                return;
+            }
+
+            string[] lines = _hoverTooltipText
+                .Replace("\r\n", "\n")
+                .Split(new[] { '\n' }, StringSplitOptions.None);
+
+            float maxWidth = 0f;
+            int visibleLineCount = 0;
+            for (int i = 0; i < lines.Length; i++)
+            {
+                if (string.IsNullOrWhiteSpace(lines[i]))
+                {
+                    continue;
+                }
+
+                maxWidth = Math.Max(maxWidth, _tooltipFont.MeasureString(lines[i]).X);
+                visibleLineCount++;
+            }
+
+            if (visibleLineCount == 0)
+            {
+                return;
+            }
+
+            int lineHeight = _tooltipFont.LineSpacing;
+            int tooltipWidth = (int)Math.Ceiling(maxWidth) + (TOOLTIP_PADDING * 2);
+            int tooltipHeight = (visibleLineCount * lineHeight) + ((visibleLineCount - 1) * TOOLTIP_LINE_GAP) + (TOOLTIP_PADDING * 2);
+            int tooltipX = _hoverTooltipAnchor.Right + TOOLTIP_MARGIN;
+            int tooltipY = _hoverTooltipAnchor.Top - 4;
+
+            if (tooltipX + tooltipWidth > renderWidth - TOOLTIP_MARGIN)
+            {
+                tooltipX = _hoverTooltipAnchor.Left - tooltipWidth - TOOLTIP_MARGIN;
+            }
+
+            if (tooltipX < TOOLTIP_MARGIN)
+            {
+                tooltipX = Math.Max(TOOLTIP_MARGIN, Math.Min(_hoverTooltipAnchor.Left, renderWidth - tooltipWidth - TOOLTIP_MARGIN));
+                tooltipY = _hoverTooltipAnchor.Bottom + TOOLTIP_MARGIN;
+            }
+
+            tooltipY = Math.Clamp(tooltipY, TOOLTIP_MARGIN, Math.Max(TOOLTIP_MARGIN, renderHeight - tooltipHeight - TOOLTIP_MARGIN));
+            Rectangle tooltipRect = new Rectangle(tooltipX, tooltipY, tooltipWidth, tooltipHeight);
+
+            sprite.Draw(_tooltipPixelTexture, tooltipRect, new Color(18, 18, 26, 235));
+            DrawTooltipBorder(sprite, tooltipRect);
+
+            float drawY = tooltipRect.Y + TOOLTIP_PADDING;
+            for (int i = 0; i < lines.Length; i++)
+            {
+                if (string.IsNullOrWhiteSpace(lines[i]))
+                {
+                    continue;
+                }
+
+                Vector2 textPosition = new Vector2(tooltipRect.X + TOOLTIP_PADDING, drawY);
+                sprite.DrawString(_tooltipFont, lines[i], textPosition + Vector2.One, Color.Black);
+                sprite.DrawString(_tooltipFont, lines[i], textPosition, Color.White);
+                drawY += lineHeight + TOOLTIP_LINE_GAP;
+            }
+        }
+
+        private void DrawTooltipBorder(SpriteBatch sprite, Rectangle rect)
+        {
+            Color borderColor = new Color(214, 174, 82);
+            sprite.Draw(_tooltipPixelTexture, new Rectangle(rect.X - 1, rect.Y - 1, rect.Width + 2, 1), borderColor);
+            sprite.Draw(_tooltipPixelTexture, new Rectangle(rect.X - 1, rect.Bottom, rect.Width + 2, 1), borderColor);
+            sprite.Draw(_tooltipPixelTexture, new Rectangle(rect.X - 1, rect.Y, 1, rect.Height), borderColor);
+            sprite.Draw(_tooltipPixelTexture, new Rectangle(rect.Right, rect.Y, 1, rect.Height), borderColor);
         }
         #endregion
     }

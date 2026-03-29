@@ -11,7 +11,9 @@ namespace HaCreator.MapSimulator.Interaction
         Leave = 3,
         RoomChat = 4,
         Whisper = 5,
-        MemberInfo = 6
+        MemberInfo = 6,
+        Blocked = 7,
+        Avatar = 8
     }
 
     internal readonly record struct MessengerInvitePacket(string ContactName);
@@ -27,6 +29,10 @@ namespace HaCreator.MapSimulator.Interaction
         string LocationSummary,
         string StatusText,
         LoginAvatarLook AvatarLook);
+
+    internal readonly record struct MessengerBlockedPacket(string ContactName, bool Blocked);
+
+    internal readonly record struct MessengerAvatarPacket(int SlotIndex, LoginAvatarLook AvatarLook);
 
     internal static class MessengerPacketCodec
     {
@@ -137,6 +143,64 @@ namespace HaCreator.MapSimulator.Interaction
             }
         }
 
+        public static bool TryParseBlocked(ReadOnlySpan<byte> payload, out MessengerBlockedPacket packet, out string error)
+        {
+            packet = default;
+            error = null;
+
+            try
+            {
+                PacketReader reader = new(payload);
+                string contactName = reader.ReadString16();
+                bool blocked = reader.ReadByte() != 0;
+                if (string.IsNullOrWhiteSpace(contactName))
+                {
+                    error = "Messenger blocked packet contact name is empty.";
+                    return false;
+                }
+
+                packet = new MessengerBlockedPacket(contactName.Trim(), blocked);
+                return true;
+            }
+            catch (InvalidOperationException ex)
+            {
+                error = ex.Message;
+                return false;
+            }
+        }
+
+        public static bool TryParseAvatar(ReadOnlySpan<byte> payload, out MessengerAvatarPacket packet, out string error)
+        {
+            packet = default;
+            error = null;
+
+            try
+            {
+                PacketReader reader = new(payload);
+                int slotIndex = reader.ReadByte();
+                byte[] avatarPayload = reader.ReadRemainingBytes();
+                if (avatarPayload.Length == 0)
+                {
+                    error = "Messenger avatar packet is missing AvatarLook bytes.";
+                    return false;
+                }
+
+                if (!LoginAvatarLookCodec.TryDecode(avatarPayload, out LoginAvatarLook avatarLook, out error))
+                {
+                    error ??= "Messenger avatar packet AvatarLook payload could not be decoded.";
+                    return false;
+                }
+
+                packet = new MessengerAvatarPacket(slotIndex, avatarLook);
+                return true;
+            }
+            catch (InvalidOperationException ex)
+            {
+                error = ex.Message;
+                return false;
+            }
+        }
+
         private ref struct PacketReader
         {
             private readonly ReadOnlySpan<byte> _payload;
@@ -216,6 +280,13 @@ namespace HaCreator.MapSimulator.Interaction
                 }
 
                 return true;
+            }
+
+            public byte[] ReadRemainingBytes()
+            {
+                byte[] remaining = _payload.Slice(_offset).ToArray();
+                _offset = _payload.Length;
+                return remaining;
             }
 
             private string ReadString(int length)

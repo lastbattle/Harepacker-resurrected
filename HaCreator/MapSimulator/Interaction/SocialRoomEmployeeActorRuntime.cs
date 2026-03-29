@@ -153,6 +153,8 @@ namespace HaCreator.MapSimulator.Interaction
                 _ => CreateNpcActor(ResolveProfile(snapshot).NpcId, mapBoard, texturePool, device, userScreenScaleFactor)
             };
 
+            actor ??= CreateNpcActor(ResolveProfile(snapshot).NpcId, mapBoard, texturePool, device, userScreenScaleFactor);
+
             if (actor == null)
             {
                 return null;
@@ -326,7 +328,7 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             actor.SetTemporaryAction(speakAction, profile.SpeakDurationMs);
-            _temporaryActionRemainingMs = profile.SpeakDurationMs;
+            _temporaryActionRemainingMs = ResolveActionDurationMs(actor, speakAction, profile.SpeakDurationMs);
             if (!snapshot.Flip.HasValue)
             {
                 _currentFlip = _random.Next(2) == 0;
@@ -348,7 +350,10 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             _currentIdleAction = nextIdleAction;
-            _idleActionRemainingMs = _random.Next(profile.MinIdleDurationMs, profile.MaxIdleDurationMs + 1);
+            _idleActionRemainingMs = ResolveActionDurationMs(
+                actor,
+                _currentIdleAction,
+                _random.Next(profile.MinIdleDurationMs, profile.MaxIdleDurationMs + 1));
             if (!snapshot.Flip.HasValue)
             {
                 _currentFlip = _random.Next(2) == 0;
@@ -393,6 +398,17 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             return null;
+        }
+
+        private static int ResolveActionDurationMs(NpcItem actor, string action, int fallbackMs)
+        {
+            if (actor == null || string.IsNullOrWhiteSpace(action))
+            {
+                return Math.Max(250, fallbackMs);
+            }
+
+            int actionDurationMs = actor.GetActionTotalDurationMs(action);
+            return Math.Max(250, actionDurationMs > 0 ? actionDurationMs : fallbackMs);
         }
 
         private string ResolveRandomIdleAction(NpcItem actor, EmployeeTemplateProfile profile)

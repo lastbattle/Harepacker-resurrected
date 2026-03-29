@@ -62,7 +62,7 @@ namespace HaCreator.MapSimulator.Character
         /// Used to trigger the "affected" animation from MobSkill.img on the player.
         /// </summary>
         public Action<float, float, int, int> OnMobSkillHitPlayer;
-        public Action<int, int, int> OnMobSkillStatusApplied;
+        public Action<int, int, int, float, bool> OnMobSkillStatusApplied;
 
         /// <summary>
         /// Callback when player is hit by a mob's regular attack (attack1, attack2, etc.)
@@ -407,7 +407,7 @@ namespace HaCreator.MapSimulator.Character
                 var currentSkill = skillOverride ?? mob.AI?.GetCurrentSkill();
                 if (currentSkill != null)
                 {
-                    OnMobSkillStatusApplied?.Invoke(currentSkill.SkillId, currentSkill.Level, currentTime);
+                    OnMobSkillStatusApplied?.Invoke(currentSkill.SkillId, currentSkill.Level, currentTime, mob.MovementInfo.X, false);
 
                     // Trigger the "affected" animation from MobSkill.img on the player
                     // The animation plays at the player's position
@@ -419,7 +419,8 @@ namespace HaCreator.MapSimulator.Character
             {
                 if ((currentAttack?.DiseaseSkillId ?? 0) > 0)
                 {
-                    OnMobSkillStatusApplied?.Invoke(currentAttack.DiseaseSkillId, currentAttack.DiseaseLevel, currentTime);
+                    OnMobSkillStatusApplied?.Invoke(currentAttack.DiseaseSkillId, currentAttack.DiseaseLevel, currentTime, mob.MovementInfo.X, true);
+                    OnMobSkillHitPlayer?.Invoke(_player.X, _player.Y, currentAttack.DiseaseSkillId, currentAttack.DiseaseLevel);
                 }
 
                 // Trigger regular attack hit effect (from attack/info/hit in mob data)

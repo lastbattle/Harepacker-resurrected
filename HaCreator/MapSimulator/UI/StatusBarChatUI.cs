@@ -81,6 +81,7 @@ namespace HaCreator.MapSimulator.UI
         private const int DefaultChatCursorHeight = 13;
         private const int DefaultChatWhisperPromptGap = 15;
         private const int DefaultChatLogToEnterGap = 4;
+        private const int DefaultChatInputRightPadding = 3;
         private const int ChatWrapIndentSpaces = 5;
         private const int ChatSpecialFirstLineWidthReduction = 38;
         private const int ChatScrollRecentThresholdMs = 5000;
@@ -93,6 +94,7 @@ namespace HaCreator.MapSimulator.UI
         private Vector2 _chatLogTextBasePos = new Vector2(4, -16);
         private Vector2 _chatLogTextPos = new Vector2(4, -16);
         private int _chatLogWidth = 452;
+        private int _chatInputWidth = 380;
         private int _chatLogLineHeight = DefaultChatLogLineHeight;
         private int _chatCursorHeight = DefaultChatCursorHeight;
 
@@ -562,16 +564,19 @@ namespace HaCreator.MapSimulator.UI
             }
 
             Vector2 inputPos = SnapToPixel(new Vector2(this.Position.X + _chatInputPos.X, this.Position.Y + _chatInputPos.Y));
-            DrawTextWithShadow(sprite, chatState.InputText, inputPos, Color.White, Color.Black);
+            string inputText = chatState.InputText ?? string.Empty;
+            int cursorPosition = Math.Clamp(chatState.CursorPosition, 0, inputText.Length);
+            string visibleText = ResolveVisibleInputText(inputText, cursorPosition, out int visibleCursorOffset);
+            DrawTextWithShadow(sprite, visibleText, inputPos, Color.White, Color.Black);
 
             if (_pixelTexture == null || ((tickCount / 500) % 2) != 0)
             {
                 return;
             }
 
-            string textBeforeCursor = chatState.InputText.Substring(
-                0,
-                Math.Clamp(chatState.CursorPosition, 0, chatState.InputText.Length));
+            string textBeforeCursor = visibleCursorOffset <= 0
+                ? string.Empty
+                : visibleText.Substring(0, Math.Clamp(visibleCursorOffset, 0, visibleText.Length));
             float cursorX = (float)Math.Round(inputPos.X + _font.MeasureString(textBeforeCursor).X);
             sprite.Draw(_pixelTexture,
                 new Rectangle(
@@ -600,6 +605,7 @@ namespace HaCreator.MapSimulator.UI
             _chatLogTextPos = new Vector2(
                 _chatLogTextBasePos.X,
                 _chatEnterPos.Y - (_chatLogLineHeight + DefaultChatLogToEnterGap));
+            _chatInputWidth = ResolveChatInputWidth();
         }
 
         private float ResolveMeasuredTextHeight()
@@ -622,6 +628,56 @@ namespace HaCreator.MapSimulator.UI
         {
             float measuredHeight = ResolveMeasuredTextHeight();
             return MathF.Floor(Math.Max(0f, (measuredHeight - _chatCursorHeight) * 0.5f));
+        }
+
+        private int ResolveChatInputWidth()
+        {
+            float enterRight = _chatEnterPos.X + (_chatEnterTexture?.Width ?? 457);
+            float availableWidth = enterRight - _chatInputPos.X - DefaultChatInputRightPadding;
+            return Math.Max(1, (int)MathF.Floor(availableWidth));
+        }
+
+        private string ResolveVisibleInputText(string inputText, int cursorPosition, out int visibleCursorOffset)
+        {
+            visibleCursorOffset = 0;
+            if (_font == null || string.IsNullOrEmpty(inputText))
+            {
+                return inputText ?? string.Empty;
+            }
+
+            float maxWidth = Math.Max(1, _chatInputWidth);
+            if (_font.MeasureString(inputText).X <= maxWidth)
+            {
+                visibleCursorOffset = cursorPosition;
+                return inputText;
+            }
+
+            int startIndex = cursorPosition;
+            while (startIndex > 0)
+            {
+                string candidate = inputText.Substring(startIndex - 1, cursorPosition - startIndex + 1);
+                if (_font.MeasureString(candidate).X > maxWidth)
+                {
+                    break;
+                }
+
+                startIndex--;
+            }
+
+            int endIndex = cursorPosition;
+            while (endIndex < inputText.Length)
+            {
+                string candidate = inputText.Substring(startIndex, endIndex - startIndex + 1);
+                if (_font.MeasureString(candidate).X > maxWidth)
+                {
+                    break;
+                }
+
+                endIndex++;
+            }
+
+            visibleCursorOffset = cursorPosition - startIndex;
+            return inputText.Substring(startIndex, Math.Max(0, endIndex - startIndex));
         }
 
         private List<WrappedChatLine> BuildWrappedLines(IReadOnlyList<ChatMessage> messages)

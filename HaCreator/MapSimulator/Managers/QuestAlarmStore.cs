@@ -17,6 +17,8 @@ namespace HaCreator.MapSimulator.Managers
 
     public sealed class QuestAlarmStore
     {
+        private const int MaxTrackedQuestSlots = 5;
+
         private sealed class PersistedStore
         {
             public Dictionary<string, QuestAlarmStateRecord> StatesByCharacter { get; set; } = new(StringComparer.Ordinal);
@@ -68,7 +70,7 @@ namespace HaCreator.MapSimulator.Managers
             {
                 AutoRegisterEnabled = record.AutoRegisterEnabled,
                 IsMinimized = record.IsMinimized,
-                TrackedQuestIds = NormalizeQuestIds(record.TrackedQuestIds),
+                TrackedQuestIds = NormalizeTrackedQuestIds(record.TrackedQuestIds),
                 HiddenAutoQuestIds = NormalizeQuestIds(record.HiddenAutoQuestIds)
             };
         }
@@ -85,7 +87,7 @@ namespace HaCreator.MapSimulator.Managers
             {
                 AutoRegisterEnabled = state.AutoRegisterEnabled,
                 IsMinimized = state.IsMinimized,
-                TrackedQuestIds = NormalizeQuestIds(state.TrackedQuestIds).ToList(),
+                TrackedQuestIds = NormalizeTrackedQuestIds(state.TrackedQuestIds).ToList(),
                 HiddenAutoQuestIds = NormalizeQuestIds(state.HiddenAutoQuestIds).ToList()
             };
 
@@ -97,7 +99,13 @@ namespace HaCreator.MapSimulator.Managers
             return (questIds ?? Array.Empty<int>())
                 .Where(questId => questId > 0)
                 .Distinct()
-                .OrderBy(questId => questId)
+                .ToArray();
+        }
+
+        private static int[] NormalizeTrackedQuestIds(IEnumerable<int> questIds)
+        {
+            return NormalizeQuestIds(questIds)
+                .Take(MaxTrackedQuestSlots)
                 .ToArray();
         }
 

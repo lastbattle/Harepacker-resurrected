@@ -63,6 +63,13 @@ namespace HaCreator.MapSimulator.Effects
     /// </summary>
     public class SpaceGagaField
     {
+        private readonly record struct StringPoolEntryEvidence(
+            int Id,
+            byte Seed,
+            string RawHex,
+            string DecodedPath,
+            string ClientSource);
+
         private const int TimerboardWidth = 258;
         private const int TimerboardHeight = 69;
         private const int TimerboardOffsetX = -114;
@@ -87,6 +94,18 @@ namespace HaCreator.MapSimulator.Effects
         private const string SpaceTimerboardRootPath = "space";
         private const string SpaceTimerboardBackgroundPath = "space/backgrnd";
         private const string SpaceTimerboardDigitsPath = "space/fontTime";
+        private static readonly StringPoolEntryEvidence TimerboardSourceStringPoolEvidence = new(
+            TimerboardSourceStringPoolId,
+            0x44,
+            "44 C3 06 CD 1C 7C 6C 18 C2 08 93 3B 4A 0F 27 50 31 FD 17 DC 50 56 21 10 8C 0E 8C 3F 16 08 2E",
+            SpaceTimerboardBackgroundSourcePath,
+            "CTimerboard_SpaceGAGA::OnCreate");
+        private static readonly StringPoolEntryEvidence TimerboardFontStringPoolEvidence = new(
+            TimerboardFontStringPoolId,
+            0x45,
+            "45 51 AE 0A 49 29 7E 8F F5 BE BA D3 E6 A5 F9 09 12 6F BF 1B 05 03 33 83 B5 B5 BA E4 A1 A1 F1",
+            SpaceTimerboardBitmapFontSourcePath,
+            "CTimerboard_SpaceGAGA::GetFontTime");
         private bool _isActive;
         private int _mapId;
         private int _durationSec;
@@ -240,7 +259,7 @@ namespace HaCreator.MapSimulator.Effects
             string rawClockText = _lastDecodedClockType >= 0
                 ? $", rawClock={_lastDecodedClockType}:{_lastDecodedClockDurationSec}s"
                 : string.Empty;
-            return $"SpaceGAGA timerboard active on map {_mapId}, timer={timerText}, duration={_durationSec}s, root={SpaceTimerboardSourceRoot}, source={SpaceTimerboardBackgroundSourcePath}, font={SpaceTimerboardBitmapFontSourcePath}{rawClockText} [StringPool 0x{TimerboardSourceStringPoolId:X}->{SpaceTimerboardBackgroundSourcePath} via {SpaceTimerboardBackgroundClientStringPoolSource}; 0x{TimerboardFontStringPoolId:X}->{SpaceTimerboardBitmapFontSourcePath} via {SpaceTimerboardFontClientStringPoolSource}; encoded entries use StringPool decode seeds and literal bytes remain unrecovered]";
+            return $"SpaceGAGA timerboard active on map {_mapId}, timer={timerText}, duration={_durationSec}s, root={SpaceTimerboardSourceRoot}, source={SpaceTimerboardBackgroundSourcePath}, font={SpaceTimerboardBitmapFontSourcePath}{rawClockText} [{FormatStringPoolEntry(TimerboardSourceStringPoolEvidence, SpaceTimerboardBackgroundClientStringPoolSource)}; {FormatStringPoolEntry(TimerboardFontStringPoolEvidence, SpaceTimerboardFontClientStringPoolSource)}]";
         }
         public void Reset()
         {
@@ -374,6 +393,10 @@ namespace HaCreator.MapSimulator.Effects
             int minutes = Math.Max(0, remainingSeconds) / 60;
             int seconds = Math.Max(0, remainingSeconds) % 60;
             return $"{minutes:00}:{seconds:00}";
+        }
+        private static string FormatStringPoolEntry(StringPoolEntryEvidence evidence, string clientStringPoolSource)
+        {
+            return $"StringPool 0x{evidence.Id:X} seed=0x{evidence.Seed:X2} raw={evidence.RawHex} decoded={evidence.DecodedPath} via {clientStringPoolSource} / {evidence.ClientSource}";
         }
         private static bool TryParseClockPacketPayload(byte[] payload, out int clockType, out int durationSec, out string errorMessage)
         {

@@ -55,6 +55,11 @@ namespace HaCreator.MapSimulator.Pools
 
         public void Clear()
         {
+            foreach (RemoteUserActor actor in _actorsById.Values.ToArray())
+            {
+                ClearActorFollowLinks(actor);
+            }
+
             _actorsById.Clear();
             _actorIdsByName.Clear();
         }
@@ -73,6 +78,7 @@ namespace HaCreator.MapSimulator.Pools
             {
                 if (_actorsById.TryGetValue(characterId, out RemoteUserActor actor))
                 {
+                    ClearActorFollowLinks(actor);
                     _actorIdsByName.Remove(actor.Name);
                     _actorsById.Remove(characterId);
                 }
@@ -239,6 +245,58 @@ namespace HaCreator.MapSimulator.Pools
             return true;
         }
 
+        public bool TryApplyFollowCharacter(
+            int characterId,
+            int driverId,
+            bool transferField,
+            Vector2? transferPosition,
+            int localCharacterId,
+            Vector2 localCharacterPosition,
+            out string message)
+        {
+            message = null;
+            if (!_actorsById.TryGetValue(characterId, out RemoteUserActor actor))
+            {
+                message = $"Remote character {characterId} does not exist.";
+                return false;
+            }
+
+            if (driverId > 0 && driverId == characterId)
+            {
+                message = $"Remote character {characterId} cannot follow itself.";
+                return false;
+            }
+
+            int previousDriverId = actor.FollowDriverId;
+            ClearDriverPassengerLink(previousDriverId, characterId);
+
+            if (driverId > 0)
+            {
+                actor.FollowDriverId = driverId;
+                AssignDriverPassengerLink(driverId, characterId);
+                return true;
+            }
+
+            actor.FollowDriverId = 0;
+            if (transferField && transferPosition.HasValue)
+            {
+                actor.Position = transferPosition.Value;
+            }
+            else if (previousDriverId > 0)
+            {
+                if (previousDriverId == localCharacterId)
+                {
+                    actor.Position = localCharacterPosition;
+                }
+                else if (_actorsById.TryGetValue(previousDriverId, out RemoteUserActor previousDriver))
+                {
+                    actor.Position = previousDriver.Position;
+                }
+            }
+
+            return true;
+        }
+
         public bool TrySetAction(int characterId, string actionName, bool? facingRight, out string message)
         {
             message = null;
@@ -283,15 +341,25 @@ namespace HaCreator.MapSimulator.Pools
                 actor.FacingRight = facingRight.Value;
             }
 
-            if (!string.IsNullOrWhiteSpace(actionName))
+            SkillData skill = null;
+            string resolvedActionName = actionName;
+            if (string.IsNullOrWhiteSpace(resolvedActionName)
+                && skillId > 0
+                && _skillLoader != null)
             {
-                actor.BeginMeleeAfterImageFade(currentTime);
-                actor.ActionName = NormalizeActionName(actionName, actor.Build.ActivePortableChair != null);
+                skill = _skillLoader.LoadSkill(skillId);
+                resolvedActionName = skill?.ActionName;
             }
-            else if (actionCode.HasValue && CharacterPart.TryGetActionStringFromCode(actionCode.Value, out string resolvedActionName))
+
+            if (!string.IsNullOrWhiteSpace(resolvedActionName))
             {
                 actor.BeginMeleeAfterImageFade(currentTime);
                 actor.ActionName = NormalizeActionName(resolvedActionName, actor.Build.ActivePortableChair != null);
+            }
+            else if (actionCode.HasValue && CharacterPart.TryGetActionStringFromCode(actionCode.Value, out string resolvedCodeActionName))
+            {
+                actor.BeginMeleeAfterImageFade(currentTime);
+                actor.ActionName = NormalizeActionName(resolvedCodeActionName, actor.Build.ActivePortableChair != null);
             }
 
             int chargeElement = AfterImageChargeSkillResolver.TryGetChargeElement(chargeSkillId, out int resolvedChargeElement)
@@ -526,6 +594,7 @@ namespace HaCreator.MapSimulator.Pools
                 return false;
             }
 
+            ClearActorFollowLinks(actor);
             _actorsById.Remove(characterId);
             _actorIdsByName.Remove(actor.Name);
             return true;
@@ -590,42 +659,51 @@ namespace HaCreator.MapSimulator.Pools
             List<StatusBarPreparedSkillRenderData> overlays = new();
             foreach (RemoteUserActor actor in _actorsById.Values.Where(static value => value.IsVisibleInWorld))
             {
-                RemotePreparedSkillState prepared = actor.PreparedSkill;
-                if (prepared == null)
+                StatusBarPreparedSkillRenderData overlay = BuildPreparedSkillWorldOverlay(actor, currentTime);
+                if (overlay == null || PreparedSkillHudRules.IsDragonOverlaySkill(overlay.SkillId))
                 {
                     continue;
                 }
 
-                int elapsed = Math.Max(0, currentTime - prepared.StartTime);
-                int duration = Math.Max(0, prepared.DurationMs);
-                int remainingMs = duration > 0 ? Math.Max(0, duration - elapsed) : 0;
-                float progress = 0f;
-                if (duration > 0)
-                {
-                    progress = MathHelper.Clamp(elapsed / (float)duration, 0f, 1f);
-                }
-
-                overlays.Add(new StatusBarPreparedSkillRenderData
-                {
-                    SkillId = prepared.SkillId,
-                    SkillName = prepared.SkillName,
-                    SkinKey = prepared.SkinKey,
-                    Surface = PreparedSkillHudSurface.World,
-                    RemainingMs = remainingMs,
-                    DurationMs = duration,
-                    GaugeDurationMs = prepared.GaugeDurationMs > 0 ? prepared.GaugeDurationMs : duration,
-                    Progress = progress,
-                    IsKeydownSkill = prepared.IsKeydownSkill,
-                    IsHolding = prepared.IsHolding,
-                    HoldElapsedMs = prepared.IsHolding ? elapsed : 0,
-                    MaxHoldDurationMs = prepared.MaxHoldDurationMs,
-                    TextVariant = prepared.TextVariant,
-                    ShowText = prepared.ShowText && !PreparedSkillHudRules.IsDragonOverlaySkill(prepared.SkillId),
-                    WorldAnchor = ResolvePreparedSkillWorldAnchor(actor, prepared, currentTime)
-                });
+                overlays.Add(overlay);
             }
 
             return overlays;
+        }
+
+        private static StatusBarPreparedSkillRenderData BuildPreparedSkillWorldOverlay(RemoteUserActor actor, int currentTime)
+        {
+            RemotePreparedSkillState prepared = actor?.PreparedSkill;
+            if (prepared == null)
+            {
+                return null;
+            }
+
+            int elapsed = Math.Max(0, currentTime - prepared.StartTime);
+            int duration = Math.Max(0, prepared.DurationMs);
+            int remainingMs = duration > 0 ? Math.Max(0, duration - elapsed) : 0;
+            float progress = duration > 0
+                ? MathHelper.Clamp(elapsed / (float)duration, 0f, 1f)
+                : 0f;
+
+            return new StatusBarPreparedSkillRenderData
+            {
+                SkillId = prepared.SkillId,
+                SkillName = prepared.SkillName,
+                SkinKey = prepared.SkinKey,
+                Surface = PreparedSkillHudSurface.World,
+                RemainingMs = remainingMs,
+                DurationMs = duration,
+                GaugeDurationMs = prepared.GaugeDurationMs > 0 ? prepared.GaugeDurationMs : duration,
+                Progress = progress,
+                IsKeydownSkill = prepared.IsKeydownSkill,
+                IsHolding = prepared.IsHolding,
+                HoldElapsedMs = prepared.IsHolding ? elapsed : 0,
+                MaxHoldDurationMs = prepared.MaxHoldDurationMs,
+                TextVariant = prepared.TextVariant,
+                ShowText = prepared.ShowText && !PreparedSkillHudRules.IsDragonOverlaySkill(prepared.SkillId),
+                WorldAnchor = ResolvePreparedSkillWorldAnchor(actor, prepared, currentTime)
+            };
         }
 
         private static Vector2 ResolvePreparedSkillWorldAnchor(RemoteUserActor actor, RemotePreparedSkillState prepared, int currentTime)
@@ -823,7 +901,8 @@ namespace HaCreator.MapSimulator.Pools
             int centerY,
             int tickCount,
             SpriteFont font,
-            PlayerCharacter localPlayer = null)
+            PlayerCharacter localPlayer = null,
+            StatusBarUI statusBarUi = null)
         {
             var renderedCouplePairs = new HashSet<(int LeftId, int RightId)>();
             foreach (RemoteUserActor actor in _actorsById.Values
@@ -862,6 +941,21 @@ namespace HaCreator.MapSimulator.Pools
                     tickCount,
                     drawFrontLayers: false);
                 DrawMeleeAfterImage(spriteBatch, skeletonMeshRenderer, actor, screenX, screenY, tickCount);
+                StatusBarPreparedSkillRenderData preparedOverlay = BuildPreparedSkillWorldOverlay(actor, tickCount);
+                if (statusBarUi != null
+                    && preparedOverlay != null
+                    && PreparedSkillHudRules.IsDragonOverlaySkill(preparedOverlay.SkillId))
+                {
+                    statusBarUi.DrawPreparedSkillWorldOverlay(
+                        spriteBatch,
+                        mapShiftX,
+                        mapShiftY,
+                        centerX,
+                        centerY,
+                        tickCount,
+                        preparedOverlay);
+                }
+
                 frame.Draw(spriteBatch, skeletonMeshRenderer, screenX, screenY, actor.FacingRight, Color.White);
                 DrawPortableChairCoupleSharedLayers(
                     spriteBatch,
@@ -1026,6 +1120,56 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             return $"Remote user pool active, count={_actorsById.Count}, users={string.Join("; ", _actorsById.Values.OrderBy(static value => value.CharacterId).Select(static value => value.Describe()))}";
+        }
+
+        private void AssignDriverPassengerLink(int driverId, int passengerId)
+        {
+            if (!_actorsById.TryGetValue(driverId, out RemoteUserActor driverActor))
+            {
+                return;
+            }
+
+            int previousPassengerId = driverActor.FollowPassengerId;
+            if (previousPassengerId > 0
+                && previousPassengerId != passengerId
+                && _actorsById.TryGetValue(previousPassengerId, out RemoteUserActor previousPassenger)
+                && previousPassenger.FollowDriverId == driverId)
+            {
+                previousPassenger.FollowDriverId = 0;
+            }
+
+            driverActor.FollowPassengerId = passengerId;
+        }
+
+        private void ClearDriverPassengerLink(int driverId, int passengerId)
+        {
+            if (driverId <= 0
+                || !_actorsById.TryGetValue(driverId, out RemoteUserActor driverActor)
+                || driverActor.FollowPassengerId != passengerId)
+            {
+                return;
+            }
+
+            driverActor.FollowPassengerId = 0;
+        }
+
+        private void ClearActorFollowLinks(RemoteUserActor actor)
+        {
+            if (actor == null)
+            {
+                return;
+            }
+
+            ClearDriverPassengerLink(actor.FollowDriverId, actor.CharacterId);
+            if (actor.FollowPassengerId > 0
+                && _actorsById.TryGetValue(actor.FollowPassengerId, out RemoteUserActor passengerActor)
+                && passengerActor.FollowDriverId == actor.CharacterId)
+            {
+                passengerActor.FollowDriverId = 0;
+            }
+
+            actor.FollowDriverId = 0;
+            actor.FollowPassengerId = 0;
         }
 
         private static void DrawOutlinedText(SpriteBatch spriteBatch, SpriteFont font, string text, Vector2 position, Color shadowColor, Color textColor)
@@ -1577,6 +1721,8 @@ namespace HaCreator.MapSimulator.Pools
         public int? BattlefieldAppliedTeamId { get; set; }
         public RemoteMeleeAfterImageState MeleeAfterImage { get; private set; }
         public PacketOwnedUserSummonRegistry PacketOwnedSummons { get; } = new();
+        public int FollowDriverId { get; set; }
+        public int FollowPassengerId { get; set; }
 
         public void RefreshAssembler()
         {
@@ -1672,7 +1818,9 @@ namespace HaCreator.MapSimulator.Pools
             string helperText = HelperMarkerType?.ToString() ?? "none";
             string teamText = BattlefieldTeamId?.ToString() ?? "none";
             string preparedText = PreparedSkill != null ? PreparedSkill.SkillId.ToString() : "none";
-            return $"{CharacterId}:{Name}@({Position.X:0},{Position.Y:0}) action={ActionName} source={SourceTag} helper={helperText} team={teamText} prep={preparedText}";
+            string followDriverText = FollowDriverId > 0 ? FollowDriverId.ToString() : "none";
+            string followPassengerText = FollowPassengerId > 0 ? FollowPassengerId.ToString() : "none";
+            return $"{CharacterId}:{Name}@({Position.X:0},{Position.Y:0}) action={ActionName} source={SourceTag} helper={helperText} team={teamText} prep={preparedText} followDriver={followDriverText} followPassenger={followPassengerText}";
         }
     }
 

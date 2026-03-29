@@ -153,7 +153,8 @@ namespace HaCreator.MapSimulator
             DrainAriantArenaPacketInbox(currTickCount);
             DrainMonsterCarnivalPacketInbox(currTickCount);
             DrainMassacrePacketInbox(currTickCount);
-            DrainDojoPacketInbox(currTickCount);
+            DrainDojoPacketInbox(currTickCount);
+            DrainTransportPacketInbox();
             DrainGuildBossTransport(currTickCount);
             DrainPartyRaidPacketInbox(currTickCount);
             DrainCookieHousePointInbox();
@@ -190,7 +191,12 @@ namespace HaCreator.MapSimulator
                 NpcInteractionOverlayResult npcOverlayResult = _npcInteractionOverlay != null
                     ? _npcInteractionOverlay.HandleMouse(newMouseState, _oldMouseState, _renderParams.RenderWidth, _renderParams.RenderHeight)
                     : default;
-                bool memoryGameMouseConsumed = false;
+                if (_pendingQuestRewardChoice != null && _npcInteractionOverlay?.IsVisible != true)
+                {
+                    _pendingQuestRewardChoice = null;
+                }
+
+                bool memoryGameMouseConsumed = false;
                 if (npcOverlayResult.PrimaryActionEntry != null)
                 {
                     HandleNpcOverlayPrimaryAction(npcOverlayResult.PrimaryActionEntry);
@@ -268,6 +274,11 @@ namespace HaCreator.MapSimulator
             NpcInteractionOverlayResult npcKeyboardResult = isWindowActive && _npcInteractionOverlay != null
                 ? _npcInteractionOverlay.HandleKeyboard(newKeyboardState, _oldKeyboardState)
                 : default;
+
+            if (_pendingQuestRewardChoice != null && _npcInteractionOverlay?.IsVisible != true)
+            {
+                _pendingQuestRewardChoice = null;
+            }
 
             if (npcKeyboardResult.InputSubmission != null)
             {
