@@ -16,7 +16,10 @@ namespace HaCreator.MapSimulator
 {
     public partial class MapSimulator
     {
-        private void RememberRemoteTownPortalOwnerFieldObservation(uint ownerCharacterId, Vector2 position)
+        private void RememberRemoteTownPortalOwnerFieldObservation(
+            uint ownerCharacterId,
+            Vector2 position,
+            TemporaryPortalField.RemoteTownPortalObservationSource observationSource = TemporaryPortalField.RemoteTownPortalObservationSource.MovementSnapshot)
         {
             if (_temporaryPortalField == null || _mapBoard?.MapInfo == null || ownerCharacterId == 0)
             {
@@ -35,7 +38,8 @@ namespace HaCreator.MapSimulator
                 position.X,
                 position.Y,
                 new TemporaryPortalField.RemoteTownPortalResolvedDestination(returnMapId, returnX, returnY),
-                Environment.TickCount);
+                Environment.TickCount,
+                observationSource);
         }
 
         private void RegisterRemoteUserChatCommand()
@@ -686,7 +690,10 @@ namespace HaCreator.MapSimulator
                         : enterMessage;
                     if (created)
                     {
-                        RememberRemoteTownPortalOwnerFieldObservation((uint)enterPacket.CharacterId, new Vector2(enterPacket.X, enterPacket.Y));
+                        RememberRemoteTownPortalOwnerFieldObservation(
+                            (uint)enterPacket.CharacterId,
+                            new Vector2(enterPacket.X, enterPacket.Y),
+                            TemporaryPortalField.RemoteTownPortalObservationSource.EnterField);
                     }
 
                     return created;
@@ -724,7 +731,8 @@ namespace HaCreator.MapSimulator
                     {
                         RememberRemoteTownPortalOwnerFieldObservation(
                             (uint)movePacket.CharacterId,
-                            new Vector2(movePacket.Snapshot.PassivePosition.X, movePacket.Snapshot.PassivePosition.Y));
+                            new Vector2(movePacket.Snapshot.PassivePosition.X, movePacket.Snapshot.PassivePosition.Y),
+                            TemporaryPortalField.RemoteTownPortalObservationSource.MovementSnapshot);
                     }
 
                     return moved;
@@ -798,9 +806,22 @@ namespace HaCreator.MapSimulator
                     result = followApplied
                         ? $"Applied {DescribeRemoteUserPacketType(packetType)} for {followPacket.CharacterId}."
                         : followMessage;
-                    if (followApplied && _remoteUserPool.TryGetActor(followPacket.CharacterId, out RemoteUserActor followActor))
+                    if (followApplied
+                        && followPacket.TransferField
+                        && followPacket.TransferX.HasValue
+                        && followPacket.TransferY.HasValue)
                     {
-                        RememberRemoteTownPortalOwnerFieldObservation((uint)followPacket.CharacterId, followActor.Position);
+                        RememberRemoteTownPortalOwnerFieldObservation(
+                            (uint)followPacket.CharacterId,
+                            new Vector2(followPacket.TransferX.Value, followPacket.TransferY.Value),
+                            TemporaryPortalField.RemoteTownPortalObservationSource.FollowTransfer);
+                    }
+                    else if (followApplied && _remoteUserPool.TryGetActor(followPacket.CharacterId, out RemoteUserActor followActor))
+                    {
+                        RememberRemoteTownPortalOwnerFieldObservation(
+                            (uint)followPacket.CharacterId,
+                            followActor.Position,
+                            TemporaryPortalField.RemoteTownPortalObservationSource.MovementSnapshot);
                     }
 
                     return followApplied;
@@ -948,6 +969,22 @@ namespace HaCreator.MapSimulator
                         : itemEffectMessage;
                     return itemEffectApplied;
 
+                case RemoteUserPacketType.UserAvatarModified:
+                    if (!RemoteUserPacketCodec.TryParseAvatarModified(payload, out RemoteUserAvatarModifiedPacket avatarModifiedPacket, out string avatarModifiedError))
+                    {
+                        result = avatarModifiedError;
+                        return false;
+                    }
+
+                    bool avatarModifiedApplied = _remoteUserPool.TryApplyAvatarModified(
+                        avatarModifiedPacket,
+                        currentTime,
+                        out string avatarModifiedMessage);
+                    result = avatarModifiedApplied
+                        ? $"Applied {DescribeRemoteUserPacketType(packetType)} for {avatarModifiedPacket.CharacterId}."
+                        : avatarModifiedMessage;
+                    return avatarModifiedApplied;
+
                 default:
                     result = $"Unsupported remote user packet type {packetType}.";
                     return false;
@@ -1048,6 +1085,7 @@ namespace HaCreator.MapSimulator
                 "pickup" or "droppickup" => (int)RemoteUserPacketType.UserDropPickup,
                 "melee" or "attack" or "meleeattack" => (int)RemoteUserPacketType.UserMeleeAttack,
                 "effect" or "itemeffect" or "ringeffect" => (int)RemoteUserPacketType.UserItemEffect,
+                "avatarmodified" or "avatarmod" or "look" => (int)RemoteUserPacketType.UserAvatarModified,
                 _ => 0
             };
 
@@ -1072,6 +1110,7 @@ namespace HaCreator.MapSimulator
                 (int)RemoteUserPacketType.UserDropPickup => "remote user remote drop-pickup packet",
                 (int)RemoteUserPacketType.UserMeleeAttack => "remote user remote melee-attack packet",
                 (int)RemoteUserPacketType.UserItemEffect => "remote user remote item-effect packet",
+                (int)RemoteUserPacketType.UserAvatarModified => "remote user remote avatar-modified packet",
                 _ => $"remote user packet {packetType}"
             };
         }

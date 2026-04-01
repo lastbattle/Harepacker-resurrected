@@ -122,6 +122,14 @@ namespace HaCreator.MapSimulator.Interaction
                 return false;
             }
 
+            if (!TryValidateRemoteFollowActor(
+                    requester,
+                    "Incoming follow request could not be opened because ",
+                    out message))
+            {
+                return false;
+            }
+
             _incomingRequesterId = requester.CharacterId;
             _lastStatusMessage = $"Incoming follow request from {requester.DisplayName} is waiting for a local Yes/No response.";
             message = _lastStatusMessage;
@@ -133,6 +141,16 @@ namespace HaCreator.MapSimulator.Interaction
             if (_incomingRequesterId <= 0 || requester.CharacterId != _incomingRequesterId || !requester.Exists)
             {
                 message = "No matching incoming follow request is pending.";
+                return false;
+            }
+
+            if (!TryValidateRemoteFollowActor(
+                    requester,
+                    "Incoming follow request could not be accepted because ",
+                    out message))
+            {
+                _incomingRequesterId = 0;
+                _lastStatusMessage = message;
                 return false;
             }
 
@@ -332,9 +350,11 @@ namespace HaCreator.MapSimulator.Interaction
                 return false;
             }
 
-            if (driver.IsMounted || driver.HasMorphTemplate || driver.IsGhostAction)
+            if (!TryValidateRemoteFollowActor(
+                    driver,
+                    "Local follow request was rejected because ",
+                    out message))
             {
-                message = $"Local follow request was rejected because {driver.DisplayName} is not follow-eligible.";
                 return false;
             }
 
@@ -344,6 +364,21 @@ namespace HaCreator.MapSimulator.Interaction
             {
                 int remainingMs = FollowRequestThrottleMs - Math.Max(0, currentTime - _lastOutgoingRequestTick);
                 message = $"Local follow request to {driver.DisplayName} is throttled for another {remainingMs} ms.";
+                return false;
+            }
+
+            message = null;
+            return true;
+        }
+
+        private static bool TryValidateRemoteFollowActor(
+            LocalFollowUserSnapshot actor,
+            string messagePrefix,
+            out string message)
+        {
+            if (actor.IsMounted || actor.HasMorphTemplate || actor.IsGhostAction)
+            {
+                message = $"{messagePrefix}{actor.DisplayName} is not follow-eligible.";
                 return false;
             }
 

@@ -93,6 +93,65 @@ namespace HaCreator.MapSimulator.Companions
         public CharacterPart CharacterPart { get; init; }
     }
 
+    internal static class CompanionEquipmentTooltipPartFactory
+    {
+        internal static CharacterPart CreateTooltipPart(CompanionEquipItem item)
+        {
+            if (item == null || item.ItemId <= 0)
+            {
+                return null;
+            }
+
+            if (item.CharacterPart != null)
+            {
+                return item.CharacterPart.Clone();
+            }
+
+            return new CharacterPart
+            {
+                ItemId = item.ItemId,
+                Name = item.Name,
+                Description = item.Description,
+                ItemCategory = item.ItemCategory,
+                IsCash = item.IsCash,
+                RequiredJobMask = item.RequiredJobMask,
+                RequiredFame = item.RequiredFame,
+                RequiredLevel = item.RequiredLevel,
+                RequiredSTR = item.RequiredSTR,
+                RequiredDEX = item.RequiredDEX,
+                RequiredINT = item.RequiredINT,
+                RequiredLUK = item.RequiredLUK,
+                BonusSTR = item.BonusSTR,
+                BonusDEX = item.BonusDEX,
+                BonusINT = item.BonusINT,
+                BonusLUK = item.BonusLUK,
+                BonusHP = item.BonusHP,
+                BonusMP = item.BonusMP,
+                BonusWeaponAttack = item.BonusWeaponAttack,
+                BonusMagicAttack = item.BonusMagicAttack,
+                BonusWeaponDefense = item.BonusWeaponDefense,
+                BonusMagicDefense = item.BonusMagicDefense,
+                BonusAccuracy = item.BonusAccuracy,
+                BonusAvoidability = item.BonusAvoidability,
+                BonusHands = item.BonusHands,
+                BonusSpeed = item.BonusSpeed,
+                BonusJump = item.BonusJump,
+                UpgradeSlots = item.UpgradeSlots,
+                KnockbackRate = item.KnockbackRate,
+                TradeAvailable = item.TradeAvailable,
+                IsTradeBlocked = item.IsTradeBlocked,
+                IsEquipTradeBlocked = item.IsEquipTradeBlocked,
+                IsOneOfAKind = item.IsUniqueItem,
+                IsNotForSale = item.IsNotForSale,
+                IsTimeLimited = item.IsTimeLimited,
+                Durability = item.Durability,
+                MaxDurability = item.MaxDurability,
+                Icon = item.Icon,
+                IconRaw = item.IconRaw
+            };
+        }
+    }
+
     public sealed class DragonEquipmentController
     {
         private static readonly (DragonEquipSlot Slot, int ItemId)[] DefaultItems =
@@ -1492,6 +1551,17 @@ namespace HaCreator.MapSimulator.Companions
         public CompanionEquipmentLoader(GraphicsDevice device)
         {
             _device = device ?? throw new ArgumentNullException(nameof(device));
+        }
+
+        public CompanionEquipItem LoadCompanionEquipment(int itemId)
+        {
+            return (itemId / 10000) switch
+            {
+                180 or 181 => LoadPetEquipment(itemId),
+                >= 194 and <= 197 => LoadDragonEquipment(itemId),
+                >= 161 and <= 165 => LoadMechanicEquipment(itemId),
+                _ => null
+            };
         }
 
         public CompanionEquipItem LoadDragonEquipment(int itemId)

@@ -194,8 +194,8 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
-            int drawX = Position.X + Math.Max(0, (FrameWidth - headingTexture.Width) / 2);
-            int drawY = Position.Y + HeadingTop;
+            int drawX = Position.X + _assets.HeadingOffset.X;
+            int drawY = Position.Y + _assets.HeadingOffset.Y;
             sprite.Draw(headingTexture, new Rectangle(drawX, drawY, headingTexture.Width, headingTexture.Height), Color.White);
         }
 
@@ -261,17 +261,29 @@ namespace HaCreator.MapSimulator.UI
                 return lines;
             }
 
-            foreach (string paragraph in text.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries))
+            foreach (string paragraph in text.Split(new[] { "\r\n", "\n" }, StringSplitOptions.None))
             {
+                if (string.IsNullOrWhiteSpace(paragraph))
+                {
+                    lines.Add(string.Empty);
+                    continue;
+                }
+
                 string currentLine = string.Empty;
                 string[] words = paragraph.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
                 for (int i = 0; i < words.Length; i++)
                 {
-                    string candidate = string.IsNullOrEmpty(currentLine) ? words[i] : $"{currentLine} {words[i]}";
+                    string nextWord = BreakWordToWidth(words[i], maxWidth, lines, ref currentLine);
+                    if (string.IsNullOrEmpty(nextWord))
+                    {
+                        continue;
+                    }
+
+                    string candidate = string.IsNullOrEmpty(currentLine) ? nextWord : $"{currentLine} {nextWord}";
                     if (!string.IsNullOrEmpty(currentLine) && _font.MeasureString(candidate).X > maxWidth)
                     {
                         lines.Add(currentLine);
-                        currentLine = words[i];
+                        currentLine = nextWord;
                     }
                     else
                     {
@@ -286,6 +298,35 @@ namespace HaCreator.MapSimulator.UI
             }
 
             return lines;
+        }
+
+        private string BreakWordToWidth(string word, float maxWidth, List<string> lines, ref string currentLine)
+        {
+            if (string.IsNullOrEmpty(word) || _font.MeasureString(word).X <= maxWidth)
+            {
+                return word;
+            }
+
+            string remaining = word;
+            while (!string.IsNullOrEmpty(remaining) && _font.MeasureString(remaining).X > maxWidth)
+            {
+                int splitLength = remaining.Length;
+                while (splitLength > 1 && _font.MeasureString(remaining[..splitLength]).X > maxWidth)
+                {
+                    splitLength--;
+                }
+
+                if (!string.IsNullOrEmpty(currentLine))
+                {
+                    lines.Add(currentLine);
+                    currentLine = string.Empty;
+                }
+
+                lines.Add(remaining[..splitLength]);
+                remaining = remaining[splitLength..];
+            }
+
+            return remaining;
         }
 
         private int CountWrappedLines(string text)
@@ -328,15 +369,17 @@ namespace HaCreator.MapSimulator.UI
 
     internal sealed class EngagementProposalWindowAssets
     {
-        internal EngagementProposalWindowAssets(Texture2D heading, EngagementProposalBand top, EngagementProposalBand center, EngagementProposalBand bottom)
+        internal EngagementProposalWindowAssets(Texture2D heading, Point headingOffset, EngagementProposalBand top, EngagementProposalBand center, EngagementProposalBand bottom)
         {
             Heading = heading;
+            HeadingOffset = heading == null ? new Point(92, 2) : headingOffset;
             Top = top ?? throw new ArgumentNullException(nameof(top));
             Center = center ?? throw new ArgumentNullException(nameof(center));
             Bottom = bottom ?? throw new ArgumentNullException(nameof(bottom));
         }
 
         internal Texture2D Heading { get; }
+        internal Point HeadingOffset { get; }
         internal EngagementProposalBand Top { get; }
         internal EngagementProposalBand Center { get; }
         internal EngagementProposalBand Bottom { get; }

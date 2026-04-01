@@ -5,6 +5,7 @@ using MapleLib.WzLib.WzStructure;
 using MapleLib.WzLib.WzStructure.Data;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
+using Microsoft.Xna.Framework.Input;
 using System;
 using System.Collections.Generic;
 using System.Globalization;
@@ -19,10 +20,18 @@ namespace HaCreator.MapSimulator.Interaction
         private const int HelpMessageDisplayDurationMs = 6000;
         private const int HelpFadeDurationMs = 220;
         private const int QuestTimerSpacing = 8;
-        private const int QuestTimerPanelWidth = 228;
+        private const int QuestTimerDefaultTop = 12;
+        private const int QuestTimerActionOffsetX = 52;
+        private const int QuestTimerActionCenterOffsetY = 6;
+        private const int QuestTimerActionTopOffsetY = 5;
+        private const int QuestTimerTooltipRefreshIntervalMs = 500;
+        private const int QuestTimerTooltipWidth = 150;
+        private const int QuestTimerLargeScreenWidth = 1024;
+        private const int QuestTimerLargeModeShiftX = 224;
 
         private readonly List<string> _mapHelpMessages = new();
         private readonly Dictionary<int, PacketQuestTimerEntry> _questTimers = new();
+        private readonly Dictionary<int, PacketQuestTimerOwnerState> _questTimerOwners = new();
         private readonly Dictionary<string, PacketQuestTimerVisualStyle> _questTimerStyles = new(StringComparer.OrdinalIgnoreCase);
         private Texture2D _pixelTexture;
         private Texture2D _helpDialogTexture;
@@ -36,6 +45,11 @@ namespace HaCreator.MapSimulator.Interaction
         private PacketHelpMessageState _activeHelpMessage;
         private string _lastFieldSpecificDataSummary = "No field-specific data payload received.";
         private string _statusMessage = "Packet-owned field state idle.";
+        private bool _questTimerLargeMode;
+        private int _questTimerLastRenderWidth;
+        private int _questTimerHoveredQuestId;
+        private Point _questTimerMousePosition;
+        private int _questTimerDraggedQuestId = -1;
 
         internal void Initialize(GraphicsDevice graphicsDevice, MapInfo mapInfo)
         {
@@ -62,6 +76,7 @@ namespace HaCreator.MapSimulator.Interaction
             _mapHelpMessages.Clear();
             _mapHelpMessages.AddRange(BuildHelpMessages(mapInfo));
             _questTimers.Clear();
+            _questTimerOwners.Clear();
             _activeHelpMessage = null;
             _lastFieldSpecificDataSummary = "No field-specific data payload received.";
             _statusMessage = _mapHelpMessages.Count > 0
@@ -72,12 +87,15 @@ namespace HaCreator.MapSimulator.Interaction
         internal void Clear()
         {
             _questTimers.Clear();
+            _questTimerOwners.Clear();
             _activeHelpMessage = null;
             _mapHelpMessages.Clear();
             _lastFieldSpecificDataSummary = "No field-specific data payload received.";
             _statusMessage = "Packet-owned field state cleared.";
             _boundMapId = int.MinValue;
             _boundMapName = string.Empty;
+            _questTimerHoveredQuestId = 0;
+            _questTimerDraggedQuestId = -1;
         }
 
         internal void Update(int currentTick)
@@ -112,6 +130,16 @@ namespace HaCreator.MapSimulator.Interaction
             foreach (int questId in expiredQuestIds)
             {
                 _questTimers.Remove(questId);
+                _questTimerOwners.Remove(questId);
+                if (_questTimerHoveredQuestId == questId)
+                {
+                    _questTimerHoveredQuestId = 0;
+                }
+
+                if (_questTimerDraggedQuestId == questId)
+                {
+                    _questTimerDraggedQuestId = -1;
+                }
             }
 
             _statusMessage = expiredQuestIds.Count == 1
@@ -136,6 +164,9 @@ namespace HaCreator.MapSimulator.Interaction
                     return TryApplyDesc(payload, currentTick, out message);
                 case 166:
                     _questTimers.Clear();
+                    _questTimerOwners.Clear();
+                    _questTimerHoveredQuestId = 0;
+                    _questTimerDraggedQuestId = -1;
                     _statusMessage = "Cleared all packet-authored quest timers.";
                     message = _statusMessage;
                     return true;
@@ -169,7 +200,9 @@ namespace HaCreator.MapSimulator.Interaction
             string timerStatus = _questTimers.Count == 0
                 ? "timers=none"
                 : $"timers={string.Join(", ", _questTimers.Values.OrderBy(static entry => entry.ExpireTick).Take(3).Select(timer => $"{timer.QuestName} {FormatRemainingTime(Math.Max(0, timer.ExpireTick - currentTick))}"))}";
-            return $"{_statusMessage} {helpStatus}; {timerStatus}; fieldspecific={_lastFieldSpecificDataSummary}";
+            int visibleOwners = _questTimerOwners.Values.Count(static owner => !owner.IsDismissed);
+            int dismissedOwners = _questTimerOwners.Count - visibleOwners;
+            return $"{_statusMessage} {helpStatus}; {timerStatus}; timerOwners=visible:{visibleOwners},dismissed:{dismissedOwners}; fieldspecific={_lastFieldSpecificDataSummary}";
         }
 
         internal void Draw(SpriteBatch spriteBatch, SpriteFont font, int renderWidth, int renderHeight, int currentTick)
@@ -179,8 +212,74 @@ namespace HaCreator.MapSimulator.Interaction
                 return;
             }
 
-            DrawQuestTimers(spriteBatch, font, renderWidth, currentTick);
+            SyncQuestTimerOwners(renderWidth);
+            DrawQuestTimers(spriteBatch, font, renderWidth, renderHeight, currentTick);
             DrawHelpMessage(spriteBatch, font, renderWidth, renderHeight, currentTick);
+        }
+
+        internal bool HandleMouse(MouseState mouseState, MouseState previousMouseState, int renderWidth, int renderHeight, int currentTick)
+        {
+            SyncQuestTimerOwners(renderWidth);
+            _questTimerMousePosition = mouseState.Position;
+
+            bool leftPressed = mouseState.LeftButton == ButtonState.Pressed;
+            bool leftJustPressed = leftPressed && previousMouseState.LeftButton == ButtonState.Released;
+            bool leftJustReleased = mouseState.LeftButton == ButtonState.Released && previousMouseState.LeftButton == ButtonState.Pressed;
+
+            if (_questTimerDraggedQuestId >= 0 &&
+                _questTimerOwners.TryGetValue(_questTimerDraggedQuestId, out PacketQuestTimerOwnerState draggedOwner))
+            {
+                if (leftPressed)
+                {
+                    draggedOwner.Position = new Point(
+                        mouseState.X - draggedOwner.DragOffset.X,
+                        Math.Max(0, mouseState.Y - draggedOwner.DragOffset.Y));
+                    return true;
+                }
+
+                if (leftJustReleased)
+                {
+                    draggedOwner.IsDragging = false;
+                    _questTimerDraggedQuestId = -1;
+                    return true;
+                }
+            }
+
+            int hoveredQuestId = HitTestQuestTimer(mouseState.Position, out bool overAction);
+            _questTimerHoveredQuestId = hoveredQuestId;
+
+            if (hoveredQuestId <= 0)
+            {
+                return false;
+            }
+
+            if (leftJustPressed && _questTimerOwners.TryGetValue(hoveredQuestId, out PacketQuestTimerOwnerState hoveredOwner))
+            {
+                if (overAction)
+                {
+                    hoveredOwner.IsDismissed = true;
+                    hoveredOwner.IsDragging = false;
+                    _questTimerHoveredQuestId = 0;
+                    _statusMessage = $"Dismissed quest timer owner for {ResolveQuestName(hoveredQuestId)}.";
+                    return true;
+                }
+
+                hoveredOwner.IsDragging = true;
+                hoveredOwner.IsDismissed = false;
+                hoveredOwner.IsPinned = true;
+                hoveredOwner.DragOffset = new Point(
+                    mouseState.X - hoveredOwner.Position.X,
+                    mouseState.Y - hoveredOwner.Position.Y);
+                _questTimerDraggedQuestId = hoveredQuestId;
+                return true;
+            }
+
+            if (leftJustReleased)
+            {
+                _questTimerDraggedQuestId = -1;
+            }
+
+            return false;
         }
 
         private bool TryApplyDesc(byte[] payload, int currentTick, out string message)
@@ -241,6 +340,9 @@ namespace HaCreator.MapSimulator.Interaction
                         currentTick,
                         unchecked(currentTick + remainingMs),
                         durationMs);
+                    PacketQuestTimerOwnerState owner = GetOrCreateQuestTimerOwner(questId);
+                    owner.IsDismissed = false;
+                    owner.IsDragging = false;
                     appliedCount++;
                 }
 
@@ -259,6 +361,104 @@ namespace HaCreator.MapSimulator.Interaction
                 message = $"Quest timer packet could not be decoded: {ex.Message}";
                 return false;
             }
+        }
+
+        internal string ApplyQuestTimer(int questId, int remainingMs, bool timeKeepQuestTimer, int currentTick)
+        {
+            if (questId <= 0)
+            {
+                _statusMessage = "Ignored a packet-authored quest timer with an invalid quest id.";
+                return _statusMessage;
+            }
+
+            int boundedRemainingMs = Math.Max(0, remainingMs);
+            DateTime startUtc = DateTime.UtcNow;
+            DateTime endUtc = startUtc.AddMilliseconds(boundedRemainingMs);
+            (string questName, string timerUiKey) = ResolveQuestMetadata(questId);
+            _questTimers[questId] = new PacketQuestTimerEntry(
+                questId,
+                questName,
+                timerUiKey,
+                startUtc,
+                endUtc,
+                currentTick,
+                unchecked(currentTick + boundedRemainingMs),
+                boundedRemainingMs);
+
+            PacketQuestTimerOwnerState owner = GetOrCreateQuestTimerOwner(questId);
+            owner.IsDismissed = false;
+            owner.IsDragging = false;
+            _statusMessage = timeKeepQuestTimer
+                ? $"Applied packet-authored keep-alive quest timer for {questName}."
+                : $"Applied packet-authored quest timer for {questName}.";
+            return _statusMessage;
+        }
+
+        internal string RemoveQuestTimer(int questId, bool timeKeepQuestTimer)
+        {
+            if (questId <= 0)
+            {
+                _statusMessage = "Ignored a packet-authored quest-timer removal with an invalid quest id.";
+                return _statusMessage;
+            }
+
+            string questName = ResolveQuestName(questId);
+            bool removed = _questTimers.Remove(questId);
+            _questTimerOwners.Remove(questId);
+            if (_questTimerHoveredQuestId == questId)
+            {
+                _questTimerHoveredQuestId = 0;
+            }
+
+            if (_questTimerDraggedQuestId == questId)
+            {
+                _questTimerDraggedQuestId = -1;
+            }
+
+            _statusMessage = removed
+                ? (timeKeepQuestTimer
+                    ? $"Removed packet-authored keep-alive quest timer for {questName}."
+                    : $"Removed packet-authored quest timer for {questName}.")
+                : (timeKeepQuestTimer
+                    ? $"Packet-authored keep-alive quest timer for {questName} was already absent."
+                    : $"Packet-authored quest timer for {questName} was already absent.");
+            return _statusMessage;
+        }
+
+        internal string ResetQuestTimer(int questId, bool timeKeepQuestTimer, int currentTick)
+        {
+            if (questId <= 0)
+            {
+                _statusMessage = "Ignored a packet-authored quest-timer reset with an invalid quest id.";
+                return _statusMessage;
+            }
+
+            if (!_questTimers.TryGetValue(questId, out PacketQuestTimerEntry timer))
+            {
+                _statusMessage = timeKeepQuestTimer
+                    ? $"Packet-authored keep-alive quest timer for {ResolveQuestName(questId)} is not active."
+                    : $"Packet-authored quest timer for {ResolveQuestName(questId)} is not active.";
+                return _statusMessage;
+            }
+
+            int durationMs = Math.Max(0, timer.DurationMs);
+            DateTime startUtc = DateTime.UtcNow;
+            DateTime endUtc = startUtc.AddMilliseconds(durationMs);
+            _questTimers[questId] = timer with
+            {
+                StartUtc = startUtc,
+                EndUtc = endUtc,
+                ReceivedAtTick = currentTick,
+                ExpireTick = unchecked(currentTick + durationMs)
+            };
+
+            PacketQuestTimerOwnerState owner = GetOrCreateQuestTimerOwner(questId);
+            owner.IsDismissed = false;
+            owner.IsDragging = false;
+            _statusMessage = timeKeepQuestTimer
+                ? $"Reset packet-authored keep-alive quest timer for {timer.QuestName}."
+                : $"Reset packet-authored quest timer for {timer.QuestName}.";
+            return _statusMessage;
         }
 
         private bool TryApplyObjectState(
@@ -315,52 +515,186 @@ namespace HaCreator.MapSimulator.Interaction
             return true;
         }
 
-        private void DrawQuestTimers(SpriteBatch spriteBatch, SpriteFont font, int renderWidth, int currentTick)
+        private PacketQuestTimerOwnerState GetOrCreateQuestTimerOwner(int questId)
+        {
+            if (!_questTimerOwners.TryGetValue(questId, out PacketQuestTimerOwnerState owner))
+            {
+                owner = new PacketQuestTimerOwnerState();
+                _questTimerOwners[questId] = owner;
+            }
+
+            return owner;
+        }
+
+        private void SyncQuestTimerOwners(int renderWidth)
+        {
+            if (_questTimers.Count == 0)
+            {
+                _questTimerLastRenderWidth = renderWidth;
+                return;
+            }
+
+            _questTimerLargeMode = renderWidth >= QuestTimerLargeScreenWidth;
+            _questTimerLastRenderWidth = renderWidth;
+
+            int barWidth = Math.Max(88, _questTimeBarBackgroundTexture?.Width ?? 110);
+            int barHeight = Math.Max(10, _questTimeBarBackgroundTexture?.Height ?? 14);
+            int ownerWidth = QuestTimerActionOffsetX + barWidth;
+            int ownerHeight = Math.Max(barHeight, ResolveQuestTimerActionSize()) + QuestTimerSpacing;
+            int anchorX = Math.Max(12, renderWidth - ownerWidth - (_questTimerLargeMode ? QuestTimerLargeModeShiftX : 20));
+            int layoutIndex = 0;
+
+            foreach (PacketQuestTimerEntry timer in _questTimers.Values.OrderBy(static entry => entry.ExpireTick))
+            {
+                PacketQuestTimerOwnerState owner = GetOrCreateQuestTimerOwner(timer.QuestId);
+                if (owner.IsDismissed || owner.IsDragging || owner.IsPinned)
+                {
+                    continue;
+                }
+
+                owner.Position = new Point(anchorX, QuestTimerDefaultTop + (layoutIndex * ownerHeight));
+                layoutIndex++;
+            }
+        }
+
+        private int HitTestQuestTimer(Point mousePosition, out bool overAction)
+        {
+            overAction = false;
+
+            foreach (PacketQuestTimerEntry timer in _questTimers.Values.OrderByDescending(static entry => entry.ExpireTick))
+            {
+                if (!_questTimerOwners.TryGetValue(timer.QuestId, out PacketQuestTimerOwnerState owner) || owner.IsDismissed)
+                {
+                    continue;
+                }
+
+                if (owner.ActionBounds.Contains(mousePosition))
+                {
+                    overAction = true;
+                    return timer.QuestId;
+                }
+
+                Rectangle combinedBounds = Rectangle.Union(owner.BarBounds, owner.ActionBounds);
+                if (combinedBounds.Contains(mousePosition))
+                {
+                    return timer.QuestId;
+                }
+            }
+
+            return 0;
+        }
+
+        private Rectangle ResolveQuestTimerBarBounds(Point ownerPosition)
+        {
+            int width = Math.Max(88, _questTimeBarBackgroundTexture?.Width ?? 110);
+            int height = Math.Max(10, _questTimeBarBackgroundTexture?.Height ?? 14);
+            return new Rectangle(ownerPosition.X + QuestTimerActionOffsetX, ownerPosition.Y, width, height);
+        }
+
+        private Rectangle ResolveQuestTimerActionBounds(PacketQuestTimerEntry timer, Point ownerPosition, int currentTick)
+        {
+            PacketQuestTimerVisualStyle style = ResolveQuestTimerStyle(timer.TimerUiKey);
+            PacketQuestTimerFrame frame = ResolveQuestTimerFrame(style, currentTick);
+            Texture2D iconTexture = frame?.Texture;
+            Point origin = frame?.Origin ?? Point.Zero;
+            int width = Math.Max(16, iconTexture?.Width ?? 18);
+            int height = Math.Max(16, iconTexture?.Height ?? 18);
+            int x = ownerPosition.X + Math.Max(0, QuestTimerActionOffsetX - width);
+            int y = ownerPosition.Y + QuestTimerActionTopOffsetY - origin.Y + QuestTimerActionCenterOffsetY - (height / 2);
+            return new Rectangle(x, y, width, height);
+        }
+
+        private void DrawQuestTimerAction(SpriteBatch spriteBatch, PacketQuestTimerEntry timer, Rectangle actionBounds, int currentTick)
+        {
+            PacketQuestTimerVisualStyle style = ResolveQuestTimerStyle(timer.TimerUiKey);
+            PacketQuestTimerFrame frame = ResolveQuestTimerFrame(style, currentTick);
+            if (frame?.Texture != null)
+            {
+                spriteBatch.Draw(frame.Texture, new Vector2(actionBounds.X, actionBounds.Y), Color.White);
+                return;
+            }
+
+            spriteBatch.Draw(_pixelTexture, actionBounds, new Color(245, 197, 90));
+            Rectangle innerBounds = new(actionBounds.X + 3, actionBounds.Y + 3, Math.Max(2, actionBounds.Width - 6), Math.Max(2, actionBounds.Height - 6));
+            spriteBatch.Draw(_pixelTexture, innerBounds, new Color(123, 84, 24));
+        }
+
+        private void DrawQuestTimerTooltip(SpriteBatch spriteBatch, SpriteFont font, int renderWidth, int renderHeight, int currentTick)
+        {
+            if (_questTimerHoveredQuestId <= 0 ||
+                !_questTimers.TryGetValue(_questTimerHoveredQuestId, out PacketQuestTimerEntry timer) ||
+                !_questTimerOwners.TryGetValue(_questTimerHoveredQuestId, out PacketQuestTimerOwnerState owner) ||
+                owner.IsDismissed)
+            {
+                return;
+            }
+
+            string tooltipText = $"{timer.QuestName}\n{FormatRemainingTime(Math.Max(0, timer.ExpireTick - currentTick))}";
+            Vector2 measured = font.MeasureString(timer.QuestName);
+            Vector2 measuredTime = font.MeasureString("00:00");
+            int width = Math.Max(QuestTimerTooltipWidth, (int)Math.Ceiling(Math.Max(measured.X, measuredTime.X)) + 18);
+            int height = Math.Max(42, (int)Math.Ceiling((font.LineSpacing * 2f) + 14f));
+            int x = Math.Clamp(_questTimerMousePosition.X + 18, 8, Math.Max(8, renderWidth - width - 8));
+            int y = Math.Clamp(_questTimerMousePosition.Y + 18, 8, Math.Max(8, renderHeight - height - 8));
+            Rectangle tooltipBounds = new(x, y, width, height);
+            DrawPanel(spriteBatch, tooltipBounds, new Color(18, 22, 30, 236), new Color(236, 208, 124));
+            DrawWrappedText(spriteBatch, font, tooltipText, new Rectangle(x + 8, y + 7, width - 16, height - 12), 0.52f, Color.White);
+        }
+
+        private int ResolveQuestTimerActionSize()
+        {
+            if (_questTimerStyles.TryGetValue("default", out PacketQuestTimerVisualStyle style))
+            {
+                PacketQuestTimerFrame frame = style.Frames.FirstOrDefault();
+                if (frame?.Texture != null)
+                {
+                    return Math.Max(frame.Texture.Width, frame.Texture.Height);
+                }
+            }
+
+            return 18;
+        }
+
+        private void DrawQuestTimers(SpriteBatch spriteBatch, SpriteFont font, int renderWidth, int renderHeight, int currentTick)
         {
             if (_questTimers.Count == 0)
             {
                 return;
             }
 
-            List<PacketQuestTimerEntry> timers = _questTimers.Values.OrderBy(static timer => timer.ExpireTick).Take(3).ToList();
-            int x = (renderWidth - QuestTimerPanelWidth) / 2;
-            int y = 10;
+            List<PacketQuestTimerEntry> timers = _questTimers.Values.OrderBy(static timer => timer.ExpireTick).ToList();
             for (int i = 0; i < timers.Count; i++)
             {
                 PacketQuestTimerEntry timer = timers[i];
-                Rectangle bounds = new(x, y, QuestTimerPanelWidth, ResolveQuestTimerPanelHeight(timer, currentTick));
-                DrawQuestTimerEntry(spriteBatch, font, timer, bounds, currentTick);
-                y += bounds.Height + QuestTimerSpacing;
+                PacketQuestTimerOwnerState owner = GetOrCreateQuestTimerOwner(timer.QuestId);
+                if (owner.IsDismissed)
+                {
+                    continue;
+                }
+
+                DrawQuestTimerEntry(spriteBatch, font, timer, owner, renderHeight, currentTick);
             }
+
+            DrawQuestTimerTooltip(spriteBatch, font, renderWidth, renderHeight, currentTick);
         }
 
-        private void DrawQuestTimerEntry(SpriteBatch spriteBatch, SpriteFont font, PacketQuestTimerEntry timer, Rectangle bounds, int currentTick)
+        private void DrawQuestTimerEntry(
+            SpriteBatch spriteBatch,
+            SpriteFont font,
+            PacketQuestTimerEntry timer,
+            PacketQuestTimerOwnerState owner,
+            int renderHeight,
+            int currentTick)
         {
-            Texture2D iconTexture = ResolveQuestTimerIcon(ResolveQuestTimerStyle(timer.TimerUiKey), currentTick);
-            Rectangle iconRect = iconTexture == null ? Rectangle.Empty : new Rectangle(bounds.X + 6, bounds.Y + 4, iconTexture.Width, iconTexture.Height);
-            Rectangle textBounds = iconTexture == null
-                ? new Rectangle(bounds.X + 8, bounds.Y + 5, bounds.Width - 16, 18)
-                : new Rectangle(iconRect.Right + 6, bounds.Y + 5, bounds.Right - iconRect.Right - 12, 18);
-            Rectangle timerBounds = new(textBounds.X, textBounds.Bottom + 1, textBounds.Width, 16);
-            Rectangle barBounds = new(textBounds.X, timerBounds.Bottom + 2, Math.Min(104, textBounds.Width), _questTimeBarBackgroundTexture?.Height ?? 8);
+            Rectangle barBounds = ResolveQuestTimerBarBounds(owner.Position);
+            Rectangle actionBounds = ResolveQuestTimerActionBounds(timer, owner.Position, currentTick);
+            owner.BarBounds = barBounds;
+            owner.ActionBounds = actionBounds;
 
-            DrawPanel(spriteBatch, bounds, new Color(15, 19, 29, 214), new Color(231, 211, 148, 220));
-            if (iconTexture != null)
-            {
-                spriteBatch.Draw(iconTexture, new Vector2(iconRect.X, iconRect.Y), Color.White);
-            }
-
-            spriteBatch.DrawString(font, timer.QuestName, new Vector2(textBounds.X, textBounds.Y), new Color(247, 241, 225), 0f, Vector2.Zero, 0.48f, SpriteEffects.None, 0f);
-            spriteBatch.DrawString(font, FormatRemainingTime(Math.Max(0, timer.ExpireTick - currentTick)), new Vector2(timerBounds.X, timerBounds.Y), new Color(255, 225, 137), 0f, Vector2.Zero, 0.54f, SpriteEffects.None, 0f);
-
+            DrawQuestGauge(spriteBatch, barBounds, 1f);
             float ratio = timer.DurationMs <= 0 ? 0f : Math.Clamp((timer.ExpireTick - currentTick) / (float)Math.Max(1, timer.DurationMs), 0f, 1f);
             DrawQuestGauge(spriteBatch, barBounds, ratio);
-        }
-
-        private int ResolveQuestTimerPanelHeight(PacketQuestTimerEntry timer, int currentTick)
-        {
-            Texture2D iconTexture = ResolveQuestTimerIcon(ResolveQuestTimerStyle(timer.TimerUiKey), currentTick);
-            return Math.Max((iconTexture?.Height ?? 0) + 8, 44);
+            DrawQuestTimerAction(spriteBatch, timer, actionBounds, currentTick);
         }
 
         private void DrawQuestGauge(SpriteBatch spriteBatch, Rectangle bounds, float ratio)
@@ -738,6 +1072,17 @@ namespace HaCreator.MapSimulator.Interaction
         private sealed record PacketHelpMessageState(string Text, int StartedAtTick, int ExpiresAtTick, int Index);
         private sealed record PacketQuestTimerEntry(int QuestId, string QuestName, string TimerUiKey, DateTime StartUtc, DateTime EndUtc, int ReceivedAtTick, int ExpireTick, int DurationMs);
         private sealed record PacketQuestTimerFrame(Texture2D Texture, int Delay, Point Origin);
+        private sealed class PacketQuestTimerOwnerState
+        {
+            public Point Position { get; set; } = new(QuestTimerDefaultTop, QuestTimerDefaultTop);
+            public Rectangle BarBounds { get; set; }
+            public Rectangle ActionBounds { get; set; }
+            public Point DragOffset { get; set; }
+            public bool IsDismissed { get; set; }
+            public bool IsDragging { get; set; }
+            public bool IsPinned { get; set; }
+        }
+
         private sealed record PacketQuestTimerVisualStyle(string StyleKey, IReadOnlyList<PacketQuestTimerFrame> Frames)
         {
             public int TotalDuration { get; } = Math.Max(1, Frames.Sum(static frame => Math.Max(1, frame.Delay)));

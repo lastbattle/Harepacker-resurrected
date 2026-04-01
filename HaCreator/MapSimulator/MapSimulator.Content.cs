@@ -1159,6 +1159,11 @@ namespace HaCreator.MapSimulator
             // Reset same-map teleport state
             _sameMapTeleportPending = false;
             _sameMapTeleportTarget = null;
+            _packetOwnedTeleportRequestActive = false;
+            _packetOwnedTeleportRequestCompletedAt = int.MinValue;
+            _lastPacketOwnedTeleportPortalIndex = -1;
+            _lastPacketOwnedTeleportSourcePortalName = null;
+            _lastPacketOwnedTeleportTargetPortalName = null;
             _pendingMapSpawnTarget = null;
             ClearPassiveTransferRequest();
 

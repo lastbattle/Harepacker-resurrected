@@ -51,11 +51,16 @@ namespace HaCreator.MapSimulator.Character
                 yield break;
             }
 
+            var yielded = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
             if (actionName.StartsWith("alert", StringComparison.OrdinalIgnoreCase))
             {
                 foreach (string alertAlias in EnumerateAlertAliases(morphPart, actionName))
                 {
-                    yield return alertAlias;
+                    if (yielded.Add(alertAlias))
+                    {
+                        yield return alertAlias;
+                    }
                 }
             }
 
@@ -63,7 +68,10 @@ namespace HaCreator.MapSimulator.Character
             {
                 foreach (string doubleJumpAlias in EnumerateDoubleJumpAliases(morphPart))
                 {
-                    yield return doubleJumpAlias;
+                    if (yielded.Add(doubleJumpAlias))
+                    {
+                        yield return doubleJumpAlias;
+                    }
                 }
             }
 
@@ -71,13 +79,19 @@ namespace HaCreator.MapSimulator.Character
             {
                 foreach (string authoredAttackAlias in EnumerateAuthoredAttackAliases(morphPart, actionName))
                 {
-                    yield return authoredAttackAlias;
+                    if (yielded.Add(authoredAttackAlias))
+                    {
+                        yield return authoredAttackAlias;
+                    }
                 }
             }
 
             foreach (string candidate in CharacterPart.GetActionLookupStrings(actionName))
             {
-                yield return candidate;
+                if (yielded.Add(candidate))
+                {
+                    yield return candidate;
+                }
             }
         }
 
@@ -278,7 +292,8 @@ namespace HaCreator.MapSimulator.Character
             return actionName.IndexOf("attack", StringComparison.OrdinalIgnoreCase) >= 0
                    || actionName.IndexOf("stab", StringComparison.OrdinalIgnoreCase) >= 0
                    || actionName.IndexOf("swing", StringComparison.OrdinalIgnoreCase) >= 0
-                   || actionName.IndexOf("shoot", StringComparison.OrdinalIgnoreCase) >= 0;
+                   || actionName.IndexOf("shoot", StringComparison.OrdinalIgnoreCase) >= 0
+                   || actionName.IndexOf("shot", StringComparison.OrdinalIgnoreCase) >= 0;
         }
     }
 }

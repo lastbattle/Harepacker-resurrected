@@ -1,9 +1,32 @@
 using MapleLib.WzLib.WzStructure.Data.ItemStructure;
 using MapleLib.WzLib;
 using MapleLib.WzLib.WzProperties;
+using System;
+using System.Collections.Generic;
+using System.Globalization;
 
 namespace HaCreator.MapSimulator.UI
 {
+    public sealed class InventoryItemTooltipMetadata
+    {
+        public int ItemId { get; init; }
+        public InventoryType InventoryType { get; init; }
+        public string ItemName { get; init; } = string.Empty;
+        public string TypeName { get; init; } = string.Empty;
+        public string Description { get; init; } = string.Empty;
+        public bool IsCashItem { get; init; }
+        public bool IsNotForSale { get; init; }
+        public bool IsQuestItem { get; init; }
+        public bool IsTradeBlocked { get; init; }
+        public bool IsOneOfAKind { get; init; }
+        public int? RequiredLevel { get; init; }
+        public int? Price { get; init; }
+        public double? UnitPrice { get; init; }
+        public DateTime? ExpirationDateUtc { get; init; }
+        public IReadOnlyList<string> EffectLines { get; init; } = Array.Empty<string>();
+        public IReadOnlyList<string> MetadataLines { get; init; } = Array.Empty<string>();
+    }
+
     public static class InventoryItemMetadataResolver
     {
         private const int DefaultStackLimit = 100;
@@ -127,6 +150,66 @@ namespace HaCreator.MapSimulator.UI
             return true;
         }
 
+        public static InventoryItemTooltipMetadata ResolveTooltipMetadata(int itemId, InventoryType fallbackType = InventoryType.NONE)
+        {
+            InventoryType inventoryType = ResolveInventoryType(itemId);
+            if (inventoryType == InventoryType.NONE)
+            {
+                inventoryType = fallbackType;
+            }
+
+            TryResolveItemName(itemId, out string itemName);
+            TryResolveItemDescription(itemId, out string description);
+
+            WzSubProperty itemProperty = LoadItemProperty(itemId);
+            WzSubProperty infoProperty = itemProperty?["info"] as WzSubProperty;
+            WzSubProperty specProperty = itemProperty?["spec"] as WzSubProperty;
+
+            bool isCashItem = GetIntValue(infoProperty?["cash"]) == 1;
+            bool isNotForSale = GetIntValue(infoProperty?["notSale"]) == 1;
+            bool isQuestItem = GetIntValue(infoProperty?["quest"]) == 1;
+            bool isTradeBlocked = GetIntValue(infoProperty?["tradeBlock"]) == 1;
+            bool isOneOfAKind = GetIntValue(infoProperty?["only"]) == 1;
+
+            DateTime? expirationDateUtc = null;
+            if (infoProperty?["dateExpire"] is WzStringProperty expirationProperty)
+            {
+                DateTime? resolvedExpiration = expirationProperty.GetDateTime();
+                if (resolvedExpiration.HasValue)
+                {
+                    expirationDateUtc = DateTime.SpecifyKind(resolvedExpiration.Value, DateTimeKind.Utc);
+                }
+            }
+
+            List<string> metadataLines = BuildMetadataLines(
+                infoProperty,
+                isNotForSale,
+                isQuestItem,
+                isTradeBlocked,
+                isOneOfAKind,
+                expirationDateUtc);
+
+            return new InventoryItemTooltipMetadata
+            {
+                ItemId = itemId,
+                InventoryType = inventoryType,
+                ItemName = itemName ?? $"Item #{itemId}",
+                TypeName = ResolveTypeName(itemId, inventoryType),
+                Description = description ?? string.Empty,
+                IsCashItem = isCashItem,
+                IsNotForSale = isNotForSale,
+                IsQuestItem = isQuestItem,
+                IsTradeBlocked = isTradeBlocked,
+                IsOneOfAKind = isOneOfAKind,
+                RequiredLevel = TryGetPositiveInt(infoProperty?["lv"]),
+                Price = TryGetPositiveInt(infoProperty?["price"]),
+                UnitPrice = TryGetPositiveDouble(infoProperty?["unitPrice"]),
+                ExpirationDateUtc = expirationDateUtc,
+                EffectLines = BuildEffectLines(specProperty),
+                MetadataLines = metadataLines
+            };
+        }
+
         public static bool TryResolveImageSource(int itemId, out string category, out string imagePath)
         {
             category = null;
@@ -220,6 +303,151 @@ namespace HaCreator.MapSimulator.UI
             itemImage.ParseImage();
             string itemNodeName = category == "Character" ? itemId.ToString("D8") : itemId.ToString("D7");
             return itemImage[itemNodeName] as WzSubProperty;
+        }
+
+        private static List<string> BuildEffectLines(WzSubProperty specProperty)
+        {
+            List<string> effectLines = new();
+            if (specProperty == null)
+            {
+                return effectLines;
+            }
+
+            AppendStatEffectLine(effectLines, "HP", TryGetPositiveInt(specProperty["hp"]), false);
+            AppendStatEffectLine(effectLines, "HP", TryGetPositiveInt(specProperty["hpR"]), true);
+            AppendStatEffectLine(effectLines, "MP", TryGetPositiveInt(specProperty["mp"]), false);
+            AppendStatEffectLine(effectLines, "MP", TryGetPositiveInt(specProperty["mpR"]), true);
+            AppendStatEffectLine(effectLines, "Weapon ATT", TryGetPositiveInt(specProperty["pad"]), false);
+            AppendStatEffectLine(effectLines, "Magic ATT", TryGetPositiveInt(specProperty["mad"]), false);
+            AppendStatEffectLine(effectLines, "Weapon DEF", TryGetPositiveInt(specProperty["pdd"]), false);
+            AppendStatEffectLine(effectLines, "Magic DEF", TryGetPositiveInt(specProperty["mdd"]), false);
+            AppendStatEffectLine(effectLines, "Accuracy", TryGetPositiveInt(specProperty["acc"]), false);
+            AppendStatEffectLine(effectLines, "Avoidability", TryGetPositiveInt(specProperty["eva"]), false);
+            AppendStatEffectLine(effectLines, "Speed", TryGetPositiveInt(specProperty["speed"]), false);
+            AppendStatEffectLine(effectLines, "Jump", TryGetPositiveInt(specProperty["jump"]), false);
+
+            int? durationMs = TryGetPositiveInt(specProperty["time"]);
+            if (durationMs.HasValue)
+            {
+                effectLines.Add($"Duration: {FormatDuration(durationMs.Value)}");
+            }
+
+            return effectLines;
+        }
+
+        private static List<string> BuildMetadataLines(
+            WzSubProperty infoProperty,
+            bool isNotForSale,
+            bool isQuestItem,
+            bool isTradeBlocked,
+            bool isOneOfAKind,
+            DateTime? expirationDateUtc)
+        {
+            List<string> metadataLines = new();
+
+            int? requiredLevel = TryGetPositiveInt(infoProperty?["lv"]);
+            if (requiredLevel.HasValue)
+            {
+                metadataLines.Add($"Required Level: {requiredLevel.Value}");
+            }
+
+            int? price = TryGetPositiveInt(infoProperty?["price"]);
+            if (price.HasValue)
+            {
+                metadataLines.Add($"Price: {price.Value.ToString("N0", CultureInfo.InvariantCulture)} mesos");
+            }
+
+            double? unitPrice = TryGetPositiveDouble(infoProperty?["unitPrice"]);
+            if (unitPrice.HasValue)
+            {
+                metadataLines.Add($"Unit Price: {unitPrice.Value.ToString("0.##", CultureInfo.InvariantCulture)} mesos");
+            }
+
+            if (expirationDateUtc.HasValue)
+            {
+                metadataLines.Add($"Expires {expirationDateUtc.Value.ToLocalTime().ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture)}");
+            }
+
+            if (isTradeBlocked)
+            {
+                metadataLines.Add("Untradeable");
+            }
+
+            if (isOneOfAKind)
+            {
+                metadataLines.Add("One of a kind");
+            }
+
+            if (isQuestItem)
+            {
+                metadataLines.Add("Quest Item");
+            }
+
+            if (isNotForSale)
+            {
+                metadataLines.Add("Not for sale");
+            }
+
+            return metadataLines;
+        }
+
+        private static string ResolveTypeName(int itemId, InventoryType inventoryType)
+        {
+            if (global::HaCreator.Program.InfoManager?.ItemNameCache != null
+                && global::HaCreator.Program.InfoManager.ItemNameCache.TryGetValue(itemId, out Tuple<string, string, string> itemInfo)
+                && !string.IsNullOrWhiteSpace(itemInfo?.Item1))
+            {
+                return itemInfo.Item1;
+            }
+
+            return inventoryType.ToString();
+        }
+
+        private static void AppendStatEffectLine(List<string> effectLines, string label, int? value, bool isPercent)
+        {
+            if (!value.HasValue || value.Value <= 0)
+            {
+                return;
+            }
+
+            string suffix = isPercent ? "%" : string.Empty;
+            effectLines.Add($"{label} +{value.Value.ToString(CultureInfo.InvariantCulture)}{suffix}");
+        }
+
+        private static string FormatDuration(int durationMs)
+        {
+            TimeSpan duration = TimeSpan.FromMilliseconds(durationMs);
+            if (duration.TotalHours >= 1d)
+            {
+                return $"{Math.Round(duration.TotalHours, 1).ToString("0.#", CultureInfo.InvariantCulture)} hr";
+            }
+
+            if (duration.TotalMinutes >= 1d)
+            {
+                return $"{Math.Round(duration.TotalMinutes, 1).ToString("0.#", CultureInfo.InvariantCulture)} min";
+            }
+
+            return $"{Math.Max(1, (int)Math.Round(duration.TotalSeconds)).ToString(CultureInfo.InvariantCulture)} sec";
+        }
+
+        private static int? TryGetPositiveInt(WzImageProperty property)
+        {
+            int value = GetIntValue(property);
+            return value > 0 ? value : null;
+        }
+
+        private static double? TryGetPositiveDouble(WzImageProperty property)
+        {
+            double value = property switch
+            {
+                WzDoubleProperty doubleProperty => doubleProperty.Value,
+                WzFloatProperty floatProperty => floatProperty.Value,
+                WzIntProperty intProperty => intProperty.Value,
+                WzShortProperty shortProperty => shortProperty.Value,
+                _ => 0d
+            };
+
+            return value > 0d ? value : null;
         }
 
         private static int GetIntValue(WzImageProperty property)

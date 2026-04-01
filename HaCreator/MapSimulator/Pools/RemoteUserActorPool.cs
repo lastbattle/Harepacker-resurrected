@@ -59,7 +59,7 @@ namespace HaCreator.MapSimulator.Pools
         private const int RelationshipOverlayNearRangeY = 100;
         private const int NewYearCardOverlayNearRangeX = 250;
         private const int NewYearCardOverlayNearRangeY = 250;
-        private const int NewYearCardOverlayTextVerticalOffset = -42;
+        private const int NewYearCardDefaultItemId = 4300000;
         private static readonly EquipSlot[] BattlefieldAppearanceSlots =
         {
             EquipSlot.Cap,
@@ -714,23 +714,135 @@ namespace HaCreator.MapSimulator.Pools
                 return true;
             }
 
-            ItemEffectAnimationSet effect = _loader.LoadItemEffectAnimationSet(itemId.Value);
+            int resolvedItemId = itemId.Value;
+            ItemEffectAnimationSet effect = _loader.LoadItemEffectAnimationSet(resolvedItemId);
+            if (relationshipType == RemoteRelationshipOverlayType.NewYearCard
+                && effect == null
+                && resolvedItemId != NewYearCardDefaultItemId)
+            {
+                resolvedItemId = NewYearCardDefaultItemId;
+                effect = _loader.LoadItemEffectAnimationSet(resolvedItemId);
+            }
+
             if (effect == null && relationshipType != RemoteRelationshipOverlayType.NewYearCard)
             {
-                message = $"Item effect {itemId.Value} could not be loaded from Effect/ItemEff.img.";
+                message = $"Item effect {resolvedItemId} could not be loaded from Effect/ItemEff.img.";
                 return false;
             }
 
             actor.RelationshipOverlays[relationshipType] = new RemoteRelationshipOverlayState
             {
                 RelationshipType = relationshipType,
-                ItemId = itemId.Value,
+                ItemId = resolvedItemId,
                 PairCharacterId = pairCharacterId,
-                Effect = CloneRelationshipOverlayEffect(
+                Effect = NormalizeRelationshipOverlayEffect(
                     effect,
+                    relationshipType,
                     shouldLoop: relationshipType != RemoteRelationshipOverlayType.Generic),
                 StartTime = currentTime
             };
+            return true;
+        }
+
+        public bool TryApplyAvatarModified(
+            RemoteUserAvatarModifiedPacket packet,
+            int currentTime,
+            out string message)
+        {
+            message = null;
+            if (!_actorsById.TryGetValue(packet.CharacterId, out RemoteUserActor actor))
+            {
+                message = $"Remote user {packet.CharacterId} does not exist.";
+                return false;
+            }
+
+            if (packet.AvatarLook != null)
+            {
+                if (_loader == null)
+                {
+                    message = "Character loader is not available.";
+                    return false;
+                }
+
+                CharacterBuild updatedBuild = _loader.LoadFromAvatarLook(packet.AvatarLook, actor.Build?.Clone());
+                if (updatedBuild == null)
+                {
+                    message = $"AvatarLook refresh for remote user {packet.CharacterId} could not be applied.";
+                    return false;
+                }
+
+                if (!string.IsNullOrWhiteSpace(actor.Name))
+                {
+                    updatedBuild.Name = actor.Name.Trim();
+                }
+
+                actor.BeginMeleeAfterImageFade(currentTime);
+                actor.Build = updatedBuild;
+                actor.ActionName = NormalizeActionName(actor.ActionName, actor.Build.ActivePortableChair != null);
+                if (actor.Build.ActivePortableChair != null)
+                {
+                    ApplyPortableChairMount(actor, actor.Build.ActivePortableChair);
+                }
+                else
+                {
+                    ClearPortableChairMountState(actor);
+                }
+
+                actor.RefreshAssembler();
+                RegisterMeleeAfterImage(actor, 0, actor.ActionName, currentTime, 10, 0);
+            }
+
+            if (packet.Speed.HasValue && actor.Build != null)
+            {
+                actor.Build.Speed = packet.Speed.Value;
+            }
+
+            if (packet.CarryItemEffect.HasValue)
+            {
+                actor.CarryItemEffectId = packet.CarryItemEffect.Value > 0
+                    ? packet.CarryItemEffect
+                    : null;
+            }
+
+            actor.CompletedSetItemId = packet.CompletedSetItemId;
+
+            if (!TryApplyAvatarModifiedRelationshipRecord(
+                    actor,
+                    RemoteRelationshipOverlayType.Couple,
+                    packet.CoupleRecord,
+                    currentTime,
+                    out message))
+            {
+                return false;
+            }
+
+            if (!TryApplyAvatarModifiedRelationshipRecord(
+                    actor,
+                    RemoteRelationshipOverlayType.Friendship,
+                    packet.FriendshipRecord,
+                    currentTime,
+                    out message))
+            {
+                return false;
+            }
+
+            RemoteUserRelationshipRecord marriageRecord = packet.MarriageRecord.IsActive
+                ? packet.MarriageRecord with
+                {
+                    PairCharacterId = ResolveMarriagePairCharacterId(packet.CharacterId, packet.MarriageRecord)
+                }
+                : packet.MarriageRecord;
+            if (!TryApplyAvatarModifiedRelationshipRecord(
+                    actor,
+                    RemoteRelationshipOverlayType.Marriage,
+                    marriageRecord,
+                    currentTime,
+                    out message))
+            {
+                return false;
+            }
+
+            message = $"Remote user {packet.CharacterId} avatar-modified state applied.";
             return true;
         }
 
@@ -1601,10 +1713,7 @@ namespace HaCreator.MapSimulator.Pools
 
             bool canDrawSharedRelationshipSurface = partnerCharacterId > 0 && (relationshipStatus & 2) != 0;
             bool hasSharedLayers = overlay.Effect?.SharedLayers != null && overlay.Effect.SharedLayers.Count > 0;
-            bool shouldDrawNewYearCardText = overlay.RelationshipType == RemoteRelationshipOverlayType.NewYearCard
-                && font != null
-                && canDrawSharedRelationshipSurface;
-            if (!canDrawSharedRelationshipSurface || (!hasSharedLayers && !shouldDrawNewYearCardText))
+            if (!canDrawSharedRelationshipSurface || !hasSharedLayers)
             {
                 return;
             }
@@ -1619,21 +1728,6 @@ namespace HaCreator.MapSimulator.Pools
             int midpointScreenX = (int)Math.Round((actor.Position.X + partnerPosition.X) * 0.5f) - mapShiftX + centerX;
             int midpointScreenY = (int)Math.Round((actor.Position.Y + partnerPosition.Y) * 0.5f) - mapShiftY + centerY
                 + PlayerCharacter.PortableChairCoupleMidpointScreenYOffset;
-            if (shouldDrawNewYearCardText)
-            {
-                DrawRelationshipTextTag(
-                    spriteBatch,
-                    font,
-                    overlay.RelationshipType,
-                    BuildRelationshipTextTagText(actor, localPlayer, partnerCharacterId),
-                    midpointScreenX,
-                    midpointScreenY + NewYearCardOverlayTextVerticalOffset);
-            }
-
-            if (!hasSharedLayers)
-            {
-                return;
-            }
 
             DrawItemEffectLayers(
                 spriteBatch,
@@ -1643,110 +1737,6 @@ namespace HaCreator.MapSimulator.Pools
                 midpointScreenY,
                 partnerFacingRight,
                 elapsedTime);
-        }
-
-        private void DrawRelationshipTextTag(
-            SpriteBatch spriteBatch,
-            SpriteFont font,
-            RemoteRelationshipOverlayType relationshipType,
-            string text,
-            int centerX,
-            int topY)
-        {
-            if (spriteBatch == null
-                || font == null
-                || string.IsNullOrWhiteSpace(text)
-                || _loader == null)
-            {
-                return;
-            }
-
-            RelationshipTextTagStyle style = _loader.LoadRelationshipTextTagStyle(relationshipType);
-            if (style?.IsReady != true)
-            {
-                Vector2 fallbackSize = font.MeasureString(text);
-                DrawOutlinedText(
-                    spriteBatch,
-                    font,
-                    text,
-                    new Vector2(centerX - (fallbackSize.X * 0.5f), topY),
-                    Color.Black,
-                    Color.White);
-                return;
-            }
-
-            Vector2 textSize = font.MeasureString(text);
-            int textWidth = Math.Max(1, (int)Math.Ceiling(textSize.X));
-            int totalWidth = Math.Max(style.Left.Width + style.Right.Width, textWidth + 10);
-            float leftX = centerX - (totalWidth * 0.5f);
-            int middleStartX = (int)Math.Round(leftX) + style.Left.Width;
-            int middleEndX = (int)Math.Round(leftX) + totalWidth - style.Right.Width;
-
-            spriteBatch.Draw(style.Left, new Vector2(leftX, topY), Color.White);
-            for (int offsetX = middleStartX; offsetX < middleEndX; offsetX += style.Middle.Width)
-            {
-                int remainingWidth = middleEndX - offsetX;
-                if (remainingWidth <= 0)
-                {
-                    break;
-                }
-
-                int drawWidth = Math.Min(style.Middle.Width, remainingWidth);
-                spriteBatch.Draw(
-                    style.Middle,
-                    new Rectangle(offsetX, topY, drawWidth, style.Middle.Height),
-                    new Rectangle(0, 0, drawWidth, style.Middle.Height),
-                    Color.White);
-            }
-
-            spriteBatch.Draw(style.Right, new Vector2(leftX + totalWidth - style.Right.Width, topY), Color.White);
-            DrawOutlinedText(
-                spriteBatch,
-                font,
-                text,
-                new Vector2(centerX - (textSize.X * 0.5f), topY + 2f),
-                Color.Black,
-                style.TextColor);
-        }
-
-        private string BuildRelationshipTextTagText(RemoteUserActor ownerActor, PlayerCharacter localPlayer, int partnerCharacterId)
-        {
-            if (ownerActor == null || partnerCharacterId <= 0)
-            {
-                return null;
-            }
-
-            string ownerName = string.IsNullOrWhiteSpace(ownerActor.Name)
-                ? ownerActor.CharacterId.ToString()
-                : ownerActor.Name.Trim();
-            string partnerName = ResolveRelationshipPartnerName(localPlayer, partnerCharacterId);
-            if (string.IsNullOrWhiteSpace(partnerName))
-            {
-                return ownerName;
-            }
-
-            return string.Equals(ownerName, partnerName, StringComparison.OrdinalIgnoreCase)
-                ? ownerName
-                : $"{ownerName} <-> {partnerName}";
-        }
-
-        private string ResolveRelationshipPartnerName(PlayerCharacter localPlayer, int partnerCharacterId)
-        {
-            if (partnerCharacterId <= 0)
-            {
-                return null;
-            }
-
-            if (localPlayer?.Build?.Id == partnerCharacterId)
-            {
-                return string.IsNullOrWhiteSpace(localPlayer.Build.Name)
-                    ? partnerCharacterId.ToString()
-                    : localPlayer.Build.Name.Trim();
-            }
-
-            return _actorsById.TryGetValue(partnerCharacterId, out RemoteUserActor actor)
-                ? (string.IsNullOrWhiteSpace(actor.Name) ? partnerCharacterId.ToString() : actor.Name.Trim())
-                : partnerCharacterId.ToString();
         }
 
         private static void DrawItemEffectLayers(
@@ -1931,6 +1921,28 @@ namespace HaCreator.MapSimulator.Pools
                 StringComparison.OrdinalIgnoreCase);
         }
 
+        private static ItemEffectAnimationSet NormalizeRelationshipOverlayEffect(
+            ItemEffectAnimationSet source,
+            RemoteRelationshipOverlayType relationshipType,
+            bool shouldLoop)
+        {
+            ItemEffectAnimationSet cloned = CloneRelationshipOverlayEffect(source, shouldLoop);
+            if (cloned == null)
+            {
+                return null;
+            }
+
+            if (relationshipType == RemoteRelationshipOverlayType.NewYearCard
+                && cloned.SharedLayers.Count == 0
+                && cloned.OwnerLayers.Count > 0)
+            {
+                cloned.SharedLayers.AddRange(cloned.OwnerLayers);
+                cloned.OwnerLayers.Clear();
+            }
+
+            return cloned;
+        }
+
         private static ItemEffectAnimationSet CloneRelationshipOverlayEffect(ItemEffectAnimationSet source, bool shouldLoop)
         {
             if (source == null)
@@ -2046,6 +2058,52 @@ namespace HaCreator.MapSimulator.Pools
 
             actor.FollowDriverId = 0;
             actor.FollowPassengerId = 0;
+        }
+
+        private bool TryApplyAvatarModifiedRelationshipRecord(
+            RemoteUserActor actor,
+            RemoteRelationshipOverlayType relationshipType,
+            RemoteUserRelationshipRecord relationshipRecord,
+            int currentTime,
+            out string message)
+        {
+            if (actor == null)
+            {
+                message = "Remote actor is required.";
+                return false;
+            }
+
+            return TrySetItemEffect(
+                actor.CharacterId,
+                relationshipType,
+                relationshipRecord.IsActive ? relationshipRecord.ItemId : null,
+                relationshipRecord.IsActive ? relationshipRecord.PairCharacterId : null,
+                currentTime,
+                out message);
+        }
+
+        private static int? ResolveMarriagePairCharacterId(int ownerCharacterId, RemoteUserRelationshipRecord relationshipRecord)
+        {
+            if (!relationshipRecord.IsActive)
+            {
+                return null;
+            }
+
+            if (relationshipRecord.CharacterId.HasValue
+                && relationshipRecord.CharacterId.Value > 0
+                && relationshipRecord.CharacterId.Value != ownerCharacterId)
+            {
+                return relationshipRecord.CharacterId.Value;
+            }
+
+            if (relationshipRecord.PairCharacterId.HasValue
+                && relationshipRecord.PairCharacterId.Value > 0
+                && relationshipRecord.PairCharacterId.Value != ownerCharacterId)
+            {
+                return relationshipRecord.PairCharacterId.Value;
+            }
+
+            return relationshipRecord.PairCharacterId;
         }
 
         private static void DrawOutlinedText(SpriteBatch spriteBatch, SpriteFont font, string text, Vector2 position, Color shadowColor, Color textColor)
@@ -3023,6 +3081,8 @@ namespace HaCreator.MapSimulator.Pools
         public int CurrentFootholdId { get; set; }
         public bool MovementDrivenActionSelection { get; set; }
         public bool HasMorphTemplate { get; set; }
+        public int? CarryItemEffectId { get; set; }
+        public int CompletedSetItemId { get; set; }
         public Dictionary<EquipSlot, CharacterPart> BattlefieldOriginalEquipment { get; set; }
         public float? BattlefieldOriginalSpeed { get; set; }
         public int? BattlefieldAppliedTeamId { get; set; }
@@ -3134,9 +3194,11 @@ namespace HaCreator.MapSimulator.Pools
                         .Select(static entry =>
                             $"{entry.Key}:{entry.Value.ItemId}:{entry.Value.PairCharacterId?.ToString() ?? "none"}"))
                 : "none";
+            string carryItemEffectText = CarryItemEffectId?.ToString() ?? "none";
+            string setItemText = CompletedSetItemId > 0 ? CompletedSetItemId.ToString() : "none";
             string followDriverText = FollowDriverId > 0 ? FollowDriverId.ToString() : "none";
             string followPassengerText = FollowPassengerId > 0 ? FollowPassengerId.ToString() : "none";
-            return $"{CharacterId}:{Name}@({Position.X:0},{Position.Y:0}) action={ActionName} source={SourceTag} helper={helperText} team={teamText} prep={preparedText} chairPair={chairPairText} itemEffect={itemEffectText} followDriver={followDriverText} followPassenger={followPassengerText}";
+            return $"{CharacterId}:{Name}@({Position.X:0},{Position.Y:0}) action={ActionName} source={SourceTag} helper={helperText} team={teamText} prep={preparedText} chairPair={chairPairText} itemEffect={itemEffectText} carry={carryItemEffectText} setItem={setItemText} followDriver={followDriverText} followPassenger={followPassengerText}";
         }
     }
 

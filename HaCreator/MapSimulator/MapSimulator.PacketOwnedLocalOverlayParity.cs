@@ -21,17 +21,26 @@ namespace HaCreator.MapSimulator
 {
     public partial class MapSimulator
     {
+        private enum FieldHazardSharedPetConsumeSource
+        {
+            None = 0,
+            PacketOwnedConfig = 1,
+            PetConfiguration = 2,
+            Hotkey = 3,
+            InventoryFallback = 4
+        }
+
         private readonly record struct FieldHazardHpPotionCandidate(int ItemId, InventoryType InventoryType, string ItemName);
         private readonly record struct FieldHazardPetAutoConsumeTarget(
             int PetSlotIndex,
             string PetName,
             FieldHazardHpPotionCandidate Candidate,
-            bool UsesConfiguredItem);
+            FieldHazardSharedPetConsumeSource SharedSource);
         private readonly record struct FieldHazardPetAutoConsumeRequest(
             int PetSlotIndex,
             string PetName,
             FieldHazardHpPotionCandidate Candidate,
-            bool UsesConfiguredItem,
+            FieldHazardSharedPetConsumeSource SharedSource,
             bool ForceRequest,
             bool BuffSkillRequest,
             int InventorySlotIndex,
@@ -66,6 +75,7 @@ namespace HaCreator.MapSimulator
         private int _localOverlayPacketInboxConfiguredPort = LocalOverlayPacketInboxManager.DefaultPort;
         private int _fieldHazardSharedPetConsumeItemId;
         private InventoryType _fieldHazardSharedPetConsumeInventoryType = InventoryType.NONE;
+        private FieldHazardSharedPetConsumeSource _fieldHazardSharedPetConsumeSource = FieldHazardSharedPetConsumeSource.None;
         private int _lastFieldHazardPetAutoConsumeRequestTick = int.MinValue;
 
         private const int FieldHazardPetAutoConsumeRequestThrottleMs = 200;
@@ -1024,7 +1034,7 @@ namespace HaCreator.MapSimulator
             }
 
             string petLabel = DescribeFieldHazardAutoConsumePet(target.PetSlotIndex, target.PetName);
-            string requestMode = target.UsesConfiguredItem ? "configured auto-HP" : "auto-HP";
+            string requestMode = DescribeFieldHazardSharedPetConsumeMode(target.SharedSource);
             if (!TryResolveFieldHazardItemSlotIndex(
                     uiWindowManager?.InventoryWindow as IInventoryRuntime,
                     target.Candidate.InventoryType,
@@ -1057,7 +1067,7 @@ namespace HaCreator.MapSimulator
                 target.PetSlotIndex,
                 target.PetName,
                 target.Candidate,
-                target.UsesConfiguredItem,
+                target.SharedSource,
                 ForceRequest: false,
                 BuffSkillRequest: false,
                 InventorySlotIndex: inventorySlotIndex,
@@ -1087,7 +1097,7 @@ namespace HaCreator.MapSimulator
             _pendingFieldHazardPetAutoConsumeRequest = null;
 
             string petLabel = DescribeFieldHazardAutoConsumePet(request.PetSlotIndex, request.PetName);
-            string requestMode = request.UsesConfiguredItem ? "configured auto-HP" : "auto-HP";
+            string requestMode = DescribeFieldHazardSharedPetConsumeMode(request.SharedSource);
             PlayerCharacter player = _playerManager?.Player;
             if (player?.Build == null || !player.IsAlive)
             {
@@ -1166,13 +1176,13 @@ namespace HaCreator.MapSimulator
                     activePets,
                     predictedRemainingHp,
                     out FieldHazardHpPotionCandidate candidate,
-                    out bool usesConfiguredItem))
+                    out FieldHazardSharedPetConsumeSource sharedSource))
             {
                 target = new FieldHazardPetAutoConsumeTarget(
                     requestPet.SlotIndex,
                     requestPet.Name,
                     default,
-                    requestPet.AutoConsumeHpItemId > 0);
+                    FieldHazardSharedPetConsumeSource.None);
                 return false;
             }
 
@@ -1180,7 +1190,7 @@ namespace HaCreator.MapSimulator
                 requestPet.SlotIndex,
                 requestPet.Name,
                 candidate,
-                usesConfiguredItem);
+                sharedSource);
             return true;
         }
 
@@ -1188,10 +1198,10 @@ namespace HaCreator.MapSimulator
             IReadOnlyList<PetRuntime> activePets,
             int predictedRemainingHp,
             out FieldHazardHpPotionCandidate candidate,
-            out bool usesConfiguredItem)
+            out FieldHazardSharedPetConsumeSource sharedSource)
         {
             candidate = default;
-            usesConfiguredItem = false;
+            sharedSource = FieldHazardSharedPetConsumeSource.None;
 
             PlayerCharacter player = _playerManager?.Player;
             IInventoryRuntime inventoryWindow = uiWindowManager?.InventoryWindow as IInventoryRuntime;
@@ -1211,10 +1221,20 @@ namespace HaCreator.MapSimulator
                         player,
                         out candidate))
                 {
+                    sharedSource = _fieldHazardSharedPetConsumeSource;
                     return true;
                 }
 
-                SetFieldHazardSharedPetConsumeItem(0, InventoryType.NONE);
+                if (IsPersistentFieldHazardSharedPetConsumeSource(_fieldHazardSharedPetConsumeSource))
+                {
+                    return false;
+                }
+
+                SetFieldHazardSharedPetConsumeItem(
+                    0,
+                    InventoryType.NONE,
+                    FieldHazardSharedPetConsumeSource.None,
+                    persistPacketOwnedSelection: false);
             }
 
             for (int i = 0; i < activePets.Count; i++)
@@ -1236,18 +1256,25 @@ namespace HaCreator.MapSimulator
                         player,
                         out candidate))
                 {
-                    SetFieldHazardSharedPetConsumeItem(candidate.ItemId, candidate.InventoryType);
-                    usesConfiguredItem = true;
+                    SetFieldHazardSharedPetConsumeItem(
+                        candidate.ItemId,
+                        candidate.InventoryType,
+                        FieldHazardSharedPetConsumeSource.PetConfiguration);
+                    sharedSource = FieldHazardSharedPetConsumeSource.PetConfiguration;
                     return true;
                 }
             }
 
-            if (!TryResolveFieldHazardHpPotionCandidate(predictedRemainingHp, out candidate))
+            if (!TryResolveFieldHazardHpPotionCandidate(
+                    predictedRemainingHp,
+                    out candidate,
+                    out FieldHazardSharedPetConsumeSource resolvedSource))
             {
                 return false;
             }
 
-            SetFieldHazardSharedPetConsumeItem(candidate.ItemId, candidate.InventoryType);
+            SetFieldHazardSharedPetConsumeItem(candidate.ItemId, candidate.InventoryType, resolvedSource);
+            sharedSource = resolvedSource;
             return true;
         }
 
@@ -1286,17 +1313,31 @@ namespace HaCreator.MapSimulator
                 currentTickCount);
         }
 
-        private void SetFieldHazardSharedPetConsumeItem(int itemId, InventoryType inventoryType)
+        private void SetFieldHazardSharedPetConsumeItem(
+            int itemId,
+            InventoryType inventoryType,
+            FieldHazardSharedPetConsumeSource source,
+            bool persistPacketOwnedSelection = true)
         {
             if (itemId <= 0 || inventoryType == InventoryType.NONE)
             {
                 _fieldHazardSharedPetConsumeItemId = 0;
                 _fieldHazardSharedPetConsumeInventoryType = InventoryType.NONE;
+                _fieldHazardSharedPetConsumeSource = FieldHazardSharedPetConsumeSource.None;
                 return;
             }
 
             _fieldHazardSharedPetConsumeItemId = itemId;
             _fieldHazardSharedPetConsumeInventoryType = inventoryType;
+            _fieldHazardSharedPetConsumeSource = source;
+
+            if (persistPacketOwnedSelection
+                && _packetOwnedFuncKeyConfigLoaded
+                && _packetOwnedPetConsumeItemId != itemId)
+            {
+                _packetOwnedPetConsumeItemId = itemId;
+                PersistPacketOwnedFuncKeyConfig();
+            }
         }
 
         private static bool TryResolveFieldHazardItemSlotIndex(
@@ -1341,9 +1382,13 @@ namespace HaCreator.MapSimulator
             return $"Pet {petSlotIndex + 1} ({resolvedName})";
         }
 
-        private bool TryResolveFieldHazardHpPotionCandidate(int predictedRemainingHp, out FieldHazardHpPotionCandidate candidate)
+        private bool TryResolveFieldHazardHpPotionCandidate(
+            int predictedRemainingHp,
+            out FieldHazardHpPotionCandidate candidate,
+            out FieldHazardSharedPetConsumeSource source)
         {
             candidate = default;
+            source = FieldHazardSharedPetConsumeSource.None;
             PlayerCharacter player = _playerManager?.Player;
             IInventoryRuntime inventoryWindow = uiWindowManager?.InventoryWindow as IInventoryRuntime;
             if (player == null || inventoryWindow == null)
@@ -1370,6 +1415,7 @@ namespace HaCreator.MapSimulator
 
                     if (TryCreateFieldHazardHpPotionCandidate(binding.ItemId, binding.InventoryType, predictedRemainingHp, inventoryWindow, player, out candidate))
                     {
+                        source = FieldHazardSharedPetConsumeSource.Hotkey;
                         return true;
                     }
                 }
@@ -1400,6 +1446,7 @@ namespace HaCreator.MapSimulator
 
                     if (TryCreateFieldHazardHpPotionCandidate(slot.ItemId, inventoryType, predictedRemainingHp, inventoryWindow, player, out candidate))
                     {
+                        source = FieldHazardSharedPetConsumeSource.InventoryFallback;
                         return true;
                     }
                 }
@@ -1413,9 +1460,10 @@ namespace HaCreator.MapSimulator
             string sharedItemStatus = _fieldHazardSharedPetConsumeItemId > 0 && _fieldHazardSharedPetConsumeInventoryType != InventoryType.NONE
                 ? string.Format(
                     CultureInfo.InvariantCulture,
-                    "sharedItem={0} [{1}]",
+                    "sharedItem={0} [{1}] source={2}",
                     _fieldHazardSharedPetConsumeItemId,
-                    _fieldHazardSharedPetConsumeInventoryType)
+                    _fieldHazardSharedPetConsumeInventoryType,
+                    DescribeFieldHazardSharedPetConsumeSource(_fieldHazardSharedPetConsumeSource))
                 : "sharedItem=none";
             if (!_pendingFieldHazardPetAutoConsumeRequest.HasValue)
             {
@@ -1435,6 +1483,34 @@ namespace HaCreator.MapSimulator
                 remainingMs,
                 request.ForceRequest ? 1 : 0,
                 request.BuffSkillRequest ? 1 : 0);
+        }
+
+        private static bool IsPersistentFieldHazardSharedPetConsumeSource(FieldHazardSharedPetConsumeSource source)
+        {
+            return source == FieldHazardSharedPetConsumeSource.PacketOwnedConfig
+                || source == FieldHazardSharedPetConsumeSource.PetConfiguration;
+        }
+
+        private static string DescribeFieldHazardSharedPetConsumeMode(FieldHazardSharedPetConsumeSource source)
+        {
+            return source switch
+            {
+                FieldHazardSharedPetConsumeSource.PacketOwnedConfig => "shared auto-HP",
+                FieldHazardSharedPetConsumeSource.PetConfiguration => "configured auto-HP",
+                _ => "auto-HP"
+            };
+        }
+
+        private static string DescribeFieldHazardSharedPetConsumeSource(FieldHazardSharedPetConsumeSource source)
+        {
+            return source switch
+            {
+                FieldHazardSharedPetConsumeSource.PacketOwnedConfig => "packet",
+                FieldHazardSharedPetConsumeSource.PetConfiguration => "pet",
+                FieldHazardSharedPetConsumeSource.Hotkey => "hotkey",
+                FieldHazardSharedPetConsumeSource.InventoryFallback => "inventory",
+                _ => "none"
+            };
         }
 
         private bool TryCreateFieldHazardHpPotionCandidate(

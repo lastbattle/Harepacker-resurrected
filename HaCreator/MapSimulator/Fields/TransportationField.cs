@@ -109,6 +109,7 @@ namespace HaCreator.MapSimulator.Fields
         public bool HasBalrogTextures => _balrogFrames != null && _balrogFrames.Count > 0;
         public bool IsActive => _state != ShipState.Idle;
         public bool IsBalrogVisible => _balrogState != BalrogState.Hidden && _balrogAlpha > 0;
+        public bool HasActiveVoyageBalrogAttack => _balrogState != BalrogState.Hidden;
         public bool HasRouteConfiguration => !string.IsNullOrWhiteSpace(_shipPath) || _x != 0 || _y != 0 || _x0 != 0 || _tMove != 0;
         public int ShipKind => _shipKind;
         public int DockX => _x;
@@ -389,6 +390,59 @@ namespace HaCreator.MapSimulator.Fields
 
             OnBalrogAppear?.Invoke();
             QueueAnnouncement("Balrog has appeared!", 2000);
+        }
+
+        public bool TryStartVoyageBalrogAttack(int durationMs, out string message)
+        {
+            if (_shipKind != 0)
+            {
+                message = "Ignored voyage Balrog event; attack choreography only applies on regular transit ships.";
+                return false;
+            }
+
+            if (_state != ShipState.Moving && _state != ShipState.InTransit)
+            {
+                message = $"Ignored voyage Balrog event while ship state is {_state}; the client-owned voyage attack only makes sense during departure or transit.";
+                return false;
+            }
+
+            if (_balrogState != BalrogState.Hidden)
+            {
+                message = $"Ignored voyage Balrog event because the Balrog attack is already {_balrogState}.";
+                return false;
+            }
+
+            int normalizedDuration = durationMs > 0 ? durationMs : 5000;
+            TriggerBalrogAttack(normalizedDuration);
+            message = $"Applied voyage Balrog event -> TriggerBalrogAttack ({normalizedDuration} ms).";
+            return true;
+        }
+
+        public bool TryResetVoyageBalrogAttack(out string message)
+        {
+            if (_balrogState == BalrogState.Hidden)
+            {
+                message = "Ignored voyage Balrog reset because no voyage Balrog attack is active.";
+                return false;
+            }
+
+            _balrogState = BalrogState.Hidden;
+            _balrogAlpha = 0f;
+            _balrogX = 0f;
+            _balrogY = 0f;
+            _balrogStartX = 0f;
+            _balrogEndX = 0f;
+            _balrogStartY = 0f;
+            _balrogEndY = 0f;
+            message = "Applied voyage Balrog reset.";
+            return true;
+        }
+
+        public bool TryResetRuntime(out string message)
+        {
+            Reset();
+            message = "Applied transport runtime reset.";
+            return true;
         }
 
         /// <summary>
@@ -975,7 +1029,7 @@ namespace HaCreator.MapSimulator.Fields
             string announcement = _currentAnnouncement?.Message ?? "<none>";
             return string.Create(
                 CultureInfo.InvariantCulture,
-                $"Transport state={_state}, balrog={_balrogState}, shipKind={_shipKind}, dock=({_x}, {_y}), awayX={_x0}, flip={_f}, tMove={_tMove}s, current=({_currentX:0.##}, {_currentY:0.##}), alpha={_currentAlpha:0.##}, shipPath={shipPath}, shipTextures={(_shipFrames?.Count ?? 0)}, balrogTextures={(_balrogFrames?.Count ?? 0)}, announcement={announcement}");
+                $"Transport state={_state}, balrog={_balrogState}, shipKind={_shipKind}, dock=({_x}, {_y}), awayX={_x0}, flip={_f}, tMove={_tMove}s, current=({_currentX:0.##}, {_currentY:0.##}), alpha={_currentAlpha:0.##}, voyageBalrogActive={HasActiveVoyageBalrogAttack}, shipPath={shipPath}, shipTextures={(_shipFrames?.Count ?? 0)}, balrogTextures={(_balrogFrames?.Count ?? 0)}, announcement={announcement}");
         }
 
         #endregion

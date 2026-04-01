@@ -724,6 +724,11 @@ namespace HaCreator.MapSimulator.UI
                 }
             }
 
+            if (wrappedLines.Count > MapSimulatorChat.ClientChatLogEntryLimit)
+            {
+                wrappedLines.RemoveRange(0, wrappedLines.Count - MapSimulatorChat.ClientChatLogEntryLimit);
+            }
+
             return wrappedLines;
         }
 
@@ -1068,7 +1073,7 @@ namespace HaCreator.MapSimulator.UI
         {
             if (!string.IsNullOrWhiteSpace(message.WhisperTargetCandidate))
             {
-                return message.WhisperTargetCandidate.Trim();
+                return MapSimulatorChat.NormalizeChatSpeakerCandidate(message.WhisperTargetCandidate);
             }
 
             if (!CanBeginWhisperFromChatLogType(message.ChatLogType))

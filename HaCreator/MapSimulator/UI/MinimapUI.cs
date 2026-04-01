@@ -95,6 +95,10 @@ namespace HaCreator.MapSimulator.UI
         private const int TOOLTIP_PADDING = 8;
         private const int TOOLTIP_MARGIN = 10;
         private const int TOOLTIP_LINE_GAP = 2;
+        private const int ClientButtonIdMin = 1000;
+        private const int ClientButtonIdMax = 1001;
+        private const int ClientButtonIdMap = 1002;
+        private const int ClientButtonIdOption = 1003;
 
         // Player position on minimap (in minimap coordinates, not world coordinates)
         private int _playerMinimapX = 0;
@@ -522,18 +526,7 @@ namespace HaCreator.MapSimulator.UI
         /// </summary>
         private void ObjUIBtMin_ButtonClickReleased(UIObject sender)
         {
-            if (_currentOption > 0)
-            {
-                _previousExpandedOption = _currentOption;
-            }
-
-            _btnMin.SetButtonState(UIObjectState.Disabled);
-            _btnMax.SetButtonState(UIObjectState.Normal);
-            SyncFramePositionsFrom(GetActiveExpandedFrame());
-
-            _currentOption = 0;
-            this._bIsCollapsedState = true;
-            UpdateButtonLayout();
+            HandleClientButtonClick(ClientButtonIdMin);
         }
 
         /// <summary>
@@ -542,12 +535,7 @@ namespace HaCreator.MapSimulator.UI
         /// </summary>
         private void ObjUIBtMax_ButtonClickReleased(UIObject sender)
         {
-            _btnMin.SetButtonState(UIObjectState.Normal);
-            _btnMax.SetButtonState(UIObjectState.Disabled);
-            _currentOption = NormalizeExpandedOption(_previousExpandedOption > 0 ? _previousExpandedOption : 1);
-            SyncFramePositionsFrom(_collapsedFrame);
-            this._bIsCollapsedState = false;
-            UpdateButtonLayout();
+            HandleClientButtonClick(ClientButtonIdMax);
         }
 
         /// <summary>
@@ -555,7 +543,7 @@ namespace HaCreator.MapSimulator.UI
         /// </summary>
         private void ObjUIBtBig_ButtonClickReleased(UIObject sender)
         {
-            SetExpandedOption(2);
+            HandleClientButtonClick(ClientButtonIdOption);
         }
 
         /// <summary>
@@ -563,7 +551,7 @@ namespace HaCreator.MapSimulator.UI
         /// </summary>
         private void ObjUIBtSmall_ButtonClickReleased(UIObject sender)
         {
-            SetExpandedOption(1);
+            HandleClientButtonClick(ClientButtonIdOption);
         }
 
         /// <summary>
@@ -584,7 +572,68 @@ namespace HaCreator.MapSimulator.UI
         /// </summary>
         private void ObjUIBtMap_ButtonClickReleased(UIObject sender)
         {
-            WorldMapRequested?.Invoke();
+            HandleClientButtonClick(ClientButtonIdMap);
+        }
+
+        private void HandleClientButtonClick(int buttonId)
+        {
+            switch (buttonId)
+            {
+                case ClientButtonIdMin:
+                    CollapseMinimapToRememberedOption();
+                    break;
+                case ClientButtonIdMax:
+                    RestoreRememberedExpandedOption();
+                    break;
+                case ClientButtonIdMap:
+                    WorldMapRequested?.Invoke();
+                    break;
+                case ClientButtonIdOption:
+                    ToggleExpandedOption();
+                    break;
+            }
+        }
+
+        private void CollapseMinimapToRememberedOption()
+        {
+            if (_currentOption > 0)
+            {
+                _previousExpandedOption = _currentOption;
+            }
+
+            _btnMin.SetButtonState(UIObjectState.Disabled);
+            _btnMax.SetButtonState(UIObjectState.Normal);
+            SyncFramePositionsFrom(GetActiveExpandedFrame());
+
+            _currentOption = 0;
+            _bIsCollapsedState = true;
+            UpdateButtonLayout();
+        }
+
+        private void RestoreRememberedExpandedOption()
+        {
+            _btnMin.SetButtonState(UIObjectState.Normal);
+            _btnMax.SetButtonState(UIObjectState.Disabled);
+            _currentOption = NormalizeExpandedOption(_previousExpandedOption > 0 ? _previousExpandedOption : 1);
+            SyncFramePositionsFrom(_collapsedFrame);
+            _bIsCollapsedState = false;
+            UpdateButtonLayout();
+        }
+
+        private void ToggleExpandedOption()
+        {
+            if (_btnSmall == null || _expandedFrame == null)
+            {
+                return;
+            }
+
+            if (_bIsCollapsedState)
+            {
+                RestoreRememberedExpandedOption();
+                return;
+            }
+
+            SetExpandedOption(_currentOption >= 2 ? 1 : 2);
         }
 
         private void SetExpandedOption(int option)

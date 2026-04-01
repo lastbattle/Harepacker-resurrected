@@ -84,7 +84,9 @@ namespace HaCreator.MapSimulator
         private const int CHAT_INPUT_HEIGHT = 15;
         private const int CHAT_MESSAGE_DISPLAY_TIME = 10000; // Messages fade after 10 seconds
         private const int CHAT_MAX_INPUT_LENGTH = 100;
-        private const int MAX_CHAT_MESSAGES = 50;
+        // Client ChatLogAdd trims the chat log once it exceeds 0x40 entries.
+        internal const int ClientChatLogEntryLimit = 64;
+        private const int MAX_CHAT_MESSAGES = ClientChatLogEntryLimit;
         private const int CHAT_DISPLAY_LINES = 15;
         private const int CHAT_CURSOR_BLINK_RATE = 500; // Blink every 500ms
 

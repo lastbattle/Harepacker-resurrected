@@ -922,6 +922,7 @@ namespace HaCreator.MapSimulator
             // Update NPC movement and action cycling
 
             UpdateNpcActions(gameTime);
+            DrainSocialRoomEmployeeOfficialSessionBridge(currTickCount);
             UpdateSocialRoomEmployeeActor(gameTime);
 
 

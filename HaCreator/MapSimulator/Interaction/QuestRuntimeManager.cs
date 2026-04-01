@@ -169,6 +169,8 @@ namespace HaCreator.MapSimulator.Interaction
             public int MesoReward { get; set; }
             public int FameReward { get; set; }
             public int BuffItemId { get; set; }
+            public int PetTamenessReward { get; set; }
+            public int PetSpeedReward { get; set; }
             public int PetSkillRewardMask { get; set; }
             public int? NextQuestId { get; set; }
             public List<int> BuffItemMapIds { get; } = new();
@@ -205,6 +207,8 @@ namespace HaCreator.MapSimulator.Interaction
             public string StartDescription { get; init; } = string.Empty;
             public string ProgressDescription { get; init; } = string.Empty;
             public string CompletionDescription { get; init; } = string.Empty;
+            public int TimeLimitSeconds { get; init; }
+            public string TimerUiKey { get; init; } = string.Empty;
             public IReadOnlyList<string> ShowLayerTags { get; init; } = Array.Empty<string>();
             public IReadOnlyList<string> StartScriptNames { get; init; } = Array.Empty<string>();
             public IReadOnlyList<string> EndScriptNames { get; init; } = Array.Empty<string>();
@@ -266,6 +270,7 @@ namespace HaCreator.MapSimulator.Interaction
         private Action<int> _addSkillPoints;
         private Func<IReadOnlyCollection<int>, int?, bool> _hasCompatibleActivePetProvider;
         private Func<IReadOnlyCollection<int>, int?, int, bool> _grantPetSkillProvider;
+        private Func<IReadOnlyCollection<int>, int?, int, bool> _grantPetTamenessProvider;
         private Func<int, bool> _applyQuestBuffItem;
         private Func<int> _currentMapIdProvider;
         private Func<int, string> _mapNameProvider;
@@ -320,10 +325,12 @@ namespace HaCreator.MapSimulator.Interaction
 
         public void ConfigurePetRuntime(
             Func<IReadOnlyCollection<int>, int?, bool> hasCompatibleActivePetProvider,
-            Func<IReadOnlyCollection<int>, int?, int, bool> grantPetSkillProvider)
+            Func<IReadOnlyCollection<int>, int?, int, bool> grantPetSkillProvider,
+            Func<IReadOnlyCollection<int>, int?, int, bool> grantPetTamenessProvider)
         {
             _hasCompatibleActivePetProvider = hasCompatibleActivePetProvider;
             _grantPetSkillProvider = grantPetSkillProvider;
+            _grantPetTamenessProvider = grantPetTamenessProvider;
         }
 
         public void ConfigureQuestActionRuntime(
@@ -497,6 +504,14 @@ namespace HaCreator.MapSimulator.Interaction
 
             string rewardText = BuildRewardText(definition);
             string hintText = BuildHintText(definition, state, startIssues, completionIssues);
+            if (state == QuestStateType.Started && definition.TimeLimitSeconds > 0)
+            {
+                string timeLimitText = $"Time limit: {FormatQuestDuration(definition.TimeLimitSeconds)}";
+                hintText = string.IsNullOrWhiteSpace(hintText)
+                    ? timeLimitText
+                    : $"{hintText}\n{timeLimitText}";
+            }
+
             string npcText = BuildNpcText(definition);
             List<QuestLogLineSnapshot> requirementLines = BuildDetailRequirementLines(definition, state, build);
             List<QuestLogLineSnapshot> rewardLines = BuildRewardLines(definition);
@@ -541,6 +556,10 @@ namespace HaCreator.MapSimulator.Interaction
                 TargetMobName = targetMobName,
                 TargetItemId = targetItemId,
                 TargetItemName = targetItemId.HasValue ? GetItemName(targetItemId.Value) : string.Empty,
+                HasDetailInset = deliveryMetadata.DeliveryType != QuestDetailDeliveryType.None ||
+                                 (state == QuestStateType.Started && definition.TimeLimitSeconds > 0),
+                TimeLimitSeconds = state == QuestStateType.Started ? Math.Max(0, definition.TimeLimitSeconds) : 0,
+                TimerUiKey = state == QuestStateType.Started ? (definition.TimerUiKey ?? string.Empty) : string.Empty,
                 DeliveryType = deliveryMetadata.DeliveryType,
                 DeliveryActionEnabled = deliveryMetadata.ActionEnabled,
                 DeliveryCashItemId = deliveryMetadata.CashItemId,
@@ -1268,6 +1287,46 @@ namespace HaCreator.MapSimulator.Interaction
                 Entries = entries,
                 HasAlertAnimation = entries.Any(entry => entry.IsRecentlyUpdated)
             };
+        }
+
+        internal bool TryGetQuestName(int questId, out string questName)
+        {
+            EnsureDefinitionsLoaded();
+            if (_definitions.TryGetValue(questId, out QuestDefinition definition))
+            {
+                questName = definition.Name;
+                return true;
+            }
+
+            questName = $"Quest #{questId}";
+            return false;
+        }
+
+        internal bool TryBuildPacketQuestResultPresentation(
+            int questId,
+            CharacterBuild build,
+            PacketQuestResultTextKind textKind,
+            out PacketQuestResultPresentation presentation)
+        {
+            EnsureDefinitionsLoaded();
+            if (!_definitions.TryGetValue(questId, out QuestDefinition definition))
+            {
+                presentation = null;
+                return false;
+            }
+
+            QuestStateType state = ResolvePacketQuestResultState(definition.QuestId, textKind);
+            NpcDialogueFormattingContext formattingContext = CreateDialogueFormattingContext();
+            string noticeText = BuildPacketQuestResultNoticeText(definition, build, state, textKind, formattingContext);
+            IReadOnlyList<NpcInteractionPage> modalPages = BuildPacketQuestResultModalPages(definition, state, textKind, formattingContext);
+            presentation = new PacketQuestResultPresentation
+            {
+                QuestId = definition.QuestId,
+                QuestName = definition.Name,
+                NoticeText = noticeText,
+                ModalPages = modalPages
+            };
+            return true;
         }
 
         internal int GetTrackedItemCount(int itemId)
@@ -2479,6 +2538,26 @@ namespace HaCreator.MapSimulator.Interaction
                 });
             }
 
+            if (definition.EndActions.PetTamenessReward != 0)
+            {
+                lines.Add(new QuestLogLineSnapshot
+                {
+                    Label = "Pet",
+                    Text = GetPetTamenessRewardText(definition.EndActions.PetTamenessReward),
+                    IsComplete = true
+                });
+            }
+
+            if (definition.EndActions.PetSpeedReward != 0)
+            {
+                lines.Add(new QuestLogLineSnapshot
+                {
+                    Label = "Pet",
+                    Text = GetPetSpeedRewardText(definition.EndActions.PetSpeedReward),
+                    IsComplete = true
+                });
+            }
+
             for (int i = 0; i < definition.EndActions.TraitRewards.Count; i++)
             {
                 QuestTraitReward reward = definition.EndActions.TraitRewards[i];
@@ -3167,6 +3246,16 @@ namespace HaCreator.MapSimulator.Interaction
                 details.Add($"Buff: {GetBuffItemRewardText(actions)}");
             }
 
+            if (actions.PetTamenessReward != 0)
+            {
+                details.Add(GetPetTamenessRewardText(actions.PetTamenessReward));
+            }
+
+            if (actions.PetSpeedReward != 0)
+            {
+                details.Add(GetPetSpeedRewardText(actions.PetSpeedReward));
+            }
+
             for (int i = 0; i < actions.Messages.Count; i++)
             {
                 if (!string.IsNullOrWhiteSpace(actions.Messages[i]))
@@ -3234,6 +3323,16 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             return $"Pet skill: {string.Join(", ", names)}";
+        }
+
+        private static string GetPetTamenessRewardText(int amount)
+        {
+            return $"Pet tameness {amount:+#;-#;0}";
+        }
+
+        private static string GetPetSpeedRewardText(int amount)
+        {
+            return $"Pet speed {amount:+#;-#;0}";
         }
 
         private static string FormatPetSkillFlagName(PetSkillFlag flag)
@@ -3357,6 +3456,33 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             messages.Add($"{GetPetSkillRewardText(skillMask)} (no compatible active pet)");
+        }
+
+        private void ApplyPetTamenessReward(
+            int amount,
+            IReadOnlyList<QuestPetRequirement> petRequirements,
+            int? petRecallLimit,
+            ICollection<string> messages)
+        {
+            if (amount == 0)
+            {
+                return;
+            }
+
+            int[] supportedPetItemIds = petRequirements?
+                .Select(static requirement => requirement.ItemId)
+                .Where(static itemId => itemId > 0)
+                .Distinct()
+                .ToArray()
+                ?? Array.Empty<int>();
+
+            if (_grantPetTamenessProvider?.Invoke(supportedPetItemIds, petRecallLimit, amount) == true)
+            {
+                messages.Add(GetPetTamenessRewardText(amount));
+                return;
+            }
+
+            messages.Add($"{GetPetTamenessRewardText(amount)} (no compatible active pet)");
         }
 
         private void ApplySpReward(QuestSpReward reward, CharacterBuild build, ICollection<string> messages)
@@ -3491,6 +3617,12 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             ApplyPetSkillReward(actions.PetSkillRewardMask, petRequirements, petRecallLimit, messages);
+            ApplyPetTamenessReward(actions.PetTamenessReward, petRequirements, petRecallLimit, messages);
+
+            if (actions.PetSpeedReward != 0)
+            {
+                messages.Add($"{GetPetSpeedRewardText(actions.PetSpeedReward)} (pet speed runtime unavailable)");
+            }
 
             for (int i = 0; i < actions.SpRewards.Count; i++)
             {
@@ -3965,6 +4097,9 @@ namespace HaCreator.MapSimulator.Interaction
                 StartDescription = (questInfo["0"] as WzStringProperty)?.Value ?? string.Empty,
                 ProgressDescription = (questInfo["1"] as WzStringProperty)?.Value ?? string.Empty,
                 CompletionDescription = (questInfo["2"] as WzStringProperty)?.Value ?? string.Empty,
+                TimeLimitSeconds = ParsePositiveInt(questInfo["timeLimit"]).GetValueOrDefault()
+                                   + ParsePositiveInt(questInfo["timeLimit2"]).GetValueOrDefault(),
+                TimerUiKey = (questInfo["timerUI"] as WzStringProperty)?.Value ?? string.Empty,
                 ShowLayerTags = ParseLayerTags((questInfo["showLayerTag"] as WzStringProperty)?.Value),
                 StartScriptNames = ParseScriptNames(startCheck?["startscript"]),
                 EndScriptNames = ParseScriptNames(endCheck?["endscript"]),
@@ -4445,6 +4580,12 @@ namespace HaCreator.MapSimulator.Interaction
                         break;
                     case "petskill":
                         actions.PetSkillRewardMask = ParseInt(child).GetValueOrDefault();
+                        break;
+                    case "pettameness":
+                        actions.PetTamenessReward = ParseInt(child).GetValueOrDefault();
+                        break;
+                    case "petspeed":
+                        actions.PetSpeedReward = ParseInt(child).GetValueOrDefault();
                         break;
                     case "charismaEXP":
                         AppendTraitReward(actions, child, QuestTraitType.Charisma);
@@ -5006,25 +5147,31 @@ namespace HaCreator.MapSimulator.Interaction
                 return Array.Empty<NpcInteractionPage>();
             }
 
-            IReadOnlyList<NpcInteractionPage> selectionPages = ParseStopSelectionPages(stopProperty, selectionId.ToString());
-            if (selectionPages.Count > 0)
+            foreach (string candidateBranchName in EnumerateStopSelectionCandidateNames(selectionId, selectionIndex, allowPositionFallback))
             {
-                return selectionPages;
+                WzImageProperty selectionBranchProperty = stopProperty[candidateBranchName];
+                IReadOnlyList<NpcInteractionPage> selectionPages = ParseStopSelectionBranchPages(
+                    selectionBranchProperty,
+                    selectionId,
+                    selectionIndex,
+                    allowPositionFallback);
+                if (selectionPages.Count > 0)
+                {
+                    return selectionPages;
+                }
             }
 
-            if (!allowPositionFallback)
+            IReadOnlyList<NpcInteractionPage> nestedSelectionPages = ParseSelectionSpecificPagesFromSiblingStopBranches(
+                stopProperty,
+                selectionId,
+                selectionIndex,
+                allowPositionFallback);
+            if (nestedSelectionPages.Count > 0)
             {
-                return Array.Empty<NpcInteractionPage>();
+                return nestedSelectionPages;
             }
 
-            int oneBasedIndex = selectionIndex + 1;
-            selectionPages = ParseStopSelectionPages(stopProperty, oneBasedIndex.ToString());
-            if (selectionPages.Count > 0)
-            {
-                return selectionPages;
-            }
-
-            return ParseStopSelectionPages(stopProperty, selectionIndex.ToString());
+            return Array.Empty<NpcInteractionPage>();
         }
 
         private static IReadOnlyList<NpcInteractionPage> ParseStopSelectionPages(
@@ -5038,6 +5185,114 @@ namespace HaCreator.MapSimulator.Interaction
 
             WzImageProperty selectionProperty = stopProperty[branchName];
             return selectionProperty != null ? ParseBranchPages(selectionProperty) : Array.Empty<NpcInteractionPage>();
+        }
+
+        private static IReadOnlyList<NpcInteractionPage> ParseStopSelectionBranchPages(
+            WzImageProperty branchProperty,
+            int selectionId,
+            int selectionIndex,
+            bool allowPositionFallback)
+        {
+            if (branchProperty == null)
+            {
+                return Array.Empty<NpcInteractionPage>();
+            }
+
+            IReadOnlyList<NpcInteractionPage> nestedSelectionPages = ParseSelectionSpecificPages(
+                branchProperty,
+                selectionId,
+                selectionIndex,
+                allowPositionFallback);
+            if (nestedSelectionPages.Count > 0)
+            {
+                return nestedSelectionPages;
+            }
+
+            return ParseBranchPages(branchProperty);
+        }
+
+        private static IReadOnlyList<NpcInteractionPage> ParseSelectionSpecificPagesFromSiblingStopBranches(
+            WzImageProperty stopProperty,
+            int selectionId,
+            int selectionIndex,
+            bool allowPositionFallback)
+        {
+            if (stopProperty?.WzProperties == null)
+            {
+                return Array.Empty<NpcInteractionPage>();
+            }
+
+            for (int i = 0; i < stopProperty.WzProperties.Count; i++)
+            {
+                WzImageProperty branchProperty = stopProperty.WzProperties[i];
+                if (branchProperty == null ||
+                    branchProperty["answer"] == null ||
+                    !int.TryParse(branchProperty.Name, out _))
+                {
+                    continue;
+                }
+
+                IReadOnlyList<NpcInteractionPage> nestedSelectionPages = ParseSelectionSpecificPages(
+                    branchProperty,
+                    selectionId,
+                    selectionIndex,
+                    allowPositionFallback);
+                if (nestedSelectionPages.Count > 0)
+                {
+                    return nestedSelectionPages;
+                }
+            }
+
+            return Array.Empty<NpcInteractionPage>();
+        }
+
+        private static IReadOnlyList<NpcInteractionPage> ParseSelectionSpecificPages(
+            WzImageProperty branchProperty,
+            int selectionId,
+            int selectionIndex,
+            bool allowPositionFallback)
+        {
+            if (branchProperty?.WzProperties == null || branchProperty["answer"] == null)
+            {
+                return Array.Empty<NpcInteractionPage>();
+            }
+
+            foreach (string candidatePageName in EnumerateStopSelectionCandidateNames(selectionId, selectionIndex, allowPositionFallback))
+            {
+                NpcInteractionPage page = CreateConversationPage(branchProperty[candidatePageName]);
+                if (page != null)
+                {
+                    return new[] { page };
+                }
+            }
+
+            return Array.Empty<NpcInteractionPage>();
+        }
+
+        private static IEnumerable<string> EnumerateStopSelectionCandidateNames(
+            int selectionId,
+            int selectionIndex,
+            bool allowPositionFallback)
+        {
+            yield return selectionId.ToString();
+
+            if (!allowPositionFallback)
+            {
+                yield break;
+            }
+
+            string oneBasedIndex = (selectionIndex + 1).ToString();
+            if (!string.Equals(oneBasedIndex, selectionId.ToString(), StringComparison.Ordinal))
+            {
+                yield return oneBasedIndex;
+            }
+
+            string zeroBasedIndex = selectionIndex.ToString();
+            if (!string.Equals(zeroBasedIndex, selectionId.ToString(), StringComparison.Ordinal) &&
+                !string.Equals(zeroBasedIndex, oneBasedIndex, StringComparison.Ordinal))
+            {
+                yield return zeroBasedIndex;
+            }
         }
 
         private static int GetIntValue(WzImageProperty property)
@@ -6144,6 +6399,16 @@ namespace HaCreator.MapSimulator.Interaction
                 rewards.Add($"Buff {GetBuffItemRewardText(definition.EndActions)}");
             }
 
+            if (definition.EndActions.PetTamenessReward != 0)
+            {
+                rewards.Add(GetPetTamenessRewardText(definition.EndActions.PetTamenessReward));
+            }
+
+            if (definition.EndActions.PetSpeedReward != 0)
+            {
+                rewards.Add(GetPetSpeedRewardText(definition.EndActions.PetSpeedReward));
+            }
+
             for (int i = 0; i < definition.EndActions.TraitRewards.Count; i++)
             {
                 QuestTraitReward reward = definition.EndActions.TraitRewards[i];
@@ -6185,6 +6450,227 @@ namespace HaCreator.MapSimulator.Interaction
             return rewards.Count == 0
                 ? "No explicit rewards are registered for this quest in the loaded data."
                 : string.Join("\n", rewards);
+        }
+
+        private QuestStateType ResolvePacketQuestResultState(int questId, PacketQuestResultTextKind textKind)
+        {
+            return textKind switch
+            {
+                PacketQuestResultTextKind.StartDescription => QuestStateType.Not_Started,
+                PacketQuestResultTextKind.ProgressDescription => QuestStateType.Started,
+                PacketQuestResultTextKind.CompletionDescription => QuestStateType.Completed,
+                PacketQuestResultTextKind.DemandSummary => QuestStateType.Started,
+                PacketQuestResultTextKind.RewardSummary => QuestStateType.Completed,
+                _ => GetQuestState(questId)
+            };
+        }
+
+        private string BuildPacketQuestResultNoticeText(
+            QuestDefinition definition,
+            CharacterBuild build,
+            QuestStateType state,
+            PacketQuestResultTextKind textKind,
+            NpcDialogueFormattingContext formattingContext)
+        {
+            string primaryText = ResolvePacketQuestResultPrimaryText(definition, state, textKind);
+            var sections = new List<string>();
+            if (!string.IsNullOrWhiteSpace(primaryText))
+            {
+                sections.Add(NpcDialogueTextFormatter.Format(primaryText, formattingContext));
+            }
+
+            IReadOnlyList<string> actionLines = BuildPacketQuestResultActionLines(definition, build, state, textKind);
+            if (actionLines.Count > 0)
+            {
+                sections.Add(string.Join("\n", actionLines));
+            }
+
+            if (sections.Count == 0 && !string.IsNullOrWhiteSpace(definition.Name))
+            {
+                sections.Add(definition.Name);
+            }
+
+            return string.Join("\n\n", sections.Where(section => !string.IsNullOrWhiteSpace(section)));
+        }
+
+        private static string ResolvePacketQuestResultPrimaryText(
+            QuestDefinition definition,
+            QuestStateType state,
+            PacketQuestResultTextKind textKind)
+        {
+            if (definition == null)
+            {
+                return string.Empty;
+            }
+
+            return textKind switch
+            {
+                PacketQuestResultTextKind.StartDescription => FirstNonEmpty(definition.StartDescription, definition.Summary),
+                PacketQuestResultTextKind.ProgressDescription => FirstNonEmpty(definition.ProgressDescription, definition.DemandSummary, definition.Summary),
+                PacketQuestResultTextKind.CompletionDescription => FirstNonEmpty(definition.CompletionDescription, definition.RewardSummary, definition.Summary),
+                PacketQuestResultTextKind.Summary => FirstNonEmpty(definition.Summary, definition.StartDescription, definition.ProgressDescription),
+                PacketQuestResultTextKind.DemandSummary => FirstNonEmpty(definition.DemandSummary, definition.ProgressDescription, definition.Summary),
+                PacketQuestResultTextKind.RewardSummary => FirstNonEmpty(definition.RewardSummary, definition.CompletionDescription, definition.Summary),
+                _ => state switch
+                {
+                    QuestStateType.Not_Started => FirstNonEmpty(definition.StartDescription, definition.Summary, definition.DemandSummary),
+                    QuestStateType.Started => FirstNonEmpty(definition.ProgressDescription, definition.DemandSummary, definition.Summary),
+                    QuestStateType.Completed => FirstNonEmpty(definition.CompletionDescription, definition.RewardSummary, definition.Summary),
+                    _ => FirstNonEmpty(definition.Summary, definition.StartDescription, definition.ProgressDescription, definition.CompletionDescription)
+                }
+            };
+        }
+
+        private IReadOnlyList<NpcInteractionPage> BuildPacketQuestResultModalPages(
+            QuestDefinition definition,
+            QuestStateType state,
+            PacketQuestResultTextKind textKind,
+            NpcDialogueFormattingContext formattingContext)
+        {
+            IEnumerable<NpcInteractionPage> sourcePages = SelectPacketQuestResultConversationPages(definition, state, textKind);
+            IReadOnlyList<NpcInteractionPage> formattedPages = GetDisplayConversationPages(sourcePages, formattingContext);
+            return formattedPages
+                .Where(page => page != null && !string.IsNullOrWhiteSpace(page.Text))
+                .ToArray();
+        }
+
+        private static IEnumerable<NpcInteractionPage> SelectPacketQuestResultConversationPages(
+            QuestDefinition definition,
+            QuestStateType state,
+            PacketQuestResultTextKind textKind)
+        {
+            if (definition == null)
+            {
+                return Array.Empty<NpcInteractionPage>();
+            }
+
+            return textKind switch
+            {
+                PacketQuestResultTextKind.StartDescription => definition.StartSayPages,
+                PacketQuestResultTextKind.ProgressDescription => definition.EndSayPages,
+                PacketQuestResultTextKind.CompletionDescription => definition.EndSayPages,
+                PacketQuestResultTextKind.DemandSummary => definition.EndSayPages,
+                PacketQuestResultTextKind.RewardSummary => definition.EndSayPages,
+                _ => state == QuestStateType.Not_Started ? definition.StartSayPages : definition.EndSayPages
+            };
+        }
+
+        private IReadOnlyList<string> BuildPacketQuestResultActionLines(
+            QuestDefinition definition,
+            CharacterBuild build,
+            QuestStateType state,
+            PacketQuestResultTextKind textKind)
+        {
+            if (definition == null)
+            {
+                return Array.Empty<string>();
+            }
+
+            bool useCompletionActions = textKind switch
+            {
+                PacketQuestResultTextKind.StartDescription => false,
+                PacketQuestResultTextKind.ProgressDescription => true,
+                PacketQuestResultTextKind.CompletionDescription => true,
+                PacketQuestResultTextKind.DemandSummary => true,
+                PacketQuestResultTextKind.RewardSummary => true,
+                _ => state != QuestStateType.Not_Started
+            };
+
+            QuestActionBundle actions = useCompletionActions ? definition.EndActions : definition.StartActions;
+            if (actions == null)
+            {
+                return Array.Empty<string>();
+            }
+
+            var lines = new List<string>();
+            if (actions.ExpReward > 0)
+            {
+                lines.Add($"EXP +{actions.ExpReward}");
+            }
+
+            if (actions.MesoReward != 0)
+            {
+                lines.Add($"Meso {actions.MesoReward:+#;-#;0}");
+            }
+
+            if (actions.FameReward != 0)
+            {
+                lines.Add($"Fame {actions.FameReward:+#;-#;0}");
+            }
+
+            if (actions.BuffItemId > 0)
+            {
+                lines.Add($"Buff {GetBuffItemRewardText(actions)}");
+            }
+
+            for (int i = 0; i < actions.TraitRewards.Count; i++)
+            {
+                QuestTraitReward reward = actions.TraitRewards[i];
+                lines.Add($"{FormatTraitName(reward.Trait)} {reward.Amount:+#;-#;0}");
+            }
+
+            for (int i = 0; i < actions.RewardItems.Count; i++)
+            {
+                QuestRewardItem reward = actions.RewardItems[i];
+                if (reward?.Count <= 0)
+                {
+                    continue;
+                }
+
+                if (build != null &&
+                    !MatchesRewardItemFilterCore(
+                        build.Job,
+                        build.SubJob,
+                        build.Gender,
+                        reward.JobClassBitfield,
+                        reward.JobExBitfield,
+                        reward.Gender))
+                {
+                    continue;
+                }
+
+                lines.Add(GetRewardItemDescription(
+                    reward,
+                    includeSelectionTag: false,
+                    includeFilters: build == null));
+            }
+
+            for (int i = 0; i < actions.SkillRewards.Count; i++)
+            {
+                QuestSkillReward reward = actions.SkillRewards[i];
+                if (build != null && !MatchesAllowedJobs(build.Job, reward.AllowedJobs))
+                {
+                    continue;
+                }
+
+                lines.Add(GetSkillRewardText(reward));
+            }
+
+            if (actions.PetSkillRewardMask > 0)
+            {
+                lines.Add(GetPetSkillRewardText(actions.PetSkillRewardMask));
+            }
+
+            for (int i = 0; i < actions.SpRewards.Count; i++)
+            {
+                QuestSpReward reward = actions.SpRewards[i];
+                if (build != null && !MatchesAllowedJobs(build.Job, reward.AllowedJobs))
+                {
+                    continue;
+                }
+
+                lines.Add($"SP {GetSpRewardText(reward)}");
+            }
+
+            for (int i = 0; i < actions.Messages.Count; i++)
+            {
+                if (!string.IsNullOrWhiteSpace(actions.Messages[i]))
+                {
+                    lines.Add(actions.Messages[i]);
+                }
+            }
+
+            return lines;
         }
 
         private List<string> RemoveGiveUpItems(QuestActionBundle actions)
@@ -6365,18 +6851,21 @@ namespace HaCreator.MapSimulator.Interaction
             QuestDetailDeliveryType deliveryType;
             bool actionEnabled;
             int? cashItemId;
+            bool hasDeliveryNpc;
 
             switch (state)
             {
                 case QuestStateType.Not_Started:
                     requirements = definition.StartItemRequirements;
-                    deliveryType = requirements.Count > 0 ? QuestDetailDeliveryType.Accept : QuestDetailDeliveryType.None;
+                    hasDeliveryNpc = definition.StartNpcId.HasValue;
+                    deliveryType = hasDeliveryNpc && requirements.Count > 0 ? QuestDetailDeliveryType.Accept : QuestDetailDeliveryType.None;
                     actionEnabled = startIssues == null || startIssues.Count == 0;
                     cashItemId = deliveryType == QuestDetailDeliveryType.Accept ? QuestDeliveryAcceptCashItemId : null;
                     break;
                 case QuestStateType.Started:
                     requirements = definition.EndItemRequirements;
-                    deliveryType = requirements.Count > 0 ? QuestDetailDeliveryType.Complete : QuestDetailDeliveryType.None;
+                    hasDeliveryNpc = definition.EndNpcId.HasValue;
+                    deliveryType = hasDeliveryNpc && requirements.Count > 0 ? QuestDetailDeliveryType.Complete : QuestDetailDeliveryType.None;
                     actionEnabled = deliveryType != QuestDetailDeliveryType.None;
                     cashItemId = deliveryType == QuestDetailDeliveryType.Complete ? QuestDeliveryCompleteCashItemId : null;
                     break;
@@ -6459,6 +6948,17 @@ namespace HaCreator.MapSimulator.Interaction
                    !string.IsNullOrWhiteSpace(info?.Item1)
                 ? info.Item1
                 : $"NPC #{npcId}";
+        }
+
+        private static string FormatQuestDuration(int totalSeconds)
+        {
+            int clampedSeconds = Math.Max(0, totalSeconds);
+            int hours = clampedSeconds / 3600;
+            int minutes = (clampedSeconds % 3600) / 60;
+            int seconds = clampedSeconds % 60;
+            return hours > 0
+                ? $"{hours}:{minutes:D2}:{seconds:D2}"
+                : $"{minutes}:{seconds:D2}";
         }
     }
 }

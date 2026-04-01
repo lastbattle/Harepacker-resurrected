@@ -59,6 +59,53 @@ namespace HaCreator.MapSimulator.Interaction
         internal int TrackedEntriesCount => _trackedEntriesCount;
         internal Action<string, int> SocialChatObserved { get; set; }
 
+        internal bool HasLocalPartyLeader()
+        {
+            return _entriesByTab.TryGetValue(SocialListTab.Party, out List<SocialEntryState> entries)
+                && entries.Any(entry => entry.IsLocalPlayer && entry.IsLeader);
+        }
+
+        internal bool TryFindTrackedEntry(string characterName, out SocialTrackedEntrySnapshot snapshot)
+        {
+            snapshot = null;
+            if (string.IsNullOrWhiteSpace(characterName))
+            {
+                return false;
+            }
+
+            foreach (SocialListTab tab in TrackedTabs)
+            {
+                if (!_entriesByTab.TryGetValue(tab, out List<SocialEntryState> entries))
+                {
+                    continue;
+                }
+
+                SocialEntryState entry = entries.FirstOrDefault(candidate =>
+                    !candidate.IsLocalPlayer &&
+                    string.Equals(candidate.Name, characterName, StringComparison.OrdinalIgnoreCase));
+                if (entry == null)
+                {
+                    continue;
+                }
+
+                snapshot = new SocialTrackedEntrySnapshot
+                {
+                    Tab = tab,
+                    Name = entry.Name,
+                    PrimaryText = entry.PrimaryText,
+                    SecondaryText = entry.SecondaryText,
+                    LocationSummary = entry.LocationSummary,
+                    Channel = entry.Channel,
+                    IsOnline = entry.IsOnline,
+                    IsLeader = entry.IsLeader,
+                    IsLocalPlayer = entry.IsLocalPlayer
+                };
+                return true;
+            }
+
+            return false;
+        }
+
         internal void UpdateLocalContext(CharacterBuild build, string locationSummary, int channel)
         {
             _playerName = string.IsNullOrWhiteSpace(build?.Name) ? "Player" : build.Name.Trim();
@@ -1409,6 +1456,8 @@ namespace HaCreator.MapSimulator.Interaction
     {
         public SocialListTab Tab { get; set; }
         public string Name { get; set; } = string.Empty;
+        public string PrimaryText { get; set; } = string.Empty;
+        public string SecondaryText { get; set; } = string.Empty;
         public string LocationSummary { get; set; } = string.Empty;
         public int Channel { get; set; }
         public bool IsOnline { get; set; }

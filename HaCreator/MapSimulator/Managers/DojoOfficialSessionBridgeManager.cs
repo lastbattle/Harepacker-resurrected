@@ -1,0 +1,797 @@
+using System;
+using System.Collections.Concurrent;
+using System.Collections.Generic;
+using System.Diagnostics;
+using System.Linq;
+using System.Net;
+using System.Net.NetworkInformation;
+using System.Net.Sockets;
+using System.Runtime.InteropServices;
+using System.Threading;
+using System.Threading.Tasks;
+using HaCreator.MapSimulator.Effects;
+using MapleLib.MapleCryptoLib;
+using MapleLib.PacketLib;
+
+namespace HaCreator.MapSimulator.Managers
+{
+    /// <summary>
+    /// Built-in Mu Lung Dojo transport bridge that proxies a live Maple session
+    /// and maps configured inbound opcodes into the existing Dojo raw-packet seam.
+    /// </summary>
+    public sealed class DojoOfficialSessionBridgeManager : IDisposable
+    {
+        public const int DefaultListenPort = 18490;
+        private const string DefaultProcessName = "MapleStory";
+        private const int AddressFamilyInet = 2;
+        private const int ErrorInsufficientBuffer = 122;
+        private const int RecentPacketCapacity = 8;
+
+        private readonly ConcurrentQueue<DojoPacketInboxMessage> _pendingMessages = new();
+        private readonly ConcurrentDictionary<int, int> _opcodeMappings = new();
+        private readonly Queue<string> _recentPackets = new();
+        private readonly object _sync = new();
+
+        private TcpListener _listener;
+        private CancellationTokenSource _listenerCancellation;
+        private Task _listenerTask;
+        private BridgePair _activePair;
+
+        public readonly record struct SessionDiscoveryCandidate(
+            int ProcessId,
+            string ProcessName,
+            IPEndPoint LocalEndpoint,
+            IPEndPoint RemoteEndpoint);
+
+        private sealed class BridgePair
+        {
+            public BridgePair(TcpClient clientTcpClient, TcpClient serverTcpClient, Session clientSession, Session serverSession)
+            {
+                ClientTcpClient = clientTcpClient;
+                ServerTcpClient = serverTcpClient;
+                ClientSession = clientSession;
+                ServerSession = serverSession;
+                RemoteEndpoint = serverTcpClient.Client.RemoteEndPoint?.ToString() ?? "unknown-remote";
+                ClientEndpoint = clientTcpClient.Client.RemoteEndPoint?.ToString() ?? "unknown-client";
+            }
+
+            public TcpClient ClientTcpClient { get; }
+            public TcpClient ServerTcpClient { get; }
+            public Session ClientSession { get; }
+            public Session ServerSession { get; }
+            public string RemoteEndpoint { get; }
+            public string ClientEndpoint { get; }
+            public short Version { get; set; }
+            public bool InitCompleted { get; set; }
+
+            public void Close()
+            {
+                try
+                {
+                    ClientTcpClient.Close();
+                }
+                catch
+                {
+                }
+
+                try
+                {
+                    ServerTcpClient.Close();
+                }
+                catch
+                {
+                }
+            }
+        }
+
+        public int ListenPort { get; private set; } = DefaultListenPort;
+        public string RemoteHost { get; private set; } = IPAddress.Loopback.ToString();
+        public int RemotePort { get; private set; }
+        public bool IsRunning => _listenerTask != null && !_listenerTask.IsCompleted;
+        public bool HasConnectedSession => _activePair?.InitCompleted == true;
+        public int ReceivedCount { get; private set; }
+        public string LastStatus { get; private set; } = "Dojo official-session bridge inactive.";
+
+        public string DescribeStatus()
+        {
+            string lifecycle = IsRunning
+                ? $"listening on 127.0.0.1:{ListenPort} -> {RemoteHost}:{RemotePort}"
+                : "inactive";
+            string session = HasConnectedSession
+                ? $"connected session {_activePair?.ClientEndpoint ?? "unknown-client"} -> {_activePair?.RemoteEndpoint ?? "unknown-remote"}"
+                : "no active Maple session";
+            return $"Dojo official-session bridge {lifecycle}; {session}; received={ReceivedCount}; mappings={DescribePacketMappings()}; recent={DescribeRecentPackets()}. {LastStatus}";
+        }
+
+        public static IReadOnlyList<SessionDiscoveryCandidate> DiscoverEstablishedSessions(
+            int remotePort,
+            int? owningProcessId = null,
+            string owningProcessName = null)
+        {
+            if (remotePort <= 0)
+            {
+                return Array.Empty<SessionDiscoveryCandidate>();
+            }
+
+            List<SessionDiscoveryCandidate> candidates = new();
+            foreach (TcpRowOwnerPid row in EnumerateTcpRows())
+            {
+                if (row.state != (uint)TcpState.Established)
+                {
+                    continue;
+                }
+
+                int localPort = DecodePort(row.localPort);
+                int resolvedRemotePort = DecodePort(row.remotePort);
+                if (localPort <= 0 || resolvedRemotePort != remotePort)
+                {
+                    continue;
+                }
+
+                if (!TryResolveProcess(row.owningPid, out string processName))
+                {
+                    continue;
+                }
+
+                if (owningProcessId.HasValue && row.owningPid != owningProcessId.Value)
+                {
+                    continue;
+                }
+
+                if (!string.IsNullOrWhiteSpace(owningProcessName)
+                    && !string.Equals(processName, NormalizeProcessSelector(owningProcessName), StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                IPAddress localAddress = DecodeAddress(row.localAddr);
+                IPAddress remoteAddress = DecodeAddress(row.remoteAddr);
+                if (IPAddress.Any.Equals(remoteAddress) || IPAddress.None.Equals(remoteAddress))
+                {
+                    continue;
+                }
+
+                candidates.Add(new SessionDiscoveryCandidate(
+                    row.owningPid,
+                    processName,
+                    new IPEndPoint(localAddress, localPort),
+                    new IPEndPoint(remoteAddress, resolvedRemotePort)));
+            }
+
+            return candidates
+                .OrderBy(candidate => candidate.ProcessName, StringComparer.OrdinalIgnoreCase)
+                .ThenBy(candidate => candidate.ProcessId)
+                .ThenBy(candidate => candidate.LocalEndpoint.Port)
+                .ToArray();
+        }
+
+        public bool TryStart(int listenPort, string remoteHost, int remotePort, out string status)
+        {
+            lock (_sync)
+            {
+                StopInternal(clearPending: true);
+
+                try
+                {
+                    ListenPort = listenPort <= 0 ? DefaultListenPort : listenPort;
+                    RemoteHost = string.IsNullOrWhiteSpace(remoteHost) ? IPAddress.Loopback.ToString() : remoteHost.Trim();
+                    RemotePort = remotePort;
+                    _listenerCancellation = new CancellationTokenSource();
+                    _listener = new TcpListener(IPAddress.Loopback, ListenPort);
+                    _listener.Start();
+                    _listenerTask = Task.Run(() => ListenLoopAsync(_listenerCancellation.Token));
+                    LastStatus = $"Dojo official-session bridge listening on 127.0.0.1:{ListenPort} and proxying to {RemoteHost}:{RemotePort}.";
+                    status = LastStatus;
+                    return true;
+                }
+                catch (Exception ex)
+                {
+                    StopInternal(clearPending: true);
+                    LastStatus = $"Dojo official-session bridge failed to start: {ex.Message}";
+                    status = LastStatus;
+                    return false;
+                }
+            }
+        }
+
+        public bool TryStartFromDiscovery(int listenPort, int remotePort, string processSelector, int? localPort, out string status)
+        {
+            int? owningProcessId = null;
+            string owningProcessName = null;
+            if (!TryResolveProcessSelector(processSelector, out owningProcessId, out owningProcessName, out string selectorError))
+            {
+                status = selectorError;
+                LastStatus = status;
+                return false;
+            }
+
+            IReadOnlyList<SessionDiscoveryCandidate> candidates = DiscoverEstablishedSessions(remotePort, owningProcessId, owningProcessName);
+            if (!TryResolveDiscoveryCandidate(candidates, remotePort, owningProcessId, owningProcessName, localPort, out SessionDiscoveryCandidate candidate, out status))
+            {
+                LastStatus = status;
+                return false;
+            }
+
+            if (!TryStart(listenPort, candidate.RemoteEndpoint.Address.ToString(), candidate.RemoteEndpoint.Port, out string startStatus))
+            {
+                status = $"Dojo official-session bridge discovered {candidate.ProcessName} ({candidate.ProcessId}) at {candidate.RemoteEndpoint.Address}:{candidate.RemoteEndpoint.Port} from local {candidate.LocalEndpoint.Address}:{candidate.LocalEndpoint.Port}, but startup failed. {startStatus}";
+                LastStatus = status;
+                return false;
+            }
+
+            status = $"Dojo official-session bridge discovered {candidate.ProcessName} ({candidate.ProcessId}) at {candidate.RemoteEndpoint.Address}:{candidate.RemoteEndpoint.Port} from local {candidate.LocalEndpoint.Address}:{candidate.LocalEndpoint.Port}. {startStatus}";
+            LastStatus = status;
+            return true;
+        }
+
+        public string DescribeDiscoveredSessions(int remotePort, string processSelector = null, int? localPort = null)
+        {
+            int? owningProcessId = null;
+            string owningProcessName = null;
+            if (!TryResolveProcessSelector(processSelector, out owningProcessId, out owningProcessName, out string selectorError))
+            {
+                return selectorError;
+            }
+
+            IReadOnlyList<SessionDiscoveryCandidate> candidates = DiscoverEstablishedSessions(remotePort, owningProcessId, owningProcessName);
+            return DescribeDiscoveryCandidates(candidates, remotePort, owningProcessId, owningProcessName, localPort);
+        }
+
+        public bool TryConfigurePacketMapping(int opcode, int packetType, out string status)
+        {
+            if (opcode <= 0)
+            {
+                status = "Dojo opcode mappings require a positive opcode.";
+                return false;
+            }
+
+            if (packetType < DojoField.PacketTypeClock || packetType > DojoField.PacketTypeTimeOver)
+            {
+                status = $"Dojo packet mappings only accept internal packet types {DojoField.PacketTypeClock}-{DojoField.PacketTypeTimeOver}.";
+                return false;
+            }
+
+            _opcodeMappings[opcode] = packetType;
+            status = $"Mapped Dojo opcode {opcode} to {DescribePacketType(packetType)}.";
+            LastStatus = status;
+            return true;
+        }
+
+        public bool RemovePacketMapping(int opcode, out string status)
+        {
+            if (_opcodeMappings.TryRemove(opcode, out int packetType))
+            {
+                status = $"Removed Dojo opcode {opcode} mapping for {DescribePacketType(packetType)}.";
+                LastStatus = status;
+                return true;
+            }
+
+            status = $"Dojo opcode {opcode} is not currently mapped.";
+            return false;
+        }
+
+        public void ClearPacketMappings()
+        {
+            _opcodeMappings.Clear();
+            LastStatus = "Cleared Dojo official-session opcode mappings.";
+        }
+
+        public string DescribePacketMappings()
+        {
+            if (_opcodeMappings.IsEmpty)
+            {
+                return "none";
+            }
+
+            return string.Join(
+                ", ",
+                _opcodeMappings
+                    .OrderBy(entry => entry.Key)
+                    .Select(entry => $"{entry.Key}->{DescribePacketType(entry.Value)}"));
+        }
+
+        public string DescribeRecentPackets()
+        {
+            lock (_sync)
+            {
+                if (_recentPackets.Count == 0)
+                {
+                    return "none";
+                }
+
+                return string.Join(" | ", _recentPackets);
+            }
+        }
+
+        public bool TryMapInboundPacket(byte[] rawPacket, string source, out DojoPacketInboxMessage message)
+        {
+            message = null;
+            if (rawPacket == null || rawPacket.Length < sizeof(short))
+            {
+                return false;
+            }
+
+            int opcode = BitConverter.ToUInt16(rawPacket, 0);
+            if (!_opcodeMappings.TryGetValue(opcode, out int packetType))
+            {
+                RecordRecentPacket(opcode, rawPacket, mappedPacketType: null);
+                return false;
+            }
+
+            byte[] payload = rawPacket.Skip(sizeof(short)).ToArray();
+            message = new DojoPacketInboxMessage(
+                DojoPacketMessageKind.RawPacket,
+                value: 0,
+                option: string.Empty,
+                source: source,
+                rawText: $"packetraw {Convert.ToHexString(rawPacket)}",
+                packetType: packetType,
+                payload: payload);
+            RecordRecentPacket(opcode, rawPacket, packetType);
+            return true;
+        }
+
+        public void Stop()
+        {
+            lock (_sync)
+            {
+                StopInternal(clearPending: true);
+                LastStatus = "Dojo official-session bridge stopped.";
+            }
+        }
+
+        public bool TryDequeue(out DojoPacketInboxMessage message)
+        {
+            return _pendingMessages.TryDequeue(out message);
+        }
+
+        public void RecordDispatchResult(string source, DojoPacketInboxMessage message, bool success, string result)
+        {
+            string summary = string.IsNullOrWhiteSpace(result)
+                ? DescribePacketType(message?.PacketType ?? -1)
+                : $"{DescribePacketType(message?.PacketType ?? -1)}: {result}";
+            LastStatus = success
+                ? $"Applied {summary} from {source}."
+                : $"Ignored {summary} from {source}.";
+        }
+
+        public void Dispose()
+        {
+            lock (_sync)
+            {
+                StopInternal(clearPending: true);
+            }
+        }
+
+        private async Task ListenLoopAsync(CancellationToken cancellationToken)
+        {
+            try
+            {
+                while (!cancellationToken.IsCancellationRequested && _listener != null)
+                {
+                    TcpClient client = await _listener.AcceptTcpClientAsync(cancellationToken).ConfigureAwait(false);
+                    _ = Task.Run(() => AcceptClientAsync(client, cancellationToken), cancellationToken);
+                }
+            }
+            catch (OperationCanceledException)
+            {
+            }
+            catch (ObjectDisposedException)
+            {
+            }
+            catch (Exception ex)
+            {
+                LastStatus = $"Dojo official-session bridge error: {ex.Message}";
+            }
+        }
+
+        private async Task AcceptClientAsync(TcpClient client, CancellationToken cancellationToken)
+        {
+            BridgePair pair = null;
+            try
+            {
+                lock (_sync)
+                {
+                    if (_activePair != null)
+                    {
+                        LastStatus = "Rejected Dojo official-session client because a live Maple session is already attached.";
+                        client.Close();
+                        return;
+                    }
+                }
+
+                TcpClient server = new TcpClient();
+                await server.ConnectAsync(RemoteHost, RemotePort, cancellationToken).ConfigureAwait(false);
+
+                Session clientSession = new Session(client.Client, SessionType.SERVER_TO_CLIENT);
+                Session serverSession = new Session(server.Client, SessionType.CLIENT_TO_SERVER);
+                pair = new BridgePair(client, server, clientSession, serverSession);
+
+                clientSession.OnPacketReceived += (packet, isInit) => HandleClientPacket(pair, packet, isInit);
+                clientSession.OnClientDisconnected += _ => ClearActivePair(pair, $"Dojo official-session client disconnected: {pair.ClientEndpoint}.");
+                serverSession.OnPacketReceived += (packet, isInit) => HandleServerPacket(pair, packet, isInit);
+                serverSession.OnClientDisconnected += _ => ClearActivePair(pair, $"Dojo official-session server disconnected: {pair.RemoteEndpoint}.");
+
+                lock (_sync)
+                {
+                    _activePair = pair;
+                }
+
+                LastStatus = $"Dojo official-session bridge connected {pair.ClientEndpoint} -> {pair.RemoteEndpoint}. Waiting for Maple init packet.";
+                serverSession.WaitForDataNoEncryption();
+            }
+            catch (Exception ex)
+            {
+                client.Close();
+                pair?.Close();
+                LastStatus = $"Dojo official-session bridge connect failed: {ex.Message}";
+            }
+        }
+
+        private void HandleServerPacket(BridgePair pair, PacketReader packet, bool isInit)
+        {
+            try
+            {
+                byte[] raw = packet.ToArray();
+                if (isInit)
+                {
+                    PacketReader initReader = new PacketReader(raw);
+                    initReader.ReadShort();
+                    pair.Version = initReader.ReadShort();
+                    string patchLocation = initReader.ReadMapleString();
+                    byte[] clientSendIv = initReader.ReadBytes(4);
+                    byte[] clientReceiveIv = initReader.ReadBytes(4);
+                    byte serverType = initReader.ReadByte();
+
+                    pair.ClientSession.SIV = CreateCrypto(clientReceiveIv, pair.Version);
+                    pair.ClientSession.RIV = CreateCrypto(clientSendIv, pair.Version);
+                    pair.ClientSession.SendInitialPacket(pair.Version, patchLocation, clientSendIv, clientReceiveIv, serverType);
+                    pair.InitCompleted = true;
+                    LastStatus = $"Dojo official-session bridge initialized Maple crypto for {pair.ClientEndpoint} <-> {pair.RemoteEndpoint}.";
+                    pair.ClientSession.WaitForData();
+                    return;
+                }
+
+                pair.ClientSession.SendPacket((byte[])raw.Clone());
+
+                if (!TryMapInboundPacket(raw, $"official-session:{pair.RemoteEndpoint}", out DojoPacketInboxMessage message))
+                {
+                    return;
+                }
+
+                _pendingMessages.Enqueue(message);
+                ReceivedCount++;
+                LastStatus = $"Queued Dojo opcode {BitConverter.ToUInt16(raw, 0)} as {DescribePacketType(message.PacketType)} from live session {pair.RemoteEndpoint}.";
+            }
+            catch (Exception ex)
+            {
+                ClearActivePair(pair, $"Dojo official-session server handling failed: {ex.Message}");
+            }
+        }
+
+        private void HandleClientPacket(BridgePair pair, PacketReader packet, bool isInit)
+        {
+            if (isInit)
+            {
+                return;
+            }
+
+            try
+            {
+                pair.ServerSession.SendPacket(packet.ToArray());
+            }
+            catch (Exception ex)
+            {
+                ClearActivePair(pair, $"Dojo official-session client handling failed: {ex.Message}");
+            }
+        }
+
+        private void ClearActivePair(BridgePair pair, string status)
+        {
+            if (pair == null)
+            {
+                return;
+            }
+
+            lock (_sync)
+            {
+                if (!ReferenceEquals(_activePair, pair))
+                {
+                    return;
+                }
+
+                _activePair = null;
+            }
+
+            pair.Close();
+            LastStatus = status;
+        }
+
+        private void StopInternal(bool clearPending)
+        {
+            _listenerCancellation?.Cancel();
+
+            try
+            {
+                _listener?.Stop();
+            }
+            catch
+            {
+            }
+
+            _listenerTask = null;
+            _listener = null;
+            _listenerCancellation?.Dispose();
+            _listenerCancellation = null;
+
+            BridgePair pair = _activePair;
+            _activePair = null;
+            pair?.Close();
+
+            if (clearPending)
+            {
+                while (_pendingMessages.TryDequeue(out _))
+                {
+                }
+
+                ReceivedCount = 0;
+                lock (_sync)
+                {
+                    _recentPackets.Clear();
+                }
+            }
+        }
+
+        private void RecordRecentPacket(int opcode, byte[] rawPacket, int? mappedPacketType)
+        {
+            string summary = mappedPacketType.HasValue
+                ? $"{opcode}->{DescribePacketType(mappedPacketType.Value)}:{Convert.ToHexString(rawPacket)}"
+                : $"{opcode}:unmapped:{Convert.ToHexString(rawPacket)}";
+
+            lock (_sync)
+            {
+                _recentPackets.Enqueue(summary);
+                while (_recentPackets.Count > RecentPacketCapacity)
+                {
+                    _recentPackets.Dequeue();
+                }
+            }
+        }
+
+        private static MapleCrypto CreateCrypto(byte[] iv, short version)
+        {
+            return new MapleCrypto((byte[])iv.Clone(), version);
+        }
+
+        private static string DescribePacketType(int packetType)
+        {
+            return packetType switch
+            {
+                DojoField.PacketTypeClock => "clock",
+                DojoField.PacketTypeStage => "stage",
+                DojoField.PacketTypeClear => "clear",
+                DojoField.PacketTypeTimeOver => "timeover",
+                _ => $"packet {packetType}"
+            };
+        }
+
+        private static bool TryResolveProcessSelector(
+            string processSelector,
+            out int? owningProcessId,
+            out string owningProcessName,
+            out string error)
+        {
+            owningProcessId = null;
+            owningProcessName = null;
+            error = null;
+
+            if (string.IsNullOrWhiteSpace(processSelector))
+            {
+                owningProcessName = DefaultProcessName;
+                return true;
+            }
+
+            string trimmedSelector = processSelector.Trim();
+            if (int.TryParse(trimmedSelector, out int parsedPid))
+            {
+                if (parsedPid <= 0)
+                {
+                    error = "Dojo official-session discovery requires a positive pid.";
+                    return false;
+                }
+
+                owningProcessId = parsedPid;
+                return true;
+            }
+
+            owningProcessName = NormalizeProcessSelector(trimmedSelector);
+            if (string.IsNullOrWhiteSpace(owningProcessName))
+            {
+                error = "Dojo official-session discovery requires a process name or pid when a selector is provided.";
+                return false;
+            }
+
+            return true;
+        }
+
+        private static string DescribeDiscoveryCandidates(
+            IReadOnlyList<SessionDiscoveryCandidate> candidates,
+            int remotePort,
+            int? owningProcessId,
+            string owningProcessName,
+            int? localPort)
+        {
+            IReadOnlyList<SessionDiscoveryCandidate> filteredCandidates = FilterCandidatesByLocalPort(candidates, localPort);
+            if (filteredCandidates.Count == 0)
+            {
+                return $"Dojo official-session discovery found no established TCP session for {DescribeDiscoveryScope(owningProcessId, owningProcessName, remotePort, localPort)}.";
+            }
+
+            string matches = string.Join(
+                Environment.NewLine,
+                filteredCandidates.Select(candidate => $"- {candidate.ProcessName} ({candidate.ProcessId}) local {candidate.LocalEndpoint.Address}:{candidate.LocalEndpoint.Port} -> remote {candidate.RemoteEndpoint.Address}:{candidate.RemoteEndpoint.Port}"));
+            return $"Dojo official-session discovery matches for {DescribeDiscoveryScope(owningProcessId, owningProcessName, remotePort, localPort)}:{Environment.NewLine}{matches}";
+        }
+
+        private static bool TryResolveDiscoveryCandidate(
+            IReadOnlyList<SessionDiscoveryCandidate> candidates,
+            int remotePort,
+            int? owningProcessId,
+            string owningProcessName,
+            int? localPort,
+            out SessionDiscoveryCandidate candidate,
+            out string status)
+        {
+            IReadOnlyList<SessionDiscoveryCandidate> filteredCandidates = FilterCandidatesByLocalPort(candidates, localPort);
+            if (filteredCandidates.Count == 0)
+            {
+                candidate = default;
+                status = $"Dojo official-session discovery found no established TCP session for {DescribeDiscoveryScope(owningProcessId, owningProcessName, remotePort, localPort)}.";
+                return false;
+            }
+
+            if (filteredCandidates.Count > 1)
+            {
+                candidate = default;
+                string matches = string.Join(
+                    ", ",
+                    filteredCandidates.Select(entry => $"{entry.ProcessName}({entry.ProcessId}) local {entry.LocalEndpoint.Port} remote {entry.RemoteEndpoint.Address}:{entry.RemoteEndpoint.Port}"));
+                status = $"Dojo official-session discovery found multiple candidates for {DescribeDiscoveryScope(owningProcessId, owningProcessName, remotePort, localPort)}: {matches}. Use /dojo session discover to inspect them, or add a localPort filter.";
+                return false;
+            }
+
+            candidate = filteredCandidates[0];
+            status = null;
+            return true;
+        }
+
+        private static IReadOnlyList<SessionDiscoveryCandidate> FilterCandidatesByLocalPort(
+            IReadOnlyList<SessionDiscoveryCandidate> candidates,
+            int? localPort)
+        {
+            if (!localPort.HasValue || localPort.Value <= 0)
+            {
+                return candidates ?? Array.Empty<SessionDiscoveryCandidate>();
+            }
+
+            return (candidates ?? Array.Empty<SessionDiscoveryCandidate>())
+                .Where(candidate => candidate.LocalEndpoint.Port == localPort.Value)
+                .ToArray();
+        }
+
+        private static string DescribeDiscoveryScope(int? owningProcessId, string owningProcessName, int remotePort, int? localPort)
+        {
+            string processScope = owningProcessId.HasValue
+                ? $"pid {owningProcessId.Value}"
+                : string.IsNullOrWhiteSpace(owningProcessName)
+                    ? DefaultProcessName
+                    : owningProcessName;
+            return localPort.HasValue && localPort.Value > 0
+                ? $"{processScope} remotePort {remotePort} localPort {localPort.Value}"
+                : $"{processScope} remotePort {remotePort}";
+        }
+
+        private static string NormalizeProcessSelector(string selector)
+        {
+            if (string.IsNullOrWhiteSpace(selector))
+            {
+                return null;
+            }
+
+            string normalized = selector.Trim();
+            return normalized.EndsWith(".exe", StringComparison.OrdinalIgnoreCase)
+                ? normalized[..^4]
+                : normalized;
+        }
+
+        private static bool TryResolveProcess(int processId, out string processName)
+        {
+            processName = null;
+
+            try
+            {
+                processName = Process.GetProcessById(processId).ProcessName;
+                return !string.IsNullOrWhiteSpace(processName);
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        private static IEnumerable<TcpRowOwnerPid> EnumerateTcpRows()
+        {
+            int bufferSize = 0;
+            int result = GetExtendedTcpTable(IntPtr.Zero, ref bufferSize, sort: true, AddressFamilyInet, TcpTableClass.OwnerPidAll, 0);
+            if (result != 0 && result != ErrorInsufficientBuffer)
+            {
+                yield break;
+            }
+
+            IntPtr tableBuffer = Marshal.AllocHGlobal(bufferSize);
+            try
+            {
+                result = GetExtendedTcpTable(tableBuffer, ref bufferSize, sort: true, AddressFamilyInet, TcpTableClass.OwnerPidAll, 0);
+                if (result != 0)
+                {
+                    yield break;
+                }
+
+                int rowCount = Marshal.ReadInt32(tableBuffer);
+                IntPtr rowPtr = IntPtr.Add(tableBuffer, sizeof(int));
+                int rowSize = Marshal.SizeOf<TcpRowOwnerPid>();
+                for (int i = 0; i < rowCount; i++)
+                {
+                    yield return Marshal.PtrToStructure<TcpRowOwnerPid>(rowPtr);
+                    rowPtr = IntPtr.Add(rowPtr, rowSize);
+                }
+            }
+            finally
+            {
+                Marshal.FreeHGlobal(tableBuffer);
+            }
+        }
+
+        private static int DecodePort(byte[] encodedPort)
+        {
+            if (encodedPort == null || encodedPort.Length < 2)
+            {
+                return 0;
+            }
+
+            return (encodedPort[0] << 8) | encodedPort[1];
+        }
+
+        private static IPAddress DecodeAddress(uint encodedAddress)
+        {
+            return new IPAddress(encodedAddress);
+        }
+
+        [DllImport("iphlpapi.dll", SetLastError = true)]
+        private static extern int GetExtendedTcpTable(
+            IntPtr pTcpTable,
+            ref int dwOutBufLen,
+            bool sort,
+            int ipVersion,
+            TcpTableClass tableClass,
+            uint reserved);
+
+        private enum TcpTableClass
+        {
+            OwnerPidAll = 5
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct TcpRowOwnerPid
+        {
+            public uint state;
+            public uint localAddr;
+            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 4)]
+            public byte[] localPort;
+            public uint remoteAddr;
+            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 4)]
+            public byte[] remotePort;
+            public int owningPid;
+        }
+    }
+}

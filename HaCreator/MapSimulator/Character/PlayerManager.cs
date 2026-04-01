@@ -91,6 +91,7 @@ namespace HaCreator.MapSimulator.Character
         private Func<string> _jumpDownRestrictionMessageProvider;
         private Action<string> _onJumpRestricted;
         private Func<float, float> _moveSpeedCapResolver;
+        private Action<PlayerCharacter, PlayerLandingInfo> _onLanded;
 
         #endregion
 
@@ -245,6 +246,15 @@ namespace HaCreator.MapSimulator.Character
             if (Player != null)
             {
                 Player.SetMoveSpeedCapResolver(moveSpeedCapResolver);
+            }
+        }
+
+        public void SetLandingHandler(Action<PlayerCharacter, PlayerLandingInfo> onLanded)
+        {
+            _onLanded = onLanded;
+            if (Player != null)
+            {
+                Player.SetLandingHandler(onLanded);
             }
         }
 
@@ -408,6 +418,7 @@ namespace HaCreator.MapSimulator.Character
             Player.SetJumpSoundCallback(_onJumpSound);
             Player.SetJumpRestrictionHandler(_jumpRestrictionMessageProvider, _jumpDownRestrictionMessageProvider, _onJumpRestricted);
             Player.SetMoveSpeedCapResolver(_moveSpeedCapResolver);
+            Player.SetLandingHandler(_onLanded);
             Player.Physics.IsFlyingMap = _isFlyingMap;
             Player.Physics.RequiresFlyingSkillForMap = _requiresFlyingSkillForMap;
 
@@ -1410,6 +1421,7 @@ namespace HaCreator.MapSimulator.Character
             }
 
             Player.SetPosition(x, snappedY);
+            Player.ResetLandingTracking();
         }
 
         public void TeleportToSpawn()

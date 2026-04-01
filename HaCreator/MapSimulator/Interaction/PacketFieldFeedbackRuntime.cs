@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Linq;
+using System.Runtime.InteropServices;
 using System.Text;
 
 namespace HaCreator.MapSimulator.Interaction
@@ -68,7 +69,9 @@ namespace HaCreator.MapSimulator.Interaction
         private const int BossHpBarWidth = 288;
         private const int BossHpBarHeight = 16;
         private const int BossHpFramePadding = 4;
-        private static readonly SearchValues<char> SwindleFilteredCharacters = SearchValues.Create("`'\"!?,./\\|[]{}()+*=~:;<>");
+        private const string SwindleFilteredCharacterTable = "`'\"!?,./\\|[]{}()+*=~:;<>";
+        private static readonly Encoding SwindleEncoding = Encoding.Default;
+        private static readonly byte[] SwindleFilteredCharacters = SwindleEncoding.GetBytes(SwindleFilteredCharacterTable);
 
         private readonly Dictionary<string, bool> _obstacleStates = new(StringComparer.OrdinalIgnoreCase);
         private Texture2D _pixelTexture;
@@ -1007,8 +1010,8 @@ namespace HaCreator.MapSimulator.Interaction
             out string warningText)
         {
             warningText = null;
-            string filteredMessage = FilterSwindleText(message);
-            if (string.IsNullOrWhiteSpace(filteredMessage)
+            byte[] filteredMessage = FilterSwindleBytes(message);
+            if (filteredMessage.Length == 0
                 || warningEntries == null
                 || warningEntries.Count == 0)
             {
@@ -1042,41 +1045,135 @@ namespace HaCreator.MapSimulator.Interaction
             return false;
         }
 
-        private static bool ContainsSwindleKeyword(string filteredMessage, string keyword)
+        private static bool ContainsSwindleKeyword(byte[] filteredMessage, string keyword)
         {
-            if (string.IsNullOrEmpty(filteredMessage)
+            if (filteredMessage == null
+                || filteredMessage.Length == 0
                 || string.IsNullOrWhiteSpace(keyword))
             {
                 return false;
             }
 
-            return filteredMessage.IndexOf(keyword, StringComparison.OrdinalIgnoreCase) >= 0;
+            byte[] keywordBytes = SwindleEncoding.GetBytes(keyword);
+            if (keywordBytes.Length == 0)
+            {
+                return false;
+            }
+
+            for (int start = 0; start < filteredMessage.Length;)
+            {
+                if (MatchesSwindleKeyword(filteredMessage, start, keywordBytes))
+                {
+                    return true;
+                }
+
+                start += GetSwindleCharacterLength(filteredMessage, start);
+            }
+
+            return false;
         }
 
         private static string FilterSwindleText(string message)
         {
+            byte[] filteredBytes = FilterSwindleBytes(message);
+            return filteredBytes.Length == 0
+                ? string.Empty
+                : SwindleEncoding.GetString(filteredBytes);
+        }
+
+        private static byte[] FilterSwindleBytes(string message)
+        {
             if (string.IsNullOrWhiteSpace(message))
             {
-                return string.Empty;
+                return Array.Empty<byte>();
             }
 
-            StringBuilder builder = new(message.Length);
-            foreach (char ch in message)
+            byte[] sourceBytes = SwindleEncoding.GetBytes(message);
+            byte[] filteredBytes = new byte[sourceBytes.Length];
+            int count = 0;
+            foreach (byte value in sourceBytes)
             {
-                if (ch < 0x20)
+                if (value < 0x20)
                 {
                     continue;
                 }
 
-                if (SwindleFilteredCharacters.Contains(ch))
+                if (ContainsFilteredSwindleCharacter(value))
                 {
                     continue;
                 }
 
-                builder.Append(ch);
+                filteredBytes[count++] = value;
             }
 
-            return builder.ToString();
+            if (count == 0)
+            {
+                return Array.Empty<byte>();
+            }
+
+            Array.Resize(ref filteredBytes, count);
+            return filteredBytes;
+        }
+
+        private static bool MatchesSwindleKeyword(byte[] filteredMessage, int start, byte[] keywordBytes)
+        {
+            if (start < 0
+                || filteredMessage == null
+                || keywordBytes == null
+                || start >= filteredMessage.Length
+                || keywordBytes.Length == 0)
+            {
+                return false;
+            }
+
+            int messageIndex = start;
+            for (int keywordIndex = 0; keywordIndex < keywordBytes.Length; keywordIndex++, messageIndex++)
+            {
+                if (messageIndex >= filteredMessage.Length
+                    || !IsSwindleByteEqual(filteredMessage[messageIndex], keywordBytes[keywordIndex]))
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        private static bool ContainsFilteredSwindleCharacter(byte value)
+        {
+            foreach (byte filteredCharacter in SwindleFilteredCharacters)
+            {
+                if (IsSwindleByteEqual(filteredCharacter, value))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static bool IsSwindleByteEqual(byte left, byte right)
+        {
+            return ToSwindleLower(left) == ToSwindleLower(right);
+        }
+
+        private static byte ToSwindleLower(byte value)
+        {
+            return unchecked((byte)MbcsToLower(value));
+        }
+
+        private static int GetSwindleCharacterLength(byte[] bytes, int index)
+        {
+            if (bytes == null
+                || index < 0
+                || index >= bytes.Length)
+            {
+                return 1;
+            }
+
+            return IsDbcsLeadByte(bytes[index]) && index + 1 < bytes.Length
+                ? 2
+                : 1;
         }
 
         internal static string BuildSwindleWarningForTest(
@@ -1095,7 +1192,27 @@ namespace HaCreator.MapSimulator.Interaction
 
         internal static bool ContainsSwindleKeywordForTest(string filteredMessage, string keyword)
         {
-            return ContainsSwindleKeyword(filteredMessage, keyword);
+            return ContainsSwindleKeyword(SwindleEncoding.GetBytes(filteredMessage ?? string.Empty), keyword);
+        }
+
+        internal static string FilterSwindleCharacterTableForTest()
+        {
+            return SwindleFilteredCharacterTable;
+        }
+
+        [DllImport("kernel32.dll")]
+        private static extern uint GetACP();
+
+        [DllImport("kernel32.dll", SetLastError = false)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool IsDBCSLeadByteEx(uint codePage, byte testChar);
+
+        [DllImport("msvcrt.dll", CallingConvention = CallingConvention.Cdecl, EntryPoint = "_mbctolower")]
+        private static extern uint MbcsToLower(uint value);
+
+        private static bool IsDbcsLeadByte(byte value)
+        {
+            return IsDBCSLeadByteEx(GetACP(), value);
         }
 
         internal static IReadOnlyList<PacketFieldSwindleWarningEntry> CreateSwindleWarningEntriesForTest(

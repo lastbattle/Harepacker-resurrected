@@ -546,6 +546,11 @@ namespace HaCreator.MapSimulator.UI
             }
         }
 
+        public bool HasEntry(int mapId)
+        {
+            return mapId > 0 && _allEntries.Any(entry => entry.MapId == mapId);
+        }
+
         public bool FocusSearchResult(SearchResultKind kind, string label, int mapId, bool enterSearchMode = true)
         {
             if (string.IsNullOrWhiteSpace(label))

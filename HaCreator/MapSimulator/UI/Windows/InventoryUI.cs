@@ -1,5 +1,6 @@
 using HaCreator.MapSimulator.Character;
 using HaCreator.MapSimulator.UI.Controls;
+using HaCreator.MapSimulator.Companions;
 using HaSharedLibrary.Render;
 using HaSharedLibrary.Render.DX;
 using MapleLib.WzLib.WzStructure.Data.ItemStructure;
@@ -118,8 +119,10 @@ namespace HaCreator.MapSimulator.UI
         private SpriteFont _font;
         private readonly Texture2D[] _tooltipFrames = new Texture2D[3];
         private readonly Texture2D _debugTooltipTexture;
+        private readonly GraphicsDevice _graphicsDevice;
         private EquipUIBigBang.EquipTooltipAssets _equipTooltipAssets;
         private CharacterLoader _characterLoader;
+        private CompanionEquipmentLoader _companionTooltipLoader;
         private Point _lastMousePosition;
         private InventoryType _hoveredInventoryType = InventoryType.NONE;
         private int _hoveredSlotIndex = -1;
@@ -175,6 +178,7 @@ namespace HaCreator.MapSimulator.UI
         public InventoryUI(IDXObject frame, Texture2D slotBg, GraphicsDevice device)
             : base(frame)
         {
+            _graphicsDevice = device;
             _inventoryData = new Dictionary<InventoryType, List<InventorySlotData>>
             {
                 { InventoryType.EQUIP, new List<InventorySlotData>() },
@@ -1351,11 +1355,13 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
-            string title = ResolveDisplayText(slot.ItemName, $"Item #{slot.ItemId}");
-            string typeLine = ResolveDisplayText(slot.ItemTypeName, _hoveredInventoryType.ToString());
+            InventoryItemTooltipMetadata metadata = InventoryItemMetadataResolver.ResolveTooltipMetadata(slot.ItemId, _hoveredInventoryType);
+            string title = ResolveDisplayText(slot.ItemName, metadata.ItemName);
+            string typeLine = ResolveDisplayText(slot.ItemTypeName, ResolveDisplayText(metadata.TypeName, _hoveredInventoryType.ToString()));
             string quantityLine = slot.Quantity > 1 ? $"Quantity: {slot.Quantity}" : string.Empty;
             string stackLine = slot.MaxStackSize.GetValueOrDefault(1) > 1 ? $"Stack Max: {slot.MaxStackSize.Value}" : string.Empty;
-            string description = ResolveDisplayText(slot.Description, string.Empty);
+            string description = ResolveDisplayText(slot.Description, metadata.Description);
+            Texture2D cashLabelTexture = metadata.IsCashItem ? _equipTooltipAssets?.CashLabel : null;
 
             int tooltipWidth = ResolveTooltipWidth();
             int textLeftOffset = TOOLTIP_PADDING + TOOLTIP_ICON_SIZE + TOOLTIP_ICON_GAP;
@@ -1363,31 +1369,45 @@ namespace HaCreator.MapSimulator.UI
             float sectionWidth = tooltipWidth - textLeftOffset - TOOLTIP_PADDING;
 
             string[] wrappedTitle = WrapTooltipText(title, titleWidth);
-            string[] wrappedType = WrapTooltipText(typeLine, sectionWidth);
-            string[] wrappedQuantity = WrapTooltipText(quantityLine, sectionWidth);
-            string[] wrappedStack = WrapTooltipText(stackLine, sectionWidth);
-            string[] wrappedDescription = WrapTooltipText(description, sectionWidth);
-
             float titleHeight = MeasureLinesHeight(wrappedTitle);
-            float typeHeight = MeasureLinesHeight(wrappedType);
-            float quantityHeight = MeasureLinesHeight(wrappedQuantity);
-            float stackHeight = MeasureLinesHeight(wrappedStack);
-            float descriptionHeight = MeasureLinesHeight(wrappedDescription);
-
-            float contentHeight = typeHeight;
-            if (quantityHeight > 0f)
+            List<TooltipSection> sections = new();
+            if (!string.IsNullOrWhiteSpace(typeLine))
             {
-                contentHeight += (contentHeight > 0f ? TOOLTIP_SECTION_GAP : 0f) + quantityHeight;
+                sections.Add(new TooltipSection(typeLine, new Color(180, 220, 255)));
             }
 
-            if (stackHeight > 0f)
+            for (int i = 0; i < metadata.EffectLines.Count; i++)
             {
-                contentHeight += (contentHeight > 0f ? 2f : 0f) + stackHeight;
+                sections.Add(new TooltipSection(metadata.EffectLines[i], new Color(180, 255, 210)));
             }
 
-            if (descriptionHeight > 0f)
+            if (!string.IsNullOrWhiteSpace(quantityLine))
             {
-                contentHeight += (contentHeight > 0f ? TOOLTIP_SECTION_GAP : 0f) + descriptionHeight;
+                sections.Add(new TooltipSection(quantityLine, Color.White));
+            }
+
+            if (!string.IsNullOrWhiteSpace(stackLine))
+            {
+                sections.Add(new TooltipSection(stackLine, new Color(180, 255, 210)));
+            }
+
+            for (int i = 0; i < metadata.MetadataLines.Count; i++)
+            {
+                sections.Add(new TooltipSection(metadata.MetadataLines[i], new Color(255, 214, 156)));
+            }
+
+            if (!string.IsNullOrWhiteSpace(description))
+            {
+                sections.Add(new TooltipSection(description, new Color(255, 238, 196)));
+            }
+
+            List<(string[] Lines, Color Color, float Height)> wrappedSections = BuildWrappedTooltipSections(sections);
+            float wrappedSectionHeight = MeasureWrappedSectionHeight(wrappedSections);
+            float cashLabelHeight = cashLabelTexture?.Height ?? 0f;
+            float contentHeight = wrappedSectionHeight;
+            if (cashLabelHeight > 0f)
+            {
+                contentHeight += (contentHeight > 0f ? 2f : 0f) + cashLabelHeight;
             }
 
             float iconBlockHeight = Math.Max(TOOLTIP_ICON_SIZE, contentHeight);
@@ -1431,30 +1451,20 @@ namespace HaCreator.MapSimulator.UI
 
             int textX = tooltipX + textLeftOffset;
             float sectionY = contentY;
-            if (typeHeight > 0f)
+            if (cashLabelHeight > 0f)
             {
-                DrawTooltipLines(sprite, wrappedType, textX, sectionY, new Color(180, 220, 255));
-                sectionY += typeHeight;
+                sprite.Draw(cashLabelTexture, new Vector2(textX, sectionY), Color.White);
+                sectionY += cashLabelHeight;
             }
 
-            if (quantityHeight > 0f)
+            if (wrappedSectionHeight > 0f)
             {
-                sectionY += typeHeight > 0f ? TOOLTIP_SECTION_GAP : 0f;
-                DrawTooltipLines(sprite, wrappedQuantity, textX, sectionY, Color.White);
-                sectionY += quantityHeight;
-            }
+                if (cashLabelHeight > 0f)
+                {
+                    sectionY += 2f;
+                }
 
-            if (stackHeight > 0f)
-            {
-                sectionY += 2f;
-                DrawTooltipLines(sprite, wrappedStack, textX, sectionY, new Color(180, 255, 210));
-                sectionY += stackHeight;
-            }
-
-            if (descriptionHeight > 0f)
-            {
-                sectionY += TOOLTIP_SECTION_GAP;
-                DrawTooltipLines(sprite, wrappedDescription, textX, sectionY, new Color(255, 238, 196));
+                DrawWrappedSections(sprite, textX, sectionY, wrappedSections);
             }
         }
 
@@ -1466,12 +1476,19 @@ namespace HaCreator.MapSimulator.UI
                 return true;
             }
 
-            if (slot == null || slot.ItemId <= 0 || _characterLoader == null)
+            if (slot == null || slot.ItemId <= 0)
             {
                 return false;
             }
 
-            tooltipPart = _characterLoader.LoadEquipment(slot.ItemId);
+            tooltipPart = _characterLoader?.LoadEquipment(slot.ItemId);
+            if (tooltipPart == null)
+            {
+                _companionTooltipLoader ??= new CompanionEquipmentLoader(_graphicsDevice);
+                CompanionEquipItem companionItem = _companionTooltipLoader.LoadCompanionEquipment(slot.ItemId);
+                tooltipPart = CompanionEquipmentTooltipPartFactory.CreateTooltipPart(companionItem);
+            }
+
             if (tooltipPart == null)
             {
                 return false;
@@ -1959,9 +1976,19 @@ namespace HaCreator.MapSimulator.UI
                 segments.Add("Untradeable");
             }
 
+            if (part.IsEquipTradeBlocked)
+            {
+                segments.Add("Untradeable after equip");
+            }
+
             if (part.IsOneOfAKind)
             {
                 segments.Add("One-of-a-kind item");
+            }
+
+            if (part.IsNotForSale)
+            {
+                segments.Add("Not for sale");
             }
 
             if (part.KnockbackRate > 0)

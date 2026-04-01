@@ -131,7 +131,7 @@ namespace HaCreator.MapSimulator.Managers
 
             string trimmed = text.Trim();
             string[] parts = trimmed.Split(new[] { ' ', '\t' }, StringSplitOptions.RemoveEmptyEntries);
-            if (parts.Length >= 2 && string.Equals(parts[0], "raw", StringComparison.OrdinalIgnoreCase))
+            if (parts.Length >= 2 && IsRawContextAlias(parts[0]))
             {
                 return TryParseRawContextPoint(parts[1], out point, out payloadKind, out error);
             }
@@ -151,6 +151,13 @@ namespace HaCreator.MapSimulator.Managers
 
             point = Math.Max(0, point);
             return true;
+        }
+
+        private static bool IsRawContextAlias(string token)
+        {
+            return string.Equals(token, "raw", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(token, "packetraw", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(token, "context", StringComparison.OrdinalIgnoreCase);
         }
 
         private static bool TryParseRawContextPoint(

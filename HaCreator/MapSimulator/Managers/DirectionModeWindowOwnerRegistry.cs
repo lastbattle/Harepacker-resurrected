@@ -14,6 +14,7 @@ namespace HaCreator.MapSimulator.Managers
         {
             MapSimulatorWindowNames.CashShop,
             MapSimulatorWindowNames.AdminShopWishList,
+            MapSimulatorWindowNames.AdminShopWishListCategory,
             MapSimulatorWindowNames.Mts,
             MapSimulatorWindowNames.CashShopLocker,
             MapSimulatorWindowNames.CashShopInventory,
@@ -51,6 +52,9 @@ namespace HaCreator.MapSimulator.Managers
             MapSimulatorWindowNames.QuestDelivery,
             MapSimulatorWindowNames.ClassCompetition,
             MapSimulatorWindowNames.AranSkillGuide,
+            MapSimulatorWindowNames.NpcShop,
+            MapSimulatorWindowNames.StoreBank,
+            MapSimulatorWindowNames.BattleRecord,
             MapSimulatorWindowNames.MiniRoom,
             MapSimulatorWindowNames.PersonalShop,
             MapSimulatorWindowNames.EntrustedShop,

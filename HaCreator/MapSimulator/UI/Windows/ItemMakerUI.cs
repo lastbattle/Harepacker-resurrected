@@ -1337,7 +1337,7 @@ namespace HaCreator.MapSimulator.UI
                 : ItemMakerDetailSection.Recipe;
         }
 
-        private static string ResolveLaunchSearchTerm(string npcFunctionText)
+        internal static string ResolveLaunchSearchTerm(string npcFunctionText)
         {
             if (string.IsNullOrWhiteSpace(npcFunctionText))
             {
@@ -1352,11 +1352,6 @@ namespace HaCreator.MapSimulator.UI
             if (npcFunctionText.IndexOf("shoemaker", StringComparison.OrdinalIgnoreCase) >= 0)
             {
                 return "shoe";
-            }
-
-            if (npcFunctionText.IndexOf("item maker", StringComparison.OrdinalIgnoreCase) >= 0)
-            {
-                return "etc";
             }
 
             if (npcFunctionText.IndexOf("toy maker", StringComparison.OrdinalIgnoreCase) >= 0)
@@ -1719,7 +1714,7 @@ namespace HaCreator.MapSimulator.UI
                 return true;
             }
 
-            // v115 ItemMake carries a set of quest-etc gated maker hints without an explicit hide
+            // ItemMake carries a set of quest-etc gated maker hints without an explicit hide
             // property on the row itself. Keep `hide` authoritative when present, but preserve a
             // narrow unlock-gate fallback for those 403xxxx hint items instead of treating every
             // reqItem recipe as hidden again.
@@ -1731,6 +1726,9 @@ namespace HaCreator.MapSimulator.UI
             int previousCategoryKey = _pages.Count > 0 && _selectedPageIndex >= 0 && _selectedPageIndex < _pages.Count
                 ? _pages[_selectedPageIndex].CategoryKey
                 : -1;
+            string previousRecipeKey = CurrentRecipes.Count > 0 && _selectedRecipeIndex >= 0 && _selectedRecipeIndex < CurrentRecipes.Count
+                ? CurrentRecipes[_selectedRecipeIndex].RecipeKey
+                : string.Empty;
             int previousRecipeId = CurrentRecipes.Count > 0 && _selectedRecipeIndex >= 0 && _selectedRecipeIndex < CurrentRecipes.Count
                 ? CurrentRecipes[_selectedRecipeIndex].OutputItemId
                 : 0;
@@ -1799,7 +1797,10 @@ namespace HaCreator.MapSimulator.UI
             _selectedPageIndex = pageIndex >= 0 ? pageIndex : 0;
 
             IReadOnlyList<ItemMakerRecipe> currentRecipes = CurrentRecipes;
-            int recipeIndex = currentRecipes.ToList().FindIndex(recipe => recipe.OutputItemId == previousRecipeId);
+            int recipeIndex = ResolveRecipeSelectionIndex(
+                currentRecipes.Select(static recipe => (recipe.RecipeKey, recipe.OutputItemId)).ToList(),
+                previousRecipeKey,
+                previousRecipeId);
             _selectedRecipeIndex = recipeIndex >= 0 ? recipeIndex : 0;
             EnsureSelectedRecipeVisible();
             _isCategorySelectorExpanded = false;
@@ -2066,6 +2067,41 @@ namespace HaCreator.MapSimulator.UI
                    && (recipe.RequiredItemId > 0
                        || recipe.RequiredEquipItemId > 0
                        || recipe.RequiredQuestStates.Length > 0);
+        }
+
+        internal static int ResolveRecipeSelectionIndex(
+            IReadOnlyList<(string RecipeKey, int OutputItemId)> recipes,
+            string previousRecipeKey,
+            int previousRecipeId)
+        {
+            if (recipes == null || recipes.Count == 0)
+            {
+                return -1;
+            }
+
+            if (!string.IsNullOrWhiteSpace(previousRecipeKey))
+            {
+                for (int i = 0; i < recipes.Count; i++)
+                {
+                    if (string.Equals(recipes[i].RecipeKey, previousRecipeKey, StringComparison.Ordinal))
+                    {
+                        return i;
+                    }
+                }
+            }
+
+            if (previousRecipeId > 0)
+            {
+                for (int i = 0; i < recipes.Count; i++)
+                {
+                    if (recipes[i].OutputItemId == previousRecipeId)
+                    {
+                        return i;
+                    }
+                }
+            }
+
+            return -1;
         }
 
         private void FocusLaunchContext()

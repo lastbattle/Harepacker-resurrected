@@ -39,6 +39,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             "summon and mount",
             "monster rider",
             "jaguar rider",
+            "travel by riding a mount",
             "allows you to ride",
             "allows one to ride",
             "enables you to ride",

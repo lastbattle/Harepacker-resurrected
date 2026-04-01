@@ -18,6 +18,7 @@ namespace HaCreator.MapSimulator.UI
         public const string MapTransfer = "MapTransfer";
         public const string CashShop = "CashShop";
         public const string AdminShopWishList = "AdminShopWishList";
+        public const string AdminShopWishListCategory = "AdminShopWishListCategory";
         public const string CashAvatarPreview = "CashAvatarPreview";
         public const string CashShopLocker = "CashShopLocker";
         public const string CashShopInventory = "CashShopInventory";
@@ -81,6 +82,9 @@ namespace HaCreator.MapSimulator.UI
         public const string QuestAlarm = "QuestAlarm";
         public const string ClassCompetition = "ClassCompetition";
         public const string AranSkillGuide = "AranSkillGuide";
+        public const string NpcShop = "NpcShop";
+        public const string StoreBank = "StoreBank";
+        public const string BattleRecord = "BattleRecord";
         public const string MiniRoom = "MiniRoom";
         public const string PersonalShop = "PersonalShop";
         public const string EntrustedShop = "EntrustedShop";

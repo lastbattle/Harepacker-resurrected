@@ -229,6 +229,8 @@ namespace HaCreator.MapSimulator.Character.Skills
         public int ExperienceRate { get; set; }      // expR bonus rate
         public int DropRate { get; set; }            // dropR bonus rate
         public int MesoRate { get; set; }            // mesoR bonus rate
+        public int BossDamageRate { get; set; }      // bdR boss damage bonus rate
+        public int IgnoreDefenseRate { get; set; }   // ignoreMobpdpR monster defense ignore rate
 
         // Requirements
         public int RequiredLevel { get; set; }       // Level required

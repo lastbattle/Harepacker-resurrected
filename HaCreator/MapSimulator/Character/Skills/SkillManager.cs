@@ -193,6 +193,8 @@ namespace HaCreator.MapSimulator.Character.Skills
             public Action<int> OnExpired { get; init; }
         }
 
+        private readonly record struct Sg88ManualCandidate(int Index, Rectangle Hitbox, Vector2 Center);
+
         private sealed class ActiveAffectedSkillPassive
         {
             public int SkillId { get; init; }
@@ -273,6 +275,8 @@ namespace HaCreator.MapSimulator.Character.Skills
         private const string ExperienceBuffLabel = "ExperienceRate";
         private const string DropRateBuffLabel = "DropRate";
         private const string MesoRateBuffLabel = "MesoRate";
+        private const string BossDamageBuffLabel = "BossDamage";
+        private const string IgnoreDefenseBuffLabel = "IgnoreDefense";
         private const string CriticalDamageBuffLabel = "CriticalDamage";
         private const string ComboBuffLabel = "Combo";
         private const string ChargeBuffLabel = "Charge";
@@ -319,6 +323,8 @@ namespace HaCreator.MapSimulator.Character.Skills
                 [ExperienceBuffLabel] = CreateTemporaryStatPresentation(ExperienceBuffLabel, "EXP Rate", null, 180, 95),
                 [DropRateBuffLabel] = CreateTemporaryStatPresentation(DropRateBuffLabel, "Drop Rate", null, 190, 96),
                 [MesoRateBuffLabel] = CreateTemporaryStatPresentation(MesoRateBuffLabel, "Meso Rate", null, 200, 97),
+                [BossDamageBuffLabel] = CreateTemporaryStatPresentation(BossDamageBuffLabel, "Boss Damage", null, 205, 98),
+                [IgnoreDefenseBuffLabel] = CreateTemporaryStatPresentation(IgnoreDefenseBuffLabel, "Ignore DEF", null, 206, 99),
                 [CriticalDamageBuffLabel] = CreateTemporaryStatPresentation(CriticalDamageBuffLabel, "Critical Damage", null, 210, 81),
                 [ComboBuffLabel] = CreateTemporaryStatPresentation(ComboBuffLabel, "Combo", null, 220, 30),
                 [ChargeBuffLabel] = CreateTemporaryStatPresentation(ChargeBuffLabel, "Charge", null, 230, 32),
@@ -365,10 +371,12 @@ namespace HaCreator.MapSimulator.Character.Skills
             (InvincibleBuffLabel, new[] { "invincible", "invincib", "invincibility", "immune to damage", "cannot be hit" }),
             (DamageReductionBuffLabel, new[] { "damage reduction", "dmg reduction", "reduce damage", "reduced damage", "barrier", "shield", "meso guard", "combo barrier", "power guard", "achilles" }),
             (TransformBuffLabel, new[] { "transform", "morph", "ride", "vehicle", "siege", "tank" }),
-            (ExperienceBuffLabel, new[] { "holy symbol", "experience", "experience points", "exp gained", "exp rate", "exp +" }),
-            (DropRateBuffLabel, new[] { "item drop", "item drop rate", "drop rate", "drop +" }),
-            (MesoRateBuffLabel, new[] { "meso up", "meso rate", "mesos obtained", "meso obtained", "meso +" }),
-            (CriticalDamageBuffLabel, new[] { "critical damage", "critical dmg", "crit damage", "crit dmg" }),
+              (ExperienceBuffLabel, new[] { "holy symbol", "experience", "experience points", "exp gained", "exp rate", "exp +" }),
+              (DropRateBuffLabel, new[] { "item drop", "item drop rate", "drop rate", "drop +" }),
+              (MesoRateBuffLabel, new[] { "meso up", "meso rate", "mesos obtained", "meso obtained", "meso +" }),
+              (BossDamageBuffLabel, new[] { "boss damage", "damage to bosses", "boss monster damage", "bdr" }),
+              (IgnoreDefenseBuffLabel, new[] { "ignore defense", "ignore enemy defense", "ignore monster defense", "ignore mob defense", "ignore def", "ignoremobpdpr" }),
+              (CriticalDamageBuffLabel, new[] { "critical damage", "critical dmg", "crit damage", "crit dmg" }),
             (ComboBuffLabel, new[] { "combo attack", "combo orb", "combo counter", "combo" }),
             (ChargeBuffLabel, new[] { "charge", "elemental charge", "energy charge" }),
             (AuraBuffLabel, new[] { "aura", "dark aura", "blue aura", "yellow aura", "body boost" }),
@@ -459,6 +467,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         public Action<SkillData, int, int> OnSkillCooldownBlocked;
         public Action<SkillData, int> OnSkillCooldownCompleted;
         public Action<ActiveProjectile, MobItem> OnProjectileHit;
+        public ShootAmmoSelection LastResolvedShootAmmoSelection { get; private set; }
         public Action<ActiveBuff> OnBuffApplied;
         public Action<ActiveBuff> OnBuffExpired;
         public Action<PreparedSkill> OnPreparedSkillStarted;
@@ -528,6 +537,47 @@ namespace HaCreator.MapSimulator.Character.Skills
         public void SetExternalCastBlockedEvaluator(Func<int, bool> evaluator) => _externalCastBlockedEvaluator = evaluator;
         public void SetExternalStateRestrictionMessageProvider(Func<int, string> provider) => _externalStateRestrictionMessageProvider = provider;
         public void SetAdditionalStateRestrictionMessageProvider(Func<int, string> provider) => _additionalStateRestrictionMessageProvider = provider;
+
+        public int ResolveClientCancelFamilyRemainingDurationMs(int skillId, int currentTime)
+        {
+            if (skillId <= 0)
+            {
+                return 0;
+            }
+
+            int[] cancelSkillIds = ResolveClientCancelRequestSkillIds(skillId);
+            if (cancelSkillIds.Length == 0)
+            {
+                return 0;
+            }
+
+            HashSet<int> cancelFamily = new(cancelSkillIds);
+            int remainingMs = 0;
+
+            foreach (ActiveBuff buff in _buffs)
+            {
+                if (buff?.SkillId > 0 && cancelFamily.Contains(buff.SkillId))
+                {
+                    remainingMs = Math.Max(remainingMs, buff.GetRemainingTime(currentTime));
+                }
+            }
+
+            foreach (ClientSkillTimer timer in _clientSkillTimers)
+            {
+                if (timer == null
+                    || timer.SkillId <= 0
+                    || !cancelFamily.Contains(timer.SkillId)
+                    || string.Equals(timer.Source, ClientTimerSourceSummonExpire, StringComparison.Ordinal))
+                {
+                    continue;
+                }
+
+                remainingMs = Math.Max(remainingMs, Math.Max(0, timer.ExpireTime - currentTime));
+            }
+
+            return remainingMs;
+        }
+
         public void SetInventoryRuntime(IInventoryRuntime inventoryRuntime)
         {
             _inventoryRuntime = inventoryRuntime;
@@ -1107,6 +1157,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         private const int MINE_SKILL_ID = 33101008;
         private const int SG88_SKILL_ID = 35121003;
         private const int TESLA_COIL_SKILL_ID = 35111002;
+        private const int TeslaMinimumImpactDelayMs = 300;
         private const int SATELLITE_SKILL_ID = 35111001;
         private const int ENHANCED_SATELLITE_SKILL_ID = 35111009;
         private const int SATELLITE_2_SKILL_ID = 35111010;
@@ -1811,6 +1862,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         {
             if (!RequiresClientShootAttackValidation(skill))
             {
+                LastResolvedShootAmmoSelection = null;
                 return true;
             }
 
@@ -1819,44 +1871,49 @@ namespace HaCreator.MapSimulator.Character.Skills
                 || IsShootSkillNotConsumingBullet(skillId)
                 || HasShootAmmoBypassTemporaryStat())
             {
+                LastResolvedShootAmmoSelection = null;
                 return true;
             }
 
             if (_inventoryRuntime == null)
             {
+                LastResolvedShootAmmoSelection = null;
                 return true;
             }
 
             int weaponCode = GetEquippedWeaponCode();
             int requiredAmmoCount = ResolveRequiredShootAmmoCount(levelData);
-            if (!TryResolveCompatibleShootAmmoSlot(skillId, levelData, weaponCode, requiredAmmoCount, out int slotIndex, out int itemId))
+            if (!TryResolveCompatibleShootAmmoSelection(skillId, levelData, weaponCode, requiredAmmoCount, out ShootAmmoSelection selection))
             {
+                LastResolvedShootAmmoSelection = selection;
                 return false;
             }
 
-            return _inventoryRuntime.TryConsumeItemAtSlot(InventoryType.USE, slotIndex, itemId, requiredAmmoCount);
+            LastResolvedShootAmmoSelection = selection;
+            return _inventoryRuntime.TryConsumeItemAtSlot(InventoryType.USE, selection.UseSlotIndex, selection.UseItemId, requiredAmmoCount);
         }
 
         private bool HasCompatibleShootAmmo(int skillId, SkillLevelData levelData, int weaponCode, int requiredAmmoCount)
         {
             if (_inventoryRuntime == null)
             {
+                LastResolvedShootAmmoSelection = null;
                 return true;
             }
 
-            return TryResolveCompatibleShootAmmoSlot(skillId, levelData, weaponCode, requiredAmmoCount, out _, out _);
+            bool resolved = TryResolveCompatibleShootAmmoSelection(skillId, levelData, weaponCode, requiredAmmoCount, out ShootAmmoSelection selection);
+            LastResolvedShootAmmoSelection = selection;
+            return resolved;
         }
 
-        private bool TryResolveCompatibleShootAmmoSlot(
+        private bool TryResolveCompatibleShootAmmoSelection(
             int skillId,
             SkillLevelData levelData,
             int weaponCode,
             int requiredAmmoCount,
-            out int slotIndex,
-            out int itemId)
+            out ShootAmmoSelection selection)
         {
-            slotIndex = -1;
-            itemId = 0;
+            selection = null;
 
             if (_inventoryRuntime == null)
             {
@@ -1864,112 +1921,23 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
 
             IReadOnlyList<InventorySlotData> useSlots = _inventoryRuntime.GetSlots(InventoryType.USE);
-            if (useSlots == null)
+            if (useSlots == null || _player?.Build == null)
             {
                 return false;
             }
 
-            int preferredSlotIndex = FindCompatibleShootAmmoSlot(
+            int equippedWeaponItemId = _player.Build.GetWeapon()?.ItemId ?? 0;
+            int requiredAmmoItemId = ResolveSkillSpecificShootAmmoItemId(skillId, levelData);
+            IReadOnlyList<InventorySlotData> cashSlots = _inventoryRuntime.GetSlots(InventoryType.CASH);
+
+            return ClientShootAmmoResolver.TryResolveSelection(
                 useSlots,
+                cashSlots,
                 weaponCode,
+                equippedWeaponItemId,
                 requiredAmmoCount,
-                slot => slot?.IsActiveBullet == true && IsSkillCompatibleWithAmmoItem(skillId, levelData, slot.ItemId));
-            if (preferredSlotIndex >= 0)
-            {
-                slotIndex = preferredSlotIndex;
-                itemId = useSlots[preferredSlotIndex].ItemId;
-                return true;
-            }
-
-            slotIndex = FindCompatibleShootAmmoSlot(
-                useSlots,
-                weaponCode,
-                requiredAmmoCount,
-                slot => IsSkillCompatibleWithAmmoItem(skillId, levelData, slot.ItemId));
-            if (slotIndex < 0)
-            {
-                return false;
-            }
-
-            itemId = useSlots[slotIndex].ItemId;
-            return true;
-        }
-
-        private SkillData ResolveClientCancelRestrictionSkill(int requestedSkillId, IReadOnlyList<int> cancelSkillIds)
-        {
-            if (_preparedSkill != null && DoesPreparedSkillMatchClientCancelRequest(_preparedSkill, requestedSkillId))
-            {
-                return _preparedSkill.SkillData;
-            }
-
-            if (requestedSkillId > 0)
-            {
-                SkillData requestedSkill = GetSkillData(requestedSkillId);
-                if (requestedSkill != null)
-                {
-                    return requestedSkill;
-                }
-            }
-
-            if (cancelSkillIds != null)
-            {
-                for (int i = 0; i < cancelSkillIds.Count; i++)
-                {
-                    SkillData cancelSkill = GetSkillData(cancelSkillIds[i]);
-                    if (cancelSkill != null)
-                    {
-                        return cancelSkill;
-                    }
-                }
-            }
-
-            return null;
-        }
-
-        private bool RejectClientSkillCancellation(SkillData skill)
-        {
-            string restrictionMessage = _skillCancelRestrictionMessageProvider?.Invoke(skill);
-            if (string.IsNullOrWhiteSpace(restrictionMessage))
-            {
-                return false;
-            }
-
-            if (skill != null)
-            {
-                OnFieldSkillCastRejected?.Invoke(skill, restrictionMessage);
-            }
-
-            return true;
-        }
-
-        private static int FindCompatibleShootAmmoSlot(
-            IReadOnlyList<InventorySlotData> useSlots,
-            int weaponCode,
-            int requiredAmmoCount,
-            Func<InventorySlotData, bool> additionalFilter)
-        {
-            if (useSlots == null)
-            {
-                return -1;
-            }
-
-            for (int i = 0; i < useSlots.Count; i++)
-            {
-                InventorySlotData slot = useSlots[i];
-                if (slot == null
-                    || slot.IsDisabled
-                    || slot.ItemId <= 0
-                    || slot.Quantity < requiredAmmoCount
-                    || !IsCompatibleShootAmmoItem(weaponCode, slot.ItemId)
-                    || (additionalFilter != null && !additionalFilter(slot)))
-                {
-                    continue;
-                }
-
-                return i;
-            }
-
-            return -1;
+                requiredAmmoItemId,
+                out selection);
         }
 
         private static int ResolveRequiredShootAmmoCount(SkillLevelData levelData, bool hasShadowPartner = false)
@@ -1991,26 +1959,6 @@ namespace HaCreator.MapSimulator.Character.Skills
         private int ResolveRequiredShootAmmoCount(SkillLevelData levelData)
         {
             return ResolveRequiredShootAmmoCount(levelData, HasActiveTemporaryStatLabel(ShadowPartnerBuffLabel));
-        }
-
-        private static bool IsSkillCompatibleWithAmmoItem(int skillId, SkillLevelData levelData, int itemId)
-        {
-            if (itemId <= 0)
-            {
-                return false;
-            }
-
-            int requiredItemId = ResolveSkillSpecificShootAmmoItemId(skillId, levelData);
-            if (requiredItemId <= 0)
-            {
-                return true;
-            }
-
-            // WZ `itemConsume` for Outlaw elemental shots publishes one representative pellet item,
-            // while the client widens that to the full pellet family in `GetProperBulletPosition`.
-            return requiredItemId / 1000 is 2331 or 2332
-                ? itemId / 1000 == requiredItemId / 1000
-                : itemId == requiredItemId;
         }
 
         private static int ResolveSkillSpecificShootAmmoItemId(int skillId, SkillLevelData levelData)
@@ -2063,6 +2011,53 @@ namespace HaCreator.MapSimulator.Character.Skills
                 49 => tenThousandFamily == 233,
                 _ => false
             };
+        }
+
+        private SkillData ResolveClientCancelRestrictionSkill(int requestedSkillId, IReadOnlyList<int> cancelSkillIds)
+        {
+            if (_preparedSkill != null && DoesPreparedSkillMatchClientCancelRequest(_preparedSkill, requestedSkillId))
+            {
+                return _preparedSkill.SkillData;
+            }
+
+            if (requestedSkillId > 0)
+            {
+                SkillData requestedSkill = GetSkillData(requestedSkillId);
+                if (requestedSkill != null)
+                {
+                    return requestedSkill;
+                }
+            }
+
+            if (cancelSkillIds != null)
+            {
+                for (int i = 0; i < cancelSkillIds.Count; i++)
+                {
+                    SkillData cancelSkill = GetSkillData(cancelSkillIds[i]);
+                    if (cancelSkill != null)
+                    {
+                        return cancelSkill;
+                    }
+                }
+            }
+
+            return null;
+        }
+
+        private bool RejectClientSkillCancellation(SkillData skill)
+        {
+            string restrictionMessage = _skillCancelRestrictionMessageProvider?.Invoke(skill);
+            if (string.IsNullOrWhiteSpace(restrictionMessage))
+            {
+                return false;
+            }
+
+            if (skill != null)
+            {
+                OnFieldSkillCastRejected?.Invoke(skill, restrictionMessage);
+            }
+
+            return true;
         }
 
         private static string GetShootAmmoRestrictionMessage(int weaponCode)
@@ -2859,6 +2854,11 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return skill.SkillId;
             }
 
+            if (skillId > 0 && isVehicleOwnerActive?.Invoke(skillId) == true)
+            {
+                return skillId;
+            }
+
             if (IsClientOwnedVehicleToggleSkill(skillId))
             {
                 return skillId;
@@ -2881,7 +2881,9 @@ namespace HaCreator.MapSimulator.Character.Skills
 
             for (int i = _buffs.Count - 1; i >= 0; i--)
             {
-                if (_buffs[i]?.SkillData?.SkillId == ownerSkillId)
+                SkillData activeBuffSkill = _buffs[i]?.SkillData;
+                if (activeBuffSkill?.SkillId == ownerSkillId
+                    && IsClientOwnedVehicleSkill(activeBuffSkill))
                 {
                     return true;
                 }
@@ -9532,7 +9534,8 @@ namespace HaCreator.MapSimulator.Character.Skills
                     GetMobHitboxCenter(target, currentTime),
                     currentTime,
                     impactDelayMs,
-                    i);
+                    i,
+                    summon.ObjectId);
             }
         }
 
@@ -9547,6 +9550,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return;
             }
 
+            Vector2[] assignedSources = ResolveTeslaProjectileSources(teslaCoils);
             for (int i = 0; i < teslaCoils.Count; i++)
             {
                 ActiveSummon teslaCoil = teslaCoils[i];
@@ -9556,8 +9560,11 @@ namespace HaCreator.MapSimulator.Character.Skills
                     continue;
                 }
 
+                Vector2 source = i < assignedSources.Length
+                    ? assignedSources[i]
+                    : GetSummonPosition(teslaCoil);
                 MobItem target = targets
-                    .OrderBy(candidate => Vector2.DistanceSquared(GetMobHitboxCenter(candidate, currentTime), GetSummonPosition(teslaCoil)))
+                    .OrderBy(candidate => Vector2.DistanceSquared(GetMobHitboxCenter(candidate, currentTime), source))
                     .FirstOrDefault();
                 if (target == null)
                 {
@@ -9581,11 +9588,12 @@ namespace HaCreator.MapSimulator.Character.Skills
                     teslaCoil.Level,
                     teslaCoil.LevelData,
                     teslaCoil.SkillData.SummonProjectileAnimations,
-                    GetSummonPosition(teslaCoil),
+                    source,
                     GetMobHitboxCenter(target, currentTime),
                     currentTime,
                     impactDelayMs,
-                    i);
+                    i,
+                    teslaCoil.ObjectId);
             }
         }
 
@@ -9598,7 +9606,8 @@ namespace HaCreator.MapSimulator.Character.Skills
             Vector2 target,
             int currentTime,
             int impactDelayMs,
-            int variantIndex)
+            int variantIndex,
+            int ownerId = 0)
         {
             if (projectileAnimations == null || projectileAnimations.Count == 0)
             {
@@ -9639,7 +9648,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 VelocityY = delta.Y / durationSeconds,
                 FacingRight = delta.X >= 0f,
                 SpawnTime = currentTime,
-                OwnerId = 0,
+                OwnerId = ownerId,
                 OwnerX = source.X,
                 OwnerY = source.Y,
                 VisualOnly = true
@@ -9658,24 +9667,27 @@ namespace HaCreator.MapSimulator.Character.Skills
 
         private int ResolveTeslaTargetImpactDelayMs(ActiveSummon summon, MobItem target, int currentTime)
         {
-            int baseDelayMs = Math.Max(0, ResolveSummonAttackExecutionDelayMs(summon, target != null ? new[] { target } : Array.Empty<MobItem>(), currentTime));
             if (summon?.SkillId != TESLA_COIL_SKILL_ID)
             {
-                return baseDelayMs;
+                return Math.Max(0, ResolveSummonAttackExecutionDelayMs(
+                    summon,
+                    target != null ? new[] { target } : Array.Empty<MobItem>(),
+                    currentTime));
             }
 
-            return baseDelayMs + ResolveTeslaPerTargetJitterMs(baseDelayMs);
+            return ResolveTeslaImpactDelayMs(ResolveTeslaAttackDelayWindowMs(summon));
         }
 
-        private static int ResolveTeslaPerTargetJitterMs(int baseDelayMs)
+        private int ResolveTeslaImpactDelayMs(int attackDelayMs)
         {
-            int jitterWindowMs = Math.Max(0, baseDelayMs - 300);
+            int clampedDelayMs = Math.Max(TeslaMinimumImpactDelayMs, attackDelayMs);
+            int jitterWindowMs = Math.Max(0, clampedDelayMs - TeslaMinimumImpactDelayMs);
             if (jitterWindowMs <= 0)
             {
-                return 0;
+                return TeslaMinimumImpactDelayMs;
             }
 
-            return Random.Next(jitterWindowMs);
+            return TeslaMinimumImpactDelayMs + Random.Next(jitterWindowMs);
         }
 
         private IEnumerable<MobItem> OrderSummonTargetsByDistance(ActiveSummon summon, IEnumerable<MobItem> candidateTargets, int currentTime)
@@ -9719,12 +9731,10 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
 
             var candidates = candidateHitboxes
-                .Select((hitbox, index) => new
-                {
-                    Index = index,
-                    Hitbox = hitbox,
-                    Center = new Vector2(hitbox.Center.X, hitbox.Center.Y)
-                })
+                .Select((hitbox, index) => new Sg88ManualCandidate(
+                    index,
+                    hitbox,
+                    new Vector2(hitbox.Center.X, hitbox.Center.Y)))
                 .Where(entry => !entry.Hitbox.IsEmpty)
                 .ToList();
             if (candidates.Count == 0)
@@ -9732,31 +9742,20 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return Array.Empty<int>();
             }
 
-            var primaryTarget = candidates
-                .Select(candidate =>
-                {
-                    Vector2 center = candidate.Center;
-                    float deltaY = center.Y - ownerPosition.Y;
-                    return new
-                    {
-                        candidate.Index,
-                        candidate.Hitbox,
-                        OwnerDistanceSq = Vector2.DistanceSquared(center, ownerPosition),
-                        VerticalDistance = MathF.Abs(deltaY),
-                        SummonDistanceSq = Vector2.DistanceSquared(center, summonPosition),
-                        candidate.Center
-                    };
-                })
-                .OrderBy(entry => entry.OwnerDistanceSq)
-                .ThenBy(entry => entry.VerticalDistance)
-                .ThenBy(entry => entry.SummonDistanceSq)
-                .ThenBy(entry => entry.Index)
-                .First();
+            if (!TryResolveSg88ManualPrimaryTarget(
+                    summonPosition,
+                    ownerPosition,
+                    primaryClusterRange,
+                    candidates,
+                    out int primaryTargetIndex,
+                    out bool preferLeft))
+            {
+                return Array.Empty<int>();
+            }
 
-            bool preferLeft = primaryTarget.Center.X < summonPosition.X
-                || (MathF.Abs(primaryTarget.Center.X - summonPosition.X) < 0.5f && ownerPosition.X < summonPosition.X);
+            var primaryTarget = candidates.First(entry => entry.Index == primaryTargetIndex);
             Rectangle primaryHitbox = primaryTarget.Hitbox;
-            Point primaryHitPoint = ResolveSg88ManualPrimaryHitPoint(primaryHitbox, summonPosition, preferLeft);
+            Point primaryHitPoint = ResolveSg88ManualPrimaryHitPoint(primaryHitbox, summonPosition, preferLeft, primaryClusterRange);
             Rectangle clusterBounds = ResolveSg88ManualClusterBounds(primaryHitPoint, primaryClusterRange);
 
             var preferredSide = candidates
@@ -9780,16 +9779,119 @@ namespace HaCreator.MapSimulator.Character.Skills
                 .ToArray();
         }
 
-        internal static Point ResolveSg88ManualPrimaryHitPoint(Rectangle hitbox, Vector2 summonPosition, bool preferLeft)
+        internal static Point ResolveSg88ManualPrimaryHitPoint(
+            Rectangle hitbox,
+            Vector2 summonPosition,
+            bool preferLeft,
+            Rectangle primaryClusterRange)
         {
             if (hitbox.IsEmpty)
             {
                 return Point.Zero;
             }
 
-            int y = Math.Clamp((int)MathF.Round(summonPosition.Y), hitbox.Top, hitbox.Bottom);
+            int y = ResolveSg88ManualPrimaryHitLineY(summonPosition, primaryClusterRange);
+            y = Math.Clamp(y, hitbox.Top, hitbox.Bottom);
             int x = preferLeft ? hitbox.Right : hitbox.Left;
             return new Point(x, y);
+        }
+
+        internal static int ResolveSg88ManualPrimaryHitLineY(Vector2 summonPosition, Rectangle primaryClusterRange)
+        {
+            int verticalOffset = primaryClusterRange.Y < 0
+                ? Math.Abs(primaryClusterRange.Y)
+                : 0;
+            return (int)MathF.Round(summonPosition.Y) + verticalOffset;
+        }
+
+        internal static Rectangle ResolveSg88ManualPrimarySideBand(Vector2 summonPosition, Rectangle primaryClusterRange, bool preferLeft)
+        {
+            int anchorX = (int)MathF.Round(summonPosition.X);
+            int anchorY = ResolveSg88ManualPrimaryHitLineY(summonPosition, primaryClusterRange);
+            int nearOffset = primaryClusterRange.Y < 0
+                ? Math.Abs(primaryClusterRange.Y)
+                : Math.Max(0, primaryClusterRange.Bottom);
+            int farLeft = Math.Max(0, -primaryClusterRange.Left);
+            int farRight = Math.Max(0, primaryClusterRange.Right);
+
+            int startX;
+            int endX;
+            if (preferLeft)
+            {
+                startX = anchorX - farLeft;
+                endX = anchorX + nearOffset;
+            }
+            else
+            {
+                startX = anchorX - nearOffset;
+                endX = anchorX + farRight;
+            }
+
+            if (endX < startX)
+            {
+                (startX, endX) = (endX, startX);
+            }
+
+            return new Rectangle(
+                startX,
+                anchorY,
+                Math.Max(1, endX - startX),
+                1);
+        }
+
+        private static bool TryResolveSg88ManualPrimaryTarget(
+            Vector2 summonPosition,
+            Vector2 ownerPosition,
+            Rectangle primaryClusterRange,
+            IReadOnlyList<Sg88ManualCandidate> candidates,
+            out int primaryTargetIndex,
+            out bool preferLeft)
+        {
+            foreach (Vector2 searchOrigin in new[] { ownerPosition, summonPosition })
+            {
+                foreach (var candidate in candidates
+                             .Select(entry =>
+                             {
+                                 Vector2 center = entry.Center;
+                                 float deltaY = center.Y - searchOrigin.Y;
+                                 return new
+                                 {
+                                     entry.Index,
+                                     entry.Hitbox,
+                                     entry.Center,
+                                     SearchDistanceSq = Vector2.DistanceSquared(center, searchOrigin),
+                                     VerticalDistance = MathF.Abs(deltaY),
+                                     SummonDistanceSq = Vector2.DistanceSquared(center, summonPosition)
+                                 };
+                             })
+                             .OrderBy(entry => entry.SearchDistanceSq)
+                             .ThenBy(entry => entry.VerticalDistance)
+                             .ThenBy(entry => entry.SummonDistanceSq)
+                             .ThenBy(entry => entry.Index))
+                {
+                    Rectangle leftBand = ResolveSg88ManualPrimarySideBand(summonPosition, primaryClusterRange, preferLeft: true);
+                    if (candidate.Center.X <= summonPosition.X
+                        && leftBand.Intersects(candidate.Hitbox))
+                    {
+                        primaryTargetIndex = candidate.Index;
+                        preferLeft = true;
+                        return true;
+                    }
+
+                    Rectangle rightBand = ResolveSg88ManualPrimarySideBand(summonPosition, primaryClusterRange, preferLeft: false);
+                    if (candidate.Center.X >= summonPosition.X
+                        && rightBand.Intersects(candidate.Hitbox))
+                    {
+                        primaryTargetIndex = candidate.Index;
+                        preferLeft = false;
+                        return true;
+                    }
+                }
+            }
+
+            primaryTargetIndex = 0;
+            preferLeft = false;
+            return false;
         }
 
         internal static Rectangle ResolveSg88ManualClusterBounds(Point primaryHitPoint, Rectangle primaryClusterRange)
@@ -10996,6 +11098,78 @@ namespace HaCreator.MapSimulator.Character.Skills
             return Vector2.DistanceSquared(left, apex) >= TeslaTriangleMinimumEdgeLengthSq
                 && Vector2.DistanceSquared(apex, right) >= TeslaTriangleMinimumEdgeLengthSq
                 && Vector2.DistanceSquared(left, right) >= TeslaTriangleMinimumEdgeLengthSq;
+        }
+
+        private static Vector2[] ResolveTeslaProjectileSources(IReadOnlyList<ActiveSummon> coils)
+        {
+            if (coils == null || coils.Count == 0)
+            {
+                return Array.Empty<Vector2>();
+            }
+
+            Vector2[] triangleVertices = ResolveTeslaTriangleVerticesOrFallback(coils);
+            if (triangleVertices.Length == 0)
+            {
+                return Array.Empty<Vector2>();
+            }
+
+            Vector2[] assignedSources = new Vector2[coils.Count];
+            List<Vector2> remainingVertices = triangleVertices.ToList();
+            for (int i = 0; i < coils.Count; i++)
+            {
+                ActiveSummon coil = coils[i];
+                Vector2 summonPosition = coil == null
+                    ? Vector2.Zero
+                    : new Vector2(coil.PositionX, coil.PositionY);
+                if (remainingVertices.Count == 0)
+                {
+                    assignedSources[i] = summonPosition;
+                    continue;
+                }
+
+                int nearestIndex = 0;
+                float nearestDistance = Vector2.DistanceSquared(summonPosition, remainingVertices[0]);
+                for (int vertexIndex = 1; vertexIndex < remainingVertices.Count; vertexIndex++)
+                {
+                    float distance = Vector2.DistanceSquared(summonPosition, remainingVertices[vertexIndex]);
+                    if (distance < nearestDistance)
+                    {
+                        nearestDistance = distance;
+                        nearestIndex = vertexIndex;
+                    }
+                }
+
+                assignedSources[i] = remainingVertices[nearestIndex];
+                remainingVertices.RemoveAt(nearestIndex);
+            }
+
+            return assignedSources;
+        }
+
+        private static Vector2[] ResolveTeslaTriangleVerticesOrFallback(IReadOnlyList<ActiveSummon> coils)
+        {
+            if (TryBuildTeslaCoilTriangle(coils, out Vector2 left, out Vector2 apex, out Vector2 right))
+            {
+                return new[] { left, apex, right };
+            }
+
+            return coils
+                .Where(static coil => coil != null)
+                .Select(static coil => new Vector2(coil.PositionX, coil.PositionY))
+                .Take(3)
+                .ToArray();
+        }
+
+        private int ResolveTeslaAttackDelayWindowMs(ActiveSummon summon)
+        {
+            if (summon?.SkillData == null)
+            {
+                return TeslaMinimumImpactDelayMs;
+            }
+
+            return Math.Max(
+                TeslaMinimumImpactDelayMs,
+                GetSummonAttackInterval(summon.SkillData, summon.Level));
         }
 
         private static Rectangle GetTriangleBounds(Vector2 a, Vector2 b, Vector2 c)
@@ -12359,6 +12533,8 @@ namespace HaCreator.MapSimulator.Character.Skills
                 TrackIfMissing(temporaryStats, levelData.ExperienceRate > 0, ExperienceBuffLabel);
                 TrackIfMissing(temporaryStats, levelData.DropRate > 0, DropRateBuffLabel);
                 TrackIfMissing(temporaryStats, levelData.MesoRate > 0, MesoRateBuffLabel);
+                TrackIfMissing(temporaryStats, levelData.BossDamageRate > 0, BossDamageBuffLabel);
+                TrackIfMissing(temporaryStats, levelData.IgnoreDefenseRate > 0, IgnoreDefenseBuffLabel);
                 TrackIfMissing(temporaryStats, levelData.HP > 0 || levelData.MP > 0, RecoveryBuffLabel);
             }
 
@@ -13065,6 +13241,10 @@ namespace HaCreator.MapSimulator.Character.Skills
             return skillId switch
             {
                 51100001 => weaponCode == 48,
+                // `skill/5112.img/skill/51120001/common/mastery = 55+u(x/2)` is present,
+                // but `String/Skill.img` does not publish a matching entry, so keep the
+                // Buccaneer-era expert book on the knuckle family via its observed job branch.
+                51120001 => weaponCode == 48,
                 5700000 => weaponCode == 49,
                 _ => false
             };
@@ -13274,7 +13454,9 @@ namespace HaCreator.MapSimulator.Character.Skills
                    && left.ElementalResistance == right.ElementalResistance
                    && left.ExperienceRate == right.ExperienceRate
                    && left.DropRate == right.DropRate
-                   && left.MesoRate == right.MesoRate;
+                   && left.MesoRate == right.MesoRate
+                   && left.BossDamageRate == right.BossDamageRate
+                   && left.IgnoreDefenseRate == right.IgnoreDefenseRate;
         }
 
         private int ResolveEnhancedStatBonus(SkillData skill, int amount)

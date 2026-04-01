@@ -521,6 +521,18 @@ namespace HaCreator.MapSimulator
         {
             switch (ResolvePacketOwnedAntiMacroScreenshotFolderMode())
             {
+                case 0:
+                {
+                    string processPath = Environment.ProcessPath;
+                    if (!string.IsNullOrWhiteSpace(processPath))
+                    {
+                        string executableDirectory = Path.GetDirectoryName(processPath);
+                        return TrimPacketOwnedAntiMacroTrailingDirectorySeparator(executableDirectory);
+                    }
+
+                    return TrimPacketOwnedAntiMacroTrailingDirectorySeparator(AppContext.BaseDirectory);
+                }
+
                 case 1:
                     return TrimPacketOwnedAntiMacroTrailingDirectorySeparator(
                         Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory));
@@ -529,19 +541,7 @@ namespace HaCreator.MapSimulator
                     return @"C:\";
 
                 default:
-                {
-                    string baseDirectory = AppContext.BaseDirectory;
-                    if (string.IsNullOrWhiteSpace(baseDirectory))
-                    {
-                        return string.Empty;
-                    }
-
-                    string trimmedBaseDirectory = TrimPacketOwnedAntiMacroTrailingDirectorySeparator(baseDirectory);
-                    string parentDirectory = Path.GetDirectoryName(trimmedBaseDirectory);
-                    return string.IsNullOrWhiteSpace(parentDirectory)
-                        ? trimmedBaseDirectory
-                        : TrimPacketOwnedAntiMacroTrailingDirectorySeparator(parentDirectory);
-                }
+                    return string.Empty;
             }
         }
 

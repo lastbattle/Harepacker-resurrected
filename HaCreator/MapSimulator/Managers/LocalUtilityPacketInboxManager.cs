@@ -58,6 +58,7 @@ namespace HaCreator.MapSimulator.Managers
         public const int OpenUiWithOptionClientPacketType = 252;
         public const int HireTutorClientPacketType = 255;
         public const int TutorMsgClientPacketType = 256;
+        public const int QuestResultPacketType = 242;
         public const int NotifyHpDecByFieldPacketType = 243;
         public const int NoticeMsgClientPacketType = 263;
         public const int ChatMsgClientPacketType = 264;
@@ -298,6 +299,7 @@ namespace HaCreator.MapSimulator.Managers
                     || packetType == RadioScheduleClientPacketType
                     || packetType == AntiMacroResultPacketType
                     || packetType == OpenSkillGuideClientPacketType
+                    || packetType == QuestResultPacketType
                     || packetType == NotifyHpDecByFieldPacketType
                     || packetType == OpenClassCompetitionPagePacketType
                     || packetType == DamageMeterPacketType
@@ -428,6 +430,13 @@ namespace HaCreator.MapSimulator.Managers
                 || token.Equals("openskillguide", StringComparison.OrdinalIgnoreCase))
             {
                 packetType = OpenSkillGuideClientPacketType;
+                return true;
+            }
+
+            if (token.Equals("questresult", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("onquestresult", StringComparison.OrdinalIgnoreCase))
+            {
+                packetType = QuestResultPacketType;
                 return true;
             }
 
@@ -621,6 +630,7 @@ namespace HaCreator.MapSimulator.Managers
                 FollowCharacterClientPacketType => "FollowCharacter(193)",
                 PlayEventSoundClientPacketType => "PlayEventSound(246)",
                 PlayMinigameSoundClientPacketType => "PlayMinigameSound(247)",
+                QuestResultPacketType => "OnQuestResult(242)",
                 NotifyHpDecByFieldPacketType => "NotifyHPDecByField(243)",
                 OpenClassCompetitionPagePacketType => "OpenClassCompetitionPage(250)",
                 OpenUiClientPacketType => "OpenUI(251)",

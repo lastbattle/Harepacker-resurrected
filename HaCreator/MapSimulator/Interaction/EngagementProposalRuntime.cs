@@ -119,12 +119,17 @@ namespace HaCreator.MapSimulator.Interaction
             _acceptedProposal = _mode == EngagementProposalDialogMode.IncomingProposal
                 ? new EngagementProposalAcceptedSnapshot
                 {
+                    LocalCharacterName = _localCharacterName,
                     ProposerName = _proposerName,
                     PartnerName = _partnerName,
                     RingItemId = _ringItemId,
                     RingItemName = _ringItemName,
+                    RingItemDescription = _ringItemDescription,
                     SealItemId = _sealItemId,
-                    SealItemName = _sealItemName
+                    SealItemName = _sealItemName,
+                    SealItemDescription = _sealItemDescription,
+                    RequestMessage = _outgoingRequestMessage,
+                    CustomMessage = _customMessage
                 }
                 : null;
             _statusMessage = _mode == EngagementProposalDialogMode.OutgoingRequest
@@ -423,10 +428,15 @@ namespace HaCreator.MapSimulator.Interaction
     {
         public int RingItemId { get; init; }
         public int SealItemId { get; init; }
+        public string LocalCharacterName { get; init; } = string.Empty;
         public string ProposerName { get; init; } = string.Empty;
         public string PartnerName { get; init; } = string.Empty;
         public string RingItemName { get; init; } = string.Empty;
+        public string RingItemDescription { get; init; } = string.Empty;
         public string SealItemName { get; init; } = string.Empty;
+        public string SealItemDescription { get; init; } = string.Empty;
+        public string RequestMessage { get; init; } = string.Empty;
+        public string CustomMessage { get; init; } = string.Empty;
     }
 
     internal sealed class WeddingInvitationHandoff

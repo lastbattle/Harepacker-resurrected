@@ -40,6 +40,7 @@ namespace HaCreator.MapSimulator.Fields
         private enum CookieBitmapRootResolutionKind
         {
             Unresolved,
+            WzCandidate,
             CompatibleShape
         }
 
@@ -77,6 +78,7 @@ namespace HaCreator.MapSimulator.Fields
         private static readonly string[] BitmapNumberSignPlusNames = { "plus", "signPlus", "Plus", "SignPlus" };
         private static readonly string[] BitmapNumberSignMinusNames = { "minus", "signMinus", "Minus", "SignMinus" };
         private static readonly string[] PreferredUiWindowImages = { "UIWindow.img", "UIWindow2.img" };
+        private static readonly string[] PreferredBitmapRootCandidatePaths = { "raise/30", "raise/31" };
         private const string ClientPreferredBitmapRootHint = "raise";
 
         // Recovered from MapleStory.exe v95:
@@ -140,6 +142,7 @@ namespace HaCreator.MapSimulator.Fields
         public int MapId => _mapId;
         public int Point => _point;
         public int GradeIndex => _gradeIndex;
+        internal static IReadOnlyList<string> BitmapRootCandidatePaths => PreferredBitmapRootCandidatePaths;
 
         public void Enable(int mapId, Func<int> pointProvider = null)
         {
@@ -219,6 +222,23 @@ namespace HaCreator.MapSimulator.Fields
             return GradeCount - 1;
         }
 
+        internal static int FindGradeForTesting(int point)
+        {
+            return FindGrade(point);
+        }
+
+        internal static bool MatchesBitmapRootCandidatePath(string path)
+        {
+            if (string.IsNullOrWhiteSpace(path))
+            {
+                return false;
+            }
+
+            string normalizedPath = path.Replace('\\', '/');
+            return PreferredBitmapRootCandidatePaths.Any(candidate =>
+                normalizedPath.EndsWith(candidate, StringComparison.OrdinalIgnoreCase));
+        }
+
         private void EnsureAssetsLoaded(GraphicsDevice graphicsDevice)
         {
             if (_assetsLoaded || graphicsDevice == null)
@@ -274,6 +294,11 @@ namespace HaCreator.MapSimulator.Fields
             _bitmapNumberSourcePath = null;
             _usesFallbackBitmapSource = false;
             _bitmapRootResolutionKind = CookieBitmapRootResolutionKind.Unresolved;
+            if (TryLoadPreferredBitmapNumberRoots())
+            {
+                return;
+            }
+
             foreach (WzImage image in EnumerateUiImages())
             {
                 if (image == null)
@@ -291,6 +316,34 @@ namespace HaCreator.MapSimulator.Fields
                     return;
                 }
             }
+        }
+
+        private bool TryLoadPreferredBitmapNumberRoots()
+        {
+            foreach (WzImage image in EnumerateUiImages())
+            {
+                if (image == null)
+                {
+                    continue;
+                }
+
+                string imagePath = $"UI/{image.Name}";
+                foreach (string candidatePath in PreferredBitmapRootCandidatePaths)
+                {
+                    WzImageProperty candidateRoot = ResolvePropertyPath(image, candidatePath);
+                    if (candidateRoot == null || !TryLoadBitmapNumberStyles(candidateRoot))
+                    {
+                        continue;
+                    }
+
+                    _bitmapNumberSourcePath = $"{imagePath}/{candidatePath}";
+                    _usesFallbackBitmapSource = !IsPreferredUiWindowImage(image.Name);
+                    _bitmapRootResolutionKind = CookieBitmapRootResolutionKind.WzCandidate;
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         private CookieCanvasSprite LoadCanvas(WzImageProperty source)
@@ -883,6 +936,7 @@ namespace HaCreator.MapSimulator.Fields
 
             string sourceLabel = _bitmapRootResolutionKind switch
             {
+                CookieBitmapRootResolutionKind.WzCandidate => "wz-candidate",
                 CookieBitmapRootResolutionKind.CompatibleShape => "compatible-shape",
                 _ => "unresolved"
             };

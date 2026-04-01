@@ -11,6 +11,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
+using Microsoft.Win32;
 using SD = System.Drawing;
 using SDText = System.Drawing.Text;
 using SWF = System.Windows.Forms;
@@ -71,6 +72,18 @@ namespace HaCreator.MapSimulator.UI
             "Fonts",
             "Content",
             Path.Combine("Content", "Fonts")
+        };
+        private static readonly string[] MapleInstallRegistrySubKeys =
+        {
+            @"SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall",
+            @"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall",
+            @"SOFTWARE\WOW6432Node\Wizet",
+            @"SOFTWARE\Wizet"
+        };
+        private static readonly string[] MapleInstallValueNames =
+        {
+            "InstallLocation",
+            "DisplayIcon"
         };
         private static readonly string[] BasicBlackFontFamilyCandidates =
         {
@@ -591,6 +604,39 @@ namespace HaCreator.MapSimulator.UI
                 Environment.GetFolderPath(Environment.SpecialFolder.Windows),
                 "Fonts");
 
+            foreach (string baseDirectory in EnumerateBaseFontSearchRoots(windowsFontsDirectory))
+            {
+                foreach (string nearbyDirectory in EnumerateNearbyRootDirectories(baseDirectory))
+                {
+                    foreach (string suffix in BasicBlackFontSearchDirectorySuffixes)
+                    {
+                        string candidate = string.IsNullOrEmpty(suffix)
+                            ? nearbyDirectory
+                            : Path.Combine(nearbyDirectory, suffix);
+
+                        string fullPath;
+                        try
+                        {
+                            fullPath = Path.GetFullPath(candidate);
+                        }
+                        catch
+                        {
+                            continue;
+                        }
+
+                        if (!Directory.Exists(fullPath) || !seenPaths.Add(fullPath))
+                        {
+                            continue;
+                        }
+
+                        yield return fullPath;
+                    }
+                }
+            }
+        }
+
+        private static IEnumerable<string> EnumerateBaseFontSearchRoots(string windowsFontsDirectory)
+        {
             foreach (string baseDirectory in new[]
                      {
                          AppContext.BaseDirectory,
@@ -598,35 +644,149 @@ namespace HaCreator.MapSimulator.UI
                          windowsFontsDirectory
                      })
             {
-                if (string.IsNullOrWhiteSpace(baseDirectory))
+                if (!string.IsNullOrWhiteSpace(baseDirectory))
                 {
-                    continue;
+                    yield return baseDirectory;
+                }
+            }
+
+            foreach (string installDirectory in EnumerateMapleInstallDirectories())
+            {
+                yield return installDirectory;
+            }
+        }
+
+        private static IEnumerable<string> EnumerateNearbyRootDirectories(string baseDirectory)
+        {
+            string currentDirectory = baseDirectory;
+            for (int depth = 0; depth < 3 && !string.IsNullOrWhiteSpace(currentDirectory); depth++)
+            {
+                string fullPath;
+                try
+                {
+                    fullPath = Path.GetFullPath(currentDirectory);
+                }
+                catch
+                {
+                    yield break;
                 }
 
-                foreach (string suffix in BasicBlackFontSearchDirectorySuffixes)
-                {
-                    string candidate = string.IsNullOrEmpty(suffix)
-                        ? baseDirectory
-                        : Path.Combine(baseDirectory, suffix);
+                yield return fullPath;
 
-                    string fullPath;
+                DirectoryInfo parentDirectory;
+                try
+                {
+                    parentDirectory = Directory.GetParent(fullPath);
+                }
+                catch
+                {
+                    yield break;
+                }
+
+                currentDirectory = parentDirectory?.FullName;
+            }
+        }
+
+        private static IEnumerable<string> EnumerateMapleInstallDirectories()
+        {
+            HashSet<string> seenDirectories = new(StringComparer.OrdinalIgnoreCase);
+
+            foreach (string registrySubKey in MapleInstallRegistrySubKeys)
+            {
+                foreach (RegistryHive hive in new[] { RegistryHive.CurrentUser, RegistryHive.LocalMachine })
+                {
+                    RegistryKey baseKey;
                     try
                     {
-                        fullPath = Path.GetFullPath(candidate);
+                        baseKey = RegistryKey.OpenBaseKey(hive, RegistryView.Registry64);
                     }
                     catch
                     {
                         continue;
                     }
 
-                    if (!Directory.Exists(fullPath) || !seenPaths.Add(fullPath))
+                    using (baseKey)
+                    using (RegistryKey rootKey = baseKey.OpenSubKey(registrySubKey))
                     {
-                        continue;
-                    }
+                        if (rootKey == null)
+                        {
+                            continue;
+                        }
 
-                    yield return fullPath;
+                        foreach (string subKeyName in rootKey.GetSubKeyNames())
+                        {
+                            if (subKeyName.IndexOf("maple", StringComparison.OrdinalIgnoreCase) < 0 &&
+                                subKeyName.IndexOf("wizet", StringComparison.OrdinalIgnoreCase) < 0)
+                            {
+                                continue;
+                            }
+
+                            using RegistryKey installKey = rootKey.OpenSubKey(subKeyName);
+                            if (installKey == null)
+                            {
+                                continue;
+                            }
+
+                            foreach (string valueName in MapleInstallValueNames)
+                            {
+                                if (!TryNormalizeRegistryDirectory(installKey.GetValue(valueName) as string, out string directory) ||
+                                    !seenDirectories.Add(directory))
+                                {
+                                    continue;
+                                }
+
+                                yield return directory;
+                            }
+                        }
+                    }
                 }
             }
+        }
+
+        private static bool TryNormalizeRegistryDirectory(string rawValue, out string directory)
+        {
+            directory = null;
+            if (string.IsNullOrWhiteSpace(rawValue))
+            {
+                return false;
+            }
+
+            string normalizedValue = rawValue.Trim().Trim('"');
+            int resourceSuffixIndex = normalizedValue.IndexOf(",0", StringComparison.Ordinal);
+            if (resourceSuffixIndex >= 0)
+            {
+                normalizedValue = normalizedValue.Substring(0, resourceSuffixIndex).Trim().Trim('"');
+            }
+
+            string fullPath;
+            try
+            {
+                fullPath = Path.GetFullPath(normalizedValue);
+            }
+            catch
+            {
+                return false;
+            }
+
+            if (Directory.Exists(fullPath))
+            {
+                directory = fullPath;
+                return true;
+            }
+
+            if (!File.Exists(fullPath))
+            {
+                return false;
+            }
+
+            string parentDirectory = Path.GetDirectoryName(fullPath);
+            if (string.IsNullOrWhiteSpace(parentDirectory) || !Directory.Exists(parentDirectory))
+            {
+                return false;
+            }
+
+            directory = parentDirectory;
+            return true;
         }
 
         private static IEnumerable<string> CreatePreferredBasicBlackFamilyNames(string configuredFontFace)

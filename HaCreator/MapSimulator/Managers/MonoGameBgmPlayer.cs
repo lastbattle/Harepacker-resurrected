@@ -11,14 +11,21 @@ namespace HaCreator.MapSimulator.Managers
         private bool _disposed;
 
         public MonoGameBgmPlayer(WzBinaryProperty sound, bool looped, float volume = 0.5f)
+            : this(sound, looped, 0, volume)
         {
-            _soundEffect = MonoGameAudioFactory.CreateSoundEffect(sound);
+        }
+
+        public MonoGameBgmPlayer(WzBinaryProperty sound, bool looped, int startOffsetMs, float volume = 0.5f)
+        {
+            _soundEffect = MonoGameAudioFactory.CreateSoundEffect(sound, startOffsetMs, out TimeSpan availableDuration);
             _instance = _soundEffect.CreateInstance();
             _instance.IsLooped = looped;
             _instance.Volume = volume;
+            Duration = availableDuration;
         }
 
         public SoundState State => _instance?.State ?? SoundState.Stopped;
+        public TimeSpan Duration { get; }
 
         public float Volume
         {

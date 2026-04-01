@@ -1174,9 +1174,7 @@ namespace HaCreator.MapSimulator.UI {
                 renderWidth,
                 renderHeight,
                 SanitizeTooltipText(cooldownEntry.SkillName),
-                cooldownEntry.RemainingMs > 0
-                    ? $"Cooldown: {Math.Max(1, (int)Math.Ceiling(cooldownEntry.RemainingMs / 1000f))} sec"
-                    : "Cooldown: Ready",
+                $"Cooldown: {SkillCooldownTooltipText.FormatCooldownState(cooldownEntry.RemainingMs)}",
                 string.Empty,
                 SanitizeTooltipText(cooldownEntry.Description),
                 cooldownEntry.IconTexture);

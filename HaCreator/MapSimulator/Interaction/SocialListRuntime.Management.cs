@@ -60,7 +60,7 @@ namespace HaCreator.MapSimulator.Interaction
 
         internal GuildManageSnapshot BuildGuildManageSnapshot()
         {
-            string localRole = GetLocalGuildRoleLabel();
+            string effectiveRole = GetEffectiveGuildRoleLabel();
             string selectedTitle = _guildRankTitles.Count == 0
                 ? string.Empty
                 : _guildRankTitles[Math.Clamp(_guildManageSelectedRankIndex, 0, _guildRankTitles.Count - 1)];
@@ -80,10 +80,10 @@ namespace HaCreator.MapSimulator.Interaction
                 EditableText = editableText,
                 NoticeText = _guildNoticeText,
                 IsEditing = _guildManageEditing,
-                CanEdit = CanManageGuild(),
+                CanEdit = CanEditCurrentGuildManageTab(),
                 CanPageBackward = _guildManageCurrentTab == GuildManageTab.Position && _guildManageSelectedRankIndex > 0,
                 CanPageForward = _guildManageCurrentTab == GuildManageTab.Position && _guildManageSelectedRankIndex < _guildRankTitles.Count - 1,
-                SummaryLines = BuildGuildManageSummary(localRole, selectedTitle)
+                SummaryLines = BuildGuildManageSummary(effectiveRole, selectedTitle)
             };
         }
 
@@ -116,14 +116,19 @@ namespace HaCreator.MapSimulator.Interaction
 
         internal string BeginGuildManageEdit()
         {
-            if (!CanManageGuild())
+            if (_guildManageCurrentTab == GuildManageTab.Position && !CanManageGuildRanks())
             {
-                return $"Guild management is read-only while the local role is {GetLocalGuildRoleLabel()}.";
+                return $"Guild rank titles are read-only while the active authority role is {GetEffectiveGuildRoleLabel()}.";
             }
 
             if (_guildManageCurrentTab == GuildManageTab.Admission)
             {
                 return "Guild admission uses the OK/NO controls instead of freeform text.";
+            }
+
+            if (_guildManageCurrentTab == GuildManageTab.Change && !CanEditGuildNotice())
+            {
+                return $"Guild notice editing is read-only while the active authority role is {GetEffectiveGuildRoleLabel()}.";
             }
 
             _guildManageEditing = true;
@@ -185,9 +190,9 @@ namespace HaCreator.MapSimulator.Interaction
 
         internal string SetGuildAdmission(bool requiresApproval)
         {
-            if (!CanManageGuild())
+            if (!CanToggleGuildAdmission())
             {
-                return $"Guild admission is read-only while the local role is {GetLocalGuildRoleLabel()}.";
+                return $"Guild admission is read-only while the active authority role is {GetEffectiveGuildRoleLabel()}.";
             }
 
             _guildManageRequiresApproval = requiresApproval;
@@ -221,7 +226,7 @@ namespace HaCreator.MapSimulator.Interaction
                 EditableText = editableText,
                 NoticeText = _allianceNoticeText,
                 IsEditing = _allianceEditorEditing,
-                CanEdit = CanManageAlliance(),
+                CanEdit = _allianceEditorFocus == AllianceEditorFocus.Notice ? CanEditAllianceNotice() : CanEditAllianceRanks(),
                 SummaryLines = BuildAllianceEditorSummary(selectedTitle)
             };
         }
@@ -244,9 +249,14 @@ namespace HaCreator.MapSimulator.Interaction
 
         internal string BeginAllianceEdit()
         {
-            if (!CanManageAlliance())
+            if (_allianceEditorFocus == AllianceEditorFocus.Notice && !CanEditAllianceNotice())
             {
-                return $"Alliance editing is read-only while the local role is {GetLocalAllianceRoleLabel()}.";
+                return $"Alliance notice editing is read-only while the active authority role is {GetEffectiveAllianceRoleLabel()}.";
+            }
+
+            if (_allianceEditorFocus == AllianceEditorFocus.RankTitle && !CanEditAllianceRanks())
+            {
+                return $"Alliance rank titles are read-only while the active authority role is {GetEffectiveAllianceRoleLabel()}.";
             }
 
             _allianceEditorEditing = true;
@@ -312,19 +322,19 @@ namespace HaCreator.MapSimulator.Interaction
                 {
                     $"Guild role: {localRole}",
                     $"Selected rank: {selectedTitle}",
-                    CanManageGuild() ? "Edit or save to rename guild rank titles." : "Only Master or Jr. Master may rename guild ranks here."
+                    $"{GetGuildAuthoritySummary()}. {(CanManageGuildRanks() ? "Edit or save to rename guild rank titles." : "Rank-title edits remain locked.")}"
                 },
                 GuildManageTab.Admission => new[]
                 {
                     $"Guild role: {localRole}",
                     _guildManageRequiresApproval ? "Admission mode: approval required" : "Admission mode: open enrollment",
-                    CanManageGuild() ? "Use OK/NO to mirror the client admission toggle." : "Admission toggle is read-only for the current local role."
+                    $"{GetGuildAuthoritySummary()}. {(CanToggleGuildAdmission() ? "Use OK/NO to mirror the client admission toggle." : "Admission stays read-only.")}"
                 },
                 _ => new[]
                 {
                     $"Guild role: {localRole}",
                     "Guild notice text is edited from the Change tab.",
-                    CanManageGuild() ? "Use EDIT then SAVE to commit the notice draft." : "Guild notice is read-only for the current local role."
+                    $"{GetGuildAuthoritySummary()}. {(CanEditGuildNotice() ? "Use EDIT then SAVE to commit the notice draft." : "Notice editing stays read-only.")}"
                 }
             };
         }
@@ -333,9 +343,20 @@ namespace HaCreator.MapSimulator.Interaction
         {
             return new[]
             {
-                $"Alliance role: {GetLocalAllianceRoleLabel()}",
+                $"Alliance role: {GetEffectiveAllianceRoleLabel()}",
                 _allianceEditorFocus == AllianceEditorFocus.Notice ? "Focus: alliance notice" : $"Focus: rank title {_allianceSelectedRankIndex + 1} ({selectedTitle})",
-                CanManageAlliance() ? "Use EDIT and SAVE to update alliance rank titles or the union notice." : "Alliance editor is read-only unless the local entry is a representative."
+                $"{GetAllianceAuthoritySummary()}. {((_allianceEditorFocus == AllianceEditorFocus.Notice ? CanEditAllianceNotice() : CanEditAllianceRanks()) ? "Use EDIT and SAVE to commit the focused field." : "The focused field is read-only.")}"
+            };
+        }
+
+        private bool CanEditCurrentGuildManageTab()
+        {
+            return _guildManageCurrentTab switch
+            {
+                GuildManageTab.Position => CanManageGuildRanks(),
+                GuildManageTab.Admission => CanToggleGuildAdmission(),
+                GuildManageTab.Change => CanEditGuildNotice(),
+                _ => false
             };
         }
 

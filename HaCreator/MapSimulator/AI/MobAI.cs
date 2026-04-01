@@ -162,6 +162,7 @@ namespace HaCreator.MapSimulator.AI
         public bool IsAngerAttack { get; set; }     // attackN/info/AngerAttack
         public int DiseaseSkillId { get; set; }     // info/attack/N/disease -> MobSkill.img id
         public int DiseaseLevel { get; set; }       // info/attack/N/level -> MobSkill.img level
+        public int EffectTriggerRecovery { get; set; } // Latest authored effect spawn time from action start
 
         // Runtime state
         public int LastUseTime { get; set; }        // Tick when last used
@@ -1943,7 +1944,7 @@ namespace HaCreator.MapSimulator.AI
                 return 0;
             }
 
-            return Math.Max(0, Math.Max(attack.AttackAfter, attack.EffectAfter));
+            return Math.Max(0, Math.Max(Math.Max(attack.AttackAfter, attack.EffectAfter), attack.EffectTriggerRecovery));
         }
 
         private static int GetSkillTriggerDelay(MobSkillEntry skill)

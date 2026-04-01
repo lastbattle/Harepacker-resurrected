@@ -49,6 +49,7 @@ namespace HaCreator.MapSimulator.UI
         private const int CardsPerPage = 25;
         private const int MaxSearchLength = 32;
         private const int CollectionEntriesPerPage = 6;
+        private const int CandidateWindowPadding = 4;
 
         private static readonly Point CardSlotOrigin = new(24, 22);
         private static readonly Point InfoPageOrigin = new(278, 36);
@@ -132,6 +133,10 @@ namespace HaCreator.MapSimulator.UI
         private int _compositionCursorPosition = -1;
         private int _caretBlinkTick;
         private Point _contextMenuPosition;
+        private Keys _lastHeldSearchKey = Keys.None;
+        private int _searchKeyHoldStartTime = int.MinValue;
+        private int _lastSearchKeyRepeatTime = int.MinValue;
+        private ImeCandidateListState _candidateListState = ImeCandidateListState.Empty;
 
         public BookCollectionWindow(IDXObject frame, Texture2D pixel, GraphicsDevice graphicsDevice, Action closeRequested = null) : base(frame)
         {
@@ -174,6 +179,7 @@ namespace HaCreator.MapSimulator.UI
             _compositionText = string.Empty;
             _compositionInsertionIndex = -1;
             _compositionCursorPosition = -1;
+            ClearImeCandidateList();
         }
         public void SetCollectionSnapshotProvider(Func<CollectionBookSnapshot> snapshotProvider) => _collectionSnapshotProvider = snapshotProvider;
 
@@ -195,6 +201,18 @@ namespace HaCreator.MapSimulator.UI
 
         public void SetMonsterBookSnapshotProvider(Func<MonsterBookSnapshot> snapshotProvider) => _snapshotProvider = snapshotProvider;
         public void SetMonsterBookRegistrationHandler(Func<int, bool, MonsterBookSnapshot> registrationHandler) => _registrationHandler = registrationHandler;
+
+        public override void HandleImeCandidateList(ImeCandidateListState state)
+        {
+            _candidateListState = CapturesKeyboardInput && state != null && state.HasCandidates
+                ? state
+                : ImeCandidateListState.Empty;
+        }
+
+        public override void ClearImeCandidateList()
+        {
+            _candidateListState = ImeCandidateListState.Empty;
+        }
 
         public void SetMonsterBookArt(Texture2D cardSlotTexture, Texture2D infoPageTexture, Texture2D coveredSlotTexture, Texture2D selectedSlotTexture, Texture2D fullMarkTexture)
         {
@@ -276,6 +294,7 @@ namespace HaCreator.MapSimulator.UI
             DrawCardSlotPanel(sprite);
             DrawInfoPanel(sprite);
             DrawSearchBox(sprite);
+            DrawImeCandidateWindow(sprite);
             DrawPageIndex(sprite);
             DrawPageMarkers(sprite);
             DrawStatus(sprite);
@@ -488,6 +507,7 @@ namespace HaCreator.MapSimulator.UI
             _searchMode = false;
             _searchCursorPosition = Math.Clamp(_searchCursorPosition, 0, _searchQuery.Length);
             ClearCompositionText();
+            ResetSearchKeyRepeatState();
         }
 
         private void UpdateHoverState()
@@ -502,6 +522,7 @@ namespace HaCreator.MapSimulator.UI
         private void HandleKeyboardInput()
         {
             KeyboardState keyboard = Keyboard.GetState();
+            int tickCount = Environment.TickCount;
             if (UsesCollectionLayout)
             {
                 if (WasPressed(keyboard, Keys.Left) || WasPressed(keyboard, Keys.PageUp))
@@ -519,7 +540,11 @@ namespace HaCreator.MapSimulator.UI
                 else
                 {
                     bool ctrl = keyboard.IsKeyDown(Keys.LeftControl) || keyboard.IsKeyDown(Keys.RightControl);
-                    if (WasPressed(keyboard, Keys.Back))
+                    if (ctrl && WasPressed(keyboard, Keys.V))
+                    {
+                        HandleSearchClipboardPaste();
+                    }
+                    if (WasPressedOrRepeated(keyboard, Keys.Back, tickCount))
                     {
                         if (ctrl)
                         {
@@ -532,7 +557,7 @@ namespace HaCreator.MapSimulator.UI
                             OnSearchQueryChanged();
                         }
                     }
-                    if (WasPressed(keyboard, Keys.Delete))
+                    if (WasPressedOrRepeated(keyboard, Keys.Delete, tickCount))
                     {
                         if (ctrl)
                         {
@@ -545,14 +570,14 @@ namespace HaCreator.MapSimulator.UI
                             OnSearchQueryChanged();
                         }
                     }
-                    if (WasPressed(keyboard, Keys.Left))
+                    if (WasPressedOrRepeated(keyboard, Keys.Left, tickCount))
                     {
                         _searchCursorPosition = ctrl
                             ? FindPreviousSearchWordBoundary()
                             : SkillMacroNameRules.GetPreviousCaretStop(_searchQuery, _searchCursorPosition);
                         _caretBlinkTick = Environment.TickCount;
                     }
-                    if (WasPressed(keyboard, Keys.Right))
+                    if (WasPressedOrRepeated(keyboard, Keys.Right, tickCount))
                     {
                         _searchCursorPosition = ctrl
                             ? FindNextSearchWordBoundary()
@@ -569,13 +594,17 @@ namespace HaCreator.MapSimulator.UI
                         _searchCursorPosition = _searchQuery.Length;
                         _caretBlinkTick = Environment.TickCount;
                     }
-                    if ((WasPressed(keyboard, Keys.Enter) || WasPressed(keyboard, Keys.Down)) && _searchMatches.Count > 0) ApplySearchMatch((_selectedSearchMatchIndex + 1 + _searchMatches.Count) % _searchMatches.Count);
-                    if (WasPressed(keyboard, Keys.Up) && _searchMatches.Count > 0) ApplySearchMatch((_selectedSearchMatchIndex - 1 + _searchMatches.Count) % _searchMatches.Count);
+                    if ((WasPressed(keyboard, Keys.Enter) || WasPressedOrRepeated(keyboard, Keys.Down, tickCount)) && _searchMatches.Count > 0) ApplySearchMatch((_selectedSearchMatchIndex + 1 + _searchMatches.Count) % _searchMatches.Count);
+                    if (WasPressedOrRepeated(keyboard, Keys.Up, tickCount) && _searchMatches.Count > 0) ApplySearchMatch((_selectedSearchMatchIndex - 1 + _searchMatches.Count) % _searchMatches.Count);
                 }
             }
             else if (_contextMenuVisible && WasPressed(keyboard, Keys.Escape))
             {
                 _contextMenuVisible = false;
+            }
+            if (_lastHeldSearchKey != Keys.None && !keyboard.IsKeyDown(_lastHeldSearchKey))
+            {
+                ResetSearchKeyRepeatState();
             }
             _previousKeyboardState = keyboard;
         }
@@ -772,6 +801,88 @@ namespace HaCreator.MapSimulator.UI
                 }
             }
             DrawTrimmedString(sprite, _searchMatches.Count == 0 ? (_searchMode ? "No local matches" : "Search catalog") : $"Match {_selectedSearchMatchIndex + 1}/{_searchMatches.Count}", new Vector2(Position.X + InfoPageOrigin.X + SearchStatusBounds.X, Position.Y + InfoPageOrigin.Y + SearchStatusBounds.Y), MutedColor, 0.4f, SearchStatusBounds.Width);
+        }
+
+        private void DrawImeCandidateWindow(SpriteBatch sprite)
+        {
+            if (_font == null || !_candidateListState.HasCandidates)
+            {
+                return;
+            }
+
+            Rectangle candidateBounds = GetImeCandidateWindowBounds(sprite.GraphicsDevice.Viewport);
+            if (candidateBounds.Width <= 0 || candidateBounds.Height <= 0)
+            {
+                return;
+            }
+
+            Color backgroundColor = new(255, 252, 239, 245);
+            Color borderColor = new(115, 87, 42, 220);
+            Color selectedColor = new(194, 160, 110, 180);
+            Color valueTextColor = new(81, 60, 35);
+            Color selectedTextColor = new(255, 255, 255);
+
+            sprite.Draw(_pixel, candidateBounds, backgroundColor);
+            DrawOutline(sprite, candidateBounds, borderColor);
+
+            int start = Math.Clamp(_candidateListState.PageStart, 0, _candidateListState.Candidates.Count);
+            int count = Math.Min(GetVisibleCandidateCount(), _candidateListState.Candidates.Count - start);
+            if (count <= 0)
+            {
+                return;
+            }
+
+            if (_candidateListState.Vertical)
+            {
+                int rowHeight = GetCandidateRowHeight();
+                int numberWidth = GetCandidateNumberWidth();
+                for (int i = 0; i < count; i++)
+                {
+                    int candidateIndex = start + i;
+                    Rectangle rowBounds = new(candidateBounds.X + 2, candidateBounds.Y + 2 + (i * rowHeight), candidateBounds.Width - 4, rowHeight);
+                    bool selected = candidateIndex == _candidateListState.Selection;
+                    if (selected)
+                    {
+                        sprite.Draw(_pixel, rowBounds, selectedColor);
+                    }
+
+                    DrawTrimmedString(sprite, $"{candidateIndex + 1}.", new Vector2(rowBounds.X + 4, rowBounds.Y + 1), selected ? selectedTextColor : MutedColor, 0.42f, numberWidth);
+                    DrawTrimmedString(
+                        sprite,
+                        _candidateListState.Candidates[candidateIndex] ?? string.Empty,
+                        new Vector2(rowBounds.X + 8 + numberWidth, rowBounds.Y + 1),
+                        selected ? selectedTextColor : valueTextColor,
+                        0.42f,
+                        rowBounds.Width - (numberWidth + 12));
+                }
+            }
+            else
+            {
+                int cellWidth = GetHorizontalCandidateCellWidth();
+                int textY = candidateBounds.Y + 3;
+                for (int i = 0; i < count; i++)
+                {
+                    int candidateIndex = start + i;
+                    int cellX = candidateBounds.X + 3 + (i * cellWidth);
+                    string numberText = $"{candidateIndex + 1}.";
+                    int numberWidth = (int)Math.Ceiling(_font.MeasureString(numberText).X * 0.42f);
+                    Rectangle cellBounds = new(cellX - 1, candidateBounds.Y + 1, cellWidth, Math.Max(1, candidateBounds.Height - 2));
+                    bool selected = candidateIndex == _candidateListState.Selection;
+                    if (selected)
+                    {
+                        sprite.Draw(_pixel, cellBounds, selectedColor);
+                    }
+
+                    DrawTrimmedString(sprite, numberText, new Vector2(cellX, textY), selected ? selectedTextColor : MutedColor, 0.42f, numberWidth);
+                    DrawTrimmedString(
+                        sprite,
+                        _candidateListState.Candidates[candidateIndex] ?? string.Empty,
+                        new Vector2(cellX + numberWidth + 3, textY),
+                        selected ? selectedTextColor : valueTextColor,
+                        0.42f,
+                        Math.Max(16, cellWidth - (numberWidth + 6)));
+                }
+            }
         }
 
         private void DrawPageIndex(SpriteBatch sprite)
@@ -1061,9 +1172,48 @@ namespace HaCreator.MapSimulator.UI
             _detailTab = MonsterBookDetailTab.BasicInfo;
             _collectionSnapshot = null;
             _snapshot = null;
+            ResetSearchKeyRepeatState();
+            ClearImeCandidateList();
         }
 
         private bool WasPressed(KeyboardState keyboard, Keys key) => keyboard.IsKeyDown(key) && !_previousKeyboardState.IsKeyDown(key);
+
+        private bool WasPressedOrRepeated(KeyboardState keyboard, Keys key, int tickCount)
+        {
+            if (!keyboard.IsKeyDown(key))
+            {
+                if (_lastHeldSearchKey == key)
+                {
+                    ResetSearchKeyRepeatState();
+                }
+
+                return false;
+            }
+
+            if (_previousKeyboardState.IsKeyUp(key))
+            {
+                _lastHeldSearchKey = key;
+                _searchKeyHoldStartTime = tickCount;
+                _lastSearchKeyRepeatTime = tickCount;
+                return true;
+            }
+
+            if (_lastHeldSearchKey == key
+                && KeyboardTextInputHelper.ShouldRepeatKey(key, keyboard, _searchKeyHoldStartTime, _lastSearchKeyRepeatTime, tickCount))
+            {
+                _lastSearchKeyRepeatTime = tickCount;
+                return true;
+            }
+
+            return false;
+        }
+
+        private void ResetSearchKeyRepeatState()
+        {
+            _lastHeldSearchKey = Keys.None;
+            _searchKeyHoldStartTime = int.MinValue;
+            _lastSearchKeyRepeatTime = int.MinValue;
+        }
 
         private int GetTotalPageCount() => UsesCollectionLayout ? _collectionSnapshot?.Pages?.Count ?? 0 : IsOverviewTabSelected ? 0 : GetCurrentGrade()?.Pages?.Count ?? 0;
 
@@ -1130,6 +1280,47 @@ namespace HaCreator.MapSimulator.UI
         }
 
         private Rectangle OffsetBounds(Rectangle bounds, Point offset) => new(Position.X + offset.X + bounds.X, Position.Y + offset.Y + bounds.Y, bounds.Width, bounds.Height);
+
+        public override bool CanStartDragAt(int x, int y)
+        {
+            if (!base.CanStartDragAt(x, y))
+            {
+                return false;
+            }
+
+            if (!_searchMode)
+            {
+                return true;
+            }
+
+            Rectangle searchBounds = OffsetBounds(SearchBoxBounds, InfoPageOrigin);
+            if (searchBounds.Contains(x, y))
+            {
+                return false;
+            }
+
+            Rectangle candidateBounds = GetImeCandidateWindowBounds(_graphicsDevice?.Viewport ?? default);
+            return candidateBounds.IsEmpty || !candidateBounds.Contains(x, y);
+        }
+
+        protected override IEnumerable<Rectangle> GetAdditionalInteractiveBounds()
+        {
+            foreach (Rectangle bounds in base.GetAdditionalInteractiveBounds())
+            {
+                yield return bounds;
+            }
+
+            if (!_searchMode)
+            {
+                yield break;
+            }
+
+            Rectangle candidateBounds = GetImeCandidateWindowBounds(_graphicsDevice?.Viewport ?? default);
+            if (!candidateBounds.IsEmpty)
+            {
+                yield return candidateBounds;
+            }
+        }
 
         private void DrawSummaryValue(SpriteBatch sprite, int rowIndex, string value)
         {
@@ -1492,6 +1683,202 @@ namespace HaCreator.MapSimulator.UI
             public int VisibleCaretIndex { get; }
             public int VisibleCompositionStart { get; }
             public int VisibleCompositionLength { get; }
+        }
+
+        private void HandleSearchClipboardPaste()
+        {
+            try
+            {
+                if (!System.Windows.Forms.Clipboard.ContainsText())
+                {
+                    return;
+                }
+
+                string clipboardText = System.Windows.Forms.Clipboard.GetText();
+                if (string.IsNullOrEmpty(clipboardText))
+                {
+                    return;
+                }
+
+                string normalized = clipboardText.Replace("\r", string.Empty).Replace("\n", string.Empty);
+                if (string.IsNullOrEmpty(normalized))
+                {
+                    return;
+                }
+
+                int insertionIndex = Math.Clamp(_searchCursorPosition, 0, _searchQuery.Length);
+                string updatedText = _searchQuery.Insert(insertionIndex, normalized);
+                if (updatedText.Length > MaxSearchLength)
+                {
+                    updatedText = updatedText[..MaxSearchLength];
+                }
+
+                _searchQuery = updatedText;
+                _searchCursorPosition = Math.Clamp(insertionIndex + normalized.Length, 0, _searchQuery.Length);
+                OnSearchQueryChanged();
+            }
+            catch
+            {
+                // Ignore clipboard failures so local search remains usable without OS clipboard access.
+            }
+        }
+
+        private Rectangle GetImeCandidateWindowBounds(Viewport viewport)
+        {
+            int visibleCount = GetVisibleCandidateCount();
+            if (visibleCount <= 0 || _font == null)
+            {
+                return Rectangle.Empty;
+            }
+
+            int viewportWidth = Math.Max(1, viewport.Width);
+            int viewportHeight = Math.Max(1, viewport.Height);
+            int width;
+            int height;
+            if (_candidateListState.Vertical)
+            {
+                int widestEntryWidth = 0;
+                for (int i = 0; i < _candidateListState.Candidates.Count; i++)
+                {
+                    string numberText = $"{i + 1}.";
+                    string candidateText = _candidateListState.Candidates[i] ?? string.Empty;
+                    int entryWidth = (int)Math.Ceiling((_font.MeasureString(numberText).X + _font.MeasureString(candidateText).X) * 0.42f) + 2;
+                    widestEntryWidth = Math.Max(widestEntryWidth, entryWidth);
+                }
+
+                width = widestEntryWidth + GetScaledLineHeight() + 7;
+                height = (GetCandidatePageSize() * GetCandidateRowHeight()) + 3;
+            }
+            else
+            {
+                width = GetHorizontalCandidateWindowWidth();
+                height = GetScaledLineHeight() + 8;
+            }
+
+            Rectangle ownerBounds = GetWindowBounds();
+            int availableWidth = ownerBounds.Width > 0 ? ownerBounds.Width : viewportWidth;
+            int availableHeight = ownerBounds.Height > 0 ? ownerBounds.Height : viewportHeight;
+            width = Math.Max(64, Math.Min(Math.Min(viewportWidth, availableWidth), width));
+            height = Math.Max(4, Math.Min(Math.Min(viewportHeight, availableHeight), height));
+
+            Point origin = ResolveCandidateWindowOrigin();
+            int minX = Math.Max(0, ownerBounds.X);
+            int maxX = Math.Min(viewportWidth, ownerBounds.Right) - width;
+            if (maxX < minX)
+            {
+                minX = 0;
+                maxX = Math.Max(0, viewportWidth - width);
+            }
+
+            int x = Math.Clamp(origin.X, minX, Math.Max(minX, maxX));
+            int y = origin.Y;
+            int ownerBottom = ownerBounds.Height > 0 ? Math.Min(viewportHeight, ownerBounds.Bottom) : viewportHeight;
+            if (y + height > ownerBottom)
+            {
+                y = origin.Y - height - (GetScaledLineHeight() + 2);
+            }
+
+            int minY = Math.Max(0, ownerBounds.Y);
+            int maxY = ownerBounds.Height > 0
+                ? Math.Min(viewportHeight, ownerBounds.Bottom) - height
+                : viewportHeight - height;
+            y = Math.Clamp(y, minY, Math.Max(minY, maxY));
+            return new Rectangle(x, y, width, height);
+        }
+
+        private Point ResolveCandidateWindowOrigin()
+        {
+            Rectangle bounds = OffsetBounds(SearchBoxBounds, InfoPageOrigin);
+            SearchInputVisualState searchVisual = BuildSearchInputVisualState();
+            int anchorIndex = searchVisual.VisibleCompositionLength > 0
+                ? searchVisual.VisibleCompositionStart
+                : searchVisual.VisibleCaretIndex;
+            string prefix = anchorIndex <= 0
+                ? string.Empty
+                : searchVisual.VisibleText[..Math.Clamp(anchorIndex, 0, searchVisual.VisibleText.Length)];
+            int x = bounds.X + 3 + (int)Math.Round(_font.MeasureString(prefix).X * 0.42f);
+            if (_candidateListState.Vertical && searchVisual.VisibleCompositionLength > 0)
+            {
+                x -= GetScaledLineHeight() + 4;
+            }
+
+            return new Point(x, bounds.Bottom + 1);
+        }
+
+        private int GetVisibleCandidateCount()
+        {
+            if (!_candidateListState.HasCandidates)
+            {
+                return 0;
+            }
+
+            int pageStart = Math.Clamp(_candidateListState.PageStart, 0, _candidateListState.Candidates.Count);
+            int pageSize = _candidateListState.PageSize > 0 ? _candidateListState.PageSize : _candidateListState.Candidates.Count;
+            return Math.Max(0, Math.Min(pageSize, _candidateListState.Candidates.Count - pageStart));
+        }
+
+        private int GetCandidatePageSize()
+        {
+            if (!_candidateListState.HasCandidates)
+            {
+                return 0;
+            }
+
+            return Math.Max(1, _candidateListState.PageSize > 0 ? _candidateListState.PageSize : GetVisibleCandidateCount());
+        }
+
+        private int GetCandidateRowHeight()
+        {
+            return GetScaledLineHeight() + 3;
+        }
+
+        private int GetHorizontalCandidateCellWidth()
+        {
+            if (_font == null || !_candidateListState.HasCandidates)
+            {
+                return 0;
+            }
+
+            int start = Math.Clamp(_candidateListState.PageStart, 0, _candidateListState.Candidates.Count);
+            int count = Math.Min(GetVisibleCandidateCount(), _candidateListState.Candidates.Count - start);
+            int width = 0;
+            for (int i = 0; i < count; i++)
+            {
+                int candidateIndex = start + i;
+                string numberText = $"{candidateIndex + 1}.";
+                string candidateText = _candidateListState.Candidates[candidateIndex] ?? string.Empty;
+                int cellWidth = (int)Math.Ceiling((_font.MeasureString(numberText).X + _font.MeasureString(candidateText).X) * 0.42f) + CandidateWindowPadding + 6;
+                width = Math.Max(width, cellWidth);
+            }
+
+            return width;
+        }
+
+        private int GetHorizontalCandidateWindowWidth()
+        {
+            int pageSize = GetCandidatePageSize();
+            if (pageSize <= 0)
+            {
+                return 0;
+            }
+
+            return (GetHorizontalCandidateCellWidth() * pageSize) + CandidateWindowPadding;
+        }
+
+        private int GetCandidateNumberWidth()
+        {
+            if (_font == null || !_candidateListState.HasCandidates)
+            {
+                return 0;
+            }
+
+            int visibleEnd = Math.Clamp(_candidateListState.PageStart, 0, _candidateListState.Candidates.Count) + Math.Max(1, GetVisibleCandidateCount());
+            return (int)Math.Ceiling(_font.MeasureString($"{visibleEnd}.").X * 0.42f);
+        }
+
+        private int GetScaledLineHeight()
+        {
+            return Math.Max(10, (int)Math.Ceiling((_font?.LineSpacing ?? 0) * 0.42f));
         }
     }
 }

@@ -50,6 +50,9 @@ namespace HaCreator.MapSimulator.UI
         private readonly List<BindingRow> _bindingRows = new();
         private readonly List<BindingRow> _quickSlotRows = new();
         private readonly Texture2D _highlightTexture;
+        private readonly Dictionary<int, Texture2D> _mainKeyTextures;
+        private readonly Dictionary<int, Texture2D> _quickSlotKeyTextures;
+        private readonly Texture2D[] _noticeTextures;
         private readonly string _windowName;
         private readonly IDXObject _mainFrame;
         private readonly Dictionary<InputAction, KeyBinding> _stagedBindings = new();
@@ -71,12 +74,21 @@ namespace HaCreator.MapSimulator.UI
         private bool _captureArmed;
         private string _statusMessage = "Select a row to inspect or clear a local binding.";
 
-        public KeyConfigWindow(IDXObject frame, string windowName, Texture2D highlightTexture)
+        public KeyConfigWindow(
+            IDXObject frame,
+            string windowName,
+            Texture2D highlightTexture,
+            Dictionary<int, Texture2D> mainKeyTextures,
+            Dictionary<int, Texture2D> quickSlotKeyTextures,
+            Texture2D[] noticeTextures)
             : base(frame)
         {
             _mainFrame = frame;
             _windowName = windowName ?? throw new ArgumentNullException(nameof(windowName));
             _highlightTexture = highlightTexture;
+            _mainKeyTextures = mainKeyTextures ?? new Dictionary<int, Texture2D>();
+            _quickSlotKeyTextures = quickSlotKeyTextures ?? _mainKeyTextures;
+            _noticeTextures = noticeTextures ?? Array.Empty<Texture2D>();
             BuildRows();
         }
 
@@ -261,11 +273,7 @@ namespace HaCreator.MapSimulator.UI
                 DrawBindingRow(sprite, row);
             }
 
-            sprite.DrawString(
-                _font,
-                _statusMessage,
-                new Vector2(Position.X + 18, Position.Y + (CurrentFrame?.Height ?? 374) - _font.LineSpacing - 12),
-                new Color(255, 228, 151));
+            DrawStatusNotice(sprite);
         }
 
         private void RegisterActionButton(UIObject button, Action action)
@@ -387,12 +395,103 @@ namespace HaCreator.MapSimulator.UI
             bool selected = _selectedAction == row.Action;
             sprite.Draw(_highlightTexture, bounds, selected ? new Color(92, 120, 190, 200) : new Color(32, 40, 54, 200));
 
-            KeyBinding binding = _bindingSource?.Invoke()?.GetBinding(row.Action);
-            binding = GetBinding(row.Action);
-            string keyText = FormatBinding(binding);
+            KeyBinding binding = GetBinding(row.Action);
 
             sprite.DrawString(_font, row.Label, new Vector2(bounds.X + 8, bounds.Y + 6), Color.White);
-            sprite.DrawString(_font, keyText, new Vector2(bounds.Right - Math.Min(160, (int)_font.MeasureString(keyText).X) - 10, bounds.Y + 6), new Color(255, 228, 151));
+            DrawBindingValue(sprite, bounds, binding);
+        }
+
+        private void DrawBindingValue(SpriteBatch sprite, Rectangle bounds, KeyBinding binding)
+        {
+            const int padSpacing = 4;
+            int right = bounds.Right - 10;
+            string gamepadText = binding?.GamepadButton is Buttons gamepadButton and not 0
+                ? $"Pad:{FormatGamepadButton(gamepadButton)}"
+                : string.Empty;
+
+            if (!string.IsNullOrEmpty(gamepadText))
+            {
+                Vector2 gamepadSize = _font.MeasureString(gamepadText);
+                right -= (int)gamepadSize.X;
+                sprite.DrawString(_font, gamepadText, new Vector2(right, bounds.Y + 6), new Color(255, 228, 151));
+                right -= padSpacing;
+            }
+
+            right = DrawKeyTextureOrText(sprite, binding?.SecondaryKey ?? Keys.None, bounds, right);
+            if (binding?.PrimaryKey != Keys.None && binding?.SecondaryKey != Keys.None)
+            {
+                Vector2 slashSize = _font.MeasureString("/");
+                right -= (int)slashSize.X;
+                sprite.DrawString(_font, "/", new Vector2(right, bounds.Y + 6), new Color(255, 228, 151));
+                right -= padSpacing;
+            }
+
+            DrawKeyTextureOrText(sprite, binding?.PrimaryKey ?? Keys.None, bounds, right);
+        }
+
+        private int DrawKeyTextureOrText(SpriteBatch sprite, Keys key, Rectangle bounds, int right)
+        {
+            if (key == Keys.None)
+            {
+                return right;
+            }
+
+            Texture2D keyTexture = TryGetKeyTexture(key);
+            if (keyTexture != null)
+            {
+                int drawX = right - keyTexture.Width;
+                int drawY = bounds.Y + Math.Max(0, (bounds.Height - keyTexture.Height) / 2);
+                sprite.Draw(keyTexture, new Vector2(drawX, drawY), Color.White);
+                return drawX - 4;
+            }
+
+            string keyText = FormatKey(key);
+            Vector2 size = _font.MeasureString(keyText);
+            int textX = right - (int)size.X;
+            sprite.DrawString(_font, keyText, new Vector2(textX, bounds.Y + 6), new Color(255, 228, 151));
+            return textX - 4;
+        }
+
+        private Texture2D TryGetKeyTexture(Keys key)
+        {
+            Dictionary<int, Texture2D> lookup = _page == KeyConfigPage.QuickSlot ? _quickSlotKeyTextures : _mainKeyTextures;
+            return lookup.TryGetValue((int)key, out Texture2D texture) ? texture : null;
+        }
+
+        private void DrawStatusNotice(SpriteBatch sprite)
+        {
+            Texture2D noticeTexture = GetStatusNoticeTexture();
+            int bottomY = Position.Y + (CurrentFrame?.Height ?? 374) - _font.LineSpacing - 18;
+            if (noticeTexture != null)
+            {
+                int noticeX = Position.X + 18;
+                int noticeY = Position.Y + (CurrentFrame?.Height ?? 374) - noticeTexture.Height - 8;
+                sprite.Draw(noticeTexture, new Vector2(noticeX, noticeY), Color.White);
+                sprite.DrawString(_font, _statusMessage, new Vector2(noticeX + 10, noticeY + 10), new Color(72, 40, 16));
+                return;
+            }
+
+            sprite.DrawString(_font, _statusMessage, new Vector2(Position.X + 18, bottomY), new Color(255, 228, 151));
+        }
+
+        private Texture2D GetStatusNoticeTexture()
+        {
+            if (_noticeTextures.Length == 0)
+            {
+                return null;
+            }
+
+            if (_captureArmed)
+            {
+                return _noticeTextures[Math.Min(1, _noticeTextures.Length - 1)];
+            }
+
+            if (_page == KeyConfigPage.QuickSlot)
+            {
+                return _noticeTextures[Math.Min(2, _noticeTextures.Length - 1)];
+            }
+
+            return _noticeTextures[0];
         }
 
         private Rectangle TranslateBounds(Rectangle bounds)

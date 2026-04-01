@@ -20,6 +20,8 @@ namespace HaCreator.MapSimulator.UI
         private static readonly Rectangle SelfMessageTextBounds = new(18, 113, 180, 75);
         private static readonly Rectangle ReceiverMessageTextBounds = new(40, 113, 135, 75);
         private static readonly Rectangle ReceiverNameBounds = new(46, 68, 146, 14);
+        // The MapleTV chat and media canvases carry non-zero WZ origins, so these bounds stay
+        // frame-local and are resolved from the selected frame's actual top-left at draw time.
         private static readonly Rectangle DefaultChatTextBounds = new(20, 17, 200, 58);
         private static readonly Rectangle StarChatTextBounds = new(18, 16, 224, 72);
         private static readonly Rectangle HeartChatTextBounds = new(18, 16, 224, 72);
@@ -353,8 +355,21 @@ namespace HaCreator.MapSimulator.UI
                     _visualAssets.GetChatFrames(snapshot.ResolvedMediaIndex),
                     tickCount);
                 DrawAnimationFrame(sprite, chatFrame, previewOrigin, drawReflectionInfo, skeletonMeshRenderer, gameTime);
-                DrawPreviewAvatars(sprite, skeletonMeshRenderer, tickCount, previewOrigin, snapshot);
-                DrawChatText(sprite, snapshot.DisplayLines, previewOrigin, ResolveChatBounds(snapshot.ResolvedMediaIndex), Color.White, 0.4f, 4, PreviewLineHeight);
+                DrawPreviewAvatars(
+                    sprite,
+                    skeletonMeshRenderer,
+                    tickCount,
+                    ResolveFrameTopLeft(previewOrigin, mediaFrame),
+                    snapshot);
+                DrawChatText(
+                    sprite,
+                    snapshot.DisplayLines,
+                    ResolveFrameTopLeft(previewOrigin, chatFrame),
+                    ResolveChatBounds(snapshot.ResolvedMediaIndex),
+                    Color.White,
+                    0.4f,
+                    4,
+                    PreviewLineHeight);
             }
             else
             {
@@ -376,11 +391,11 @@ namespace HaCreator.MapSimulator.UI
             SpriteBatch sprite,
             SkeletonMeshRenderer skeletonMeshRenderer,
             int tickCount,
-            Point previewOrigin,
+            Point mediaTopLeft,
             MapleTvSnapshot snapshot)
         {
             AssembledFrame senderFrame = _senderAssembler?.GetFrameAtTime(PreviewActionName, tickCount);
-            senderFrame?.Draw(sprite, skeletonMeshRenderer, previewOrigin.X + 70, previewOrigin.Y + 166, false, Color.White);
+            senderFrame?.Draw(sprite, skeletonMeshRenderer, mediaTopLeft.X + 70, mediaTopLeft.Y + 166, false, Color.White);
 
             if (!snapshot.UseReceiver)
             {
@@ -388,18 +403,18 @@ namespace HaCreator.MapSimulator.UI
             }
 
             AssembledFrame receiverFrame = _receiverAssembler?.GetFrameAtTime(PreviewActionName, tickCount);
-            receiverFrame?.Draw(sprite, skeletonMeshRenderer, previewOrigin.X + 170, previewOrigin.Y + 166, false, Color.White);
+            receiverFrame?.Draw(sprite, skeletonMeshRenderer, mediaTopLeft.X + 170, mediaTopLeft.Y + 166, false, Color.White);
         }
 
         private void DrawOverlayAvatars(
             SpriteBatch sprite,
             SkeletonMeshRenderer skeletonMeshRenderer,
             int tickCount,
-            Point overlayOrigin,
+            Point mediaTopLeft,
             MapleTvSnapshot snapshot)
         {
             AssembledFrame senderFrame = _senderAssembler?.GetFrameAtTime(PreviewActionName, tickCount);
-            senderFrame?.Draw(sprite, skeletonMeshRenderer, overlayOrigin.X + 44, overlayOrigin.Y + 168, false, Color.White);
+            senderFrame?.Draw(sprite, skeletonMeshRenderer, mediaTopLeft.X + 44, mediaTopLeft.Y + 168, false, Color.White);
 
             if (!snapshot.UseReceiver)
             {
@@ -407,7 +422,7 @@ namespace HaCreator.MapSimulator.UI
             }
 
             AssembledFrame receiverFrame = _receiverAssembler?.GetFrameAtTime(PreviewActionName, tickCount);
-            receiverFrame?.Draw(sprite, skeletonMeshRenderer, overlayOrigin.X + 186, overlayOrigin.Y + 168, false, Color.White);
+            receiverFrame?.Draw(sprite, skeletonMeshRenderer, mediaTopLeft.X + 186, mediaTopLeft.Y + 168, false, Color.White);
         }
 
         private static string CreateBuildKey(CharacterBuild build)
@@ -476,6 +491,13 @@ namespace HaCreator.MapSimulator.UI
                 Color.White,
                 false,
                 drawReflectionInfo);
+        }
+
+        private static Point ResolveFrameTopLeft(Point origin, MapleTvAnimationFrame frame)
+        {
+            return frame == null
+                ? origin
+                : new Point(origin.X + frame.Offset.X, origin.Y + frame.Offset.Y);
         }
 
         private void DrawChatText(

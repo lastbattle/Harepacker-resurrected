@@ -78,7 +78,9 @@ namespace HaCreator.MapSimulator.Pools
     {
         private const int TeslaCoilSkillId = 35111002;
         private const int TeslaCoilMasterySkillId = 35120001;
+        private const int TeslaMinimumImpactDelayMs = 300;
         private const int PacketOwnedSummonBodyContactCooldownMs = 700;
+        private const int PacketOwnedSummonPassiveEffectCooldownMs = 240;
         private const int SummonHitPeriodDurationMs = 1500;
 
         private sealed class PacketOwnedSummonState
@@ -105,6 +107,7 @@ namespace HaCreator.MapSimulator.Pools
             public int LastHitDamage { get; set; }
             public int OneTimeAction { get; set; }
             public int OneTimeActionEndTime { get; set; } = int.MinValue;
+            public int LastPassiveMovementUpdateTime { get; set; } = int.MinValue;
             public PlayerMovementSyncSnapshot MovementSnapshot { get; set; }
         }
 
@@ -173,6 +176,7 @@ namespace HaCreator.MapSimulator.Pools
         private RemoteUserActorPool _remoteUserPool;
         private Func<PlayerCharacter> _localPlayerAccessor;
         private Func<int, int> _localSkillLevelAccessor;
+        private Func<int, int, int> _localCancelFamilyRemainingDurationAccessor;
         private SoundManager _soundManager;
         private CombatEffects _combatEffects;
 
@@ -187,6 +191,7 @@ namespace HaCreator.MapSimulator.Pools
             RemoteUserActorPool remoteUserPool,
             Func<PlayerCharacter> localPlayerAccessor,
             Func<int, int> localSkillLevelAccessor = null,
+            Func<int, int, int> localCancelFamilyRemainingDurationAccessor = null,
             SoundManager soundManager = null,
             CombatEffects combatEffects = null)
         {
@@ -195,6 +200,7 @@ namespace HaCreator.MapSimulator.Pools
             _remoteUserPool = remoteUserPool;
             _localPlayerAccessor = localPlayerAccessor;
             _localSkillLevelAccessor = localSkillLevelAccessor;
+            _localCancelFamilyRemainingDurationAccessor = localCancelFamilyRemainingDurationAccessor;
             _soundManager = soundManager;
             _combatEffects = combatEffects;
             _cancelSkillCatalog = null;
@@ -382,13 +388,18 @@ namespace HaCreator.MapSimulator.Pools
                 return false;
             }
 
+            ResolveOwnerState(packet.OwnerCharacterId, out string ownerName, out bool ownerIsLocal, out bool ownerFacingRight);
             SkillData skill = _skillLoader?.LoadSkill(packet.SkillId);
-            SkillLevelData levelData = skill?.GetLevel(packet.SkillLevel);
-            int durationMs = ResolveSummonDurationMs(skill, levelData, packet.SkillLevel);
+            int resolvedSkillLevel = ResolvePacketOwnedSkillLevel(skill, packet.SkillId, packet.SkillLevel, ownerIsLocal);
+            SkillLevelData levelData = skill?.GetLevel(resolvedSkillLevel);
+            int durationMs = ResolveSummonDurationMs(skill, levelData, resolvedSkillLevel);
+            if (ownerIsLocal && durationMs <= 0)
+            {
+                durationMs = ResolveLocalOwnerCancelFamilyDurationMs(packet.SkillId, currentTime);
+            }
 
             RemoveExistingState(packet.SummonedObjectId);
 
-            ResolveOwnerState(packet.OwnerCharacterId, out string ownerName, out bool ownerIsLocal, out bool ownerFacingRight);
             bool facingRight = packet.MoveAction == 0
                 ? ownerFacingRight
                 : DecodeFacingRight(packet.MoveAction);
@@ -401,7 +412,7 @@ namespace HaCreator.MapSimulator.Pools
             {
                 ObjectId = packet.SummonedObjectId,
                 SkillId = packet.SkillId,
-                Level = Math.Max(1, packet.SkillLevel),
+                Level = resolvedSkillLevel,
                 StartTime = currentTime,
                 Duration = durationMs,
                 LastAttackTime = currentTime,
@@ -430,7 +441,7 @@ namespace HaCreator.MapSimulator.Pools
                 Summon = summon,
                 OwnerCharacterId = packet.OwnerCharacterId,
                 OwnerCharacterLevel = Math.Max(1, packet.CharacterLevel),
-                SkillLevel = Math.Max(1, packet.SkillLevel),
+                SkillLevel = resolvedSkillLevel,
                 OwnerName = ownerName,
                 OwnerIsLocal = ownerIsLocal,
                 AvatarLook = packet.AvatarLook,
@@ -703,6 +714,10 @@ namespace HaCreator.MapSimulator.Pools
                 if (state.MovementSnapshot != null)
                 {
                     ApplyMovementSnapshot(state, currentTime);
+                }
+                else if (TryApplyPassiveMovement(state, currentTime, ownerFacingRight))
+                {
+                    // Client `CSummoned::Update` falls back to passive vec-ctrl updates when no move path is active.
                 }
                 else if (state.LastMoveActionRaw != 0)
                 {
@@ -1096,6 +1111,99 @@ namespace HaCreator.MapSimulator.Pools
             state.Summon.AnchorY = sampled.Y;
             state.Summon.FacingRight = sampled.FacingRight;
             state.CurrentFootholdId = (short)sampled.FootholdId;
+        }
+
+        private bool TryApplyPassiveMovement(PacketOwnedSummonState state, int currentTime, bool ownerFacingRight)
+        {
+            ActiveSummon summon = state?.Summon;
+            if (summon == null || summon.IsPendingRemoval)
+            {
+                return false;
+            }
+
+            Vector2? ownerPosition = TryResolveOwnerPosition(state.OwnerCharacterId, out Vector2 resolvedOwnerPosition)
+                ? resolvedOwnerPosition
+                : null;
+            if (!ownerPosition.HasValue
+                && summon.MovementStyle != SummonMovementStyle.HoverAroundAnchor
+                && summon.MovementStyle != SummonMovementStyle.Stationary)
+            {
+                return false;
+            }
+
+            float deltaTimeSeconds = state.LastPassiveMovementUpdateTime == int.MinValue
+                ? 0f
+                : Math.Max(0f, currentTime - state.LastPassiveMovementUpdateTime) / 1000f;
+            state.LastPassiveMovementUpdateTime = currentTime;
+
+            summon.PreviousPositionX = summon.PositionX;
+            summon.PreviousPositionY = summon.PositionY;
+
+            Vector2 targetPosition = PacketOwnedSummonUpdateRules.ResolvePassiveTargetPosition(
+                summon,
+                ownerPosition,
+                ownerFacingRight,
+                currentTime);
+            Vector2 nextPosition = PacketOwnedSummonUpdateRules.ResolvePassiveStepPosition(
+                summon,
+                targetPosition,
+                deltaTimeSeconds);
+
+            summon.PositionX = nextPosition.X;
+            summon.PositionY = nextPosition.Y;
+
+            if (summon.MovementStyle == SummonMovementStyle.GroundFollow
+                || summon.MovementStyle == SummonMovementStyle.HoverFollow
+                || summon.MovementStyle == SummonMovementStyle.DriftAroundOwner)
+            {
+                summon.FacingRight = ownerFacingRight;
+            }
+
+            if ((summon.MovementStyle == SummonMovementStyle.Stationary
+                 || summon.MovementStyle == SummonMovementStyle.HoverAroundAnchor)
+                && currentTime - summon.LastPassiveEffectTime >= PacketOwnedSummonPassiveEffectCooldownMs)
+            {
+                float movedDistanceSq = Vector2.DistanceSquared(
+                    new Vector2(summon.PreviousPositionX, summon.PreviousPositionY),
+                    new Vector2(summon.PositionX, summon.PositionY));
+                if (movedDistanceSq >= 36f)
+                {
+                    SkillAnimation passiveEffect = summon.SkillData?.Effect ?? summon.SkillData?.AffectedEffect;
+                    if (passiveEffect?.Frames.Count > 0)
+                    {
+                        SpawnHitEffect(
+                            summon.SkillId,
+                            passiveEffect,
+                            summon.PositionX,
+                            summon.PositionY,
+                            summon.FacingRight,
+                            currentTime);
+                        summon.LastPassiveEffectTime = currentTime;
+                    }
+                }
+            }
+
+            return true;
+        }
+
+        private bool TryResolveOwnerPosition(int ownerCharacterId, out Vector2 ownerPosition)
+        {
+            ownerPosition = Vector2.Zero;
+
+            PlayerCharacter localPlayer = _localPlayerAccessor?.Invoke();
+            if (localPlayer?.Build?.Id == ownerCharacterId)
+            {
+                ownerPosition = localPlayer.Position;
+                return true;
+            }
+
+            if (_remoteUserPool != null && _remoteUserPool.TryGetActor(ownerCharacterId, out RemoteUserActor actor))
+            {
+                ownerPosition = actor.Position;
+                return true;
+            }
+
+            return false;
         }
 
         private static bool DecodeFacingRight(byte moveAction)
@@ -2049,6 +2157,35 @@ namespace HaCreator.MapSimulator.Pools
             return SummonRuntimeRules.ResolveDurationMs(skill, levelData, skillLevel);
         }
 
+        private int ResolvePacketOwnedSkillLevel(SkillData skill, int skillId, int packetSkillLevel, bool ownerIsLocal)
+        {
+            int resolvedSkillLevel = Math.Max(1, packetSkillLevel);
+            if (skill?.GetLevel(resolvedSkillLevel) != null)
+            {
+                return resolvedSkillLevel;
+            }
+
+            if (!ownerIsLocal)
+            {
+                return resolvedSkillLevel;
+            }
+
+            int localSkillLevel = Math.Max(0, _localSkillLevelAccessor?.Invoke(skillId) ?? 0);
+            return skill?.GetLevel(localSkillLevel) != null
+                ? localSkillLevel
+                : resolvedSkillLevel;
+        }
+
+        private int ResolveLocalOwnerCancelFamilyDurationMs(int skillId, int currentTime)
+        {
+            if (skillId <= 0)
+            {
+                return 0;
+            }
+
+            return Math.Max(0, _localCancelFamilyRemainingDurationAccessor?.Invoke(skillId, currentTime) ?? 0);
+        }
+
         private bool DoesClientCancelMatchSkillId(int activeSkillId, int requestedSkillId)
         {
             return ClientSkillCancelResolver.DoesClientCancelMatchSkillId(
@@ -2364,19 +2501,19 @@ namespace HaCreator.MapSimulator.Pools
 
         private int ResolvePacketTeslaTargetImpactDelayMs(ActiveSummon summon, Vector2 source, MobItem target, int currentTime)
         {
-            int baseDelayMs = ResolvePacketAttackImpactDelayMs(summon, source, target, currentTime);
-            return baseDelayMs + ResolveTeslaPerTargetJitterMs(baseDelayMs);
+            return ResolveTeslaImpactDelayMs(ResolvePacketTeslaAttackDelayWindowMs(summon));
         }
 
-        private int ResolveTeslaPerTargetJitterMs(int baseDelayMs)
+        private int ResolveTeslaImpactDelayMs(int attackDelayMs)
         {
-            int jitterWindowMs = Math.Max(0, baseDelayMs - 300);
+            int clampedDelayMs = Math.Max(TeslaMinimumImpactDelayMs, attackDelayMs);
+            int jitterWindowMs = Math.Max(0, clampedDelayMs - TeslaMinimumImpactDelayMs);
             if (jitterWindowMs <= 0)
             {
-                return 0;
+                return TeslaMinimumImpactDelayMs;
             }
 
-            return _random.Next(jitterWindowMs);
+            return TeslaMinimumImpactDelayMs + _random.Next(jitterWindowMs);
         }
 
         private static int ResolvePacketAttackImpactDelayMs(ActiveSummon summon, MobItem target, int currentTime)
@@ -2407,6 +2544,18 @@ namespace HaCreator.MapSimulator.Pools
             float distance = Vector2.Distance(source, targetCenter);
             int travelDelayMs = (int)MathF.Round(distance * 1000f / projectileSpeed);
             return Math.Max(delayMs, travelDelayMs);
+        }
+
+        private static int ResolvePacketTeslaAttackDelayWindowMs(ActiveSummon summon)
+        {
+            if (summon?.SkillData == null)
+            {
+                return TeslaMinimumImpactDelayMs;
+            }
+
+            return Math.Max(
+                TeslaMinimumImpactDelayMs,
+                Math.Max(90, summon.SkillData.ResolveSummonAttackIntervalMs(summon.Level)));
         }
 
         private static Vector2[] ResolvePacketTeslaProjectileSources(IReadOnlyList<PacketOwnedSummonState> teslaStates)
@@ -2639,14 +2788,16 @@ namespace HaCreator.MapSimulator.Pools
             Vector2 drawPosition = ResolveHitEffectDrawPosition(hitEffect);
             int screenX = (int)MathF.Round(drawPosition.X) - mapShiftX + centerX;
             int screenY = (int)MathF.Round(drawPosition.Y) - mapShiftY + centerY;
+            bool shouldFlip = ResolveHitEffectFlip(hitEffect, frame);
+            Point frameTopLeft = ResolvePacketOverlayFrameTopLeft(frame, screenX, screenY, shouldFlip);
             frame.DrawBackground(
                 spriteBatch,
                 null,
                 null,
-                screenX,
-                screenY,
+                frameTopLeft.X,
+                frameTopLeft.Y,
                 hitEffect.Tint,
-                ResolveHitEffectFlip(hitEffect, frame),
+                shouldFlip,
                 null);
         }
 
@@ -2676,6 +2827,19 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             return hitEffect?.Flip ?? false;
+        }
+
+        internal static Point ResolvePacketOverlayFrameTopLeft(IDXObject frame, int anchorX, int anchorY, bool shouldFlip)
+        {
+            if (frame == null)
+            {
+                return new Point(anchorX, anchorY);
+            }
+
+            int drawX = shouldFlip
+                ? anchorX - (frame.Width + frame.X)
+                : anchorX + frame.X;
+            return new Point(drawX, anchorY + frame.Y);
         }
 
         private void PlayPacketIncDecHpFeedback(ActiveSummon summon, int delta, int currentTime)

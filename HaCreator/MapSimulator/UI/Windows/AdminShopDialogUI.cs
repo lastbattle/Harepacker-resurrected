@@ -60,6 +60,18 @@ namespace HaCreator.MapSimulator.UI
             public string Message { get; init; } = string.Empty;
         }
 
+        public sealed class PacketOwnedStorageExpansionResult
+        {
+            public int PacketType { get; init; }
+            public int CommoditySerialNumber { get; init; }
+            public int ResultSubtype { get; init; }
+            public int FailureReason { get; init; }
+            public long NxPrice { get; init; }
+            public int SlotLimitAfterResult { get; init; }
+            public bool ConsumeCash { get; init; } = true;
+            public string Message { get; init; } = string.Empty;
+        }
+
         private enum AdminShopPane
         {
             Npc,
@@ -217,6 +229,7 @@ namespace HaCreator.MapSimulator.UI
         }
 
         private const int MaxVisibleRows = 5;
+        private const int PacketOwnedStorageExpansionTimeoutMs = 4000;
         private const int LeftPaneX = 17;
         private const int RightPaneX = 242;
         private const int PaneTopY = 101;
@@ -343,6 +356,8 @@ namespace HaCreator.MapSimulator.UI
         private AdminShopEntry _pendingModalEntry;
         private AdminShopEntry _pendingRequestEntry;
         private int _pendingRequestQuantity = 1;
+        private bool _pendingStorageExpansionAwaitingPacketResult;
+        private int _pendingStorageExpansionCommoditySerialNumber;
         private string _lastClickedEntryKey = string.Empty;
         private int _previousScrollWheelValue;
         private MouseState _previousMouseState;
@@ -366,6 +381,7 @@ namespace HaCreator.MapSimulator.UI
         public Func<int> ResolveStorageExpansionCommoditySerialNumber { get; set; }
         public Func<string> GetStorageExpansionStatusSummary { get; set; }
         public Action<StorageExpansionResolution> StorageExpansionResolved { get; set; }
+        public bool HasPendingStorageExpansionRequest => _pendingRequestEntry?.IsStorageExpansion == true;
 
         public AdminShopDialogUI(
             IDXObject frame,
@@ -1285,10 +1301,7 @@ namespace HaCreator.MapSimulator.UI
                     new Vector2(modalBounds.X + (modalBounds.Width - quantitySize.X) / 2f, modalBounds.Y + 24f),
                     new Color(48, 68, 113));
 
-                long totalPrice = ComputeRequestPrice(_pendingModalEntry, _modalQuantity);
-                string totalText = totalPrice > 0
-                    ? $"Total: {FormatPriceLabel(totalPrice)}"
-                    : $"Deliver: x{ComputeDeliveredQuantity(_pendingModalEntry, _modalQuantity)}";
+                string totalText = BuildRequestQuantitySummary(_pendingModalEntry, _modalQuantity);
                 Vector2 totalSize = _font.MeasureString(totalText);
                 sprite.DrawString(
                     _font,
@@ -2290,16 +2303,18 @@ namespace HaCreator.MapSimulator.UI
 
         private int ResolveModalRequestQuantityCap(AdminShopEntry entry)
         {
-            if (entry == null
-                || entry.MaxRequestCount <= 1
-                || entry.RewardInventoryType == InventoryType.NONE
-                || entry.RewardItemId <= 0
-                || ResolveRewardMaxStack(entry) <= 1)
+            if (entry == null || entry.MaxRequestCount <= 1)
             {
                 return 1;
             }
 
             int maxPromptQuantity = entry.MaxRequestCount;
+            bool supportsMultiCountPrompt = SupportsQuantityPrompt(entry);
+            if (!supportsMultiCountPrompt)
+            {
+                return 1;
+            }
+
             if (entry.ConsumeOnSuccess && entry.Price > 0 && _inventory != null)
             {
                 maxPromptQuantity = (int)Math.Min(maxPromptQuantity, _inventory.GetMesoCount() / entry.Price);
@@ -2329,13 +2344,22 @@ namespace HaCreator.MapSimulator.UI
             _pendingModalEntry = null;
             _pendingRequestEntry = entry;
             _pendingRequestQuantity = Math.Max(1, requestQuantity);
-            _requestResolveTick = Environment.TickCount + 900;
+            _pendingStorageExpansionCommoditySerialNumber = entry?.IsStorageExpansion == true
+                ? ResolveStorageExpansionCommoditySerialNumberForEntry(entry)
+                : 0;
+            _pendingStorageExpansionAwaitingPacketResult = entry?.IsStorageExpansion == true
+                && _pendingStorageExpansionCommoditySerialNumber > 0;
+            _requestResolveTick = Environment.TickCount + (_pendingStorageExpansionAwaitingPacketResult
+                ? PacketOwnedStorageExpansionTimeoutMs
+                : 900);
             entry.State = AdminShopEntryState.PendingResponse;
             entry.StateLabel = "Pending";
             long totalPrice = ComputeRequestPrice(entry, _pendingRequestQuantity);
             string quantityLabel = _pendingRequestQuantity > 1 ? $" x{_pendingRequestQuantity}" : string.Empty;
             string priceLabel = totalPrice > 0 ? $" for {FormatPriceLabel(totalPrice)}" : string.Empty;
-            _footerMessage = $"Submitted a {_currentMode} request for {entry.Title}{quantityLabel}{priceLabel}. Waiting for simulator response.";
+            _footerMessage = _pendingStorageExpansionAwaitingPacketResult
+                ? $"Submitted a {_currentMode} request for {entry.Title}{quantityLabel}{priceLabel}. Waiting for packet-authored storage-expansion result on SN {_pendingStorageExpansionCommoditySerialNumber.ToString(CultureInfo.InvariantCulture)}."
+                : $"Submitted a {_currentMode} request for {entry.Title}{quantityLabel}{priceLabel}. Waiting for simulator response.";
             UpdateActionButtonStates();
         }
 
@@ -2816,6 +2840,12 @@ namespace HaCreator.MapSimulator.UI
 
             if (_pendingRequestEntry.IsStorageExpansion)
             {
+                if (_pendingStorageExpansionAwaitingPacketResult)
+                {
+                    _footerMessage = $"No packet-authored storage-expansion result arrived for SN {_pendingStorageExpansionCommoditySerialNumber.ToString(CultureInfo.InvariantCulture)} before the simulator timeout. Falling back to the local Cash Shop seam.";
+                    _pendingStorageExpansionAwaitingPacketResult = false;
+                }
+
                 ResolveStorageExpansionRequest(_pendingRequestEntry);
                 return;
             }
@@ -3344,7 +3374,154 @@ namespace HaCreator.MapSimulator.UI
 
             _footerMessage = footerMessage;
             _pendingRequestEntry = null;
+            _pendingStorageExpansionAwaitingPacketResult = false;
+            _pendingStorageExpansionCommoditySerialNumber = 0;
             UpdateActionButtonStates();
+        }
+
+        public bool TryApplyPacketOwnedStorageExpansionResult(PacketOwnedStorageExpansionResult packetResult, out string message)
+        {
+            message = "Packet-owned storage-expansion result could not be applied.";
+            if (packetResult == null)
+            {
+                message = "Packet-owned storage-expansion result data is missing.";
+                return false;
+            }
+
+            if (_pendingRequestEntry == null || !_pendingRequestEntry.IsStorageExpansion)
+            {
+                message = "No pending storage-expansion request is waiting on the Cash Shop seam.";
+                return false;
+            }
+
+            int expectedCommoditySerialNumber = _pendingStorageExpansionCommoditySerialNumber > 0
+                ? _pendingStorageExpansionCommoditySerialNumber
+                : ResolveStorageExpansionCommoditySerialNumberForEntry(_pendingRequestEntry);
+            if (expectedCommoditySerialNumber > 0
+                && packetResult.CommoditySerialNumber > 0
+                && packetResult.CommoditySerialNumber != expectedCommoditySerialNumber)
+            {
+                message = $"Packet-owned storage-expansion result for SN {packetResult.CommoditySerialNumber.ToString(CultureInfo.InvariantCulture)} does not match the pending request SN {expectedCommoditySerialNumber.ToString(CultureInfo.InvariantCulture)}.";
+                return false;
+            }
+
+            long nxPrice = Math.Max(0L, packetResult.NxPrice > 0 ? packetResult.NxPrice : _pendingRequestEntry.Price);
+            int slotLimitBeforeResult = _storageRuntime?.GetSlotLimit() ?? 0;
+            if (packetResult.ResultSubtype == StorageExpansionResultSubtype.Success)
+            {
+                if (_storageRuntime == null)
+                {
+                    CompleteStorageExpansionRequest(
+                        _pendingRequestEntry,
+                        AdminShopEntryState.RequestRejected,
+                        "No runtime",
+                        "Storage runtime is unavailable for packet-authored slot expansion.",
+                        StorageExpansionResultSubtype.Rejected,
+                        StorageExpansionFailureReason.RuntimeUnavailable);
+                    message = _footerMessage;
+                    return false;
+                }
+
+                if (packetResult.ConsumeCash && !TryConsumeStorageExpansionCash(nxPrice))
+                {
+                    CompleteStorageExpansionRequest(
+                        _pendingRequestEntry,
+                        AdminShopEntryState.RequestRejected,
+                        "Need NX",
+                        $"Packet-owned storage-expansion success for SN {(packetResult.CommoditySerialNumber > 0 ? packetResult.CommoditySerialNumber.ToString(CultureInfo.InvariantCulture) : "local seam")} was rejected locally because the account does not have {FormatCashPriceLabel(nxPrice)} available.",
+                        StorageExpansionResultSubtype.Rejected,
+                        StorageExpansionFailureReason.NotEnoughCash);
+                    message = _footerMessage;
+                    return false;
+                }
+
+                int requestedSlotLimit = Math.Max(0, packetResult.SlotLimitAfterResult);
+                if (requestedSlotLimit > 0)
+                {
+                    _storageRuntime.SetSlotLimit(requestedSlotLimit);
+                }
+                else if (_storageRuntime.CanExpandSlotLimit())
+                {
+                    _storageRuntime.TryExpandSlotLimit();
+                }
+
+                int slotLimitAfterResult = _storageRuntime.GetSlotLimit();
+                if (slotLimitAfterResult <= slotLimitBeforeResult && requestedSlotLimit <= slotLimitBeforeResult)
+                {
+                    CompleteStorageExpansionRequest(
+                        _pendingRequestEntry,
+                        AdminShopEntryState.RequestRejected,
+                        "Retry",
+                        "The packet-authored storage-expansion result did not advance the storage slot limit.",
+                        StorageExpansionResultSubtype.Rejected,
+                        StorageExpansionFailureReason.ExpansionFailed);
+                    message = _footerMessage;
+                    return false;
+                }
+
+                string footerMessage = string.IsNullOrWhiteSpace(packetResult.Message)
+                    ? $"Packet-owned storage-expansion result accepted for SN {(expectedCommoditySerialNumber > 0 ? expectedCommoditySerialNumber.ToString(CultureInfo.InvariantCulture) : "local seam")}. Storage now has {slotLimitAfterResult.ToString(CultureInfo.InvariantCulture)} slots."
+                    : packetResult.Message;
+                CompleteStorageExpansionRequest(
+                    _pendingRequestEntry,
+                    AdminShopEntryState.RequestAccepted,
+                    "Expanded",
+                    footerMessage,
+                    StorageExpansionResultSubtype.Success,
+                    StorageExpansionFailureReason.None,
+                    markPurchased: true);
+                message = _footerMessage;
+                return true;
+            }
+
+            string rejectionMessage = string.IsNullOrWhiteSpace(packetResult.Message)
+                ? BuildPacketOwnedStorageExpansionFailureMessage(packetResult.FailureReason, expectedCommoditySerialNumber, nxPrice)
+                : packetResult.Message;
+            CompleteStorageExpansionRequest(
+                _pendingRequestEntry,
+                AdminShopEntryState.RequestRejected,
+                "Rejected",
+                rejectionMessage,
+                StorageExpansionResultSubtype.Rejected,
+                Math.Max(StorageExpansionFailureReason.None, packetResult.FailureReason));
+            message = _footerMessage;
+            return true;
+        }
+
+        private int ResolveStorageExpansionCommoditySerialNumberForEntry(AdminShopEntry entry)
+        {
+            if (entry == null || !entry.IsStorageExpansion)
+            {
+                return 0;
+            }
+
+            int resolvedSerialNumber = ResolveStorageExpansionCommoditySerialNumber?.Invoke() ?? 0;
+            if (resolvedSerialNumber > 0)
+            {
+                return resolvedSerialNumber;
+            }
+
+            return Math.Max(0, entry.CommoditySerialNumber);
+        }
+
+        private string BuildPacketOwnedStorageExpansionFailureMessage(int failureReason, int commoditySerialNumber, long nxPrice)
+        {
+            string commodityLabel = commoditySerialNumber > 0
+                ? $"SN {commoditySerialNumber.ToString(CultureInfo.InvariantCulture)}"
+                : "the pending storage-expansion seam";
+
+            return failureReason switch
+            {
+                StorageExpansionFailureReason.SlotCapReached => $"{commodityLabel} was rejected because storage is already at the current slot cap.",
+                StorageExpansionFailureReason.UnauthorizedCharacter => $"{commodityLabel} was rejected because the current character is not authorized for this storage account.",
+                StorageExpansionFailureReason.SessionLocked => $"{commodityLabel} was rejected because the trunk session is no longer active.",
+                StorageExpansionFailureReason.MissingAccountAuthority => $"{commodityLabel} was rejected because the account PIC or secondary password was not verified.",
+                StorageExpansionFailureReason.MissingStoragePasscode => $"{commodityLabel} was rejected because the storage passcode was not verified.",
+                StorageExpansionFailureReason.NotEnoughCash => $"{commodityLabel} was rejected because the account does not have {FormatCashPriceLabel(nxPrice)} available.",
+                StorageExpansionFailureReason.ExpansionFailed => $"{commodityLabel} reached the packet-owned Cash Shop seam, but the storage slot limit did not advance.",
+                StorageExpansionFailureReason.RuntimeUnavailable => "The packet-owned storage-expansion result could not be applied because the storage runtime is unavailable.",
+                _ => $"{commodityLabel} was rejected by the packet-owned Cash Shop result seam."
+            };
         }
 
         private static Color GetTitleColor(AdminShopEntry entry, bool isSelected)
@@ -4309,8 +4486,9 @@ namespace HaCreator.MapSimulator.UI
         {
             int ownedQuantity = _inventory?.GetItemCount(entry.SourceInventoryType, entry.SourceItemId) ?? 0;
             string sourceLabel = ResolveSourceItemLabel(entry);
+            int maxRequestCount = ResolveOwnedSourceRequestCount(entry, ownedQuantity);
             return ownedQuantity >= Math.Max(1, entry.SourceItemQuantity)
-                ? $"Source: {sourceLabel} ready ({ownedQuantity} owned)."
+                ? $"Source: {sourceLabel} ready ({ownedQuantity} owned, request up to {maxRequestCount})."
                 : $"Source: need {sourceLabel} ({ownedQuantity} owned).";
         }
 
@@ -4363,6 +4541,60 @@ namespace HaCreator.MapSimulator.UI
 
             entry.RewardMaxStackSize = InventoryItemMetadataResolver.ResolveMaxStack(entry.RewardInventoryType);
             return entry.RewardMaxStackSize;
+        }
+
+        private bool SupportsQuantityPrompt(AdminShopEntry entry)
+        {
+            if (entry == null || entry.MaxRequestCount <= 1)
+            {
+                return false;
+            }
+
+            if (RequiresInventorySource(entry))
+            {
+                int ownedQuantity = _inventory?.GetItemCount(entry.SourceInventoryType, entry.SourceItemId) ?? 0;
+                if (ownedQuantity >= Math.Max(1, entry.SourceItemQuantity) * 2)
+                {
+                    return true;
+                }
+            }
+
+            return entry.RewardInventoryType != InventoryType.NONE
+                   && entry.RewardItemId > 0
+                   && ResolveRewardMaxStack(entry) > 1;
+        }
+
+        private int ResolveOwnedSourceRequestCount(AdminShopEntry entry, int ownedQuantity)
+        {
+            if (!RequiresInventorySource(entry))
+            {
+                return 0;
+            }
+
+            int requestUnit = Math.Max(1, entry.SourceItemQuantity);
+            int requestCount = ownedQuantity / requestUnit;
+            return Math.Max(0, Math.Min(entry.MaxRequestCount, requestCount));
+        }
+
+        private string BuildRequestQuantitySummary(AdminShopEntry entry, int requestQuantity)
+        {
+            if (entry == null)
+            {
+                return string.Empty;
+            }
+
+            long totalPrice = ComputeRequestPrice(entry, requestQuantity);
+            if (totalPrice > 0)
+            {
+                return $"Total: {FormatPriceLabel(totalPrice)}";
+            }
+
+            if (RequiresInventorySource(entry))
+            {
+                return $"Use: {ResolveSourceItemLabel(entry, ComputeRequiredSourceQuantity(entry, requestQuantity))}";
+            }
+
+            return $"Deliver: x{ComputeDeliveredQuantity(entry, requestQuantity)}";
         }
 
         private AdminShopEntry CreateSyntheticCommodityEntry(AdminShopCommodityData commodity)

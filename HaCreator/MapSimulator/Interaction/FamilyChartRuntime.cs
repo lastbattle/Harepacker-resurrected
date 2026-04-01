@@ -16,6 +16,7 @@ namespace HaCreator.MapSimulator.Interaction
         private const int DirectJuniorSlotLeft = 5;
         private const int DirectJuniorSlotRight = 6;
         private const int GrandchildSlotStart = 7;
+        private const int CenterFocusSlotIndex = 3;
         private const int EntitlementDurationMs = 15 * 60 * 1000;
         // CUIFamily::Draw.
         private const int ClientFamilyNoSelectionStringId = 0x1200;
@@ -42,6 +43,7 @@ namespace HaCreator.MapSimulator.Interaction
         };
 
         private int _selectedMemberId = LocalPlayerId;
+        private int _selectedEmptyTreeSlot = -1;
         private int _familyHeadId = DefaultFamilyHeadId;
         private int _preceptIndex;
         private FamilyEntitlementType _entitlementType = FamilyEntitlementType.DropAndExpBuff;
@@ -81,6 +83,8 @@ namespace HaCreator.MapSimulator.Interaction
             {
                 _selectedMemberId = LocalPlayerId;
             }
+
+            ValidateEmptyTreeSelection();
         }
 
         internal string PreviewRemoteFamilyRequest(string targetName, CharacterBuild build, string locationSummary, int channel)
@@ -99,6 +103,7 @@ namespace HaCreator.MapSimulator.Interaction
                 Vector2.Zero);
             _members[RemotePreviewMemberId] = previewMember;
             _selectedMemberId = RemotePreviewMemberId;
+            _selectedEmptyTreeSlot = -1;
             _remotePreviewRequestSummary = $"Viewing a simulated family-chart request target for {resolvedName}. Server-owned roster sync still remains outside this seam.";
             return _remotePreviewRequestSummary;
         }
@@ -111,6 +116,8 @@ namespace HaCreator.MapSimulator.Interaction
             {
                 _selectedMemberId = LocalPlayerId;
             }
+
+            _selectedEmptyTreeSlot = -1;
         }
 
         internal FamilyChartSnapshot BuildChartSnapshot()
@@ -151,6 +158,7 @@ namespace HaCreator.MapSimulator.Interaction
             IReadOnlyList<int> focusOrder = BuildFocusOrder();
             int focusIndex = GetFocusIndex(focusOrder, selectedMember?.Id ?? LocalPlayerId);
             Dictionary<int, int> slotMembers = BuildTreeLayout(selectedMember);
+            ValidateEmptyTreeSelection(slotMembers);
 
             FamilyTreeNodeSnapshot[] nodes = Enumerable.Range(0, 11)
                 .Select(slotIndex => CreateNodeSnapshot(slotIndex, slotMembers))
@@ -210,6 +218,7 @@ namespace HaCreator.MapSimulator.Interaction
             int currentIndex = GetFocusIndex(focusOrder, _selectedMemberId);
             int nextIndex = Math.Clamp(currentIndex + delta, 0, focusOrder.Count - 1);
             _selectedMemberId = focusOrder[nextIndex];
+            _selectedEmptyTreeSlot = -1;
 
             FamilyMemberState selectedMember = GetSelectedMember();
             return $"Focused family branch on {selectedMember?.Name ?? "Player"}.";
@@ -223,6 +232,7 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             _selectedMemberId = memberId;
+            _selectedEmptyTreeSlot = -1;
             FamilyMemberState selectedMember = GetSelectedMember();
             return $"Selected {selectedMember?.Name ?? "family member"} in the family tree.";
         }
@@ -230,14 +240,17 @@ namespace HaCreator.MapSimulator.Interaction
         internal string SelectNode(int slotIndex)
         {
             FamilyMemberState selectedMember = GetSelectedMember();
-            if (!BuildTreeLayout(selectedMember).TryGetValue(slotIndex, out int memberId) || !_members.ContainsKey(memberId))
+            Dictionary<int, int> layout = BuildTreeLayout(selectedMember);
+            if (!layout.TryGetValue(slotIndex, out int memberId) || !_members.ContainsKey(memberId))
             {
+                _selectedEmptyTreeSlot = slotIndex;
                 return slotIndex is DirectJuniorSlotLeft or DirectJuniorSlotRight
-                    ? "That junior-entry slot is still empty."
-                    : "That family-tree slot is empty.";
+                    ? "Selected an empty junior-entry slot."
+                    : "Selected an empty family-tree branch slot.";
             }
 
             _selectedMemberId = memberId;
+            _selectedEmptyTreeSlot = -1;
             FamilyMemberState member = GetSelectedMember();
             return $"Selected {member?.Name ?? "family member"} in the family tree.";
         }
@@ -273,6 +286,7 @@ namespace HaCreator.MapSimulator.Interaction
             selectedMember.CurrentReputation += 30;
             selectedMember.TodayReputation += 8;
             _selectedMemberId = newJunior.Id;
+            _selectedEmptyTreeSlot = -1;
 
             return $"{newJunior.Name} was registered under {selectedMember.Name}.";
         }
@@ -303,6 +317,7 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             _selectedMemberId = LocalPlayerId;
+            _selectedEmptyTreeSlot = -1;
             return $"Removed {selectedMember.Name}'s simulator family branch.";
         }
 
@@ -533,6 +548,7 @@ namespace HaCreator.MapSimulator.Interaction
             _entitlementUsesLeft = 3;
             _familyName = string.Empty;
             _activePrivilege = null;
+            _selectedEmptyTreeSlot = -1;
         }
 
         private void SeedDefaultFamily()
@@ -703,6 +719,7 @@ namespace HaCreator.MapSimulator.Interaction
                 return new FamilyTreeNodeSnapshot
                 {
                     SlotIndex = slotIndex,
+                    IsSelected = slotIndex == _selectedEmptyTreeSlot,
                     PlaceholderText = slotIndex is DirectJuniorSlotLeft or DirectJuniorSlotRight
                         ? GetClientPlaceholderText(slotIndex)
                         : slotIndex == 3
@@ -971,6 +988,24 @@ namespace HaCreator.MapSimulator.Interaction
             if (!_members.ContainsKey(_selectedMemberId))
             {
                 _selectedMemberId = _members.ContainsKey(LocalPlayerId) ? LocalPlayerId : _familyHeadId;
+            }
+
+            ValidateEmptyTreeSelection();
+        }
+
+        private void ValidateEmptyTreeSelection(Dictionary<int, int> layout = null)
+        {
+            if (_selectedEmptyTreeSlot < 0)
+            {
+                return;
+            }
+
+            Dictionary<int, int> resolvedLayout = layout ?? BuildTreeLayout(GetSelectedMember());
+            if (_selectedEmptyTreeSlot >= 11
+                || _selectedEmptyTreeSlot == CenterFocusSlotIndex
+                || resolvedLayout.ContainsKey(_selectedEmptyTreeSlot))
+            {
+                _selectedEmptyTreeSlot = -1;
             }
         }
 

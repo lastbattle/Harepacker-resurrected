@@ -2616,56 +2616,8 @@ namespace HaCreator.MapSimulator.UI
 
         private static bool TryCreateTooltipPart(CompanionEquipItem item, out CharacterPart tooltipPart)
         {
-            tooltipPart = item?.CharacterPart;
-            if (tooltipPart != null)
-            {
-                return true;
-            }
-
-            if (item == null || item.ItemId <= 0)
-            {
-                return false;
-            }
-
-            tooltipPart = new CharacterPart
-            {
-                ItemId = item.ItemId,
-                Name = item.Name,
-                Description = item.Description,
-                ItemCategory = item.ItemCategory,
-                IsCash = item.IsCash,
-                RequiredJobMask = item.RequiredJobMask,
-                RequiredFame = item.RequiredFame,
-                RequiredLevel = item.RequiredLevel,
-                RequiredSTR = item.RequiredSTR,
-                RequiredDEX = item.RequiredDEX,
-                RequiredINT = item.RequiredINT,
-                RequiredLUK = item.RequiredLUK,
-                BonusSTR = item.BonusSTR,
-                BonusDEX = item.BonusDEX,
-                BonusINT = item.BonusINT,
-                BonusLUK = item.BonusLUK,
-                BonusHP = item.BonusHP,
-                BonusMP = item.BonusMP,
-                BonusWeaponAttack = item.BonusWeaponAttack,
-                BonusMagicAttack = item.BonusMagicAttack,
-                BonusWeaponDefense = item.BonusWeaponDefense,
-                BonusMagicDefense = item.BonusMagicDefense,
-                BonusAccuracy = item.BonusAccuracy,
-                BonusAvoidability = item.BonusAvoidability,
-                BonusHands = item.BonusHands,
-                BonusSpeed = item.BonusSpeed,
-                BonusJump = item.BonusJump,
-                UpgradeSlots = item.UpgradeSlots,
-                KnockbackRate = item.KnockbackRate,
-                TradeAvailable = item.TradeAvailable,
-                IsTimeLimited = item.IsTimeLimited,
-                Durability = item.Durability,
-                MaxDurability = item.MaxDurability,
-                Icon = item.Icon,
-                IconRaw = item.IconRaw
-            };
-            return true;
+            tooltipPart = CompanionEquipmentTooltipPartFactory.CreateTooltipPart(item);
+            return tooltipPart != null;
         }
 
         private CharacterPart ResolveInventoryTooltipPart(InventorySlotData slotData)
@@ -3195,9 +3147,19 @@ namespace HaCreator.MapSimulator.UI
                 segments.Add("Untradeable");
             }
 
+            if (part.IsEquipTradeBlocked)
+            {
+                segments.Add("Untradeable after equip");
+            }
+
             if (part.IsOneOfAKind)
             {
                 segments.Add("One-of-a-kind item");
+            }
+
+            if (part.IsNotForSale)
+            {
+                segments.Add("Not for sale");
             }
 
             if (part.KnockbackRate > 0)

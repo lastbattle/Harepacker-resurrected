@@ -164,7 +164,7 @@ namespace HaCreator.MapSimulator.Managers
                 .ToArray();
         }
 
-        public void Start(int listenPort, string remoteHost, int remotePort)
+        public bool TryStart(int listenPort, string remoteHost, int remotePort, out string status)
         {
             lock (_sync)
             {
@@ -180,13 +180,22 @@ namespace HaCreator.MapSimulator.Managers
                     _listener.Start();
                     _listenerTask = Task.Run(() => ListenLoopAsync(_listenerCancellation.Token));
                     LastStatus = $"Monster Carnival official-session bridge listening on 127.0.0.1:{ListenPort} and proxying to {RemoteHost}:{RemotePort}.";
+                    status = LastStatus;
+                    return true;
                 }
                 catch (Exception ex)
                 {
                     StopInternal(clearPending: true);
                     LastStatus = $"Monster Carnival official-session bridge failed to start: {ex.Message}";
+                    status = LastStatus;
+                    return false;
                 }
             }
+        }
+
+        public void Start(int listenPort, string remoteHost, int remotePort)
+        {
+            TryStart(listenPort, remoteHost, remotePort, out _);
         }
 
         public bool TryStartFromDiscovery(int listenPort, int remotePort, string processSelector, int? localPort, out string status)
@@ -207,14 +216,14 @@ namespace HaCreator.MapSimulator.Managers
                 return false;
             }
 
-            Start(listenPort, candidate.RemoteEndpoint.Address.ToString(), candidate.RemoteEndpoint.Port);
-            if (!IsRunning)
+            if (!TryStart(listenPort, candidate.RemoteEndpoint.Address.ToString(), candidate.RemoteEndpoint.Port, out string startStatus))
             {
-                status = LastStatus;
+                status = $"Monster Carnival official-session bridge discovered {candidate.ProcessName} ({candidate.ProcessId}) at {candidate.RemoteEndpoint.Address}:{candidate.RemoteEndpoint.Port} from local {candidate.LocalEndpoint.Address}:{candidate.LocalEndpoint.Port}, but startup failed. {startStatus}";
+                LastStatus = status;
                 return false;
             }
 
-            status = $"Monster Carnival official-session bridge discovered {candidate.ProcessName} ({candidate.ProcessId}) at {candidate.RemoteEndpoint.Address}:{candidate.RemoteEndpoint.Port} from local {candidate.LocalEndpoint.Address}:{candidate.LocalEndpoint.Port}. {LastStatus}";
+            status = $"Monster Carnival official-session bridge discovered {candidate.ProcessName} ({candidate.ProcessId}) at {candidate.RemoteEndpoint.Address}:{candidate.RemoteEndpoint.Port} from local {candidate.LocalEndpoint.Address}:{candidate.LocalEndpoint.Port}. {startStatus}";
             LastStatus = status;
             return true;
         }

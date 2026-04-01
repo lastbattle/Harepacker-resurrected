@@ -20,53 +20,16 @@ namespace HaCreator.MapSimulator.Pools
             int currentTargetId = source.AI.ExternalTargetSource == MobExternalTargetSource.Hypnotize
                 ? source.AI.Target.TargetId
                 : 0;
-
-            MobItem currentTarget = FindByPoolId(activeMobs, currentTargetId);
-            if (IsEligibleTarget(source, currentTarget, allowEncounterTargets: true))
-            {
-                return currentTarget;
-            }
-
-            MobItem sameTeamStandardTarget = FindNearestTarget(source, activeMobs, maxDistance, requireMatchingTeam: true, allowEncounterTargets: false);
-            if (sameTeamStandardTarget != null)
-            {
-                return sameTeamStandardTarget;
-            }
-
-            MobItem sameTeamEncounterTarget = FindNearestTarget(source, activeMobs, maxDistance, requireMatchingTeam: true, allowEncounterTargets: true);
-            if (sameTeamEncounterTarget != null)
-            {
-                return sameTeamEncounterTarget;
-            }
-
-            MobItem standardTarget = FindNearestTarget(source, activeMobs, maxDistance, requireMatchingTeam: false, allowEncounterTargets: false);
-            if (standardTarget != null)
-            {
-                return standardTarget;
-            }
-
-            return FindNearestTarget(source, activeMobs, maxDistance, requireMatchingTeam: false, allowEncounterTargets: true);
-        }
-
-        private static MobItem FindNearestTarget(
-            MobItem source,
-            IReadOnlyList<MobItem> activeMobs,
-            float maxDistance,
-            bool requireMatchingTeam,
-            bool allowEncounterTargets)
-        {
-            MobItem nearest = null;
-            float nearestDistanceSq = maxDistance * maxDistance;
+            int? sourceTeam = source.MobInstance?.Team;
+            float maxDistanceSq = maxDistance * maxDistance;
+            MobItem bestTarget = null;
+            int bestPriorityTier = int.MaxValue;
+            float bestDistanceSq = maxDistanceSq;
 
             for (int i = 0; i < activeMobs.Count; i++)
             {
                 MobItem candidate = activeMobs[i];
-                if (!IsEligibleTarget(source, candidate, allowEncounterTargets))
-                {
-                    continue;
-                }
-
-                if (requireMatchingTeam && !SharesTeam(source, candidate))
+                if (!IsEligibleTarget(source, candidate, allowEncounterTargets: true))
                 {
                     continue;
                 }
@@ -74,35 +37,30 @@ namespace HaCreator.MapSimulator.Pools
                 float dx = candidate.CurrentX - source.CurrentX;
                 float dy = candidate.CurrentY - source.CurrentY;
                 float distanceSq = dx * dx + dy * dy;
-                if (distanceSq >= nearestDistanceSq)
+                if (distanceSq > maxDistanceSq)
                 {
                     continue;
                 }
 
-                nearestDistanceSq = distanceSq;
-                nearest = candidate;
-            }
-
-            return nearest;
-        }
-
-        private static MobItem FindByPoolId(IReadOnlyList<MobItem> activeMobs, int poolId)
-        {
-            if (poolId <= 0)
-            {
-                return null;
-            }
-
-            for (int i = 0; i < activeMobs.Count; i++)
-            {
-                MobItem candidate = activeMobs[i];
-                if (candidate?.PoolId == poolId)
+                int candidatePriorityTier = ResolvePriorityTier(sourceTeam, candidate.MobInstance?.Team, candidate.UsesMobCombatLane);
+                if (!ShouldPreferCandidate(
+                    currentTargetId,
+                    bestTarget?.PoolId ?? 0,
+                    currentPriorityTier: bestPriorityTier,
+                    candidatePriorityTier: candidatePriorityTier,
+                    currentDistanceSq: bestDistanceSq,
+                    candidateDistanceSq: distanceSq,
+                    candidateId: candidate.PoolId))
                 {
-                    return candidate;
+                    continue;
                 }
+
+                bestPriorityTier = candidatePriorityTier;
+                bestDistanceSq = distanceSq;
+                bestTarget = candidate;
             }
 
-            return null;
+            return bestTarget;
         }
 
         private static bool IsEligibleTarget(MobItem source, MobItem candidate, bool allowEncounterTargets)
@@ -130,13 +88,54 @@ namespace HaCreator.MapSimulator.Pools
             return true;
         }
 
-        private static bool SharesTeam(MobItem source, MobItem candidate)
+        internal static int ResolvePriorityTier(int? sourceTeam, int? candidateTeam, bool usesEncounterTarget)
         {
-            int? sourceTeam = source?.MobInstance?.Team;
-            int? candidateTeam = candidate?.MobInstance?.Team;
-            return sourceTeam.HasValue
-                && candidateTeam.HasValue
-                && sourceTeam.Value == candidateTeam.Value;
+            if (sourceTeam.HasValue && candidateTeam.HasValue && sourceTeam.Value == candidateTeam.Value)
+            {
+                return usesEncounterTarget ? 1 : 0;
+            }
+
+            if (sourceTeam.HasValue)
+            {
+                return usesEncounterTarget ? 3 : 2;
+            }
+
+            return usesEncounterTarget ? 1 : 0;
+        }
+
+        internal static bool ShouldPreferCandidate(
+            int currentTargetId,
+            int currentBestId,
+            int currentPriorityTier,
+            int candidatePriorityTier,
+            float currentDistanceSq,
+            float candidateDistanceSq,
+            int candidateId)
+        {
+            if (candidatePriorityTier != currentPriorityTier)
+            {
+                return candidatePriorityTier < currentPriorityTier;
+            }
+
+            if (candidateDistanceSq != currentDistanceSq)
+            {
+                return candidateDistanceSq < currentDistanceSq;
+            }
+
+            if (currentTargetId > 0)
+            {
+                if (candidateId == currentTargetId)
+                {
+                    return true;
+                }
+
+                if (currentBestId == currentTargetId)
+                {
+                    return false;
+                }
+            }
+
+            return currentBestId <= 0 || candidateId < currentBestId;
         }
     }
 }

@@ -2,6 +2,7 @@ using HaCreator.MapSimulator.Character.Skills;
 using MapleLib.WzLib.WzStructure.Data;
 using MapleLib.WzLib.WzStructure;
 using System;
+using System.Collections.Generic;
 using MapleLib.WzLib;
 
 namespace HaCreator.MapSimulator.Fields
@@ -12,6 +13,33 @@ namespace HaCreator.MapSimulator.Fields
     public static class FieldSkillRestrictionEvaluator
     {
         private const int RocketBoosterSkillId = 35101004;
+        private static readonly HashSet<int> ClientUnableToUseSkillAllowlist = new HashSet<int>
+        {
+            4211002,
+            4221001,
+            1121006,
+            1221007,
+            1321003,
+            4321001,
+            4121008,
+            5101002,
+            5101004,
+            15101003,
+            5121005,
+            21100002,
+            21110003,
+            21110006,
+            4311003,
+            4331000,
+            4331004,
+            4331005,
+            4341002,
+            33111002,
+            35001003,
+            1121001,
+            1321001,
+            3120010
+        };
 
         public static bool CanUseSkill(MapInfo mapInfo, SkillData skill)
         {
@@ -88,8 +116,8 @@ namespace HaCreator.MapSimulator.Fields
             if (FieldLimitType.Unable_To_Use_Taming_Mob.Check(fieldLimit) && UsesTamingMobRestrictedSkill(skill))
                 return "Mount and mechanic vehicle skills cannot be used in this field.";
 
-            if (FieldLimitType.Unable_To_Use_Skill.Check(fieldLimit))
-                return "This field forbids skill usage.";
+            if (FieldLimitType.Unable_To_Use_Skill.Check(fieldLimit) && !IsClientAllowedInUnableToUseSkillField(skill))
+                return "This field forbids most skill usage.";
 
             if (FieldLimitType.Move_Skill_Only.Check(fieldLimit) && !skill.IsMovement)
                 return "Only movement skills can be used in this field.";
@@ -109,7 +137,7 @@ namespace HaCreator.MapSimulator.Fields
         public static string GetFieldEntryNotice(long fieldLimit)
         {
             if (FieldLimitType.Unable_To_Use_Skill.Check(fieldLimit))
-                return "All skill usage is disabled in this map.";
+                return "Most skill usage is disabled in this map.";
 
             if (FieldLimitType.Move_Skill_Only.Check(fieldLimit))
                 return "Only movement skills can be used in this map.";
@@ -298,6 +326,13 @@ namespace HaCreator.MapSimulator.Fields
         private static bool UsesTamingMobRestrictedSkill(SkillData skill)
         {
             return ClientOwnedVehicleSkillClassifier.UsesVehicleOwnershipOrMountSkill(skill);
+        }
+
+        private static bool IsClientAllowedInUnableToUseSkillField(SkillData skill)
+        {
+            // Client evidence: CUserLocal::TryDoingMeleeAttack keeps this explicit allowlist
+            // alive even when CField::IsUnableToUseSkill returns true.
+            return skill != null && ClientUnableToUseSkillAllowlist.Contains(skill.SkillId);
         }
 
         private static bool UsesVehicleOwnershipOrMountSkill(SkillData skill)

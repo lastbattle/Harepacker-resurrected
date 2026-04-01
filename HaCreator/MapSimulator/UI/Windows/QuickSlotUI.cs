@@ -52,6 +52,7 @@ namespace HaCreator.MapSimulator.UI
         private Texture2D _cooldownOverlayTexture;
         private Texture2D[] _cooldownMaskTextures = Array.Empty<Texture2D>();
         private readonly Texture2D[] _tooltipFrames = new Texture2D[3];
+        private EquipUIBigBang.EquipTooltipAssets _equipTooltipAssets;
         private Texture2D _debugPlaceholder;
 
         // Hover and selection
@@ -241,6 +242,11 @@ namespace HaCreator.MapSimulator.UI
             {
                 _tooltipFrames[i] = tooltipFrames[i];
             }
+        }
+
+        public void SetEquipTooltipAssets(EquipUIBigBang.EquipTooltipAssets assets)
+        {
+            _equipTooltipAssets = assets;
         }
         #endregion
 
@@ -591,35 +597,61 @@ namespace HaCreator.MapSimulator.UI
 
             int itemCount = _skillManager.GetHotkeyItemCount(absoluteSlotIndex);
             InventoryType inventoryType = _skillManager.GetHotkeyItemInventoryType(absoluteSlotIndex);
-            string itemName = ResolveItemName(itemId);
-            string typeLine = ResolveItemTypeName(itemId, inventoryType);
+            InventoryItemTooltipMetadata metadata = InventoryItemMetadataResolver.ResolveTooltipMetadata(itemId, inventoryType);
+            string itemName = metadata.ItemName;
+            string typeLine = metadata.TypeName;
             string countLine = itemCount > 0 ? $"Quantity: {itemCount}" : string.Empty;
-            string description = ResolveItemDescription(itemId);
+            string description = metadata.Description;
             Texture2D itemTexture = ResolveQuickSlotItemTexture(itemId, inventoryType);
+            Texture2D cashLabelTexture = metadata.IsCashItem ? _equipTooltipAssets?.CashLabel : null;
 
             int tooltipWidth = ResolveTooltipWidth();
             int textLeftOffset = TOOLTIP_PADDING + SLOT_SIZE + TOOLTIP_ICON_GAP;
             float titleWidth = tooltipWidth - (TOOLTIP_PADDING * 2);
             float sectionWidth = tooltipWidth - textLeftOffset - TOOLTIP_PADDING;
             string[] wrappedTitle = WrapTooltipText(SanitizeFontText(itemName), titleWidth);
-            string[] wrappedType = WrapTooltipText(SanitizeFontText(typeLine), sectionWidth);
-            string[] wrappedCount = WrapTooltipText(countLine, sectionWidth);
-            string[] wrappedDescription = WrapTooltipText(SanitizeFontText(description), sectionWidth);
             float titleHeight = MeasureLinesHeight(wrappedTitle);
-            float typeHeight = MeasureLinesHeight(wrappedType);
-            float countHeight = MeasureLinesHeight(wrappedCount);
-            float descriptionHeight = MeasureLinesHeight(wrappedDescription);
-            float contentHeight = typeHeight;
-            if (countHeight > 0f)
+
+            List<(string[] Lines, Color Color, float Height)> wrappedSections = new();
+            void AddSection(string text, Color color)
             {
-                contentHeight += (contentHeight > 0f ? TOOLTIP_SECTION_GAP : 0f) + countHeight;
+                string[] wrapped = WrapTooltipText(SanitizeFontText(text), sectionWidth);
+                float height = MeasureLinesHeight(wrapped);
+                if (height > 0f)
+                {
+                    wrappedSections.Add((wrapped, color, height));
+                }
             }
 
-            if (descriptionHeight > 0f)
+            AddSection(typeLine, new Color(180, 220, 255));
+            for (int i = 0; i < metadata.EffectLines.Count; i++)
             {
-                contentHeight += (contentHeight > 0f ? TOOLTIP_SECTION_GAP : 0f) + descriptionHeight;
+                AddSection(metadata.EffectLines[i], new Color(180, 255, 210));
+            }
+            AddSection(countLine, Color.White);
+            for (int i = 0; i < metadata.MetadataLines.Count; i++)
+            {
+                AddSection(metadata.MetadataLines[i], new Color(255, 214, 156));
+            }
+            AddSection(description, new Color(255, 238, 196));
+
+            float wrappedSectionHeight = 0f;
+            for (int i = 0; i < wrappedSections.Count; i++)
+            {
+                if (wrappedSectionHeight > 0f)
+                {
+                    wrappedSectionHeight += TOOLTIP_SECTION_GAP;
+                }
+
+                wrappedSectionHeight += wrappedSections[i].Height;
             }
 
+            float cashLabelHeight = cashLabelTexture?.Height ?? 0f;
+            float contentHeight = wrappedSectionHeight;
+            if (cashLabelHeight > 0f)
+            {
+                contentHeight += (contentHeight > 0f ? 2f : 0f) + cashLabelHeight;
+            }
             float iconBlockHeight = Math.Max(SLOT_SIZE, contentHeight);
             int tooltipHeight = (int)Math.Ceiling((TOOLTIP_PADDING * 2) + titleHeight + TOOLTIP_TITLE_GAP + iconBlockHeight);
 
@@ -656,23 +688,30 @@ namespace HaCreator.MapSimulator.UI
 
             int textX = tooltipX + textLeftOffset;
             float sectionY = contentY;
-            if (typeHeight > 0f)
+            if (cashLabelHeight > 0f)
             {
-                DrawTooltipLines(sprite, wrappedType, textX, sectionY, new Color(180, 220, 255));
-                sectionY += typeHeight;
+                sprite.Draw(cashLabelTexture, new Vector2(textX, sectionY), Color.White);
+                sectionY += cashLabelHeight;
             }
 
-            if (countHeight > 0f)
+            if (wrappedSections.Count > 0)
             {
-                sectionY += typeHeight > 0f ? TOOLTIP_SECTION_GAP : 0f;
-                DrawTooltipLines(sprite, wrappedCount, textX, sectionY, Color.White);
-                sectionY += countHeight;
-            }
+                if (cashLabelHeight > 0f)
+                {
+                    sectionY += 2f;
+                }
 
-            if (descriptionHeight > 0f)
-            {
-                sectionY += sectionY > contentY ? TOOLTIP_SECTION_GAP : 0f;
-                DrawTooltipLines(sprite, wrappedDescription, textX, sectionY, new Color(255, 238, 196));
+                for (int i = 0; i < wrappedSections.Count; i++)
+                {
+                    if (i > 0)
+                    {
+                        sectionY += TOOLTIP_SECTION_GAP;
+                    }
+
+                    (string[] lines, Color color, float height) = wrappedSections[i];
+                    DrawTooltipLines(sprite, lines, textX, sectionY, color);
+                    sectionY += height;
+                }
             }
         }
 
@@ -736,20 +775,13 @@ namespace HaCreator.MapSimulator.UI
             if (levelData == null)
                 return string.Empty;
 
-            string cooldownText;
-            if (_skillManager == null || !_skillManager.IsOnCooldown(skillId, currentTime))
+            int remainingMs = 0;
+            if (_skillManager != null && _skillManager.IsOnCooldown(skillId, currentTime))
             {
-                cooldownText = "Ready";
-            }
-            else
-            {
-                int remainingMs = Math.Max(0, _skillManager.GetCooldownRemaining(skillId, currentTime));
-                cooldownText = remainingMs > 0
-                    ? $"{Math.Max(1, (int)Math.Ceiling(remainingMs / 1000f))}s remaining"
-                    : "Ready";
+                remainingMs = Math.Max(0, _skillManager.GetCooldownRemaining(skillId, currentTime));
             }
 
-            return $"MP {levelData.MpCon}  Cooldown {cooldownText}";
+            return $"MP {levelData.MpCon}  Cooldown {SkillCooldownTooltipText.FormatCooldownState(remainingMs)}";
         }
 
         private void DrawCooldownMask(SpriteBatch sprite, int slotX, int slotY, int frameIndex)

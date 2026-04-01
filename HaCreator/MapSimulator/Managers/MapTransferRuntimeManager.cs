@@ -36,6 +36,14 @@ namespace HaCreator.MapSimulator.Managers
         public IReadOnlyList<int> FieldList { get; init; } = Array.Empty<int>();
     }
 
+    public sealed class MapTransferRuntimeDispatchResult
+    {
+        public bool Accepted { get; init; }
+        public string FailureMessage { get; init; }
+        public int FocusMapId { get; init; }
+        public int FocusSlotIndex { get; init; } = -1;
+    }
+
     /// <summary>
     /// Mirrors the client's fixed teleport destination arrays per character while
     /// preserving the existing AppData store as the persistence layer.
@@ -52,8 +60,15 @@ namespace HaCreator.MapSimulator.Managers
             public int[] ContinentSlots { get; } = CreateEmptySlots(ContinentCapacity);
         }
 
+        private sealed class PendingRuntimeResponse
+        {
+            public string CharacterKey { get; init; }
+            public MapTransferRuntimeResponse Response { get; init; }
+        }
+
         private readonly MapTransferDestinationStore _store;
         private readonly Dictionary<string, CharacterRuntimeBooks> _runtimeBooksByCharacter = new(StringComparer.Ordinal);
+        private readonly List<PendingRuntimeResponse> _pendingResponses = new();
 
         public MapTransferRuntimeManager(MapTransferDestinationStore store)
         {
@@ -84,11 +99,11 @@ namespace HaCreator.MapSimulator.Managers
             return destinations;
         }
 
-        public MapTransferRuntimeResponse SendMapTransferRequest(CharacterBuild build, MapTransferRuntimeRequest request)
+        public MapTransferRuntimeDispatchResult SendMapTransferRequest(CharacterBuild build, MapTransferRuntimeRequest request)
         {
             if (request == null)
             {
-                return new MapTransferRuntimeResponse();
+                return new MapTransferRuntimeDispatchResult();
             }
 
             CharacterRuntimeBooks runtimeBooks = GetOrCreateBooks(build);
@@ -103,32 +118,87 @@ namespace HaCreator.MapSimulator.Managers
 
             if (!response.Applied)
             {
-                return response;
+                return new MapTransferRuntimeDispatchResult
+                {
+                    FailureMessage = response.FailureMessage,
+                    FocusMapId = response.FocusMapId,
+                    FocusSlotIndex = response.FocusSlotIndex
+                };
             }
 
-            return new MapTransferRuntimeResponse
+            string characterKey = ResolveCharacterKey(build);
+            _pendingResponses.Add(new PendingRuntimeResponse
             {
-                Applied = true,
-                FailureMessage = response.FailureMessage,
+                CharacterKey = characterKey,
+                Response = new MapTransferRuntimeResponse
+                {
+                    Applied = true,
+                    FailureMessage = response.FailureMessage,
+                    FocusMapId = response.FocusMapId,
+                    FocusSlotIndex = response.FocusSlotIndex,
+                    ResultType = request.Type == MapTransferRuntimeRequestType.Register
+                        ? MapTransferRuntimeResultType.RegisterApplied
+                        : MapTransferRuntimeResultType.DeleteApplied,
+                    CanTransferContinent = request.Book == MapTransferDestinationBook.Continent,
+                    FieldList = (int[])slots.Clone()
+                }
+            });
+
+            return new MapTransferRuntimeDispatchResult
+            {
+                Accepted = true,
                 FocusMapId = response.FocusMapId,
-                FocusSlotIndex = response.FocusSlotIndex,
-                ResultType = request.Type == MapTransferRuntimeRequestType.Register
-                    ? MapTransferRuntimeResultType.RegisterApplied
-                    : MapTransferRuntimeResultType.DeleteApplied,
-                CanTransferContinent = request.Book == MapTransferDestinationBook.Continent,
-                FieldList = (int[])slots.Clone()
+                FocusSlotIndex = response.FocusSlotIndex
             };
         }
 
         public MapTransferRuntimeResponse SubmitRequest(CharacterBuild build, MapTransferRuntimeRequest request)
         {
-            MapTransferRuntimeResponse response = SendMapTransferRequest(build, request);
-            if (response.Applied)
+            MapTransferRuntimeDispatchResult dispatchResult = SendMapTransferRequest(build, request);
+            if (!dispatchResult.Accepted)
             {
-                ApplyMapTransferResult(build, response);
+                return new MapTransferRuntimeResponse
+                {
+                    Applied = false,
+                    FailureMessage = dispatchResult.FailureMessage,
+                    FocusMapId = dispatchResult.FocusMapId,
+                    FocusSlotIndex = dispatchResult.FocusSlotIndex
+                };
             }
 
-            return response;
+            if (TryDequeueMapTransferResult(build, out MapTransferRuntimeResponse response))
+            {
+                ApplyMapTransferResult(build, response);
+                return response;
+            }
+
+            return new MapTransferRuntimeResponse
+            {
+                Applied = false,
+                FailureMessage = "Map transfer request did not produce a runtime response.",
+                FocusMapId = dispatchResult.FocusMapId,
+                FocusSlotIndex = dispatchResult.FocusSlotIndex
+            };
+        }
+
+        public bool TryDequeueMapTransferResult(CharacterBuild build, out MapTransferRuntimeResponse response)
+        {
+            string characterKey = ResolveCharacterKey(build);
+            for (int i = 0; i < _pendingResponses.Count; i++)
+            {
+                PendingRuntimeResponse pendingResponse = _pendingResponses[i];
+                if (!string.Equals(pendingResponse.CharacterKey, characterKey, StringComparison.Ordinal))
+                {
+                    continue;
+                }
+
+                _pendingResponses.RemoveAt(i);
+                response = pendingResponse.Response;
+                return true;
+            }
+
+            response = null;
+            return false;
         }
 
         public bool ApplyMapTransferResult(CharacterBuild build, MapTransferRuntimeResponse response)

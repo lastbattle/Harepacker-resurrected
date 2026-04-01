@@ -386,6 +386,8 @@ namespace HaCreator.MapSimulator
         private readonly List<MinimapTrackedUserState> _sortedMinimapTrackedUsersBuffer = new();
         private readonly List<MinimapUI.TrackedUserMarker> _minimapTrackedUserMarkersBuffer = new();
         private readonly List<MinimapUI.EmployeeMarker> _minimapEmployeeMarkersBuffer = new(1);
+        private const int MinimapWorldMapCreateFailureStringPoolId = 0x118;
+        private const string MinimapWorldMapCreateFailureFallbackText = "The world map is unavailable for this field.";
         private int _minimapTrackedUserMarkersCount;
         private int _minimapEmployeeMarkersCount;
 
@@ -425,6 +427,7 @@ namespace HaCreator.MapSimulator
 
         private readonly MemoryGamePacketInboxManager _memoryGamePacketInbox = new MemoryGamePacketInboxManager();
         private readonly MemoryGameOfficialSessionBridgeManager _memoryGameOfficialSessionBridge = new MemoryGameOfficialSessionBridgeManager();
+        private readonly SocialRoomEmployeeOfficialSessionBridgeManager _socialRoomEmployeeOfficialSessionBridge = new SocialRoomEmployeeOfficialSessionBridgeManager();
         private readonly SocialRoomEmployeeActorRuntime _socialRoomEmployeeActor = new SocialRoomEmployeeActorRuntime();
         private readonly AriantArenaPacketInboxManager _ariantArenaPacketInbox = new AriantArenaPacketInboxManager();
 
@@ -524,7 +527,7 @@ namespace HaCreator.MapSimulator
         private float _tombVelocityY; // Current fall velocity
         private float _tombTargetY; // Ground Y position (death position)
         private bool _tombHasLanded; // Whether tombstone has hit ground
-        private const float TOMB_GRAVITY = 1200f; // Gravity acceleration (px/s驛｢譎｢・ｽ・ｻ驛｢・ｧ隰・∞・ｽ・ｽ繝ｻ・ｽ郢晢ｽｻ繝ｻ・ｲ)
+        private const float TOMB_GRAVITY = 1200f; // Gravity acceleration (px/s鬯ｩ蟷｢・ｽ・｢髫ｴ雜｣・ｽ・｢郢晢ｽｻ繝ｻ・ｽ郢晢ｽｻ繝ｻ・ｻ鬯ｩ蟷｢・ｽ・｢郢晢ｽｻ繝ｻ・ｧ鬮ｫ・ｰ郢晢ｽｻ遶乗ｧｭ繝ｻ繝ｻ・ｽ郢晢ｽｻ繝ｻ・ｽ驛｢譎｢・ｽ・ｻ郢晢ｽｻ繝ｻ・ｽ鬩幢ｽ｢隴趣ｽ｢繝ｻ・ｽ繝ｻ・ｻ驛｢譎｢・ｽ・ｻ郢晢ｽｻ繝ｻ・ｲ)
         private const float TOMB_START_HEIGHT = 300f; // Height above death position to start falling
 
 
@@ -573,6 +576,7 @@ namespace HaCreator.MapSimulator
         private const int REMOTE_PET_PICKUP_INTERVAL_MS = 260;
         private const int PICKUP_REMOTE_NOTICE_SUPPRESSION_MS = 900;
         private const string SkillCooldownNoticeSoundKey = "SkillCooldownNotice";
+        private const string LoginEntryGameInSoundKey = "LoginEntryGameIn";
         private const int DefaultSimulatorWorldId = 0;
         private const int DefaultSimulatorChannelIndex = 0;
         private const int DefaultSimulatorChannelCount = 20;
@@ -587,6 +591,11 @@ namespace HaCreator.MapSimulator
         private int _sameMapTeleportStartTime = 0;
         private int _sameMapTeleportDelay = 0;
         private SameMapTeleportTarget _sameMapTeleportTarget = null;
+        private bool _packetOwnedTeleportRequestActive = false;
+        private int _packetOwnedTeleportRequestCompletedAt = int.MinValue;
+        private int _lastPacketOwnedTeleportPortalIndex = -1;
+        private string _lastPacketOwnedTeleportSourcePortalName;
+        private string _lastPacketOwnedTeleportTargetPortalName;
         private PendingMapSpawnTarget _pendingMapSpawnTarget = null;
         private bool _scriptedDirectionModeOwnerActive = false;
         private bool _passiveTransferRequestPending = false;
@@ -687,6 +696,8 @@ namespace HaCreator.MapSimulator
         private bool _loginAccountSpwEnabled;
         private string _loginAccountSecondaryPassword = string.Empty;
         private long _loginAccountCashShopNxCredit = DefaultCashShopNxCredit;
+        private string _loginWebsiteHandoffUrl = LoginWebsiteHandoffResolver.DefaultHomepageUrl;
+        private string _loginWebsiteHandoffSource = "Login homepage";
         private readonly List<LoginCharacterAccountStore.CashShopStorageExpansionRecordState> _loginAccountStorageExpansionHistory = new();
         private bool _loginAccountMigrationAccepted;
         private string _activeConnectionNoticeTitle = "Connection Notice";
@@ -1429,6 +1440,11 @@ namespace HaCreator.MapSimulator
             _gameState.PendingMapId = targetMapId;
             _gameState.PendingPortalName = targetPortalName;
             return true;
+        }
+
+        private void PlayLoginEntryGameInSE()
+        {
+            _soundManager?.PlaySound(LoginEntryGameInSoundKey);
         }
 
 
@@ -2670,13 +2686,7 @@ namespace HaCreator.MapSimulator
                 miniMapUi.ResolveNpcTooltipText = ResolveMinimapNpcTooltipText;
                 miniMapUi.ResolvePortalTooltipText = ResolveMinimapPortalTooltipText;
                 EnsureMinimapTooltipResources();
-                miniMapUi.WorldMapRequested = () =>
-                {
-                    _worldMapRequestMode = WorldMapRequestMode.DirectTransfer;
-                    _mapTransferEditDestination = null;
-                    RefreshWorldMapWindow();
-                    uiWindowManager?.ShowWindow(MapSimulatorWindowNames.WorldMap);
-                };
+                miniMapUi.WorldMapRequested = HandleMinimapWorldMapRequested;
             }
 
 
@@ -2918,6 +2928,13 @@ namespace HaCreator.MapSimulator
                 return "Party list opened from the profile window.";
             }
 
+            _socialListRuntime.SelectTab(SocialListTab.Party);
+            if (!_socialListRuntime.HasLocalPartyLeader())
+            {
+                ShowWindowWithInheritedDirectionModeOwner(MapSimulatorWindowNames.SocialList);
+                return "Party invite preview requires the local player to be party leader, matching CUIUserInfo::OnButtonClicked.";
+            }
+
             string locationSummary = string.IsNullOrWhiteSpace(context.LocationSummary)
                 ? GetCurrentMapTransferDisplayName()
                 : context.LocationSummary;
@@ -2981,14 +2998,29 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
+            string locationSummary = GetCurrentMapTransferDisplayName();
+            int channel = Math.Max(1, _simulatorChannelIndex + 1);
+            if (_socialListRuntime.TryFindTrackedEntry(actor.Name, out SocialTrackedEntrySnapshot trackedEntry))
+            {
+                if (!string.IsNullOrWhiteSpace(trackedEntry.LocationSummary))
+                {
+                    locationSummary = trackedEntry.LocationSummary;
+                }
+
+                if (trackedEntry.Channel > 0)
+                {
+                    channel = trackedEntry.Channel;
+                }
+            }
+
             ShowCharacterInfoWindow(
                 inspectionTarget: new UserInfoUI.UserInfoInspectionTarget
                 {
                     Build = actor.Build.Clone(),
                     CharacterId = actor.CharacterId,
                     Name = actor.Name,
-                    LocationSummary = GetCurrentMapTransferDisplayName(),
-                    Channel = 1
+                    LocationSummary = locationSummary,
+                    Channel = channel
                 });
             return true;
         }
@@ -4198,18 +4230,8 @@ namespace HaCreator.MapSimulator
             NpcInfo npcInfo = NpcInfo.Get(npcTemplateId.ToString(CultureInfo.InvariantCulture));
             WzImage source = npcInfo?.LinkedWzImage;
             int? shopActionId = (source?["info"]?["shop"] as WzIntProperty)?.Value;
-            string[] candidates =
+            foreach (string candidate in RepairDurabilityClientParity.EnumerateNpcActionCandidates(shopActionId))
             {
-                shopActionId?.ToString(CultureInfo.InvariantCulture),
-                "shop",
-                "say",
-                "speak",
-                AnimationKeys.Stand
-            };
-
-            for (int i = 0; i < candidates.Length; i++)
-            {
-                string candidate = candidates[i];
                 if (!string.IsNullOrWhiteSpace(candidate) && npcPreview.HasAction(candidate))
                 {
                     return candidate;
@@ -4444,35 +4466,9 @@ namespace HaCreator.MapSimulator
 
         private static int EncodeRepairDurabilityEquippedPosition(Character.EquipSlot slot)
         {
-            return slot switch
-            {
-                Character.EquipSlot.Cap => -1,
-                Character.EquipSlot.FaceAccessory => -2,
-                Character.EquipSlot.EyeAccessory => -3,
-                Character.EquipSlot.Earrings => -4,
-                Character.EquipSlot.Coat => -5,
-                Character.EquipSlot.Longcoat => -5,
-                Character.EquipSlot.Pants => -6,
-                Character.EquipSlot.Shoes => -7,
-                Character.EquipSlot.Glove => -8,
-                Character.EquipSlot.Cape => -9,
-                Character.EquipSlot.Shield => -10,
-                Character.EquipSlot.Weapon => -11,
-                Character.EquipSlot.Ring1 => -12,
-                Character.EquipSlot.Ring2 => -13,
-                Character.EquipSlot.Ring3 => -15,
-                Character.EquipSlot.Ring4 => -16,
-                Character.EquipSlot.Pendant => -17,
-                Character.EquipSlot.TamingMob => -18,
-                Character.EquipSlot.Saddle => -19,
-                Character.EquipSlot.Medal => -49,
-                Character.EquipSlot.Belt => -50,
-                Character.EquipSlot.Shoulder => -51,
-                Character.EquipSlot.Pocket => -52,
-                Character.EquipSlot.Badge => -53,
-                Character.EquipSlot.Pendant2 => -59,
-                _ => int.MinValue
-            };
+            return RepairDurabilityClientParity.TryEncodeEquippedPosition(slot, out int encodedPosition)
+                ? encodedPosition
+                : int.MinValue;
         }
 
         private RepairDurabilityWindow.RepairEntry FindLiveRepairDurabilityEntry(int encodedSlotPosition, int preferredItemId)
@@ -4600,6 +4596,29 @@ namespace HaCreator.MapSimulator
             {
                 _chat?.AddMessage(message, new Color(255, 228, 151), Environment.TickCount);
             }
+        }
+
+        private void HandleMinimapWorldMapRequested()
+        {
+            _worldMapRequestMode = WorldMapRequestMode.DirectTransfer;
+            _mapTransferEditDestination = null;
+            RefreshWorldMapWindow();
+
+            if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.WorldMap) is not WorldMapUI worldMapWindow)
+            {
+                ShowUtilityFeedbackMessage("World map window is not available in this UI build.");
+                return;
+            }
+
+            int currentMapId = _mapBoard?.MapInfo?.id ?? 0;
+            if (currentMapId <= 0 || !worldMapWindow.HasEntry(currentMapId))
+            {
+                ShowUtilityFeedbackMessage($"{MinimapWorldMapCreateFailureFallbackText} [StringPool 0x{MinimapWorldMapCreateFailureStringPoolId:X}]");
+                return;
+            }
+
+            uiWindowManager.ShowWindow(MapSimulatorWindowNames.WorldMap);
+            uiWindowManager.BringToFront(worldMapWindow);
         }
 
 
@@ -6536,6 +6555,7 @@ namespace HaCreator.MapSimulator
                 _loginAccountSpwEnabled = false;
                 _loginAccountSecondaryPassword = string.Empty;
                 _loginAccountCashShopNxCredit = DefaultCashShopNxCredit;
+                ResetLoginWebsiteHandoff();
                 SyncCashShopAccountCredit();
                 SyncStorageAccessContext();
 
@@ -6941,6 +6961,7 @@ namespace HaCreator.MapSimulator
                     LoginUtilityDialogButtonLayout.YesNo,
                     LoginUtilityDialogAction.WebsiteHandoffDecision,
                     noticeTextIndex: 31);
+                PrepareLoginWebsiteHandoff(null, "CheckPasswordResult");
                 continueRuntimeDispatch = false;
                 return true;
             }
@@ -6999,6 +7020,7 @@ namespace HaCreator.MapSimulator
                     LoginUtilityDialogButtonLayout.YesNo,
                     LoginUtilityDialogAction.WebsiteHandoffDecision,
                     noticeTextIndex: 31);
+                PrepareLoginWebsiteHandoff(packetProfile.GuestRegistrationUrl, "Guest registration");
                 return true;
             }
 
@@ -7209,6 +7231,7 @@ namespace HaCreator.MapSimulator
 
             if (packetProfile?.ResultCode is 14 or 15)
             {
+                PrepareLoginWebsiteHandoff(null, "AccountInfoResult");
                 ShowLoginUtilityDialog(
                     "Login Utility",
                     message,
@@ -7274,6 +7297,7 @@ namespace HaCreator.MapSimulator
 
             if (packetProfile?.ResultCode is 14 or 15)
             {
+                PrepareLoginWebsiteHandoff(null, "CheckPasswordResult");
                 ShowLoginUtilityDialog(
                     "Login Utility",
                     message,
@@ -7305,6 +7329,41 @@ namespace HaCreator.MapSimulator
         private static string BuildGuestIdLoginRegistrationSummary(LoginGuestIdLoginResultProfile packetProfile)
         {
             return $"Packet-authored GuestIdLoginResult requested the client guest-registration website handoff for status {packetProfile?.RegistrationStatusId}.";
+        }
+
+        private void PrepareLoginWebsiteHandoff(string candidateUrl, string source)
+        {
+            _loginWebsiteHandoffUrl = LoginWebsiteHandoffResolver.ResolveOrDefault(candidateUrl);
+            _loginWebsiteHandoffSource = string.IsNullOrWhiteSpace(source)
+                ? "Login website handoff"
+                : source.Trim();
+        }
+
+        private void ResetLoginWebsiteHandoff()
+        {
+            _loginWebsiteHandoffUrl = LoginWebsiteHandoffResolver.DefaultHomepageUrl;
+            _loginWebsiteHandoffSource = "Login homepage";
+        }
+
+        private bool TryOpenLoginWebsiteHandoff(out string status)
+        {
+            string targetUrl = LoginWebsiteHandoffResolver.ResolveOrDefault(_loginWebsiteHandoffUrl);
+            try
+            {
+                Process.Start(new ProcessStartInfo
+                {
+                    FileName = targetUrl,
+                    UseShellExecute = true,
+                });
+
+                status = $"Opened {_loginWebsiteHandoffSource} in the external browser at {targetUrl}. The authenticated website service flow remains outside the simulator.";
+                return true;
+            }
+            catch (Exception ex)
+            {
+                status = $"Website handoff could not open {_loginWebsiteHandoffSource} at {targetUrl}: {ex.Message}";
+                return false;
+            }
         }
 
         private static string BuildGuestIdLoginFailureMessage(LoginGuestIdLoginResultProfile packetProfile)
@@ -7519,6 +7578,7 @@ namespace HaCreator.MapSimulator
             int? noticeTextIndex = ResolveSelectCharacterByVacFailureNoticeTextIndex(packetProfile);
             if (packetProfile.RequiresWebsiteHandoff)
             {
+                PrepareLoginWebsiteHandoff(null, "SelectCharacterByVACResult");
                 ShowLoginUtilityDialog(
                     "Login Utility",
                     message,
@@ -10134,6 +10194,7 @@ namespace HaCreator.MapSimulator
 
 
             _loginTitleStatusMessage = "The title owner routed the homepage handoff through the login utility seam.";
+            PrepareLoginWebsiteHandoff(LoginWebsiteHandoffResolver.DefaultHomepageUrl, "Login homepage");
 
 
 
@@ -10145,7 +10206,7 @@ namespace HaCreator.MapSimulator
 
 
 
-                "The login title requested the Nexon homepage handoff. Press the Nexon button to simulate the client website transfer.",
+                $"The login title requested the Nexon homepage handoff. Press the Nexon button to open {_loginWebsiteHandoffUrl} in the external browser while the simulator keeps the existing login notice seam.",
 
 
 
@@ -10767,7 +10828,7 @@ namespace HaCreator.MapSimulator
 
 
 
-                        "The login flow requested a website handoff. Press the Nexon button to simulate the external browser transfer while staying inside the existing notice seam.",
+                        $"The login flow requested a website handoff. Press the Nexon button to open {_loginWebsiteHandoffUrl} for {_loginWebsiteHandoffSource} while staying inside the existing notice seam.",
 
 
 
@@ -10791,7 +10852,8 @@ namespace HaCreator.MapSimulator
 
 
 
-                    _loginTitleStatusMessage = "Simulated the client website handoff without opening an authenticated browser session.";
+                    TryOpenLoginWebsiteHandoff(out string websiteHandoffStatus);
+                    _loginTitleStatusMessage = websiteHandoffStatus;
 
 
 
@@ -10811,7 +10873,7 @@ namespace HaCreator.MapSimulator
 
 
 
-                        Body = "Website handoff is still simulator-local. No authenticated external session was opened.",
+                        Body = websiteHandoffStatus,
 
 
 
@@ -11598,6 +11660,7 @@ namespace HaCreator.MapSimulator
             switch (unchecked((sbyte)resultCode))
             {
                 case 14:
+                    PrepareLoginWebsiteHandoff(null, "SelectWorldResult");
                     ShowLoginUtilityDialog(
                         "Login Utility",
                         rejectionMessage,
@@ -11606,6 +11669,7 @@ namespace HaCreator.MapSimulator
                         noticeTextIndex: 27);
                     break;
                 case 15:
+                    PrepareLoginWebsiteHandoff(null, "SelectWorldResult");
                     ShowLoginUtilityDialog(
                         "Login Utility",
                         rejectionMessage,
@@ -12904,6 +12968,7 @@ namespace HaCreator.MapSimulator
             _snowBallPacketInbox.Dispose();
             _coconutPacketInbox.Dispose();
             _coconutOfficialSessionBridge.Dispose();
+            _socialRoomEmployeeOfficialSessionBridge.Dispose();
 
             _ariantArenaPacketInbox.Dispose();
             _monsterCarnivalPacketInbox.Dispose();
@@ -16027,11 +16092,11 @@ namespace HaCreator.MapSimulator
 
 
             bool canApplyTemporaryBuff = supportsTemporaryBuff && _playerManager?.Skills != null;
+            bool canQueueMovement = TryCanQueueConsumableMapTransfer(targetMapId, showFailureMessage: true);
             bool canApplyMorph = supportsMorph
                 && morphTemplateId > 0
                 && player.CanApplyExternalAvatarTransform(itemId, actionName: null, morphTemplateId);
             bool canCureStatus = supportsCure && HasCurablePlayerMobStatus(effect);
-            bool canQueueMovement = supportsMovement && targetMapId > 0 && _loadMapCallback != null;
             bool hasAnySupportedOutcome = hpGain > 0 || mpGain > 0 || canQueueMovement || canApplyMorph || canApplyTemporaryBuff || canCureStatus;
             if (!hasAnySupportedOutcome)
             {
@@ -16312,6 +16377,45 @@ namespace HaCreator.MapSimulator
 
 
             return null;
+        }
+
+        private bool TryGetSocialRoomEmployeeBridgeRuntime(out SocialRoomRuntime runtime, out SocialRoomKind kind)
+        {
+            SocialRoomKind[] searchOrder =
+            {
+                SocialRoomKind.EntrustedShop,
+                SocialRoomKind.PersonalShop
+            };
+
+            foreach (SocialRoomKind candidateKind in searchOrder)
+            {
+                if (!TryGetSocialRoomRuntime(candidateKind, out SocialRoomRuntime visibleRuntime))
+                {
+                    continue;
+                }
+
+                string windowName = GetSocialRoomWindowName(candidateKind);
+                if (uiWindowManager?.GetWindow(windowName)?.IsVisible == true)
+                {
+                    runtime = visibleRuntime;
+                    kind = candidateKind;
+                    return true;
+                }
+            }
+
+            foreach (SocialRoomKind candidateKind in searchOrder)
+            {
+                if (TryGetSocialRoomRuntime(candidateKind, out SocialRoomRuntime candidateRuntime))
+                {
+                    runtime = candidateRuntime;
+                    kind = candidateKind;
+                    return true;
+                }
+            }
+
+            runtime = null;
+            kind = SocialRoomKind.PersonalShop;
+            return false;
         }
         private static int BuildRemotePetPickupActorId(int ownerCharacterId, int slotIndex)
         {
@@ -17123,7 +17227,7 @@ namespace HaCreator.MapSimulator
 
                 && player.CanApplyExternalAvatarTransform(itemId, actionName: null, morphTemplateId);
             bool canCureStatus = supportsCure && HasCurablePlayerMobStatus(effect);
-            bool canQueueMovement = supportsMovement && targetMapId > 0 && _loadMapCallback != null;
+            bool canQueueMovement = TryCanQueueConsumableMapTransfer(targetMapId, showFailureMessage: false);
             bool hasAnySupportedOutcome = hpGain > 0 || mpGain > 0 || canQueueMovement || canApplyMorph || canApplyTemporaryBuff || canCureStatus;
             if (!hasAnySupportedOutcome)
             {
@@ -17183,19 +17287,15 @@ namespace HaCreator.MapSimulator
                 return true;
             }
 
-            if (!canQueueMovement || !TryQueueConsumableMapTransfer(targetMapId))
+            if (canQueueMovement)
             {
-                inventoryWindow.AddItem(inventoryType, new InventorySlotData
+                if (!TryQueueConsumableMapTransfer(targetMapId))
                 {
-                    ItemId = itemId,
-                    ItemTexture = inventoryWindow.GetItemTexture(inventoryType, itemId) ?? LoadInventoryItemIcon(itemId),
-                    Quantity = 1,
-                    MaxStackSize = ResolveInventoryItemMaxStack(itemId, inventoryType),
-                    ItemName = ResolvePickupItemName(itemId),
-                    ItemTypeName = ResolvePickupItemTypeName(itemId, inventoryType),
-                    Description = ResolvePickupItemDescription(itemId)
-                });
-                return false;
+                    return false;
+                }
+
+                _fieldRuleRuntime?.RegisterSuccessfulItemUse(inventoryType, currentTime);
+                return true;
             }
 
             _fieldRuleRuntime?.RegisterSuccessfulItemUse(inventoryType, currentTime);
@@ -17514,6 +17614,40 @@ namespace HaCreator.MapSimulator
 
             return QueueMapTransfer(targetMapId, null);
 
+        }
+
+
+        private bool TryCanQueueConsumableMapTransfer(int targetMapId, bool showFailureMessage)
+        {
+            if (targetMapId <= 0 || targetMapId == MapConstants.MaxMap)
+            {
+                return false;
+            }
+
+
+            if (_loadMapCallback == null)
+            {
+                if (showFailureMessage)
+                {
+                    PushFieldRuleMessage("Map loading is unavailable in this session.", currTickCount, false);
+                }
+
+                return false;
+            }
+
+
+            if (_gameState.PendingMapChange)
+            {
+                if (showFailureMessage)
+                {
+                    PushFieldRuleMessage("A map transfer is already in progress.", currTickCount, false);
+                }
+
+                return false;
+            }
+
+
+            return true;
         }
 
 
@@ -20126,6 +20260,12 @@ namespace HaCreator.MapSimulator
                 PlayPortalSE();
                 _playerManager?.ForceStand();
                 PublishDynamicObjectTagStatesForPortal(nearestPortal?.PortalInstance, currentTime);
+
+                if (TryStartPacketOwnedPortalTeleport(nearestPortal.PortalInstance, currentTime))
+                {
+                    return true;
+                }
+
                 _gameState.PendingMapChange = true;
                 _gameState.PendingMapId = nearestPortal.PortalInstance.tm;
                 _gameState.PendingPortalName = nearestPortal.PortalInstance.tn;
@@ -20188,6 +20328,12 @@ namespace HaCreator.MapSimulator
                 PlayPortalSE();
                 _playerManager?.ForceStand();
                 PublishDynamicObjectTagStatesForPortal(nearestHiddenPortal, currentTime);
+
+                if (TryStartPacketOwnedPortalTeleport(nearestHiddenPortal, currentTime))
+                {
+                    return true;
+                }
+
                 _gameState.PendingMapChange = true;
                 _gameState.PendingMapId = nearestHiddenPortal.tm;
                 _gameState.PendingPortalName = nearestHiddenPortal.tn;
@@ -20259,12 +20405,61 @@ namespace HaCreator.MapSimulator
         }
 
 
-        private void StartSameMapTeleport(float targetX, float targetY, int delayMs, int currentTime)
+        private bool TryStartPacketOwnedPortalTeleport(PortalInstance sourcePortal, int currentTime)
+        {
+            if (sourcePortal == null
+                || _mapBoard?.MapInfo == null
+                || sourcePortal.tm != _mapBoard.MapInfo.id
+                || _portalPool == null
+                || string.IsNullOrWhiteSpace(sourcePortal.tn))
+            {
+                return false;
+            }
+
+            int targetPortalIndex = _portalPool.GetPortalIndexByName(sourcePortal.tn);
+            PortalItem targetPortal = _portalPool.GetPortal(targetPortalIndex);
+            if (targetPortal?.PortalInstance == null)
+            {
+                return false;
+            }
+
+            StartSameMapTeleport(
+                targetPortal.PortalInstance.X,
+                targetPortal.PortalInstance.Y,
+                sourcePortal.delay ?? 120,
+                currentTime,
+                targetPortalIndex,
+                sourcePortal.pn,
+                sourcePortal.tn);
+            return true;
+        }
+
+
+        private void StartSameMapTeleport(
+            float targetX,
+            float targetY,
+            int delayMs,
+            int currentTime,
+            int portalIndex = -1,
+            string sourcePortalName = null,
+            string targetPortalName = null)
         {
             _sameMapTeleportPending = true;
             _sameMapTeleportStartTime = currentTime;
             _sameMapTeleportDelay = Math.Max(0, delayMs);
-            _sameMapTeleportTarget = new SameMapTeleportTarget(targetX, targetY - SAME_MAP_TELEPORT_Y_OFFSET);
+            _sameMapTeleportTarget = new SameMapTeleportTarget(
+                targetX,
+                portalIndex >= 0 ? targetY : targetY - SAME_MAP_TELEPORT_Y_OFFSET,
+                portalIndex,
+                sourcePortalName,
+                targetPortalName);
+            _packetOwnedTeleportRequestActive = portalIndex >= 0;
+            if (portalIndex >= 0)
+            {
+                _lastPacketOwnedTeleportPortalIndex = portalIndex;
+                _lastPacketOwnedTeleportSourcePortalName = sourcePortalName;
+                _lastPacketOwnedTeleportTargetPortalName = targetPortalName;
+            }
         }
 
 
@@ -20408,30 +20603,30 @@ namespace HaCreator.MapSimulator
             SameMapTeleportTarget target = _sameMapTeleportTarget;
             if (target != null)
             {
-                _playerManager?.TeleportTo(target.X, target.Y);
-                _playerManager?.SetSpawnPoint(target.X, target.Y);
-
-
-                if (_gameState.UseSmoothCamera)
+                if (target.HasPacketOwnedPortalIndex
+                    && TryApplyPacketOwnedTeleportResult(
+                        succeeded: true,
+                        target.PortalIndex,
+                        out _))
                 {
-                    _cameraController.TeleportTo(target.X, target.Y);
-                    mapShiftX = _cameraController.MapShiftX;
-                    mapShiftY = _cameraController.MapShiftY;
                 }
                 else
                 {
-                    mapShiftX = (int)MathF.Round(target.X);
-                    mapShiftY = (int)MathF.Round(target.Y);
-                    SetCameraMoveX(true, false, 0);
-                    SetCameraMoveX(false, true, 0);
-                    SetCameraMoveY(true, false, 0);
-                    SetCameraMoveY(false, true, 0);
+                    if (!string.IsNullOrWhiteSpace(target.SourcePortalName)
+                        || !string.IsNullOrWhiteSpace(target.TargetPortalName))
+                    {
+                        _lastPacketOwnedTeleportSourcePortalName = target.SourcePortalName;
+                        _lastPacketOwnedTeleportTargetPortalName = target.TargetPortalName;
+                    }
+
+                    ApplySameMapTeleportPosition(target.X, target.Y);
                 }
             }
 
 
             _sameMapTeleportPending = false;
             _sameMapTeleportTarget = null;
+            _packetOwnedTeleportRequestActive = false;
             ClearPassiveTransferRequest();
         }
 
@@ -21293,6 +21488,7 @@ namespace HaCreator.MapSimulator
                 _remoteUserPool,
                 () => _playerManager?.Player,
                 skillId => _playerManager?.Skills?.GetSkillLevel(skillId) ?? 0,
+                (skillId, currentTime) => _playerManager?.Skills?.ResolveClientCancelFamilyRemainingDurationMs(skillId, currentTime) ?? 0,
                 _soundManager,
                 _combatEffects);
             if (_playerManager?.Skills != null)
@@ -21725,6 +21921,7 @@ namespace HaCreator.MapSimulator
                 () => FieldInteractionRestrictionEvaluator.GetJumpDownRestrictionMessage(_mapBoard?.MapInfo?.fieldLimit ?? 0),
 
                 ShowFieldRestrictionMessage);
+            _playerManager.SetLandingHandler(HandlePlayerLanding);
 
         }
 
@@ -21922,7 +22119,9 @@ namespace HaCreator.MapSimulator
                     return activePets.Any(pet => pet != null && supportedPetItemIds.Contains(pet.ItemId));
                 },
                 (supportedPetItemIds, recallLimit, skillMask) =>
-                    _playerManager?.Pets?.TryGrantSkillMask(supportedPetItemIds, recallLimit, skillMask, out _) == true);
+                    _playerManager?.Pets?.TryGrantSkillMask(supportedPetItemIds, recallLimit, skillMask, out _) == true,
+                (supportedPetItemIds, recallLimit, tamenessAmount) =>
+                    _playerManager?.Pets?.TryGrantTameness(supportedPetItemIds, recallLimit, tamenessAmount, out _) == true);
 
 
             if (uiWindowManager.QuestWindow is QuestUI questWindow)
@@ -21978,6 +22177,27 @@ namespace HaCreator.MapSimulator
                 classCompetitionWindow.SetFont(_fontChat);
                 classCompetitionWindow.SetContentProvider(BuildClassCompetitionPageLines);
                 classCompetitionWindow.SetFooterProvider(BuildClassCompetitionFooter);
+            }
+
+            if (uiWindowManager.GetWindow(MapSimulatorWindowNames.NpcShop) is UtilityPanelWindow npcShopWindow)
+            {
+                npcShopWindow.SetFont(_fontChat);
+                npcShopWindow.SetContentProvider(BuildPacketOwnedNpcShopLines);
+                npcShopWindow.SetFooterProvider(BuildPacketOwnedNpcShopFooter);
+            }
+
+            if (uiWindowManager.GetWindow(MapSimulatorWindowNames.StoreBank) is UtilityPanelWindow storeBankWindow)
+            {
+                storeBankWindow.SetFont(_fontChat);
+                storeBankWindow.SetContentProvider(BuildPacketOwnedStoreBankLines);
+                storeBankWindow.SetFooterProvider(BuildPacketOwnedStoreBankFooter);
+            }
+
+            if (uiWindowManager.GetWindow(MapSimulatorWindowNames.BattleRecord) is UtilityPanelWindow battleRecordWindow)
+            {
+                battleRecordWindow.SetFont(_fontChat);
+                battleRecordWindow.SetContentProvider(BuildPacketOwnedBattleRecordLines);
+                battleRecordWindow.SetFooterProvider(BuildPacketOwnedBattleRecordFooter);
             }
 
             if (uiWindowManager.GetWindow(MapSimulatorWindowNames.Radio) is RadioStatusWindow radioWindow)
@@ -26134,6 +26354,48 @@ namespace HaCreator.MapSimulator
                     ShowMiniRoomWindow();
                 }
             }
+        }
+
+        private void DrainSocialRoomEmployeeOfficialSessionBridge(int currentTickCount)
+        {
+            while (_socialRoomEmployeeOfficialSessionBridge.TryDequeue(out SocialRoomEmployeePacketInboxMessage message))
+            {
+                if (message == null)
+                {
+                    continue;
+                }
+
+                if (!TryGetSocialRoomEmployeeBridgeRuntime(out SocialRoomRuntime runtime, out SocialRoomKind kind))
+                {
+                    _socialRoomEmployeeOfficialSessionBridge.RecordDispatchResult(message.Source, success: false, "social-room runtime inactive");
+                    continue;
+                }
+
+                bool applied = runtime.TryDispatchPacketBytes(BuildEmployeePoolPacketBytes(message.Opcode, message.Payload), currentTickCount, out string resultMessage);
+                _socialRoomEmployeeOfficialSessionBridge.RecordDispatchResult(
+                    message.Source,
+                    applied,
+                    applied ? $"{kind}: {runtime.DescribeStatus()}" : resultMessage);
+
+                if (applied)
+                {
+                    ShowSocialRoomWindow(kind);
+                }
+            }
+        }
+
+        private static byte[] BuildEmployeePoolPacketBytes(ushort opcode, byte[] payload)
+        {
+            byte[] normalizedPayload = payload ?? Array.Empty<byte>();
+            byte[] packetBytes = new byte[2 + normalizedPayload.Length];
+            packetBytes[0] = (byte)(opcode & 0xFF);
+            packetBytes[1] = (byte)(opcode >> 8);
+            if (normalizedPayload.Length > 0)
+            {
+                Buffer.BlockCopy(normalizedPayload, 0, packetBytes, 2, normalizedPayload.Length);
+            }
+
+            return packetBytes;
         }
         private void SyncTransportPacketInboxState()
         {

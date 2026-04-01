@@ -69,6 +69,7 @@ namespace HaCreator.MapSimulator.Interaction
                     12 => DecodeAskSlideMenu(reader, speaker, param),
                     13 => DecodeAskYesNo(reader, speaker, param, true),
                     14 => DecodeAskBoxText(reader, speaker, param),
+                    15 => DecodeAskSlideMenu(reader, speaker, param),
                     _ => DecodeUnsupported(reader, speaker, messageType, param)
                 };
 
@@ -86,6 +87,15 @@ namespace HaCreator.MapSimulator.Interaction
                         PresentationStyle = NpcInteractionPresentationStyle.PacketScriptUtilDialog
                     },
                     speaker.NpcId);
+                if (entry == null)
+                {
+                    request = new PacketScriptMessageOpenRequest(null, speaker.NpcId, CloseExistingDialog: true);
+                    _activePromptContext = null;
+                    _statusMessage = $"Closed packet-authored script dialog for {speaker.DisplayName}.";
+                    message = _statusMessage;
+                    return true;
+                }
+
                 _activePromptContext = new PacketScriptPromptContext(
                     speaker.DisplayName,
                     entry.EntryId,
@@ -281,89 +291,94 @@ namespace HaCreator.MapSimulator.Interaction
 
         private static NpcInteractionEntry DecodeAskQuiz(BinaryReader reader, PacketScriptSpeaker speaker, byte param)
         {
-            string rawText = ReadMapleString(reader);
-            int defaultValue = TryReadInt32(reader, out int parsedDefaultValue) ? parsedDefaultValue : 0;
-            int minValue = TryReadInt32(reader, out int parsedMinValue) ? parsedMinValue : 0;
-            int maxValue = TryReadInt32(reader, out int parsedMaxValue) ? parsedMaxValue : 999999;
-            if (maxValue < minValue)
+            byte mode = reader.ReadByte();
+            if (mode == 1)
             {
-                (minValue, maxValue) = (maxValue, minValue);
+                return null;
             }
+
+            string title = ReadMapleString(reader);
+            string problemText = ReadMapleString(reader);
+            string hintText = ReadMapleString(reader);
+            int correctAnswer = reader.ReadInt32();
+            int questionNumber = reader.ReadInt32();
+            int remainingSeconds = reader.ReadInt32();
 
             return CreateEntry(
                 "Quiz",
-                BuildSpeakerSubtitle(speaker, "AskQuiz", param),
-                rawText,
+                BuildSpeakerSubtitle(speaker, "AskQuiz", param, mode),
+                problemText,
                 AppendMetadata(
-                    NpcDialogueTextFormatter.Format(rawText),
-                    $"Default answer: {defaultValue}",
-                    $"Accepted range: {minValue} to {maxValue}.",
+                    $"Title: {FormatQuotedValue(title)}",
+                    NpcDialogueTextFormatter.Format(problemText),
+                    string.IsNullOrWhiteSpace(hintText) ? null : $"Hint text: {FormatQuotedValue(hintText)}",
+                    $"Client payload: answer={correctAnswer}, questionNo={questionNumber}, remaining={remainingSeconds} sec.",
                     "WZ data exposes a dedicated `UIWindow(.img|2.img)/InitialQuiz` surface for this packet-owned prompt family."),
-                null,
-                new NpcInteractionInputRequest
+                new[]
                 {
-                    Kind = NpcInteractionInputKind.Number,
-                    DefaultValue = defaultValue.ToString(),
-                    MinValue = minValue,
-                    MaxValue = maxValue
+                    CreateNumericResponseChoice("OK", "OK", 1),
+                    CreateNumericResponseChoice("Next", "Next", 2),
+                    CreateNumericResponseChoice("Give Up", "Give Up", 0)
                 });
         }
 
         private static NpcInteractionEntry DecodeAskSpeedQuiz(BinaryReader reader, PacketScriptSpeaker speaker, byte param)
         {
-            string rawText = ReadMapleString(reader);
-            string defaultText = TryReadMapleString(reader, out string parsedDefaultText) ? parsedDefaultText : string.Empty;
-            if (TryReadMapleStringList(reader, out IReadOnlyList<string> options) && options.Count > 0)
+            byte mode = reader.ReadByte();
+            if (mode == 1)
             {
-                List<NpcInteractionChoice> choices = options
-                    .Select((option, index) => CreateNumericResponseChoice(
-                        $"{index + 1}. {NpcDialogueTextFormatter.Format(option)}",
-                        $"index={index}",
-                        index))
-                    .ToList();
-
-                return CreateEntry(
-                    "Speed Quiz",
-                    BuildSpeakerSubtitle(speaker, "AskSpeedQuiz", param),
-                    rawText,
-                    AppendMetadata(
-                        NpcDialogueTextFormatter.Format(rawText),
-                        $"Decoded {options.Count} speed-quiz option(s).",
-                        "WZ data exposes `UIWindow(.img|2.img)/SpeedQuiz` with dedicated OK / Next / Give up controls."),
-                    choices);
+                return null;
             }
+
+            int currentQuestion = reader.ReadInt32();
+            int totalQuestions = reader.ReadInt32();
+            int correctAnswers = reader.ReadInt32();
+            int remainingQuestions = reader.ReadInt32();
+            int remainingSeconds = reader.ReadInt32();
 
             return CreateEntry(
                 "Speed Quiz",
-                BuildSpeakerSubtitle(speaker, "AskSpeedQuiz", param),
-                rawText,
+                BuildSpeakerSubtitle(speaker, "AskSpeedQuiz", param, mode),
+                string.Empty,
                 AppendMetadata(
-                    NpcDialogueTextFormatter.Format(rawText),
-                    $"Default answer: {FormatQuotedValue(defaultText)}",
+                    $"Question {currentQuestion} / {totalQuestions}",
+                    $"Correct answers: {correctAnswers}",
+                    $"Questions remaining: {remainingQuestions}",
+                    $"Time remaining: {remainingSeconds} sec.",
                     "WZ data exposes `UIWindow(.img|2.img)/SpeedQuiz` with dedicated OK / Next / Give up controls."),
-                null,
-                new NpcInteractionInputRequest
+                new[]
                 {
-                    Kind = NpcInteractionInputKind.Text,
-                    DefaultValue = defaultText,
-                    MinLength = 0,
-                    MaxLength = 64
+                    CreateNumericResponseChoice("OK", "OK", 1),
+                    CreateNumericResponseChoice("Next", "Next", 2),
+                    CreateNumericResponseChoice("Give Up", "Give Up", 0)
                 });
         }
 
         private static NpcInteractionEntry DecodeAskPet(BinaryReader reader, PacketScriptSpeaker speaker, byte param, bool isPetAll)
         {
             string rawText = ReadMapleString(reader);
-            List<int> petIds = ReadIndexedChoiceIds(reader);
-            List<NpcInteractionChoice> choices = petIds
-                .Select((petId, index) => CreateNumericResponseChoice(
-                    BuildPetChoiceLabel(petId, index),
-                    $"index={index}, petId={petId}",
-                    index))
+            byte count = reader.ReadByte();
+            bool exceptionExists = isPetAll && reader.ReadByte() != 0;
+            List<long> petSerialNumbers = new(count);
+            for (int i = 0; i < count; i++)
+            {
+                petSerialNumbers.Add(reader.ReadInt64());
+                _ = reader.ReadByte();
+            }
+
+            List<NpcInteractionChoice> choices = petSerialNumbers
+                .Select((serialNumber, index) => new NpcInteractionChoice
+                {
+                    Label = BuildPetChoiceLabel(serialNumber, index),
+                    SubmitSelection = true,
+                    SubmissionKind = NpcInteractionInputKind.None,
+                    SubmissionValue = serialNumber.ToString(),
+                    SubmissionNumericValue = null
+                })
                 .ToList();
-            string optionDetails = petIds.Count == 0
+            string optionDetails = petSerialNumbers.Count == 0
                 ? "No pet options were decoded from the packet payload."
-                : string.Join("\n", petIds.Select((petId, index) => $"{index + 1}. {DescribePetOption(petId, index)}"));
+                : string.Join("\n", petSerialNumbers.Select((serialNumber, index) => $"{index + 1}. {DescribePetOption(serialNumber, index)}"));
 
             return CreateEntry(
                 isPetAll ? "Pet Selection (All)" : "Pet Selection",
@@ -372,17 +387,16 @@ namespace HaCreator.MapSimulator.Interaction
                 AppendMetadata(
                     NpcDialogueTextFormatter.Format(rawText),
                     optionDetails,
+                    isPetAll ? $"Multi-pet exception flag: {(exceptionExists ? 1 : 0)}." : null,
                     "WZ data exposes packet-owned pet utility surfaces under `UIWindow(.img|2.img)/UtilDlgEx_Pet` and `UtilDlgEx_MultiPetEquip`."),
                 choices);
         }
 
         private static NpcInteractionEntry DecodeAskSlideMenu(BinaryReader reader, PacketScriptSpeaker speaker, byte param)
         {
-            string rawText = ReadMapleString(reader);
-            int slideMenuSkin = TryReadByte(reader, out byte parsedSlideMenuSkin) ? parsedSlideMenuSkin : (byte)0;
-            IReadOnlyList<string> options = TryReadMapleStringList(reader, out IReadOnlyList<string> parsedOptions)
-                ? parsedOptions
-                : Array.Empty<string>();
+            int slideMenuType = reader.ReadInt32();
+            string buttonInfo = ReadMapleString(reader);
+            IReadOnlyList<string> options = SplitSlideMenuOptions(buttonInfo);
             List<NpcInteractionChoice> choices = options
                 .Select((option, index) => CreateNumericResponseChoice(
                     $"{index + 1}. {NpcDialogueTextFormatter.Format(option)}",
@@ -393,12 +407,12 @@ namespace HaCreator.MapSimulator.Interaction
             return CreateEntry(
                 "Slide Menu",
                 BuildSpeakerSubtitle(speaker, "AskSlideMenu", param),
-                rawText,
+                buttonInfo,
                 AppendMetadata(
-                    NpcDialogueTextFormatter.Format(rawText),
+                    string.IsNullOrWhiteSpace(buttonInfo) ? "No slide-menu button info string was decoded." : NpcDialogueTextFormatter.Format(buttonInfo),
                     choices.Count == 0
-                        ? $"Slide-menu skin {slideMenuSkin} did not include any explicit option strings."
-                        : $"Decoded {choices.Count} slide-menu option(s) for skin {slideMenuSkin}.",
+                        ? $"Slide-menu type {slideMenuType} did not expose any line-separated button strings."
+                        : $"Decoded {choices.Count} slide-menu option(s) for type {slideMenuType}.",
                     "WZ data exposes authored slide-menu variants under `UIWindow(.img|2.img)/SlideMenu`."),
                 choices);
         }
@@ -590,9 +604,11 @@ namespace HaCreator.MapSimulator.Interaction
             };
         }
 
-        private static string BuildSpeakerSubtitle(PacketScriptSpeaker speaker, string messageKind, byte param)
+        private static string BuildSpeakerSubtitle(PacketScriptSpeaker speaker, string messageKind, byte param, int? mode = null)
         {
-            return $"{messageKind} | template={speaker.TemplateId} | param=0x{param:X2}";
+            return mode.HasValue
+                ? $"{messageKind} | template={speaker.TemplateId} | param=0x{param:X2} | mode={mode.Value}"
+                : $"{messageKind} | template={speaker.TemplateId} | param=0x{param:X2}";
         }
 
         private static string BuildNavigationMetadata(bool hasPrev, bool hasNext)
@@ -722,20 +738,14 @@ namespace HaCreator.MapSimulator.Interaction
                 : null;
         }
 
-        private static string BuildPetChoiceLabel(int petId, int index)
+        private static string BuildPetChoiceLabel(long petSerialNumber, int index)
         {
-            string petName = ResolveItemName(petId);
-            return string.IsNullOrWhiteSpace(petName)
-                ? $"Pet {index + 1} ({petId})"
-                : $"Pet {index + 1}: {petName}";
+            return $"Pet {index + 1} (SN {petSerialNumber})";
         }
 
-        private static string DescribePetOption(int petId, int index)
+        private static string DescribePetOption(long petSerialNumber, int index)
         {
-            string petName = ResolveItemName(petId);
-            return string.IsNullOrWhiteSpace(petName)
-                ? $"Pet option {index + 1} ({petId})"
-                : $"{petName} ({petId})";
+            return $"Pet option {index + 1} with cash serial {petSerialNumber}.";
         }
 
         private static List<int> ReadIndexedChoiceIds(BinaryReader reader)
@@ -843,6 +853,20 @@ namespace HaCreator.MapSimulator.Interaction
             return true;
         }
 
+        private static IReadOnlyList<string> SplitSlideMenuOptions(string buttonInfo)
+        {
+            if (string.IsNullOrWhiteSpace(buttonInfo))
+            {
+                return Array.Empty<string>();
+            }
+
+            return buttonInfo
+                .Replace("\\n", "\n", StringComparison.Ordinal)
+                .Split(new[] { '\r', '\n', '|'}, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .Where(static option => !string.IsNullOrWhiteSpace(option))
+                .ToArray();
+        }
+
         private static bool TryEncodeResponsePayload(
             int messageType,
             NpcInteractionInputSubmission submission,
@@ -912,6 +936,7 @@ namespace HaCreator.MapSimulator.Interaction
                 case 5:
                 case 7:
                 case 12:
+                case 15:
                 {
                     if (!submission.NumericValue.HasValue)
                     {
@@ -926,8 +951,6 @@ namespace HaCreator.MapSimulator.Interaction
 
                 case 8:
                 case 9:
-                case 10:
-                case 11:
                 {
                     bool accepted = submission.NumericValue.HasValue &&
                                     submission.NumericValue.Value >= 0 &&
@@ -936,6 +959,19 @@ namespace HaCreator.MapSimulator.Interaction
                     if (accepted)
                     {
                         writer.WriteByte((byte)submission.NumericValue.Value);
+                    }
+
+                    break;
+                }
+
+                case 10:
+                case 11:
+                {
+                    bool accepted = long.TryParse(submittedValue, out long petSerialNumber) && petSerialNumber > 0;
+                    writer.WriteByte(accepted ? (byte)1 : (byte)0);
+                    if (accepted)
+                    {
+                        writer.WriteLong(petSerialNumber);
                     }
 
                     break;
@@ -962,7 +998,7 @@ namespace HaCreator.MapSimulator.Interaction
             return true;
         }
 
-        internal sealed record PacketScriptMessageOpenRequest(NpcInteractionState State, int SpeakerNpcId);
+        internal sealed record PacketScriptMessageOpenRequest(NpcInteractionState State, int SpeakerNpcId, bool CloseExistingDialog = false);
         internal sealed record PacketScriptResponsePacket(
             int MessageType,
             byte Param,

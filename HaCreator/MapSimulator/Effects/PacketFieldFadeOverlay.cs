@@ -58,7 +58,7 @@ namespace HaCreator.MapSimulator.Effects
                 return;
             }
 
-            if (unchecked(currentTickCount - _expiresAt) > 0)
+            if (unchecked(currentTickCount - _expiresAt) >= 0)
             {
                 Clear();
             }

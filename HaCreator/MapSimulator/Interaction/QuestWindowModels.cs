@@ -82,6 +82,9 @@ namespace HaCreator.MapSimulator.Interaction
         public string TargetMobName { get; init; } = string.Empty;
         public int? TargetItemId { get; init; }
         public string TargetItemName { get; init; } = string.Empty;
+        public bool HasDetailInset { get; init; }
+        public int TimeLimitSeconds { get; init; }
+        public string TimerUiKey { get; init; } = string.Empty;
         public QuestDetailDeliveryType DeliveryType { get; init; }
         public bool DeliveryActionEnabled { get; init; }
         public int? DeliveryCashItemId { get; init; }

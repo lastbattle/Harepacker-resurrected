@@ -113,21 +113,32 @@ namespace HaCreator.MapSimulator.UI
         private const int EntriesPerPage = 6;
         private static readonly (string Label, EquipSlot Slot)[] EquipmentLedgerRows =
         {
-            ("Badge", EquipSlot.Badge),
-            ("Medal", EquipSlot.Medal),
-            ("Cap", EquipSlot.Cap),
-            ("Cape", EquipSlot.Cape),
-            ("Top", EquipSlot.Coat),
-            ("Bottom", EquipSlot.Pants),
+            ("Ring 1", EquipSlot.Ring1),
+            ("Ring 2", EquipSlot.Ring2),
+            ("Ring 3", EquipSlot.Ring3),
+            ("Ring 4", EquipSlot.Ring4),
+            ("Pocket", EquipSlot.Pocket),
             ("Pendant", EquipSlot.Pendant),
             ("Pendant 2", EquipSlot.Pendant2),
             ("Weapon", EquipSlot.Weapon),
+            ("Belt", EquipSlot.Belt),
+            ("Cap", EquipSlot.Cap),
+            ("Face Accessory", EquipSlot.FaceAccessory),
+            ("Eye Accessory", EquipSlot.EyeAccessory),
+            ("Top", EquipSlot.Coat),
+            ("Bottom", EquipSlot.Pants),
+            ("Shoes", EquipSlot.Shoes),
+            ("Earring", EquipSlot.Earrings),
+            ("Shoulder", EquipSlot.Shoulder),
             ("Glove", EquipSlot.Glove),
             ("Shield", EquipSlot.Shield),
-            ("Shoes", EquipSlot.Shoes),
-            ("Pocket", EquipSlot.Pocket),
+            ("Cape", EquipSlot.Cape),
+            ("Badge", EquipSlot.Badge),
+            ("Medal", EquipSlot.Medal),
             ("Monster Riding", EquipSlot.TamingMob),
             ("Saddle", EquipSlot.Saddle),
+            ("Android", EquipSlot.Android),
+            ("Android Heart", EquipSlot.AndroidHeart),
         };
 
         public static CollectionBookSnapshot Create(CharacterBuild build, ItemMakerProgressionSnapshot progression, MonsterBookSnapshot monsterBook)
@@ -237,7 +248,7 @@ namespace HaCreator.MapSimulator.UI
                 {
                     Title = pageIndex == 0 ? "Equipment" : $"Equipment {ToRoman(pageIndex + 1)}",
                     Subtitle = "Displayed slot ledger from the active build",
-                    Footer = "Rows follow the same displayed-slot rules as the equip window, including overall, pendant, pocket, shield, and mount gating.",
+                    Footer = "Rows follow the equip-window slot order and displayed-slot rules, including ring, pendant, pocket, shield, mount, and Android gating.",
                     Entries = chunk
                 };
             }
@@ -495,6 +506,7 @@ namespace HaCreator.MapSimulator.UI
         public string Subtitle { get; init; } = string.Empty;
         public string StatusText { get; init; } = string.Empty;
         public int AutoDismissDelayMs { get; init; }
+        public IReadOnlyList<string> AlarmLines { get; init; } = Array.Empty<string>();
         public IReadOnlyList<EventEntrySnapshot> Entries { get; init; } = Array.Empty<EventEntrySnapshot>();
     }
 }

@@ -56,11 +56,30 @@ namespace HaCreator.MapSimulator.Managers
         public short SubJob { get; init; }
         public SkinColor Skin { get; init; }
         public int FaceId { get; init; }
+        public int HairStyleId { get; init; }
+        public int HairColorValue { get; init; }
         public int HairId { get; init; }
         public int CoatId { get; init; }
         public int PantsId { get; init; }
         public int ShoesId { get; init; }
         public int WeaponId { get; init; }
+
+        public LoginNewCharacterRequest ToPacketRequest(string characterName)
+        {
+            return new LoginNewCharacterRequest(
+                characterName?.Trim() ?? string.Empty,
+                (int)Race,
+                SubJob,
+                (byte)Gender,
+                FaceId,
+                HairStyleId,
+                (int)Skin,
+                HairColorValue,
+                CoatId,
+                PantsId,
+                ShoesId,
+                WeaponId);
+        }
     }
 
     public sealed class LoginCreateCharacterFlowState
@@ -314,6 +333,8 @@ namespace HaCreator.MapSimulator.Managers
                 SubJob = SelectedJob?.SubJob ?? 0,
                 Skin = GetValue(catalog.Skins, SelectedSkinIndex, SkinColor.Light),
                 FaceId = GetValue(catalog.FaceIds, SelectedFaceIndex, SelectedGender == CharacterGender.Male ? 20000 : 21000),
+                HairStyleId = GetValue(catalog.HairStyleIds, SelectedHairIndex, SelectedGender == CharacterGender.Male ? 30000 : 31000),
+                HairColorValue = GetValue(catalog.HairColorIndices, SelectedHairColorIndex, 0),
                 HairId = loader.ResolveLoginStarterHairId(catalog, SelectedGender, SelectedHairIndex, SelectedHairColorIndex),
                 CoatId = GetValue(catalog.CoatIds, SelectedCoatIndex, 1042003),
                 PantsId = GetValue(catalog.PantsIds, SelectedPantsIndex, 1062007),

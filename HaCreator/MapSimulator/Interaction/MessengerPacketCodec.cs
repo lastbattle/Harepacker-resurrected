@@ -41,21 +41,30 @@ namespace HaCreator.MapSimulator.Interaction
     internal readonly record struct MessengerEnterPacket(
         int SlotIndex,
         string ContactName,
-        bool IsOnline,
         int Channel,
-        LoginAvatarLook AvatarLook);
+        bool IsNew,
+        LoginAvatarLook AvatarLook)
+    {
+        public bool IsOnline => true;
+    }
 
     internal readonly record struct MessengerInviteResultPacket(string ContactName, bool Accepted);
 
-    internal readonly record struct MessengerSelfEnterResultPacket(bool Succeeded);
+    internal readonly record struct MessengerSelfEnterResultPacket(int SlotIndex)
+    {
+        public bool Succeeded => SlotIndex >= 0;
+    }
 
     internal readonly record struct MessengerMigratedParticipantPacket(
         int SlotIndex,
-        bool Present,
+        byte State,
         string ContactName,
-        bool IsOnline,
         int Channel,
-        LoginAvatarLook AvatarLook);
+        LoginAvatarLook AvatarLook)
+    {
+        public bool Present => State >= 2;
+        public bool IsOnline => Present;
+    }
 
     internal readonly record struct MessengerMigratedPacket(
         MessengerMigratedParticipantPacket[] Participants);
@@ -236,8 +245,12 @@ namespace HaCreator.MapSimulator.Interaction
             {
                 PacketReader reader = new(payload);
                 int slotIndex = reader.ReadByte();
-                bool isOnline = reader.ReadByte() != 0;
-                int channel = Math.Max(1, (int)reader.ReadByte());
+                if (!reader.TryReadAvatarLook(out LoginAvatarLook avatarLook, out error))
+                {
+                    error ??= "Messenger enter packet AvatarLook payload could not be decoded.";
+                    return false;
+                }
+
                 string contactName = reader.ReadString8();
                 if (string.IsNullOrWhiteSpace(contactName))
                 {
@@ -245,13 +258,10 @@ namespace HaCreator.MapSimulator.Interaction
                     return false;
                 }
 
-                if (!reader.TryReadAvatarLook(out LoginAvatarLook avatarLook, out error))
-                {
-                    error ??= "Messenger enter packet AvatarLook payload could not be decoded.";
-                    return false;
-                }
+                int channel = Math.Max(1, (int)reader.ReadByte());
+                bool isNew = reader.ReadByte() != 0;
 
-                packet = new MessengerEnterPacket(slotIndex, contactName.Trim(), isOnline, channel, avatarLook);
+                packet = new MessengerEnterPacket(slotIndex, contactName.Trim(), channel, isNew, avatarLook);
                 return true;
             }
             catch (InvalidOperationException ex)
@@ -295,7 +305,7 @@ namespace HaCreator.MapSimulator.Interaction
             try
             {
                 PacketReader reader = new(payload);
-                packet = new MessengerSelfEnterResultPacket(reader.ReadByte() != 0);
+                packet = new MessengerSelfEnterResultPacket((sbyte)reader.ReadByte());
                 return true;
             }
             catch (InvalidOperationException ex)
@@ -313,31 +323,20 @@ namespace HaCreator.MapSimulator.Interaction
             try
             {
                 PacketReader reader = new(payload);
-                int count = reader.ReadByte();
-                if (count < 0 || count > 3)
+                MessengerMigratedParticipantPacket[] participants = new MessengerMigratedParticipantPacket[3];
+                for (int i = 0; i < participants.Length; i++)
                 {
-                    error = $"Messenger migrated packet participant count {count} is invalid.";
-                    return false;
-                }
-
-                MessengerMigratedParticipantPacket[] participants = new MessengerMigratedParticipantPacket[count];
-                for (int i = 0; i < count; i++)
-                {
-                    int slotIndex = reader.ReadByte();
-                    bool present = reader.ReadByte() != 0;
-                    if (!present)
+                    byte state = reader.ReadByte();
+                    if (state == 0)
                     {
-                        participants[i] = new MessengerMigratedParticipantPacket(slotIndex, false, string.Empty, false, 1, null);
+                        participants[i] = new MessengerMigratedParticipantPacket(i, state, string.Empty, 1, null);
                         continue;
                     }
 
-                    bool isOnline = reader.ReadByte() != 0;
-                    int channel = Math.Max(1, (int)reader.ReadByte());
-                    string contactName = reader.ReadString8();
-                    if (string.IsNullOrWhiteSpace(contactName))
+                    if (state == 1)
                     {
-                        error = "Messenger migrated packet contact name is empty.";
-                        return false;
+                        participants[i] = new MessengerMigratedParticipantPacket(i, state, string.Empty, 1, null);
+                        continue;
                     }
 
                     if (!reader.TryReadAvatarLook(out LoginAvatarLook avatarLook, out error))
@@ -346,11 +345,19 @@ namespace HaCreator.MapSimulator.Interaction
                         return false;
                     }
 
+                    string contactName = reader.ReadString8();
+                    if (string.IsNullOrWhiteSpace(contactName))
+                    {
+                        error = "Messenger migrated packet contact name is empty.";
+                        return false;
+                    }
+
+                    int channel = Math.Max(1, (int)reader.ReadByte());
+
                     participants[i] = new MessengerMigratedParticipantPacket(
-                        slotIndex,
-                        true,
+                        i,
+                        state,
                         contactName.Trim(),
-                        isOnline,
                         channel,
                         avatarLook);
                 }

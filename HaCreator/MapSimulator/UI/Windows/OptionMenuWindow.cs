@@ -41,6 +41,18 @@ namespace HaCreator.MapSimulator.UI
             0.35f,
         };
 
+        private static readonly float[] JoypadTriggerThresholdSteps =
+        {
+            0.10f,
+            0.15f,
+            0.20f,
+            0.25f,
+            0.30f,
+            0.35f,
+            0.40f,
+            0.50f,
+        };
+
         private static readonly PlayerInput.GamepadAxisResponseCurve[] JoypadResponseCurves =
         {
             PlayerInput.GamepadAxisResponseCurve.Linear,
@@ -274,7 +286,10 @@ namespace HaCreator.MapSimulator.UI
 
                     JoypadRow row = _joypadRows[i];
                     row.AdvanceValue?.Invoke(session);
-                    _statusMessage = $"{row.Label}: {row.GetValue?.Invoke(session) ?? "Unavailable"}";
+                    string value = row.GetValue?.Invoke(session) ?? "Unavailable";
+                    _statusMessage = string.IsNullOrWhiteSpace(row.Description)
+                        ? $"{row.Label}: {value}"
+                        : $"{row.Label}: {value}  {row.Description}";
                     mouseCursor?.SetMouseCursorMovedToClickableItem();
                     return true;
                 }
@@ -452,6 +467,12 @@ namespace HaCreator.MapSimulator.UI
             _joypadRows.Clear();
             _joypadRows.Add(new JoypadRow(
                 null,
+                "Calibration",
+                "Cycles the shared dead-zone and trigger preset before fine tuning the per-axis rows below.",
+                session => FormatCalibrationPreset(session),
+                ApplyNextCalibrationPreset));
+            _joypadRows.Add(new JoypadRow(
+                null,
                 "Controller Slot",
                 "Cycles the active XInput slot, preferring connected controllers before empty ports.",
                 session => $"P{(int)session.GamepadIndex + 1}",
@@ -470,17 +491,16 @@ namespace HaCreator.MapSimulator.UI
                 session => session.LeftStickDeadZoneY = GetNextAxisThreshold(session.LeftStickDeadZoneY)));
             _joypadRows.Add(new JoypadRow(
                 null,
-                "Trigger Thresh",
-                "Cycles the paired trigger press threshold used by trigger-owned skills.",
-                session => $"L {session.LeftTriggerThreshold:0.00} / R {session.RightTriggerThreshold:0.00}",
-                session =>
-                {
-                    (float deadZone, float triggerThreshold) = GetNextCalibrationPreset(
-                        (session.LeftStickDeadZoneX + session.LeftStickDeadZoneY) * 0.5f,
-                        (session.LeftTriggerThreshold + session.RightTriggerThreshold) * 0.5f);
-                    session.LeftTriggerThreshold = triggerThreshold;
-                    session.RightTriggerThreshold = triggerThreshold;
-                }));
+                "Trigger Left",
+                "Cycles the left trigger activation threshold used by trigger-owned skills.",
+                session => session.LeftTriggerThreshold.ToString("0.00"),
+                session => session.LeftTriggerThreshold = GetNextTriggerThreshold(session.LeftTriggerThreshold)));
+            _joypadRows.Add(new JoypadRow(
+                null,
+                "Trigger Right",
+                "Cycles the right trigger activation threshold used by trigger-owned skills.",
+                session => session.RightTriggerThreshold.ToString("0.00"),
+                session => session.RightTriggerThreshold = GetNextTriggerThreshold(session.RightTriggerThreshold)));
             _joypadRows.Add(new JoypadRow(
                 null,
                 "Stick Curve",
@@ -575,6 +595,22 @@ namespace HaCreator.MapSimulator.UI
             return JoypadCalibrationPresets[0];
         }
 
+        private static void ApplyNextCalibrationPreset(JoypadSessionSnapshot session)
+        {
+            if (session == null)
+            {
+                return;
+            }
+
+            (float deadZone, float triggerThreshold) = GetNextCalibrationPreset(
+                (session.LeftStickDeadZoneX + session.LeftStickDeadZoneY) * 0.5f,
+                (session.LeftTriggerThreshold + session.RightTriggerThreshold) * 0.5f);
+            session.LeftStickDeadZoneX = deadZone;
+            session.LeftStickDeadZoneY = deadZone;
+            session.LeftTriggerThreshold = triggerThreshold;
+            session.RightTriggerThreshold = triggerThreshold;
+        }
+
         private static float GetNextAxisThreshold(float current)
         {
             for (int i = 0; i < JoypadAxisDeadZoneSteps.Length; i++)
@@ -586,6 +622,19 @@ namespace HaCreator.MapSimulator.UI
             }
 
             return JoypadAxisDeadZoneSteps[0];
+        }
+
+        private static float GetNextTriggerThreshold(float current)
+        {
+            for (int i = 0; i < JoypadTriggerThresholdSteps.Length; i++)
+            {
+                if (Math.Abs(JoypadTriggerThresholdSteps[i] - current) < 0.001f)
+                {
+                    return JoypadTriggerThresholdSteps[(i + 1) % JoypadTriggerThresholdSteps.Length];
+                }
+            }
+
+            return JoypadTriggerThresholdSteps[0];
         }
 
         private static PlayerInput.GamepadAxisResponseCurve GetNextResponseCurve(PlayerInput.GamepadAxisResponseCurve current)
@@ -632,14 +681,14 @@ namespace HaCreator.MapSimulator.UI
             Rectangle bounds = new Rectangle(Position.X + 12, Position.Y + 72, Math.Max(220, (CurrentFrame?.Width ?? 283) - 30), 40);
             sprite.Draw(_highlightTexture, bounds, new Color(30, 38, 52, 225));
 
-            GamePadState state = input.GetGamePadState();
+            GamePadState state = GamePad.GetState(session.GamepadIndex);
             string connectionText = state.IsConnected
                 ? $"P{(int)session.GamepadIndex + 1} connected"
                 : $"P{(int)session.GamepadIndex + 1} disconnected";
             string calibrationText = state.IsConnected
                 ? $"LX {state.ThumbSticks.Left.X:+0.00;-0.00;0.00}  LY {state.ThumbSticks.Left.Y:+0.00;-0.00;0.00}  LT {state.Triggers.Left:0.00}  RT {state.Triggers.Right:0.00}"
                 : "Cycle the slot until a live controller is found; binding rows keep directional movement reserved.";
-            string thresholdText = $"DX {session.LeftStickDeadZoneX:0.00} DY {session.LeftStickDeadZoneY:0.00}  TR {session.LeftTriggerThreshold:0.00}/{session.RightTriggerThreshold:0.00}  {FormatResponseCurve(session.ResponseCurve)}";
+            string thresholdText = $"DX {session.LeftStickDeadZoneX:0.00} DY {session.LeftStickDeadZoneY:0.00}  LT/RT {session.LeftTriggerThreshold:0.00}/{session.RightTriggerThreshold:0.00}  {FormatResponseCurve(session.ResponseCurve)}";
 
             sprite.DrawString(_font, connectionText, new Vector2(bounds.X + 8, bounds.Y + 3), Color.White);
             sprite.DrawString(_font, calibrationText, new Vector2(bounds.X + 8, bounds.Y + 17), new Color(210, 210, 210));
@@ -814,6 +863,16 @@ namespace HaCreator.MapSimulator.UI
                 PlayerInput.GamepadAxisResponseCurve.Aggressive => "Aggressive",
                 _ => "Linear",
             };
+        }
+
+        private static string FormatCalibrationPreset(JoypadSessionSnapshot session)
+        {
+            if (session == null)
+            {
+                return "Unavailable";
+            }
+
+            return $"DZ {(session.LeftStickDeadZoneX + session.LeftStickDeadZoneY) * 0.5f:0.00} / TR {(session.LeftTriggerThreshold + session.RightTriggerThreshold) * 0.5f:0.00}";
         }
 
         private static string FormatGamepadButton(Buttons button)

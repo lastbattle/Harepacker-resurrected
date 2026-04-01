@@ -79,12 +79,14 @@ namespace HaCreator.MapSimulator.UI
 
         private void DrawItemTooltip(SpriteBatch sprite, InventorySlotData slot, InventoryType inventoryType, int renderWidth, int renderHeight)
         {
-            string title = ResolveDisplayText(slot.ItemName, $"Item #{slot.ItemId}");
-            string typeLine = ResolveDisplayText(slot.ItemTypeName, inventoryType.ToString());
+            InventoryItemTooltipMetadata metadata = InventoryItemMetadataResolver.ResolveTooltipMetadata(slot.ItemId, inventoryType);
+            string title = ResolveDisplayText(slot.ItemName, metadata.ItemName);
+            string typeLine = ResolveDisplayText(slot.ItemTypeName, ResolveDisplayText(metadata.TypeName, inventoryType.ToString()));
             string quantityLine = slot.Quantity > 1 ? $"Quantity: {slot.Quantity}" : string.Empty;
             string stackLine = slot.MaxStackSize.GetValueOrDefault(1) > 1 ? $"Stack Max: {slot.MaxStackSize.Value}" : string.Empty;
-            string description = ResolveDisplayText(slot.Description, string.Empty);
+            string description = ResolveDisplayText(slot.Description, metadata.Description);
             Texture2D itemTexture = ResolveSlotItemTexture(sprite.GraphicsDevice, slot);
+            Texture2D cashLabelTexture = metadata.IsCashItem ? _equipTooltipAssets?.CashLabel : null;
 
             int tooltipWidth = ResolveTooltipWidth();
             int textLeftOffset = TooltipPadding + TooltipIconSize + TooltipIconGap;
@@ -92,31 +94,45 @@ namespace HaCreator.MapSimulator.UI
             float sectionWidth = tooltipWidth - textLeftOffset - TooltipPadding;
 
             string[] wrappedTitle = WrapTooltipText(title, titleWidth);
-            string[] wrappedType = WrapTooltipText(typeLine, sectionWidth);
-            string[] wrappedQuantity = WrapTooltipText(quantityLine, sectionWidth);
-            string[] wrappedStack = WrapTooltipText(stackLine, sectionWidth);
-            string[] wrappedDescription = WrapTooltipText(description, sectionWidth);
-
             float titleHeight = MeasureLinesHeight(wrappedTitle);
-            float typeHeight = MeasureLinesHeight(wrappedType);
-            float quantityHeight = MeasureLinesHeight(wrappedQuantity);
-            float stackHeight = MeasureLinesHeight(wrappedStack);
-            float descriptionHeight = MeasureLinesHeight(wrappedDescription);
-
-            float contentHeight = typeHeight;
-            if (quantityHeight > 0f)
+            List<TooltipSection> sections = new();
+            if (!string.IsNullOrWhiteSpace(typeLine))
             {
-                contentHeight += (contentHeight > 0f ? TooltipSectionGap : 0f) + quantityHeight;
+                sections.Add(new TooltipSection(typeLine, new Color(180, 220, 255)));
             }
 
-            if (stackHeight > 0f)
+            for (int i = 0; i < metadata.EffectLines.Count; i++)
             {
-                contentHeight += (contentHeight > 0f ? 2f : 0f) + stackHeight;
+                sections.Add(new TooltipSection(metadata.EffectLines[i], new Color(180, 255, 210)));
             }
 
-            if (descriptionHeight > 0f)
+            if (!string.IsNullOrWhiteSpace(quantityLine))
             {
-                contentHeight += (contentHeight > 0f ? TooltipSectionGap : 0f) + descriptionHeight;
+                sections.Add(new TooltipSection(quantityLine, Color.White));
+            }
+
+            if (!string.IsNullOrWhiteSpace(stackLine))
+            {
+                sections.Add(new TooltipSection(stackLine, new Color(180, 255, 210)));
+            }
+
+            for (int i = 0; i < metadata.MetadataLines.Count; i++)
+            {
+                sections.Add(new TooltipSection(metadata.MetadataLines[i], new Color(255, 214, 156)));
+            }
+
+            if (!string.IsNullOrWhiteSpace(description))
+            {
+                sections.Add(new TooltipSection(description, new Color(255, 238, 196)));
+            }
+
+            List<(string[] Lines, Color Color, float Height)> wrappedSections = BuildWrappedTooltipSections(sections);
+            float wrappedSectionHeight = MeasureWrappedSectionHeight(wrappedSections);
+            float cashLabelHeight = cashLabelTexture?.Height ?? 0f;
+            float contentHeight = wrappedSectionHeight;
+            if (cashLabelHeight > 0f)
+            {
+                contentHeight += (contentHeight > 0f ? 2f : 0f) + cashLabelHeight;
             }
 
             float iconBlockHeight = Math.Max(TooltipIconSize, contentHeight);
@@ -136,30 +152,20 @@ namespace HaCreator.MapSimulator.UI
 
             int textX = backgroundRect.X + textLeftOffset;
             float sectionY = contentY;
-            if (typeHeight > 0f)
+            if (cashLabelHeight > 0f)
             {
-                DrawTooltipLines(sprite, wrappedType, textX, sectionY, new Color(180, 220, 255));
-                sectionY += typeHeight;
+                sprite.Draw(cashLabelTexture, new Vector2(textX, sectionY), Color.White);
+                sectionY += cashLabelHeight;
             }
 
-            if (quantityHeight > 0f)
+            if (wrappedSectionHeight > 0f)
             {
-                sectionY += typeHeight > 0f ? TooltipSectionGap : 0f;
-                DrawTooltipLines(sprite, wrappedQuantity, textX, sectionY, Color.White);
-                sectionY += quantityHeight;
-            }
+                if (cashLabelHeight > 0f)
+                {
+                    sectionY += 2f;
+                }
 
-            if (stackHeight > 0f)
-            {
-                sectionY += 2f;
-                DrawTooltipLines(sprite, wrappedStack, textX, sectionY, new Color(180, 255, 210));
-                sectionY += stackHeight;
-            }
-
-            if (descriptionHeight > 0f)
-            {
-                sectionY += TooltipSectionGap;
-                DrawTooltipLines(sprite, wrappedDescription, textX, sectionY, new Color(255, 238, 196));
+                DrawWrappedSections(sprite, textX, sectionY, wrappedSections);
             }
         }
 

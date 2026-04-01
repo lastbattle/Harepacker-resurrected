@@ -20,15 +20,36 @@ namespace HaCreator.MapSimulator.UI
         private const byte KoreanGdiCharset = 129;
         private const string ClientTextFontPathEnvironmentVariable = "MAPSIM_CLIENT_TEXT_FONT_PATH";
         private const string ClientTextFontFaceEnvironmentVariable = "MAPSIM_CLIENT_TEXT_FONT_FACE";
+        private static readonly string[] DefaultPrivateFontFileCandidates =
+        {
+            "DotumChe.ttf",
+            "Dotum.ttf",
+            "dotum.ttc",
+            "GulimChe.ttf",
+            "Gulim.ttf",
+            "gulim.ttc",
+            "batang.ttc"
+        };
         private static readonly string[] DefaultPrivateFontFiles =
         {
             "dotum.ttc",
             "gulim.ttc"
         };
+        private static readonly string[] DefaultPrivateFontSearchDirectorySuffixes =
+        {
+            string.Empty,
+            "Fonts",
+            "Content",
+            Path.Combine("Content", "Fonts")
+        };
         private static readonly string[] DefaultFontFamilyCandidates =
         {
             "DotumChe",
             "Dotum",
+            "DOTOOM",
+            "DOTOOMCHE",
+            "DODUM",
+            "DODUMCHE",
             "돋움체",
             "돋움",
             "GulimChe",
@@ -293,8 +314,17 @@ namespace HaCreator.MapSimulator.UI
                 return false;
             }
 
-            string resolvedFontPath = Path.GetFullPath(configuredFontPath.Trim());
-            if (!File.Exists(resolvedFontPath))
+            string candidatePath;
+            try
+            {
+                candidatePath = Path.GetFullPath(configuredFontPath.Trim());
+            }
+            catch
+            {
+                return false;
+            }
+
+            if (!TryResolveFontPath(candidatePath, out string resolvedFontPath))
             {
                 return false;
             }
@@ -329,22 +359,8 @@ namespace HaCreator.MapSimulator.UI
         {
             fontFamilyName = null;
 
-            string windowsFontsPath = Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.Windows),
-                "Fonts");
-            if (string.IsNullOrWhiteSpace(windowsFontsPath) || !Directory.Exists(windowsFontsPath))
+            foreach (string candidatePath in EnumerateDefaultPrivateFontCandidatePaths())
             {
-                return false;
-            }
-
-            foreach (string fileName in DefaultPrivateFontFiles)
-            {
-                string candidatePath = Path.Combine(windowsFontsPath, fileName);
-                if (!File.Exists(candidatePath))
-                {
-                    continue;
-                }
-
                 if (PrivateFontRegistry.TryRegister(candidatePath, preferredFamilyName: null, out fontFamilyName))
                 {
                     return !string.IsNullOrWhiteSpace(fontFamilyName);
@@ -352,6 +368,158 @@ namespace HaCreator.MapSimulator.UI
             }
 
             return false;
+        }
+
+        private static bool TryResolveFontPath(string candidatePath, out string resolvedFontPath)
+        {
+            if (File.Exists(candidatePath))
+            {
+                resolvedFontPath = candidatePath;
+                return true;
+            }
+
+            if (!Directory.Exists(candidatePath))
+            {
+                resolvedFontPath = null;
+                return false;
+            }
+
+            foreach (string discoveredFontPath in EnumerateCandidateFontPaths(candidatePath))
+            {
+                if (File.Exists(discoveredFontPath))
+                {
+                    resolvedFontPath = discoveredFontPath;
+                    return true;
+                }
+            }
+
+            resolvedFontPath = null;
+            return false;
+        }
+
+        private static IEnumerable<string> EnumerateDefaultPrivateFontCandidatePaths()
+        {
+            HashSet<string> seenPaths = new(StringComparer.OrdinalIgnoreCase);
+
+            foreach (string rootDirectory in EnumerateDefaultPrivateFontSearchRoots())
+            {
+                foreach (string candidatePath in EnumerateCandidateFontPaths(rootDirectory))
+                {
+                    if (seenPaths.Add(candidatePath))
+                    {
+                        yield return candidatePath;
+                    }
+                }
+            }
+
+            foreach (string directWindowsFontPath in EnumerateLegacyWindowsFontCandidates())
+            {
+                if (seenPaths.Add(directWindowsFontPath))
+                {
+                    yield return directWindowsFontPath;
+                }
+            }
+        }
+
+        private static IEnumerable<string> EnumerateLegacyWindowsFontCandidates()
+        {
+            string windowsFontsPath = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.Windows),
+                "Fonts");
+            if (string.IsNullOrWhiteSpace(windowsFontsPath) || !Directory.Exists(windowsFontsPath))
+            {
+                yield break;
+            }
+
+            foreach (string fileName in DefaultPrivateFontFiles)
+            {
+                string candidatePath = Path.Combine(windowsFontsPath, fileName);
+                if (File.Exists(candidatePath))
+                {
+                    yield return candidatePath;
+                }
+            }
+        }
+
+        private static IEnumerable<string> EnumerateCandidateFontPaths(string rootDirectory)
+        {
+            if (string.IsNullOrWhiteSpace(rootDirectory) || !Directory.Exists(rootDirectory))
+            {
+                yield break;
+            }
+
+            foreach (string fileName in DefaultPrivateFontFileCandidates)
+            {
+                string directCandidatePath = Path.Combine(rootDirectory, fileName);
+                if (File.Exists(directCandidatePath))
+                {
+                    yield return directCandidatePath;
+                }
+            }
+
+            IEnumerable<string> recursiveMatches;
+            try
+            {
+                recursiveMatches = Directory.EnumerateFiles(rootDirectory, "*", SearchOption.AllDirectories);
+            }
+            catch
+            {
+                yield break;
+            }
+
+            foreach (string recursiveMatch in recursiveMatches)
+            {
+                string fileName = Path.GetFileName(recursiveMatch);
+                if (DefaultPrivateFontFileCandidates.Any(candidate => string.Equals(candidate, fileName, StringComparison.OrdinalIgnoreCase)))
+                {
+                    yield return recursiveMatch;
+                }
+            }
+        }
+
+        private static IEnumerable<string> EnumerateDefaultPrivateFontSearchRoots()
+        {
+            HashSet<string> seenPaths = new(StringComparer.OrdinalIgnoreCase);
+            string windowsFontsDirectory = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.Windows),
+                "Fonts");
+
+            foreach (string baseDirectory in new[]
+                     {
+                         AppContext.BaseDirectory,
+                         Environment.CurrentDirectory,
+                         windowsFontsDirectory
+                     })
+            {
+                if (string.IsNullOrWhiteSpace(baseDirectory))
+                {
+                    continue;
+                }
+
+                foreach (string suffix in DefaultPrivateFontSearchDirectorySuffixes)
+                {
+                    string candidate = string.IsNullOrEmpty(suffix)
+                        ? baseDirectory
+                        : Path.Combine(baseDirectory, suffix);
+
+                    string fullPath;
+                    try
+                    {
+                        fullPath = Path.GetFullPath(candidate);
+                    }
+                    catch
+                    {
+                        continue;
+                    }
+
+                    if (!Directory.Exists(fullPath) || !seenPaths.Add(fullPath))
+                    {
+                        continue;
+                    }
+
+                    yield return fullPath;
+                }
+            }
         }
 
         private static int QuantizeScale(float scale)

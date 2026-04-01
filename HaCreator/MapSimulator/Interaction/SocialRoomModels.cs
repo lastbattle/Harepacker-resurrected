@@ -1,4 +1,5 @@
 using HaCreator.MapSimulator.Character;
+using HaCreator.MapSimulator.Managers;
 using HaCreator.MapSimulator.UI;
 using MapleLib.PacketLib;
 using MapleLib.WzLib;
@@ -162,7 +163,7 @@ namespace HaCreator.MapSimulator.Interaction
             Detail = detail ?? string.Empty;
             IsLocked = isLocked;
             IsClaimed = isClaimed;
-            PacketSlotIndex = packetSlotIndex > 0 ? packetSlotIndex : null;
+            PacketSlotIndex = packetSlotIndex >= 0 ? packetSlotIndex : null;
         }
 
         public string OwnerName { get; }
@@ -191,7 +192,7 @@ namespace HaCreator.MapSimulator.Interaction
                 ItemId = itemId;
             }
 
-            PacketSlotIndex = packetSlotIndex > 0 ? packetSlotIndex : null;
+            PacketSlotIndex = packetSlotIndex >= 0 ? packetSlotIndex : null;
         }
 
         private static int ResolveItemIdByName(string itemName)
@@ -262,6 +263,14 @@ namespace HaCreator.MapSimulator.Interaction
         private const byte OmokTimeOverPacketType = 63;
         private const byte OmokPutStonePacketType = 64;
         private const byte OmokPutStoneErrorPacketType = 65;
+        private const byte MiniRoomBaseInvitePacketSubType = 2;
+        private const byte MiniRoomBaseInviteResultPacketSubType = 3;
+        private const byte MiniRoomBaseEnterPacketSubType = 4;
+        private const byte MiniRoomBaseEnterResultPacketSubType = 5;
+        private const byte MiniRoomBaseUpdatePacketSubType = 6;
+        private const byte MiniRoomBaseAvatarPacketSubType = 9;
+        private const byte MiniRoomBaseLeavePacketSubType = 10;
+        private const byte MiniRoomBaseCheckSsnPacketSubType = 14;
         private const ushort EmployeeEnterFieldOpcode = 319;
         private const ushort EmployeeLeaveFieldOpcode = 320;
         private const ushort EmployeeMiniRoomBalloonOpcode = 321;
@@ -1376,6 +1385,12 @@ namespace HaCreator.MapSimulator.Interaction
                     message = StatusMessage;
                     return true;
                 }
+                case PersonalShopBasePacketType:
+                {
+                    bool handled = TryDispatchMiniRoomBasePacket(reader, out message);
+                    TrackPacketOwnerSummary("CMiniRoomBaseDlg::OnPacketBase", PersonalShopBasePacketType, tickCount, handled, message);
+                    return handled;
+                }
                 default:
                     return FailPacket(packetType, out message);
             }
@@ -1394,10 +1409,7 @@ namespace HaCreator.MapSimulator.Interaction
                 case PersonalShopMoveItemToInventoryPacketType:
                     return TryApplyPersonalShopMoveItemPacket(reader, out message);
                 case PersonalShopBasePacketType:
-                    StatusMessage = "Received a personal-shop base lifecycle packet through CPersonalShopDlg::OnPacket and forwarded it into the shared mini-room base dialog owner. The deeper base dialog flow is still partial.";
-                    PersistState();
-                    message = StatusMessage;
-                    return true;
+                    return TryDispatchMiniRoomBasePacket(reader, out message);
                 default:
                     return FailPacket(packetType, out message);
             }
@@ -1787,6 +1799,235 @@ namespace HaCreator.MapSimulator.Interaction
             return traderIndex == 0 ? OwnerName : ResolveRemoteTraderName();
         }
 
+        private bool TryDispatchMiniRoomBasePacket(PacketReader reader, out string message)
+        {
+            message = null;
+            byte packetSubType = reader.ReadByte();
+            switch (packetSubType)
+            {
+                case MiniRoomBaseInvitePacketSubType:
+                    return ApplyMiniRoomBaseStaticMessage("Mini-room base invite packet reached the shared dialog seam.", out message);
+                case MiniRoomBaseInviteResultPacketSubType:
+                    return ApplyMiniRoomBaseStaticMessage("Mini-room base invite-result packet reached the shared dialog seam.", out message);
+                case MiniRoomBaseEnterPacketSubType:
+                    return TryApplyMiniRoomBaseEnterPacket(reader, out message);
+                case MiniRoomBaseEnterResultPacketSubType:
+                    return ApplyMiniRoomBaseStaticMessage("Mini-room base enter-result packet reached the shared dialog seam.", out message);
+                case MiniRoomBaseUpdatePacketSubType:
+                    return ApplyMiniRoomBaseStaticMessage("Mini-room base update packet reached the shared dialog seam. Type-specific room payload is still handled only partially.", out message);
+                case MiniRoomBaseAvatarPacketSubType:
+                    return TryApplyMiniRoomBaseAvatarPacket(reader, out message);
+                case MiniRoomBaseLeavePacketSubType:
+                    return TryApplyMiniRoomBaseLeavePacket(reader, out message);
+                case MiniRoomBaseCheckSsnPacketSubType:
+                    return ApplyMiniRoomBaseStaticMessage("Mini-room base SSN-check packet reached the shared dialog seam.", out message);
+                default:
+                    message = $"Mini-room base packet subtype {packetSubType} is not modeled for this room.";
+                    return false;
+            }
+        }
+
+        private bool ApplyMiniRoomBaseStaticMessage(string statusMessage, out string message)
+        {
+            RoomState = Kind == SocialRoomKind.MiniRoom ? "MiniRoomBase" : "Shop base";
+            StatusMessage = statusMessage;
+            PersistState();
+            message = StatusMessage;
+            return true;
+        }
+
+        private bool TryApplyMiniRoomBaseEnterPacket(PacketReader reader, out string message)
+        {
+            int seatIndex = reader.ReadByte();
+            if (!TryReadPacketOwnedAvatarLook(reader, out LoginAvatarLook avatarLook, out string error))
+            {
+                message = error;
+                return false;
+            }
+
+            string occupantName = NormalizeName(reader.ReadMapleString());
+            int jobCode = reader.ReadShort();
+            ApplyMiniRoomBaseSeatEnterPacket(seatIndex, occupantName, jobCode, avatarLook);
+            message = StatusMessage;
+            return true;
+        }
+
+        private bool TryApplyMiniRoomBaseAvatarPacket(PacketReader reader, out string message)
+        {
+            int seatIndex = reader.ReadByte();
+            if (!TryReadPacketOwnedAvatarLook(reader, out _, out string error))
+            {
+                message = error;
+                return false;
+            }
+
+            ApplyMiniRoomBaseAvatarPacket(seatIndex);
+            message = StatusMessage;
+            return true;
+        }
+
+        private bool TryApplyMiniRoomBaseLeavePacket(PacketReader reader, out string message)
+        {
+            int seatIndex = reader.ReadByte();
+            ApplyMiniRoomBaseSeatLeavePacket(seatIndex);
+            message = StatusMessage;
+            return true;
+        }
+
+        private static bool TryReadPacketOwnedAvatarLook(PacketReader reader, out LoginAvatarLook avatarLook, out string message)
+        {
+            if (!LoginAvatarLookCodec.TryDecode(reader, out avatarLook, out string error))
+            {
+                message = $"Mini-room AvatarLook payload could not be decoded: {error}";
+                return false;
+            }
+
+            message = null;
+            return true;
+        }
+
+        private void ApplyMiniRoomBaseSeatEnterPacket(int seatIndex, string occupantName, int jobCode, LoginAvatarLook avatarLook)
+        {
+            int normalizedSeatIndex = Math.Max(0, seatIndex);
+            SocialRoomOccupantRole role = ResolveBasePacketOccupantRole(normalizedSeatIndex);
+            string seatLabel = ResolveBasePacketSeatLabel(normalizedSeatIndex);
+            string detail = BuildBasePacketOccupantDetail(normalizedSeatIndex, seatLabel, jobCode, avatarLook);
+            if (normalizedSeatIndex == 0)
+            {
+                OwnerName = occupantName;
+            }
+
+            EnsureOccupantSlot(normalizedSeatIndex, occupantName, role, detail, isReady: false, avatarBuild: GetExistingAvatarBuild(normalizedSeatIndex));
+            RoomState = Kind == SocialRoomKind.MiniRoom ? "Seat update" : "Visitor update";
+            StatusMessage = $"{occupantName} entered {seatLabel.ToLowerInvariant()} through CMiniRoomBaseDlg::OnEnterBase.";
+            if (Kind == SocialRoomKind.MiniRoom)
+            {
+                AddMiniRoomSystemMessage($"System : {StatusMessage}");
+                SyncMiniRoomOmokPresentation();
+            }
+            else if (normalizedSeatIndex > 0 && !_savedVisitors.Contains(occupantName, StringComparer.OrdinalIgnoreCase))
+            {
+                _savedVisitors.Add(occupantName);
+            }
+
+            PersistState();
+        }
+
+        private void ApplyMiniRoomBaseAvatarPacket(int seatIndex)
+        {
+            int normalizedSeatIndex = Math.Max(0, seatIndex);
+            string occupantName = ResolveMiniRoomSeatName(normalizedSeatIndex);
+            RoomState = Kind == SocialRoomKind.MiniRoom ? "Avatar refresh" : "Visitor avatar refresh";
+            StatusMessage = $"{occupantName} refreshed seat {normalizedSeatIndex} through CMiniRoomBaseDlg::OnAvatar.";
+            PersistState();
+        }
+
+        private void ApplyMiniRoomBaseSeatLeavePacket(int seatIndex)
+        {
+            int normalizedSeatIndex = Math.Max(0, seatIndex);
+            string leavingName = ResolveMiniRoomSeatName(normalizedSeatIndex);
+            if (normalizedSeatIndex <= 0)
+            {
+                RoomState = "Closed";
+                StatusMessage = $"{leavingName} left the room through CMiniRoomBaseDlg::OnLeaveBase.";
+                if (Kind == SocialRoomKind.MiniRoom)
+                {
+                    AddMiniRoomSystemMessage($"System : {StatusMessage}", isWarning: true);
+                }
+
+                PersistState();
+                return;
+            }
+
+            if (Kind == SocialRoomKind.MiniRoom)
+            {
+                RemoveMiniRoomOccupant(leavingName, out _);
+                StatusMessage = $"{leavingName} left seat {normalizedSeatIndex} through CMiniRoomBaseDlg::OnLeaveBase.";
+                AddMiniRoomSystemMessage($"System : {StatusMessage}", isWarning: normalizedSeatIndex == 1);
+                SyncMiniRoomOmokPresentation();
+            }
+            else
+            {
+                if (normalizedSeatIndex < _occupants.Count)
+                {
+                    _occupants.RemoveAt(normalizedSeatIndex);
+                }
+
+                RoomState = "Visitor update";
+                StatusMessage = $"{leavingName} left seat {normalizedSeatIndex} through CMiniRoomBaseDlg::OnLeaveBase.";
+            }
+
+            PersistState();
+        }
+
+        private SocialRoomOccupantRole ResolveBasePacketOccupantRole(int seatIndex)
+        {
+            if (seatIndex <= 0)
+            {
+                return Kind == SocialRoomKind.EntrustedShop
+                    ? SocialRoomOccupantRole.Merchant
+                    : SocialRoomOccupantRole.Owner;
+            }
+
+            return Kind switch
+            {
+                SocialRoomKind.MiniRoom when seatIndex == 1 => SocialRoomOccupantRole.Guest,
+                SocialRoomKind.TradingRoom => SocialRoomOccupantRole.Trader,
+                _ => SocialRoomOccupantRole.Visitor
+            };
+        }
+
+        private string ResolveBasePacketSeatLabel(int seatIndex)
+        {
+            if (seatIndex <= 0)
+            {
+                return Kind switch
+                {
+                    SocialRoomKind.EntrustedShop => "Merchant seat",
+                    _ => "Host seat"
+                };
+            }
+
+            return Kind == SocialRoomKind.MiniRoom && seatIndex == 1
+                ? "Guest seat"
+                : $"Visitor seat {seatIndex}";
+        }
+
+        private string BuildBasePacketOccupantDetail(int seatIndex, string seatLabel, int jobCode, LoginAvatarLook avatarLook)
+        {
+            if (Kind == SocialRoomKind.MiniRoom && IsMiniRoomOmokActive && seatIndex <= 1)
+            {
+                return $"{BuildOmokSeatDetail(seatIndex, seatLabel)} | Job {jobCode}";
+            }
+
+            string lookSummary = avatarLook == null
+                ? "look unavailable"
+                : $"{avatarLook.Gender} | Skin {(int)avatarLook.Skin} | Face {avatarLook.FaceId}";
+            return $"{seatLabel} | Job {jobCode} | {lookSummary}";
+        }
+
+        private CharacterBuild GetExistingAvatarBuild(int seatIndex)
+        {
+            return seatIndex >= 0 && seatIndex < _occupants.Count
+                ? _occupants[seatIndex].AvatarBuild
+                : null;
+        }
+
+        private void EnsureOccupantSlot(int index, string name, SocialRoomOccupantRole role, string detail, bool isReady, CharacterBuild avatarBuild)
+        {
+            while (_occupants.Count <= index)
+            {
+                int placeholderIndex = _occupants.Count;
+                _occupants.Add(new SocialRoomOccupant(
+                    placeholderIndex == index ? name : ResolveBasePacketSeatLabel(placeholderIndex),
+                    ResolveBasePacketOccupantRole(placeholderIndex),
+                    BuildBasePacketOccupantDetail(placeholderIndex, ResolveBasePacketSeatLabel(placeholderIndex), 0, null),
+                    false));
+            }
+
+            _occupants[index].Update(name, role, detail, isReady, avatarBuild);
+        }
+
         private static string ResolveItemLabel(int itemId)
         {
             if (itemId <= 0)
@@ -2085,9 +2326,21 @@ namespace HaCreator.MapSimulator.Interaction
             RoomState = "Buy result received";
             StatusMessage = resultCode switch
             {
-                0 => "Personal-shop buy request resolved without a visible state change.",
-                1 => "Personal-shop buy request was blocked by the server result.",
-                _ => $"Personal-shop buy result code {resultCode} was applied."
+                0 => "Personal-shop buy result code 0 completed without opening a client notice.",
+                1 => "Personal-shop buy result code 1 followed the client notice branch for StringPool id 0x365.",
+                2 => "Personal-shop buy result code 2 followed the client notice branch for StringPool id 0x1A8B.",
+                3 => "Personal-shop buy result code 3 followed the client notice branch for StringPool id 0xB9D.",
+                4 => "Personal-shop buy result code 4 followed the client notice branch for StringPool id 0xB9C.",
+                5 => "Personal-shop buy result code 5 followed the client notice branch for StringPool id 0x366.",
+                6 => "Personal-shop buy result code 6 followed the client notice branch for StringPool id 0x367.",
+                7 => "Personal-shop buy result code 7 followed the client notice branch for StringPool id 0x1A2B.",
+                8 => "Personal-shop buy result code 8 followed the client notice branch for StringPool id 0x1A6D.",
+                9 => "Personal-shop buy result code 9 followed the client notice branch for StringPool id 0x14B1.",
+                10 => "Personal-shop buy result code 10 followed the client notice branch for StringPool id 0x14B0.",
+                11 => "Personal-shop buy result code 11 followed the client notice branch for StringPool id 0x19E.",
+                12 => "Personal-shop buy result code 12 followed the client notice branch for StringPool id 0x1A67.",
+                14 => "Personal-shop buy result code 14 followed the client notice branch for StringPool id 0xFB2.",
+                _ => $"Personal-shop buy result code {resultCode} followed the client fallback notice branch for StringPool id 0x369."
             };
             PersistState();
         }
@@ -2097,30 +2350,38 @@ namespace HaCreator.MapSimulator.Interaction
             int soldIndex = reader.ReadByte();
             int purchasedBundles = reader.ReadShort();
             string buyerName = NormalizeName(reader.ReadMapleString());
-            List<SocialRoomItemEntry> availableEntries = _items.Where(item => !item.IsClaimed).ToList();
-            if (availableEntries.Count == 0)
+            SocialRoomItemEntry entry = FindActiveMerchantPacketEntry(soldIndex);
+            if (entry == null)
             {
-                message = "No personal-shop bundle is available to apply the sold-item packet.";
+                message = $"No active personal-shop bundle exists at packet slot {soldIndex}.";
                 return false;
             }
 
-            SocialRoomItemEntry entry = soldIndex >= 0 && soldIndex < availableEntries.Count
-                ? availableEntries[soldIndex]
-                : availableEntries[0];
-            int quantitySold = Math.Max(1, purchasedBundles) * Math.Max(1, entry.Quantity);
-            int mesosReceived = Math.Max(0, Math.Max(1, purchasedBundles) * entry.MesoAmount);
-            entry.Update($"{entry.Detail} | Packet sold to {buyerName}", quantitySold, entry.MesoAmount, false, true);
+            int normalizedBundles = Math.Max(1, purchasedBundles);
+            int quantitySold = normalizedBundles * Math.Max(1, entry.Quantity);
+            int mesosReceived = Math.Max(0, normalizedBundles * entry.MesoAmount);
+            entry.Update($"{entry.Detail} | Packet sold {normalizedBundles} bundle(s) to {buyerName}", entry.Quantity, entry.MesoAmount, entry.IsLocked, entry.IsClaimed);
             MesoAmount += mesosReceived;
-            _inventoryEscrow.RemoveAll(escrow => ReferenceEquals(escrow.Entry, entry));
-            _occupants.RemoveAll(occupant => string.Equals(occupant.Name, buyerName, StringComparison.OrdinalIgnoreCase));
-            _occupants.Add(new SocialRoomOccupant(buyerName, SocialRoomOccupantRole.Buyer, $"Bought {entry.ItemName} from packet state"));
+            SocialRoomOccupant buyer = _occupants.FirstOrDefault(occupant => string.Equals(occupant.Name, buyerName, StringComparison.OrdinalIgnoreCase));
+            if (buyer == null)
+            {
+                _occupants.Add(new SocialRoomOccupant(buyerName, SocialRoomOccupantRole.Buyer, $"Bought {entry.ItemName} from packet state"));
+            }
+            else
+            {
+                buyer.Update(buyerName, SocialRoomOccupantRole.Buyer, $"Bought {entry.ItemName} from packet state", isReady: false, buyer.AvatarBuild);
+            }
+
             if (!_savedVisitors.Contains(buyerName, StringComparer.OrdinalIgnoreCase))
             {
                 _savedVisitors.Add(buyerName);
             }
 
-            RoomState = "Sold item recorded";
-            StatusMessage = $"{buyerName} bought {entry.ItemName} from the personal shop packet feed.";
+            EnsureMerchantPacketNotes();
+            _notes[2] = $"{buyerName} bought {quantitySold} of {entry.ItemName} across {normalizedBundles} bundle(s).";
+            _notes[3] = $"Personal-shop packet totals: {MesoAmount:N0} meso waiting to claim.";
+            RoomState = "Sold-item result received";
+            StatusMessage = $"{buyerName} bought {quantitySold} of {entry.ItemName} across {normalizedBundles} bundle(s) from packet slot {soldIndex}.";
             PersistState();
             message = StatusMessage;
             return true;
@@ -2130,19 +2391,19 @@ namespace HaCreator.MapSimulator.Interaction
         {
             int remainingItemCount = reader.ReadByte();
             int removedIndex = reader.ReadShort();
-            if (_items.Count == 0)
+            SocialRoomItemEntry entry = FindActiveMerchantPacketEntry(removedIndex);
+            if (entry == null)
             {
-                message = "No personal-shop bundle exists to apply the move-to-inventory packet.";
+                message = $"No active personal-shop bundle exists at packet slot {removedIndex}.";
                 return false;
             }
 
-            int normalizedIndex = Math.Clamp(removedIndex, 0, _items.Count - 1);
-            SocialRoomItemEntry entry = _items[normalizedIndex];
-            _items.RemoveAt(normalizedIndex);
+            _items.Remove(entry);
             _inventoryEscrow.RemoveAll(escrow => ReferenceEquals(escrow.Entry, entry));
+            NormalizeActiveMerchantPacketSlots();
             RoomState = "Closed for setup";
             ModeName = "Repricing";
-            StatusMessage = $"Moved {entry.ItemName} back to inventory from packet state. {remainingItemCount} bundle(s) remain.";
+            StatusMessage = $"Moved {entry.ItemName} back to inventory from packet slot {removedIndex}. {Math.Max(0, remainingItemCount)} bundle(s) remain in the client packet array.";
             PersistState();
             message = StatusMessage;
             return true;
@@ -2150,10 +2411,13 @@ namespace HaCreator.MapSimulator.Interaction
 
         private void ApplyEntrustedArrangeResult(int mesoAmount)
         {
+            int removedRows = RemoveClaimedMerchantRows();
             MesoAmount = Math.Max(0, mesoAmount);
             RoomState = "Ledger review";
             ModeName = "Ledger review";
-            StatusMessage = $"Entrusted-shop arrange packet refreshed the ledger to {MesoAmount:N0} meso.";
+            StatusMessage = removedRows > 0
+                ? $"Entrusted-shop arrange packet compacted {removedRows} sold or empty row(s) and refreshed the ledger to {MesoAmount:N0} meso."
+                : $"Entrusted-shop arrange packet refreshed the ledger to {MesoAmount:N0} meso.";
             PersistState();
         }
 
@@ -2162,9 +2426,13 @@ namespace HaCreator.MapSimulator.Interaction
             RoomState = "Withdraw-all result";
             StatusMessage = resultCode switch
             {
-                5 => "Entrusted-shop withdraw-all packet left the ledger untouched.",
-                0 => "Entrusted-shop withdraw-all packet resolved successfully.",
-                _ => $"Entrusted-shop withdraw-all result code {resultCode} was applied."
+                0 => "Entrusted-shop withdraw-all result code 0 followed the client notice branch for StringPool id 0xDB8.",
+                1 => "Entrusted-shop withdraw-all result code 1 followed the client notice branch for StringPool id 0xDB9.",
+                2 => "Entrusted-shop withdraw-all result code 2 followed the client notice branch for StringPool id 0xDBA.",
+                3 => "Entrusted-shop withdraw-all result code 3 followed the client notice branch for StringPool id 0xDBB.",
+                4 => "Entrusted-shop withdraw-all result code 4 followed the client notice branch for StringPool id 0xDBC.",
+                5 => "Entrusted-shop withdraw-all result code 5 completed without opening a client notice.",
+                _ => $"Entrusted-shop withdraw-all result code {resultCode} followed the client fallback notice path."
             };
             PersistState();
         }
@@ -2230,6 +2498,53 @@ namespace HaCreator.MapSimulator.Interaction
             PersistState();
             message = StatusMessage;
             return true;
+        }
+
+        private void EnsureMerchantPacketNotes()
+        {
+            while (_notes.Count < 4)
+            {
+                _notes.Add(string.Empty);
+            }
+        }
+
+        private SocialRoomItemEntry FindActiveMerchantPacketEntry(int packetSlotIndex)
+        {
+            if (packetSlotIndex < 0)
+            {
+                return null;
+            }
+
+            List<SocialRoomItemEntry> activeEntries = NormalizeActiveMerchantPacketSlots();
+            return packetSlotIndex < activeEntries.Count
+                ? activeEntries[packetSlotIndex]
+                : null;
+        }
+
+        private List<SocialRoomItemEntry> NormalizeActiveMerchantPacketSlots()
+        {
+            List<SocialRoomItemEntry> activeEntries = new();
+            int packetSlotIndex = 0;
+            foreach (SocialRoomItemEntry entry in _items)
+            {
+                if (entry.IsClaimed)
+                {
+                    entry.UpdatePacketIdentity(entry.ItemId, null);
+                    continue;
+                }
+
+                entry.UpdatePacketIdentity(entry.ItemId, packetSlotIndex++);
+                activeEntries.Add(entry);
+            }
+
+            return activeEntries;
+        }
+
+        private int RemoveClaimedMerchantRows()
+        {
+            int removedRows = _items.RemoveAll(item => item.IsClaimed);
+            NormalizeActiveMerchantPacketSlots();
+            return removedRows;
         }
 
         private void ApplyTradingRoomMesoPacket(int traderIndex, int offeredMeso)

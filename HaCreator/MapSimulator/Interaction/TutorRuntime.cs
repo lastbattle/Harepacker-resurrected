@@ -120,14 +120,20 @@ namespace HaCreator.MapSimulator.Interaction
 
         internal void ApplyTextMessage(string text, int width, int durationMs, int currentTick)
         {
+            string normalizedText = string.IsNullOrWhiteSpace(text) ? string.Empty : text.Trim();
+            if (string.IsNullOrEmpty(normalizedText))
+            {
+                ClearMessage();
+                StatusMessage = "Tutor text payload was empty.";
+                return;
+            }
+
             MessageKind = TutorMessageKind.Text;
-            ActiveMessageText = string.IsNullOrWhiteSpace(text) ? string.Empty : text.Trim();
+            ActiveMessageText = normalizedText;
             ActiveMessageWidth = Math.Clamp(width <= 0 ? DefaultTextWidth : width, MinTextWidth, MaxTextWidth);
             ActiveMessageDurationMs = ClampDuration(durationMs);
             ActiveMessageExpiresAt = unchecked(currentTick + ActiveMessageDurationMs);
-            StatusMessage = string.IsNullOrWhiteSpace(ActiveMessageText)
-                ? "Tutor text payload was empty."
-                : $"Tutor text message active for {ActiveMessageDurationMs} ms at width {ActiveMessageWidth}.";
+            StatusMessage = $"Tutor text message active for {ActiveMessageDurationMs} ms at width {ActiveMessageWidth}.";
         }
 
         internal void Update(int currentTick)

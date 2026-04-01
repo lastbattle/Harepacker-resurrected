@@ -103,6 +103,11 @@ namespace HaCreator.MapSimulator.Fields
                 : null;
         }
 
+        public static bool CanTakeFallingDamage(long fieldLimit)
+        {
+            return !FieldLimitType.No_Damage_On_Falling.Check(fieldLimit);
+        }
+
         public static bool ShouldAutoExpandMinimap(long fieldLimit)
         {
             return FieldLimitType.Auto_Expand_Minimap.Check(fieldLimit);

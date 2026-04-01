@@ -23,7 +23,8 @@ namespace HaCreator.MapSimulator.Pools
         UserPreparedSkill = 212,
         UserPreparedSkillClear = 213,
         UserMeleeAttack = 214,
-        UserItemEffect = 215
+        UserItemEffect = 215,
+        UserAvatarModified = 223
     }
 
     public readonly record struct RemoteUserEnterFieldPacket(
@@ -111,6 +112,9 @@ namespace HaCreator.MapSimulator.Pools
     public readonly record struct RemoteUserMoveActionPacket(int CharacterId, byte MoveAction);
     public readonly record struct RemoteUserPortableChairPacket(int CharacterId, int? ChairItemId, int? PairCharacterId);
     public readonly record struct RemoteUserMountPacket(int CharacterId, int? TamingMobItemId);
+    public readonly record struct RemoteUserActiveEffectItemPacket(int CharacterId, int? ItemId);
+    public readonly record struct RemoteUserTemporaryStatSetPacket(int CharacterId, RemoteUserTemporaryStatSnapshot TemporaryStats, ushort Delay);
+    public readonly record struct RemoteUserTemporaryStatResetPacket(int CharacterId, int[] MaskWords);
     public readonly record struct RemoteUserPreparedSkillPacket(
         int CharacterId,
         int SkillId,
@@ -139,6 +143,20 @@ namespace HaCreator.MapSimulator.Pools
         string ActionName,
         int? ActionCode);
     public readonly record struct RemoteUserItemEffectPacket(int CharacterId, int? ItemId, int? PairCharacterId);
+    public readonly record struct RemoteUserRelationshipRecord(
+        bool IsActive,
+        int ItemId,
+        int? CharacterId,
+        int? PairCharacterId);
+    public readonly record struct RemoteUserAvatarModifiedPacket(
+        int CharacterId,
+        LoginAvatarLook AvatarLook,
+        int? Speed,
+        int? CarryItemEffect,
+        RemoteUserRelationshipRecord CoupleRecord,
+        RemoteUserRelationshipRecord FriendshipRecord,
+        RemoteUserRelationshipRecord MarriageRecord,
+        int CompletedSetItemId);
     public readonly record struct RemoteUserHelperPacket(int CharacterId, MinimapUI.HelperMarkerType? MarkerType, bool ShowDirectionOverlay);
     public readonly record struct RemoteUserBattlefieldTeamPacket(int CharacterId, int? TeamId);
     public static class RemoteUserPacketCodec
@@ -491,6 +509,88 @@ namespace HaCreator.MapSimulator.Pools
             return true;
         }
 
+        public static bool TryParseActiveEffectItem(ReadOnlySpan<byte> payload, out RemoteUserActiveEffectItemPacket packet, out string error)
+        {
+            packet = default;
+            error = null;
+            if (!TryParseOptionalItemPacket(payload, "active-effect-item", out int characterId, out int? itemId, out error, out int? _))
+            {
+                return false;
+            }
+
+            packet = new RemoteUserActiveEffectItemPacket(characterId, itemId);
+            return true;
+        }
+
+        public static bool TryParseTemporaryStatSet(ReadOnlySpan<byte> payload, out RemoteUserTemporaryStatSetPacket packet, out string error)
+        {
+            packet = default;
+            error = null;
+
+            try
+            {
+                var reader = new PacketReader(payload);
+                int characterId = reader.ReadInt32();
+                byte[] remainingPayload = reader.ReadRemainingBytes();
+                if (remainingPayload.Length < (sizeof(int) * 4) + sizeof(ushort))
+                {
+                    error = $"Remote user temporary-stat set packet expects at least {sizeof(int) + (sizeof(int) * 4) + sizeof(ushort)} bytes but received {payload.Length}.";
+                    return false;
+                }
+
+                int encodedLength = remainingPayload.Length - sizeof(ushort);
+                int[] maskWords = DecodeTemporaryStatMaskWords(remainingPayload.AsSpan(0, sizeof(int) * 4));
+                ushort delay = (ushort)(
+                    remainingPayload[encodedLength]
+                    | (remainingPayload[encodedLength + 1] << 8));
+                packet = new RemoteUserTemporaryStatSetPacket(
+                    characterId,
+                    new RemoteUserTemporaryStatSnapshot(
+                        encodedLength,
+                        maskWords,
+                        remainingPayload.AsSpan(0, encodedLength).ToArray()),
+                    delay);
+                return true;
+            }
+            catch (InvalidOperationException ex)
+            {
+                error = ex.Message;
+                return false;
+            }
+        }
+
+        public static bool TryParseTemporaryStatReset(ReadOnlySpan<byte> payload, out RemoteUserTemporaryStatResetPacket packet, out string error)
+        {
+            packet = default;
+            error = null;
+
+            try
+            {
+                var reader = new PacketReader(payload);
+                int characterId = reader.ReadInt32();
+                if (!reader.CanRead(sizeof(int) * 4))
+                {
+                    error = "Remote user temporary-stat reset packet is missing the 128-bit mask.";
+                    return false;
+                }
+
+                int[] maskWords = DecodeTemporaryStatMaskWords(reader.ReadBytes(sizeof(int) * 4));
+                if (reader.RemainingLength != 0)
+                {
+                    error = $"Remote user temporary-stat reset packet has {reader.RemainingLength} unread bytes remaining.";
+                    return false;
+                }
+
+                packet = new RemoteUserTemporaryStatResetPacket(characterId, maskWords);
+                return true;
+            }
+            catch (InvalidOperationException ex)
+            {
+                error = ex.Message;
+                return false;
+            }
+        }
+
         public static bool TryParseItemEffect(ReadOnlySpan<byte> payload, out RemoteUserItemEffectPacket packet, out string error)
         {
             packet = default;
@@ -502,6 +602,111 @@ namespace HaCreator.MapSimulator.Pools
 
             packet = new RemoteUserItemEffectPacket(characterId, itemId, pairCharacterId);
             return true;
+        }
+
+        public static bool TryParseAvatarModified(ReadOnlySpan<byte> payload, out RemoteUserAvatarModifiedPacket packet, out string error)
+        {
+            packet = default;
+            error = null;
+
+            try
+            {
+                var reader = new PacketReader(payload);
+                int characterId = reader.ReadInt32();
+                if (characterId <= 0)
+                {
+                    error = $"Remote user avatar-modified packet character ID {characterId} is invalid.";
+                    return false;
+                }
+
+                byte flags = reader.ReadByte();
+                LoginAvatarLook avatarLook = null;
+                if ((flags & 0x01) != 0)
+                {
+                    byte[] avatarPayload = payload.Slice(reader.Offset).ToArray();
+                    if (!LoginAvatarLookCodec.TryDecode(avatarPayload, out avatarLook, out string avatarError))
+                    {
+                        error = avatarError ?? "Remote user avatar-modified packet AvatarLook payload could not be decoded.";
+                        return false;
+                    }
+
+                    reader.ReadBytes(LoginAvatarLookCodec.Encode(avatarLook).Length);
+                }
+
+                int? speed = null;
+                if ((flags & 0x02) != 0)
+                {
+                    speed = reader.ReadByte();
+                }
+
+                int? carryItemEffect = null;
+                if ((flags & 0x04) != 0)
+                {
+                    carryItemEffect = reader.ReadByte();
+                }
+
+                bool hasCoupleRecord = reader.ReadByte() != 0;
+                if (hasCoupleRecord)
+                {
+                    reader.ReadInt64();
+                    reader.ReadInt64();
+                }
+                RemoteUserRelationshipRecord coupleRecord = hasCoupleRecord
+                    ? new RemoteUserRelationshipRecord(
+                        true,
+                        ItemId: reader.ReadInt32(),
+                        CharacterId: null,
+                        PairCharacterId: null)
+                    : default;
+
+                bool hasFriendshipRecord = reader.ReadByte() != 0;
+                if (hasFriendshipRecord)
+                {
+                    reader.ReadInt64();
+                    reader.ReadInt64();
+                }
+                RemoteUserRelationshipRecord friendshipRecord = hasFriendshipRecord
+                    ? new RemoteUserRelationshipRecord(
+                        true,
+                        ItemId: reader.ReadInt32(),
+                        CharacterId: null,
+                        PairCharacterId: null)
+                    : default;
+
+                bool hasMarriageRecord = reader.ReadByte() != 0;
+                RemoteUserRelationshipRecord marriageRecord = hasMarriageRecord
+                    ? new RemoteUserRelationshipRecord(
+                        true,
+                        ItemId: 0,
+                        CharacterId: reader.ReadInt32(),
+                        PairCharacterId: reader.ReadInt32())
+                    : default;
+
+                if (hasMarriageRecord)
+                {
+                    marriageRecord = marriageRecord with
+                    {
+                        ItemId = reader.ReadInt32()
+                    };
+                }
+
+                int completedSetItemId = reader.ReadInt32();
+                packet = new RemoteUserAvatarModifiedPacket(
+                    characterId,
+                    avatarLook,
+                    speed,
+                    carryItemEffect,
+                    hasCoupleRecord ? coupleRecord : default,
+                    hasFriendshipRecord ? friendshipRecord : default,
+                    hasMarriageRecord ? marriageRecord : default,
+                    completedSetItemId);
+                return true;
+            }
+            catch (InvalidOperationException ex)
+            {
+                error = ex.Message;
+                return false;
+            }
         }
 
         public static bool TryParsePreparedSkill(ReadOnlySpan<byte> payload, out RemoteUserPreparedSkillPacket packet, out string error)
@@ -856,21 +1061,27 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             byte[] rawPayload = payload.Slice(temporaryStatOffset, encodedLength).ToArray();
-            int[] maskWords = Array.Empty<int>();
-            if (rawPayload.Length >= sizeof(int) * 4)
-            {
-                maskWords = new int[4];
-                for (int i = 0; i < maskWords.Length; i++)
-                {
-                    int offset = i * sizeof(int);
-                    maskWords[i] = rawPayload[offset]
-                        | (rawPayload[offset + 1] << 8)
-                        | (rawPayload[offset + 2] << 16)
-                        | (rawPayload[offset + 3] << 24);
-                }
-            }
+            int[] maskWords = rawPayload.Length >= sizeof(int) * 4
+                ? DecodeTemporaryStatMaskWords(rawPayload.AsSpan(0, sizeof(int) * 4))
+                : Array.Empty<int>();
 
             return new RemoteUserTemporaryStatSnapshot(encodedLength, maskWords, rawPayload);
+        }
+
+        private static int[] DecodeTemporaryStatMaskWords(ReadOnlySpan<byte> maskPayload)
+        {
+            int maskWordCount = maskPayload.Length / sizeof(int);
+            int[] maskWords = new int[maskWordCount];
+            for (int i = 0; i < maskWords.Length; i++)
+            {
+                int offset = i * sizeof(int);
+                maskWords[i] = maskPayload[offset]
+                    | (maskPayload[offset + 1] << 8)
+                    | (maskPayload[offset + 2] << 16)
+                    | (maskPayload[offset + 3] << 24);
+            }
+
+            return maskWords;
         }
 
         private static int FindOfficialAvatarLookOffset(ReadOnlySpan<byte> payload, int searchStartOffset, out string error)
@@ -1192,6 +1403,14 @@ namespace HaCreator.MapSimulator.Pools
                     | (_buffer[_offset + 3] << 24);
                 _offset += sizeof(int);
                 return value;
+            }
+
+            public long ReadInt64()
+            {
+                EnsureReadable(sizeof(long));
+                uint low = (uint)ReadInt32();
+                uint high = (uint)ReadInt32();
+                return ((long)high << 32) | low;
             }
 
             public byte[] ReadBytes(int length)

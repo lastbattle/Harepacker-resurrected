@@ -142,7 +142,9 @@ namespace HaCreator.MapSimulator.Pools
                    || levelData.ElementalResistance > 0
                    || levelData.ExperienceRate > 0
                    || levelData.DropRate > 0
-                   || levelData.MesoRate > 0;
+                   || levelData.MesoRate > 0
+                   || levelData.BossDamageRate > 0
+                   || levelData.IgnoreDefenseRate > 0;
         }
 
         public static SkillLevelData CreateProjectedSupportBuffLevelData(SkillLevelData levelData)
@@ -188,7 +190,9 @@ namespace HaCreator.MapSimulator.Pools
                 ElementalResistance = levelData.ElementalResistance,
                 ExperienceRate = levelData.ExperienceRate,
                 DropRate = levelData.DropRate,
-                MesoRate = levelData.MesoRate
+                MesoRate = levelData.MesoRate,
+                BossDamageRate = levelData.BossDamageRate,
+                IgnoreDefenseRate = levelData.IgnoreDefenseRate
             };
         }
 

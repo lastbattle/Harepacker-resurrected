@@ -1,5 +1,6 @@
 using HaCreator.MapSimulator.Interaction;
 using HaCreator.MapSimulator.Managers;
+using HaCreator.MapSimulator.Companions;
 using HaCreator.MapSimulator.UI;
 using HaCreator.MapSimulator.UI.Controls;
 using HaSharedLibrary.Render.DX;
@@ -1420,8 +1421,7 @@ namespace HaCreator.MapSimulator.Loaders
                     skillBB.OnSkillGuideRequested = grade =>
                     {
                         aranSkillGuide.SetPage(grade);
-                        aranSkillGuide.Show();
-                        manager.BringToFront(aranSkillGuide);
+                        manager.ShowWindow(aranSkillGuide);
                     };
                 }
             }
@@ -1563,6 +1563,8 @@ namespace HaCreator.MapSimulator.Loaders
                 new Point(x + (cascade * 3), y + (cascade * 3)));
             RegisterEngagementProposalWindow(manager, uiWindow1Image, uiWindow2Image, basicImage, soundUIImage, device,
                 new Point(x + (cascade * 4), y + (cascade * 3)));
+            RegisterWeddingInvitationWindow(manager, uiWindow1Image, uiWindow2Image, basicImage, soundUIImage, device,
+                new Point(x + (cascade * 5), y + (cascade * 3)));
             RegisterMapleTvWindow(manager, uiWindow1Image, mapleTvImage, basicImage, soundUIImage, device,
                 new Point(x + (cascade * 4), y + (cascade * 2)));
             RegisterItemMakerWindow(manager, uiWindow1Image, uiWindow2Image, basicImage, soundUIImage, device,
@@ -1587,6 +1589,12 @@ namespace HaCreator.MapSimulator.Loaders
             RegisterClassCompetitionWindow(manager, uiWindow2Image, basicImage, soundUIImage, device,
 
                 new Point(x + (cascade * 5), y + (cascade * 2)));
+            RegisterPacketOwnedNpcShopWindow(manager, uiWindow2Image, basicImage, soundUIImage, device,
+                new Point(x + (cascade * 2), y + (cascade * 6)));
+            RegisterPacketOwnedStoreBankWindow(manager, uiWindow2Image, basicImage, soundUIImage, device,
+                new Point(x + (cascade * 3), y + (cascade * 6)));
+            RegisterPacketOwnedBattleRecordWindow(manager, uiWindow2Image, basicImage, soundUIImage, device,
+                new Point(x + (cascade * 4), y + (cascade * 6)));
             RegisterKeyConfigWindow(manager, uiWindow2Image, basicImage, soundUIImage, device,
                 new Point(x + (cascade * 4), y + (cascade * 4)));
             RegisterOptionMenuWindow(manager, uiWindow2Image, basicImage, soundUIImage, device,
@@ -2693,6 +2701,26 @@ namespace HaCreator.MapSimulator.Loaders
 
             EngagementProposalWindow window = CreateEngagementProposalWindow(uiWindow1Image, uiWindow2Image, soundUIImage, device)
                 ?? CreateFallbackEngagementProposalWindow(device);
+            window.Position = position;
+            manager.RegisterCustomWindow(window);
+        }
+
+        private static void RegisterWeddingInvitationWindow(
+            UIWindowManager manager,
+            WzImage uiWindow1Image,
+            WzImage uiWindow2Image,
+            WzImage basicImage,
+            WzImage soundUIImage,
+            GraphicsDevice device,
+            Point position)
+        {
+            if (manager == null || manager.GetWindow(MapSimulatorWindowNames.WeddingInvitation) != null)
+            {
+                return;
+            }
+
+            WeddingInvitationWindow window = CreateWeddingInvitationWindow(uiWindow1Image, uiWindow2Image, soundUIImage, device)
+                ?? CreateFallbackWeddingInvitationWindow(device);
             window.Position = position;
             manager.RegisterCustomWindow(window);
         }
@@ -4861,6 +4889,7 @@ namespace HaCreator.MapSimulator.Loaders
                 new EngagementProposalWindowAssets(
                     LoadCanvasTexture(sourceProperty, "text", device)
                     ?? LoadCanvasTexture(sourceProperty, "title", device),
+                    ResolveEngagementProposalHeadingOffset(sourceProperty, "text"),
                     LoadEngagementProposalBand(sourceProperty["top"] as WzSubProperty, device, 35),
                     LoadEngagementProposalBand(sourceProperty["center"] as WzSubProperty, device, 5),
                     LoadEngagementProposalBand(sourceProperty["bottom"] as WzSubProperty, device, 35)),
@@ -4874,6 +4903,7 @@ namespace HaCreator.MapSimulator.Loaders
             EngagementProposalWindow window = new(
                 new EngagementProposalWindowAssets(
                     null,
+                    new Point(92, 2),
                     LoadEngagementProposalFallbackBand(device, 35),
                     LoadEngagementProposalFallbackBand(device, 5),
                     LoadEngagementProposalFallbackBand(device, 35)),
@@ -4890,12 +4920,87 @@ namespace HaCreator.MapSimulator.Loaders
             return window;
         }
 
+        private static WeddingInvitationWindow CreateWeddingInvitationWindow(
+            WzImage uiWindow1Image,
+            WzImage uiWindow2Image,
+            WzImage soundUIImage,
+            GraphicsDevice device)
+        {
+            WzSubProperty sourceProperty = uiWindow2Image?["Wedding/Invitation"] as WzSubProperty
+                ?? uiWindow1Image?["Wedding/Invitation"] as WzSubProperty;
+            if (sourceProperty == null)
+            {
+                return null;
+            }
+
+            Dictionary<WeddingInvitationStyle, Texture2D> backgrounds = new()
+            {
+                [WeddingInvitationStyle.Neat] = LoadCanvasTexture(sourceProperty, "neat", device),
+                [WeddingInvitationStyle.Sweet] = LoadCanvasTexture(sourceProperty, "sweet", device),
+                [WeddingInvitationStyle.Premium] = LoadCanvasTexture(sourceProperty, "premium", device)
+            };
+
+            WzBinaryProperty clickSound = soundUIImage?["BtMouseClick"] as WzBinaryProperty;
+            WzBinaryProperty overSound = soundUIImage?["BtMouseOver"] as WzBinaryProperty;
+            UIObject acceptButton = LoadButton(sourceProperty, "BtOK", clickSound, overSound, device)
+                ?? UiButtonFactory.CreateSolidButton(
+                    device,
+                    57,
+                    23,
+                    new Color(240, 220, 168),
+                    new Color(225, 196, 120),
+                    new Color(255, 236, 183),
+                    new Color(170, 170, 170));
+
+            WeddingInvitationWindow window = new(backgrounds, device);
+            window.InitializeControls(acceptButton);
+            return window;
+        }
+
+        private static WeddingInvitationWindow CreateFallbackWeddingInvitationWindow(GraphicsDevice device)
+        {
+            Dictionary<WeddingInvitationStyle, Texture2D> backgrounds = new()
+            {
+                [WeddingInvitationStyle.Neat] = CreateFilledTexture(device, 234, 250, new Color(245, 233, 220), new Color(214, 195, 168)),
+                [WeddingInvitationStyle.Sweet] = CreateFilledTexture(device, 234, 250, new Color(250, 235, 239), new Color(214, 176, 190)),
+                [WeddingInvitationStyle.Premium] = CreateFilledTexture(device, 234, 250, new Color(242, 238, 228), new Color(174, 164, 134))
+            };
+
+            WeddingInvitationWindow window = new(backgrounds, device);
+            window.InitializeControls(
+                UiButtonFactory.CreateSolidButton(
+                    device,
+                    57,
+                    23,
+                    new Color(240, 220, 168),
+                    new Color(225, 196, 120),
+                    new Color(255, 236, 183),
+                    new Color(170, 170, 170)));
+            return window;
+        }
+
         private static EngagementProposalBand LoadEngagementProposalBand(WzSubProperty sourceProperty, GraphicsDevice device, int fallbackHeight)
         {
             return new EngagementProposalBand(
                 LoadCanvasTexture(sourceProperty, "left", device) ?? CreateFilledTexture(device, 8, fallbackHeight, new Color(247, 233, 214), new Color(147, 112, 73)),
                 LoadCanvasTexture(sourceProperty, "center", device) ?? CreateFilledTexture(device, 1, fallbackHeight, new Color(247, 233, 214), new Color(247, 233, 214)),
                 LoadCanvasTexture(sourceProperty, "right", device) ?? CreateFilledTexture(device, 7, fallbackHeight, new Color(247, 233, 214), new Color(147, 112, 73)));
+        }
+
+        private static Point ResolveEngagementProposalHeadingOffset(WzSubProperty sourceProperty, string name)
+        {
+            if (sourceProperty?[name] is not WzCanvasProperty canvas)
+            {
+                return new Point(92, 2);
+            }
+
+            System.Drawing.PointF? origin = canvas.GetCanvasOriginPosition();
+            if (!origin.HasValue)
+            {
+                return new Point(92, 2);
+            }
+
+            return new Point(130 - (int)origin.Value.X, (int)origin.Value.Y);
         }
 
         private static EngagementProposalBand LoadEngagementProposalFallbackBand(GraphicsDevice device, int height)
@@ -5459,7 +5564,10 @@ namespace HaCreator.MapSimulator.Loaders
             KeyConfigWindow window = new KeyConfigWindow(
                 new DXObject(0, 0, frameTexture, 0),
                 MapSimulatorWindowNames.KeyConfig,
-                CreateFilledTexture(device, 1, 1, Color.White, Color.White))
+                CreateFilledTexture(device, 1, 1, Color.White, Color.White),
+                new Dictionary<int, Texture2D>(),
+                new Dictionary<int, Texture2D>(),
+                Array.Empty<Texture2D>())
             {
                 Position = position
             };
@@ -6494,6 +6602,7 @@ namespace HaCreator.MapSimulator.Loaders
                 return;
             }
 
+            CompanionEquipmentLoader companionLoader = device != null ? new CompanionEquipmentLoader(device) : null;
 
             int[] starterEquipIds =
             {
@@ -6519,15 +6628,21 @@ namespace HaCreator.MapSimulator.Loaders
                     continue;
                 }
 
+                CompanionEquipItem companionItem = companionLoader?.LoadCompanionEquipment(itemId);
+                HaCreator.MapSimulator.Character.CharacterPart tooltipPart = CompanionEquipmentTooltipPartFactory.CreateTooltipPart(companionItem);
 
                 inventory.AddItem(inventoryType, new InventorySlotData
                 {
                     ItemId = itemId,
-                    ItemTexture = LoadSeedInventoryItemIcon(itemId, device),
+                    ItemTexture = companionItem?.ItemTexture ?? LoadSeedInventoryItemIcon(itemId, device),
                     Quantity = 1,
                     MaxStackSize = 1,
                     PreferredInventoryType = inventoryType,
-                    GradeFrameIndex = 0
+                    GradeFrameIndex = 0,
+                    ItemName = companionItem?.Name,
+                    ItemTypeName = companionItem?.ItemCategory,
+                    Description = companionItem?.Description,
+                    TooltipPart = tooltipPart
                 });
             }
         }

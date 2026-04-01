@@ -79,6 +79,14 @@ namespace HaCreator.MapSimulator.Combat
             public MobTargetInfo TargetInfo { get; set; }
         }
 
+        private sealed class PendingAttackPacketOverrides
+        {
+            public int AttackId { get; set; }
+            public List<Point> MultiTargetForBall { get; set; }
+            public List<int> RandTimeForAreaAttack { get; set; }
+            public int ExpireTime { get; set; }
+        }
+
         private sealed class GroundTargetGroup
         {
             public List<Vector2> Targets { get; } = new List<Vector2>();
@@ -110,6 +118,7 @@ namespace HaCreator.MapSimulator.Combat
         private readonly List<ScheduledMobVisualEffect> _scheduledMobVisualEffects = new List<ScheduledMobVisualEffect>();
         private readonly List<ScheduledMobFallingEffect> _scheduledMobFallingEffects = new List<ScheduledMobFallingEffect>();
         private readonly Dictionary<long, int> _scheduledMobActions = new Dictionary<long, int>();
+        private readonly Dictionary<int, PendingAttackPacketOverrides> _pendingAttackPacketOverrides = new Dictionary<int, PendingAttackPacketOverrides>();
         private readonly List<long> _expiredScheduledActionKeys = new List<long>();
         private readonly List<PuppetInfo> _puppetIterationBuffer = new List<PuppetInfo>();
         private readonly List<MobItem> _mobIterationBuffer = new List<MobItem>();
@@ -157,6 +166,36 @@ namespace HaCreator.MapSimulator.Combat
             _playerHitboxAccessor = playerHitboxAccessor;
         }
 
+        public void SetNextAttackPacketOverrides(
+            int mobPoolId,
+            int attackId,
+            int currentTime,
+            IReadOnlyList<Point> multiTargetForBall = null,
+            IReadOnlyList<int> randTimeForAreaAttack = null,
+            int lifetimeMs = 5000)
+        {
+            if (mobPoolId <= 0)
+            {
+                return;
+            }
+
+            bool hasMultiTargetOverrides = multiTargetForBall != null && multiTargetForBall.Count > 0;
+            bool hasAreaDelayOverrides = randTimeForAreaAttack != null && randTimeForAreaAttack.Count > 0;
+            if (!hasMultiTargetOverrides && !hasAreaDelayOverrides)
+            {
+                _pendingAttackPacketOverrides.Remove(mobPoolId);
+                return;
+            }
+
+            _pendingAttackPacketOverrides[mobPoolId] = new PendingAttackPacketOverrides
+            {
+                AttackId = attackId,
+                MultiTargetForBall = hasMultiTargetOverrides ? new List<Point>(multiTargetForBall) : null,
+                RandTimeForAreaAttack = hasAreaDelayOverrides ? new List<int>(randTimeForAreaAttack) : null,
+                ExpireTime = lifetimeMs > 0 ? currentTime + lifetimeMs : 0
+            };
+        }
+
         public void Clear()
         {
             _activeMobProjectiles.Clear();
@@ -165,6 +204,7 @@ namespace HaCreator.MapSimulator.Combat
             _scheduledMobVisualEffects.Clear();
             _scheduledMobFallingEffects.Clear();
             _scheduledMobActions.Clear();
+            _pendingAttackPacketOverrides.Clear();
             _expiredScheduledActionKeys.Clear();
             _puppetIterationBuffer.Clear();
             _mobIterationBuffer.Clear();
@@ -191,6 +231,7 @@ namespace HaCreator.MapSimulator.Combat
             }
 
             _scheduledMobActions[actionKey] = currentTime + Math.Max(attack.Cooldown, 2500);
+            PendingAttackPacketOverrides packetOverrides = TryConsumeAttackPacketOverrides(mobItem, attack, currentTime);
             MobTargetInfo targetInfo = ResolveAttackTarget(mobItem, playerX, playerY);
             float? targetX = targetInfo?.TargetX;
             float? targetY = targetInfo?.TargetY;
@@ -204,7 +245,7 @@ namespace HaCreator.MapSimulator.Combat
 
             if (attack.IsAreaOfEffect)
             {
-                QueueGroundAttack(mobItem, attack, targetInfo, targetX, targetY, currentTime);
+                QueueGroundAttack(mobItem, attack, targetInfo, targetX, targetY, currentTime, packetOverrides);
                 return;
             }
 
@@ -214,7 +255,7 @@ namespace HaCreator.MapSimulator.Combat
                 return;
             }
 
-            QueueProjectileAttack(mobItem, attack, targetInfo, targetX, targetY, currentTime);
+            QueueProjectileAttack(mobItem, attack, targetInfo, targetX, targetY, currentTime, packetOverrides);
         }
 
         public void Update(int currentTime, float deltaSeconds, PlayerManager playerManager, AnimationEffects animationEffects, Action<int> onBossGroundImpact)
@@ -309,11 +350,20 @@ namespace HaCreator.MapSimulator.Combat
             MobTargetInfo targetInfo,
             float? targetX,
             float? targetY,
-            int currentTime)
+            int currentTime,
+            PendingAttackPacketOverrides packetOverrides)
         {
             Vector2 spawn = ResolveProjectileSpawnPoint(mobItem, attack);
             List<ProjectileLaneAssignment> projectileLanes =
-                BuildProjectileLaneAssignments(mobItem, attack, targetInfo, targetX, targetY, spawn, currentTime);
+                BuildProjectileLaneAssignments(
+                    mobItem,
+                    attack,
+                    targetInfo,
+                    targetX,
+                    targetY,
+                    spawn,
+                    currentTime,
+                    packetOverrides?.MultiTargetForBall);
             int laneCount = Math.Max(1, projectileLanes.Count);
             for (int i = 0; i < projectileLanes.Count; i++)
             {
@@ -381,7 +431,8 @@ namespace HaCreator.MapSimulator.Combat
             MobTargetInfo targetInfo,
             float? targetX,
             float? targetY,
-            int currentTime)
+            int currentTime,
+            PendingAttackPacketOverrides packetOverrides = null)
         {
             List<GroundTargetGroup> targetGroups = BuildGroundTargetGroups(mobItem, attack, targetX, targetY);
             if (targetGroups.Count == 0)
@@ -391,10 +442,10 @@ namespace HaCreator.MapSimulator.Combat
 
             List<IDXObject> warningFrames = mobItem.GetAttackWarningFrames(attack.AnimationName);
             int triggerDelay = Math.Max(attack.Delay, attack.EffectAfter);
-            List<int> randomDelays = BuildAreaAttackRandomDelaySequence(
-                targetGroups.ConvertAll(group => group?.Targets.Count ?? 0),
-                attack.RandomDelayWindow,
-                _random);
+            IReadOnlyList<int> groupTargetCounts = targetGroups.ConvertAll(group => group?.Targets.Count ?? 0);
+            List<int> randomDelays = packetOverrides?.RandTimeForAreaAttack != null && packetOverrides.RandTimeForAreaAttack.Count > 0
+                ? BuildAreaAttackDelaySequenceFromSlotDelays(groupTargetCounts, packetOverrides.RandTimeForAreaAttack)
+                : BuildAreaAttackRandomDelaySequence(groupTargetCounts, attack.RandomDelayWindow, _random);
             int delayIndex = 0;
 
             foreach (GroundTargetGroup group in targetGroups)
@@ -1688,7 +1739,8 @@ namespace HaCreator.MapSimulator.Combat
             float? targetX,
             float? targetY,
             Vector2 spawn,
-            int currentTime)
+            int currentTime,
+            IReadOnlyList<Point> packetMultiTargetForBall)
         {
             int laneCount = ResolveProjectileLaneCount(attack);
             var assignments = new List<ProjectileLaneAssignment>(laneCount);
@@ -1713,6 +1765,32 @@ namespace HaCreator.MapSimulator.Combat
                 laneCount);
 
             int requestedAdditionalLanes = Math.Max(0, laneCount - assignments.Count);
+            List<Vector2> packetLanePoints = ExtractPacketProjectileLanePoints(packetMultiTargetForBall, requestedAdditionalLanes);
+            for (int i = 0; i < packetLanePoints.Count && assignments.Count < laneCount; i++)
+            {
+                Vector2 packetLanePoint = packetLanePoints[i];
+                ProjectileLaneAssignment assignment = new ProjectileLaneAssignment
+                {
+                    LanePoint = packetLanePoint
+                };
+
+                if (TryResolveProjectileLaneTarget(
+                        mobItem,
+                        attack,
+                        packetLanePoint,
+                        targetInfo,
+                        currentTime,
+                        out MobTargetInfo laneTargetInfo,
+                        out Vector2 resolvedLaneTarget))
+                {
+                    assignment.TargetInfo = laneTargetInfo?.Clone();
+                    assignment.LanePoint = resolvedLaneTarget;
+                }
+
+                assignments.Add(assignment);
+            }
+
+            requestedAdditionalLanes = Math.Max(0, laneCount - assignments.Count);
             var laneCandidates = new List<ProjectileLaneCandidate>(lanePositions.Count);
             for (int i = 0; i < lanePositions.Count; i++)
             {
@@ -2184,6 +2262,83 @@ namespace HaCreator.MapSimulator.Combat
             }
 
             return randomDelays;
+        }
+
+        internal static List<int> BuildAreaAttackDelaySequenceFromSlotDelays(
+            IReadOnlyList<int> groupTargetCounts,
+            IReadOnlyList<int> slotDelays)
+        {
+            var expandedDelays = new List<int>();
+            if (groupTargetCounts == null || groupTargetCounts.Count == 0)
+            {
+                return expandedDelays;
+            }
+
+            for (int i = 0; i < groupTargetCounts.Count; i++)
+            {
+                int targetCount = Math.Max(0, groupTargetCounts[i]);
+                if (targetCount == 0)
+                {
+                    continue;
+                }
+
+                int slotDelay = slotDelays != null && i < slotDelays.Count
+                    ? Math.Max(0, slotDelays[i])
+                    : 0;
+                for (int targetIndex = 0; targetIndex < targetCount; targetIndex++)
+                {
+                    expandedDelays.Add(slotDelay);
+                }
+            }
+
+            return expandedDelays;
+        }
+
+        internal static List<Vector2> ExtractPacketProjectileLanePoints(
+            IReadOnlyList<Point> packetMultiTargetForBall,
+            int requestedCount)
+        {
+            var packetLanePoints = new List<Vector2>();
+            if (packetMultiTargetForBall == null || requestedCount <= 0)
+            {
+                return packetLanePoints;
+            }
+
+            int count = Math.Min(requestedCount, packetMultiTargetForBall.Count);
+            for (int i = 0; i < count; i++)
+            {
+                Point point = packetMultiTargetForBall[i];
+                packetLanePoints.Add(new Vector2(point.X, point.Y));
+            }
+
+            return packetLanePoints;
+        }
+
+        private PendingAttackPacketOverrides TryConsumeAttackPacketOverrides(MobItem mobItem, MobAttackEntry attack, int currentTime)
+        {
+            if (mobItem == null || attack == null || mobItem.PoolId <= 0)
+            {
+                return null;
+            }
+
+            if (!_pendingAttackPacketOverrides.TryGetValue(mobItem.PoolId, out PendingAttackPacketOverrides packetOverrides))
+            {
+                return null;
+            }
+
+            if (packetOverrides.ExpireTime > 0 && currentTime >= packetOverrides.ExpireTime)
+            {
+                _pendingAttackPacketOverrides.Remove(mobItem.PoolId);
+                return null;
+            }
+
+            if (packetOverrides.AttackId != attack.AttackId)
+            {
+                return null;
+            }
+
+            _pendingAttackPacketOverrides.Remove(mobItem.PoolId);
+            return packetOverrides;
         }
 
         private static float ScoreLaneTarget(Vector2 lanePosition, Vector2 candidatePoint)
@@ -3059,7 +3214,7 @@ namespace HaCreator.MapSimulator.Combat
 
         private void CleanupScheduledMobActions(int currentTime)
         {
-            if (_scheduledMobActions.Count == 0)
+            if (_scheduledMobActions.Count == 0 && _pendingAttackPacketOverrides.Count == 0)
             {
                 return;
             }
@@ -3076,6 +3231,25 @@ namespace HaCreator.MapSimulator.Combat
             for (int i = 0; i < _expiredScheduledActionKeys.Count; i++)
             {
                 _scheduledMobActions.Remove(_expiredScheduledActionKeys[i]);
+            }
+
+            if (_pendingAttackPacketOverrides.Count == 0)
+            {
+                return;
+            }
+
+            var expiredOverrideMobIds = new List<int>();
+            foreach (var pair in _pendingAttackPacketOverrides)
+            {
+                if (pair.Value?.ExpireTime > 0 && currentTime >= pair.Value.ExpireTime)
+                {
+                    expiredOverrideMobIds.Add(pair.Key);
+                }
+            }
+
+            for (int i = 0; i < expiredOverrideMobIds.Count; i++)
+            {
+                _pendingAttackPacketOverrides.Remove(expiredOverrideMobIds[i]);
             }
         }
 

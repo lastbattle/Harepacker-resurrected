@@ -75,8 +75,8 @@ namespace HaCreator.MapSimulator
             }
 
             string employeeUsage = kind == SocialRoomKind.EntrustedShop
-                ? "Usage: /socialroom entrustedshop [packet] employee <status|template <itemId|clear>|offset <x> <y>|world <x> <y>|facing <left|right|random>|packetraw <hex bytes>|reset>"
-                : "Usage: /socialroom personalshop [packet] employee <status|template <itemId|clear>|offset <x> <y>|world <x> <y>|facing <left|right|random>|packetraw <hex bytes>|reset>";
+                ? "Usage: /socialroom entrustedshop [packet] employee <status|template <itemId|clear>|offset <x> <y>|world <x> <y>|facing <left|right|random>|packetraw <hex bytes>|session [status|discover <remotePort> [processName|pid] [localPort]|start <listenPort> <serverHost> <serverPort>|startauto <listenPort> <remotePort> [processName|pid] [localPort]|stop]|reset>"
+                : "Usage: /socialroom personalshop [packet] employee <status|template <itemId|clear>|offset <x> <y>|world <x> <y>|facing <left|right|random>|packetraw <hex bytes>|session [status|discover <remotePort> [processName|pid] [localPort]|start <listenPort> <serverHost> <serverPort>|startauto <listenPort> <remotePort> [processName|pid] [localPort]|stop]|reset>";
             string employeeAction = args.Length > actionIndex + 1 ? args[actionIndex + 1] : "status";
 
             switch (employeeAction.ToLowerInvariant())
@@ -172,12 +172,114 @@ namespace HaCreator.MapSimulator
                         ? ChatCommandHandler.CommandResult.Ok(packetMessage)
                         : ChatCommandHandler.CommandResult.Error(packetMessage);
 
+                case "session":
+                    return HandleSocialRoomEmployeeSessionCommand(runtime, kind, args, actionIndex, employeeUsage);
+
                 case "reset":
                     runtime.ResetEmployeePlacement();
                     return ChatCommandHandler.CommandResult.Ok(runtime.StatusMessage);
 
                 default:
                     return ChatCommandHandler.CommandResult.Error(employeeUsage);
+            }
+        }
+
+        private ChatCommandHandler.CommandResult HandleSocialRoomEmployeeSessionCommand(
+            SocialRoomRuntime runtime,
+            SocialRoomKind kind,
+            string[] args,
+            int actionIndex,
+            string employeeUsage)
+        {
+            if (runtime == null)
+            {
+                return ChatCommandHandler.CommandResult.Error("Social-room runtime is unavailable.");
+            }
+
+            string sessionUsage = kind == SocialRoomKind.EntrustedShop
+                ? "Usage: /socialroom entrustedshop [packet] employee session [status|discover <remotePort> [processName|pid] [localPort]|start <listenPort> <serverHost> <serverPort>|startauto <listenPort> <remotePort> [processName|pid] [localPort]|stop]"
+                : "Usage: /socialroom personalshop [packet] employee session [status|discover <remotePort> [processName|pid] [localPort]|start <listenPort> <serverHost> <serverPort>|startauto <listenPort> <remotePort> [processName|pid] [localPort]|stop]";
+            string sessionAction = args.Length > actionIndex + 2 ? args[actionIndex + 2] : "status";
+
+            switch (sessionAction.ToLowerInvariant())
+            {
+                case "status":
+                    return ChatCommandHandler.CommandResult.Info(
+                        $"{runtime.DescribeStatus()}{Environment.NewLine}{_socialRoomEmployeeOfficialSessionBridge.LastStatus}");
+
+                case "discover":
+                    if (args.Length <= actionIndex + 3
+                        || !int.TryParse(args[actionIndex + 3], out int discoverRemotePort)
+                        || discoverRemotePort <= 0)
+                    {
+                        return ChatCommandHandler.CommandResult.Error(sessionUsage);
+                    }
+
+                    string processSelector = args.Length > actionIndex + 4 ? args[actionIndex + 4] : null;
+                    int? localPortFilter = null;
+                    if (args.Length > actionIndex + 5)
+                    {
+                        if (!int.TryParse(args[actionIndex + 5], out int parsedLocalPort) || parsedLocalPort <= 0)
+                        {
+                            return ChatCommandHandler.CommandResult.Error(sessionUsage);
+                        }
+
+                        localPortFilter = parsedLocalPort;
+                    }
+
+                    return ChatCommandHandler.CommandResult.Info(
+                        _socialRoomEmployeeOfficialSessionBridge.DescribeDiscoveredSessions(discoverRemotePort, processSelector, localPortFilter));
+
+                case "start":
+                    if (args.Length <= actionIndex + 5
+                        || !int.TryParse(args[actionIndex + 3], out int listenPort)
+                        || listenPort <= 0
+                        || !int.TryParse(args[actionIndex + 5], out int remotePort)
+                        || remotePort <= 0)
+                    {
+                        return ChatCommandHandler.CommandResult.Error(sessionUsage);
+                    }
+
+                    _socialRoomEmployeeOfficialSessionBridge.Start(listenPort, args[actionIndex + 4], remotePort);
+                    return ChatCommandHandler.CommandResult.Ok(_socialRoomEmployeeOfficialSessionBridge.LastStatus);
+
+                case "startauto":
+                    if (args.Length <= actionIndex + 4
+                        || !int.TryParse(args[actionIndex + 3], out int autoListenPort)
+                        || autoListenPort <= 0
+                        || !int.TryParse(args[actionIndex + 4], out int autoRemotePort)
+                        || autoRemotePort <= 0)
+                    {
+                        return ChatCommandHandler.CommandResult.Error(sessionUsage);
+                    }
+
+                    string autoProcessSelector = args.Length > actionIndex + 5 ? args[actionIndex + 5] : null;
+                    int? autoLocalPortFilter = null;
+                    if (args.Length > actionIndex + 6)
+                    {
+                        if (!int.TryParse(args[actionIndex + 6], out int parsedAutoLocalPort) || parsedAutoLocalPort <= 0)
+                        {
+                            return ChatCommandHandler.CommandResult.Error(sessionUsage);
+                        }
+
+                        autoLocalPortFilter = parsedAutoLocalPort;
+                    }
+
+                    return _socialRoomEmployeeOfficialSessionBridge.TryStartFromDiscovery(
+                        autoListenPort,
+                        autoRemotePort,
+                        autoProcessSelector,
+                        autoLocalPortFilter,
+                        out string startStatus)
+                        ? ChatCommandHandler.CommandResult.Ok(startStatus)
+                        : ChatCommandHandler.CommandResult.Error(startStatus);
+
+                case "stop":
+                    _socialRoomEmployeeOfficialSessionBridge.Stop();
+                    return ChatCommandHandler.CommandResult.Ok(_socialRoomEmployeeOfficialSessionBridge.LastStatus);
+
+                default:
+                    return ChatCommandHandler.CommandResult.Error(string.IsNullOrWhiteSpace(sessionUsage) ? employeeUsage : sessionUsage);
             }
         }
 
@@ -1981,25 +2083,20 @@ namespace HaCreator.MapSimulator
                                 return ChatCommandHandler.CommandResult.Error("Usage: /engage invitation [neat|sweet|premium]");
                             }
 
-                            if (!_engagementProposalController.TryBuildWeddingInvitationHandoff(
-                                    _playerManager?.Player?.Build,
-                                    invitationStyle,
-                                    out WeddingInvitationHandoff invitationHandoff,
-                                    out string invitationHandoffMessage))
+                            if (!_engagementProposalController.TryOpenWeddingInvitationFromAcceptedProposal(
+                                _weddingInvitationController,
+                                uiWindowManager,
+                                _playerManager?.Player?.Build,
+                                _fontChat,
+                                ShowUtilityFeedbackMessage,
+                                invitationStyle,
+                                () => ShowDirectionModeOwnedWindow(MapSimulatorWindowNames.WeddingInvitation),
+                                out string invitationMessage))
                             {
-                                return ChatCommandHandler.CommandResult.Error(invitationHandoffMessage);
+                                return ChatCommandHandler.CommandResult.Error(invitationMessage);
                             }
 
-                            return ChatCommandHandler.CommandResult.Ok(
-                                _weddingInvitationController.OpenInvitation(
-                                    invitationHandoff.GroomName,
-                                    invitationHandoff.BrideName,
-                                    invitationHandoff.Style,
-                                    uiWindowManager,
-                                    _playerManager?.Player?.Build,
-                                    _fontChat,
-                                    ShowUtilityFeedbackMessage,
-                                    () => ShowDirectionModeOwnedWindow(MapSimulatorWindowNames.WeddingInvitation)));
+                            return ChatCommandHandler.CommandResult.Ok(invitationMessage);
 
                         case "clear":
                             return ChatCommandHandler.CommandResult.Ok(_engagementProposalController.Clear(uiWindowManager));
@@ -3117,7 +3214,7 @@ namespace HaCreator.MapSimulator
                             if (args.Length == 1 || string.Equals(args[1], "status", StringComparison.OrdinalIgnoreCase))
                             {
                                 return ChatCommandHandler.CommandResult.Info(
-                                    $"{field.DescribeStatus()}{Environment.NewLine}{_coconutOfficialSessionBridge.LastStatus}");
+                                    $"{field.DescribeStatus()}{Environment.NewLine}{_coconutOfficialSessionBridge.DescribeStatus()}");
                             }
                             if (string.Equals(args[1], "discover", StringComparison.OrdinalIgnoreCase))
                             {
@@ -3155,8 +3252,9 @@ namespace HaCreator.MapSimulator
                                 }
 
 
-                                _coconutOfficialSessionBridge.Start(listenPort, args[3], remotePort);
-                                return ChatCommandHandler.CommandResult.Ok(_coconutOfficialSessionBridge.LastStatus);
+                                return _coconutOfficialSessionBridge.TryStart(listenPort, args[3], remotePort, out string startStatus)
+                                    ? ChatCommandHandler.CommandResult.Ok(startStatus)
+                                    : ChatCommandHandler.CommandResult.Error(startStatus);
                             }
                             if (string.Equals(args[1], "startauto", StringComparison.OrdinalIgnoreCase))
                             {
@@ -3625,13 +3723,14 @@ namespace HaCreator.MapSimulator
 
                 "Inspect or drive the Monster Carnival HUD state",
 
-                "/mcarnival [status|tab <mob|skill|guardian>|enter <team> <personalCP> <personalTotal> <myCP> <myTotal> <enemyCP> <enemyTotal>|cp <personalCP> <personalTotal> <team0CP> <team0Total> <team1CP> <team1Total>|cpdelta <personalDelta> <personalTotalDelta> <team0Delta> <team0TotalDelta> <team1Delta> <team1TotalDelta>|request <index> [message]|requestok <mob|skill|guardian> <index> [message]|requestfail <reason>|result <code>|death <team> <name> <remainingRevives>|spells <mobIndex> <count>|raw <type> <hex>|inbox [status|start [port]|stop]]",
+                "/mcarnival [status|tab <mob|skill|guardian>|enter <team> <personalCP> <personalTotal> <myCP> <myTotal> <enemyCP> <enemyTotal>|cp <personalCP> <personalTotal> <team0CP> <team0Total> <team1CP> <team1Total>|cpdelta <personalDelta> <personalTotalDelta> <team0Delta> <team0TotalDelta> <team1Delta> <team1TotalDelta>|request <index> [message]|requestok <mob|skill|guardian> <index> [message]|requestfail <reason>|result <code>|death <team> <name> <remainingRevives>|spells <mobIndex> <count>|raw <type> <hex>|inbox [status|start [port]|stop]|session [status|discover <remotePort> [processName|pid] [localPort]|start <listenPort> <serverHost> <serverPort>|startauto <listenPort> <remotePort> [processName|pid] [localPort]|stop]]",
                 args =>
                 {
                     MonsterCarnivalField field = _specialFieldRuntime.Minigames.MonsterCarnival;
                     if (args.Length == 0 || string.Equals(args[0], "status", StringComparison.OrdinalIgnoreCase))
                     {
-                        return ChatCommandHandler.CommandResult.Info(field.DescribeStatus());
+                        return ChatCommandHandler.CommandResult.Info(
+                            $"{field.DescribeStatus()}{Environment.NewLine}{_monsterCarnivalPacketInbox.LastStatus}{Environment.NewLine}{_monsterCarnivalOfficialSessionBridge.DescribeStatus()}");
                     }
 
 
@@ -3881,7 +3980,7 @@ namespace HaCreator.MapSimulator
                             if (args.Length == 1 || string.Equals(args[1], "status", StringComparison.OrdinalIgnoreCase))
                             {
                                 return ChatCommandHandler.CommandResult.Info(
-                                    $"{field.DescribeStatus()}{Environment.NewLine}{_monsterCarnivalPacketInbox.LastStatus}");
+                                    $"{field.DescribeStatus()}{Environment.NewLine}{_monsterCarnivalPacketInbox.LastStatus}{Environment.NewLine}{_monsterCarnivalOfficialSessionBridge.DescribeStatus()}");
                             }
 
 
@@ -3911,11 +4010,95 @@ namespace HaCreator.MapSimulator
 
                             return ChatCommandHandler.CommandResult.Error("Usage: /mcarnival inbox [status|start [port]|stop]");
 
+                        case "session":
+                            if (args.Length == 1 || string.Equals(args[1], "status", StringComparison.OrdinalIgnoreCase))
+                            {
+                                return ChatCommandHandler.CommandResult.Info(
+                                    $"{field.DescribeStatus()}{Environment.NewLine}{_monsterCarnivalOfficialSessionBridge.DescribeStatus()}");
+                            }
+
+                            if (string.Equals(args[1], "discover", StringComparison.OrdinalIgnoreCase))
+                            {
+                                if (args.Length < 3
+                                    || !int.TryParse(args[2], out int discoverRemotePort)
+                                    || discoverRemotePort <= 0)
+                                {
+                                    return ChatCommandHandler.CommandResult.Error("Usage: /mcarnival session discover <remotePort> [processName|pid] [localPort]");
+                                }
+
+                                string processSelector = args.Length >= 4 ? args[3] : null;
+                                int? localPortFilter = null;
+                                if (args.Length >= 5)
+                                {
+                                    if (!int.TryParse(args[4], out int parsedLocalPort) || parsedLocalPort <= 0)
+                                    {
+                                        return ChatCommandHandler.CommandResult.Error("Usage: /mcarnival session discover <remotePort> [processName|pid] [localPort]");
+                                    }
+
+                                    localPortFilter = parsedLocalPort;
+                                }
+
+                                return ChatCommandHandler.CommandResult.Info(
+                                    _monsterCarnivalOfficialSessionBridge.DescribeDiscoveredSessions(discoverRemotePort, processSelector, localPortFilter));
+                            }
+
+                            if (string.Equals(args[1], "start", StringComparison.OrdinalIgnoreCase))
+                            {
+                                if (args.Length < 5
+                                    || !int.TryParse(args[2], out int listenPort)
+                                    || listenPort <= 0
+                                    || !int.TryParse(args[4], out int remotePort)
+                                    || remotePort <= 0)
+                                {
+                                    return ChatCommandHandler.CommandResult.Error("Usage: /mcarnival session start <listenPort> <serverHost> <serverPort>");
+                                }
+
+                                return _monsterCarnivalOfficialSessionBridge.TryStart(listenPort, args[3], remotePort, out string startMessage)
+                                    ? ChatCommandHandler.CommandResult.Ok(startMessage)
+                                    : ChatCommandHandler.CommandResult.Error(startMessage);
+                            }
+
+                            if (string.Equals(args[1], "startauto", StringComparison.OrdinalIgnoreCase))
+                            {
+                                if (args.Length < 4
+                                    || !int.TryParse(args[2], out int autoListenPort)
+                                    || autoListenPort <= 0
+                                    || !int.TryParse(args[3], out int autoRemotePort)
+                                    || autoRemotePort <= 0)
+                                {
+                                    return ChatCommandHandler.CommandResult.Error("Usage: /mcarnival session startauto <listenPort> <remotePort> [processName|pid] [localPort]");
+                                }
+
+                                string processSelector = args.Length >= 5 ? args[4] : null;
+                                int? localPortFilter = null;
+                                if (args.Length >= 6)
+                                {
+                                    if (!int.TryParse(args[5], out int parsedLocalPort) || parsedLocalPort <= 0)
+                                    {
+                                        return ChatCommandHandler.CommandResult.Error("Usage: /mcarnival session startauto <listenPort> <remotePort> [processName|pid] [localPort]");
+                                    }
+
+                                    localPortFilter = parsedLocalPort;
+                                }
+
+                                return _monsterCarnivalOfficialSessionBridge.TryStartFromDiscovery(autoListenPort, autoRemotePort, processSelector, localPortFilter, out string startStatus)
+                                    ? ChatCommandHandler.CommandResult.Ok(startStatus)
+                                    : ChatCommandHandler.CommandResult.Error(startStatus);
+                            }
+
+                            if (string.Equals(args[1], "stop", StringComparison.OrdinalIgnoreCase))
+                            {
+                                _monsterCarnivalOfficialSessionBridge.Stop();
+                                return ChatCommandHandler.CommandResult.Ok(_monsterCarnivalOfficialSessionBridge.LastStatus);
+                            }
+
+                            return ChatCommandHandler.CommandResult.Error("Usage: /mcarnival session [status|discover <remotePort> [processName|pid] [localPort]|start <listenPort> <serverHost> <serverPort>|startauto <listenPort> <remotePort> [processName|pid] [localPort]|stop]");
+
 
 
                         default:
 
-                            return ChatCommandHandler.CommandResult.Error("Usage: /mcarnival [status|tab|enter|cp|cpdelta|request|requestok|requestfail|result|death|spells|raw|inbox] [...]");
+                            return ChatCommandHandler.CommandResult.Error("Usage: /mcarnival [status|tab|enter|cp|cpdelta|request|requestok|requestfail|result|death|spells|raw|inbox|session] [...]");
                     }
 
                 });
@@ -5413,7 +5596,7 @@ namespace HaCreator.MapSimulator
                                 case "employee":
                                     return HandleSocialRoomEmployeeCommand(runtime, kind, args, actionIndex);
                                 default:
-                                    return ChatCommandHandler.CommandResult.Error("Usage: /socialroom personalshop [packet] <open|status|packetowner|visit [name]|blacklist [name]|list <itemId> [qty] [price]|autolist|buy [index] [buyer]|arrange|claim|close|employee <status|template <itemId|clear>|offset <x> <y>|world <x> <y>|facing <left|right|random>|packetraw <hex>|reset>|packetraw <hex>|packetrecv <opcode> <hex>>");
+                                    return ChatCommandHandler.CommandResult.Error("Usage: /socialroom personalshop [packet] <open|status|packetowner|visit [name]|blacklist [name]|list <itemId> [qty] [price]|autolist|buy [index] [buyer]|arrange|claim|close|employee <status|template <itemId|clear>|offset <x> <y>|world <x> <y>|facing <left|right|random>|packetraw <hex>|session [status|discover <remotePort> [processName|pid] [localPort]|start <listenPort> <serverHost> <serverPort>|startauto <listenPort> <remotePort> [processName|pid] [localPort]|stop]|reset>|packetraw <hex>|packetrecv <opcode> <hex>>");
                             }
 
 
@@ -5476,7 +5659,7 @@ namespace HaCreator.MapSimulator
                                 case "employee":
                                     return HandleSocialRoomEmployeeCommand(runtime, kind, args, actionIndex);
                                 default:
-                                    return ChatCommandHandler.CommandResult.Error("Usage: /socialroom entrustedshop [packet] <open|status|packetowner|mode|list <itemId> [qty] [price]|autolist|arrange|claim|permit [minutes|expire]|employee <status|template <itemId|clear>|offset <x> <y>|world <x> <y>|facing <left|right|random>|packetraw <hex>|reset>|packetraw <hex>|packetrecv <opcode> <hex>>");
+                                    return ChatCommandHandler.CommandResult.Error("Usage: /socialroom entrustedshop [packet] <open|status|packetowner|mode|list <itemId> [qty] [price]|autolist|arrange|claim|permit [minutes|expire]|employee <status|template <itemId|clear>|offset <x> <y>|world <x> <y>|facing <left|right|random>|packetraw <hex>|session [status|discover <remotePort> [processName|pid] [localPort]|start <listenPort> <serverHost> <serverPort>|startauto <listenPort> <remotePort> [processName|pid] [localPort]|stop]|reset>|packetraw <hex>|packetrecv <opcode> <hex>>");
                             }
 
 
@@ -6486,7 +6669,7 @@ namespace HaCreator.MapSimulator
             _chat.CommandHandler.RegisterCommand(
                 "localutility",
                 "Inspect or drive packet-authored local utility and event dispatch handlers",
-                    "/localutility [status|inbox [status|start [port]|stop|packet <sitresult|openui|openuiwithoption|commodity|notice|chat|buffzone|eventsound|minigamesound|skillguide|antimacro|apspevent|followfail|directionmode|standalone|damagemeter|hpdec|skillcooltime|231|243|246|247|250|251|252|262|263|264|265|266|267|270|273|274|275|276|1011|1013|1014|classcompetition|questguide|deliveryquest> [payloadhex=..|payloadb64=..]|packetraw <type> [hex]]|directionmode <on|off|1|0> [delayMs]|standalone <on|off|1|0>|openui <uiType> [defaultTab]|openuiwithoption <uiType> <option>|commodity <serialNumber>|notice <text>|chat [channel] <text>|buffzone [text]|eventsound <image/path or path>|minigamesound <image/path or path>|questguide <questId> <mobId:mapId[,mapId...]>...|questguide clear|delivery <questId> <itemId> [blockedQuestIdsCsv]|classcompetition|skillguide|antimacro [status|launch <normal|admin> [first|retry]|notice <noticeType> [antiMacroType]|result <mode> [antiMacroType] [userName]|clear]|apsp [status|seed [characterId]|receive <token>|send <token>|context <receiveToken> [sendToken]|<contextToken> <11|12|13>|text]|followfail [text]|packet <sitresult|openui|openuiwithoption|commodity|fade|balloon|damagemeter|hpdec|notice|chat|buffzone|eventsound|minigamesound|questguide|delivery|classcompetition|skillguide|antimacro|apspevent|directionmode|standalone|followfail|skillcooltime|231|243|246|247|250|251|252|262|263|264|265|266|267|270|273|274|275|276|1011|1013|1014> [payloadhex=..|payloadb64=..]|packetraw <type> <hex>]",
+                    "/localutility [status|inbox [status|start [port]|stop|packet <sitresult|questresult|openui|openuiwithoption|commodity|notice|chat|buffzone|eventsound|minigamesound|skillguide|antimacro|apspevent|followfail|directionmode|standalone|damagemeter|hpdec|skillcooltime|231|242|243|246|247|250|251|252|262|263|264|265|266|267|270|273|274|275|276|1011|1013|1014|classcompetition|questguide|deliveryquest> [payloadhex=..|payloadb64=..]|packetraw <type> [hex]]|directionmode <on|off|1|0> [delayMs]|standalone <on|off|1|0>|openui <uiType> [defaultTab]|openuiwithoption <uiType> <option>|commodity <serialNumber>|notice <text>|chat [channel] <text>|buffzone [text]|eventsound <image/path or path>|minigamesound <image/path or path>|questguide <questId> <mobId:mapId[,mapId...]>...|questguide clear|delivery <questId> <itemId> [blockedQuestIdsCsv]|classcompetition|skillguide|antimacro [status|launch <normal|admin> [first|retry]|notice <noticeType> [antiMacroType]|result <mode> [antiMacroType] [userName]|clear]|apsp [status|seed [characterId]|receive <token>|send <token>|context <receiveToken> [sendToken]|<contextToken> <11|12|13>|text]|followfail [text]|packet <sitresult|questresult|openui|openuiwithoption|commodity|fade|balloon|damagemeter|hpdec|notice|chat|buffzone|eventsound|minigamesound|questguide|delivery|classcompetition|skillguide|antimacro|apspevent|directionmode|standalone|followfail|skillcooltime|231|242|243|246|247|250|251|252|262|263|264|265|266|267|270|273|274|275|276|1011|1013|1014> [payloadhex=..|payloadb64=..]|packetraw <type> <hex>]",
                 HandlePacketOwnedUtilityCommand);
 
             _chat.CommandHandler.RegisterCommand(
@@ -6499,7 +6682,7 @@ namespace HaCreator.MapSimulator
             _chat.CommandHandler.RegisterCommand(
                 "localutilitypacket",
                 "Inspect or inject packet-owned local utility and event dispatch payloads through the loopback inbox",
-                    "/localutilitypacket [status|start [port]|stop|packet <sitresult|openui|openuiwithoption|commodity|notice|chat|buffzone|eventsound|minigamesound|skillguide|antimacro|apspevent|followfail|directionmode|standalone|damagemeter|hpdec|skillcooltime|231|243|246|247|250|251|252|262|263|264|265|266|267|270|273|274|275|276|1011|1013|1014|classcompetition|questguide|deliveryquest> [payloadhex=..|payloadb64=..]|packetraw <type> [hex]]",
+                    "/localutilitypacket [status|start [port]|stop|packet <sitresult|questresult|openui|openuiwithoption|commodity|notice|chat|buffzone|eventsound|minigamesound|skillguide|antimacro|apspevent|followfail|directionmode|standalone|damagemeter|hpdec|skillcooltime|231|242|243|246|247|250|251|252|262|263|264|265|266|267|270|273|274|275|276|1011|1013|1014|classcompetition|questguide|deliveryquest> [payloadhex=..|payloadb64=..]|packetraw <type> [hex]]",
                 HandlePacketOwnedUtilityCommand);
 
 

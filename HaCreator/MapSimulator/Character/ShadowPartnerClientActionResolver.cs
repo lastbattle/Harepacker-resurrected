@@ -19,6 +19,10 @@ namespace HaCreator.MapSimulator.Character
                 ["ghostprone"] = new[] { "prone", "proneStab", "stand1", "stand2" },
                 ["ghostpronestab"] = new[] { "proneStab", "prone", "stand1", "stand2" },
                 ["ghost"] = new[] { "stand1", "stand2", "dead" },
+                // action_mapping_for_ghost@0x406500 remaps the ghost heal raw action
+                // onto raw action 48 before LoadShadowPartnerAction falls back to the
+                // plain action-name lookup, so keep `heal` ahead of idle fallback here too.
+                ["ghostheal"] = new[] { "heal", "stand1", "stand2" },
                 // `special/*` does not publish ghost or fly2/swim-specific branches for the
                 // confirmed Shadow Partner skills, so keep the client-shaped stand/fly/jump
                 // collapse ahead of broader fallback when those raw-action families surface.

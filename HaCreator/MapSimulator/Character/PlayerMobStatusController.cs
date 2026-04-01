@@ -342,12 +342,22 @@ namespace HaCreator.MapSimulator.Character
             }
 
             bool removed = _entries.Remove(effect);
-            if (removed && effect == PlayerMobStatusEffect.Polymorph)
+            if (!removed)
+            {
+                return false;
+            }
+
+            if (TryMapBlockingStatus(effect, out PlayerSkillBlockingStatus blockingStatus))
+            {
+                _player.ClearSkillBlockingStatus(blockingStatus);
+            }
+
+            if (effect == PlayerMobStatusEffect.Polymorph)
             {
                 _player.ClearExternalAvatarTransform((int)PlayerMobStatusEffect.Polymorph);
             }
 
-            return removed;
+            return true;
         }
 
         public bool HasStatusEffect(PlayerMobStatusEffect effect)
@@ -562,6 +572,31 @@ namespace HaCreator.MapSimulator.Character
             }
 
             return fallbackValue;
+        }
+
+        private static bool TryMapBlockingStatus(PlayerMobStatusEffect effect, out PlayerSkillBlockingStatus status)
+        {
+            switch (effect)
+            {
+                case PlayerMobStatusEffect.Seal:
+                    status = PlayerSkillBlockingStatus.Seal;
+                    return true;
+                case PlayerMobStatusEffect.Stun:
+                    status = PlayerSkillBlockingStatus.Stun;
+                    return true;
+                case PlayerMobStatusEffect.Freeze:
+                    status = PlayerSkillBlockingStatus.Freeze;
+                    return true;
+                case PlayerMobStatusEffect.Attract:
+                    status = PlayerSkillBlockingStatus.Attract;
+                    return true;
+                case PlayerMobStatusEffect.Polymorph:
+                    status = PlayerSkillBlockingStatus.Polymorph;
+                    return true;
+                default:
+                    status = default;
+                    return false;
+            }
         }
     }
 }

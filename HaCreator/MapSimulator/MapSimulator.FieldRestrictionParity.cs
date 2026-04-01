@@ -1,4 +1,5 @@
 using HaCreator.MapSimulator.Companions;
+using HaCreator.MapSimulator.Character;
 using HaCreator.MapSimulator.Fields;
 using HaCreator.MapSimulator.Interaction;
 using HaCreator.MapSimulator.UI;
@@ -87,6 +88,29 @@ namespace HaCreator.MapSimulator
                     FieldInteractionRestrictionEvaluator.GetQuestAlertRestrictionMessage(fieldLimit),
                 _ => null
             };
+        }
+
+        private void HandlePlayerLanding(PlayerCharacter player, PlayerLandingInfo landingInfo)
+        {
+            if (player == null || !player.IsAlive)
+            {
+                return;
+            }
+
+            long fieldLimit = _mapBoard?.MapInfo?.fieldLimit ?? 0;
+            FallDamageResult fallDamage = FieldFallingDamageEvaluator.Evaluate(
+                player.MaxHP,
+                landingInfo.FallStartY,
+                landingInfo.LandingY,
+                landingInfo.ImpactVelocityY,
+                !FieldInteractionRestrictionEvaluator.CanTakeFallingDamage(fieldLimit));
+
+            if (!fallDamage.ShouldApply)
+            {
+                return;
+            }
+
+            player.TakeDamage(fallDamage.Damage, 0f, 0f);
         }
 
         private void ApplyFieldRuntimeInteractionRestrictions()

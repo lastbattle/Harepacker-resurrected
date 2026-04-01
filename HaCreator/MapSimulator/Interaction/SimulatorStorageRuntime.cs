@@ -364,6 +364,47 @@ namespace HaCreator.MapSimulator.Interaction
             _secondaryPasswordVerified = false;
         }
 
+        internal void ReplaceContents(int slotLimit, long meso, IReadOnlyDictionary<InventoryType, IReadOnlyList<InventorySlotData>> itemsByType)
+        {
+            _suspendPersistence = true;
+            try
+            {
+                _slotLimit = Math.Clamp(slotLimit, MinSlotLimit, MaxSlotLimit);
+                _meso = Math.Max(0, meso);
+
+                foreach (List<InventorySlotData> rows in _storageItems.Values)
+                {
+                    rows.Clear();
+                }
+
+                foreach ((InventoryType type, IReadOnlyList<InventorySlotData> slots) in itemsByType ?? Enumerable.Empty<KeyValuePair<InventoryType, IReadOnlyList<InventorySlotData>>>())
+                {
+                    if (!_storageItems.TryGetValue(type, out List<InventorySlotData> rows))
+                    {
+                        continue;
+                    }
+
+                    foreach (InventorySlotData slot in slots ?? Array.Empty<InventorySlotData>())
+                    {
+                        if (slot == null)
+                        {
+                            continue;
+                        }
+
+                        InventorySlotData clone = slot.Clone();
+                        PopulateResolvedMetadata(clone, type);
+                        rows.Add(clone);
+                    }
+                }
+            }
+            finally
+            {
+                _suspendPersistence = false;
+            }
+
+            PersistCurrentState();
+        }
+
         private void LoadAccountState(string accountLabel, string accountKey = null)
         {
             string normalizedLabel = string.IsNullOrWhiteSpace(accountLabel) ? "Simulator Account Storage" : accountLabel.Trim();
@@ -526,6 +567,37 @@ namespace HaCreator.MapSimulator.Interaction
         private static string NormalizeSecondaryPassword(string password)
         {
             return string.IsNullOrWhiteSpace(password) ? string.Empty : password.Trim();
+        }
+
+        private static void PopulateResolvedMetadata(InventorySlotData slot, InventoryType type)
+        {
+            if (slot == null)
+            {
+                return;
+            }
+
+            slot.Quantity = Math.Max(1, slot.Quantity);
+            slot.PreferredInventoryType ??= type;
+            if (slot.ItemId <= 0)
+            {
+                return;
+            }
+
+            if (string.IsNullOrWhiteSpace(slot.ItemName) &&
+                InventoryItemMetadataResolver.TryResolveItemName(slot.ItemId, out string itemName) &&
+                !string.IsNullOrWhiteSpace(itemName))
+            {
+                slot.ItemName = itemName;
+            }
+
+            if (string.IsNullOrWhiteSpace(slot.Description) &&
+                InventoryItemMetadataResolver.TryResolveItemDescription(slot.ItemId, out string description) &&
+                !string.IsNullOrWhiteSpace(description))
+            {
+                slot.Description = description;
+            }
+
+            slot.ItemTypeName ??= type.ToString();
         }
 
         private static bool IsValidSecondaryPassword(string password)

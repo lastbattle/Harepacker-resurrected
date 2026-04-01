@@ -235,7 +235,8 @@ namespace HaCreator.MapSimulator.Fields
             float sourceX,
             float sourceY,
             RemoteTownPortalResolvedDestination destination,
-            int recordedAt)
+            int recordedAt,
+            RemoteTownPortalObservationSource observationSource = RemoteTownPortalObservationSource.MovementSnapshot)
         {
             if (ownerCharacterId == 0 || sourceMapId <= 0 || destination.MapId <= 0 || sourceMapId == destination.MapId)
             {
@@ -248,7 +249,7 @@ namespace HaCreator.MapSimulator.Fields
                 sourceX,
                 sourceY,
                 destination.MapId,
-                RemoteTownPortalObservationSource.ObservedPosition,
+                observationSource,
                 recordedAt);
         }
 
@@ -1050,7 +1051,7 @@ namespace HaCreator.MapSimulator.Fields
                 resolvedDestination.X,
                 resolvedDestination.Y,
                 townMapId,
-                RemoteTownPortalObservationSource.ObservedPosition,
+                RemoteTownPortalObservationSource.InferredSourceField,
                 recordedAt);
         }
 
@@ -1151,29 +1152,14 @@ namespace HaCreator.MapSimulator.Fields
         {
             if (metadataDestination.HasValue && observationDestination.HasValue)
             {
-                if (metadata.ObservationSource != RemoteTownPortalObservationSource.PacketCast)
-                {
-                    return ownerObservation.ObservationSource == RemoteTownPortalObservationSource.PacketCast
-                        ? observationDestination.Value
-                        : metadataDestination.Value;
-                }
-
-                if (ownerObservation.ObservationSource != RemoteTownPortalObservationSource.PacketCast)
-                {
-                    return metadataDestination.Value;
-                }
-
-                if (metadata.SourceMapId == ownerObservation.SourceMapId)
-                {
-                    return metadataDestination.Value;
-                }
-
-                if (ownerObservation.RecordedAt > metadata.RecordedAt)
-                {
-                    return observationDestination.Value;
-                }
-
-                return metadataDestination.Value;
+                int comparison = CompareRemoteTownPortalObservationQuality(
+                    metadata.ObservationSource,
+                    metadata.RecordedAt,
+                    ownerObservation.ObservationSource,
+                    ownerObservation.RecordedAt);
+                return comparison >= 0
+                    ? metadataDestination.Value
+                    : observationDestination.Value;
             }
 
             if (metadataDestination.HasValue)
@@ -1195,17 +1181,57 @@ namespace HaCreator.MapSimulator.Fields
             int townMapId,
             RemoteTownPortalObservationSource observationSource)
         {
-            if (existingObservation.SourceMapId != sourceMapId || existingObservation.TownMapId != townMapId)
+            if (existingObservation.TownMapId != townMapId)
             {
                 return true;
             }
 
-            if (observationSource == RemoteTownPortalObservationSource.PacketCast)
+            int qualityComparison = CompareRemoteTownPortalObservationQuality(
+                observationSource,
+                recordedAt: 0,
+                existingObservation.ObservationSource,
+                recordedAtOther: 0);
+            if (qualityComparison != 0)
             {
-                return true;
+                return qualityComparison > 0;
             }
 
-            return existingObservation.ObservationSource != RemoteTownPortalObservationSource.PacketCast;
+            return existingObservation.SourceMapId != sourceMapId
+                || existingObservation.ObservationSource != observationSource;
+        }
+
+        private static int CompareRemoteTownPortalObservationQuality(
+            RemoteTownPortalObservationSource observationSource,
+            int recordedAt,
+            RemoteTownPortalObservationSource otherObservationSource,
+            int recordedAtOther)
+        {
+            int priority = GetRemoteTownPortalObservationPriority(observationSource);
+            int otherPriority = GetRemoteTownPortalObservationPriority(otherObservationSource);
+            if (priority != otherPriority)
+            {
+                return priority.CompareTo(otherPriority);
+            }
+
+            if (recordedAt != recordedAtOther)
+            {
+                return recordedAt.CompareTo(recordedAtOther);
+            }
+
+            return 0;
+        }
+
+        private static int GetRemoteTownPortalObservationPriority(RemoteTownPortalObservationSource observationSource)
+        {
+            return observationSource switch
+            {
+                RemoteTownPortalObservationSource.MovementSnapshot => 1,
+                RemoteTownPortalObservationSource.InferredSourceField => 2,
+                RemoteTownPortalObservationSource.EnterField => 3,
+                RemoteTownPortalObservationSource.FollowTransfer => 4,
+                RemoteTownPortalObservationSource.PacketCast => 5,
+                _ => 0
+            };
         }
 
         private RemoteOpenGateRuntime UpsertRemoteOpenGateRuntime(
@@ -1578,7 +1604,10 @@ namespace HaCreator.MapSimulator.Fields
 
         internal enum RemoteTownPortalObservationSource
         {
-            ObservedPosition,
+            MovementSnapshot,
+            InferredSourceField,
+            EnterField,
+            FollowTransfer,
             PacketCast
         }
 
@@ -1905,14 +1934,14 @@ namespace HaCreator.MapSimulator.Fields
             float metadataSourceX,
             float metadataSourceY,
             int metadataTownMapId,
-            bool metadataIsPacketCast,
+            RemoteTownPortalObservationSource metadataObservationSource,
             int metadataRecordedAt,
             bool hasObservation,
             int observationSourceMapId,
             float observationSourceX,
             float observationSourceY,
             int observationTownMapId,
-            bool observationIsPacketCast,
+            RemoteTownPortalObservationSource observationSource,
             int observationRecordedAt)
         {
             RemoteTownPortalResolvedDestination? metadataDestination = hasMetadata
@@ -1932,14 +1961,14 @@ namespace HaCreator.MapSimulator.Fields
                 metadataSourceX,
                 metadataSourceY,
                 metadataTownMapId,
-                metadataIsPacketCast ? RemoteTownPortalObservationSource.PacketCast : RemoteTownPortalObservationSource.ObservedPosition,
+                metadataObservationSource,
                 metadataRecordedAt);
             RemoteTownPortalOwnerFieldObservation observation = new(
                 observationSourceMapId,
                 observationSourceX,
                 observationSourceY,
                 observationTownMapId,
-                observationIsPacketCast ? RemoteTownPortalObservationSource.PacketCast : RemoteTownPortalObservationSource.ObservedPosition,
+                observationSource,
                 observationRecordedAt);
             return ChooseRemoteTownPortalResolvedDestination(metadata, metadataDestination, observation, observationDestination);
         }
@@ -1947,24 +1976,24 @@ namespace HaCreator.MapSimulator.Fields
         internal static bool ShouldReplaceRemoteTownPortalOwnerObservationForTesting(
             int existingSourceMapId,
             int existingTownMapId,
-            bool existingIsPacketCast,
+            RemoteTownPortalObservationSource existingObservationSource,
             int sourceMapId,
             int townMapId,
-            bool newObservationIsPacketCast)
+            RemoteTownPortalObservationSource newObservationSource)
         {
             RemoteTownPortalOwnerFieldObservation existingObservation = new(
                 existingSourceMapId,
                 0,
                 0,
                 existingTownMapId,
-                existingIsPacketCast ? RemoteTownPortalObservationSource.PacketCast : RemoteTownPortalObservationSource.ObservedPosition,
+                existingObservationSource,
                 0);
 
             return ShouldReplaceRemoteTownPortalOwnerObservation(
                 existingObservation,
                 sourceMapId,
                 townMapId,
-                newObservationIsPacketCast ? RemoteTownPortalObservationSource.PacketCast : RemoteTownPortalObservationSource.ObservedPosition);
+                newObservationSource);
         }
 
         internal static RemoteOpenGateVisualPhase AdvanceRemoteOpenGatePhaseForTesting(RemoteOpenGateVisualPhase phase, int phaseStartedAt, int currentTime)

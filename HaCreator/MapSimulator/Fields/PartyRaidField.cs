@@ -107,6 +107,7 @@ namespace HaCreator.MapSimulator.Fields
         private const int BossChargeSegmentHeight = 5;
         private const int BossChargeSegmentSpacing = 2;
         private const int PartyRaidBossMobId = 9700037;
+        private const int PartyRaidBossGaugeIconMobId = 9700036;
 
         private bool _isActive;
         private bool _assetsLoaded;
@@ -706,8 +707,7 @@ namespace HaCreator.MapSimulator.Fields
             _bossGaugeBackground = LoadCanvas(dualMobGauge?["backgrd"]);
             _bossGaugeText = LoadCanvas(dualMobGauge?["text"]);
             _bossGaugeFillPixel = LoadCanvas(dualMobGauge?["gauge"]);
-            CanvasSprite mobIcon = LoadCanvas(dualMobGauge?["Mob"]?["9700036"]);
-            _bossGaugeMobIcon = mobIcon.IsLoaded ? mobIcon : LoadCanvas(dualMobGauge?["Mob"]?["9500401"]);
+            _bossGaugeMobIcon = LoadCanvas(dualMobGauge?["Mob"]?[PartyRaidBossGaugeIconMobId.ToString(CultureInfo.InvariantCulture)]);
             _timerBoardBackground = LoadCanvas(partyRaceTimer?["backgrnd"]);
             _timerSeparator = LoadCanvas(partyRaceTimer?["fontTime"]?["comma"]);
             LoadDigits(partyRaceTimer?["fontTime"], _timerDigits, 0, 9);
@@ -1311,6 +1311,7 @@ namespace HaCreator.MapSimulator.Fields
         internal int GetOtherStateY() => StateOtherY;
         internal int GetBossPointHudY() => BossPointHudY;
         internal int GetBossGaugeHudY() => BossGaugeHudY;
+        internal static int GetBossGaugeIconMobId() => PartyRaidBossGaugeIconMobId;
         private static int ClampStage(int stage) => Math.Clamp(stage, 1, 5);
 
         private static bool TryInferModeFromScripts(string onUserEnter, string onFirstUserEnter, out PartyRaidFieldMode mode)

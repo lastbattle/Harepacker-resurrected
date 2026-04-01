@@ -38,6 +38,7 @@ namespace HaCreator.MapSimulator.Interaction
         private static readonly string[] DefaultClientVisualCandidatePaths = { ClientMessageBoxPropertyName };
         private static readonly string[] ChalkboardClientVisualCandidatePaths =
         {
+            ClientMessageBoxPropertyName,
             $"{InfoPropertyName}/{ChalkboardSamplePropertyName}"
         };
         private const int ClientLeaveStartAlpha = 255;
@@ -438,25 +439,28 @@ namespace HaCreator.MapSimulator.Interaction
                 return null;
             }
 
-            WzImage itemImage = global::HaCreator.Program.FindImage(category, imagePath);
-            if (itemImage == null)
-            {
-                return null;
-            }
-
-            itemImage.ParseImage();
-            string itemNodeName = itemId.ToString("D7", CultureInfo.InvariantCulture);
-            WzSubProperty itemProperty = itemImage[itemNodeName] as WzSubProperty;
-            if (itemProperty == null)
+            if (!TryLoadItemProperty(category, imagePath, itemId, out WzSubProperty itemProperty))
             {
                 return null;
             }
 
             WzSubProperty infoProperty = itemProperty[InfoPropertyName] as WzSubProperty;
+            WzSubProperty resolvedItemProperty = TryLoadResolvedVisualProperty(itemId, out WzSubProperty sharedProperty)
+                ? sharedProperty
+                : itemProperty;
+            WzSubProperty resolvedInfoProperty = resolvedItemProperty[InfoPropertyName] as WzSubProperty;
             Texture2D iconTexture = LoadCanvasTexture(infoProperty?["iconRaw"] as WzCanvasProperty)
                                     ?? LoadCanvasTexture(infoProperty?["icon"] as WzCanvasProperty);
+            iconTexture ??= LoadCanvasTexture(resolvedInfoProperty?["iconRaw"] as WzCanvasProperty)
+                            ?? LoadCanvasTexture(resolvedInfoProperty?["icon"] as WzCanvasProperty);
 
-            if (TryLoadClientMessageBoxVisual(itemProperty, infoProperty, itemId, iconTexture, out MessageBoxVisual visual))
+            if (TryLoadClientMessageBoxVisual(resolvedItemProperty, itemId, iconTexture, out MessageBoxVisual visual))
+            {
+                return visual;
+            }
+
+            if (!ReferenceEquals(resolvedItemProperty, itemProperty) &&
+                TryLoadClientMessageBoxVisual(itemProperty, itemId, iconTexture, out visual))
             {
                 return visual;
             }
@@ -468,7 +472,6 @@ namespace HaCreator.MapSimulator.Interaction
 
         private bool TryLoadClientMessageBoxVisual(
             WzSubProperty itemProperty,
-            WzSubProperty infoProperty,
             int itemId,
             Texture2D iconTexture,
             out MessageBoxVisual visual)
@@ -505,6 +508,124 @@ namespace HaCreator.MapSimulator.Interaction
         internal static string ResolveCreateFailedNoticeText()
         {
             return CreateFailedFallbackText;
+        }
+
+        private bool TryLoadItemProperty(string category, string imagePath, int itemId, out WzSubProperty itemProperty)
+        {
+            itemProperty = null;
+
+            WzImage itemImage = global::HaCreator.Program.FindImage(category, imagePath);
+            if (itemImage == null)
+            {
+                return false;
+            }
+
+            itemImage.ParseImage();
+            foreach (string itemNodeName in EnumerateItemNodeNames(itemId))
+            {
+                if (itemImage[itemNodeName] is WzSubProperty candidate)
+                {
+                    itemProperty = candidate;
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private bool TryLoadResolvedVisualProperty(int itemId, out WzSubProperty itemProperty)
+        {
+            itemProperty = null;
+            if (!InventoryItemMetadataResolver.TryResolveItemInfoPath(itemId, out string path) ||
+                string.IsNullOrWhiteSpace(path))
+            {
+                return false;
+            }
+
+            return TryLoadPropertyByWzPath(path.Trim(), out itemProperty);
+        }
+
+        private bool TryLoadPropertyByWzPath(string path, out WzSubProperty property)
+        {
+            property = null;
+            if (!TryParseWzPropertyPath(path, out string category, out string imagePath, out string propertyPath))
+            {
+                return false;
+            }
+
+            WzImage image = global::HaCreator.Program.FindImage(category, imagePath);
+            if (image == null)
+            {
+                return false;
+            }
+
+            image.ParseImage();
+            object current = image;
+            foreach (string segment in propertyPath.Split(new[] { '/' }, StringSplitOptions.RemoveEmptyEntries))
+            {
+                current = GetChildProperty(current, segment);
+                if (current == null)
+                {
+                    return false;
+                }
+            }
+
+            property = current as WzSubProperty;
+            return property != null;
+        }
+
+        private static bool TryParseWzPropertyPath(string path, out string category, out string imagePath, out string propertyPath)
+        {
+            category = null;
+            imagePath = null;
+            propertyPath = null;
+            if (string.IsNullOrWhiteSpace(path))
+            {
+                return false;
+            }
+
+            string normalized = path.Replace('\\', '/').Trim().Trim('/');
+            string[] segments = normalized.Split(new[] { '/' }, StringSplitOptions.RemoveEmptyEntries);
+            if (segments.Length < 2)
+            {
+                return false;
+            }
+
+            int imageIndex = Array.FindIndex(segments, segment => segment.EndsWith(".img", StringComparison.OrdinalIgnoreCase));
+            if (imageIndex < 1 || imageIndex >= segments.Length - 1)
+            {
+                return false;
+            }
+
+            category = segments[0];
+            imagePath = string.Join("/", segments.Skip(1).Take(imageIndex));
+            propertyPath = string.Join("/", segments.Skip(imageIndex + 1));
+            return !string.IsNullOrWhiteSpace(category)
+                   && !string.IsNullOrWhiteSpace(imagePath)
+                   && !string.IsNullOrWhiteSpace(propertyPath);
+        }
+
+        private static WzImageProperty GetChildProperty(object parent, string propertyName)
+        {
+            return parent switch
+            {
+                WzImage image => image[propertyName] as WzImageProperty,
+                WzSubProperty subProperty => subProperty[propertyName] as WzImageProperty,
+                WzCanvasProperty canvasProperty => canvasProperty[propertyName] as WzImageProperty,
+                _ => null
+            };
+        }
+
+        private static IEnumerable<string> EnumerateItemNodeNames(int itemId)
+        {
+            string nodeName8 = itemId.ToString("D8", CultureInfo.InvariantCulture);
+            yield return nodeName8;
+
+            string nodeName7 = itemId.ToString("D7", CultureInfo.InvariantCulture);
+            if (!string.Equals(nodeName8, nodeName7, StringComparison.Ordinal))
+            {
+                yield return nodeName7;
+            }
         }
 
         private bool TryLoadVisualAtPath(WzSubProperty rootProperty, string propertyPath, out MessageBoxVisual visual)
@@ -898,6 +1019,11 @@ namespace HaCreator.MapSimulator.Interaction
         internal static IReadOnlyList<string> GetPreferredVisualPropertyPathsForTest(int itemId)
         {
             return GetPreferredVisualPropertyPaths(itemId);
+        }
+
+        internal static bool TryParseWzPropertyPathForTest(string path, out string category, out string imagePath, out string propertyPath)
+        {
+            return TryParseWzPropertyPath(path, out category, out imagePath, out propertyPath);
         }
 
         internal static float ComputeLeaveFadeAlphaForTest(int elapsedMs)

@@ -1956,6 +1956,25 @@ namespace HaCreator.MapSimulator.Loaders
                 quickSlot.SetTooltipTextures(tooltipFrames);
             }
 
+            WzSubProperty equipTooltipProperty = uiWindow2Image?["ToolTip"]?["Equip"] as WzSubProperty;
+            if (equipTooltipProperty != null)
+            {
+                quickSlot.SetEquipTooltipAssets(new EquipUIBigBang.EquipTooltipAssets
+                {
+                    CanLabels = LoadCanvasTextureMap(equipTooltipProperty["Can"] as WzSubProperty, device),
+                    CannotLabels = LoadCanvasTextureMap(equipTooltipProperty["Cannot"] as WzSubProperty, device),
+                    PropertyLabels = LoadCanvasTextureMap(equipTooltipProperty["Property"] as WzSubProperty, device),
+                    ItemCategoryLabels = LoadCanvasTextureMap(equipTooltipProperty["ItemCategory"] as WzSubProperty, device),
+                    WeaponCategoryLabels = LoadCanvasTextureMap(equipTooltipProperty["WeaponCategory"] as WzSubProperty, device),
+                    SpeedLabels = LoadCanvasTextureMap(equipTooltipProperty["Speed"] as WzSubProperty, device),
+                    GrowthEnabledLabels = LoadCanvasTextureMap(equipTooltipProperty["GrowthEnabled"] as WzSubProperty, device),
+                    GrowthDisabledLabels = LoadCanvasTextureMap(equipTooltipProperty["GrowthDisabled"] as WzSubProperty, device),
+                    CashLabel = LoadCanvasTexture(equipTooltipProperty, "cash", device),
+                    MesosLabel = LoadCanvasTexture(equipTooltipProperty, "mesos", device),
+                    StarLabel = LoadCanvasTexture(equipTooltipProperty["Star"] as WzSubProperty, "Star", device)
+                });
+            }
+
 
             quickSlot.Show();
 

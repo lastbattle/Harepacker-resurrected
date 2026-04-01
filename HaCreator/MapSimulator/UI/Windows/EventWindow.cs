@@ -180,10 +180,11 @@ namespace HaCreator.MapSimulator.UI
                 return false;
             }
 
-            IReadOnlyList<EventEntrySnapshot> visibleEntries = GetVisibleEntries(_currentSnapshot ?? RefreshSnapshot());
+            EventWindowSnapshot snapshot = _currentSnapshot ?? RefreshSnapshot();
+            IReadOnlyList<EventEntrySnapshot> visibleEntries = GetVisibleEntries(snapshot);
             for (int i = 0; i < visibleEntries.Count; i++)
             {
-                if (!GetRowBounds(i).Contains(mouseState.X, mouseState.Y))
+                if (!GetRowBounds(i, snapshot).Contains(mouseState.X, mouseState.Y))
                 {
                     continue;
                 }
@@ -240,14 +241,15 @@ namespace HaCreator.MapSimulator.UI
 
             sprite.DrawString(_font, snapshot.Title, new Vector2(Position.X + 18, Position.Y + 20), Color.White);
             DrawWrappedText(sprite, subtitle, Position.X + 18, Position.Y + 44, Math.Max(240f, (CurrentFrame?.Width ?? 323) - 36f), new Color(220, 220, 220));
+            int contentOffsetY = DrawAlarmFeed(sprite, snapshot);
 
             if (_showCalendar)
             {
-                DrawCalendar(sprite, snapshot);
+                DrawCalendar(sprite, snapshot, contentOffsetY);
             }
             else
             {
-                DrawRows(sprite, snapshot);
+                DrawRows(sprite, snapshot, contentOffsetY);
             }
 
             string statusText = snapshot.StatusText;
@@ -272,18 +274,18 @@ namespace HaCreator.MapSimulator.UI
             }
         }
 
-        private void DrawRows(SpriteBatch sprite, EventWindowSnapshot snapshot)
+        private void DrawRows(SpriteBatch sprite, EventWindowSnapshot snapshot, int contentOffsetY)
         {
             IReadOnlyList<EventEntrySnapshot> visibleEntries = GetVisibleEntries(snapshot);
             if (visibleEntries.Count == 0)
             {
-                DrawWrappedText(sprite, "No simulator event entries match the current filter.", Position.X + 18, Position.Y + 98, Math.Max(240f, (CurrentFrame?.Width ?? 323) - 36f), new Color(224, 224, 224));
+                DrawWrappedText(sprite, "No simulator event entries match the current filter.", Position.X + 18, Position.Y + contentOffsetY + 4, Math.Max(240f, (CurrentFrame?.Width ?? 323) - 36f), new Color(224, 224, 224));
                 return;
             }
 
             for (int i = 0; i < visibleEntries.Count; i++)
             {
-                Rectangle bounds = GetRowBounds(i);
+                Rectangle bounds = GetRowBounds(i, snapshot);
                 bool isSelected = ((_pageIndex * GetRowsPerPage()) + i) == _selectedIndex;
                 Texture2D rowTexture = isSelected ? (_selectedRowTexture ?? _normalRowTexture) : _normalRowTexture;
                 if (rowTexture != null)
@@ -312,13 +314,13 @@ namespace HaCreator.MapSimulator.UI
             }
         }
 
-        private void DrawCalendar(SpriteBatch sprite, EventWindowSnapshot snapshot)
+        private void DrawCalendar(SpriteBatch sprite, EventWindowSnapshot snapshot, int contentOffsetY)
         {
             DateTime month = _calendarMonth;
             IReadOnlyList<EventEntrySnapshot> entries = GetFilteredEntries(snapshot);
             BuildCalendarEntryCounts(entries);
 
-            Rectangle calendarBounds = GetCalendarBounds();
+            Rectangle calendarBounds = GetCalendarBounds(snapshot);
             Texture2D baseTexture = _calendarBackgroundTexture ?? _normalRowTexture ?? _selectedRowTexture;
             if (baseTexture != null)
             {
@@ -461,19 +463,19 @@ namespace HaCreator.MapSimulator.UI
             }
         }
 
-        private Rectangle GetCalendarBounds()
+        private Rectangle GetCalendarBounds(EventWindowSnapshot snapshot)
         {
             int frameWidth = CurrentFrame?.Width ?? 323;
             int width = _calendarBackgroundTexture?.Width ?? 157;
             int height = _calendarBackgroundTexture?.Height ?? 205;
             int x = Position.X + Math.Max(16, (frameWidth - width) / 2);
-            int y = Position.Y + 116;
+            int y = Position.Y + GetContentTop(snapshot) + 22;
             return new Rectangle(x, y, width, height);
         }
 
-        private Rectangle GetRowBounds(int visibleIndex)
+        private Rectangle GetRowBounds(int visibleIndex, EventWindowSnapshot snapshot)
         {
-            return new Rectangle(Position.X + 16, Position.Y + 94 + (visibleIndex * 82), Math.Max(288, (CurrentFrame?.Width ?? 323) - 28), 78);
+            return new Rectangle(Position.X + 16, Position.Y + GetContentTop(snapshot) + (visibleIndex * 82), Math.Max(288, (CurrentFrame?.Width ?? 323) - 28), 78);
         }
 
         private int GetRowsPerPage()
@@ -530,7 +532,7 @@ namespace HaCreator.MapSimulator.UI
 
         private DateTime? ResolveCalendarDate(int mouseX, int mouseY)
         {
-            Rectangle calendarBounds = GetCalendarBounds();
+            Rectangle calendarBounds = GetCalendarBounds(_currentSnapshot ?? RefreshSnapshot());
             Rectangle gridBounds = new(calendarBounds.X + 16, calendarBounds.Y + 49, 19 * 7, 19 * 6);
             if (!gridBounds.Contains(mouseX, mouseY))
             {
@@ -680,6 +682,45 @@ namespace HaCreator.MapSimulator.UI
             {
                 yield return currentLine;
             }
+        }
+
+        private int DrawAlarmFeed(SpriteBatch sprite, EventWindowSnapshot snapshot)
+        {
+            if (_font == null || snapshot?.AlarmLines == null || snapshot.AlarmLines.Count == 0)
+            {
+                return GetContentTop(snapshot ?? _currentSnapshot);
+            }
+
+            int x = Position.X + 18;
+            int y = Position.Y + 84;
+            sprite.DrawString(_font, "Alarm", new Vector2(x, y), new Color(255, 228, 151));
+            y += _font.LineSpacing;
+
+            int visibleLines = Math.Min(2, snapshot.AlarmLines.Count);
+            for (int i = 0; i < visibleLines; i++)
+            {
+                string line = snapshot.AlarmLines[i];
+                if (string.IsNullOrWhiteSpace(line))
+                {
+                    continue;
+                }
+
+                sprite.DrawString(_font, line, new Vector2(x, y), new Color(224, 224, 224));
+                y += _font.LineSpacing;
+            }
+
+            return Position.Y + 84 + (_font.LineSpacing * (visibleLines + 1)) + 6 - Position.Y;
+        }
+
+        private int GetContentTop(EventWindowSnapshot snapshot)
+        {
+            if (_font == null || snapshot?.AlarmLines == null || snapshot.AlarmLines.Count == 0)
+            {
+                return 94;
+            }
+
+            int visibleLines = Math.Min(2, snapshot.AlarmLines.Count);
+            return 84 + (_font.LineSpacing * (visibleLines + 1)) + 6;
         }
 
         private EventWindowSnapshot RefreshSnapshot()

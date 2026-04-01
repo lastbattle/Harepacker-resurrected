@@ -10,6 +10,8 @@ namespace HaCreator.MapSimulator
 {
     public partial class MapSimulator
     {
+        private const string RankingServerHost = "gamerank.maplestory";
+        private const int RankingStringPoolUrlTemplateId = 0xAA2;
         private const int RankingOwnerNavigateDelayMs = 250;
         private int _lastRankingOpenTick = int.MinValue;
         private int _lastRankingNavigateTick = int.MinValue;
@@ -101,7 +103,7 @@ namespace HaCreator.MapSimulator
             {
                 Title = "Ranking",
                 Subtitle = subtitle,
-                StatusText = "BtRank now mirrors the client owner lifecycle more closely: loading-layer request first, navigated local summary second, and no hidden popularity or combat cards. The live URL template, remote ladders, and packet-fed ranking pages are still outside this board.",
+                StatusText = "BtRank now mirrors the client owner lifecycle more closely: loading-layer request first, navigated local summary second, and no hidden popularity or combat cards. The recovered host now resolves to gamerank.maplestory through StringPool[0xAA2], but the full live URL template, remote ladders, and packet-fed ranking pages are still outside this board.",
                 Entries = entries
             };
         }
@@ -233,6 +235,7 @@ namespace HaCreator.MapSimulator
                 Subtitle = "EventList row, slot, icon, and calendar art now surface simulator runtime entries plus the latest packet-owned alarm text, tutor, radio, and sound state through an event owner that auto-dismisses like CUIEventAlarm until the user interacts with its WZ-backed controls.",
                 StatusText = "BtEvent now exposes packet-owned utility, quest, overlay, tutor, radio, and sound activity through the client event owner, using the WZ-backed filter and calendar surfaces instead of text-only fallbacks. Official attendance, calendar packets, and live network event feeds still remain outside this window.",
                 AutoDismissDelayMs = 8000,
+                AlarmLines = BuildEventAlarmOwnerLines(currentTick),
                 Entries = entries
             };
         }
@@ -309,7 +312,7 @@ namespace HaCreator.MapSimulator
         private string BuildRankingLandingSeed(CharacterBuild build, int worldId)
         {
             int characterId = build?.Id ?? 0;
-            return $"StringPool[2722](serverString0, world={worldId + 1}, characterId={characterId})";
+            return $"StringPool[0x{RankingStringPoolUrlTemplateId:X}](host={RankingServerHost}, world={worldId + 1}, characterId={characterId})";
         }
 
         private string BuildRankingOwnerLifecycleDetail(CharacterBuild build, string launchSource, string webSeedText)
@@ -395,6 +398,60 @@ namespace HaCreator.MapSimulator
                 StatusText = statusText,
                 ScheduledAt = DateTime.Today
             };
+        }
+
+        private IReadOnlyList<string> BuildEventAlarmOwnerLines(int currentTick)
+        {
+            List<string> lines = new();
+
+            if (!string.IsNullOrWhiteSpace(_lastPacketOwnedNoticeMessage))
+            {
+                lines.Add($"Notice: {TruncatePacketOwnedUtilityText(_lastPacketOwnedNoticeMessage, 72)}");
+            }
+
+            if (!string.IsNullOrWhiteSpace(_lastPacketOwnedBuffzoneMessage))
+            {
+                lines.Add($"Buff zone: {TruncatePacketOwnedUtilityText(_lastPacketOwnedBuffzoneMessage, 68)}");
+            }
+
+            if (!string.IsNullOrWhiteSpace(_lastPacketOwnedAskApspMessage))
+            {
+                string apspPrefix = _packetOwnedApspPromptActive ? "AP/SP prompt" : "AP/SP event";
+                lines.Add($"{apspPrefix}: {TruncatePacketOwnedUtilityText(_lastPacketOwnedAskApspMessage, 64)}");
+            }
+
+            if (!string.IsNullOrWhiteSpace(_lastPacketOwnedSkillGuideMessage))
+            {
+                lines.Add(_lastPacketOwnedSkillGuideGrade > 0
+                    ? $"Skill guide G{_lastPacketOwnedSkillGuideGrade}: {TruncatePacketOwnedUtilityText(_lastPacketOwnedSkillGuideMessage, 60)}"
+                    : $"Skill guide: {TruncatePacketOwnedUtilityText(_lastPacketOwnedSkillGuideMessage, 66)}");
+            }
+
+            if (_packetOwnedTutorRuntime.IsActive)
+            {
+                lines.Add(TruncatePacketOwnedUtilityText(DescribePacketOwnedTutorStatus(currentTick), 78));
+            }
+
+            if (!string.IsNullOrWhiteSpace(_lastPacketOwnedRadioStatusMessage)
+                && (!string.Equals(_lastPacketOwnedRadioStatusMessage, "Packet-owned radio idle.", StringComparison.OrdinalIgnoreCase)
+                    || IsPacketOwnedRadioPlaying()))
+            {
+                lines.Add(IsPacketOwnedRadioPlaying()
+                    ? $"Radio: {TruncatePacketOwnedUtilityText(_lastPacketOwnedRadioDisplayName ?? _lastPacketOwnedRadioTrackDescriptor, 68)}"
+                    : $"Radio: {TruncatePacketOwnedUtilityText(_lastPacketOwnedRadioStatusMessage, 68)}");
+            }
+
+            if (!string.IsNullOrWhiteSpace(_lastPacketOwnedFollowFailureMessage))
+            {
+                lines.Add($"Follow: {TruncatePacketOwnedUtilityText(_lastPacketOwnedFollowFailureMessage, 70)}");
+            }
+
+            if (lines.Count == 0)
+            {
+                lines.Add("No packet-authored event alarm text is active.");
+            }
+
+            return lines.Take(3).ToArray();
         }
 
         private static string FormatRank(int rank)

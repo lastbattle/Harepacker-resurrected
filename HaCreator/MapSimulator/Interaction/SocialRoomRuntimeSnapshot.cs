@@ -21,6 +21,8 @@ namespace HaCreator.MapSimulator.Interaction
         public int MiniRoomOmokWinnerIndex { get; set; } = -1;
         public int MiniRoomOmokLastMoveX { get; set; } = -1;
         public int MiniRoomOmokLastMoveY { get; set; } = -1;
+        public int MiniRoomOmokTimeLeftMs { get; set; } = 30000;
+        public int MiniRoomOmokTimeFloor { get; set; } = 30;
         public int MiniRoomOmokOwnerStoneValue { get; set; } = 1;
         public int MiniRoomOmokGuestStoneValue { get; set; } = 2;
         public bool MiniRoomOmokTieRequested { get; set; }

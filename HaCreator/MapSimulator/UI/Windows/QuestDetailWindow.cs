@@ -911,7 +911,7 @@ namespace HaCreator.MapSimulator.UI
 
         private bool ShouldDrawDetailTip()
         {
-            return ResolveDeliveryAction(_state) != QuestWindowActionKind.None;
+            return _state?.HasDetailInset == true;
         }
 
         private int GetMaxLogScrollOffset()

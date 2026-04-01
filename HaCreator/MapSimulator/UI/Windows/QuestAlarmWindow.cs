@@ -20,7 +20,7 @@ namespace HaCreator.MapSimulator.UI
         private const int RowDoubleClickWindowMs = 450;
         private const int HeaderActionMargin = 6;
         private const int HeaderActionSpacing = 4;
-        private const string QuestAlarmTooltipDescription = "Click on Quest Alarm button if you wish to register the current quest into the Quest Alarm. Up to 5 quests can be registered in this alarm.";
+        private const string DefaultQuestAlarmTooltipDescription = "Click on Quest Alarm button if you wish to register the current quest into the Quest Alarm. Up to 5 quests can be registered in this alarm.";
         private const int ClientTitleX = 10;
         private const int ClientTitleY = 25;
         private const int ClientTitleHeight = 18;
@@ -56,7 +56,7 @@ namespace HaCreator.MapSimulator.UI
         private readonly List<QuestAlarmEntrySnapshot> _orderedEntriesBuffer = new();
         private readonly List<QuestAlarmEntrySnapshot> _filteredEntriesBuffer = new();
         private readonly List<QuestAlarmEntrySnapshot> _visibleEntriesBuffer = new();
-        private readonly string _registrationLimitMessage = QuestAlarmTextLayout.ResolveRegistrationLimitMessage(QuestAlarmTooltipDescription);
+        private string _registrationLimitMessage = QuestAlarmTextLayout.ResolveRegistrationLimitMessage(DefaultQuestAlarmTooltipDescription);
 
         private SpriteFont _font;
         private MouseState _previousMouseState;
@@ -138,6 +138,14 @@ namespace HaCreator.MapSimulator.UI
             _stateStore = stateStore;
             _characterBuildProvider = characterBuildProvider;
             _loadedStateCharacterKey = string.Empty;
+        }
+
+        internal void SetTooltipDescription(string tooltipDescription)
+        {
+            _registrationLimitMessage = QuestAlarmTextLayout.ResolveRegistrationLimitMessage(
+                string.IsNullOrWhiteSpace(tooltipDescription)
+                    ? DefaultQuestAlarmTooltipDescription
+                    : tooltipDescription);
         }
 
         internal void SetQuestChromeTextures(
@@ -730,7 +738,7 @@ namespace HaCreator.MapSimulator.UI
             int y = Position.Y + 7;
             _deleteAllBounds = new Rectangle(x - 2, y - 1, (int)Math.Ceiling(labelSize.X) + 4, (int)Math.Ceiling(labelSize.Y) + 2);
 
-            Color deleteAllColor = snapshot.Entries.Count == 0
+            Color deleteAllColor = !HasLocalRegistrationState()
                 ? new Color(114, 121, 133)
                 : _pressedDeleteAll
                     ? new Color(255, 205, 137)
@@ -980,7 +988,7 @@ namespace HaCreator.MapSimulator.UI
         private void DismissAll(QuestAlarmSnapshot snapshot)
         {
             QuestAlarmSnapshot fullSnapshot = snapshot ?? RefreshFilteredSnapshot();
-            if ((fullSnapshot.Entries == null || fullSnapshot.Entries.Count == 0) && _trackedQuestIds.Count == 0)
+            if ((fullSnapshot.Entries == null || fullSnapshot.Entries.Count == 0) && !HasLocalRegistrationState())
             {
                 return;
             }
@@ -1019,8 +1027,20 @@ namespace HaCreator.MapSimulator.UI
 
         private void HandleKeyboardInput(KeyboardState keyboardState, QuestAlarmSnapshot snapshot)
         {
-            if (_isMinimized || snapshot?.Entries == null || snapshot.Entries.Count == 0)
+            bool hasVisibleEntries = snapshot?.Entries != null && snapshot.Entries.Count > 0;
+            if (_isMinimized || (!hasVisibleEntries && !HasLocalRegistrationState()))
             {
+                return;
+            }
+
+            if (!hasVisibleEntries)
+            {
+                if (WasPressed(keyboardState, Keys.Delete) &&
+                    (keyboardState.IsKeyDown(Keys.LeftShift) || keyboardState.IsKeyDown(Keys.RightShift)))
+                {
+                    DismissAll(snapshot);
+                }
+
                 return;
             }
 
@@ -1396,6 +1416,11 @@ namespace HaCreator.MapSimulator.UI
             }
 
             return "session:default";
+        }
+
+        private bool HasLocalRegistrationState()
+        {
+            return _trackedQuestIds.Count > 0 || _hiddenAutoQuestIds.Count > 0;
         }
 
         private readonly struct RowLayout

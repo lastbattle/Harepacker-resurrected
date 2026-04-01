@@ -632,8 +632,8 @@ namespace HaCreator.MapSimulator
                     gameTime,
                     mapShiftX,
                     mapShiftY,
-                    minimapPos.X,
-                    minimapPos.Y,
+                    mapCenterX,
+                    mapCenterY,
                     _renderParams,
                     TickCount);
 
@@ -646,8 +646,8 @@ namespace HaCreator.MapSimulator
                         _spriteBatch,
                         mapShiftX,
                         mapShiftY,
-                        minimapPos.X,
-                        minimapPos.Y,
+                        mapCenterX,
+                        mapCenterY,
                         TickCount,
                         remotePreparedSkill);
                 }

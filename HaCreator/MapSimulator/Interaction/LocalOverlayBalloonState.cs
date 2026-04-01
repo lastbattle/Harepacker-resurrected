@@ -136,9 +136,9 @@ namespace HaCreator.MapSimulator.Interaction
 
         private static string SanitizeText(string text)
         {
-            return string.IsNullOrWhiteSpace(text)
+            return string.IsNullOrEmpty(text)
                 ? string.Empty
-                : text.Replace("\r", string.Empty).Trim();
+                : text.Replace("\r", string.Empty);
         }
     }
 

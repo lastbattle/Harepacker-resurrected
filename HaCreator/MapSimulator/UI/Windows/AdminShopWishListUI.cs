@@ -194,6 +194,57 @@ namespace HaCreator.MapSimulator.UI
         public override string WindowName => MapSimulatorWindowNames.AdminShopWishList;
         public override bool CapturesKeyboardInput => IsVisible;
 
+        public IReadOnlyList<AdminShopDialogUI.WishlistCategoryNode> GetWishlistCategoryTree()
+        {
+            return _categoryTree;
+        }
+
+        public string GetSelectedWishlistCategoryKey()
+        {
+            return _selectedCategoryKey;
+        }
+
+        public IReadOnlyCollection<string> GetExpandedWishlistCategoryKeys()
+        {
+            return _expandedCategoryKeys;
+        }
+
+        public void OnCategoryAddOnClosed(string selectedCategoryKey, IEnumerable<string> expandedCategoryKeys, string message)
+        {
+            SyncCategoryAddOnState(selectedCategoryKey, expandedCategoryKeys, message);
+            _popupMode = PopupMode.None;
+            UpdatePopupButtons();
+        }
+
+        public void SyncCategoryAddOnState(string selectedCategoryKey, IEnumerable<string> expandedCategoryKeys, string message)
+        {
+            _selectedCategoryKey = string.IsNullOrWhiteSpace(selectedCategoryKey) ? "all" : selectedCategoryKey;
+            _expandedCategoryKeys.Clear();
+            if (expandedCategoryKeys != null)
+            {
+                foreach (string expandedKey in expandedCategoryKeys)
+                {
+                    if (!string.IsNullOrWhiteSpace(expandedKey))
+                    {
+                        _expandedCategoryKeys.Add(expandedKey);
+                    }
+                }
+            }
+
+            EnsureCategoryPathExpanded(_selectedCategoryKey);
+            RefreshCategoryRows();
+            EnsureSelectedCategoryVisible();
+            if (!string.IsNullOrWhiteSpace(message))
+            {
+                _statusMessage = message;
+            }
+        }
+
+        public string ResolveWishlistCategoryLabel(string categoryKey)
+        {
+            return _sourceDialog?.GetWishlistCategoryLabel(categoryKey) ?? "All";
+        }
+
         public void ShowFor(AdminShopDialogUI sourceDialog)
         {
             _sourceDialog = sourceDialog;

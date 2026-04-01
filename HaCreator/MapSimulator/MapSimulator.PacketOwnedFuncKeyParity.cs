@@ -231,7 +231,10 @@ namespace HaCreator.MapSimulator
             InventoryType inventoryType = ResolvePacketOwnedPetConsumeInventoryType(_packetOwnedPetConsumeItemId);
             if (inventoryType != InventoryType.NONE)
             {
-                SetFieldHazardSharedPetConsumeItem(_packetOwnedPetConsumeItemId, inventoryType);
+                SetFieldHazardSharedPetConsumeItem(
+                    _packetOwnedPetConsumeItemId,
+                    inventoryType,
+                    FieldHazardSharedPetConsumeSource.PacketOwnedConfig);
             }
         }
 

@@ -45,6 +45,21 @@ namespace HaCreator.MapSimulator.Character
         ProneStab   // Prone stab
     }
 
+    public readonly struct PlayerLandingInfo
+    {
+        public PlayerLandingInfo(float fallStartY, float landingY, float impactVelocityY)
+        {
+            FallStartY = fallStartY;
+            LandingY = landingY;
+            ImpactVelocityY = impactVelocityY;
+        }
+
+        public float FallStartY { get; }
+        public float LandingY { get; }
+        public float ImpactVelocityY { get; }
+        public float FallDistance => Math.Max(0f, LandingY - FallStartY);
+    }
+
     /// <summary>
     /// Player Character Controller - Handles physics, input, and animation
     /// Equivalent to CUserLocal in the MapleStory client
@@ -179,15 +194,6 @@ namespace HaCreator.MapSimulator.Character
             public bool Visible { get; set; }
         }
 
-        private enum MirrorImageSourceLayer
-        {
-            UnderCharacter = 0,
-            OverCharacter = 1,
-            UnderFace = 2,
-            Face = 3,
-            OverFace = 4
-        }
-
         private readonly struct AvatarEffectRenderable
         {
             public AvatarEffectRenderable(SkillFrame frame, SkillAvatarEffectPlane plane)
@@ -245,17 +251,6 @@ namespace HaCreator.MapSimulator.Character
         // CActionMan action metadata uses 150 as the default alpha for composed character pieces.
         private static readonly Color ShadowPartnerTint = new(255, 255, 255, 150);
         private static readonly Color MirrorImageTint = new(128, 128, 128, 208);
-        private static readonly HashSet<string> MirrorImageUnderCharacterZLayers = new(StringComparer.Ordinal)
-        {
-            "backHair",
-            "backHairOverCape",
-            "backWing",
-            "cape",
-            "shield",
-            "shieldOverBody",
-            "weaponBelowBody",
-            "backBody"
-        };
 
         #endregion
 
@@ -373,6 +368,8 @@ namespace HaCreator.MapSimulator.Character
         private bool _jumpPressedThisFrame;
         private int _lastFloatJumpTime = int.MinValue;
         private float _externalMoveSpeedMultiplier = 1f;
+        private bool _landingTrackingActive;
+        private float _landingTrackingStartY;
 
         // Callbacks
         public Action<PlayerCharacter, Rectangle> OnAttackHitbox;
@@ -385,6 +382,7 @@ namespace HaCreator.MapSimulator.Character
         private Func<string> _jumpDownRestrictionMessageProvider;
         private Action<string> _onJumpRestricted;
         private Func<float, float> _moveSpeedCapResolver;
+        private Action<PlayerCharacter, PlayerLandingInfo> _onLanded;
 
         // Foothold system reference
         private Func<float, float, float, FootholdLine> _findFoothold;
@@ -399,6 +397,7 @@ namespace HaCreator.MapSimulator.Character
         private Point _portableChairPairOffset;
         private bool _portableChairPairFacingRight;
         private string _portableChairPairActionName;
+        private bool _packetOwnedChairSitConfirmed;
         private bool _portableChairExternalPairRequested;
         private bool _portableChairHasExternalPair;
         private Vector2 _portableChairExternalPairPosition;
@@ -454,6 +453,7 @@ namespace HaCreator.MapSimulator.Character
         public void SetPosition(float x, float y)
         {
             Physics.SetPosition(x, y);
+            ResetLandingTracking();
         }
 
         public void SetFootholdLookup(Func<float, float, float, FootholdLine> findFoothold)
@@ -502,6 +502,11 @@ namespace HaCreator.MapSimulator.Character
         public void SetJumpSoundCallback(Action onJump)
         {
             _onJumpSound = onJump;
+        }
+
+        public void SetLandingHandler(Action<PlayerCharacter, PlayerLandingInfo> onLanded)
+        {
+            _onLanded = onLanded;
         }
 
         public void SetJumpRestrictionHandler(
@@ -556,9 +561,12 @@ namespace HaCreator.MapSimulator.Character
             CurrentActionName = GetPortableChairActionName(chair);
             _animationStartTime = Environment.TickCount;
             _nextPortableChairRecoveryTime = Environment.TickCount + PORTABLE_CHAIR_RECOVERY_INTERVAL_MS;
+            _packetOwnedChairSitConfirmed = false;
             ConfigurePortableChairPairPreview(chair);
             return true;
         }
+
+        public bool PacketOwnedChairSitConfirmed => _packetOwnedChairSitConfirmed;
 
         public void ApplyPacketOwnedSitPlacement(float x, float y)
         {
@@ -572,10 +580,12 @@ namespace HaCreator.MapSimulator.Character
             CurrentAction = CharacterAction.Sit;
             CurrentActionName = GetPortableChairActionName(Build?.ActivePortableChair);
             _animationStartTime = Environment.TickCount;
+            _packetOwnedChairSitConfirmed = true;
         }
 
         public void ApplyPacketOwnedChairStandCorrection()
         {
+            _packetOwnedChairSitConfirmed = false;
             if (Build?.ActivePortableChair != null)
             {
                 ClearPortableChair();
@@ -601,6 +611,7 @@ namespace HaCreator.MapSimulator.Character
             }
 
             Build.ActivePortableChair = null;
+            _packetOwnedChairSitConfirmed = false;
             ClearPortableChairPairPreview();
             SetPortableChairPairRequestActive(false);
             ClearPortableChairMountState();
@@ -687,6 +698,11 @@ namespace HaCreator.MapSimulator.Character
             _activeSkillBlockingStatuses.Clear();
         }
 
+        public bool ClearSkillBlockingStatus(PlayerSkillBlockingStatus status)
+        {
+            return _activeSkillBlockingStatuses.Remove(status);
+        }
+
         /// <summary>
         /// Set GM fly toggle input (should be called with key press detection)
         /// </summary>
@@ -739,6 +755,8 @@ namespace HaCreator.MapSimulator.Character
 
             ExpireExternalAvatarTransformIfNeeded(currentTime);
             _jumpPressedThisFrame = _inputJump && !_wasJumpHeldLastFrame;
+            bool wasSurfaceAttached = Physics.IsOnFoothold() || Physics.IsOnLadderOrRope;
+            float surfaceYBeforeUpdate = Y;
 
             // Handle GM fly mode toggle
             if (_inputGmFlyToggle)
@@ -750,6 +768,7 @@ namespace HaCreator.MapSimulator.Character
             // GM Fly Mode - free movement ignoring physics
             if (GmFlyMode)
             {
+                ResetLandingTracking();
                 UpdateGmFlyMode(deltaTime);
                 UpdateAnimation(currentTime);
                 UpdateOwnedTamingMobRenderState();
@@ -785,6 +804,17 @@ namespace HaCreator.MapSimulator.Character
             {
                 // Walking - check for foothold transitions or walking off edge
                 CheckFootholdTransition();
+            }
+
+            if (wasSurfaceAttached
+                && !_landingTrackingActive
+                && !Physics.IsOnFoothold()
+                && !Physics.IsOnLadderOrRope
+                && !Physics.IsInSwimArea
+                && !Physics.IsUserFlying())
+            {
+                _landingTrackingActive = true;
+                _landingTrackingStartY = surfaceYBeforeUpdate;
             }
 
             RefreshSwimAreaState();
@@ -1008,11 +1038,13 @@ namespace HaCreator.MapSimulator.Character
             }
             else if ((Physics.IsInSwimArea || Physics.IsUserFlying()) && !Physics.IsOnFoothold())
             {
+                ResetLandingTracking();
                 // Swimming/Flying movement - when not on foothold
                 ProcessFloatMovement(tSec);
             }
             else if ((Physics.IsInSwimArea || Physics.IsUserFlying()) && Physics.IsOnFoothold() && (_inputUp || _inputJump))
             {
+                ResetLandingTracking();
                 // On foothold in a swim/fly map, up/jump transitions into float control.
                 Physics.DetachFromFoothold();
                 ProcessFloatMovement(tSec);
@@ -1043,7 +1075,7 @@ namespace HaCreator.MapSimulator.Character
                 {
                     _physicsDebugLogged = true;
                     System.Diagnostics.Debug.WriteLine($"[PlayerCharacter Physics] maxSpeed={maxSpeed:F1} px/s, walkForce={walkForce:F1}, walkDrag={walkDrag:F1}, mass={entityMass}, tSec={tSec:F4}");
-                    System.Diagnostics.Debug.WriteLine($"[PlayerCharacter Physics] accel={walkForce/entityMass:F1} px/sﾂｲ, decel={walkDrag/entityMass:F1} px/sﾂｲ");
+                    System.Diagnostics.Debug.WriteLine($"[PlayerCharacter Physics] accel={walkForce/entityMass:F1} px/s・ゑｽｲ, decel={walkDrag/entityMass:F1} px/s・ゑｽｲ");
                 }
 
                 if (_inputLeft && !_inputRight)
@@ -1386,12 +1418,20 @@ namespace HaCreator.MapSimulator.Character
                     return;
                 }
 
+                void CompleteLanding(FootholdLine footholdToLandOn)
+                {
+                    float landingY = (float)CalculateYOnFoothold(footholdToLandOn, X);
+                    float impactVelocityY = (float)Math.Max(0d, Physics.VelocityY);
+                    Physics.LandOnFoothold(footholdToLandOn);
+                    State = PlayerState.Standing;
+                    NotifyLanding(landingY, impactVelocityY);
+                }
+
                 // Check if we're falling through this foothold
                 if (Physics.FallStartFoothold != fh)
                 {
                     // Landing on a different foothold - always allowed
-                    Physics.LandOnFoothold(fh);
-                    State = PlayerState.Standing;
+                    CompleteLanding(fh);
                 }
                 else if (Physics.IsJumpingDown)
                 {
@@ -1404,8 +1444,7 @@ namespace HaCreator.MapSimulator.Character
                     const float MIN_FALL_DISTANCE = 30f;
                     if (Physics.Y >= fhY + MIN_FALL_DISTANCE)
                     {
-                        Physics.LandOnFoothold(fh);
-                        State = PlayerState.Standing;
+                        CompleteLanding(fh);
                     }
                 }
                 else
@@ -1417,8 +1456,7 @@ namespace HaCreator.MapSimulator.Character
                         : fhYAtX;
                     if (Physics.Y >= fhY)
                     {
-                        Physics.LandOnFoothold(fh);
-                        State = PlayerState.Standing;
+                        CompleteLanding(fh);
                     }
                 }
             }
@@ -2306,6 +2344,13 @@ namespace HaCreator.MapSimulator.Character
                 : SkillAvatarEffectMode.Ground;
         }
 
+        private bool ShouldHideRotateSensitiveAvatarEffect()
+        {
+            return ClientOwnedAvatarEffectParity.ShouldHideDuringPlayerAction(
+                CurrentActionName,
+                State == PlayerState.Attacking ? _forcedActionName : null);
+        }
+
         private static bool HasSkillAvatarEffectAnimationForMode(SkillAvatarEffectState effectState, SkillAvatarEffectMode mode)
         {
             if (effectState == null)
@@ -2725,6 +2770,7 @@ namespace HaCreator.MapSimulator.Character
             ScheduleNextBlink(Environment.TickCount);
             Physics.Reset();
             Physics.SetPosition(x, y);
+            ResetLandingTracking();
         }
 
         /// <summary>
@@ -2749,6 +2795,25 @@ namespace HaCreator.MapSimulator.Character
             _inputUp = false;
             _inputDown = false;
             _inputJump = false;
+            ResetLandingTracking();
+        }
+
+        public void ResetLandingTracking()
+        {
+            _landingTrackingActive = false;
+            _landingTrackingStartY = 0f;
+        }
+
+        private void NotifyLanding(float landingY, float impactVelocityY)
+        {
+            if (!_landingTrackingActive)
+            {
+                return;
+            }
+
+            PlayerLandingInfo landingInfo = new(_landingTrackingStartY, landingY, impactVelocityY);
+            ResetLandingTracking();
+            _onLanded?.Invoke(this, landingInfo);
         }
 
         public void PrepareForForcedHorizontalControl()
@@ -3479,99 +3544,23 @@ namespace HaCreator.MapSimulator.Character
                 return null;
             }
 
-            // PrepareMirrorActionLayer pulls five exact avatar-owned source planes in order:
+            // PrepareMirrorActionLayer copies the avatar's five composed layer owners in order:
             // UnderCharacter, OverCharacter, UnderFace, Face, OverFace.
             var layeredParts = new List<AssembledPart>[5];
             for (int i = 0; i < frame.Parts.Count; i++)
             {
                 AssembledPart part = frame.Parts[i];
-                if (!TryGetMirrorImageSourceLayer(part, out MirrorImageSourceLayer sourceLayer))
+                if (part?.Texture == null || !part.IsVisible)
                 {
                     continue;
                 }
 
-                int layerIndex = (int)sourceLayer;
+                int layerIndex = (int)part.RenderLayer;
                 layeredParts[layerIndex] ??= new List<AssembledPart>();
                 layeredParts[layerIndex].Add(part);
             }
 
             return layeredParts;
-        }
-
-        private static bool TryGetMirrorImageSourceLayer(AssembledPart part, out MirrorImageSourceLayer sourceLayer)
-        {
-            sourceLayer = default;
-            if (part?.Texture == null || !part.IsVisible)
-            {
-                return false;
-            }
-
-            if (TryGetMirrorImageSourceLayerFromZLayer(part, out sourceLayer))
-            {
-                return true;
-            }
-
-            sourceLayer = part.PartType switch
-            {
-                CharacterPartType.HairBelowBody or CharacterPartType.Cape or CharacterPartType.Shield
-                    => MirrorImageSourceLayer.UnderCharacter,
-                CharacterPartType.Body or CharacterPartType.Coat or CharacterPartType.Longcoat or CharacterPartType.Pants or CharacterPartType.Shoes
-                    or CharacterPartType.Arm or CharacterPartType.ArmOverHair or CharacterPartType.ArmOverHairBelowWeapon
-                    or CharacterPartType.Glove or CharacterPartType.Hand or CharacterPartType.HandBelowWeapon or CharacterPartType.HandOverHair
-                    or CharacterPartType.Weapon or CharacterPartType.WeaponBelowArm or CharacterPartType.WeaponOverGlove
-                    or CharacterPartType.WeaponOverHand or CharacterPartType.WeaponOverBody
-                    => MirrorImageSourceLayer.OverCharacter,
-                CharacterPartType.Head or CharacterPartType.Ear or CharacterPartType.Earrings
-                    => MirrorImageSourceLayer.UnderFace,
-                CharacterPartType.Face
-                    => MirrorImageSourceLayer.Face,
-                CharacterPartType.Hair or CharacterPartType.HairOverHead
-                    or CharacterPartType.Cap or CharacterPartType.CapOverHair or CharacterPartType.CapBelowAccessory
-                    or CharacterPartType.Accessory or CharacterPartType.AccessoryOverHair
-                    or CharacterPartType.Face_Accessory or CharacterPartType.Eye_Accessory
-                    => MirrorImageSourceLayer.OverFace,
-                _ => ResolveMirrorImageSourceLayerFromZIndex(part.ZIndex, preferUnderCharacter: false)
-            };
-
-            return true;
-        }
-
-        private static bool TryGetMirrorImageSourceLayerFromZLayer(AssembledPart part, out MirrorImageSourceLayer sourceLayer)
-        {
-            sourceLayer = default;
-            if (part == null || string.IsNullOrWhiteSpace(part.ZLayer))
-            {
-                return false;
-            }
-
-            bool preferUnderCharacter = MirrorImageUnderCharacterZLayers.Contains(part.ZLayer)
-                || part.ZLayer.StartsWith("back", StringComparison.Ordinal);
-            sourceLayer = ResolveMirrorImageSourceLayerFromZIndex(part.ZIndex, preferUnderCharacter);
-            return true;
-        }
-
-        private static MirrorImageSourceLayer ResolveMirrorImageSourceLayerFromZIndex(int zIndex, bool preferUnderCharacter)
-        {
-            int headZ = ZMapReference.GetZIndex("head");
-            if (zIndex < headZ)
-            {
-                return preferUnderCharacter
-                    ? MirrorImageSourceLayer.UnderCharacter
-                    : MirrorImageSourceLayer.OverCharacter;
-            }
-
-            int faceZ = ZMapReference.GetZIndex("face");
-            if (zIndex < faceZ)
-            {
-                return MirrorImageSourceLayer.UnderFace;
-            }
-
-            if (zIndex == faceZ)
-            {
-                return MirrorImageSourceLayer.Face;
-            }
-
-            return MirrorImageSourceLayer.OverFace;
         }
 
         private bool TryGetShadowPartnerAnimation(
@@ -3695,7 +3684,7 @@ namespace HaCreator.MapSimulator.Character
             {
                 SkillAvatarEffectState effectState = _activeSkillAvatarEffects[i];
                 if (effectState.HideOnRotateAction
-                    && ClientOwnedAvatarEffectParity.ShouldHideDuringPlayerAction(CurrentActionName))
+                    && ShouldHideRotateSensitiveAvatarEffect())
                 {
                     continue;
                 }
@@ -4367,9 +4356,13 @@ namespace HaCreator.MapSimulator.Character
         {
             rawActionCode = default;
 
-            if (State == PlayerState.Attacking
-                && !string.IsNullOrWhiteSpace(_forcedActionName)
+            if (!string.IsNullOrWhiteSpace(_forcedActionName)
                 && CharacterPart.TryGetClientRawActionCode(_forcedActionName, out rawActionCode))
+            {
+                return true;
+            }
+
+            if (CharacterPart.TryGetClientRawActionCode(CharacterPart.GetActionString(CurrentAction), out rawActionCode))
             {
                 return true;
             }

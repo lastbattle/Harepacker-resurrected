@@ -107,6 +107,35 @@ namespace HaCreator.MapSimulator.Interaction
             return _runtime.TryBuildWeddingInvitationHandoff(build, style, out handoff, out message);
         }
 
+        internal bool TryOpenWeddingInvitationFromAcceptedProposal(
+            WeddingInvitationController weddingInvitationController,
+            UIWindowManager windowManager,
+            CharacterBuild build,
+            SpriteFont font,
+            Action<string> feedbackHandler,
+            WeddingInvitationStyle style,
+            Action showWindow,
+            out string message)
+        {
+            _runtime.UpdateLocalContext(build);
+            if (!_runtime.TryBuildWeddingInvitationHandoff(build, style, out WeddingInvitationHandoff handoff, out string handoffMessage))
+            {
+                message = handoffMessage;
+                return false;
+            }
+
+            message = weddingInvitationController.OpenInvitation(
+                handoff.GroomName,
+                handoff.BrideName,
+                handoff.Style,
+                windowManager,
+                build,
+                font,
+                feedbackHandler,
+                showWindow);
+            return true;
+        }
+
         private void ShowWindow(
             UIWindowManager windowManager,
             CharacterBuild build,

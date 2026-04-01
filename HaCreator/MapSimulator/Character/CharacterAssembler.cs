@@ -9,6 +9,15 @@ using Spine;
 
 namespace HaCreator.MapSimulator.Character
 {
+    public enum AvatarRenderLayer
+    {
+        UnderCharacter = 0,
+        OverCharacter = 1,
+        UnderFace = 2,
+        Face = 3,
+        OverFace = 4
+    }
+
     /// <summary>
     /// Assembled frame ready for rendering - contains all parts positioned correctly
     /// </summary>
@@ -83,6 +92,7 @@ namespace HaCreator.MapSimulator.Character
         public Color Tint { get; set; } = Color.White;
         public CharacterPartType PartType { get; set; }
         public PortableChairLayer SourcePortableChairLayer { get; set; }
+        public AvatarRenderLayer RenderLayer { get; set; } = AvatarRenderLayer.OverCharacter;
     }
 
     /// <summary>
@@ -94,6 +104,17 @@ namespace HaCreator.MapSimulator.Character
         private const int MechanicTamingMobItemId = 1932016;
         private const int PortableChairBackZ = -100;
         private const int PortableChairFrontZ = 900;
+        private static readonly HashSet<string> UnderCharacterZLayers = new(StringComparer.Ordinal)
+        {
+            "backHair",
+            "backHairOverCape",
+            "backWing",
+            "cape",
+            "shield",
+            "shieldOverBody",
+            "weaponBelowBody",
+            "backBody"
+        };
 
         private static readonly IReadOnlyDictionary<string, string[]> TamingMobActionAliases =
             new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase)
@@ -425,7 +446,8 @@ namespace HaCreator.MapSimulator.Character
                     SourcePart = part.SourcePart,
                     Tint = part.Tint,
                     PartType = part.PartType,
-                    SourcePortableChairLayer = part.SourcePortableChairLayer
+                    SourcePortableChairLayer = part.SourcePortableChairLayer,
+                    RenderLayer = part.RenderLayer
                 });
             }
 
@@ -872,7 +894,8 @@ namespace HaCreator.MapSimulator.Character
                         VisibilityPriority = GetVisibilityPriority(sourcePart, subPart.Z, zIndex),
                         SourcePart = sourcePart,
                         PartType = type,
-                        SourcePortableChairLayer = sourcePortableChairLayer
+                        SourcePortableChairLayer = sourcePortableChairLayer,
+                        RenderLayer = ResolveAvatarRenderLayer(type, subPart.Z, zIndex)
                     });
                 }
             }
@@ -891,9 +914,72 @@ namespace HaCreator.MapSimulator.Character
                     VisibilityPriority = GetVisibilityPriority(sourcePart, frame.Z, zIndex),
                     SourcePart = sourcePart,
                     PartType = type,
-                    SourcePortableChairLayer = sourcePortableChairLayer
+                    SourcePortableChairLayer = sourcePortableChairLayer,
+                    RenderLayer = ResolveAvatarRenderLayer(type, frame.Z, zIndex)
                 });
             }
+        }
+
+        private static AvatarRenderLayer ResolveAvatarRenderLayer(CharacterPartType partType, string zLayer, int zIndex)
+        {
+            if (TryResolveAvatarRenderLayerFromZLayer(zLayer, zIndex, out AvatarRenderLayer renderLayer))
+            {
+                return renderLayer;
+            }
+
+            return partType switch
+            {
+                CharacterPartType.HairBelowBody or CharacterPartType.Cape or CharacterPartType.Shield
+                    => AvatarRenderLayer.UnderCharacter,
+                CharacterPartType.Head or CharacterPartType.Ear or CharacterPartType.Earrings
+                    => AvatarRenderLayer.UnderFace,
+                CharacterPartType.Face
+                    => AvatarRenderLayer.Face,
+                CharacterPartType.Hair or CharacterPartType.HairOverHead
+                    or CharacterPartType.Cap or CharacterPartType.CapOverHair or CharacterPartType.CapBelowAccessory
+                    or CharacterPartType.Accessory or CharacterPartType.AccessoryOverHair
+                    or CharacterPartType.Face_Accessory or CharacterPartType.Eye_Accessory
+                    => AvatarRenderLayer.OverFace,
+                _ => ResolveAvatarRenderLayerFromZIndex(zIndex, preferUnderCharacter: false)
+            };
+        }
+
+        private static bool TryResolveAvatarRenderLayerFromZLayer(string zLayer, int zIndex, out AvatarRenderLayer renderLayer)
+        {
+            renderLayer = default;
+            if (string.IsNullOrWhiteSpace(zLayer))
+            {
+                return false;
+            }
+
+            bool preferUnderCharacter = UnderCharacterZLayers.Contains(zLayer)
+                || zLayer.StartsWith("back", StringComparison.Ordinal);
+            renderLayer = ResolveAvatarRenderLayerFromZIndex(zIndex, preferUnderCharacter);
+            return true;
+        }
+
+        private static AvatarRenderLayer ResolveAvatarRenderLayerFromZIndex(int zIndex, bool preferUnderCharacter)
+        {
+            int headZ = ZMapReference.GetZIndex("head");
+            if (zIndex < headZ)
+            {
+                return preferUnderCharacter
+                    ? AvatarRenderLayer.UnderCharacter
+                    : AvatarRenderLayer.OverCharacter;
+            }
+
+            int faceZ = ZMapReference.GetZIndex("face");
+            if (zIndex < faceZ)
+            {
+                return AvatarRenderLayer.UnderFace;
+            }
+
+            if (zIndex == faceZ)
+            {
+                return AvatarRenderLayer.Face;
+            }
+
+            return AvatarRenderLayer.OverFace;
         }
 
         private CharacterFrame GetPartFrame(CharacterPart part, string actionName, int frameIndex)

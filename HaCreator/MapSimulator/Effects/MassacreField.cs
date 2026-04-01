@@ -103,9 +103,22 @@ namespace HaCreator.MapSimulator.Effects
         private const float DangerDepletionThreshold = 0.65f;
         private const int BonusEffectY = 190;
         private const int CountEffectY = 190;
-        private const int ResultBoardY = 115;
-        private const int ResultScoreX = 180;
-        private const int ResultScoreY = 144;
+        private const int ResultBoardOffsetX = -193;
+        private const int ResultBoardOffsetY = -142;
+        private const int ResultKillRateX = 218;
+        private const int ResultCoolRateX = 218;
+        private const int ResultMissRateX = 218;
+        private const int ResultKillRateY = 63;
+        private const int ResultCoolRateY = 87;
+        private const int ResultMissRateY = 111;
+        private const int ResultKillPercentX = 265;
+        private const int ResultCoolPercentX = 265;
+        private const int ResultMissPercentX = 265;
+        private const int ResultKillPercentY = 63;
+        private const int ResultCoolPercentY = 87;
+        private const int ResultMissPercentY = 111;
+        private const int ResultScoreX = 258;
+        private const int ResultScoreY = 168;
         private const int ResultRankX = 98;
         private const int ResultRankY = 101;
         private const int ResultBackdrop2X = 245;
@@ -153,6 +166,7 @@ namespace HaCreator.MapSimulator.Effects
         private Texture2D _timerboardSourceTexture;
         private readonly Texture2D[] _timerDigits = new Texture2D[10];
         private readonly Texture2D[] _countDigits = new Texture2D[10];
+        private readonly Texture2D[] _resultRateDigits = new Texture2D[10];
         private readonly Texture2D[] _resultDigits = new Texture2D[10];
         private Texture2D _resultPlusTexture;
         private Texture2D _resultBoardTexture;
@@ -178,6 +192,9 @@ namespace HaCreator.MapSimulator.Effects
         private MassacreResultPresentation _resultPresentation = MassacreResultPresentation.None;
         private char _resultRank = 'D';
         private int _resultScore;
+        private int _resultKillRate;
+        private int _resultCoolRate;
+        private int _resultMissRate;
         public bool IsActive => _isActive;
         public int CurrentGauge => _currentGauge;
         public int MaxGauge => _maxGauge;
@@ -196,6 +213,9 @@ namespace HaCreator.MapSimulator.Effects
         public bool HasCountEffectPresentation => _countEffectPresentationStartTick != int.MinValue;
         public int ActiveCountEffectStage => _countEffectPresentationStage;
         public bool HasResultPresentation => _resultPresentation != MassacreResultPresentation.None;
+        public int ResultKillRate => _resultKillRate;
+        public int ResultCoolRate => _resultCoolRate;
+        public int ResultMissRate => _resultMissRate;
         public bool TryApplyPacket(int packetType, byte[] payload, int currentTimeMs, out string errorMessage)
         {
             errorMessage = null;
@@ -355,6 +375,9 @@ namespace HaCreator.MapSimulator.Effects
             _resultPresentation = MassacreResultPresentation.None;
             _resultRank = 'D';
             _resultScore = 0;
+            _resultKillRate = 0;
+            _resultCoolRate = 0;
+            _resultMissRate = 0;
         }
         public void OnClock(int clockType, int durationSec, int currentTimeMs)
         {
@@ -513,7 +536,9 @@ namespace HaCreator.MapSimulator.Effects
             string countBoardText = $", point={_hitCount}/{_coolCount}/{_missCount}/{_skillCount}";
             string countEffectText = HasCountEffectPresentation ? $", countFx=stage{_countEffectPresentationStage}" : string.Empty;
             string bonusText = HasBonusPresentation ? ", bonusFx=active" : string.Empty;
-            string resultText = HasResultPresentation ? $", result={_resultPresentation}:{_resultRank}:{_resultScore}" : string.Empty;
+            string resultText = HasResultPresentation
+                ? $", result={_resultPresentation}:{_resultRank}:{_resultScore}:{_resultKillRate}/{_resultCoolRate}/{_resultMissRate}"
+                : string.Empty;
             return $"Massacre map {_mapId}, timer={timerText}, gauge={_currentGauge}/{_maxGauge}, inc={_incGauge}, hitAdd={_defaultGaugeIncrease}, decay={_gaugeDec}/s, kills={_killCount}, combo={_comboCount}{countBoardText}{disableSkillText}{nextCountEffect}{countEffectText}{bonusText}{resultText}, ids=0x{TimerboardSourceStringPoolId:X}/0x{CountBoardDigitStringPoolId:X}/0x{ClearScreenEffectStringPoolId:X}/0x{ResultBoardStringPoolId:X}/0x{ResultOverlayStringPoolId:X}";
         }
         public void Reset()
@@ -879,6 +904,7 @@ namespace HaCreator.MapSimulator.Effects
             _resultPresentationStartTick = currentTimeMs;
             _resultScore = Math.Max(0, scoreOverride ?? _killCount);
             _resultRank = NormalizeRank(rankOverride ?? ComputeResultRank());
+            (_resultKillRate, _resultCoolRate, _resultMissRate) = CalculateResultRates();
         }
         public void ShowBonusPresentation(int currentTimeMs)
         {
@@ -959,6 +985,7 @@ namespace HaCreator.MapSimulator.Effects
             _keyCloseFrames = LoadAnimationFrames(count?["keyBackgrd"]?["close"]);
             _resultBoardTexture = LoadCanvasTexture(result?["backgrd"] as WzCanvasProperty);
             _resultBoardPulseFrames = LoadAnimationFrames(result?["backgrd2"]);
+            LoadDigitTextures(result?["number"], _resultRateDigits);
             LoadDigitTextures(result?["number2"], _resultDigits, out _resultPlusTexture);
             LoadRankTextures(result?["Rank"]);
             WzImageProperty killing = effectImage?["killing"];
@@ -1025,10 +1052,16 @@ namespace HaCreator.MapSimulator.Effects
             DrawAnimation(spriteBatch, GetResultRankEffectFrames(_resultRank), currentTimeMs, _resultPresentationStartTick, center, repeat: false);
             if (_resultBoardTexture != null)
             {
-                Vector2 boardPos = new((viewport.Width - _resultBoardTexture.Width) / 2f, ResultBoardY);
+                Vector2 boardPos = new(viewport.Width / 2f + ResultBoardOffsetX, viewport.Height / 2f + ResultBoardOffsetY);
                 spriteBatch.Draw(_resultBoardTexture, boardPos, Color.White);
                 DrawAnimation(spriteBatch, _resultBoardPulseFrames, currentTimeMs, _resultPresentationStartTick, boardPos + new Vector2(ResultBackdrop2X, ResultBackdrop2Y), repeat: false);
                 DrawResultRank(spriteBatch, boardPos + new Vector2(ResultRankX, ResultRankY));
+                DrawResultRate(spriteBatch, font, _resultKillRate, boardPos + new Vector2(ResultKillRateX, ResultKillRateY));
+                DrawResultRate(spriteBatch, font, _resultCoolRate, boardPos + new Vector2(ResultCoolRateX, ResultCoolRateY));
+                DrawResultRate(spriteBatch, font, _resultMissRate, boardPos + new Vector2(ResultMissRateX, ResultMissRateY));
+                DrawResultRate(spriteBatch, font, _resultKillRate, boardPos + new Vector2(ResultKillPercentX, ResultKillPercentY));
+                DrawResultRate(spriteBatch, font, _resultCoolRate, boardPos + new Vector2(ResultCoolPercentX, ResultCoolPercentY));
+                DrawResultRate(spriteBatch, font, _resultMissRate, boardPos + new Vector2(ResultMissPercentX, ResultMissPercentY));
                 DrawBitmapNumber(spriteBatch, _resultDigits, _resultScore.ToString(), boardPos + new Vector2(ResultScoreX, ResultScoreY), _resultPlusTexture, includePlus: false);
                 return;
             }
@@ -1036,10 +1069,21 @@ namespace HaCreator.MapSimulator.Effects
             {
                 string fallback = $"{_resultPresentation} {_resultScore}";
                 Vector2 size = font.MeasureString(fallback);
-                Vector2 pos = new((viewport.Width - size.X) / 2f, ResultBoardY);
+                Vector2 pos = new((viewport.Width - size.X) / 2f, viewport.Height / 2f + ResultBoardOffsetY);
                 spriteBatch.DrawString(font, fallback, pos + Vector2.One, Color.Black);
                 spriteBatch.DrawString(font, fallback, pos, Color.White);
             }
+        }
+        private void DrawResultRate(SpriteBatch spriteBatch, SpriteFont font, int value, Vector2 topLeft)
+        {
+            string text = Math.Max(0, value).ToString(CultureInfo.InvariantCulture);
+            DrawBitmapNumber(spriteBatch, _resultRateDigits, text, topLeft);
+            if ((font == null) || (_resultRateDigits != null && _resultRateDigits.All(texture => texture != null)))
+            {
+                return;
+            }
+
+            DrawDigitString(spriteBatch, font, text, topLeft, Color.White);
         }
         private void DrawResultRank(SpriteBatch spriteBatch, Vector2 topLeft)
         {
@@ -1381,6 +1425,28 @@ namespace HaCreator.MapSimulator.Effects
                 >= 0.35f => 'C',
                 _ => 'D'
             };
+        }
+        private (int killRate, int coolRate, int missRate) CalculateResultRates()
+        {
+            int total = _hitCount + _coolCount + _missCount;
+            if (total <= 0)
+            {
+                return (0, 0, 0);
+            }
+
+            int killRate = CalculateResultRate(_hitCount, total);
+            int coolRate = CalculateResultRate(_coolCount, total);
+            int missRate = CalculateResultRate(_missCount, total);
+            return (killRate, coolRate, missRate);
+        }
+        private static int CalculateResultRate(int value, int total)
+        {
+            if (total <= 0 || value <= 0)
+            {
+                return 0;
+            }
+
+            return Math.Clamp((int)MathF.Round((value * 100f) / total), 0, 100);
         }
         private static char NormalizeRank(char rank)
         {

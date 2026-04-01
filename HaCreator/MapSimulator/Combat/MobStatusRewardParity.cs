@@ -15,9 +15,7 @@ namespace HaCreator.MapSimulator.Combat
             }
 
             int showdownBonusPercent = ResolveShowdownBonusPercent(mob?.AI);
-            return showdownBonusPercent > 0
-                ? Math.Max(0, (int)MathF.Round(baseExp * (1f + showdownBonusPercent / 100f)))
-                : baseExp;
+            return ApplyRewardBonus(baseExp, showdownBonusPercent);
         }
 
         public static int ResolveMesoAmount(MobItem mob, int baseAmount)
@@ -29,7 +27,19 @@ namespace HaCreator.MapSimulator.Combat
                 return mesoAmount;
             }
 
-            return Math.Max(0, (int)MathF.Round(mesoAmount * (1f + showdownBonusPercent / 100f)));
+            return ApplyRewardBonus(mesoAmount, showdownBonusPercent);
+        }
+
+        internal static int ApplyRewardBonus(int baseAmount, int percentBonus)
+        {
+            int amount = Math.Max(0, baseAmount);
+            int bonusPercent = Math.Max(0, percentBonus);
+            if (amount <= 0 || bonusPercent <= 0)
+            {
+                return amount;
+            }
+
+            return Math.Max(0, (int)MathF.Round(amount * (1f + bonusPercent / 100f)));
         }
 
         private static int ResolveShowdownBonusPercent(MobAI mobAI)

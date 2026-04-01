@@ -91,6 +91,17 @@ namespace HaCreator.MapSimulator.Managers
         public int SentCount { get; private set; }
         public string LastStatus { get; private set; } = "Coconut official-session bridge inactive.";
 
+        public string DescribeStatus()
+        {
+            string lifecycle = IsRunning
+                ? $"listening on 127.0.0.1:{ListenPort} -> {RemoteHost}:{RemotePort}"
+                : "inactive";
+            string session = HasConnectedSession
+                ? $"connected session {_activePair?.ClientEndpoint ?? "unknown-client"} -> {_activePair?.RemoteEndpoint ?? "unknown-remote"}"
+                : "no live Maple session";
+            return $"Coconut official-session bridge {lifecycle}; {session}; received={ReceivedCount}; sent={SentCount}. {LastStatus}";
+        }
+
         public static IReadOnlyList<SessionDiscoveryCandidate> DiscoverEstablishedSessions(
             int remotePort,
             int? owningProcessId = null,
@@ -153,7 +164,7 @@ namespace HaCreator.MapSimulator.Managers
                 .ToArray();
         }
 
-        public void Start(int listenPort, string remoteHost, int remotePort)
+        public bool TryStart(int listenPort, string remoteHost, int remotePort, out string status)
         {
             lock (_sync)
             {
@@ -169,13 +180,22 @@ namespace HaCreator.MapSimulator.Managers
                     _listener.Start();
                     _listenerTask = Task.Run(() => ListenLoopAsync(_listenerCancellation.Token));
                     LastStatus = $"Coconut official-session bridge listening on 127.0.0.1:{ListenPort} and proxying to {RemoteHost}:{RemotePort}.";
+                    status = LastStatus;
+                    return true;
                 }
                 catch (Exception ex)
                 {
                     StopInternal(clearPending: true);
                     LastStatus = $"Coconut official-session bridge failed to start: {ex.Message}";
+                    status = LastStatus;
+                    return false;
                 }
             }
+        }
+
+        public void Start(int listenPort, string remoteHost, int remotePort)
+        {
+            TryStart(listenPort, remoteHost, remotePort, out _);
         }
 
         public bool TryStartFromDiscovery(int listenPort, int remotePort, string processSelector, int? localPort, out string status)
@@ -196,8 +216,14 @@ namespace HaCreator.MapSimulator.Managers
                 return false;
             }
 
-            Start(listenPort, candidate.RemoteEndpoint.Address.ToString(), candidate.RemoteEndpoint.Port);
-            status = $"Coconut official-session bridge discovered {candidate.ProcessName} ({candidate.ProcessId}) at {candidate.RemoteEndpoint.Address}:{candidate.RemoteEndpoint.Port} from local {candidate.LocalEndpoint.Address}:{candidate.LocalEndpoint.Port}. {LastStatus}";
+            if (!TryStart(listenPort, candidate.RemoteEndpoint.Address.ToString(), candidate.RemoteEndpoint.Port, out string startStatus))
+            {
+                status = $"Coconut official-session bridge discovered {candidate.ProcessName} ({candidate.ProcessId}) at {candidate.RemoteEndpoint.Address}:{candidate.RemoteEndpoint.Port} from local {candidate.LocalEndpoint.Address}:{candidate.LocalEndpoint.Port}, but startup failed. {startStatus}";
+                LastStatus = status;
+                return false;
+            }
+
+            status = $"Coconut official-session bridge discovered {candidate.ProcessName} ({candidate.ProcessId}) at {candidate.RemoteEndpoint.Address}:{candidate.RemoteEndpoint.Port} from local {candidate.LocalEndpoint.Address}:{candidate.LocalEndpoint.Port}. {startStatus}";
             LastStatus = status;
             return true;
         }

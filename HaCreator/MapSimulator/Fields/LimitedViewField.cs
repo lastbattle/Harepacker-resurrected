@@ -37,6 +37,7 @@ namespace HaCreator.MapSimulator.Fields
         private bool _followPlayer = true;          // Follow player position
         private float _centerX, _centerY;           // Fixed center if not following
         private bool _clientOwnedImmediateMode;
+        private bool _clientOwnedUpdateParityMode;
         private float _clientOwnedMaskWidth;
         private float _clientOwnedMaskHeight;
         private float _clientOwnedMaskOriginX;
@@ -71,6 +72,7 @@ namespace HaCreator.MapSimulator.Fields
         public ViewMode Mode => _mode;
         public float ViewRadius => _currentRadius;
         public Color FogColor => _fogColor;
+        internal bool UsesClientOwnedUpdateParity => _clientOwnedUpdateParityMode;
         #endregion
 
         #region Initialization
@@ -231,6 +233,15 @@ namespace HaCreator.MapSimulator.Fields
             _clientOwnedImmediateMode = immediateMode;
         }
 
+        public void EnableClientOwnedCircleMask(float radius, float width, float height, float originX, float originY)
+        {
+            ConfigureClientOwnedMask(width, height, originX, originY, immediateMode: true);
+            _clientOwnedUpdateParityMode = true;
+            _pulseEnabled = false;
+            _edgeSoftness = 0f;
+            EnableCircle(radius);
+        }
+
         public void ClearClientOwnedMask()
         {
             _clientOwnedMaskWidth = 0f;
@@ -238,6 +249,7 @@ namespace HaCreator.MapSimulator.Fields
             _clientOwnedMaskOriginX = 0f;
             _clientOwnedMaskOriginY = 0f;
             _clientOwnedImmediateMode = false;
+            _clientOwnedUpdateParityMode = false;
         }
         #endregion
 
@@ -265,6 +277,11 @@ namespace HaCreator.MapSimulator.Fields
                 {
                     _enabled = false;
                     _mode = ViewMode.None;
+                }
+
+                if (_clientOwnedUpdateParityMode)
+                {
+                    return;
                 }
 
                 return;
