@@ -57,6 +57,8 @@ It does three things that the old notes did not do well:
 - `CUserLocal::OnTimeBombAttack` at `0x9323f0`
 - `CUserLocal::OnVengeanceSkillApply` at `0x909b10`
 - `CUserLocal::OnExJablinApply` at `0x9034e0`
+- `CUserLocal::OnIncComboResponse` at `0x91a970`
+- `CUserLocal::DrawCombo` at `0x917040`
 - `CSummonedPool::OnPacket` at `0x75ac70`
 - `CSummonedPool::OnCreated` at `0x75a9a0`
 - `CSummoned::Update` at `0x757f70`
@@ -147,6 +149,14 @@ The targeted re-check surfaced a client-owned helper seam that the backlog was n
 Notes:
 The direct `CUserLocal::OnPacket` re-check surfaced another client-owned skill family that was not represented anywhere in the backlog text. `OnTimeBombAttack` is not just a generic damage callback: the decompile shows it decoding a skill id plus attack/action data, resolving the local skill level, calling `TryDoingMeleeAttack`, then applying hit-period/invincibility and impact side effects before forcing the avatar hit reaction. `OnVengeanceSkillApply` is also more specific than a plain temporary-stat refresh because it gates on skill id `3120010` and then calls `DoActiveSkill_MeleeAttack` through the local skill runtime, while `OnExJablinApply` arms the `m_bNextShootExJablin` flag for the next ranged-shot branch rather than behaving like a generic buff bit. That is a dedicated packet-owned skill-application seam between the broad cast/update families and the existing temporary-stat or helper rows.
 
+### 4. Packet-owned combo counter and combo-command parity discovered by direct `CUserLocal::OnPacket` scan
+
+- `CUserLocal::OnIncComboResponse` at `0x91a970`
+- `CUserLocal::DrawCombo` at `0x917040`
+
+Notes:
+The same targeted `CUserLocal::OnPacket` scan surfaced another local skill owner that the backlog still was not naming. `OnIncComboResponse` is very small but concrete: it decodes the server-authored combo count, stores it in `m_nCombo`, stamps `m_tLastSetCombo`, and immediately routes through `DrawCombo`. The `DrawCombo` decompile then shows that combo is not just another temporary-stat label. The client resolves combo tiers at `30`, `100`, and `200`, loads digit and banner layers from `Effect/BasicEff.img/Combo/<level>/*`, keeps them alive on a five-second alpha window, applies fly-origin motion to the combo vectors, and conditionally spawns extra `Effect/BasicEff.img/ComboCommand/<level>/{0,1}` layers when the corresponding Aran combo-command skills are learned. A repo search across `HaCreator/MapSimulator` still only surfaced the generic `Combo` temporary-stat labeling in `SkillManager` and did not surface any simulator-side combo packet owner, combo HUD/effect loader, or `ComboCommand` runtime, so this remains a real missing parity bucket rather than stale wording.
+
 ## Current State Summary
 
 MapSimulator is no longer "missing player simulation".
@@ -212,6 +222,12 @@ This helper-owner seam is currently under-tracked by the backlog even though bot
 | Status | Area | Gap | Why it matters | Primary seam |
 |--------|------|-----|----------------|--------------|
 | Missing | Time Bomb, Vengeance, and ExJablin packet-application parity | The backlog currently tracks broad cast/update families, summon ownership, and helper-layer work, but a direct `CUserLocal::OnPacket` re-check exposed another skill-owned seam that is still absent from the plan. `CUserLocal::OnTimeBombAttack` is a dedicated packet-driven skill application path that decodes skill id plus action/damage payload, resolves the local skill level, forwards into `TryDoingMeleeAttack`, then applies hit-period/invincibility and impact side effects before forcing the local hit reaction. `CUserLocal::OnVengeanceSkillApply` is another explicit skill gate rather than a generic temp-stat pulse: it only fires for skill id `3120010` and immediately calls `DoActiveSkill_MeleeAttack` through the local skill runtime. `CUserLocal::OnExJablinApply` is smaller but still its own owner seam because it arms the next-shot `m_bNextShootExJablin` state from a packet instead of from the general cast path. A codebase search in `HaCreator/MapSimulator` did not surface any simulator runtime named for those handlers, so this family is still genuinely missing rather than merely undocumented. | If these handlers stay hidden inside the broad cast rows, packet-owned skill applications that bypass the normal local input path will keep looking “covered” even though the client gives them their own dispatcher and follow-up state. Tracking them explicitly keeps future parity work anchored to the actual packet-owned skill application points for hero-style counterattack hits, bowmaster Vengeance, and extra Javelin shot setup instead of assuming the generic cast/update seams already own those cases. | packet-owned local skill-application layer (`CUserLocal::OnPacket`, `CUserLocal::OnTimeBombAttack`, `CUserLocal::OnVengeanceSkillApply`, `CUserLocal::OnExJablinApply`, `CUserLocal::TryDoingMeleeAttack`, `CUserLocal::DoActiveSkill_MeleeAttack`) |
+
+### 4. Packet-owned combo counter and combo-command parity discovered by direct `CUserLocal::OnPacket` scan
+
+| Status | Area | Gap | Why it matters | Primary seam |
+|--------|------|-----|----------------|--------------|
+| Missing | Combo counter / combo-command packet parity | The current skill backlog covers generic buff labels, cooldown ownership, and several packet-owned local skill application paths, but it still never calls out the combo-count owner that `CUserLocal::OnPacket` drives directly. `CUserLocal::OnIncComboResponse` decodes a server-authored combo count, writes `m_nCombo`, stamps `m_tLastSetCombo`, and immediately calls `DrawCombo` instead of routing through the generic temporary-stat tray. `DrawCombo` then owns a distinct client presentation path: it selects combo tiers at `30`, `100`, and `200`, loads digit and banner layers from `Effect/BasicEff.img/Combo/<level>/*`, keeps them alive on a five-second alpha window, applies fly-origin motion to the combo vectors, and conditionally spawns extra `Effect/BasicEff.img/ComboCommand/<level>/{0,1}` attack/buff layers when the Aran combo-command family is learned. A codebase search across `HaCreator/MapSimulator` still did not surface any simulator packet bridge, HUD owner, or effect loader for `OnIncComboResponse`, `DrawCombo`, `Effect/BasicEff.img/Combo`, or `ComboCommand`, and only found the generic `Combo` temporary-stat heuristics in `SkillManager`, so this owner remains genuinely untracked. | If combo stays implied only by the temporary-stat tray, the backlog will overstate skill parity while missing the client's actual packet-owned combo counter, visible combo HUD/effect lifetime, and the extra combo-command visuals that hang off learned Aran skills. Tracking it explicitly keeps future work anchored to the real packet and draw owners instead of assuming the generic buff/cooldown surfaces already cover combo gameplay feedback. | packet-owned combo HUD/effect layer (`CUserLocal::OnPacket`, `CUserLocal::OnIncComboResponse`, `CUserLocal::DrawCombo`, `Effect/BasicEff.img/Combo`, `Effect/BasicEff.img/ComboCommand`) |
 
 Buff icon plan:
 
